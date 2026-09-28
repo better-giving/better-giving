@@ -26,20 +26,26 @@ export async function readPage(db: Db, pageId: string): Promise<Page | null> {
 
 /**
  * deletes a never-published campaign, its chat and the donation-settings row it owns, in one
- * `batch()`. false when the page is missing, is the donation page, or has ever been live.
+ * `batch()`, while the page is still the version it was drawn at. false when the page is missing,
+ * is the donation page, has ever been live, or has been written since `version`.
  *
  * the read only finds which settings row the page owns; every statement carries its own guard, so
  * a campaign published between the read and the batch loses nothing. the settings row goes only
  * once no page owns it, and a gift already naming it fails the batch whole on its foreign key.
  */
-export async function deleteNeverPublishedCampaign(db: Db, pageId: string): Promise<boolean> {
+export async function deleteNeverPublishedCampaign(
+	db: Db,
+	pageId: string,
+	version: Date
+): Promise<boolean> {
 	const [found] = await db.select({ formId: page.formId }).from(page).where(eq(page.id, pageId));
 	if (!found) return false;
 
 	const deletable = and(
 		eq(page.id, pageId),
 		eq(page.type, 'campaign'),
-		eq(page.state, 'never_published')
+		eq(page.state, 'never_published'),
+		eq(page.updatedAt, version)
 	);
 	const [, deleted] = await db.batch([
 		db
@@ -60,15 +66,22 @@ export async function deleteNeverPublishedCampaign(db: Db, pageId: string): Prom
 
 /**
  * ends a live campaign: the page to `ended` and the settings row it owns out of service, in one
- * `batch()`. false when the page is missing, is the donation page, or is not live.
+ * `batch()`, while the page is still the version it was drawn at. false when the page is missing,
+ * is the donation page, is not live, or has been written since `version`.
  *
  * the owned row goes to `draft`, which the served config and the gift endpoint refuse as they refuse
  * any unpublished form, so the address takes no new gift while a commitment already made on the row
  * keeps collecting (`readForm` in ../donations/collect.ts reads no status). the row's update runs
- * first and names the page by the same guard, so a campaign that is not live leaves its row alone.
+ * first and names the page by the same guard, so a campaign not live at that version leaves its row
+ * alone.
  */
-export async function endCampaign(db: Db, pageId: string): Promise<boolean> {
-	const endable = and(eq(page.id, pageId), eq(page.type, 'campaign'), eq(page.state, 'live'));
+export async function endCampaign(db: Db, pageId: string, version: Date): Promise<boolean> {
+	const endable = and(
+		eq(page.id, pageId),
+		eq(page.type, 'campaign'),
+		eq(page.state, 'live'),
+		eq(page.updatedAt, version)
+	);
 	const [, ended] = await db.batch([
 		db
 			.update(form)

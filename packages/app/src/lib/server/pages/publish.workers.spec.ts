@@ -8,9 +8,8 @@ import { createDb, type Db } from '../db/client';
 import { chatTurn, form, page, program } from '../db/schema';
 import { readForm } from '../forms/queries';
 import { draftTurn } from './draft';
-import { answering, insertPage, SETTINGS } from './page-row.testing';
+import { answering, endAsItStands, insertPage, SETTINGS } from './page-row.testing';
 import { discardChanges, publishPage, undoPublish } from './publish';
-import { endCampaign } from './queries';
 
 // Publish, Undo and Discard changes against the real D1 the pool binds: each is one `batch()` over
 // the page and the settings row it owns, and what they leave is read back from both.
@@ -390,7 +389,7 @@ describe('an ended campaign published again', () => {
 		const pageId = await insertPage(db, 'campaign', CAMPAIGN, CAMPAIGN);
 		await db.update(page).set({ slug: 'winter-coat-drive' }).where(eq(page.id, pageId));
 		await ownRow(pageId, SETTINGS, 'live');
-		if (!(await endCampaign(db, pageId))) throw new Error('the fixture campaign did not end');
+		await endAsItStands(db, pageId);
 		return pageId;
 	}
 

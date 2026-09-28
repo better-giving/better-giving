@@ -46,7 +46,7 @@ export async function readServedCampaign(db: Db, slug: string): Promise<ServedCa
 }
 
 /** a campaign as the Campaigns list reads it: its row, and its draft's goal and end. */
-export type CampaignListing = Pick<Page, 'id' | 'slug' | 'state'> & {
+export type CampaignListing = Pick<Page, 'id' | 'slug' | 'state' | 'updatedAt'> & {
 	name: string;
 	goalMinor: number | null;
 	/** the draft's end, and the day it closes on in the zone it was chosen in; null for no end. */
@@ -60,7 +60,14 @@ export type CampaignListing = Pick<Page, 'id' | 'slug' | 'state'> & {
  */
 export async function readCampaigns(db: Db): Promise<CampaignListing[]> {
 	const rows = await db
-		.select({ id: page.id, name: page.name, slug: page.slug, state: page.state, draft: page.draft })
+		.select({
+			id: page.id,
+			name: page.name,
+			slug: page.slug,
+			state: page.state,
+			updatedAt: page.updatedAt,
+			draft: page.draft
+		})
 		.from(page)
 		.where(eq(page.type, 'campaign'))
 		.orderBy(desc(page.createdAt), desc(page.id));

@@ -1,14 +1,18 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { defaultCampaign } from '$lib/page/defaults';
 import { slugFromTitle } from '$lib/page/slug';
 import { createDb, type Db } from '$lib/server/db/client';
-import { page } from '$lib/server/db/schema';
+import { form, page } from '$lib/server/db/schema';
+import { edgeCache } from '$lib/server/edge-cache.testing';
+import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { readChat } from '$lib/server/pages/draft';
 import { answering, insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import * as campaignPage from './$slug';
 import * as layout from './_app';
 import * as campaigns from './_app.admin.campaigns._index';
 
@@ -21,6 +25,8 @@ const LIST = '/admin/campaigns';
 
 let db: Db;
 let request: RouteRequester;
+/** a campaign's own address, which End and Publish move. */
+let served: RouteRequester;
 let session: string;
 
 beforeAll(async () => {
@@ -29,6 +35,7 @@ beforeAll(async () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/campaigns', module: campaigns }
 	]);
+	served = mountRoutes([{ path: ':slug', module: campaignPage }]);
 	session = await signIn(db);
 });
 
@@ -42,6 +49,7 @@ beforeEach(async () => {
 
 function post(fields: Record<string, string>, AI: { run: unknown } = answering()) {
 	const body = new FormData();
+	body.set(WHICH_FORM, 'campaign-create');
 	for (const [name, value] of Object.entries(fields)) body.set(name, value);
 	return request(
 		new Request(`${ORIGIN}${LIST}?new`, { method: 'POST', headers: { cookie: session }, body }),
@@ -58,6 +66,7 @@ const CREATE = {
 
 type Row = {
 	id: string;
+	version: number;
 	name: string;
 	address: string | null;
 	state: string;
@@ -95,6 +104,52 @@ async function campaign(
 		.set({ name, slug: slugFromTitle(name), state, createdAt: new Date(at) })
 		.where(eq(page.id, pageId));
 	return pageId;
+}
+
+/** one of a row's presses, as its form posts it: which press, the row's version, the page. */
+function press(which: string, row: Pick<Row, 'id' | 'version'>, at = LIST) {
+	const body = new FormData();
+	body.set(WHICH_FORM, which);
+	body.set(RECORD_VERSION, String(row.version));
+	body.set('page_id', row.id);
+	return request(
+		new Request(`${ORIGIN}${at}`, { method: 'POST', headers: { cookie: session }, body }),
+		{ env }
+	);
+}
+
+/** a deployment whose Stripe pair is set, so a live campaign's page is drawn rather than refused. */
+const STRIPE = {
+	STRIPE_SECRET_KEY: 'sk_test_abc',
+	STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
+	STRIPE_WEBHOOK_SECRET: 'whsec_abc'
+};
+
+/** what the campaign's address answers with. */
+async function visit(slug: string): Promise<{ kind: string }> {
+	// a campaign's page is refused where the organisation has no legal identity.
+	await env.DB.prepare('delete from org_profile').run();
+	await writeOrgRow(env.DB, { tax_id: '12-3456789' });
+	// the served cadences, warmed so the page never sends the fixture key to Stripe
+	// ($lib/server/forms/cadence-cache.ts).
+	await edgeCache().put(
+		new Request(`${ORIGIN}/__recurring-cadences`),
+		new Response(JSON.stringify(['one_time']), {
+			headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+		})
+	);
+	const response = await served(new Request(`${ORIGIN}/${slug}`), {
+		env: { ...env, ...STRIPE } as Env
+	});
+	return response.json();
+}
+
+/** the one listed row named `name`, in either group. */
+async function listed(name: string): Promise<Row> {
+	const { campaigns: live, ended } = await load();
+	const row = [...live, ...ended].find((each) => each.name === name);
+	if (!row) throw new Error(`${name} is not on the list`);
+	return row;
 }
 
 const DAY = 86_400_000;
@@ -168,6 +223,7 @@ describe('the Campaigns list', () => {
 		expect(listed).toEqual([
 			{
 				id: broken,
+				version: expect.any(Number),
 				name: 'Winter coat drive',
 				address: '/winter-coat-drive',
 				state: 'live',
@@ -226,4 +282,163 @@ describe('New campaign', () => {
 		});
 		expect(await db.select().from(page)).toEqual([]);
 	});
+});
+
+describe('End', () => {
+	it('moves a live campaign to the Ended group, its address saying it has ended, its pages kept', async () => {
+		const pageId = await campaign('Winter coat drive', 'live', NOW);
+		const [before] = await db.select().from(page).where(eq(page.id, pageId));
+
+		const response = await press(
+			'campaign-end',
+			await listed('Winter coat drive'),
+			`${LIST}?end=${pageId}`
+		);
+
+		expect(response.status).toBe(302);
+		expect(response.headers.get('Location')).toBe(LIST);
+		const { campaigns: live, ended } = await load();
+		expect(live).toEqual([]);
+		expect(ended.map((row) => [row.name, row.state])).toEqual([['Winter coat drive', 'ended']]);
+		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'ended' });
+		const [after] = await db.select().from(page).where(eq(page.id, pageId));
+		expect({ draft: after?.draft, published: after?.published }).toEqual({
+			draft: before?.draft,
+			published: before?.published
+		});
+	});
+});
+
+describe('Publish from the Ended group', () => {
+	it('brings an ended campaign back live at its address, taking gifts again', async () => {
+		const pageId = await campaign('Summer camp fund', 'ended', NOW);
+
+		const response = await press('campaign-publish', await listed('Summer camp fund'));
+
+		expect(response.status).toBe(302);
+		expect(response.headers.get('Location')).toBe(LIST);
+		const { campaigns: live, ended } = await load();
+		expect(live.map((row) => [row.name, row.state])).toEqual([['Summer camp fund', 'live']]);
+		expect(ended).toEqual([]);
+		expect(await visit('summer-camp-fund')).toMatchObject({ kind: 'page' });
+		const [row] = await db.select().from(page).where(eq(page.id, pageId));
+		const [owned] = await db
+			.select()
+			.from(form)
+			.where(eq(form.id, row?.formId ?? ''));
+		expect(owned?.status).toBe('live');
+	});
+
+	it('refuses a campaign whose end date has passed, naming the date, for the row pressed', async () => {
+		await campaign('Summer camp fund', 'ended', NOW, {
+			endsAt: Date.parse('2026-01-01T05:00:00Z') - 1,
+			endsZone: 'America/New_York'
+		});
+		const row = await listed('Summer camp fund');
+
+		const response = await press('campaign-publish', row);
+
+		expect(response.status).toBe(422);
+		const refused = await response.json();
+		expect(refused).toMatchObject({ pageId: row.id, form: { id: 'campaign-publish' } });
+		expect(JSON.stringify(refused)).toContain('the end date, Dec 31, 2025, has passed');
+		expect((await listed('Summer camp fund')).state).toBe('ended');
+	});
+});
+
+describe('Delete', () => {
+	it('removes a never-published campaign and the settings row it owns', async () => {
+		const pageId = await campaign('Spring gala appeal', 'never_published', NOW);
+		const [row] = await db.select().from(page).where(eq(page.id, pageId));
+
+		const response = await press(
+			'campaign-delete',
+			await listed('Spring gala appeal'),
+			`${LIST}?delete=${pageId}`
+		);
+
+		expect(response.status).toBe(302);
+		expect(response.headers.get('Location')).toBe(LIST);
+		expect(await load()).toMatchObject({ campaigns: [], ended: [] });
+		expect(
+			await db
+				.select()
+				.from(form)
+				.where(eq(form.id, row?.formId ?? ''))
+		).toEqual([]);
+	});
+
+	it('is asked about a never-published campaign and no campaign that has been live', async () => {
+		const never = await campaign('Spring gala appeal', 'never_published', NOW);
+		const live = await campaign('Winter coat drive', 'live', NOW - DAY);
+		const ended = await campaign('Summer camp fund', 'ended', NOW - 2 * DAY);
+
+		const asked = async (pageId: string) => {
+			const response = await request(
+				new Request(`${ORIGIN}${LIST}?delete=${pageId}`, { headers: { cookie: session } }),
+				{ env }
+			);
+			return ((await response.json()) as { deleting: { id: string } | null }).deleting?.id ?? null;
+		};
+
+		expect(await asked(never)).toBe(never);
+		expect(await asked(live)).toBeNull();
+		expect(await asked(ended)).toBeNull();
+	});
+
+	it.each([['live'], ['ended']] as const)(
+		'refuses a campaign that is %s, keeping it',
+		async (state) => {
+			await campaign('Winter coat drive', state, NOW);
+
+			const response = await press('campaign-delete', await listed('Winter coat drive'));
+
+			expect(response.status).toBe(409);
+			expect(JSON.stringify(await response.json())).toContain('has been published');
+			expect((await listed('Winter coat drive')).state).toBe(state);
+		}
+	);
+});
+
+describe('the Donation page', () => {
+	it.each([
+		['campaign-end', 'ended'],
+		['campaign-delete', 'deleted']
+	])('is no campaign to a press of %s, and is left as it was', async (which, done) => {
+		const pageId = await insertPage(db, 'donation_page');
+		const [before] = await db.select().from(page).where(eq(page.id, pageId));
+
+		const response = await press(which, { id: pageId, version: before?.updatedAt.getTime() ?? 0 });
+
+		expect(response.status).toBe(404);
+		expect(JSON.stringify(await response.json())).toContain(
+			`Nothing was ${done}: \`page_id\` ${pageId} names no campaign`
+		);
+		expect(await db.select().from(page).where(eq(page.id, pageId))).toEqual([before]);
+	});
+});
+
+describe('a stale press', () => {
+	it.each([
+		['campaign-end', 'live'],
+		['campaign-delete', 'never_published'],
+		['campaign-publish', 'ended']
+	] as const)(
+		'%s drawn before the campaign was last saved is refused, and moves nothing',
+		async (which, state) => {
+			const pageId = await campaign('Winter coat drive', state, NOW);
+			const drawn = await listed('Winter coat drive');
+			// a save in the editor, after the list was drawn.
+			await db.update(page).set({ name: 'Winter coat drive 2026' }).where(eq(page.id, pageId));
+
+			const response = await press(which, drawn);
+
+			expect(response.status).toBe(409);
+			expect(await response.json()).toMatchObject({
+				pageId,
+				form: { id: which, result: { error: { '': [expect.stringContaining('Reload the page')] } } }
+			});
+			expect((await listed('Winter coat drive 2026')).state).toBe(state);
+		}
+	);
 });

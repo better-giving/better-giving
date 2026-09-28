@@ -15,7 +15,7 @@ import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert } from '$lib/server/forms/queries';
 import { createCampaign } from '$lib/server/pages/campaign';
 import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.testing';
-import { endCampaign } from '$lib/server/pages/queries';
+import { endAsItStands } from '$lib/server/pages/page-row.testing';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { readOrgLook, updateOrgLook } from '$lib/server/org/queries';
@@ -302,7 +302,8 @@ describe('a published campaign the read rule refuses', () => {
 async function endedCampaign(): Promise<string> {
 	const formId = await campaign();
 	const [row] = await db.select({ id: page.id }).from(page).where(eq(page.formId, formId));
-	if (!row || !(await endCampaign(db, row.id))) throw new Error('the fixture campaign did not end');
+	if (!row) throw new Error('the fixture campaign is not there');
+	await endAsItStands(db, row.id);
 	return formId;
 }
 
@@ -522,7 +523,7 @@ describe('a campaign after its editor’s Publish', () => {
 	it('brings an ended campaign back at the next free address when its own was taken', async () => {
 		const { pageId: ended } = await create('Winter coat drive');
 		await press(ended, 'page-first-publish', { gifts_go_to: 'none' });
-		if (!(await endCampaign(db, ended))) throw new Error('the fixture campaign did not end');
+		await endAsItStands(db, ended);
 		const { pageId: taker } = await create('Coats for kids');
 		await press(taker, 'campaign-address', { slug: 'winter-coat-drive', takeover: 'on' });
 		await press(taker, 'page-first-publish', { gifts_go_to: 'none' });
