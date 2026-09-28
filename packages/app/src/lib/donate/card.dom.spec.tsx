@@ -15,10 +15,11 @@ import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/tur
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
-import { act, createRef } from 'react';
-import { createRoot } from 'react-dom/client';
+import { act, createRef, type ReactElement } from 'react';
+import { createRoot, hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { DonateCard } from './card';
+import { DonateCard, type DonateCardProps } from './card';
 import { Choice } from './choice';
 import * as copy from './copy';
 import { reactPropTypes } from './normalize';
@@ -176,6 +177,19 @@ const CHALLENGE: ChallengeSeam = {
 	delay: () => () => {}
 };
 
+/** every provider's seam, the payment one answered by `payment`. */
+function seamsOver(payment: ReturnType<typeof paymentProvider>): DonateCardProps['seams'] {
+	const paypal = paypalProvider();
+	return {
+		payment: {
+			stripe: { load: payment.load, delay: () => () => {} },
+			paypal: { load: paypal.load, delay: () => () => {} },
+			chariot: { load: async () => true, delay: () => () => {} }
+		},
+		challenge: CHALLENGE
+	};
+}
+
 /**
  * a card on a page, with both providers answered from plain objects.
  *
@@ -189,22 +203,15 @@ async function card(
 	page: {
 		readonly pageProgram?: string | null;
 		readonly onProgramChange?: (programId: string | null, locked: boolean) => void;
+		readonly opening?: DonateCardProps['opening'];
 	} = {}
 ) {
 	const payment = paymentProvider(answers);
-	const paypal = paypalProvider();
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	// built once: a new seams object is a new checkout, and a re-render here is the page's pick moving.
-	const seams = {
-		payment: {
-			stripe: { load: payment.load, delay: () => () => {} },
-			paypal: { load: paypal.load, delay: () => () => {} },
-			chariot: { load: async () => true, delay: () => () => {} }
-		},
-		challenge: CHALLENGE
-	};
+	const seams = seamsOver(payment);
 	const draw = (pageProgram: string | null | undefined): void => {
 		mounted.render(
 			<DonateCard
@@ -212,6 +219,7 @@ async function card(
 				seams={seams}
 				{...(pageProgram === undefined ? {} : { pageProgram })}
 				{...(page.onProgramChange === undefined ? {} : { onProgramChange: page.onProgramChange })}
+				{...(page.opening === undefined ? {} : { opening: page.opening })}
 			/>
 		);
 	};
@@ -657,6 +665,114 @@ it('carries the cadence a donor picked onto the receipt', async () => {
 	expect(one(root, '.receipt-note').textContent).toBe(
 		`Then ${one(root, 'output.figure').textContent} monthly until you cancel.`
 	);
+});
+
+describe('a page’s opening', () => {
+	const MONTHLY_TOO: FormConfig = { ...CONFIG, frequencies: ['one_time', 'monthly'] };
+	const ONE_TIME_ONLY: FormConfig = { ...CONFIG, frequencies: ['one_time'] };
+	const TICK = '.disclosure.tribute input[type="checkbox"]';
+
+	/** what the card starts on: the screen, the cadence, and whether the dedication is open. */
+	function start(root: HTMLElement) {
+		return {
+			screen: every(root, 'section.step').findIndex((section) => !section.hidden),
+			cadence: [...root.querySelectorAll('.segment input[type="radio"]')]
+				.filter((box) => box instanceof HTMLInputElement && box.checked)
+				.map((box) => box.getAttribute('value')),
+			dedication: input(root, TICK).checked,
+			dedicationShown: !one(root, '.disclosure.tribute .disclosure-body').hidden
+		};
+	}
+
+	/**
+	 * the card served as html and then hydrated, the way a route delivers it.
+	 *
+	 * `served` is read off the html before any script, `live` once the actor the effect starts has
+	 * answered: a page's opening that reached the server render and not the live flow, or the reverse,
+	 * is the two disagreeing.
+	 */
+	async function hydrated(config: FormConfig, opening?: DonateCardProps['opening']) {
+		const element: ReactElement = (
+			<DonateCard
+				config={config}
+				seams={seamsOver(paymentProvider())}
+				{...(opening === undefined ? {} : { opening })}
+			/>
+		);
+		const host = document.createElement('div');
+		host.innerHTML = renderToString(element);
+		document.body.appendChild(host);
+		const served = start(host);
+		const recovered: unknown[] = [];
+		const complained = vi.spyOn(console, 'error');
+		const mounted = await act(async () =>
+			hydrateRoot(host, element, { onRecoverableError: (error) => recovered.push(error) })
+		);
+		onTestFinished(() => {
+			act(() => {
+				mounted.unmount();
+			});
+			host.remove();
+		});
+		await act(async () => {
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		return { served, live: start(host), recovered, complained };
+	}
+
+	it('opens on Monthly where the page asks and the form offers it', async () => {
+		const { root } = await card(MONTHLY_TOO, {}, { opening: { monthly: true } });
+
+		expect(start(root).cadence).toEqual(['monthly']);
+		walkToGive(root);
+		expect(one(root, '[part~="summary"] .row-label').textContent).toBe('Monthly gift');
+	});
+
+	it('opens with the dedication boxes shown and empty where the page asks', async () => {
+		const { root } = await card(CONFIG, {}, { opening: { dedication: true } });
+
+		expect(start(root)).toMatchObject({ dedication: true, dedicationShown: true });
+		expect(one(root, '#tribute-kind [data-chosen]').textContent).toBe('In honor of');
+		expect(input(root, '#tribute-honoree').value).toBe('');
+		// the flow's first paint takes no caret, a preset one included.
+		expect(document.activeElement).not.toBe(input(root, '#tribute-honoree'));
+		// and it is the donor's to take back, the way one they opened themselves is.
+		press(input(root, TICK));
+		expect(start(root)).toMatchObject({ dedication: false, dedicationShown: false });
+	});
+
+	it('serves the opening in its html and starts the live flow on the same one', async () => {
+		const cases = [
+			[{ monthly: true }, { cadence: ['monthly'], dedication: false }],
+			[{ dedication: true }, { cadence: ['one_time'], dedication: true }],
+			[
+				{ monthly: true, dedication: true },
+				{ cadence: ['monthly'], dedication: true }
+			]
+		] as const;
+
+		for (const [opening, expected] of cases) {
+			const { served, live, recovered, complained } = await hydrated(MONTHLY_TOO, opening);
+			const label = JSON.stringify(opening);
+
+			expect(served, label).toMatchObject({ screen: 0, ...expected });
+			expect(live, label).toEqual(served);
+			expect(recovered, label).toEqual([]);
+			expect(complained, label).not.toHaveBeenCalled();
+		}
+	});
+
+	it('draws a one-time-only form asked for Monthly exactly as it draws it asked for nothing', async () => {
+		const seams = seamsOver(paymentProvider());
+		const asked = renderToString(
+			<DonateCard config={ONE_TIME_ONLY} seams={seams} opening={{ monthly: true }} />
+		);
+
+		expect(asked).toBe(renderToString(<DonateCard config={ONE_TIME_ONLY} seams={seams} />));
+		const { served, live } = await hydrated(ONE_TIME_ONLY, { monthly: true });
+		expect(live).toEqual(served);
+		expect(live.cadence).toEqual([]);
+	});
 });
 
 // the label on each of the three boxes is a real `<label for>`, and the words in it are what the box

@@ -19,7 +19,13 @@ import {
 } from 'react';
 import { DonateAnnouncer } from './announce';
 import * as copy from './copy';
-import { initialSnapshot, startCheckout, type Checkout, type CheckoutMounts } from './machine';
+import {
+	initialSnapshot,
+	startCheckout,
+	type Checkout,
+	type CheckoutMounts,
+	type Opening
+} from './machine';
 import { reactPropTypes, type ReactApi } from './normalize';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
@@ -40,11 +46,11 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //   - the two-node root. an outer `[data-donate-root]` carrying the token ladder the form's own
 //     `:host` block declares in a shadow tree, and the card itself carrying `part="card"`, which is
 //     the query container every breakpoint in the form's layout sheet resolves against.
-//   - the server render. `initialSnapshot` is a pure function of the configuration, so the amounts,
-//     the cadences and the tiles are in the HTML and the client's first render produces the same
-//     tree. the live actor is created in an effect after that first commit — the payment provider
-//     reads computed style off a mounted node, and taking the resume token rewrites the URL, which
-//     is not a thing a render may do.
+//   - the server render. `initialSnapshot` is a pure function of the configuration and the page's
+//     opening, so the amounts, the cadences and the tiles are in the HTML and the client's first
+//     render produces the same tree. the live actor is created in an effect after that first
+//     commit, on the same opening — the payment provider reads computed style off a mounted node,
+//     and taking the resume token rewrites the URL, which is not a thing a render may do.
 //   - which screen the card is on. a busy flow stays on the last screen shown, because the flow
 //     collapses five machine states into one thing a donor is told and the projection cannot say
 //     which screen asked.
@@ -127,9 +133,24 @@ export type DonateCardProps = {
 	 * arrival and on every change of either, so a page's chooser can draw the gift's own answer.
 	 */
 	readonly onProgramChange?: (programId: string | null, locked: boolean) => void;
+	/**
+	 * where the card starts when the page asks: on monthly, or with the dedication open and empty.
+	 *
+	 * a starting point and nothing more — the donor changes either the way they would have chosen it,
+	 * and a card back from the donor's bank starts where the flow sends it instead. absent, the card
+	 * starts as the served config alone says. a change of either flag while mounted starts the card
+	 * over, as a new config does.
+	 */
+	readonly opening?: Opening;
 };
 
-export function DonateCard({ config, seams, pageProgram, onProgramChange }: DonateCardProps) {
+export function DonateCard({
+	config,
+	seams,
+	pageProgram,
+	onProgramChange,
+	opening
+}: DonateCardProps) {
 	// a second gift is a fresh boot rather than a state on the flow: what the last gift left behind is
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
 	// challenge token is spent once. remounting is what builds both again, and it starts empty, which
@@ -143,6 +164,8 @@ export function DonateCard({ config, seams, pageProgram, onProgramChange }: Dona
 			{...(seams === undefined ? {} : { seams })}
 			{...(pageProgram === undefined ? {} : { pageProgram })}
 			{...(onProgramChange === undefined ? {} : { onProgramChange })}
+			monthly={opening?.monthly === true}
+			dedication={opening?.dedication === true}
 		/>
 	);
 }
@@ -152,19 +175,27 @@ function CheckoutCard({
 	restart,
 	seams,
 	pageProgram,
-	onProgramChange
+	onProgramChange,
+	monthly,
+	dedication
 }: {
 	config: FormConfig;
 	restart: () => void;
 	seams?: CheckoutMounts['seams'];
 	pageProgram?: string | null;
 	onProgramChange?: DonateCardProps['onProgramChange'];
+	// the opening as its two flags, so a page handing a fresh object each render starts nothing anew.
+	monthly: boolean;
+	dedication: boolean;
 }) {
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
 	const offer = (minor: number) => formatOffer(minor, locale, currency);
 
-	const initial = useMemo(() => initialSnapshot(config), [config]);
+	const initial = useMemo(
+		() => initialSnapshot(config, { monthly, dedication }),
+		[config, monthly, dedication]
+	);
 	const [live, setLive] = useState<Checkout | null>(null);
 	const [deposit, setDeposit] = useState<DepositView | null>(null);
 	const [paymentRows, setPaymentRows] = useState(0);
@@ -178,12 +209,16 @@ function CheckoutCard({
 		if (payment === null || challenge === null) return () => {};
 		// the token rewrites the URL and is claimed once, so it is taken here rather than in a render:
 		// a page holding two cards for one form would otherwise both claim it.
-		const started = startCheckout(config, {
-			paymentMount: payment,
-			challengeMount: challenge,
-			resumeToken: takeResumeToken(document, config.formId),
-			...(seams === undefined ? {} : { seams })
-		});
+		const started = startCheckout(
+			config,
+			{
+				paymentMount: payment,
+				challengeMount: challenge,
+				resumeToken: takeResumeToken(document, config.formId),
+				...(seams === undefined ? {} : { seams })
+			},
+			{ monthly, dedication }
+		);
 		started.rows(setPaymentRows);
 		setLive(started);
 		// a Copy's outcome is said on the card's one region, again on every press: the words do not
@@ -199,7 +234,7 @@ function CheckoutCard({
 			block.stop();
 			block.root.remove();
 		};
-	}, [config, seams]);
+	}, [config, seams, monthly, dedication]);
 
 	const subscribe = useCallback(
 		(onChange: () => void) => {
