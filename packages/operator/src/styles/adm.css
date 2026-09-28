@@ -5775,6 +5775,24 @@
 		inline-size: 60%;
 		border-radius: var(--admin-radius-pill);
 	}
+
+	/* ---------- a placed photo -----------------------------------------------------------
+
+	   a photo on the page, in its block's edit sheet: the picture, the press that replaces it, and
+	   what that press last reported. the picture is cropped to the one frame whatever its shape, and
+	   the fill stands there until it has loaded. */
+	.adm-placed {
+		display: grid;
+		gap: var(--admin-space-4);
+	}
+
+	.adm-placed__art {
+		inline-size: 100%;
+		aspect-ratio: 16 / 9;
+		object-fit: cover;
+		background: var(--admin-surface-fill);
+		border-radius: var(--admin-radius);
+	}
 }
 
 @layer layout {
