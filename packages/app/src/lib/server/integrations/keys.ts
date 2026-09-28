@@ -78,14 +78,17 @@ export async function findKeyByPresented(db: Db, presented: string): Promise<Api
 }
 
 /**
- * stops the key `id` admitting anything, and answers when; `null` when there is no such key or it
- * was already revoked, whose first revocation time stands — it is the one a refusal names.
+ * stops the `api` key `id` admitting anything, and answers when; `null` when there is no such key
+ * or it was already revoked, whose first revocation time stands — it is the one a refusal names.
+ *
+ * a `zapier` key is `null` here too: it is revoked only by `replaceZapierKey` in ../zapier/key.ts,
+ * in the batch that ends every Zap subscribed on it.
  */
 export async function revokeApiKey(db: Db, id: string): Promise<Date | null> {
 	const [row] = await db
 		.update(apiKey)
 		.set({ revokedAt: new Date() })
-		.where(and(eq(apiKey.id, id), isNull(apiKey.revokedAt)))
+		.where(and(eq(apiKey.id, id), eq(apiKey.kind, 'api'), isNull(apiKey.revokedAt)))
 		.returning({ revokedAt: apiKey.revokedAt });
 	return row?.revokedAt ?? null;
 }
@@ -131,9 +134,8 @@ const SECRET_LENGTH = 43;
 export const API_KEY_SHAPE = /^bgk_[0-9A-Za-z]{43}$/;
 
 /**
- * every `zapier` key `mintApiKey` makes, and nothing else: `bgz_` and 43 base64url characters. the
- * shape Zapier's app has presented since before keys were rows here (../zapier/key.ts), so a key
- * made either way is the same to it.
+ * every `zapier` key, and nothing else: `bgz_` and 43 base64url characters, the value
+ * packages/zapier's authentication presents as its bearer.
  */
 export const ZAPIER_KEY_SHAPE = /^bgz_[A-Za-z0-9_-]{43}$/;
 

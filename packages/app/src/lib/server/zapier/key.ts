@@ -20,7 +20,7 @@ import { endSubscriptionStatements, type PauseOutcome, pauseZaps } from './subsc
 // only on the surface it was made for. it is the carve-out CLAUDE.md names as a key the app mints
 // for itself.
 
-const ZAPIER_KEY = { name: 'Zapier', kind: 'zapier' } as const;
+const ZAPIER_KEY_KIND = { name: 'Zapier', kind: 'zapier' } as const;
 
 /** what a made key answers with. `key` is the plaintext, and nothing gives it again. */
 export type MadeZapierKey = { readonly ok: true; readonly key: string; readonly madeAt: Date };
@@ -47,6 +47,9 @@ export type ZapierKeyShown = {
 	readonly madeAt: Date;
 };
 
+/** the one un-revoked `zapier` row, which `api_key_one_zapier_idx` (../db/schema.ts) keeps one. */
+const CURRENT = and(eq(apiKey.kind, 'zapier'), isNull(apiKey.revokedAt));
+
 /** the current key as a page may show it, or `null` before one is made. */
 export async function readZapierKey(db: Db): Promise<ZapierKeyShown | null> {
 	const [row] = await db
@@ -55,9 +58,6 @@ export async function readZapierKey(db: Db): Promise<ZapierKeyShown | null> {
 		.where(CURRENT);
 	return row ?? null;
 }
-
-/** the one un-revoked `zapier` row, which `api_key_one_zapier_idx` (../db/schema.ts) keeps one. */
-const CURRENT = and(eq(apiKey.kind, 'zapier'), isNull(apiKey.revokedAt));
 
 async function currentKey(db: Db) {
 	const [row] = await db.select({ id: apiKey.id }).from(apiKey).where(CURRENT);
@@ -71,7 +71,7 @@ async function currentKey(db: Db) {
  */
 export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyExists> {
 	try {
-		const minted = await mintApiKey(db, ZAPIER_KEY);
+		const minted = await mintApiKey(db, ZAPIER_KEY_KIND);
 		return { ok: true, key: minted.key, madeAt: minted.createdAt };
 	} catch (error) {
 		if (sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
@@ -102,7 +102,7 @@ export async function replaceZapierKey(
 ): Promise<ReplacedZapierKey | ZapierKeyNotReplaced> {
 	const current = await currentKey(db);
 	if (current === undefined) return { ok: false, reason: 'no_key' };
-	const { key, row } = newApiKeyRow(ZAPIER_KEY);
+	const { key, row } = newApiKeyRow(ZAPIER_KEY_KIND);
 	const now = new Date();
 	const landed = exists(
 		db.select({ id: apiKey.id }).from(apiKey).where(eq(apiKey.keyHash, row.keyHash))

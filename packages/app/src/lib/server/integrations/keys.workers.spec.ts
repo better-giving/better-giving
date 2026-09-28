@@ -114,6 +114,13 @@ describe('revoking a key', () => {
 		expect((await findKeyByPresented(db, minted.key))?.revokedAt).toEqual(first);
 	});
 
+	it('leaves Zapier\u2019s key admitting: only a replace revokes that one', async () => {
+		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+
+		expect(await revokeApiKey(db, zapier.id)).toBeNull();
+		expect((await findKeyByPresented(db, zapier.key))?.revokedAt).toBeNull();
+	});
+
 	it('revokes no other key', async () => {
 		const revoked = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
 		const kept = await mintApiKey(db, { name: 'warehouse', kind: 'api' });
