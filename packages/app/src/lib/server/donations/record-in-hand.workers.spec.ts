@@ -275,3 +275,48 @@ describe('recordGiftInHand() — what the gift owes a listening destination', ()
 		]);
 	});
 });
+
+describe('recordGiftInHand() — what a new donor owes a listening destination', () => {
+	// per-file storage, as above: the destination is put up and taken down around these cases alone.
+	beforeEach(async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['donor.added'] });
+		await createDestination(db, { url: 'https://crm.example.org/b', events: ['donor.added'] });
+	});
+
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function owed() {
+		const { results } = await env.DB.prepare(
+			`select d.url, w.event, w.subject_id from webhook_delivery w
+			 join webhook_destination d on d.id = w.destination_id order by d.url`
+		).all();
+		return results;
+	}
+
+	it('owes each destination the donor added, in the commit that recorded their first gift', async () => {
+		const recorded = await recordGiftInHand(db, gift());
+
+		const contactId = recorded.ok ? recorded.contactId : 'not recorded';
+		expect(await owed()).toEqual(
+			['https://crm.example.org/a', 'https://crm.example.org/b'].map((url) => ({
+				url,
+				event: 'donor.added',
+				subject_id: contactId
+			}))
+		);
+	});
+
+	it('owes nothing on the same donor’s second gift', async () => {
+		const first = await recordGiftInHand(db, gift());
+		if (!first.ok) throw new Error('the first gift was not recorded');
+		await env.DB.prepare('delete from webhook_delivery').run();
+
+		await recordGiftInHand(db, gift({ donor: { kind: 'existing', contactId: first.contactId } }));
+
+		expect(await owed()).toEqual([]);
+	});
+});

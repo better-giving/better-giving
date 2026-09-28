@@ -2,7 +2,7 @@ import type { RecurringPlanStatus } from '../../recurring/statuses';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { type RecurringInterval, recurringPlan } from '../db/schema';
-import { type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
+import { inPage, type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
 
 // one recurring gift as the read API's recurring-gifts list answers it
 // (src/routes/integrations.v1.recurring-gifts.ts): a donor's standing commitment to give on a
@@ -24,12 +24,12 @@ import { type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
 // change, and `stopped` is the only end that never comes back.
 //
 // **when a recurring gift last changed is the row's own `updated_at`.** every write to a
-// commitment after the one that opens it is a drizzle `.update(recurringPlan)` that leaves the
-// column unnamed, so the column's `$onUpdateFn` in ../db/schema.ts stamps it in the same
-// statement: the stop in ../recurring/queries.ts, and in ../donations/collect.ts the lapse, the
-// revival and the next charge each collection refreshes. a writer naming `updated_at` itself, or
-// writing the row past drizzle, would hide its change from `updated_since`. a refresh that finds
-// the next charge where it was still moves the stamp, and serves the gift again unchanged.
+// commitment after the one that opens it is built by `planChangeStatements` in
+// ../recurring/changes.ts, a drizzle update that leaves the column unnamed, so the column's
+// `$onUpdateFn` in ../db/schema.ts stamps it in the same statement. a write that would change
+// nothing — a refresh finding the next charge where it was — is not made, so it moves no stamp and
+// the gift is not served again; the webhook destinations hear of exactly the changes this list
+// serves.
 //
 // **two orders**, the gifts list's (./gift.ts's header): with no `updated_since`, newest first by
 // when the commitment was recorded, then id; with it, every recurring gift whose `updated_at` is at
@@ -83,7 +83,32 @@ export async function readRecurringGiftPage(
 	query: PageQuery
 ): Promise<PageOf<ApiRecurringGift>> {
 	const walk = storedTimesWalk(query, recurringPlan);
-	const rows = await db
+	const rows = await selectRecurringGifts(db)
+		.where(walk.where)
+		.orderBy(...walk.orderBy)
+		.limit(query.limit + 1);
+	const page = pageOf(rows, query.limit, walk.keyOf);
+	return { ...page, rows: page.rows.map(renderRecurringGift) };
+}
+
+/**
+ * each of `planIds` as the read API answers it, by id, as it stands now: a webhook's `data`
+ * (../webhooks/payload.ts). an id with no commitment is absent from the map.
+ */
+export async function readRecurringGifts(
+	db: Db,
+	planIds: readonly string[]
+): Promise<Map<string, ApiRecurringGift>> {
+	if (planIds.length === 0) return new Map();
+	const rows = await selectRecurringGifts(db).where(
+		inPage(recurringPlan.id, [...new Set(planIds)])
+	);
+	return new Map(rows.map((row) => [row.id, renderRecurringGift(row)]));
+}
+
+/** every column an `ApiRecurringGift` is rendered from, and the walk's keys. */
+function selectRecurringGifts(db: Db) {
+	return db
 		.select({
 			id: recurringPlan.id,
 			contactId: recurringPlan.contactId,
@@ -96,24 +121,22 @@ export async function readRecurringGiftPage(
 			createdAt: recurringPlan.createdAt,
 			updatedAt: recurringPlan.updatedAt
 		})
-		.from(recurringPlan)
-		.where(walk.where)
-		.orderBy(...walk.orderBy)
-		.limit(query.limit + 1);
-	const page = pageOf(rows, query.limit, walk.keyOf);
+		.from(recurringPlan);
+}
+
+type RecurringGiftRow = Awaited<ReturnType<ReturnType<typeof selectRecurringGifts>['all']>>[number];
+
+function renderRecurringGift(row: RecurringGiftRow): ApiRecurringGift {
 	return {
-		...page,
-		rows: page.rows.map((row) => ({
-			id: row.id,
-			donor_id: row.contactId,
-			amount: majorText(row.amountMinor, row.currency),
-			amount_minor: row.amountMinor,
-			currency: row.currency,
-			frequency: row.interval,
-			status: STATUS_WORDS[row.status],
-			next_charge_at: row.nextChargeAt?.toISOString() ?? null,
-			started_at: row.startedAt.toISOString(),
-			updated_at: row.updatedAt.toISOString()
-		}))
+		id: row.id,
+		donor_id: row.contactId,
+		amount: majorText(row.amountMinor, row.currency),
+		amount_minor: row.amountMinor,
+		currency: row.currency,
+		frequency: row.interval,
+		status: STATUS_WORDS[row.status],
+		next_charge_at: row.nextChargeAt?.toISOString() ?? null,
+		started_at: row.startedAt.toISOString(),
+		updated_at: row.updatedAt.toISOString()
 	};
 }

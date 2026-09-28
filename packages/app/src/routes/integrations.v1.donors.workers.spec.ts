@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { contactConsentUpdateStatement } from '$lib/server/contacts/queries';
+import { contactConsentUpdate } from '$lib/server/contacts/queries';
 import { contact, donation, type NewContact } from '$lib/server/db/schema';
 import { mintApiKey } from '$lib/server/integrations/keys';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -216,7 +216,7 @@ describe('a read of what changed since the last walk', () => {
 		const since = String(walked.at(-1)?.resume_updated_since);
 		expect(since).toBe('2025-09-12T11:59:00.000Z');
 
-		await contactConsentUpdateStatement(db, withdrawn, false);
+		await contactConsentUpdate(db, withdrawn, false).update;
 
 		const changed = (await walk(`updated_since=${since}`)).flatMap((page) => page.data);
 		expect(changed.map((donor) => donor.id)).toEqual([last, withdrawn]);

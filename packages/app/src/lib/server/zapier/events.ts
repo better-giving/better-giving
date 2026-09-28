@@ -1,15 +1,8 @@
-import { and, eq, exists, isNull, ne, notExists, type SQL, sql } from 'drizzle-orm';
+import { and, eq, exists, isNull, type SQL, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
-import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
-import { refundStands } from '../donations/queries';
-import {
-	donation,
-	payment,
-	zapierDelivery,
-	zapierSubscription,
-	type ZapierTrigger
-} from '../db/schema';
+import { isFirstSettledGift, refundStands } from '../donations/queries';
+import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 
 // the whole rule about which Zaps a settled gift, and a refund of one, are owed to, and the
 // statements that say so.
@@ -27,11 +20,12 @@ import {
 // not already decide.
 //
 // **"new donor" is a predicate in the statement, never a read before it.** the donor's row is owed
-// only where no other succeeded inbound payment of theirs exists, and D1 runs one batch at a time,
-// so of two first gifts settling together the one that commits second sees the first and owes no
-// donor row. the primary key `(subscription_id, event_id)`, with the contact id as the event, is
-// what refuses a second one per Zap regardless — `on conflict do nothing` answers that refusal,
-// and only that one: a NOT NULL, CHECK or foreign-key fault still refuses the whole batch.
+// only where no other succeeded inbound payment of theirs exists (`isFirstSettledGift` in
+// ../donations/queries.ts, which a destination's `donor.added` reads too), and D1 runs one batch
+// at a time, so of two first gifts settling together the one that commits second sees the first
+// and owes no donor row. the primary key `(subscription_id, event_id)`, with the contact id as the
+// event, is what refuses a second one per Zap regardless — `on conflict do nothing` answers that
+// refusal, and only that one: a NOT NULL, CHECK or foreign-key fault still refuses the whole batch.
 //
 // the predicate reads the ledger's own truth rather than a marker, so:
 // - a Zap subscribed after a donor's first gift does not hear of them on their second.
@@ -45,9 +39,6 @@ import {
 // the statement as the batch left it, and again at send, where ./deliver.ts drops a queued row
 // whose refund no longer stands.
 // a queued `new_gift` is the other way round and sends a gift refunded since, as it happened.
-
-// ./deliver.ts reads it from here
-export { refundStands };
 
 /** the gift a settlement just made `succeeded`, and the donor it is filed under. */
 export type SettledGift = { readonly paymentId: string; readonly contactId: string };
@@ -68,32 +59,17 @@ export function zapierStatements(
 	gift: SettledGift
 ): [BatchItem<'sqlite'>, BatchItem<'sqlite'>] {
 	const now = new Date();
-	const prior = alias(payment, 'prior');
-	const priorDonation = alias(donation, 'prior_donation');
-	const earlierGift = db
-		.select({ one: sql`1` })
-		.from(prior)
-		.innerJoin(priorDonation, eq(priorDonation.id, prior.donationId))
-		.where(
-			and(
-				eq(priorDonation.contactId, gift.contactId),
-				eq(prior.status, 'succeeded'),
-				eq(prior.direction, 'inbound'),
-				ne(prior.id, gift.paymentId)
-			)
-		);
-
 	return [
 		fanOut(db, 'new_gift', gift.paymentId, gift.paymentId, now),
-		fanOut(db, 'new_donor', gift.contactId, gift.paymentId, now, notExists(earlierGift))
+		fanOut(db, 'new_donor', gift.contactId, gift.paymentId, now, isFirstSettledGift(db, gift))
 	];
 }
 
 /**
  * the `gift_refunded` rows for `refundPaymentId`, the refund-direction row whose money is now
  * final, for splicing into a caller's single `batch()`. the row is the event: `event_id` and
- * `payment_id` both name it. outside the specs its one caller is `reversalWrites` in
- * ../books/writes.ts.
+ * `payment_id` both name it. outside the specs its one caller is `refundedWrites` in
+ * ../books/writes.ts, reached only through `reversalWrites`.
  *
  * **after the statement that inserts or closes that row**, for the foreign key as above, and gated
  * on {@link refundStands} as that statement left it: a lost close racing a win that committed first

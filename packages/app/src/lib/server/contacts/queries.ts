@@ -9,6 +9,7 @@ import {
 	inArray,
 	isNull,
 	or,
+	type SQL,
 	sql
 } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
@@ -478,7 +479,10 @@ export function contactInsertStatement(db: Db, row: NewContactRow) {
 
 /**
  * the consent answer a donor just gave, over the one they gave before — unexecuted, for the same
- * `batch()` that writes the gift it arrived with.
+ * `batch()` that writes the gift it arrived with — and `changes`, which holds while the stored
+ * answer differs from it: the gate a statement reporting the change takes, spliced **in front of**
+ * `update` so it reads the answer before `update` replaces it (`resolveDonor` in
+ * ../donations/donor.ts).
  *
  * a returning donor is matched to the contact row they already have, so an answer written only on
  * insert would be the first one they ever gave and every later one would be discarded. true -> false
@@ -486,23 +490,33 @@ export function contactInsertStatement(db: Db, row: NewContactRow) {
  * one that was never kept, because it reads as an answer.
  *
  * it names the row by id, so it is not the read-then-write CLAUDE.md bans: the caller has already
- * resolved which contact this is, and no value read inside the write decides what is written.
+ * resolved which contact this is, and the one value read inside the write, the stored answer,
+ * decides whether it writes and never what.
  *
- * `updated_at` moves with it, from the column's own `$onUpdateFn` rather than from anything here.
- * this is a write to the row and system time is what that column records; holding it still would
- * mean writing the old value back over drizzle's, which is a claim that nothing changed.
+ * `update` runs only where the answer differs — `is not` rather than `<>`, so a donor nobody had
+ * asked (`null`) answering for the first time is a change — so the same answer given again writes
+ * nothing, and moves no `updated_at` a read API caller's `updated_since` would take for a change.
+ *
+ * `updated_at` moves with a change, from the column's own `$onUpdateFn` rather than from anything
+ * here: this is a write to the row, and system time is what that column records.
  *
  * it takes a boolean and never null: absent is the state of a contact nobody asked, and no path
  * that reaches this function is one — the gift carries a required answer. a caller that would pass
  * null wants no statement at all.
  */
-export function contactConsentUpdateStatement(db: Db, id: string, consented: boolean) {
-	const statement = db
-		.update(contact)
-		.set({ consentedToContact: consented })
-		.where(eq(contact.id, id));
-	statement satisfies BatchItem<'sqlite'>;
-	return statement;
+export function contactConsentUpdate(
+	db: Db,
+	id: string,
+	consented: boolean
+): { readonly changes: SQL; readonly update: BatchItem<'sqlite'> } {
+	const changesRow = and(
+		eq(contact.id, id),
+		sql`${contact.consentedToContact} is not ${consented ? 1 : 0}`
+	);
+	return {
+		changes: exists(db.select({ one: sql`1` }).from(contact).where(changesRow)),
+		update: db.update(contact).set({ consentedToContact: consented }).where(changesRow)
+	};
 }
 
 /**

@@ -1,10 +1,10 @@
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
+import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { inPage } from '../integrations/paging';
+import { REFUND_NO_LONGER_STANDS, readStandingRefunds } from '../integrations/refund';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
-import { refundStands } from './events';
 import {
 	donorEventOf,
 	type GiftEvent,
@@ -55,12 +55,12 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 // start, without another post; ./report.ts counts those and nothing re-queues one. one hook
 // failing never stops the rest: every row's outcome is its own write.
 //
-// **a `gift_refunded` row is sent only while its refund still stands**, read at send as well as at
-// queueing (`refundStands` in ./events.ts). a refund that failed after it was queued, or a
-// dispute whose loss no longer holds, is `dropped` unposted, with the reason in `last_error`: no
-// event follows it, so posting it would leave a Zap acting on money that came back. what already
-// went out stays out. a `new_gift` row is sent as it happened, because a refund of it since is
-// an event of its own.
+// **a `gift_refunded` row is sent only while its refund still stands**, read at send
+// (`readStandingRefunds` in ../integrations/refund.ts) as well as at queueing. a refund that
+// failed after it was queued, or a dispute whose loss no longer holds, is `dropped` unposted, with
+// the reason in `last_error`: no event follows it, so posting it would leave a Zap acting on money
+// that came back. what already went out stays out. a `new_gift` row is sent as it happened,
+// because a refund of it since is an event of its own.
 
 /** everything one run needs, per invocation. `fetch` is handed in so a spec can answer for Zapier. */
 export type ZapierDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetch };
@@ -321,21 +321,6 @@ async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Ma
 		.where(inPage(zapierSubscription.id, subscriptionIds));
 	return new Map(rows.map((row) => [row.id, { url: row.url, trigger: row.trigger }]));
 }
-
-/**
- * of `refundIds`, the refunds that still stand ({@link refundStands}), read as this run renders
- * them.
- */
-async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promise<Set<string>> {
-	const rows = await db
-		.select({ id: payment.id })
-		.from(payment)
-		.where(and(inPage(payment.id, refundIds), refundStands(db, payment)));
-	return new Set(rows.map((row) => row.id));
-}
-
-const REFUND_NO_LONGER_STANDS =
-	'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.';
 
 /** the events one run renders, each keyed by the payment its row names. */
 type Events = {

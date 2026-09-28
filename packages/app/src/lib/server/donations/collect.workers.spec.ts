@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSTING_ACCOUNTS } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -2419,5 +2419,202 @@ describe('settleDelivery() — what a collection owes a listening destination', 
 		expect(await owedGifts()).toEqual(
 			payments.sort().map((subject_id) => ({ event: 'gift.made', subject_id }))
 		);
+	});
+});
+
+describe('settleDelivery() — what a commitment owes a destination listening for recurring gifts', () => {
+	beforeEach(async () => {
+		await authorizeGift();
+		await createDestination(db, {
+			url: 'https://crm.example.org/recurring',
+			events: ['recurring_gift.started', 'recurring_gift.updated', 'recurring_gift.ended']
+		});
+	});
+
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function owed() {
+		const { results } = await env.DB.prepare(
+			`select event, subject_id from webhook_delivery order by created_at, event`
+		).all<{ event: string; subject_id: string }>();
+		return results;
+	}
+
+	async function planId(): Promise<string> {
+		const [plan] = await db.select().from(recurringPlan);
+		if (plan === undefined) throw new Error('no commitment was opened');
+		return plan.id;
+	}
+
+	it('owes the charge that opens a commitment as a recurring gift started, about the commitment', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await owed()).toEqual([{ event: 'recurring_gift.started', subject_id: await planId() }]);
+	});
+
+	it('owes a claimed opening charge delivered twice as one recurring gift started', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		const again = await settleDelivery(deps(), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await owed()).toEqual([{ event: 'recurring_gift.started', subject_id: await planId() }]);
+	});
+
+	// the processor's ending can reach this deployment before the first charge does, which then
+	// opens the commitment already stopped: a destination hears it start and end together.
+	it.each(['ended', 'lapsed'] as const)(
+		'owes a commitment whose first charge opens it %s a recurring gift started and one ended',
+		async (state) => {
+			await settleDelivery(
+				deps({
+					provider: provider({
+						gift: {
+							ok: true,
+							value: notice({
+								state,
+								endedAt: new Date('2026-08-03T12:00:00.000Z'),
+								nextChargeAt: null
+							})
+						}
+					})
+				}),
+				DELIVERY
+			);
+
+			const id = await planId();
+			const rows = await owed();
+			expect(rows.map((row) => row.event).sort()).toEqual([
+				'recurring_gift.ended',
+				'recurring_gift.started'
+			]);
+			expect(rows.find((row) => row.event === 'recurring_gift.started')?.subject_id).toBe(id);
+			expect(rows.find((row) => row.event === 'recurring_gift.ended')?.subject_id).toMatch(
+				new RegExp(`^${id}:\\d+$`)
+			);
+		}
+	);
+
+	/** a later collection under the commitment, telling of `nextChargeAt` as the next charge. */
+	const collectAgain = (nextChargeAt: Date | null) =>
+		settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: secondCollection.event },
+					gift: { ok: true, value: { ...secondCollection.notice, nextChargeAt } },
+					settled: { ok: true, value: secondCollection.settlement }
+				})
+			}),
+			DELIVERY
+		);
+
+	it('owes a later collection that moves the next charge as a recurring gift updated, about that change', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await collectAgain(new Date('2026-10-03T12:00:00.000Z'))).toMatchObject({
+			outcome: 'posted'
+		});
+
+		const id = await planId();
+		expect(await owed()).toEqual([
+			{ event: 'recurring_gift.started', subject_id: id },
+			{ event: 'recurring_gift.updated', subject_id: expect.stringMatching(`^${id}:\\d+$`) }
+		]);
+	});
+
+	it('owes nothing for a later collection that finds the next charge where it was', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await collectAgain(notice().nextChargeAt)).toMatchObject({ outcome: 'posted' });
+
+		expect(await owed()).toEqual([{ event: 'recurring_gift.started', subject_id: await planId() }]);
+	});
+
+	/** a delivery about the commitment's own standing, in `state`. */
+	const stand = (state: RecurringGiftNotice['state'], id = 'evt_standing_1') =>
+		settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: standingEvent({ id, type: 'customer.subscription.updated' }) },
+					gift: {
+						ok: true,
+						value: standingNotice({
+							state,
+							nextChargeAt: state === 'active' ? new Date('2026-12-03T12:00:00.000Z') : null
+						})
+					}
+				})
+			}),
+			DELIVERY
+		);
+
+	/** the events owed after the one that opened the commitment, each about a change to it. */
+	async function changes() {
+		const id = await planId();
+		const rows = (await owed()).filter((row) => row.event !== 'recurring_gift.started');
+		for (const row of rows) expect(row.subject_id).toMatch(new RegExp(`^${id}:\\d+$`));
+		return rows.map((row) => row.event);
+	}
+
+	it('owes a lapse from the processor as a recurring gift ended, once however often it arrives', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		await stand('lapsed');
+		await stand('lapsed', 'evt_standing_2');
+
+		expect(await changes()).toEqual(['recurring_gift.ended']);
+	});
+
+	it('owes an ending from the processor as a recurring gift ended', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await stand('ended')).toMatchObject({ outcome: 'stopped' });
+
+		expect(await changes()).toEqual(['recurring_gift.ended']);
+	});
+
+	it('owes a lapsed commitment reviving as a recurring gift updated', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		await stand('lapsed');
+
+		expect(await stand('active', 'evt_standing_2')).toMatchObject({ outcome: 'updated' });
+
+		expect(await changes()).toEqual(['recurring_gift.ended', 'recurring_gift.updated']);
+	});
+
+	it('owes a revived commitment that lapses again a second recurring gift ended', async () => {
+		// each change is keyed on the millisecond it was written, so each is given its own.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(new Date('2026-11-03T12:00:00.000Z'));
+			await settleDelivery(deps(), DELIVERY);
+			vi.setSystemTime(new Date('2026-11-03T12:00:01.000Z'));
+			await stand('lapsed');
+			vi.setSystemTime(new Date('2026-11-03T12:00:02.000Z'));
+			await stand('active', 'evt_standing_2');
+			vi.setSystemTime(new Date('2026-11-03T12:00:03.000Z'));
+			await stand('lapsed', 'evt_standing_3');
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(await changes()).toEqual([
+			'recurring_gift.ended',
+			'recurring_gift.updated',
+			'recurring_gift.ended'
+		]);
+	});
+
+	it('owes a lapsed commitment revived by a collection as a recurring gift updated', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		await stand('lapsed');
+
+		expect(await collectAgain(notice().nextChargeAt)).toMatchObject({ outcome: 'posted' });
+
+		expect(await changes()).toEqual(['recurring_gift.ended', 'recurring_gift.updated']);
 	});
 });

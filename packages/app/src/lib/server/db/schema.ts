@@ -2917,8 +2917,8 @@ export const webhookDestinationEvent = sqliteTable(
 
 /**
  * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed,
- * or one sent nothing because its destination or its subject could not be read
- * (../webhooks/deliver.ts); it is kept, for the destination's recent deliveries.
+ * or one sent nothing because its destination or its subject could not be read, or its refund no
+ * longer stands (../webhooks/payload.ts); it is kept, for the destination's recent deliveries.
  */
 export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
 export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
@@ -2928,9 +2928,23 @@ export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
  * `batch()` as the change it reports (../webhooks/events.ts).
  *
  * **the row holds a pointer, not a payload**: `subject_id` names what the event is about, and the
- * send renders it then, the way `zapier_delivery` is rendered. what it names follows `event`: the
- * payment for a `gift.*` event. no foreign key, since a later event names a donor or a recurring
- * gift in the same column; the send fails a row whose subject it cannot read.
+ * send renders it then, the way `zapier_delivery` is rendered. what it names follows `event`:
+ *
+ *   gift.made                    — the gift's payment id.
+ *   gift.refunded,
+ *   gift.dispute_opened          — the refund-direction row's id: the refund, or the withdrawal a
+ *                                  dispute made.
+ *   donor.added                  — the contact id.
+ *   recurring_gift.started       — the `recurring_plan` id.
+ *   donor.updated,
+ *   recurring_gift.updated,
+ *   recurring_gift.ended         — `<contact or plan id>:<epoch ms of the change>`
+ *                                  (`changeSubject` in ../webhooks/events.ts), so each change is its
+ *                                  own row; a join to the record takes the id before the colon
+ *                                  (`changedRecordOf`).
+ *
+ * no foreign key, since one column names rows of several tables and not always a bare id; the send
+ * fails a row whose subject it cannot read.
  *
  * **`(destination_id, event, subject_id)` is unique**, and it is where "once" comes from: a
  * settlement delivered twice meets its own key.

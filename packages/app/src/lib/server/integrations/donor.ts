@@ -2,7 +2,7 @@ import { and, isNull } from 'drizzle-orm';
 import { type ConsentState, consentState } from '../../contacts/consent';
 import type { Db } from '../db/client';
 import { contact } from '../db/schema';
-import { type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
+import { inPage, type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
 
 // one donor as the read API's donors list answers it (src/routes/integrations.v1.donors.ts).
 //
@@ -18,8 +18,9 @@ import { type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
 //
 // **when a donor last changed is the row's own `updated_at`.** every write to a contact row is a
 // drizzle `.update(contact)` that leaves the column unnamed, so the column's `$onUpdateFn` in
-// ../db/schema.ts stamps it in the same statement — today that is `contactConsentUpdateStatement`
-// in ../contacts/queries.ts alone, the consent a returning donor's gift carries. a writer naming
+// ../db/schema.ts stamps it in the same statement — today that is `contactConsentUpdate` in
+// ../contacts/queries.ts alone, the consent a returning donor's gift carries, and only where it
+// changes the answer. a writer naming
 // `updated_at` itself, or writing the row past drizzle, would hide its change from `updated_since`.
 // what this does not see is a donor leaving the list: an archived contact drops out of both orders
 // rather than appearing as changed. nothing archives a contact yet.
@@ -52,7 +53,31 @@ export const DONOR_ORDERS = { newest: 'donors.newest', changed: 'donors.changed'
 /** one page of donors in the order `query` names. */
 export async function readDonorPage(db: Db, query: PageQuery): Promise<PageOf<ApiDonor>> {
 	const walk = storedTimesWalk(query, contact);
-	const rows = await db
+	const rows = await selectDonors(db)
+		.where(and(isNull(contact.archivedAt), walk.where))
+		.orderBy(...walk.orderBy)
+		.limit(query.limit + 1);
+	const page = pageOf(rows, query.limit, walk.keyOf);
+	return { ...page, rows: page.rows.map(renderDonor) };
+}
+
+/**
+ * the donors among `contactIds`, as the read API answers each, keyed by id — archived or not, since
+ * what a webhook says about a donor stays true of them. an id that names no contact has no entry,
+ * which is the caller's to answer for.
+ */
+export async function readDonors(
+	db: Db,
+	contactIds: readonly string[]
+): Promise<Map<string, ApiDonor>> {
+	if (contactIds.length === 0) return new Map();
+	const rows = await selectDonors(db).where(inPage(contact.id, [...new Set(contactIds)]));
+	return new Map(rows.map((row) => [row.id, renderDonor(row)]));
+}
+
+/** every column an `ApiDonor` is rendered from. */
+function selectDonors(db: Db) {
+	return db
 		.select({
 			id: contact.id,
 			displayName: contact.displayName,
@@ -61,20 +86,18 @@ export async function readDonorPage(db: Db, query: PageQuery): Promise<PageOf<Ap
 			createdAt: contact.createdAt,
 			updatedAt: contact.updatedAt
 		})
-		.from(contact)
-		.where(and(isNull(contact.archivedAt), walk.where))
-		.orderBy(...walk.orderBy)
-		.limit(query.limit + 1);
-	const page = pageOf(rows, query.limit, walk.keyOf);
+		.from(contact);
+}
+
+type DonorRow = Awaited<ReturnType<ReturnType<typeof selectDonors>['all']>>[number];
+
+function renderDonor(row: DonorRow): ApiDonor {
 	return {
-		...page,
-		rows: page.rows.map((row) => ({
-			id: row.id,
-			name: row.displayName,
-			email: row.primaryEmail,
-			consent: consentState(row.consentedToContact),
-			created_at: row.createdAt.toISOString(),
-			updated_at: row.updatedAt.toISOString()
-		}))
+		id: row.id,
+		name: row.displayName,
+		email: row.primaryEmail,
+		consent: consentState(row.consentedToContact),
+		created_at: row.createdAt.toISOString(),
+		updated_at: row.updatedAt.toISOString()
 	};
 }

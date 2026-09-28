@@ -1,12 +1,22 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, payment } from '../db/schema';
-import { readGiftPage } from '../integrations/gift';
+import { contact, dispute, donation, payment } from '../db/schema';
+import { parseContact } from '../contacts/contact-input';
+import { commitDonor } from '../donations/donor';
+import { readGiftPage, readGifts } from '../integrations/gift';
+import type { WebhookEvent } from '../../webhooks/catalog';
 import { sendDueWebhooks, WEBHOOK_RETRY_SCHEDULE_MS } from './deliver';
 import { createDestination } from './destinations';
-import { webhookStatements } from './events';
+import { stopRecurringPlan } from '../recurring/queries';
+import {
+	disputeOpenedWebhookStatements,
+	giftRefundedWebhookStatements,
+	recurringGiftStartedWebhookStatements,
+	webhookStatements
+} from './events';
 
 // the delivery run against a real D1, with each destination answered by a `fetch` written here.
 //
@@ -31,7 +41,9 @@ beforeEach(async () => {
 		'webhook_destination',
 		'payment',
 		'donation',
-		'contact'
+		'recurring_plan',
+		'contact',
+		'form'
 	]) {
 		await env.DB.prepare(`delete from ${table}`).run();
 	}
@@ -92,7 +104,7 @@ async function settle(): Promise<string> {
 			provider: 'manual',
 			occurredAt: at
 		}),
-		...webhookStatements(db, { paymentId })
+		...webhookStatements(db, { paymentId, contactId })
 	]);
 	return paymentId;
 }
@@ -475,5 +487,403 @@ describe('sendDueWebhooks() — what is not sent', () => {
 				last_error: `The settled gift ${paymentId} this event was queued for could not be read.`
 			})
 		]);
+	});
+});
+
+describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
+	afterEach(async () => {
+		await env.DB.prepare('delete from dispute').run();
+	});
+
+	async function listening(events: readonly WebhookEvent[]) {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination;
+	}
+
+	const WITHDRAWN_AT = new Date('2026-09-15T08:00:00.000Z');
+	const RESPOND_BY = new Date('2026-10-01T23:59:59.000Z');
+
+	/**
+	 * $20 of the settled gift `giftId` back, as a refund or as a dispute (`open` or `lost`), and what
+	 * that owes each destination, in one batch the way ../books/writes.ts splices it.
+	 */
+	async function withdraw(
+		giftId: string,
+		as: { readonly dispute?: 'open' | 'lost' } = {}
+	): Promise<string> {
+		const [gift] = await db.select().from(payment).where(eq(payment.id, giftId));
+		if (gift === undefined) throw new Error('no gift to withdraw from');
+		const refundId = uuidv7();
+		await db.batch([
+			db.insert(payment).values({
+				id: refundId,
+				donationId: gift.donationId,
+				amountMinor: 2_000,
+				currency: 'USD',
+				direction: 'refund',
+				method: 'check',
+				status: 'succeeded',
+				provider: 'manual',
+				occurredAt: WITHDRAWN_AT,
+				parentPaymentId: giftId
+			}),
+			...(as.dispute === undefined
+				? []
+				: [
+						db.insert(dispute).values({
+							paymentId: refundId,
+							respondBy: RESPOND_BY,
+							reason: 'fraudulent',
+							...(as.dispute === 'lost' ? { outcome: 'lost', closedAt: WITHDRAWN_AT } : {})
+						})
+					]),
+			as.dispute === 'open'
+				? disputeOpenedWebhookStatements(db, refundId)
+				: giftRefundedWebhookStatements(db, refundId)
+		]);
+		return refundId;
+	}
+
+	it('posts a refund signed, as the refund and the gift as the read API answers it now', async () => {
+		const target = await listening(['gift.refunded']);
+		const giftId = await settle();
+		const refundId = await withdraw(giftId);
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const gift = (await readGifts(db, [giftId])).get(giftId);
+		expect(gift).toMatchObject({ status: 'partially_refunded', amount_refunded_minor: 2_000 });
+		const [post] = receiving.posts;
+		expect(post?.url).toBe(target.url);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, START)).toBe(true);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'gift.refunded',
+			timestamp: START.toISOString(),
+			data: {
+				id: refundId,
+				occurred_at: WITHDRAWN_AT.toISOString(),
+				amount: '20.00',
+				amount_minor: 2_000,
+				currency: 'USD',
+				source: 'refund',
+				gift
+			}
+		});
+		expect(await rows()).toEqual([expect.objectContaining({ status: 'delivered' })]);
+	});
+
+	it('names a lost dispute’s withdrawal as a dispute', async () => {
+		await listening(['gift.refunded']);
+		await withdraw(await settle(), { dispute: 'lost' });
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(JSON.parse(receiving.posts[0]?.body ?? '{}').data.source).toBe('dispute');
+	});
+
+	it('posts a dispute opened as its withdrawal, its respond-by, and the gift', async () => {
+		const target = await listening(['gift.dispute_opened']);
+		const giftId = await settle();
+		const withdrawalId = await withdraw(giftId, { dispute: 'open' });
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const gift = (await readGifts(db, [giftId])).get(giftId);
+		expect(gift).toMatchObject({ dispute_open: true });
+		expect(receiving.posts.map((post) => post.url)).toEqual([target.url]);
+		expect(JSON.parse(receiving.posts[0]?.body ?? '{}')).toEqual({
+			type: 'gift.dispute_opened',
+			timestamp: START.toISOString(),
+			data: {
+				id: withdrawalId,
+				opened_at: WITHDRAWN_AT.toISOString(),
+				amount: '20.00',
+				amount_minor: 2_000,
+				currency: 'USD',
+				respond_by: RESPOND_BY.toISOString(),
+				gift
+			}
+		});
+	});
+
+	it('answers a respond-by the processor never named with null', async () => {
+		await listening(['gift.dispute_opened']);
+		const withdrawalId = await withdraw(await settle(), { dispute: 'open' });
+		await db.update(dispute).set({ respondBy: null }).where(eq(dispute.paymentId, withdrawalId));
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(JSON.parse(receiving.posts[0]?.body ?? '{}').data.respond_by).toBeNull();
+	});
+
+	it('fails a refund that stopped standing after it was queued, unposted, and says why', async () => {
+		await listening(['gift.refunded']);
+		const refundId = await withdraw(await settle());
+		await db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId));
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		expect(await rows()).toEqual([
+			expect.objectContaining({
+				status: 'failed',
+				attempts: 0,
+				last_status: null,
+				last_error:
+					'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.'
+			})
+		]);
+	});
+
+	it('fails a row whose refund cannot be read, unposted, and says why', async () => {
+		await listening(['gift.refunded']);
+		const refundId = await withdraw(await settle());
+		await db.delete(payment).where(eq(payment.id, refundId));
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		expect(await rows()).toEqual([
+			expect.objectContaining({
+				status: 'failed',
+				last_error: `The refund ${refundId} this event was queued for could not be read.`
+			})
+		]);
+	});
+});
+
+describe('sendDueWebhooks() — a donor added and a donor updated', () => {
+	async function listening(events: readonly WebhookEvent[]) {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination;
+	}
+
+	async function donorOf(paymentId: string): Promise<string> {
+		const [row] = await db
+			.select({ contactId: donation.contactId })
+			.from(donation)
+			.innerJoin(payment, eq(payment.donationId, donation.id))
+			.where(eq(payment.id, paymentId));
+		if (row === undefined) throw new Error('no donor for that gift');
+		return row.contactId;
+	}
+
+	it('posts a donor added signed, as the read API’s donor and their first gift', async () => {
+		const target = await listening(['donor.added']);
+		const giftId = await settle();
+		const donorId = await donorOf(giftId);
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, START)).toBe(true);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'donor.added',
+			timestamp: START.toISOString(),
+			data: {
+				id: donorId,
+				name: 'Ada Okafor',
+				email: 'ada@example.org',
+				consent: 'unasked',
+				created_at: START.toISOString(),
+				updated_at: START.toISOString(),
+				first_gift: (await readGifts(db, [giftId])).get(giftId)
+			}
+		});
+		expect(await rows()).toEqual([expect.objectContaining({ status: 'delivered' })]);
+	});
+
+	it('posts a donor updated signed, as the donor stands at send', async () => {
+		const target = await listening(['donor.updated']);
+		const donorId = await donorOf(await settle());
+		const CHANGED = new Date(START.getTime() + MINUTE);
+		vi.setSystemTime(CHANGED);
+		const returning = parseContact({
+			kind: 'individual',
+			first_name: 'Ada',
+			last_name: 'Okafor',
+			primary_email: 'ada@example.org'
+		});
+		if (!returning.ok) throw new Error('the fixture donor does not parse');
+		await commitDonor(db, returning.value, true);
+		const receiving = receivers();
+
+		await runAt(new Date(CHANGED.getTime() + MINUTE), receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, new Date(CHANGED.getTime() + MINUTE))).toBe(
+			true
+		);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'donor.updated',
+			timestamp: CHANGED.toISOString(),
+			data: {
+				id: donorId,
+				name: 'Ada Okafor',
+				email: 'ada@example.org',
+				consent: 'agreed',
+				created_at: START.toISOString(),
+				updated_at: CHANGED.toISOString()
+			}
+		});
+	});
+
+	it('fails a donor row whose donor cannot be read, unposted, and says why', async () => {
+		await listening(['donor.added']);
+		const giftId = await settle();
+		const donorId = await donorOf(giftId);
+		await env.DB.prepare('update webhook_delivery set subject_id = ?').bind(uuidv7()).run();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		const [row] = await rows();
+		expect(row).toMatchObject({ status: 'failed', attempts: 0 });
+		expect(row?.last_error).toMatch(
+			/^The donor [0-9a-f-]{36} this event was queued for could not be read\.$/
+		);
+		expect(row?.last_error).not.toContain(donorId);
+	});
+});
+
+describe('sendDueWebhooks() — a recurring gift started and a recurring gift ended', () => {
+	const DONOR_ID = '019fb900-0000-7000-8000-000000000001';
+	const PLAN_ID = '019fb900-0000-7000-8000-000000000002';
+
+	async function listening(events: readonly WebhookEvent[]) {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination;
+	}
+
+	/** a $25 monthly commitment from Ada Okafor, opened with the rows it owes. */
+	async function open(): Promise<void> {
+		const account = await env.DB.prepare(
+			`select id from account where is_postable = 1 and code = '4110'`
+		).first<{ id: string }>();
+		await env.DB.batch([
+			env.DB.prepare(
+				`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+				                   suggested_amounts, allowed_origins, created_at, updated_at)
+				 values ('frm_webhookplan1', 'General Fund', 'live', ?, 'USD', 500, 1000000, '[]', '[]', 0, 0)`
+			).bind(account?.id),
+			env.DB.prepare(
+				`insert into contact (id, kind, display_name, created_at, updated_at)
+				 values (?, 'individual', 'Ada Okafor', 0, 0)`
+			).bind(DONOR_ID)
+		]);
+		await env.DB.prepare(
+			`insert into recurring_plan (id, contact_id, form_id, amount_minor, currency, interval,
+			                             status, provider, provider_subscription_id,
+			                             provider_customer_id, started_at, next_charge_at, ended_at,
+			                             created_at, updated_at)
+			 values (?, ?, 'frm_webhookplan1', 2500, 'USD', 'monthly', 'active', 'stripe',
+			         'sub_webhook1', 'cus_webhook1', ?, ?, null, ?, ?)`
+		)
+			.bind(
+				PLAN_ID,
+				DONOR_ID,
+				Date.parse('2026-09-03T12:00:00.000Z'),
+				Date.parse('2026-10-03T12:00:00.000Z'),
+				START.getTime(),
+				START.getTime()
+			)
+			.run();
+		await db.batch(recurringGiftStartedWebhookStatements(db, { id: PLAN_ID, status: 'active' }));
+	}
+
+	it('posts a recurring gift started signed, as the read API’s recurring gift', async () => {
+		const target = await listening(['recurring_gift.started']);
+		await open();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, START)).toBe(true);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'recurring_gift.started',
+			timestamp: START.toISOString(),
+			data: {
+				id: PLAN_ID,
+				donor_id: DONOR_ID,
+				amount: '25.00',
+				amount_minor: 2500,
+				currency: 'USD',
+				frequency: 'monthly',
+				status: 'active',
+				next_charge_at: '2026-10-03T12:00:00.000Z',
+				started_at: '2026-09-03T12:00:00.000Z',
+				updated_at: START.toISOString()
+			}
+		});
+		expect(await rows()).toEqual([expect.objectContaining({ status: 'delivered' })]);
+	});
+
+	it('posts a recurring gift ended as the recurring gift stands at send', async () => {
+		const target = await listening(['recurring_gift.ended']);
+		await open();
+		const STOPPED = new Date(START.getTime() + MINUTE);
+		vi.setSystemTime(STOPPED);
+		await stopRecurringPlan(db, PLAN_ID, STOPPED);
+		const receiving = receivers();
+
+		await runAt(new Date(STOPPED.getTime() + MINUTE), receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'recurring_gift.ended',
+			timestamp: STOPPED.toISOString(),
+			data: expect.objectContaining({
+				id: PLAN_ID,
+				status: 'stopped',
+				next_charge_at: null,
+				updated_at: STOPPED.toISOString()
+			})
+		});
+	});
+
+	it('fails a row whose recurring gift cannot be read, unposted, and says why', async () => {
+		await listening(['recurring_gift.started']);
+		await open();
+		await env.DB.prepare('update webhook_delivery set subject_id = ?').bind(uuidv7()).run();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		const [row] = await rows();
+		expect(row).toMatchObject({ status: 'failed', attempts: 0 });
+		expect(row?.last_error).toMatch(
+			/^The recurring gift [0-9a-f-]{36} this event was queued for could not be read\.$/
+		);
 	});
 });

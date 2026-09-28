@@ -1,11 +1,11 @@
-import { and, desc, eq, exists, lt, notExists, or, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/sqlite-core';
+import { and, desc, eq, exists, notExists, sql } from 'drizzle-orm';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
-import { dispute, donation, entryGroup, payment, type ZapierTrigger } from '../db/schema';
-import { refundStands } from '../donations/queries';
+import { entryGroup, payment, type ZapierTrigger } from '../db/schema';
+import { earlierSettledGiftOfDonor, refundStands } from '../donations/queries';
 import { type GiftEvent, renderGift, selectGifts } from '../integrations/gift';
 import { inPage } from '../integrations/paging';
+import { type RefundRow, type RefundSource, selectRefunds } from '../integrations/refund';
 
 export type { GiftEvent };
 
@@ -33,15 +33,6 @@ export type DonorEvent = {
 export function donorEventOf(gift: GiftEvent): DonorEvent {
 	return { id: gift.donor_id, name: gift.donor_name, email: gift.donor_email, first_gift: gift };
 }
-
-/**
- * what sent a gift's money back: `refund`, one the organisation made, or `dispute`, a dispute the
- * organisation lost or a payment the donor's bank returned. **the set may gain values**: a Zap
- * branches on the values it knows and lets any other pass, and a value's meaning never narrows, so
- * a value is never split into two later. the trigger's own description in packages/zapier says the
- * same to a Zap's author.
- */
-export type RefundSource = 'refund' | 'dispute';
 
 /**
  * one refund, or one dispute lost, as a `gift_refunded` Zap receives it: what left, and the gift it
@@ -94,24 +85,6 @@ export async function readRefundEvents(
 	);
 	return refundEventsOf(db, refunds);
 }
-
-/** a refund row with a `dispute` row on it is a dispute's withdrawal; any other is a refund. */
-function selectRefunds(db: Db) {
-	const disputed = alias(dispute, 'disputed');
-	return db
-		.select({
-			id: payment.id,
-			giftId: payment.parentPaymentId,
-			occurredAt: payment.occurredAt,
-			amountMinor: payment.amountMinor,
-			currency: payment.currency,
-			source: sql<RefundSource>`case when ${disputed.paymentId} is null then 'refund' else 'dispute' end`
-		})
-		.from(payment)
-		.leftJoin(disputed, eq(disputed.paymentId, payment.id));
-}
-
-type RefundRow = Awaited<ReturnType<ReturnType<typeof selectRefunds>['all']>>[number];
 
 async function refundEventsOf(
 	db: Db,
@@ -201,7 +174,9 @@ export async function readSamples<T extends ZapierTrigger>(
 	if (trigger === 'gift_refunded') return (await refundSamples(db)) as ZapierEvent[T][];
 	const settled = and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound'));
 	const rows = await selectGifts(db)
-		.where(trigger === 'new_donor' ? and(settled, notExists(earlierGiftOfDonor(db))) : settled)
+		.where(
+			trigger === 'new_donor' ? and(settled, notExists(earlierSettledGiftOfDonor(db))) : settled
+		)
 		.orderBy(desc(payment.occurredAt), desc(payment.id))
 		.limit(SAMPLE_COUNT);
 	const gifts = rows.length === 0 ? [SAMPLE_GIFT] : rows.map(renderGift);
@@ -227,29 +202,4 @@ async function refundSamples(db: Db): Promise<RefundEvent[]> {
 	const events = await refundEventsOf(db, rows);
 	const samples = rows.flatMap((row) => events.get(row.id) ?? []);
 	return samples.length === 0 ? [SAMPLE_REFUND] : samples;
-}
-
-/**
- * a settled gift from the same donor as the outer row's, dated before it — so the outer row with
- * none is that donor's first. a tie on the date falls to the lower id, so exactly one row per
- * donor is first.
- */
-function earlierGiftOfDonor(db: Db) {
-	const earlier = alias(payment, 'earlier');
-	const earlierDonation = alias(donation, 'earlier_donation');
-	return db
-		.select({ one: sql`1` })
-		.from(earlier)
-		.innerJoin(earlierDonation, eq(earlierDonation.id, earlier.donationId))
-		.where(
-			and(
-				eq(earlierDonation.contactId, donation.contactId),
-				eq(earlier.status, 'succeeded'),
-				eq(earlier.direction, 'inbound'),
-				or(
-					lt(earlier.occurredAt, payment.occurredAt),
-					and(eq(earlier.occurredAt, payment.occurredAt), lt(earlier.id, payment.id))
-				)
-			)
-		);
 }

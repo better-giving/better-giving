@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RecurringPlanStatus } from '$lib/recurring/statuses';
 import { createDb, type Db } from '../db/client';
+import { createDestination } from '../webhooks/destinations';
 import {
 	listRecurringPlans,
 	readActiveRecurringCount,
@@ -264,6 +265,58 @@ describe('stopRecurringPlan', () => {
 
 	it('answers false for an id no commitment carries', async () => {
 		expect(await stopRecurringPlan(db, crypto.randomUUID(), new Date())).toBe(false);
+	});
+
+	describe('what it owes a destination listening for a recurring gift ended', () => {
+		beforeEach(async () => {
+			await createDestination(db, {
+				url: 'https://crm.example.org/recurring',
+				events: ['recurring_gift.ended', 'recurring_gift.updated']
+			});
+		});
+
+		afterEach(async () => {
+			for (const table of [
+				'webhook_delivery',
+				'webhook_destination_event',
+				'webhook_destination'
+			]) {
+				await env.DB.prepare(`delete from ${table}`).run();
+			}
+		});
+
+		async function owed() {
+			const { results } = await env.DB.prepare(
+				'select event, subject_id from webhook_delivery'
+			).all<{ event: string; subject_id: string }>();
+			return results;
+		}
+
+		// a lapsed commitment has already ended once; stopping it moves `payment_failed` to `stopped`.
+		it.each([
+			['active', 'recurring_gift.ended'],
+			['lapsed', 'recurring_gift.updated']
+		] as const)(
+			'owes stopping a commitment that is %s as one %s, about that change',
+			async (status, event) => {
+				const id = await plan({ status });
+
+				expect(await stopRecurringPlan(db, id, new Date(Date.UTC(2026, 7, 10)))).toBe(true);
+
+				expect(await owed()).toEqual([
+					{ event, subject_id: expect.stringMatching(`^${id}:\\d+$`) }
+				]);
+			}
+		);
+
+		it('owes a second stop nothing', async () => {
+			const id = await plan();
+			await stopRecurringPlan(db, id, new Date(Date.UTC(2026, 7, 10)));
+
+			expect(await stopRecurringPlan(db, id, new Date(Date.UTC(2026, 7, 11)))).toBe(false);
+
+			expect(await owed()).toHaveLength(1);
+		});
 	});
 });
 
