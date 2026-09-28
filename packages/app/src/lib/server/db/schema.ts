@@ -2992,9 +2992,9 @@ export const webhookDelivery = sqliteTable(
 		updatedAt: updatedAt(),
 
 		/**
-		 * reserved for a JSON object of the facts an event's payload needs that cannot be read again
-		 * at send, for `recurring_gift.charge_failed`'s writer (ticket t10's event slice). every event
-		 * writes it null today, and nothing reads it.
+		 * a JSON object of the facts an event's payload needs that cannot be read again at send.
+		 * only `recurring_gift.charge_failed` writes one — the failed attempt, as
+		 * `ChargeFailedDetail` in ../webhooks/events.ts — and every other event writes null.
 		 */
 		detail: text('detail')
 		// append new columns below this line — see rule 1 at the top of this file.

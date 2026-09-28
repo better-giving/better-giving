@@ -43,7 +43,10 @@ import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
 import { applyPlanChange, planChangeStatements } from '../recurring/changes';
-import { recurringGiftStartedWebhookStatements } from '../webhooks/events';
+import {
+	recurringChargeFailedWebhookStatements,
+	recurringGiftStartedWebhookStatements
+} from '../webhooks/events';
 
 // the books for a gift that repeats: what one collection under a standing commitment writes, and
 // what the commitment's own standing writes when it stops.
@@ -159,7 +162,8 @@ import { recurringGiftStartedWebhookStatements } from '../webhooks/events';
 // collection that failed either — the rail's own retry schedule is what tries again, and a
 // deployment that mailed on every failed attempt would mail a donor whose card is merely expiring.
 // a failed attempt the processor reports (`RecurringGiftNotice.failedAttempt`) goes to
-// `recordFailedCollection` and writes no gift, payment or ledger row: it moved no money.
+// `recordFailedCollection`, which owes a destination listening a `recurring_gift.charge_failed` and
+// writes no gift, payment or ledger row: it moved no money.
 //
 // nothing keeps a running total on the commitment. what a commitment has given is a `SUM` over its
 // donations' ledger entries, at read time, like every other number in this app (CLAUDE.md).
@@ -374,7 +378,7 @@ async function failedResult(
 		detail:
 			planId === null
 				? `attempt ${failed.attemptCount} under ${notice.providerGiftId} failed, and no repeating gift here has collected under it; nothing was written.`
-				: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed and ${retry}; no gift was written.`
+				: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed and ${retry}; no gift was written, and recurring charge failed is owed to the destinations listening.`
 	};
 }
 
@@ -383,14 +387,19 @@ async function failedResult(
  * the donor's own first charge failing on the page, before any repeating gift exists, or a
  * subscription this app did not make.
  *
- * no gift, payment or ledger row is written for it: the attempt moved no money.
+ * under a commitment with a row, the attempt owes each destination listening a
+ * `recurring_gift.charge_failed`, keyed on the attempt, so a redelivery owes nothing
+ * (`recurringChargeFailedWebhookStatements` in ../webhooks/events.ts). that row is the only write:
+ * no gift, payment or ledger row, because the attempt moved no money.
  */
 async function recordFailedCollection(
-	_db: Db,
+	db: Db,
 	plan: RecurringPlan | null,
-	_failed: FailedCollection
+	failed: FailedCollection
 ): Promise<string | null> {
-	return plan?.id ?? null;
+	if (plan === null) return null;
+	await db.batch([recurringChargeFailedWebhookStatements(db, plan.id, failed)]);
+	return plan.id;
 }
 
 /**

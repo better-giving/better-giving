@@ -325,6 +325,7 @@ function claimDue(db: Db, now: Date) {
 			destinationId: webhookDelivery.destinationId,
 			event: webhookDelivery.event,
 			subjectId: webhookDelivery.subjectId,
+			detail: webhookDelivery.detail,
 			attempts: webhookDelivery.attempts,
 			createdAt: webhookDelivery.createdAt
 		},

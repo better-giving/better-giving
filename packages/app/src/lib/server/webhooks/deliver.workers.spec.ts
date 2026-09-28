@@ -21,6 +21,7 @@ import { stopRecurringPlan } from '../recurring/queries';
 import {
 	disputeOpenedWebhookStatements,
 	giftRefundedWebhookStatements,
+	recurringChargeFailedWebhookStatements,
 	recurringGiftStartedWebhookStatements,
 	webhookStatements
 } from './events';
@@ -1155,7 +1156,7 @@ describe('sendDueWebhooks() — a donor added and a donor updated', () => {
 	});
 });
 
-describe('sendDueWebhooks() — a recurring gift started and a recurring gift ended', () => {
+describe('sendDueWebhooks() — a recurring gift started, ended, and its charge failed', () => {
 	const DONOR_ID = '019fb900-0000-7000-8000-000000000001';
 	const PLAN_ID = '019fb900-0000-7000-8000-000000000002';
 
@@ -1257,6 +1258,88 @@ describe('sendDueWebhooks() — a recurring gift started and a recurring gift en
 				updated_at: STOPPED.toISOString()
 			})
 		});
+	});
+
+	/** the processor's report of the second attempt at the October collection failing. */
+	const failedAttempt = {
+		attemptKey: 'evt_failed_2',
+		attemptCount: 2,
+		nextRetryAt: new Date('2026-10-08T12:00:00.000Z'),
+		failedAt: new Date('2026-10-05T12:00:00.000Z'),
+		amountMinor: 2500,
+		currency: 'USD'
+	};
+
+	it('posts a recurring charge failed signed, as the attempt and the read API’s recurring gift', async () => {
+		const target = await listening(['recurring_gift.charge_failed']);
+		await open();
+		await db.batch([recurringChargeFailedWebhookStatements(db, PLAN_ID, failedAttempt)]);
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, START)).toBe(true);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'recurring_gift.charge_failed',
+			timestamp: START.toISOString(),
+			data: {
+				attempt_count: 2,
+				next_retry_at: '2026-10-08T12:00:00.000Z',
+				failed_at: '2026-10-05T12:00:00.000Z',
+				amount: '25.00',
+				amount_minor: 2500,
+				currency: 'USD',
+				recurring_gift: {
+					id: PLAN_ID,
+					donor_id: DONOR_ID,
+					amount: '25.00',
+					amount_minor: 2500,
+					currency: 'USD',
+					frequency: 'monthly',
+					status: 'active',
+					next_charge_at: '2026-10-03T12:00:00.000Z',
+					started_at: '2026-09-03T12:00:00.000Z',
+					updated_at: START.toISOString()
+				}
+			}
+		});
+		expect(await rows()).toEqual([expect.objectContaining({ status: 'delivered' })]);
+	});
+
+	it('drops a recurring charge failed whose recurring gift cannot be read, unposted, and says why', async () => {
+		await listening(['recurring_gift.charge_failed']);
+		await open();
+		await db.batch([recurringChargeFailedWebhookStatements(db, uuidv7(), failedAttempt)]);
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		const [row] = await rows();
+		expect(row).toMatchObject({ status: 'dropped', attempts: 0 });
+		expect(row?.last_error).toMatch(
+			/^The recurring gift [0-9a-f-]{36} this event was queued for could not be read\.$/
+		);
+	});
+
+	it('drops a recurring charge failed whose attempt was not kept, unposted, and says why', async () => {
+		await listening(['recurring_gift.charge_failed']);
+		await open();
+		await db.batch([recurringChargeFailedWebhookStatements(db, PLAN_ID, failedAttempt)]);
+		await env.DB.prepare('update webhook_delivery set detail = null').run();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		const [row] = await rows();
+		expect(row).toMatchObject({ status: 'dropped', attempts: 0 });
+		expect(row?.last_error).toBe(
+			`The failed attempt ${PLAN_ID}:evt_failed_2 this event was queued for could not be read.`
+		);
 	});
 
 	it('drops a row whose recurring gift cannot be read, unposted, and says why', async () => {

@@ -1,5 +1,7 @@
 import { and, eq, exists, isNull, type SQL, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
+import { z } from 'zod';
+import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import {
 	payment,
@@ -8,6 +10,7 @@ import {
 	webhookDestinationEvent
 } from '../db/schema';
 import { hasSettledGift, isFirstSettledGift, refundStands } from '../donations/queries';
+import type { FailedCollection } from '../payments/provider';
 import type { RecurringPlanStatus } from '../../recurring/statuses';
 import type { WebhookEvent } from '../../webhooks/catalog';
 
@@ -181,11 +184,61 @@ export function recurringGiftChangeWebhookStatements(
 	return fanOut(db, event, changeSubject(planId, now), now, lands);
 }
 
+/**
+ * what a `recurring_gift.charge_failed` row keeps of the attempt, as `webhook_delivery.detail`: the
+ * attempt is not a row of its own and a later read of the commitment cannot recover it, so
+ * ./payload.ts sends these keys as they were written. times are ISO 8601 in UTC, `amount` in the
+ * read API's notation.
+ */
+export const CHARGE_FAILED_DETAIL = z.strictObject({
+	attempt_count: z.int().positive(),
+	/** null on the last miss: the processor will not try again. */
+	next_retry_at: z.iso.datetime().nullable(),
+	failed_at: z.iso.datetime(),
+	amount: z.string(),
+	amount_minor: z.int().positive(),
+	currency: z.string()
+});
+
+export type ChargeFailedDetail = z.infer<typeof CHARGE_FAILED_DETAIL>;
+
+/**
+ * the `recurring_gift.charge_failed` rows for one failed attempt at a collection under the
+ * commitment `planId`, keyed on `<plan id>:<attemptKey>`, so a redelivery of the processor's report
+ * owes nothing and each further attempt owes its own. ./payload.ts reads the plan back with
+ * {@link changedRecordOf}. its one caller is `recordFailedCollection` in ../donations/collect.ts,
+ * and only for a commitment with a row: an attempt under none is the donor's own first charge, and
+ * no recurring gift exists to report it against.
+ */
+export function recurringChargeFailedWebhookStatements(
+	db: Db,
+	planId: string,
+	attempt: FailedCollection
+): BatchItem<'sqlite'> {
+	const detail: ChargeFailedDetail = {
+		attempt_count: attempt.attemptCount,
+		next_retry_at: attempt.nextRetryAt?.toISOString() ?? null,
+		failed_at: attempt.failedAt.toISOString(),
+		amount: majorText(attempt.amountMinor, attempt.currency),
+		amount_minor: attempt.amountMinor,
+		currency: attempt.currency
+	};
+	return fanOut(
+		db,
+		'recurring_gift.charge_failed',
+		`${planId}:${attempt.attemptKey}`,
+		new Date(),
+		undefined,
+		JSON.stringify(detail)
+	);
+}
+
 /** a version 4 uuid, lowercase, from sqlite's own random source. */
 const UUID_V4 = sql`lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)))`;
 
 /**
- * one pending row, due at once, per un-archived destination taking `event`, where `extra` holds.
+ * one pending row, due at once, per un-archived destination taking `event`, where `extra` holds,
+ * each carrying `detail` where the event keeps one.
  *
  * drizzle's `insert().select()` names every column of the table in declaration order and refuses a
  * select whose keys differ, so every column is selected here, the defaults included. the select
@@ -197,7 +250,8 @@ function fanOut(
 	event: WebhookEvent,
 	subjectId: string,
 	now: Date,
-	extra?: SQL
+	extra?: SQL,
+	detail?: string
 ): BatchItem<'sqlite'> {
 	const at = now.getTime();
 	return db
@@ -218,7 +272,7 @@ function fanOut(
 					deliveredAt: sql`null`.as('delivered_at'),
 					createdAt: sql`${at}`.as('created_at'),
 					updatedAt: sql`${at}`.as('updated_at'),
-					detail: sql`null`.as('detail')
+					detail: (detail === undefined ? sql`null` : sql`${detail}`).as('detail')
 				})
 				.from(webhookDestination)
 				.innerJoin(

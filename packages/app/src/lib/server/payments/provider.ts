@@ -1695,7 +1695,8 @@ export type RecurringGiftNotice = {
 };
 
 /**
- * one failed attempt at a collection under a commitment, as a destination is told of it.
+ * one failed attempt at a collection under a commitment, as a destination is told of it: the
+ * `recurring_gift.charge_failed` ../donations/collect.ts owes, keyed on `attemptKey`.
  *
  * per attempt rather than per collection: the processor retries on its own schedule, and what a
  * reader acts on is which attempt this was and whether another is coming. nothing here is posted —
