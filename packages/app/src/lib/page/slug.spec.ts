@@ -49,9 +49,9 @@ describe('the top-level segments a route file answers', () => {
 
 describe('the reserved segments this app answers today', () => {
 	it('are read off the route files themselves', () => {
-		// `quickbooks` and `zapier` are named in no rule: only the route files say they are taken
+		// `quickbooks`, `zapier` and `image` are named in no rule: only the route files say they are taken
 		expect([...RESERVED_SEGMENTS]).toEqual(
-			expect.arrayContaining(['admin', 'api', 'console', 'login', 'quickbooks', 'zapier'])
+			expect.arrayContaining(['admin', 'api', 'console', 'login', 'quickbooks', 'zapier', 'image'])
 		);
 	});
 

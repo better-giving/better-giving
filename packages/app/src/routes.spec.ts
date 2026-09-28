@@ -215,7 +215,11 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// endpoint above it, same-origin, which owes all four of that surface's checks. and what its
 	// loader hands the browser is the served config alone, never the `form` row it was read from —
 	// that row carries `allowed_origins`.
-	DONOR_PAGE
+	DONOR_PAGE,
+	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by an
+	// unguessable id and writes nothing, and a draft's image is as reachable by its id as a live one's
+	// — its own header states why that is the rule.
+	'routes/image.$id.ts'
 ];
 
 /**
