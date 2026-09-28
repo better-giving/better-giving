@@ -1,12 +1,13 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, useLoaderData, useLocation } from 'react-router';
+import { createRoutesStub, data, useLoaderData, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import type { ChatMessage } from '../chat/chat-sheet';
 import { useEditorChat } from './chat-wiring';
 
 // what the editor's chat does over the network: what a send posts, what the composer does while
-// the turn runs, and what the editor reads once it lands. the chat route here is a stand-in that
+// the turn runs, what the editor reads once it lands, and what a send nothing was stored from gives
+// back. the chat route here is a stand-in that
 // records what arrived and holds each post until the case lets it land; what the real one does with
 // it is src/routes/_app.admin.pages.$pageId.chat.workers.spec.ts's.
 
@@ -21,6 +22,8 @@ let posted: Record<string, string>[];
 let held: (() => void)[];
 /** how many times the editor's own loader has answered. */
 let editorLoads: number;
+/** what the chat route answers the next posts with, in order, in place of a stored turn. */
+let refusals: { body: { error: string; reason?: string }; status: number }[];
 
 beforeEach(() => {
 	stored = [
@@ -30,6 +33,7 @@ beforeEach(() => {
 	posted = [];
 	held = [];
 	editorLoads = 0;
+	refusals = [];
 });
 
 function mount(tree: ReactNode): HTMLElement {
@@ -80,6 +84,8 @@ function screen(entry = PAGE): HTMLElement {
 				);
 				posted.push(body);
 				await new Promise<void>((resolve) => held.push(resolve));
+				const refused = refusals.shift();
+				if (refused !== undefined) return data(refused.body, refused.status);
 				const turns: ChatMessage[] = [
 					{ id: `o${posted.length}`, role: 'operator', text: body.message ?? '' },
 					{ id: `a${posted.length}`, role: 'assistant', text: 'I added a FAQ.' }
@@ -129,6 +135,18 @@ async function opened(entry = PAGE): Promise<HTMLElement> {
 	await settle();
 	return root;
 }
+
+/** sends the words in the box and lets the answer land. */
+async function sendAndLand(words: string) {
+	type(words);
+	await press(button('Send'));
+	await settle();
+	await act(async () => held.shift()?.());
+	await settle();
+}
+
+const box = () => document.querySelector('textarea')?.value;
+const refusalShown = () => document.querySelector('.adm-chat__refusal')?.textContent;
 
 const turnsShown = () =>
 	[...document.querySelectorAll('.adm-chat__log .adm-chat__turn')].map((t) => t.textContent);
@@ -210,5 +228,67 @@ describe('the editor’s chat', () => {
 
 		expect(document.querySelector('.adm-chat__log')).toBeNull();
 		expect(root.querySelector('samp')?.textContent).toBe('');
+	});
+
+	it('gives a send back to the box when the page was saved while it was answered', async () => {
+		await opened();
+		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];
+
+		await sendAndLand('Add a FAQ about coat sizes');
+
+		expect(box()).toBe('Add a FAQ about coat sizes');
+		expect(refusalShown()).toBe(
+			'The page was saved while this was being written, so nothing changed. Send it again.'
+		);
+		expect(turnsShown()).not.toContain('Add a FAQ about coat sizes');
+	});
+
+	it('says a turn that failed did not go through, and gives the words back', async () => {
+		await opened();
+		refusals = [{ body: { error: 'the turn on page "p1" failed', reason: 'failed' }, status: 500 }];
+
+		await sendAndLand('Add a FAQ about coat sizes');
+
+		expect(box()).toBe('Add a FAQ about coat sizes');
+		expect(refusalShown()).toBe('That didn’t go through. Send it again.');
+	});
+
+	it('says what the route refused a send for when it names no reason', async () => {
+		await opened();
+		refusals = [{ body: { error: 'message holds at most 4000 characters' }, status: 400 }];
+
+		await sendAndLand('Add a FAQ about coat sizes');
+
+		expect(refusalShown()).toBe('message holds at most 4000 characters');
+	});
+
+	it('gives the words back again when the resend is refused the same way', async () => {
+		await opened();
+		const stale = () => ({ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 });
+		refusals = [stale(), stale()];
+		await sendAndLand('Add a FAQ about coat sizes');
+
+		await press(button('Send'));
+		await settle();
+		expect(refusalShown()).toBe('');
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(box()).toBe('Add a FAQ about coat sizes');
+		expect(refusalShown()).toBe(
+			'The page was saved while this was being written, so nothing changed. Send it again.'
+		);
+	});
+
+	it('opens again without the last refusal', async () => {
+		await opened();
+		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];
+		await sendAndLand('Add a FAQ about coat sizes');
+
+		await press(button('Close'));
+		await press(button('Chat'));
+		await settle();
+
+		expect(refusalShown()).toBe('');
 	});
 });
