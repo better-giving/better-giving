@@ -618,7 +618,11 @@ describe('an impact figure', () => {
 		['1 dollar', 100],
 		['USD 40', 4000],
 		['40 usd', 4000],
-		['US$75', 7500]
+		['US$75', 7500],
+		['$15k', 1_500_000],
+		['$2.5K', 250_000],
+		['$1.2m', 120_000_000],
+		['3k dollars', 300_000]
 	])('reads %j as a figure the operator stated', (text, amountMinor) => {
 		const result = accept(addTiers([amountMinor]), {
 			messages: [operator(`about ${text}, thanks`)]
@@ -630,7 +634,8 @@ describe('an impact figure', () => {
 		['25 children', 2500],
 		['25', 2500],
 		['$12.505', 1250],
-		['$1,00', 100]
+		['$1,00', 100],
+		['$15kids', 1_500_000]
 	])('does not read %j as the figure %i', (text, amountMinor) => {
 		const result = accept(addTiers([amountMinor]), { messages: [operator(text)] });
 		expect(tiersOf(result)).toMatchObject({ tiers: [] });
@@ -688,6 +693,12 @@ describe('a figure in the words', () => {
 			current
 		});
 		expect(result).toMatchObject({ ok: true });
+	});
+
+	it('the same reply sets as the goal lands', () => {
+		const words = lede('Help us raise $15,000 this winter.');
+		expect(accept(words)).toMatchObject({ ok: false });
+		expect(accept({ ...words, set: { goalMinor: 1_500_000 } })).toMatchObject({ ok: true });
 	});
 
 	it('in a new campaign name the operator never stated refuses the reply', () => {

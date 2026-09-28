@@ -30,9 +30,9 @@
 //   reply rewrote included — is dropped and noted, and the rest of the reply lands.
 // - a figure in the words: a new campaign name and every string a block draws — a heading, a lede,
 //   what a tier buys, a question, each paragraph of a story or an answer — may hold only figures the operator wrote in
-//   the chat or the page already draws, in its words, its tiers' amounts or its goal. any other
-//   refuses the reply, naming the figure. a donor reads a figure as a promise the model cannot
-//   check.
+//   the chat or the page already draws, in its words, its tiers' amounts or its goal — the goal
+//   this same reply sets included. any other refuses the reply, naming the figure. a donor reads a
+//   figure as a promise the model cannot check.
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat, or
 //   the reply is refused.
 // - a block its page type does not take, and everything else about a page's shape, is
@@ -43,6 +43,8 @@
 // - an amount is digits, optionally grouped in threes by commas (`1,000`, `12,500`), optionally with
 //   a point and cents (`12.50`), and read by `readAmount` in ../forms/amounts.ts, so `12.505` is no
 //   figure at all.
+// - `k` or `m` straight after the digits scales it by a thousand or a million (`$15k`, `$1.2m`);
+//   followed by any other letter (`$15kids`) it is the digits alone.
 // - it is a figure only beside the currency: after `$`, `US$` or `USD` (`$25`, `$ 25`, `USD 40`),
 //   or before `dollar`, `dollars` or `USD` (`25 dollars`, `40 usd`). a bare number — `25 children`
 //   — is not one.
@@ -104,6 +106,9 @@ const replySchema = z.strictObject({
 		)
 		.optional()
 });
+
+/** the reply's shape as JSON Schema, for a model's JSON mode; this door checks it again whatever. */
+export const REPLY_JSON_SCHEMA = z.toJSONSchema(replySchema, { io: 'input' });
 
 /** what a page edit reaches: the page as the model reads it, `draftFromPage`'s keys. */
 const DRAFT_KEYS: readonly string[] = ['layout', 'palette', 'blocks'];
@@ -233,7 +238,8 @@ function accept(input: AcceptInput): Accepted | Refused {
 		return { ...block, tiers };
 	});
 
-	const shown = new Set([...stated, ...figuresShown(current)]);
+	const goal = set.onto.goalMinor === undefined ? [] : [set.onto.goalMinor];
+	const shown = new Set([...stated, ...figuresShown(current), ...goal]);
 	const worded = [
 		...(set.renamed === undefined ? [] : [{ where: 'set.name', texts: [set.renamed] }]),
 		...blocks.map((block, index) => ({
@@ -270,7 +276,8 @@ function accept(input: AcceptInput): Accepted | Refused {
 	};
 }
 
-const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?![\d,.]?\d)`;
+const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:([km])\b)?(?![\d,.]?\d)`;
+const SCALE: Record<string, number> = { k: 1_000, m: 1_000_000 };
 const FIGURES = [
 	new RegExp(String.raw`(?:\bUS\$|\$|\bUSD\b)\s?${NUMBER}`, 'gi'),
 	new RegExp(String.raw`(?<![\d.,$])${NUMBER}\s?(?:dollars?|USD)\b`, 'gi')
@@ -286,12 +293,14 @@ function statedFigures(messages: readonly ChatMessage[]): number[] {
 /** each figure `text` holds, as written and in minor units. */
 function figuresIn(text: string): { written: string; minor: number }[] {
 	return FIGURES.flatMap((pattern) => [...text.matchAll(pattern)]).flatMap(
-		([written, whole = '', fraction]) => {
+		([written, whole = '', fraction, suffix]) => {
 			const { minor } = readAmount(
 				`${whole.replaceAll(',', '')}${fraction === undefined ? '' : `.${fraction}`}`,
 				FORM_CURRENCY
 			);
-			return minor === null ? [] : [{ written, minor }];
+			if (minor === null) return [];
+			const scale = suffix === undefined ? 1 : (SCALE[suffix.toLowerCase()] ?? 1);
+			return [{ written, minor: minor * scale }];
 		}
 	);
 }
