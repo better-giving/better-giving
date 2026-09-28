@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
+import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { MissionAsk } from '$lib/admin/editor/confirms';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
@@ -151,6 +152,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 	const { state, version, preview, askMission, storyVersion } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
+	const chat = useEditorChat(loaderData.chat);
 
 	const mission = useFetcher<Answer>({ key: 'mission-ask' });
 	const busy = mission.state !== 'idle';
@@ -191,8 +193,9 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					onBlockClick={noPress}
 				/>
 			}
-			entries={<EditorEntries onChat={noPress} onSettings={() => setSettings(true)} />}
+			entries={<EditorEntries onChat={chat.open} onSettings={() => setSettings(true)} />}
 		>
+			{chat.sheet}
 			{settings ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}

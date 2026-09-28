@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { AddressSheet } from '$lib/admin/editor/address-sheet';
+import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
@@ -253,6 +254,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
 	const nameFetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
+	const chat = useEditorChat(loaderData.chat);
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
 
 	const [settings, setSettings] = useState(false);
@@ -337,8 +339,9 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					onBlockClick={noPress}
 				/>
 			}
-			entries={<EditorEntries onChat={noPress} onSettings={() => setSettings(true)} />}
+			entries={<EditorEntries onChat={chat.open} onSettings={() => setSettings(true)} />}
 		>
+			{chat.sheet}
 			{settings && opened !== 'address' ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}

@@ -42,6 +42,7 @@ beforeEach(async () => {
 type Drawn = {
 	state: string;
 	preview: string;
+	chat: string;
 	version: number;
 	askMission: boolean;
 	storyVersion: string;
@@ -70,7 +71,11 @@ describe('the Donation page editor', () => {
 
 		const made = await donationPage();
 		expect(made).not.toBeNull();
-		expect(drawn).toMatchObject({ state: 'live', preview: `/preview/${made?.id}` });
+		expect(drawn).toMatchObject({
+			state: 'live',
+			preview: `/preview/${made?.id}`,
+			chat: `/admin/pages/${made?.id}/chat`
+		});
 	});
 });
 

@@ -11,6 +11,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
 import { type MouseEvent, useSyncExternalStore } from 'react';
 import { Form, href, Link, redirect, useNavigate, useNavigation } from 'react-router';
+import { CHAT_PARAM } from '$lib/admin/editor/chat-wiring';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinorBrief } from '$lib/donations/money';
@@ -26,8 +27,9 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 
 // the Campaigns list: every campaign with its name, address, state, goal and end date, each linking
 // to its editor, the ended ones in a collapsed group of their own; and New campaign, a dialog on
-// `?new` whose action makes the campaign ($lib/server/pages/campaign.ts) and opens its editor. the
-// Donation page is no campaign and is not on this list.
+// `?new` whose action makes the campaign ($lib/server/pages/campaign.ts) and opens its editor — on
+// its chat when a "What's it for?" line drafted it, the first turn already answered. the Donation
+// page is no campaign and is not on this list.
 //
 // the goal and end date are the draft's, which is what the editor shows. an end date is the day
 // chosen, in the zone it was chosen in ($lib/page/end-date.ts's `endDayOf`), so every operator reads
@@ -99,7 +101,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 		console.error('making a campaign failed:', e);
 		return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 	}
-	return redirect(editorOf(made.pageId));
+	const drafted = (purpose ?? '').trim() !== '';
+	return redirect(drafted ? `${editorOf(made.pageId)}?${CHAT_PARAM}` : editorOf(made.pageId));
 }
 
 type Row = Route.ComponentProps['loaderData']['campaigns'][number];

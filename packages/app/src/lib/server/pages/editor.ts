@@ -22,8 +22,9 @@ import {
 } from './queries';
 
 // what the editor is drawn with, the Donation page's and a campaign's alike: where the page stands
-// against what donors see, the version every press on it is written against, and the preview
-// route that frames its draft (src/routes/preview.$pageId.tsx).
+// against what donors see, the version every press on it is written against, the preview route
+// that frames its draft (src/routes/preview.$pageId.tsx), and the route its chat is asked by
+// (src/routes/_app.admin.pages.$pageId.chat.ts).
 //
 // the Settings sheet's rows read the draft, which is what the editor changes; a goal and an end
 // date are a campaign's alone and read null on the Donation page.
@@ -46,6 +47,7 @@ export type EditorPage = {
 	/** the row's `updated_at` in unix ms. */
 	readonly version: number;
 	readonly preview: string;
+	readonly chat: string;
 	/** the draft's own share message, or null while it takes the Organisation's. */
 	readonly shareMessage: string | null;
 	readonly goalMinor: number | null;
@@ -60,6 +62,7 @@ export function editorPage(row: Page): EditorPage {
 		state: editorState(row),
 		version: row.updatedAt.getTime(),
 		preview: `/preview/${row.id}`,
+		chat: `/admin/pages/${row.id}/chat`,
 		shareMessage: draft.page.shareMessage ?? null,
 		goalMinor: draft.page.goalMinor ?? null,
 		endDate: endDayOf(draft.page)

@@ -210,6 +210,13 @@ describe('New campaign', () => {
 		expect(JSON.parse(made?.draft ?? '{}').endsAt).toBe(Date.parse('2027-01-01T05:00:00Z') - 1);
 	});
 
+	it('opens the editor on its chat when it was made with a line', async () => {
+		const response = await post({ ...CREATE, purpose: 'coats for 300 kids' });
+
+		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
+		expect(response.headers.get('Location')).toBe(`${LIST}/${made?.id}?chat`);
+	});
+
 	it('refuses a blank title at its box, and makes nothing', async () => {
 		const response = await post({ ...CREATE, title: '   ' });
 
