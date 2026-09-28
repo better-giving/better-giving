@@ -48,6 +48,8 @@ const DESCRIPTIONS: Record<BlockType, string> = {
 	'about-us': 'what the organisation does, drawn from its own profile',
 	'org-info': 'the organisation’s name, address and legal details',
 	share: 'buttons that share the page',
+	hero: 'the page’s opening photo; under the cover layout the title lies over it',
+	image: 'a photo among the other blocks',
 	'goal-bar': 'the campaign’s progress toward its goal',
 	'program-chooser': 'lets the donor pick which program their gift supports',
 	'donation-box': 'where the donor gives; takes no props and no variant'
@@ -161,6 +163,8 @@ function prompt({ catalog, options, formatZodType }: PromptContext<DraftCatalog>
 		`- every id is unique on the page, 1 to ${ID_MAX} letters, digits, "-" or "_"`,
 		'- use only the names above; no colour, HTML or action anywhere',
 		'- add no link; keep a link already in the text exactly as it is',
+		// the chat names a turn's photos this way: `withImages` in $lib/server/pages/draft.ts.
+		'- a photo’s imageId is an id from "(attached photos: …)" in the chat or one the page already holds, never an address; null leaves the block out',
 		...(options.customRules ?? []).map((rule) => `- ${rule}`)
 	].join('\n');
 }

@@ -1,13 +1,21 @@
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { RichTextEditor } from '$lib/admin/rich-text/rich-text-editor';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import type { Resized } from '$lib/images/resize';
 import { BLOCK_FORMS, type BlockText, type EditorBlock } from '$lib/page/block-edit';
+import { imageSrc } from '$lib/page/image-src';
 import { AffixedField } from './affixed-field';
 import { BlockSheet } from './block-sheet';
 import { useFocusOnRefusal } from './done-sheet';
+import { postPhoto, type UploadAnswer } from './photo-upload';
+import {
+	ReplacePhotoControl,
+	type ReplacePhotoControlProps,
+	replaceRefusal
+} from './replace-photo';
 
 // a block's sheet as both editors open it — from a click on the block in the preview and from its
 // row in Settings' block list alike, the donation box's being Donation settings — and the layout
@@ -26,6 +34,12 @@ import { useFocusOnRefusal } from './done-sheet';
 // stands off the next further than the two boxes inside it stand apart, and nearer than the
 // pictures stand off the rows. a tier's amount carries its currency on the box
 // (./affixed-field.tsx), as the goal's does.
+//
+// a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
+// photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
+// stored, and Done writes its id and the description to the block, as a text block's words are;
+// a sheet dismissed before Done leaves the block as it was. what the photo's refusals say lands at
+// Done, since the block's rule names no box of the sheet's.
 
 type Answer = AdminActionData & { readonly saved?: string };
 
@@ -49,7 +63,8 @@ const TEXT_FORMS = {
 	title: { id: BLOCK_FORMS.title },
 	story: { id: BLOCK_FORMS.story },
 	'impact-tiers': { id: BLOCK_FORMS.impactTiers },
-	faq: { id: BLOCK_FORMS.faq }
+	faq: { id: BLOCK_FORMS.faq },
+	photo: { id: BLOCK_FORMS.photo }
 } as const;
 const VARIANT_FORM = { id: BLOCK_FORMS.variant };
 const LAYOUT_FORM = { id: BLOCK_FORMS.layout };
@@ -147,6 +162,62 @@ type BlockFieldsProps = {
 
 /** the boxes a block's words are typed in, named as its form posts them. */
 function BlockFields({ id, text, error }: BlockFieldsProps) {
+	if (text.kind === 'photo') return <PhotoFields text={text} />;
+	return <WordFields id={id} text={text} error={error} />;
+}
+
+type PhotoText = Extract<BlockText, { kind: 'photo' }>;
+
+/** the photo Done writes, and what describes it, each posted from a hidden box. */
+function PhotoFields({ text }: { readonly text: PhotoText }) {
+	const upload = useFetcher<UploadAnswer>();
+	const [imageId, setImageId] = useState(text.imageId);
+	const [alt, setAlt] = useState(text.alt);
+	const [refused, setRefused] = useState<string | null>(null);
+	const [answered, setAnswered] = useState(upload.data);
+	if (upload.data !== answered) {
+		setAnswered(upload.data);
+		if (upload.data !== undefined && 'error' in upload.data) {
+			setRefused(
+				upload.data.reason === 'failed'
+					? 'That didn’t go through. Choose the photo again.'
+					: upload.data.error
+			);
+		} else if (upload.data !== undefined) {
+			setImageId(upload.data.id);
+		}
+	}
+
+	const resized = (result: Resized) => {
+		if (!result.ok) {
+			setRefused(replaceRefusal(result.reason));
+			return;
+		}
+		setRefused(null);
+		postPhoto(upload, result.blob);
+	};
+	const state: ReplacePhotoControlProps['state'] =
+		upload.state !== 'idle' ? 'uploading' : refused === null ? undefined : { refused };
+
+	return (
+		<>
+			<ReplacePhotoControl
+				imageSrc={imageSrc(imageId)}
+				alt={alt}
+				onResized={resized}
+				onAltChange={setAlt}
+				state={state}
+			/>
+			<input type="hidden" name="image_id" value={imageId} />
+			<input type="hidden" name="alt" value={alt} />
+		</>
+	);
+}
+
+type WordsText = Exclude<BlockText, PhotoText>;
+
+/** the boxes of a block whose words are typed. */
+function WordFields({ id, text, error }: BlockFieldsProps & { readonly text: WordsText }) {
 	const boxes = boxNames(text);
 	const refused = boxes.find((box) => error(box) !== null) ?? null;
 	useFocusOnRefusal(
@@ -243,7 +314,7 @@ function BlockFields({ id, text, error }: BlockFieldsProps) {
 }
 
 /** every box a block's form posts, in the order the sheet draws them. */
-function boxNames(text: BlockText): string[] {
+function boxNames(text: WordsText): string[] {
 	switch (text.kind) {
 		case 'title':
 			return ['heading', 'lede'];

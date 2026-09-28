@@ -18,6 +18,7 @@ import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.tes
 import { endAsItStands } from '$lib/server/pages/page-row.testing';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { readOrgLook, updateOrgLook } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes } from '../route-request.testing';
@@ -172,11 +173,78 @@ describe('a published campaign at its address', () => {
 		]);
 	});
 
+	it('names its cover photo, by id, as its share image', async () => {
+		const photo = '0192a4c1-0000-7000-8000-000000000001';
+		const published = defaultCampaign();
+		published.blocks[0] = {
+			id: 'hero',
+			type: 'hero',
+			variant: 'framed',
+			background: 'none',
+			imageId: photo,
+			alt: null
+		};
+		await campaign({ published });
+		const answered = await visit();
+		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Winter coat drive' },
+			{ property: 'og:image', content: `${OWN}/image/${photo}` }
+		]);
+	});
+
+	it('names no share image without a cover photo, a photo lower on the page included', async () => {
+		const photo = '0192a4c1-0000-7000-8000-000000000001';
+		const published = defaultCampaign();
+		published.blocks[0] = {
+			id: 'photo',
+			type: 'image',
+			variant: 'wide',
+			background: 'none',
+			imageId: photo,
+			alt: null
+		};
+		await campaign({ published });
+		const answered = await visit();
+		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Winter coat drive' }
+		]);
+	});
+
 	it('takes a gift that records against its owned row, as a gift through a form', async () => {
 		await campaign();
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		await expectRecordedAsAForm(db, answered.data.view.config.formId);
+	});
+});
+
+/** the seeds the page root sets, read off the drawn page as the browser receives them. */
+function seeds(html: string) {
+	const root = /<div[^>]*data-donate-root[^>]*>/.exec(html)?.[0];
+	if (root === undefined) throw new Error('the page drew no root');
+	return {
+		shade: /data-shade="([^"]*)"/.exec(root)?.[1],
+		corner: /data-corner="([^"]*)"/.exec(root)?.[1],
+		brandColour: /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null
+	};
+}
+
+describe('the look a published campaign is drawn in', () => {
+	it('moves with a save of the Organisation’s, unless the campaign holds its own', async () => {
+		const own = { shade: 'cool', corner: 'square', brandColour: '#6b2d8a' } as const;
+		await campaign();
+		await campaign({
+			name: 'Spring fun run',
+			slug: 'spring-fun-run',
+			published: { ...defaultCampaign(), look: own }
+		});
+
+		const { version } = await readOrgLook(db);
+		const saved = { shade: 'warm', corner: 'round', brandColour: '#1d6b4f' } as const;
+		expect(await updateOrgLook(db, version, saved)).not.toBe('stale');
+
+		expect(seeds(markup((await visit()).data))).toEqual(saved);
+		expect(seeds(markup((await visit('/spring-fun-run')).data))).toEqual(own);
 	});
 });
 

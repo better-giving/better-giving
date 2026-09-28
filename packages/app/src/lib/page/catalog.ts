@@ -54,6 +54,8 @@ export const BLOCKS = {
 	},
 	'org-info': { variants: ['footer', 'card'], backgrounds: NO_GROUND, pages: PAGE_TYPES },
 	share: { variants: ['buttons', 'icons'], backgrounds: NOT_STRONG, pages: PAGE_TYPES },
+	hero: { variants: ['wide', 'framed'], backgrounds: NO_GROUND, pages: PAGE_TYPES },
+	image: { variants: ['column', 'wide'], backgrounds: NO_GROUND, pages: PAGE_TYPES },
 	'goal-bar': { variants: ['bar', 'figure'], backgrounds: NO_GROUND, pages: ['campaign'] },
 	'program-chooser': {
 		variants: ['cards', 'list'],
@@ -75,8 +77,24 @@ export const BUYS_MAX = 140;
 export const FAQ_MAX = 10;
 export const QUESTION_MAX = 200;
 export const SHARE_MESSAGE_MAX = 280;
+const ALT_MAX = 250;
 
 const TIER_AMOUNT = 'a tier\u2019s amount is a whole number of minor units above zero';
+
+/**
+ * a photo by the id the deployment gave it on upload, and never an address: the only place a
+ * page's photo is served from is `imageSrc` in ./image-src.ts. null until a photo is placed.
+ */
+const photo = {
+	imageId: z
+		.uuid({ error: 'an image id is the id a stored photo was given on upload, never an address' })
+		.nullable(),
+	/** null is a decorative photo. */
+	alt: z
+		.string()
+		.max(ALT_MAX, { error: `a photo\u2019s description holds at most ${ALT_MAX} characters` })
+		.nullable()
+};
 
 /**
  * the values each block draws, beside its frame. a block with none draws only what it reads at
@@ -127,6 +145,8 @@ export const BLOCK_DATA = {
 	'about-us': {},
 	'org-info': {},
 	share: {},
+	hero: photo,
+	image: photo,
 	'goal-bar': {},
 	'program-chooser': {},
 	'donation-box': {}
@@ -195,6 +215,8 @@ const block = z.discriminatedUnion(
 			...BLOCK_DATA['org-info']
 		}),
 		strictBlock('share', { ...frame('share', BLOCKS.share), ...BLOCK_DATA.share }),
+		strictBlock('hero', { ...frame('hero', BLOCKS.hero), ...BLOCK_DATA.hero }),
+		strictBlock('image', { ...frame('image', BLOCKS.image), ...BLOCK_DATA.image }),
 		strictBlock('goal-bar', {
 			...frame('goal-bar', BLOCKS['goal-bar']),
 			...BLOCK_DATA['goal-bar']

@@ -36,8 +36,9 @@
 //   the chat or the page already draws, in its words, its tiers' amounts or its goal — the goal
 //   this same reply sets included. any other refuses the reply, naming the figure. a donor reads a
 //   figure as a promise the model cannot check.
-// - an image: any `imageId`, whichever block carries it, is one attached in this page's chat, or
-//   the reply is refused.
+// - an image: any `imageId`, whichever block carries it, is one attached in this page's chat or
+//   one `current` already places, or the reply is refused. that it names a stored image is
+//   $lib/server/pages/draft.ts's to check, and that it is an id and never an address the catalog's.
 // - a block its page type does not take, and everything else about a page's shape, is
 //   `parsePage`'s, which the draft passes last.
 //
@@ -143,6 +144,7 @@ export type AcceptInput = {
 	name: string | null;
 	/** the model's answer as it arrived. */
 	reply: string;
+	/** the image ids attached in any turn of this page's chat. */
 	attached: readonly string[];
 	messages: readonly ChatMessage[];
 	activePrograms: readonly ActiveProgram[];
@@ -227,7 +229,8 @@ function accept(input: AcceptInput): Accepted | Refused {
 		: undefined;
 	if (outside !== undefined) return refuse(outsideDraft(outside));
 
-	const stray = imageIdsIn(draft).find(({ id }) => !input.attached.includes(id));
+	const placeable = new Set([...input.attached, ...imageIdsIn(current).map(({ id }) => id)]);
+	const stray = imageIdsIn(draft).find(({ id }) => !placeable.has(id));
 	if (stray !== undefined) {
 		return refuse(located(stray.path, `image "${stray.id}" was not attached in this chat`));
 	}

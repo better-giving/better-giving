@@ -529,6 +529,17 @@ describe('Publish', () => {
 		expect(await response.json()).toEqual({ published: true, undoable: true });
 	});
 
+	it('has no Reset to default, and refuses one posted by hand, leaving the campaign as it was', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		const drawn = await stored(pageId);
+
+		const response = await post(pageId, 'page-reset', {});
+
+		expect(response.status).toBe(400);
+		expect(await response.text()).toContain('names no form on this screen');
+		expect(await stored(pageId)).toEqual(drawn);
+	});
+
 	it('answers 404 for an id no campaign has', async () => {
 		const response = await post(
 			'no-such-page',
