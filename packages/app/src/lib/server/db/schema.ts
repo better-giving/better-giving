@@ -1,5 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import {
+	blob,
 	check,
 	foreignKey,
 	index,
@@ -3078,6 +3079,72 @@ export const chatTurn = sqliteTable(
 	]
 );
 
+export const IMAGE_KINDS = ['photo', 'illustration'] as const;
+export type ImageKind = (typeof IMAGE_KINDS)[number];
+
+export const IMAGE_CONTENT_TYPES = ['image/webp', 'image/jpeg', 'image/png'] as const;
+export type ImageContentType = (typeof IMAGE_CONTENT_TYPES)[number];
+
+/**
+ * what is known about one image, and never its bytes: those are `image_bytes`, behind the port in
+ * ../images/bytes.ts, whose header argues the split. the bytes never change, so replacing a photo
+ * on a page is a new image; `alt` is the one column edited after the insert.
+ *
+ * `alt` is the text a screen reader reads; null is a decorative image, drawn with `alt=""`, and a
+ * blank string is refused so decorative has one spelling.
+ */
+export const image = sqliteTable(
+	'image',
+	{
+		id: id(),
+		kind: text('kind').$type<ImageKind>().notNull(),
+		contentType: text('content_type').$type<ImageContentType>().notNull(),
+		width: integer('width').notNull(),
+		height: integer('height').notNull(),
+		byteSize: integer('byte_size').notNull(),
+		alt: text('alt'),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('image_kind_check', enumCheck(t.kind, IMAGE_KINDS)),
+		check('image_content_type_check', enumCheck(t.contentType, IMAGE_CONTENT_TYPES)),
+		check('image_size_check', sql`${t.width} > 0 and ${t.height} > 0 and ${t.byteSize} > 0`),
+		check('image_alt_check', optionalNotBlank(t.alt))
+	]
+);
+
+/**
+ * under D1's 2,000,000-byte ceiling on one row (https://developers.cloudflare.com/d1/platform/limits/)
+ * by enough for the row's id and sqlite's record header beside the blob.
+ */
+export const IMAGE_BYTES_MAX = 1_900_000;
+
+/**
+ * an image's bytes, one row per image, in a table of their own so that a rebuild of `image` or of
+ * anything else copies none of them. read and written only by ../images/bytes.ts, gated by
+ * ../images/sole-bytes-owner.spec.ts.
+ *
+ * `image_id` is `NO ACTION`, like every domain key here (rule 2 at the top of this file).
+ */
+export const imageBytes = sqliteTable(
+	'image_bytes',
+	{
+		imageId: text('image_id')
+			.primaryKey()
+			.references(() => image.id),
+		bytes: blob('bytes', { mode: 'buffer' }).notNull()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check(
+			'image_bytes_length_check',
+			sql`length(${t.bytes}) between 1 and ${sql.raw(String(IMAGE_BYTES_MAX))}`
+		)
+	]
+);
+
 export type Contact = typeof contact.$inferSelect;
 export type NewContact = typeof contact.$inferInsert;
 export type Account = typeof account.$inferSelect;
@@ -3118,6 +3185,8 @@ export type Page = typeof page.$inferSelect;
 export type NewPage = typeof page.$inferInsert;
 export type ChatTurn = typeof chatTurn.$inferSelect;
 export type NewChatTurn = typeof chatTurn.$inferInsert;
+export type Image = typeof image.$inferSelect;
+export type NewImage = typeof image.$inferInsert;
 
 // tables better-auth owns, kept in their own file because their columns are dictated
 // by better-auth's core schema rather than by the domain. re-exported here — not
