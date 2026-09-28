@@ -91,7 +91,7 @@ import type {
 //
 // **a failed collection is `BILLING.SUBSCRIPTION.PAYMENT.FAILED`, read into the attempt that
 // failed** (`failedAttemptOf`). it is on `RECURRING_COLLECTION_EVENT_TYPES`, so a listener the
-// console brought level already delivers it and a deployment reports it with its code alone. how
+// console brought level already delivers it and a deployment reads it with its code alone. how
 // many arrive in a row before PayPal suspends the commitment is the plan's to say
 // (`PAYMENT_FAILURE_THRESHOLD`).
 //
@@ -994,27 +994,41 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	/**
 	 * the commitment a `BILLING.SUBSCRIPTION.PAYMENT.FAILED` names, with the attempt that failed.
 	 *
-	 * the attempt is read off the same fresh read as the commitment rather than off the delivery,
-	 * under `RecurringGiftNotice`'s rule in ./provider.ts: the subscription carries the last failed
-	 * payment and the count of failures in a row, which is all `failedAttemptOf` needs.
+	 * the attempt's figures are read off the same fresh read as the commitment, under
+	 * `RecurringGiftNotice`'s rule in ./provider.ts: the subscription carries the last failed payment
+	 * and the count of failures in a row. its key is the delivery's own id (`failedAttemptOf`).
 	 *
-	 * a read counting no failure is a delivery the retry that paid overtook, and it reports the
-	 * commitment's standing alone: a destination told of it would hear the donor's card is failing
-	 * after the charge that cured it. a failure it cannot read is refused rather than passed on
-	 * without its attempt, because a collection with neither an attempt nor a transaction is how a
-	 * charge settled outside PayPal reads in ../donations/collect.ts.
+	 * a read counting no failure, with a payment after the delivery, is a delivery the retry that
+	 * paid overtook, and it reports the commitment's standing alone: a destination told of it would
+	 * hear the donor's card is failing after the charge that cured it. counting no failure and no
+	 * payment since, the read has not caught up with the delivery, and a retryable refusal has PayPal
+	 * deliver it again where a 2xx would lose it. a failure it cannot read is refused rather than
+	 * passed on without its attempt, because a collection with neither an attempt nor a transaction
+	 * is how a charge settled outside PayPal reads in ../donations/collect.ts.
 	 *
 	 * no gift can be opened by this: a subscription's first payment failing leaves no commitment
 	 * row, since the first charge that settles is what writes one, and the collection path reports
 	 * nothing for an attempt under none.
 	 */
-	async function readFailure(giftId: string): Promise<PaymentResult<RecurringGiftNotice>> {
+	async function readFailure(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>> {
+		const giftId = event.providerNoticeId;
 		try {
 			const { result } = await subscriptions.getSubscription({ id: giftId, fields: 'plan' });
 			if ((result.billingInfo?.failedPaymentsCount ?? 0) < 1) {
-				return { ok: true, value: noticeOf(result, 'commitment', null) };
+				const paid = whenever(result.billingInfo?.lastPayment?.time);
+				if (paid !== null && paid > event.occurredAt) {
+					return { ok: true, value: noticeOf(result, 'commitment', null) };
+				}
+				return {
+					ok: false,
+					reason: 'provider_error',
+					detail:
+						`PayPal reported a failed payment under ${redactPublicId(giftId)}, and the ` +
+						'subscription read back counts no failure and no payment since the delivery. ' +
+						'Nothing was recorded, and PayPal will deliver it again.'
+				};
 			}
-			const failed = failedAttemptOf(result);
+			const failed = failedAttemptOf(result, event);
 			if (failed === null) {
 				return {
 					ok: false,
@@ -2072,7 +2086,7 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		 * commitment. everything else names the subscription directly.
 		 */
 		async readRecurringGift(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>> {
-			if (event.type === COLLECTION_FAILED_EVENT) return readFailure(event.providerNoticeId);
+			if (event.type === COLLECTION_FAILED_EVENT) return readFailure(event);
 
 			if (event.type !== 'PAYMENT.SALE.COMPLETED') {
 				return readCommitment(
@@ -2525,18 +2539,17 @@ function noticeOf(
  * cannot be read (`failed_payment_details` in billing_subscriptions_v1.json in
  * https://github.com/paypal/paypal-rest-api-specifications).
  *
- * the key is the subscription and the failure's own time: a redelivery reads the same last failure,
- * and the next attempt — a retry, or next cycle's payment — is a failure at another time. the count
- * is no key on its own, because it resets to 0 once a payment settles and next cycle's first miss
- * counts 1 again. read fresh, a delivery held back past the next failure reads that one, and the two
- * report under one key.
+ * the key is the delivery's own id, which PayPal repeats on a redelivery and mints afresh for each
+ * failed payment. nothing read about the subscription can be it: a delivery redelivered after the
+ * next failure reads that failure. `failedAt` is the failure's own recorded time rather than the
+ * delivery's.
  *
  * `attemptCount` is `failed_payments_count`, the failures in a row since a payment last settled,
  * which is what `PAYMENT_FAILURE_THRESHOLD` is counted against. `nextRetryAt` is PayPal's retry of
  * this payment and never `next_billing_time`, which is the next cycle's payment rather than another
  * try at this one.
  */
-function failedAttemptOf(committed: Subscription): FailedCollection | null {
+function failedAttemptOf(committed: Subscription, event: RecurringEvent): FailedCollection | null {
 	const billing = committed.billingInfo;
 	const failed = billing?.lastFailedPayment;
 	if (!billing || !failed) return null;
@@ -2546,7 +2559,7 @@ function failedAttemptOf(committed: Subscription): FailedCollection | null {
 	if (failedAt === null || amountMinor === null) return null;
 
 	return {
-		attemptKey: `${committed.id ?? ''}:${failedAt.toISOString()}`,
+		attemptKey: event.id,
 		attemptCount: billing.failedPaymentsCount,
 		nextRetryAt: whenever(failed.nextPaymentRetryTime),
 		failedAt,
