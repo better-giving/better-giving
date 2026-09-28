@@ -151,8 +151,8 @@ function put(target: Record<string, string>, key: string, value: string | undefi
  * `theme: 'flat'` is the base with the least of its own opinion to override, so the rules
  * below are additions rather than corrections.
  *
- * resolved once, by the caller, at mount. a host that changes `--donate-primary` afterwards
- * gets a form that follows and card fields that do not until the next mount; that is a narrow
+ * resolved once, by the caller, at mount. a host that changes a seed afterwards gets a form
+ * that follows and card fields that do not until the next mount; that is a narrow
  * case and the fix for it, if it is ever needed, is a method on the element rather than an
  * attribute, because the element's public attribute surface is closed.
  */

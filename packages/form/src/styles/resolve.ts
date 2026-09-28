@@ -113,9 +113,10 @@ const UNRESOLVED = 'rgba(0, 0, 0, 0)';
 /**
  * the same sentinel for the length kind, and it stands on the same kind of impossibility.
  *
- * every length in `LENGTH_TOKENS` is non-negative and cannot be made otherwise from outside: the
- * only seed this element takes is a colour, and every length in ./tokens.css is a literal or a
- * positive multiple of a root clamped into `[15px, 18px]`. so a negative computed length is not a
+ * every length in `LENGTH_TOKENS` is non-negative and cannot be made otherwise from outside: no
+ * seed carries a length — the corner seed picks among the zero and the positive literals
+ * ./tokens.css authors — and every other length there is a literal or a positive multiple of a root
+ * clamped into `[15px, 18px]`. so a negative computed length is not a
  * token this form could ever have been given, and it is the one length that can stand for "this did
  * not resolve".
  *
@@ -163,13 +164,14 @@ function bytes(context: CanvasRenderingContext2D, value: string): readonly numbe
 /**
  * the appearance object for one mounted card, resolved once against the cascade it is in.
  *
- * `host` is any node inside the shadow root the token sheet is adopted into: the steps are
- * declared on `:host` and inherited, so a probe anywhere under it resolves them. the probe is
- * removed before this returns — nothing is left in the card that the card did not build.
+ * `host` is any node inside the card, or projected into it through a slot: the steps a preset moves
+ * are declared on the node under `:host` rather than on it (the preset layer in ./tokens.css), so a
+ * probe resolves the shade and the corner the card is painted with only from inside that node. the
+ * probe is removed before this returns — nothing is left in the card that the card did not build.
  *
- * resolved at mount and never again. a host page that changes `--donate-primary` afterwards
- * gets a form that follows and provider fields that do not until the next mount, which
- * ./appearance.ts states as the accepted cost.
+ * resolved at mount and never again. a host page that changes a seed afterwards gets a form that
+ * follows and provider fields that do not until the next mount, which ./appearance.ts states as the
+ * accepted cost.
  */
 export function resolveAppearance(host: HTMLElement): StripeAppearance {
 	const doc = host.ownerDocument;

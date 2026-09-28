@@ -497,8 +497,8 @@ textarea[part~='field'] {
  * `appearance: none` is why every line under it exists, and the corner is why it is there at all:
  * chromium computes `border-radius` to `0px` on a checkbox left at `appearance: auto`, whatever is
  * declared and wherever it is declared, so the ring the focus block lays around it squared off
- * around a box the engine drew round. a box this sheet draws takes the card's inner corner, and the
- * ring follows it.
+ * around a box the engine drew round. a box this sheet draws takes the card's inner corner, held
+ * at `soft`'s under `round` (`--_r-box` in ./tokens.css), and the ring follows it.
  *
  * so it is the field's construction at a field's fill and a field's edge, at the size and the
  * first-line offset it already stood at, and the primary fills it when it is ticked — the half of
@@ -530,7 +530,7 @@ textarea[part~='field'] {
 	margin-block-start: calc((1lh - var(--_box)) / 2);
 	background: var(--_n1);
 	border: var(--_border) solid var(--_edge-control);
-	border-radius: var(--_r-in);
+	border-radius: var(--_r-box);
 	outline: var(--_border) solid transparent;
 	outline-offset: calc(-1 * var(--_border));
 	cursor: pointer;
@@ -685,17 +685,16 @@ button.step-dot[aria-disabled='true'] {
  * the outline is `--_border`: the mark a donor is standing on is the state here, and the weight
  * that carries state is not spent on the ones they are not.
  *
- * the corner is `--_r`. over half the box the engine reduces it to that half
- * (https://www.w3.org/TR/css-backgrounds-3/#corner-overlap), so 8px draws a circle here rather than
- * a rounded square: ./tokens.css carries the arithmetic that keeps half of `--_mark` under 8px at
- * every zoom.
+ * a circle by construction, like the spinner, and not a corner of the card's: the marks are dots
+ * under every `--donate-corner`, because a row of three squares reads as three boxes to tick rather
+ * than as where the donor is standing.
  */
 .step-mark {
 	flex: none;
 	inline-size: var(--_mark);
 	block-size: var(--_mark);
 	border: var(--_border) solid var(--_edge-control);
-	border-radius: var(--_r);
+	border-radius: 50%;
 }
 
 .step-dot.current .step-mark {
@@ -1771,7 +1770,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .skeleton-mark {
 	inline-size: var(--_mark);
 	block-size: var(--_mark);
-	border-radius: var(--_r);
+	border-radius: 50%;
 }
 
 /*

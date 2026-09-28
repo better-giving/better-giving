@@ -4,8 +4,8 @@
 // sites this project cannot reach, on top of whatever they already run. it consumes the flow in
 // ./checkout.machine.ts through ./connect.ts and renders it; it re-implements none of it.
 //
-// the public surface is closed and permanent. two attributes (`form`, `variant`), one seed custom
-// property, fourteen `::part()` names and two slots — all published in `custom-elements.json`,
+// the public surface is closed and permanent. two attributes (`form`, `variant`), three seed custom
+// properties, fourteen `::part()` names and two slots — all published in `custom-elements.json`,
 // all add-never-rename, exactly like `v1` (CLAUDE.md, "Permanent contracts"). one object-valued
 // attribute would make React support version-dependent, so the attributes stay primitive.
 //
@@ -313,12 +313,11 @@ function adoptTokens(doc: Document, token: CSSStyleSheet): void {
  *
  * the second adoption is load-bearing, not defensive. `@property` registrations are collected from
  * the document tree only — one that reaches the engine solely through a shadow root's stylesheet
- * is ignored — so a token sheet adopted into the shadow root alone leaves the five seeds with no
- * initial value and every step derived from them invalid at computed-value time. that is a blank
+ * is ignored — so a token sheet adopted into the shadow root alone leaves the brand seed with no
+ * initial value and every step derived from it invalid at computed-value time. that is a blank
  * card on any page whose host set no seeds, which is the common case. "registers only from the
- * document tree" in ./styles/tokens.browser.spec.ts is the proof, and the `:host` block in that
- * file matches nothing in the document tree, so the second adoption costs a parse and nothing
- * else.
+ * document tree" in ./styles/tokens.browser.spec.ts is the proof, and no selector in that file
+ * matches anything on a host's page, so the second adoption costs a parse and nothing else.
  *
  * the sheets are built once per document and the document adoption is checked on every call, which
  * is the asymmetry `adoptTokens` above is for: building twice would waste a parse, and appending

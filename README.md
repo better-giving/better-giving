@@ -158,13 +158,16 @@ Vendor lists: Stripe's [integration security guide](https://docs.stripe.com/secu
 
 ## Theme the form
 
-One custom property, set on the element or anything above it:
+Three custom properties, set on the element or anything above it:
 
 ```html
-<bg-donate-form form="frm_…" style="--donate-primary: #0f766e"></bg-donate-form>
+<bg-donate-form
+  form="frm_…"
+  style="--donate-primary: #0f766e; --donate-shade: warm; --donate-corner: round"
+></bg-donate-form>
 ```
 
-`--donate-primary` is your brand colour: every solid block a donor acts on, plus the two places the brand is ink (the quiet action, and the word on a selected amount or frequency). The card's greys, type, corners and focus ring are the form's own, and more than a brand colour means a fork. **Light only, by decision**: a dark host page gets a light card.
+`--donate-primary` is your brand colour: every solid block a donor acts on, plus the two places the brand is ink (the quiet action, and the word on a selected amount or frequency). `--donate-shade` picks the tone of the card's greys — `light` (the default), `warm` or `cool` — and `--donate-corner` picks its corners — `square`, `soft` (the default) or `round`. Anything else in either renders the default. The type and the focus ring are the form's own, and more than a brand colour and those two presets means a fork. **Light only, by decision**: every shade is light, and a dark host page gets a light card.
 
 [`custom-elements.json`](./packages/form/custom-elements.json) is the canonical list of part names and tokens, permanent exactly like `/api/v1`.
 
