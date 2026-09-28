@@ -2271,15 +2271,18 @@ function planName(key: RecurringPlanKey): string {
 /**
  * what makes two requests for the same plan one create.
  *
- * derived from the amount, the currency and the cadence, which is the whole of what the plan is —
- * so the second of two requests that both found nothing is a repeat rather than a first attempt, and
- * PayPal answers it with the plan the first made. the header is honoured for 72 hours on this API
+ * derived from the amount, the currency, the cadence and {@link PAYMENT_FAILURE_THRESHOLD}, which is
+ * the whole of what {@link charges} matches a plan on — so the second of two requests that both
+ * found nothing is a repeat rather than a first attempt, and PayPal answers it with the plan the
+ * first made. the header is honoured for 72 hours on this API
  * (https://github.com/paypal/paypal-rest-api-specifications/blob/main/openapi/billing_subscriptions_v1.json),
  * which is the window a race can be settled inside; past it, {@link findOrCreateBillingPlan}'s own
- * read is what finds the plan and no create is reached.
+ * read is what finds the plan and no create is reached. a plan held on another threshold is passed
+ * over by the read, so a key without it would be answered inside that window with the very plan
+ * the read refused.
  */
 function planRequestId(key: RecurringPlanKey): string {
-	return `${DERIVED_KEY}:plan:${key.interval}:${key.currency}:${key.amountMinor}`;
+	return `${DERIVED_KEY}:plan:${key.interval}:${key.currency}:${key.amountMinor}:failures-${PAYMENT_FAILURE_THRESHOLD}`;
 }
 
 /**
@@ -2309,7 +2312,8 @@ const PLAN_PAGE_LIMIT = 10;
  * set, because the spec's default of 0 (`payment_preferences` in billing_subscriptions_v1.json in
  * https://github.com/paypal/paypal-rest-api-specifications) says neither whether it suspends on the
  * first miss or never, and either one breaks the lapse ../donations/collect.ts writes and revives.
- * {@link charges} passes over a plan holding any other value.
+ * {@link charges} passes over a plan holding any other value, and {@link planRequestId} keys a
+ * create on it.
  */
 const PAYMENT_FAILURE_THRESHOLD = 3;
 

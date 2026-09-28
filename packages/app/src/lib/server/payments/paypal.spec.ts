@@ -2764,6 +2764,26 @@ describe('the billing plan one amount and interval is charged on', () => {
 		await findOrCreateBillingPlan(paypalSubscriptions(CREDENTIALS), MONTHLY);
 
 		expect(apiCall(calls, 1)?.headers['paypal-request-id']).toBe(
+			'better-giving:plan:monthly:USD:2500:failures-3'
+		);
+	});
+
+	/**
+	 * a plan suspending on another count of failures is another create, never a repeat of one.
+	 *
+	 * `better-giving:plan:monthly:USD:2500` is the key a plan holding PayPal's default threshold was
+	 * created under, the same amount and cadence as this one. inside the 72 hours PayPal honours it,
+	 * a create under that key is answered with that plan — which `charges` has just passed over.
+	 */
+	it('keys the create apart from one differing only in its failure threshold', async () => {
+		const { calls } = recording([
+			{ status: 200, json: { plans: [heldPlan({ threshold: 0 })] } },
+			{ status: 201, json: { id: 'P-2', status: 'ACTIVE' } }
+		]);
+
+		await findOrCreateBillingPlan(paypalSubscriptions(CREDENTIALS), MONTHLY);
+
+		expect(apiCall(calls, 1)?.headers['paypal-request-id']).not.toBe(
 			'better-giving:plan:monthly:USD:2500'
 		);
 	});
