@@ -13,6 +13,11 @@
 
 /** top-level keys of a page document (`page.draft`, `published`, `last_published`). */
 export const PAGE_KEYS = {
+	/**
+	 * a campaign's name as its page draws it; absent, the page draws `page.name`, the dashboard's
+	 * current name for it.
+	 */
+	name: 'name',
 	/** a campaign's goal, minor units of its owned settings row's currency. */
 	goalMinor: 'goalMinor',
 	/** a campaign's end: the end of the chosen day, unix ms, in the setting browser's time zone. */

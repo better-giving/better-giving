@@ -1,4 +1,3 @@
-import { FREE_MODEL } from '@better-giving/operator/ai-models';
 import { asc, eq, type SQL, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { formatMinorBrief } from '../../donations/money';
@@ -8,15 +7,15 @@ import {
 	type Change,
 	type ChatMessage as AcceptMessage,
 	type Dropped,
-	REPLY_JSON_SCHEMA
+	REPLY_JSON_SCHEMA,
+	SAY_MAX
 } from '../../page/accept-reply';
 import { draftFromPage, pageCatalog } from '../../page/ai-catalog';
 import { type Page, parsePage } from '../../page/catalog';
 import { dayOf } from '../../page/end-date';
-import type { PageType } from '../../page/keys';
+import type { ChatNote, PageType } from '../../page/keys';
 import { plainText } from '../../rich-text/document';
 import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
-import { readConfigEnv } from '../config/env';
 import type { Db } from '../db/client';
 import { type ChatTurn, chatTurn, page } from '../db/schema';
 import { firstMissingImage } from '../images/queries';
@@ -26,38 +25,38 @@ import { type ProgramOption, readActivePrograms } from '../programs/queries';
 
 // one turn of a page's chat: the operator's message, the model's reply through `acceptReply`, and
 // what lands — the draft and the two turns — in one `batch()`. the Donation page and a campaign
-// alike; `published` is never read or written here, so nothing a turn does reaches a donor before
-// Publish.
+// alike. a turn writes the draft document and the chat and nothing else: `published` and the
+// row's own `name` are never written here, and a campaign renamed in the chat is renamed in its
+// draft, so nothing a turn does reaches a donor before Publish.
 //
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
 // all), its type, name, goal, end date and donation settings, the organisation's story and look,
-// the active programs, and the chat so far. which model is `generate`'s, never the chat's.
+// the active programs, and what it said so far: each accepted exchange as the operator's message
+// and the reply's `say`, cut at `SAY_MAX`. which model is `generate`'s, never the chat's.
 //
-// three outcomes, each one assistant turn:
-// - accepted: the draft is replaced, and a campaign renamed where the reply renamed it. the
-//   assistant's words are the reply's `say` with a line naming each value `set` changed and each
-//   thing `acceptReply` dropped, so what the chat says it did is what it did.
-// - refused: the draft is untouched and the turn says why, `REFUSED_PREFIX` first.
+// three outcomes, each one assistant turn, its `note` the column's word for it:
+// - accepted: the draft is replaced. the assistant's words are the reply's `say` on one line, then
+//   a line naming each value `set` changed and each thing `acceptReply` dropped, so what the chat
+//   says it did is what it did. `fell-back` where the free model wrote it in place of the chosen.
+// - refused: the draft is untouched and the turn says why.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
-//   operator's fix where there is one. its `model` is the one that was asked.
+//   operator's fix where there is one. its `model` is the one `generate` asked.
 //
-// the draft write is compare-and-set on the draft text the reply was built against: a hand edit
-// saved while the model was answering makes the whole batch write nothing, turns included, and
-// the caller hears `stale` — the reply was written against a page that is gone.
-//
-// a turn's note, which the chat draws under an assistant turn, is carried in its text:
-// `REFUSED_PREFIX` opens a refusal and `FELL_BACK_MARK` closes a reply the free model wrote in
-// place of the chosen one. `chatEntry` reads both back; nothing else encodes or decodes them.
+// an accepted turn's three statements are each guarded on the draft text the reply was built
+// against, the two inserts first: a hand edit or a second turn saved while the model was
+// answering makes the whole batch write nothing, and the caller hears `stale`.
 
 /** the longest message a turn takes. */
 export const MESSAGE_MAX = 4000;
 /** the most photos one turn carries. */
 export const TURN_IMAGES_MAX = 4;
-/** the turns the model is shown, newest last; every operator turn still counts for its figures. */
+/**
+ * the messages of the chat the model is shown, newest last: ten exchanges, so they open on the
+ * operator's. every operator turn still counts for its figures.
+ */
 const HISTORY_TURNS = 20;
 
 const REFUSED_PREFIX = 'I couldn’t apply that: ';
-const FELL_BACK_MARK = '\n(written by the free model)';
 
 export type TurnRequest = {
 	pageId: string;
@@ -110,7 +109,7 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 	const answer = await generate(env, {
 		system: systemPrompt({
 			type: row.type,
-			name: row.name,
+			name: current.name ?? row.name,
 			current,
 			story,
 			look,
@@ -118,27 +117,26 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 			timeZone: request.timeZone,
 			now: request.now
 		}),
-		messages: [...turns.slice(-HISTORY_TURNS).map(modelMessage), { role: 'user', content: said }],
+		messages: [...history(turns).slice(-HISTORY_TURNS), { role: 'user', content: said }],
 		jsonSchema: REPLY_JSON_SCHEMA
 	});
 
-	const operator = {
-		author: 'operator' as const,
+	const operator: NewTurn = {
+		author: 'operator',
 		text: request.message,
 		model: null,
-		imageIds: [...request.imageIds]
+		imageIds: [...request.imageIds],
+		note: null
 	};
 	const onPage = eq(page.id, row.id);
 
 	if (!answer.ok) {
-		const model = readConfigEnv(env).AI_MODEL ?? FREE_MODEL.id;
 		const text = `No model answered, so nothing changed. ${answer.operatorFix ?? 'Try again in a moment.'}`;
-		const assistant = { author: 'assistant' as const, text, model, imageIds: [] };
+		const assistant = assistantTurn(text, answer.model, 'unanswered');
 		const written = await writeTurns(db, row.id, [operator, assistant], onPage);
 		return { ok: true, outcome: 'unanswered', turns: written };
 	}
 
-	const fellBack = answer.fellBack ? FELL_BACK_MARK : '';
 	const result = acceptReply({
 		type: row.type,
 		current,
@@ -152,32 +150,31 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 	});
 
 	if (!result.ok) {
-		const text = `${REFUSED_PREFIX}${result.reason}${fellBack}`;
-		const assistant = { author: 'assistant' as const, text, model: answer.model, imageIds: [] };
+		const text = `${REFUSED_PREFIX}${result.reason}`;
+		const assistant = assistantTurn(text, answer.model, 'refused');
 		const written = await writeTurns(db, row.id, [operator, assistant], onPage);
 		return { ok: true, outcome: 'refused', turns: written };
 	}
 
 	const draft = JSON.stringify(result.draft);
 	const summary = summarise(result.changes, result.dropped, programs);
-	const text = [result.say, summary].filter((line) => line !== '').join('\n') + fellBack;
-	const assistant = { author: 'assistant' as const, text, model: answer.model, imageIds: [] };
+	const text = [oneLine(result.say), summary].filter((line) => line !== '').join('\n');
+	const assistant = assistantTurn(text, answer.model, answer.fellBack ? 'fell-back' : null);
 	const seen = sql`${onPage} and ${eq(page.draft, row.draft)}`;
-	const landed = sql`${onPage} and ${eq(page.draft, draft)}`;
-	const [updated, ...inserted] = await db.batch([
-		db
-			.update(page)
-			.set({ draft, ...(result.name === undefined ? {} : { name: result.name }) })
-			.where(seen)
-			.returning({ id: page.id }),
-		turnStatement(db, row.id, operator, landed),
-		turnStatement(db, row.id, assistant, landed)
+	const [first, second, updated] = await db.batch([
+		turnStatement(db, row.id, operator, seen),
+		turnStatement(db, row.id, assistant, seen),
+		db.update(page).set({ draft }).where(seen).returning({ id: page.id })
 	]);
 	if (updated.length === 0) return { ok: false, reason: 'stale' };
-	return { ok: true, outcome: 'accepted', turns: inserted.flat().map(chatEntry) };
+	return { ok: true, outcome: 'accepted', turns: [...first, ...second].map(chatEntry) };
 }
 
-type NewTurn = Pick<ChatTurn, 'author' | 'text' | 'model'> & { imageIds: string[] };
+type NewTurn = Pick<ChatTurn, 'author' | 'text' | 'model' | 'note'> & { imageIds: string[] };
+
+function assistantTurn(text: string, model: string, note: ChatNote | null): NewTurn {
+	return { author: 'assistant', text, model, imageIds: [], note };
+}
 
 async function writeTurns(db: Db, pageId: string, turns: [NewTurn, NewTurn], when: SQL) {
 	const [first, second] = await db.batch([
@@ -206,7 +203,8 @@ function turnStatement(db: Db, pageId: string, turn: NewTurn, when: SQL) {
 					text: sql<string>`${turn.text}`.as('text'),
 					model: sql<string | null>`${turn.model}`.as('model'),
 					imageIds: sql<string>`${JSON.stringify(turn.imageIds)}`.as('image_ids'),
-					createdAt: sql<number>`${Date.now()}`.as('created_at')
+					createdAt: sql<number>`${Date.now()}`.as('created_at'),
+					note: sql<ChatNote | null>`${turn.note}`.as('note')
 				})
 				.from(page)
 				.where(when)
@@ -230,22 +228,34 @@ function chatEntry(turn: ChatTurn): ChatEntry {
 		text: turn.text,
 		imageIds: imageIdsOf(turn)
 	};
-	if (turn.author !== 'assistant') return entry;
-	const fellBack = entry.text.endsWith(FELL_BACK_MARK);
-	const text = fellBack ? entry.text.slice(0, -FELL_BACK_MARK.length) : entry.text;
-	// the chat draws one note, and a refusal is the one that says nothing changed.
-	if (text.startsWith(REFUSED_PREFIX)) return { ...entry, text, note: 'refused' };
-	return fellBack ? { ...entry, text, note: 'fell-back' } : entry;
+	// an unanswered turn's words say so, and the chat draws no note under it.
+	return turn.note === null || turn.note === 'unanswered' ? entry : { ...entry, note: turn.note };
 }
 
 function acceptMessage(turn: ChatTurn): AcceptMessage {
 	return { author: turn.author, text: turn.text };
 }
 
-function modelMessage(turn: ChatTurn): ModelMessage {
-	return turn.author === 'operator'
-		? { role: 'user', content: withImages(turn.text, imageIdsOf(turn)) }
-		: { role: 'assistant', content: turn.text };
+/**
+ * the chat as the model reads it: each exchange whose reply was accepted, as the operator's words
+ * and the reply's `say`. turns are written in pairs, an operator's then an assistant's.
+ */
+function history(turns: readonly ChatTurn[]): ModelMessage[] {
+	return turns.flatMap((turn, index) => {
+		const asked = turns[index - 1];
+		if (turn.author !== 'assistant' || asked?.author !== 'operator') return [];
+		if (turn.note === 'refused' || turn.note === 'unanswered') return [];
+		const [say = ''] = turn.text.split('\n', 1);
+		return [
+			{ role: 'user' as const, content: withImages(asked.text, imageIdsOf(asked)) },
+			{ role: 'assistant' as const, content: say.slice(0, SAY_MAX) }
+		];
+	});
+}
+
+/** a reply's `say` on the one line an accepted turn's text opens with. */
+function oneLine(say: string) {
+	return say.replace(/\s*\n\s*/g, ' ');
 }
 
 function withImages(text: string, imageIds: readonly string[]) {

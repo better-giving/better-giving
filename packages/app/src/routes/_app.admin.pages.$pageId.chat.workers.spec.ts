@@ -27,13 +27,18 @@ beforeAll(async () => {
 
 const TWO_TONE = { say: 'Two-tone now.', page: { kind: 'merge', doc: { palette: 'duo' } } };
 
-function post(pageId: string, fields: Record<string, string>, AI = answering(TWO_TONE)) {
+function post(
+	pageId: string,
+	fields: Record<string, string>,
+	AI = answering(TWO_TONE),
+	cookie = session
+) {
 	const body = new FormData();
 	for (const [name, value] of Object.entries(fields)) body.set(name, value);
 	return request(
 		new Request(`${ORIGIN}/admin/pages/${pageId}/chat`, {
 			method: 'POST',
-			headers: { cookie: session },
+			headers: { cookie },
 			body
 		}),
 		// the stand-in answers `run` alone, which is all `generate` calls.
@@ -110,4 +115,17 @@ describe('a turn the edge refuses', () => {
 			{ error: 'no page has the id "no-such-page"' }
 		]);
 	});
+});
+
+it('sends a turn from someone signed out to sign in, and asks no model', async () => {
+	const pageId = await insertPage(db, 'campaign');
+	const AI = answering(TWO_TONE);
+
+	const response = await post(pageId, TURN, AI, '');
+
+	expect([response.status, response.headers.get('Location')]).toEqual([
+		303,
+		expect.stringMatching(/^\/login\?/)
+	]);
+	expect(AI.run).not.toHaveBeenCalled();
 });

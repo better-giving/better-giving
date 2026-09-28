@@ -10,8 +10,8 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 // and what a turn does is $lib/server/pages/draft.ts's.
 //
 // a turn posts three boxes, each required: `message`, `imageIds` (a JSON array of stored image ids,
-// `[]` for none) and `timeZone` (the browser's IANA zone, which an end date is a day in). a refusal
-// is a 4xx whose `error` names the box and the value.
+// `[]` for none) and `timeZone` (the browser's IANA zone, which an end date is a day in). a turn the
+// edge refuses is a 400 whose `error` names the box.
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const turns = await readChat(context.get(database), params.pageId);

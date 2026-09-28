@@ -40,7 +40,12 @@ async function stored(pageId: string) {
 
 async function chat(pageId: string) {
 	return db
-		.select({ author: chatTurn.author, text: chatTurn.text, model: chatTurn.model })
+		.select({
+			author: chatTurn.author,
+			text: chatTurn.text,
+			model: chatTurn.model,
+			note: chatTurn.note
+		})
 		.from(chatTurn)
 		.where(eq(chatTurn.pageId, pageId))
 		.orderBy(chatTurn.seq);
@@ -64,13 +69,39 @@ describe('an accepted reply', () => {
 		expect(after.draft.palette).toBe('duo');
 		expect(JSON.parse(after.published ?? 'null')).toEqual(live);
 		expect(await chat(pageId)).toEqual([
-			{ author: 'operator', text: 'make it two-tone', model: null },
+			{ author: 'operator', text: 'make it two-tone', model: null, note: null },
 			{
 				author: 'assistant',
 				text: 'Two-tone now.',
-				model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+				model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+				note: null
 			}
 		]);
+	});
+
+	it('whose words open as a refusal would is still no refusal', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const say = 'I couldn’t apply that: only joking, it is two-tone now.';
+		const AI = answering({ say, page: { kind: 'merge', doc: { palette: 'duo' } } });
+
+		await turn(pageId, 'make it two-tone', AI);
+
+		expect(await readChat(db, pageId)).toEqual([
+			expect.objectContaining({ role: 'operator' }),
+			{ id: expect.any(String), role: 'assistant', text: say, imageIds: [] }
+		]);
+	});
+
+	it('sent twice lands once: the second reply was written against a page already changed', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const reply = { say: 'Two-tone now.', page: { kind: 'merge', doc: { palette: 'duo' } } };
+		const second = turn(pageId, 'make it two-tone', answering(reply));
+		const first = turn(pageId, 'make it two-tone', answering(reply));
+
+		const results = await Promise.all([first, second]);
+
+		expect(results.filter(({ ok }) => !ok)).toEqual([{ ok: false, reason: 'stale' }]);
+		expect(await chat(pageId)).toHaveLength(2);
 	});
 });
 
@@ -89,7 +120,10 @@ describe('a refused reply', () => {
 			turns: [{ role: 'operator' }, { role: 'assistant', note: 'refused' }]
 		});
 		const [, answer] = await chat(pageId);
-		expect(answer?.text).toMatch(/^I couldn’t apply that: palette: /);
+		expect(answer).toMatchObject({
+			text: expect.stringMatching(/^I couldn’t apply that: palette: /),
+			note: 'refused'
+		});
 	});
 });
 
@@ -144,7 +178,8 @@ describe('a campaign’s name', () => {
 			answering({ say: 'Done.', set: { name: 'Coats for Kids' } })
 		);
 
-		expect((await stored(pageId)).name).toBe('Coats for Kids');
+		const after = await stored(pageId);
+		expect([after.draft.name, after.name]).toEqual(['Coats for Kids', 'Winter coat drive']);
 		const [, answer] = await chat(pageId);
 		expect(answer?.text).toBe('Done.\nRenamed to “Coats for Kids”.');
 	});
@@ -156,7 +191,7 @@ describe('the Donation page', () => {
 		['a goal', { goalMinor: 1_500_000 }, 'goal'],
 		['an end date', { endDate: '2026-12-31' }, 'end date']
 	])('asked for %s changes nothing, and the reply says why', async (_, set, what) => {
-		const before = { ...defaultDonationPage({ name: 'Northside Food Bank' }), settings: SETTINGS };
+		const before = { ...defaultDonationPage(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'donation_page', before);
 
 		await turn(pageId, 'set it', answering({ say: 'Set.', set }));
@@ -185,7 +220,12 @@ describe('a credit-billed model that fails', () => {
 		expect((await stored(pageId)).draft.palette).toBe('duo');
 		expect(await chat(pageId)).toMatchObject([
 			{ author: 'operator' },
-			{ author: 'assistant', model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast' }
+			{
+				author: 'assistant',
+				text: 'Two-tone now.',
+				model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+				note: 'fell-back'
+			}
 		]);
 		const answer = { role: 'assistant', text: 'Two-tone now.', note: 'fell-back' };
 		expect(result).toMatchObject({ turns: [{ role: 'operator' }, answer] });
@@ -203,7 +243,7 @@ describe('a credit-billed model that fails', () => {
 		const [, answer] = (await readChat(db, pageId)) ?? [];
 		expect(answer).toMatchObject({
 			note: 'refused',
-			text: expect.stringMatching(/^I couldn’t apply that: palette: .*[^)]$/)
+			text: expect.stringMatching(/^I couldn’t apply that: palette: /)
 		});
 	});
 });
@@ -235,6 +275,32 @@ describe('what the model is told', () => {
 		expect(system.content).toContain(
 			'- donation settings: minimum $5, maximum $1,000, suggested amounts $25, $50, program none'
 		);
+		expect(chatSoFar).toEqual([
+			{ role: 'user', content: 'Winter coat drive' },
+			{ role: 'assistant', content: 'Drafted.' },
+			{ role: 'user', content: 'warmer colours' }
+		]);
+	});
+
+	it('of the chat so far, is only what the model said, leaving out each exchange that changed nothing', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await turn(
+			pageId,
+			'Winter coat drive',
+			answering({ say: 'Drafted.', set: { goalMinor: 1_500_000 } })
+		);
+		await turn(
+			pageId,
+			'make it neon',
+			answering({ say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } })
+		);
+		await turn(pageId, 'hello?', undefined as never);
+		const AI = answering({ say: 'Warmer.' });
+
+		await turn(pageId, 'warmer colours', AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		const [, ...chatSoFar] = input.messages;
 		expect(chatSoFar).toEqual([
 			{ role: 'user', content: 'Winter coat drive' },
 			{ role: 'assistant', content: 'Drafted.' },
@@ -297,9 +363,15 @@ describe('a turn no model answers', () => {
 		expect(result).toMatchObject({ ok: true, outcome: 'unanswered' });
 		expect((await stored(pageId)).draft).toEqual(before);
 		const [, answer] = await chat(pageId);
-		expect(answer?.text).toMatch(
-			/^No model answered, so nothing changed\. This deployment was uploaded without the Workers AI binding `AI`/
-		);
+		expect(answer).toMatchObject({
+			text: expect.stringMatching(
+				/^No model answered, so nothing changed\. This deployment was uploaded without the Workers AI binding `AI`/
+			),
+			model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+			note: 'unanswered'
+		});
+		const [, drawn] = (await readChat(db, pageId)) ?? [];
+		expect(drawn).not.toHaveProperty('note');
 	});
 });
 

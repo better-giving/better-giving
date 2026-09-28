@@ -41,7 +41,7 @@ export type PageSource = {
 	readonly type: PageType;
 	/** the settings row the page owns, whose served config the card takes the gift against. */
 	readonly formId: string;
-	/** a campaign's name; null on the donation page. */
+	/** a campaign's name on the dashboard, drawn where the document holds none; null on the donation page. */
 	readonly name: string | null;
 	/** the stored document's text — `published` for a donor, the draft for the preview. */
 	readonly document: string | null;
@@ -99,6 +99,8 @@ export async function loadPageView(
 		return { kind: 'plain', config, look: orgLook.look };
 	}
 	const { page } = parsed;
+	// the name the document was drafted with, so a rename reaches donors at Publish.
+	const pageName = page.name ?? source.name;
 	const orgName = config.orgLegalName;
 	const firstTitle = page.blocks.find((block) => block.type === 'title');
 
@@ -107,7 +109,7 @@ export async function loadPageView(
 		view: {
 			type: source.type,
 			page,
-			pageName: source.name,
+			pageName,
 			org: {
 				name: orgName,
 				mission: story.story.mission,
@@ -122,7 +124,7 @@ export async function loadPageView(
 					sharing.message ??
 					titleHeading(firstTitle?.heading ?? '', {
 						type: source.type,
-						pageName: source.name,
+						pageName,
 						org: { name: orgName }
 					}),
 				url: `${origin}${source.address}`
