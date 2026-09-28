@@ -1,53 +1,240 @@
 /*
- * the donor page's own chrome, and none of the form's.
+ * the donor page's token layer, and the rules the page draws with it.
  *
- * every value below belongs to this file. nothing here reads @better-giving/form/styles/tokens.css,
- * adds to it, or derives from it — that file is the donation form's closed source of values, and
- * this page is a host page rather than the form. what the card looks like is the card's, so a page
- * that reached into those values would be a second place the form is dressed from.
+ * the page is dressed from the donation form's own token file,
+ * packages/form/src/styles/tokens.css, and adds a layer of its own on top. every `--_` name read
+ * here is declared there and none is declared here: the brand clamp, the neutral ladder, the type
+ * steps, the space steps and the corners are the card's, and the blocks around the card read the
+ * same ones, so the card and the page cannot come apart. what the card has no use for — display
+ * type, a page's widths, the space between sections, the section grounds — is a `--page-*` name
+ * declared in this file and nowhere else. the operator sheets are never linked beside it: they are
+ * layered and these are not, so a document holding both would let every rule here outrank them.
  *
- * it sets no `--donate-*` seed either. that is the element's one public style surface, and this
- * deployment leaves it alone: the card renders in its own greys, and an organisation's colour is a
- * decision nobody has made.
+ * the page root is two nodes, and ./page-root.tsx draws both. the outer one carries
+ * `data-donate-root` — the selector the form's file declares its layer on outside a shadow root —
+ * and the four axes as attributes: `data-shade`, `data-corner`, `data-palette`, `data-layout`. the
+ * rules below turn the first two into the form's `--donate-shade` and `--donate-corner` seeds, and
+ * the root sets `--donate-primary` inline from the brand colour, so the card inside and every block
+ * take the same preset. no other `--donate-*` name is written here, and a palette that needed one
+ * would be a new public seed on the embed, which is the form's decision and not this file's. the
+ * inner node, `.page-ground`, is where every token below is declared and the ground is painted:
+ * the form declares its ladder one node under `[data-donate-root]` so the shade's container query
+ * can reach it, and a token that reads a rung has to be declared at or under that node, or it reads
+ * a ladder that is not there.
  *
- * it is not the operator sheet and never imports one. @better-giving/operator's stylesheets are
- * layered and the form's four are not, so a document holding both would let unlayered rules outrank
- * every operator layer — the two systems stay on separate documents, which is why this page links
- * the form's four and nothing else.
+ * the outer node is a `page` inline-size container, and every fluid token below is in `cqi` off it.
+ * those tokens are unregistered, so `cqi` resolves where a rule spends the token: a block that
+ * makes itself a size container moves what they read inside it. a block's layout changes at three
+ * container widths and no others, `@container page (min-width: 30rem)`, `48rem` and `60rem`: a
+ * condition cannot read a custom property, so those three are the one place a length is written at
+ * its call site. this layer is `rem` where the card is `em`: the page is the host document, not a
+ * guest in one, and its sizes follow the reader's root.
  *
- * the column is 28rem because the form's layout sheet sizes the card with container queries at
- * 22em, 24em and 26em: under 26em the widest of the three shapes is never reached, and this page is
- * the one place the card is guaranteed the room to render it. everything narrower is the viewport's
- * doing rather than this sheet's.
+ * type. `--page-display` is the page's title and a campaign's goal figure, `--page-heading` a
+ * section's heading, `--page-lede` a title's lede and a story's first paragraph, each with its
+ * line height and the two with a tracking. body text is the card's `--_t-md` at `--_lh-body`, and
+ * prose held to `--page-measure` is `--page-lh-prose`. a heading-sized statement that runs to more
+ * than a line is the card's `--_lh-tight`.
+ *
+ * widths. `--page-width` bounds the page's content, `--page-box` is the donation box's column —
+ * the card's widest shape starts at 26em in packages/form/src/styles/layout.css, and this is that
+ * column in the page's units — and `--page-measure` holds prose inside a wider column. the three
+ * `ch` measures hold a line of type at its own size: `--page-measure-title` the title,
+ * `--page-measure-heading` a compact title, `--page-measure-lede` a lede and an about-us statement.
+ *
+ * space, in five tiers and no adjacent two sharing a step. inside an item — a label and its value,
+ * an option's inset, the gap between a row's parts — the card's `--_sp1` to `--_sp5` and nothing
+ * else. `--page-gap-item` stands items of one group apart when they are read one by one (questions
+ * with their answers, about-us's parts); `--page-gap-group` is a heading to its content and a
+ * companion to the box; `--page-gap-lead` is the masthead to the first block; `--page-gap-section`
+ * is block to block; `--page-band-inset` is the inset of a section drawn on a ground of its own;
+ * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin.
+ *
+ * grounds. the page ground is `--_n2`. a section sets `data-background` to stand on another —
+ * `soft`, `tint` or `strong` — and the palette on the root says what each of those is. every
+ * palette is a relation to the brand rather than a colour of its own, so an unbranded page, whose
+ * seed is the form's grey at chroma 0, draws greys under every palette by construction:
+ *
+ *   plain   soft `--_n3`, tint `--_n4`, strong `--_n12` under `--_n1`
+ *   tint    soft and tint off `--_p` at 0.972 and 0.94 lightness, chroma held to 0.022 and 0.045,
+ *           at `--page-hue`; strong the fill itself under `--_on-p`
+ *   duo     as tint, with the tint ground at `--page-hue-2`
+ *   bright  soft at 0.965, tint at 0.92, chroma 0.4 and 0.6 of the brand's held to 0.04 and 0.075,
+ *           and strong the fill's lightness and chroma — all three at `--page-hue-2`
+ *   bold    soft `--_n3`, tint as tint, strong `--_p-press` under `--_on-p`
+ *
+ * the two hues are set inline on the root by the server render (../page/palette.ts): `--page-hue`
+ * is the brand's own, and `--page-hue-2` the brand's plus 150 on duo and plus 60 on bright. either
+ * moves to 115° when it lands from 2° to 105°, the window holding the form's error red and warning
+ * amber, where a ground reads as a refusal or a caution band. a page with no brand colour sets
+ * neither, and each ground falls back to the seed's own hue, which its zero chroma never shows.
+ *
+ * a strong ground carries one ink and no quiet one: `--page-quiet` on it is its ink.
+ *
+ * the measured pairs. `./page.spec.ts` works each one out from this file and the form's, across
+ * brand colours around the wheel at full strength, dark and muted and the unbranded grey, under
+ * every palette and every shade, and holds the lowest reading against its floor. the numbers below
+ * are those lowest readings, the three shades within 0.03 of each other:
+ *
+ *   `--page-quiet` — `--_n10` on the page ground, 4.85:1; `--_n11` on a soft ground, 5.41:1 at
+ *   bright's and 5.65:1 or more at the rest; on a tint ground, 4.58:1 at bright's and 5.06:1 or more
+ *   at the rest. text, held to 4.5:1.
+ *
+ *   `--page-on-strong` on a strong ground — 4.79:1 at bright, 4.81:1 at tint and duo, 7.26:1 at bold,
+ *   14.82:1 at plain. text, held to 4.5:1.
+ *
+ *   `--_p` as ink — a link or a tier's amount — on the page ground 4.82:1, on a soft ground 4.51:1 at
+ *   bright's and 4.53:1 or more at the rest. text, held to 4.5:1. on a tint ground it reads 3.92:1 at
+ *   bright's and 4.13:1 to 4.28:1 at the rest, so the primary is never a word on a tint ground.
+ *
+ *   the goal track — `--page-track`, `--_n4` on the page ground and `--_n6` on a soft or tint one —
+ *   holds the bar's `--_p` fill apart by 4.18:1 on the page ground and 3.47:1 on the others, held to
+ *   3:1, since the fill is what the bar is read by. the track against the ground under it is a look
+ *   and states no floor, 1.15:1 on the page ground and 1.06:1 at its closest, on bright's tint.
+ *
+ *   `--page-scrim` is the one translucent colour here, laid under the cover's title over a photo the
+ *   page cannot see, and carries the note that says so. `--_n1` over its darkest stop on a white
+ *   photo reads 9.33:1, held to 4.5:1; the gradient clears by 70% of its height, so a title set above the
+ *   lowest part of it is standing on the photo.
  */
-
-:root {
-	--page-ground: #f6f7f9;
-	--page-ink: #16181d;
-	--page-quiet: #5b6270;
-	color-scheme: light;
-}
 
 body {
 	margin: 0;
-	background: var(--page-ground);
-	color: var(--page-ink);
-	font:
-		16px / 1.5 ui-sans-serif,
-		system-ui,
-		sans-serif;
 	-webkit-text-size-adjust: 100%;
 }
 
-/* the card sits high rather than centred in the viewport. a donation form is taller than most
-   windows once the payment step opens, so a page that centred it would start every donor part-way
-   down a scroll; anchored to the top, the card grows downward from where it began. */
+.page[data-shade='light'] {
+	--donate-shade: light;
+}
+
+.page[data-shade='warm'] {
+	--donate-shade: warm;
+}
+
+.page[data-shade='cool'] {
+	--donate-shade: cool;
+}
+
+.page[data-corner='square'] {
+	--donate-corner: square;
+}
+
+.page[data-corner='soft'] {
+	--donate-corner: soft;
+}
+
+.page[data-corner='round'] {
+	--donate-corner: round;
+}
+
+.page {
+	container: page / inline-size;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 100dvh;
+}
+
+.page > .page-ground {
+	--page-display: clamp(2rem, 1.25rem + 3.2cqi, 3.25rem);
+	--page-heading: clamp(1.375rem, 1.1rem + 1.1cqi, 1.75rem);
+	--page-lede: clamp(1.125rem, 1rem + 0.5cqi, 1.3125rem);
+	--page-lh-display: 1.08;
+	--page-lh-heading: 1.2;
+	--page-lh-lede: 1.45;
+	--page-lh-prose: 1.6;
+	--page-tracking-display: -0.022em;
+	--page-tracking-heading: -0.012em;
+
+	--page-measure: 34rem;
+	--page-measure-title: 18ch;
+	--page-measure-heading: 26ch;
+	--page-measure-lede: 32ch;
+	--page-width: 72rem;
+	--page-box: 26rem;
+
+	--page-gutter: clamp(1rem, 0.5rem + 2.5cqi, 2.5rem);
+	--page-gap-group: 1.25rem;
+	--page-gap-item: 1.5rem;
+	--page-gap-lead: 2rem;
+	--page-gap-section: clamp(3rem, 2rem + 4cqi, 5.5rem);
+	--page-band-inset: clamp(2.25rem, 1.5rem + 3cqi, 4rem);
+	--page-col-gap: clamp(2rem, 1rem + 4cqi, 5rem);
+
+	--page-ground: var(--_n2);
+	--page-quiet: var(--_n10);
+	--page-track: var(--_n4);
+	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header measures it */
+	--page-scrim: linear-gradient(to top, oklch(0.18 0.01 260 / 0.78), oklch(0.18 0.01 260 / 0) 70%);
+
+	flex: 1 0 auto;
+	background: var(--page-ground);
+	color: var(--_n12);
+	line-height: var(--_lh-body);
+}
+
+.page[data-palette='plain'] > .page-ground {
+	--page-bg-soft: var(--_n3);
+	--page-bg-tint: var(--_n4);
+	--page-bg-strong: var(--_n12);
+	--page-on-strong: var(--_n1);
+}
+
+.page[data-palette='tint'] > .page-ground {
+	--page-bg-soft: oklch(from var(--_p) 0.972 min(c, 0.022) var(--page-hue, h));
+	--page-bg-tint: oklch(from var(--_p) 0.94 min(c, 0.045) var(--page-hue, h));
+	--page-bg-strong: var(--_p);
+	--page-on-strong: var(--_on-p);
+}
+
+.page[data-palette='duo'] > .page-ground {
+	--page-bg-soft: oklch(from var(--_p) 0.972 min(c, 0.022) var(--page-hue, h));
+	--page-bg-tint: oklch(from var(--_p) 0.94 min(c, 0.045) var(--page-hue-2, h));
+	--page-bg-strong: var(--_p);
+	--page-on-strong: var(--_on-p);
+}
+
+.page[data-palette='bright'] > .page-ground {
+	--page-bg-soft: oklch(from var(--_p) 0.965 min(calc(c * 0.4), 0.04) var(--page-hue-2, h));
+	--page-bg-tint: oklch(from var(--_p) 0.92 min(calc(c * 0.6), 0.075) var(--page-hue-2, h));
+	--page-bg-strong: oklch(from var(--_p) l c var(--page-hue-2, h));
+	--page-on-strong: var(--_on-p);
+}
+
+.page[data-palette='bold'] > .page-ground {
+	--page-bg-soft: var(--_n3);
+	--page-bg-tint: oklch(from var(--_p) 0.94 min(c, 0.045) var(--page-hue, h));
+	--page-bg-strong: var(--_p-press);
+	--page-on-strong: var(--_on-p);
+}
+
+.page-ground [data-background='soft'] {
+	--page-quiet: var(--_n11);
+	--page-track: var(--_n6);
+	background: var(--page-bg-soft);
+}
+
+.page-ground [data-background='tint'] {
+	--page-quiet: var(--_n11);
+	--page-track: var(--_n6);
+	background: var(--page-bg-tint);
+}
+
+.page-ground [data-background='strong'] {
+	--page-quiet: var(--page-on-strong);
+	background: var(--page-bg-strong);
+	color: var(--page-on-strong);
+}
+
+/* the form page at `/{form_id}`: the card alone under the organisation's name, in the box's own
+   column. the card sits high rather than centred in the viewport. a donation form is taller than
+   most windows once the payment step opens, so a page that centred it would start every donor
+   part-way down a scroll; anchored to the top, the card grows downward from where it began. */
 .stage {
 	box-sizing: border-box;
-	max-width: 28rem;
+	max-inline-size: calc(var(--page-box) + 2 * var(--page-gutter));
 	margin-inline: auto;
-	padding-block: 3rem;
-	padding-inline: 1rem;
+	padding-block: var(--page-gap-lead) var(--page-gap-section);
+	padding-inline: var(--page-gutter);
 }
 
 /* the organisation, named once, above the card rather than inside it. the card states the legal
@@ -56,11 +243,11 @@ body {
    it wraps inside the stage rather than widening the document: `anywhere` is what keeps a 375px
    viewport off a horizontal scrollbar for a name longer than the column. */
 .org-name {
-	margin: 0 0 1rem;
+	margin: 0 0 var(--page-gap-group);
 	overflow-wrap: anywhere;
-	font-size: 1.125rem;
-	font-weight: 600;
-	line-height: 1.3;
+	font-size: var(--_t-lg);
+	font-weight: var(--_w-bold);
+	line-height: var(--_lh-tight);
 	color: var(--page-quiet);
 }
 
@@ -69,10 +256,4 @@ body {
 .notice {
 	margin: 0;
 	color: var(--page-quiet);
-}
-
-@media (max-width: 30rem) {
-	.stage {
-		padding-block: 1.5rem;
-	}
 }

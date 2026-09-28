@@ -2,10 +2,12 @@ import formLayout from '@better-giving/form/styles/layout.css?url';
 import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
+import type { ReactNode } from 'react';
 import { data } from 'react-router';
 import { DonateCard } from '$lib/donate/card';
 import { DonateNotice } from '$lib/donate/notice';
 import pageChrome from '$lib/donate/page.css?url';
+import { PageRoot } from '$lib/donate/page-root';
 import { cachedCadences } from '$lib/server/forms/cadence-cache';
 import { cachedCoins } from '$lib/server/forms/coin-cache';
 import { readPublishedConfig, renderableConfig } from '$lib/server/forms/published-config';
@@ -148,21 +150,31 @@ export function links(): Route.LinkDescriptors {
 	}));
 }
 
+// the page root in the form's own look — its grey, light, soft, on plain — since no look is read for
+// this page. every value $lib/donate/page.css draws with is declared under it.
+function Page({ children }: { children: ReactNode }) {
+	return (
+		<PageRoot brandColour={null} shade="light" corner="soft" palette="plain" layout="column">
+			<main className="stage">{children}</main>
+		</PageRoot>
+	);
+}
+
 export default function DonorPage({ loaderData }: Route.ComponentProps) {
 	if (!loaderData.ok) {
 		return (
-			<main className="stage">
+			<Page>
 				<DonateNotice orgName={null} />
-			</main>
+			</Page>
 		);
 	}
 
 	// the organisation named once, above the card. the card states the legal identity the gift is
 	// solicited under; this states who the donor came here for.
 	return (
-		<main className="stage">
+		<Page>
 			<h1 className="org-name">{loaderData.config.orgLegalName}</h1>
 			<DonateCard config={loaderData.config} />
-		</main>
+		</Page>
 	);
 }

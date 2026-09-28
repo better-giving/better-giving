@@ -59,8 +59,8 @@ const APP_FILE = 'src/app.css';
 // src/lib/donate/** is swept out rather than in. the donor page draws the donation form's own
 // card, dressed from packages/form's four sheets and its token file, so an /admin token is exactly
 // what a screen there must not carry — and the gate over those values is the form package's own
-// browser specs against that token file. its src/lib/donate/page.css is the page's chrome and is
-// gated by nothing: it is no operator screen and carries no /admin token.
+// browser specs against that token file. its src/lib/donate/page.css is the page's token layer,
+// dressed from that same file, and src/lib/donate/page.spec.ts is its gate.
 const DONATE = 'src/lib/donate/';
 const screens = globSync('src/**/*.tsx').filter((file) => !file.startsWith(DONATE));
 // the four sheets live in packages/operator, a sibling package this file reaches out of rather
