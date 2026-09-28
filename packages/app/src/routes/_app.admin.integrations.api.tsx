@@ -6,18 +6,23 @@ import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, Grouped, Groups } from '@better-giving/operator/components/shell/Layout';
-import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { Form, Link, redirect, useNavigate, useNavigation } from 'react-router';
+import { type RefObject, useEffect, useRef } from 'react';
+import { data, Form, Link, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
-import { buttonState } from '$lib/admin/save-button-state';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
-import { listApiKeys, mintApiKey, revokeAndArchiveApiKey } from '$lib/server/integrations/keys';
+import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
+import {
+	listApiKeys,
+	mintApiKey,
+	revokeAndArchiveApiKey,
+	revokedApiKeyName
+} from '$lib/server/integrations/keys';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.api';
 
@@ -40,7 +45,13 @@ import type { Route } from './+types/_app.admin.integrations.api';
 // a revalidation or a second tab lists the name alone. react router keeps an action's answer on the
 // page after the card is dismissed, which is why `useShownOnce` keys the dismissal off the value.
 //
-// a revoke reports by the state it leaves: the row is gone from the list the redirect lands on.
+// a revoke reports by the state it leaves — the row is gone from the list the redirect lands on —
+// and says so to a reader who cannot see it go: the key's id rides the redirect as a flash
+// ($lib/server/flash.ts), and the loader turns it back into the name a status region reads out.
+//
+// both dialogs take their opener off the page as they answer — a made key remounts the form that
+// asked, a revoked row takes its Revoke with it — so each hands `fallbackFocus` the Name box, the
+// one control that stands through both answers.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'API';
@@ -100,10 +111,11 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context, url }: Route.LoaderArgs) {
+export async function loader({ context, request, url }: Route.LoaderArgs) {
 	if (context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
 
-	const keys = (await listApiKeys(context.get(database))).map((key) => ({
+	const db = context.get(database);
+	const keys = (await listApiKeys(db)).map((key) => ({
 		id: key.id,
 		name: key.name,
 		madeAt: key.createdAt.toISOString(),
@@ -115,7 +127,16 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 	// the key a revoke is being confirmed for, held in the address so the question can be shared,
 	// reloaded and backed out of; an id no listed row answers to asks nothing.
 	const asked = url.searchParams.get('confirm');
-	return { keys, revoking: keys.find((key) => key.id === asked) ?? null };
+
+	// the revoke that just landed, taken: read and cleared on this one response, so a reload says
+	// nothing. the marker is the key's id and the name is read back from the row it names.
+	const landed = await takeFlash(request, SAVED_FLASH);
+	const revoked = landed === null ? null : await revokedApiKeyName(db, landed.marker);
+
+	return data(
+		{ keys, revoking: keys.find((key) => key.id === asked) ?? null, revoked },
+		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
+	);
 }
 
 /**
@@ -155,12 +176,13 @@ export async function action(args: Route.ActionArgs) {
 	 * already gone, and an id naming no listed key, land here with the rest: a second press of the
 	 * same button is the ordinary way to reach them, and the row is gone either way.
 	 */
-	async function revoke({ context }: Route.ActionArgs, body: FormData) {
+	async function revoke({ context, request }: Route.ActionArgs, body: FormData) {
 		const submission = parseForm(body, REVOKE_FORM);
 		if (!submission.ok) return invalid(400, submission.reject());
 
-		await revokeAndArchiveApiKey(context.get(database), submission.value.key_id);
-		return redirect(SCREEN, 303);
+		const id = submission.value.key_id;
+		await revokeAndArchiveApiKey(context.get(database), id);
+		return redirectWithFlash(request, SAVED_FLASH, SCREEN, id);
 	}
 }
 
@@ -169,18 +191,26 @@ type ListedKey = Route.ComponentProps['loaderData']['keys'][number];
 export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 	const made = actionData && 'made' in actionData ? actionData.made : undefined;
 	const [shown, done] = useShownOnce(made?.key);
+	const nameBox = useRef<HTMLInputElement>(null);
 
 	return (
 		<Column wide>
 			<Groups>
 				<Grouped>
-					{/* remounted on each key made, so the box empties and the press rests again: a create
-					    form that stays on its screen starts over once it has answered. */}
-					<MakeKey key={made?.key ?? 'none'} actionData={actionData} />
+					{/* remounted on each key made, so the box empties: a create form that stays on its
+					    screen starts over once it has answered. */}
+					<MakeKey key={made?.key ?? 'none'} actionData={actionData} box={nameBox} />
 				</Grouped>
 				<KeyPlane keys={loaderData.keys} />
 			</Groups>
-			{loaderData.revoking ? <RevokeCard row={loaderData.revoking} /> : null}
+			{/* mounted empty and written when a revoke lands, so the words are a change a reader
+			    hears rather than an element that arrived holding them. */}
+			<p className="adm-vh" role="status">
+				{loaderData.revoked === null ? null : `Revoked ${loaderData.revoked}.`}
+			</p>
+			{loaderData.revoking ? (
+				<RevokeCard row={loaderData.revoking} fallbackFocus={nameBox} />
+			) : null}
 			{shown && made ? (
 				<ShownOnce
 					title={
@@ -191,6 +221,7 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 					secret={shown}
 					copyLabel="Copy the key"
 					onDone={done}
+					fallbackFocus={nameBox}
 				/>
 			) : null}
 		</Column>
@@ -198,11 +229,18 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 }
 
 /**
- * the name box and Make key on one row. the press is a `SaveButton` closed while the box is empty
- * and while its own submission is in flight; what reports a key made is the card, so it never
- * draws a tick. a refused name is the sentence under the box, and conform puts the caret there.
+ * the name box and Make key on one row. the press is a `SaveButton` held only while its own
+ * submission is in flight: an empty box still submits, so the press answers with `required` under
+ * the box and conform puts the caret there, rather than resting closed and saying nothing. what
+ * reports a key made is the card, so the press never draws a tick.
  */
-function MakeKey({ actionData }: { readonly actionData: AdminActionData }) {
+function MakeKey({
+	actionData,
+	box
+}: {
+	readonly actionData: AdminActionData;
+	readonly box: RefObject<HTMLInputElement | null>;
+}) {
 	const [form, fields] = useAdminForm(MAKE_FORM, actionData);
 	const navigation = useNavigation();
 
@@ -210,7 +248,14 @@ function MakeKey({ actionData }: { readonly actionData: AdminActionData }) {
 	// answer lands is a second key for one intent.
 	const making =
 		navigation.state !== 'idle' && navigation.formData?.get(WHICH_FORM) === MAKE_FORM.id;
-	const save = useSaveState({ landed: false, changed: form.dirty, pending: making });
+
+	// the box, handed up for the dialogs' `fallbackFocus`. found by the id conform gave it because
+	// `Field` takes no ref of its own; set again on each remount, so it is always the box on the page.
+	const boxId = fields.name.id;
+	useEffect(() => {
+		const found = document.getElementById(boxId);
+		box.current = found instanceof HTMLInputElement ? found : null;
+	}, [box, boxId]);
 
 	return (
 		<Form method="post" {...getFormProps(form)}>
@@ -220,7 +265,7 @@ function MakeKey({ actionData }: { readonly actionData: AdminActionData }) {
 				label="Name"
 				autoComplete="off"
 				required
-				beside={<SaveButton label="Make key" state={buttonState(save)} />}
+				beside={<SaveButton label="Make key" state={making ? 'pending' : 'idle'} />}
 			/>
 		</Form>
 	);
@@ -279,10 +324,16 @@ function KeyPlane({ keys }: { readonly keys: readonly ListedKey[] }) {
  * that cannot be taken back — a revoked key is never admitted again, only replaced.
  *
  * the press reports at itself: held busy while its own submission is in flight, and answered by
- * the list it lands on. the `<form>` stands around the whole card, which is the rule `Dialog`
- * states for a submit in its actions row.
+ * the list it lands on and the page's status region. the `<form>` stands around the whole card,
+ * which is the rule `Dialog` states for a submit in its actions row.
  */
-function RevokeCard({ row }: { readonly row: ListedKey }) {
+function RevokeCard({
+	row,
+	fallbackFocus
+}: {
+	readonly row: ListedKey;
+	readonly fallbackFocus: RefObject<HTMLElement | null>;
+}) {
 	const navigate = useNavigate();
 	const navigation = useNavigation();
 	const revoking =
@@ -298,11 +349,8 @@ function RevokeCard({ row }: { readonly row: ListedKey }) {
 						Revoke <CodeChip>{row.name}</CodeChip>?
 					</>
 				}
-				danger={
-					<>
-						Yes, revoke <CodeChip>{row.name}</CodeChip>
-					</>
-				}
+				// the title names the key; the press does not say it again, so a long name cannot break it.
+				danger="Yes, revoke"
 				dangerProps={{
 					type: 'submit',
 					'aria-busy': revoking,
@@ -314,6 +362,7 @@ function RevokeCard({ row }: { readonly row: ListedKey }) {
 				cancel="Cancel"
 				cancelProps={{ as: Link, to: SCREEN, preventScrollReset: true }}
 				onDismiss={() => navigate(SCREEN, { preventScrollReset: true })}
+				fallbackFocus={fallbackFocus}
 			>
 				<p className="adm-prose">Every request made with it is refused from now on.</p>
 				<p className="adm-prose">

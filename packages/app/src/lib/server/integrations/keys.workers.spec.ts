@@ -9,6 +9,7 @@ import {
 	mintApiKey,
 	revokeAndArchiveApiKey,
 	revokeApiKey,
+	revokedApiKeyName,
 	touchLastUsed,
 	ZAPIER_KEY_SHAPE
 } from './keys';
@@ -182,6 +183,16 @@ describe('revoking a key from the dashboard', () => {
 
 		expect(await revokeAndArchiveApiKey(db, minted.id)).toBe(false);
 		expect(await revokeAndArchiveApiKey(db, '0195-no-such-key')).toBe(false);
+	});
+
+	it('names a key it took off the list, and nothing for one still on it', async () => {
+		const revoked = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		const listed = await mintApiKey(db, { name: 'Donor wall', kind: 'api' });
+		await revokeAndArchiveApiKey(db, revoked.id);
+
+		expect(await revokedApiKeyName(db, revoked.id)).toBe('Reporting sheet');
+		expect(await revokedApiKeyName(db, listed.id)).toBeNull();
+		expect(await revokedApiKeyName(db, '0195-no-such-key')).toBeNull();
 	});
 
 	/** the dashboard's list never shows Zapier's key, so an id naming it is a body nobody pressed. */

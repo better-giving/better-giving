@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { type ApiKey, type ApiKeyKind, apiKey, type NewApiKey } from '../db/schema';
 
@@ -106,6 +106,18 @@ export async function revokeAndArchiveApiKey(db: Db, id: string): Promise<boolea
 		.where(and(eq(apiKey.id, id), eq(apiKey.kind, 'api'), isNull(apiKey.archivedAt)))
 		.returning({ id: apiKey.id });
 	return rows.length > 0;
+}
+
+/**
+ * the name of the `api` key `id` once `revokeAndArchiveApiKey` has taken it off the list, for the
+ * screen that reports the revoke; `null` for a key still listed or none at all.
+ */
+export async function revokedApiKeyName(db: Db, id: string): Promise<string | null> {
+	const [row] = await db
+		.select({ name: apiKey.name })
+		.from(apiKey)
+		.where(and(eq(apiKey.id, id), eq(apiKey.kind, 'api'), isNotNull(apiKey.archivedAt)));
+	return row?.name ?? null;
 }
 
 /** a key as the dashboard lists it: what it is called and when, and nothing that admits a request. */

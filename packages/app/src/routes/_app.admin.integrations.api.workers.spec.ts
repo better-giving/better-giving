@@ -130,7 +130,7 @@ type ListedKey = {
 	lastUsedOn: string;
 };
 
-type Screen = { keys: ListedKey[]; revoking: ListedKey | null };
+type Screen = { keys: ListedKey[]; revoking: ListedKey | null; revoked: string | null };
 
 function get(cookie: string, search = ''): Promise<Response> {
 	return request(new Request(`${ORIGIN}${SCREEN}${search}`, { headers: { cookie } }), {
@@ -296,6 +296,18 @@ describe('POST /admin/integrations/api — revoking a key', () => {
 		expect(answer.headers.get('location')).toBe(SCREEN);
 		expect((await giftsWith(minted.key)).status).toBe(401);
 		expect((await visit(deployer)).keys).toEqual([]);
+	});
+
+	it('names the key it revoked on the list it lands on, and on no load after', async () => {
+		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+
+		const answer = await post(deployer, revokeBody(minted.id));
+		const flash = answer.headers.getSetCookie().map((value) => value.split(';', 1)[0]);
+		const landed = await visit(`${deployer}; ${flash.join('; ')}`);
+		const after = await visit(deployer);
+
+		expect(landed.revoked).toBe('Reporting sheet');
+		expect(after.revoked).toBeNull();
 	});
 
 	it('answers a key already gone the way it answers one it revoked', async () => {
