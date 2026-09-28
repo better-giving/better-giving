@@ -49,6 +49,10 @@ export type GenerateResult =
 			/** the chosen credit-billed model failed and the free one answered in its place. */
 			readonly fellBack: boolean;
 	  }
+	| GenerateFailure;
+
+/** a call no model answered, naming the model it asked: `AI_MODEL` as set, or the free one. */
+export type GenerateFailure = { readonly model: string } & (
 	| {
 			readonly ok: false;
 			/** `AI_MODEL` names no model on the list. */
@@ -66,7 +70,8 @@ export type GenerateResult =
 			/** no model answered, which nothing on this deployment can fix; the logs say why. */
 			readonly reason: 'unavailable';
 			readonly operatorFix: null;
-	  };
+	  }
+);
 
 interface AiBinding {
 	run(model: string, input: Record<string, unknown>, options: object): Promise<unknown>;
@@ -83,15 +88,23 @@ const GATEWAY = { gateway: { id: 'default' } } as const;
 export async function generate(source: unknown, request: GenerateRequest): Promise<GenerateResult> {
 	const chosen = readConfigEnv(source).AI_MODEL;
 	const model = chosen === undefined ? FREE_MODEL : modelById(chosen);
-	if (!model) return { ok: false, reason: 'off_list', operatorFix: offListFix(chosen ?? '') };
+	if (!model) {
+		return {
+			ok: false,
+			reason: 'off_list',
+			operatorFix: offListFix(chosen ?? ''),
+			model: chosen ?? ''
+		};
+	}
 
 	const binding = aiBinding(source);
-	if (!binding) return { ok: false, reason: 'not_bound', operatorFix: NOT_BOUND_FIX };
+	if (!binding)
+		return { ok: false, reason: 'not_bound', operatorFix: NOT_BOUND_FIX, model: model.id };
 
 	const answer = await ask(binding, model, request);
 	if (answer.ok) return { ok: true, text: answer.text, model: model.id, fellBack: false };
 	if (isLocalStandIn(answer.error)) {
-		return { ok: false, reason: 'not_bound', operatorFix: LOCAL_STAND_IN_FIX };
+		return { ok: false, reason: 'not_bound', operatorFix: LOCAL_STAND_IN_FIX, model: model.id };
 	}
 	console.error(`${model.id} did not answer:`, answer.error);
 
@@ -102,7 +115,7 @@ export async function generate(source: unknown, request: GenerateRequest): Promi
 		}
 		console.error(`${FREE_MODEL.id} did not answer:`, fallback.error);
 	}
-	return { ok: false, reason: 'unavailable', operatorFix: null };
+	return { ok: false, reason: 'unavailable', operatorFix: null, model: model.id };
 }
 
 async function ask(

@@ -5,7 +5,7 @@ import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import { type Page, parsePage } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
-import type { ShareChannel } from '../../page/share';
+import { SHARE_CHANNELS_DEFAULT } from '../../page/share';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
@@ -43,7 +43,7 @@ export type PageSource = {
 	readonly type: PageType;
 	/** the settings row the page owns, whose served config the card takes the gift against. */
 	readonly formId: string;
-	/** a campaign's name; null on the donation page. */
+	/** a campaign's name on the dashboard, drawn where the document holds none; null on the donation page. */
 	readonly name: string | null;
 	/** the stored document's text — `published` for a donor, the draft for the preview. */
 	readonly document: string | null;
@@ -61,9 +61,6 @@ export type LoadedPage =
 	/** the served config refuses the owned row: no card can be drawn. */
 	| { readonly kind: 'refused' };
 
-/** the channels a page offers where the organisation has chosen none. */
-const SHARE_CHANNELS_DEFAULT: readonly ShareChannel[] = ['facebook', 'email', 'copy-link'];
-
 export async function loadPageView(
 	db: Db,
 	env: unknown,
@@ -74,7 +71,7 @@ export async function loadPageView(
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
 	const parsed = parsePage(source.type, storedDocument(source.document));
-	const [served, story, orgLook, sharing, profile] = await Promise.all([
+	const [served, story, orgLook, orgSharing, profile] = await Promise.all([
 		readPublishedConfig(
 			db,
 			source.formId,
@@ -105,6 +102,9 @@ export async function loadPageView(
 		return { kind: 'plain', config, look: orgLook.look };
 	}
 	const { page } = parsed;
+	// the name the document was drafted with, so a rename reaches donors at Publish.
+	const pageName = page.name ?? source.name;
+	const { sharing } = orgSharing;
 	const orgName = config.orgLegalName;
 	const firstTitle = page.blocks.find((block) => block.type === 'title');
 
@@ -113,7 +113,7 @@ export async function loadPageView(
 		view: {
 			type: source.type,
 			page,
-			pageName: source.name,
+			pageName,
 			org: {
 				name: orgName,
 				mission: story.story.mission,
@@ -128,7 +128,7 @@ export async function loadPageView(
 					sharing.message ??
 					titleHeading(firstTitle?.heading ?? '', {
 						type: source.type,
-						pageName: source.name,
+						pageName,
 						org: { name: orgName }
 					}),
 				url: `${origin}${source.address}`

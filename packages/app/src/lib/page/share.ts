@@ -15,6 +15,12 @@ export const SHARE_CHANNELS = [
 ] as const;
 export type ShareChannel = (typeof SHARE_CHANNELS)[number];
 
+/** the channels a page offers where the organisation has chosen none. */
+export const SHARE_CHANNELS_DEFAULT: readonly ShareChannel[] = ['facebook', 'email', 'copy-link'];
+
+/** the most social links the organisation's Sharing holds. */
+export const SOCIAL_LINKS_MAX = 8;
+
 export const SHARE_CHANNEL_LABELS: Record<ShareChannel, string> = {
 	facebook: 'Facebook',
 	whatsapp: 'WhatsApp',

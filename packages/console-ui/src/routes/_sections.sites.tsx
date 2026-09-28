@@ -15,8 +15,8 @@ import { TITLE } from './_index';
 import type { Route } from './+types/_sections.sites';
 
 // /sites — the sites a donation form may be loaded on, drawn by ../lib/sites-fold.tsx. no job waits
-// on it: a deployment with no website of its own gives on the donation page it serves at its own
-// address (CLAUDE.md → Product surface), so its rail cell states what the list holds rather than
+// on it: a deployment with no website of its own gives on the donation page it serves at
+// `/donate` (CLAUDE.md → Product surface), so its rail cell states what the list holds rather than
 // whether anything is owed.
 //
 // every reading is the sections layout's (./_sections.tsx); the press is this page's.

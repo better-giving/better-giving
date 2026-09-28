@@ -46,9 +46,9 @@ import { WIDGET_LEAD, widgetTrouble } from './widget-level';
 // here: this page draws none of those hostnames.
 //
 // **the deployment's own donation page is the first row of the list and no press can take it off.**
-// every deployment serves one at its own address, and it is on no `site` row and on no form's
-// `allowed_origins` because the deployment takes its own origin off each request (CLAUDE.md →
-// Product surface). so the row is read-only and carries no name at all (`fixed` in
+// every deployment serves one, at `/donate` on its own address, and it is on no `site` row and on
+// no form's `allowed_origins` because the deployment takes its own origin off each request
+// (CLAUDE.md → Product surface). so the row is read-only and carries no name at all (`fixed` in
 // `@better-giving/operator/components/forms/RepeatingRows`) — the list is stored whole, so a row
 // with a Remove beside it would take the operator's own donation page down at the next save, and a
 // row that reached the submission would be stored as a site the deployment never had. what stands
@@ -134,8 +134,9 @@ export type SitesFoldProps = {
 	/** the list the deployment holds, which is what the boxes are seeded from. */
 	sites: readonly string[];
 	/**
-	 * where this deployment's own donation page answers, which is the list's first row and is
-	 * locked, or `''` where it answers nowhere the console could read — which draws no such row.
+	 * where this deployment's own donation page answers, `/donate` on its address, which is the
+	 * list's first row and is locked, or `''` where it answers nowhere the console could read — which
+	 * draws no such row.
 	 */
 	donatePage: string;
 	/** how the last list press went, or `null` where none has been made. */
@@ -267,8 +268,8 @@ export function SitesFold({ sites, donatePage, list, busy, pending }: SitesFoldP
 										<>
 											<AnchoredNote mark="info" label="Why your donation page is always listed">
 												<p>
-													This deployment serves a donation page at its own address, and every form
-													loads there whatever else is listed.
+													This deployment has one donation page, at /donate. A form is for
+													embedding, and loads only on the sites ticked for it.
 												</p>
 												<p>
 													It is not one of the sites you type here, so nothing on this list can take

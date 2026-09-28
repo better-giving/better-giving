@@ -32,7 +32,7 @@ import {
 	type Page,
 	TIERS_MAX
 } from './catalog';
-import type { PageType } from './keys';
+import type { Layout, PageType, Palette } from './keys';
 import { LIST_DEPTH_MAX } from '../rich-text/document';
 
 const DONATION_FLOW = 'DonationFlow';
@@ -51,6 +51,24 @@ const DESCRIPTIONS: Record<BlockType, string> = {
 	'goal-bar': 'the campaign’s progress toward its goal',
 	'program-chooser': 'lets the donor pick which program their gift supports',
 	'donation-box': 'where the donor gives; takes no props and no variant'
+};
+
+// as $lib/donate/page-view.tsx and $lib/donate/page.css draw them.
+const LAYOUT_DESCRIPTIONS: Record<Layout, string> = {
+	'box-right': 'the donation box stands in its own column beside the other blocks',
+	banner:
+		'a band across the top holds the blocks up to the donation box, with the box beside them; the blocks after it run full width below',
+	column: 'one narrow column at every width, the donation box where it is listed',
+	cover: 'a cover photo with the title over it; without a hero photo it draws as box-right'
+};
+
+// what a block's `soft`, `tint` and `strong` backgrounds are drawn in, off the brand colour.
+const PALETTE_DESCRIPTIONS: Record<Palette, string> = {
+	plain: 'greys only; the brand colour stays on buttons',
+	tint: 'pale and full grounds of the brand colour',
+	duo: 'the brand colour, with tint grounds in a second, contrasting hue',
+	bright: 'livelier grounds in a hue beside the brand colour',
+	bold: 'grey soft grounds and the deepest brand colour for strong ones'
 };
 
 type Component = {
@@ -94,7 +112,10 @@ const PAGE_NAMES: Record<PageType, string> = {
 	campaign: 'a fundraising campaign'
 };
 
-/** the catalog the model drafts a page of `type` from; its `prompt()` is the system prompt. */
+/**
+ * the catalog the model drafts a page of `type` from. its `prompt()` opens the system prompt, which
+ * $lib/server/pages/draft.ts follows with the reply's shape and the page as it stands.
+ */
 export function pageCatalog(type: PageType) {
 	const components: Record<string, Component> = {};
 	for (const block of BLOCK_TYPES) {
@@ -123,11 +144,14 @@ function prompt({ catalog, options, formatZodType }: PromptContext<DraftCatalog>
 	return [
 		options.system ?? `You draft ${catalog.page}.`,
 		'',
-		'Answer with one JSON object and nothing else:',
+		'A page is one JSON object:',
 		`{"layout": ..., "palette": ..., "blocks": [{"id": ..., "type": ..., "variant": ..., "background": ..., "props": {...}}, {"id": ..., "type": "${DONATION_FLOW}", "background": "none", "props": {}}]}`,
 		'',
-		`LAYOUTS: ${LAYOUTS.join(' | ')}`,
-		`PALETTES: ${PALETTES.join(' | ')}`,
+		'LAYOUTS:',
+		...LAYOUTS.map((layout) => `- ${layout}: ${LAYOUT_DESCRIPTIONS[layout]}`),
+		'',
+		'PALETTES:',
+		...PALETTES.map((palette) => `- ${palette}: ${PALETTE_DESCRIPTIONS[palette]}`),
 		'',
 		'BLOCKS:',
 		...blocks,

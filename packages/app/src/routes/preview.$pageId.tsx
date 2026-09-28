@@ -82,7 +82,7 @@ export default function PagePreview({ loaderData }: Route.ComponentProps) {
 		case 'refused':
 			return (
 				<PlainPage look={FORM_LOOK}>
-					<DonateNotice orgName={null} />
+					<DonateNotice />
 				</PlainPage>
 			);
 	}

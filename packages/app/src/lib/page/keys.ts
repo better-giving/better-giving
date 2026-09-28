@@ -1,5 +1,6 @@
-// the keys of a stored page document that the database reads, the page types, and the look's
-// closed sets, in the one place both the schema's checks and the page catalog import from.
+// the keys of a stored page document that the database reads, the page types, the look's closed
+// sets and a chat turn's notes, in the one place both the schema's checks and the page catalog
+// import from.
 //
 // `$lib/server/db/schema.ts` builds `page` and `org_presentation` checks out of these names with
 // `json_extract`, and a check reading a key the document no longer carries reads null, which it
@@ -12,6 +13,11 @@
 
 /** top-level keys of a page document (`page.draft`, `published`, `last_published`). */
 export const PAGE_KEYS = {
+	/**
+	 * a campaign's name as its page draws it; absent, the page draws `page.name`, the dashboard's
+	 * current name for it.
+	 */
+	name: 'name',
 	/** a campaign's goal, minor units of its owned settings row's currency. */
 	goalMinor: 'goalMinor',
 	/** a campaign's end: the end of the chosen day, unix ms, in the setting browser's time zone. */
@@ -52,3 +58,12 @@ export type Layout = (typeof LAYOUTS)[number];
 /** the ground a block's section stands on; `strong` carries one ink and no quiet text. */
 export const BACKGROUNDS = ['none', 'soft', 'tint', 'strong'] as const;
 export type Background = (typeof BACKGROUNDS)[number];
+
+/**
+ * what an assistant turn in a page's chat says about itself beside its words: `refused` when the
+ * reply did not fit the page and nothing changed, `fell-back` when the chosen model did not answer
+ * and the free model wrote the turn, `unanswered` when no model answered. a column of its own,
+ * `chat_turn.note`, since the model writes the turn's text and could write a marker into it.
+ */
+export const CHAT_NOTES = ['refused', 'fell-back', 'unanswered'] as const;
+export type ChatNote = (typeof CHAT_NOTES)[number];

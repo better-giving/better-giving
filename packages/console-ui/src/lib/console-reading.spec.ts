@@ -22,7 +22,7 @@ vi.mock('../api/client', () => ({
 		face: { kind: 'ready', address: 'https://a.example' },
 		values: { vars: { kind: 'read', vars: [] } },
 		sites: [],
-		donatePage: 'https://a.example',
+		donatePage: 'https://a.example/donate',
 		org: null,
 		holdsStripeKey: false
 	})

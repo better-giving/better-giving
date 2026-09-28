@@ -121,17 +121,23 @@ const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 	'routes/api.nowpayments.webhook.ts': NOWPAYMENTS_IPN_PATH
 };
 
+/** the donation page, at `/donate`. */
+const DONOR_PAGE = 'routes/donate.tsx';
+
+/** a campaign, at its own top-level address. */
+const CAMPAIGN_PAGE = 'routes/$slug.tsx';
+
 /**
- * the donation page, which with the preview below is a screen outside the layout that wears no
+ * the donor's pages, which with the preview below are the screens outside the layout that wear no
  * operator stylesheet.
  *
- * it draws the donation form's own card and links the form's four sheets in its own `links`, and
+ * each draws the donation form's own card and links the form's four sheets in its own `links`, and
  * those four are unlayered while every operator declaration is layered (src/app.css) — so a
  * document holding both would let one side outrank the other on properties only one of them sets.
- * it is named here so the sweep below can hold every *other* screen outside the layout to carrying
- * the operator sheet without holding this one to it.
+ * they are named here so the sweep below can hold every *other* screen outside the layout to
+ * carrying the operator sheet without holding these to it.
  */
-const DONOR_PAGE = 'routes/donate.tsx';
+const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE];
 
 /**
  * the editor's preview of a page, the one route outside the protected layout that is behind the
@@ -227,6 +233,11 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// every later arrival into a read. and what it hands the browser is the served config alone,
 	// never the `form` row it was read from — that row carries `allowed_origins`.
 	DONOR_PAGE,
+	// a campaign's page, opened from a link the organisation published, and public for the same
+	// reasons: no session, no submission, the gift through the endpoint above, the served config
+	// alone. its loader writes nothing, and an address no campaign could hold is refused before the
+	// database is read, so a scanner walking top-level paths costs this deployment no query.
+	CAMPAIGN_PAGE,
 	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by an
 	// unguessable id and writes nothing, and a draft's image is as reachable by its id as a live one's
 	// — its own header states why that is the rule.
@@ -379,7 +390,9 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
  */
 function undressedRoutes(manifest: readonly RouteRecord[], read: ReadModule): string[] {
 	return manifest
-		.filter((route) => !route.ancestors.includes(PROTECTED_LAYOUT) && route.file !== DONOR_PAGE)
+		.filter(
+			(route) => !route.ancestors.includes(PROTECTED_LAYOUT) && !DONOR_PAGES.includes(route.file)
+		)
 		.filter((route) => {
 			const source = read(route.file) ?? '';
 			return drawsAScreen(source) && !exportsLinks(source);
@@ -630,16 +643,22 @@ describe('the route surface', () => {
 	 * so. ./root.tsx's `ErrorBoundary` is what renders it; the 404 here is the half a component
 	 * cannot claim for itself.
 	 *
-	 * a single top-level segment is one of those addresses: no route answers `/{anything}`, a form
-	 * id included.
+	 * a single top-level segment is not one of those addresses: every one reaches a campaign's route,
+	 * whose loader refuses what no campaign holds (./routes/$slug.workers.spec.ts).
 	 */
 	it('answers an address matching no route with a 404, above every layout', async () => {
 		expect(await statusAt('/admin/not-a-screen')).toBe(404);
 		expect(await statusAt('/a/b')).toBe(404);
-		expect(await statusAt('/frm_something')).toBe(404);
-		expect(await statusAt('/.env')).toBe(404);
+		expect(await statusAt('/winter-coat-drive/extra')).toBe(404);
 		expect(routes.filter((r) => r.path === '/admin/not-a-screen' || r.path === '/a/b')).toEqual([]);
 	});
+
+	it.each(['/winter-coat-drive', '/frm_something', '/.env'])(
+		'hands the single segment %s to the campaign route',
+		async (address) => {
+			expect(await matchedFileAt(address)).toBe(CAMPAIGN_PAGE);
+		}
+	);
 
 	/**
 	 * every static top-level route this app serves still answers its own address.
@@ -841,22 +860,25 @@ describe('the stylesheet a screen outside the layout carries', () => {
 	});
 
 	/**
-	 * and the donor's page and the preview carry none of it, which the sweep above cannot say for
-	 * either: the donor's page is excluded from it by name, and the sweep passes any `links`, the
-	 * donor page's own sheets included. so a line adding the operator sheet to either would pass
-	 * everything else in this file — and what that produces is not an exception on one screen: the
-	 * operator reset zeroes `border` on `*` and `background` on every control, from a layer the
+	 * and the donor's pages and the preview carry none of it, which the sweep above cannot say for
+	 * them: the donor's pages are excluded from it by name, and it passes the preview's `links`, the
+	 * donor sheets. so a line adding the operator sheet to one would pass everything else in this
+	 * file — and what that produces is not an exception on one screen: the operator reset zeroes
+	 * `border` on `*` and `background` on every control, from a layer the
 	 * form's own unlayered rules then outrank back. src/app.css argues both directions.
 	 *
-	 * the import rather than the name, because the file's own header names the helper to say it does
-	 * not use it.
+	 * the import rather than the name, because ./routes/donate.tsx's header names the helper to say
+	 * it does not use it.
 	 */
-	it.each([DONOR_PAGE, PREVIEW_PAGE])('imports neither the helper nor the sheet on %s', (file) => {
-		const source = readFromDisk(file) ?? '';
-		expect(source).not.toBe('');
-		expect(source).not.toMatch(/from '\$lib\/admin\/operator-links'/);
-		expect(source).not.toMatch(/from '[^']*app\.css/);
-	});
+	it.each([...DONOR_PAGES, PREVIEW_PAGE])(
+		'imports neither the helper nor the sheet on %s',
+		(file) => {
+			const source = readFromDisk(file) ?? '';
+			expect(source).not.toBe('');
+			expect(source).not.toMatch(/from '\$lib\/admin\/operator-links'/);
+			expect(source).not.toMatch(/from '[^']*app\.css/);
+		}
+	);
 
 	it('is carried by every screen this app serves outside the layout', () => {
 		expect(routes.length).toBeGreaterThan(0);

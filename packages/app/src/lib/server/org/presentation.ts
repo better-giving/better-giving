@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { SHARE_MESSAGE_MAX } from '$lib/page/catalog';
 import { CORNERS, type Corner, SHADES, type Shade } from '$lib/page/keys';
-import { SHARE_CHANNELS, type ShareChannel } from '$lib/page/share';
+import { SHARE_CHANNELS, type ShareChannel, SOCIAL_LINKS_MAX } from '$lib/page/share';
 import { isEmptyDocument, parseRichText, type RichTextDocument } from '$lib/rich-text/document';
 
-// the organisation's story and its look as `org_presentation` holds them, the one rule each passes
-// on the way in, and the version a save of either is written against.
+// the organisation's story, its look and its sharing as `org_presentation` holds them, the one rule
+// each passes on the way in, and the version a save of each is written against.
 //
 // the story — its mission and its vision:
 //
@@ -220,12 +220,17 @@ export async function partVersion(stored: string): Promise<string> {
 // the sharing — the share channels a page offers and their order, the organisation's default
 // share message, and its social links.
 //
+// one rule both ways: the pieces below refuse a save and filter a read alike.
+//
 // read key by key, each through its own rule: a key absent, and `{}` (the column default), reads
 // as `null` or none, and the page falls back to its own defaults. a key the rule refuses is logged
 // and read the same way, so a row an older rule wrote cannot take a donor page down. the column is
 // only held to a JSON object (`org_presentation_sharing_object_check`), so this is the whole rule
 // on the way out. a social link is typed by a person and drawn as an `href`, so an address that is
 // not http(s) is dropped rather than drawn.
+//
+// a save states every key: the chosen channels in order, `[]` being a page with no share buttons;
+// the message, or `null` for none; and the links, a row left wholly blank being no link.
 // ---------------------------------------------------------------------------
 
 /** what the sharing column holds for a deployment that has never saved one — the column default. */
@@ -239,7 +244,9 @@ export type OrgSharing = {
 	readonly links: readonly { readonly label: string; readonly href: string }[];
 };
 
-const sharingChannels = z.array(z.enum(SHARE_CHANNELS));
+const sharingChannels = z
+	.array(z.enum(SHARE_CHANNELS))
+	.refine((channels) => new Set(channels).size === channels.length);
 const sharingMessage = z.string().trim().min(1).max(SHARE_MESSAGE_MAX);
 const sharingLink = z.object({
 	label: z.string().trim().min(1),
@@ -259,7 +266,9 @@ export function sharingFromStored(stored: string): OrgSharing {
 	return {
 		channels: storedSharingPart(held.channels, sharingChannels, 'channels'),
 		message: storedSharingPart(held.message, sharingMessage, 'message'),
-		links: links.flatMap((link) => storedSharingPart(link, sharingLink, 'social link') ?? [])
+		links: links
+			.flatMap((link) => storedSharingPart(link, sharingLink, 'social link') ?? [])
+			.slice(0, SOCIAL_LINKS_MAX)
 	};
 }
 
@@ -269,4 +278,85 @@ function storedSharingPart<T>(held: unknown, rule: z.ZodType<T>, part: string): 
 	if (parsed.success) return parsed.data;
 	console.error(`the stored sharing ${part} is refused and reads as none:`, parsed.error.issues);
 	return null;
+}
+
+/**
+ * the boxes a sharing save posts: the ticked channels in the order they are drawn, the message, and
+ * each link as a row of two boxes, one list per box. a blank box arrives as `undefined`.
+ */
+export type SharingValues = {
+	readonly channels: readonly string[];
+	readonly message?: string | undefined;
+	readonly linkLabel: readonly (string | undefined)[];
+	readonly linkUrl: readonly (string | undefined)[];
+};
+
+/** a scheme at the head of an address; one typed without is taken as https. */
+const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
+/**
+ * the sharing a screen posted, or the sentence each refused box is answered with — keyed by the
+ * box's own name, a link's by its row (`linkUrl[2]`), and naming what it held, because the body
+ * behind the 400 is read by an agent (CLAUDE.md).
+ */
+export function sharingInput(
+	values: SharingValues
+): { ok: true; sharing: OrgSharing } | { ok: false; errors: Record<string, string> } {
+	const errors: Record<string, string> = {};
+
+	const channels = sharingChannels.safeParse(values.channels);
+	if (!channels.success) {
+		const off = values.channels.find((channel) => !isOneOf(SHARE_CHANNELS, channel));
+		const twice = values.channels.find((channel, at) => values.channels.indexOf(channel) !== at);
+		errors.channels =
+			off === undefined
+				? `${shown(twice)} is ticked twice; each channel is offered once`
+				: `${shown(off)} is not a share channel; a channel is ${listed(SHARE_CHANNELS)}`;
+	}
+
+	const typed = values.message?.trim() ?? '';
+	const message =
+		typed === '' ? { success: true as const, data: null } : sharingMessage.safeParse(typed);
+	if (!message.success) {
+		errors.message = `holds ${typed.length} characters; a share message holds at most ${SHARE_MESSAGE_MAX}`;
+	}
+
+	const links: { label: string; href: string }[] = [];
+	const rows = Math.max(values.linkLabel.length, values.linkUrl.length);
+	for (let row = 0; row < rows; row++) {
+		const label = values.linkLabel[row]?.trim() ?? '';
+		const typedUrl = values.linkUrl[row]?.trim() ?? '';
+		if (label === '' && typedUrl === '') continue;
+		const href = SCHEME.test(typedUrl) || typedUrl === '' ? typedUrl : `https://${typedUrl}`;
+		const link = sharingLink.safeParse({ label, href });
+		if (link.success) {
+			links.push(link.data);
+			continue;
+		}
+		if (label === '') {
+			errors[`linkLabel[${row}]`] = 'needs a label, the name the link is shown under';
+		}
+		if (href === '') errors[`linkUrl[${row}]`] = 'needs a web address';
+		else if (!sharingLink.shape.href.safeParse(href).success) {
+			errors[`linkUrl[${row}]`] =
+				`${shown(typedUrl)} is not a web address; a social link starts with https:// or http://`;
+		}
+	}
+	if (links.length > SOCIAL_LINKS_MAX) {
+		errors.linkUrl = `holds ${links.length} social links; the organisation lists at most ${SOCIAL_LINKS_MAX}`;
+	}
+
+	if (!channels.success || !message.success || Object.keys(errors).length > 0) {
+		return { ok: false, errors };
+	}
+	return { ok: true, sharing: { channels: channels.data, message: message.data, links } };
+}
+
+/** the column's text for a sharing, which is what a save writes and what its digest is taken over. */
+export function storedSharing(sharing: OrgSharing): string {
+	return JSON.stringify({
+		channels: sharing.channels,
+		message: sharing.message,
+		links: sharing.links.map(({ label, href }) => ({ label, href }))
+	});
 }

@@ -42,9 +42,9 @@ const reading = (over: Partial<HomeReading> = {}): HomeReading => ({
 	face: { kind: 'ready', address: ADDRESS },
 	values: { vars: { kind: 'read', vars: VARS } },
 	sites: ['https://give.example.org'],
-	// where the deployment answers, which is where it serves its donation page: the same address the
-	// face carries, never a second one.
-	donatePage: ADDRESS,
+	// the deployment's one donation page: `/donate` on the address the face carries, never a second
+	// host.
+	donatePage: `${ADDRESS}/donate`,
 	org: ORG,
 	// the rows read this not at all: what it gates is whether the deployment is asked about its
 	// Stripe account, which is the page's question and not a fold's.
@@ -205,7 +205,7 @@ describe('the six sections', () => {
 	});
 
 	// the fold is not empty over a deployment that has typed no site: the donation page it serves at
-	// its own address is the list's first row, and `None listed` over that row is the row
+	// `/donate` is the list's first row, and `None listed` over that row is the row
 	// contradicting the fold it is a way into. no word rather than one naming the page, which the
 	// fold's own first row already does.
 	it('carry no word where nothing but the donation page is listed', () => {

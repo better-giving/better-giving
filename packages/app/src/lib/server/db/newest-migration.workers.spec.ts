@@ -37,6 +37,13 @@ const FIRST_UNAPPLIED = '0010_gift_refunded_trigger_and_dispute.sql';
 const STOP = env.TEST_MIGRATIONS.findIndex((m) => m.name === FIRST_UNAPPLIED);
 const nowhereToStop = STOP < 1;
 
+const NOTE_STOP = env.TEST_MIGRATIONS.findIndex((m) => m.name === '0015_chat_turn_note.sql');
+const CHAT_PAGE_ID = '019fb300-0000-7000-8000-000000000101';
+const TURNS = [
+	['019fb300-0000-7000-8000-000000000102', 1, 'operator', 'coats for 300 kids', null],
+	['019fb300-0000-7000-8000-000000000103', 2, 'assistant', 'a first draft', '@cf/probe-model']
+] as const;
+
 const db = () => env.UNMIGRATED_DB;
 
 type Row = Record<string, unknown>;
@@ -205,6 +212,31 @@ async function postEntryGroup(sourceId: string): Promise<string> {
 	return posting.group.id!;
 }
 
+/** a campaign on the seeded form, and a turn by each author, written in front of `NOTE_STOP`. */
+async function seedChat() {
+	await db().batch([
+		db()
+			.prepare(
+				`insert into page (id, type, name, slug, state, form_id, draft, created_at, updated_at)
+				 values (?, 'campaign', 'Winter coat drive', 'winter-coats', 'never_published', ?,
+				         '{"blocks":[]}', 0, 0)`
+			)
+			.bind(CHAT_PAGE_ID, FORM_ID),
+		...TURNS.map(([id, seq, author, text, model]) =>
+			db()
+				.prepare(
+					`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, created_at)
+					 values (?, ?, ?, ?, ?, ?, '[]', ?)`
+				)
+				.bind(id, CHAT_PAGE_ID, seq, author, text, model, seq)
+		)
+	]);
+}
+
+async function chatTurns(): Promise<Row[]> {
+	return (await db().prepare('select * from chat_turn order by rowid').all<Row>()).results;
+}
+
 async function recorded(): Promise<string[]> {
 	const { results } = await db()
 		.prepare('select name from d1_migrations order by id')
@@ -213,10 +245,19 @@ async function recorded(): Promise<string[]> {
 }
 
 let migrated:
-	| Promise<{ before: Map<string, Row[]>; after: Map<string, Row[]>; overSeed: string[] }>
+	| Promise<{
+			before: Map<string, Row[]>;
+			after: Map<string, Row[]>;
+			overSeed: string[];
+			turnsBefore: Row[];
+	  }>
 	| undefined;
 
-/** the chain stopped in front of `FIRST_UNAPPLIED`, seeded, then finished — once, for every block here. */
+/**
+ * the chain stopped in front of `FIRST_UNAPPLIED`, seeded, then finished — once, for every block
+ * here. it stops a second time in front of `NOTE_STOP` to write a chat, since the seed runs before
+ * `chat_turn` exists.
+ */
 function migrateOverSeed() {
 	migrated ??= (async () => {
 		const chain = env.TEST_MIGRATIONS;
@@ -224,9 +265,12 @@ function migrateOverSeed() {
 		const underSeed = await recorded();
 		await seed();
 		const before = await snapshot();
+		await applyD1Migrations(db(), chain.slice(0, NOTE_STOP));
+		await seedChat();
+		const turnsBefore = await chatTurns();
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
-		return { before, after: await snapshot(), overSeed };
+		return { before, after: await snapshot(), overSeed, turnsBefore };
 	})();
 	return migrated;
 }
@@ -507,5 +551,30 @@ describe('0011 names no company on a sent row while the connection is moved', ()
 
 	it.skipIf(nowhereToStop)('leaves every row naming none', () => {
 		expect(realms).toEqual([null, null, null]);
+	});
+});
+
+// what 0015 is for: `chat_turn` is rebuilt to take `note`, and every turn it held arrives with none.
+describe('0015 rebuilds the chat with every turn in it, each noted with nothing', () => {
+	let turnsBefore: Row[];
+	let turnsAfter: Row[] | undefined;
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		const migrated = await migrateOverSeed();
+		turnsBefore = migrated.turnsBefore;
+		turnsAfter = migrated.after.get('chat_turn');
+	});
+
+	it.skipIf(nowhereToStop)('stops in front of 0015 with a turn by each author written', () => {
+		expect(
+			NOTE_STOP,
+			'0015 is at or behind FIRST_UNAPPLIED, so the test deployment has applied it: delete this block and the stop in front of it'
+		).toBeGreaterThan(STOP);
+		expect(turnsBefore.map((r) => r.id)).toEqual(TURNS.map(([id]) => id));
+	});
+
+	it.skipIf(nowhereToStop)('copies every turn column for column, and notes none of them', () => {
+		expect(turnsAfter).toEqual(turnsBefore.map((r) => ({ ...r, note: null })));
 	});
 });

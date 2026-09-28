@@ -347,6 +347,7 @@ type TurnRow = {
 	text: string;
 	model: string | null;
 	image_ids: string;
+	note: string | null;
 };
 
 const OPERATOR_TURN: TurnRow = {
@@ -354,7 +355,15 @@ const OPERATOR_TURN: TurnRow = {
 	author: 'operator',
 	text: 'coats for 300 kids, goal $15k by Dec 31',
 	model: null,
-	image_ids: '[]'
+	image_ids: '[]',
+	note: null
+};
+
+const ASSISTANT_TURN: TurnRow = {
+	...OPERATOR_TURN,
+	author: 'assistant',
+	text: 'here is a first draft',
+	model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
 };
 
 let turnSequence = 0;
@@ -362,8 +371,8 @@ let turnSequence = 0;
 async function insertTurn(pageId: string, row: TurnRow): Promise<void> {
 	turnSequence += 1;
 	await env.DB.prepare(
-		`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, created_at)
-		 values (?, ?, ?, ?, ?, ?, ?, 0)`
+		`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, note, created_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, 0)`
 	)
 		.bind(
 			`019fc500-0000-7000-8000-${String(turnSequence).padStart(12, '0')}`,
@@ -372,7 +381,8 @@ async function insertTurn(pageId: string, row: TurnRow): Promise<void> {
 			row.author,
 			row.text,
 			row.model,
-			row.image_ids
+			row.image_ids,
+			row.note
 		)
 		.run();
 }
@@ -415,6 +425,33 @@ describe('the chat, a page at a time and in order', () => {
 		const message = await rejection(() => insertTurn(pageId, turn));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('chat_turn_model_check');
+	});
+
+	it.each([['refused '], ['Refused'], ['declined'], ['']])('refuses the note %j', async (note) => {
+		const turn = { ...ASSISTANT_TURN, seq: 2, note };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_note_check');
+	});
+
+	it('refuses a note on a turn the operator wrote', async () => {
+		const turn = { ...OPERATOR_TURN, seq: 2, note: 'refused' };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_note_check');
+	});
+
+	it.each([
+		['refused', 10],
+		['fell-back', 11],
+		['unanswered', 12],
+		[null, 13]
+	])('accepts an assistant turn noted %j', async (note, seq) => {
+		await insertTurn(pageId, { ...ASSISTANT_TURN, seq, note });
+		const row = await env.DB.prepare(`select note from chat_turn where page_id = ? and seq = ?`)
+			.bind(pageId, seq)
+			.first();
+		expect(row).toEqual({ note });
 	});
 
 	it.each([

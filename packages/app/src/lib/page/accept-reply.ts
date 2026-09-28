@@ -3,19 +3,21 @@
 // whole and hands `current` back unchanged — a throw anywhere inside included. ./accept-reply.spec.ts
 // holds that nothing else in the app calls `pageFromDraft` or imports ./json-patch.ts.
 //
-// a reply is `{ say, page?, set? }`. `say` is what the chat shows. `page` edits the page as the
-// model reads it (`draftFromPage` in ./ai-catalog.ts: layout, palette and blocks, each block's
-// values under `props`), as an RFC 6902 patch or an RFC 7396 merge (./json-patch.ts); an edit
-// reaching past those three keys is refused, so the look, the switches, the share message, the
-// donation settings, the goal and the end date never move through it. `set` names the five things
-// a reply may change beside the page — a campaign's name, goal and end date, the program the page's
-// gifts are pinned to and its suggested amounts — and anything else it names is refused: the fund,
-// the program's destination, the payment options, the look and the switches are the operator's
-// alone. an end date is a day, `YYYY-MM-DD`, in the zone of the browser that posted the chat turn,
-// stored as ./end-date.ts's `endOfDay` of it and refused once that day is over. pinning a program
-// is refused on the Donation page while its donors choose one, since its program chooser stays.
-// each value `set` changes comes back in `changes` — an end date as its day, a program with the
-// mode it leaves — so the reply's own words can be held to what it did.
+// a reply is `{ say, page?, set? }`. `say` is what the chat shows: words once trimmed, at most
+// `SAY_MAX` characters. `page` edits the page as the model reads it (`draftFromPage` in
+// ./ai-catalog.ts: layout, palette and blocks, each block's values under `props`), as an RFC 6902
+// patch or an RFC 7396 merge (./json-patch.ts); an edit reaching past those three keys is refused,
+// so the look, the switches, the share message, the donation settings, and a campaign's name, goal
+// and end date never move through it. `set` names the five things a reply may change beside the
+// page — a campaign's name, goal and end date, the program the page's gifts are pinned to and its
+// suggested amounts — each written into the draft, and anything else it names is refused: the
+// fund, the program's destination, the payment options, the look and the switches are the
+// operator's alone. an end date is a day, `YYYY-MM-DD`, in the zone of the browser that posted the
+// chat turn, stored as ./end-date.ts's `endOfDay` of it and refused once that day is over. pinning
+// a program is refused on the Donation page while its donors choose one, since its program chooser
+// stays. each value `set` changes comes back in `changes` — an end date as its day, a program with
+// the mode it leaves — so the reply's own words can be held to what it did. a rename is from the
+// draft's own name where it holds one, and from the dashboard's otherwise.
 //
 // the model's answer is text nobody checked, so its size is bounded before anything reads it: the
 // text at `REPLY_BYTES_MAX`, its nesting before the schema walks it, a patch at `OPS_MAX`
@@ -30,9 +32,9 @@
 //   reply rewrote included — is dropped and noted, and the rest of the reply lands.
 // - a figure in the words: a new campaign name and every string a block draws — a heading, a lede,
 //   what a tier buys, a question, each paragraph of a story or an answer — may hold only figures the operator wrote in
-//   the chat or the page already draws, in its words, its tiers' amounts or its goal. any other
-//   refuses the reply, naming the figure. a donor reads a figure as a promise the model cannot
-//   check.
+//   the chat or the page already draws, in its words, its tiers' amounts or its goal — the goal
+//   this same reply sets included. any other refuses the reply, naming the figure. a donor reads a
+//   figure as a promise the model cannot check.
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat, or
 //   the reply is refused.
 // - a block its page type does not take, and everything else about a page's shape, is
@@ -43,6 +45,10 @@
 // - an amount is digits, optionally grouped in threes by commas (`1,000`, `12,500`), optionally with
 //   a point and cents (`12.50`), and read by `readAmount` in ../forms/amounts.ts, so `12.505` is no
 //   figure at all.
+// - `k`, `thousand`, `m` or `million` after the digits, a space between or none, scales it
+//   (`$15k`, `$15 thousand`, `$1.2m`); a letter run on past them (`$15kids`) leaves the digits
+//   alone. a scaled figure finer than a cent (`$1.234567k`) is one nobody can check, and in the
+//   words it refuses the reply.
 // - it is a figure only beside the currency: after `$`, `US$` or `USD` (`$25`, `$ 25`, `USD 40`),
 //   or before `dollar`, `dollars` or `USD` (`25 dollars`, `40 usd`). a bare number — `25 children`
 //   — is not one.
@@ -65,6 +71,8 @@ export const OPS_MAX = 200;
 /** the page as the model reads it, measured after every edit. */
 export const DRAFT_BYTES_MAX = 256 * 1024;
 export const DEPTH_MAX = 32;
+/** what the chat shows of a reply. */
+export const SAY_MAX = 2000;
 /** the page's depth and the levels a reply wraps an edit in: reply › page › ops › op › value. */
 const REPLY_DEPTH_MAX = DEPTH_MAX + 5;
 const DRAFT_BOUNDS = { bytes: DRAFT_BYTES_MAX, depth: DEPTH_MAX, what: 'the page' };
@@ -76,7 +84,11 @@ const patchOp = z.discriminatedUnion('op', [
 ]);
 
 const replySchema = z.strictObject({
-	say: z.string().min(1),
+	say: z
+		.string()
+		.trim()
+		.min(1, { error: 'say holds no words' })
+		.max(SAY_MAX, { error: `say holds at most ${SAY_MAX} characters` }),
 	page: z
 		.discriminatedUnion('kind', [
 			z.strictObject({
@@ -105,11 +117,14 @@ const replySchema = z.strictObject({
 		.optional()
 });
 
+/** the reply's shape as JSON Schema, for a model's JSON mode; this door checks it again whatever. */
+export const REPLY_JSON_SCHEMA = z.toJSONSchema(replySchema, { io: 'input' });
+
 /** what a page edit reaches: the page as the model reads it, `draftFromPage`'s keys. */
 const DRAFT_KEYS: readonly string[] = ['layout', 'palette', 'blocks'];
 /** what only a campaign has: as a reply's `set` names it, as a page edit would, and in words. */
 const CAMPAIGN_ONLY = [
-	{ set: 'name', page: 'name', what: 'name' },
+	{ set: 'name', page: PAGE_KEYS.name, what: 'name' },
 	{ set: 'goalMinor', page: PAGE_KEYS.goalMinor, what: 'goal' },
 	{ set: 'endDate', page: PAGE_KEYS.endsAt, what: 'end date' }
 ] as const;
@@ -120,7 +135,10 @@ export type ActiveProgram = { id: string; name: string };
 export type AcceptInput = {
 	type: PageType;
 	current: Page;
-	/** the campaign's name as it stands; null on the Donation page. */
+	/**
+	 * the campaign's name on the dashboard; null on the Donation page. a draft holding a name of its
+	 * own is renamed from that one.
+	 */
 	name: string | null;
 	/** the model's answer as it arrived. */
 	reply: string;
@@ -151,8 +169,6 @@ export type Dropped =
 export type Accepted = {
 	ok: true;
 	draft: Page;
-	/** the campaign's new name, where the reply changed it. */
-	name?: string;
 	say: string;
 	changes: Change[];
 	dropped: Dropped[];
@@ -233,7 +249,8 @@ function accept(input: AcceptInput): Accepted | Refused {
 		return { ...block, tiers };
 	});
 
-	const shown = new Set([...stated, ...figuresShown(current)]);
+	const goal = set.onto.goalMinor === undefined ? [] : [set.onto.goalMinor];
+	const shown = new Set([...stated, ...figuresShown(current), ...goal]);
 	const worded = [
 		...(set.renamed === undefined ? [] : [{ where: 'set.name', texts: [set.renamed] }]),
 		...blocks.map((block, index) => ({
@@ -243,7 +260,7 @@ function accept(input: AcceptInput): Accepted | Refused {
 	];
 	for (const { where, texts } of worded) {
 		for (const text of texts) {
-			const unshown = figuresIn(text).find(({ minor }) => !shown.has(minor));
+			const unshown = figuresIn(text).find(({ minor }) => minor === null || !shown.has(minor));
 			if (unshown === undefined) continue;
 			return refuse(
 				`${where}: "${unshown.written}" is not a figure the operator wrote in the chat or one the page already shows`
@@ -263,14 +280,15 @@ function accept(input: AcceptInput): Accepted | Refused {
 	return {
 		ok: true,
 		draft: checked.page,
-		...(set.renamed === undefined ? {} : { name: set.renamed }),
 		say: reply.say,
 		changes: set.changes,
 		dropped
 	};
 }
 
-const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?![\d,.]?\d)`;
+const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(k|m|thousand|million)\b)?(?![\d,.]?\d)`;
+/** how many places each scale moves the point. */
+const SCALES: Record<string, number> = { k: 3, thousand: 3, m: 6, million: 6 };
 const FIGURES = [
 	new RegExp(String.raw`(?:\bUS\$|\$|\bUSD\b)\s?${NUMBER}`, 'gi'),
 	new RegExp(String.raw`(?<![\d.,$])${NUMBER}\s?(?:dollars?|USD)\b`, 'gi')
@@ -280,26 +298,36 @@ const FIGURES = [
 function statedFigures(messages: readonly ChatMessage[]): number[] {
 	return messages
 		.filter(({ author }) => author === 'operator')
-		.flatMap(({ text }) => figuresIn(text).map(({ minor }) => minor));
+		.flatMap(({ text }) => readFigures(text));
 }
 
-/** each figure `text` holds, as written and in minor units. */
-function figuresIn(text: string): { written: string; minor: number }[] {
+/**
+ * each figure `text` holds, as written and in minor units. a scaled figure finer than a cent is
+ * `null`, a figure nobody can check; unscaled, it is no figure at all.
+ */
+function figuresIn(text: string): { written: string; minor: number | null }[] {
 	return FIGURES.flatMap((pattern) => [...text.matchAll(pattern)]).flatMap(
-		([written, whole = '', fraction]) => {
-			const { minor } = readAmount(
-				`${whole.replaceAll(',', '')}${fraction === undefined ? '' : `.${fraction}`}`,
-				FORM_CURRENCY
-			);
-			return minor === null ? [] : [{ written, minor }];
+		([written, whole = '', fraction = '', scale]) => {
+			const places = scale === undefined ? 0 : (SCALES[scale.toLowerCase()] ?? 0);
+			const shifted = fraction.padEnd(places, '0');
+			const units = `${whole.replaceAll(',', '')}${shifted.slice(0, places)}`;
+			const cents = shifted.slice(places);
+			const { minor } = readAmount(cents === '' ? units : `${units}.${cents}`, FORM_CURRENCY);
+			if (minor === null && scale === undefined) return [];
+			return [{ written, minor }];
 		}
 	);
+}
+
+/** every figure in `text` a check can read, in minor units. */
+function readFigures(text: string): number[] {
+	return figuresIn(text).flatMap(({ minor }) => (minor === null ? [] : [minor]));
 }
 
 /** every figure the page draws: in its words, its tiers' amounts and its goal. */
 function figuresShown(page: Page): number[] {
 	return [
-		...page.blocks.flatMap(textsIn).flatMap((text) => figuresIn(text).map(({ minor }) => minor)),
+		...page.blocks.flatMap(textsIn).flatMap(readFigures),
 		...tiersOf(page).map(({ amountMinor }) => amountMinor),
 		...(page.goalMinor === undefined ? [] : [page.goalMinor])
 	];
@@ -349,8 +377,12 @@ function settle(
 	}
 	const onto: Page = { ...current };
 	const changes: Change[] = [];
-	const renamed = set.name !== undefined && set.name !== name ? set.name : undefined;
-	if (renamed !== undefined) changes.push({ field: 'name', from: name, to: renamed });
+	const named = current.name ?? name;
+	const renamed = set.name !== undefined && set.name !== named ? set.name : undefined;
+	if (renamed !== undefined) {
+		changes.push({ field: 'name', from: named, to: renamed });
+		onto.name = renamed;
+	}
 	if (set.goalMinor !== undefined && set.goalMinor !== current.goalMinor) {
 		changes.push({ field: 'goal', from: current.goalMinor ?? null, to: set.goalMinor });
 		onto.goalMinor = set.goalMinor;

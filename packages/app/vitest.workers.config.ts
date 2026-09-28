@@ -1,14 +1,16 @@
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-pool-workers';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { routeFiles } from './vite/route-files';
 import { versionDefine } from './version-define';
 
 // the pool that runs specs inside workerd, against a real D1.
 //
 // its own config file rather than a `projects` entry in vitest.config.ts, because the pool brings
 // a runtime with it and every other spec in this package runs in node. some of these specs import
-// a route module and call its loader or its action directly, which is a plain module and needs no
-// plugin; what it needs is the `$lib` alias below, and a bare alias is the whole of it.
+// a route module and call its loader or its action directly, which is a plain module; what it needs
+// is the `$lib` alias below, and `virtual:route-files` for a route that checks a campaign's address
+// ($lib/page/slug.ts).
 //
 // no `main`. the pool's `main` is optional, and pointing it at the worker entry wrangler.jsonc
 // names would tie `test` to a build having already happened — and nothing anywhere orders one
@@ -23,6 +25,7 @@ import { versionDefine } from './version-define';
 
 export default defineConfig({
 	plugins: [
+		routeFiles(resolve(import.meta.dirname, 'src/routes')),
 		cloudflareTest(async () => ({
 			miniflare: {
 				compatibilityDate: '2026-07-22',

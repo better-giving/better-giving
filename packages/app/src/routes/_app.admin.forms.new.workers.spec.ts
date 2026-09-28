@@ -331,7 +331,6 @@ describe('/admin/forms/new load', () => {
 		// on a form they have not touched.
 		expect(Object.keys(await load()).sort()).toEqual([
 			'currency',
-			'donatePageOrigin',
 			'programs',
 			'readiness',
 			'sites',
