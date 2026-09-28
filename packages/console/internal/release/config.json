@@ -16,12 +16,13 @@
 		"0010_gift_refunded_trigger_and_dispute.sql",
 		"0011_quickbooks_sync_realm.sql",
 		"0012_payment_provider_reference.sql",
-		"0013_api_key.sql"
+		"0013_api_key.sql",
+		"0014_zapier_subscription_failing_since.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "efd81d341a1355f6521f25498b43f52866e6fa5a"
+	"commit": "37d72b7067c1a58e3aaaf7d31d4940dcc0c24f83"
 }

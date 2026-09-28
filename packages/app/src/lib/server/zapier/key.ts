@@ -105,7 +105,7 @@ export async function replaceZapierKey(
 			.set({ key, keyHash, createdAt: now, updatedAt: now })
 			.where(and(eq(zapierKey.id, KEY_ID), eq(zapierKey.keyHash, current.keyHash)))
 			.returning({ madeAt: zapierKey.createdAt }),
-		...endSubscriptionStatements(db, 'every_open', 'key_replaced', now, landed)
+		...endSubscriptionStatements(db, 'every_open', 'key_replaced', now, { onlyIf: landed })
 	]);
 	const [row] = written;
 	if (row === undefined) return { ok: false, reason: 'conflict' };
