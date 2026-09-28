@@ -8,7 +8,7 @@ import type { HomeFace, HomeReading } from '../api/types';
 // would not say what the deployment holds, and what its read again asks. the client is replaced so
 // every reading of the deployment is a count.
 
-const binary = vi.hoisted(() => ({ homeReads: 0, zapierReads: 0, booksReads: 0, ready: false }));
+const binary = vi.hoisted(() => ({ homeReads: 0, booksReads: 0, ready: false }));
 
 const READY: HomeFace = { kind: 'ready', address: 'https://a.example' };
 const UNANSWERED: HomeFace = {
@@ -47,18 +47,7 @@ vi.mock('../api/client', async (original) => ({
 			body.press === 'start-date-preview'
 				? { press: body.press, startAt: `${body.startAt}T00:00:00.000Z`, queues: {}, drops: {} }
 				: { press: body.press }
-	}),
-	readZapier: async () => {
-		binary.zapierReads += 1;
-		return {
-			kind: 'read' as const,
-			report: {
-				key: null,
-				listening: { newGift: 0, newDonor: 0, giftRefunded: 0 },
-				deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
-			}
-		};
-	}
+	})
 }));
 
 const bar = await import('@better-giving/operator/progress-bar');
@@ -67,7 +56,6 @@ const { forgetReadings } = await import('../lib/processor-cache');
 const { quickbooksIntent } = await import('../lib/quickbooks-standing');
 const { cache } = await import('remix-client-cache');
 const sections = await import('./_sections');
-const zapier = await import('./_sections.zapier');
 const quickbooks = await import('./_sections.quickbooks');
 
 const LAYOUT = 'sections';
@@ -75,7 +63,7 @@ const LAYOUT = 'sections';
 const BOOKS = 'books';
 
 /** the layout and one kept page under it, opened at that page, with every bar seen to its end. */
-async function open(at: '/zapier' | '/quickbooks' = '/zapier') {
+async function open() {
 	const off = bar.subscribeProgressBar(() => {
 		if (bar.progressBarFinishing()) queueMicrotask(bar.progressBarLanded);
 	});
@@ -87,7 +75,6 @@ async function open(at: '/zapier' | '/quickbooks' = '/zapier') {
 				shouldRevalidate: sections.shouldRevalidate,
 				ErrorBoundary: sections.ErrorBoundary as never,
 				children: [
-					{ path: '/zapier', loader: zapier.clientLoader as never },
 					{
 						id: BOOKS,
 						path: '/quickbooks',
@@ -98,7 +85,7 @@ async function open(at: '/zapier' | '/quickbooks' = '/zapier') {
 				]
 			}
 		],
-		{ initialEntries: [at] }
+		{ initialEntries: ['/quickbooks'] }
 	);
 	await router.initialize();
 	await vi.waitFor(() => expect(router.state.initialized).toBe(true));
@@ -108,7 +95,6 @@ async function open(at: '/zapier' | '/quickbooks' = '/zapier') {
 beforeEach(async () => {
 	await forgetReadings();
 	binary.homeReads = 0;
-	binary.zapierReads = 0;
 	binary.booksReads = 0;
 	binary.ready = false;
 	bar.pageDrawn('/organisation');
@@ -119,7 +105,7 @@ describe('a page cloudflare did not answer for', () => {
 		const { router, off } = await open();
 		try {
 			expect(gatedBy(router.state.errors?.[LAYOUT])?.gate.title).toBe('Cloudflare didn’t answer');
-			expect(binary.zapierReads).toBe(0);
+			expect(binary.booksReads).toBe(0);
 			const before = binary.homeReads;
 
 			// what the gate's press does
@@ -128,7 +114,7 @@ describe('a page cloudflare did not answer for', () => {
 
 			expect(binary.homeReads).toBe(before + 1);
 			expect(router.state.errors).toBeNull();
-			expect(binary.zapierReads).toBe(1);
+			expect(binary.booksReads).toBe(1);
 		} finally {
 			off();
 			router.dispose();
@@ -223,7 +209,7 @@ async function postDay(
 describe('the books page', () => {
 	it('answers a start-date preview without reading the page again or forgetting what it kept', async () => {
 		binary.ready = true;
-		const { router, off } = await open('/quickbooks');
+		const { router, off } = await open();
 		try {
 			expect(await cache.getItem('/quickbooks')).toBeDefined();
 			const reads = { home: binary.homeReads, books: binary.booksReads };
@@ -241,7 +227,7 @@ describe('the books page', () => {
 
 	it('reads the page again over a move', async () => {
 		binary.ready = true;
-		const { router, off } = await open('/quickbooks');
+		const { router, off } = await open();
 		try {
 			const reads = binary.booksReads;
 
