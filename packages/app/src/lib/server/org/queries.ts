@@ -13,6 +13,7 @@ import {
 	sharingFromStored,
 	type Story,
 	storedLook,
+	storedSharing,
 	storedStory,
 	storyFromStored
 } from './presentation';
@@ -287,11 +288,74 @@ export async function updateOrgLookToPrevious(db: Db, seen: string): Promise<Loo
 	return row ? { version: await partVersion(row.look) } : 'stale';
 }
 
-/** the sharing, each part read through its own rule; no row reads as none chosen. */
-export async function readOrgSharing(db: Db): Promise<OrgSharing> {
+// ---------------------------------------------------------------------------
+// the sharing, written as the story is: compare-and-set on the sharing column's own text, the
+// replaced sharing kept in `sharing_previous`, and Undo the one-statement swap.
+// ---------------------------------------------------------------------------
+
+/** the column's text, or `NO_SHARING` where there is no row. */
+async function storedSharingText(db: Db): Promise<string> {
 	const [row] = await db
 		.select({ sharing: orgPresentation.sharing })
 		.from(orgPresentation)
 		.where(eq(orgPresentation.id, ORG_PRESENTATION_ID));
-	return sharingFromStored(row?.sharing ?? NO_SHARING);
+	return row?.sharing ?? NO_SHARING;
+}
+
+/**
+ * the sharing, each part read through its own rule, and the version a save of it is written
+ * against; no row reads as none chosen.
+ */
+export async function readOrgSharing(db: Db): Promise<{ sharing: OrgSharing; version: string }> {
+	const stored = await storedSharingText(db);
+	return { sharing: sharingFromStored(stored), version: await partVersion(stored) };
+}
+
+/** what a sharing write answers, as a story write's. */
+export type SharingWrite = 'written' | 'stale';
+
+/** write the sharing, keeping the one it replaces for Undo — while the sharing is still `seen`. */
+export async function updateOrgSharing(
+	db: Db,
+	seen: string,
+	sharing: OrgSharing
+): Promise<SharingWrite> {
+	const current = await storedSharingText(db);
+	if ((await partVersion(current)) !== seen) return 'stale';
+	const next = storedSharing(sharing);
+	const [row] = await db
+		.insert(orgPresentation)
+		.values({ id: ORG_PRESENTATION_ID, sharing: next, sharingPrevious: current })
+		.onConflictDoUpdate({
+			target: orgPresentation.id,
+			set: { sharing: next, sharingPrevious: sql`${orgPresentation.sharing}` },
+			setWhere: eq(orgPresentation.sharing, current)
+		})
+		.returning({ id: orgPresentation.id });
+	return row ? 'written' : 'stale';
+}
+
+/**
+ * swap the sharing with the one the last save replaced — while the sharing is still `seen`.
+ *
+ * `stale` too where no sharing was ever saved, for `updateOrgStoryToPrevious`'s reason.
+ */
+export async function updateOrgSharingToPrevious(db: Db, seen: string): Promise<SharingWrite> {
+	const current = await storedSharingText(db);
+	if ((await partVersion(current)) !== seen) return 'stale';
+	const [row] = await db
+		.update(orgPresentation)
+		.set({
+			sharing: sql`${orgPresentation.sharingPrevious}`,
+			sharingPrevious: sql`${orgPresentation.sharing}`
+		})
+		.where(
+			and(
+				eq(orgPresentation.id, ORG_PRESENTATION_ID),
+				eq(orgPresentation.sharing, current),
+				isNotNull(orgPresentation.sharingPrevious)
+			)
+		)
+		.returning({ id: orgPresentation.id });
+	return row ? 'written' : 'stale';
 }

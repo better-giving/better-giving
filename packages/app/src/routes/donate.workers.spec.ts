@@ -10,7 +10,12 @@ import { readSetupState } from '$lib/server/config/setup-state';
 import { createDb } from '$lib/server/db/client';
 import { program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
-import { readOrgStory, updateOrgStory } from '$lib/server/org/queries';
+import {
+	readOrgSharing,
+	readOrgStory,
+	updateOrgSharing,
+	updateOrgStory
+} from '$lib/server/org/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { requestContext } from '../request-context';
 import type { Route } from './+types/donate';
@@ -226,6 +231,21 @@ describe('the organisation’s sharing on /donate', () => {
 		expect(answered.data.view.org.info.links).toEqual([
 			{ label: 'Facebook', href: 'https://facebook.com/hope' }
 		]);
+	});
+
+	it('follows each save of the sharing, in the order it was saved', async () => {
+		const reorder = async (channels: ('x' | 'whatsapp' | 'email')[]) => {
+			const { version } = await readOrgSharing(db);
+			expect(await updateOrgSharing(db, version, { channels, message: null, links: [] })).toBe(
+				'written'
+			);
+			const answered = await visit();
+			if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+			return answered.data.view.sharing.channels;
+		};
+
+		expect(await reorder(['x', 'whatsapp', 'email'])).toEqual(['x', 'whatsapp', 'email']);
+		expect(await reorder(['email', 'x', 'whatsapp'])).toEqual(['email', 'x', 'whatsapp']);
 	});
 
 	it('reads a part it does not hold, or holds off the rule, as the default', async () => {
