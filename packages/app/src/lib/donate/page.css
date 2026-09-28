@@ -257,3 +257,806 @@ body {
 	margin: 0;
 	color: var(--page-quiet);
 }
+
+/*
+ * ── the donor page's blocks ───────────────────────────────────────────────────────────────────
+ *
+ * ./page-view.tsx draws a page as a masthead, a body and a footer under the root, and each block as
+ * a `.page-block` section carrying `data-block` and `data-background`, its content inside a
+ * `.page-in` that holds it to the page's width and gutter. the donation box is a `.page-box` beside
+ * them, never inside one, and no rule below gives the box or any ancestor of it a clip, a position
+ * or a transform. a block's own class names start `page-`, and its states are attributes.
+ *
+ * layouts. `.page-flow` stacks blocks full width, each grounded one as a band edge to edge. a
+ * `.page-split` is the box's column beside the rest: on a phone it is the list order —
+ * `.page-lead`, then `.page-aside` holding the box and its companions, then `.page-rest` — and from
+ * the widest breakpoint the aside stands in the second column across both rows. a grounded block
+ * inside a split is a panel with the card's corner rather than a band. `.page-band` is the banner's
+ * ground behind its split.
+ *
+ * ink. `--page-accent` is what a link and a listed tier's amount are drawn in: the primary, but the
+ * ground's own ink on a tint ground, where the primary is never a word (the measured pairs above),
+ * and on a strong one, which carries one ink. `--page-ring` is the focus ring, the one ink on a
+ * strong ground. a card drawn on `--_n1` inside a block — a tier, the org-info card, a program
+ * option, a share press — sets its own ink, so a strong ground's ink never reaches it.
+ */
+
+.page-block :where(h1, h2, h3, p, ul, ol) {
+	margin: 0;
+}
+
+.page-block {
+	--page-accent: var(--_p);
+	--page-ring: var(--_focus-ring);
+}
+
+.page-block[data-background='tint'],
+.page-block[data-background='strong'],
+.page-band[data-background='tint'] .page-block,
+.page-band[data-background='strong'] .page-block {
+	--page-accent: currentColor;
+}
+
+.page-block[data-background='strong'],
+.page-band[data-background='strong'] .page-block {
+	--page-ring: var(--page-on-strong);
+}
+
+.page-block a {
+	color: var(--page-accent);
+	text-underline-offset: var(--_underline-offset);
+}
+
+.page-block a:focus-visible,
+.page-faq-question:focus-visible {
+	outline: var(--_focus-width) solid transparent;
+	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
+}
+
+.page-in {
+	box-sizing: border-box;
+	max-inline-size: var(--page-width);
+	margin-inline: auto;
+	padding-inline: var(--page-gutter);
+}
+
+.page[data-layout='column'] .page-in {
+	max-inline-size: calc(var(--page-measure) + 2 * var(--page-gutter));
+}
+
+.page-mast {
+	padding-block-start: var(--_sp5);
+}
+
+.page-mast-name {
+	margin: 0;
+	overflow-wrap: anywhere;
+	font-weight: var(--_w-bold);
+	color: var(--_n11);
+}
+
+.page-body {
+	padding-block: var(--page-gap-lead) var(--page-gap-section);
+}
+
+.page-foot {
+	padding-block-end: var(--page-gap-section);
+}
+
+.page-flow,
+.page-split,
+.page-lead,
+.page-rest {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-section);
+	min-inline-size: 0;
+}
+
+.page-aside {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-group);
+	min-inline-size: 0;
+}
+
+.page-flow > .page-block:not([data-background='none']) {
+	padding-block: var(--page-band-inset);
+}
+
+.page-split {
+	box-sizing: border-box;
+	max-inline-size: var(--page-width);
+	margin-inline: auto;
+	padding-inline: var(--page-gutter);
+}
+
+.page-split .page-in {
+	max-inline-size: none;
+	padding-inline: 0;
+}
+
+.page-split .page-block:not([data-background='none']) {
+	padding: var(--page-band-inset) var(--page-gutter);
+	border-radius: var(--_r);
+}
+
+.page-band {
+	padding-block: var(--page-band-inset);
+}
+
+.page-band + .page-flow {
+	padding-block-start: var(--page-gap-section);
+}
+
+/* the card holds its own column's width in a flow, and fills a column layout's measure. */
+.page-box > .page-in > * {
+	max-inline-size: var(--page-box);
+}
+
+.page[data-layout='column'] .page-box > .page-in > * {
+	max-inline-size: none;
+}
+
+@container page (min-width: 60rem) {
+	.page-split {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		grid-template-rows: auto 1fr;
+		column-gap: var(--page-col-gap);
+		row-gap: var(--page-gap-section);
+		align-items: start;
+	}
+
+	.page-lead,
+	.page-rest {
+		grid-column: 1;
+	}
+
+	.page-aside {
+		grid-column: 2;
+		grid-row: 1 / span 2;
+	}
+
+	.page-band .page-split {
+		align-items: center;
+	}
+}
+
+/* headings a block opens with. */
+.page-heading {
+	margin-block-end: var(--page-gap-group);
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	letter-spacing: var(--page-tracking-heading);
+	font-weight: var(--_w-bold);
+	text-wrap: balance;
+}
+
+.page-subheading {
+	margin-block-end: var(--_sp3);
+	font-size: var(--_t-lg);
+	line-height: var(--_lh-tight);
+	font-weight: var(--_w-bold);
+}
+
+.page-label {
+	margin-block-end: var(--_sp2);
+	font-size: var(--_t-sm);
+	line-height: var(--_lh-tight);
+	font-weight: var(--_w-bold);
+	letter-spacing: var(--_tracking);
+	text-transform: uppercase;
+	color: var(--page-quiet);
+}
+
+/* rich text inside a block: paragraphs and lists a step apart. */
+:is(
+	.page-prose,
+	.page-story-lead,
+	.page-about-words,
+	.page-about-statement,
+	.page-about-beneath,
+	.page-faq-answer
+) {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+}
+
+:is(
+		.page-prose,
+		.page-story-lead,
+		.page-about-words,
+		.page-about-statement,
+		.page-about-beneath,
+		.page-faq-answer
+	)
+	:where(ul, ol) {
+	padding-inline-start: var(--_sp5);
+}
+
+/* title */
+.page-title-heading {
+	max-inline-size: var(--page-measure-title);
+	overflow-wrap: break-word;
+	font-size: var(--page-display);
+	line-height: var(--page-lh-display);
+	letter-spacing: var(--page-tracking-display);
+	font-weight: var(--_w-bold);
+	text-wrap: balance;
+}
+
+.page-title-lede {
+	margin-block-start: var(--_sp4);
+	max-inline-size: var(--page-measure-lede);
+	font-size: var(--page-lede);
+	line-height: var(--page-lh-lede);
+	color: var(--page-quiet);
+	text-wrap: pretty;
+}
+
+.page-title[data-variant='center'] {
+	text-align: center;
+}
+
+.page-title[data-variant='center'] > * {
+	margin-inline: auto;
+}
+
+.page-title[data-variant='compact'] .page-title-heading {
+	max-inline-size: var(--page-measure-heading);
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	letter-spacing: var(--page-tracking-heading);
+}
+
+.page-title[data-variant='compact'] .page-title-lede {
+	margin-block-start: var(--_sp2);
+	font-size: var(--_t-md);
+	line-height: var(--_lh-body);
+}
+
+/* story */
+.page-prose {
+	max-inline-size: var(--page-measure);
+	line-height: var(--page-lh-prose);
+}
+
+.page-story[data-variant='lede'] .page-prose > p:first-child,
+.page-story-lead {
+	font-size: var(--page-lede);
+	line-height: var(--page-lh-lede);
+}
+
+.page-story-lead {
+	max-inline-size: var(--page-measure-lede);
+}
+
+.page-story[data-variant='split'] {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-group);
+}
+
+@container page (min-width: 60rem) {
+	.page-story[data-variant='split'] {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+		column-gap: var(--page-col-gap);
+	}
+}
+
+/* impact tiers: statements, drawn so nothing reads as a tile a donor could press. */
+.page-tiers-list {
+	padding: 0;
+	list-style: none;
+}
+
+.page-tier-amount {
+	font-weight: var(--_w-bold);
+	font-variant-numeric: tabular-nums;
+}
+
+.page-tiers[data-variant='cards'] .page-tiers-list {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--_sp4);
+}
+
+@container page (min-width: 48rem) {
+	.page-tiers[data-variant='cards'] .page-tiers-list[data-columns='2'] {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.page-tiers[data-variant='cards'] .page-tiers-list[data-columns='3'] {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+.page-tiers[data-variant='cards'] .page-tier {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp2);
+	padding: var(--_sp5);
+	background: var(--_n1);
+	color: var(--_n11);
+	border: var(--_border) solid var(--_n6);
+	border-radius: var(--_r);
+}
+
+.page-tiers[data-variant='cards'] .page-tier-amount {
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	color: var(--_p);
+}
+
+.page-tiers[data-variant='list'] .page-tiers-list {
+	max-inline-size: var(--page-measure);
+}
+
+.page-tiers[data-variant='list'] .page-tier {
+	display: grid;
+	grid-template-columns: 5rem minmax(0, 1fr); /* raw-length-ok: the amount column, a shape */
+	column-gap: var(--_sp5);
+	align-items: baseline;
+	padding-block: var(--_sp4);
+	border-block-start: var(--_border) solid var(--_n6);
+}
+
+.page-tiers[data-variant='list'] .page-tier:last-child {
+	border-block-end: var(--_border) solid var(--_n6);
+}
+
+.page-tiers[data-variant='list'] .page-tier-amount {
+	font-size: var(--_t-lg);
+	text-align: end;
+	color: var(--page-accent);
+}
+
+.page-tiers[data-variant='list'] .page-tier-buys {
+	color: var(--page-quiet);
+}
+
+/* faq: the mark stands on the question's first line, however many lines the question takes. */
+.page-faq-items {
+	max-inline-size: var(--page-measure);
+}
+
+.page-faq[data-variant='accordion'] .page-faq-item {
+	border-block-start: var(--_border) solid var(--_n6);
+}
+
+.page-faq[data-variant='accordion'] .page-faq-item:last-child {
+	border-block-end: var(--_border) solid var(--_n6);
+}
+
+.page-faq[data-variant='accordion'] .page-faq-question {
+	display: flex;
+	align-items: start;
+	justify-content: space-between;
+	gap: var(--_sp4);
+	min-block-size: var(--_row-min);
+	padding-block: var(--_sp3);
+	list-style: none;
+	font-weight: var(--_w-bold);
+	cursor: pointer;
+}
+
+.page-faq-question::-webkit-details-marker {
+	display: none;
+}
+
+.page-faq-mark {
+	flex: none;
+	inline-size: var(--_glyph-beside);
+	block-size: 1lh;
+	color: var(--page-quiet);
+	transition: rotate var(--_move-state);
+}
+
+.page-faq-item[open] .page-faq-mark {
+	rotate: 180deg;
+}
+
+.page-faq[data-variant='accordion'] .page-faq-answer {
+	padding-block-end: var(--_sp5);
+	color: var(--page-quiet);
+}
+
+.page-faq[data-variant='open'] .page-faq-items {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-item);
+}
+
+.page-faq[data-variant='open'] .page-faq-question {
+	margin-block-end: var(--_sp2);
+	font-size: var(--_t-md);
+	font-weight: var(--_w-bold);
+}
+
+.page-faq[data-variant='open'] .page-faq-answer {
+	color: var(--page-quiet);
+}
+
+@container page (min-width: 60rem) {
+	.page-flow .page-faq[data-variant='open'] .page-faq-items {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--page-gap-item) var(--page-col-gap);
+		max-inline-size: none;
+	}
+}
+
+/* about us */
+.page-about-parts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-item);
+	max-inline-size: var(--page-measure);
+}
+
+.page-about-words {
+	font-size: var(--_t-lg);
+	line-height: var(--page-lh-lede);
+}
+
+@container page (min-width: 48rem) {
+	.page-about[data-variant='side-by-side'] .page-about-parts {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		column-gap: var(--page-col-gap);
+		max-inline-size: none;
+	}
+}
+
+.page-about[data-variant='statement'] .page-label {
+	margin-block-end: var(--_sp4);
+}
+
+.page-about-statement {
+	max-inline-size: var(--page-measure-lede);
+	font-size: var(--page-heading);
+	line-height: var(--_lh-tight);
+	letter-spacing: var(--page-tracking-heading);
+	font-weight: var(--_w-medium);
+	text-wrap: balance;
+}
+
+.page-about-beneath {
+	margin-block-start: var(--page-gap-group);
+	max-inline-size: var(--page-measure);
+	color: var(--page-quiet);
+}
+
+/* org info */
+.page-org {
+	font-size: var(--_t-sm);
+	color: var(--page-quiet);
+}
+
+.page-org-name {
+	font-weight: var(--_w-bold);
+	color: var(--_n11);
+}
+
+.page-org-line {
+	display: block;
+}
+
+.page-org-links {
+	display: flex;
+	flex-wrap: wrap;
+	column-gap: var(--_sp4);
+}
+
+.page-org[data-variant='footer'] {
+	display: grid;
+	gap: var(--_sp4);
+	padding-block-start: var(--_sp5);
+	border-block-start: var(--_border) solid var(--_n6);
+}
+
+@container page (min-width: 48rem) {
+	.page-org[data-variant='footer'] {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		column-gap: var(--page-col-gap);
+	}
+}
+
+.page-org[data-variant='card'] {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp2);
+	max-inline-size: var(--page-measure);
+	padding: var(--_sp5);
+	background: var(--_n1);
+	color: var(--_n10);
+	border: var(--_border) solid var(--_n6);
+	border-radius: var(--_r);
+}
+
+.page-org[data-variant='card'] .page-org-name {
+	margin-block-end: var(--_sp1);
+	font-size: var(--_t-lg);
+	line-height: var(--_lh-tight);
+	color: var(--_n12);
+}
+
+/* share */
+.page-share-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--_sp2);
+}
+
+.page-share-button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--_sp2);
+	min-block-size: var(--_row-min);
+	padding-inline: var(--_sp3) var(--_sp4);
+	background: var(--_n1);
+	color: var(--_n12);
+	border: var(--_border) solid var(--_edge-control);
+	border-radius: var(--_r-in);
+	font: inherit;
+	font-weight: var(--_w-medium);
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.page-share-button:hover {
+	border-color: var(--_n11);
+}
+
+.page-share-button[data-shape='icon'] {
+	justify-content: center;
+	inline-size: var(--_row-min);
+	padding: 0;
+}
+
+.page-share-button[data-state='copied'] {
+	color: var(--_p);
+	border-color: var(--_p);
+}
+
+/* a primary edge keeps a band of `--_n1` between itself and the ring, as the card's marked controls do. */
+.page-share-button[data-state='copied']:focus-visible {
+	box-shadow:
+		0 0 0 var(--_border) var(--_n1),
+		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
+}
+
+.page-share-mark {
+	flex: none;
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+}
+
+.page-share-stand-in {
+	display: inline-grid;
+	place-items: center;
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+	line-height: 1;
+	border: 1.5px solid currentColor; /* raw-length-ok: the lettered stand-in's frame, a shape */
+	border-radius: var(--_r-in);
+}
+
+.page-share-words {
+	display: inline-grid;
+}
+
+.page-share-words > * {
+	grid-area: 1 / 1;
+	visibility: hidden;
+}
+
+.page-share-words > [data-shown] {
+	visibility: visible;
+}
+
+/* goal bar */
+.page-goal-figures {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: var(--_sp2);
+}
+
+.page-goal-raised {
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	font-weight: var(--_w-bold);
+	font-variant-numeric: tabular-nums;
+}
+
+.page-goal-of {
+	color: var(--page-quiet);
+	font-variant-numeric: tabular-nums;
+}
+
+.page-goal-track {
+	block-size: 0.625rem; /* raw-length-ok: the goal track's thickness, a shape */
+	margin-block: var(--_sp3) var(--_sp2);
+	overflow: hidden;
+	background: var(--page-track);
+	border-radius: var(--_r-in);
+}
+
+.page-goal-fill {
+	block-size: 100%;
+	background: var(--_p);
+}
+
+.page-goal-meta {
+	font-size: var(--_t-sm);
+	color: var(--page-quiet);
+}
+
+.page-goal[data-variant='figure'] .page-goal-raised {
+	font-size: var(--page-display);
+	line-height: var(--page-lh-display);
+	letter-spacing: var(--page-tracking-display);
+}
+
+.page-goal[data-variant='figure'] .page-goal-of {
+	margin-block-start: var(--_sp1);
+}
+
+.page-goal[data-variant='figure'] .page-goal-track {
+	block-size: 0.375rem; /* raw-length-ok: the figure's thinner track, a shape */
+}
+
+/* program chooser: a set the donor picks from, marked the way the box marks a chosen tile. the
+   mark stands on the name's first line, however many lines the name takes. */
+.page-choose {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	min-inline-size: 0;
+}
+
+.page-choose-legend {
+	margin-block-end: var(--_sp3);
+	padding: 0;
+	font-size: var(--_t-lg);
+	line-height: var(--_lh-tight);
+	font-weight: var(--_w-bold);
+}
+
+.page-choose-options {
+	display: grid;
+	gap: var(--_sp2);
+}
+
+@container page (min-width: 30rem) {
+	.page-choose[data-variant='cards'] .page-choose-options {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@container page (min-width: 60rem) {
+	.page-aside .page-choose[data-variant='cards'] .page-choose-options {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+.page-choose-option {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-content: center;
+	column-gap: var(--_sp3);
+	min-block-size: var(--_row-min);
+	padding: var(--_sp3) var(--_sp4);
+	background: var(--_n1);
+	color: var(--_n12);
+	border: var(--_border) solid var(--_edge-control);
+	border-radius: var(--_r);
+	cursor: pointer;
+}
+
+.page-choose-input {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.page-choose-name {
+	grid-column: 1;
+	grid-row: 1;
+	font-weight: var(--_w-bold);
+}
+
+.page-choose-description {
+	grid-column: 1;
+	grid-row: 2;
+	font-size: var(--_t-sm);
+	color: var(--_n10);
+}
+
+.page-choose-mark {
+	grid-column: 2;
+	grid-row: 1;
+	align-self: start;
+	display: grid;
+	place-items: center;
+	inline-size: var(--_glyph-beside);
+	block-size: 1lh;
+	color: var(--_p);
+}
+
+.page-choose-tick {
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+}
+
+.page-choose-option:has(:checked) .page-choose-name {
+	color: var(--_p);
+}
+
+.page-choose[data-variant='cards'] .page-choose-option:hover:not(:has(:checked)) {
+	border-color: var(--_n11);
+}
+
+.page-choose[data-variant='cards'] .page-choose-option:has(:checked) {
+	border-color: var(--_p);
+	box-shadow: inset 0 0 0 var(--_border) var(--_p);
+}
+
+.page-choose-option:has(:focus-visible) {
+	z-index: 1;
+	outline: var(--_focus-width) solid transparent;
+	box-shadow:
+		0 0 0 var(--_border) var(--_n1),
+		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
+}
+
+.page-choose[data-variant='cards'] .page-choose-option:has(:checked:focus-visible) {
+	box-shadow:
+		inset 0 0 0 var(--_border) var(--_p),
+		0 0 0 var(--_border) var(--_n1),
+		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
+}
+
+.page-choose[data-variant='list'] .page-choose-options {
+	gap: 0;
+	background: var(--_n1);
+	border: var(--_border) solid var(--_edge-control);
+	border-radius: var(--_r);
+}
+
+.page-choose[data-variant='list'] .page-choose-option {
+	grid-template-columns: auto minmax(0, 1fr);
+	background: none;
+	border: 0;
+	border-radius: 0;
+}
+
+.page-choose[data-variant='list'] .page-choose-option + .page-choose-option {
+	border-block-start: var(--_border) solid var(--_n6);
+}
+
+.page-choose[data-variant='list'] .page-choose-mark {
+	grid-column: 1;
+}
+
+.page-choose[data-variant='list'] :is(.page-choose-name, .page-choose-description) {
+	grid-column: 2;
+}
+
+.page-choose[data-variant='list'] .page-choose-mark::before {
+	content: '';
+	box-sizing: border-box;
+	inline-size: var(--_box);
+	block-size: var(--_box);
+	border: var(--_border) solid var(--_edge-control);
+	border-radius: 50%;
+}
+
+.page-choose[data-variant='list'] .page-choose-option:has(:checked) .page-choose-mark::before {
+	border: calc(var(--_box) * 0.3125) solid var(--_p);
+}

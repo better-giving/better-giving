@@ -4,11 +4,15 @@
 const SVG = 'http://www.w3.org/2000/svg';
 
 /**
- * lucide's `chevron-down`, `search`, `check`, `copy`, `circle-alert` and `circle-help`
- * (https://lucide.dev, ISC), each drawn in `currentColor` at its source's own stroke. a circle or a
- * rect is written as the path it describes.
+ * lucide's `chevron-down`, `search`, `check`, `copy`, `circle-alert`, `circle-help`, `arrow-right`,
+ * `mail` and `link` (https://lucide.dev, ISC), each drawn in `currentColor` at its source's own
+ * stroke. a circle or a rect is written as the path it describes.
+ *
+ * exported as data as well as through `glyph` below: the deployment's donor page draws its blocks
+ * in react, on the server, where there is no document to build a node in, and it takes its marks
+ * from this one set rather than drawing its own.
  */
-const GLYPHS = {
+export const GLYPHS = {
 	chevron: ['m6 9 6 6 6-6'],
 	search: ['m21 21-4.34-4.34', 'M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0'],
 	tick: ['M20 6 9 17l-5-5'],
@@ -24,6 +28,17 @@ const GLYPHS = {
 		'M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0',
 		'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3',
 		'M12 17h.01'
+	],
+	// the last three are the donor page's (the share buttons and the ended campaign's link); the
+	// card draws none of them.
+	'arrow-right': ['M5 12h14', 'm12 5 7 7-7 7'],
+	mail: [
+		'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+		'm22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7'
+	],
+	link: [
+		'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
+		'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'
 	]
 } as const;
 
