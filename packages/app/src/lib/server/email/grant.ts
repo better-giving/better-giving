@@ -1,6 +1,7 @@
 import { grantReceived, grantRequested } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import { TRIBUTE_KIND_LABELS, type TributeKind } from '@better-giving/form/v1';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import type { OrgProfile } from '../db/schema';
 import { present } from '../org/receipt-fields';
 import type { RenderedEmail } from './provider';
@@ -56,7 +57,8 @@ async function render(
 			detail:
 				'No notice was written: the organisation has no registered name saved, and a donor ' +
 				'cannot be told where their grant is going by somebody they cannot identify. Open the ' +
-				'console (`better-giving start`) and fill in your organisation details under Organisation.'
+				'console (`better-giving start`) and fill in your organisation details under ' +
+				`${IDENTITY_FOLD}.`
 		};
 	}
 

@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { and, eq, isNull } from 'drizzle-orm';
 import { projectTribute } from '../../donations/tributes';
 import type { Db } from '../db/client';
@@ -127,8 +128,7 @@ export async function sendTributeNotice(
 					{ label: 'Donation', value: target.donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: `Open the console (\`better-giving start\`) and fill in the organisation’s details under ${IDENTITY_FOLD}.`
 			});
 			return 'not_sent';
 		}

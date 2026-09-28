@@ -26,6 +26,7 @@
 import { mailFromFault } from '@better-giving/operator/console/mail-from';
 import { EMAIL } from '@better-giving/operator/console/org-rules';
 import { setCommand, type DeployValueName } from '@better-giving/operator/deploy-split';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { redact } from '../../redact';
 
 /**
@@ -589,7 +590,7 @@ export function parseHeaderValue(label: string, value: string): SmtpConfigResult
 				`The ${label} contains a line break (\`${JSON.stringify(value)}\`), which cannot go into ` +
 				'an email header: a header ends at the newline, so everything after it would become ' +
 				'a header of its own. This usually means a saved value has a stray newline in it: ' +
-				'check your organisation details on the console, under Organisation.'
+				`check your organisation details on the console, under ${IDENTITY_FOLD}.`
 		};
 	}
 

@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { donation, payment } from '../db/schema';
@@ -68,8 +69,7 @@ export async function sendRefundNotice(deps: MailDeps, target: RefundNoticeTarge
 					{ label: 'Refund', value: target.refundId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: `Open the console (\`better-giving start\`) and fill in the organisation’s details under ${IDENTITY_FOLD}.`
 			});
 			return;
 		}

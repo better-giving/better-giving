@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { z } from 'zod';
 import type {
 	AddressRead,
@@ -121,7 +122,7 @@ export const LINES: readonly { stage: ChariotStage; label: string; note: string 
 	{
 		stage: 'finding',
 		label: 'Finding your organisation',
-		note: 'Looked up in Chariot’s directory by the EIN in Organisation.'
+		note: `Looked up in Chariot’s directory by the EIN in ${IDENTITY_FOLD}.`
 	},
 	{
 		stage: 'connecting',

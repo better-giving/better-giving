@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 // what a processor page's last press sent, kept for as long as this tab holds the console rather
 // than for as long as the page is mounted.
 //
-// **a stop before the store usually names a fix on another page** — the EIN in Organisation, a
+// **a stop before the store usually names a fix on another page** — the EIN in Legal details, a
 // domain on the deployment — and the page's own state goes the moment the operator follows it. the
 // run itself is the binary's memory and comes back with the page (`chariotRun` in ../api/client.ts);
 // kept here, what was sent comes back beside it, so the press is made again without retyping

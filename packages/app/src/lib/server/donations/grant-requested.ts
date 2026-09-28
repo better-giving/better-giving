@@ -1,3 +1,4 @@
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { renderGrantRequested, type GrantNoticeInput } from '../email/grant';
 import { readOrgProfile } from '../org/queries';
 import { alert, type MailDeps } from './delivery';
@@ -39,8 +40,7 @@ export async function sendGrantRequested(
 					{ label: 'Donation', value: target.donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: `Open the console (\`better-giving start\`) and fill in the organisation’s details under ${IDENTITY_FOLD}.`
 			});
 			return;
 		}

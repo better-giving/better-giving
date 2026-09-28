@@ -74,7 +74,7 @@ export type SetupJobState = 'ready' | 'todo';
  * the row to go and open — packages/console-ui/src/lib/org-fields.ts's `boxFold` — and a row called
  * one thing on the ledger and another in the sentence sending somebody to it is a scavenger hunt.
  */
-export const IDENTITY_FOLD = 'Organisation';
+export const IDENTITY_FOLD = 'Legal details';
 export const NOTIFICATIONS_FOLD = 'Notifications';
 
 /**

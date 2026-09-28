@@ -92,7 +92,7 @@ describe('the rail', () => {
 		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
 		expect(cells(groups)).toEqual([
 			'Dashboard password → /password',
-			'Organisation → /organisation',
+			'Legal details → /organisation',
 			'Stripe → /payments/stripe',
 			'PayPal → /payments/paypal',
 			'Chariot → /payments/chariot',
@@ -108,6 +108,23 @@ describe('the rail', () => {
 			'Donation processor',
 			undefined,
 			'Integrations'
+		]);
+	});
+
+	it('reads one word per cell across a narrow window', () => {
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
+		expect(groups.flatMap((group) => group.destinations.map((d) => d.short))).toEqual([
+			'Password',
+			'Legal',
+			'Stripe',
+			'PayPal',
+			'Chariot',
+			'NOWPayments',
+			'Sites',
+			'SMTP',
+			'Notifications',
+			'QuickBooks',
+			'Zapier'
 		]);
 	});
 

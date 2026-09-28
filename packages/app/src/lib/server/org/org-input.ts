@@ -16,7 +16,7 @@ import { z } from 'zod';
 // trim, blank becomes `null`, the length caps, the fields that must be filled in, the
 // email pattern — so all of them are zod schemas and nothing is left as a hand-written check
 // underneath. they are stated in `@better-giving/operator/console/org-rules` rather than here,
-// along with what is deliberately not checked and why, because the console's Organisation fold
+// along with what is deliberately not checked and why, because the console's Legal details fold
 // runs the same rules in the browser in front of the person typing — and that package is a leaf
 // this app and the console can both reach, where `$lib/server/**` is closed to a component
 // (`packages/app/form-rules.spec.ts`). what this file adds to them is `.nullable()`.
@@ -163,7 +163,7 @@ const CLEAN_FIELDS = z.object({
  *
  * the keys are the form field names, which is what makes `issue.path[0]` an error key with
  * nothing to translate. every rule is `ORG_PROFILE_FIELD_RULES` in
- * `@better-giving/operator/console/org-rules`, which the console's Organisation fold runs too —
+ * `@better-giving/operator/console/org-rules`, which the console's Legal details fold runs too —
  * the only thing this stage adds is `.nullable()`, because a blank is already `null` by the time
  * it runs where a submitted box is `''`.
  *
