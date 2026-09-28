@@ -1,0 +1,333 @@
+import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { createDb, type Db } from '$lib/server/db/client';
+import { page } from '$lib/server/db/schema';
+import { readServedCampaign } from '$lib/server/pages/campaign';
+import { insertPage } from '$lib/server/pages/page-row.testing';
+import { ORIGIN, signIn } from '../program-routes.testing';
+import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import * as layout from './_app';
+import * as editor from './_app.admin.campaigns.$pageId';
+
+// a workers spec because the editor reads a page and its presses write one. the chain is mounted,
+// for ../route-request.testing.ts's reason: the session gate is a `middleware` on ./_app.tsx.
+
+let db: Db;
+let request: RouteRequester;
+let session: string;
+
+beforeAll(async () => {
+	db = createDb(env.DB);
+	request = mountRoutes([
+		{ path: undefined, module: layout },
+		{ path: 'admin/campaigns/:pageId', module: editor }
+	]);
+	session = await signIn(db);
+});
+
+beforeEach(async () => {
+	await env.DB.batch([
+		env.DB.prepare('delete from chat_turn'),
+		env.DB.prepare('delete from page'),
+		env.DB.prepare('delete from form')
+	]);
+});
+
+type State = 'never_published' | 'live' | 'ended';
+
+/** a campaign called `name` at `slug`, in `state`. */
+async function campaign(name: string, slug: string | null, state: State): Promise<string> {
+	const pageId = await insertPage(db, 'campaign');
+	const [row] = await db.select().from(page).where(eq(page.id, pageId));
+	const draft = { ...JSON.parse(row?.draft ?? '{}'), name };
+	await db
+		.update(page)
+		.set({
+			name,
+			slug,
+			state,
+			draft: JSON.stringify(draft),
+			published: state === 'never_published' ? null : JSON.stringify(draft)
+		})
+		.where(eq(page.id, pageId));
+	return pageId;
+}
+
+async function stored(pageId: string) {
+	const [row] = await db.select().from(page).where(eq(page.id, pageId));
+	if (!row) throw new Error(`no page ${pageId}`);
+	return row;
+}
+
+/** the version the editor was drawn with: the row's `updated_at` as it stands. */
+async function version(pageId: string): Promise<string> {
+	return String((await stored(pageId)).updatedAt.getTime());
+}
+
+/** a press on the editor, drawn at the version the row holds now unless `drawn` says otherwise. */
+async function post(pageId: string, form: string, fields: Record<string, string>, drawn?: string) {
+	const body = new FormData();
+	body.set(WHICH_FORM, form);
+	body.set(RECORD_VERSION, drawn ?? (await version(pageId)));
+	for (const [name, value] of Object.entries(fields)) body.set(name, value);
+	return request(
+		new Request(`${ORIGIN}/admin/campaigns/${pageId}`, {
+			method: 'POST',
+			headers: { cookie: session },
+			body
+		}),
+		{ env }
+	);
+}
+
+const address = (pageId: string, slug: string, extra: Record<string, string> = {}) =>
+	post(pageId, 'campaign-address', { slug, ...extra });
+
+async function slugError(response: Response): Promise<unknown> {
+	const answer = (await response.json()) as {
+		form?: { result?: { error?: Record<string, string[]> } };
+	};
+	return answer.form?.result?.error?.slug;
+}
+
+describe('the address', () => {
+	it.each([
+		['admin', '/admin'],
+		['api', '/api'],
+		['console', '/console']
+	])('refuses %s, naming the route it clashes with, and moves nothing', async (slug, route) => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		const response = await address(pageId, slug);
+
+		expect(response.status).toBe(400);
+		const answer = await response.clone().json();
+		expect(answer).toMatchObject({ form: { result: { initialValue: { slug } } } });
+		expect(await slugError(response)).toEqual([`clashes with ${route}`]);
+		expect((await stored(pageId)).slug).toBe('winter-coat-drive');
+	});
+
+	it('refuses donate as the Donation page’s', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		const response = await address(pageId, 'donate');
+
+		expect(response.status).toBe(400);
+		expect(await slugError(response)).toEqual(['taken by the Donation page']);
+	});
+
+	it.each([
+		['live', 'live'],
+		['never published', 'never_published']
+	] as const)('refuses an address a %s campaign holds, naming it', async (_, state) => {
+		await campaign('Giving Tuesday', 'giving-tuesday', state);
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		const response = await address(pageId, 'giving-tuesday');
+
+		expect(response.status).toBe(409);
+		expect(await slugError(response)).toEqual(['taken by Giving Tuesday']);
+		expect((await stored(pageId)).slug).toBe('winter-coat-drive');
+	});
+
+	it('moves a never-published campaign’s address at once, repairing its case', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		const response = await address(pageId, ' Coats ');
+
+		expect(response.status).toBe(200);
+		expect((await stored(pageId)).slug).toBe('coats');
+	});
+
+	it('asks before moving a published campaign, and moves nothing until it is answered', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+
+		const response = await address(pageId, 'coats');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			ask: { kind: 'move', from: '/winter-coat-drive', to: '/coats' }
+		});
+		expect((await stored(pageId)).slug).toBe('winter-coat-drive');
+	});
+
+	it('moves a published campaign once the move is confirmed, and the old address answers nothing', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+
+		const response = await address(pageId, 'coats', { move: 'on' });
+
+		expect(response.status).toBe(200);
+		expect((await readServedCampaign(db, 'coats'))?.id).toBe(pageId);
+		expect(await readServedCampaign(db, 'winter-coat-drive')).toBeNull();
+	});
+});
+
+describe('an ended campaign’s address', () => {
+	it('is asked for before it is taken, and nothing moves until it is answered', async () => {
+		const ended = await campaign('Summer camp fund', 'summer-camp', 'ended');
+		const pageId = await campaign('Summer camp 2027', 'summer-camp-2027', 'never_published');
+
+		const response = await address(pageId, 'summer-camp');
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			ask: { kind: 'takeover', holder: 'Summer camp fund', to: '/summer-camp' }
+		});
+		expect((await stored(pageId)).slug).toBe('summer-camp-2027');
+		expect((await stored(ended)).slug).toBe('summer-camp');
+	});
+
+	it('moves here once the takeover is confirmed, and the ended campaign has none', async () => {
+		const ended = await campaign('Summer camp fund', 'summer-camp', 'ended');
+		const pageId = await campaign('Summer camp 2027', 'summer-camp-2027', 'never_published');
+
+		const response = await address(pageId, 'summer-camp', { takeover: 'on' });
+
+		expect(response.status).toBe(200);
+		expect((await stored(pageId)).slug).toBe('summer-camp');
+		expect((await stored(ended)).slug).toBeNull();
+	});
+
+	it('is not taken by a save drawn from an older version, and the ended campaign keeps it', async () => {
+		const ended = await campaign('Summer camp fund', 'summer-camp', 'ended');
+		const pageId = await campaign('Summer camp 2027', 'summer-camp-2027', 'never_published');
+		const drawn = await version(pageId);
+		await db
+			.update(page)
+			.set({ updatedAt: new Date(Number(drawn) + 1) })
+			.where(eq(page.id, pageId));
+
+		const response = await post(
+			pageId,
+			'campaign-address',
+			{ slug: 'summer-camp', takeover: 'on' },
+			drawn
+		);
+
+		expect(response.status).toBe(409);
+		expect((await stored(pageId)).slug).toBe('summer-camp-2027');
+		expect((await stored(ended)).slug).toBe('summer-camp');
+	});
+});
+
+describe('the name', () => {
+	const rename = (pageId: string, name: string, drawn?: string) =>
+		post(pageId, 'campaign-name', { name }, drawn);
+
+	it('renames a never-published campaign in its row and its draft, and its address follows', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		const response = await rename(pageId, 'Warm hands winter');
+
+		expect(response.status).toBe(200);
+		const row = await stored(pageId);
+		expect([row.name, JSON.parse(row.draft).name, row.slug]).toEqual([
+			'Warm hands winter',
+			'Warm hands winter',
+			'warm-hands-winter'
+		]);
+	});
+
+	it('takes the next free address when another campaign holds the one the name suggests', async () => {
+		await campaign('Giving Tuesday', 'giving-tuesday', 'ended');
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		await rename(pageId, 'Giving Tuesday');
+
+		expect((await stored(pageId)).slug).toBe('giving-tuesday-2');
+	});
+
+	it('leaves a published campaign’s address and live page where they are', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		const live = (await stored(pageId)).published;
+
+		const response = await rename(pageId, 'Warm hands winter');
+
+		expect(response.status).toBe(200);
+		const row = await stored(pageId);
+		expect([row.name, JSON.parse(row.draft).name, row.slug]).toEqual([
+			'Warm hands winter',
+			'Warm hands winter',
+			'winter-coat-drive'
+		]);
+		expect(row.published).toBe(live);
+	});
+
+	it('refuses a rename drawn from an older version, keeping what was typed', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const drawn = await version(pageId);
+		await db
+			.update(page)
+			.set({ updatedAt: new Date(Number(drawn) + 1) })
+			.where(eq(page.id, pageId));
+
+		const response = await rename(pageId, 'Warm hands winter', drawn);
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toMatchObject({
+			form: { id: 'campaign-name', result: { initialValue: { name: 'Warm hands winter' } } }
+		});
+		expect((await stored(pageId)).name).toBe('Winter coat drive');
+	});
+});
+
+describe('the editor', () => {
+	async function open(pageId: string) {
+		return request(
+			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }),
+			{ env }
+		);
+	}
+
+	it('draws a live campaign renamed since its publish as changed, framing its draft', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		await post(pageId, 'campaign-name', { name: 'Warm hands winter' });
+
+		const response = await open(pageId);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			name: 'Warm hands winter',
+			state: 'changed',
+			address: '/winter-coat-drive',
+			host: 'donations.example.workers.dev/',
+			preview: `/preview/${pageId}`,
+			version: (await stored(pageId)).updatedAt.getTime()
+		});
+	});
+
+	it.each([
+		['never published', 'unpublished', 'never_published'],
+		['live and unchanged', 'live', 'live'],
+		['ended', 'ended', 'ended']
+	] as const)('reads a campaign %s as %s', async (_, drawn, state) => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', state);
+
+		expect(await (await open(pageId)).json()).toMatchObject({ state: drawn });
+	});
+
+	it('reads the draft’s end date as the day it was chosen, in the zone it was chosen in', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const row = await stored(pageId);
+		const draft = {
+			...JSON.parse(row.draft),
+			endsAt: Date.parse('2027-01-01T05:00:00Z') - 1,
+			endsZone: 'America/New_York'
+		};
+		await db
+			.update(page)
+			.set({ draft: JSON.stringify(draft) })
+			.where(eq(page.id, pageId));
+
+		expect(await (await open(pageId)).json()).toMatchObject({ endDate: '2026-12-31' });
+	});
+
+	it('answers 404 for the Donation page and for an id no page has', async () => {
+		const donationPage = await insertPage(db, 'donation_page');
+
+		expect((await open(donationPage)).status).toBe(404);
+		expect((await open('pg_nothing')).status).toBe(404);
+	});
+});

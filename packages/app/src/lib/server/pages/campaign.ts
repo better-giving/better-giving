@@ -4,7 +4,7 @@ import { type Page as PageDocument, parsePage } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import { endDayOf } from '../../page/end-date';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
-import { checkSlug, SLUG_MAX_LENGTH, slugFromTitle } from '../../page/slug';
+import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { page, type Page } from '../db/schema';
@@ -193,20 +193,5 @@ async function insertCampaign(
 				throw error;
 			}
 		}
-	}
-}
-
-/** what a name makes no address from, `!!!` or a title of emoji, is called instead. */
-const UNNAMED = 'campaign';
-
-/**
- * the address a new campaign's name suggests, or its first `-2`, `-3` the address rule allows and
- * no campaign holds — an ended campaign's held address included.
- */
-function freeSlug(name: string, held: ReadonlySet<string | null>): string {
-	for (let n = 1; ; n += 1) {
-		const suffix = n === 1 ? '' : `-${n}`;
-		const slug = `${slugFromTitle(name, SLUG_MAX_LENGTH - suffix.length) || UNNAMED}${suffix}`;
-		if (checkSlug(slug).ok && !held.has(slug)) return slug;
 	}
 }

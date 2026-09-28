@@ -1,0 +1,406 @@
+import { Modal } from '@better-giving/operator/behaviour/Dialog';
+import { useEffect, useState } from 'react';
+import { useFetcher } from 'react-router';
+import { z } from 'zod';
+import { AddressSheet } from '$lib/admin/editor/address-sheet';
+import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
+import { NameSheet } from '$lib/admin/editor/name-sheet';
+import { PreviewFrame } from '$lib/admin/editor/preview-frame';
+import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
+import { screenTitle } from '$lib/admin/screen-title';
+import { resultFor } from '$lib/admin/use-admin-form';
+import { FORM_CURRENCY } from '$lib/forms/amounts';
+import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { HEADING_MAX } from '$lib/page/catalog';
+import { checkSlug, type SlugCheck } from '$lib/page/slug';
+import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
+import { loadFailed, notFound } from '$lib/server/db/load-failure';
+import type { Page } from '$lib/server/db/schema';
+import { editorPage } from '$lib/server/pages/editor';
+import {
+	type NameWrite,
+	readPage,
+	type SlugWrite,
+	updateCampaignName,
+	updateCampaignSlug
+} from '$lib/server/pages/queries';
+import { database } from '../context';
+import type { BareHandle } from './_app';
+import type { Route } from './+types/_app.admin.campaigns.$pageId';
+
+// a campaign's editor, reached from the Campaigns list: its draft framed across the window by the
+// preview route, the publish bar over it, and the Settings sheet. the parts are
+// $lib/admin/editor/'s; what they read and the writes behind them are here and in
+// $lib/server/pages/queries.ts.
+//
+// **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
+// which the dashboard shows, and the draft's, which donors see from the next Publish. until the
+// first Publish the address follows it.
+//
+// **the address** takes effect when it is saved, not at Publish. a save the address rule refuses is
+// answered naming the clash; one that would stop a published campaign's address working, or take
+// the address an ended campaign holds, is answered with the question instead of a write, and the
+// save goes again with that question answered yes. the same body posted without the answer is
+// asked again, so no caller moves either address unasked.
+//
+// every press is written against the version the editor was drawn at (`submittedVersion`), and the
+// preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
+
+export const handle: BareHandle = { frame: 'bare' };
+
+const NAME_FORM_ID = 'campaign-name';
+const ADDRESS_FORM_ID = 'campaign-address';
+
+/** a campaign's name, as the dashboard shows it and as its title draws it from the next publish. */
+const NAME_EDIT = defineForm({
+	id: NAME_FORM_ID,
+	schema: z.object({
+		name: z
+			.string('required')
+			.trim()
+			.min(1, 'required')
+			.max(HEADING_MAX, `at most ${HEADING_MAX} characters`)
+	})
+});
+
+/**
+ * the address, and the two questions a move may have been answered yes to. the case is repaired
+ * rather than refused: the router matches an address in any case.
+ */
+const ADDRESS_EDIT = defineForm({
+	id: ADDRESS_FORM_ID,
+	schema: z.object({
+		slug: z.string('required').trim().toLowerCase(),
+		move: z.boolean().optional(),
+		takeover: z.boolean().optional()
+	})
+});
+
+const SCREEN_FORMS = [NAME_FORM_ID, ADDRESS_FORM_ID] as const;
+
+const DONATION_PAGE_PATH = '/donate';
+
+const STALE =
+	'Nothing was changed: this campaign has been saved since the editor was opened. Reload it, then make this change again.';
+const NAME_FAILED = 'Renaming this campaign failed and nothing was changed. Try again.';
+const ADDRESS_FAILED = 'Saving the address failed and nothing was changed. Try again.';
+
+/** what a press on a page that is not a campaign, or no page at all, is told. */
+const gone = (pageId: string) =>
+	`no campaign has the id "${pageId}"; open it again from the Campaigns list.`;
+
+export function meta({ loaderData, matches }: Route.MetaArgs): Route.MetaDescriptors {
+	return [{ title: screenTitle(loaderData?.name ?? 'Campaign', matches) }];
+}
+
+export async function loader({ context, params, request }: Route.LoaderArgs) {
+	let row: Page | null;
+	try {
+		row = await readPage(context.get(database), params.pageId);
+	} catch (e) {
+		console.error(`loading campaign ${params.pageId}'s editor failed:`, e);
+		loadFailed('This campaign');
+	}
+	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
+	return {
+		...editorPage(row),
+		name: row.name,
+		address: row.slug === null ? null : `/${row.slug}`,
+		host: `${new URL(request.url).host}/`
+	};
+}
+
+/** the address rule's refusal as the predicate under the box. */
+function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
+	switch (refused.reason) {
+		case 'empty':
+			return 'required';
+		case 'length':
+			return `at most ${refused.max} characters`;
+		case 'character':
+			return `lowercase letters, numbers and single hyphens between words, not “${refused.character}”`;
+		case 'reserved':
+			return refused.clashesWith === DONATION_PAGE_PATH
+				? 'taken by the Donation page'
+				: `clashes with ${refused.clashesWith}`;
+	}
+}
+
+export async function action({ context, params, request }: Route.ActionArgs) {
+	const body = await request.formData();
+
+	switch (submittedForm(body, SCREEN_FORMS)) {
+		case NAME_FORM_ID:
+			return saveName();
+		case ADDRESS_FORM_ID:
+			return saveAddress();
+	}
+
+	// declared inside the action: react router strips the `action` export from the browser bundle
+	// and nothing else, so a module-scope helper reaching `$lib/server/**` would ship with the page
+	// (../routes.spec.ts).
+
+	async function saveName() {
+		const submission = parseForm(body, NAME_EDIT);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const seen = submittedVersion(body);
+		let written: NameWrite;
+		try {
+			written = await updateCampaignName(
+				context.get(database),
+				params.pageId,
+				seen,
+				submission.value.name
+			);
+		} catch (e) {
+			console.error(`renaming campaign ${params.pageId} failed:`, e);
+			return invalid(500, submission.reject({ formErrors: [NAME_FAILED] }));
+		}
+		switch (written) {
+			case 'written':
+				return { saved: 'name' as const };
+			case 'stale':
+				return invalid(409, submission.reject({ formErrors: [STALE] }));
+			case 'gone':
+				return invalid(404, submission.reject({ formErrors: [gone(params.pageId)] }));
+		}
+	}
+
+	async function saveAddress() {
+		const submission = parseForm(body, ADDRESS_EDIT);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const checked = checkSlug(submission.value.slug);
+		if (!checked.ok) {
+			return invalid(400, submission.reject({ fieldErrors: { slug: [slugPredicate(checked)] } }));
+		}
+		const seen = submittedVersion(body);
+		let written: SlugWrite;
+		try {
+			written = await updateCampaignSlug(context.get(database), params.pageId, seen, checked.slug, {
+				move: submission.value.move === true,
+				takeover: submission.value.takeover === true
+			});
+		} catch (e) {
+			console.error(`moving campaign ${params.pageId}'s address failed:`, e);
+			return invalid(500, submission.reject({ fieldErrors: { slug: [ADDRESS_FAILED] } }));
+		}
+		const to = `/${checked.slug}`;
+		switch (written.kind) {
+			case 'written':
+				return { saved: 'address' as const };
+			case 'ask':
+				return {
+					ask:
+						written.ask === 'move'
+							? { kind: written.ask, from: `/${written.from}`, to }
+							: { kind: written.ask, holder: written.holder, to }
+				};
+			case 'taken':
+				return invalid(
+					409,
+					submission.reject({ fieldErrors: { slug: [`taken by ${written.by}`] } })
+				);
+			case 'stale':
+				return invalid(409, submission.reject({ fieldErrors: { slug: [STALE] } }));
+			case 'gone':
+				return invalid(404, submission.reject({ fieldErrors: { slug: [gone(params.pageId)] } }));
+		}
+	}
+}
+
+type Answer = Route.ComponentProps['actionData'];
+
+/** the first message the last answer refused `form` with under `box` — `''` is the form's own. */
+function refusal(answer: Answer | undefined, form: { id: string }, box: string): string | null {
+	return resultFor(form, answer)?.error?.[box]?.[0] ?? null;
+}
+
+/** the question an address save came back with. */
+type Question = Extract<NonNullable<Answer>, { ask: unknown }>['ask'];
+
+/** the questions a move has been answered yes to, as the boxes post them. */
+type Confirmed = { readonly move: boolean; readonly takeover: boolean };
+
+/** a sheet opened from Settings. */
+type Opened = Extract<SettingsRow, 'name' | 'address'>;
+
+/** a press whose write belongs to a later part of the editor. */
+function noPress() {}
+
+export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
+	const { name, address, state, version, preview, host } = loaderData;
+
+	const nameFetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
+	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
+
+	const [settings, setSettings] = useState(false);
+	const [opened, setOpened] = useState<Opened | null>(null);
+	/** where the last rename was made, so its refusal is said there. */
+	const [renamedIn, setRenamedIn] = useState<'bar' | 'sheet'>('bar');
+	/** the address last saved, and the questions answered yes so far on the way to it. */
+	const [moving, setMoving] = useState<{ slug: string; confirmed: Confirmed } | null>(null);
+	/** the question up, held while the save answering it is in flight. */
+	const [question, setQuestion] = useState<Question | null>(null);
+
+	const renaming = nameFetcher.state !== 'idle';
+	const nameAnswer = renaming ? undefined : nameFetcher.data;
+	const renamed = nameAnswer != null && 'saved' in nameAnswer && nameAnswer.saved === 'name';
+	const nameError = refusal(nameAnswer, NAME_EDIT, 'name') ?? refusal(nameAnswer, NAME_EDIT, '');
+
+	const saving = addressFetcher.state !== 'idle';
+	const addressAnswer = saving ? undefined : addressFetcher.data;
+	const addressSaved =
+		addressAnswer != null && 'saved' in addressAnswer && addressAnswer.saved === 'address';
+
+	// a Done that landed closes the Name sheet, back onto Settings.
+	useEffect(() => {
+		if (renamed) setOpened((was) => (was === 'name' ? null : was));
+	}, [renamed]);
+
+	// each answer puts up the question it asks, or takes the last one down.
+	useEffect(() => {
+		if (addressAnswer === undefined) return;
+		setQuestion(addressAnswer != null && 'ask' in addressAnswer ? addressAnswer.ask : null);
+	}, [addressAnswer]);
+
+	const rename = (next: string, from: 'bar' | 'sheet') => {
+		setRenamedIn(from);
+		const body = new FormData();
+		body.set(WHICH_FORM, NAME_EDIT.id);
+		body.set(RECORD_VERSION, String(version));
+		body.set('name', next);
+		nameFetcher.submit(body, { method: 'post' });
+	};
+
+	const saveAddress = (slug: string, confirmed: Confirmed) => {
+		setMoving({ slug, confirmed });
+		const body = new FormData();
+		body.set(WHICH_FORM, ADDRESS_EDIT.id);
+		body.set(RECORD_VERSION, String(version));
+		body.set('slug', slug);
+		if (confirmed.move) body.set('move', 'on');
+		if (confirmed.takeover) body.set('takeover', 'on');
+		addressFetcher.submit(body, { method: 'post' });
+	};
+
+	const answerYes = (kind: keyof Confirmed) => {
+		if (moving !== null) saveAddress(moving.slug, { ...moving.confirmed, [kind]: true });
+	};
+	const answerNo = () => setQuestion(null);
+
+	return (
+		<EditorShell
+			bar={
+				<PublishBar
+					closeHref="/admin/campaigns"
+					page={{ kind: 'campaign', name, onRename: (next) => rename(next, 'bar') }}
+					state={state}
+					livePath={address ?? undefined}
+					publishing={false}
+					republished={false}
+					onPublish={noPress}
+					undoing={false}
+					onUndo={noPress}
+					onDiscard={noPress}
+					report={
+						renamedIn === 'bar' && nameError !== null ? { press: 'name', text: nameError } : null
+					}
+				/>
+			}
+			preview={
+				<PreviewFrame
+					key={version}
+					src={preview}
+					title={`Preview of ${name}`}
+					onBlockClick={noPress}
+				/>
+			}
+			entries={<EditorEntries onChat={noPress} onSettings={() => setSettings(true)} />}
+		>
+			{settings && opened !== 'address' ? (
+				<SettingsSheet
+					onDismiss={() => setSettings(false)}
+					campaign={{
+						name,
+						address: address ?? '',
+						goalMinor: loaderData.goalMinor,
+						currency: FORM_CURRENCY,
+						endDate: loaderData.endDate
+					}}
+					blocks={[]}
+					onOpenBlock={noPress}
+					layouts={[]}
+					layout=""
+					onLayout={noPress}
+					look={null}
+					shareMessage={loaderData.shareMessage}
+					donationSettings=""
+					onOpen={(row) => {
+						if (row === 'name' || row === 'address') setOpened(row);
+					}}
+				/>
+			) : null}
+			{opened === 'name' ? (
+				<NameSheet
+					name={name}
+					onDone={(next) => (next === name ? setOpened(null) : rename(next, 'sheet'))}
+					applying={renaming && renamedIn === 'sheet'}
+					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
+					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
+					onDismiss={() => setOpened(null)}
+				/>
+			) : null}
+			{opened === 'address' ? (
+				<AddressSheet
+					host={host}
+					slug={address?.slice(1) ?? ''}
+					onSave={(slug) => saveAddress(slug, { move: false, takeover: false })}
+					saving={saving}
+					saved={addressSaved}
+					error={refusal(addressAnswer, ADDRESS_EDIT, 'slug')}
+					onDismiss={() => setOpened(null)}
+				/>
+			) : null}
+			{question?.kind === 'move' ? (
+				<Modal
+					title={`Change the address to ${question.to}?`}
+					danger="Change address"
+					dangerProps={held(saving, () => answerYes('move'))}
+					cancel="Cancel"
+					cancelProps={{ type: 'button', onClick: answerNo }}
+					onDismiss={answerNo}
+				>
+					<p>
+						<code className="adm-chip">{question.from}</code> stops working at once, and links
+						already shared to it will find nothing.
+					</p>
+				</Modal>
+			) : null}
+			{question?.kind === 'takeover' ? (
+				<Modal
+					title={`${question.to} shows ${question.holder}’s ended screen. Use it here?`}
+					commit="Use it here"
+					commitProps={held(saving, () => answerYes('takeover'))}
+					cancel="Cancel"
+					cancelProps={{ type: 'button', onClick: answerNo }}
+					onDismiss={answerNo}
+				>
+					<p>{question.holder} is left with no address.</p>
+				</Modal>
+			) : null}
+		</EditorShell>
+	);
+}
+
+/** a confirm's act, holding its focus while the save it answered is in flight. */
+function held(busy: boolean, act: () => void) {
+	return {
+		type: 'button' as const,
+		'aria-busy': busy,
+		'aria-disabled': busy || undefined,
+		onClick: () => {
+			if (!busy) act();
+		}
+	};
+}
