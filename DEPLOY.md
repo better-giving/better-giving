@@ -142,11 +142,11 @@ Back on the same page, three things finish it:
 
 Optional, and not a set-up job. It starts a Zap on three events: a settled gift (each charge of a recurring gift included), a donor's first settled gift, and money from a gift going back to the donor, which is a refund or a dispute the organisation lost. A refund the processor reports as failed after its event was queued is dropped if that event has not gone out yet; one already sent has reached your Zaps, and no event follows to say the money came back. A gift refunded before its New Gift delivery went out is still delivered. Each reaches your Zaps within about a minute.
 
-**On the console's Zapier page, press Create key.** The page then holds the two things Zapier asks for: this deployment's address and the key, each with a copy press. The key stays there on every visit, behind the eye.
+**On your dashboard, under Integrations → Zapier, press Make key.** The page then shows the two things Zapier asks for: this deployment's address and the key. Copy the key then: it is shown once, and afterwards the page shows only its first and last characters. A key that is lost is replaced, never shown again.
 
-**Then open the Better Giving Zapier app** from the link on that page. It is private for now and reached only through that link. Connect an account with the address and the key, and build Zaps on New Donor, New Gift or Gift Refunded. Each card on the console page counts the Zaps listening on it.
+**Then open the Better Giving Zapier app** from the link on that page. It is private for now and reached only through that link. Connect an account with the address and the key, and build Zaps on New Donor, New Gift or Gift Refunded. The Zapier page counts the Zaps listening on each.
 
-**Replace key** makes a new one and disconnects every Zap on the old one. Zapier turns off each Zap it can reach. Reconnect each one with the new key, then turn it on: Zapier only subscribes a Zap when it is turned on, so a Zap still on after the replace has to be turned off and on again.
+**Replace key** makes a new one, shown once like the first, and disconnects every Zap on the old one. Zapier turns off each Zap it can reach. Reconnect each one with the new key, then turn it on: Zapier only subscribes a Zap when it is turned on, so a Zap still on after the replace has to be turned off and on again.
 
 **When it stops.** A delivery Zapier turns away is retried with a growing wait, and given up after three days. The page says so in a strip at the top, red when deliveries were given up in the past week and amber when your Zaps are more than an hour behind, both with a link to your Zaps on Zapier: a Zap that is off or erroring is the usual cause. A Zap that is turned off or deleted is dropped at once and never leaves anything behind.
 

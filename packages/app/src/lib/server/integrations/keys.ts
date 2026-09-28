@@ -1,14 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { type ApiKey, type ApiKeyKind, apiKey } from '../db/schema';
+import { type ApiKey, type ApiKeyKind, apiKey, type NewApiKey } from '../db/schema';
 
 // the keys a system outside this deployment presents to it: minted here, and looked up here by
 // the hash of what a request presents.
 //
-// **the plaintext key exists only in `mintApiKey`'s return value.** no column holds it
-// (`api_key`'s header in ../db/schema.ts), nothing here logs it, and a caller that shows it does so
-// once. a lost key is revoked and a new one minted, never recovered.
+// **the plaintext key exists only in `mintApiKey`'s and `newApiKeyRow`'s return values.** no
+// column holds it (`api_key`'s header in ../db/schema.ts), nothing here logs it, and a caller that
+// shows it does so once. a lost key is revoked and a new one minted, never recovered.
 //
 // the stored hash is plain SHA-256, unsalted and unstretched: the key is 256 bits from a CSPRNG.
 
@@ -26,15 +26,40 @@ export async function mintApiKey(
 	db: Db,
 	input: { readonly name: string; readonly kind: ApiKeyKind }
 ): Promise<MintedApiKey> {
-	const key = NEW_KEY[input.kind]();
-	const prefix = key.slice(0, 8);
-	const lastFour = key.slice(-4);
-	const row = await db
+	const { key, row } = newApiKeyRow(input);
+	const stored = await db
 		.insert(apiKey)
-		.values({ name: input.name, kind: input.kind, keyHash: hashOf(key), prefix, lastFour })
+		.values(row)
 		.returning({ id: apiKey.id, createdAt: apiKey.createdAt })
 		.get();
-	return { id: row.id, key, prefix, lastFour, createdAt: row.createdAt };
+	return {
+		id: stored.id,
+		key,
+		prefix: row.prefix,
+		lastFour: row.lastFour,
+		createdAt: stored.createdAt
+	};
+}
+
+/**
+ * a new key of `kind` and the row that stores it, unwritten: `mintApiKey`'s, for a caller whose
+ * insert must land in a `batch()` of its own. `key` is the plaintext, the one place it exists.
+ */
+export function newApiKeyRow(input: { readonly name: string; readonly kind: ApiKeyKind }): {
+	readonly key: string;
+	readonly row: NewApiKey;
+} {
+	const key = NEW_KEY[input.kind]();
+	return {
+		key,
+		row: {
+			name: input.name,
+			kind: input.kind,
+			keyHash: hashOf(key),
+			prefix: key.slice(0, 8),
+			lastFour: key.slice(-4)
+		}
+	};
 }
 
 /**

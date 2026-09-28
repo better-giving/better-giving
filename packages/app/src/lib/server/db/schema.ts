@@ -2682,16 +2682,9 @@ export const apiKey = sqliteTable(
 );
 
 /**
- * the one key Zapier presents on every call it makes to this deployment.
- *
- * at most one row — `quickbooks_connection` is the precedent the check copies — and none until a
- * key is minted. replacing the key rewrites this row in place, so there is never a second key to
- * choose between, and `created_at` moves with it so it is always the current key's.
- *
- * the key itself is stored, so the console can show it on every visit like any other configuration
- * value — the carve-out CLAUDE.md's boundaries ban names for a key the app mints for itself. a
- * request is still admitted by hashing what it presents and comparing against `key_hash`, never
- * against `key`.
+ * where Zapier's key was held before it became a `zapier` row of `api_key`. read and written by
+ * nothing: migrations/0017_zapier_key_is_an_api_key.sql carried each key's hash into `api_key`
+ * and nulled `key`, and ../zapier/key.ts makes, replaces and admits the key there.
  */
 export const zapierKey = sqliteTable(
 	'zapier_key',
@@ -2703,16 +2696,11 @@ export const zapierKey = sqliteTable(
 		/** the lowercase hex SHA-256 of the whole key string. */
 		keyHash: text('key_hash').notNull(),
 
-		/** what the console shows as the date the key was made — a replace sets it anew. */
 		createdAt: createdAt(),
 		updatedAt: updatedAt(),
 		// append new columns below this line — see rule 1 at the top of this file.
 
-		/**
-		 * the key the console shows, as `newKey()` in ../zapier/key.ts makes it. key.ts never writes
-		 * `null`; migrations/0017_zapier_key_is_an_api_key.sql did, on a row whose hash it carried
-		 * into `api_key`, so a row may hold a hash and no key.
-		 */
+		/** the plaintext key, once; `null` on every row since 0017. */
 		key: text('key')
 	},
 	(t) => [
