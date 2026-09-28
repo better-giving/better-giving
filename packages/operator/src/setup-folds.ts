@@ -11,7 +11,7 @@
  * **the folds and the jobs are two lists, and {@link SETUP_JOBS} is the shorter one.** a fold is
  * somewhere an operator opens and edits; a job is something the dashboard is not served until it is
  * done. `sites` is a fold and no job: a deployment with no website of its own still takes gifts, on
- * the donation page it serves at its own address (CLAUDE.md → Product surface), and the spam widget
+ * the donation page it serves at /donate (CLAUDE.md → Product surface), and the spam widget
  * is registered against the deployment's own host by a first deploy that asks for no site at all
  * (packages/console/internal/first). so an empty list is a list nobody has added to rather
  * than set-up left unfinished, and a gate waiting on one would hold a working deployment's
