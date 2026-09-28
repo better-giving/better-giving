@@ -268,7 +268,14 @@ function content(
 }
 
 /** an empty heading draws a campaign's name, and on the Donation page "Donate to" the organisation. */
-function titleHeading(heading: string, { type, pageName, org }: PageViewProps) {
+export function titleHeading(
+	heading: string,
+	{
+		type,
+		pageName,
+		org
+	}: Pick<PageViewProps, 'type' | 'pageName'> & { readonly org: Pick<PageOrg, 'name'> }
+) {
 	if (heading.trim() !== '') return heading;
 	if (type === 'campaign' && pageName !== null) return pageName;
 	return `Donate to ${org.name}`;

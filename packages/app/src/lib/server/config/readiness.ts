@@ -17,10 +17,10 @@ import { MAIL_SMTP_VARS } from './env';
 // of either is spelled here.** the operator meets these five on the console first, and a deployment
 // calling the same job something else is a reader working out whether they are two jobs or one.
 //
-// **the site list is a fold on the console and no job here.** this deployment's forms are given on
-// the donation page it serves on its own address whether or not an organisation has a website of
-// its own, so a gate waiting on a typed site would hold the dashboard shut on a deployment that is
-// taking gifts. the fold stays where an operator who does have a website types
+// **the site list is a fold on the console and no job here.** this deployment takes gifts on the
+// donation page it serves at `/donate` on its own address whether or not an organisation has a
+// website of its own, so a gate waiting on a typed site would hold the dashboard shut on a
+// deployment that is taking gifts. the fold stays where an operator who does have a website types
 // one (packages/console-ui/src/lib/home-sections.ts); nothing on this side reads it.
 //
 // **every fact is read on this deployment, from the values it was started with and its own rows.**

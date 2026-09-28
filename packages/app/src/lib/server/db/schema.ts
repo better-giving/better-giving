@@ -256,15 +256,18 @@ const FORM_ID_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
  * than a convenience. the prefix is not constrained in the database — see
  * `form_id_length_check` below for why.
  */
-const formId = () =>
-	text('id')
-		.primaryKey()
-		.$defaultFn(() => {
-			const bytes = crypto.getRandomValues(new Uint8Array(16));
-			let out = 'frm_';
-			for (const b of bytes) out += FORM_ID_ALPHABET[b & 31];
-			return out;
-		});
+const formId = () => text('id').primaryKey().$defaultFn(mintFormId);
+
+/**
+ * a fresh `form.id`, as the column's default mints it. `ownedFormInsert` in ../forms/queries.ts
+ * says why a write names one itself.
+ */
+export function mintFormId(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	let out = 'frm_';
+	for (const b of bytes) out += FORM_ID_ALPHABET[b & 31];
+	return out;
+}
 
 /** ms-precision unix timestamp; drizzle surfaces it to TS as a `Date`. */
 const at = (name: string) => integer(name, { mode: 'timestamp_ms' });

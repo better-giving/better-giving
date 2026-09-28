@@ -15,7 +15,7 @@ import { requestContext } from './request-context';
 import * as root from './root';
 import * as layout from './routes/_app';
 import * as dashboard from './routes/_app.admin._index';
-import * as donorPage from './routes/$formId';
+import * as donorPage from './routes/donate';
 import * as stripeWebhook from './routes/api.stripe.webhook';
 import * as publicApi from './routes/api.v1';
 import * as servedConfig from './routes/api.v1.forms.$id.config';
@@ -141,7 +141,7 @@ const handle = createRequestHandler(
 			module: dashboard
 		},
 		{ id: 'routes/login', parentId: 'root', path: 'login', module: login },
-		{ id: 'routes/$formId', parentId: 'root', path: ':formId', module: donorPage },
+		{ id: 'routes/donate', parentId: 'root', path: 'donate', module: donorPage },
 		{ id: 'routes/api.v1', parentId: 'root', path: 'api/v1', module: publicApi },
 		{
 			id: 'routes/api.v1.forms.$id.config',
@@ -285,9 +285,9 @@ describe('a sign-in document', () => {
 });
 
 describe('the donor page', () => {
-	// an id no form carries: the page draws its refusal, under the same route and so the same
-	// policy as a form it can draw.
-	const answer = () => send('/frm_nosuchform');
+	// a deployment whose organisation has saved no details: the page draws its refusal, under the
+	// same route and so the same policy as a page it can draw.
+	const answer = () => send('/donate');
 
 	it('allows the processors the card loads, and scripts only by origin or by the nonce', async () => {
 		const response = await answer();
@@ -341,9 +341,7 @@ describe('the donor page', () => {
 		// a host whose first label is `api-m.`, so `paypalSdkUrl` maps it to its `www.` sibling.
 		const vars = { PAYPAL_API_URL: 'https://api-m.payments.example' };
 		const policyOf = async () =>
-			directives(
-				(await send('/frm_nosuchform', undefined, vars)).headers.get('content-security-policy')
-			);
+			directives((await send('/donate', undefined, vars)).headers.get('content-security-policy'));
 
 		it("loads paypal's script and frames from the sibling that address maps to", async () => {
 			const policy = await policyOf();
@@ -375,7 +373,7 @@ describe('the donor page', () => {
 	});
 
 	it('reads a blank `PAYPAL_API_URL` as unset', async () => {
-		const response = await send('/frm_nosuchform', undefined, { PAYPAL_API_URL: ' ' });
+		const response = await send('/donate', undefined, { PAYPAL_API_URL: ' ' });
 		expect(directives(response.headers.get('content-security-policy')).get('connect-src')).toEqual([
 			"'self'",
 			'https://api.stripe.com',
@@ -387,7 +385,7 @@ describe('the donor page', () => {
 
 	it('names no paypal address on a deployment whose `PAYPAL_API_URL` is not an origin', async () => {
 		// the served config offers paypal nowhere on such a deployment, so the page reaches for none.
-		const response = await send('/frm_nosuchform', undefined, {
+		const response = await send('/donate', undefined, {
 			PAYPAL_API_URL: 'https://api-m.payments.example/v2'
 		});
 		const policy = directives(response.headers.get('content-security-policy'));
