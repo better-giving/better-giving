@@ -94,10 +94,23 @@ export async function readGiftPage(db: Db): Promise<ApiGift[]> {
 }
 
 /**
- * payment ids per query: each is a bound parameter, and D1 refuses a query binding more than 100
+ * ids per query: each is a bound parameter, and D1 refuses a query binding more than 100
  * (https://developers.cloudflare.com/d1/platform/limits/).
  */
-const IDS_PER_READ = 90;
+export const IDS_PER_READ = 90;
+
+/** `read` over `ids` without repeats, {@link IDS_PER_READ} at a time, its rows in one list. */
+export async function readByIds<T>(
+	ids: readonly string[],
+	read: (chunk: string[]) => Promise<readonly T[]>
+): Promise<T[]> {
+	const unique = [...new Set(ids)];
+	const rows: T[] = [];
+	for (let start = 0; start < unique.length; start += IDS_PER_READ) {
+		rows.push(...(await read(unique.slice(start, start + IDS_PER_READ))));
+	}
+	return rows;
+}
 
 /**
  * the settled gifts among `paymentIds`, keyed by payment id. an id that is not a settled gift has
@@ -107,15 +120,10 @@ export async function readGifts(
 	db: Db,
 	paymentIds: readonly string[]
 ): Promise<Map<string, ApiGift>> {
-	const ids = [...new Set(paymentIds)];
-	const gifts = new Map<string, ApiGift>();
-	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
-		const rows = await selectGifts(db).where(
-			and(settledGift, inArray(payment.id, ids.slice(start, start + IDS_PER_READ)))
-		);
-		for (const gift of await withStanding(db, rows)) gifts.set(gift.id, gift);
-	}
-	return gifts;
+	const gifts = await readByIds(paymentIds, async (chunk) =>
+		withStanding(db, await selectGifts(db).where(and(settledGift, inArray(payment.id, chunk))))
+	);
+	return new Map(gifts.map((gift) => [gift.id, gift]));
 }
 
 const settledGift = and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound'));

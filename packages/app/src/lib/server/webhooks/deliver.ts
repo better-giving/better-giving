@@ -3,6 +3,7 @@ import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { type ApiGift, readGifts } from '../integrations/gift';
 import { defineOutbox, type Outcome } from '../outbox/lease';
+import { refusal } from '../outbox/refusal';
 import { signedHeaders } from './sign';
 
 // the webhook outbox, delivered: what reads `webhook_delivery` and posts each row to its
@@ -82,9 +83,6 @@ const CLAIMS_PER_RUN = 70;
  * start answers or times out before {@link LEASE_MS} runs out.
  */
 const RUN_DEADLINE_MS = (CLAIMS_PER_RUN / POSTS_AT_ONCE) * POST_TIMEOUT_MS;
-
-/** how much of a refusal's body `last_error` keeps: a stranger's text, of any size. */
-const ERROR_BODY_CHARS = 200;
 
 const outbox = defineOutbox({
 	table: webhookDelivery,
@@ -264,11 +262,4 @@ async function post(
 	} catch (error) {
 		return { delivered: false, status: null, error: String(error) };
 	}
-}
-
-/** the status line and the head of the body a destination refused with. */
-async function refusal(response: Response): Promise<string> {
-	const line = `${response.status} ${response.statusText}`.trim();
-	const body = (await response.text()).slice(0, ERROR_BODY_CHARS).trim();
-	return body === '' ? line : `${line} — ${body}`;
 }

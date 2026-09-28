@@ -4,7 +4,7 @@ import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { dispute, donation, entryGroup, payment, type ZapierTrigger } from '../db/schema';
 import { refundStands } from '../donations/queries';
-import { type GiftEvent, renderGift, selectGifts } from '../integrations/gift';
+import { type GiftEvent, readByIds, renderGift, selectGifts } from '../integrations/gift';
 
 export type { GiftEvent };
 
@@ -69,12 +69,6 @@ export type RefundEvent = {
 };
 
 /**
- * payment ids per query. D1 caps a query at 100 bound parameters
- * (https://developers.cloudflare.com/d1/platform/limits/), and each id is one.
- */
-export const IDS_PER_READ = 90;
-
-/**
  * the events for `paymentIds`, keyed by payment id. an id with no payment behind it has no entry,
  * which is the caller's to answer for — the map never holds a half-rendered event.
  */
@@ -82,15 +76,10 @@ export async function readGiftEvents(
 	db: Db,
 	paymentIds: readonly string[]
 ): Promise<Map<string, GiftEvent>> {
-	const ids = [...new Set(paymentIds)];
-	const events = new Map<string, GiftEvent>();
-	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
-		const rows = await selectGifts(db).where(
-			inArray(payment.id, ids.slice(start, start + IDS_PER_READ))
-		);
-		for (const row of rows) events.set(row.id, renderGift(row));
-	}
-	return events;
+	const rows = await readByIds(paymentIds, (chunk) =>
+		selectGifts(db).where(inArray(payment.id, chunk))
+	);
+	return new Map(rows.map((row) => [row.id, renderGift(row)]));
 }
 
 /**
@@ -101,18 +90,9 @@ export async function readRefundEvents(
 	db: Db,
 	refundIds: readonly string[]
 ): Promise<Map<string, RefundEvent>> {
-	const ids = [...new Set(refundIds)];
-	const refunds: RefundRow[] = [];
-	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
-		refunds.push(
-			...(await selectRefunds(db).where(
-				and(
-					eq(payment.direction, 'refund'),
-					inArray(payment.id, ids.slice(start, start + IDS_PER_READ))
-				)
-			))
-		);
-	}
+	const refunds = await readByIds(refundIds, (chunk) =>
+		selectRefunds(db).where(and(eq(payment.direction, 'refund'), inArray(payment.id, chunk)))
+	);
 	return refundEventsOf(db, refunds);
 }
 

@@ -102,6 +102,7 @@ type Post = {
 	readonly headers: Headers;
 	readonly body: string;
 	readonly redirect: RequestRedirect | undefined;
+	readonly signal: AbortSignal | null | undefined;
 };
 
 /** a `fetch` standing in for the receivers: each post recorded, and answered by `answer`. */
@@ -112,7 +113,8 @@ function receivers(answer: (post: Post) => Response | Error = () => new Response
 			url: String(input),
 			headers: new Headers(init?.headers),
 			body: String(init?.body),
-			redirect: init?.redirect
+			redirect: init?.redirect,
+			signal: init?.signal
 		};
 		posts.push(post);
 		const answered = answer(post);
@@ -315,6 +317,44 @@ describe('sendDueWebhooks() — a post that fails', () => {
 		expect(await verifies(target.signingSecret, retry, retryAt)).toBe(true);
 		expect(await rows()).toEqual([
 			expect.objectContaining({ status: 'delivered', attempts: 2, last_status: 200 })
+		]);
+	});
+
+	// the stand-in never hangs; what bounds a receiver that does is the signal every post carries.
+	it('hands every post a signal that ends it, so a receiver that never answers is a timeout', async () => {
+		await destination();
+		await settle();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts[0]?.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it('keeps the status of a refusal whose body breaks off mid-read', async () => {
+		await destination();
+		await settle();
+		let pulls = 0;
+		const broken = () =>
+			new Response(
+				new ReadableStream<Uint8Array>({
+					pull(controller) {
+						pulls += 1;
+						if (pulls === 1) controller.enqueue(new TextEncoder().encode('upstream'));
+						else controller.error(new TypeError('Network connection lost.'));
+					}
+				}),
+				{ status: 502 }
+			);
+
+		await runAt(START, receivers(broken).fetch);
+
+		expect(await rows()).toEqual([
+			expect.objectContaining({
+				status: 'pending',
+				last_status: 502,
+				last_error: '502 Bad Gateway — upstream'
+			})
 		]);
 	});
 

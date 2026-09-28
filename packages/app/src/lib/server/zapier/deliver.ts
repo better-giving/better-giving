@@ -1,12 +1,13 @@
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
+import { readByIds } from '../integrations/gift';
 import { defineOutbox, type Outcome } from '../outbox/lease';
+import { refusal } from '../outbox/refusal';
 import { refundStands } from './events';
 import {
 	donorEventOf,
 	type GiftEvent,
-	IDS_PER_READ,
 	readGiftEvents,
 	readRefundEvents,
 	type RefundEvent,
@@ -98,9 +99,6 @@ const BACKOFF_CEILING_MS = 60 * 60_000;
  */
 const GIVE_UP_AFTER_MS = 72 * 60 * 60_000;
 
-/** how much of a refusal's body `last_error` keeps. */
-const ERROR_BODY_CHARS = 200;
-
 const outbox = defineOutbox({
 	table: zapierDelivery,
 	key: { subscriptionId: zapierDelivery.subscriptionId, eventId: zapierDelivery.eventId },
@@ -130,7 +128,10 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	const claimed = claim.rows;
 	if (claimed.length === 0) return;
 
-	const hooks = await readHooks(deps.db, claimed.map((c) => c.subscriptionId));
+	const hooks = await readHooks(
+		deps.db,
+		claimed.map((c) => c.subscriptionId)
+	);
 	const isRefund = (row: Claimed) => hooks.get(row.subscriptionId)?.trigger === 'gift_refunded';
 	const refundIds = claimed.filter(isRefund).map((c) => c.paymentId);
 	const events: Events = {
@@ -304,20 +305,17 @@ type Hook = { readonly url: string; readonly trigger: ZapierTrigger };
 
 /** each subscription's hook and trigger. */
 async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Map<string, Hook>> {
-	const ids = [...new Set(subscriptionIds)];
-	const hooks = new Map<string, Hook>();
-	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
-		const rows = await db
+	const rows = await readByIds(subscriptionIds, (chunk) =>
+		db
 			.select({
 				id: zapierSubscription.id,
 				url: zapierSubscription.hookUrl,
 				trigger: zapierSubscription.trigger
 			})
 			.from(zapierSubscription)
-			.where(inArray(zapierSubscription.id, ids.slice(start, start + IDS_PER_READ)));
-		for (const row of rows) hooks.set(row.id, { url: row.url, trigger: row.trigger });
-	}
-	return hooks;
+			.where(inArray(zapierSubscription.id, chunk))
+	);
+	return new Map(rows.map((row) => [row.id, { url: row.url, trigger: row.trigger }]));
 }
 
 /**
@@ -325,18 +323,13 @@ async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Ma
  * them.
  */
 async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promise<Set<string>> {
-	const ids = [...new Set(refundIds)];
-	const standing = new Set<string>();
-	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
-		const rows = await db
+	const rows = await readByIds(refundIds, (chunk) =>
+		db
 			.select({ id: payment.id })
 			.from(payment)
-			.where(
-				and(inArray(payment.id, ids.slice(start, start + IDS_PER_READ)), refundStands(db, payment))
-			);
-		for (const row of rows) standing.add(row.id);
-	}
-	return standing;
+			.where(and(inArray(payment.id, chunk), refundStands(db, payment)))
+	);
+	return new Set(rows.map((row) => row.id));
 }
 
 const REFUND_NO_LONGER_STANDS =
@@ -410,11 +403,4 @@ function retryAfter(value: string | null): Date | undefined {
 	const at = /^\d+$/.test(trimmed) ? Date.now() + Number(trimmed) * 1_000 : Date.parse(trimmed);
 	const asked = new Date(at);
 	return Number.isFinite(asked.getTime()) ? asked : undefined;
-}
-
-/** the status line and the head of the body a hook refused with. */
-async function refusal(response: Response): Promise<string> {
-	const line = `${response.status} ${response.statusText}`.trim();
-	const body = (await response.text()).slice(0, ERROR_BODY_CHARS).trim();
-	return body === '' ? line : `${line} — ${body}`;
 }
