@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { type ChatMessage, ChatSheet, type ChatSheetProps } from './chat-sheet';
 
-// what the chat sheet does rather than how it looks: which region speaks a reply, what a new
-// campaign's sheet opens on, where the focus is after a press, and what a press sends. the look is
-// the design's and is read on a screen, not here.
+// what the chat sheet does rather than how it looks: which region speaks a reply, which reply
+// carries the refused line, what a new campaign's sheet opens on and what a later turn says while
+// it is written, where the focus is after a press, and what a press sends. the look is the
+// design's and is read on a screen, not here.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -121,6 +122,38 @@ describe('the chat sheet', () => {
 		expect(one(host, '[role="status"]').textContent).toBe('Writing the first draft');
 		expect(send(host).getAttribute('aria-disabled')).toBe('true');
 		expect(host.querySelector('.adm-chat__suggestions')).toBeNull();
+	});
+
+	it('draws a line under a reply that did not fit the page, and under no other', () => {
+		const { host } = mount(
+			props({
+				messages: [
+					...HISTORY,
+					{ id: 't3', role: 'operator', text: 'Put the box first' },
+					{ id: 't4', role: 'assistant', text: 'I moved the box to the top.', note: 'refused' }
+				]
+			})
+		);
+		const turns = [...one(host, '.adm-chat__log').querySelectorAll('.adm-chat__turn')];
+		const turnOf = (words: string) => turns.find((turn) => turn.textContent?.startsWith(words));
+		const refused =
+			'That reply didn’t fit the page, so nothing changed. Ask again, or say it another way.';
+
+		expect(turnOf('I moved the box to the top.')?.textContent).toContain(refused);
+		expect(turnOf('I moved the page to the warm shade.')?.textContent).not.toContain(refused);
+	});
+
+	it('says a reply is being written on a turn after the first, and falls silent when it lands', () => {
+		const { host, redraw } = mount(props());
+		const status = one(host, '[role="status"]');
+		expect(status.textContent).toBe('');
+
+		redraw(props({ isRunning: true }));
+		expect(status.textContent).toBe('Writing a reply');
+		expect(one(host, '.adm-chat__log').textContent).toContain('Writing a reply');
+
+		redraw(props({ isRunning: false }));
+		expect(status.textContent).toBe('');
 	});
 
 	it('keeps the focus on Send after a press, while the reply is written', async () => {

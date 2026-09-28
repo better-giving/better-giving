@@ -134,6 +134,21 @@ describe('Publish', () => {
 		expect(button('Undo', bar())).toBeTruthy();
 	});
 
+	it('reads Published beside Undo after a republish', async () => {
+		answers = [
+			{ body: { published: true, undoable: true }, leaves: { version: 2, state: 'live' } }
+		];
+		await screen();
+		const publish = button('Publish', bar());
+
+		await press(publish);
+
+		expect(publish.textContent).toBe('Published');
+		expect(publish.getAttribute('aria-disabled')).toBe('true');
+		const beside = [...(publish.parentElement?.querySelectorAll('button') ?? [])];
+		expect(beside.map((one) => one.textContent)).toEqual(['Published', 'Undo']);
+	});
+
 	it('posts Undo against the version the republish left drawn', async () => {
 		answers = [
 			{ body: { published: true, undoable: true }, leaves: { version: 2, state: 'live' } },
@@ -184,6 +199,40 @@ describe('Publish', () => {
 			{ [WHICH_FORM]: 'page-first-publish', [RECORD_VERSION]: '1', gifts_go_to: 'none' }
 		]);
 		expect(dialog()).toBeNull();
+	});
+});
+
+describe('a campaign’s first Publish', () => {
+	async function choose(words: string) {
+		const asked = dialog();
+		if (asked === null) throw new Error('no confirm was put up');
+		const box = asked.querySelector<HTMLButtonElement>('button[role="combobox"]');
+		if (box === null) throw new Error('the confirm drew no program box');
+		await act(async () => box.click());
+		const row = [...document.querySelectorAll<HTMLElement>('.adm-selectrow')].find(
+			(one) => one.textContent === words
+		);
+		if (row === undefined) throw new Error(`the list holds no row reading ${words}`);
+		await act(async () => {
+			row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+			row.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+			row.click();
+		});
+	}
+
+	it('posts the program chosen in its confirm', async () => {
+		answers = [
+			{ body: { published: true, undoable: false }, leaves: { version: 2, state: 'live' } }
+		];
+		await screen({ first: true });
+		await press(button('Publish', bar()));
+
+		await choose('Winter coats');
+		await press(button('Publish', dialog() ?? document));
+
+		expect(posted).toEqual([
+			{ [WHICH_FORM]: 'page-first-publish', [RECORD_VERSION]: '1', gifts_go_to: 'prg_coats' }
+		]);
 	});
 });
 
