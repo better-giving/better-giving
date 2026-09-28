@@ -13,7 +13,6 @@ import { resultFor } from '$lib/admin/use-admin-form';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { HEADING_MAX } from '$lib/page/catalog';
-import { dayOf } from '$lib/page/end-date';
 import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
@@ -290,11 +289,6 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 	};
 	const answerNo = () => setQuestion(null);
 
-	const endDate =
-		loaderData.endsAt === null
-			? null
-			: dayOf(loaderData.endsAt, Intl.DateTimeFormat().resolvedOptions().timeZone);
-
 	return (
 		<EditorShell
 			bar={
@@ -332,7 +326,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 						address: address ?? '',
 						goalMinor: loaderData.goalMinor,
 						currency: FORM_CURRENCY,
-						endDate
+						endDate: loaderData.endDate
 					}}
 					blocks={[]}
 					onOpenBlock={noPress}

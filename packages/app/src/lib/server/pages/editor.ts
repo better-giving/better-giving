@@ -1,4 +1,5 @@
 import { parsePage } from '../../page/catalog';
+import { endDayOf } from '../../page/end-date';
 import type { Page } from '../db/schema';
 
 // what the editor is drawn with, the Donation page's and a campaign's alike: where the page stands
@@ -24,8 +25,8 @@ export type EditorPage = {
 	/** the draft's own share message, or null while it takes the Organisation's. */
 	readonly shareMessage: string | null;
 	readonly goalMinor: number | null;
-	/** the draft's end, in unix ms. */
-	readonly endsAt: number | null;
+	/** the day the draft's end closes, `YYYY-MM-DD`, in the zone it was chosen in. */
+	readonly endDate: string | null;
 };
 
 export function editorPage(row: Page): EditorPage {
@@ -37,7 +38,7 @@ export function editorPage(row: Page): EditorPage {
 		preview: `/preview/${row.id}`,
 		shareMessage: draft.page.shareMessage ?? null,
 		goalMinor: draft.page.goalMinor ?? null,
-		endsAt: draft.page.endsAt ?? null
+		endDate: endDayOf(draft.page)
 	};
 }
 

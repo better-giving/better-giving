@@ -308,6 +308,22 @@ describe('the editor', () => {
 		expect(await (await open(pageId)).json()).toMatchObject({ state: drawn });
 	});
 
+	it('reads the draft’s end date as the day it was chosen, in the zone it was chosen in', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const row = await stored(pageId);
+		const draft = {
+			...JSON.parse(row.draft),
+			endsAt: Date.parse('2027-01-01T05:00:00Z') - 1,
+			endsZone: 'America/New_York'
+		};
+		await db
+			.update(page)
+			.set({ draft: JSON.stringify(draft) })
+			.where(eq(page.id, pageId));
+
+		expect(await (await open(pageId)).json()).toMatchObject({ endDate: '2026-12-31' });
+	});
+
 	it('answers 404 for the Donation page and for an id no page has', async () => {
 		const donationPage = await insertPage(db, 'donation_page');
 
