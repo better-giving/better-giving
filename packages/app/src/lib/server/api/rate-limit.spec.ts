@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	apiRateLimitKey,
-	integrationsFailedKeyRateLimitKey,
+	integrationsCallerRateLimitKey,
 	integrationsKeyRateLimitKey,
 	isRateLimited,
 	quoteRateLimitKey,
@@ -405,21 +405,21 @@ describe('what a request from Zapier counts against', () => {
 });
 
 /**
- * the bucket a caller without an admitted key spends on `/integrations/v1`, charged through the
- * surface binding the way `/zapier`'s is — so its prefix is what keeps it off both other surfaces'
- * counts.
+ * the bucket every request on `/integrations/v1` spends before its key is looked up, charged
+ * through the surface binding the way `/zapier`'s is — so its prefix is what keeps it off both
+ * other surfaces' counts.
  */
-describe('what a request on the read API counts against before its key is admitted', () => {
+describe('what a request on the read API counts against before its key is looked up', () => {
 	it('is the /integrations/v1 surface and the payer', () => {
 		const from = request('/integrations/v1/gifts', FROM);
-		expect(integrationsFailedKeyRateLimitKey(from)).toBe('/integrations/v1 203.0.113.7');
-		expect(integrationsFailedKeyRateLimitKey(from)).not.toBe(apiRateLimitKey(from));
-		expect(integrationsFailedKeyRateLimitKey(from)).not.toBe(zapierRateLimitKey(from));
+		expect(integrationsCallerRateLimitKey(from)).toBe('/integrations/v1 203.0.113.7');
+		expect(integrationsCallerRateLimitKey(from)).not.toBe(apiRateLimitKey(from));
+		expect(integrationsCallerRateLimitKey(from)).not.toBe(zapierRateLimitKey(from));
 	});
 
 	it('puts every caller it cannot attribute in one bucket', () => {
-		expect(integrationsFailedKeyRateLimitKey(request('/integrations/v1/gifts'))).toBe(
-			integrationsFailedKeyRateLimitKey(
+		expect(integrationsCallerRateLimitKey(request('/integrations/v1/gifts'))).toBe(
+			integrationsCallerRateLimitKey(
 				request('/integrations/v1/gifts', { 'cf-connecting-ip': 'not-an-ip' })
 			)
 		);

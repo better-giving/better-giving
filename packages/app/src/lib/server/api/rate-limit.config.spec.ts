@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keyRateLimitRefusal } from '../integrations/surface';
+import { callerRateLimitRefusal, keyRateLimitRefusal } from '../integrations/surface';
 import { readWranglerConfig } from '../wrangler-config.testing';
 import { quoteRateLimitRefusal, rateLimitRefusal, signInRateLimitMessage } from './rate-limit';
 
@@ -156,12 +156,16 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 		expect(keyRateLimitRefusal().headers.get('retry-after')).toBe(
 			String(declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple?.period)
 		);
+		expect(callerRateLimitRefusal().headers.get('retry-after')).toBe(
+			String(declared(limiters, 'API_RATE_LIMITER')?.simple?.period)
+		);
 	});
 
 	/**
-	 * the one refusal that names its limit, because the reader is a system being paced: an
-	 * integrator sizes a sync loop by it, and a number that disagreed with the binding would pace
-	 * that loop into refusals or leave the headroom unused.
+	 * the read API's two refusals name their limits, because the reader is a system being paced: an
+	 * integrator sizes a sync loop by them, and a number that disagreed with the binding would pace
+	 * that loop into refusals or leave the headroom unused. the per-address one names the key's
+	 * limit too, to say it is not the one that refused.
 	 */
 	it('tells a key refused by INTEGRATIONS_KEY_RATE_LIMITER the limit it really holds it to', async () => {
 		const { message } = (await keyRateLimitRefusal().json()) as { message: string };
@@ -169,6 +173,27 @@ describe.each(BLOCKS)('the rate limit bindings $where is deployed with', ({ limi
 
 		expect(period).toBe(60);
 		expect(message).toContain(`${String(limit)} requests a minute`);
+	});
+
+	it('tells an address refused on the read API the limits it really holds it to', async () => {
+		const { message, fix } = (await callerRateLimitRefusal().json()) as Record<string, string>;
+		const perAddress = declared(limiters, 'API_RATE_LIMITER')?.simple ?? {};
+		const perKey = declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple ?? {};
+
+		expect(perAddress.period).toBe(60);
+		expect(message).toContain(`${String(perAddress.limit)} requests a minute`);
+		expect(fix).toContain(`${String(perKey.limit)} requests a minute`);
+	});
+
+	/**
+	 * the read API charges every request to its address on the surface binding and then to its key,
+	 * so a key's budget above the address's could never be what refuses a key presented from one
+	 * address.
+	 */
+	it('sizes the per-key bucket below the surface bucket it is charged behind', () => {
+		expect(declared(limiters, 'INTEGRATIONS_KEY_RATE_LIMITER')?.simple?.limit).toBeLessThan(
+			declared(limiters, 'API_RATE_LIMITER')?.simple?.limit as number
+		);
 	});
 
 	/**

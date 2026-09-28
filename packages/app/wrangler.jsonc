@@ -165,9 +165,12 @@
 	// what stops two surfaces metered through one binding from eating each other's count.
 	//
 	// where each is spent is in the code, not here: the surface in `src/routes/api.v1.ts`, whose
-	// `middleware` meters every route beneath it, the quote in
-	// `src/routes/api.v1.forms.$id.donations.ts`, and the sign-in in `src/routes/login.tsx`'s own
-	// action, which is the one site that spends that bucket. what
+	// `middleware` meters every route beneath it — and, on that same binding under keys of their
+	// own, a failed key check in `src/routes/zapier.ts` and every read-API request, ahead of its key
+	// lookup, in `src/routes/integrations.v1.ts`; the quote in
+	// `src/routes/api.v1.forms.$id.donations.ts`; the sign-in in `src/routes/login.tsx`'s own
+	// action, which is the one site that spends that bucket; and each read-API key, once admitted,
+	// in `src/routes/integrations.v1.ts`'s middleware. what
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
 	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
 	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
@@ -299,10 +302,14 @@
 				// a page at a time and waiting on its own writes, and a leaked key reads no faster
 				// than it however many addresses it is presented from.
 				//
+				// charged behind the per-address bucket above and sized below it, so a key presented
+				// from one address is refused by its own limit first.
+				//
 				// the refusal names this number to the integrator
 				// (`keyRateLimitRefusal` in src/lib/server/integrations/surface.ts), and
-				// src/lib/server/api/rate-limit.config.spec.ts holds the two equal. the same two
-				// caveats as the others: per Cloudflare location, and per account.
+				// src/lib/server/api/rate-limit.config.spec.ts holds the two equal and this one below
+				// the per-address bucket. the same two caveats as the others: per Cloudflare
+				// location, and per account.
 				"limit": 120,
 				"period": 60
 			}

@@ -32,9 +32,10 @@ import { API_BASE_PATH } from './surface';
 //
 // `/zapier` is a second surface charged through the same binding under its own key
 // (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware. `/integrations/v1` is a third,
-// with two buckets: the caller's on that same binding until a key is admitted
-// (`integrationsFailedKeyRateLimitKey`), and the key's own on `INTEGRATIONS_KEY_RATE_LIMITER`
-// after (`integrationsKeyRateLimitKey`).
+// with two buckets, both spent in `src/routes/integrations.v1.ts`'s middleware: the caller's on
+// that same binding for every request, ahead of the key lookup (`integrationsCallerRateLimitKey`),
+// and the key's own on `INTEGRATIONS_KEY_RATE_LIMITER` once it is admitted
+// (`integrationsKeyRateLimitKey`).
 //
 // the buckets are not answered alike when the binding is missing, and not answered alike for a
 // caller the edge did not attribute. both differences are written down once, at the foot of this
@@ -158,16 +159,16 @@ export function zapierRateLimitKey(request: Request): string {
 }
 
 /**
- * what one request on `/integrations/v1` counts against before its key is admitted: that surface
- * and the caller, charged against the surface binding the way `zapierRateLimitKey` is.
+ * what one request on `/integrations/v1` counts against before its key is looked up: that surface
+ * and the caller, charged against the surface binding on every request, keyed or not.
  *
- * it bounds guessing — how many presented keys one address has checked in a minute, and so the
- * indexed read each well-formed one costs. the 256-bit key is what makes a guess hopeless; this is
- * the bound on what hoping costs this deployment. the same shape as the `/zapier` key: its own
- * prefix, so it never spends a donation form's count or Zapier's, and an unattributed caller in one
- * shared bucket.
+ * it bounds what one address costs before anything is known about it — how many presented keys it
+ * has checked in a minute, and so the indexed read each well-formed one costs. the 256-bit key is
+ * what makes a guess hopeless; this is the bound on what hoping costs this deployment. the same
+ * shape as the `/zapier` key: its own prefix, so it never spends a donation form's count or
+ * Zapier's, and an unattributed caller in one shared bucket.
  */
-export function integrationsFailedKeyRateLimitKey(request: Request): string {
+export function integrationsCallerRateLimitKey(request: Request): string {
 	return `${INTEGRATIONS_BASE_PATH} ${caller(request)}`;
 }
 
@@ -467,9 +468,10 @@ export async function refuseIfRateLimited(
  * leaves behind rather than a difference of nerve. the surface limiter is the only thing metering
  * `/api/v1`, so serving without it is an unmetered public payment-initiating surface that reads as
  * working. the buckets charged through here refine a bound that does not depend on them: the quote
- * still has the surface bucket the hook charged above it, and the sign-in still has
- * `ADMIN_PASSWORD` itself, which is what bounded it before any of these limiters existed — so what
- * absence costs here is the tighter bound rather than the bound.
+ * still has the surface bucket the hook charged above it, the sign-in still has `ADMIN_PASSWORD`
+ * itself, which is what bounded it before any of these limiters existed, and the read API's two
+ * still have its 256-bit keys, which bound who reads at all where the buckets bound only how fast
+ * — so what absence costs here is the tighter bound rather than the bound.
  *
  * and the deployment that would actually reach this is the one where refusing costs most: a Worker
  * running with no such binding on it would be refused by its own login, and everything an operator

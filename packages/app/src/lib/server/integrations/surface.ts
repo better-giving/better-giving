@@ -100,6 +100,25 @@ export function keyRateLimitRefusal(): Response {
 	);
 }
 
+/**
+ * the 429 an address that has spent its own bucket is answered with, charged on every request
+ * against `API_RATE_LIMITER` before the key is looked up (`integrationsCallerRateLimitKey` in
+ * ../api/rate-limit.ts).
+ *
+ * the literals are that binding's, held to it by `../api/rate-limit.config.spec.ts` as
+ * `keyRateLimitRefusal`'s are to its own. it says a per-key limit is not what refused it, so an
+ * integrator pacing one key under 120 a minute is not sent looking at the wrong number.
+ */
+export function callerRateLimitRefusal(): Response {
+	return integrationsRefusal(
+		429,
+		'rate_limited',
+		'This address has used its limit of 600 requests a minute, which is counted per address before any key is checked. Nothing about the request is wrong.',
+		'Wait 60 seconds, as `Retry-After` says, and send it again. Several systems behind one address share this limit, whatever keys they hold; a key’s own limit is 120 requests a minute and is not what refused this.',
+		{ 'retry-after': '60' }
+	);
+}
+
 const WHERE_KEYS_COME_FROM =
 	'API keys are made by the organisation that runs this deployment, one per system, and each is shown once when it is made.';
 

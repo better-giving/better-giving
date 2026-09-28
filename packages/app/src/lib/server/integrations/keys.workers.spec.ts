@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { API_KEY_SHAPE, findKeyByPresented, mintApiKey, revokeApiKey } from './keys';
+import { API_KEY_SHAPE, findKeyByPresented, mintApiKey, revokeApiKey, touchLastUsed } from './keys';
 
 // the integration keys against a real D1: what is stored is read back from the table rather than
 // from the module, so a key that reached a column is caught however it got there.
@@ -96,6 +96,48 @@ describe('revoking a key', () => {
 		await revokeApiKey(db, revoked.id);
 
 		expect((await findKeyByPresented(db, kept.key))?.revokedAt).toBeNull();
+	});
+});
+
+describe('recording when a key was last used', () => {
+	/** the row as a request's own lookup read it, before any use was recorded. */
+	async function readRow(key: string) {
+		const row = await findKeyByPresented(db, key);
+		if (row === null) throw new Error('the minted key was not found');
+		return row;
+	}
+
+	it('lands one write between two requests that both read the key unused', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const read = await readRow(minted.key);
+		const first = new Date(Date.UTC(2026, 8, 28, 12));
+
+		await touchLastUsed(db, read, first);
+		await touchLastUsed(db, read, new Date(first.getTime() + 5_000));
+
+		expect((await readRow(minted.key)).lastUsedAt).toEqual(first);
+	});
+
+	it('logs a write that fails, by the key’s id, and does not reject', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const read = await readRow(minted.key);
+		const failing = createDb(
+			new Proxy(env.DB, {
+				get: (target, property) =>
+					property === 'prepare'
+						? () => {
+								throw new Error('D1_ERROR: the database is unavailable');
+							}
+						: Reflect.get(target, property)
+			})
+		);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(touchLastUsed(failing, read)).resolves.toBeUndefined();
+
+		expect(logged.mock.calls.map(([line]) => line)).toEqual([
+			`recording when API key ${minted.id} was last used failed:`
+		]);
 	});
 });
 

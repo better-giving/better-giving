@@ -1,8 +1,10 @@
-import { env } from 'cloudflare:test';
+import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import {
+	apiKey as apiKeyTable,
 	contact,
 	dispute,
 	type DisputeOutcome,
@@ -31,6 +33,13 @@ const giftsRoute: RouteRequester = mountRoutes([
 const surfaceRoute: RouteRequester = mountRoutes([{ path: 'integrations/v1', module: surface }]);
 
 let db: Db;
+/**
+ * the address each case arrives from, a fresh one per case: the layout charges every request to
+ * its address on the pool's `API_RATE_LIMITER`, a small bucket (../../vitest.workers.config.ts),
+ * and cases sharing one would spend it for each other.
+ */
+let caller = 0;
+const address = () => `198.51.100.${caller}`;
 
 beforeAll(() => {
 	db = createDb(env.DB);
@@ -49,9 +58,12 @@ beforeEach(async () => {
 	]) {
 		await env.DB.prepare(`delete from ${table}`).run();
 	}
+	caller += 1;
 });
 
-const bearer = (key: string): RequestInit => ({ headers: { authorization: `Bearer ${key}` } });
+const bearer = (key: string): RequestInit => ({
+	headers: { authorization: `Bearer ${key}`, 'cf-connecting-ip': address() }
+});
 
 async function apiKey(): Promise<string> {
 	return (await mintApiKey(db, { name: 'CRM sync', kind: 'api' })).key;
@@ -276,7 +288,10 @@ type Refusal = { error: string; message: string; fix: string };
 
 /** a 401 from the key check, with its body, asserting what every one of them carries. */
 async function refusedWith(authorization: string | null): Promise<Refusal> {
-	const headers: Record<string, string> = authorization === null ? {} : { authorization };
+	const headers: Record<string, string> = {
+		'cf-connecting-ip': address(),
+		...(authorization === null ? {} : { authorization })
+	};
 	const response = await giftsRoute(new Request(GIFTS, { headers }));
 	expect(response.status).toBe(401);
 	expect(response.headers.get('www-authenticate')).toBe('Bearer');
@@ -343,7 +358,9 @@ describe('a request whose key does not check out', () => {
 		const key = await apiKey();
 
 		const response = await giftsRoute(
-			new Request(GIFTS, { headers: { authorization: `bearer  ${key}` } })
+			new Request(GIFTS, {
+				headers: { authorization: `bearer  ${key}`, 'cf-connecting-ip': address() }
+			})
 		);
 
 		expect(response.status).toBe(200);
@@ -380,8 +397,147 @@ describe('the bare surface address', () => {
 	});
 
 	it('checks the key there too', async () => {
-		const response = await surfaceRoute(new Request(`${OWN}/integrations/v1`));
+		const response = await surfaceRoute(
+			new Request(`${OWN}/integrations/v1`, { headers: { 'cf-connecting-ip': address() } })
+		);
 
 		expect(response.status).toBe(401);
 	});
 });
+
+/** asks with `init` until refused, and answers the refusal; fails if `asks` are all answered. */
+async function askUntilRefused(init: RequestInit, asks = 10): Promise<Response> {
+	for (let ask = 0; ask < asks; ask++) {
+		const response = await giftsRoute(new Request(GIFTS, init));
+		if (response.status === 429) return response;
+	}
+	throw new Error(`${asks} asks and none refused`);
+}
+
+describe('the rate limit on each key', () => {
+	it('holds each key to a budget of its own, so a spent key slows no other', async () => {
+		const spent = await apiKey();
+		const other = await apiKey();
+
+		await askUntilRefused(bearer(spent));
+
+		expect((await giftsRoute(new Request(GIFTS, bearer(other)))).status).toBe(200);
+		expect((await giftsRoute(new Request(GIFTS, bearer(spent)))).status).toBe(429);
+	});
+
+	it('refuses a spent key with a 429 that says when to retry and names the per-key limit', async () => {
+		const refused = await askUntilRefused(bearer(await apiKey()));
+
+		expect(refused.headers.get('retry-after')).toBe('60');
+		expect(refused.headers.get('cache-control')).toBe('no-store');
+		const body = (await refused.json()) as Refusal;
+		expect(body.error).toBe('rate_limited');
+		expect(body.message).toContain('120 requests a minute, which is counted per key');
+	});
+});
+
+describe('the rate limit on each address', () => {
+	const malformed = (): RequestInit => ({
+		headers: { authorization: 'Bearer bgk_x7Qp', 'cf-connecting-ip': address() }
+	});
+
+	it('is spent by a key that never reaches the lookup, and refuses with a 429 naming the per-address limit', async () => {
+		const refused = await askUntilRefused(malformed(), 40);
+
+		expect(refused.headers.get('retry-after')).toBe('60');
+		expect(refused.headers.get('cache-control')).toBe('no-store');
+		const body = (await refused.json()) as Refusal;
+		expect(body.error).toBe('rate_limited');
+		expect(body.message).toContain('600 requests a minute, which is counted per address');
+	});
+
+	it('refuses a live key from a spent address, and answers it from another', async () => {
+		const key = await apiKey();
+		await askUntilRefused(malformed(), 40);
+
+		expect((await giftsRoute(new Request(GIFTS, bearer(key)))).status).toBe(429);
+		caller += 1;
+		expect((await giftsRoute(new Request(GIFTS, bearer(key)))).status).toBe(200);
+	});
+});
+
+/** reads `init` as a key would and waits out what the read left running after its answer. */
+async function readAndSettle(init: RequestInit, options: { env?: Env } = {}): Promise<Response> {
+	const ctx = createExecutionContext();
+	const response = await giftsRoute(new Request(GIFTS, init), { ...options, ctx });
+	await waitOnExecutionContext(ctx);
+	return response;
+}
+
+async function lastUsed(id: string): Promise<Date | null> {
+	const [row] = await db
+		.select({ lastUsedAt: apiKeyTable.lastUsedAt })
+		.from(apiKeyTable)
+		.where(eq(apiKeyTable.id, id));
+	if (row === undefined) throw new Error(`no key ${id}`);
+	return row.lastUsedAt;
+}
+
+describe('when a key was last used', () => {
+	it('is recorded on a use, and stays unwritten on a key never used', async () => {
+		const used = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const unused = await mintApiKey(db, { name: 'Warehouse', kind: 'api' });
+		const before = Date.now();
+
+		expect((await readAndSettle(bearer(used.key))).status).toBe(200);
+
+		expect((await lastUsed(used.id))?.getTime()).toBeGreaterThanOrEqual(before);
+		expect(await lastUsed(unused.id)).toBeNull();
+	});
+
+	it('moves on a use more than a minute after the last', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		await db
+			.update(apiKeyTable)
+			.set({ lastUsedAt: new Date(Date.now() - 120_000) })
+			.where(eq(apiKeyTable.id, minted.id));
+		const before = Date.now();
+
+		await readAndSettle(bearer(minted.key));
+
+		expect((await lastUsed(minted.id))?.getTime()).toBeGreaterThanOrEqual(before);
+	});
+
+	it('writes nothing on a second use inside the minute', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const statements: string[] = [];
+		const watched = { env: envWatchingStatements(statements) };
+		const writes = () => statements.filter((sql) => /^update "api_key"/i.test(sql));
+
+		await readAndSettle(bearer(minted.key), watched);
+		const first = await lastUsed(minted.id);
+		expect(writes()).toHaveLength(1);
+
+		await readAndSettle(bearer(minted.key), watched);
+
+		expect(writes()).toHaveLength(1);
+		expect(await lastUsed(minted.id)).toEqual(first);
+	});
+});
+
+/**
+ * the pool's env with every statement prepared on its D1 pushed onto `statements`, and run there
+ * unchanged. proxies rather than copies: `env` is the runtime's own object, and a spread keeps
+ * only its enumerable members.
+ */
+function envWatchingStatements(statements: string[]): Env {
+	const watched = new Proxy(env.DB, {
+		get(target, property) {
+			if (property === 'prepare')
+				return (sql: string) => {
+					statements.push(sql);
+					return target.prepare(sql);
+				};
+			const value: unknown = Reflect.get(target, property);
+			return typeof value === 'function' ? value.bind(target) : value;
+		}
+	});
+	return new Proxy(env, {
+		get: (target, property) => (property === 'DB' ? watched : Reflect.get(target, property))
+	}) as Env;
+}

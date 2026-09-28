@@ -3,7 +3,7 @@
 ## Requirements
 
 - **Node ≥ 22** and **pnpm** (`corepack enable`; version pinned in `package.json`)
-- **A Cloudflare account on a paid Workers plan** with its email verified. The Free plan runs it, but the rate limits on `/api/v1` and sign-in silently do not enforce. An unverified account works in the dashboard but refuses the first Worker deploy
+- **A Cloudflare account on a paid Workers plan** with its email verified. The Free plan runs it, but the rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in silently do not enforce. An unverified account works in the dashboard but refuses the first Worker deploy
 - **A payment processor account: Stripe, PayPal, Chariot, NOWPayments, or any mix.** Any one on its own finishes set-up: Stripe takes cards, bank debits and the wallets; PayPal takes PayPal and Venmo; Chariot takes one-time gifts from a donor-advised fund; NOWPayments takes one-time crypto gifts. A deployment holding more than one offers each to the donor
 - **An SMTP account on port 465**, for receipts. [Email](#email) has a provider table
 

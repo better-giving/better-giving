@@ -333,9 +333,9 @@ function selectedEnvironment(argv) {
  * the bindings the selected environment does not declare, database first.
  *
  * declared is the whole question here. whether a rate limiter's numbers are the ones this app
- * promises a refused caller, and whether the probe's bucket is narrower than the burst that reads
- * it, are `src/lib/server/api/rate-limit.config.spec.ts`'s — that spec reads both blocks and runs
- * at commit, in front of every deploy rather than only in front of this one.
+ * promises a refused caller, and whether each tighter bucket sits below the one charged ahead of
+ * it, are `src/lib/server/api/rate-limit.config.spec.ts`'s — that spec reads every block and runs
+ * in ci.yml, in front of every deploy rather than only in front of this one.
  *
  * @param {Record<string, unknown>} environment the top level of the config, or one `env` block of it.
  * @returns {string[]}

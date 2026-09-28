@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { type ApiKey, type ApiKeyKind, apiKey } from '../db/schema';
 
@@ -63,6 +63,38 @@ export async function revokeApiKey(db: Db, id: string): Promise<Date | null> {
 		.where(and(eq(apiKey.id, id), isNull(apiKey.revokedAt)))
 		.returning({ revokedAt: apiKey.revokedAt });
 	return row?.revokedAt ?? null;
+}
+
+/** how coarse `last_used_at` is: a use within this long of the recorded one writes nothing. */
+const LAST_USED_WINDOW_MS = 60_000;
+
+/**
+ * records that `key` was used at `now`, at most once a minute per key, and never rejects.
+ *
+ * `key` is the row as the request's own lookup read it, so a key used within the minute costs no
+ * statement at all — the read already happened, and nothing is read again to decide. a stale read
+ * issues one UPDATE guarded on the same condition, so requests racing through one minute on one
+ * key land one write between them, whatever their reads said.
+ *
+ * a failed write is logged by the key's row id and dropped: the column is a hint on a screen, and
+ * a request already answered has nobody to refuse.
+ */
+export async function touchLastUsed(db: Db, key: ApiKey, now = new Date()): Promise<void> {
+	const staleBefore = new Date(now.getTime() - LAST_USED_WINDOW_MS);
+	if (key.lastUsedAt !== null && key.lastUsedAt >= staleBefore) return;
+	try {
+		await db
+			.update(apiKey)
+			.set({ lastUsedAt: now })
+			.where(
+				and(
+					eq(apiKey.id, key.id),
+					or(isNull(apiKey.lastUsedAt), lt(apiKey.lastUsedAt, staleBefore))
+				)
+			);
+	} catch (e) {
+		console.error(`recording when API key ${key.id} was last used failed:`, e);
+	}
 }
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
