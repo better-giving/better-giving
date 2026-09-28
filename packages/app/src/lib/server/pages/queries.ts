@@ -1,7 +1,7 @@
 import { and, eq, exists, inArray, isNotNull, ne, notExists, type SQL } from 'drizzle-orm';
 import { type Page as PageDocument, parsePage } from '../../page/catalog';
 import { stateAt } from '../../page/ended';
-import { freeSlug } from '../../page/slug';
+import { freeSlug, slugFromTitle } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { chatTurn, form, type Page, page } from '../db/schema';
@@ -12,7 +12,8 @@ import { readActivePrograms } from '../programs/queries';
 // one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
 // where a live campaign ends, the editor's two writes that are not page content — a campaign's
 // name and its address — and its donation settings and the Settings sheet's keys, which are, each
-// against the version the editor was drawn at.
+// against the version the editor was drawn at; and the address a campaign's name asked for and did
+// not get.
 //
 // a page is deleted only while it is a campaign nobody has ever been shown. once a page has been
 // live a gift may point at its owned settings row, and ending it is the campaign's own state rather
@@ -223,6 +224,21 @@ async function slugHolder(
 		stored: held.state,
 		version: held.updatedAt
 	};
+}
+
+/**
+ * the address a never-published campaign's name suggests (`slugFromTitle`, no suffix), where
+ * another page holds it: what its first Publish says it did not get. null otherwise, a published
+ * campaign's included.
+ */
+export async function addressAsked(db: Db, row: Page): Promise<string | null> {
+	if (row.state !== 'never_published' || row.name === null) return null;
+	const asked = slugFromTitle(row.name);
+	const [holder] = await db
+		.select({ id: page.id })
+		.from(page)
+		.where(and(eq(page.slug, asked), ne(page.id, row.id)));
+	return holder === undefined ? null : asked;
 }
 
 /** what a rename did: the page as drawn is no longer the page stored, or there is none. */

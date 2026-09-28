@@ -45,6 +45,8 @@ export type FirstPublish = {
 	/** the choice the draft's donation settings hold now. */
 	readonly program: string;
 	readonly address: string;
+	/** the address the campaign's name asked for, where another page holds it. */
+	readonly asked?: string | undefined;
 };
 
 type Presses = {
