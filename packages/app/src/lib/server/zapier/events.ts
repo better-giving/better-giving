@@ -40,9 +40,6 @@ import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from 
 // whose refund no longer stands.
 // a queued `new_gift` is the other way round and sends a gift refunded since, as it happened.
 
-// ./deliver.ts reads it from here
-export { refundStands };
-
 /** the gift a settlement just made `succeeded`, and the donor it is filed under. */
 export type SettledGift = { readonly paymentId: string; readonly contactId: string };
 
@@ -71,8 +68,8 @@ export function zapierStatements(
 /**
  * the `gift_refunded` rows for `refundPaymentId`, the refund-direction row whose money is now
  * final, for splicing into a caller's single `batch()`. the row is the event: `event_id` and
- * `payment_id` both name it. outside the specs its one caller is `reversalWrites` in
- * ../books/writes.ts.
+ * `payment_id` both name it. outside the specs its one caller is `refundedWrites` in
+ * ../books/writes.ts, reached only through `reversalWrites`.
  *
  * **after the statement that inserts or closes that row**, for the foreign key as above, and gated
  * on {@link refundStands} as that statement left it: a lost close racing a win that committed first

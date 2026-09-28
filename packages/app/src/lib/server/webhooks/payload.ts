@@ -2,11 +2,17 @@ import { and, eq, notExists } from 'drizzle-orm';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { donation, payment } from '../db/schema';
-import { earlierSettledGiftOfDonor, refundStands } from '../donations/queries';
+import { earlierSettledGiftOfDonor } from '../donations/queries';
 import { type ApiDonor, readDonors } from '../integrations/donor';
 import { type ApiGift, readGifts } from '../integrations/gift';
 import { inPage } from '../integrations/paging';
-import { type RefundRow, type RefundSource, selectRefunds } from '../integrations/refund';
+import {
+	REFUND_NO_LONGER_STANDS,
+	type RefundRow,
+	type RefundSource,
+	readStandingRefunds,
+	selectRefunds
+} from '../integrations/refund';
 import type { WebhookEvent } from '../../webhooks/catalog';
 import { changedRecordOf } from './events';
 
@@ -22,8 +28,9 @@ import { changedRecordOf } from './events';
 // donor's earliest settled gift by date (`earlierSettledGiftOfDonor` in ../donations/queries.ts) —
 // the gift whose settlement queued the row, unless one dated earlier was entered by hand since.
 //
-// **a `gift.refunded` row is sent only while its refund still stands**, read here at send as it was
-// in the statement that queued it (`giftRefundedWebhookStatements` in ./events.ts). a refund that
+// **a `gift.refunded` row is sent only while its refund still stands**, read at send
+// (`readStandingRefunds` in ../integrations/refund.ts, the read a Zap's is) as it was in the
+// statement that queued it (`giftRefundedWebhookStatements` in ./events.ts). a refund that
 // failed after it was queued, or a dispute whose loss no longer holds, is not sent: no event
 // follows it, so posting it would leave a receiver acting on money that came back. what already
 // went out stays out. `gift.made` and `gift.dispute_opened` are sent whatever befell the gift
@@ -162,9 +169,6 @@ function unreadable(what: string, id: string): Rendered {
 	return { unsent: `The ${what} ${id} this event was queued for could not be read.` };
 }
 
-const REFUND_NO_LONGER_STANDS =
-	'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.';
-
 /** each of `contactIds`' first settled gift, by the donor's id: the one with no earlier one. */
 async function readFirstGifts(db: Db, contactIds: readonly string[]): Promise<Map<string, string>> {
 	if (contactIds.length === 0) return new Map();
@@ -181,16 +185,6 @@ async function readFirstGifts(db: Db, contactIds: readonly string[]): Promise<Ma
 			)
 		);
 	return new Map(rows.map((row) => [row.contactId, row.paymentId]));
-}
-
-/** of `refundIds`, the refunds that still stand, read as this run renders them. */
-async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promise<Set<string>> {
-	if (refundIds.length === 0) return new Set();
-	const rows = await db
-		.select({ id: payment.id })
-		.from(payment)
-		.where(and(inPage(payment.id, refundIds), refundStands(db, payment)));
-	return new Set(rows.map((row) => row.id));
 }
 
 function refundedGift(row: RefundRow, gift: ApiGift): RefundedGift {

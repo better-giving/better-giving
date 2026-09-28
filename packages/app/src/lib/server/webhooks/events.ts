@@ -7,7 +7,7 @@ import {
 	webhookDestination,
 	webhookDestinationEvent
 } from '../db/schema';
-import { isFirstSettledGift, refundStands } from '../donations/queries';
+import { hasSettledGift, isFirstSettledGift, refundStands } from '../donations/queries';
 import type { WebhookEvent } from '../../webhooks/catalog';
 
 // the whole rule about which destinations an event is owed to, and the statements that say so.
@@ -59,7 +59,7 @@ export function webhookStatements(
 /**
  * the `gift.refunded` rows for `refundPaymentId`, the refund-direction row whose money is now
  * final: each refund of a gift, and each dispute lost on one, is its own event. outside the specs
- * its one caller is `reversalWrites` in ../books/writes.ts.
+ * its one caller is `refundedWrites` in ../books/writes.ts, reached only through `reversalWrites`.
  *
  * gated on `refundStands` (../donations/queries.ts) as the batch left that row, the rule
  * `giftRefundedStatements` in ../zapier/events.ts holds for a Zap: a lost close racing a win that
@@ -105,7 +105,11 @@ export function changedRecordOf(subject: string): string | null {
 }
 
 /**
- * the `donor.updated` rows for a write to the contact `contactId`, owed only where `changed` holds.
+ * the `donor.updated` rows for a write to the contact `contactId`, owed only where `changed` holds
+ * and a gift of theirs has settled ({@link hasSettledGift}): a destination never hears of a donor
+ * before their `donor.added`, so a change to one whose checkout never settled, or one typed in on
+ * the dashboard with no gift yet, owes nothing. the write itself happens either way.
+ *
  * outside the specs its one caller is `contactConsentUpdateStatements` in ../contacts/queries.ts,
  * which splices it **in front of** the update it reports: `changed` compares the row as it stands
  * with what the update will write, so a write that changes nothing owes nothing.
@@ -116,7 +120,13 @@ export function donorUpdatedWebhookStatements(
 	changed: SQL
 ): BatchItem<'sqlite'> {
 	const now = new Date();
-	return fanOut(db, 'donor.updated', changeSubject(contactId, now), now, changed);
+	return fanOut(
+		db,
+		'donor.updated',
+		changeSubject(contactId, now),
+		now,
+		and(changed, hasSettledGift(db, contactId))
+	);
 }
 
 /** a version 4 uuid, lowercase, from sqlite's own random source. */

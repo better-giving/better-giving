@@ -677,7 +677,7 @@ describe('reversalWrites() — what webhook destinations are owed', () => {
 		]);
 	});
 
-	it('owes gift.refunded on a lost close, settled up or not, and nothing on a win', async () => {
+	it('owes gift.refunded on a lost close with nothing to settle, and nothing on a win', async () => {
 		const refund = await giftWithRefundRow();
 		const refunded = await listening(['gift.refunded']);
 		await db.batch([
@@ -701,6 +701,39 @@ describe('reversalWrites() — what webhook destinations are owed', () => {
 		);
 
 		expect(afterWin).toEqual([]);
+		expect(await owedToDestinations()).toEqual([
+			{ destination_id: refunded, event: 'gift.refunded', subject_id: refundId }
+		]);
+	});
+
+	it('owes gift.refunded on a lost close that posts a settle-up', async () => {
+		const refund = await giftWithRefundRow();
+		const refunded = await listening(['gift.refunded']);
+		await db.batch([
+			refund.row,
+			db.insert(dispute).values({ paymentId: refundId }),
+			...reversalWrites(db, {
+				kind: 'dispute_opened',
+				entry: withdrawal,
+				finalRefundPaymentId: null
+			})
+		]);
+		await db.update(dispute).set({ outcome: 'lost', closedAt: AT });
+		const settleUp = post({
+			sourceType: 'adjustment',
+			sourceId: refundId,
+			currency: 'USD',
+			occurredAt: AT,
+			lines: [
+				{ accountId: postableId('processorFees'), amountMinor: 700 },
+				{ accountId: postableId('undepositedFunds'), amountMinor: -700 }
+			]
+		});
+
+		await db.batch(
+			reversalWrites(db, { kind: 'settle_up', entry: settleUp, finalRefundPaymentId: refundId })
+		);
+
 		expect(await owedToDestinations()).toEqual([
 			{ destination_id: refunded, event: 'gift.refunded', subject_id: refundId }
 		]);

@@ -1,11 +1,13 @@
 import { env } from 'cloudflare:test';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact, type ParsedContact } from '../contacts/contact-input';
 import { createDb, type Db } from '../db/client';
-import { contact } from '../db/schema';
+import { createContact } from '../contacts/queries';
+import { contact, donation, payment } from '../db/schema';
 import { createDestination } from '../webhooks/destinations';
-import { commitDonor } from './donor';
+import { type CommitDonorResult, commitDonor } from './donor';
 
 // the donor half of a gift, against a real D1.
 //
@@ -114,7 +116,13 @@ describe('commitDonor() — what a changed donor owes a listening destination', 
 
 	afterEach(async () => {
 		vi.useRealTimers();
-		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+		for (const table of [
+			'webhook_delivery',
+			'webhook_destination_event',
+			'webhook_destination',
+			'payment',
+			'donation'
+		]) {
 			await env.DB.prepare(`delete from ${table}`).run();
 		}
 	});
@@ -127,9 +135,35 @@ describe('commitDonor() — what a changed donor owes a listening destination', 
 		return results;
 	}
 
-	it('owes each destination taking donor.updated one row when a returning donor’s consent changes, keyed on the donor and the moment', async () => {
-		const first = await commitDonor(db, donor(), true);
-		const contactId = first.ok ? first.value.contactId : 'not written';
+	/** the donor `committed` names, with one $50 gift of theirs settled. */
+	async function withSettledGift(committed: CommitDonorResult): Promise<string> {
+		if (!committed.ok) throw new Error(committed.detail);
+		const { contactId } = committed.value;
+		const donationId = uuidv7();
+		await db.batch([
+			db.insert(donation).values({
+				id: donationId,
+				contactId,
+				totalMinor: 5_000,
+				currency: 'USD',
+				receivedAt: CHANGED_AT
+			}),
+			db.insert(payment).values({
+				donationId,
+				amountMinor: 5_000,
+				currency: 'USD',
+				direction: 'inbound',
+				method: 'check',
+				status: 'succeeded',
+				provider: 'manual',
+				occurredAt: CHANGED_AT
+			})
+		]);
+		return contactId;
+	}
+
+	it('owes each destination taking donor.updated one row when a donor who has given changes their answer, keyed on the donor and the moment', async () => {
+		const contactId = await withSettledGift(await commitDonor(db, donor(), true));
 
 		await commitDonor(db, donor(), false);
 
@@ -142,8 +176,27 @@ describe('commitDonor() — what a changed donor owes a listening destination', 
 		);
 	});
 
-	it('owes one when a donor nobody had asked answers for the first time', async () => {
-		await commitDonor(db, donor(), null);
+	it('owes one when a donor who has given, and was never asked, answers for the first time', async () => {
+		await withSettledGift(await commitDonor(db, donor(), null));
+
+		await commitDonor(db, donor(), true);
+
+		expect(await owed()).toHaveLength(2);
+	});
+
+	it('owes nothing for a donor typed in on the dashboard who answers before any gift of theirs settles, and changes the row all the same', async () => {
+		const typed = await createContact(db, donor());
+
+		await commitDonor(db, donor(), true);
+
+		expect(await owed()).toEqual([]);
+		const [row] = await db.select().from(contact).where(eq(contact.id, typed.id));
+		expect(row?.consentedToContact).toBe(true);
+	});
+
+	it('owes one for that donor once a gift of theirs has settled', async () => {
+		const typed = await createContact(db, donor());
+		await withSettledGift({ ok: true, value: { contactId: typed.id, created: false } });
 
 		await commitDonor(db, donor(), true);
 
@@ -151,7 +204,7 @@ describe('commitDonor() — what a changed donor owes a listening destination', 
 	});
 
 	it('owes nothing when the returning donor gives the answer they gave before', async () => {
-		await commitDonor(db, donor(), true);
+		await withSettledGift(await commitDonor(db, donor(), true));
 
 		await commitDonor(db, donor(), true);
 

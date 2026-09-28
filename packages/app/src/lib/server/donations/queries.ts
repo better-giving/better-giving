@@ -4,6 +4,7 @@ import {
 	count,
 	desc,
 	eq,
+	exists,
 	inArray,
 	isNull,
 	lt,
@@ -177,22 +178,34 @@ export function isFirstSettledGift(
 	db: Db,
 	gift: { readonly paymentId: string; readonly contactId: string }
 ): SQL {
+	return notExists(settledGiftsOf(db, gift.contactId, gift.paymentId));
+}
+
+/**
+ * the contact `contactId` has a settled gift: the fact {@link isFirstSettledGift} reads, held the
+ * other way round — a donor a destination has heard of (`donorUpdatedWebhookStatements` in
+ * ../webhooks/events.ts).
+ */
+export function hasSettledGift(db: Db, contactId: string): SQL {
+	return exists(settledGiftsOf(db, contactId));
+}
+
+/** the contact's succeeded inbound payments, but for `exceptPaymentId`. */
+function settledGiftsOf(db: Db, contactId: string, exceptPaymentId?: string) {
 	const prior = alias(payment, 'prior');
 	const priorDonation = alias(donation, 'prior_donation');
-	return notExists(
-		db
-			.select({ one: sql`1` })
-			.from(prior)
-			.innerJoin(priorDonation, eq(priorDonation.id, prior.donationId))
-			.where(
-				and(
-					eq(priorDonation.contactId, gift.contactId),
-					eq(prior.status, 'succeeded'),
-					eq(prior.direction, 'inbound'),
-					ne(prior.id, gift.paymentId)
-				)
+	return db
+		.select({ one: sql`1` })
+		.from(prior)
+		.innerJoin(priorDonation, eq(priorDonation.id, prior.donationId))
+		.where(
+			and(
+				eq(priorDonation.contactId, contactId),
+				eq(prior.status, 'succeeded'),
+				eq(prior.direction, 'inbound'),
+				exceptPaymentId === undefined ? undefined : ne(prior.id, exceptPaymentId)
 			)
-	);
+		);
 }
 
 /**

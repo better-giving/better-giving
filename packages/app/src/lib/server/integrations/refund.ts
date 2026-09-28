@@ -1,7 +1,9 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { dispute, payment } from '../db/schema';
+import { refundStands } from '../donations/queries';
+import { inPage } from './paging';
 
 // one refund-direction row as a system outside this deployment is told of it: the `gift_refunded`
 // event a Zap receives (../zapier/payload.ts), and the `data` of a `gift.refunded` or
@@ -40,3 +42,24 @@ export function selectRefunds(db: Db) {
 }
 
 export type RefundRow = Awaited<ReturnType<ReturnType<typeof selectRefunds>['all']>>[number];
+
+/**
+ * of `refundIds`, the refunds that still stand (`refundStands` in ../donations/queries.ts), read as
+ * a delivery run renders them: a queued `gift_refunded` Zap row (../zapier/deliver.ts) and a queued
+ * `gift.refunded` destination row (../webhooks/payload.ts) are posted only while theirs does.
+ */
+export async function readStandingRefunds(
+	db: Db,
+	refundIds: readonly string[]
+): Promise<Set<string>> {
+	if (refundIds.length === 0) return new Set();
+	const rows = await db
+		.select({ id: payment.id })
+		.from(payment)
+		.where(and(inPage(payment.id, refundIds), refundStands(db, payment)));
+	return new Set(rows.map((row) => row.id));
+}
+
+/** the `last_error` of a queued refund row that stopped standing, and was not posted. */
+export const REFUND_NO_LONGER_STANDS =
+	'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.';

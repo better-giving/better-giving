@@ -22,7 +22,9 @@ import type { Db } from '../db/client';
 // the two functions below are that split: `resolveDonor` decides and hands back statements,
 // `commitDonor` decides and writes. matching a returning donor, and what a consent answer does to
 // the row they already have, is one implementation either way — the same rule applied twice would
-// be two donor files with one form between them.
+// be two donor files with one form between them. a public form's overwrite of a matched donor's
+// answer is announced to destinations as `donor.updated` (../webhooks/events.ts), unverified
+// address and all, and that is accepted.
 
 /** the donor a gift is filed under, and the write that has not happened yet. */
 export type ResolvedDonor = {

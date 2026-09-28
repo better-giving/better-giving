@@ -753,10 +753,14 @@ describe('recordDonation() — what a returning donor’s answer owes a listenin
 		return results;
 	}
 
-	it('owes donor.updated in the gift’s own batch when the answer changes, and leaves the row unstamped when it does not', async () => {
+	it('owes donor.updated in the gift’s own batch when a donor who has given changes their answer, and leaves the row unstamped when it does not', async () => {
 		const first = await recorded(
 			gift({ donor: donor('changes.mind@example.org'), consentedToContact: true })
 		);
+		// the first gift settled, so a destination has heard of this donor.
+		await env.DB.prepare(`update payment set status = 'succeeded' where id = ?`)
+			.bind(first.paymentId)
+			.run();
 		await env.DB.prepare('update contact set updated_at = 1 where id = ?')
 			.bind(first.contactId)
 			.run();
