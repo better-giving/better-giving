@@ -7,7 +7,7 @@
 		"dev": "vite dev",
 		"build:embed": "pnpm --filter @better-giving/form build",
 		"build": "pnpm run build:embed && node scripts/stage-embed.js && vite build",
-		"preview": "pnpm run build && node scripts/preflight-deploy.js && wrangler dev",
+		"preview": "pnpm run build && node scripts/preflight-deploy.js && wrangler dev $([ \"$BETTER_GIVING_REMOTE_AI\" = 1 ] || echo --local)",
 		"deploy": "pnpm run build && node scripts/preflight-deploy.js && wrangler d1 migrations apply DB --remote && wrangler deploy",
 		"deploy:test": "CLOUDFLARE_ENV=test pnpm run build && node scripts/preflight-deploy.js --env test && wrangler d1 migrations apply DB --remote --env test && wrangler deploy --env test",
 		"deploy:vars": "node scripts/deploy-vars.js .deploy.vars",

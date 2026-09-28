@@ -18,7 +18,12 @@ import { readConfigEnv } from '../config/env';
 // reason is answered by the free one and marked `fellBack`: no binding call reads the credit
 // balance, and the error an empty one raises is undocumented, so an empty balance cannot be told
 // from any other failure and each is treated as that model being unavailable. the free model
-// failing is the end of the line.
+// failing is the end of the line. a reply stopped by the ceiling on its length is no answer
+// either: it is text cut part way, and for JSON it does not parse.
+//
+// a local dev server with no remote session binds a stand-in whose every call throws
+// (`LOCAL_STAND_IN` below). that is the same thing as no binding at all, and is refused the same
+// way, before any other model is tried.
 
 export interface ChatMessage {
 	readonly role: 'user' | 'assistant';
@@ -85,6 +90,9 @@ export async function generate(source: unknown, request: GenerateRequest): Promi
 
 	const answer = await ask(binding, model, request);
 	if (answer.ok) return { ok: true, text: answer.text, model: model.id, fellBack: false };
+	if (isLocalStandIn(answer.error)) {
+		return { ok: false, reason: 'not_bound', operatorFix: LOCAL_STAND_IN_FIX };
+	}
 	console.error(`${model.id} did not answer:`, answer.error);
 
 	if (model.creditBilled) {
@@ -144,21 +152,29 @@ function input(model: AiModel, request: GenerateRequest): Record<string, unknown
 	}
 }
 
-/** the reply's text in the model's own format, or `null` where the reply holds none. */
+/**
+ * the reply's text in the model's own format, or `null` where the reply holds none or was stopped
+ * by `MAX_OUTPUT_TOKENS`.
+ */
 function text(model: AiModel, reply: unknown): string | null {
 	const body = record(reply);
 	switch (model.format) {
 		case 'anthropic-messages': {
+			if (body.stop_reason === 'max_tokens') return null;
 			const blocks = Array.isArray(body.content) ? body.content.map(record) : [];
 			const texts = blocks.flatMap((block) => (typeof block.text === 'string' ? [block.text] : []));
 			return texts.length > 0 ? texts.join('') : null;
 		}
 		case 'openai-chat': {
 			const first = Array.isArray(body.choices) ? record(body.choices[0]) : {};
+			if (first.finish_reason === 'length') return null;
 			const content = record(first.message).content;
 			return typeof content === 'string' ? content : null;
 		}
 		case 'workers-ai':
+			// Workers AI reports no stop reason, so a reply that spent the whole ceiling is read as
+			// stopped by it.
+			if (Number(record(body.usage).completion_tokens) >= MAX_OUTPUT_TOKENS) return null;
 			// in JSON mode `response` arrives already parsed.
 			if (typeof body.response === 'string') return body.response;
 			return typeof body.response === 'object' && body.response !== null
@@ -180,6 +196,16 @@ function aiBinding(source: unknown): AiBinding | null {
 		: null;
 }
 
+/**
+ * what miniflare's stand-in for a remote-only binding throws on every call
+ * (`throwRemoteRequired` in its remote-proxy-client worker).
+ */
+const LOCAL_STAND_IN = /^Binding \S+ needs to be run remotely$/;
+
+function isLocalStandIn(error: unknown): boolean {
+	return error instanceof Error && LOCAL_STAND_IN.test(error.message);
+}
+
 function offListFix(value: string): string {
 	return (
 		`\`AI_MODEL\` is \`${value}\`, which is not a model this deployment can call. Choose one on ` +
@@ -191,3 +217,7 @@ function offListFix(value: string): string {
 const NOT_BOUND_FIX =
 	'This deployment was uploaded without the Workers AI binding `AI`, so no model can be called. ' +
 	'Deploy this release again: `better-giving start`, or `pnpm run deploy` from a checkout.';
+
+const LOCAL_STAND_IN_FIX =
+	'This dev server has no remote session for the Workers AI binding `AI`, so no model can be ' +
+	'called. Run `pnpm run login`, then start it again with `BETTER_GIVING_REMOTE_AI=1`.';

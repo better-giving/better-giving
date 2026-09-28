@@ -150,8 +150,9 @@
 	// out of the repo: the binding is the account's, and the `default` gateway every call names
 	// creates itself on first use.
 	//
-	// Workers AI has no local simulator, so `pnpm dev` and `pnpm run preview` open a session to the
-	// account for this one binding and need `pnpm run login` first.
+	// Workers AI has no local simulator. `pnpm dev` and `pnpm run preview` open a session to the
+	// account for it only under `BETTER_GIVING_REMOTE_AI=1` (vite.config.ts, and the `preview`
+	// script's `--local`), so a checkout with no Cloudflare sign-in still starts.
 	"ai": {
 		"binding": "AI"
 	},

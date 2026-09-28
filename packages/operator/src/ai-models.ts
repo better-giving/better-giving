@@ -1,18 +1,18 @@
 // the models a deployment may answer with, and the one `AI_MODEL` names.
 //
-// a closed list, in this leaf because both ends read it: the deployment calls the chosen one
-// (`generate` in packages/app/src/lib/server/ai/generate.ts), and the console offers the choice
-// and writes it as the plain var `AI_MODEL` (`DEPLOY_VARS` in ./deploy-split.ts). a second list on
-// the console side would be an id the deployment refuses, with nothing able to see the
-// disagreement.
+// a closed list, in this leaf because both TypeScript ends read it: the deployment calls the
+// chosen one (`generate` in packages/app/src/lib/server/ai/generate.ts), and the console's screens
+// offer the choice. the console binary, which writes it as the plain var `AI_MODEL` (`DEPLOY_VARS`
+// in ./deploy-split.ts), holds a Go copy — `AIModels` in
+// packages/console/internal/release/config.go — which `TestTheModelsAreTheOnesBothEndsRead` in
+// that package's config_test.go holds to this list, ids and billing in order.
 //
 // every model is called through the Workers AI binding and AI Gateway's `default` gateway, the
 // one gateway that creates itself on first use. the first entry is free on Workers AI and is what
 // an unset `AI_MODEL` means. the others are billed to the account's Cloudflare credits through
 // AI Gateway's unified billing, so no provider key is stored anywhere
-// (https://developers.cloudflare.com/ai-gateway/features/unified-billing/). no binding call
-// reads the credit balance and the error an empty balance raises is undocumented, so any failure
-// of a credit-billed model is answered by the free one.
+// (https://developers.cloudflare.com/ai-gateway/features/unified-billing/). what a failed call to
+// one of them is answered with, and why, is `generate`'s header.
 //
 // an id is what an operator's deployment stores, so one taken off this list turns that stored
 // value into a refusal until the console writes another.

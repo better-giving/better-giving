@@ -122,6 +122,19 @@ describe('a deployment uploaded without the Workers AI binding', () => {
 		if (result.ok) return;
 		expect(result.operatorFix).toContain('`AI`');
 	});
+
+	// what a local dev server binds when no remote session was opened: the binding exists and every
+	// call throws this (miniflare's remote-proxy-client worker).
+	it('is refused the same way when the binding is the local stand-in, and tries no other model', async () => {
+		const AI = answering(new Error('Binding AI needs to be run remotely'));
+
+		const result = await generate({ AI, AI_MODEL: 'anthropic/claude-sonnet-4.6' }, REQUEST);
+
+		expect(result).toMatchObject({ ok: false, reason: 'not_bound' });
+		if (result.ok) return;
+		expect(result.operatorFix).toContain('BETTER_GIVING_REMOTE_AI=1');
+		expect(AI.run).toHaveBeenCalledOnce();
+	});
 });
 
 describe('a request for JSON', () => {
@@ -228,5 +241,55 @@ describe('a chosen model that fails', () => {
 		const result = await generate({ AI, AI_MODEL: 'openai/gpt-5-mini' }, REQUEST);
 
 		expect(result).toMatchObject({ ok: true, text: 'A page.', fellBack: true });
+	});
+
+	describe('a reply cut off at the ceiling on its length', () => {
+		/** a binding that answers whatever ceiling it was asked for, spent to the last token. */
+		function spendingTheCeiling() {
+			return {
+				run: vi.fn(async (_: string, input: Record<string, unknown>) => ({
+					response: '{"headline":"Feed a',
+					usage: { completion_tokens: input.max_tokens }
+				}))
+			};
+		}
+
+		it('is no answer from the free model', async () => {
+			const AI = spendingTheCeiling();
+
+			expect(await generate({ AI }, REQUEST)).toMatchObject({ ok: false, reason: 'unavailable' });
+		});
+
+		it.each([
+			[
+				'anthropic/claude-sonnet-4.6',
+				{ content: [{ type: 'text', text: '{"headline":"Feed a' }], stop_reason: 'max_tokens' }
+			],
+			[
+				'openai/gpt-5-mini',
+				{ choices: [{ message: { content: '{"headline":"Feed a' }, finish_reason: 'length' }] }
+			]
+		])('is no answer from %s, which falls back', async (model, cut) => {
+			const AI = answering(cut, { response: 'A page.' });
+
+			const result = await generate({ AI, AI_MODEL: model }, REQUEST);
+
+			expect(result).toMatchObject({ ok: true, text: 'A page.', fellBack: true });
+		});
+
+		it('is an answer when the model stopped on its own', async () => {
+			const AI = answering(
+				{ content: [{ type: 'text', text: 'A page.' }], stop_reason: 'end_turn' },
+				{ choices: [{ message: { content: 'A page.' }, finish_reason: 'stop' }] },
+				{ response: 'A page.', usage: { completion_tokens: 3 } }
+			);
+
+			for (const model of ['anthropic/claude-sonnet-4.6', 'openai/gpt-5-mini', undefined]) {
+				expect(await generate({ AI, AI_MODEL: model }, REQUEST)).toMatchObject({
+					ok: true,
+					fellBack: false
+				});
+			}
+		});
 	});
 });
