@@ -4955,16 +4955,17 @@
 		grid-template-rows: auto 1fr auto;
 	}
 
-	/* the shell with a rail stands on a tinted ground and the page is a full-bleed panel on it
-	   (`.adm-rail ~ .adm-main` below). the bare shell keeps the page's own ground: it has no panel
-	   for the tint to set off.
-
-	   `--_bar-reserve` is the strip at the foot the bar stands in: the page's end is held back by it
+	/* `--_bar-reserve` is the strip at the foot the bar stands in: the page's end is held back by it
 	   and the More sheet stands on top of it (`.adm-rail ~ .adm-main`, `.adm-sheet` below). the
 	   terms are the tab's: the floor it is never shorter than, its taller top step, the step it pads
 	   itself by at each end, and whatever the platform holds back under it. the tab's own contents
-	   are shorter than that floor, so the sum can only overstate the bar. */
-	.adm-shell:has(> .adm-rail) {
+	   are shorter than that floor, so the sum can only overstate the bar.
+
+	   it is stated on the root because below the wide breakpoint the document is the scroller, and
+	   scroll padding is read off the scroller alone: without it a control focused in the bottom
+	   strip of the window counts as in view and stays under the bar. the wide breakpoint takes the
+	   padding back, where the panel scrolls and the bar is a column. */
+	:root:has(.adm-shell > .adm-rail) {
 		--_bar-reserve: calc(
 			var(--admin-touch-min) +
 			var(--admin-edge) +
@@ -4972,6 +4973,13 @@
 			var(--admin-space-3) +
 			env(safe-area-inset-bottom)
 		);
+		scroll-padding-block-end: var(--_bar-reserve);
+	}
+
+	/* the shell with a rail stands on a tinted ground and the page is a full-bleed panel on it
+	   (`.adm-rail ~ .adm-main` below). the bare shell keeps the page's own ground: it has no panel
+	   for the tint to set off. */
+	.adm-shell:has(> .adm-rail) {
 		background: var(--admin-surface-sunken);
 	}
 
@@ -5504,7 +5512,7 @@
 	   because `.adm-main` is also the bare shell's page, which has no panel. two classes of weight,
 	   so the `.adm-main` padding the two widths below restate for the bare shell never reaches it.
 
-	   the page reserves the strip the bar stands in, `--_bar-reserve` on the shell above, because
+	   the page reserves the strip the bar stands in, `--_bar-reserve` on the root above, because
 	   below the wide breakpoint the bar is out of the flow and would otherwise be laid over the end
 	   of it. */
 	.adm-rail ~ .adm-main {
@@ -6512,6 +6520,10 @@
 		   rail stands whole beside a page of any length and the document never scrolls. */
 		.adm-shell:has(> .adm-rail) {
 			block-size: 100dvh;
+		}
+
+		:root:has(.adm-shell > .adm-rail) {
+			scroll-padding-block-end: auto;
 		}
 
 		/* the icon rail: a column one target wide, inside the cells' inline step. AppShell writes
