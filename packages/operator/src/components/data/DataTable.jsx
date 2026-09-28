@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { Mark } from '../status/Mark.jsx';
 
 /**
- * @import { ReactNode } from 'react'
+ * @import { FocusEvent, ReactNode } from 'react'
  */
 
 /**
@@ -226,6 +226,7 @@ export function DataTable({
 				tabIndex={0}
 				aria-labelledby={namedFrom}
 				aria-label={named}
+				onFocus={revealFocused}
 			>
 				<table className="adm-table" aria-labelledby={namedFrom} aria-label={named}>
 					{/* the shape the table keeps. without it every column is sized from whatever the
@@ -359,4 +360,17 @@ export function DataTable({
 			</section>
 		</>
 	);
+}
+
+/* the browser scrolls a focused element into a scroll box only when none of it is showing, so a
+   control at a row's end with a sliver inside the plane's edge takes the keyboard and stays cut
+   off. `nearest` moves the plane exactly as far as the whole control needs, landing it the
+   `scroll-padding-inline` step in from the edge (`.adm-plane` in ../../styles/adm.css). a keyboard
+   arrival only: a pointer press focuses on the way down, and a plane moving under the pointer
+   before the release lands the release somewhere else. */
+/** @param {FocusEvent<HTMLElement>} event */
+function revealFocused(event) {
+	const { target, currentTarget } = event;
+	if (target === currentTarget || !target.matches(':focus-visible')) return;
+	target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }

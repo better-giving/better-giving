@@ -18,6 +18,8 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
  * the ring on a button still reporting a save is a pair of states and not one: the press that
  * saved keeps the focus through its confirmation, so a keyboard is standing on this specimen at the
  * moment it draws. it is pinned the way every other state on this page is (`.is-focus` in packages/operator/src/styles/base.css).
+ * the resting closed press is the same pair: `aria-disabled` keeps it in the tab order, so the
+ * last specimen is a keyboard standing on it, ringed over the closed grey.
  */
 export default function ControlsSaveButtonPreview() {
 	return (
@@ -34,6 +36,7 @@ export default function ControlsSaveButtonPreview() {
 			/>
 			<SaveButton state="done" label="Save receipt settings" doneLabel="Receipt settings saved" />
 			<SaveButton state="done" className="is-focus" />
+			<SaveButton state="disabled" className="is-focus" />
 		</>
 	);
 }

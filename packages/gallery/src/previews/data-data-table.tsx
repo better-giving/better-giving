@@ -55,6 +55,11 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * a table and the word is left standing in its tone. a row of them is the only way to see why —
  * packages/operator/src/styles/adm.css argues it at `.adm-table .adm-state` — so every tone is
  * drawn at once, with the untoned quiet word beside a figure and a word long enough to wrap.
+ *
+ * the key list is the pinned column holding a name with no break in it — a pasted address, which
+ * is a name an operator may give a key — beside two short ones. the pin has to wrap it at the width
+ * its `<col>` asks for, so the dates and the Revoke press stand beside it rather than past the
+ * plane's edge; and the press at each row's end is the control a keyboard scrolls the plane to.
  */
 
 const columns: readonly Column[] = [
@@ -318,6 +323,57 @@ export default function DataDataTablePreview() {
 				]}
 				empty="No donation forms yet. The first one appears here once it is made."
 				press={<Button>Add a donation form</Button>}
+			/>
+
+			<DataTable
+				caption="3 keys."
+				columns={[
+					{ key: 'name', label: 'Name', width: '40%' },
+					{ key: 'made', label: 'Made', kind: 'date', width: '22%' },
+					{ key: 'used', label: 'Last used', kind: 'date', width: '22%' },
+					{ key: 'revoke', label: 'Revoke', width: '16%' }
+				]}
+				rows={[
+					{
+						id: 'key_unbroken',
+						cells: {
+							name: 'https://sheets.example.org/spreadsheets/d/1Qx7Lm2Rt9Vh4Kp8Nw3Zc6Yb0Ej5Fg1Hd7Ks2Pa9Tr4Wm8Xn3Bq6Cv0Lz5Dy1Gu7Ji2Ko9Mf4Rs8Te3Hw6Pb0Nc5Qa1Vx7Zl2Yk9Dg4/edit#gid=0&range=A1:Z1000',
+							made: '28 Sep 2026',
+							used: 'Never',
+							revoke: (
+								<Button as="a" href="#" size="sm" aria-label="Revoke the pasted address">
+									Revoke
+								</Button>
+							)
+						}
+					},
+					{
+						id: 'key_reporting',
+						cells: {
+							name: 'Reporting sheet',
+							made: '27 Sep 2026',
+							used: '28 Sep 2026',
+							revoke: (
+								<Button as="a" href="#" size="sm" aria-label="Revoke Reporting sheet">
+									Revoke
+								</Button>
+							)
+						}
+					},
+					{
+						id: 'key_wall',
+						cells: {
+							name: 'Donor wall',
+							made: '26 Sep 2026',
+							used: 'Never',
+							revoke: (
+								<Button as="a" href="#" size="sm" aria-label="Revoke Donor wall">
+									Revoke
+								</Button>
+							)
+						}
+					}
+				]}
 			/>
 
 			{/* the status word in a cell, which is where the pill comes off. every tone at once, the

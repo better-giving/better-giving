@@ -110,7 +110,7 @@ it('draws no strip under no destination', async () => {
 
 /** the column's headings and the destinations it offers, in the order it draws them. */
 function rail(root: HTMLElement): string[] {
-	return [...root.querySelectorAll('.adm-rail__heading, .adm-rail__cells > a .adm-dest__full')].map(
+	return [...root.querySelectorAll('.adm-rail__heading, .adm-rail__cells a .adm-dest__full')].map(
 		(node) => node.textContent ?? ''
 	);
 }

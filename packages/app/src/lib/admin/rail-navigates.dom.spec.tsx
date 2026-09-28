@@ -61,7 +61,7 @@ function stub() {
 
 /** the press a browser sends on the cell reading `label`, and the flush react router does for it. */
 async function press(root: HTMLElement, label: string): Promise<boolean> {
-	const cell = [...root.querySelectorAll('.adm-rail__cells > a')].find(
+	const cell = [...root.querySelectorAll('.adm-rail__cells a')].find(
 		(a) => a.querySelector('.adm-dest__full')?.textContent === label
 	);
 	if (!cell) throw new Error(`the rail drew no cell reading ${label}`);

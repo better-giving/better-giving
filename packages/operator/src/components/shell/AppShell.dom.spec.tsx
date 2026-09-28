@@ -27,16 +27,26 @@ const GROUPS = [
 
 /** the rail cell reading `label`, by the word it draws at the wide width. */
 function cell(root: HTMLElement, label: string): Element {
-	const found = [...root.querySelectorAll('.adm-rail__cells > a')].find(
+	const found = [...root.querySelectorAll('.adm-rail__cells a')].find(
 		(a) => a.querySelector('.adm-dest__full')?.textContent === label
 	);
 	if (found === undefined) throw new Error(`the rail drew no cell reading ${label}`);
 	return found;
 }
 
+/**
+ * what a run of cells lays out, in order: a headed group's element is `display: contents` in
+ * ../../styles/adm.css, so it is its children that stand in the run.
+ */
+function laidOut(run: Element | null): Element[] {
+	return [...(run?.children ?? [])].flatMap((node) =>
+		node.matches('.adm-rail__group') ? [...node.children] : [node]
+	);
+}
+
 /** the rail's children in order, each as its first class and, for a cell, its full word. */
 function railRun(root: HTMLElement): string[] {
-	return [...(root.querySelector('.adm-rail__cells')?.children ?? [])].map((node) => {
+	return laidOut(root.querySelector('.adm-rail__cells')).map((node) => {
 		if (node.matches('a')) {
 			const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
 			return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
@@ -101,8 +111,8 @@ describe('a rail mounted into a document', () => {
 		// them or none, and a cell marked here would announce itself as the page the reader is on.
 		const root = render(AppShell, { groups: GROUPS, current: undefined });
 
-		expect(root.querySelectorAll('.adm-rail__cells > a[aria-current]')).toHaveLength(0);
-		expect(root.querySelectorAll('.adm-rail__cells > a.is-current')).toHaveLength(0);
+		expect(root.querySelectorAll('.adm-rail__cells a[aria-current]')).toHaveLength(0);
+		expect(root.querySelectorAll('.adm-rail__cells a.is-current')).toHaveLength(0);
 	});
 
 	it('claims nothing on the destinations the reader is not in', () => {
@@ -172,7 +182,28 @@ describe('the groups a rail is divided into', () => {
 
 		expect(heading?.closest('a')).toBeNull();
 		expect(heading?.querySelector('a')).toBeNull();
-		expect(root.querySelectorAll('.adm-rail__cells > a')).toHaveLength(2);
+		expect(root.querySelectorAll('.adm-rail__cells a')).toHaveLength(2);
+	});
+
+	it('names a headed group by its heading, around its own cells and no others', () => {
+		const root = render(AppShell, {
+			groups: [
+				{ destinations: [{ label: 'Members' }] },
+				{ heading: 'Integrations', destinations: [{ label: 'API' }, { label: 'Books' }] },
+				{ destinations: [{ label: 'Sites' }] }
+			]
+		});
+		const groups = [...root.querySelectorAll('.adm-rail__cells [role="group"]')];
+		const named = groups[0]?.getAttribute('aria-labelledby');
+
+		// one group: the unheaded runs have no name to be a group by.
+		expect(groups).toHaveLength(1);
+		expect(named ? document.getElementById(named)?.textContent : null).toBe('Integrations');
+		expect(
+			[...(groups[0]?.querySelectorAll('a') ?? [])].map(
+				(a) => a.querySelector('.adm-dest__full')?.textContent
+			)
+		).toEqual(['API', 'Books']);
 	});
 
 	it('draws a glyph mark as the glyph and a picture mark as an unnamed image', () => {
@@ -403,7 +434,7 @@ describe('the link a rail draws its cells as', () => {
 		// that renders identically.
 		const root = render(AppShell, { groups: GROUPS, link: Handed });
 
-		expect(root.querySelectorAll('.adm-rail__cells > a[data-handed]')).toHaveLength(2);
+		expect(root.querySelectorAll('.adm-rail__cells a[data-handed]')).toHaveLength(2);
 	});
 });
 
@@ -452,7 +483,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 
 	/** the sheet's run of entries, spelled as `railRun` spells the rail's. */
 	function sheetRun(dialog: HTMLElement): string[] {
-		return [...(dialog.querySelector('.adm-sheet__cells')?.children ?? [])].map((node) => {
+		return laidOut(dialog.querySelector('.adm-sheet__cells')).map((node) => {
 			if (node.matches('a')) {
 				const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
 				return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
@@ -483,7 +514,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 
 	it('stands the bar entries as tabs, leaves the rest to the sheet, and ends on More', () => {
 		const root = render(AppShell, { groups: BARRED });
-		const onBar = [...root.querySelectorAll('.adm-rail__cells > a:not(.adm-dest--offbar)')];
+		const onBar = [...root.querySelectorAll('.adm-rail__cells a:not(.adm-dest--offbar)')];
 
 		expect(onBar.map((a) => a.querySelector('.adm-dest__short')?.textContent)).toEqual([
 			'Dashboard',
@@ -493,7 +524,7 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 		]);
 		// the column at the wide width still draws every destination; the sheet's are the ones the
 		// bar hides.
-		expect(root.querySelectorAll('.adm-rail__cells > a.adm-dest--offbar')).toHaveLength(7);
+		expect(root.querySelectorAll('.adm-rail__cells a.adm-dest--offbar')).toHaveLength(7);
 		const tab = more(root);
 		expect(tab.textContent).toContain('More');
 		expect(root.querySelector('.adm-rail__cells')?.lastElementChild).toBe(tab);
@@ -508,6 +539,20 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 
 		expect(root.querySelector('.adm-rail__more')).toBeNull();
 		expect(root.querySelectorAll('.adm-dest--offbar')).toHaveLength(0);
+	});
+
+	it('names the sheet’s headed group by its own heading, apart from the rail’s', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+		const group = dialog.querySelector('[role="group"]');
+		const named = group?.getAttribute('aria-labelledby');
+		const railGroup = root.querySelector('.adm-rail__cells [role="group"]');
+
+		expect(named ? document.getElementById(named)?.textContent : null).toBe('Integrations');
+		// the rail's column draws the same group, and each names its own heading rather than both
+		// pointing at whichever of the two ids came first.
+		expect(named).not.toBe(railGroup?.getAttribute('aria-labelledby'));
+		expect(group?.contains(named ? document.getElementById(named) : null)).toBe(true);
 	});
 
 	it('opens a sheet holding the rest, each a link, with the rail rules and headings', async () => {

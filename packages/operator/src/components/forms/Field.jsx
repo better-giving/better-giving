@@ -24,7 +24,8 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {ReactNode} [beside] a control that acts on what is in the box, put on the box's own
  *   row rather than under it — one destination and one send, instead of a press below a column of
  *   boxes. the row is `.adm-actions`, which is what makes the box take the line's remainder and the
- *   pair wrap at the 375px floor rather than shrink.
+ *   pair wrap at the 375px floor rather than shrink. the box's messages stand in its own column on
+ *   that row, so a press wrapped under the box never comes between the box and its refusal.
  * @property {boolean | undefined} [masked] the box holds its value as dots until a press inside it
  *   swaps it to the value, and back. it is for a box seeded with a credential the deployment is
  *   already holding: a stored password standing legible on the screen is one anybody beside the
@@ -164,22 +165,32 @@ export function Field({
 			</div>
 		);
 	/* the box, alone on its row or sharing it. what shares it is wrapped rather than placed beside
-	   the box, because the row a pair needs is `.adm-actions` and this field's own rows are what
-	   everything below the box is placed in: packages/operator/src/styles/adm.css puts the wrapper
-	   in the box's row, so the refusal and the standing sentence keep the rows they name whether or
-	   not there is a control up there. a field with nothing beside its box draws no wrapper — a flex
-	   line around one element answers nothing.
+	   the box, because the row a pair needs is `.adm-actions`: packages/operator/src/styles/adm.css
+	   puts that row in the box's own grid row. a field with nothing beside its box draws no row — a
+	   flex line around one element answers nothing — and its messages take the field's own rows.
+
+	   on a shared row the box and its messages are one column, `.adm-field__boxcol`, and the press
+	   is the item after it. the row wraps at the floor, and a message placed after the whole row
+	   would land under the press once it wrapped, reading as the press's rather than the box's. the
+	   column is drawn whether or not a message is up: a box that changed parent when its refusal
+	   arrived would be remounted, value and focus gone, on the very press that moved focus to it.
 
 	   a masked box stands on that row as its wrapper, as a select does: what is on the row is what
 	   the box is inside of. */
-	const withBox = (/** @type {ReactNode} */ box) =>
+	const withBox = (/** @type {ReactNode} */ box, /** @type {ReactNode} */ messages) =>
 		beside ? (
 			<div className="adm-actions">
-				{box}
+				<div className="adm-field__boxcol">
+					{box}
+					{messages}
+				</div>
 				{beside}
 			</div>
 		) : (
-			box
+			<>
+				{box}
+				{messages}
+			</>
 		);
 	// refused by the message this field holds, or by a rule that belongs to something larger than
 	// one box: a fieldset draws a pair's message once and marks both boxes from out here, since
@@ -223,21 +234,23 @@ export function Field({
 						aria-describedby={describedBy}
 						{...rest}
 					/>
-				)
+				),
+				<>
+					{/* both rows are ./FieldMessage.jsx's, and the sentence is wrapped there: which of the
+					    two announces itself, and why a message is never handed to the row unwrapped, are
+					    argued in that file. */}
+					{error ? <FieldMessage id={`${id}-err`}>{error}</FieldMessage> : null}
+					{/* drawn beside a message rather than instead of one. the two are reachable together —
+					    a test send marks a blank box as wanted, and a save refused afterwards leaves the
+					    field holding both — and the one that would disappear is the one saying what the
+					    box is for. */}
+					{needed ? (
+						<FieldMessage tone="needed" id={`${id}-need`}>
+							{needed}
+						</FieldMessage>
+					) : null}
+				</>
 			)}
-			{/* both rows are ./FieldMessage.jsx's, and the sentence is wrapped there: which of the two
-			    announces itself, and why a message is never handed to the row unwrapped, are argued in
-			    that file. */}
-			{error ? <FieldMessage id={`${id}-err`}>{error}</FieldMessage> : null}
-			{/* drawn beside a message rather than instead of one. the two are reachable together —
-			    a test send marks a blank box as wanted, and a save refused afterwards leaves the
-			    field holding both — and the one that would disappear is the one saying what the box
-			    is for. */}
-			{needed ? (
-				<FieldMessage tone="needed" id={`${id}-need`}>
-					{needed}
-				</FieldMessage>
-			) : null}
 		</div>
 	);
 }

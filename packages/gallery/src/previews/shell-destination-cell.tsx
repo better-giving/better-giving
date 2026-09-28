@@ -5,7 +5,7 @@ import { DestinationCell } from '@better-giving/operator/components/shell/Destin
  * one cell at every claim it can make about where the reader is, and every pointer state, out of
  * the rail that normally arranges them.
  *
- * out of the rail on purpose: `.adm-rail__cells > .adm-dest` in
+ * out of the rail on purpose: `.adm-rail__cells .adm-dest` in
  * packages/operator/src/styles/adm.css is what makes a cell a tab or a row, and everything the cell
  * owns by itself — the tint and the ink change — is drawn on the bare `.adm-dest`. its mark and
  * status mark are drawn only in the rail's column, so out of it they stand as they are. a specimen inside a rail shows the arrangement and hides the element.

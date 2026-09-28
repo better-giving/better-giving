@@ -1,4 +1,4 @@
-import { act, useState } from 'react';
+import { act, useRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Dialog } from '../components/shell/Dialog.jsx';
 import { render } from '../components/render.testing';
@@ -187,5 +187,78 @@ describe('the shell over the dialog', () => {
 
 		expect(root.querySelector('dialog')).toBe(null);
 		expect(document.activeElement).toBe(opener);
+	});
+
+	/**
+	 * a card whose answer takes its own opener off the page — a revoke confirm, where the row that
+	 * held the Revoke goes with the record — and the box the screen names to land on instead.
+	 */
+	function Revoking({ named }: { readonly named: boolean }) {
+		const [row, setRow] = useState(true);
+		const [up, setUp] = useState(false);
+		const box = useRef<HTMLInputElement>(null);
+		return (
+			<>
+				<input ref={box} aria-label="Name" />
+				{row ? (
+					<button type="button" onClick={() => setUp(true)}>
+						Revoke
+					</button>
+				) : null}
+				{up ? (
+					<Modal
+						title="Revoke Reporting sheet?"
+						danger="Yes, revoke"
+						dangerProps={{
+							type: 'button',
+							onClick: () => {
+								setRow(false);
+								setUp(false);
+							}
+						}}
+						cancel="Cancel"
+						cancelProps={{ type: 'button', onClick: () => setUp(false) }}
+						onDismiss={() => setUp(false)}
+						fallbackFocus={named ? box : undefined}
+					/>
+				) : null}
+			</>
+		);
+	}
+
+	function pressed(root: HTMLElement, name: string): void {
+		const control = [...dialogIn(root).querySelectorAll('button')].find(
+			(c) => c.textContent === name
+		);
+		if (control === undefined) throw new Error(`the dialog drew no ${name}`);
+		act(() => control.click());
+	}
+
+	it('puts the focus on the target the screen named when the answer took the opener away', () => {
+		const root = render(Revoking, { named: true });
+		opened(root);
+
+		pressed(root, 'Yes, revoke');
+
+		expect(root.querySelector('dialog')).toBe(null);
+		expect(document.activeElement).toBe(root.querySelector('input'));
+	});
+
+	it('still goes back to the opener when it is on the page, whatever the screen named', () => {
+		const root = render(Revoking, { named: true });
+		const opener = opened(root);
+
+		pressed(root, 'Cancel');
+
+		expect(document.activeElement).toBe(opener);
+	});
+
+	it('leaves the focus on the body when the opener is gone and nothing was named', () => {
+		const root = render(Revoking, { named: false });
+		opened(root);
+
+		pressed(root, 'Yes, revoke');
+
+		expect(document.activeElement).toBe(document.body);
 	});
 });

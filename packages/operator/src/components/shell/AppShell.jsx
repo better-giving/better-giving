@@ -1,5 +1,5 @@
 import { Dialog } from '@ark-ui/react/dialog';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { DestinationCell } from './DestinationCell.jsx';
 import { Button } from '../controls/Button.jsx';
 
@@ -386,32 +386,52 @@ function offBar(groups) {
  */
 
 /* one group's run of cells, flat inside `.adm-rail__cells` so the bar can stand every entry as a
-   tab of its own, and inside `.adm-sheet__cells` for the More sheet's rows. */
+   tab of its own, and inside `.adm-sheet__cells` for the More sheet's rows.
+
+   a headed group's heading and cells are one `group` named by the heading, so a reader moving
+   through the links hears which group they are in rather than meeting the heading as loose text
+   before them. the element is `.adm-rail__group`, which ../../styles/adm.css draws as
+   `display: contents`: it is in the accessibility tree and out of the layout, so the bar still
+   stands each entry as a tab and the column and the sheet still lay the entries out in their own
+   grid. an unheaded group has no name to be a group by and draws no element. */
 /** @param {RailGroupProps} props */
 function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 	const { heading, destinations } = group;
+	const headingId = useId();
+	const cells = destinations.map((d, i) => (
+		<DestinationCell
+			key={d.label}
+			short={d.short}
+			href={d.href}
+			mark={d.mark}
+			status={d.status}
+			title={collapsed ? d.label : undefined}
+			groupEnd={heading !== undefined && i === destinations.length - 1}
+			offBar={barred && !d.bar}
+			onClick={onChoose}
+			link={link}
+			current={at && d.label === at.label ? at.kind : undefined}
+		>
+			{d.label}
+		</DestinationCell>
+	));
 	return (
 		<>
 			{rule === 'plain' ? <hr className="adm-rail__rule" /> : null}
 			{rule === 'group' ? <hr className="adm-rail__rule adm-rail__rule--group" /> : null}
-			{heading === undefined ? null : <span className="adm-rail__heading">{heading}</span>}
-			{destinations.map((d, i) => (
-				<DestinationCell
-					key={d.label}
-					short={d.short}
-					href={d.href}
-					mark={d.mark}
-					status={d.status}
-					title={collapsed ? d.label : undefined}
-					groupEnd={heading !== undefined && i === destinations.length - 1}
-					offBar={barred && !d.bar}
-					onClick={onChoose}
-					link={link}
-					current={at && d.label === at.label ? at.kind : undefined}
-				>
-					{d.label}
-				</DestinationCell>
-			))}
+			{heading === undefined ? (
+				cells
+			) : (
+				/* biome-ignore lint/a11y/useSemanticElements: a `<fieldset>` groups a form's own
+				   controls, and these are links to other pages — read as one, the rail would be a
+				   question with nothing to answer. */
+				<div className="adm-rail__group" role="group" aria-labelledby={headingId}>
+					<span className="adm-rail__heading" id={headingId}>
+						{heading}
+					</span>
+					{cells}
+				</div>
+			)}
 		</>
 	);
 }

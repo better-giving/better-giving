@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useCallback, useId, useState } from 'react';
 import { CodeSlab } from '../components/data/CodeSlab.jsx';
 import { Modal } from './Dialog';
@@ -26,14 +26,25 @@ type ShownOnceProps = {
 	readonly copyLabel: string;
 	/** Done, Escape and a press on the ground all arrive here, and the screen takes the card down. */
 	readonly onDone: () => void;
+	/**
+	 * where focus lands once the card is down, if the control that made the secret is gone by then —
+	 * which it is wherever the make remounts its form. ./Dialog.tsx's `fallbackFocus`.
+	 */
+	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
 };
 
-export function ShownOnce({ title, secret, copyLabel, onDone }: ShownOnceProps) {
+export function ShownOnce({ title, secret, copyLabel, onDone, fallbackFocus }: ShownOnceProps) {
 	// the heading names the value's box as well as the card, so the one-line slab — which has no
 	// caption of its own to be named by — is read as the thing the question is about.
 	const titleId = useId();
 	return (
-		<Modal title={title} titleId={titleId} onDismiss={onDone} exitProps={{ onClick: onDone }}>
+		<Modal
+			title={title}
+			titleId={titleId}
+			onDismiss={onDone}
+			exitProps={{ onClick: onDone }}
+			fallbackFocus={fallbackFocus}
+		>
 			<CodeSlab oneline content={secret} copyable copyLabel={copyLabel} labelledBy={titleId} />
 			<p className="adm-prose">It won’t be shown again.</p>
 		</Modal>

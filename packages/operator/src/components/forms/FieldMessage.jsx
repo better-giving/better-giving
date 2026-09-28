@@ -43,7 +43,9 @@ import { Mark } from '../status/Mark.jsx';
 
    the `<p>` is returned with nothing around it. adm.css places `.adm-field > .adm-field__error` and
    `.adm-field > .adm-field__needed` in the field's own grid rows, and a wrapper between the field
-   and the row loses both placements.
+   and the row loses both placements. the one wrapper there is on purpose is `.adm-field__boxcol`,
+   the box's own column on a row it shares with a press (./Field.jsx's `beside`), which stacks the
+   rows under the box itself.
 
    two shapes rather than one element with the class, the mark and the role written as expressions:
    what separates the tones is every part of the row. the refusal draws no mark — its ink, its

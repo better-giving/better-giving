@@ -1,5 +1,5 @@
-import type { ElementType } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import type { ElementType, RefObject } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 
 // the same dialog, lifted into the browser's top layer.
@@ -41,18 +41,29 @@ type ModalProps<
 	 * so this is handed the control the reader would have pressed, and no key is left dead.
 	 */
 	readonly onDismiss: () => void;
+	/**
+	 * where focus lands when there is no opener to go back to: the answer took it off the page — a
+	 * made key remounting the form that asked for it, a revoked row taking its Revoke with it — or
+	 * the card arrived in the server's markup and nobody opened it. the screen names it because only
+	 * the screen knows what is still standing once its answer is drawn. read when the card comes
+	 * down, so it is the element on the page then; it has to be one that takes focus.
+	 */
+	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
 };
 
 export function Modal<
 	C extends ElementType = 'button',
 	X extends ElementType = 'button',
 	D extends ElementType = 'button'
->({ onDismiss, ...interior }: ModalProps<C, X, D>) {
+>({ onDismiss, fallbackFocus, ...interior }: ModalProps<C, X, D>) {
 	// which presentation the element is drawn in. it starts as the one the server sent — an open,
 	// whole, non-modal column in the page — and the effect turns it off at the moment the same
 	// element is lifted, so the modifier and the presentation cannot disagree.
 	const [inPage, setInPage] = useState(true);
 	const element = useRef<HTMLDialogElement>(null);
+	// the effect below runs once per card and reads this when the card comes down, so it takes the
+	// target the screen names at that moment rather than the one it named when the card went up.
+	const fallback = useEffectEvent(() => fallbackFocus?.current ?? null);
 
 	useEffect(() => {
 		const node = element.current;
@@ -86,10 +97,14 @@ export function Modal<
 			if (node.open) node.close();
 			// and then back to the control that put the card up. the browser would do this itself on a
 			// `close()` of an element still on the page, but this one is being removed in the same
-			// commit, so the restoration is written here or it does not happen.
+			// commit, so the restoration is written here or it does not happen. with that control gone
+			// the reader goes where the screen said, and with nothing said they are left on the body.
 			if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
 				opener.focus();
+				return;
 			}
+			const landing = fallback();
+			if (landing?.isConnected) landing.focus();
 		};
 	}, []);
 

@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, useRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, render } from '../components/render.testing';
 import { ShownOnce, useShownOnce } from './ShownOnce';
@@ -144,5 +144,44 @@ describe('the state a screen keeps for it', () => {
 		const root = render(Screen, { secret: undefined });
 
 		expect(root.querySelector('dialog')).toBeNull();
+	});
+});
+
+/**
+ * a screen whose make form is remounted by the secret that arrived, so the press that made it is
+ * gone by the time the card comes down, and the new form's box is where the screen sends the reader.
+ */
+function Making({ secret }: { secret: string | undefined }) {
+	const [shown, done] = useShownOnce(secret);
+	const box = useRef<HTMLInputElement>(null);
+	return (
+		<>
+			<form key={secret ?? 'none'}>
+				<input ref={box} aria-label="Name" />
+				<button type="button">Make key</button>
+			</form>
+			{shown ? (
+				<ShownOnce
+					title="Copy the key"
+					secret={shown}
+					copyLabel="Copy the key"
+					onDone={done}
+					fallbackFocus={box}
+				/>
+			) : null}
+		</>
+	);
+}
+
+describe('where the reader lands once the card is down', () => {
+	it('lands on the box the screen named when the make press has gone with its form', () => {
+		const screen = mount<{ secret: string | undefined }>(Making, { secret: undefined });
+		buttonNamed(screen.root, 'Make key').focus();
+
+		screen.again({ secret: SECRET });
+		act(() => buttonNamed(screen.root, 'Done').click());
+
+		expect(screen.root.querySelector('dialog')).toBeNull();
+		expect(document.activeElement).toBe(screen.root.querySelector('input'));
 	});
 });

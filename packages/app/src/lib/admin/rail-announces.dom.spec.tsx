@@ -52,7 +52,7 @@ function railAt(pathname: string): HTMLElement {
 
 /** what the rail cell reading `label` claims, or null where it claims nothing. */
 function claim(root: HTMLElement, label: string): string | null {
-	const found = [...root.querySelectorAll('.adm-rail__cells > a')].find(
+	const found = [...root.querySelectorAll('.adm-rail__cells a')].find(
 		(a) => a.querySelector('.adm-dest__full')?.textContent === label
 	);
 	if (found === undefined) throw new Error(`the rail drew no cell reading ${label}`);

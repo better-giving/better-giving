@@ -250,6 +250,18 @@
 		box-shadow: inset 0 0 0 var(--admin-focus-width) var(--admin-focus-ring-solid);
 	}
 
+	/* closed, the two filled ranks are not filled: their closed rungs above grey the ground, and the
+	   near-white inset ring over that grey is a ring nobody can see. a press closed by
+	   `aria-disabled` keeps the focus — every resting SaveButton is one — so it takes the hugging
+	   ring every unfilled rank wears. a press in flight is closed the same way and keeps its solid
+	   fill (the busy rungs above), so it keeps the inset ring and is left out here. */
+	.adm-btn--primary[aria-disabled='true']:not([aria-busy='true']):focus-visible,
+	.adm-btn--primary[aria-disabled='true']:not([aria-busy='true']).is-focus,
+	.adm-btn--danger[aria-disabled='true']:not([aria-busy='true']):focus-visible,
+	.adm-btn--danger[aria-disabled='true']:not([aria-busy='true']).is-focus {
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
 	/* the quiet button is a control with no box until it is pointed at. it keeps the base
 	   ladder's fills and cancels every border rung, because a border appearing under a
 	   pointer is a second thing happening at once.
@@ -4475,8 +4487,14 @@
 		color: var(--admin-ink);
 	}
 
+	/* the inline scroll padding is the cell's own inset: a control a keyboard reaches at a row's far
+	   end is scrolled in to stand that step from the plane's edge, as it stands from its cell's,
+	   rather than flush against it. the plane is what scrolls it
+	   (packages/operator/src/components/data/DataTable.jsx's `revealFocused`): the browser alone
+	   leaves a control alone once any of it is showing inside this padding. */
 	.adm-plane {
 		overflow-x: auto;
+		scroll-padding-inline: var(--admin-space-5);
 		background: var(--admin-surface);
 		border: var(--admin-hairline);
 		border-radius: var(--admin-radius);
@@ -4578,6 +4596,16 @@
 		background: var(--admin-surface);
 		border-inline-end: var(--admin-rule);
 		font-weight: var(--admin-label-weight);
+		/* a name typed with no break in it — a pasted address — would otherwise be the column's
+		   narrowest width, and under the table's automatic layout that width is taken whatever the
+		   `<col>` asks: the pinned column fills the plane and every other column is scrolled out
+		   from under it. breaking anywhere is what lets it wrap at the width it was given. */
+		overflow-wrap: anywhere;
+		/* raw-length-ok: a track bound, as `.adm-cell--whole`'s floor is. breaking anywhere also
+		   drops the column's narrowest width to one character, and at the phone's width the columns
+		   that never wrap take the rest, which would split every name mid-word; the floor is wide
+		   enough for a long word at the table's size and leaves the plane most of a 375px line. */
+		min-inline-size: 8rem;
 	}
 
 	.adm-table thead [data-pin] {
@@ -5211,7 +5239,7 @@
 	   of their own. the status is still read out, off the cell's `.adm-vh` word. */
 	.adm-rail__identity,
 	.adm-rail__foot,
-	.adm-rail__cells > .adm-dest > .adm-mark,
+	.adm-rail__cells .adm-dest > .adm-mark,
 	.adm-rail__rule,
 	.adm-rail__heading,
 	.adm-dest__status {
@@ -5243,6 +5271,14 @@
 		display: flex;
 	}
 
+	/* a headed group's heading and cells, named as a group for a reader and absent from the layout:
+	   its children stand in `.adm-rail__cells` and `.adm-sheet__cells` as the unheaded groups' do,
+	   which is why every rule placing a cell reaches it as a descendant of those two rather than as
+	   a child. packages/operator/src/components/shell/AppShell.jsx's `RailGroup` draws it. */
+	.adm-rail__group {
+		display: contents;
+	}
+
 	/* a tab in the bar: an equal share of the width whatever the count, one short word, and the
 	   whole of the tab is the target rather than the word in the middle of it. the block step is
 	   what holds the word off the hairline above it and off the foot of the screen — a line of
@@ -5257,7 +5293,7 @@
 	   the line is set at `--admin-lh-heading` because the step under the word is the step under
 	   its ink, not under its line box: the body line height leaves a pixel and a half of empty
 	   box below the descender, and it reads as the bottom step being deeper than the top one. */
-	.adm-rail__cells > .adm-dest {
+	.adm-rail__cells .adm-dest {
 		flex: 1 1 0;
 		flex-direction: column;
 		justify-content: center;
@@ -5270,7 +5306,7 @@
 	/* carried-ok: .adm-dest--offbar — in DestinationCell.jsx's derived class list, as `.adm-dest`.
 	   a rail whose destinations state which are the bar's leaves the rest to the More sheet: the
 	   column draws them at the wide width, and the bar ends on More instead. */
-	.adm-rail__cells > .adm-dest--offbar {
+	.adm-rail__cells .adm-dest--offbar {
 		display: none;
 	}
 
@@ -5316,25 +5352,25 @@
 
 	/* a row, as the column's cell is, kept at the tab's floor: the name beside its mark, centred on
 	   the row rather than hung from its first line, because a row here is always one line. */
-	.adm-sheet__cells > .adm-dest {
+	.adm-sheet__cells .adm-dest {
 		padding: var(--admin-space-3) var(--admin-space-4);
 		line-height: var(--admin-body-lh);
 		border-radius: var(--admin-radius);
 	}
 
-	.adm-sheet__cells > .adm-dest > .adm-mark {
+	.adm-sheet__cells .adm-dest > .adm-mark {
 		color: var(--admin-ink-muted);
 	}
 
-	.adm-sheet__cells > .adm-dest:is([aria-current], .is-current) > .adm-mark {
+	.adm-sheet__cells .adm-dest:is([aria-current], .is-current) > .adm-mark {
 		color: inherit;
 	}
 
-	.adm-sheet__cells > .adm-dest--groupend {
+	.adm-sheet__cells .adm-dest--groupend {
 		margin-block-end: var(--admin-space-6);
 	}
 
-	.adm-sheet__cells > :is(.adm-rail__rule, .adm-rail__heading),
+	.adm-sheet__cells :is(.adm-rail__rule, .adm-rail__heading),
 	.adm-sheet__cells .adm-dest__full {
 		display: block;
 	}
@@ -6313,9 +6349,24 @@
 	   at the `inline-size: 100%` above would take the whole line on its own and put the press under
 	   it at every width. a masked box is on the row as its wrapper, for the reason
 	   `.adm-selectwrap` is — what stands in the row is what the box is inside of. */
-	.adm-actions > :is(.adm-input, .adm-textarea, .adm-maskwrap) {
+	.adm-actions > :is(.adm-input, .adm-textarea, .adm-maskwrap, .adm-field__boxcol) {
 		flex: 1 1 var(--admin-measure-panel);
 		min-inline-size: 0;
+	}
+
+	/* a field's box and its messages as one item on that row (`beside` in
+	   packages/operator/src/components/forms/Field.jsx), so a press wrapped under the box at the floor
+	   lands under the refusal rather than between the box and it. the step between the box and a
+	   message is the one `.adm-field > * + *` spends in a field with nothing beside its box. */
+	.adm-field__boxcol {
+		display: grid;
+		gap: var(--admin-space-3);
+	}
+
+	/* the row holding a field's column stands its press level with the box rather than centred on
+	   the column: the column grows by a message under the box, and the press belongs to the box. */
+	.adm-field > .adm-actions {
+		align-items: start;
 	}
 
 	/* **a control standing on a field's own row takes the field's height, not the control's.** the
@@ -6545,7 +6596,7 @@
 		   and its status mark on the same first line. a column wide enough for the whole name has
 		   the name, where the bar has the short word. the corner is rounded and the focus ring
 		   (restated above with a square corner) follows it, because this rule is later. */
-		.adm-rail__cells > .adm-dest {
+		.adm-rail__cells .adm-dest {
 			flex-direction: row;
 			justify-content: flex-start;
 			align-items: start;
@@ -6557,13 +6608,13 @@
 			border-radius: var(--admin-radius);
 		}
 
-		.adm-rail__cells > .adm-dest > .adm-mark {
+		.adm-rail__cells .adm-dest > .adm-mark {
 			display: inline-block;
 			margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
 			color: var(--admin-ink-muted);
 		}
 
-		.adm-rail__cells > .adm-dest:is([aria-current], .is-current) > .adm-mark {
+		.adm-rail__cells .adm-dest:is([aria-current], .is-current) > .adm-mark {
 			color: inherit;
 		}
 
@@ -6575,12 +6626,12 @@
 			display: block;
 		}
 
-		.adm-rail__cells > .adm-dest > .adm-dest__full {
+		.adm-rail__cells .adm-dest > .adm-dest__full {
 			flex: 1;
 			min-inline-size: 0;
 		}
 
-		.adm-rail__cells > .adm-dest > .adm-dest__status {
+		.adm-rail__cells .adm-dest > .adm-dest__status {
 			display: flex;
 			align-items: center;
 			block-size: 1lh;
@@ -6608,12 +6659,12 @@
 		}
 
 		/* carried-ok: .adm-dest--groupend — in DestinationCell.jsx's derived class list, as `.adm-dest`. */
-		.adm-rail__cells > .adm-dest--groupend {
+		.adm-rail__cells .adm-dest--groupend {
 			margin-block-end: var(--admin-space-6);
 		}
 
 		/* the column draws every destination, so the bar's split is undone and More is not drawn. */
-		.adm-rail__cells > .adm-dest--offbar {
+		.adm-rail__cells .adm-dest--offbar {
 			display: flex;
 		}
 
@@ -6720,7 +6771,7 @@
 
 		/* `.adm-vh` in ./base.css, restated: the name and the sign-out word leave the screen and
 		   stay the control's name. */
-		.adm-shell--collapsed .adm-rail__cells > .adm-dest > .adm-dest__full,
+		.adm-shell--collapsed .adm-rail__cells .adm-dest > .adm-dest__full,
 		.adm-shell--collapsed .adm-rail__foot .adm-signout__word {
 			position: absolute;
 			inline-size: 1px; /* raw-length-ok: as `.adm-vh`. */
@@ -6737,7 +6788,7 @@
 			display: inline-block;
 		}
 
-		.adm-shell--collapsed .adm-rail__cells > .adm-dest {
+		.adm-shell--collapsed .adm-rail__cells .adm-dest {
 			position: relative;
 			justify-content: center;
 			align-items: center;
@@ -6746,12 +6797,12 @@
 			padding: 0;
 		}
 
-		.adm-shell--collapsed .adm-rail__cells > .adm-dest > .adm-mark {
+		.adm-shell--collapsed .adm-rail__cells .adm-dest > .adm-mark {
 			margin-block-start: 0;
 		}
 
 		/* the status becomes a badge at the cell's corner. */
-		.adm-shell--collapsed .adm-rail__cells > .adm-dest > .adm-dest__status {
+		.adm-shell--collapsed .adm-rail__cells .adm-dest > .adm-dest__status {
 			position: absolute;
 			inset-block-start: var(--admin-space-1);
 			inset-inline-end: var(--admin-space-1);
