@@ -42,7 +42,7 @@ import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entri
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
-import { applyPlanChange, planChangeStatements } from '../recurring/changes';
+import { type PlanChange, planChangeStatements } from '../recurring/changes';
 import {
 	recurringChargeFailedWebhookStatements,
 	recurringGiftStartedWebhookStatements
@@ -326,10 +326,17 @@ async function standingResult(
 	event: RecurringEvent,
 	notice: RecurringGiftNotice,
 	plan: RecurringPlan | null,
-	already?: StandingChange | null
+	already?: Standing
 ): Promise<SettleResult> {
 	const change = already === undefined ? await recordStanding(db, event, notice, plan) : already;
 
+	if (change === 'unwritten') {
+		return {
+			ok: false,
+			reason: 'incomplete',
+			detail: `repeating gift ${notice.providerGiftId} is ${notice.state}, and its record could not be written to say so.`
+		};
+	}
 	if (change === 'stopped') {
 		return {
 			ok: true,
@@ -466,6 +473,9 @@ function endingOf(notice: RecurringGiftNotice, event: RecurringEvent): Ending | 
 /** what a delivery did to a commitment's own standing, where it did anything. */
 type StandingChange = 'stopped' | 'revived';
 
+/** what writing a commitment's standing came to: a change, none, or a batch that did not land. */
+type Standing = StandingChange | null | 'unwritten';
+
 /**
  * whether a commitment the rail reports as collecting has a record that says otherwise.
  *
@@ -506,24 +516,41 @@ async function recordStanding(
 	event: RecurringEvent,
 	notice: RecurringGiftNotice,
 	plan: RecurringPlan | null
-): Promise<StandingChange | null> {
+): Promise<Standing> {
 	if (plan === null) return null;
 
 	if (revives(notice, plan)) {
-		const restored = await applyPlanChange(db, plan.id, ['lapsed'], {
-			status: 'active',
-			endedAt: null,
-			nextChargeAt: notice.nextChargeAt
-		});
-		return restored ? 'revived' : null;
+		return writeStanding(
+			db,
+			plan.id,
+			['lapsed'],
+			{ status: 'active', endedAt: null, nextChargeAt: notice.nextChargeAt },
+			'revived'
+		);
 	}
 
 	const ending = endingOf(notice, event);
 	if (ending === null) return null;
 
-	const marked = await applyPlanChange(db, plan.id, ['active'], { ...ending, nextChargeAt: null });
+	return writeStanding(db, plan.id, ['active'], { ...ending, nextChargeAt: null }, 'stopped');
+}
 
-	return marked ? 'stopped' : null;
+/**
+ * `change` written over the commitment through {@link attemptBatch}: `landed` where it changed the
+ * row, null where it matched nothing, `unwritten` where the batch did not land. the last statement
+ * is the update, returning the id it wrote (`planChangeStatements` in ../recurring/changes.ts).
+ */
+async function writeStanding(
+	db: Db,
+	planId: string,
+	from: readonly RecurringPlanStatus[],
+	change: PlanChange,
+	landed: StandingChange
+): Promise<Standing> {
+	const wrote = await attemptBatch(db, planChangeStatements(db, planId, from, change));
+	if (wrote.outcome !== 'written') return 'unwritten';
+	const updated = wrote.results.at(-1);
+	return Array.isArray(updated) && updated.length > 0 ? landed : null;
 }
 
 /**
@@ -1448,26 +1475,36 @@ function claimWrites(
  * make repeating it safe.
  */
 async function attempt(db: Db, writes: BatchItem<'sqlite'>[]): Promise<WriteOutcome> {
+	return (await attemptBatch(db, writes)).outcome;
+}
+
+/** {@link attempt}, with each statement's result where the batch was written. */
+async function attemptBatch(
+	db: Db,
+	writes: BatchItem<'sqlite'>[]
+): Promise<
+	| { readonly outcome: 'written'; readonly results: readonly unknown[] }
+	| { readonly outcome: Exclude<WriteOutcome, 'written'> }
+> {
 	const [first, ...rest] = writes;
-	if (first === undefined) return 'failed';
+	if (first === undefined) return { outcome: 'failed' };
 
 	try {
-		await db.batch([first, ...rest]);
-		return 'written';
+		return { outcome: 'written', results: await db.batch([first, ...rest]) };
 	} catch (error) {
 		switch (sqliteResultCode(error)) {
 			case 'SQLITE_CONSTRAINT_UNIQUE':
-				return 'duplicate';
+				return { outcome: 'duplicate' };
 			case 'SQLITE_CONSTRAINT_FOREIGNKEY':
 			case 'SQLITE_CONSTRAINT_CHECK':
-				return 'refused';
+				return { outcome: 'refused' };
 			default:
 				try {
 					console.error('recording a collection under a repeating gift failed:', error);
 				} catch {
 					// nothing to report it to, and nothing on this path may throw.
 				}
-				return 'failed';
+				return { outcome: 'failed' };
 		}
 	}
 }

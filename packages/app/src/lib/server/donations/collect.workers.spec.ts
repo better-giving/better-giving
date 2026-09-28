@@ -2877,6 +2877,38 @@ describe('settleDelivery() — what a failed attempt owes a destination listenin
 		]);
 	});
 
+	it('asks for a failure again when the lapse it carries could not be written, and owes its rows once', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const lastMiss = () =>
+			failedDelivery(failedAttempt({ attemptCount: 4, nextRetryAt: null }), { state: 'lapsed' });
+		// the attempt's rows are the first batch and the lapse the second.
+		let batches = 0;
+		const faulting = new Proxy(db, {
+			get(target, property, receiver) {
+				if (property !== 'batch') return Reflect.get(target, property, receiver);
+				return async (writes: Parameters<Db['batch']>[0]) => {
+					batches += 1;
+					if (batches === 2) throw new Error('D1_ERROR: Network connection lost.');
+					return target.batch(writes);
+				};
+			}
+		});
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		const first = await settleDelivery(deps({ db: faulting, provider: lastMiss() }), DELIVERY);
+
+		expect(first).toMatchObject({ ok: false, reason: 'incomplete' });
+		const [open] = await db.select().from(recurringPlan);
+		expect(open).toMatchObject({ status: 'active' });
+
+		const again = await settleDelivery(deps({ provider: lastMiss() }), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'stopped' });
+		const [lapsed] = await db.select().from(recurringPlan);
+		expect(lapsed).toMatchObject({ status: 'lapsed' });
+		expect(await failures()).toHaveLength(2);
+	});
+
 	/** the second failed attempt at the September collection, as Stripe reports it. */
 	function stripeReading(): PaymentProvider {
 		const at = (iso: string) => Date.parse(iso) / 1_000;
