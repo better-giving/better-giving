@@ -32,6 +32,9 @@ export const ADMIN_TOKENS = {
 	'--admin-ink': 'oklch(0.27 0.013 250)',
 	'--admin-ink-muted': 'oklch(0.54 0.019 250)',
 	'--admin-link': 'oklch(0.556 0.15 247.3)',
+	// a literal inside a sentence: its ground and its ink.
+	'--admin-code-bg': 'oklch(0.965 0.005 250)',
+	'--admin-code-ink': 'oklch(0.27 0.013 250)',
 
 	// ---- type ----
 	// both stacks are copied whole, first face included. that face is self-hosted by ./fonts.css and
@@ -54,6 +57,7 @@ export const ADMIN_TOKENS = {
 	'--admin-weight-bold': '700',
 
 	// ---- spacing, borders and the measure ----
+	'--admin-space-1': '0.125rem',
 	'--admin-space-2': '0.25rem',
 	'--admin-space-4': '0.5rem',
 	'--admin-space-6': '1rem',
@@ -61,5 +65,6 @@ export const ADMIN_TOKENS = {
 	'--admin-border-width': '1px',
 	'--admin-border-width-strong': '2px',
 	'--admin-edge': '3px',
+	'--admin-radius': '4px',
 	'--admin-measure-dialog': '34rem'
 } as const;

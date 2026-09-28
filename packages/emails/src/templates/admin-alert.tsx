@@ -75,7 +75,7 @@ export function template(data: AdminAlertData): EmailTemplate {
 }
 
 /** what the address is for, said on every message that arrives at it. */
-const FOOTER = 'Sent by your donations app. This address receives operational mail only.';
+export const FOOTER = 'Sent by your donations app. This address receives operational mail only.';
 
 /** `label: value`, one per line, in both arms. */
 function factLines(facts: readonly AlertFact[]): string[] {

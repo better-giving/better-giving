@@ -14,7 +14,9 @@ import {
 	sendDueWebhooks,
 	WEBHOOK_RETRY_SCHEDULE_MS
 } from './deliver';
+import type { EmailMessage, EmailProvider, SendResult } from '../email/provider';
 import { createDestination, resumeDestination } from './destinations';
+import { mailPause } from './paused-mail';
 import { stopRecurringPlan } from '../recurring/queries';
 import {
 	disputeOpenedWebhookStatements,
@@ -591,6 +593,118 @@ describe('sendDueWebhooks() — a destination failing for three days', () => {
 		expect(await pausedAt(target.id)).toBe(START.getTime());
 		expect(paused).toHaveBeenCalledOnce();
 		expect(logged).toHaveBeenCalledOnce();
+		logged.mockRestore();
+	});
+});
+
+describe('mailPause() — the paused-destination mail', () => {
+	const ORIGIN = 'https://donate.example.org';
+
+	beforeEach(async () => {
+		await env.DB.prepare('delete from org_profile').run();
+		await env.DB.prepare(
+			`insert into org_profile (id, legal_name, notification_email, created_at, updated_at)
+			 values ('default', 'Hope Foundation', 'ops@hope.example', 0, 0)`
+		).run();
+	});
+
+	/** an `EmailProvider` recording every message, answering each with `answer`. */
+	function mailbox(answer: () => Promise<SendResult> = async () => ({ ok: true })) {
+		const sent: EmailMessage[] = [];
+		const email: EmailProvider = {
+			async send(message) {
+				sent.push(message);
+				return answer();
+			}
+		};
+		return { email, sent, onPaused: mailPause({ db, email, origin: ORIGIN }) };
+	}
+
+	it('mails the notifications address once for a pause, and no more on a fourth day', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('down', { status: 503 }));
+		const { sent, onPaused } = mailbox();
+
+		await runAt(START, receiving.fetch, onPaused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, onPaused);
+		const fourthDay = later(DESTINATION_PAUSE_AFTER_MS + 24 * HOUR);
+		vi.setSystemTime(fourthDay);
+		await settle();
+		await runAt(fourthDay, receiving.fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]).toMatchObject({
+			to: 'ops@hope.example',
+			subject: 'A webhook destination was paused'
+		});
+		expect(sent[0]?.text).toContain(`Every delivery to ${target.url} has failed for 3 days`);
+		expect(sent[0]?.text).toContain(`${ORIGIN}/admin/integrations/webhooks`);
+	});
+
+	it('says a destination that answered 410 no longer exists', async () => {
+		const target = await destination();
+		await settle();
+		const { sent, onPaused } = mailbox();
+
+		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.text).toContain(`${target.url} answered that it no longer exists`);
+	});
+
+	it('logs a send that throws, keeps the pause, and mails no second time', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('', { status: 410 }));
+		const { sent, onPaused } = mailbox(async () => {
+			throw new Error('socket closed');
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receiving.fetch, onPaused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(logged).toHaveBeenCalledOnce();
+		const paused = await env.DB.prepare('select paused_at from webhook_destination where id = ?')
+			.bind(target.id)
+			.first<{ paused_at: number | null }>();
+		expect(paused?.paused_at).toBe(START.getTime());
+		logged.mockRestore();
+	});
+
+	it('logs a send the host refused, naming the destination and why, and does not retry it', async () => {
+		const target = await destination();
+		await settle();
+		const { sent, onPaused } = mailbox(async () => ({
+			ok: false,
+			reason: 'rejected',
+			detail: '550 mailbox unavailable',
+			indeterminate: false
+		}));
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(logged).toHaveBeenCalledExactlyOnceWith(
+			expect.stringMatching(new RegExp(`${target.id}.*550 mailbox unavailable`))
+		);
+		logged.mockRestore();
+	});
+
+	it('sends nothing where no notifications address is saved, and logs that', async () => {
+		const target = await destination();
+		await settle();
+		await env.DB.prepare('update org_profile set notification_email = null').run();
+		const { sent, onPaused } = mailbox();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch, onPaused);
+
+		expect(sent).toEqual([]);
+		expect(logged).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(target.id));
 		logged.mockRestore();
 	});
 });
