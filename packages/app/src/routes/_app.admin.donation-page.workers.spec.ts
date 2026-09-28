@@ -212,3 +212,25 @@ describe('the mission ask', () => {
 		expect((await open()).askMission).toBe(true);
 	});
 });
+
+describe('a block’s sheet', () => {
+	it('writes a variant picked to the draft, drawn on the next load, and the live page stays', async () => {
+		const { version } = await open();
+		const before = await donationPage();
+
+		const body = new FormData();
+		body.set(WHICH_FORM, 'block-variant');
+		body.set(RECORD_VERSION, String(version));
+		body.set('block_id', 'about');
+		body.set('variant', 'statement');
+		const response = await request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+
+		expect(response.status).toBe(200);
+		const redrawn = (await open()) as Drawn & { blocks: { id: string; variant: string }[] };
+		expect(redrawn.blocks.find(({ id }) => id === 'about')?.variant).toBe('statement');
+		expect((await donationPage())?.published).toBe(before?.published);
+	});
+});
