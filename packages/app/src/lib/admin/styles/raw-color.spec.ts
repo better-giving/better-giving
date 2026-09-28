@@ -26,7 +26,7 @@ describe('no raw colour in an /admin stylesheet', () => {
 	// card, dressed from packages/form's four sheets and its token file, so an /admin colour is
 	// exactly what a screen there must not carry — and the gate over those values is the form
 	// package's own browser specs against that token file. its src/lib/donate/page.css is the page's
-	// chrome and is gated by nothing: it is no operator screen and carries no /admin token.
+	// token layer, dressed from that same file, and src/lib/donate/page.spec.ts is its gate.
 	const screens = globSync('src/**/*.tsx').filter((file) => !file.startsWith('src/lib/donate/'));
 	// the four sheets live in packages/operator, a sibling package this one imports from
 	// (src/app.css) rather than a directory of its own — so the glob reaches out of the

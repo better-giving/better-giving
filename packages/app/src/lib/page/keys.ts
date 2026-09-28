@@ -32,3 +32,15 @@ export type Shade = (typeof SHADES)[number];
 
 export const CORNERS = ['square', 'soft', 'round'] as const;
 export type Corner = (typeof CORNERS)[number];
+
+/** a page's mood: how its section grounds relate to the brand colour. */
+export const PALETTES = ['plain', 'tint', 'duo', 'bright', 'bold'] as const;
+export type Palette = (typeof PALETTES)[number];
+
+/** where the donation box stands among a page's blocks. */
+export const LAYOUTS = ['box-right', 'banner', 'column', 'cover'] as const;
+export type Layout = (typeof LAYOUTS)[number];
+
+/** the ground a block's section stands on; `strong` carries one ink and no quiet text. */
+export const BACKGROUNDS = ['none', 'soft', 'tint', 'strong'] as const;
+export type Background = (typeof BACKGROUNDS)[number];
