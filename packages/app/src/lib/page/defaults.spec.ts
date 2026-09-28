@@ -40,8 +40,9 @@ describe('the clean default campaign', () => {
 		expect(parsePage('campaign', page)).toEqual({ ok: true, page });
 	});
 
-	it('holds the design’s blocks in order, its goal bar and story waiting on content', () => {
+	it('holds the design’s blocks in order, its hero, goal bar and story waiting on content', () => {
 		expect(defaultCampaign().blocks).toEqual([
+			expect.objectContaining({ type: 'hero', variant: 'framed', imageId: null, alt: null }),
 			expect.objectContaining({ type: 'title', variant: 'left', heading: '' }),
 			expect.objectContaining({ type: 'goal-bar', variant: 'bar' }),
 			expect.objectContaining({

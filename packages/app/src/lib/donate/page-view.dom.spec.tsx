@@ -61,6 +61,9 @@ function blockOf(type: Block['type'], variant: string | null, id: string): unkno
 					{ question: 'Can I give monthly?', answer: words('Yes. Choose Monthly in the box.') }
 				]
 			};
+		case 'hero':
+		case 'image':
+			return { ...frame, imageId: '0192a4c1-0000-7000-8000-000000000001', alt: 'Coats on a rack' };
 		case 'about-us':
 		case 'org-info':
 		case 'share':

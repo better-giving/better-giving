@@ -1,6 +1,7 @@
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import { shareImage } from '$lib/page/image-src';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { loadPageView, refusedPage } from '$lib/server/pages/view';
 import { database, platform } from '../context';
@@ -70,8 +71,14 @@ export const handle: DonorPolicyHandle = { documentPolicy: 'donor' };
 export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 	// a refusal names nobody: an address turned down says nothing back about who it would serve.
 	if (loaderData.kind === 'refused') return [{ title: 'Donate' }];
-	const config = loaderData.kind === 'page' ? loaderData.view.config : loaderData.config;
-	return [{ title: `Donate to ${config.orgLegalName}` }];
+	if (loaderData.kind === 'plain')
+		return [{ title: `Donate to ${loaderData.config.orgLegalName}` }];
+	const { config, page, sharing } = loaderData.view;
+	const image = shareImage(page, sharing.url);
+	return [
+		{ title: `Donate to ${config.orgLegalName}` },
+		...(image === null ? [] : [{ property: 'og:image', content: image }])
+	];
 }
 
 export function links(): Route.LinkDescriptors {

@@ -3,10 +3,11 @@
 // id and rules are here, where the sheets ($lib/admin/editor/block-edit.tsx) post them and the save
 // ($lib/server/pages/blocks.ts) states and parses them, and both editors' actions name the ids.
 //
-// the boxes carry text only and every value is the block catalog's to judge (./catalog.ts): the
-// save puts the words into the block and runs the page through `parsePage`, so a box and the chat
-// are held to the one rule. a block's variants and the page's layouts come from `BLOCKS` and
-// `LAYOUTS`, so a name the catalog drops is a picture nobody is offered.
+// the boxes carry text, and a photo block's the id of a photo already uploaded, and every value is
+// the block catalog's to judge (./catalog.ts): the save puts the words into the block and runs the
+// page through `parsePage`, so a box and the chat are held to the one rule. a block's variants and
+// the page's layouts come from `BLOCKS` and `LAYOUTS`, so a name the catalog drops is a picture
+// nobody is offered.
 //
 // no form here adds, removes or moves a block: arranging the page is the chat's.
 //
@@ -23,6 +24,7 @@ export const BLOCK_FORMS = {
 	story: 'block-story',
 	impactTiers: 'block-impact-tiers',
 	faq: 'block-faq',
+	photo: 'block-photo',
 	variant: 'block-variant',
 	layout: 'page-layout'
 } as const;
@@ -62,6 +64,16 @@ export const BLOCK_FAQ_INPUT = z.object({
 	answer: z.array(z.string().default(''))
 });
 
+/**
+ * a hero's or an image block's photo, by the id the images route (src/routes/_app.admin.images.ts)
+ * answered its upload with, and what describes it; a blank description is a decorative photo.
+ */
+export const BLOCK_PHOTO_INPUT = z.object({
+	block_id: z.string('required'),
+	image_id: z.string('required'),
+	alt: z.string().default('')
+});
+
 /** a block's variant picture, which applies on pick. */
 export const BLOCK_VARIANT_INPUT = z.object({
 	block_id: z.string('required'),
@@ -85,7 +97,8 @@ export type BlockText =
 	| {
 			readonly kind: 'faq';
 			readonly items: readonly { readonly question: string; readonly answer: RichTextDocument }[];
-	  };
+	  }
+	| { readonly kind: 'photo'; readonly imageId: string; readonly alt: string };
 
 /** one block of the draft, as the block list and its sheet draw it. */
 export type EditorBlock = {
@@ -158,7 +171,10 @@ const VARIANT_LABELS: Record<VariantName, string> = {
 	buttons: 'Buttons',
 	icons: 'Icons',
 	bar: 'Bar',
-	figure: 'Figure'
+	figure: 'Figure',
+	wide: 'Wide',
+	framed: 'Framed',
+	column: 'Column'
 };
 
 /** each block as a fundraiser calls it. */
@@ -170,6 +186,8 @@ const BLOCK_LABELS: Record<BlockType, string> = {
 	'about-us': 'About us',
 	'org-info': 'Organisation details',
 	share: 'Share buttons',
+	hero: 'Cover photo',
+	image: 'Photo',
 	'goal-bar': 'Goal',
 	'program-chooser': 'Program choice',
 	'donation-box': 'Donation box'
@@ -188,6 +206,9 @@ function summaryOf(block: Block, currency: string): string {
 			return block.tiers.map((tier) => formatMinorBrief(tier.amountMinor, currency)).join(', ');
 		case 'faq':
 			return clipped(block.items.map((item) => item.question).join(' · '));
+		case 'hero':
+		case 'image':
+			return block.imageId === null ? 'No photo yet' : clipped(block.alt ?? '');
 		default:
 			return '';
 	}
@@ -215,6 +236,12 @@ function blockText(block: Block, currency: string): BlockText | null {
 			};
 		case 'faq':
 			return { kind: 'faq', items: block.items };
+		// a photo is replaced where one is placed; placing the first is the chat's.
+		case 'hero':
+		case 'image':
+			return block.imageId === null
+				? null
+				: { kind: 'photo', imageId: block.imageId, alt: block.alt ?? '' };
 		default:
 			return null;
 	}

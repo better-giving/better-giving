@@ -4,6 +4,7 @@ import * as copy from '$lib/donate/copy';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import { shareImage } from '$lib/page/image-src';
 import { checkSlug } from '$lib/page/slug';
 import { readOrgLook, readOrgProfile } from '$lib/server/org/queries';
 import { readServedCampaign } from '$lib/server/pages/campaign';
@@ -88,8 +89,13 @@ export const handle: DonorPolicyHandle = { documentPolicy: 'donor' };
 
 export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 	switch (loaderData.kind) {
-		case 'page':
-			return [{ title: loaderData.view.pageName }];
+		case 'page': {
+			const image = shareImage(loaderData.view.page, loaderData.view.sharing.url);
+			return [
+				{ title: loaderData.view.pageName },
+				...(image === null ? [] : [{ property: 'og:image', content: image }])
+			];
+		}
 		case 'plain':
 			return [{ title: `Donate to ${loaderData.config.orgLegalName}` }];
 		case 'ended':

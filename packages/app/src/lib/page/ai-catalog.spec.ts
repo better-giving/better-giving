@@ -19,6 +19,8 @@ describe('the drafting prompt', () => {
 				'about-us',
 				'org-info',
 				'share',
+				'hero',
+				'image',
 				'program-chooser',
 				'DonationFlow'
 			],
@@ -34,6 +36,8 @@ describe('the drafting prompt', () => {
 				'about-us',
 				'org-info',
 				'share',
+				'hero',
+				'image',
 				'goal-bar',
 				'DonationFlow'
 			],
@@ -47,6 +51,15 @@ describe('the drafting prompt', () => {
 			expect(prompt).not.toContain(forbidden);
 		}
 	);
+
+	it('places a photo by an attached id alone, never an address', () => {
+		const prompt = pageCatalog('donation_page').prompt();
+		expect(prompt).toMatch(/^- hero: .*photo/m);
+		expect(prompt).toMatch(/^- image: .*photo/m);
+		expect(prompt).toContain(
+			'- a photo’s imageId is an id from "(attached photos: …)" in the chat or one the page already holds, never an address; null leaves the block out'
+		);
+	});
 
 	it('says what each layout and each palette does', () => {
 		const prompt = pageCatalog('campaign').prompt();
@@ -189,6 +202,13 @@ describe('a page handed back as a draft', () => {
 			layout: 'box-right',
 			palette: 'tint',
 			blocks: [
+				{
+					id: 'hero',
+					type: 'hero',
+					variant: 'framed',
+					background: 'none',
+					props: { imageId: null, alt: null }
+				},
 				{
 					id: 'title',
 					type: 'title',

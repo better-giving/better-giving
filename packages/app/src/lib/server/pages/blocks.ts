@@ -6,6 +6,7 @@ import {
 	BLOCK_FAQ_INPUT,
 	BLOCK_FORMS,
 	BLOCK_IMPACT_TIERS_INPUT,
+	BLOCK_PHOTO_INPUT,
 	BLOCK_STORY_INPUT,
 	BLOCK_TITLE_INPUT,
 	BLOCK_VARIANT_INPUT,
@@ -19,6 +20,7 @@ import { isEmptyDocument, parseRichText } from '../../rich-text/document';
 import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { type Page as PageRow, page } from '../db/schema';
+import { firstMissingImage } from '../images/queries';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
@@ -36,6 +38,11 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 // each form's id and rules are $lib/page/block-edit.ts's. which block a body names is
 // `block_id`, and one naming a block the page does not hold, or a block of another type, is
 // refused naming it.
+//
+// a photo is replaced by the id its upload was answered with, and one no stored image has is
+// refused, so a block never points at a photo the image route would not serve. the replace keeps
+// the block, its id and its variant; the photo it stood in for stays stored, since a published
+// page may still draw it.
 
 const BLOCK_TITLE = defineForm({ id: BLOCK_FORMS.title, schema: BLOCK_TITLE_INPUT });
 const BLOCK_STORY = defineForm({ id: BLOCK_FORMS.story, schema: BLOCK_STORY_INPUT });
@@ -44,6 +51,7 @@ const BLOCK_IMPACT_TIERS = defineForm({
 	schema: BLOCK_IMPACT_TIERS_INPUT
 });
 const BLOCK_FAQ = defineForm({ id: BLOCK_FORMS.faq, schema: BLOCK_FAQ_INPUT });
+const BLOCK_PHOTO = defineForm({ id: BLOCK_FORMS.photo, schema: BLOCK_PHOTO_INPUT });
 const BLOCK_VARIANT = defineForm({ id: BLOCK_FORMS.variant, schema: BLOCK_VARIANT_INPUT });
 const PAGE_LAYOUT = defineForm({ id: BLOCK_FORMS.layout, schema: PAGE_LAYOUT_INPUT });
 
@@ -92,7 +100,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, BLOCK_TITLE);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { block_id, heading, lede } = submission.value;
-			return saveWords(db, target, body, gone, submission, block_id, 'title', async () => ({
+			return saveWords(db, target, body, gone, submission, block_id, ['title'], async () => ({
 				ok: true,
 				read: { words: { heading, ...(lede === '' ? {} : { lede }) }, boxOf: firstKey }
 			}));
@@ -101,7 +109,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, BLOCK_STORY);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { block_id } = submission.value;
-			return saveWords(db, target, body, gone, submission, block_id, 'story', async () => {
+			return saveWords(db, target, body, gone, submission, block_id, ['story'], async () => {
 				const doc = postedDocument(submission.value.body);
 				if (!doc.ok) return { ok: false, refusal: { fieldErrors: { body: [doc.refusal] } } };
 				return { ok: true, read: { words: { body: doc.json }, boxOf: () => 'body' } };
@@ -111,7 +119,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, BLOCK_IMPACT_TIERS);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { block_id, tier_amount, tier_buys } = submission.value;
-			return saveWords(db, target, body, gone, submission, block_id, 'impact-tiers', (row) =>
+			return saveWords(db, target, body, gone, submission, block_id, ['impact-tiers'], (row) =>
 				readTiers(db, row, tier_amount, tier_buys)
 			);
 		}
@@ -119,8 +127,16 @@ export async function saveBlockForm(
 			const submission = parseForm(body, BLOCK_FAQ);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { block_id, question, answer } = submission.value;
-			return saveWords(db, target, body, gone, submission, block_id, 'faq', async () =>
+			return saveWords(db, target, body, gone, submission, block_id, ['faq'], async () =>
 				readQuestions(question, answer)
+			);
+		}
+		case BLOCK_FORMS.photo: {
+			const submission = parseForm(body, BLOCK_PHOTO);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { block_id, image_id, alt } = submission.value;
+			return saveWords(db, target, body, gone, submission, block_id, PHOTO_BLOCKS, () =>
+				readPhoto(db, image_id, alt)
 			);
 		}
 		case BLOCK_FORMS.variant: {
@@ -158,6 +174,22 @@ export async function saveBlockForm(
 }
 
 const ONE_WAY = 'the donation box has one way to draw it and takes no variant';
+
+const PHOTO_BLOCKS = ['hero', 'image'] as const;
+
+/** a replaced photo, which must be stored; an id of the wrong shape is left to the catalog's rule. */
+async function readPhoto(db: Db, imageId: string, alt: string): Promise<ReadWords> {
+	const described = alt.trim();
+	const read = {
+		words: { imageId, alt: described === '' ? null : described },
+		boxOf: noBox
+	};
+	if (!BLOCK_DATA.hero.imageId.safeParse(imageId).success) return { ok: true, read };
+	if ((await firstMissingImage(db, [imageId])) !== null) {
+		return refusedWith(`no stored photo has the id "${imageId}"`);
+	}
+	return { ok: true, read };
+}
 
 /**
  * a picture's name refused by `parsePage` goes under the pictures' own name, `box`: the page's
@@ -267,14 +299,15 @@ function saveWords(
 	gone: string,
 	submission: Submission,
 	blockId: string,
-	type: BlockType,
+	types: readonly BlockType[],
 	read: (row: PageRow) => Promise<ReadWords>
 ) {
 	const seen = submittedVersion(body);
 	return answer(submission, gone, () =>
 		editDraft(db, target, seen, noBox, async (draft, row) => {
-			const found = blockOf(draft, blockId, type);
+			const found = blockOf(draft, blockId, types);
 			if (!found.ok) return found;
+			const { type } = found.block;
 			const posted = await read(row);
 			if (!posted.ok) return posted;
 			const refused = dataRefusal(type, posted.read);
@@ -297,16 +330,17 @@ function noBox(): null {
 	return null;
 }
 
-/** block `id` of the draft, which must be a `type`, or the refusal naming what it is instead. */
+/** block `id` of the draft, which must be one of `types`, or the refusal naming what it is instead. */
 function blockOf(
 	draft: Page,
 	id: string,
-	type: BlockType
+	types: readonly BlockType[]
 ): { ok: true; block: Block } | { ok: false; refusal: RejectionReasons } {
 	const found = draft.blocks.find((block) => block.id === id);
 	if (found === undefined) return noSuchBlock(draft, id);
-	if (found.type !== type) {
-		return refusedWith(`block "${id}" is a ${found.type}, and this sheet edits a ${type}`);
+	if (!types.includes(found.type)) {
+		const edits = types.map((type) => `${/^[aeiou]/.test(type) ? 'an' : 'a'} ${type}`).join(' or ');
+		return refusedWith(`block "${id}" is a ${found.type}, and this sheet edits ${edits}`);
 	}
 	return { ok: true, block: found };
 }

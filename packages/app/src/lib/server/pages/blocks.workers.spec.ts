@@ -6,6 +6,7 @@ import { HEADING_MAX, type Page, parsePage } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import type { RichTextDocument } from '../../rich-text/document';
 import { createDb, type Db } from '../db/client';
+import { createImage } from '../images/queries';
 import { saveBlockForm } from './blocks';
 import { draftTurn } from './draft';
 import { answering, insertPage, SETTINGS } from './page-row.testing';
@@ -242,6 +243,103 @@ describe('a block’s words', () => {
 	});
 });
 
+describe('a photo', () => {
+	const upload = () =>
+		createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+
+	async function withPhoto() {
+		const placed = await upload();
+		const draft: Page = { ...defaultCampaign(), settings: SETTINGS };
+		draft.blocks[0] = {
+			id: 'hero',
+			type: 'hero',
+			variant: 'wide',
+			background: 'none',
+			imageId: placed,
+			alt: 'Volunteers'
+		};
+		return insertPage(db, 'campaign', draft);
+	}
+
+	it('replaced by hand swaps the photo and keeps the block, a blank description decorative', async () => {
+		const pageId = await withPhoto();
+		const replacement = await upload();
+
+		const answer = await press(pageId, BLOCK_FORMS.photo, [
+			['block_id', 'hero'],
+			['image_id', replacement],
+			['alt', '  ']
+		]);
+
+		expect(answer).toEqual({ saved: 'block' });
+		const { draft, published } = await stored(pageId);
+		expect(draft.blocks[0]).toEqual({
+			id: 'hero',
+			type: 'hero',
+			variant: 'wide',
+			background: 'none',
+			imageId: replacement,
+			alt: null
+		});
+		expect(published).toBeNull();
+	});
+
+	it('keeps what describes it', async () => {
+		const pageId = await withPhoto();
+		const replacement = await upload();
+		await press(pageId, BLOCK_FORMS.photo, [
+			['block_id', 'hero'],
+			['image_id', replacement],
+			['alt', ' Coats handed out in March ']
+		]);
+		expect((await stored(pageId)).draft.blocks[0]).toMatchObject({
+			alt: 'Coats handed out in March'
+		});
+	});
+
+	it.each([
+		[
+			'no stored photo',
+			'01926f3e-0000-7b2e-9d4f-3a5b6c7d8e9f',
+			'no stored photo has the id "01926f3e-0000-7b2e-9d4f-3a5b6c7d8e9f"'
+		],
+		[
+			'an address',
+			'https://elsewhere.example/a.png',
+			'an image id is the id a stored photo was given on upload, never an address'
+		]
+	])('is refused when it names %s, and nothing is written', async (_, imageId, reason) => {
+		const pageId = await withPhoto();
+		const before = await stored(pageId);
+
+		const answer = await press(pageId, BLOCK_FORMS.photo, [
+			['block_id', 'hero'],
+			['image_id', imageId],
+			['alt', '']
+		]);
+
+		expect(refusal(answer)).toMatchObject({ status: 400, error: { '': [reason] } });
+		expect(await stored(pageId)).toEqual(before);
+	});
+
+	it('is refused on a block that holds no photo, naming what it is', async () => {
+		const pageId = await withPhoto();
+		const answer = await press(pageId, BLOCK_FORMS.photo, [
+			['block_id', 'title'],
+			['image_id', await upload()],
+			['alt', '']
+		]);
+		expect(refusal(answer)).toMatchObject({
+			status: 400,
+			error: { '': ['block "title" is a title, and this sheet edits a hero or an image'] }
+		});
+	});
+});
+
 describe('a follow-up message in the chat', () => {
 	it('keeps a hand edit it was not asked to change', async () => {
 		const pageId = await insertPage(db, 'campaign');
@@ -254,7 +352,7 @@ describe('a follow-up message in the chat', () => {
 			say: 'A warmer title.',
 			page: {
 				kind: 'patch',
-				ops: [{ op: 'replace', path: '/blocks/0/props/heading', value: 'Keep a child warm' }]
+				ops: [{ op: 'replace', path: '/blocks/1/props/heading', value: 'Keep a child warm' }]
 			}
 		});
 
