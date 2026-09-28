@@ -5,6 +5,7 @@ export { formatDate, formatDateTime, formatMoney } from './format';
 export type { EmailTemplate } from './template';
 export * as adminAlert from './templates/admin-alert';
 export * as cryptoPending from './templates/crypto-pending';
+export * as destinationPaused from './templates/destination-paused';
 export * as grantReceived from './templates/grant-received';
 export * as grantRequested from './templates/grant-requested';
 export * as invitation from './templates/invitation';

@@ -217,7 +217,8 @@ function fanOut(
 					lastError: sql`null`.as('last_error'),
 					deliveredAt: sql`null`.as('delivered_at'),
 					createdAt: sql`${at}`.as('created_at'),
-					updatedAt: sql`${at}`.as('updated_at')
+					updatedAt: sql`${at}`.as('updated_at'),
+					detail: sql`null`.as('detail')
 				})
 				.from(webhookDestination)
 				.innerJoin(

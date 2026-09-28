@@ -98,7 +98,7 @@ export type AddedDonor = ApiDonor & { readonly first_gift: ApiGift };
 type Subject = { readonly event: WebhookEvent; readonly subjectId: string };
 
 /** a row's `data`, or the words `last_error` keeps for why it is not sent. */
-type Rendered = { readonly data: unknown } | { readonly unsent: string };
+type Rendered = { readonly data: unknown } | { readonly dropped: string };
 
 /** each of `subjects` rendered, read in one pass over the lot. */
 export async function renderSubjects(
@@ -149,7 +149,7 @@ export async function renderSubjects(
 			case 'gift.refunded': {
 				const found = withdrawalOf(subjectId);
 				if (found === undefined) return unreadable('refund', subjectId);
-				if (!standing.has(subjectId)) return { unsent: REFUND_NO_LONGER_STANDS };
+				if (!standing.has(subjectId)) return { dropped: REFUND_NO_LONGER_STANDS };
 				return { data: refundedGift(found.row, found.gift) };
 			}
 			case 'gift.dispute_opened': {
@@ -183,13 +183,13 @@ export async function renderSubjects(
 					: { data: plan };
 			}
 			default:
-				return { unsent: `A ${event} event is not one this deployment sends.` };
+				return { dropped: `A ${event} event is not one this deployment sends.` };
 		}
 	};
 }
 
 function unreadable(what: string, id: string): Rendered {
-	return { unsent: `The ${what} ${id} this event was queued for could not be read.` };
+	return { dropped: `The ${what} ${id} this event was queued for could not be read.` };
 }
 
 /** each of `contactIds`' first settled gift, by the donor's id: the one with no earlier one. */

@@ -23,7 +23,8 @@ import { createDb } from './client';
 // front of it. a later migration that renames or drops a seeded column turns this red at its seed,
 // which is the point to re-seed, and a table the stop moves past starts empty until a row is added
 // for it; a squash into one file leaves nothing to stop short of, and the first assertion says so.
-// `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it.
+// `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it, and
+// `webhook_delivery` another, which `seedWebhookDeliveries` writes in front of 0019.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -45,6 +46,11 @@ const API_KEY_REBUILT_BY = '0017_zapier_key_is_an_api_key.sql';
 const API_KEY_REBUILD = env.TEST_MIGRATIONS.findIndex((m) => m.name === API_KEY_REBUILT_BY);
 
 const ZAPIER_KEY_DROPPED_BY = '0018_zapier_key_dropped.sql';
+
+const WEBHOOK_DELIVERY_REBUILT_BY = '0019_webhook_delivery_dropped_and_detail.sql';
+const WEBHOOK_DELIVERY_REBUILD = env.TEST_MIGRATIONS.findIndex(
+	(m) => m.name === WEBHOOK_DELIVERY_REBUILT_BY
+);
 
 /**
  * tables a file from the stop on drops on purpose, each asserted gone in that file's own block
@@ -216,6 +222,29 @@ async function seedApiKeys() {
 		.run();
 }
 
+/** a destination and a row in each state 0015 allows, one of them held by a run. */
+async function seedWebhookDeliveries() {
+	const msg = (n: number) => `msg_00000000-0000-4000-8000-00000000000${n}`;
+	await db().batch([
+		db()
+			.prepare(
+				`insert into webhook_destination (id, url, signing_secret, failing_since, created_at, updated_at)
+				 values ('dest-probe', 'https://crm.example.org/hooks', ?, 7, 1, 1)`
+			)
+			.bind(`whsec_${'A'.repeat(43)}=`),
+		db()
+			.prepare(
+				`insert into webhook_delivery
+				   (id, destination_id, event, subject_id, status, attempts, next_attempt_at, leased_until,
+				    last_status, last_error, delivered_at, created_at, updated_at)
+				 values (?, 'dest-probe', 'gift.made', 'p-card', 'pending', 2, 5, 6, 503, '503 Service Unavailable', null, 1, 2),
+				        (?, 'dest-probe', 'gift.made', 'p-venmo', 'delivered', 1, 3, null, 200, null, 4, 1, 4),
+				        (?, 'dest-probe', 'gift.refunded', 'p-refund', 'failed', 9, 8, null, null, 'TypeError: fetch failed', null, 1, 8)`
+			)
+			.bind(msg(1), msg(2), msg(3))
+	]);
+}
+
 /**
  * a journal entry for a delivery row to hang off, posted through `post()`: ../ledger/sole-writer.spec.ts
  * refuses a direct write to the ledger tables anywhere outside the ledger module.
@@ -247,6 +276,7 @@ let migrated:
 	| Promise<{
 			before: Map<string, Row[]>;
 			apiKeysBefore: Row[];
+			webhookDeliveriesBefore: Row[];
 			atApiKeyMove: Map<string, Row[]>;
 			recopy: { error: string | null; zapierRows: Row[] };
 			after: Map<string, Row[]>;
@@ -286,6 +316,10 @@ function migrateOverSeed() {
 		const before = await snapshot();
 		await applyD1Migrations(db(), chain.slice(0, API_KEY_REBUILD));
 		await seedApiKeys();
+		await seedWebhookDeliveries();
+		const webhookDeliveriesBefore = (
+			await db().prepare('select * from webhook_delivery order by rowid').all<Row>()
+		).results;
 		const apiKeysBefore = (await db().prepare('select * from api_key order by rowid').all<Row>())
 			.results;
 		await applyD1Migrations(db(), chain.slice(0, API_KEY_REBUILD + 1));
@@ -293,7 +327,15 @@ function migrateOverSeed() {
 		const recopy = await recopyKeyless();
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
-		return { before, apiKeysBefore, atApiKeyMove, recopy, after: await snapshot(), overSeed };
+		return {
+			before,
+			apiKeysBefore,
+			webhookDeliveriesBefore,
+			atApiKeyMove,
+			recopy,
+			after: await snapshot(),
+			overSeed
+		};
 	})();
 	return migrated;
 }
@@ -591,6 +633,59 @@ describe('0018 drops zapier_key', () => {
 
 	it.skipIf(nowhereToStop)('leaves no zapier_key table', () => {
 		expect([...after.keys()]).not.toContain('zapier_key');
+	});
+});
+
+// what 0019 is for: `webhook_delivery`'s status CHECK takes `dropped`, and the table gains `detail`.
+// the change is a rebuild, so the rows 0015's shape held — one held by a run — must come through it
+// column for column, with no `detail` the copy made up.
+describe('0019 lets a webhook delivery be dropped and keep a detail, keeping every delivery queued', () => {
+	let webhookDeliveriesBefore: Row[];
+	let after: Map<string, Row[]>;
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ webhookDeliveriesBefore, after } = await migrateOverSeed());
+	});
+
+	it('rebuilds the table after the seed is written', () => {
+		expect(WEBHOOK_DELIVERY_REBUILD).toBeGreaterThan(API_KEY_REBUILD);
+	});
+
+	it.skipIf(nowhereToStop)('keeps every row, column for column, with no detail', () => {
+		expect(webhookDeliveriesBefore).toHaveLength(3);
+		expect(after.get('webhook_delivery')).toEqual(
+			webhookDeliveriesBefore.map((row) => ({ ...row, detail: null }))
+		);
+	});
+
+	it.skipIf(nowhereToStop)(
+		'takes a detail that is a JSON object, and refuses any other',
+		async () => {
+			const setDetail = (detail: string) =>
+				db()
+					.prepare(`update webhook_delivery set detail = ? where subject_id = 'p-venmo'`)
+					.bind(detail)
+					.run();
+
+			await setDetail('{"attempt":2}');
+			for (const refused of ['not json', '[1]', '3', 'null']) {
+				await expect(setDetail(refused), refused).rejects.toThrow(/CHECK constraint failed/);
+			}
+		}
+	);
+
+	it.skipIf(nowhereToStop)('takes a dropped row', async () => {
+		await db()
+			.prepare(
+				`update webhook_delivery set status = 'dropped', leased_until = null
+				 where subject_id = 'p-card'`
+			)
+			.run();
+		const row = await db()
+			.prepare(`select status from webhook_delivery where subject_id = 'p-card'`)
+			.first<{ status: string }>();
+		expect(row?.status).toBe('dropped');
 	});
 });
 

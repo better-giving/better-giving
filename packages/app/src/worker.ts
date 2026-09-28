@@ -2,11 +2,13 @@ import type { ServerBuild } from 'react-router';
 import { createRequestHandler } from 'react-router';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
+import { pinnedOrigin, readAuthEnv } from '$lib/server/auth/env';
 import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
+import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import { requestContext } from './request-context';
 
@@ -66,7 +68,22 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 				now
 			),
 			sendDueZapierEvents({ db, fetch }, now),
-			sendDueWebhooks({ db, fetch }, now)
+			sendDueWebhooks(
+				{
+					db,
+					fetch,
+					// the pin is read when a pause is mailed, so one that does not parse costs that mail
+					// and not the run: `new URL` throws on it, and ./lib/server/webhooks/deliver.ts logs a
+					// throw from the hook.
+					onPaused: (destination) =>
+						mailPause({
+							db,
+							email: createEmailProvider(env),
+							origin: pinnedOrigin(readAuthEnv(env))
+						})(destination)
+				},
+				now
+			)
 		]);
 	}
 };

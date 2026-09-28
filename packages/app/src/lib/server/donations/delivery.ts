@@ -1,9 +1,9 @@
-import { adminAlert } from '@better-giving/emails';
+import { adminAlert, type EmailTemplate } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import type { EmailProvider } from '../email/provider';
+import type { EmailProvider, SendResult } from '../email/provider';
 import type { Processors } from '../payments/factory';
 import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
 import { readOrgProfile } from '../org/queries';
@@ -162,11 +162,22 @@ export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): P
 		// nothing to report it to, and nothing on this path may throw.
 	}
 
+	await mailOperator(deps, adminAlert.template(input));
+}
+
+/**
+ * one message to the address the console names for operational mail, which every alert goes to.
+ * `no_address` where none is saved — `notification_email` is nullable and a fresh deployment has
+ * none. what to do about a message that did not go is the caller's.
+ */
+export async function mailOperator(
+	deps: MailDeps,
+	message: EmailTemplate
+): Promise<SendResult | 'no_address'> {
 	const profile = await readOrgProfile(deps.db);
 	const to = profile?.notificationEmail ?? null;
-	if (to === null) return;
-
-	await deps.email.send({ to, ...(await renderEmail(adminAlert.template(input))) });
+	if (to === null) return 'no_address';
+	return deps.email.send({ to, ...(await renderEmail(message)) });
 }
 
 /**

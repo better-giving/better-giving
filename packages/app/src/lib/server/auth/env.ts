@@ -19,9 +19,11 @@ export interface AuthEnv {
 	 * a custom domain at the same time. set it only to pin one canonical origin and stop
 	 * trusting the others. see the `baseURL` note in ./index.ts.
 	 *
-	 * it settles one thing outside auth: the address a QuickBooks connection is
-	 * registered at and exchanged against, which Intuit compares byte for byte
-	 * (../accounting/connect-link.ts).
+	 * it settles two things outside auth, both through `pinnedOrigin` below: the address
+	 * a QuickBooks connection is registered at and exchanged against, which Intuit
+	 * compares byte for byte (../accounting/connect-link.ts), and the dashboard link in
+	 * the mail a paused webhook destination sends from a cron run, which has no request
+	 * to derive one from (../webhooks/paused-mail.ts).
 	 */
 	readonly BETTER_AUTH_URL?: string;
 	/** the v0 staff sign-in password. compared, never stored, never hashed. */
@@ -65,4 +67,13 @@ export function readAuthEnv(source: unknown): AuthEnv {
 		if (typeof value === 'string') env[name] = value;
 	}
 	return env;
+}
+
+/**
+ * the origin `BETTER_AUTH_URL` pins, or null where it is unset. `.origin` and never the value as
+ * typed: an operator pastes the pin, and a trailing slash or a path on it is not part of it.
+ */
+export function pinnedOrigin(env: AuthEnv): string | null {
+	const pinned = env.BETTER_AUTH_URL?.trim();
+	return pinned ? new URL(pinned).origin : null;
 }

@@ -8,8 +8,15 @@ import { parseContact } from '../contacts/contact-input';
 import { commitDonor } from '../donations/donor';
 import { readGiftPage, readGifts } from '../integrations/gift';
 import type { WebhookEvent } from '../../webhooks/catalog';
-import { sendDueWebhooks, WEBHOOK_RETRY_SCHEDULE_MS } from './deliver';
-import { createDestination } from './destinations';
+import {
+	DESTINATION_PAUSE_AFTER_MS,
+	type PausedDestination,
+	sendDueWebhooks,
+	WEBHOOK_RETRY_SCHEDULE_MS
+} from './deliver';
+import type { EmailMessage, EmailProvider, SendResult } from '../email/provider';
+import { createDestination, resumeDestination } from './destinations';
+import { mailPause } from './paused-mail';
 import { stopRecurringPlan } from '../recurring/queries';
 import {
 	disputeOpenedWebhookStatements,
@@ -58,11 +65,38 @@ afterEach(() => {
 const START = new Date('2026-09-28T12:00:00.000Z');
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
+const later = (ms: number) => new Date(START.getTime() + ms);
 
 /** a run scheduled at `at`, with the wall clock there too. */
-async function runAt(at: Date, fetch: typeof globalThis.fetch): Promise<void> {
+async function runAt(
+	at: Date,
+	fetch: typeof globalThis.fetch,
+	onPaused: (destination: PausedDestination) => Promise<void> = async () => undefined
+): Promise<void> {
 	vi.setSystemTime(at);
-	await sendDueWebhooks({ db, fetch }, at);
+	await sendDueWebhooks({ db, fetch, onPaused }, at);
+}
+
+/**
+ * every run the cron would make up to `until` that has something due, each at the first minute
+ * boundary at or after its earliest row falls due, as the minute cron fires.
+ */
+async function runThrough(
+	until: Date,
+	fetch: typeof globalThis.fetch,
+	onPaused?: (destination: PausedDestination) => Promise<void>
+): Promise<void> {
+	for (;;) {
+		const due = await env.DB.prepare(
+			`select min(next_attempt_at) as at from webhook_delivery
+			 where status = 'pending'
+			   and destination_id in (select id from webhook_destination where paused_at is null)`
+		).first<{ at: number | null }>();
+		if (due?.at == null) return;
+		const fires = Math.ceil(due.at / MINUTE) * MINUTE;
+		if (fires > until.getTime()) return;
+		await runAt(new Date(fires), fetch, onPaused);
+	}
 }
 
 let made = 0;
@@ -432,6 +466,360 @@ describe('sendDueWebhooks() — a post that fails', () => {
 	});
 });
 
+describe('sendDueWebhooks() — a destination failing for three days', () => {
+	const failing = () => receivers(() => new Response('down', { status: 503 }));
+
+	async function pausedAt(id: string) {
+		return (
+			await env.DB.prepare('select paused_at from webhook_destination where id = ?')
+				.bind(id)
+				.first<{ paused_at: number | null }>()
+		)?.paused_at;
+	}
+
+	it('pauses on a retry failing three days after the first failure, and says so once', async () => {
+		const target = await destination();
+		await settle();
+		await settle();
+		const receiving = failing();
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+
+		await runAt(START, receiving.fetch, paused);
+		await runAt(later(MINUTE), receiving.fetch, paused);
+		expect(await pausedAt(target.id)).toBeNull();
+
+		const threeDays = later(DESTINATION_PAUSE_AFTER_MS);
+		await runAt(threeDays, receiving.fetch, paused);
+
+		expect(receiving.posts).toHaveLength(6);
+		expect(await pausedAt(target.id)).toBe(threeDays.getTime());
+		expect(paused).toHaveBeenCalledOnce();
+		expect(paused).toHaveBeenCalledWith({ id: target.id, url: target.url, reason: 'failing' });
+	});
+
+	it('does not pause on a row’s first failure, however long ago the failures began', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = failing();
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+		await runThrough(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, paused);
+		expect((await rows()).map((row) => row.status)).toEqual(['failed']);
+
+		const threeDays = later(DESTINATION_PAUSE_AFTER_MS);
+		vi.setSystemTime(threeDays);
+		await settle();
+		await runAt(threeDays, receiving.fetch, paused);
+		expect(await pausedAt(target.id)).toBeNull();
+
+		await runAt(new Date(threeDays.getTime() + MINUTE), receiving.fetch, paused);
+		expect(await pausedAt(target.id)).not.toBeNull();
+		expect(paused).toHaveBeenCalledOnce();
+	});
+
+	it('starts the three days again from the first failure after a post is taken', async () => {
+		const target = await destination();
+		await settle();
+		let answering = 503;
+		const receiving = receivers(() => new Response('', { status: answering }));
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+		await runAt(START, receiving.fetch, paused);
+
+		answering = 200;
+		const taken = later(DESTINATION_PAUSE_AFTER_MS / 2);
+		vi.setSystemTime(taken);
+		await settle();
+		await runAt(taken, receiving.fetch, paused);
+
+		answering = 503;
+		const failingAgain = new Date(taken.getTime() + HOUR);
+		vi.setSystemTime(failingAgain);
+		await settle();
+		await runThrough(later(DESTINATION_PAUSE_AFTER_MS + 24 * HOUR), receiving.fetch, paused);
+
+		expect(await pausedAt(target.id)).toBeNull();
+		expect(paused).not.toHaveBeenCalled();
+	});
+
+	it('posts nothing more once paused, and tells of the pause no second time', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = failing();
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+		await runAt(START, receiving.fetch, paused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, paused);
+		const postsAtPause = receiving.posts.length;
+
+		const fourthDay = later(DESTINATION_PAUSE_AFTER_MS + 24 * HOUR);
+		vi.setSystemTime(fourthDay);
+		await settle();
+		await runThrough(fourthDay, receiving.fetch, paused);
+		await runAt(fourthDay, receiving.fetch, paused);
+
+		expect(receiving.posts).toHaveLength(postsAtPause);
+		expect(paused).toHaveBeenCalledOnce();
+		expect(await pausedAt(target.id)).toBe(later(DESTINATION_PAUSE_AFTER_MS).getTime());
+		expect((await rows()).map((row) => row.status)).toEqual(['pending', 'pending']);
+	});
+
+	it('pauses at once on a 410, the row kept owed', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('', { status: 410 }));
+		const paused = vi.fn(async (_: PausedDestination) => undefined);
+
+		await runAt(START, receiving.fetch, paused);
+
+		expect(await pausedAt(target.id)).toBe(START.getTime());
+		expect(paused).toHaveBeenCalledExactlyOnceWith({
+			id: target.id,
+			url: target.url,
+			reason: 'gone'
+		});
+		expect(await rows()).toEqual([
+			expect.objectContaining({ status: 'pending', attempts: 1, last_status: 410 })
+		]);
+	});
+
+	it('posts none of the destination’s other rows in the run that paused it', async () => {
+		await destination();
+		for (let gift = 0; gift < 5; gift++) await settle();
+		const receiving = receivers(() => new Response('', { status: 410 }));
+
+		await runAt(START, receiving.fetch);
+
+		const unposted = (await rows()).filter((row) => row.attempts === 0);
+		expect(receiving.posts.length).toBeLessThan(5);
+		expect(unposted).toHaveLength(5 - receiving.posts.length);
+		for (const row of unposted) expect(row).toMatchObject({ status: 'pending', last_status: null });
+	});
+
+	it('keeps the failing mark when a post in flight as the pause lands is taken', async () => {
+		const target = await destination();
+		await settle();
+		await settle();
+		let calls = 0;
+		const receiving = receivers(() => new Response('', { status: calls === 1 ? 410 : 200 }));
+		const staggered = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			calls += 1;
+			if (calls > 1) await new Promise((resolve) => setTimeout(resolve, 5));
+			return receiving.fetch(input, init);
+		}) as typeof fetch;
+
+		await runAt(START, staggered);
+
+		expect(receiving.posts).toHaveLength(2);
+		expect(
+			await env.DB.prepare('select paused_at, failing_since from webhook_destination where id = ?')
+				.bind(target.id)
+				.first()
+		).toEqual({ paused_at: START.getTime(), failing_since: START.getTime() });
+	});
+
+	it('keeps the pause when telling of it throws, and never tells of it again', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('', { status: 410 }));
+		const paused = vi.fn(async (_: PausedDestination) => {
+			throw new Error('mail relay refused');
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receiving.fetch, paused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, paused);
+
+		expect(await pausedAt(target.id)).toBe(START.getTime());
+		expect(paused).toHaveBeenCalledOnce();
+		expect(logged).toHaveBeenCalledOnce();
+		logged.mockRestore();
+	});
+});
+
+describe('mailPause() — the paused-destination mail', () => {
+	const ORIGIN = 'https://donate.example.org';
+
+	beforeEach(async () => {
+		await env.DB.prepare('delete from org_profile').run();
+		await env.DB.prepare(
+			`insert into org_profile (id, legal_name, notification_email, created_at, updated_at)
+			 values ('default', 'Hope Foundation', 'ops@hope.example', 0, 0)`
+		).run();
+	});
+
+	/** an `EmailProvider` recording every message, answering each with `answer`. */
+	function mailbox(answer: () => Promise<SendResult> = async () => ({ ok: true })) {
+		const sent: EmailMessage[] = [];
+		const email: EmailProvider = {
+			async send(message) {
+				sent.push(message);
+				return answer();
+			}
+		};
+		return { email, sent, onPaused: mailPause({ db, email, origin: ORIGIN }) };
+	}
+
+	it('mails the notifications address once for a pause, and no more on a fourth day', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('down', { status: 503 }));
+		const { sent, onPaused } = mailbox();
+
+		await runAt(START, receiving.fetch, onPaused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, onPaused);
+		const fourthDay = later(DESTINATION_PAUSE_AFTER_MS + 24 * HOUR);
+		vi.setSystemTime(fourthDay);
+		await settle();
+		await runAt(fourthDay, receiving.fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]).toMatchObject({
+			to: 'ops@hope.example',
+			subject: 'A webhook destination was paused'
+		});
+		expect(sent[0]?.text).toContain(`Every delivery to ${target.url} has failed for 3 days`);
+		expect(sent[0]?.text).toContain(`${ORIGIN}/admin/integrations/webhooks`);
+	});
+
+	it('says a destination that answered 410 no longer exists', async () => {
+		const target = await destination();
+		await settle();
+		const { sent, onPaused } = mailbox();
+
+		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.text).toContain(`${target.url} answered that it no longer exists`);
+	});
+
+	it('logs a send that throws, keeps the pause, and mails no second time', async () => {
+		const target = await destination();
+		await settle();
+		const receiving = receivers(() => new Response('', { status: 410 }));
+		const { sent, onPaused } = mailbox(async () => {
+			throw new Error('socket closed');
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receiving.fetch, onPaused);
+		await runAt(later(DESTINATION_PAUSE_AFTER_MS), receiving.fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(logged).toHaveBeenCalledOnce();
+		const paused = await env.DB.prepare('select paused_at from webhook_destination where id = ?')
+			.bind(target.id)
+			.first<{ paused_at: number | null }>();
+		expect(paused?.paused_at).toBe(START.getTime());
+		logged.mockRestore();
+	});
+
+	it('logs a send the host refused, naming the destination and why, and does not retry it', async () => {
+		const target = await destination();
+		await settle();
+		const { sent, onPaused } = mailbox(async () => ({
+			ok: false,
+			reason: 'rejected',
+			detail: '550 mailbox unavailable',
+			indeterminate: false
+		}));
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch, onPaused);
+
+		expect(sent).toHaveLength(1);
+		expect(logged).toHaveBeenCalledExactlyOnceWith(
+			expect.stringMatching(new RegExp(`${target.id}.*550 mailbox unavailable`))
+		);
+		logged.mockRestore();
+	});
+
+	it('sends nothing where no notifications address is saved, and logs that', async () => {
+		const target = await destination();
+		await settle();
+		await env.DB.prepare('update org_profile set notification_email = null').run();
+		const { sent, onPaused } = mailbox();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch, onPaused);
+
+		expect(sent).toEqual([]);
+		expect(logged).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(target.id));
+		logged.mockRestore();
+	});
+});
+
+describe('resumeDestination() — the held window, re-sent', () => {
+	/** a gift settled at `when`, and the id of the row it queued. */
+	async function settleAt(when: Date): Promise<{ paymentId: string; rowId: string }> {
+		vi.setSystemTime(when);
+		const paymentId = await settle();
+		const row = await env.DB.prepare('select id from webhook_delivery where subject_id = ?')
+			.bind(paymentId)
+			.first<{ id: string }>();
+		if (row === null) throw new Error('the gift queued no row');
+		return { paymentId, rowId: row.id };
+	}
+
+	it('re-sends each held delivery once under its own webhook-id, and what follows flows', async () => {
+		const target = await destination();
+		let answering = 503;
+		const receiving = receivers(() => new Response('', { status: answering }));
+
+		const beforeWindow = await settleAt(START);
+		await runThrough(later(52 * HOUR), receiving.fetch);
+		answering = 200;
+		await settleAt(later(52 * HOUR));
+		await runAt(later(52 * HOUR), receiving.fetch);
+
+		answering = 503;
+		// queued mid-minute: its first failure, a run later, is what starts the run of failures.
+		const exhausted = await settleAt(later(53 * HOUR + 30_000));
+		await runThrough(later(110 * HOUR), receiving.fetch);
+		const unreadable = await settleAt(later(110 * HOUR));
+		await env.DB.prepare(`update payment set status = 'failed' where id = ?`)
+			.bind(unreadable.paymentId)
+			.run();
+		const retrying = await settleAt(later(110 * HOUR + 30_000));
+		await runThrough(later(130 * HOUR), receiving.fetch);
+		const whilePaused = await settleAt(later(131 * HOUR + 30_000));
+		expect(
+			(
+				await env.DB.prepare('select paused_at from webhook_destination where id = ?')
+					.bind(target.id)
+					.first<{ paused_at: number | null }>()
+			)?.paused_at
+		).not.toBeNull();
+
+		const resumedAt = later(140 * HOUR);
+		vi.setSystemTime(resumedAt);
+		const resumed = await resumeDestination(db, target.id, resumedAt);
+		expect(resumed).toEqual({ ok: true, requeued: 3 });
+
+		answering = 200;
+		const postedBefore = receiving.posts.length;
+		await runAt(resumedAt, receiving.fetch);
+		await runThrough(later(200 * HOUR), receiving.fetch);
+		const resent = receiving.posts
+			.slice(postedBefore)
+			.map((post) => post.headers.get('webhook-id'));
+		expect(resent.sort()).toEqual([exhausted.rowId, retrying.rowId, whilePaused.rowId].sort());
+
+		const after = await settleAt(later(201 * HOUR));
+		await runAt(later(201 * HOUR), receiving.fetch);
+		expect(receiving.posts.at(-1)?.headers.get('webhook-id')).toBe(after.rowId);
+
+		const statusOf = async (id: string) =>
+			(
+				await env.DB.prepare('select status from webhook_delivery where id = ?')
+					.bind(id)
+					.first<{ status: string }>()
+			)?.status;
+		expect(await statusOf(beforeWindow.rowId)).toBe('failed');
+		expect(await statusOf(unreadable.rowId)).toBe('dropped');
+		for (const { rowId } of [exhausted, retrying, whilePaused, after]) {
+			expect(await statusOf(rowId)).toBe('delivered');
+		}
+	});
+});
+
 describe('sendDueWebhooks() — lanes', () => {
 	it('posts to at most two destinations at once, and to every one of them', async () => {
 		for (let made = 0; made < 7; made++) await destination();
@@ -471,7 +859,7 @@ describe('sendDueWebhooks() — what is not sent', () => {
 		]);
 	});
 
-	it('fails a row whose gift cannot be read, unposted, and says why', async () => {
+	it('drops a row whose gift cannot be read, unposted, and says why', async () => {
 		await destination();
 		const paymentId = await settle();
 		await env.DB.prepare(`update payment set status = 'failed' where id = ?`).bind(paymentId).run();
@@ -482,7 +870,7 @@ describe('sendDueWebhooks() — what is not sent', () => {
 		expect(receiving.posts).toEqual([]);
 		expect(await rows()).toEqual([
 			expect.objectContaining({
-				status: 'failed',
+				status: 'dropped',
 				attempts: 0,
 				last_error: `The settled gift ${paymentId} this event was queued for could not be read.`
 			})
@@ -625,7 +1013,7 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 		expect(JSON.parse(receiving.posts[0]?.body ?? '{}').data.respond_by).toBeNull();
 	});
 
-	it('fails a refund that stopped standing after it was queued, unposted, and says why', async () => {
+	it('drops a refund that stopped standing after it was queued, unposted, and says why', async () => {
 		await listening(['gift.refunded']);
 		const refundId = await withdraw(await settle());
 		await db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId));
@@ -636,7 +1024,7 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 		expect(receiving.posts).toEqual([]);
 		expect(await rows()).toEqual([
 			expect.objectContaining({
-				status: 'failed',
+				status: 'dropped',
 				attempts: 0,
 				last_status: null,
 				last_error:
@@ -645,7 +1033,7 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 		]);
 	});
 
-	it('fails a row whose refund cannot be read, unposted, and says why', async () => {
+	it('drops a row whose refund cannot be read, unposted, and says why', async () => {
 		await listening(['gift.refunded']);
 		const refundId = await withdraw(await settle());
 		await db.delete(payment).where(eq(payment.id, refundId));
@@ -656,7 +1044,7 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 		expect(receiving.posts).toEqual([]);
 		expect(await rows()).toEqual([
 			expect.objectContaining({
-				status: 'failed',
+				status: 'dropped',
 				last_error: `The refund ${refundId} this event was queued for could not be read.`
 			})
 		]);
@@ -748,7 +1136,7 @@ describe('sendDueWebhooks() — a donor added and a donor updated', () => {
 		});
 	});
 
-	it('fails a donor row whose donor cannot be read, unposted, and says why', async () => {
+	it('drops a donor row whose donor cannot be read, unposted, and says why', async () => {
 		await listening(['donor.added']);
 		const giftId = await settle();
 		const donorId = await donorOf(giftId);
@@ -759,7 +1147,7 @@ describe('sendDueWebhooks() — a donor added and a donor updated', () => {
 
 		expect(receiving.posts).toEqual([]);
 		const [row] = await rows();
-		expect(row).toMatchObject({ status: 'failed', attempts: 0 });
+		expect(row).toMatchObject({ status: 'dropped', attempts: 0 });
 		expect(row?.last_error).toMatch(
 			/^The donor [0-9a-f-]{36} this event was queued for could not be read\.$/
 		);
@@ -871,7 +1259,7 @@ describe('sendDueWebhooks() — a recurring gift started and a recurring gift en
 		});
 	});
 
-	it('fails a row whose recurring gift cannot be read, unposted, and says why', async () => {
+	it('drops a row whose recurring gift cannot be read, unposted, and says why', async () => {
 		await listening(['recurring_gift.started']);
 		await open();
 		await env.DB.prepare('update webhook_delivery set subject_id = ?').bind(uuidv7()).run();
@@ -881,7 +1269,7 @@ describe('sendDueWebhooks() — a recurring gift started and a recurring gift en
 
 		expect(receiving.posts).toEqual([]);
 		const [row] = await rows();
-		expect(row).toMatchObject({ status: 'failed', attempts: 0 });
+		expect(row).toMatchObject({ status: 'dropped', attempts: 0 });
 		expect(row?.last_error).toMatch(
 			/^The recurring gift [0-9a-f-]{36} this event was queued for could not be read\.$/
 		);

@@ -3,6 +3,7 @@ import { readWranglerConfig } from './lib/server/wrangler-config.testing';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
+import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import worker, { CRON_RUNS } from './worker';
 
@@ -38,6 +39,9 @@ vi.mock('$lib/server/zapier/deliver', () => ({
 vi.mock('$lib/server/webhooks/deliver', () => ({
 	sendDueWebhooks: vi.fn(async () => {})
 }));
+vi.mock('$lib/server/webhooks/paused-mail', () => ({
+	mailPause: vi.fn(() => async () => {})
+}));
 
 /** the fields this file reads. everything else in the config is somebody else's concern. */
 interface WranglerConfig {
@@ -68,7 +72,7 @@ const env = { DB: {} } as unknown as Parameters<Scheduled>[1];
  * that run claimed sitting `pending` with `attempts` unincremented until the lease passes
  * ($lib/server/accounting/deliver.ts). a mock called is a mock called either way.
  */
-async function fires(cron: string): Promise<Promise<unknown>[]> {
+async function fires(cron: string, runEnv = env): Promise<Promise<unknown>[]> {
 	const waited: Promise<unknown>[] = [];
 	const ctx = {
 		waitUntil: (promise: Promise<unknown>) => waited.push(promise),
@@ -83,7 +87,7 @@ async function fires(cron: string): Promise<Promise<unknown>[]> {
 			type: 'scheduled',
 			noRetry: () => {}
 		} as unknown as Parameters<Scheduled>[0],
-		env,
+		runEnv,
 		ctx
 	);
 	await Promise.all(waited);
@@ -103,6 +107,7 @@ const JOBS = [
 // before it.
 beforeEach(() => {
 	for (const job of JOBS) vi.mocked(job).mockReset().mockResolvedValue(undefined);
+	vi.mocked(mailPause).mockClear();
 });
 
 describe('the schedule this worker is deployed with', () => {
@@ -151,10 +156,47 @@ describe('which run an expression reaches', () => {
 			SCHEDULED_AT
 		);
 		expect(sendDueWebhooks).toHaveBeenCalledWith(
-			{ db: expect.anything(), fetch: expect.any(Function) },
+			{ db: expect.anything(), fetch: expect.any(Function), onPaused: expect.any(Function) },
 			SCHEDULED_AT
 		);
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
+	});
+
+	/** the `onPaused` the minute run handed the destinations' delivery, told of one pause. */
+	async function pauseTold(runEnv = env) {
+		await fires('* * * * *', runEnv);
+		const onPaused = vi.mocked(sendDueWebhooks).mock.calls[0]?.[0].onPaused;
+		await onPaused?.({ id: 'd1', url: 'https://crm.example.org/hooks', reason: 'gone' });
+	}
+
+	it('mails a paused destination to the operator, linking the deployment’s pinned address', async () => {
+		await pauseTold({
+			DB: {},
+			BETTER_AUTH_URL: 'https://donate.example.org/'
+		} as unknown as typeof env);
+
+		expect(mailPause).toHaveBeenCalledExactlyOnceWith({
+			db: expect.anything(),
+			email: expect.anything(),
+			origin: 'https://donate.example.org'
+		});
+	});
+
+	it('mails a paused destination with no link where no address is pinned', async () => {
+		await pauseTold();
+
+		expect(mailPause).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ origin: null }));
+	});
+
+	it('runs every minute job where the pinned address does not parse', async () => {
+		await fires('* * * * *', {
+			DB: {},
+			BETTER_AUTH_URL: 'donate.example.org'
+		} as unknown as typeof env);
+
+		for (const job of [sendDueEntries, sendDueZapierEvents, sendDueWebhooks]) {
+			expect(job).toHaveBeenCalledOnce();
+		}
 	});
 
 	it.each([

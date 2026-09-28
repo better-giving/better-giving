@@ -106,6 +106,9 @@ export const INK = hexFromOklch(ADMIN_TOKENS['--admin-ink']);
 export const INK_MUTED = hexFromOklch(ADMIN_TOKENS['--admin-ink-muted']);
 export const DIVIDER = hexFromOklch(ADMIN_TOKENS['--admin-divider']);
 export const LINK = hexFromOklch(ADMIN_TOKENS['--admin-link']);
+/** a literal set in a sentence — a destination's address — on the ground the system gives code. */
+export const CODE_BG = hexFromOklch(ADMIN_TOKENS['--admin-code-bg']);
+export const CODE_INK = hexFromOklch(ADMIN_TOKENS['--admin-code-ink']);
 
 export const FONT_SANS = ADMIN_TOKENS['--admin-font-sans'];
 export const FONT_MONO = ADMIN_TOKENS['--admin-font-mono'];
@@ -125,6 +128,7 @@ export const LH_HEADING = Number(ADMIN_TOKENS['--admin-lh-heading']);
 export const LH_CODE = Number(ADMIN_TOKENS['--admin-code-lh']);
 export const WEIGHT_BOLD = Number(ADMIN_TOKENS['--admin-weight-bold']);
 
+export const SPACE_1 = pxFromLength(ADMIN_TOKENS['--admin-space-1']);
 export const SPACE_2 = pxFromLength(ADMIN_TOKENS['--admin-space-2']);
 export const SPACE_4 = pxFromLength(ADMIN_TOKENS['--admin-space-4']);
 export const SPACE_6 = pxFromLength(ADMIN_TOKENS['--admin-space-6']);
@@ -136,6 +140,8 @@ export const BORDER_WIDTH = pxFromLength(ADMIN_TOKENS['--admin-border-width']);
 export const BORDER_WIDTH_STRONG = pxFromLength(ADMIN_TOKENS['--admin-border-width-strong']);
 /** the band a block carries at one edge, which is what the alert's instruction wears. */
 export const EDGE = pxFromLength(ADMIN_TOKENS['--admin-edge']);
+/** the one corner the system rounds anything to. */
+export const RADIUS = pxFromLength(ADMIN_TOKENS['--admin-radius']);
 /** the measure the document is read at. the system's measures are screen columns and none of them
  * is a mail's; this is the one that lands where a line of body type stops being comfortable. */
 export const MEASURE = pxFromLength(ADMIN_TOKENS['--admin-measure-dialog']);

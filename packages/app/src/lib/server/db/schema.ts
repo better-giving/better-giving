@@ -2916,11 +2916,12 @@ export const webhookDestinationEvent = sqliteTable(
 );
 
 /**
- * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed,
- * or one sent nothing because its destination or its subject could not be read, or its refund no
- * longer stands (../webhooks/payload.ts); it is kept, for the destination's recent deliveries.
+ * where one delivery stands. `failed` is a row whose every post on the retry schedule failed, and
+ * nothing else. `dropped` is a row sent nothing: its destination or its subject could not be read,
+ * or it is a `gift.refunded` whose refund no longer stands (../webhooks/payload.ts). both are kept,
+ * for the destination's recent deliveries, and a resume re-sends only `failed` ones.
  */
-export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
+export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed', 'dropped'] as const;
 export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
 
 /**
@@ -2988,7 +2989,14 @@ export const webhookDelivery = sqliteTable(
 		// the fan-out writes these rows with an INSERT…SELECT, which never runs a `$defaultFn`,
 		// so it binds both itself.
 		createdAt: createdAt(),
-		updatedAt: updatedAt()
+		updatedAt: updatedAt(),
+
+		/**
+		 * reserved for a JSON object of the facts an event's payload needs that cannot be read again
+		 * at send, for `recurring_gift.charge_failed`'s writer (ticket t10's event slice). every event
+		 * writes it null today, and nothing reads it.
+		 */
+		detail: text('detail')
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
@@ -3005,6 +3013,10 @@ export const webhookDelivery = sqliteTable(
 			sql`${t.lastStatus} is null or ${t.lastStatus} between 100 and 599`
 		),
 		check('webhook_delivery_last_error_not_blank_check', optionalNotBlank(t.lastError)),
+		check(
+			'webhook_delivery_detail_object_check',
+			sql`${t.detail} is null or (${jsonObject(t.detail)})`
+		),
 		// a delivered row says when, and no other row does.
 		check(
 			'webhook_delivery_delivered_check',
