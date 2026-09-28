@@ -2,6 +2,7 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import { reactRouter } from '@react-router/dev/vite';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
+import { routeFiles } from './vite/route-files';
 import { versionDefine } from './version-define';
 
 // how this app is built and how it is served in dev, and both run in workerd.
@@ -39,5 +40,11 @@ export default defineConfig({
 		// plugin because ./tsconfig.json declares the same alias and nothing joins the two.
 		alias: { $lib: resolve(import.meta.dirname, 'src/lib') }
 	},
-	plugins: [cloudflare({ viteEnvironment: { name: 'ssr' } }), reactRouter()]
+	plugins: [
+		cloudflare({ viteEnvironment: { name: 'ssr' } }),
+		reactRouter(),
+		// `virtual:route-files`, which src/lib/page/slug.ts reads instead of an `import.meta.glob`
+		// over ./src/routes/ — ./vite/route-files.ts's header argues why.
+		routeFiles(resolve(import.meta.dirname, 'src/routes'))
+	]
 });

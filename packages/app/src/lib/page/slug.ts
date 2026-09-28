@@ -13,6 +13,7 @@
 // (`$lib/admin/use-admin-form.ts`), and a component cannot import from there.
 
 import { RUNTIME_PATH_PREFIX } from '@better-giving/form/embed/stamp';
+import routeFiles from 'virtual:route-files';
 
 /**
  * one dot-separated piece of a route file's name: `text` is what it matches, with `:` for a leading
@@ -86,18 +87,13 @@ export function reservedSegments(routeFiles: readonly string[]): ReadonlySet<str
 	return reserved;
 }
 
-const ROUTES_DIR = '../../routes/';
-
-// read for its keys alone: nothing calls the lazy imports it builds. the negative pattern is
-// src/routes.ts's `ignoredRouteFiles`, and it has to move with it — a spec is not an address, and
-// one handed to the build would pull `cloudflare:test` into it.
-const ROUTE_FILES = Object.keys(
-	import.meta.glob([
-		'../../routes/*',
-		'../../routes/*/{route,index}.*',
-		'!../../routes/**/*.spec.*'
-	])
-).map((key) => key.slice(ROUTES_DIR.length));
+// `../../../vite/route-files.ts`'s plugin, read for the names alone: an `import.meta.glob` over
+// ./src/routes/ has no names-only mode, so every key it returns is a lazy `import()` nothing here
+// ever calls — a dynamic-import edge into every route module, and a build warning for each one.
+// the negative pattern is the same one src/routes.ts hands `flatRoutes`, shared from that plugin
+// module rather than restated: a spec is not an address, and one handed to the build would pull
+// `cloudflare:test` into it.
+const ROUTE_FILES: readonly string[] = routeFiles;
 
 /**
  * every segment a campaign's address may not be. beside the route files: `donate`, and the two

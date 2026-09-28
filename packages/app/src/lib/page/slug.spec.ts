@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { checkSlug, RESERVED_SEGMENTS, reservedSegments, slugFromTitle } from './slug';
 
 // node pool, no database: the rule is a pure function, and vitest reads the route files through the
-// same vite glob the build does.
+// same `virtual:route-files` plugin the build does (../../../vitest.config.ts registers it).
 
 describe('the top-level segments a route file answers', () => {
 	it('reads the first segment under a pathless layout', () => {
