@@ -1272,7 +1272,6 @@ function Editor({
 							ticked: tickedSites(originsFields.allowed_origins.initialValue)
 						}}
 						sites={data.sites}
-						donatePageOrigin={data.donatePageOrigin}
 						footer={
 							<SaveButton
 								label="Save where it may be used"

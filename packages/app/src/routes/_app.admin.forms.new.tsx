@@ -327,7 +327,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 // none of them is given a footer — the single submit sits at the foot of all four, which is still
 // the foot of the form it submits.
 export default function NewDonationForm({ loaderData, actionData }: Route.ComponentProps) {
-	const { readiness, sites, donatePageOrigin, programs, values, currency } = loaderData;
+	const { readiness, sites, programs, values, currency } = loaderData;
 	const [form, fields] = useAdminForm(FORM_CREATE, actionData, { defaultValue: values });
 	const navigation = useNavigation();
 	// the whole navigation this form started, and not its `submitting` half: the action answers with
@@ -435,7 +435,6 @@ export default function NewDonationForm({ loaderData, actionData }: Route.Compon
 								ticked: tickedSites(fields.allowed_origins.initialValue)
 							}}
 							sites={sites}
-							donatePageOrigin={donatePageOrigin}
 						/>
 					</Section>
 

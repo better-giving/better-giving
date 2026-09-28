@@ -238,19 +238,6 @@ body {
 	padding-inline: var(--page-gutter);
 }
 
-/* the organisation's name over the notice a donor gets where no card can be drawn
-   (./notice.tsx). quiet type rather than a banner: the notice is the thing on this page. a name
-   with no space in it wraps inside the stage rather than widening the document: `anywhere` is
-   what keeps a 375px viewport off a horizontal scrollbar for a name longer than the column. */
-.org-name {
-	margin: 0 0 var(--page-gap-group);
-	overflow-wrap: anywhere;
-	font-size: var(--_t-lg);
-	font-weight: var(--_w-bold);
-	line-height: var(--_lh-tight);
-	color: var(--page-quiet);
-}
-
 /* the no-form notice. one sentence, in the page's own dress, because there is no card here for the
    form's sheets to paint. */
 .notice {

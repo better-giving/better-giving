@@ -1,24 +1,17 @@
 import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
 import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
-import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { type ReactNode, useId } from 'react';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { unlistedSites } from '$lib/forms/input-schema';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 
-// where a donation form may be used: this deployment's own donation page, stated, and one tick box
-// per site this deployment has listed, with this form's own set ticked.
+// where a donation form may be used: one tick box per site this deployment has listed, with this
+// form's own set ticked.
 //
-// the donation page is stated and never a control, because it is not this form's to decide. every
-// form this deployment serves loads on it, and the deployment accepts it from the origin a request
-// arrived on rather than from any form's own list — `acceptableHostnames` in
-// `$lib/server/donations/quote.ts` and `corsHeaders` in `$lib/server/api/cors.ts`. so there is
-// nothing here that could take it off: a tick box would be a control that does nothing, and a
-// disabled one reads as a control that broke.
-//
-// it is on the screen on every deployment, because the address is the deployment's own and a
-// deployment always has one. so there is no arrangement in which this form loads nowhere, and
-// nothing here warns about one.
+// the ticked sites are the whole of where a form loads. a form is for pasting into a site and has
+// no page of its own — the deployment's donation page at `/donate` draws its donation box from the
+// page's own settings row, not from any form — so a form with nothing ticked loads nowhere, and the
+// group says so.
 //
 // one of the group components — see ./name-fields.tsx for why each takes its own boxes rather than
 // a form.
@@ -36,9 +29,11 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 // the library's `CheckboxGroup` draws: one message for the group, every box marked refused by it,
 // and every box pointed at it.
 //
-// the hint under the group says where a missing site is added, and nothing ever takes its place. no
-// site listed is a complete state rather than a warning: a form with nothing ticked loads on the
-// donation page and nowhere else, which is a state to leave alone as often as it is one to change.
+// the hint under the group says where a missing site is added, and nothing ever takes its place.
+// with nothing ticked it leads with that fact and, where there is a box to tick, what to do about
+// it. an empty state rather than a warning: a form made ahead of the site it goes on is ordinary.
+// it reads what the form holds, as the boxes are seeded, so a box ticked since is not reflected
+// until the save.
 //
 // what each box names is built from what is on the screen, because an `aria-describedby` naming a
 // hint that was not rendered describes nothing.
@@ -50,6 +45,10 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 // the fieldset is this file's and the group inside it is the library's: the legend is written here
 // and `CheckboxGroup` is mounted without one, which is the shape that component states for a group
 // already named by where it sits.
+
+const NOT_ON_ANY_SITE = 'Not on any site yet.';
+const TICK_THE_SITES = 'Tick the sites you’ll paste this form on.';
+const WHERE_A_SITE_COMES_FROM = 'A site that is not here is listed on the console.';
 
 type OriginsBox = {
 	/** the group's own id, which the message under it is named from. */
@@ -73,26 +72,13 @@ type FormOriginsFieldsProps = {
 	 */
 	readonly sites: readonly string[];
 	/**
-	 * where this deployment's own donation page answers: the deployment's own origin, off the request
-	 * the loader ran on.
-	 *
-	 * handed over rather than derived here, because it is the server's reading — a component asking
-	 * the browser would state one address while rendering on the server and another after hydration.
-	 */
-	readonly donatePageOrigin: string;
-	/**
 	 * the group's own submit, at the foot of the group it saves. absent on the create screen, which
 	 * has one submit for all four groups.
 	 */
 	readonly footer?: ReactNode;
 };
 
-export function FormOriginsFields({
-	box,
-	sites,
-	donatePageOrigin,
-	footer
-}: FormOriginsFieldsProps) {
+export function FormOriginsFields({ box, sites, footer }: FormOriginsFieldsProps) {
 	const originsError = box.errors?.[0];
 
 	// what makes a dropped site's box distinct from the listed box of the same address, and what
@@ -149,41 +135,41 @@ export function FormOriginsFields({
 		}))
 	];
 
+	const onNoSite = box.ticked.length === 0;
+	const hint = [
+		onNoSite ? NOT_ON_ANY_SITE : null,
+		onNoSite && sites.length > 0 ? TICK_THE_SITES : null,
+		WHERE_A_SITE_COMES_FROM
+	]
+		.filter(Boolean)
+		.join(' ');
+
 	return (
 		<>
 			<h2>Where it may be used</h2>
 
-			<div className="adm-stack">
-				{/* above the boxes because it is where a form loads first and is true of every form this
-				    deployment serves, and outside the fieldset because a fieldset holds controls: this
-				    is a fact, and the address is a chip for the reason the boxes' own labels are one. */}
-				<StatedValue label="Donation page" value={donatePageOrigin} code>
-					Every form on this deployment loads here, and nothing takes it off.
-				</StatedValue>
+			<fieldset className="adm-fieldset">
+				<legend className="adm-fieldset__legend">{FORM_FIELD_LABELS.allowed_origins}</legend>
 
-				<fieldset className="adm-fieldset">
-					<legend className="adm-fieldset__legend">{FORM_FIELD_LABELS.allowed_origins}</legend>
+				{/* the group without its own legend, because the fieldset above already names it and a
+				    group nested in a group tells a reader there are two. the hint, the refusal and
+				    every `aria-describedby` between them are the library's, named from the id handed
+				    over here.
 
-					{/* the group without its own legend, because the fieldset above already names it and a
-					    group nested in a group tells a reader there are two. the hint, the refusal and
-					    every `aria-describedby` between them are the library's, named from the id handed
-					    over here.
+				    where a site comes from is owed here and is not owed everywhere: an operator who
+				    reads it comes back to this group and ticks something. a block that only states a
+				    value gets none — a note under every block is a screen of forwarding addresses.
 
-					    where a site comes from is owed here and is not owed everywhere: an operator who
-					    reads it comes back to this group and ticks something. a block that only states a
-					    value gets none — a note under every block is a screen of forwarding addresses.
-
-					    it is drawn with no box under it too, where it is the only thing saying a site is
-					    something this deployment can have. */}
-					<CheckboxGroup
-						id={box.id}
-						name={box.name}
-						items={items}
-						hint="A site that is not here is listed on the console."
-						error={originsError === undefined ? undefined : <MarkedText text={originsError} />}
-					/>
-				</fieldset>
-			</div>
+				    it is drawn with no box under it too, where it is the only thing saying a site is
+				    something this deployment can have. */}
+				<CheckboxGroup
+					id={box.id}
+					name={box.name}
+					items={items}
+					hint={hint}
+					error={originsError === undefined ? undefined : <MarkedText text={originsError} />}
+				/>
+			</fieldset>
 
 			{footer ? <div className="adm-actions">{footer}</div> : null}
 		</>
