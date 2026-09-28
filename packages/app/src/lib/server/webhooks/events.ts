@@ -129,6 +129,35 @@ export function donorUpdatedWebhookStatements(
 	);
 }
 
+/**
+ * the `recurring_gift.started` rows for the commitment `planId`, keyed on it, so a destination
+ * hears of each commitment starting once. its one caller is `openCommitment` in
+ * ../donations/collect.ts, which splices it into the batch that inserts the `recurring_plan` row —
+ * the first charge that settles — so a refused insert takes these rows with it.
+ */
+export function recurringGiftStartedWebhookStatements(db: Db, planId: string): BatchItem<'sqlite'> {
+	return fanOut(db, 'recurring_gift.started', planId, new Date());
+}
+
+/** what a standing change to a commitment is announced as. */
+export type RecurringGiftChange = 'recurring_gift.updated' | 'recurring_gift.ended';
+
+/**
+ * the `event` rows for one standing change to the commitment `planId`, owed only where `lands`
+ * holds. keyed on {@link changeSubject}, so a commitment that revives and ends again is heard of
+ * each time. its one caller is `planChangeStatements` in ../recurring/changes.ts, which splices it
+ * **in front of** the update it reports, with `lands` the update's own `where`.
+ */
+export function recurringGiftChangeWebhookStatements(
+	db: Db,
+	event: RecurringGiftChange,
+	planId: string,
+	lands: SQL
+): BatchItem<'sqlite'> {
+	const now = new Date();
+	return fanOut(db, event, changeSubject(planId, now), now, lands);
+}
+
 /** a version 4 uuid, lowercase, from sqlite's own random source. */
 const UUID_V4 = sql`lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)))`;
 

@@ -126,3 +126,39 @@ describe('collect.ts is the only inserter of recurring_plan', () => {
 		expect(WRITERS.some(({ re }) => re.test(inserter))).toBe(true);
 	});
 });
+
+/**
+ * the same two ways to write the row, for a change to it: drizzle's `db.update(recurringPlan)` and
+ * raw `update recurring_plan`.
+ */
+const UPDATES: { label: string; re: RegExp }[] = [
+	{ label: 'drizzle update', re: /\bupdate\s*\(\s*(?:schema\.)?recurringPlan\b/ },
+	{ label: 'raw SQL update', re: /\bupdate\s+(?:or\s+\w+\s+)?[`"']?recurring_plan\b/i }
+];
+
+const UPDATER = resolve(import.meta.dirname, '../recurring/changes.ts');
+
+// a change to a commitment that lands owes a webhook destination its `recurring_gift.updated` or
+// `recurring_gift.ended`, and ../recurring/changes.ts is what splices that event in front of the
+// update in one batch(). an update written anywhere else is a change no destination hears of.
+describe('recurring/changes.ts is the only updater of recurring_plan', () => {
+	it('finds no UPDATE of recurring_plan outside src/lib/server/recurring/changes.ts', () => {
+		const offenders = [...sourceFiles(SRC), INSERTER]
+			.filter((file) => file !== UPDATER)
+			.flatMap((file) => {
+				const source = readFileSync(file, 'utf8');
+				return UPDATES.filter(({ re }) => re.test(source)).map(
+					({ label }) => `${relative(SRC, file)} (${label})`
+				);
+			});
+		expect(
+			offenders,
+			`these modules change recurring_plan directly: ${offenders.join(', ')}. take the statements from planChangeStatements() in src/lib/server/recurring/changes.ts, which writes the event the change owes in the same batch().`
+		).toEqual([]);
+	});
+
+	it('matches the updater itself, so the patterns are known to work', () => {
+		const updater = readFileSync(UPDATER, 'utf8');
+		expect(UPDATES.some(({ re }) => re.test(updater))).toBe(true);
+	});
+});

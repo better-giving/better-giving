@@ -6,6 +6,7 @@ import { earlierSettledGiftOfDonor } from '../donations/queries';
 import { type ApiDonor, readDonors } from '../integrations/donor';
 import { type ApiGift, readGifts } from '../integrations/gift';
 import { inPage } from '../integrations/paging';
+import { readRecurringGifts } from '../integrations/recurring-gift';
 import {
 	REFUND_NO_LONGER_STANDS,
 	type RefundRow,
@@ -17,14 +18,17 @@ import type { WebhookEvent } from '../../webhooks/catalog';
 import { changedRecordOf } from './events';
 
 // the `data` a destination is posted for each event, rendered at send from the row's subject
-// (./deliver.ts). every gift in it is the read API's (`readGifts` in ../integrations/gift.ts) and
-// every donor the read API's (`readDonors` in ../integrations/donor.ts), each as it stands at that
-// moment, and every key is held to those modules' rule: permanent, and present, null where there is
-// nothing to say.
+// (./deliver.ts). every gift in it is the read API's (`readGifts` in ../integrations/gift.ts),
+// every donor the read API's (`readDonors` in ../integrations/donor.ts) and every recurring gift
+// the read API's (`readRecurringGifts` in ../integrations/recurring-gift.ts), each as it stands at
+// that moment, and every key is held to those modules' rule: permanent, and present, null where
+// there is nothing to say.
 //
-// **a donor event says who, not what changed.** `donor.updated` carries the donor as they stand at
-// send, not the change its row was queued for, so of two changes queued close together both posts
-// may read alike; a receiver keeps the latest by `updated_at`. `donor.added`'s `first_gift` is the
+// **a change event says which record, not what changed.** `donor.updated`, `recurring_gift.updated`
+// and `recurring_gift.ended` carry the record as it stands at send, not the change their row was
+// queued for, so of two changes queued close together both posts may read alike — an ending
+// followed at once by a revival posts an `ended` whose `status` is `active`; a receiver keeps the
+// latest by `updated_at`. `donor.added`'s `first_gift` is the
 // donor's earliest settled gift by date (`earlierSettledGiftOfDonor` in ../donations/queries.ts) —
 // the gift whose settlement queued the row, unless one dated earlier was entered by hand since.
 //
@@ -107,7 +111,13 @@ export async function renderSubjects(
 	const withdrawalIds = [...refundedIds, ...ofEvent('gift.dispute_opened')];
 	const addedIds = ofEvent('donor.added');
 	const updatedIds = ofEvent('donor.updated').flatMap((subject) => changedRecordOf(subject) ?? []);
-	const [withdrawals, standing, donors, firstGiftIds] = await Promise.all([
+	const planIds = [
+		...ofEvent('recurring_gift.started'),
+		...[...ofEvent('recurring_gift.updated'), ...ofEvent('recurring_gift.ended')].flatMap(
+			(subject) => changedRecordOf(subject) ?? []
+		)
+	];
+	const [withdrawals, standing, donors, firstGiftIds, plans] = await Promise.all([
 		withdrawalIds.length === 0
 			? []
 			: selectRefunds(db).where(
@@ -115,7 +125,8 @@ export async function renderSubjects(
 				),
 		readStandingRefunds(db, refundedIds),
 		readDonors(db, [...addedIds, ...updatedIds]),
-		readFirstGifts(db, addedIds)
+		readFirstGifts(db, addedIds),
+		readRecurringGifts(db, planIds)
 	]);
 	const byId = new Map(withdrawals.map((row) => [row.id, row]));
 	const gifts = await readGifts(db, [
@@ -158,6 +169,18 @@ export async function renderSubjects(
 				const contactId = changedRecordOf(subjectId);
 				const donor = contactId === null ? undefined : donors.get(contactId);
 				return donor === undefined ? unreadable('donor', contactId ?? subjectId) : { data: donor };
+			}
+			case 'recurring_gift.started': {
+				const plan = plans.get(subjectId);
+				return plan === undefined ? unreadable('recurring gift', subjectId) : { data: plan };
+			}
+			case 'recurring_gift.updated':
+			case 'recurring_gift.ended': {
+				const planId = changedRecordOf(subjectId);
+				const plan = planId === null ? undefined : plans.get(planId);
+				return plan === undefined
+					? unreadable('recurring gift', planId ?? subjectId)
+					: { data: plan };
 			}
 			default:
 				return { unsent: `A ${event} event is not one this deployment sends.` };

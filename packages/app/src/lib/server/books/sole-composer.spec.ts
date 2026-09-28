@@ -10,9 +10,12 @@ import { describe, expect, it } from 'vitest';
 // foreign-key order wrong in a way no single call site's suite would notice. ./writes.ts's header
 // says what it hides.
 //
-// the one builder that reports no money is held the same way with its own composer:
+// the builders that report no money are held the same way, each with its own composer:
 // `donorUpdatedWebhookStatements` goes into a batch only beside the contact write it reports, and
-// ../contacts/queries.ts is where that write is built.
+// ../contacts/queries.ts is where that write is built; `recurringGiftStartedWebhookStatements` only
+// beside the insert that opens a commitment, in ../donations/collect.ts; and
+// `recurringGiftChangeWebhookStatements` only beside a standing change to one, in
+// ../recurring/changes.ts.
 //
 // a source scan rather than a runtime hook, written the way ../ledger/sole-writer.spec.ts is, so it
 // catches the writer nobody wrote a test for; it reads text, so a namespace import or a computed
@@ -77,6 +80,21 @@ function contactChangeBuildersImportedBy(source: string): string[] {
 	);
 }
 
+/** each builder of rows reporting a commitment, and the one module that may import it. */
+const RECURRING_COMPOSERS = [
+	[
+		'recurringGiftStartedWebhookStatements',
+		resolve(import.meta.dirname, '../donations/collect.ts')
+	],
+	['recurringGiftChangeWebhookStatements', resolve(import.meta.dirname, '../recurring/changes.ts')]
+] as const;
+
+/** whether an import or re-export in `source` names `builder`. */
+function importsBuilder(source: string, builder: string): boolean {
+	const named = new RegExp(`\\b${builder}\\b`);
+	return [...source.matchAll(IMPORT_BRACES)].some(([, names = '']) => named.test(names));
+}
+
 describe('books/ is the only importer of the statement builders', () => {
 	const production = sourceFiles(SRC);
 	const files = production.filter(
@@ -137,6 +155,27 @@ describe('books/ is the only importer of the statement builders', () => {
 			'donorUpdatedWebhookStatements'
 		]);
 	});
+
+	it.each(RECURRING_COMPOSERS)(
+		'finds no import of %s outside the module whose write it reports',
+		(builder, composer) => {
+			const offenders = production
+				.filter((file) => file !== composer && !DEFINERS.includes(file))
+				.filter((file) => importsBuilder(readFileSync(file, 'utf8'), builder))
+				.map((file) => relative(SRC, file));
+			expect(
+				offenders,
+				`these modules write ${builder} rows by hand: ${offenders.join(', ')}. a commitment's events are spliced beside its own write, in ${relative(SRC, composer)}.`
+			).toEqual([]);
+		}
+	);
+
+	it.each(RECURRING_COMPOSERS)(
+		'matches %s in its composer, so the pattern is known to work',
+		(builder, composer) => {
+			expect(importsBuilder(readFileSync(composer, 'utf8'), builder)).toBe(true);
+		}
+	);
 
 	it('finds no production module importing a .testing helper, which the scan above never reads', () => {
 		const offenders = production

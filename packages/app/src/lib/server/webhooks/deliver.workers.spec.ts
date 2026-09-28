@@ -9,9 +9,11 @@ import { readGiftPage, readGifts } from '../integrations/gift';
 import type { WebhookEvent } from '../../webhooks/catalog';
 import { sendDueWebhooks, WEBHOOK_RETRY_SCHEDULE_MS } from './deliver';
 import { createDestination } from './destinations';
+import { stopRecurringPlan } from '../recurring/queries';
 import {
 	disputeOpenedWebhookStatements,
 	giftRefundedWebhookStatements,
+	recurringGiftStartedWebhookStatements,
 	webhookStatements
 } from './events';
 
@@ -38,7 +40,9 @@ beforeEach(async () => {
 		'webhook_destination',
 		'payment',
 		'donation',
-		'contact'
+		'recurring_plan',
+		'contact',
+		'form'
 	]) {
 		await env.DB.prepare(`delete from ${table}`).run();
 	}
@@ -752,5 +756,126 @@ describe('sendDueWebhooks() — a donor added and a donor updated', () => {
 			/^The donor [0-9a-f-]{36} this event was queued for could not be read\.$/
 		);
 		expect(row?.last_error).not.toContain(donorId);
+	});
+});
+
+describe('sendDueWebhooks() — a recurring gift started and a recurring gift ended', () => {
+	const DONOR_ID = '019fb900-0000-7000-8000-000000000001';
+	const PLAN_ID = '019fb900-0000-7000-8000-000000000002';
+
+	async function listening(events: readonly WebhookEvent[]) {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination;
+	}
+
+	/** a $25 monthly commitment from Ada Okafor, opened with the rows it owes. */
+	async function open(): Promise<void> {
+		const account = await env.DB.prepare(
+			`select id from account where is_postable = 1 and code = '4110'`
+		).first<{ id: string }>();
+		await env.DB.batch([
+			env.DB.prepare(
+				`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+				                   suggested_amounts, allowed_origins, created_at, updated_at)
+				 values ('frm_webhookplan1', 'General Fund', 'live', ?, 'USD', 500, 1000000, '[]', '[]', 0, 0)`
+			).bind(account?.id),
+			env.DB.prepare(
+				`insert into contact (id, kind, display_name, created_at, updated_at)
+				 values (?, 'individual', 'Ada Okafor', 0, 0)`
+			).bind(DONOR_ID)
+		]);
+		await env.DB.prepare(
+			`insert into recurring_plan (id, contact_id, form_id, amount_minor, currency, interval,
+			                             status, provider, provider_subscription_id,
+			                             provider_customer_id, started_at, next_charge_at, ended_at,
+			                             created_at, updated_at)
+			 values (?, ?, 'frm_webhookplan1', 2500, 'USD', 'monthly', 'active', 'stripe',
+			         'sub_webhook1', 'cus_webhook1', ?, ?, null, ?, ?)`
+		)
+			.bind(
+				PLAN_ID,
+				DONOR_ID,
+				Date.parse('2026-09-03T12:00:00.000Z'),
+				Date.parse('2026-10-03T12:00:00.000Z'),
+				START.getTime(),
+				START.getTime()
+			)
+			.run();
+		await db.batch([recurringGiftStartedWebhookStatements(db, PLAN_ID)]);
+	}
+
+	it('posts a recurring gift started signed, as the read API’s recurring gift', async () => {
+		const target = await listening(['recurring_gift.started']);
+		await open();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, START)).toBe(true);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'recurring_gift.started',
+			timestamp: START.toISOString(),
+			data: {
+				id: PLAN_ID,
+				donor_id: DONOR_ID,
+				amount: '25.00',
+				amount_minor: 2500,
+				currency: 'USD',
+				frequency: 'monthly',
+				status: 'active',
+				next_charge_at: '2026-10-03T12:00:00.000Z',
+				started_at: '2026-09-03T12:00:00.000Z',
+				updated_at: START.toISOString()
+			}
+		});
+		expect(await rows()).toEqual([expect.objectContaining({ status: 'delivered' })]);
+	});
+
+	it('posts a recurring gift ended as the recurring gift stands at send', async () => {
+		const target = await listening(['recurring_gift.ended']);
+		await open();
+		const STOPPED = new Date(START.getTime() + MINUTE);
+		vi.setSystemTime(STOPPED);
+		await stopRecurringPlan(db, PLAN_ID, STOPPED);
+		const receiving = receivers();
+
+		await runAt(new Date(STOPPED.getTime() + MINUTE), receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'recurring_gift.ended',
+			timestamp: STOPPED.toISOString(),
+			data: expect.objectContaining({
+				id: PLAN_ID,
+				status: 'stopped',
+				next_charge_at: null,
+				updated_at: STOPPED.toISOString()
+			})
+		});
+	});
+
+	it('fails a row whose recurring gift cannot be read, unposted, and says why', async () => {
+		await listening(['recurring_gift.started']);
+		await open();
+		await env.DB.prepare('update webhook_delivery set subject_id = ?').bind(uuidv7()).run();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		const [row] = await rows();
+		expect(row).toMatchObject({ status: 'failed', attempts: 0 });
+		expect(row?.last_error).toMatch(
+			/^The recurring gift [0-9a-f-]{36} this event was queued for could not be read\.$/
+		);
 	});
 });

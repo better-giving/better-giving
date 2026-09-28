@@ -41,6 +41,8 @@ import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entri
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
+import { planChangeStatements } from '../recurring/changes';
+import { recurringGiftStartedWebhookStatements } from '../webhooks/events';
 
 // the books for a gift that repeats: what one collection under a standing commitment writes, and
 // what the commitment's own standing writes when it stops.
@@ -423,7 +425,9 @@ function revives(notice: RecurringGiftNotice, plan: RecurringPlan): boolean {
  * is the one that stands; a revival is written only over a row that is `lapsed`, so it cannot
  * resurrect a cancellation whatever a delivery claims. the row is chosen by the statement rather
  * than by a read taken beforehand, so there is no window between deciding and writing — the shape
- * CLAUDE.md's ban on read-then-write asks for.
+ * CLAUDE.md's ban on read-then-write asks for. each carries the `recurring_gift.ended` or
+ * `recurring_gift.updated` it owes a webhook destination, under the same condition, in the same
+ * `batch()` (../recurring/changes.ts), so a redelivery owes nothing either.
  *
  * silent where this deployment holds no row for the commitment. a gift whose first collection never
  * succeeded has no row here by design, and a subscription created outside this app on the same
@@ -438,22 +442,22 @@ async function recordStanding(
 	if (plan === null) return null;
 
 	if (revives(notice, plan)) {
-		const restored = await db
-			.update(recurringPlan)
-			.set({ status: 'active', endedAt: null, nextChargeAt: notice.nextChargeAt })
-			.where(and(eq(recurringPlan.id, plan.id), eq(recurringPlan.status, 'lapsed')))
-			.returning({ id: recurringPlan.id });
+		const [, restored] = await db.batch(
+			planChangeStatements(db, plan.id, ['lapsed'], {
+				status: 'active',
+				endedAt: null,
+				nextChargeAt: notice.nextChargeAt
+			})
+		);
 		return restored.length > 0 ? 'revived' : null;
 	}
 
 	const ending = endingOf(notice, event);
 	if (ending === null) return null;
 
-	const marked = await db
-		.update(recurringPlan)
-		.set({ status: ending.status, endedAt: ending.endedAt, nextChargeAt: null })
-		.where(and(eq(recurringPlan.id, plan.id), eq(recurringPlan.status, 'active')))
-		.returning({ id: recurringPlan.id });
+	const [, marked] = await db.batch(
+		planChangeStatements(db, plan.id, ['active'], { ...ending, nextChargeAt: null })
+	);
 
 	return marked.length > 0 ? 'stopped' : null;
 }
@@ -527,6 +531,8 @@ type WriteOutcome = 'written' | 'duplicate' | 'refused' | 'failed';
  * completed. so the row and the charge that proves it land together or not at all. that is
  * unchanged by the gift being recorded at authorization: a `donation` with no successful payment
  * claims no income, because every figure in this app is a `SUM` over `ledger_entry` at read time.
+ * the `recurring_gift.started` a webhook destination is owed rides the same batch, keyed on the
+ * commitment, so a second delivery of this charge — refused as a duplicate — owes no second one.
  */
 async function openCommitment(
 	deps: SettleDeps,
@@ -672,6 +678,7 @@ async function openCommitment(
 
 	const wrote = await attempt(deps.db, [
 		deps.db.insert(recurringPlan).values(planRow),
+		recurringGiftStartedWebhookStatements(deps.db, planId),
 		...writes.statements
 	]);
 	if (wrote === 'duplicate') return 'duplicate';
@@ -754,11 +761,9 @@ async function writeAgainstPlan(
 		// `refreshOf` decides from `plan` as it was read, and an operator's stop or a concurrent
 		// delivery lapsing the plan can commit before this batch does, so it applies only over the
 		// status it read: whichever change landed first matches nothing here and stands, and the gift
-		// is recorded all the same, because the money moved.
-		deps.db
-			.update(recurringPlan)
-			.set(refreshOf(plan, notice, event))
-			.where(and(eq(recurringPlan.id, plan.id), eq(recurringPlan.status, plan.status)))
+		// is recorded all the same, because the money moved. a refresh that changes nothing writes
+		// nothing, so it owes a webhook destination no `recurring_gift.updated`.
+		...planChangeStatements(deps.db, plan.id, [plan.status], refreshOf(plan, notice, event))
 	]);
 
 	if (wrote === 'duplicate') {
