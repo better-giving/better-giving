@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:test';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
+import { page } from '$lib/server/db/schema';
 import { answering, insertPage } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -69,6 +71,38 @@ describe('a turn posted to a page’s chat', () => {
 		expect(await read.json()).toMatchObject({
 			turns: [{ role: 'operator' }, { role: 'assistant', text: 'Two-tone now.' }]
 		});
+	});
+});
+
+describe('a turn that cannot land', () => {
+	it('is a 409 marked stale when the page was saved while the model answered', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const [row] = await db.select().from(page).where(eq(page.id, pageId));
+		const edited = { ...JSON.parse(row?.draft ?? '{}'), palette: 'bold' };
+		const run = vi.fn(async () => {
+			await db
+				.update(page)
+				.set({ draft: JSON.stringify(edited) })
+				.where(eq(page.id, pageId));
+			return { response: JSON.stringify(TWO_TONE) };
+		});
+
+		const response = await post(pageId, TURN, { run });
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toMatchObject({ reason: 'stale' });
+	});
+
+	it('is a 500 marked failed when the turn throws, and names the page', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await db.update(page).set({ draft: '{"blocks":"none"}' }).where(eq(page.id, pageId));
+
+		const response = await post(pageId, TURN);
+
+		expect(response.status).toBe(500);
+		const body = (await response.json()) as { error: string; reason: string };
+		expect(body).toMatchObject({ reason: 'failed' });
+		expect(body.error).toContain(pageId);
 	});
 });
 
