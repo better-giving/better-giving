@@ -21,15 +21,16 @@ type GateNext = Parameters<MiddlewareFunction<Response>>[1];
 /**
  * the gate in front of every screen behind the login, as a route `middleware`.
  *
- * it is mounted on the protected layout — `src/routes/_app.tsx` exports it — and never on the
- * root. middleware on the root runs for every route, the payment processor's callback included,
+ * it is mounted on the protected layout — `src/routes/_app.tsx` exports it — and on the editor's
+ * preview, the one screen behind the login drawn outside that layout
+ * (`src/routes/preview.$pageId.tsx`); never on the root. middleware on the root runs for every route, the payment processor's callback included,
  * and the signature is computed over that request's body exactly as sent (CLAUDE.md).
  *
  * a `middleware` rather than a check each loader repeats, and that is the whole shape of it: a
  * loader written without the check would be served to anyone, and nothing would report it. what
  * decides whether a route is behind this gate is where it sits in the route tree, which
- * `src/routes.spec.ts` holds every route to — every route is under this layout, on the public
- * allow-list with the reason typed beside it, or on the console surface.
+ * `src/routes.spec.ts` holds every route to — every route is under this layout, the preview, on
+ * the public allow-list with the reason typed beside it, or on the console surface.
  *
  * it resolves the session once and hands it down with `context.set(staff, …)`, so no loader
  * beneath resolves one of its own. `src/routes.spec.ts` refuses a route under the layout that

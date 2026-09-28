@@ -454,6 +454,57 @@ describe('the preview', () => {
 		expect(post).toHaveBeenCalledWith({ type: BLOCK_MESSAGE, id: 'share' }, window.location.origin);
 	});
 
+	/** a box standing in for the card, holding a control of its own. */
+	const box = () => (
+		<div data-testid="box">
+			<button type="button">Donate</button>
+		</div>
+	);
+
+	it.each(PAGE_TYPES)('gives nothing on the %s outside the donation box a tab stop', (type) => {
+		const root = mount(
+			<PageView {...props(type, everyBlock(type, 'box-right'), { donationBox: box })} preview />
+		);
+		const controls = [
+			...root.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, summary')
+		].filter((control) => control.closest('[inert]') === null);
+		expect(controls.length).toBeGreaterThan(0);
+		expect(controls.filter((control) => control.getAttribute('tabindex') !== '-1')).toEqual([]);
+	});
+
+	it('draws the donation box inert, inside the block a click on it reports', () => {
+		const root = mount(
+			<PageView
+				{...props('donation_page', everyBlock('donation_page', 'column'), { donationBox: box })}
+				preview
+			/>
+		);
+		const inert = root.querySelector('[data-testid="box"]')?.closest('[inert]');
+		expect(inert?.closest('[data-block-id]')?.getAttribute('data-block-id')).toBe('donate');
+	});
+
+	it('draws the donation box live outside the preview', () => {
+		const root = mount(
+			<PageView
+				{...props('donation_page', everyBlock('donation_page', 'column'), { donationBox: box })}
+			/>
+		);
+		expect(root.querySelector('[data-testid="box"]')?.closest('[inert]')).toBeNull();
+	});
+
+	it('lets a press reach nothing a block does', async () => {
+		vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+		const writeText = vi.fn(async () => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		const root = mount(<PageView {...props('campaign', defaultCampaign())} preview />);
+		const status = root.querySelector('[data-block="share"] [role="status"]');
+		await act(async () =>
+			root.querySelector<HTMLButtonElement>('[data-block="share"] button')?.click()
+		);
+		expect(writeText).not.toHaveBeenCalled();
+		expect(status?.textContent).toBe('');
+	});
+
 	it('posts nothing outside the preview', () => {
 		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
 		onTestFinished(() => post.mockRestore());

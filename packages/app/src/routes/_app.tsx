@@ -16,14 +16,15 @@ import { readSetupState } from '$lib/server/config/setup-state';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app';
 
-// the layout every screen behind the login sits under, and the one place the session gate is
-// mounted.
+// the layout every screen behind the login sits under, and where the session gate is mounted for
+// all of them. the one route behind the login outside it is the editor's preview, which mounts the
+// same gate itself because this frame would be drawn around it (./preview.$pageId.tsx).
 //
 // pathless: the `_` prefix keeps the segment out of the URL, so /admin is /admin and this file is
 // what decides that reaching it needs a session. **being under this route is what makes a route
 // gated** — there is no group id and no naming convention standing in for it — and
-// ../routes.spec.ts holds every route in the app to that: under this layout, on the public
-// allow-list with the reason typed beside it, or on the console surface.
+// ../routes.spec.ts holds every route in the app to that: under this layout, the preview, on the
+// public allow-list with the reason typed beside it, or on the console surface.
 //
 // the gate is here rather than on ../root.tsx because middleware on the root runs for every route,
 // the payment processor's callback included, and its body must be read exactly once by the handler

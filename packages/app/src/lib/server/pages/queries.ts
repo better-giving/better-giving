@@ -1,14 +1,20 @@
 import { and, eq, inArray, notExists } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { chatTurn, form, page } from '../db/schema';
+import { chatTurn, form, type Page, page } from '../db/schema';
 
-// the one module that deletes a `page`, gated by ./sole-deleter.spec.ts, and where a live campaign
-// ends.
+// one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
+// and where a live campaign ends.
 //
 // a page is deleted only while it is a campaign nobody has ever been shown. once a page has been
 // live a gift may point at its owned settings row, and ending it is the campaign's own state rather
 // than a delete; the donation page is always live (`page_donation_page_live_check`), so it never
 // qualifies for either. `page` in ../db/schema.ts argues the rest from the table's side.
+
+/** the page with this id, of either type; null where there is none. */
+export async function readPage(db: Db, pageId: string): Promise<Page | null> {
+	const [row] = await db.select().from(page).where(eq(page.id, pageId));
+	return row ?? null;
+}
 
 /**
  * deletes a never-published campaign, its chat and the donation-settings row it owns, in one
