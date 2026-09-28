@@ -3,11 +3,12 @@ import { Sheet } from '@better-giving/operator/components/shell/Sheet';
 import type { ReactNode } from 'react';
 import { formatMinorBrief } from '$lib/donations/money';
 import { dayWords } from '$lib/page/end-date';
-import { PicturePicker, type PictureOption } from './pictures';
+import { PickRefusal, PicturePicker, type PictureOption } from './pictures';
 
 // the Settings sheet: everything about a page that is not a chat, one list. rows that hold a typed
 // value open a sheet of their own stacked over this one (./done-sheet.tsx argues their one Done);
 // the layout pictures and the look apply the moment they are picked, here, with nothing to finish.
+// a refused layout pick is reported under the pictures, in a region there whenever they are.
 //
 // the block list is the keyboard's way to a block: a click on a block in the preview opens the same
 // block's sheet (./preview-frame.tsx), and a row here is that click for a reader who cannot point.
@@ -111,8 +112,15 @@ type LayoutGroup =
 			readonly layouts: readonly PictureOption[];
 			readonly layout: string;
 			readonly onLayout: (layout: string) => void;
+			/** the last layout pick's refusal. */
+			readonly layoutRefusal?: string | null | undefined;
 	  }
-	| { readonly layouts?: undefined; readonly layout?: undefined; readonly onLayout?: undefined };
+	| {
+			readonly layouts?: undefined;
+			readonly layout?: undefined;
+			readonly onLayout?: undefined;
+			readonly layoutRefusal?: undefined;
+	  };
 
 type OpenRows =
 	| {
@@ -148,6 +156,7 @@ export function SettingsSheet({
 	layouts,
 	layout,
 	onLayout,
+	layoutRefusal,
 	look,
 	shareMessage,
 	donationSettings,
@@ -185,6 +194,7 @@ export function SettingsSheet({
 						value={layout}
 						onPick={onLayout}
 					/>
+					<PickRefusal refusal={layoutRefusal} />
 				</Part>
 			) : null}
 			{look === undefined || look === null ? null : <Part title="Look">{look}</Part>}

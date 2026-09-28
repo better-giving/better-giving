@@ -9,8 +9,27 @@ import type { InputHTMLAttributes, Ref } from 'react';
 //
 // the affix is read with the box: the input is described by it, so a screen reader hears "USD" or
 // the host along with the label.
+//
+// the box is the caller's to hold, with `value` and `onValueChange`, or the form's, with `name` and
+// `defaultValue`, posted with the rest of the form's boxes — a block's tier amounts
+// (./block-edit.tsx).
 
-type AffixedFieldProps = {
+/** who holds what is typed: the caller, or the form the box posts with. */
+type Entry =
+	| {
+			readonly value: string;
+			readonly onValueChange: (text: string) => void;
+			readonly name?: undefined;
+			readonly defaultValue?: undefined;
+	  }
+	| {
+			readonly name: string;
+			readonly defaultValue: string;
+			readonly value?: undefined;
+			readonly onValueChange?: undefined;
+	  };
+
+type AffixedFieldProps = Entry & {
 	readonly id: string;
 	readonly label: string;
 	readonly optional?: boolean;
@@ -22,8 +41,6 @@ type AffixedFieldProps = {
 	/** the predicate the last check or apply refused the box with. */
 	readonly error?: string | null | undefined;
 	readonly inputRef?: Ref<HTMLInputElement>;
-	readonly value: string;
-	readonly onValueChange: (text: string) => void;
 	readonly inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
 };
 
@@ -38,6 +55,8 @@ export function AffixedField({
 	inputRef,
 	value,
 	onValueChange,
+	name,
+	defaultValue,
 	inputMode
 }: AffixedFieldProps) {
 	const affixId = `${id}-affix`;
@@ -71,8 +90,12 @@ export function AffixedField({
 					autoComplete="off"
 					aria-invalid={error ? 'true' : undefined}
 					aria-describedby={describedBy}
+					name={name}
 					value={value}
-					onChange={(event) => onValueChange(event.target.value)}
+					defaultValue={defaultValue}
+					onChange={
+						onValueChange === undefined ? undefined : (event) => onValueChange(event.target.value)
+					}
 				/>
 				{affixAt === 'end' ? unit : null}
 			</div>
