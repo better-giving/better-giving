@@ -248,10 +248,20 @@ describe('where the blocks stand', () => {
 		);
 	});
 
-	it('draws a cover page with no hero as box-right', () => {
+	it('draws a cover page opening on a title as box-right, its hero in the flow', () => {
 		const root = mount(<PageView {...props('campaign', everyBlock('campaign', 'cover'))} />);
 		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('box-right');
 		expect(root.querySelector('.page-aside [data-block="donation-box"]')).not.toBeNull();
+		expect(root.querySelector('.page-hero[data-variant="cover"]')).toBeNull();
+	});
+
+	it('draws a cover page whose hero has no photo as box-right, its title in the flow', () => {
+		const root = mount(
+			<PageView {...props('campaign', { ...defaultCampaign(), layout: 'cover' })} />
+		);
+		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('box-right');
+		expect(drawn(root)).not.toContain('hero');
+		expect(root.querySelector('.page-lead [data-block="title"] h1')).not.toBeNull();
 	});
 
 	it('closes the page with an org-info footer wherever it is listed', () => {
@@ -267,6 +277,60 @@ describe('where the blocks stand', () => {
 	it('prefixes each block’s element id', () => {
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
 		expect(root.querySelector('#blk-donate')?.getAttribute('data-block-id')).toBe('donate');
+	});
+});
+
+describe('the cover', () => {
+	/** every block the campaign takes, a wide hero and a left title first. */
+	function covered(): Page {
+		const page = everyBlock('campaign', 'cover');
+		const lead = ['hero-wide', 'title-left'];
+		const first = lead.flatMap((id) => page.blocks.filter((b) => b.id === id));
+		return { ...page, blocks: [...first, ...page.blocks.filter((b) => !lead.includes(b.id))] };
+	}
+
+	it('runs the hero edge to edge with the page’s title over it, before the box’s column', () => {
+		const root = mount(<PageView {...props('campaign', covered())} />);
+		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('cover');
+		const hero = root.querySelector<HTMLElement>('main > [data-block="hero"]');
+		expect(hero?.dataset.blockId).toBe('hero-wide');
+		expect(hero?.nextElementSibling?.classList.contains('page-split')).toBe(true);
+		const cover = hero?.querySelector('.page-hero[data-variant="cover"]');
+		expect(cover?.closest('.page-in')).toBeNull();
+		const title = cover?.querySelector<HTMLElement>('.page-hero-over [data-block="title"]');
+		expect(title?.dataset.blockId).toBe('title-left');
+		expect(title?.querySelector('h1')?.textContent).toBe('Winter coat drive');
+		expect(root.querySelector('#blk-title-left')).toBe(title);
+	});
+
+	it('draws every block once, and the box once outside every block', () => {
+		const page = covered();
+		const root = mount(<PageView {...props('campaign', page)} />);
+		expect(drawn(root).sort()).toEqual(page.blocks.map((b) => b.type).sort());
+		expect(theBox(root).outside).toBeNull();
+		expect(root.querySelector('.page-aside [data-block="donation-box"]')).not.toBeNull();
+	});
+
+	it('draws a cover whose hero is followed by anything but a title as box-right', () => {
+		const page = covered();
+		const titles = page.blocks.filter((b) => b.type === 'title');
+		const blocks = [...page.blocks.filter((b) => b.type !== 'title'), ...titles];
+		const root = mount(<PageView {...props('campaign', { ...page, blocks })} />);
+		expect(root.querySelector('[data-layout]')?.getAttribute('data-layout')).toBe('box-right');
+		expect(root.querySelector('.page-hero[data-variant="wide"]')).not.toBeNull();
+		expect(root.querySelector('.page-hero-over')).toBeNull();
+	});
+
+	it('reports a click on the title as the title, and on the photo as the hero', () => {
+		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+		onTestFinished(() => post.mockRestore());
+		const root = mount(<PageView {...props('campaign', covered())} preview />);
+		act(() => root.querySelector<HTMLElement>('.page-hero-over h1')?.click());
+		act(() => root.querySelector<HTMLElement>('.page-hero img')?.click());
+		expect(post.mock.calls.map(([message]) => message)).toEqual([
+			{ type: BLOCK_MESSAGE, id: 'title-left' },
+			{ type: BLOCK_MESSAGE, id: 'hero-wide' }
+		]);
 	});
 });
 

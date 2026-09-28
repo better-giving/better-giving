@@ -1086,7 +1086,7 @@ function Landed({
 			{receipt === 'not_sent' ? (
 				<>
 					{' '}
-					<StatusWord register="momentary" blocked>
+					<StatusWord register="momentary" blocked mark="circle-alert">
 						Receipt not sent.
 					</StatusWord>
 				</>

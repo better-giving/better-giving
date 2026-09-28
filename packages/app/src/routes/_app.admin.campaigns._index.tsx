@@ -293,8 +293,8 @@ const SAMPLE = (
 			<StatusWord tone="done">Live</StatusWord>
 		</div>
 		<p className="adm-record__facts">Goal $15,000 · Ends Dec 31, 2026</p>
-		<div className="adm-actions adm-record__foot">
-			<ul className="adm-record__origins">
+		<div className="adm-record__row">
+			<ul className="adm-record__origins adm-record__foot">
 				<li>
 					<span className="adm-chip adm-press">/winter-coat-drive</span>
 				</li>
@@ -446,10 +446,10 @@ function CampaignRecord({
 				</StatusWord>
 			</div>
 			{facts.length === 0 ? null : <p className="adm-record__facts">{facts.join(' · ')}</p>}
-			<div className="adm-actions adm-record__foot">
+			<div className="adm-record__row">
 				{row.address === null ? null : (
 					// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as `RecordCard` states it.
-					<ul role="list" className="adm-record__origins">
+					<ul role="list" className="adm-record__origins adm-record__foot">
 						{row.state === 'never_published' ? (
 							// nothing answers there until the first Publish, so it is no link yet.
 							<li>

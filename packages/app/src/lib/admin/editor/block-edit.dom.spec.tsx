@@ -1,4 +1,4 @@
-import { act, type ReactNode } from 'react';
+import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
@@ -165,17 +165,29 @@ describe('the tiers', () => {
 });
 
 describe('the layout pictures', () => {
+	/** the Settings sheet as an editor route mounts it: the pick held by the editor, the sheet opened and closed. */
 	function Layout() {
 		const pick = useLayoutPick('box-right', 3);
-		return (
+		const [open, setOpen] = useState(true);
+		return open ? (
 			<SettingsSheet
-				onDismiss={() => {}}
+				onDismiss={() => setOpen(false)}
 				layouts={[
 					{ value: 'box-right', label: 'Box beside' },
 					{ value: 'banner', label: 'Banner' }
 				]}
-				{...pick}
+				{...pick.sheet}
 			/>
+		) : (
+			<button
+				type="button"
+				onClick={() => {
+					pick.startClean();
+					setOpen(true);
+				}}
+			>
+				Settings
+			</button>
 		);
 	}
 
@@ -187,5 +199,18 @@ describe('the layout pictures', () => {
 		expect(posted.map((body) => body.get('layout'))).toEqual(['banner']);
 		expect(reports(root)).toEqual([STALE]);
 		expect(root.querySelector<HTMLInputElement>('input[value="box-right"]')?.checked).toBe(true);
+	});
+
+	it('open again without the refusal the sheet was closed on', async () => {
+		const { root } = editor(<Layout />, BLOCK_FORMS.layout);
+		await press(root.querySelector<HTMLInputElement>('input[value="banner"]'));
+		expect(reports(root)).toEqual([STALE]);
+
+		await press(root.querySelector<HTMLButtonElement>('button[aria-label="Close"]'));
+		await press(
+			[...root.querySelectorAll('button')].find((one) => one.textContent === 'Settings') ?? null
+		);
+
+		expect(reports(root)).toEqual(['']);
 	});
 });

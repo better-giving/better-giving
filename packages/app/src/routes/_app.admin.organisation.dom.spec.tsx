@@ -38,12 +38,15 @@ let posted: Record<string, string>[];
 let shared: FormData[];
 /** each post waits here until the case lets it land. */
 let held: (() => void)[];
+/** the sentence the next look post is refused with, when a case sets one. */
+let refusing: string | null;
 
 beforeEach(() => {
 	stored = { look: { shade: 'light', corner: 'soft', brandColour: null }, version: 'v0' };
 	posted = [];
 	shared = [];
 	held = [];
+	refusing = null;
 });
 
 function screen(): HTMLElement {
@@ -74,6 +77,13 @@ function screen(): HTMLElement {
 				const body = Object.fromEntries([...form].map(([k, v]) => [k, String(v)]));
 				posted.push(body);
 				await new Promise<void>((resolve) => held.push(resolve));
+				if (refusing !== null)
+					return {
+						form: {
+							id: body[WHICH_FORM],
+							result: { status: 'error', initialValue: body, error: { '': [refusing] } }
+						}
+					};
 				const version = `v${posted.length}`;
 				if (body[WHICH_FORM] === 'org-look') {
 					stored = {
@@ -181,6 +191,20 @@ it('reports the landed save beside the control, and its Undo posts against the v
 	await settle();
 	expect(posted[1]).toEqual({ [WHICH_FORM]: 'org-look-undo', [RECORD_VERSION]: 'v1' });
 	expect(undo.getAttribute('aria-disabled')).toBe('true');
+});
+
+it('reports a refused save beside the control under the alert mark, not the check', async () => {
+	refusing = 'This look changed since the page loaded. Reload to see it.';
+	const root = await drawn();
+
+	act(() => radio(root, 'warm').click());
+	await settle();
+	act(() => held.shift()?.());
+	await settle();
+
+	const word = root.querySelector('.adm-actions [role="status"] .adm-momentary');
+	expect(word?.textContent).toBe(refusing);
+	expect(word?.querySelector('svg')?.classList.contains('lucide-circle-alert')).toBe(true);
 });
 
 describe('the sharing channels', () => {

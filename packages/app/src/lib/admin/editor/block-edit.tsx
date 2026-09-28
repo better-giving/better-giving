@@ -38,8 +38,8 @@ import {
 // a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
 // photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
 // stored, and Done writes its id and the description to the block, as a text block's words are;
-// a sheet dismissed before Done leaves the block as it was. what the photo's refusals say lands at
-// Done, since the block's rule names no box of the sheet's.
+// a sheet dismissed before Done leaves the block as it was. a refused description lands under its
+// box, with the caret moved there; what else the photo's rule refuses lands at Done.
 
 type Answer = AdminActionData & { readonly saved?: string };
 
@@ -162,14 +162,14 @@ type BlockFieldsProps = {
 
 /** the boxes a block's words are typed in, named as its form posts them. */
 function BlockFields({ id, text, error }: BlockFieldsProps) {
-	if (text.kind === 'photo') return <PhotoFields text={text} />;
+	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} />;
 	return <WordFields id={id} text={text} error={error} />;
 }
 
 type PhotoText = Extract<BlockText, { kind: 'photo' }>;
 
 /** the photo Done writes, and what describes it, each posted from a hidden box. */
-function PhotoFields({ text }: { readonly text: PhotoText }) {
+function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: PhotoText }) {
 	const upload = useFetcher<UploadAnswer>();
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
@@ -198,6 +198,9 @@ function PhotoFields({ text }: { readonly text: PhotoText }) {
 	};
 	const state: ReplacePhotoControlProps['state'] =
 		upload.state !== 'idle' ? 'uploading' : refused === null ? undefined : { refused };
+	const altId = boxId(id, 'alt');
+	const altError = error('alt');
+	useFocusOnRefusal(altError, altId);
 
 	return (
 		<>
@@ -207,6 +210,8 @@ function PhotoFields({ text }: { readonly text: PhotoText }) {
 				onResized={resized}
 				onAltChange={setAlt}
 				state={state}
+				altId={altId}
+				altError={altError}
 			/>
 			<input type="hidden" name="image_id" value={imageId} />
 			<input type="hidden" name="alt" value={alt} />
@@ -340,21 +345,29 @@ export function isDonationBox(blocks: readonly EditorBlock[], id: string): boole
 }
 
 /**
- * the Settings sheet's layout pictures: the draft's layout, drawn as the pick in flight while its
- * write is, the pick posted to the editor's action, and the last pick's refusal.
+ * the Settings sheet's layout pictures: `sheet` is the draft's layout, drawn as the pick in flight
+ * while its write is, the pick posted to the editor's action, and the last pick's refusal.
+ * `startClean` is the sheet opening: the editor holds this hook for as long as it is up, so a
+ * refusal the sheet was closed on is let go of there, and the sheet opens without it. a pick still
+ * in flight is left to land.
  */
 export function useLayoutPick(layout: string, version: number) {
-	const fetcher = useFetcher<Answer>({ key: LAYOUT_FORM.id });
+	const fetcher = useFetcher<Answer>();
 	const idle = fetcher.state === 'idle';
 	const sent = idle ? null : fetcher.formData?.get('layout');
 	const answer = idle ? fetcher.data : undefined;
 	return {
-		layout: typeof sent === 'string' ? sent : layout,
-		layoutRefusal: refusal(LAYOUT_FORM, answer, 'layout') ?? refusal(LAYOUT_FORM, answer, ''),
-		onLayout: (next: string) => {
-			const body = post(LAYOUT_FORM, version);
-			body.set('layout', next);
-			fetcher.submit(body, { method: 'post' });
+		sheet: {
+			layout: typeof sent === 'string' ? sent : layout,
+			layoutRefusal: refusal(LAYOUT_FORM, answer, 'layout') ?? refusal(LAYOUT_FORM, answer, ''),
+			onLayout: (next: string) => {
+				const body = post(LAYOUT_FORM, version);
+				body.set('layout', next);
+				fetcher.submit(body, { method: 'post' });
+			}
+		},
+		startClean: () => {
+			if (idle) fetcher.reset();
 		}
 	};
 }
