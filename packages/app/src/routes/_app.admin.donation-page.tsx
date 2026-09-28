@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
+import { BlockEditSheet, useLayoutPick } from '$lib/admin/editor/block-edit';
 import { MissionAsk } from '$lib/admin/editor/confirms';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
@@ -10,6 +11,7 @@ import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { parseRichText, textDocument } from '$lib/rich-text/document';
 import { invalid, parseForm, submittedDigest, submittedForm } from '$lib/server/conform';
@@ -17,6 +19,7 @@ import { loadFailed } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
 import type { Story } from '$lib/server/org/presentation';
 import { readOrgStory, type StoryWrite, updateOrgStory } from '$lib/server/org/queries';
+import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages/donation-page';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
 import { database } from '../context';
@@ -34,6 +37,10 @@ import type { Route } from './+types/_app.admin.donation-page';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish, as a campaign's are ($lib/server/pages/editor.ts).
+//
+// **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
+// preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
+// writes the draft ($lib/server/pages/blocks.ts), as a campaign's editor does.
 //
 // **the mission ask.** while the Organisation's mission is empty and this editor has never been
 // answered, it asks for the mission once, optionally. a Save writes what was typed to the
@@ -57,7 +64,12 @@ const MISSION_SAVE = defineForm({
 /** the mission ask's Skip, and every other way out of it. */
 const MISSION_SKIP = defineForm({ id: SKIP_FORM_ID, schema: z.object({}) });
 
-const SCREEN_FORMS = [SAVE_FORM_ID, SKIP_FORM_ID, PAGE_SETTINGS_FORM_ID] as const;
+const SCREEN_FORMS = [
+	SAVE_FORM_ID,
+	SKIP_FORM_ID,
+	PAGE_SETTINGS_FORM_ID,
+	...BLOCK_FORM_IDS
+] as const;
 
 const STALE_STORY =
 	'Nothing was saved: the Organisation page’s story has been saved since this editor was opened. ' +
@@ -84,6 +96,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 	}
 	return {
 		...editorPage(row),
+		...editorDraft(row, settings.currency),
 		settings,
 		askMission: story.story.mission === null && row.editorVisitedAt === null,
 		storyVersion: story.version
@@ -94,7 +107,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 	const body = await request.formData();
 	const db = context.get(database);
 
-	switch (submittedForm(body, SCREEN_FORMS)) {
+	const which = submittedForm(body, SCREEN_FORMS);
+	switch (which) {
 		case SAVE_FORM_ID: {
 			const submission = parseForm(body, MISSION_SAVE);
 			if (!submission.ok) return invalid(400, submission.reject());
@@ -134,6 +148,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 		}
 		case PAGE_SETTINGS_FORM_ID:
 			return saveDraftSettings(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
+		default:
+			return saveBlockForm(db, { type: 'donation_page' }, which, body, NO_DONATION_PAGE);
 	}
 }
 
@@ -151,6 +167,10 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 	const { state, version, preview, askMission, storyVersion } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
+	const [blockId, setBlockId] = useState<string | null>(null);
+	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
+	const layoutPick = useLayoutPick(loaderData.layout, version);
+	const closeBlock = useCallback(() => setBlockId(null), []);
 
 	const mission = useFetcher<Answer>({ key: 'mission-ask' });
 	const busy = mission.state !== 'idle';
@@ -188,7 +208,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					key={version}
 					src={preview}
 					title="Preview of the Donation page"
-					onBlockClick={noPress}
+					onBlockClick={setBlockId}
 				/>
 			}
 			entries={<EditorEntries onChat={noPress} onSettings={() => setSettings(true)} />}
@@ -196,11 +216,13 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 			{settings ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}
-					blocks={[]}
-					onOpenBlock={noPress}
-					layouts={[]}
-					layout=""
-					onLayout={noPress}
+					blocks={loaderData.blocks}
+					onOpenBlock={(id) => {
+						setSettings(false);
+						setBlockId(id);
+					}}
+					layouts={loaderData.layouts}
+					{...layoutPick}
 					look={null}
 					shareMessage={loaderData.shareMessage}
 					donationSettings={loaderData.settings.summary}
@@ -209,6 +231,15 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					}}
 				/>
 			) : null}
+			{openBlock === null ? null : (
+				<BlockEditSheet
+					key={openBlock.id}
+					block={openBlock}
+					version={version}
+					onDismiss={closeBlock}
+					onSaved={closeBlock}
+				/>
+			)}
 			{donationSettings ? (
 				<DonationSettingsSheet
 					seed={loaderData.settings}

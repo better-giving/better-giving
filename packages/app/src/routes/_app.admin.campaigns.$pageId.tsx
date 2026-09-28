@@ -1,8 +1,9 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { AddressSheet } from '$lib/admin/editor/address-sheet';
+import { BlockEditSheet, useLayoutPick } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
@@ -13,12 +14,14 @@ import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
 import { HEADING_MAX } from '$lib/page/catalog';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
+import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
 import {
 	type NameWrite,
@@ -48,6 +51,10 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
+//
+// **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
+// preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
+// writes the draft ($lib/server/pages/blocks.ts), as the Donation page's editor does.
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the
 // preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
@@ -82,7 +89,12 @@ const ADDRESS_EDIT = defineForm({
 	})
 });
 
-const SCREEN_FORMS = [NAME_FORM_ID, ADDRESS_FORM_ID, PAGE_SETTINGS_FORM_ID] as const;
+const SCREEN_FORMS = [
+	NAME_FORM_ID,
+	ADDRESS_FORM_ID,
+	PAGE_SETTINGS_FORM_ID,
+	...BLOCK_FORM_IDS
+] as const;
 
 const DONATION_PAGE_PATH = '/donate';
 
@@ -118,6 +130,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	}
 	return {
 		...editorPage(row),
+		...editorDraft(row, settings.currency),
 		settings,
 		name: row.name,
 		address: row.slug === null ? null : `/${row.slug}`,
@@ -144,7 +157,8 @@ function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
 export async function action({ context, params, request }: Route.ActionArgs) {
 	const body = await request.formData();
 
-	switch (submittedForm(body, SCREEN_FORMS)) {
+	const which = submittedForm(body, SCREEN_FORMS);
+	switch (which) {
 		case NAME_FORM_ID:
 			return saveName();
 		case ADDRESS_FORM_ID:
@@ -153,6 +167,14 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			return saveDraftSettings(
 				context.get(database),
 				{ id: params.pageId, type: 'campaign' },
+				body,
+				gone(params.pageId)
+			);
+		default:
+			return saveBlockForm(
+				context.get(database),
+				{ id: params.pageId, type: 'campaign' },
+				which,
 				body,
 				gone(params.pageId)
 			);
@@ -263,6 +285,10 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 	const [moving, setMoving] = useState<{ slug: string; confirmed: Confirmed } | null>(null);
 	/** the question up, held while the save answering it is in flight. */
 	const [question, setQuestion] = useState<Question | null>(null);
+	const [blockId, setBlockId] = useState<string | null>(null);
+	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
+	const closeBlock = useCallback(() => setBlockId(null), []);
+	const layoutPick = useLayoutPick(loaderData.layout, version);
 
 	const renaming = nameFetcher.state !== 'idle';
 	const nameAnswer = renaming ? undefined : nameFetcher.data;
@@ -334,7 +360,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					key={version}
 					src={preview}
 					title={`Preview of ${name}`}
-					onBlockClick={noPress}
+					onBlockClick={setBlockId}
 				/>
 			}
 			entries={<EditorEntries onChat={noPress} onSettings={() => setSettings(true)} />}
@@ -349,11 +375,13 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 						currency: FORM_CURRENCY,
 						endDate: loaderData.endDate
 					}}
-					blocks={[]}
-					onOpenBlock={noPress}
-					layouts={[]}
-					layout=""
-					onLayout={noPress}
+					blocks={loaderData.blocks}
+					onOpenBlock={(id) => {
+						setSettings(false);
+						setBlockId(id);
+					}}
+					layouts={loaderData.layouts}
+					{...layoutPick}
 					look={null}
 					shareMessage={loaderData.shareMessage}
 					donationSettings={donationSettings.summary}
@@ -362,6 +390,15 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					}}
 				/>
 			) : null}
+			{openBlock === null ? null : (
+				<BlockEditSheet
+					key={openBlock.id}
+					block={openBlock}
+					version={version}
+					onDismiss={closeBlock}
+					onSaved={closeBlock}
+				/>
+			)}
 			{opened === 'name' ? (
 				<NameSheet
 					name={name}
