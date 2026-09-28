@@ -13,6 +13,11 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 // a turn posts three boxes, each required: `message`, `imageIds` (a JSON array of stored image ids,
 // `[]` for none) and `timeZone` (the browser's IANA zone, which an end date is a day in). a turn the
 // edge refuses is a 400 whose `error` names the box.
+//
+// two answers carry a `reason` beside `error` for the editor to word its own line from: `stale`
+// on the 409 a save made while the model answered earns, and `failed` on the 500 a turn that threw
+// is caught into — caught, because a fetcher's thrown error lands on the editor's error boundary
+// and takes the editor with it.
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const turns = await readChat(context.get(database), params.pageId);
@@ -52,11 +57,20 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 		return data({ error: parsed.error.issues[0]?.message ?? 'the turn is malformed' }, 400);
 	}
 
-	const result = await draftTurn(context.get(database), context.get(platform).env, {
-		pageId: params.pageId,
-		...parsed.data,
-		now: Date.now()
-	});
+	let result: Awaited<ReturnType<typeof draftTurn>>;
+	try {
+		result = await draftTurn(context.get(database), context.get(platform).env, {
+			pageId: params.pageId,
+			...parsed.data,
+			now: Date.now()
+		});
+	} catch (e) {
+		console.error(`a chat turn on page ${params.pageId} failed:`, e);
+		return data(
+			{ error: `the turn on page "${params.pageId}" failed; send it again`, reason: 'failed' },
+			500
+		);
+	}
 	if (result.ok) return { outcome: result.outcome, turns: result.turns };
 	switch (result.reason) {
 		case 'not_found':
@@ -67,7 +81,8 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			return data(
 				{
 					error:
-						'the page was saved while the reply was being written, so nothing changed; send the message again'
+						'the page was saved while the reply was being written, so nothing changed; send the message again',
+					reason: 'stale'
 				},
 				409
 			);

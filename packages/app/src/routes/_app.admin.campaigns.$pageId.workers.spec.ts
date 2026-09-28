@@ -543,3 +543,47 @@ describe('Publish', () => {
 		]);
 	});
 });
+
+describe('a block’s sheet and the layout pictures', () => {
+	async function drawn(pageId: string) {
+		const response = await request(
+			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }),
+			{ env }
+		);
+		return (await response.json()) as {
+			blocks: { id: string; summary: string; text: unknown }[];
+			layout: string;
+		};
+	}
+
+	it('writes a title’s words to the draft, drawn on the next load, and the live page stays', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		const published = (await stored(pageId)).published;
+
+		const response = await post(pageId, 'block-title', {
+			block_id: 'title',
+			heading: 'Coats before the first frost',
+			lede: ''
+		});
+
+		expect(response.status).toBe(200);
+		expect((await drawn(pageId)).blocks.find(({ id }) => id === 'title')).toMatchObject({
+			summary: 'Coats before the first frost',
+			text: { kind: 'title', heading: 'Coats before the first frost', lede: '' }
+		});
+		expect((await stored(pageId)).published).toBe(published);
+	});
+
+	it('writes a layout picked, and refuses one off the list naming it', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+
+		expect((await post(pageId, 'page-layout', { layout: 'banner' })).status).toBe(200);
+		expect((await drawn(pageId)).layout).toBe('banner');
+
+		const refused = await post(pageId, 'page-layout', { layout: 'sideways' });
+		expect(refused.status).toBe(400);
+		expect(await refused.json()).toMatchObject({
+			form: { result: { error: { layout: [expect.stringContaining('"sideways"')] } } }
+		});
+	});
+});
