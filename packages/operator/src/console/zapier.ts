@@ -8,7 +8,7 @@
 // deployment nobody connects to Zapier is not half set up.
 
 /**
- * every press this surface takes, as the `press` on the body.
+ * every press this surface takes, as the `press` its answer names.
  *
  *   make    — the first key, refused where one already exists.
  *   replace — a new key in place of the current one, refused where there is none. the old key
@@ -49,23 +49,21 @@ export interface ZapierReport {
 }
 
 /**
- * what a press answers with.
+ * what a press that landed answers with.
  *
  * `key` is the plaintext, shown this once: no reading carries it. `disconnected` is how many
  * subscriptions the old key took down with it, and 0 on `make`. of those, `paused` is how many
  * Zapier paused, asking the Zap's owner to reconnect, or no longer had, and `notPaused` how many
  * hooks did not take it — a fault, an error or no answer — whose Zaps still read as on in Zapier
  * until their owners turn them off and on again; nothing asks again. the two sum to
- * `disconnected`. a refusal's `detail` names the press that would have landed.
+ * `disconnected`. a refused press answers with the page form's own rejection instead, a sentence
+ * under the key.
  */
-export type ZapierPressReport =
-	| {
-			readonly ok: true;
-			readonly press: ZapierPress;
-			readonly key: string;
-			readonly madeAt: string;
-			readonly disconnected: number;
-			readonly paused: number;
-			readonly notPaused: number;
-	  }
-	| { readonly ok: false; readonly press: ZapierPress; readonly detail: string };
+export type ZapierPressReport = {
+	readonly press: ZapierPress;
+	readonly key: string;
+	readonly madeAt: string;
+	readonly disconnected: number;
+	readonly paused: number;
+	readonly notPaused: number;
+};

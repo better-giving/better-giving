@@ -106,7 +106,8 @@ it('draws no strip under no destination', async () => {
 });
 
 // the rail's Integrations group is the deployer's alone: every page in it answers a member with
-// not-found, and ./_app.admin.integrations.api.workers.spec.ts holds the loader's half.
+// not-found, and ./_app.admin.integrations.api.workers.spec.ts and
+// ./_app.admin.integrations.zapier.workers.spec.ts hold the loaders' half.
 
 /** the column's headings and the destinations it offers, in the order it draws them. */
 function rail(root: HTMLElement): string[] {
@@ -116,20 +117,25 @@ function rail(root: HTMLElement): string[] {
 }
 
 it('draws the deployer the Integrations group, headed, between Members and Books', async () => {
-	const drawn = rail(await frameAt('/admin/forms'));
+	const root = await frameAt('/admin/forms');
+	const drawn = rail(root);
 
 	expect(drawn.slice(drawn.indexOf('Members'))).toEqual([
 		'Members',
 		'Integrations',
+		'Zapier',
 		'API',
 		'Books'
 	]);
+	// the one cell marked with a company's own image rather than a glyph.
+	expect(root.querySelector('a[href="/admin/integrations/zapier"] img')).not.toBeNull();
 });
 
 it('draws a member no Integrations group, and the rest of the rail as it is', async () => {
 	const drawn = rail(await frameAt('/admin/forms', false));
 
 	expect(drawn).not.toContain('Integrations');
+	expect(drawn).not.toContain('Zapier');
 	expect(drawn).not.toContain('API');
 	expect(drawn.slice(drawn.indexOf('Members'))).toEqual(['Members', 'Books']);
 });

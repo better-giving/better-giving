@@ -35,7 +35,7 @@ export function zapierKeyRefusal(): Response {
 		{
 			message:
 				'This request carries no Better Giving key this deployment accepts in its `Authorization: Bearer` header.',
-			fix: 'Make a Zapier key on your Better Giving dashboard, under Integrations → Zapier, and reconnect the account on Zapier with it.'
+			fix: 'Make the Zapier key on your Better Giving dashboard, under Integrations → Zapier, or replace it there if it is lost, and reconnect the account on Zapier with the key it shows.'
 		},
 		401
 	);

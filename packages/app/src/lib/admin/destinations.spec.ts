@@ -1,3 +1,5 @@
+import { globSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
 	currentDestination,
@@ -16,6 +18,7 @@ describe('the rail', () => {
 			'/admin/donations',
 			'/admin/recurring',
 			'/admin/members',
+			'/admin/integrations/zapier',
 			'/admin/integrations/api',
 			'/admin/books'
 		]);
@@ -26,7 +29,7 @@ describe('the rail', () => {
 			['Dashboard'],
 			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Members'],
-			['API'],
+			['Zapier', 'API'],
 			['Books']
 		]);
 	});
@@ -136,5 +139,20 @@ describe('the destination a page belongs to', () => {
 	it('is nothing for a path that merely starts with a destination’s letters', () => {
 		// a bare `startsWith` marks Donors here, and the reader is not in that section.
 		expect(currentDestination('/admin/donorships')).toBeUndefined();
+	});
+});
+
+describe('the Zapier cell', () => {
+	it('is marked with the image packages/operator publishes, and no glyph', () => {
+		const zapier = DESTINATIONS.find((d) => d.href === '/admin/integrations/zapier');
+
+		expect(zapier?.mark).toEqual({ src: expect.stringContaining('zapier') });
+	});
+
+	it('draws an image that is in the repository once, in packages/operator', () => {
+		const packages = resolve(import.meta.dirname, '../../../..');
+		const found = globSync('*/{src,static,public}/**/zapier.{png,svg,webp}', { cwd: packages });
+
+		expect(found).toEqual(['operator/src/styles/brand/zapier.png']);
 	});
 });

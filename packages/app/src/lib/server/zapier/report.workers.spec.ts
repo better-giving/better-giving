@@ -7,8 +7,9 @@ import { zapierStatements } from './events';
 import { readZapierDeliveries } from './report';
 import { subscribe } from './subscriptions';
 
-// the queue as the console reads it, against a real D1. rows are queued by `zapierStatements`, the
-// statement the money path splices in, and put into the state a case needs by a plain update.
+// the queue as the dashboard's Zapier page reads it, against a real D1. rows are queued by
+// `zapierStatements`, the statement the money path splices in, and put into the state a case needs
+// by a plain update.
 
 const KEY_HASH = 'a'.repeat(64);
 const DAY = 24 * 60 * 60_000;

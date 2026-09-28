@@ -144,7 +144,7 @@ Optional, and not a set-up job. It starts a Zap on three events: a settled gift 
 
 **On your dashboard, under Integrations → Zapier, press Make key.** The page then shows the two things Zapier asks for: this deployment's address and the key. Copy the key then: it is shown once, and afterwards the page shows only its first and last characters. A key that is lost is replaced, never shown again.
 
-**Then open the Better Giving Zapier app** from the link on that page. It is private for now and reached only through that link. Connect an account with the address and the key, and build Zaps on New Donor, New Gift or Gift Refunded. The Zapier page counts the Zaps listening on each.
+**Then open the Better Giving Zapier app.** It is private for now, reached only through the invite link Zapier gives whoever pushed it from `packages/zapier`; the page names the app and does not link it. Connect an account with the address and the key, and build Zaps on New Donor, New Gift or Gift Refunded. The Zapier page counts the Zaps listening on each.
 
 **Replace key** makes a new one, shown once like the first, and disconnects every Zap on the old one. Zapier turns off each Zap it can reach. Reconnect each one with the new key, then turn it on: Zapier only subscribes a Zap when it is turned on, so a Zap still on after the replace has to be turned off and on again.
 

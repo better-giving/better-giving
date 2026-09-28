@@ -1,3 +1,5 @@
+import zapierImage from '@better-giving/operator/brand/zapier.png';
+
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
  * one look, then the forms that take the money, the donors it came from, the gifts themselves, the
@@ -54,8 +56,9 @@
  * same predicate the pages behind the group read.
  *
  * `mark` is the glyph the column draws beside a label — a name from
- * packages/operator/src/components/status/glyphs.js. the bar at a phone's width draws none, so a
- * mark is never the only thing telling two destinations apart.
+ * packages/operator/src/components/status/glyphs.js — or, for a destination named after another
+ * company's product, that company's image as packages/operator publishes it, `{ src }`. the bar at
+ * a phone's width draws neither, so a mark is never the only thing telling two destinations apart.
  */
 export const DESTINATION_GROUPS = [
 	{
@@ -94,6 +97,12 @@ export const DESTINATION_GROUPS = [
 		heading: 'Integrations',
 		deployer: true,
 		destinations: [
+			{
+				href: '/admin/integrations/zapier',
+				label: 'Zapier',
+				short: 'Zapier',
+				mark: { src: zapierImage }
+			},
 			{ href: '/admin/integrations/api', label: 'API', short: 'API', mark: 'key-round' }
 		]
 	},
