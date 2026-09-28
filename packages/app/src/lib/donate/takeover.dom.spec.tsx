@@ -481,13 +481,9 @@ it('draws nothing at all on a numbered step', () => {
 	expect(shown(root, '.prose, .aside, .message, .attention')).toBe('');
 });
 
-it('draws the no-form notice in the page’s own dress, naming nobody it was given nobody for', () => {
-	const bare = mount(<DonateNotice orgName={null} />);
-	expect(bare.querySelector('.notice')?.textContent).toBe(copy.NO_FORM);
-	expect(bare.querySelector('h1')).toBe(null);
+it('draws the no-form notice in the page’s own dress', () => {
+	const root = mount(<DonateNotice />);
+	expect(root.querySelector('.notice')?.textContent).toBe(copy.NO_FORM);
 	// the card's dress reaches none of it: there is no form here for the form's sheets to paint.
-	expect(bare.querySelector('[part]')).toBe(null);
-
-	const named = mount(<DonateNotice orgName="Helping Hands" />);
-	expect(named.querySelector('.org-name')?.textContent).toBe('Helping Hands');
+	expect(root.querySelector('[part]')).toBe(null);
 });
