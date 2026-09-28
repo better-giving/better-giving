@@ -1,7 +1,15 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useFetcher, useSearchParams } from 'react-router';
+import { describeResized, type Resized } from '$lib/images/resize';
 import { imageSrc } from '$lib/page/image-src';
-import { type ChatMessage, type ChatSend, ChatSheet, type ChatUnsent } from '../chat/chat-sheet';
+import { AttachControl, attachRefusal } from '../chat/attach-control';
+import {
+	type ChatAttachment,
+	type ChatMessage,
+	type ChatSend,
+	ChatSheet,
+	type ChatUnsent
+} from '../chat/chat-sheet';
 
 // the Chat sheet as both editors mount it: `open` for the Chat entry, and the sheet while it is
 // open. the chat is the page's chat route's (src/routes/_app.admin.pages.$pageId.chat.ts), asked
@@ -25,6 +33,15 @@ import { type ChatMessage, type ChatSend, ChatSheet, type ChatUnsent } from '../
 // opens on as already read ($lib/admin/chat/chat-log.tsx), and would speak the whole history as it
 // arrived.
 //
+// a photo is attached by the sheet's attach press, which resizes it in the browser and reports
+// here; the resized photo is posted at once to the images route (src/routes/_app.admin.images.ts)
+// by a third fetcher, whose answer is the stored id the next send carries — the sheet puts a ready
+// photo's id in `imageIds` itself. the post revalidates nothing: a stored photo is on no page until
+// a turn names it, and that turn's own post is what reads the editor again. an upload's answer is
+// taken only while its photo is still `uploading`, so one landing after Remove or after a new pick
+// is dropped. the photo stays attached through a send nothing was stored from, so the resend
+// carries it, and goes once a turn carrying it lands.
+//
 // `?chat` opens it on arrival. the create action lands a campaign made with a "What's it for?"
 // line there, its first turn already answered (`createCampaign` in $lib/server/pages/campaign.ts
 // runs it before the redirect). closing drops the flag, so a reload opens the editor bare.
@@ -41,6 +58,33 @@ type History = { readonly turns: readonly ChatMessage[] };
 type TurnAnswer =
 	| { readonly outcome: string; readonly turns: readonly ChatMessage[] }
 	| { readonly error: string; readonly reason?: 'stale' | 'failed' };
+
+/** where a resized photo is posted. */
+const IMAGES = '/admin/images';
+
+/** what the images route answers: the photo stored, or why it was not. */
+type UploadAnswer =
+	| { readonly id: string; readonly width: number; readonly height: number }
+	| { readonly error: string; readonly reason?: 'failed' };
+
+/** the attached photo as this module holds it: the sheet's attachment, less the Remove press. */
+type Photo = ChatAttachment extends infer A
+	? A extends unknown
+		? Omit<A, 'onRemove'>
+		: never
+	: never;
+
+/** the attachment row once the images route has answered for a photo `bytes` long. */
+function uploadLanded(photo: Photo, answer: UploadAnswer, bytes: number): Photo {
+	const { name, previewSrc } = photo;
+	if ('error' in answer) {
+		const reason =
+			answer.reason === 'failed' ? 'That didn’t go through. Attach it again.' : answer.error;
+		return { name, previewSrc, state: 'refused', reason };
+	}
+	const detail = describeResized({ width: answer.width, height: answer.height, bytes });
+	return { name, previewSrc, state: 'ready', imageId: answer.id, detail };
+}
 
 /** the operator's words for a send nothing was stored from. */
 function unsentReason(answer: Extract<TurnAnswer, { error: string }>): string {
@@ -80,12 +124,67 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 	const [sentText, setSentText] = useState('');
 	const [unsent, setUnsent] = useState<ChatUnsent | undefined>(undefined);
 	const [answered, setAnswered] = useState(turn.data);
+	const upload = useFetcher<UploadAnswer>();
+	const [photo, setPhoto] = useState<Photo | undefined>(undefined);
+	/** the size of the photo being posted, for its row's detail once it is stored. */
+	const [postedBytes, setPostedBytes] = useState(0);
+	const [uploadAnswered, setUploadAnswered] = useState(upload.data);
 	if (turn.data !== answered) {
 		setAnswered(turn.data);
 		if (turn.data !== undefined && 'error' in turn.data) {
 			setUnsent({ text: sentText, reason: unsentReason(turn.data) });
+		} else if (turn.data !== undefined) {
+			setPhoto(undefined);
 		}
 	}
+	if (upload.data !== uploadAnswered) {
+		setUploadAnswered(upload.data);
+		if (upload.data !== undefined && photo?.state === 'uploading') {
+			setPhoto(uploadLanded(photo, upload.data, postedBytes));
+		}
+	}
+
+	const previewSrc = photo?.previewSrc;
+	useEffect(() => {
+		if (previewSrc === undefined) return;
+		return () => URL.revokeObjectURL(previewSrc);
+	}, [previewSrc]);
+
+	/**
+	 * the pick being resized, by name. a ref because its result reaches the handler of the render it
+	 * was picked on, which saw no photo yet.
+	 */
+	const resizing = useRef<string | null>(null);
+
+	const picked = (file: File) => {
+		resizing.current = file.name;
+		setPhoto({ name: file.name, state: 'resizing' });
+	};
+
+	const remove = () => {
+		resizing.current = null;
+		setPhoto(undefined);
+	};
+
+	const resized = (result: Resized) => {
+		const name = resizing.current;
+		if (name === null) return;
+		resizing.current = null;
+		if (!result.ok) {
+			setPhoto({ name, state: 'refused', reason: attachRefusal(result.reason) });
+			return;
+		}
+		setPhoto({ name, previewSrc: URL.createObjectURL(result.blob), state: 'uploading' });
+		setPostedBytes(result.blob.size);
+		const body = new FormData();
+		body.set('file', result.blob);
+		upload.submit(body, {
+			method: 'post',
+			action: IMAGES,
+			encType: 'multipart/form-data',
+			defaultShouldRevalidate: false
+		});
+	};
 
 	const { load } = history;
 	useEffect(() => {
@@ -129,6 +228,8 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 				suggestions={SUGGESTIONS}
 				imageSrc={imageSrc}
 				unsent={unsent}
+				attachment={photo && { ...photo, onRemove: remove }}
+				attach={({ held }) => <AttachControl held={held} onPicked={picked} onResized={resized} />}
 			/>
 		) : null;
 
