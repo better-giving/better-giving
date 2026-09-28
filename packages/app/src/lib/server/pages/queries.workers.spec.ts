@@ -5,10 +5,12 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { chatTurn, form, page, type PageState } from '../db/schema';
 import type { PageType } from '../../page/keys';
-import { deleteNeverPublishedCampaign } from './queries';
+import { deleteNeverPublishedCampaign, endCampaign } from './queries';
 
 // the one delete of a page: a campaign that has never been live, with its owned settings row and
 // its chat, in one `batch()`. everything that has been live is refused, and so is the Donation page.
+// and a campaign's end: a live campaign to `ended` with its owned settings row out of service, in one
+// `batch()`, and every other page refused with its row untouched.
 
 let db: Db;
 
@@ -18,8 +20,19 @@ beforeAll(() => {
 
 let sequence = 0;
 
-/** a page of the given type and state, owning a fresh settings row, with one chat turn. */
+/**
+ * a page of the given type and state, owning a fresh settings row, with one chat turn. there is one
+ * Donation page, so a new one replaces any other and its chat.
+ */
 async function pageWithChat(type: PageType, state: PageState) {
+	if (type === 'donation_page') {
+		await env.DB.batch([
+			env.DB.prepare(
+				"delete from chat_turn where page_id in (select id from page where type = 'donation_page')"
+			),
+			env.DB.prepare("delete from page where type = 'donation_page'")
+		]);
+	}
 	sequence += 1;
 	const [owned] = await db
 		.insert(form)
@@ -81,5 +94,41 @@ describe('deleteNeverPublishedCampaign()', () => {
 		expect(await deleteNeverPublishedCampaign(db, '019fc800-0000-7000-8000-000000000000')).toBe(
 			false
 		);
+	});
+});
+
+describe('endCampaign()', () => {
+	/** a page as `pageWithChat` leaves it, its owned settings row taking gifts. */
+	async function servingPage(type: PageType, state: PageState) {
+		const made = await pageWithChat(type, state);
+		await db.update(form).set({ status: 'live' }).where(eq(form.id, made.formId));
+		return made;
+	}
+
+	async function standing({ pageId, formId }: { pageId: string; formId: string }) {
+		const [row] = await db.select({ state: page.state }).from(page).where(eq(page.id, pageId));
+		const [owned] = await db.select({ status: form.status }).from(form).where(eq(form.id, formId));
+		return { state: row?.state, status: owned?.status };
+	}
+
+	it('ends a live campaign and takes its owned settings row out of service with it', async () => {
+		const made = await servingPage('campaign', 'live');
+		expect(await endCampaign(db, made.pageId)).toBe(true);
+		expect(await standing(made)).toEqual({ state: 'ended', status: 'draft' });
+	});
+
+	// each owned row is live here, so a row the batch touched without ending its page shows.
+	it.each([
+		['a campaign never published', 'campaign', 'never_published'],
+		['a campaign already ended', 'campaign', 'ended'],
+		['the Donation page', 'donation_page', 'live']
+	] as const)('refuses %s and leaves its owned row serving', async (_, type, state) => {
+		const made = await servingPage(type, state);
+		expect(await endCampaign(db, made.pageId)).toBe(false);
+		expect(await standing(made)).toEqual({ state, status: 'live' });
+	});
+
+	it('refuses a page that does not exist', async () => {
+		expect(await endCampaign(db, '019fc800-0000-7000-8000-000000000000')).toBe(false);
 	});
 });
