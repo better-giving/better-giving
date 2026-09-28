@@ -53,7 +53,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			address: page.type === 'donation_page' || page.slug === null ? '/donate' : `/${page.slug}`
 		},
 		request,
-		{ preview: true }
+		{ now: Date.now(), preview: true }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	return loaded;

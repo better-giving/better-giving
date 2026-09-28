@@ -459,7 +459,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			readOrgProfile(db),
 			readSites(db),
 			readActivePrograms(db),
-			readOwningPage(db, params.id)
+			readOwningPage(db, params.id, Date.now())
 		]);
 	} catch (e) {
 		console.error('reading a donation form failed:', e);

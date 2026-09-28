@@ -211,6 +211,9 @@ export interface PublishedConfigSources {
  * `PublishedConfigSources`), because a judgement stated against values is what makes every
  * refusal decidable with no D1 in sight.
  *
+ * `now` is the instant a campaign's end date is read against (`readOwningPage`): a campaign ended
+ * by its end date has its row read as End leaves it (`asEnded` below), so the two refuse alike.
+ *
  * `drafted` is the editor's preview alone ($lib/server/pages/view.ts): the row as a page's draft
  * would leave it once published, laid over the stored row before anything is judged or read from it.
  */
@@ -221,12 +224,17 @@ export async function readPublishedConfig(
 	readCadences: () => Promise<readonly Frequency[]>,
 	readRails: () => Promise<readonly PaymentMethod[]>,
 	readCoins: () => Promise<readonly PayableCoin[] | null>,
-	drafted: (stored: FormRecord) => FormRecord = (stored) => stored
+	{
+		now = Date.now(),
+		drafted = (stored) => stored
+	}: {
+		readonly now?: number;
+		readonly drafted?: (stored: FormRecord) => FormRecord;
+	} = {}
 ): Promise<PublishedConfigResult> {
 	const env = readConfigEnv(source);
 	const stored = await readForm(db, id);
-	const form = stored === null ? null : drafted(stored);
-	if (form === null) {
+	if (stored === null) {
 		// no row, so nothing is read and nothing is asked of the processor: this answers
 		// `form_not_found` before it reaches the config the empty lists would have gone into.
 		return publishedConfig({
@@ -243,14 +251,27 @@ export async function readPublishedConfig(
 	}
 
 	const [owner, profile, cadences, rails, coins, program] = await Promise.all([
-		readOwningPage(db, form.id),
+		readOwningPage(db, stored.id, now),
 		readOrgProfile(db),
 		readCadences(),
 		readRails(),
 		readCoins(),
-		readFormProgram(db, form)
+		// the status `asEnded` may change decides nothing in the cause's read.
+		readFormProgram(db, drafted(stored))
 	]);
+	const form = drafted(asEnded(stored, owner));
 	return publishedConfig({ id, form, owner, profile, env, cadences, rails, coins, program });
+}
+
+/**
+ * the owned row as `endCampaign` in ../pages/queries.ts leaves it — `draft` — where its campaign
+ * reads as ended while the row is still `live`: the campaign ended by its end date, which writes
+ * nothing. the stored row is otherwise as read.
+ */
+function asEnded(stored: FormRecord, owner: OwningPage | null): FormRecord {
+	return owner?.type === 'campaign' && owner.state === 'ended' && stored.status === 'live'
+		? { ...stored, status: 'draft' }
+		: stored;
 }
 
 /**
@@ -306,11 +327,10 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	// only a live form serves. the two other statuses are refused separately because the way out
 	// of each is a different screen: a draft is published from the form's own edit page — or, where
 	// a campaign owns the row, from Campaigns, because the Forms screen 404s a page's row and
-	// `endCampaign` in ../pages/queries.ts is what put an ended one back to draft — and a retired
-	// form cannot be published at all — the three `updateForm*` group writes and
-	// `archiveForm` in ./queries.ts all refuse a row with `archived_at` set and nothing here
-	// clears it, so the way forward is
-	// a new form and a new snippet.
+	// `endCampaign` in ../pages/queries.ts is what put an ended one back to draft, or `asEnded`
+	// what reads it so — and a retired form cannot be published at all — the three `updateForm*`
+	// group writes and `archiveForm` in ./queries.ts all refuse a row with `archived_at` set and
+	// nothing here clears it, so the way forward is a new form and a new snippet.
 	//
 	// `status` decides both, though `archived_at` is the column that records the retirement:
 	// `archiveForm` writes the pair in one statement precisely so they cannot come apart, and

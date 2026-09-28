@@ -133,7 +133,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 		loadFailed('The Donation page');
 	}
 	return {
-		...editorPage(row),
+		...editorPage(row, Date.now()),
 		...editorDraft(row, settings.currency),
 		settings,
 		pageSettings,

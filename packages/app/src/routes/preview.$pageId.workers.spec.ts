@@ -1,11 +1,12 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb } from '$lib/server/db/client';
-import { page as pageTable } from '$lib/server/db/schema';
+import { form, page as pageTable } from '$lib/server/db/schema';
 import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert, readForm } from '$lib/server/forms/queries';
 import { edgeCache } from '$lib/server/edge-cache.testing';
@@ -173,6 +174,21 @@ describe('the donation box in a preview', () => {
 		const { config } = await open(campaign.id);
 		expect(config.formId).toBe(campaign.formId);
 		expect(config.suggestedAmountsMinor).toEqual([2500, 5000, 10000]);
+	});
+
+	it('is drawn for a live campaign past its published end date, as for one End ended', async () => {
+		const campaign = await neverPublishedCampaign(defaultCampaign());
+		const published = { ...defaultCampaign(), endsAt: Date.now() - 1_000, endsZone: 'UTC' };
+		await db.batch([
+			db
+				.update(pageTable)
+				.set({ state: 'live', published: JSON.stringify(published) })
+				.where(eq(pageTable.id, campaign.id)),
+			db.update(form).set({ status: 'live' }).where(eq(form.id, campaign.formId))
+		]);
+
+		const { config } = await open(campaign.id);
+		expect(config.formId).toBe(campaign.formId);
 	});
 
 	it('offers the donation settings the draft holds, over the row’s', async () => {

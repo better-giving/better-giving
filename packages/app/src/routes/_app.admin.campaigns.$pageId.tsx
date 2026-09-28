@@ -167,7 +167,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		loadFailed('This campaign');
 	}
 	return {
-		...editorPage(row),
+		...editorPage(row, Date.now()),
 		...editorDraft(row, settings.currency),
 		settings,
 		pageSettings,
@@ -280,10 +280,14 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 		const seen = submittedVersion(body);
 		let written: SlugWrite;
 		try {
-			written = await updateCampaignSlug(context.get(database), params.pageId, seen, checked.slug, {
-				move: submission.value.move === true,
-				takeover: submission.value.takeover === true
-			});
+			written = await updateCampaignSlug(
+				context.get(database),
+				params.pageId,
+				seen,
+				checked.slug,
+				{ move: submission.value.move === true, takeover: submission.value.takeover === true },
+				Date.now()
+			);
 		} catch (e) {
 			console.error(`moving campaign ${params.pageId}'s address failed:`, e);
 			return invalid(500, submission.reject({ fieldErrors: { slug: [ADDRESS_FAILED] } }));

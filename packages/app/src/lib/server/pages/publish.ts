@@ -8,6 +8,7 @@ import {
 } from '../../forms/fields';
 import { type Page as PageDocument, type PageRefusal, parsePage } from '../../page/catalog';
 import { dayWords, endDayOf } from '../../page/end-date';
+import { stateAt } from '../../page/ended';
 import {
 	DISCARD_FORM_ID,
 	FIRST_PUBLISH_FORM_ID,
@@ -53,9 +54,9 @@ import {
 //   whose program is Donation settings'.
 // - a program newly pinned must be one still offered; the one the row pins, or the draft already
 //   pins, is taken as it is.
-// - an ended campaign published again is live at its address, or, where another took it meanwhile,
-//   at the next free `-2`, `-3` from its name, with nothing to undo: the page it replaced is the one
-//   it ended on.
+// - an ended campaign published again, ended by End or by its end date (../../page/ended.ts), is
+//   live at its address, or, where another took it meanwhile, at the next free `-2`, `-3` from its
+//   name, with nothing to undo: the page it replaced is the one it ended on.
 //
 // **Undo** swaps `published` and `last_published`. `last_published` carries the settings row as it
 // stood before the Publish, so the swap puts back both the page and what a gift is charged against.
@@ -196,7 +197,7 @@ export async function publishPage(
 		return refused('the program chosen for gifts is no longer offered. Choose another');
 	}
 	const published: PageDocument = { ...draft.page, settings };
-	const replaced = row.state === 'live' ? kept(row, live) : null;
+	const replaced = stateAt(row, at.now) === 'live' ? kept(row, live) : null;
 	const document = JSON.stringify(published);
 
 	const drawn = and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft));

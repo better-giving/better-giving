@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, type LoaderFunction } from 'react-router';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_FORM } from '$lib/donate/copy';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { NEW_FORM } from '$lib/forms/new-form';
@@ -299,8 +299,8 @@ describe('a published campaign the read rule refuses', () => {
 });
 
 /** a campaign published and then ended, as End and the end date leave it; its owned form's id. */
-async function endedCampaign(): Promise<string> {
-	const formId = await campaign();
+async function endedCampaign(fixture: Campaign = {}): Promise<string> {
+	const formId = await campaign(fixture);
 	const [row] = await db.select({ id: page.id }).from(page).where(eq(page.formId, formId));
 	if (!row) throw new Error('the fixture campaign is not there');
 	await endAsItStands(db, row.id);
@@ -354,6 +354,96 @@ describe('an ended campaign at its address', () => {
 	});
 });
 
+/** the end of Dec 31, 2026 in New York: the instant a campaign ending that day ends. */
+const ENDS_AT = Date.parse('2027-01-01T04:59:59.999Z');
+
+/** a live campaign whose published page ends at `ENDS_AT`; its owned form's id. */
+function endingCampaign(fixture: Campaign = {}): Promise<string> {
+	return campaign({
+		...fixture,
+		published: { ...defaultCampaign(), endsAt: ENDS_AT, endsZone: 'America/New_York' }
+	});
+}
+
+/** the clock every read in the test takes its `now` from. */
+function clockAt(now: number) {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(now);
+}
+
+describe('a live campaign at its published end date', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it('draws its page, and serves its donation box, up to its end instant', async () => {
+		const formId = await endingCampaign();
+		clockAt(ENDS_AT - 1);
+		expect((await visit()).data.kind).toBe('page');
+		expect((await giftAnswers(formId)).config.status).toBe(200);
+	});
+
+	it('draws its page when the request came in before its end instant, however long the reads take', async () => {
+		await endingCampaign();
+		// every read of the clock a millisecond on from the last, the first a millisecond short
+		let reading = ENDS_AT - 1;
+		vi.spyOn(Date, 'now').mockImplementation(() => reading++);
+
+		expect((await visit()).data.kind).toBe('page');
+	});
+
+	it('answers from its end instant exactly as a campaign End ended', async () => {
+		await endingCampaign();
+		await endedCampaign({ slug: 'ended-by-end' });
+		clockAt(ENDS_AT);
+
+		const byDate = await visit();
+		const ended = await visit('/ended-by-end');
+		expect(byDate.data.kind).toBe('ended');
+		expect(byDate.status).toBe(ended.status);
+		expect(byDate.headers.get('cache-control')).toBe('no-store');
+		expect(markup(byDate.data)).toBe(markup(ended.data));
+	});
+
+	it('refuses a new gift from its end instant exactly as a campaign End ended', async () => {
+		const byDate = await endingCampaign();
+		const byEnd = await endedCampaign({ slug: 'ended-by-end' });
+		clockAt(ENDS_AT);
+
+		const answers = await giftAnswers(byDate);
+		expect(answers).toEqual({
+			config: { status: 409, error: 'form_not_published' },
+			gift: { status: 409, error: 'form_not_published' }
+		});
+		expect(answers).toEqual(await giftAnswers(byEnd));
+	});
+
+	it('ends nothing by an end date only its draft holds, however long past', async () => {
+		const formId = await campaign();
+		await db
+			.update(page)
+			.set({
+				draft: JSON.stringify({
+					...defaultCampaign(),
+					endsAt: ENDS_AT,
+					endsZone: 'America/New_York'
+				})
+			})
+			.where(eq(page.formId, formId));
+		clockAt(ENDS_AT + 365 * 86_400_000);
+		expect((await visit()).data.kind).toBe('page');
+		expect((await giftAnswers(formId)).config.status).toBe(200);
+	});
+
+	it('never ends by itself with no end date', async () => {
+		const formId = await campaign();
+		clockAt(Date.parse('2100-01-01T00:00:00Z'));
+		expect((await visit()).data.kind).toBe('page');
+		expect((await giftAnswers(formId)).config.status).toBe(200);
+	});
+});
+
 /** the served config endpoint and the gift endpoint, each under the api surface's layout. */
 const configRoute = mountRoutes([
 	{ path: 'api/v1', module: surface },
@@ -364,11 +454,14 @@ const giftRoute = mountRoutes([
 	{ path: 'forms/:id/donations', module: gifts }
 ]);
 
-/** a caller of its own for each request, so the surface's meter never answers for the form. */
+/**
+ * a caller of its own for each request, so no meter answers for the form: one `/64` each, since
+ * that is one caller to the surface's and the quote's buckets ($lib/server/api/rate-limit.ts).
+ */
 let callers = 0;
 function nextCaller(): string {
 	callers += 1;
-	return `2001:db8::59:${callers}`;
+	return `2001:db8:59:${callers.toString(16)}::1`;
 }
 
 /** what the card on a donor page here is answered for `formId`: its config, then a gift. */

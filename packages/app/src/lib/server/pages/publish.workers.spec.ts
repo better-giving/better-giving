@@ -407,6 +407,21 @@ describe('an ended campaign published again', () => {
 		expect(await readForm(db, after.formId)).toMatchObject({ status: 'live' });
 	});
 
+	it('is live again with nothing to undo where it ended by its end date, as where End ended it', async () => {
+		const endedOn = { ...CAMPAIGN, endsAt: endOf('2026-09-27'), endsZone: 'America/New_York' };
+		const later = { ...endedOn, endsAt: endOf('2026-10-31') };
+		const pageId = await insertPage(db, 'campaign', later, endedOn);
+		await ownRow(pageId, SETTINGS, 'live');
+		const drawn = await stored(pageId);
+
+		const outcome = await publishPage(db, { type: 'campaign', id: pageId }, drawn.updatedAt, {
+			now: NOW
+		});
+
+		expect(outcome).toEqual({ kind: 'published', undoable: false });
+		expect(await stored(pageId)).toMatchObject({ state: 'live', lastPublished: null });
+	});
+
 	it('takes the next free address where its own was taken meanwhile', async () => {
 		const pageId = await endedCampaign();
 		const taker = await insertPage(db, 'campaign');

@@ -31,11 +31,13 @@ import type { Route } from './+types/$slug';
 // $lib/server/pages/view.ts, which draws the plain page of its donation settings, logged, where the
 // rule refuses it.
 //
-// an `ended` campaign still holds its address, so the address answers 200 with the ended screen:
+// an `ended` campaign — ended by End, or live and past its published end date, which reads the same
+// ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
 // its name, that it has ended, and the way on to /donate — in the organisation's look, with none of
 // its blocks and no donation box, since its owned settings row is out of service
-// (`endCampaign` in $lib/server/pages/queries.ts). `no-store`, because publishing it again puts it
-// back live at the same address.
+// (`endCampaign` in $lib/server/pages/queries.ts, and read so past the end date by
+// `readPublishedConfig`). `no-store`, because publishing it again puts it back live at the same
+// address.
 //
 // one never published, one deleted and a slug nobody holds are the same 404 with the same body, so
 // the answer says nothing about which it was.
@@ -45,7 +47,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	if (!address.ok) return refusedPage();
 	const db = context.get(database);
 	const { env } = context.get(platform);
-	const campaign = await readServedCampaign(db, address.slug);
+	const now = Date.now();
+	const campaign = await readServedCampaign(db, address.slug, now);
 	if (campaign === null) return refusedPage();
 	if (campaign.state === 'ended') {
 		const [profile, orgLook] = await Promise.all([readOrgProfile(db), readOrgLook(db)]);
@@ -70,7 +73,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			document: campaign.published,
 			address: `/${address.slug}`
 		},
-		request
+		request,
+		{ now }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	return loaded;
