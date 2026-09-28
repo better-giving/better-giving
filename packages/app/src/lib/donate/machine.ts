@@ -5,7 +5,7 @@ import {
 	fundIsOffered,
 	openFund
 } from '@better-giving/form/machine';
-import type { CheckoutEvent, Failure } from '@better-giving/form/machine';
+import type { CheckoutEvent, CheckoutInput, Failure } from '@better-giving/form/machine';
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import type { CheckoutPorts, FundReports } from '@better-giving/form/ports';
 import { createPaymentSurface, type PaymentSeams } from '@better-giving/form/embed/surface';
@@ -36,18 +36,28 @@ import { deploymentPorts } from './ports';
 export type { CheckoutSnapshot };
 
 /**
+ * where a fresh card starts when the page hosting it asks: on monthly, or with the dedication open.
+ *
+ * the machine's own input, so what each flag means — monthly only where the form offers it, and
+ * nothing at all on a resumed flow — is `openingDraft` in @better-giving/form/machine's alone.
+ * `initialSnapshot` and `startCheckout` both take it, and a card hands both the same one: a flag
+ * that reached one and not the other is the card changing under the donor on hydrate.
+ */
+export type Opening = NonNullable<CheckoutInput['opening']>;
+
+/**
  * the snapshot a card renders from before anything has started.
  *
- * a pure function of the configuration, and it has to be: the loader has the config server-side, so
- * the amounts, the cadences and the tiles are in the HTML, and the client's first render has to
- * produce the same tree or hydration mismatches on the screen that takes money. `boot` reaches
- * `amount` on an `always` transition that calls no port and arms no timer, so starting an actor on
- * inert ports and reading one snapshot off it is a value rather than an effect.
+ * a pure function of the configuration and the page's opening, and it has to be: the loader has
+ * both server-side, so the amounts, the cadences and the tiles are in the HTML, and the client's
+ * first render has to produce the same tree or hydration mismatches on the screen that takes money.
+ * `boot` reaches `amount` on an `always` transition that calls no port and arms no timer, so
+ * starting an actor on inert ports and reading one snapshot off it is a value rather than an effect.
  *
  * the ports never settle rather than rejecting. nothing reaches them on the way to `amount`, and a
  * rejection would be an outcome this snapshot could be built holding.
  */
-export function initialSnapshot(config: FormConfig): CheckoutSnapshot {
+export function initialSnapshot(config: FormConfig, opening?: Opening): CheckoutSnapshot {
 	const inert = (): Promise<never> => new Promise<never>(() => {});
 	const ports: CheckoutPorts = {
 		quote: inert,
@@ -56,7 +66,9 @@ export function initialSnapshot(config: FormConfig): CheckoutSnapshot {
 		status: inert,
 		now: () => 0
 	};
-	const actor = createActor(checkoutMachine, { input: { config, ports } });
+	const actor = createActor(checkoutMachine, {
+		input: { config, ports, ...(opening === undefined ? {} : { opening }) }
+	});
 	actor.start();
 	const snapshot = actor.getSnapshot();
 	actor.stop();
@@ -131,7 +143,11 @@ export type Checkout = {
  * through the projection's own setter rather than at the actor, so the one this page collects and
  * the one a headless integrator would hand in travel one path.
  */
-export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Checkout {
+export function startCheckout(
+	config: FormConfig,
+	mounts: CheckoutMounts,
+	opening?: Opening
+): Checkout {
 	const { paymentMount, challengeMount, resumeToken, seams } = mounts;
 
 	// through holders rather than straight at the actor: both surfaces are handed their callbacks
@@ -162,7 +178,8 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 		input: {
 			config,
 			ports: deploymentPorts(surface),
-			...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } })
+			...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } }),
+			...(opening === undefined ? {} : { opening })
 		}
 	});
 

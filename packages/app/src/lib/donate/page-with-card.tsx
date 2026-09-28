@@ -1,6 +1,6 @@
 import type { FormConfig } from '@better-giving/form/v1';
 import { useCallback, useState } from 'react';
-import { DonateCard } from './card';
+import { DonateCard, type DonateCardProps } from './card';
 import type { CheckoutMounts } from './machine';
 import { PageView, type PageViewProps } from './page-view';
 
@@ -24,9 +24,11 @@ export type PageWithCardProps = Omit<
 	readonly config: FormConfig;
 	/** the card's provider seams, which only a spec passes. */
 	readonly seams?: CheckoutMounts['seams'];
+	/** where the card starts, the card's own `opening`. */
+	readonly opening?: DonateCardProps['opening'];
 };
 
-export function PageWithCard({ config, seams, ...page }: PageWithCardProps) {
+export function PageWithCard({ config, seams, opening, ...page }: PageWithCardProps) {
 	const [picked, setPicked] = useState<string | null>(null);
 	const [held, setHeld] = useState<{ programId: string | null; locked: boolean }>({
 		programId: null,
@@ -50,6 +52,7 @@ export function PageWithCard({ config, seams, ...page }: PageWithCardProps) {
 					config={config}
 					onProgramChange={report}
 					{...(seams === undefined ? {} : { seams })}
+					{...(opening === undefined ? {} : { opening })}
 					{...(hideProgramSelect ? { pageProgram: picked } : {})}
 				/>
 			)}
