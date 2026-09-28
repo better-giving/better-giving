@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, Link } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import ProtectedLayout, { clientMiddleware } from './_app';
+import { handle as donationPageHandle } from './_app.admin.donation-page';
 import { handle as formHandle } from './_app.admin.forms.$id';
 
 // what the panel's top strip holds over each screen the layout frames.
@@ -54,6 +55,11 @@ function frameAt(at: string): Promise<HTMLElement> {
 					Component: () => <p>the form</p>
 				},
 				{ path: '/admin/members/password', Component: () => <h1>Your password</h1> },
+				{
+					path: '/admin/donation-page',
+					handle: donationPageHandle,
+					Component: () => <p>the editor</p>
+				},
 				{ path: '/admin/elsewhere', Component: () => <p>nowhere</p> }
 			]
 		}
@@ -103,6 +109,24 @@ it('draws no strip under no destination', async () => {
 	const root = await frameAt('/admin/elsewhere');
 
 	expect(strip(root)).toBeNull();
+});
+
+it('opens the Donation page editor from the globe beside the organisation’s name', async () => {
+	const root = await frameAt('/admin/forms');
+	const globes = [...root.querySelectorAll('a[aria-label="Donation page"]')];
+
+	expect(globes.length).toBeGreaterThan(0);
+	expect(globes.map((a) => a.getAttribute('href'))).toEqual(
+		globes.map(() => '/admin/donation-page')
+	);
+	expect(globes.map((a) => a.getAttribute('target'))).toEqual(globes.map(() => null));
+});
+
+it('draws an editor across the whole window, with no rail or band around it', async () => {
+	const root = await frameAt('/admin/donation-page');
+
+	expect(root.textContent).toContain('the editor');
+	expect(root.textContent).not.toContain('Riverbank Trust');
 });
 
 // the bar over a move, drawn by the layout while the router reads the next page. the stub's loaders

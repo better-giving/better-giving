@@ -1,9 +1,12 @@
-import { and, eq, inArray, notExists } from 'drizzle-orm';
+import { and, eq, exists, inArray, isNotNull, ne, notExists } from 'drizzle-orm';
+import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
+import { sqliteResultCode } from '../db/rejection';
 import { chatTurn, form, type Page, page } from '../db/schema';
 
 // one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
-// and where a live campaign ends.
+// where a live campaign ends, and the editor's two writes that are not page content: a campaign's
+// name and its address, each against the version the editor was drawn at.
 //
 // a page is deleted only while it is a campaign nobody has ever been shown. once a page has been
 // live a gift may point at its owned settings row, and ending it is the campaign's own state rather
@@ -74,4 +77,147 @@ export async function endCampaign(db: Db, pageId: string): Promise<boolean> {
 		db.update(page).set({ state: 'ended' }).where(endable).returning({ id: page.id })
 	]);
 	return ended.length === 1;
+}
+
+/** what a move of a campaign's address did, or the question it waits on. */
+export type SlugWrite =
+	| { readonly kind: 'written' }
+	| { readonly kind: 'gone' }
+	| { readonly kind: 'stale' }
+	/** another campaign holds the address and keeps it. */
+	| { readonly kind: 'taken'; readonly by: string }
+	/** the campaign has been published, and its address, which donors may hold, would stop working. */
+	| { readonly kind: 'ask'; readonly ask: 'move'; readonly from: string }
+	/** an ended campaign holds the address, and would be left with none. */
+	| { readonly kind: 'ask'; readonly ask: 'takeover'; readonly holder: string };
+
+/** the questions a move has been answered yes to. */
+export type SlugConfirmed = { readonly move: boolean; readonly takeover: boolean };
+
+/**
+ * moves a campaign to `slug`, one the address rule (`checkSlug` in ../../page/slug.ts) has passed,
+ * while the page is still the version it was drawn at. an address is not page content: it takes
+ * effect here, not at publish.
+ */
+export async function updateCampaignSlug(
+	db: Db,
+	pageId: string,
+	version: Date,
+	slug: string,
+	confirmed: SlugConfirmed
+): Promise<SlugWrite> {
+	const [row] = await db
+		.select({ slug: page.slug, state: page.state })
+		.from(page)
+		.where(and(eq(page.id, pageId), eq(page.type, 'campaign')));
+	if (!row) return { kind: 'gone' };
+	if (row.slug === slug) return { kind: 'written' };
+
+	const holder = await slugHolder(db, slug);
+	if (holder !== null && holder.state !== 'ended') return { kind: 'taken', by: holder.name };
+	if (row.state !== 'never_published' && row.slug !== null && !confirmed.move) {
+		return { kind: 'ask', ask: 'move', from: row.slug };
+	}
+	if (holder !== null && !confirmed.takeover) {
+		return { kind: 'ask', ask: 'takeover', holder: holder.name };
+	}
+
+	// both statements are guarded on the page still being the version it was drawn at, so a stale
+	// save leaves the ended campaign its address; the release runs first, for `page_slug_idx`.
+	const drawn = and(eq(page.id, pageId), eq(page.updatedAt, version));
+	const move = db.update(page).set({ slug }).where(drawn).returning({ id: page.id });
+	try {
+		let moved: { id: string }[];
+		if (holder === null) {
+			moved = await move;
+		} else {
+			[, moved] = await db.batch([
+				db
+					.update(page)
+					.set({ slug: null })
+					.where(
+						and(
+							eq(page.id, holder.id),
+							eq(page.state, 'ended'),
+							eq(page.slug, slug),
+							exists(db.select({ id: page.id }).from(page).where(drawn))
+						)
+					),
+				move
+			]);
+		}
+		return moved.length === 1 ? { kind: 'written' } : { kind: 'stale' };
+	} catch (error) {
+		// a campaign took the address, or an ended holder was published again, between the read and
+		// the write: `page_slug_idx` refused the batch whole.
+		if (sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
+		const taker = await slugHolder(db, slug);
+		if (taker === null) throw error;
+		return { kind: 'taken', by: taker.name };
+	}
+}
+
+/** the campaign holding `slug`, or null where none does. */
+async function slugHolder(
+	db: Db,
+	slug: string
+): Promise<{ id: string; name: string; state: Page['state'] } | null> {
+	const [held] = await db
+		.select({ id: page.id, name: page.name, state: page.state })
+		.from(page)
+		.where(eq(page.slug, slug));
+	if (!held) return null;
+	// unreachable: `page_slug_check` gives no donation page a slug and `page_name_check` no
+	// campaign a null name.
+	if (held.name === null) throw new Error(`page ${held.id} holds "${slug}" and has no name`);
+	return { id: held.id, name: held.name, state: held.state };
+}
+
+/** what a rename did: the page as drawn is no longer the page stored, or there is none. */
+export type NameWrite = 'written' | 'stale' | 'gone';
+
+/** a free address is found this many times before a rename gives up on the race. */
+const SLUG_ATTEMPTS = 5;
+
+/**
+ * renames a campaign — the row's `name`, which the dashboard shows, and its draft's, which donors
+ * see from the next publish — while the page is still the version it was drawn at. until the first
+ * publish the address follows the name, to the first `-2`, `-3` free, as a new campaign's does
+ * (`freeSlug` in ../../page/slug.ts); once published it stays where it is.
+ */
+export async function updateCampaignName(
+	db: Db,
+	pageId: string,
+	version: Date,
+	name: string
+): Promise<NameWrite> {
+	for (let attempt = 1; ; attempt += 1) {
+		const [row] = await db
+			.select({ state: page.state, slug: page.slug, draft: page.draft })
+			.from(page)
+			.where(and(eq(page.id, pageId), eq(page.type, 'campaign')));
+		if (!row) return 'gone';
+
+		const draft = JSON.stringify({ ...JSON.parse(row.draft), name });
+		let slug = row.slug;
+		if (row.state === 'never_published') {
+			const held = await db
+				.select({ slug: page.slug })
+				.from(page)
+				.where(and(isNotNull(page.slug), ne(page.id, pageId)));
+			slug = freeSlug(name, new Set(held.map((each) => each.slug)));
+		}
+		try {
+			const renamed = await db
+				.update(page)
+				.set({ name, draft, slug })
+				.where(and(eq(page.id, pageId), eq(page.updatedAt, version), eq(page.draft, row.draft)))
+				.returning({ id: page.id });
+			return renamed.length === 1 ? 'written' : 'stale';
+		} catch (error) {
+			if (attempt === SLUG_ATTEMPTS || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') {
+				throw error;
+			}
+		}
+	}
 }

@@ -156,3 +156,19 @@ export function slugFromTitle(title: string, max = SLUG_MAX_LENGTH): string {
 	const lastBreak = cut.lastIndexOf('-');
 	return lastBreak > 0 ? cut.slice(0, lastBreak) : cut.slice(0, max);
 }
+
+/** what a name makes no address from, `!!!` or a title of emoji, is called instead. */
+const UNNAMED = 'campaign';
+
+/**
+ * the address a campaign's name suggests, or its first `-2`, `-3` the address rule allows and no
+ * campaign holds — an ended campaign's held address included. `held` is read by the caller, and
+ * the table's unique index is what settles a race for the address it picks.
+ */
+export function freeSlug(name: string, held: ReadonlySet<string | null>): string {
+	for (let n = 1; ; n += 1) {
+		const suffix = n === 1 ? '' : `-${n}`;
+		const slug = `${slugFromTitle(name, SLUG_MAX_LENGTH - suffix.length) || UNNAMED}${suffix}`;
+		if (checkSlug(slug).ok && !held.has(slug)) return slug;
+	}
+}
