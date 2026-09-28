@@ -35,6 +35,8 @@ function accept(reply: unknown, rest: Partial<Parameters<typeof acceptReply>[0]>
 		attached: [],
 		messages: [],
 		activePrograms: [],
+		timeZone: 'America/New_York',
+		now: Date.parse('2026-09-28T16:00:00Z'),
 		...rest
 	});
 }
@@ -209,7 +211,7 @@ describe('what a reply never changes', () => {
 		const result = accept({ say: 'Changed it.', set: { [key]: value } }, { current });
 		expect(result).toEqual({
 			ok: false,
-			reason: `set: a reply sets only name, goalMinor, endsAt, programId and suggestedAmounts, not "${key}"`,
+			reason: `set: a reply sets only name, goalMinor, endDate, programId and suggestedAmounts, not "${key}"`,
 			current
 		});
 	});
@@ -222,14 +224,15 @@ describe('what a reply sets', () => {
 	];
 
 	it('returns each change to a campaign’s name, goal, end date, program and amounts', () => {
-		const endsAt = Date.UTC(2026, 11, 31, 23, 59, 59);
+		// new york is on EST by 31 December, UTC-5
+		const endsAt = Date.parse('2027-01-01T05:00:00Z') - 1;
 		const result = accept(
 			{
 				say: 'Renamed it, set a $5,000 goal ending 31 December, pinned it to Coats and suggested $30 and $60.',
 				set: {
 					name: '  Coats for winter ',
 					goalMinor: 500_000,
-					endsAt,
+					endDate: '2026-12-31',
 					programId: 'prg_coats',
 					suggestedAmounts: [3000, 6000]
 				}
@@ -254,7 +257,7 @@ describe('what a reply sets', () => {
 			changes: [
 				{ field: 'name', from: 'Winter coats', to: 'Coats for winter' },
 				{ field: 'goal', from: null, to: 500_000 },
-				{ field: 'endDate', from: null, to: endsAt },
+				{ field: 'endDate', from: null, to: '2026-12-31' },
 				{ field: 'program', from: null, to: 'prg_coats' },
 				{ field: 'amounts', from: [2500, 5000], to: [3000, 6000] }
 			],
@@ -263,11 +266,21 @@ describe('what a reply sets', () => {
 	});
 
 	it('returns no change for a value set to what it already is', () => {
-		const current = { ...campaign(), goalMinor: 500_000 };
+		// the end of 31 December where the operator who set it was, in london
+		const current = {
+			...campaign(),
+			goalMinor: 500_000,
+			endsAt: Date.parse('2027-01-01T00:00:00Z') - 1
+		};
 		const result = accept(
 			{
 				say: 'Kept it.',
-				set: { name: 'Winter coats', goalMinor: 500_000, suggestedAmounts: [2500, 5000] }
+				set: {
+					name: 'Winter coats',
+					goalMinor: 500_000,
+					endDate: '2026-12-31',
+					suggestedAmounts: [2500, 5000]
+				}
 			},
 			{ current }
 		);
@@ -278,8 +291,8 @@ describe('what a reply sets', () => {
 		['name', { name: 'Spring' }, 'the Donation page has no name; only a campaign does'],
 		['goalMinor', { goalMinor: 100_000 }, 'the Donation page has no goal; only a campaign does'],
 		[
-			'endsAt',
-			{ endsAt: Date.UTC(2027, 0, 1) },
+			'endDate',
+			{ endDate: '2027-01-01' },
 			'the Donation page has no end date; only a campaign does'
 		]
 	])('refuses a %s on the Donation page', (_, set, reason) => {
@@ -288,6 +301,29 @@ describe('what a reply sets', () => {
 			settings: { ...settings, suggestedAmounts: [], allowedOrigins: [] }
 		};
 		const result = accept({ say: 'Done.', set }, { type: 'donation_page', current, name: null });
+		expect(result).toEqual({ ok: false, reason, current });
+	});
+
+	it('reports an end date moved to another day as the day it moved from', () => {
+		const current = { ...campaign(), endsAt: Date.parse('2027-01-01T05:00:00Z') - 1 };
+		const result = accept({ say: 'A week longer.', set: { endDate: '2027-01-07' } }, { current });
+		expect(result).toMatchObject({
+			ok: true,
+			draft: { endsAt: Date.parse('2027-01-08T05:00:00Z') - 1 },
+			changes: [{ field: 'endDate', from: '2026-12-31', to: '2027-01-07' }]
+		});
+	});
+
+	it.each([
+		[
+			'not a day',
+			'2026-02-30',
+			'set.endDate: "2026-02-30" is not a day; an end date is written YYYY-MM-DD'
+		],
+		['a day already over', '2026-09-27', 'set.endDate: 2026-09-27 is already over']
+	])('refuses an end date that is %s', (_, endDate, reason) => {
+		const current = campaign();
+		const result = accept({ say: 'Ends then.', set: { endDate } }, { current });
 		expect(result).toEqual({ ok: false, reason, current });
 	});
 

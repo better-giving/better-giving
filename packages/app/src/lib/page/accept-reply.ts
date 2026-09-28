@@ -11,7 +11,9 @@
 // a reply may change beside the page — a campaign's name, goal and end date, the program the page's
 // gifts are pinned to and its suggested amounts — and anything else it names is refused: the fund,
 // the program's destination, the payment options, the look and the switches are the operator's
-// alone. each value `set` changes comes back in `changes`, so the reply's own words can be held to
+// alone. an end date is a day, `YYYY-MM-DD`, in the zone of the browser that posted the chat turn,
+// stored as ./end-date.ts's `endOfDay` of it and refused once that day is over. each value `set`
+// changes comes back in `changes`, an end date as its day, so the reply's own words can be held to
 // what it did.
 //
 // what the model is told and cannot be trusted to keep is enforced here, after the edit:
@@ -40,6 +42,7 @@ import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
 import { FORM_CURRENCY, majorEntry, readAmount, readSuggestedAmounts } from '../forms/amounts';
 import { draftFromPage, pageFromDraft } from './ai-catalog';
+import { dayOf, endOfDay } from './end-date';
 import { HEADING_MAX, type Page, parsePage } from './catalog';
 import type { PageType } from './keys';
 import { applyPatch, mergePatch, pointer } from './json-patch';
@@ -63,14 +66,14 @@ const replySchema = z.strictObject({
 			{
 				name: z.string().trim().min(1).max(HEADING_MAX).optional(),
 				goalMinor: z.int().positive().optional(),
-				endsAt: z.int().positive().optional(),
+				endDate: z.string().optional(),
 				programId: z.string().min(1).optional(),
 				suggestedAmounts: z.array(z.int().positive()).optional()
 			},
 			{
 				error: (issue) =>
 					issue.code === 'unrecognized_keys'
-						? `a reply sets only name, goalMinor, endsAt, programId and suggestedAmounts, not ${issue.keys.map((key) => `"${key}"`).join(', ')}`
+						? `a reply sets only name, goalMinor, endDate, programId and suggestedAmounts, not ${issue.keys.map((key) => `"${key}"`).join(', ')}`
 						: undefined
 			}
 		)
@@ -98,12 +101,16 @@ export type AcceptInput = {
 	attached: readonly string[];
 	messages: readonly ChatMessage[];
 	activePrograms: readonly ActiveProgram[];
+	/** the IANA zone of the browser that posted the chat turn; an end date is a day there. */
+	timeZone: string;
+	/** the instant the reply is accepted at; an end date on a day already over is refused. */
+	now: number;
 };
 
 export type Change =
 	| { field: 'name'; from: string | null; to: string }
 	| { field: 'goal'; from: number | null; to: number }
-	| { field: 'endDate'; from: number | null; to: number }
+	| { field: 'endDate'; from: string | null; to: string }
 	| { field: 'program'; from: string | null; to: string }
 	| { field: 'amounts'; from: number[]; to: number[] };
 
@@ -228,12 +235,12 @@ type Settable = NonNullable<z.infer<typeof replySchema>['set']>;
 const CAMPAIGN_ONLY = [
 	['name', 'name'],
 	['goalMinor', 'goal'],
-	['endsAt', 'end date']
+	['endDate', 'end date']
 ] as const;
 
 /** `current` with what the reply sets put onto it, and each change it makes. */
 function settle(
-	{ type, current, name, activePrograms }: AcceptInput,
+	{ type, current, name, activePrograms, timeZone, now }: AcceptInput,
 	set: Settable
 ):
 	| { ok: true; onto: Page; renamed: string | undefined; changes: Change[] }
@@ -253,9 +260,12 @@ function settle(
 		changes.push({ field: 'goal', from: current.goalMinor ?? null, to: set.goalMinor });
 		onto.goalMinor = set.goalMinor;
 	}
-	if (set.endsAt !== undefined && set.endsAt !== current.endsAt) {
-		changes.push({ field: 'endDate', from: current.endsAt ?? null, to: set.endsAt });
-		onto.endsAt = set.endsAt;
+	const endedOn = current.endsAt === undefined ? null : dayOf(current.endsAt, timeZone);
+	if (set.endDate !== undefined && set.endDate !== endedOn) {
+		const end = endOfDay({ day: set.endDate, timeZone, now });
+		if (!end.ok) return { ok: false, reason: `set.endDate: ${end.reason}` };
+		changes.push({ field: 'endDate', from: endedOn, to: set.endDate });
+		onto.endsAt = end.endsAt;
 	}
 	if (set.programId === undefined && set.suggestedAmounts === undefined) {
 		return { ok: true, onto, renamed, changes };
