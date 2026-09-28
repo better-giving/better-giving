@@ -3,7 +3,8 @@ import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
-import { form, type Form, page, type PageType, program } from '../db/schema';
+import { form, type Form, page, program } from '../db/schema';
+import type { PageType } from '../../page/keys';
 import type {
 	FormRecord,
 	ParsedForm,
