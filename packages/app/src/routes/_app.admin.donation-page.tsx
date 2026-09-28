@@ -27,6 +27,7 @@ import {
 	DISCARD_FORM_ID,
 	PUBLISH_FORM_ID,
 	PUBLISH_FORMS,
+	RESET_FORM_ID,
 	UNDO_FORM_ID
 } from '$lib/page/publish-form';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
@@ -41,6 +42,7 @@ import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
+import { answerResetPress, hasEditsToReset } from '$lib/server/pages/reset';
 import { database } from '../context';
 import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
@@ -59,8 +61,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 // message ($lib/server/pages/page-settings.ts); a goal and an end date are a campaign's alone, and
 // this action refuses them.
 //
-// **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
-// confirms mounted through $lib/admin/editor/publish-wiring.tsx.
+// **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, and **Reset to default**
+// $lib/server/pages/reset.ts's, which also says when the page has edits to reset; the presses and
+// their confirms are mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
 // preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
@@ -95,7 +98,8 @@ const SCREEN_FORMS = [
 	PAGE_SETTINGS_FORM_ID,
 	...PAGE_SETTING_FORM_IDS,
 	...BLOCK_FORM_IDS,
-	...PUBLISH_FORMS
+	...PUBLISH_FORMS,
+	RESET_FORM_ID
 ] as const;
 
 const STALE_STORY =
@@ -115,12 +119,14 @@ export async function loader({ context }: Route.LoaderArgs) {
 	let story: { story: Story; version: string };
 	let settings: SettingsSeed;
 	let pageSettings: PageSettingsSeed;
+	let edited: boolean;
 	try {
 		row = await ensureDonationPage(db);
-		[story, settings, pageSettings] = await Promise.all([
+		[story, settings, pageSettings, edited] = await Promise.all([
 			readOrgStory(db),
 			readEditorSettings(db, row),
-			readPageSettings(db, row)
+			readPageSettings(db, row),
+			hasEditsToReset(db, row)
 		]);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
@@ -131,6 +137,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 		...editorDraft(row, settings.currency),
 		settings,
 		pageSettings,
+		hasEdits: edited,
 		askMission: story.story.mission === null && row.editorVisitedAt === null,
 		storyVersion: story.version
 	};
@@ -185,6 +192,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 		case UNDO_FORM_ID:
 		case DISCARD_FORM_ID:
 			return answerPublishPress(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
+		case RESET_FORM_ID:
+			return answerResetPress(db, body, NO_DONATION_PAGE);
 		case PAGE_LOOK_FORM_ID:
 		case PAGE_GOAL_FORM_ID:
 		case PAGE_END_DATE_FORM_ID:
@@ -203,10 +212,10 @@ function refusal(answer: Answer | undefined, form: { id: string }, box: string):
 }
 
 export default function DonationPageEditor({ loaderData }: Route.ComponentProps) {
-	const { state, version, preview, askMission, storyVersion } = loaderData;
+	const { state, version, preview, askMission, storyVersion, hasEdits } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
-	const presses = usePublishPresses({ version, state });
+	const presses = usePublishPresses({ version, state, reset: { hasEdits } });
 	const [blockId, setBlockId] = useState<string | null>(null);
 	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
 	const layoutPick = useLayoutPick(loaderData.layout, version);

@@ -6,16 +6,18 @@ import {
 	FIRST_PUBLISH_FORM_ID,
 	GIFTS_GO_TO,
 	PUBLISH_FORM_ID,
+	RESET_FORM_ID,
 	UNDO_FORM_ID
 } from '$lib/page/publish-form';
 import { resultFor } from '../use-admin-form';
-import { DiscardConfirm, FirstPublishConfirm } from './confirms';
+import { DiscardConfirm, FirstPublishConfirm, ResetConfirm } from './confirms';
 import type { BarPress, PublishState } from './publish-bar';
 
-// Publish, Undo and Discard changes as both editors mount them: the bar's props for the three
-// presses, and the two confirms while one is up. each press posts to the editor's own action
-// (`answerPublishPress` in $lib/server/pages/publish.ts) against the version the editor was drawn
-// at, on one fetcher, so the latest press's answer is what the bar reports.
+// Publish, Undo and Discard changes as both editors mount them, and the Donation page's Reset to
+// default: the bar's props for the presses, and the confirms while one is up. each press posts to
+// the editor's own action (`answerPublishPress` in $lib/server/pages/publish.ts, `answerResetPress`
+// in $lib/server/pages/reset.ts) against the version the editor was drawn at, on one fetcher, so the
+// latest press's answer is what the bar reports.
 //
 // a campaign never published goes through `FirstPublishConfirm` first, which says where its gifts
 // go and the address it takes; every other Publish goes at once. "Published" with Undo beside it
@@ -24,12 +26,13 @@ import type { BarPress, PublishState } from './publish-bar';
 // and a confirm stays up, held, until its answer does: a refusal is said in it, and a success takes
 // it down. a confirm cancelled on a refusal opens again without it.
 
-/** what the editor's action answers the four presses: one of the three, or a refusal. */
+/** what the editor's action answers the presses: what one did, or a refusal. */
 type PressAnswer = {
 	readonly published?: true;
 	readonly undoable?: boolean;
 	readonly undone?: true;
 	readonly discarded?: true;
+	readonly reset?: true;
 	readonly form?: FormRejection;
 };
 
@@ -43,7 +46,7 @@ export type FirstPublish = {
 };
 
 type Presses = {
-	/** `PublishBar`'s props for Publish, Undo and Discard changes. */
+	/** `PublishBar`'s props for Publish, Undo, Discard changes and Reset to default. */
 	readonly bar: {
 		readonly publishing: boolean;
 		readonly republished: boolean;
@@ -51,6 +54,7 @@ type Presses = {
 		readonly undoing: boolean;
 		readonly onUndo: () => void;
 		readonly onDiscard: () => void;
+		readonly reset: { readonly hasEdits: boolean; readonly onReset: () => void } | undefined;
 		readonly report: { readonly press: BarPress; readonly text: string } | null;
 	};
 	/** the confirm up, if one is. */
@@ -63,15 +67,18 @@ const refusalOf = (answer: PressAnswer | undefined, id: string) =>
 export function usePublishPresses({
 	version,
 	state,
-	first
+	first,
+	reset
 }: {
 	readonly version: number;
 	readonly state: PublishState;
 	/** present while the page is a campaign never published. */
 	readonly first?: FirstPublish | undefined;
+	/** the Donation page's alone: whether it has edits to reset. */
+	readonly reset?: { readonly hasEdits: boolean } | undefined;
 }): Presses {
 	const presses = useFetcher<PressAnswer>({ key: 'page-presses' });
-	const [asked, setAsked] = useState<'first-publish' | 'discard' | null>(null);
+	const [asked, setAsked] = useState<'first-publish' | 'discard' | 'reset' | null>(null);
 	/** the answer a confirm was cancelled on, whose refusal it does not open on again. */
 	const [cancelledOn, setCancelledOn] = useState<PressAnswer | undefined>(undefined);
 
@@ -81,7 +88,7 @@ export function usePublishPresses({
 
 	// an answer that landed takes its confirm down; a refusal leaves it up, saying why.
 	useEffect(() => {
-		if (answer?.published || answer?.discarded) setAsked(null);
+		if (answer?.published || answer?.discarded || answer?.reset) setAsked(null);
 	}, [answer]);
 
 	const press = (which: string, fields: Record<string, string> = {}) => {
@@ -122,6 +129,15 @@ export function usePublishPresses({
 				refusal={refusalOf(confirmAnswer, DISCARD_FORM_ID)}
 			/>
 		);
+	} else if (asked === 'reset') {
+		confirm = (
+			<ResetConfirm
+				resetting={pressing === RESET_FORM_ID}
+				onReset={() => press(RESET_FORM_ID)}
+				onCancel={cancel}
+				refusal={refusalOf(confirmAnswer, RESET_FORM_ID)}
+			/>
+		);
 	}
 
 	return {
@@ -132,6 +148,7 @@ export function usePublishPresses({
 			undoing: pressing === UNDO_FORM_ID,
 			onUndo: () => press(UNDO_FORM_ID),
 			onDiscard: () => setAsked('discard'),
+			reset: reset && { hasEdits: reset.hasEdits, onReset: () => setAsked('reset') },
 			report:
 				publishRefusal !== null
 					? { press: 'publish', text: publishRefusal }
