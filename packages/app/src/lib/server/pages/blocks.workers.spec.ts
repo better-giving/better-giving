@@ -326,6 +326,21 @@ describe('a photo', () => {
 		expect(await stored(pageId)).toEqual(before);
 	});
 
+	it('refuses a description past its length under its own box, and writes nothing', async () => {
+		const pageId = await withPhoto();
+		const before = await stored(pageId);
+		const answer = await press(pageId, BLOCK_FORMS.photo, [
+			['block_id', 'hero'],
+			['image_id', await upload()],
+			['alt', 'a'.repeat(251)]
+		]);
+		expect(refusal(answer)).toMatchObject({
+			status: 400,
+			error: { alt: ['a photo’s description holds at most 250 characters'] }
+		});
+		expect(await stored(pageId)).toEqual(before);
+	});
+
 	it('is refused on a block that holds no photo, naming what it is', async () => {
 		const pageId = await withPhoto();
 		const answer = await press(pageId, BLOCK_FORMS.photo, [

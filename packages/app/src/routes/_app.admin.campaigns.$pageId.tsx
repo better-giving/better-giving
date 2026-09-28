@@ -441,7 +441,15 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					onBlockClick={openBlockSheet}
 				/>
 			}
-			entries={<EditorEntries onChat={chat.open} onSettings={() => setSettings(true)} />}
+			entries={
+				<EditorEntries
+					onChat={chat.open}
+					onSettings={() => {
+						layoutPick.startClean();
+						setSettings(true);
+					}}
+				/>
+			}
 		>
 			{chat.sheet}
 			{settings && opened !== 'address' ? (
@@ -460,7 +468,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 						openBlockSheet(id);
 					}}
 					layouts={loaderData.layouts}
-					{...layoutPick}
+					{...layoutPick.sheet}
 					look={<PageLookSettings seed={loaderData.pageSettings} version={version} />}
 					shareMessage={loaderData.shareMessage}
 					donationSettings={donationSettings.summary}

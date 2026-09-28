@@ -138,11 +138,13 @@ const SAMPLE = (
 			<StatusWord tone="done">Live</StatusWord>
 		</div>
 		<p className="adm-record__facts">Goal $15,000 · Ends Dec 31, 2026</p>
-		<ul className="adm-record__origins adm-record__foot">
-			<li>
-				<span className="adm-chip adm-press">/winter-coat-drive</span>
-			</li>
-		</ul>
+		<div className="adm-record__row">
+			<ul className="adm-record__origins adm-record__foot">
+				<li>
+					<span className="adm-chip adm-press">/winter-coat-drive</span>
+				</li>
+			</ul>
+		</div>
 	</div>
 );
 
@@ -206,24 +208,26 @@ function CampaignRecord({ row }: { readonly row: Row }) {
 			</div>
 			{facts.length === 0 ? null : <p className="adm-record__facts">{facts.join(' · ')}</p>}
 			{row.address === null ? null : (
-				// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as `RecordCard` states it.
-				<ul role="list" className="adm-record__origins adm-record__foot">
-					{row.state === 'never_published' ? (
-						// nothing answers there until the first Publish, so it is no link yet.
-						<li>
-							<code className="adm-chip">{row.address}</code>
-						</li>
-					) : (
-						<Press
-							words
-							as="a"
-							href={row.address}
-							aria-label={`Open ${row.name} at ${row.address}`}
-						>
-							{row.address}
-						</Press>
-					)}
-				</ul>
+				<div className="adm-record__row">
+					{/* biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as `RecordCard` states it. */}
+					<ul role="list" className="adm-record__origins adm-record__foot">
+						{row.state === 'never_published' ? (
+							// nothing answers there until the first Publish, so it is no link yet.
+							<li>
+								<code className="adm-chip">{row.address}</code>
+							</li>
+						) : (
+							<Press
+								words
+								as="a"
+								href={row.address}
+								aria-label={`Open ${row.name} at ${row.address}`}
+							>
+								{row.address}
+							</Press>
+						)}
+					</ul>
+				</div>
 			)}
 		</article>
 	);

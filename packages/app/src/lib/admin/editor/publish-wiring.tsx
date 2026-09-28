@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { type FormRejection, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import {
@@ -24,7 +24,9 @@ import type { BarPress, PublishState } from './publish-bar';
 // stands while the latest answer is a republish and the draft is still what is live, so the next
 // edit takes both down. a press stays held from its post until the revalidation it brings lands,
 // and a confirm stays up, held, until its answer does: a refusal is said in it, and a success takes
-// it down. a confirm cancelled on a refusal opens again without it.
+// it down. a confirm cancelled on a refusal opens again without it. a Reset or a Discard that lands
+// takes its press off the bar with its confirm, so the focus goes to the bar's state word
+// (`statusRef`) once the confirm is down — before then the page behind it is inert.
 
 /** what the editor's action answers the presses: what one did, or a refusal. */
 type PressAnswer = {
@@ -56,6 +58,7 @@ type Presses = {
 		readonly onDiscard: () => void;
 		readonly reset: { readonly hasEdits: boolean; readonly onReset: () => void } | undefined;
 		readonly report: { readonly press: BarPress; readonly text: string } | null;
+		readonly statusRef: RefObject<HTMLSpanElement | null>;
 	};
 	/** the confirm up, if one is. */
 	readonly confirm: ReactNode;
@@ -81,6 +84,9 @@ export function usePublishPresses({
 	const [asked, setAsked] = useState<'first-publish' | 'discard' | 'reset' | null>(null);
 	/** the answer a confirm was cancelled on, whose refusal it does not open on again. */
 	const [cancelledOn, setCancelledOn] = useState<PressAnswer | undefined>(undefined);
+	/** the Reset or Discard answer that took its press away, which hands the focus to the state word. */
+	const [pressGoneOn, setPressGoneOn] = useState<PressAnswer | undefined>(undefined);
+	const statusRef = useRef<HTMLSpanElement>(null);
 
 	const busy = presses.state !== 'idle';
 	const pressing = busy ? presses.formData?.get(WHICH_FORM) : null;
@@ -89,7 +95,14 @@ export function usePublishPresses({
 	// an answer that landed takes its confirm down; a refusal leaves it up, saying why.
 	useEffect(() => {
 		if (answer?.published || answer?.discarded || answer?.reset) setAsked(null);
+		if (answer?.discarded || answer?.reset) setPressGoneOn(answer);
 	}, [answer]);
+
+	// runs in the commit that takes the confirm down, after the confirm's own cleanup has let go of
+	// the page.
+	useEffect(() => {
+		if (pressGoneOn !== undefined) statusRef.current?.focus();
+	}, [pressGoneOn]);
 
 	const press = (which: string, fields: Record<string, string> = {}) => {
 		const body = new FormData();
@@ -154,7 +167,8 @@ export function usePublishPresses({
 					? { press: 'publish', text: publishRefusal }
 					: undoRefusal !== null
 						? { press: 'undo', text: undoRefusal }
-						: null
+						: null,
+			statusRef
 		},
 		confirm
 	};

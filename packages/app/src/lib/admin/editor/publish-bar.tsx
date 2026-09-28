@@ -1,7 +1,7 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { useId } from 'react';
+import { type Ref, useId } from 'react';
 import { RouterLink } from '../router-link';
 import { InPlaceName } from './in-place-name';
 
@@ -19,7 +19,9 @@ import { InPlaceName } from './in-place-name';
 // control that was pressed is described by it. a refused rename marks the name box as well.
 //
 // Reset to default is the Donation page's alone and is drawn only once the page has edits; Discard
-// changes only while the draft differs from what is live; Open only while something is live.
+// changes only while the draft differs from what is live; Open only while something is live. so a
+// Reset or a Discard that lands takes its own press away, and the caller puts the focus on the state
+// word instead (`statusRef`), which reads the state the press left.
 //
 // **nothing pressable does nothing.** a caller with no handler for Undo or Discard changes gets no
 // such press drawn. Publish is the bar's one press that is always there, so without `onPublish` it
@@ -94,6 +96,8 @@ type PublishBarProps = {
 	readonly reset?: { readonly hasEdits: boolean; readonly onReset: () => void } | undefined;
 	/** the last press's refusal, as a sentence naming what to change. */
 	readonly report?: { readonly press: BarPress; readonly text: string } | null | undefined;
+	/** the state word's holder, which takes the focus from a press that landed and went. */
+	readonly statusRef?: Ref<HTMLSpanElement> | undefined;
 };
 
 export function PublishBar({
@@ -109,7 +113,8 @@ export function PublishBar({
 	onUndo,
 	onDiscard,
 	reset,
-	report
+	report,
+	statusRef
 }: PublishBarProps) {
 	const reportId = useId();
 	const heldId = useId();
@@ -140,7 +145,9 @@ export function PublishBar({
 				) : (
 					<span className="adm-publishbar__name">Donation page</span>
 				)}
-				<StatusWord tone={tone}>{word}</StatusWord>
+				<span className="adm-publishbar__state" ref={statusRef} tabIndex={-1}>
+					<StatusWord tone={tone}>{word}</StatusWord>
+				</span>
 			</div>
 			<div className="adm-publishbar__acts">
 				<div className="adm-publishbar__quiet">

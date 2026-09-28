@@ -30,16 +30,19 @@ import { PageRoot } from './page-root';
 //
 // the donation box is always drawn, exactly once, in normal flow, and never inside another block's
 // wrapper: no layout here gives it an ancestor that clips, positions or transforms it, so no block
-// can cover it or cut it off. ./page-view.dom.spec.tsx holds that for every layout.
+// can cover it or cut it off. the cover is the one positioned block, and the box stands after it,
+// never over it. ./page-view.dom.spec.tsx holds that for every layout.
 //
 // layouts, as ./page.css draws them. on a phone every layout is the stored order. from the page's
 // widest breakpoint, `box-right` stands the box in a column of its own beside the other blocks and
 // `banner` does the same inside a band at the top, the blocks after the box running full width
 // under it; `column` keeps one narrow column at every width. a goal bar or program chooser listed
 // directly before the box travels into the box's column with it, so the chooser always stands
-// against the box it drives. `cover` draws as `box-right`, a hero in the flow where it is listed.
-// an org-info footer always closes the page, wherever it is listed. a hero or image block with no
-// photo leaves itself out.
+// against the box it drives. `cover` needs a hero then a title as the first two blocks drawn: the
+// hero runs edge to edge under the masthead with the title laid over it, and the rest of the page
+// is `box-right` under it. a cover page without that pair draws as `box-right`, its hero in the
+// flow where it is listed. an org-info footer always closes the page, wherever it is listed. a hero
+// or image block with no photo leaves itself out.
 
 export type PageLook = {
 	/** lowercase `#rrggbb`, or null for the form's own grey. */
@@ -92,6 +95,7 @@ export function PageView(props: PageViewProps) {
 	const isFooter = (block: Block) => block.type === 'org-info' && block.variant === 'footer';
 	const footers = shown.filter(isFooter);
 	const body = shown.filter((block) => !isFooter(block));
+	const cover = page.layout === 'cover' ? coverOf(body) : null;
 	const layout: Layout = page.layout === 'cover' ? 'box-right' : page.layout;
 
 	const draw = (block: Block, ground: Background = block.background) =>
@@ -126,7 +130,7 @@ export function PageView(props: PageViewProps) {
 			shade={look.shade}
 			corner={look.corner}
 			palette={page.palette}
-			layout={layout}
+			layout={cover === null ? layout : 'cover'}
 			{...(className === undefined ? {} : { className })}
 		>
 			<header className="page-mast">
@@ -134,7 +138,40 @@ export function PageView(props: PageViewProps) {
 					<p className="page-mast-name">{org.name}</p>
 				</div>
 			</header>
-			<main className="page-body">{arranged(body, layout, draw)}</main>
+			<main className="page-body">
+				{cover === null ? (
+					arranged(body, layout, draw)
+				) : (
+					<>
+						<section
+							className="page-block"
+							id={blockDomId(cover.hero.id)}
+							data-block="hero"
+							data-block-id={cover.hero.id}
+							data-background={cover.hero.background}
+						>
+							<HeroBlock
+								block={cover.hero}
+								imageSrc={imageSrc}
+								over={
+									<div
+										id={blockDomId(cover.title.id)}
+										data-block="title"
+										data-block-id={cover.title.id}
+									>
+										<TitleBlock
+											block={cover.title}
+											heading={titleHeading(cover.title.heading, props)}
+											first={cover.title === firstTitle}
+										/>
+									</div>
+								}
+							/>
+						</section>
+						{arranged(body.slice(2), layout, draw)}
+					</>
+				)}
+			</main>
 			{footers.length === 0 ? null : (
 				<footer className="page-foot">{footers.map((block) => draw(block))}</footer>
 			)}
@@ -186,6 +223,13 @@ function arranged(blocks: Block[], layout: Layout, draw: Draw) {
 			{rest.length === 0 ? null : flow(rest)}
 		</>
 	);
+}
+
+/** the cover's hero and the title laid over it: the first two blocks drawn, in that order. */
+function coverOf(body: readonly Block[]) {
+	const [hero, title] = body;
+	if (hero?.type !== 'hero' || title?.type !== 'title') return null;
+	return { hero, title };
 }
 
 const hasWords = (doc: RichTextDocument | null) => doc !== null && !isEmptyDocument(doc);

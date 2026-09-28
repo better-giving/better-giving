@@ -182,7 +182,8 @@ async function readPhoto(db: Db, imageId: string, alt: string): Promise<ReadWord
 	const described = alt.trim();
 	const read = {
 		words: { imageId, alt: described === '' ? null : described },
-		boxOf: noBox
+		// the id is the upload's, posted from no box the operator types in
+		boxOf: ([key]: readonly PropertyKey[]) => (key === 'alt' ? 'alt' : null)
 	};
 	if (!BLOCK_DATA.hero.imageId.safeParse(imageId).success) return { ok: true, read };
 	if ((await firstMissingImage(db, [imageId])) !== null) {

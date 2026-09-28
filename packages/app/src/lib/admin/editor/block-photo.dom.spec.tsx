@@ -26,12 +26,15 @@ const PLACED = '0192a4c1-0000-7000-8000-000000000001';
 const STORED = '0192a4c1-0000-7000-8000-000000000002';
 
 let saves: Record<string, string>[];
+/** what the editor's action answers a save; a landed one unless a case says otherwise. */
+let saveAnswer: { body: unknown; status: number };
 let uploads: number[];
 /** each upload waits here until the case lets it land, answered with what it is handed. */
 let uploadsHeld: ((answer: { body: unknown; status: number }) => void)[];
 
 beforeEach(() => {
 	saves = [];
+	saveAnswer = { body: { saved: 'block' }, status: 200 };
 	uploads = [];
 	uploadsHeld = [];
 	resizes.length = 0;
@@ -61,7 +64,7 @@ function editor() {
 				saves.push(
 					Object.fromEntries([...(await request.formData())].map(([k, v]) => [k, String(v)]))
 				);
-				return { saved: 'block' };
+				return data(saveAnswer.body, saveAnswer.status);
 			}
 		},
 		{
@@ -154,6 +157,26 @@ describe('a placed photo’s sheet', () => {
 				alt: 'Coats on a rack'
 			})
 		]);
+	});
+
+	it('draws a refused description under its box, and moves the caret there', async () => {
+		const words = 'a photo’s description holds at most 250 characters';
+		saveAnswer = {
+			body: {
+				form: { id: BLOCK_FORMS.photo, result: { status: 'error', error: { alt: [words] } } }
+			},
+			status: 400
+		};
+		const root = editor();
+		describePhoto(root, 'a'.repeat(251));
+
+		await done(root);
+
+		const box = root.querySelector<HTMLInputElement>('#block-hero-alt');
+		expect(box).not.toBeNull();
+		expect(document.activeElement).toBe(box);
+		const said = box?.getAttribute('aria-describedby')?.split(' ') ?? [];
+		expect(said.map((id) => document.getElementById(id)?.textContent)).toContain(words);
 	});
 
 	it('says a refused upload at the press, and keeps the photo placed', async () => {

@@ -4135,6 +4135,29 @@
 		margin-block-start: var(--admin-space-10);
 	}
 
+	/* a campaign on its list: the facts under the head — its goal and end date, in figures that line
+	   up from card to card — and a row holding the address press at the start and the card's one
+	   action at the end, on one line where they fit. */
+	.adm-record__facts {
+		font-size: var(--admin-body-size);
+		color: var(--admin-ink-2);
+		font-feature-settings: var(--admin-figures-tabular);
+	}
+
+	.adm-record__row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--admin-space-4);
+	}
+
+	.adm-record__row > .adm-record__foot {
+		flex: 1 1 auto;
+		inline-size: auto;
+		margin: 0;
+	}
+
 	/* ---------- the create card ---------------------------------------------------------
 
 	   the press that leads a list of records, drawn as a card of its own so a list opens with the
@@ -5400,8 +5423,9 @@
 		line-height: var(--admin-subhead-lh);
 	}
 
-	/* the state word never wraps; the name gives way first. */
-	.adm-publishbar__who > .adm-state {
+	/* the state word never wraps; the name gives way first. it stands in a holder the focus is put
+	   on when the press that had it is taken off the bar. */
+	.adm-publishbar__state {
 		flex: none;
 		white-space: nowrap;
 	}
