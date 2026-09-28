@@ -2,12 +2,13 @@ import { and, eq, inArray, notExists } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { chatTurn, form, type Page, page } from '../db/schema';
 
-// one page read by its id, and the one module that deletes a `page`, gated by ./sole-deleter.spec.ts.
+// one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
+// and where a live campaign ends.
 //
 // a page is deleted only while it is a campaign nobody has ever been shown. once a page has been
 // live a gift may point at its owned settings row, and ending it is the campaign's own state rather
 // than a delete; the donation page is always live (`page_donation_page_live_check`), so it never
-// qualifies. `page` in ../db/schema.ts argues the rest from the table's side.
+// qualifies for either. `page` in ../db/schema.ts argues the rest from the table's side.
 
 /** the page with this id, of either type; null where there is none. */
 export async function readPage(db: Db, pageId: string): Promise<Page | null> {
@@ -47,4 +48,30 @@ export async function deleteNeverPublishedCampaign(db: Db, pageId: string): Prom
 			)
 	]);
 	return deleted.length === 1;
+}
+
+/**
+ * ends a live campaign: the page to `ended` and the settings row it owns out of service, in one
+ * `batch()`. false when the page is missing, is the donation page, or is not live.
+ *
+ * the owned row goes to `draft`, which the served config and the gift endpoint refuse as they refuse
+ * any unpublished form, so the address takes no new gift while a commitment already made on the row
+ * keeps collecting (`readForm` in ../donations/collect.ts reads no status). the row's update runs
+ * first and names the page by the same guard, so a campaign that is not live leaves its row alone.
+ */
+export async function endCampaign(db: Db, pageId: string): Promise<boolean> {
+	const endable = and(eq(page.id, pageId), eq(page.type, 'campaign'), eq(page.state, 'live'));
+	const [, ended] = await db.batch([
+		db
+			.update(form)
+			.set({ status: 'draft' })
+			.where(
+				and(
+					eq(form.status, 'live'),
+					inArray(form.id, db.select({ id: page.formId }).from(page).where(endable))
+				)
+			),
+		db.update(page).set({ state: 'ended' }).where(endable).returning({ id: page.id })
+	]);
+	return ended.length === 1;
 }

@@ -245,6 +245,34 @@ body {
 	color: var(--page-quiet);
 }
 
+/* an ended campaign's address (src/routes/$slug.tsx): its name, one line, and the way on to /donate
+   drawn as the card's own action, at its label's width rather than the card's. */
+.ended {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--page-gap-group);
+}
+
+.ended h1 {
+	margin: 0;
+	font-size: var(--page-heading);
+	line-height: var(--page-lh-heading);
+	letter-spacing: var(--page-tracking-heading);
+	font-weight: var(--_w-bold);
+	text-wrap: balance;
+}
+
+.ended p {
+	margin: 0;
+	color: var(--page-quiet);
+}
+
+.ended [part~='action'] {
+	inline-size: auto;
+	text-decoration: none;
+}
+
 /*
  * ── the donor page's blocks ───────────────────────────────────────────────────────────────────
  *
