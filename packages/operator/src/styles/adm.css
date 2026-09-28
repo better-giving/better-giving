@@ -4968,6 +4968,134 @@
 	.adm-morelist__item[aria-current] > .adm-mark {
 		color: inherit;
 	}
+
+	/* ---------- the look: a donor page's presets, each drawn as the picture it picks ----------
+
+	   packages/app/src/lib/admin/look/look-control.tsx writes these. a face is a `<label>` around a
+	   radio held out of sight (`.adm-vh` in ./base.css), so the face is the whole of what a pointer
+	   presses and the keyboard walks an axis with the arrow keys. no radio circle and no card: the
+	   picture is the choice.
+
+	   a face's fill is the thing it pictures — a shade's card over its tray, the organisation's
+	   brand colour — and is written by the component under a `raw-colour-ok:` note, because it is
+	   the donor page's value and no step of this system. so nothing here recolours a face: the taken
+	   one is ringed in the ink outside itself, clear of the picture, and the focused one takes the
+	   system's ring hugging its edge, restated here for the reason `.adm-check--boxed` gives — the
+	   face is not the element the keyboard reached. the taken rule is written after the focus rule,
+	   so a face that is both keeps the ink ring and the focus shadow inside it. */
+	.adm-pickrow {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--admin-space-4);
+	}
+
+	/* `position` is the containing block the radio inside is taken out of the flow against, so a
+	   press on it scrolls nothing. */
+	.adm-swatch {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--admin-space-3);
+		min-block-size: var(--admin-touch-min);
+		min-inline-size: var(--admin-space-12);
+		padding-inline: var(--admin-space-5);
+		font-size: var(--admin-control-size);
+		font-weight: var(--admin-control-weight);
+		line-height: var(--admin-control-lh);
+		color: var(--admin-ink);
+		background: var(--admin-control-bg);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+		cursor: pointer;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-swatch:hover,
+	.adm-swatch.is-hover {
+		border-color: var(--admin-control-border-hover);
+	}
+
+	.adm-swatch:has(input:focus-visible),
+	.adm-swatch:has(input.is-focus) {
+		outline: var(--admin-focus-width) solid transparent;
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	.adm-swatch:has(input:checked) {
+		outline: var(--admin-border-width-strong) solid var(--admin-ink);
+		outline-offset: var(--admin-border-width-strong);
+	}
+
+	/* the Organisation chip on a brand colour dark enough to want the light ink —
+	   packages/app/src/lib/admin/look/ink.ts decides which. */
+	.adm-swatch[data-ink='light'] {
+		color: var(--admin-primary-ink);
+	}
+
+	.adm-swatch--icon {
+		min-inline-size: var(--admin-touch-min);
+		padding-inline: 0;
+	}
+
+	/* a shade: the tray is the face's own fill and the card stands inside it by one step, square,
+	   because the face's radius less that step is nothing. */
+	.adm-swatch--shade {
+		align-items: stretch;
+		padding: var(--admin-space-2);
+	}
+
+	.adm-swatch__card {
+		display: flex;
+		flex: 1;
+		align-items: center;
+		justify-content: center;
+		padding-inline: var(--admin-space-4);
+	}
+
+	/* the corner box: the top-left corner of a donor page's card, drawn at the preset's own radius,
+	   with its name under it. */
+	.adm-corner {
+		flex-direction: column;
+		align-items: stretch;
+		justify-content: flex-end;
+		gap: var(--admin-space-2);
+		block-size: var(--admin-space-12);
+		padding: var(--admin-space-4);
+	}
+
+	.adm-corner__shape {
+		flex: 1;
+		border-block-start: var(--admin-border-width-strong) solid var(--admin-ink-2);
+		border-inline-start: var(--admin-border-width-strong) solid var(--admin-ink-2);
+	}
+
+	.adm-corner__name {
+		font-size: var(--admin-caption-size);
+		text-align: end;
+	}
+
+	/* the brand colour's picker, drawn as one more face: the colour it holds fills it edge to edge
+	   inside a step of padding, and it hugs its own width in the field it stands in. */
+	.adm-swatch--well {
+		justify-self: start;
+		min-inline-size: var(--admin-space-12);
+		padding: var(--admin-space-2);
+	}
+
+	.adm-swatch--well::-webkit-color-swatch-wrapper {
+		padding: 0;
+	}
+
+	.adm-swatch--well::-webkit-color-swatch {
+		border: 0;
+		border-radius: var(--admin-radius-0);
+	}
+
+	.adm-swatch--well::-moz-color-swatch {
+		border: 0;
+		border-radius: var(--admin-radius-0);
+	}
 }
 
 @layer layout {
