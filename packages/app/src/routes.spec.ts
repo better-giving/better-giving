@@ -263,10 +263,7 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
 	// the chart the three accounts are picked out of, how far behind the queue is, and the signed
 	// address that begins a connection. the connection's tokens are this deployment's own rows, so
 	// no console can read any of it.
-	'routes/console.quickbooks.ts',
-	// the key Zapier presents to this deployment and the Zaps listening on it: a read that never
-	// carries the key, and the two presses that make and replace it.
-	'routes/console.zapier.ts'
+	'routes/console.quickbooks.ts'
 ];
 
 /**

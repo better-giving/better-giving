@@ -13,7 +13,6 @@ import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
 import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
-import zapierLogo from '../assets/integrations/zapier.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
 import { railGroups } from '../lib/console-pages';
@@ -103,7 +102,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 			chariot: chariotLogo,
 			nowpayments: nowpaymentsLogo
 		},
-		{ quickbooks: quickbooksLogo, zapier: zapierLogo }
+		{ quickbooks: quickbooksLogo }
 	);
 	const here = groups
 		.flatMap((group) => group.destinations)

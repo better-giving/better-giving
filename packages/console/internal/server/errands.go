@@ -14,10 +14,9 @@ import (
 
 // the errands this console proxies to the deployment: the organisation's legal identity and where
 // it reaches the operator, the test send, the payments reading, the repeating-gifts standing and
-// the press that provisions it, where the books stand and every press over that connection, where
-// the Zapier key stands and the press that makes or replaces it, the site list, the press that
-// registers the hostnames a donor is drawn wallet buttons on, and the press that repairs the
-// deployment's own Stripe endpoint.
+// the press that provisions it, where the books stand and every press over that connection, the
+// site list, the press that registers the hostnames a donor is drawn wallet buttons on, and the
+// press that repairs the deployment's own Stripe endpoint.
 //
 // **the deployment is the authority for every one of them.** what a value may be, what a send did,
 // what the processor account holds and whether a site may be dropped are decided inside the worker,
@@ -48,10 +47,6 @@ type sitesPress struct {
 
 type testEmailPress struct {
 	To string `json:"to"`
-}
-
-type zapierPress struct {
-	Press string `json:"press"`
 }
 
 // surfaceDoors is the session this console holds, bound to a reader and a writer of the
@@ -189,30 +184,6 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 			_, post = patient()
 		}
 		answer(w, http.StatusOK, deployment.PressQuickbooks(r.Context(), post, posted))
-	})
-
-	// where this deployment's Zapier key stands, the key included, and how many Zaps are listening
-	// on it. the body carries the key, so it is written to the page, never logged and never stored
-	// by a cache, and the press below answers the same way.
-	routes.HandleFunc("GET /api/deployment/zapier", func(w http.ResponseWriter, r *http.Request) {
-		get, _ := held()
-		w.Header().Set("Cache-Control", "no-store")
-		answer(w, http.StatusOK, deployment.ReadZapier(r.Context(), get))
-	})
-
-	// makes the first key or replaces the one there is, and hands the page the plaintext.
-	//
-	// **this answer carries the key, as the read above does**, so neither this body nor the
-	// deployment's is logged or kept: it is written to the page and dropped
-	// (internal/deployment/zapier.go).
-	routes.HandleFunc("POST /api/deployment/zapier", func(w http.ResponseWriter, r *http.Request) {
-		var posted zapierPress
-		if !decoded(w, r, &posted) {
-			return
-		}
-		_, post := held()
-		w.Header().Set("Cache-Control", "no-store")
-		answer(w, http.StatusOK, deployment.PressZapier(r.Context(), post, posted.Press))
 	})
 
 	// asks the deployment to register the hostnames a donor is drawn wallet buttons on.

@@ -25,16 +25,12 @@ import type {
 	VarsWritten,
 	WalletsLevel,
 	WebhookRepaired,
-	WidgetLevel,
-	ZapierPressBody,
-	ZapierPressed,
-	ZapierRead
+	WidgetLevel
 } from './types';
 import type {
 	QuickbooksBacklogLine,
 	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
-import type { ZapierReport } from '@better-giving/operator/console/zapier';
 
 // the console's own process, reached from the page it serves.
 //
@@ -258,29 +254,6 @@ export async function pressQuickbooks(body: QuickbooksPressBody): Promise<Quickb
 }
 
 const NO_REVERSALS: Pick<QuickbooksStartAtSide, 'reversals'> = { reversals: 0 };
-
-/**
- * where this deployment's Zapier key stands, how many Zaps are listening on it, and how its
- * deliveries are going. every reading carries the key, or null for a key made before the
- * deployment stored it.
- */
-export async function readZapier(): Promise<ZapierRead> {
-	const read = await ask<ZapierRead>('/deployment/zapier', 'GET');
-	if (read.kind !== 'read') return read;
-	// a deployment older than this console reports no count for a trigger it does not have yet, and
-	// the binary passes `listening` through as it came.
-	const { listening } = read.report;
-	return {
-		...read,
-		report: { ...read.report, listening: { ...NO_ZAPS_LISTENING, ...listening } }
-	};
-}
-
-const NO_ZAPS_LISTENING: ZapierReport['listening'] = { newGift: 0, newDonor: 0, giftRefunded: 0 };
-
-/** makes the key, or replaces it; the answer carries the new key. */
-export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>
-	post('/deployment/zapier', body);
 
 /**
  * asks the deployment to register the hostnames a donor is drawn wallet buttons on.

@@ -4,11 +4,6 @@ import type {
 	QuickbooksPressReport,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
-import type {
-	ZapierPress,
-	ZapierPressReport,
-	ZapierReport
-} from '@better-giving/operator/console/zapier';
 import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 
 // what the binary answers, in the shapes it answers in.
@@ -24,10 +19,6 @@ import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 // browser reads — so what crosses about it is an account id, a name and a folder on this machine. a
 // field carrying it would be a token in the document, in the browser's memory and in whatever a page
 // extension can read.
-//
-// **the zapier key is the one credential that does**, in `ZapierRead` and `ZapierPressed`: the
-// operator is shown it to paste into zapier, so the page is where it is meant to arrive. the binary
-// answers both `Cache-Control: no-store` and logs and keeps neither.
 
 /** the cloudflare account this deployment is in. */
 export type Account = { id: string; name: string };
@@ -726,26 +717,6 @@ export type QuickbooksPressBody =
  */
 export type QuickbooksPressed =
 	| { kind: 'reported'; report: QuickbooksPressReport }
-	| { kind: 'unanswered'; read: NoReport };
-
-/**
- * where this deployment's Zapier key stands, or which way the binary did not find out — read off
- * the shared type for {@link QuickbooksRead}'s reason (`packages/operator/src/console/zapier.ts`).
- */
-export type ZapierRead =
-	| { kind: 'read'; report: ZapierReport }
-	| { kind: 'unread'; read: NoReport };
-
-/** what one press on the Zapier key posts. */
-export type ZapierPressBody = { press: ZapierPress };
-
-/**
- * how a make or replace went. a refusal is `reported` with `ok: false`: the deployment answered,
- * and said why. the answer carries the new key, as every reading does after it (or null in a
- * reading, for a key made before the deployment stored it).
- */
-export type ZapierPressed =
-	| { kind: 'reported'; report: ZapierPressReport }
 	| { kind: 'unanswered'; read: NoReport };
 
 /**
