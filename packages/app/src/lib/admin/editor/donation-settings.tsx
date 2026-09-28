@@ -1,5 +1,5 @@
 import { getFormProps } from '@conform-to/react';
-import { useEffect } from 'react';
+import { type SubmitEvent, useEffect } from 'react';
 import { useFetcher } from 'react-router';
 import { FormGivingFields } from '$lib/admin/forms/giving-fields';
 import { FormProgramFields } from '$lib/admin/forms/program-fields';
@@ -21,9 +21,9 @@ import { DoneSheet } from './done-sheet';
 // route's action (`saveDraftSettings` in $lib/server/pages/editor.ts), posted through a fetcher so
 // the editor does not navigate; a landed save moves the page's version, which reloads the preview.
 //
-// the groups' `<form>` stands in the sheet's `lead` rather than as its children: conform's list
-// intents (Add, Remove) and its first validation pass run in the form's own `onSubmit`, which
-// `DoneSheet`'s form does not take. Done submits that form, and the form submits this one.
+// the sheet's form is conform's, handed over as `formProps`: its list intents (Add, Remove) and its
+// validation pass run in conform's `onSubmit`, and a submit that pass lets through goes to the
+// fetcher rather than navigating.
 
 const PAGE_SETTINGS = defineForm({ id: PAGE_SETTINGS_FORM_ID, schema: PAGE_SETTINGS_INPUT });
 
@@ -60,6 +60,14 @@ export function DonationSettingsSheet({
 		if (saved) onSaved();
 	}, [saved, onSaved]);
 
+	const conform = getFormProps(form);
+	const submit = (event: SubmitEvent<HTMLFormElement>) => {
+		conform.onSubmit(event);
+		if (event.defaultPrevented) return;
+		event.preventDefault();
+		fetcher.submit(event.currentTarget);
+	};
+
 	return (
 		<DoneSheet
 			title="Donation settings"
@@ -67,34 +75,29 @@ export function DonationSettingsSheet({
 			wide
 			tall
 			onDismiss={onDismiss}
-			onDone={() => document.forms.namedItem(form.id)?.requestSubmit()}
+			formProps={{ ...conform, method: 'post', onSubmit: submit }}
 			applying={applying}
 			refusal={resultFor(PAGE_SETTINGS, answer)?.error?.['']?.[0] ?? null}
-			lead={
-				<fetcher.Form method="post" className="adm-sheet__form" {...getFormProps(form)}>
-					<input {...whichForm(PAGE_SETTINGS.id)} />
-					<input {...recordVersion(version)} />
-					<FormProgramFields
-						boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
-						programs={seed.programs}
-						retired={seed.retired}
-					/>
-					<FormGivingFields
-						boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
-						amounts={{
-							id: fields.suggested_amounts.id,
-							errors: fields.suggested_amounts.errors,
-							rows,
-							add: insertWhenValid(form, PAGE_SETTINGS, fields.suggested_amounts.name),
-							remove: (index) =>
-								form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
-						}}
-						currency={seed.currency}
-					/>
-				</fetcher.Form>
-			}
 		>
-			{null}
+			<input {...whichForm(PAGE_SETTINGS.id)} />
+			<input {...recordVersion(version)} />
+			<FormProgramFields
+				boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
+				programs={seed.programs}
+				retired={seed.retired}
+			/>
+			<FormGivingFields
+				boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
+				amounts={{
+					id: fields.suggested_amounts.id,
+					errors: fields.suggested_amounts.errors,
+					rows,
+					add: insertWhenValid(form, PAGE_SETTINGS, fields.suggested_amounts.name),
+					remove: (index) =>
+						form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
+				}}
+				currency={seed.currency}
+			/>
 		</DoneSheet>
 	);
 }

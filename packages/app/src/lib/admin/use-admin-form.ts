@@ -1,6 +1,6 @@
 import { type DefaultValue, useForm } from '@conform-to/react';
 import { parseWithZod, type SubmissionResult } from '@conform-to/zod/v4';
-import { type MouseEventHandler, useEffect, useRef } from 'react';
+import { type MouseEventHandler, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { z } from 'zod';
 import {
 	type FormRejection,
@@ -279,6 +279,74 @@ export function insertWhenValid<S extends z.ZodObject>(
 			if (!refused) return;
 			event.preventDefault();
 			form.validate({ name });
+		}
+	};
+}
+
+/** a list press as a screen hands it over: conform's four attributes, and a guard on the press. */
+type ListPress = IntentProps & {
+	readonly onClick?: MouseEventHandler<HTMLButtonElement> | undefined;
+};
+
+/** what a list press is drawn with: a submit before hydration, a plain button after. */
+type ListPressProps =
+	| (ListPress & { readonly type: 'submit' })
+	| {
+			readonly type: 'button';
+			readonly form: string;
+			readonly onClick: MouseEventHandler<HTMLButtonElement>;
+	  };
+
+const neverChanges = () => () => {};
+
+/** false on the server and on the render that hydrates, true on every render after. */
+export function useHydrated(): boolean {
+	return useSyncExternalStore(
+		neverChanges,
+		() => true,
+		() => false
+	);
+}
+
+/**
+ * a row editor's Add or Remove, drawn so that Enter in a box presses the form's own submit and not
+ * this.
+ *
+ * the platform's implicit submission clicks the form's default button, which is the first submit
+ * button in tree order whose form owner is the form — and a list press sits among the boxes, above
+ * the submit that ends the form. so once the page is hydrated the press is `type="button"` and is
+ * no default button at all; its intent goes through a submitter made for the one press, which is
+ * how conform's own `form.insert()` sends one (`requestIntent` in @conform-to/dom's dom.js).
+ * before hydration it stays conform's submit, which `pressedList` in `$lib/server/conform.ts`
+ * answers without script.
+ *
+ * the press's own `onClick` runs first, and a press it withholds — `insertWhenValid` above calls
+ * `preventDefault()` — sends nothing.
+ */
+export function listPress(press: ListPress, hydrated: boolean): ListPressProps {
+	if (!hydrated) return { ...press, type: 'submit' };
+	return {
+		type: 'button',
+		form: press.form,
+		onClick(event) {
+			press.onClick?.(event);
+			const form = event.currentTarget.form;
+			if (event.defaultPrevented || form === null) return;
+			const submitter = form.ownerDocument.createElement('button');
+			submitter.type = 'submit';
+			submitter.name = press.name;
+			submitter.value = press.value;
+			submitter.formNoValidate = press.formNoValidate;
+			submitter.hidden = true;
+			submitter.setAttribute('form', press.form);
+			// outside the form, where conform places its own: removed from inside it, the submitter
+			// upset focus in a modal (https://github.com/edmundhung/conform/issues/783).
+			form.ownerDocument.body.appendChild(submitter);
+			try {
+				form.requestSubmit(submitter);
+			} finally {
+				submitter.remove();
+			}
 		}
 	};
 }
