@@ -1,5 +1,5 @@
 import type { Frequency, TributeKind } from '@better-giving/form/v1';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { projectTribute } from '../../donations/tributes';
 import { majorText } from '../../forms/amounts';
@@ -8,6 +8,8 @@ import {
 	contact,
 	dispute,
 	donation,
+	ENTRY_SOURCE_TYPES,
+	entryGroup,
 	form,
 	payment,
 	program,
@@ -15,6 +17,7 @@ import {
 	type PaymentMethod
 } from '../db/schema';
 import { refundStands } from '../donations/queries';
+import { inPage, type Keyset, type PageOf, pageOf, pastKeyset } from './paging';
 
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
 // (../zapier/payload.ts) and each entry the read API's gifts list answers with
@@ -30,6 +33,25 @@ import { refundStands } from '../donations/queries';
 //
 // the tribute's notify name and address are not here: they name a third person who gave nothing
 // and asked for nothing, and the gift leaves the deployment without them.
+//
+// **when a gift last changed is read, never stored.** `updated_at` is the latest of: its payment
+// row's writing; each journal entry keyed on that row; and for each refund-direction row reversing
+// it, that row's writing, each journal entry keyed on it, and its dispute's `updated_at`. a gift's
+// money changes in place — a pending row settles, a refund that did not stand flips to
+// `cancelled`, a lost dispute lowers what it took — and `payment` has no `updated_at` to show it.
+// every one of those writes lands in the same `batch()` as its journal entry (../books/writes.ts),
+// and `entry_group` is append-only, so an entry's `created_at` is when that change was written. no
+// money writer stamps anything for this read. what it does not see is a change the books could not
+// take — a settlement ../donations/settle.ts corrects with nothing to post — and a change to the
+// donor, form or program a gift names: those are read fresh on every page, not announced here.
+//
+// **two orders.** with no `updated_since`, newest first by when the money moved, then id. with
+// `updated_since`, every gift whose `updated_at` is at or after it, oldest change first, then id.
+// a system keeping a copy walks the second from any instant before the first gift, stores the last
+// `updated_at` it was served, and passes that as `updated_since` next time. `>=` serves that last
+// gift again, so it keeps one row per `id`, the later answer winning; and because each time is
+// stamped when its write is built, a moment before the write commits, it resumes from a minute
+// before the stored time rather than at it, so a write still committing then is not passed over.
 
 /** one settled gift, as a `new_gift` Zap receives it. `id` is the payment's, stable across retries. */
 export type GiftEvent = {
@@ -68,8 +90,10 @@ export type GiftEvent = {
 export const GIFT_STATUSES = ['settled', 'partially_refunded', 'refunded'] as const;
 export type GiftStatus = (typeof GIFT_STATUSES)[number];
 
-/** one gift as the read API answers it: the `new_gift` event and where the gift stands now. */
-export type ApiGift = GiftEvent & {
+/** a gift as the read API answers it, with where it stands now and when that last changed. */
+export type ApiGift = GiftEvent & GiftStanding;
+
+type GiftStanding = {
 	readonly status: GiftStatus;
 	/**
 	 * what standing refunds and lost disputes have sent back, in minor units of the gift's
@@ -78,70 +102,162 @@ export type ApiGift = GiftEvent & {
 	readonly amount_refunded_minor: number;
 	/** a dispute on this gift is open, and its money is withdrawn until it closes. */
 	readonly dispute_open: boolean;
+	/** when this gift last changed, ISO 8601 in UTC: the time `updated_since` is compared with. */
+	readonly updated_at: string;
 };
 
-/** how many gifts the first page holds. */
-const FIRST_PAGE_SIZE = 50;
+/**
+ * the two orders gifts are walked in, each named as its cursors carry it (./paging.ts):
+ * newest first by when the money moved, or oldest change first from an instant.
+ */
+export const GIFT_ORDERS = { newest: 'gifts.newest', changed: 'gifts.changed' } as const;
 
-/** the newest settled gifts, newest first by when the money moved, then by id. */
-export async function readGiftPage(db: Db): Promise<ApiGift[]> {
-	const rows = await selectGifts(db)
-		.where(and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound')))
-		.orderBy(desc(payment.occurredAt), desc(payment.id))
-		.limit(FIRST_PAGE_SIZE);
-	const standing = await readRefundStanding(
-		db,
-		rows.map((row) => row.id)
-	);
-	return rows.map((row) => {
-		const gift = renderGift(row);
-		const { refundedMinor, disputeOpen } = standing.get(row.id) ?? NOTHING_SENT_BACK;
-		return {
-			...gift,
-			status: statusOf(gift.amount_minor, refundedMinor),
-			amount_refunded_minor: refundedMinor,
-			dispute_open: disputeOpen
-		};
-	});
+export type GiftPageQuery = { readonly limit: number; readonly after: Keyset | null } & (
+	| { readonly order: 'newest' }
+	| { readonly order: 'changed'; readonly since: Date }
+);
+
+/** one page of settled gifts in the order `query` names. */
+export async function readGiftPage(db: Db, query: GiftPageQuery): Promise<PageOf<ApiGift>> {
+	const keys =
+		query.order === 'newest' ? await newestKeys(db, query) : await changedKeys(db, query);
+	const page = pageOf(keys, query.limit, (key) => key);
+	const ids = page.rows.map((key) => key.id);
+	if (ids.length === 0) return { rows: [], next: null };
+	// two reads rather than one `batch()`: drizzle maps a D1 batch's rows by column name, and the
+	// gift's joined columns repeat `id` and `name`.
+	const [rows, standing] = await Promise.all([
+		selectGifts(db).where(inPage(payment.id, ids)),
+		selectStanding(db, ids)
+	]);
+	const gifts = new Map(rows.map((row) => [row.id, renderGift(row)]));
+	const standings = new Map(standing.map((row) => [row.id, row]));
+	return {
+		rows: ids.flatMap((id) => {
+			const gift = gifts.get(id);
+			const stands = standings.get(id);
+			if (gift === undefined || stands === undefined) return [];
+			return [
+				{
+					...gift,
+					status: statusOf(gift.amount_minor, stands.refundedMinor),
+					amount_refunded_minor: stands.refundedMinor,
+					dispute_open: stands.disputeOpen === 1,
+					updated_at: new Date(stands.updatedAt).toISOString()
+				}
+			];
+		}),
+		next: page.next
+	};
 }
-
-type RefundStanding = { readonly refundedMinor: number; readonly disputeOpen: boolean };
-
-const NOTHING_SENT_BACK: RefundStanding = { refundedMinor: 0, disputeOpen: false };
 
 /**
- * what has been sent back from each of `giftIds` and whether a dispute on it is open, keyed by
- * gift id. a gift with no refund row has no entry. an open dispute's withdrawal is not counted,
- * where `projectStatus` in ../donations/queries.ts reads the gift `disputed`: that money comes back
- * if the dispute is won. the ids are one page's, under D1's 100 bound
- * parameters (https://developers.cloudflare.com/d1/platform/limits/).
+ * the gift's own payment row under a name of its own, so a subquery reading the refund-direction
+ * rows that reverse it can read them as `payment` and hand them to `refundStands`.
  */
-async function readRefundStanding(
-	db: Db,
-	giftIds: readonly string[]
-): Promise<Map<string, RefundStanding>> {
-	if (giftIds.length === 0) return new Map();
-	const disputed = alias(dispute, 'disputed');
+const gift = alias(payment, 'gift');
+
+const isGift = (row: typeof payment | typeof gift) =>
+	and(eq(row.status, 'succeeded'), eq(row.direction, 'inbound'));
+
+async function newestKeys(db: Db, query: GiftPageQuery): Promise<Keyset[]> {
 	const rows = await db
+		.select({ id: payment.id, at: payment.occurredAt })
+		.from(payment)
+		.where(
+			and(
+				isGift(payment),
+				query.after === null
+					? undefined
+					: pastKeyset('desc', payment.occurredAt, payment.id, query.after)
+			)
+		)
+		.orderBy(desc(payment.occurredAt), desc(payment.id))
+		.limit(query.limit + 1);
+	return rows.map((row) => ({ id: row.id, at: row.at.getTime() }));
+}
+
+async function changedKeys(db: Db, query: GiftPageQuery & { order: 'changed' }): Promise<Keyset[]> {
+	const changes = db
+		.select({ id: gift.id, at: changedAt(db).as('updated_at') })
+		.from(gift)
+		.where(isGift(gift))
+		.as('changes');
+	return db
+		.select({ id: changes.id, at: changes.at })
+		.from(changes)
+		.where(
+			and(
+				sql`${changes.at} >= ${query.since.getTime()}`,
+				query.after === null ? undefined : pastKeyset('asc', changes.at, changes.id, query.after)
+			)
+		)
+		.orderBy(asc(changes.at), asc(changes.id))
+		.limit(query.limit + 1);
+}
+
+/**
+ * where each gift of `ids` stands now: what has been sent back, whether a dispute is open, and when
+ * it last changed. an open dispute's withdrawal is not counted as sent back, where `projectStatus`
+ * in ../donations/queries.ts reads the gift `disputed`: that money comes back if the dispute is won.
+ */
+function selectStanding(db: Db, ids: readonly string[]) {
+	const refunds = and(eq(payment.parentPaymentId, gift.id), eq(payment.direction, 'refund'));
+	const refunded = db
 		.select({
-			giftId: payment.parentPaymentId,
-			refundedMinor: sql<number>`coalesce(sum(case when ${refundStands(db, payment)} then ${payment.amountMinor} else 0 end), 0)`,
-			disputeOpen: sql<number>`max(${disputed.paymentId} is not null and ${disputed.outcome} is null)`
+			sum: sql`sum(case when ${refundStands(db, payment)} then ${payment.amountMinor} else 0 end)`
 		})
 		.from(payment)
-		.leftJoin(disputed, eq(disputed.paymentId, payment.id))
-		.where(and(eq(payment.direction, 'refund'), inArray(payment.parentPaymentId, [...giftIds])))
-		.groupBy(payment.parentPaymentId);
-	const standing = new Map<string, RefundStanding>();
-	for (const row of rows) {
-		if (row.giftId === null) continue;
-		standing.set(row.giftId, {
-			refundedMinor: row.refundedMinor,
-			disputeOpen: row.disputeOpen === 1
-		});
-	}
-	return standing;
+		.where(refunds);
+	const openDispute = db
+		.select({ one: sql`1` })
+		.from(payment)
+		.innerJoin(dispute, eq(dispute.paymentId, payment.id))
+		.where(and(refunds, isNull(dispute.outcome)));
+	return db
+		.select({
+			id: gift.id,
+			refundedMinor: sql<number>`coalesce(${refunded}, 0)`,
+			disputeOpen: sql<number>`exists ${openDispute}`,
+			updatedAt: changedAt(db)
+		})
+		.from(gift)
+		.where(inPage(gift.id, ids));
 }
+
+/**
+ * when the gift on the `gift` row in scope last changed, in epoch milliseconds: the latest of
+ * the row's own writing, each posting keyed on it, and for each refund-direction row reversing
+ * it, that row's writing, each posting keyed on it and its dispute's last update. the header says
+ * why these.
+ */
+function changedAt(db: Db): SQL<number> {
+	const returned = alias(payment, 'changed_returned');
+	const disputed = alias(dispute, 'changed_disputed');
+	const refundChanged = db
+		.select({
+			at: sql`max(max(${returned.createdAt}, coalesce(${disputed.updatedAt}, 0), coalesce(${postedAt(db, returned.id, 'refund_posted')}, 0)))`
+		})
+		.from(returned)
+		.leftJoin(disputed, eq(disputed.paymentId, returned.id))
+		.where(and(eq(returned.parentPaymentId, gift.id), eq(returned.direction, 'refund')));
+	return sql<number>`max(${gift.createdAt}, coalesce(${postedAt(db, gift.id, 'gift_posted')}, 0), coalesce(${refundChanged}, 0))`;
+}
+
+/**
+ * the latest journal entry keyed on the payment `paymentId` names. every source type but
+ * `donation` is keyed on a payment id (`entry_group_source_idx` in ../db/schema.ts), and naming
+ * them lets that index's leading column serve the read.
+ */
+function postedAt(db: Db, paymentId: SQLWrapper, name: string) {
+	const posted = alias(entryGroup, name);
+	return db
+		.select({ at: sql`max(${posted.createdAt})` })
+		.from(posted)
+		.where(and(inArray(posted.sourceType, PAYMENT_KEYED_SOURCES), eq(posted.sourceId, paymentId)));
+}
+
+const PAYMENT_KEYED_SOURCES = ENTRY_SOURCE_TYPES.filter((type) => type !== 'donation');
 
 function statusOf(amountMinor: number, refundedMinor: number): GiftStatus {
 	if (refundedMinor === 0) return 'settled';

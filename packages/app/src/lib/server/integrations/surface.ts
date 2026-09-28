@@ -46,7 +46,11 @@ export const INTEGRATIONS_REFUSALS = [
 	'revoked_key',
 	'not_found',
 	'method_not_allowed',
-	'rate_limited'
+	'rate_limited',
+	'invalid_limit',
+	'invalid_cursor',
+	'invalid_updated_since',
+	'unknown_parameter'
 ] as const;
 export type IntegrationsRefusalCode = (typeof INTEGRATIONS_REFUSALS)[number];
 
