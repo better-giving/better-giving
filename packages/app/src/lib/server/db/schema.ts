@@ -2575,6 +2575,93 @@ export const quickbooksSync = sqliteTable(
 );
 
 /**
+ * who a key is for. `api` is a key the organisation's own system presents to read its records;
+ * `zapier` is the one key Zapier presents, stored here and kept off the list of API keys.
+ */
+export const API_KEY_KINDS = ['api', 'zapier'] as const;
+export type ApiKeyKind = (typeof API_KEY_KINDS)[number];
+
+/**
+ * one row per key a system outside this deployment presents to it, minted by
+ * ../integrations/keys.ts.
+ *
+ * **the key is never stored**: a request is admitted by the SHA-256 of what it presents, looked up
+ * on `key_hash`. `prefix` and `last_four` are what a screen shows to tell keys apart: 8 of the 43
+ * random characters, which leaves over 200 bits of the key unshown.
+ *
+ * the organisation's, not a person's: no column names who made it, so a key outlives the member
+ * who made it and is revoked by whoever holds the dashboard.
+ *
+ * a key is revoked, never deleted, and archived only once revoked — an archived row is off every
+ * list, so one that still worked would be a key nobody can see to revoke.
+ */
+export const apiKey = sqliteTable(
+	'api_key',
+	{
+		id: id(),
+
+		/** what the organisation calls the key: the system it was made for. */
+		name: text('name').notNull(),
+
+		kind: text('kind').$type<ApiKeyKind>().notNull(),
+
+		/** the lowercase hex SHA-256 of the whole key string. */
+		keyHash: text('key_hash').notNull(),
+
+		/** the key's first 8 characters, `bgk_` and four more. */
+		prefix: text('prefix').notNull(),
+
+		/** the key's last 4 characters. */
+		lastFour: text('last_four').notNull(),
+
+		createdAt: createdAt(),
+
+		/** the last time a request presented this key; null until one has. */
+		lastUsedAt: at('last_used_at'),
+
+		/** from this moment the key admits nothing. */
+		revokedAt: at('revoked_at'),
+
+		archivedAt: at('archived_at')
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('api_key_name_not_blank_check', notBlank(t.name)),
+		check('api_key_kind_check', enumCheck(t.kind, API_KEY_KINDS)),
+		/** `zapier_key_key_hash_check`'s body, for the reasons given there. */
+		check(
+			'api_key_key_hash_check',
+			sql`length(${t.keyHash}) = 64 and ${t.keyHash} not glob '*[^0-9a-f]*'`
+		),
+		/**
+		 * the key's head and tail, and no longer: a `prefix` or `last_four` that held more would be
+		 * the key itself stored in pieces. both are base62 past the `bgk_`, and `glob` is
+		 * case-sensitive, so a prefix cannot pass as `BGK_`.
+		 */
+		check(
+			'api_key_prefix_check',
+			sql`length(${t.prefix}) = 8 and ${t.prefix} glob 'bgk_*' and substr(${t.prefix}, 5) not glob '*[^0-9A-Za-z]*'`
+		),
+		check(
+			'api_key_last_four_check',
+			sql`length(${t.lastFour}) = 4 and ${t.lastFour} not glob '*[^0-9A-Za-z]*'`
+		),
+		check(
+			'api_key_archived_revoked_check',
+			sql`${t.archivedAt} is null or ${t.revokedAt} is not null`
+		),
+		uniqueIndex('api_key_key_hash_idx').on(t.keyHash),
+		/**
+		 * Zapier presents one key, so at most one un-revoked `zapier` row. revoked rows are kept, so
+		 * a new Zapier key is minted only once the current one is revoked.
+		 */
+		uniqueIndex('api_key_one_zapier_idx')
+			.on(t.kind)
+			.where(sql`${t.kind} = 'zapier' and ${t.revokedAt} is null`)
+	]
+);
+
+/**
  * the one key Zapier presents on every call it makes to this deployment.
  *
  * at most one row — `quickbooks_connection` is the precedent the check copies — and none until a
@@ -2813,6 +2900,8 @@ export type QuickbooksConnection = typeof quickbooksConnection.$inferSelect;
 export type NewQuickbooksConnection = typeof quickbooksConnection.$inferInsert;
 export type QuickbooksSync = typeof quickbooksSync.$inferSelect;
 export type NewQuickbooksSync = typeof quickbooksSync.$inferInsert;
+export type ApiKey = typeof apiKey.$inferSelect;
+export type NewApiKey = typeof apiKey.$inferInsert;
 export type ZapierKey = typeof zapierKey.$inferSelect;
 export type NewZapierKey = typeof zapierKey.$inferInsert;
 export type ZapierSubscription = typeof zapierSubscription.$inferSelect;
