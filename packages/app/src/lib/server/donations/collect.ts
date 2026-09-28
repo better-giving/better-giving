@@ -385,7 +385,7 @@ async function failedResult(
  *
  * no gift, payment or ledger row is written for it: the attempt moved no money.
  */
-export async function recordFailedCollection(
+async function recordFailedCollection(
 	_db: Db,
 	plan: RecurringPlan | null,
 	_failed: FailedCollection

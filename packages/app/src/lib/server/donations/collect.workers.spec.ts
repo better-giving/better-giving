@@ -21,7 +21,6 @@ import {
 	type Settlement
 } from '../payments/provider';
 import { stopRecurringPlan } from '../recurring/queries';
-import { recordFailedCollection } from './collect';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
 import { settleDelivery } from './settle';
@@ -1501,7 +1500,7 @@ describe('settleDelivery() — a failed attempt at a later collection', () => {
 		);
 
 		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
-		expect(result.ok && result.detail).toContain('attempt 2');
+		expect(result.ok && result.detail).toContain('attempt 2 at a collection under');
 		// the opening collection's rows, and nothing beside them.
 		expect(await db.select().from(donation)).toHaveLength(1);
 		expect(await db.select().from(payment)).toHaveLength(1);
@@ -1558,24 +1557,6 @@ describe('settleDelivery() — a failed attempt at a later collection', () => {
 		expect(await db.select().from(recurringPlan)).toHaveLength(0);
 		expect(await db.select().from(payment)).toHaveLength(0);
 		expect(await db.select().from(entryGroup)).toHaveLength(0);
-	});
-});
-
-describe('recordFailedCollection()', () => {
-	beforeEach(async () => {
-		await authorizeGift();
-	});
-
-	it('names the commitment a failed attempt is reported against', async () => {
-		await settleDelivery(deps(), DELIVERY);
-		const [plan] = await db.select().from(recurringPlan);
-		if (plan === undefined) throw new Error('the opening collection opened no commitment');
-
-		expect(await recordFailedCollection(db, plan, failedAttempt())).toBe(plan.id);
-	});
-
-	it('names none where this deployment holds no commitment', async () => {
-		expect(await recordFailedCollection(db, null, failedAttempt())).toBeNull();
 	});
 });
 

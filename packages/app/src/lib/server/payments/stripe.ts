@@ -1003,21 +1003,26 @@ function collectedOn(collected: Stripe.Invoice): string | null {
  *   - an invoice paid since. the retry that paid overtook this delivery, and a failure reported
  *     after the charge that cured it tells a destination the donor's card is failing now.
  *
- * the key is the invoice and its count: one invoice is one collection, and `attempt_count` is
- * which attempt along its retry schedule this was. read fresh, a delivery held back past the next
- * retry reads that retry's count, and the two failures report under one key; a manual attempt after
- * the first does not move the count either (`attempt_count` in the installed SDK's `Invoice`).
+ * the key and the time are the delivery's: Stripe sends one `invoice.payment_failed` per failed
+ * attempt, keeps its id across a redelivery, and stamps it when the attempt failed. the invoice
+ * carries neither — a manual attempt after the first does not move `attempt_count`, a delivery held
+ * back past the next retry reads that retry's count, and its default payment is created when the
+ * invoice is finalized and records only paying and cancelling (`InvoicePayment` in the installed
+ * SDK). so in that held-back case the count and the retry are the later attempt's.
  */
-function failedAttemptOf(collected: Stripe.Invoice, failedAt: Date): FailedCollection | null {
+function failedAttemptOf(
+	collected: Stripe.Invoice,
+	delivered: RecurringEvent
+): FailedCollection | null {
 	if (collected.billing_reason === 'subscription_create' || collected.status === 'paid') {
 		return null;
 	}
 	return {
-		attemptKey: `${collected.id}:${collected.attempt_count}`,
+		attemptKey: delivered.id,
 		attemptCount: collected.attempt_count,
 		nextRetryAt:
 			collected.next_payment_attempt === null ? null : atMillis(collected.next_payment_attempt),
-		failedAt,
+		failedAt: delivered.occurredAt,
 		amountMinor: collected.amount_due,
 		currency: collected.currency.toUpperCase()
 	};
@@ -1621,9 +1626,7 @@ export function createStripeProvider(
 
 			const notice = noticeOf(commitment.value, 'collection', collectedOn(collected));
 			const failed =
-				event.type === COLLECTION_FAILED_EVENT
-					? failedAttemptOf(collected, event.occurredAt)
-					: null;
+				event.type === COLLECTION_FAILED_EVENT ? failedAttemptOf(collected, event) : null;
 			return { ok: true, value: failed ? { ...notice, failedAttempt: failed } : notice };
 		} catch (error) {
 			return classify(error);

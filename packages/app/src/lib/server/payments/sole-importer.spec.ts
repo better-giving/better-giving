@@ -1,7 +1,8 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
-import { SUBSCRIBED_EVENT_TYPES } from '@better-giving/operator/stripe/webhook-endpoint';
+import { SUBSCRIBED_EVENT_TYPES as PAYPAL_SUBSCRIBED_EVENT_TYPES } from '@better-giving/operator/paypal/webhook-listener';
+import { SUBSCRIBED_EVENT_TYPES as STRIPE_SUBSCRIBED_EVENT_TYPES } from '@better-giving/operator/stripe/webhook-endpoint';
 import { describe, expect, it } from 'vitest';
 
 // the guard on "one module per processor SDK, and nothing else may import one".
@@ -41,8 +42,9 @@ import { describe, expect, it } from 'vitest';
 // what is exempt: each processor's own adapter, and this file, which necessarily contains the
 // patterns it searches for.
 //
-// the same sweep holds a second rule for the same reason: no module but the Stripe adapter spells a
-// Stripe event name, since switching on one is the SDK's vocabulary taken without its import.
+// the same sweep holds a second rule for the same reason: a processor's webhook event names are
+// spelled by its own adapter and nowhere else in code, since switching on one is the SDK's vocabulary
+// taken without its import. `EVENT_VOCABULARIES` below says which processors and what else is exempt.
 
 const ROOT = resolve(import.meta.dirname, '../../../../../..');
 const SELF = resolve(import.meta.filename);
@@ -113,16 +115,20 @@ const SKIP = new Set([
 	'build'
 ]);
 
-/** every authored source file in the repository, minus the adapters and this spec. */
-function sourceFiles(dir: string, out: string[] = []): string[] {
+/** every authored source file in the repository, minus `exempt` — the adapters — and this spec. */
+function sourceFiles(
+	dir: string,
+	exempt: ReadonlySet<string> = ADAPTERS,
+	out: string[] = []
+): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		if (SKIP.has(entry.name)) continue;
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			sourceFiles(path, out);
+			sourceFiles(path, exempt, out);
 		} else if (
 			EXTENSIONS.some((e) => entry.name.endsWith(e)) &&
-			!ADAPTERS.has(path) &&
+			!exempt.has(path) &&
 			path !== SELF
 		) {
 			out.push(path);
@@ -155,10 +161,33 @@ function importers(specifier: string): { label: string; re: RegExp }[] {
 	];
 }
 
-const STRIPE_EVENT_NAMES: readonly string[] = SUBSCRIBED_EVENT_TYPES;
-
-/** where the deployment's subscription is enumerated, which both operator surfaces read. */
-const STRIPE_EVENT_LIST = resolve(ROOT, 'packages/operator/src/stripe/webhook-endpoint.ts');
+/**
+ * each processor whose webhook event names are guarded: the names are what its deployment
+ * subscribes to, the adapter is the one module that may spell them, and the list is where that
+ * subscription is enumerated for both operator surfaces, which spells them by definition.
+ *
+ * every other adapter is swept too — a PayPal adapter switching on a Stripe name is as much a
+ * second translation as a route doing it.
+ */
+const EVENT_VOCABULARIES: {
+	processor: string;
+	names: readonly string[];
+	adapter: string;
+	list: string;
+}[] = [
+	{
+		processor: 'Stripe',
+		names: STRIPE_SUBSCRIBED_EVENT_TYPES,
+		adapter: resolve(import.meta.dirname, 'stripe.ts'),
+		list: resolve(ROOT, 'packages/operator/src/stripe/webhook-endpoint.ts')
+	},
+	{
+		processor: 'PayPal',
+		names: PAYPAL_SUBSCRIBED_EVENT_TYPES,
+		adapter: resolve(import.meta.dirname, 'paypal.ts'),
+		list: resolve(ROOT, 'packages/operator/src/paypal/webhook-listener.ts')
+	}
+];
 
 /** a string literal naming `name`, in either quote style. */
 function spells(source: string, name: string): boolean {
@@ -167,17 +196,20 @@ function spells(source: string, name: string): boolean {
 }
 
 /**
- * whether a file is held to spelling no Stripe event name: everything but the Stripe adapter
- * (already out of `sourceFiles`), the list, test code, and the mail previews, which render sample
- * alerts that name a delivery's type as the alert itself does.
+ * the modules held to spelling none of a processor's event names: everything the walk finds but
+ * that processor's adapter, its list, test code (`*.spec.ts(x)`, `*.testing.ts`), which builds
+ * deliveries in the processor's words, and the mail previews, which render sample alerts naming a
+ * delivery's type as the alert itself does.
  */
-function spellsNoEventName(file: string): boolean {
-	const path = relative(ROOT, file);
-	return (
-		file !== STRIPE_EVENT_LIST &&
-		!/\.spec\.tsx?$|\.testing\.ts$/.test(path) &&
-		!path.startsWith('packages/emails-preview/')
-	);
+function heldTo(vocabulary: { adapter: string; list: string }): string[] {
+	return sourceFiles(ROOT, new Set([vocabulary.adapter])).filter((file) => {
+		const path = relative(ROOT, file);
+		return (
+			file !== vocabulary.list &&
+			!/\.spec\.tsx?$|\.testing\.ts$/.test(path) &&
+			!path.startsWith('packages/emails-preview/')
+		);
+	});
 }
 
 describe('one module per processor SDK is the only importer of it', () => {
@@ -271,29 +303,39 @@ describe('one module per processor SDK is the only importer of it', () => {
 	);
 });
 
-describe('no module but the Stripe adapter spells a Stripe event name', () => {
-	it('finds no Stripe event name spelled outside the adapter and the list it subscribes from', () => {
-		// the other half of the same containment. a caller that switches on a delivery's type has
-		// taken the processor's vocabulary without importing its SDK, and the port hands every caller
-		// a reading in its own words instead (`PaymentEvent.kind`, `RecurringGiftNotice.failedAttempt`
-		// in ./provider.ts). tests build deliveries in Stripe's words and a mail preview shows one
-		// verbatim, so neither counts; code does.
-		const offenders: string[] = [];
-		for (const file of sourceFiles(ROOT).filter(spellsNoEventName)) {
-			const source = readFileSync(file, 'utf8');
-			const spelled = STRIPE_EVENT_NAMES.filter((name) => spells(source, name));
-			if (spelled.length > 0) offenders.push(`${relative(ROOT, file)} (${spelled.join(', ')})`);
+describe('a processor’s event names are spelled by its own adapter and nowhere else', () => {
+	it.each(EVENT_VOCABULARIES)(
+		'finds no $processor event name outside its adapter, its list, tests and mail previews',
+		({ processor, names, adapter, list }) => {
+			// a caller that switches on a delivery's type has taken the processor's vocabulary without
+			// importing its SDK, and the port hands every caller a reading in its own words instead
+			// (`PaymentEvent.kind`, `RecurringGiftNotice.failedAttempt` in ./provider.ts).
+			const offenders: string[] = [];
+			for (const file of heldTo({ adapter, list })) {
+				const source = readFileSync(file, 'utf8');
+				const spelled = names.filter((name) => spells(source, name));
+				if (spelled.length > 0) offenders.push(`${relative(ROOT, file)} (${spelled.join(', ')})`);
+			}
+			expect(
+				offenders,
+				`these modules spell a ${processor} event name: ${offenders.join(', ')}. only ${relative(ROOT, adapter)} may — read the delivery through \`PaymentProvider\`: \`verifyEvent\` says what kind it is and the read arms say what it means. if the port cannot say what you need, widen the port.`
+			).toEqual([]);
 		}
-		expect(
-			offenders,
-			`these modules spell a Stripe event name: ${offenders.join(', ')}. read the delivery through \`PaymentProvider\` — \`verifyEvent\` says what kind it is and the read arms say what it means. if the port cannot say what you need, widen the port.`
-		).toEqual([]);
-	});
+	);
 
-	it('matches every subscribed Stripe event name in the list that subscribes to it', () => {
-		// the guard on the guard: the list is real source nobody wrote for this test, so a pattern that
-		// matched nothing would fail here rather than report a clean tree forever.
-		const source = readFileSync(STRIPE_EVENT_LIST, 'utf8');
-		expect(STRIPE_EVENT_NAMES.filter((name) => !spells(source, name))).toEqual([]);
+	it.each(EVENT_VOCABULARIES)(
+		'matches every $processor event name in the list that subscribes to it',
+		({ names, list }) => {
+			// the guard on the guard: the list is real source nobody wrote for this test, so a pattern
+			// that matched nothing would fail here rather than report a clean tree forever.
+			const source = readFileSync(list, 'utf8');
+			expect(names.filter((name) => !spells(source, name))).toEqual([]);
+		}
+	);
+
+	it.each(EVENT_VOCABULARIES)('sweeps every adapter but $processor’s own', ({ adapter }) => {
+		// the walk exempts only the one adapter, so another adapter spelling these names fails.
+		const swept = new Set(heldTo({ adapter, list: '' }));
+		for (const other of ADAPTERS) expect(swept.has(other)).toBe(other !== adapter);
 	});
 });

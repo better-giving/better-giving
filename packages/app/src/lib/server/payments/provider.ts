@@ -1685,8 +1685,11 @@ export type RecurringGiftNotice = {
 	 * ./stripe.ts and ./paypal.ts report it (`failedAttemptOf` in each). stripe's omits the opening
 	 * invoice, the donor's own first charge failing on the page; paypal's reports a subscription's
 	 * first payment too, which no commitment row stands behind yet, and ../donations/collect.ts
-	 * reports nothing for an attempt under none. from an adapter that reports no attempt, a failed
-	 * one reads as a collection that did not collect, and ../donations/collect.ts reports nothing.
+	 * reports nothing for an attempt under none. a failure reported with no attempt reads as a
+	 * collection that did not collect only where it names the failed transaction in `providerTxnId`;
+	 * with no transaction either, it reads as money settled outside the processor, and
+	 * ../donations/collect.ts alerts an operator to record a gift nobody gave. so a failure with no
+	 * transaction behind it must carry its attempt.
 	 */
 	readonly failedAttempt?: FailedCollection;
 };
@@ -1700,8 +1703,10 @@ export type RecurringGiftNotice = {
  */
 export type FailedCollection = {
 	/**
-	 * the attempt's identity: every delivery reporting this attempt carries the same key, and the
-	 * next attempt at the same collection carries another. opaque to a caller, which stores and
+	 * the attempt's identity: the processor's own id for the delivery that reported it, which a
+	 * redelivery or a resend repeats and each further failed attempt — a manual retry included —
+	 * carries afresh. the delivery rather than anything read about the collection, because a read
+	 * made after the next attempt cannot tell the two apart. opaque to a caller, which stores and
 	 * compares it and reads nothing out of it.
 	 */
 	readonly attemptKey: string;
@@ -1709,7 +1714,11 @@ export type FailedCollection = {
 	readonly attemptCount: number;
 	/** when the processor tries again, or null where it will not — the last miss. */
 	readonly nextRetryAt: Date | null;
-	/** business time: when the attempt failed. */
+	/**
+	 * business time: when the attempt failed — off the processor's read where it records the
+	 * attempt's time, else the reporting delivery's own time, which is stamped when the attempt
+	 * failed. which one each adapter uses is at its `failedAttemptOf`.
+	 */
 	readonly failedAt: Date;
 	/** minor units, positive: what the attempt asked for. */
 	readonly amountMinor: number;
