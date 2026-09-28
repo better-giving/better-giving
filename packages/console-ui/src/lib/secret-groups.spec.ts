@@ -1,5 +1,6 @@
 import { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 import { describe, expect, it } from 'vitest';
+import { MODEL_VAR } from './ai-model';
 import { UNGROUPED_VARS } from './deploy-vars';
 import type { SecretGroup } from './secret-groups';
 import {
@@ -110,9 +111,9 @@ describe('the names a press carries a value for', () => {
 });
 
 describe('the groups the enumeration’s names are set in', () => {
-	it('covers the enumeration exactly, each name in one group or named as having none', () => {
+	it('covers the enumeration exactly, each name in one group, on the model page, or named as having none', () => {
 		const grouped = SECRET_GROUPS.flatMap((group) => group.names);
-		expect([...grouped, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
+		expect([...grouped, MODEL_VAR, ...UNGROUPED_VARS].sort()).toEqual([...DEPLOY_VARS].sort());
 		expect(new Set(grouped).size).toBe(grouped.length);
 	});
 });

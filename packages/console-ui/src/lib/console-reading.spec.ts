@@ -28,7 +28,7 @@ vi.mock('../api/client', () => ({
 	})
 }));
 
-const { handOver, readConsole } = await import('./console-reading');
+const { handOver, readConsole, valuesNotRead } = await import('./console-reading');
 
 const navigation = () => new Request('http://localhost/password');
 
@@ -56,5 +56,26 @@ describe('the console reading', () => {
 		expect(read.count).toBe(1);
 		await readConsole(navigation());
 		expect(read.count).toBe(2);
+	});
+});
+
+describe('a page whose own read of the values did not land', () => {
+	it('stands behind the gate that read would have put up, with the head it draws around it', async () => {
+		const reading = await readConsole(navigation());
+		let thrown: unknown = null;
+		try {
+			valuesNotRead(reading, { kind: 'refused', detail: 'Authentication error' });
+		} catch (error) {
+			thrown = error;
+		}
+		// thrown as data with a status; the router hands it to the layout's boundary as a 503.
+		expect(thrown).toMatchObject({
+			data: {
+				gate: { title: 'Cloudflare turned this sign-in down', retry: false },
+				account: 'Riverbank Trust',
+				accountId: 'acc'
+			},
+			init: { status: 503 }
+		});
 	});
 });

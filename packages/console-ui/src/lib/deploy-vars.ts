@@ -20,19 +20,14 @@ import type { DeployVarName } from '../api/types';
 // from, set months after the keys are — and PayPal's credentials and their address are one group
 // beside it (`PAYPAL_GROUP` in ./secret-groups.ts).
 //
-// `AI_MODEL` is a choice off a closed list (`AI_MODELS` in packages/operator/src/ai-models.ts)
-// rather than a credential. the vars press writes it like any other value and refuses an id off
-// that list, and `GET /api/ai-model` reads it back beside the credits it spends
-// (packages/console/internal/server/ai.go).
-//
 // it is a list rather than a remark in a header because ./secret-groups.spec.ts reads it: the
-// covering there is two-directional, so a name added to the enumeration lands in a group or here,
-// and a name that lands in neither is a value with nowhere to be typed.
+// covering there is two-directional, so a name added to the enumeration lands in a group, on the
+// model page (`MODEL_VAR` in ./ai-model.ts), or here, and a name that lands in none is a value with
+// nowhere to be typed.
 
 export const UNGROUPED_VARS: readonly DeployVarName[] = [
 	'STRIPE_PUBLISHABLE_KEY',
 	'TURNSTILE_SITE_KEY',
 	'BETTER_AUTH_URL',
-	'PAYPAL_CHARITY_RATE_APPROVED',
-	'AI_MODEL'
+	'PAYPAL_CHARITY_RATE_APPROVED'
 ];

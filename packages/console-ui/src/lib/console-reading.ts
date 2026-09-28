@@ -1,6 +1,7 @@
 import { data, isRouteErrorResponse, redirect } from 'react-router';
 import { consoleVersion, homeReading, homeShape } from '../api/client';
-import { type CloudflareGate, cloudflareGate } from './cloudflare-gate';
+import type { VarsRead } from '../api/types';
+import { type CloudflareGate, cloudflareGate, valuesGate } from './cloudflare-gate';
 import { heldNames, readSections } from './home-sections';
 import { orgBoxes } from './org-fields';
 import { processorLinks } from './processor-links';
@@ -113,6 +114,19 @@ export function notReady(read: ConsoleReading): never {
 	const gated = gatedPage(read);
 	if (gated !== null) throw data(gated, { status: 503 });
 	throw redirect('/', 307);
+}
+
+/**
+ * where a page goes when its own read of the deploy-time values did not land, though the layout's
+ * did a moment before: behind the gate that read stands behind, thrown as {@link notReady} throws
+ * one, so the read again it offers lands back on the page.
+ */
+export function valuesNotRead(read: ConsoleReading, vars: VarsRead): never {
+	const { account, accountId, remembered, notKept, version } = read;
+	const gate = valuesGate(vars, { workerName: read.workerName, accountName: account });
+	throw data({ gate, account, accountId, remembered, notKept, version } satisfies GatedPage, {
+		status: 503
+	});
 }
 
 /** the gated page an error boundary was handed, or `null` where what it caught is anything else. */
