@@ -200,7 +200,8 @@ function record(value: unknown): Record<string, unknown> {
 	return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
-function aiBinding(source: unknown): AiBinding | null {
+/** the `AI` binding on the env `source` is, or null where there is none. */
+export function aiBinding(source: unknown): AiBinding | null {
 	const binding = record(source).AI;
 	return typeof binding === 'object' &&
 		binding !== null &&
@@ -215,7 +216,7 @@ function aiBinding(source: unknown): AiBinding | null {
  */
 const LOCAL_STAND_IN = /^Binding \S+ needs to be run remotely$/;
 
-function isLocalStandIn(error: unknown): boolean {
+export function isLocalStandIn(error: unknown): boolean {
 	return error instanceof Error && LOCAL_STAND_IN.test(error.message);
 }
 
