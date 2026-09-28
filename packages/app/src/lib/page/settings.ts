@@ -31,5 +31,3 @@ export const draftSettings = z.strictObject({
 	}),
 	allowedOrigins: z.array(z.string())
 });
-
-export type DraftSettings = z.infer<typeof draftSettings>;

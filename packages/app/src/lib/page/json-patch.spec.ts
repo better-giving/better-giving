@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyPatch, mergePatch } from './json-patch';
+import { applyPatch as bounded, mergePatch } from './json-patch';
 
 // node pool: two pure functions over plain JSON. the cases are RFC 6902's appendix A and RFC 7396's
-// appendix A, where a case is theirs.
+// appendix A, where a case is theirs. the bounds are ./accept-reply.spec.ts's to hold.
+
+const applyPatch = (doc: unknown, ops: Parameters<typeof bounded>[1]) =>
+	bounded(doc, ops, { bytes: 1_000_000, depth: 100, what: 'the document' });
 
 describe('a JSON patch (RFC 6902)', () => {
 	it('adds a member, and inserts into an array at an index or at its end', () => {

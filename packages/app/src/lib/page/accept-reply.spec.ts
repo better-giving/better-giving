@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { acceptReply } from './accept-reply';
+import { acceptReply, DEPTH_MAX, DRAFT_BYTES_MAX, OPS_MAX, REPLY_BYTES_MAX } from './accept-reply';
 import type { Page } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
@@ -51,6 +51,102 @@ describe('a reply off the reply schema', () => {
 		const result = accept(reply, { current });
 		expect(result).toEqual({ ok: false, reason: expect.stringContaining(reason), current });
 		expect(current).toEqual(campaign());
+	});
+});
+
+describe('a reply too big to take', () => {
+	const refusedFast = (reply: string, reason: unknown) => {
+		const current = campaign();
+		const started = performance.now();
+		const result = accept(reply, { current });
+		expect([result, performance.now() - started < 250]).toEqual([
+			{ ok: false, reason, current },
+			true
+		]);
+	};
+
+	it('is refused unread past its byte cap', () => {
+		const say = 'x'.repeat(REPLY_BYTES_MAX);
+		refusedFast(JSON.stringify({ say }), `the reply is over ${REPLY_BYTES_MAX} bytes`);
+	});
+
+	it('is refused past its operation cap', () => {
+		const ops = Array.from({ length: OPS_MAX + 1 }, () => ({
+			op: 'test',
+			path: '/layout',
+			value: 'box-right'
+		}));
+		refusedFast(
+			JSON.stringify({ say: 'Many.', page: { kind: 'patch', ops } }),
+			`page.ops: a patch holds at most ${OPS_MAX} operations`
+		);
+	});
+
+	it('is refused, and quickly, when copies double the page past its size', () => {
+		const ops = Array.from({ length: 22 }, (_, index) => ({
+			op: 'copy',
+			from: '/blocks',
+			path: `/blocks/0/props/k${index}`
+		}));
+		refusedFast(
+			JSON.stringify({ say: 'Copied.', page: { kind: 'patch', ops } }),
+			expect.stringMatching(
+				new RegExp(
+					`^operation \\d+ \\(copy /blocks/0/props/k\\d+\\): the page would nest deeper than ${DEPTH_MAX}$`
+				)
+			)
+		);
+	});
+
+	it('is refused, and quickly, when copies grow the page past its size without nesting it', () => {
+		const long = 'x'.repeat(60 * 1024);
+		const copies = Array.from({ length: 5 }, (_, index) => ({
+			op: 'copy',
+			from: '/blocks/0/props/heading',
+			path: `/blocks/0/props/h${index}`
+		}));
+		refusedFast(
+			JSON.stringify({
+				say: 'Longer.',
+				page: {
+					kind: 'patch',
+					ops: [{ op: 'replace', path: '/blocks/0/props/heading', value: long }, ...copies]
+				}
+			}),
+			`operation 5 (copy /blocks/0/props/h3): the page would be over ${DRAFT_BYTES_MAX} bytes`
+		);
+	});
+
+	it('is refused, and quickly, when it nests thousands deep', () => {
+		let doc: unknown = 'bottom';
+		for (let depth = 0; depth < 3000; depth++) doc = [doc];
+		refusedFast(
+			JSON.stringify({ say: 'Deep.', page: { kind: 'merge', doc: { blocks: doc } } }),
+			expect.stringMatching(/^the reply nests deeper than \d+$/)
+		);
+	});
+
+	it('is refused, never thrown, when anything inside the door throws', () => {
+		const current = { ...campaign(), blocks: null } as unknown as Page;
+		expect(accept({ say: 'Hi.' }, { current })).toEqual({
+			ok: false,
+			reason: expect.stringMatching(/^the reply could not be read: /),
+			current
+		});
+	});
+
+	it('is refused when an edit nests the page past its depth', () => {
+		// the page › blocks › a block › these levels: one past the cap
+		let value: unknown = 'bottom';
+		for (let depth = 0; depth < DEPTH_MAX - 2; depth++) value = { v: value };
+		const result = accept({
+			say: 'Deep.',
+			page: { kind: 'merge', doc: { blocks: [{ props: value }] } }
+		});
+		expect(result).toMatchObject({
+			ok: false,
+			reason: `the page would nest deeper than ${DEPTH_MAX}`
+		});
 	});
 });
 
@@ -189,6 +285,19 @@ describe('what a reply never changes', () => {
 		});
 	});
 
+	it.each(['__proto__', 'constructor', 'toString'])(
+		'names nothing but the key for a page edit reaching %j',
+		(key) => {
+			const result = accept(
+				`{"say":"Hi.","page":{"kind":"patch","ops":[{"op":"add","path":"/${key}","value":1}]}}`
+			);
+			expect(result).toMatchObject({
+				ok: false,
+				reason: `a page edit reaches layout, palette and blocks only, not "${key}"`
+			});
+		}
+	);
+
 	it('names set as the way to a goal', () => {
 		const result = accept({
 			say: 'Goal set.',
@@ -197,7 +306,7 @@ describe('what a reply never changes', () => {
 		expect(result).toMatchObject({
 			ok: false,
 			reason:
-				'a page edit reaches layout, palette and blocks only, not "goalMinor"; a goal goes through set'
+				'a page edit reaches layout, palette and blocks only, not "goalMinor"; a campaign’s goal goes through set.goalMinor'
 		});
 	});
 
@@ -258,7 +367,11 @@ describe('what a reply sets', () => {
 				{ field: 'name', from: 'Winter coats', to: 'Coats for winter' },
 				{ field: 'goal', from: null, to: 500_000 },
 				{ field: 'endDate', from: null, to: '2026-12-31' },
-				{ field: 'program', from: null, to: 'prg_coats' },
+				{
+					field: 'program',
+					from: { mode: 'none', programId: null },
+					to: { mode: 'pinned', programId: 'prg_coats' }
+				},
 				{ field: 'amounts', from: [2500, 5000], to: [3000, 6000] }
 			],
 			dropped: []
@@ -325,6 +438,55 @@ describe('what a reply sets', () => {
 		const current = campaign();
 		const result = accept({ say: 'Ends then.', set: { endDate } }, { current });
 		expect(result).toEqual({ ok: false, reason, current });
+	});
+
+	it('names the donor’s choice given up when a campaign is pinned to one program', () => {
+		const current = {
+			...campaign(),
+			settings: {
+				...settings,
+				suggestedAmounts: [],
+				allowedOrigins: [],
+				programMode: 'choice' as const
+			}
+		};
+		const result = accept(
+			{ say: 'Pinned to Meals.', set: { programId: 'prg_meals' } },
+			{ current, activePrograms: programs }
+		);
+		expect(result).toMatchObject({
+			ok: true,
+			draft: { settings: { programMode: 'pinned', programId: 'prg_meals' } },
+			changes: [
+				{
+					field: 'program',
+					from: { mode: 'choice', programId: null },
+					to: { mode: 'pinned', programId: 'prg_meals' }
+				}
+			]
+		});
+	});
+
+	it('refuses a program on the Donation page while its donors choose one', () => {
+		const current = {
+			...defaultDonationPage({ name: 'Harbour' }),
+			settings: {
+				...settings,
+				suggestedAmounts: [],
+				allowedOrigins: [],
+				programMode: 'choice' as const
+			}
+		};
+		const result = accept(
+			{ say: 'Pinned to Meals.', set: { programId: 'prg_meals' } },
+			{ type: 'donation_page', current, name: null, activePrograms: programs }
+		);
+		expect(result).toEqual({
+			ok: false,
+			reason:
+				'set.programId: the Donation page lets each donor choose a program, and a reply cannot pin it to one',
+			current
+		});
 	});
 
 	it('refuses a program that is not active, naming the ones that are', () => {
@@ -415,6 +577,38 @@ describe('an impact figure', () => {
 		});
 	});
 
+	it('with what it buys rewritten is a new tier, kept only when the operator stated its figure', () => {
+		const current = campaign();
+		current.blocks.splice(2, 0, {
+			id: 'impact',
+			type: 'impact-tiers',
+			variant: 'list',
+			background: 'none',
+			tiers: [{ amountMinor: 4000, buys: 'boots' }]
+		});
+		const rewrite = {
+			say: 'Warmer words.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'replace',
+						path: '/blocks/2/props/tiers/0/buys',
+						value: 'heats a family’s home for a winter'
+					}
+				]
+			}
+		};
+		expect(accept(rewrite, { current })).toMatchObject({
+			ok: true,
+			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 4000 }]
+		});
+		const stated = accept(rewrite, { current, messages: [operator('$40 heats a home')] });
+		expect(tiersOf(stated)).toMatchObject({
+			tiers: [{ amountMinor: 4000, buys: 'heats a family’s home for a winter' }]
+		});
+	});
+
 	it.each([
 		['$25', 2500],
 		['$ 25', 2500],
@@ -440,6 +634,95 @@ describe('an impact figure', () => {
 	])('does not read %j as the figure %i', (text, amountMinor) => {
 		const result = accept(addTiers([amountMinor]), { messages: [operator(text)] });
 		expect(tiersOf(result)).toMatchObject({ tiers: [] });
+	});
+});
+
+describe('a figure in the words', () => {
+	const operator = (text: string) => ({ author: 'operator' as const, text });
+	const lede = (text: string) => ({
+		say: 'Wrote a lede.',
+		page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/0/props/lede', value: text }] }
+	});
+	const paragraph = (text: string) => ({
+		type: 'doc' as const,
+		content: [{ type: 'paragraph' as const, content: [{ type: 'text' as const, text }] }]
+	});
+
+	it('the operator never stated refuses the whole reply, naming it', () => {
+		const current = campaign();
+		const result = accept(lede('Every $25 feeds 40 children for a week.'), { current });
+		expect(result).toEqual({
+			ok: false,
+			reason:
+				'block 1 (id "title"): "$25" is not a figure the operator wrote in the chat or one the page already shows',
+			current
+		});
+	});
+
+	it('the operator stated in the chat lands', () => {
+		const result = accept(lede('Every $25 feeds 40 children for a week.'), {
+			messages: [operator('twenty-five dollars, so $25, feeds 40 children')]
+		});
+		expect(result.ok && result.draft.blocks[0]).toMatchObject({
+			lede: 'Every $25 feeds 40 children for a week.'
+		});
+	});
+
+	it('the page already shows lands: in its words, a tier or its goal', () => {
+		const current = { ...campaign(), goalMinor: 500_000 };
+		current.blocks[2] = {
+			id: 'story',
+			type: 'story',
+			variant: 'plain',
+			background: 'none',
+			body: paragraph('A coat costs us $25.')
+		};
+		current.blocks.splice(3, 0, {
+			id: 'impact',
+			type: 'impact-tiers',
+			variant: 'list',
+			background: 'none',
+			tiers: [{ amountMinor: 4000, buys: 'boots' }]
+		});
+		const result = accept(lede('$25 buys a coat, $40 buys boots; help us reach $5,000.'), {
+			current
+		});
+		expect(result).toMatchObject({ ok: true });
+	});
+
+	it('in a new campaign name the operator never stated refuses the reply', () => {
+		const result = accept({ say: 'Renamed.', set: { name: 'The $50,000 winter drive' } });
+		expect(result).toMatchObject({
+			ok: false,
+			reason:
+				'set.name: "$50,000" is not a figure the operator wrote in the chat or one the page already shows'
+		});
+	});
+
+	it('in an answer the operator never gave refuses the reply', () => {
+		const faq = {
+			id: 'faq',
+			type: 'faq',
+			variant: 'open',
+			background: 'none',
+			props: {
+				items: [
+					{
+						question: 'Where does my gift go?',
+						answer: paragraph('Only 10 dollars goes to overheads.')
+					}
+				]
+			}
+		};
+		const result = accept({
+			say: 'Added a FAQ.',
+			page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/3', value: faq }] }
+		});
+		expect(result).toMatchObject({
+			ok: false,
+			reason:
+				'block 4 (id "faq"): "10 dollars" is not a figure the operator wrote in the chat or one the page already shows'
+		});
 	});
 });
 
@@ -567,15 +850,21 @@ describe('an image', () => {
 });
 
 describe('the one door', () => {
-	it('is the only module that turns a reply into a draft', () => {
-		const src = resolve(import.meta.dirname, '../..');
-		const reaching = readdirSync(src, { recursive: true, encoding: 'utf8' })
+	const src = resolve(import.meta.dirname, '../..');
+	const reaching = (pattern: RegExp) =>
+		readdirSync(src, { recursive: true, encoding: 'utf8' })
 			.filter((file) => /\.tsx?$/.test(file) && !/\.spec\.tsx?$/.test(file))
-			.filter((file) => /\bpageFromDraft\b/.test(readFileSync(join(src, file), 'utf8')))
+			.filter((file) => pattern.test(readFileSync(join(src, file), 'utf8')))
 			.sort();
-		expect(reaching).toEqual([
+
+	it('is the only module that turns a reply into a draft', () => {
+		expect(reaching(/\bpageFromDraft\b/)).toEqual([
 			join('lib', 'page', 'accept-reply.ts'),
 			join('lib', 'page', 'ai-catalog.ts')
 		]);
+	});
+
+	it('is the only module that edits a page by patch or merge', () => {
+		expect(reaching(/from '[^']*json-patch'/)).toEqual([join('lib', 'page', 'accept-reply.ts')]);
 	});
 });

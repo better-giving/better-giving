@@ -164,7 +164,7 @@ export function pageFromDraft(
 	return { ...result, path: draftPath(result.path, blocks) };
 }
 
-export type DraftBlock = {
+type DraftBlock = {
 	id: string;
 	type: string;
 	variant?: string;

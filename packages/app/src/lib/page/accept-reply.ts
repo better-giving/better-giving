@@ -1,7 +1,7 @@
 // the one door through which a chat reply becomes a page draft: `acceptReply` reads the model's
 // answer, applies it to the page as it stands and hands back the draft to store, or refuses it
-// whole and hands `current` back unchanged. ./accept-reply.spec.ts holds that nothing else in the
-// app calls `pageFromDraft`.
+// whole and hands `current` back unchanged — a throw anywhere inside included. ./accept-reply.spec.ts
+// holds that nothing else in the app calls `pageFromDraft` or imports ./json-patch.ts.
 //
 // a reply is `{ say, page?, set? }`. `say` is what the chat shows. `page` edits the page as the
 // model reads it (`draftFromPage` in ./ai-catalog.ts: layout, palette and blocks, each block's
@@ -12,23 +12,34 @@
 // gifts are pinned to and its suggested amounts — and anything else it names is refused: the fund,
 // the program's destination, the payment options, the look and the switches are the operator's
 // alone. an end date is a day, `YYYY-MM-DD`, in the zone of the browser that posted the chat turn,
-// stored as ./end-date.ts's `endOfDay` of it and refused once that day is over. each value `set`
-// changes comes back in `changes`, an end date as its day, so the reply's own words can be held to
-// what it did.
+// stored as ./end-date.ts's `endOfDay` of it and refused once that day is over. pinning a program
+// is refused on the Donation page while its donors choose one, since its program chooser stays.
+// each value `set` changes comes back in `changes` — an end date as its day, a program with the
+// mode it leaves — so the reply's own words can be held to what it did.
+//
+// the model's answer is text nobody checked, so its size is bounded before anything reads it: the
+// text at `REPLY_BYTES_MAX`, its nesting before the schema walks it, a patch at `OPS_MAX`
+// operations, and the page after every operation at `DRAFT_BYTES_MAX` as JSON and `DEPTH_MAX`
+// levels, so an edit that copies the page into itself is stopped as it grows.
 //
 // what the model is told and cannot be trusted to keep is enforced here, after the edit:
 // - a link: kept only where the page already held its address. any other has its link taken off
 //   and its text kept, noted in `dropped`.
-// - an impact tier: kept only where its amount is a figure the operator wrote in the chat or one
-//   the page already held in a tier. any other tier is dropped and noted; the rest of the reply
-//   lands. a figure is what the model cannot check and a donor reads as a promise.
+// - an impact tier: kept where its amount is a figure the operator wrote in the chat, or where the
+//   page already held the same tier, amount and words alike. any other tier — one whose words the
+//   reply rewrote included — is dropped and noted, and the rest of the reply lands.
+// - a figure in the words: a new campaign name and every string a block draws — a heading, a lede,
+//   what a tier buys, a question, each paragraph of a story or an answer — may hold only figures the operator wrote in
+//   the chat or the page already draws, in its words, its tiers' amounts or its goal. any other
+//   refuses the reply, naming the figure. a donor reads a figure as a promise the model cannot
+//   check.
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat, or
 //   the reply is refused.
 // - a block its page type does not take, and everything else about a page's shape, is
 //   `parsePage`'s, which the draft passes last.
 //
-// a figure the operator wrote is read out of their own messages, never the assistant's, by this
-// grammar, case aside:
+// a figure is read by this grammar, case aside, and in the chat only out of the operator's own
+// messages, never the assistant's:
 // - an amount is digits, optionally grouped in threes by commas (`1,000`, `12,500`), optionally with
 //   a point and cents (`12.50`), and read by `readAmount` in ../forms/amounts.ts, so `12.505` is no
 //   figure at all.
@@ -41,11 +52,22 @@
 import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
 import { FORM_CURRENCY, majorEntry, readAmount, readSuggestedAmounts } from '../forms/amounts';
+import type { ProgramMode } from '../forms/program-modes';
 import { draftFromPage, pageFromDraft } from './ai-catalog';
 import { dayOf, endOfDay } from './end-date';
 import { HEADING_MAX, type Page, parsePage } from './catalog';
-import type { PageType } from './keys';
-import { applyPatch, mergePatch, pointer } from './json-patch';
+import { PAGE_KEYS, type PageType } from './keys';
+import { applyPatch, deeperThan, mergePatch, outOfBounds, pointer } from './json-patch';
+
+/** a reply's text, measured before it is parsed at all. */
+export const REPLY_BYTES_MAX = 64 * 1024;
+export const OPS_MAX = 200;
+/** the page as the model reads it, measured after every edit. */
+export const DRAFT_BYTES_MAX = 256 * 1024;
+export const DEPTH_MAX = 32;
+/** the page's depth and the levels a reply wraps an edit in: reply › page › ops › op › value. */
+const REPLY_DEPTH_MAX = DEPTH_MAX + 5;
+const DRAFT_BOUNDS = { bytes: DRAFT_BYTES_MAX, depth: DEPTH_MAX, what: 'the page' };
 
 const patchOp = z.discriminatedUnion('op', [
 	z.object({ op: z.enum(['add', 'replace', 'test']), path: z.string(), value: z.json() }),
@@ -57,7 +79,10 @@ const replySchema = z.strictObject({
 	say: z.string().min(1),
 	page: z
 		.discriminatedUnion('kind', [
-			z.strictObject({ kind: z.literal('patch'), ops: z.array(patchOp) }),
+			z.strictObject({
+				kind: z.literal('patch'),
+				ops: z.array(patchOp).max(OPS_MAX, { error: `a patch holds at most ${OPS_MAX} operations` })
+			}),
 			z.strictObject({ kind: z.literal('merge'), doc: z.record(z.string(), z.json()) })
 		])
 		.optional(),
@@ -82,11 +107,12 @@ const replySchema = z.strictObject({
 
 /** what a page edit reaches: the page as the model reads it, `draftFromPage`'s keys. */
 const DRAFT_KEYS: readonly string[] = ['layout', 'palette', 'blocks'];
-const THROUGH_SET: Record<string, string> = {
-	name: 'a name',
-	goalMinor: 'a goal',
-	endsAt: 'an end date'
-};
+/** what only a campaign has: as a reply's `set` names it, as a page edit would, and in words. */
+const CAMPAIGN_ONLY = [
+	{ set: 'name', page: 'name', what: 'name' },
+	{ set: 'goalMinor', page: PAGE_KEYS.goalMinor, what: 'goal' },
+	{ set: 'endDate', page: PAGE_KEYS.endsAt, what: 'end date' }
+] as const;
 
 export type ChatMessage = { author: 'operator' | 'assistant'; text: string };
 export type ActiveProgram = { id: string; name: string };
@@ -111,7 +137,11 @@ export type Change =
 	| { field: 'name'; from: string | null; to: string }
 	| { field: 'goal'; from: number | null; to: number }
 	| { field: 'endDate'; from: string | null; to: string }
-	| { field: 'program'; from: string | null; to: string }
+	| {
+			field: 'program';
+			from: { mode: ProgramMode; programId: string | null };
+			to: { mode: 'pinned'; programId: string };
+	  }
 	| { field: 'amounts'; from: number[]; to: number[] };
 
 export type Dropped =
@@ -130,14 +160,29 @@ export type Accepted = {
 export type Refused = { ok: false; reason: string; current: Page };
 
 export function acceptReply(input: AcceptInput): Accepted | Refused {
+	try {
+		return accept(input);
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		return { ok: false, reason: `the reply could not be read: ${reason}`, current: input.current };
+	}
+}
+
+function accept(input: AcceptInput): Accepted | Refused {
 	const { type, current } = input;
 	const refuse = (reason: string): Refused => ({ ok: false, reason, current });
 
+	if (new TextEncoder().encode(input.reply).byteLength > REPLY_BYTES_MAX) {
+		return refuse(`the reply is over ${REPLY_BYTES_MAX} bytes`);
+	}
 	let json: unknown;
 	try {
 		json = JSON.parse(input.reply);
 	} catch {
 		return refuse('the reply is not JSON');
+	}
+	if (deeperThan(json, REPLY_DEPTH_MAX)) {
+		return refuse(`the reply nests deeper than ${REPLY_DEPTH_MAX}`);
 	}
 	const parsed = replySchema.safeParse(json);
 	if (!parsed.success) return refuse(issueText(parsed.error.issues));
@@ -151,11 +196,13 @@ export function acceptReply(input: AcceptInput): Accepted | Refused {
 				if (key !== undefined && !DRAFT_KEYS.includes(key)) return refuse(outsideDraft(key));
 			}
 		}
-		const applied = applyPatch(draft, reply.page.ops);
+		const applied = applyPatch(draft, reply.page.ops, DRAFT_BOUNDS);
 		if (!applied.ok) return refuse(applied.message);
 		draft = applied.doc;
 	} else if (reply.page?.kind === 'merge') {
 		draft = mergePatch(draft, reply.page.doc);
+		const over = outOfBounds(draft, DRAFT_BOUNDS);
+		if (over !== null) return refuse(over);
 	}
 
 	const outside = isRecord(draft)
@@ -174,16 +221,35 @@ export function acceptReply(input: AcceptInput): Accepted | Refused {
 	const page = pageFromDraft(type, draft, set.onto);
 	if (!page.ok) return refuse(located(page.path, page.message));
 	const dropped: Dropped[] = [];
-	const figures = new Set([...statedFigures(input.messages), ...tierAmounts(current)]);
+	const stated = new Set(statedFigures(input.messages));
+	const held = new Set(tiersOf(current).map(tierKey));
 	const blocks = page.page.blocks.map((block) => {
 		if (block.type !== 'impact-tiers') return block;
-		const tiers = block.tiers.filter(({ amountMinor }) => {
-			if (figures.has(amountMinor)) return true;
-			dropped.push({ what: 'tier', blockId: block.id, amountMinor });
+		const tiers = block.tiers.filter((tier) => {
+			if (stated.has(tier.amountMinor) || held.has(tierKey(tier))) return true;
+			dropped.push({ what: 'tier', blockId: block.id, amountMinor: tier.amountMinor });
 			return false;
 		});
 		return { ...block, tiers };
 	});
+
+	const shown = new Set([...stated, ...figuresShown(current)]);
+	const worded = [
+		...(set.renamed === undefined ? [] : [{ where: 'set.name', texts: [set.renamed] }]),
+		...blocks.map((block, index) => ({
+			where: `block ${index + 1} (id "${block.id}")`,
+			texts: textsIn(block)
+		}))
+	];
+	for (const { where, texts } of worded) {
+		for (const text of texts) {
+			const unshown = figuresIn(text).find(({ minor }) => !shown.has(minor));
+			if (unshown === undefined) continue;
+			return refuse(
+				`${where}: "${unshown.written}" is not a figure the operator wrote in the chat or one the page already shows`
+			);
+		}
+	}
 
 	const known = new Set(hrefsIn(current));
 	const unlinked = withoutLinks({ ...page.page, blocks }, (href, text) => {
@@ -214,29 +280,58 @@ const FIGURES = [
 function statedFigures(messages: readonly ChatMessage[]): number[] {
 	return messages
 		.filter(({ author }) => author === 'operator')
-		.flatMap(({ text }) => FIGURES.flatMap((pattern) => [...text.matchAll(pattern)]))
-		.flatMap(([, whole = '', fraction]) => {
+		.flatMap(({ text }) => figuresIn(text).map(({ minor }) => minor));
+}
+
+/** each figure `text` holds, as written and in minor units. */
+function figuresIn(text: string): { written: string; minor: number }[] {
+	return FIGURES.flatMap((pattern) => [...text.matchAll(pattern)]).flatMap(
+		([written, whole = '', fraction]) => {
 			const { minor } = readAmount(
 				`${whole.replaceAll(',', '')}${fraction === undefined ? '' : `.${fraction}`}`,
 				FORM_CURRENCY
 			);
-			return minor === null ? [] : [minor];
-		});
+			return minor === null ? [] : [{ written, minor }];
+		}
+	);
 }
 
-function tierAmounts(page: Page): number[] {
-	return page.blocks.flatMap((block) =>
-		block.type === 'impact-tiers' ? block.tiers.map(({ amountMinor }) => amountMinor) : []
+/** every figure the page draws: in its words, its tiers' amounts and its goal. */
+function figuresShown(page: Page): number[] {
+	return [
+		...page.blocks.flatMap(textsIn).flatMap((text) => figuresIn(text).map(({ minor }) => minor)),
+		...tiersOf(page).map(({ amountMinor }) => amountMinor),
+		...(page.goalMinor === undefined ? [] : [page.goalMinor])
+	];
+}
+
+type Tier = { amountMinor: number; buys: string };
+
+function tiersOf(page: Page): Tier[] {
+	return page.blocks.flatMap((block) => (block.type === 'impact-tiers' ? block.tiers : []));
+}
+
+function tierKey({ amountMinor, buys }: Tier) {
+	return JSON.stringify([amountMinor, buys]);
+}
+
+/** keys whose strings a donor never reads as words. */
+const NOT_WORDS: readonly string[] = ['id', 'type', 'variant', 'background', 'href', 'imageId'];
+
+/** the words a block draws: each plain string, and each rich-text paragraph as one line. */
+function textsIn(value: unknown): string[] {
+	if (Array.isArray(value)) return value.flatMap(textsIn);
+	if (!isRecord(value)) return [];
+	if (value.type === 'paragraph') {
+		const content = Array.isArray(value.content) ? value.content : [];
+		return [content.map((node) => (isRecord(node) ? String(node.text ?? '') : '')).join('')];
+	}
+	return Object.entries(value).flatMap(([key, item]) =>
+		NOT_WORDS.includes(key) ? [] : typeof item === 'string' ? [item] : textsIn(item)
 	);
 }
 
 type Settable = NonNullable<z.infer<typeof replySchema>['set']>;
-
-const CAMPAIGN_ONLY = [
-	['name', 'name'],
-	['goalMinor', 'goal'],
-	['endDate', 'end date']
-] as const;
 
 /** `current` with what the reply sets put onto it, and each change it makes. */
 function settle(
@@ -246,7 +341,7 @@ function settle(
 	| { ok: true; onto: Page; renamed: string | undefined; changes: Change[] }
 	| { ok: false; reason: string } {
 	if (type === 'donation_page') {
-		for (const [key, what] of CAMPAIGN_ONLY) {
+		for (const { set: key, what } of CAMPAIGN_ONLY) {
 			if (set[key] !== undefined) {
 				return { ok: false, reason: `the Donation page has no ${what}; only a campaign does` };
 			}
@@ -284,9 +379,17 @@ function settle(
 				reason: `set.programId: "${programId}" is not an active program; ${active.length === 0 ? 'none is active' : `the active ones are ${listed(active)}`}`
 			};
 		}
-		const pinned = settings.programMode === 'pinned' ? settings.programId : null;
-		if (pinned !== programId) {
-			changes.push({ field: 'program', from: pinned, to: programId });
+		const { programMode: mode } = settings;
+		if (type === 'donation_page' && mode === 'choice') {
+			return {
+				ok: false,
+				reason:
+					'set.programId: the Donation page lets each donor choose a program, and a reply cannot pin it to one'
+			};
+		}
+		if (mode !== 'pinned' || settings.programId !== programId) {
+			const from = { mode, programId: mode === 'pinned' ? settings.programId : null };
+			changes.push({ field: 'program', from, to: { mode: 'pinned', programId } });
 			settings = { ...settings, programMode: 'pinned', programId };
 		}
 	}
@@ -333,8 +436,10 @@ function located(path: readonly (string | number)[], message: string) {
 }
 
 function outsideDraft(key: string) {
-	const through = THROUGH_SET[key];
-	return `a page edit reaches layout, palette and blocks only, not "${key}"${through === undefined ? '' : `; ${through} goes through set`}`;
+	const field = CAMPAIGN_ONLY.find(({ page }) => page === key);
+	const through =
+		field === undefined ? '' : `; a campaign’s ${field.what} goes through set.${field.set}`;
+	return `a page edit reaches layout, palette and blocks only, not "${key}"${through}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

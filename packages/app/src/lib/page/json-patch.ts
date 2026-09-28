@@ -6,26 +6,51 @@
 // so a pointer or a merge naming `__proto__` names a member like any other rather than an
 // object's prototype.
 
-export type PatchOp =
+type PatchOp =
 	| { op: 'add' | 'replace' | 'test'; path: string; value: unknown }
 	| { op: 'remove'; path: string }
 	| { op: 'move' | 'copy'; from: string; path: string };
 
+/** how large a document an edit may leave: its bytes as JSON, and how many levels it nests. */
+export type Bounds = { bytes: number; depth: number; what: string };
+
 type Applied = { ok: true; doc: unknown } | { ok: false; message: string };
 type Container = Record<string, unknown> | unknown[];
 
-export function applyPatch(doc: unknown, ops: readonly PatchOp[]): Applied {
+/** the document is measured after every operation, so a patch that grows it is stopped as it grows. */
+export function applyPatch(doc: unknown, ops: readonly PatchOp[], bounds: Bounds): Applied {
 	let result = structuredClone(doc);
 	for (const [index, op] of ops.entries()) {
+		const refused = (message: string): Applied => ({
+			ok: false,
+			message: `operation ${index + 1} (${op.op} ${op.path}): ${message}`
+		});
 		const applied = applyOp(result, op);
-		if (!applied.ok)
-			return {
-				ok: false,
-				message: `operation ${index + 1} (${op.op} ${op.path}): ${applied.message}`
-			};
+		if (!applied.ok) return refused(applied.message);
+		const over = outOfBounds(applied.doc, bounds);
+		if (over !== null) return refused(over);
 		result = applied.doc;
 	}
 	return { ok: true, doc: result };
+}
+
+/** why `doc` is past `bounds`, or null when it is within them. */
+export function outOfBounds(doc: unknown, { bytes, depth, what }: Bounds): string | null {
+	if (deeperThan(doc, depth)) return `${what} would nest deeper than ${depth}`;
+	const size = new TextEncoder().encode(JSON.stringify(doc) ?? '').byteLength;
+	return size > bytes ? `${what} would be over ${bytes} bytes` : null;
+}
+
+/** whether `value` holds objects or lists more than `depth` levels deep, walked without recursion. */
+export function deeperThan(value: unknown, depth: number): boolean {
+	const pending: [unknown, number][] = [[value, 0]];
+	for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+		const [item, level] = next;
+		if (typeof item !== 'object' || item === null) continue;
+		if (level + 1 > depth) return true;
+		for (const child of Object.values(item)) pending.push([child, level + 1]);
+	}
+	return false;
 }
 
 function applyOp(doc: unknown, op: PatchOp): Applied {
