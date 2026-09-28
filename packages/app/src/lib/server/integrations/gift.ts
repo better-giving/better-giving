@@ -14,7 +14,7 @@ import {
 	recurringPlan,
 	type PaymentMethod
 } from '../db/schema';
-import { refundStands } from '../zapier/events';
+import { refundStands } from '../donations/queries';
 
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
 // (../zapier/payload.ts) and each entry the read API's gifts list answers with
@@ -61,8 +61,9 @@ export type GiftEvent = {
 };
 
 /**
- * how much of a gift is still the organisation's. **the set may gain values**: a reader lets one it
- * does not know pass, and a value's meaning never narrows.
+ * what refunds and lost disputes have taken back of a gift: none, some, or all of it. an open
+ * dispute shows as `dispute_open` and never as a status. **the set may gain values**: a reader lets
+ * one it does not know pass, and a value's meaning never narrows.
  */
 export const GIFT_STATUSES = ['settled', 'partially_refunded', 'refunded'] as const;
 export type GiftStatus = (typeof GIFT_STATUSES)[number];
@@ -110,7 +111,9 @@ const NOTHING_SENT_BACK: RefundStanding = { refundedMinor: 0, disputeOpen: false
 
 /**
  * what has been sent back from each of `giftIds` and whether a dispute on it is open, keyed by
- * gift id. a gift with no refund row has no entry. the ids are one page's, under D1's 100 bound
+ * gift id. a gift with no refund row has no entry. an open dispute's withdrawal is not counted,
+ * where `projectStatus` in ../donations/queries.ts reads the gift `disputed`: that money comes back
+ * if the dispute is won. the ids are one page's, under D1's 100 bound
  * parameters (https://developers.cloudflare.com/d1/platform/limits/).
  */
 async function readRefundStanding(

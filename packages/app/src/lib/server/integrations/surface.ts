@@ -1,6 +1,6 @@
 import type { Db } from '../db/client';
 import type { ApiKey } from '../db/schema';
-import { findKeyByPresented } from './keys';
+import { API_KEY_SHAPE, findKeyByPresented } from './keys';
 
 // the read API an organisation's own systems call — a CRM, a warehouse, a script — to read the
 // organisation's records: what "under `/integrations/v1`" means and what every answer on it
@@ -75,13 +75,10 @@ export function readOnlyRefusal(method: string): Response {
 		405,
 		'method_not_allowed',
 		`${method} is not a method this endpoint answers. The read API at ${INTEGRATIONS_BASE_PATH} only reads.`,
-		'Send it as GET. Nothing on this surface writes.',
-		{ allow: 'GET' }
+		'Send it as GET, or HEAD for the headers alone. Nothing on this surface writes.',
+		{ allow: 'GET, HEAD' }
 	);
 }
-
-/** `bgk_` and the 43 base62 characters `mintApiKey` in ./keys.ts writes. */
-const API_KEY_SHAPE = /^bgk_[0-9A-Za-z]{43}$/;
 
 const WHERE_KEYS_COME_FROM =
 	'API keys are made by the organisation that runs this deployment, one per system, and each is shown once when it is made.';

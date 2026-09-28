@@ -353,14 +353,14 @@ describe('a request whose key does not check out', () => {
 
 describe('a method other than GET', () => {
 	it.each(['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])(
-		'is %s refused with 405, naming GET',
+		'is %s refused with 405, naming GET and HEAD',
 		async (method) => {
 			const key = await apiKey();
 
 			const response = await giftsRoute(new Request(GIFTS, { method, ...bearer(key) }));
 
 			expect(response.status).toBe(405);
-			expect(response.headers.get('allow')).toBe('GET');
+			expect(response.headers.get('allow')).toBe('GET, HEAD');
 			expect(await response.json()).toMatchObject({ error: 'method_not_allowed' });
 		}
 	);

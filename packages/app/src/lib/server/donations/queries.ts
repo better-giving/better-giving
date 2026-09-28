@@ -1,5 +1,17 @@
 import type { TributeKind } from '@better-giving/form/v1';
-import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import {
+	and,
+	count,
+	desc,
+	eq,
+	inArray,
+	isNull,
+	ne,
+	notExists,
+	or,
+	type SQL,
+	sql
+} from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
@@ -28,7 +40,9 @@ import { projectTribute } from '../../donations/tributes';
 // other attempt counts for nothing. the summary spends only the first of those, because a count of
 // donors is not money and a refund takes nothing off one. `disputed` is the one state they need
 // not mirror: it names no money, and what a dispute withdrew is already a succeeded refund row
-// that the sums take off. a change to the rule here is a change to the `case when` there, and a
+// that the sums take off. `refundStands` below is the one read that parts from them on purpose,
+// during an open dispute: it counts that withdrawal as nothing sent back yet, since a win returns
+// it. a change to the rule here is a change to the `case when` there, and a
 // screen calling a gift `pending` while the donor file counts it is the failure that costs.
 //
 // no writes. a gift is written by ./record.ts, which composes four tables in one `batch()` and is
@@ -132,6 +146,24 @@ export function projectStatus(attempts: readonly SettlementAttempt[]): DonationS
 	if (latest?.status === 'failed') return 'failed';
 	if (latest?.status === 'cancelled') return 'cancelled';
 	return 'pending';
+}
+
+/**
+ * `row` is a refund whose money is gone for good: a refund-direction row still `succeeded`, and no
+ * dispute on it that is open or was won. every read of what a gift has lost for good takes it from
+ * here — the Zapier feed, the read API's `amount_refunded_minor`, the refund notice.
+ *
+ * it parts from `projectStatus` above during an open dispute: there the withdrawal is a succeeded
+ * refund and the gift reads `disputed`; here it stands for nothing until the dispute is lost.
+ */
+export function refundStands(db: Db, row: typeof payment) {
+	const unsettled = db
+		.select({ one: sql`1` })
+		.from(dispute)
+		.where(
+			and(eq(dispute.paymentId, row.id), or(isNull(dispute.outcome), ne(dispute.outcome, 'lost')))
+		);
+	return and(eq(row.direction, 'refund'), eq(row.status, 'succeeded'), notExists(unsettled));
 }
 
 /**

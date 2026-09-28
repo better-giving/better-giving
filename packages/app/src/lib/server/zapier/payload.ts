@@ -3,8 +3,8 @@ import { alias } from 'drizzle-orm/sqlite-core';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { dispute, donation, entryGroup, payment, type ZapierTrigger } from '../db/schema';
+import { refundStands } from '../donations/queries';
 import { type GiftEvent, renderGift, selectGifts } from '../integrations/gift';
-import { refundStands } from './events';
 
 export type { GiftEvent };
 
@@ -13,13 +13,9 @@ export type { GiftEvent };
 // through. a gift's own fields are `GiftEvent`'s in ../integrations/gift.ts, which the read API's
 // gifts list answers with too.
 //
-// **the keys are permanent.** each is a field some organisation's Zap has mapped, so a rename
-// breaks that Zap silently on its next run: add a key, never rename or drop one. every key is
-// present on every event, null where the gift or refund has nothing to say, because a Zap maps the
-// fields the sample showed it and a key missing from a live event is a blank in whatever it writes.
-//
-// the tribute's notify name and address are not here: they name a third person who gave nothing
-// and asked for nothing, and the gift reaches a Zap without them.
+// every key here, on every event, is held to the rule ../integrations/gift.ts's header states for
+// a gift's: permanent, and present, null where there is nothing to say — a Zap maps the fields the
+// sample showed it, and a key missing from a live event is a blank in whatever it writes.
 
 /**
  * one donor's first settled gift, as a `new_donor` Zap receives it. `id` is the donor's, so a Zap
@@ -235,7 +231,7 @@ export async function readSamples<T extends ZapierTrigger>(
 
 /**
  * the latest refunds a live `gift_refunded` event would be sent for: standing (`refundStands` in
- * ./events.ts), of a gift whose settlement posted its `('payment', gift)` group — a refund or
+ * ../donations/queries.ts), of a gift whose settlement posted its `('payment', gift)` group — a refund or
  * dispute of a gift the books never held queues no event (`withdraw` in ../donations/reverse.ts).
  */
 async function refundSamples(db: Db): Promise<RefundEvent[]> {
