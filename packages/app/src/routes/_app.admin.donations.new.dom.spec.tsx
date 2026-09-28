@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, data, useActionData } from 'react-router';
+import { createRoutesStub, data, redirect, useActionData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { NO_DONOR } from '$lib/donations/input-schema';
 import { ZERO_AMOUNT } from '$lib/ledger/input-schema';
@@ -555,4 +555,55 @@ it('clears a landed outcome at the first press on the fresh form, a refusal caug
 	const typed = screen({ landed }).root;
 	await act(async () => fill(box(typed, 'amount'), '10.00'));
 	expect(status(typed)).toBe('');
+});
+
+/**
+ * the screen under a router whose action answers a press with the redirect a landed gift takes, back
+ * onto this screen's own GET, and whose loader for it never settles — the `loading` phase the
+ * fresh form is read in, held open. hydrated, so the first render reaches no loader.
+ */
+function redirectingScreen(): { root: HTMLElement; posted: FormData[] } {
+	const posted: FormData[] = [];
+	const Stub = createRoutesStub([
+		{
+			id: 'add',
+			path: SCREEN,
+			loader: () => new Promise<never>(() => {}),
+			action: async ({ request }) => {
+				posted.push(await request.formData());
+				return redirect(SCREEN);
+			},
+			Component: () =>
+				createElement(AddDonation as never, {
+					loaderData: loaderData(),
+					params: {},
+					matches: []
+				})
+		},
+		{
+			path: '/admin/donors/search',
+			loader: () => ({ q: 'margaret', matches: [DONORS[0]] })
+		}
+	]);
+	const root = mount(
+		createElement(Stub, {
+			initialEntries: [SCREEN],
+			hydrationData: { loaderData: { add: null } }
+		})
+	);
+	return { root, posted };
+}
+
+it('asks nothing and posts nothing on a second press while the landing is loading', async () => {
+	const { root, posted } = redirectingScreen();
+	await addThrough(root);
+	expect(posted).toHaveLength(1);
+	// the gift is recorded and the fresh form is being read: the press is still this one's.
+	const add = buttonReading(root, 'Add donation');
+	expect(add.getAttribute('aria-disabled')).toBe('true');
+
+	await act(async () => add.click());
+	// a confirm opened here would post the gift that has just landed a second time, under its ids.
+	expect(root.querySelector('dialog')).toBeNull();
+	expect(posted).toHaveLength(1);
 });
