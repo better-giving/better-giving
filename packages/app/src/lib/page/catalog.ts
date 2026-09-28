@@ -23,12 +23,19 @@
 // pure and not under `$lib/server/**`: a component renders what this returns.
 import { z } from 'zod';
 import { richTextDocument } from '../rich-text/document';
-import { CORNERS, LOOK_KEYS, PAGE_KEYS, PAGE_TYPES, type PageType, SHADES } from './keys';
+import {
+	BACKGROUNDS,
+	CORNERS,
+	LAYOUTS,
+	LOOK_KEYS,
+	PAGE_KEYS,
+	PAGE_TYPES,
+	PALETTES,
+	type PageType,
+	SHADES
+} from './keys';
 
-export const LAYOUTS = ['box-right', 'banner', 'column', 'cover'] as const;
-export const PALETTES = ['plain', 'tint', 'duo', 'bright', 'bold'] as const;
-/** a section's ground; a strong one carries one ink and no quiet text. */
-export const BACKGROUNDS = ['none', 'soft', 'tint', 'strong'] as const;
+export { BACKGROUNDS, LAYOUTS, PALETTES };
 
 const NOT_STRONG = ['none', 'soft', 'tint'] as const;
 const NO_GROUND = ['none'] as const;
