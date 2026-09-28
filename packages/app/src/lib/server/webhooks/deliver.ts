@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
-import { type ApiGift, readByIds, readGifts } from '../integrations/gift';
+import { type ApiGift, readGifts } from '../integrations/gift';
+import { inPage } from '../integrations/paging';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import { signedHeaders } from './sign';
@@ -213,16 +214,14 @@ async function readDestinations(
 	db: Db,
 	destinationIds: readonly string[]
 ): Promise<Map<string, Destination>> {
-	const rows = await readByIds(destinationIds, (chunk) =>
-		db
-			.select({
-				id: webhookDestination.id,
-				url: webhookDestination.url,
-				signingSecret: webhookDestination.signingSecret
-			})
-			.from(webhookDestination)
-			.where(inArray(webhookDestination.id, chunk))
-	);
+	const rows = await db
+		.select({
+			id: webhookDestination.id,
+			url: webhookDestination.url,
+			signingSecret: webhookDestination.signingSecret
+		})
+		.from(webhookDestination)
+		.where(inPage(webhookDestination.id, destinationIds));
 	return new Map(rows.map((row) => [row.id, row]));
 }
 

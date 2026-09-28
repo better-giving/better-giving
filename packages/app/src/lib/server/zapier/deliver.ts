@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
-import { readByIds } from '../integrations/gift';
+import { inPage } from '../integrations/paging';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import { refundStands } from './events';
@@ -311,16 +311,14 @@ type Hook = { readonly url: string; readonly trigger: ZapierTrigger };
 
 /** each subscription's hook and trigger. */
 async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Map<string, Hook>> {
-	const rows = await readByIds(subscriptionIds, (chunk) =>
-		db
-			.select({
-				id: zapierSubscription.id,
-				url: zapierSubscription.hookUrl,
-				trigger: zapierSubscription.trigger
-			})
-			.from(zapierSubscription)
-			.where(inArray(zapierSubscription.id, chunk))
-	);
+	const rows = await db
+		.select({
+			id: zapierSubscription.id,
+			url: zapierSubscription.hookUrl,
+			trigger: zapierSubscription.trigger
+		})
+		.from(zapierSubscription)
+		.where(inPage(zapierSubscription.id, subscriptionIds));
 	return new Map(rows.map((row) => [row.id, { url: row.url, trigger: row.trigger }]));
 }
 
@@ -329,12 +327,10 @@ async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Ma
  * them.
  */
 async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promise<Set<string>> {
-	const rows = await readByIds(refundIds, (chunk) =>
-		db
-			.select({ id: payment.id })
-			.from(payment)
-			.where(and(inArray(payment.id, chunk), refundStands(db, payment)))
-	);
+	const rows = await db
+		.select({ id: payment.id })
+		.from(payment)
+		.where(and(inPage(payment.id, refundIds), refundStands(db, payment)));
 	return new Set(rows.map((row) => row.id));
 }
 

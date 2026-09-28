@@ -1,10 +1,11 @@
-import { and, desc, eq, exists, inArray, lt, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, lt, notExists, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { dispute, donation, entryGroup, payment, type ZapierTrigger } from '../db/schema';
 import { refundStands } from '../donations/queries';
-import { type GiftEvent, readByIds, renderGift, selectGifts } from '../integrations/gift';
+import { type GiftEvent, renderGift, selectGifts } from '../integrations/gift';
+import { inPage } from '../integrations/paging';
 
 export type { GiftEvent };
 
@@ -76,9 +77,7 @@ export async function readGiftEvents(
 	db: Db,
 	paymentIds: readonly string[]
 ): Promise<Map<string, GiftEvent>> {
-	const rows = await readByIds(paymentIds, (chunk) =>
-		selectGifts(db).where(inArray(payment.id, chunk))
-	);
+	const rows = await selectGifts(db).where(inPage(payment.id, paymentIds));
 	return new Map(rows.map((row) => [row.id, renderGift(row)]));
 }
 
@@ -90,8 +89,8 @@ export async function readRefundEvents(
 	db: Db,
 	refundIds: readonly string[]
 ): Promise<Map<string, RefundEvent>> {
-	const refunds = await readByIds(refundIds, (chunk) =>
-		selectRefunds(db).where(and(eq(payment.direction, 'refund'), inArray(payment.id, chunk)))
+	const refunds = await selectRefunds(db).where(
+		and(eq(payment.direction, 'refund'), inPage(payment.id, refundIds))
 	);
 	return refundEventsOf(db, refunds);
 }

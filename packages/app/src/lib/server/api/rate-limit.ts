@@ -95,7 +95,7 @@ const UNATTRIBUTED = 'unattributed';
  * on, every request to this deployment counts in one bucket and the per-address limit becomes a
  * single tap that one caller can hold closed on every donor at once.
  *
- * this key and `zapierRateLimitKey` accept that and the tighter keys below do not —
+ * this key and `zapierRateLimitKey` accept that and the other keys below do not —
  * `attributedCaller` is where that split is argued, and it is a split about which bucket is the
  * only meter on its surface rather than about how an address is read.
  *
@@ -159,17 +159,22 @@ export function zapierRateLimitKey(request: Request): string {
 }
 
 /**
- * what one request on `/integrations/v1` counts against before its key is looked up: that surface
- * and the caller, charged against the surface binding on every request, keyed or not.
+ * what one request on `/integrations/v1` counts against before its key is looked up, and `null`
+ * for a caller with no bucket at all: that surface and the caller, charged against the surface
+ * binding on every request, keyed or not.
  *
  * it bounds what one address costs before anything is known about it — how many presented keys it
  * has checked in a minute, and so the indexed read each well-formed one costs. the 256-bit key is
- * what makes a guess hopeless; this is the bound on what hoping costs this deployment. the same
- * shape as the `/zapier` key: its own prefix, so it never spends a donation form's count or
- * Zapier's, and an unattributed caller in one shared bucket.
+ * what makes a guess hopeless; this is the bound on what hoping costs this deployment. its own
+ * prefix, so it never spends a donation form's count or Zapier's.
+ *
+ * built on `attributedCaller`, unlike the `/zapier` key: this bucket is charged to callers holding
+ * a real key too, so one shared bucket for every unattributed caller would let anyone hold every
+ * integration closed. the surface is still bounded without it, by the key and the per-key bucket.
  */
-export function integrationsCallerRateLimitKey(request: Request): string {
-	return `${INTEGRATIONS_BASE_PATH} ${caller(request)}`;
+export function integrationsCallerRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request);
+	return payer === null ? null : `${INTEGRATIONS_BASE_PATH} ${payer}`;
 }
 
 /**
@@ -177,7 +182,8 @@ export function integrationsCallerRateLimitKey(request: Request): string {
  * key's row id, charged against `INTEGRATIONS_KEY_RATE_LIMITER`.
  *
  * the key is the payer here: two systems calling from one host hold two keys and two budgets, and
- * one busy or leaked key spends only its own, from however many addresses it is presented. what
+ * one busy or leaked key spends only its own, from however many addresses in one Cloudflare
+ * location it is presented. what
  * the limit bounds is how fast one key can read the database.
  */
 export function integrationsKeyRateLimitKey(keyId: string): string {
@@ -193,11 +199,12 @@ function caller(request: Request): string {
 /**
  * the same caller, and `null` where this deployment has no bucket to put them in.
  *
- * the two tighter keys are built from this and the surface key is not, and the split is the
- * "Remove visitor IP headers" managed transform described on `apiRateLimitKey` above. with that
- * transform on, every caller collapses into one bucket — which turns a tight per-address limit
- * into a deployment-wide tap: every donor there is sharing one address's worth of gifts a minute,
- * and one guesser able to hold the login closed on the operator. so these two buckets bound an
+ * the quote's, the sign-in's and the read API's per-address key are built from this and the
+ * surface key is not, and the split is the "Remove visitor IP headers" managed transform
+ * described on `apiRateLimitKey` above. with that transform on, every caller collapses into one
+ * bucket — which turns a per-address limit into a deployment-wide tap: every donor there sharing
+ * one address's worth of gifts a minute, one guesser able to hold the login closed on the
+ * operator, and one caller able to hold every integration closed. so these buckets bound an
  * address or they bound nobody, and an operator who switches that transform on gets the behaviour
  * these limits were added to, rather than a dark donation form. the surface bucket keeps counting
  * them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where that
@@ -206,8 +213,8 @@ function caller(request: Request): string {
  * the decision is expressed in the return type rather than left to the call sites, for the reason
  * the keys themselves live in this file: which block counts as one caller is the whole security
  * property, and a second copy of it is a second place to get it wrong. `isRateLimited` below takes
- * `string | null` and answers the `null`, so neither call site can spend a bucket that is not
- * there and neither has to know that it cannot.
+ * `string | null` and answers the `null`, so no call site can spend a bucket that is not there
+ * and none has to know that it cannot.
  */
 function attributedCaller(request: Request): string | null {
 	const key = caller(request);
@@ -423,11 +430,11 @@ function unboundSurface(): Response {
  * whether waiting fixes it: a rejected `limit()` is transient and the request carries on
  * uncounted, while a missing binding is a deployment that shipped wrong and is refused by name
  * (`unboundSurface` above). the missing binding is unreachable through `pnpm run deploy` anyway,
- * because `test` runs first and `rate-limit.config.spec.ts` fails without the block — which is
- * what makes refusing the cheap choice there.
+ * because `scripts/preflight-deploy.js` refuses a config without the block ahead of the migration
+ * — which is what makes refusing the cheap choice there.
  *
  * a caller the edge did not attribute is counted here rather than let past, which is the opposite
- * of what the two tighter buckets do with one (`attributedCaller` above). this bucket is the only
+ * of what the buckets built on `attributedCaller` above do with one. this bucket is the only
  * meter `/api/v1` has, so exempting anybody from it leaves the surface unmetered for exactly the
  * caller nothing can identify — and `apiRateLimitKey` puts them all in one bucket, which makes
  * them the most limited caller there is rather than the least.

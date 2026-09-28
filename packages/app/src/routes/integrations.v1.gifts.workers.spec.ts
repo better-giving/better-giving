@@ -13,7 +13,9 @@ import {
 	type NewPayment,
 	payment
 } from '$lib/server/db/schema';
+import { postableId } from '$lib/server/db/accounts';
 import { mintApiKey, revokeApiKey } from '$lib/server/integrations/keys';
+import { post, postingStatements } from '$lib/server/ledger/posting';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as surface from './integrations.v1';
 import * as gifts from './integrations.v1.gifts';
@@ -82,7 +84,7 @@ async function seedDonor(): Promise<string> {
 
 type Gift = { readonly donationId: string; readonly paymentId: string };
 
-/** a $50 cheque from `contactId`, its money moved at noon on `day` of September 2026. */
+/** a $50 cheque from `contactId`, its money moved and recorded at noon on `day` of September 2026. */
 async function seedGift(
 	contactId: string,
 	day: number,
@@ -109,6 +111,7 @@ async function seedGift(
 		status: 'succeeded',
 		provider: 'manual',
 		occurredAt: at,
+		createdAt: at,
 		...over.payment
 	});
 	return { donationId, paymentId };
@@ -122,6 +125,7 @@ async function seedRefund(
 	over: { status?: NewPayment['status']; dispute?: DisputeOutcome | 'open' } = {}
 ): Promise<void> {
 	const id = uuidv7();
+	const at = new Date(Date.UTC(2026, 8, day, 12));
 	await db.insert(payment).values({
 		id,
 		donationId: gift.donationId,
@@ -131,7 +135,8 @@ async function seedRefund(
 		method: 'check',
 		status: over.status ?? 'succeeded',
 		provider: 'manual',
-		occurredAt: new Date(Date.UTC(2026, 8, day, 12)),
+		occurredAt: at,
+		createdAt: at,
 		parentPaymentId: gift.paymentId
 	});
 	if (over.dispute !== undefined) {
@@ -192,7 +197,8 @@ describe('a key reading the first page of gifts', () => {
 			coin_amount: null,
 			status: 'settled',
 			amount_refunded_minor: 0,
-			dispute_open: false
+			dispute_open: false,
+			updated_at: '2026-09-10T12:00:00.000Z'
 		});
 	});
 
@@ -237,7 +243,7 @@ describe('a key reading the first page of gifts', () => {
 		});
 	});
 
-	it('answers no more than the first 50, the newest', async () => {
+	it('answers 50 by default, the newest, and a cursor to the rest', async () => {
 		const key = await apiKey();
 		const donorId = await seedDonor();
 		const seeded: Gift[] = [];
@@ -251,7 +257,7 @@ describe('a key reading the first page of gifts', () => {
 		const page = (await response.json()) as Page;
 		expect(page.data).toHaveLength(50);
 		expect(page.data.some((gift) => gift.occurred_at === '2026-09-01T12:00:00.000Z')).toBe(false);
-		expect(page.next_cursor).toBeNull();
+		expect(page.next_cursor).toEqual(expect.any(String));
 	});
 
 	it('breaks a tie on when the money moved by id, highest first', async () => {
@@ -281,6 +287,315 @@ describe('a key reading the first page of gifts', () => {
 
 		expect(response.headers.get('cache-control')).toBe('no-store');
 		expect([...response.headers.keys()].filter((h) => h.startsWith('access-control-'))).toEqual([]);
+	});
+});
+
+/**
+ * the gifts `query` answers, and each page after by its `next_cursor` until one has none. each
+ * page is read with a key of its own, as the per-key bucket in the pool is three reads a minute.
+ */
+async function walk(
+	query: string,
+	between: (pagesRead: number) => Promise<void> = async () => {}
+): Promise<Page[]> {
+	const pages: Page[] = [];
+	let cursor: string | null = null;
+	do {
+		const url = new URL(`${GIFTS}?${query}`);
+		if (cursor !== null) url.searchParams.set('cursor', cursor);
+		const response = await giftsRoute(new Request(url, bearer(await apiKey())));
+		expect(response.status).toBe(200);
+		const page = (await response.json()) as Page;
+		pages.push(page);
+		cursor = page.next_cursor;
+		await between(pages.length);
+	} while (cursor !== null && pages.length < 20);
+	expect(cursor).toBeNull();
+	return pages;
+}
+
+const idsOf = (pages: readonly Page[]) => pages.flatMap((page) => page.data.map((gift) => gift.id));
+
+describe('a walk over every gift, newest first', () => {
+	it('answers each gift once, a page at a time, and one recorded mid-walk behind the cursor too', async () => {
+		const donorId = await seedDonor();
+		const seeded: Gift[] = [];
+		for (let day = 10; day <= 14; day++) seeded.push(await seedGift(donorId, day));
+		let backDated: Gift | undefined;
+
+		const pages = await walk('limit=2', async (read) => {
+			if (read === 1)
+				backDated = await seedGift(donorId, 11, { payment: { createdAt: new Date() } });
+		});
+
+		const ids = idsOf(pages);
+		expect(pages.map((page) => page.data.length)).toEqual([2, 2, 2]);
+		expect(new Set(ids).size).toBe(ids.length);
+		expect(ids.toSorted()).toEqual(
+			[...seeded, backDated].map((gift) => gift?.paymentId).toSorted()
+		);
+	});
+});
+
+describe('a walk over every change since an instant, oldest change first', () => {
+	it('answers each gift once, and one recorded mid-walk once, after the rest', async () => {
+		const donorId = await seedDonor();
+		const seeded: Gift[] = [];
+		for (let day = 10; day <= 14; day++) seeded.push(await seedGift(donorId, day));
+		let recorded: Gift | undefined;
+
+		const pages = await walk('limit=2&updated_since=2026-09-01T00:00:00Z', async (read) => {
+			if (read === 1) recorded = await seedGift(donorId, 20);
+		});
+
+		const ids = idsOf(pages);
+		expect(ids).toEqual([...seeded, recorded].map((gift) => gift?.paymentId));
+		expect(pages.flatMap((page) => page.data.map((gift) => gift.updated_at))).toEqual([
+			'2026-09-10T12:00:00.000Z',
+			'2026-09-11T12:00:00.000Z',
+			'2026-09-12T12:00:00.000Z',
+			'2026-09-13T12:00:00.000Z',
+			'2026-09-14T12:00:00.000Z',
+			'2026-09-20T12:00:00.000Z'
+		]);
+	});
+});
+
+/** the `updated_at` of the last gift a walk from `since` served: where the next read resumes. */
+async function lastChange(since = '2026-09-01T00:00:00Z'): Promise<string> {
+	const served = (await walk(`updated_since=${since}`)).flatMap((page) => page.data);
+	const last = served[served.length - 1]?.updated_at;
+	if (typeof last !== 'string') throw new Error('the walk served no gift');
+	return last;
+}
+
+async function changedSince(since: string): Promise<Page['data']> {
+	return (await walk(`updated_since=${encodeURIComponent(since)}`)).flatMap((page) => page.data);
+}
+
+describe('a read of what changed since the last walk', () => {
+	it('answers a gift refunded since, refunded, and not a gift untouched since', async () => {
+		const donorId = await seedDonor();
+		const refunded = await seedGift(donorId, 10);
+		const untouched = await seedGift(donorId, 11);
+		const last = await seedGift(donorId, 12);
+		const since = await lastChange();
+
+		await seedRefund(refunded, 20, 5_000);
+
+		const changed = await changedSince(since);
+		expect(changed.map((gift) => gift.id)).toEqual([last.paymentId, refunded.paymentId]);
+		expect(changed[1]).toMatchObject({
+			status: 'refunded',
+			amount_refunded_minor: 5_000,
+			updated_at: '2026-09-20T12:00:00.000Z'
+		});
+		expect(changed.map((gift) => gift.id)).not.toContain(untouched.paymentId);
+	});
+
+	it('answers a gift that settled since, though it was opened before the walk', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 12);
+		const opened = await seedGift(donorId, 5, { payment: { status: 'pending' } });
+		const since = await lastChange();
+
+		await db.batch([
+			db.update(payment).set({ status: 'succeeded' }).where(eq(payment.id, opened.paymentId)),
+			...postingStatements(
+				db,
+				post({
+					sourceType: 'payment',
+					sourceId: opened.paymentId,
+					currency: 'USD',
+					occurredAt: new Date(Date.UTC(2026, 8, 5, 12)),
+					lines: [
+						{ accountId: postableId('undepositedFunds'), amountMinor: 5_000 },
+						{ accountId: postableId('donationsDeductible'), amountMinor: -5_000 }
+					]
+				})
+			)
+		]);
+
+		const changed = await changedSince(since);
+		expect(changed.map((gift) => gift.id)).toContain(opened.paymentId);
+		expect(Date.parse(String(changed.at(-1)?.updated_at))).toBeGreaterThan(Date.parse(since));
+	});
+
+	it('answers a gift whose refund failed since, with its money back', async () => {
+		const donorId = await seedDonor();
+		const gift = await seedGift(donorId, 10);
+		await seedRefund(gift, 11, 5_000);
+		const since = await lastChange();
+		const [refund] = await db
+			.select({ id: payment.id })
+			.from(payment)
+			.where(eq(payment.parentPaymentId, gift.paymentId));
+		const refundId = String(refund?.id);
+
+		await db.batch([
+			db.update(payment).set({ status: 'cancelled' }).where(eq(payment.id, refundId)),
+			...postingStatements(
+				db,
+				post({
+					sourceType: 'payment',
+					sourceId: refundId,
+					currency: 'USD',
+					occurredAt: new Date(Date.UTC(2026, 8, 12, 12)),
+					lines: [
+						{ accountId: postableId('undepositedFunds'), amountMinor: 5_000 },
+						{ accountId: postableId('donationsDeductible'), amountMinor: -5_000 }
+					]
+				})
+			)
+		]);
+
+		const changed = await changedSince(since);
+		expect(changed.at(-1)).toMatchObject({
+			id: gift.paymentId,
+			status: 'settled',
+			amount_refunded_minor: 0
+		});
+		expect(Date.parse(String(changed.at(-1)?.updated_at))).toBeGreaterThan(Date.parse(since));
+	});
+
+	it('answers a gift whose dispute was won since, with its money back', async () => {
+		const donorId = await seedDonor();
+		const disputed = await seedGift(donorId, 10);
+		await seedRefund(disputed, 11, 5_000, { dispute: 'open' });
+		const since = await lastChange();
+		const [withdrawal] = await db
+			.select({ id: payment.id })
+			.from(payment)
+			.where(eq(payment.parentPaymentId, disputed.paymentId));
+
+		await db.batch([
+			db
+				.update(payment)
+				.set({ status: 'cancelled' })
+				.where(eq(payment.id, String(withdrawal?.id))),
+			db
+				.update(dispute)
+				.set({ outcome: 'won', closedAt: new Date() })
+				.where(eq(dispute.paymentId, String(withdrawal?.id)))
+		]);
+
+		const changed = await changedSince(since);
+		expect(changed.at(-1)).toMatchObject({
+			id: disputed.paymentId,
+			status: 'settled',
+			dispute_open: false
+		});
+		expect(Date.parse(String(changed.at(-1)?.updated_at))).toBeGreaterThan(Date.parse(since));
+	});
+});
+
+describe('the oldest gift', () => {
+	it('is reached by a walk in either order, with no date floor', async () => {
+		const donorId = await seedDonor();
+		const oldest = await seedGift(donorId, 1, {
+			payment: {
+				occurredAt: new Date(Date.UTC(2001, 0, 2)),
+				createdAt: new Date(Date.UTC(2001, 0, 2))
+			}
+		});
+		await seedGift(donorId, 10);
+		await seedGift(donorId, 11);
+
+		const newest = idsOf(await walk('limit=1'));
+		const changed = idsOf(await walk('limit=1&updated_since=1970-01-01T00:00:00Z'));
+
+		expect(newest.at(-1)).toBe(oldest.paymentId);
+		expect(changed[0]).toBe(oldest.paymentId);
+	});
+});
+
+/** a 400 for `query`, with its body, asserting what every one of them carries. */
+async function refusedQuery(query: string): Promise<Refusal> {
+	const response = await giftsRoute(new Request(`${GIFTS}?${query}`, bearer(await apiKey())));
+	expect(response.status).toBe(400);
+	expect(response.headers.get('cache-control')).toBe('no-store');
+	return (await response.json()) as Refusal;
+}
+
+describe('a request naming a page the endpoint cannot serve', () => {
+	it.each(['101', '0', '-1', '1.5', 'ten', ''])(
+		'refuses limit=%s, naming it and the ceiling',
+		async (value) => {
+			const body = await refusedQuery(`limit=${value}`);
+
+			expect(body.error).toBe('invalid_limit');
+			expect(body.message).toContain(`\`limit=${value}\``);
+			expect(body.fix).toContain('from 1 to 100');
+		}
+	);
+
+	it('serves a page of the ceiling exactly', async () => {
+		const response = await giftsRoute(new Request(`${GIFTS}?limit=100`, bearer(await apiKey())));
+
+		expect(response.status).toBe(200);
+	});
+
+	it.each([
+		'not-a-cursor!',
+		'bm90IGpzb24',
+		btoa(JSON.stringify(['gifts.newest', 'noon', 'x'])).replace(/=+$/, '')
+	])('refuses cursor=%s as one this endpoint never issued', async (value) => {
+		const body = await refusedQuery(`cursor=${value}`);
+
+		expect(body.error).toBe('invalid_cursor');
+		expect(body.message).toContain(`\`cursor=${value}\``);
+		expect(body.fix).toContain('`next_cursor`');
+	});
+
+	it('refuses a cursor from the newest-first walk in a walk of changes, and the other way', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 10);
+		await seedGift(donorId, 11);
+		const since = 'updated_since=2026-09-01T00:00:00Z';
+		const newest = (await walk('limit=1'))[0]?.next_cursor;
+		const changed = (await walk(`limit=1&${since}`))[0]?.next_cursor;
+
+		const intoChanges = await refusedQuery(`${since}&cursor=${newest}`);
+		const intoNewest = await refusedQuery(`cursor=${changed}`);
+
+		expect(intoChanges.error).toBe('invalid_cursor');
+		expect(intoChanges.message).toContain('another order');
+		expect(intoNewest.error).toBe('invalid_cursor');
+		expect(intoNewest.message).toContain('another order');
+	});
+
+	it.each([
+		{ value: 'yesterday', what: 'a word' },
+		{ value: '2026-09-10', what: 'a date with no time' },
+		{ value: '2026-09-10T12:00:00', what: 'no offset' },
+		{ value: '2026-02-30T12:00:00Z', what: 'a day the month does not have' },
+		{ value: '2026-09-10T12:00:00 02:00', what: 'a `+` a query string read as a space' }
+	])('refuses updated_since as $what, naming it and the form', async ({ value }) => {
+		const body = await refusedQuery(`updated_since=${encodeURIComponent(value)}`);
+
+		expect(body.error).toBe('invalid_updated_since');
+		expect(body.message).toContain(`\`updated_since=${value}\``);
+		expect(body.message).toContain('2026-09-10T12:00:00Z');
+		expect(body.fix).toContain('%2B');
+	});
+
+	it('reads updated_since with an offset as the instant it names', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 10);
+		const later = await seedGift(donorId, 11);
+
+		const changed = await changedSince('2026-09-11T14:00:00+02:00');
+
+		expect(changed.map((gift) => gift.id)).toEqual([later.paymentId]);
+	});
+
+	it('refuses a parameter the endpoint does not read, naming it and those it does', async () => {
+		const body = await refusedQuery('since=2026-09-10T12:00:00Z&limit=10&page=2');
+
+		expect(body.error).toBe('unknown_parameter');
+		expect(body.message).toContain('`since`');
+		expect(body.message).toContain('`page`');
+		expect(body.fix).toContain('`updated_since`');
 	});
 });
 
@@ -451,6 +766,16 @@ describe('the rate limit on each address', () => {
 		expect(body.message).toContain('600 requests a minute, which is counted per address');
 	});
 
+	it('skips a caller the edge gave no address, rather than pooling every such caller in one bucket', async () => {
+		const unattributed = { headers: { authorization: 'Bearer bgk_x7Qp' } };
+		const statuses = new Set<number>();
+
+		for (let ask = 0; ask < 40; ask++)
+			statuses.add((await giftsRoute(new Request(GIFTS, unattributed))).status);
+
+		expect([...statuses]).toEqual([401]);
+	});
+
 	it('refuses a live key from a spent address, and answers it from another', async () => {
 		const key = await apiKey();
 		await askUntilRefused(malformed(), 40);
@@ -501,6 +826,18 @@ describe('when a key was last used', () => {
 		await readAndSettle(bearer(minted.key));
 
 		expect((await lastUsed(minted.id))?.getTime()).toBeGreaterThanOrEqual(before);
+	});
+
+	it('is written after the gifts are read, so the answer never waits on it', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const statements: string[] = [];
+
+		await readAndSettle(bearer(minted.key), { env: envWatchingStatements(statements) });
+
+		const write = statements.findIndex((sql) => /^update "api_key"/i.test(sql));
+		const giftsRead = statements.findIndex((sql) => /from "payment"/i.test(sql));
+		expect(giftsRead).toBeGreaterThan(-1);
+		expect(write).toBeGreaterThan(giftsRead);
 	});
 
 	it('writes nothing on a second use inside the minute', async () => {

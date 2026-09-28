@@ -214,7 +214,9 @@ describe('sendDueWebhooks() — a gift made', () => {
 
 		await runAt(START, receiving.fetch);
 
-		const [gift] = await readGiftPage(db);
+		const {
+			rows: [gift]
+		} = await readGiftPage(db, { order: 'newest', limit: 1, after: null });
 		expect(JSON.parse(receiving.posts[0]?.body ?? '{}').data).toEqual(gift);
 	});
 
