@@ -3,13 +3,14 @@ import { data } from 'react-router';
 import type { OrgInfo } from '../../donate/blocks/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type PageLook, titleHeading } from '../../donate/page-view';
-import { parsePage } from '../../page/catalog';
+import { type Page, parsePage } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
 import type { ShareChannel } from '../../page/share';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
+import type { FormRecord } from '../forms/form-input';
 import { readPublishedConfig, renderableConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
 import type { OrgSharing } from '../org/presentation';
@@ -23,6 +24,7 @@ import { createPaymentProviders } from '../payments/factory';
 // the card's configuration is the owned settings row's served config, read exactly as
 // ../../../routes/api.v1.forms.$id.config.ts reads it, so the page and the embed refuse on the same
 // ladder: an account approved for no rail refuses here for the same reason the endpoint does. the
+// preview reads that row as publishing the draft would leave it (`asPublished` below). the
 // gift itself goes through `/api/v1/forms/:id/donations` like any form's, same-origin, and this
 // deployment's own origin is accepted off that request (`corsHeaders` in ../api/cors.ts,
 // `acceptableHostnames` in ../donations/quote.ts) — a donor page is on no `site` row and on no
@@ -66,10 +68,12 @@ export async function loadPageView(
 	db: Db,
 	env: unknown,
 	source: PageSource,
-	request: Request
+	request: Request,
+	{ preview = false }: { readonly preview?: boolean } = {}
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
+	const parsed = parsePage(source.type, storedDocument(source.document));
 	const [served, story, orgLook, sharing, profile] = await Promise.all([
 		readPublishedConfig(
 			db,
@@ -77,7 +81,10 @@ export async function loadPageView(
 			env,
 			() => cachedCadences(processors, origin),
 			() => cachedRails(processors, origin),
-			() => cachedCoins(processors, origin)
+			() => cachedCoins(processors, origin),
+			preview
+				? (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined)
+				: undefined
 		),
 		readOrgStory(db),
 		readOrgLook(db),
@@ -90,7 +97,6 @@ export async function loadPageView(
 	if (!result.ok) return { kind: 'refused' };
 	const { config } = result;
 
-	const parsed = parsePage(source.type, storedDocument(source.document));
 	if (!parsed.ok) {
 		console.error(
 			`page ${source.id} (${source.type}) fails the read rule at \`${parsed.path.join('.')}\`, so it draws its donation box alone:`,
@@ -129,8 +135,31 @@ export async function loadPageView(
 			},
 			goal: null,
 			money: { locale: config.locale, currency: config.currency },
-			config
+			config,
+			preview
 		}
+	};
+}
+
+/**
+ * the owned settings row as publishing the draft would leave it: the draft's donation settings
+ * where it holds them, and live — a campaign's row stays a draft until its first Publish, and the
+ * preview draws the box that Publish would put in front of donors. a retired row stays retired. the
+ * fund and the sites stay the row's, since the box draws neither.
+ */
+function asPublished(form: FormRecord, settings: Page['settings']): FormRecord {
+	const status = form.status === 'draft' ? 'live' : form.status;
+	if (settings === undefined) return { ...form, status };
+	const { minMinor, maxMinor, currency, programMode, programId, suggestedAmounts } = settings;
+	return {
+		...form,
+		status,
+		minMinor,
+		maxMinor,
+		currency,
+		programMode,
+		programId,
+		suggestedAmounts
 	};
 }
 
