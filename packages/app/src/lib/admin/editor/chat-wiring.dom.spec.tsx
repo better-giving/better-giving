@@ -1,15 +1,25 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, useLoaderData, useLocation } from 'react-router';
-import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import type { Resized } from '$lib/images/resize';
 import type { ChatMessage } from '../chat/chat-sheet';
 import { useEditorChat } from './chat-wiring';
+
+// happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
+// `resizes` until the case hands it a result.
+const resizes: ((result: Resized) => void)[] = [];
+vi.mock('$lib/images/resize', async (actual) => ({
+	...(await actual<typeof import('$lib/images/resize')>()),
+	resizeImage: () => new Promise<Resized>((resolve) => resizes.push(resolve))
+}));
 
 // what the editor's chat does over the network: what a send posts, what the composer does while
 // the turn runs, what the editor reads once it lands, and what a send nothing was stored from gives
 // back. the chat route here is a stand-in that
 // records what arrived and holds each post until the case lets it land; what the real one does with
-// it is src/routes/_app.admin.pages.$pageId.chat.workers.spec.ts's.
+// it is src/routes/_app.admin.pages.$pageId.chat.workers.spec.ts's. the images route is a stand-in
+// the same way, and what the real one stores is src/routes/_app.admin.images.workers.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,6 +34,10 @@ let held: (() => void)[];
 let editorLoads: number;
 /** what the chat route answers the next posts with, in order, in place of a stored turn. */
 let refusals: { body: { error: string; reason?: string }; status: number }[];
+/** each photo posted to the images route: its file's type and size. */
+let uploads: { type: string; size: number }[];
+/** each upload waits here until the case lets it land, answered with what it is handed. */
+let uploadsHeld: ((answer: { body: unknown; status: number }) => void)[];
 
 beforeEach(() => {
 	stored = [
@@ -34,6 +48,9 @@ beforeEach(() => {
 	held = [];
 	editorLoads = 0;
 	refusals = [];
+	uploads = [];
+	uploadsHeld = [];
+	resizes.length = 0;
 });
 
 function mount(tree: ReactNode): HTMLElement {
@@ -92,6 +109,18 @@ function screen(entry = PAGE): HTMLElement {
 				];
 				stored = [...stored, ...turns];
 				return { outcome: 'accepted', turns };
+			}
+		},
+		{
+			path: '/admin/images',
+			action: async ({ request }) => {
+				const file = (await request.formData()).get('file');
+				if (!(file instanceof File)) throw new Error('no file posted');
+				uploads.push({ type: file.type, size: file.size });
+				const answer = await new Promise<{ body: unknown; status: number }>((resolve) =>
+					uploadsHeld.push(resolve)
+				);
+				return data(answer.body, answer.status);
 			}
 		}
 	]);
@@ -290,5 +319,122 @@ describe('the editor’s chat', () => {
 		await settle();
 
 		expect(refusalShown()).toBe('');
+	});
+});
+
+/** picks `name` in the attach press's picker, the way the device hands a file back. */
+async function attach(name = 'food-bank.heic') {
+	const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+	if (input === null) throw new Error('no picker');
+	Object.defineProperty(input, 'files', {
+		configurable: true,
+		value: [new File(['camera bytes'], name, { type: 'image/heic' })]
+	});
+	await act(async () => {
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+	});
+}
+
+/** lets the oldest pick's resize land as a `bytes`-long webp at 1600 × 1067. */
+async function resized(bytes = 480_000) {
+	const blob = new Blob([new Uint8Array(bytes)], { type: 'image/webp' });
+	await act(async () => resizes.shift()?.({ ok: true, blob, width: 1600, height: 1067 }));
+	await settle();
+}
+
+/** lets the oldest upload land with `body`. */
+async function uploaded(body: unknown, status = 200) {
+	await act(async () => uploadsHeld.shift()?.({ body, status }));
+	await settle();
+}
+
+const photoState = () => document.querySelector('.adm-attachment__state')?.textContent;
+
+describe('a photo attached in the chat', () => {
+	it('is resized, posted to the images route, and ready once stored', async () => {
+		await opened();
+
+		await attach();
+		expect(photoState()).toBe('Resizing');
+		await resized();
+		expect(photoState()).toBe('Uploading');
+		expect(uploads).toEqual([{ type: 'image/webp', size: 480_000 }]);
+
+		await uploaded({ id: 'img1', width: 1600, height: 1067 });
+
+		expect(photoState()).toBe('1600 × 1067, 480 KB');
+	});
+
+	it('reads nothing again once stored: it is on no page until a turn names it', async () => {
+		await opened();
+		const loads = editorLoads;
+
+		await attach();
+		await resized();
+		await uploaded({ id: 'img1', width: 1600, height: 1067 });
+
+		expect(editorLoads).toBe(loads);
+	});
+
+	it('rides with the next send, and is gone once that turn lands', async () => {
+		await opened();
+		await attach();
+		await resized();
+		await uploaded({ id: 'img1', width: 1600, height: 1067 });
+
+		await sendAndLand('Use this photo at the top');
+
+		expect(posted.map((turn) => turn.imageIds)).toEqual(['["img1"]']);
+		expect(photoState()).toBeUndefined();
+	});
+
+	it('is not posted when the resize refuses it, and says why', async () => {
+		await opened();
+		await attach('scan.tiff');
+
+		await act(async () => resizes.shift()?.({ ok: false, reason: 'unreadable' }));
+		await settle();
+
+		expect(photoState()).toBe(
+			'This photo couldn’t be opened here. Attach it as a JPEG, PNG or WebP.'
+		);
+		expect(uploads).toEqual([]);
+	});
+
+	it('is dropped by Remove, and an answer landing after it attaches nothing', async () => {
+		await opened();
+		await attach();
+		await resized();
+
+		await press(button('Remove photo'));
+		await uploaded({ id: 'img1', width: 1600, height: 1067 });
+		await sendAndLand('Warmer, please');
+
+		expect(photoState()).toBeUndefined();
+		expect(posted.map((turn) => turn.imageIds)).toEqual(['[]']);
+	});
+
+	it('says why the images route refused it, and is not sent', async () => {
+		await opened();
+		await attach();
+		await resized();
+
+		await uploaded({ error: 'the photo was not stored; post it again', reason: 'failed' }, 500);
+
+		expect(photoState()).toBe('That didn’t go through. Attach it again.');
+		await sendAndLand('Warmer, please');
+		expect(posted.map((turn) => turn.imageIds)).toEqual(['[]']);
+	});
+
+	it('stays attached through a send nothing was stored from, so the resend carries it', async () => {
+		await opened();
+		await attach();
+		await resized();
+		await uploaded({ id: 'img1', width: 1600, height: 1067 });
+		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];
+
+		await sendAndLand('Use this photo at the top');
+
+		expect(photoState()).toBe('1600 × 1067, 480 KB');
 	});
 });
