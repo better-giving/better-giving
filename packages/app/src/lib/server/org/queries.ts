@@ -1,11 +1,12 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { orgProfile, type OrgProfile } from '../db/schema';
+import { orgPresentation, orgProfile, type OrgProfile } from '../db/schema';
 import type { ParsedOrgProfile } from './org-input';
+import { NO_STORY, type Story, storedStory, storyFromStored, storyVersion } from './presentation';
 
-// every read and write of `org_profile`, so the `orgProfile` table object never leaves this
-// module — the same boundary `contacts/queries.ts` and `ledger/posting.ts` draw, and it is
-// what makes "all the writes are here" true rather than aspirational.
+// every read and write of `org_profile` and of `org_presentation`'s story, so neither table object
+// leaves this module — the same boundary `contacts/queries.ts` and `ledger/posting.ts` draw, and it
+// is what makes "all the writes are here" true rather than aspirational.
 //
 // ---------------------------------------------------------------------------
 // execute, or return statements — the rule for every write added below.
@@ -17,9 +18,9 @@ import type { ParsedOrgProfile } from './org-input';
 // with `newContactRow` / `contactInsertStatement`. `Db` has no `transaction` (D1 has none —
 // see ../db/client.ts), so a single `batch()` is the only atomic unit there is.
 //
-// there is no statement half here and that is a statement about the table, not an omission:
-// this row is the organization's own identity, saved on its own from a settings form, and
-// there is nothing it could need to be atomic with. add the split the day something does.
+// there is no statement half here and that is a statement about the tables, not an omission:
+// each row here is saved on its own from a screen of its own, and there is nothing it could need
+// to be atomic with. add the split the day something does.
 //
 // ---------------------------------------------------------------------------
 // why no seeded row, and why the save is therefore an upsert.
@@ -123,4 +124,86 @@ export async function saveOrgProfile(db: Db, input: ParsedOrgProfile): Promise<O
 		throw new Error('upserting into `org_profile` returned no row');
 	}
 	return row;
+}
+
+// ---------------------------------------------------------------------------
+// the story.
+//
+// `org_presentation` is seeded by nothing, like `org_profile` and for its reason: absent means
+// nothing written. an absent row reads as the column default, `NO_STORY`, so a first save and a
+// later one are the same upsert.
+//
+// every story write is compare-and-set on the story column's own text, which the page was drawn
+// from as `storyVersion`'s digest (`submittedDigest` in ../conform.ts). the digest is checked
+// against a read, and the write then compares the text that read returned in its own `where` — so
+// a save landing between the two is refused by the write rather than overwritten.
+//
+// a save keeps what it replaced in `story_previous`, and Undo swaps the two, so a second Undo puts
+// back what the first took away. SQLite evaluates every right-hand side of a `SET` against the row
+// as it stood, which is what makes the swap one statement
+// (`src/lib/server/db/page-schema.workers.spec.ts` holds it for the look).
+// ---------------------------------------------------------------------------
+
+/** the one id `org_presentation_id_check` accepts. */
+const ORG_PRESENTATION_ID = 'default';
+
+/** what a story write answers: it landed, or the story moved since the page was drawn. */
+export type StoryWrite = 'written' | 'stale';
+
+/** the column's text, or `NO_STORY` where there is no row. */
+async function storedStoryText(db: Db): Promise<string> {
+	const [row] = await db
+		.select({ story: orgPresentation.story })
+		.from(orgPresentation)
+		.where(eq(orgPresentation.id, ORG_PRESENTATION_ID));
+	return row?.story ?? NO_STORY;
+}
+
+/** the story, and the version a save of it is written against. */
+export async function readOrgStory(db: Db): Promise<{ story: Story; version: string }> {
+	const stored = await storedStoryText(db);
+	return { story: storyFromStored(stored), version: await storyVersion(stored) };
+}
+
+/** write the story, keeping the one it replaces for Undo — while the story is still `seen`. */
+export async function updateOrgStory(db: Db, seen: string, story: Story): Promise<StoryWrite> {
+	const current = await storedStoryText(db);
+	if ((await storyVersion(current)) !== seen) return 'stale';
+	const next = storedStory(story);
+	const [row] = await db
+		.insert(orgPresentation)
+		.values({ id: ORG_PRESENTATION_ID, story: next, storyPrevious: current })
+		.onConflictDoUpdate({
+			target: orgPresentation.id,
+			set: { story: next, storyPrevious: sql`${orgPresentation.story}` },
+			setWhere: eq(orgPresentation.story, current)
+		})
+		.returning({ id: orgPresentation.id });
+	return row ? 'written' : 'stale';
+}
+
+/**
+ * swap the story with the one the last save replaced — while the story is still `seen`.
+ *
+ * `stale` too where nothing was ever saved: the page offers Undo only after a save has landed, so
+ * a story with nothing behind it is one another tab moved.
+ */
+export async function updateOrgStoryToPrevious(db: Db, seen: string): Promise<StoryWrite> {
+	const current = await storedStoryText(db);
+	if ((await storyVersion(current)) !== seen) return 'stale';
+	const [row] = await db
+		.update(orgPresentation)
+		.set({
+			story: sql`${orgPresentation.storyPrevious}`,
+			storyPrevious: sql`${orgPresentation.story}`
+		})
+		.where(
+			and(
+				eq(orgPresentation.id, ORG_PRESENTATION_ID),
+				eq(orgPresentation.story, current),
+				isNotNull(orgPresentation.storyPrevious)
+			)
+		)
+		.returning({ id: orgPresentation.id });
+	return row ? 'written' : 'stale';
 }

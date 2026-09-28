@@ -62,7 +62,10 @@ import {
 // it in its own `where` — so a tab drawn before another save is refused at a 409 rather than
 // putting back what that save moved, and there is no read in front of the write for a race to
 // fall between. the version is a box and not a schema key because every save moves it, and
-// `$lib/forms/definition.ts` argues what seeding a group with it would cost.
+// `$lib/forms/definition.ts` argues what seeding a group with it would cost. a save that replaces
+// part of a row whose `updated_at` other saves move too — `org_presentation`'s story, beside a
+// look and a sharing saved on their own — is written against a digest of the columns it replaces
+// instead, read by `submittedDigest`, so a save in one part does not refuse the next in another.
 //
 // **no `z.coerce.*` anywhere.** it is javascript coercion, and the values it silently accepts are
 // exactly the ones a form sends: the string `'false'` coerces to true, an empty box to 0.
@@ -242,6 +245,26 @@ export function submittedVersion(body: FormData): Date {
 		);
 	}
 	return new Date(Number(sent));
+}
+
+/** a digest as a loader publishes one: SHA-256, lowercase hex. */
+const DIGEST = /^[0-9a-f]{64}$/;
+
+/**
+ * the digest of the columns the submitting page was drawn from, as the write compares it — the
+ * version of a part of a row, where `submittedVersion` reads the whole row's.
+ *
+ * refused as `submittedVersion` refuses, for its reason.
+ */
+export function submittedDigest(body: FormData): string {
+	const sent = body.get(RECORD_VERSION);
+	if (typeof sent !== 'string' || !DIGEST.test(sent)) {
+		throw new Response(
+			`\`${RECORD_VERSION}\` carries no version. it holds a SHA-256 digest in lowercase hex of what this part of the record held when the page this body was submitted from was drawn; reload that page and submit it again.`,
+			{ status: 400 }
+		);
+	}
+	return sent;
 }
 
 /**

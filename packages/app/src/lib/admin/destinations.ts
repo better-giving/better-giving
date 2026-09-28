@@ -5,11 +5,13 @@
  * because it is the surface's own address and what an operator opens on, and each record after it
  * is a step further from the form that produced it.
  *
- * the dashboard states figures and every other one is a collection. what a deployment holds one of
- * — payments, mail, spam protection, the site list, the organisation's legal identity — is set up
- * on the operator console and is not a destination here. the colleagues who may sign in are the
- * one thing about access that is a collection rather than a singleton, which is why Members is on
- * this rail and the sign-in password is not.
+ * the dashboard states figures and every other one but Organisation is a collection. what a
+ * deployment holds one of — payments, mail, spam protection, the site list, the organisation's
+ * legal identity — is set up on the operator console and is not a destination here. Organisation
+ * is the one singleton on this rail, because it is what the organisation's pages say about it —
+ * its story — and is written by anyone signed in, where the console is the deployer's. the
+ * colleagues who may sign in are the one thing about access that is a collection rather than a
+ * singleton, which is why Members is on this rail and the sign-in password is not.
  *
  * a `label` is the word a fundraiser says and a path is the word the domain uses, and the two need
  * not be one: `/admin/donations` is Gifts. CLAUDE.md → Product surface is the rule, and it is why a
@@ -32,9 +34,10 @@
  * time.
  *
  * the rail's column draws the destinations in four groups, with a rule between each: the
- * dashboard alone, the one destination stating figures; the records of giving; Members, who can
- * open the rest and record no gift; and the books, which everything above writes into. no
- * group carries a heading: the rule is the whole of the separation. the groups are the shape
+ * dashboard alone, the one destination stating figures; the records of giving; the organisation and
+ * Members, who can open the rest, neither of them recording a gift; and the books, which everything
+ * above writes into. no group carries a heading: the rule is the whole of the separation. the
+ * groups are the shape
  * `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries flat, which is what a match
  * against an address walks.
  *
@@ -85,9 +88,16 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
-			// who can open every destination on this rail, and the one that is not a record of giving.
-			// what a deployment holds one of is set up on the console, and this is neither — a
-			// colleague is a row somebody adds and removes, which is what makes it a collection.
+			{
+				href: '/admin/organisation',
+				label: 'Organisation',
+				short: 'Organisation',
+				mark: 'building-2',
+				folded: true
+			},
+			// who can open every destination on this rail, which is no record of giving. what a
+			// deployment holds one of is set up on the console, and this is neither — a colleague
+			// is a row somebody adds and removes, which is what makes it a collection.
 			{
 				href: '/admin/members',
 				label: 'Members',

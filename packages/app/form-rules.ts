@@ -309,9 +309,9 @@ export function serverSchemaViolations(source: string): string[] {
  * every write a module holding a form makes without the version its page was drawn from.
  *
  * a write is an `update*` bound from a queries module, and what it must be handed is a name bound
- * from `submittedVersion(…)` in the same module — so a version the body never carried, a clock
- * read or a literal, is refused as surely as none at all. what makes a module subject is that it
- * reaches for the form seam, as `bareFailureViolations` reads it.
+ * from `submittedVersion(…)` or `submittedDigest(…)` in the same module — so a version the body
+ * never carried, a clock read or a literal, is refused as surely as none at all. what makes a
+ * module subject is that it reaches for the form seam, as `bareFailureViolations` reads it.
  */
 export function unversionedWriteViolations(source: string): string[] {
 	if (!/from\s+'[^']*\/conform'/.test(source)) return [];
@@ -319,7 +319,9 @@ export function unversionedWriteViolations(source: string): string[] {
 		/^update[A-Z]/.test(name)
 	);
 	const versions = [
-		...source.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*submittedVersion\s*\(/g)
+		...source.matchAll(
+			/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*submitted(?:Version|Digest)\s*\(/g
+		)
 	].map((found) => found[1] as string);
 	return writes.flatMap((name) =>
 		callSites(source, name)

@@ -10,17 +10,28 @@ describe('the rail', () => {
 			'/admin/donors',
 			'/admin/donations',
 			'/admin/recurring',
+			'/admin/organisation',
 			'/admin/members',
 			'/admin/books'
 		]);
 	});
 
-	it('stands the dashboard alone, then the records of giving, then who can sign in, then the books', () => {
+	it('stands the dashboard alone, then the records of giving, then the organisation and who can sign in, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
 			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
-			['Members'],
+			['Organisation', 'Members'],
 			['Books']
+		]);
+	});
+});
+
+describe('the bar at a phone’s width', () => {
+	it('keeps the dashboard, the donors and the gifts, and folds the rest under More', () => {
+		expect(DESTINATIONS.filter((d) => !('folded' in d)).map((d) => d.label)).toEqual([
+			'Dashboard',
+			'Donors',
+			'Gifts'
 		]);
 	});
 });
