@@ -1,15 +1,4 @@
--- the keys a system outside this deployment presents to it: one new table, `api_key`, and nothing
--- else. `src/lib/server/db/schema.ts` argues each column beside it.
---
--- no table is rebuilt. a plain create and two indexes on the empty table it makes, so none of the
--- rebuild hand-edits apply: no deferral, no unqualified CHECK, no backtick strip, no index moved
--- ahead of a drop. `STRICT` is hand-written onto the `CREATE TABLE`, since drizzle's snapshot
--- cannot record it.
---
--- the key itself has no column: a row holds its SHA-256, its first 8 characters and its last 4.
--- `api_key_one_zapier_idx` is unique over un-revoked `zapier` rows only, so revoked ones are kept.
---
--- no backfill: `zapier_key` is left as it is, and no key exists until one is minted.
+-- adds `api_key`, the keys presented to this deployment; `src/lib/server/db/schema.ts` argues it.
 CREATE TABLE `api_key` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,

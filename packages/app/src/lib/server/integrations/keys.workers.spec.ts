@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { findKeyByPresented, mintApiKey, revokeApiKey } from './keys';
+import { API_KEY_SHAPE, findKeyByPresented, mintApiKey, revokeApiKey } from './keys';
 
 // the integration keys against a real D1: what is stored is read back from the table rather than
 // from the module, so a key that reached a column is caught however it got there.
@@ -96,5 +96,22 @@ describe('revoking a key', () => {
 		await revokeApiKey(db, revoked.id);
 
 		expect((await findKeyByPresented(db, kept.key))?.revokedAt).toBeNull();
+	});
+});
+
+describe("the key's shape", () => {
+	it('matches a minted key', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		expect(minted.key).toMatch(API_KEY_SHAPE);
+	});
+
+	it.each([
+		['one character short', `bgk_${'A'.repeat(42)}`],
+		['one character long', `bgk_${'A'.repeat(44)}`],
+		['a base64url character in the secret', `bgk_${'A'.repeat(42)}-`],
+		['the prefix in capitals', `BGK_${'A'.repeat(43)}`],
+		['a key inside a longer value', ` bgk_${'A'.repeat(43)}`]
+	])('refuses %s', (_what, value) => {
+		expect(value).not.toMatch(API_KEY_SHAPE);
 	});
 });

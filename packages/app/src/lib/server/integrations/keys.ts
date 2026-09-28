@@ -2,7 +2,6 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { type ApiKey, type ApiKeyKind, apiKey } from '../db/schema';
-import { secretEquals } from '../secret-compare';
 
 // the keys a system outside this deployment presents to it: minted here, and looked up here by
 // the hash of what a request presents.
@@ -11,10 +10,7 @@ import { secretEquals } from '../secret-compare';
 // (`api_key`'s header in ../db/schema.ts), nothing here logs it, and a caller that shows it does so
 // once. a lost key is revoked and a new one minted, never recovered.
 //
-// the stored hash is plain SHA-256, unsalted and unstretched, because the key is 256 random bits:
-// a salt defends a guessable secret against a precomputed table and a stretch against a search of
-// a small space, and a key drawn from 2^256 is neither. a slow hash here would only turn a burst
-// of requests into CPU spent on every one.
+// the stored hash is plain SHA-256, unsalted and unstretched: the key is 256 bits from a CSPRNG.
 
 /** what a mint answers with. `key` is the plaintext, and nothing gives it again. */
 export type MintedApiKey = {
@@ -46,13 +42,14 @@ export async function mintApiKey(
  * found, with `revokedAt` set, so the caller can say it was revoked and when; admitting it is the
  * caller's refusal to make.
  *
- * the read is by the hash's unique index, and the hash it finds is compared again through
- * ../secret-compare.ts, the repository's one constant-time compare.
+ * looking up by the hash of the presented value leaks nothing about any stored key.
  */
 export async function findKeyByPresented(db: Db, presented: string): Promise<ApiKey | null> {
-	const presentedHash = hashOf(presented);
-	const [row] = await db.select().from(apiKey).where(eq(apiKey.keyHash, presentedHash));
-	return row !== undefined && secretEquals(presentedHash, row.keyHash) ? row : null;
+	const [row] = await db
+		.select()
+		.from(apiKey)
+		.where(eq(apiKey.keyHash, hashOf(presented)));
+	return row ?? null;
 }
 
 /**
@@ -72,6 +69,9 @@ const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
 /** 62^43 exceeds 2^256, so 43 characters hold any 32 bytes. */
 const SECRET_LENGTH = 43;
+
+/** every key `mintApiKey` makes, and nothing else: `bgk_` and 43 base62 characters. */
+export const API_KEY_SHAPE = /^bgk_[0-9A-Za-z]{43}$/;
 
 /**
  * `bgk_` and 32 random bytes in base62, left-padded to a fixed 43 characters: 256 bits, a prefix a
