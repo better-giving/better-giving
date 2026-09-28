@@ -18,12 +18,13 @@
 		"0012_payment_provider_reference.sql",
 		"0013_api_key.sql",
 		"0014_zapier_subscription_failing_since.sql",
-		"0015_webhooks.sql"
+		"0015_webhooks.sql",
+		"0016_payment_settled_gift_index.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "aa85a779dcd1d435b316e9f2ea406c1556f7dada"
+	"commit": "6603fe0c69ef3de048b2851e3a4c533d92113718"
 }

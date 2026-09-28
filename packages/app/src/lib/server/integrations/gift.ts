@@ -126,6 +126,10 @@ export async function readGifts(
 	return new Map(gifts.map((gift) => [gift.id, gift]));
 }
 
+/**
+ * a gift. `payment_settled_gift_occurred_at_idx` in ../db/schema.ts is partial on these values,
+ * so the page reads it only while the two agree (./gift-page.plan.workers.spec.ts).
+ */
 const settledGift = and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound'));
 
 /** each gift rendered, with where it stands now. `rows` is one read's, under D1's bound. */

@@ -1786,6 +1786,17 @@ export const payment = sqliteTable(
 			.on(t.provider, t.createdAt)
 			.where(sql`${t.method} = 'crypto' and ${t.status} = 'pending'`),
 		/**
+		 * the read API's gifts, newest first by when the money moved and then by id: its first page
+		 * (`readGiftPage` in ../integrations/gift.ts) and the keyset walk past it (`pastKeyset` in
+		 * ../integrations/paging.ts). partial, so it holds settled inbound payments alone, in the
+		 * order the walk reads them, and the page is neither a scan nor a sort of `payment`. usable
+		 * only while the query's `where` names `status` and `direction` with these values —
+		 * ../integrations/gift-page.plan.workers.spec.ts holds the plan to it.
+		 */
+		index('payment_settled_gift_occurred_at_idx')
+			.on(t.occurredAt, t.id)
+			.where(sql`${t.status} = 'succeeded' and ${t.direction} = 'inbound'`),
+		/**
 		 * payment-grain idempotency, sitting underneath `entry_group_source_idx`'s
 		 * posting-grain idempotency. a redelivered Stripe charge carries the same
 		 * `(provider, provider_txn_id)` and is refused by the database rather than by a
