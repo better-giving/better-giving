@@ -129,7 +129,11 @@ async function seedPlan(
 	return id;
 }
 
-type Page = { data: Record<string, unknown>[]; next_cursor: string | null };
+type Page = {
+	data: Record<string, unknown>[];
+	next_cursor: string | null;
+	resume_updated_since: string | null;
+};
 
 describe('a key reading the first page of recurring gifts', () => {
 	it('answers them newest first, each with its status as the dashboard names it', async () => {
@@ -308,12 +312,13 @@ describe('a request naming a page the list cannot serve', () => {
 		expect(recurringSaid).toStrictEqual(giftsSaid);
 	});
 
-	it('refuses a cursor the gifts list issued, as one from another order', async () => {
+	it('refuses a cursor the gifts list issued, naming that list and to start without one', async () => {
 		const giftsCursor = btoa(JSON.stringify(['gifts.newest', 0, 'x'])).replace(/=+$/, '');
 
 		const body = await refusal(recurringRoute, 'recurring-gifts', `cursor=${giftsCursor}`);
 
 		expect(body.error).toBe('invalid_cursor');
-		expect(body.message).toContain('another order');
+		expect(body.message).toContain('/integrations/v1/gifts');
+		expect(body.fix).toContain('without a `cursor`');
 	});
 });

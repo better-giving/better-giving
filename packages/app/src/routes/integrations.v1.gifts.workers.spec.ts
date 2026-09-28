@@ -145,7 +145,11 @@ async function seedRefund(
 	}
 }
 
-type Page = { data: Record<string, unknown>[]; next_cursor: string | null };
+type Page = {
+	data: Record<string, unknown>[];
+	next_cursor: string | null;
+	resume_updated_since: string | null;
+};
 
 describe('a key reading the first page of gifts', () => {
 	it('answers the settled gifts newest first, each with how it stands', async () => {
@@ -277,7 +281,11 @@ describe('a key reading the first page of gifts', () => {
 
 		const response = await giftsRoute(new Request(GIFTS, bearer(key)));
 
-		expect(await response.json()).toStrictEqual({ data: [], next_cursor: null });
+		expect(await response.json()).toStrictEqual({
+			data: [],
+			next_cursor: null,
+			resume_updated_since: null
+		});
 	});
 
 	it('is kept by no cache and readable by no page in a browser', async () => {
@@ -489,6 +497,67 @@ describe('a read of what changed since the last walk', () => {
 	});
 });
 
+describe('where the next walk of changes resumes', () => {
+	it('is answered on the last page, a minute before the last change it served, and on no other', async () => {
+		const donorId = await seedDonor();
+		for (let day = 10; day <= 12; day++) await seedGift(donorId, day);
+
+		const pages = await walk('limit=2&updated_since=2026-09-01T00:00:00Z');
+
+		expect(pages.map((page) => page.resume_updated_since)).toEqual([
+			null,
+			'2026-09-12T11:59:00.000Z'
+		]);
+	});
+
+	it('is the instant sent, where nothing has changed since it', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 10);
+
+		const [page] = await walk(`updated_since=${encodeURIComponent('2026-09-20T02:00:00+02:00')}`);
+
+		expect(page?.data).toEqual([]);
+		expect(page?.resume_updated_since).toBe('2026-09-20T00:00:00.000Z');
+	});
+
+	it('serves a change a walk resumed from it would otherwise pass over', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 12);
+		const [first] = await walk('updated_since=2026-09-01T00:00:00Z');
+		const committedLate = await seedGift(donorId, 12, {
+			payment: { createdAt: new Date(Date.UTC(2026, 8, 12, 11, 59, 30)) }
+		});
+
+		const changed = await changedSince(String(first?.resume_updated_since));
+
+		expect(changed.map((gift) => gift.id)).toContain(committedLate.paymentId);
+	});
+
+	it('is never answered in the newest-first walk', async () => {
+		const donorId = await seedDonor();
+		for (let day = 10; day <= 12; day++) await seedGift(donorId, day);
+
+		const pages = await walk('limit=2');
+
+		expect(pages.map((page) => page.resume_updated_since)).toEqual([null, null]);
+	});
+});
+
+describe('a walk across rows that share one time', () => {
+	it('answers each once, a page apiece, in either order', async () => {
+		const donorId = await seedDonor();
+		const first = await seedGift(donorId, 10);
+		const second = await seedGift(donorId, 10);
+		const ids = [first.paymentId, second.paymentId].toSorted();
+
+		const newest = await walk('limit=1');
+		const changed = await walk('limit=1&updated_since=2026-09-01T00:00:00Z');
+
+		expect(idsOf(newest)).toEqual(ids.toReversed());
+		expect(idsOf(changed)).toEqual(ids);
+	});
+});
+
 describe('the oldest gift', () => {
 	it('is reached by a walk in either order, with no date floor', async () => {
 		const donorId = await seedDonor();
@@ -576,6 +645,7 @@ describe('a request naming a page the endpoint cannot serve', () => {
 		expect(body.error).toBe('invalid_updated_since');
 		expect(body.message).toContain(`\`updated_since=${value}\``);
 		expect(body.message).toContain('2026-09-10T12:00:00Z');
+		expect(body.fix).toContain('`resume_updated_since`');
 		expect(body.fix).toContain('%2B');
 	});
 

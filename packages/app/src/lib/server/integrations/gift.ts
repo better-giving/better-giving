@@ -47,11 +47,12 @@ import { inPage, type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } 
 //
 // **two orders.** with no `updated_since`, newest first by when the money moved, then id. with
 // `updated_since`, every gift whose `updated_at` is at or after it, oldest change first, then id.
-// a system keeping a copy walks the second from any instant before the first gift, stores the last
-// `updated_at` it was served, and passes that as `updated_since` next time. `>=` serves that last
-// gift again, so it keeps one row per `id`, the later answer winning; and because each time is
-// stamped when its write is built, a moment before the write commits, it resumes from a minute
-// before the stored time rather than at it, so a write still committing then is not passed over.
+// a system keeping a copy walks the second from any instant before the first gift, and resumes
+// from the `resume_updated_since` its last page answers (./paging.ts's header). that is a minute
+// before the last gift's `updated_at` as served, and a served `updated_at` is read after the page's
+// order and can be later than the time the page was ordered by, when a change commits between the
+// two reads: a change stamped inside that gap and committing late is the one such a resume can
+// pass over.
 
 /** one settled gift, as a `new_gift` Zap receives it. `id` is the payment's, stable across retries. */
 export type GiftEvent = {

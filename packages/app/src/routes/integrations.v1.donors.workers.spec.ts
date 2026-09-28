@@ -74,7 +74,11 @@ async function seedDonor(day: number, over: Partial<NewContact> = {}): Promise<s
 	return id;
 }
 
-type Page = { data: Record<string, unknown>[]; next_cursor: string | null };
+type Page = {
+	data: Record<string, unknown>[];
+	next_cursor: string | null;
+	resume_updated_since: string | null;
+};
 
 describe('a key reading the first page of donors', () => {
 	it('answers the donors newest first, each in a fundraiser’s words', async () => {
@@ -191,13 +195,26 @@ describe('a walk over every change since an instant, oldest change first', () =>
 	});
 });
 
+describe('a walk across donors recorded and changed at one time', () => {
+	it('answers each once, a page apiece, in either order', async () => {
+		const ids = [await seedDonor(10), await seedDonor(10)].toSorted();
+
+		const newest = await walk('limit=1');
+		const changed = await walk('limit=1&updated_since=2025-09-01T00:00:00Z');
+
+		expect(idsOf(newest)).toEqual(ids.toReversed());
+		expect(idsOf(changed)).toEqual(ids);
+	});
+});
+
 describe('a read of what changed since the last walk', () => {
 	it('answers a donor whose consent changed since, with the new answer, and not a donor untouched since', async () => {
 		const withdrawn = await seedDonor(10, { consentedToContact: true });
 		const untouched = await seedDonor(11, { consentedToContact: true });
 		const last = await seedDonor(12);
-		const served = (await walk('updated_since=2025-09-01T00:00:00Z')).flatMap((page) => page.data);
-		const since = String(served.at(-1)?.updated_at);
+		const walked = await walk('updated_since=2025-09-01T00:00:00Z');
+		const since = String(walked.at(-1)?.resume_updated_since);
+		expect(since).toBe('2025-09-12T11:59:00.000Z');
 
 		await contactConsentUpdateStatement(db, withdrawn, false);
 
@@ -235,12 +252,13 @@ describe('a request naming a page the list cannot serve', () => {
 		expect(donorsSaid).toStrictEqual(giftsSaid);
 	});
 
-	it('refuses a cursor the gifts list issued, as one from another order', async () => {
+	it('refuses a cursor the gifts list issued, naming that list and to start without one', async () => {
 		const giftsCursor = btoa(JSON.stringify(['gifts.newest', 0, 'x'])).replace(/=+$/, '');
 
 		const body = await refusal(donorsRoute, 'donors', `cursor=${giftsCursor}`);
 
 		expect(body.error).toBe('invalid_cursor');
-		expect(body.message).toContain('another order');
+		expect(body.message).toContain('/integrations/v1/gifts');
+		expect(body.fix).toContain('without a `cursor`');
 	});
 });
