@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { commitmentMetadata, type PaymentProvider } from './provider';
+import { commitmentMetadata, isRetryable, type PaymentProvider } from './provider';
 import {
 	createPaypalProvider,
 	findOrCreateBillingPlan,
@@ -128,7 +128,7 @@ const MONTHLY = { amountMinor: 2500, currency: 'USD', interval: 'monthly' } as c
  * PayPal's shape correctly.
  */
 const heldPlan = (
-	over: { id?: string; status?: string; currency?: string; value?: string } = {}
+	over: { id?: string; status?: string; currency?: string; value?: string; threshold?: number } = {}
 ) => ({
 	id: over.id ?? 'P-5ML4271244454362WXNWU5NQ',
 	product_id: 'BETTER-GIVING-RECURRING-GIFT',
@@ -143,7 +143,11 @@ const heldPlan = (
 				fixed_price: { currency_code: over.currency ?? 'USD', value: over.value ?? '25.00' }
 			}
 		}
-	]
+	],
+	payment_preferences: {
+		auto_bill_outstanding: false,
+		payment_failure_threshold: over.threshold ?? 3
+	}
 });
 
 describe('createIntent', () => {
@@ -2658,7 +2662,7 @@ describe('the billing plan one amount and interval is charged on', () => {
 					pricing_scheme: { fixed_price: { currency_code: 'USD', value: '25.00' } }
 				}
 			],
-			payment_preferences: { auto_bill_outstanding: false }
+			payment_preferences: { auto_bill_outstanding: false, payment_failure_threshold: 3 }
 		});
 	});
 
@@ -2760,6 +2764,26 @@ describe('the billing plan one amount and interval is charged on', () => {
 		await findOrCreateBillingPlan(paypalSubscriptions(CREDENTIALS), MONTHLY);
 
 		expect(apiCall(calls, 1)?.headers['paypal-request-id']).toBe(
+			'better-giving:plan:monthly:USD:2500:failures-3'
+		);
+	});
+
+	/**
+	 * a plan suspending on another count of failures is another create, never a repeat of one.
+	 *
+	 * `better-giving:plan:monthly:USD:2500` is the key a plan holding PayPal's default threshold was
+	 * created under, the same amount and cadence as this one. inside the 72 hours PayPal honours it,
+	 * a create under that key is answered with that plan — which `charges` has just passed over.
+	 */
+	it('keys the create apart from one differing only in its failure threshold', async () => {
+		const { calls } = recording([
+			{ status: 200, json: { plans: [heldPlan({ threshold: 0 })] } },
+			{ status: 201, json: { id: 'P-2', status: 'ACTIVE' } }
+		]);
+
+		await findOrCreateBillingPlan(paypalSubscriptions(CREDENTIALS), MONTHLY);
+
+		expect(apiCall(calls, 1)?.headers['paypal-request-id']).not.toBe(
 			'better-giving:plan:monthly:USD:2500'
 		);
 	});
@@ -2798,7 +2822,8 @@ describe('the billing plan one amount and interval is charged on', () => {
 	it.each([
 		['charges another amount', { value: '30.00' }],
 		['charges another currency', { currency: 'EUR' }],
-		['takes no new subscription', { status: 'INACTIVE' }]
+		['takes no new subscription', { status: 'INACTIVE' }],
+		['suspends on another count of failed payments', { threshold: 0 }]
 	])('passes over a plan that %s', async (_why, over) => {
 		const { calls } = recording([
 			{ status: 200, json: { plans: [heldPlan(over)] } },
@@ -3144,13 +3169,50 @@ const commitment = (over: Record<string, unknown> = {}) => ({
 	...over
 });
 
+/**
+ * a commitment read back after one of its collections failed: the count of failures in a row, and
+ * the last of them with its amount, its time and PayPal's next retry of it (`failed_payment_details`
+ * in billing_subscriptions_v1.json in https://github.com/paypal/paypal-rest-api-specifications).
+ */
+const failedCommitment = (
+	failure: {
+		count?: number;
+		time?: string;
+		retry?: string | null;
+		value?: string;
+		paid?: string | undefined;
+	} = {}
+) =>
+	commitment({
+		billing_info: {
+			outstanding_balance: { currency_code: 'USD', value: '0.00' },
+			failed_payments_count: failure.count ?? 1,
+			next_billing_time: '2026-10-16T22:20:08Z',
+			...(failure.paid
+				? { last_payment: { amount: { currency_code: 'USD', value: '25.00' }, time: failure.paid } }
+				: {}),
+			last_failed_payment: {
+				amount: { currency_code: 'USD', value: failure.value ?? '25.00' },
+				time: failure.time ?? '2026-09-16T22:20:08Z',
+				reason_code: 'PAYMENT_DENIED',
+				...(failure.retry === null
+					? {}
+					: { next_payment_retry_time: failure.retry ?? '2026-09-21T22:20:08Z' })
+			}
+		}
+	});
+
 /** one recurring delivery, as `verifyEvent` hands it to the read arm. */
-const notice = (type: string, providerNoticeId: string) => ({
-	id: 'WH-1AB23456CD789012E-3FG45678HI901234J',
+const notice = (
+	type: string,
+	providerNoticeId: string,
+	over: { id?: string; occurredAt?: Date } = {}
+) => ({
+	id: over.id ?? 'WH-1AB23456CD789012E-3FG45678HI901234J',
 	kind: 'recurring' as const,
 	type,
 	providerNoticeId,
-	occurredAt: new Date('2026-09-16T22:20:08Z')
+	occurredAt: over.occurredAt ?? new Date('2026-09-16T22:20:08Z')
 });
 
 describe('readRecurringGift', () => {
@@ -3211,7 +3273,7 @@ describe('readRecurringGift', () => {
 	});
 
 	/**
-	 * a collection that failed is a collection with no transaction, never the commitment's standing.
+	 * a failed collection is a collection carrying the attempt, never the commitment's standing.
 	 *
 	 * money was meant to move and did not, and the resource PayPal sends is the subscription rather
 	 * than a charge — so there is nothing for `readSettlement` to reconcile and `providerTxnId` is
@@ -3219,7 +3281,7 @@ describe('readRecurringGift', () => {
 	 * PayPal's own retries are still running against it and the state says `active`.
 	 */
 	it('reads a failed collection as a collection with no transaction', async () => {
-		const { calls } = recording([{ status: 200, json: commitment() }]);
+		const { calls } = recording([{ status: 200, json: failedCommitment() }]);
 
 		const result = await createPaypalProvider(CREDENTIALS).readRecurringGift(
 			notice('BILLING.SUBSCRIPTION.PAYMENT.FAILED', 'I-BW452GLLEP1G')
@@ -3231,6 +3293,123 @@ describe('readRecurringGift', () => {
 			providerTxnId: null,
 			state: 'active'
 		});
+	});
+
+	/**
+	 * a failure a payment has since cured reports nothing but the commitment's standing.
+	 *
+	 * the count resets to 0 once a payment settles, so a fresh read counting none with a payment
+	 * after the delivery is a delivery the paying retry overtook. told of it now, a destination hears
+	 * the donor's card is failing after the charge that cured it.
+	 */
+	it('reads a failure a payment has since cured as the commitment’s standing', async () => {
+		recording([
+			{ status: 200, json: failedCommitment({ count: 0, paid: '2026-09-21T22:20:09Z' }) }
+		]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readRecurringGift(
+			notice('BILLING.SUBSCRIPTION.PAYMENT.FAILED', 'I-BW452GLLEP1G')
+		);
+
+		expect(result.ok && result.value).toMatchObject({ about: 'commitment', state: 'active' });
+		expect(result.ok && result.value.failedAttempt).toBeUndefined();
+	});
+
+	/**
+	 * a read counting no failure and no payment since is asked for again, never acknowledged.
+	 *
+	 * the subscription can be read before it records the failure the delivery reports. answered
+	 * 2xx, that failure is gone for good; refused as retryable, PayPal delivers it again.
+	 */
+	it.each([
+		['no payment at all', undefined],
+		['a payment from before the delivery', '2026-08-16T22:20:08Z']
+	])('asks again for a failure the read does not show yet, with %s', async (_why, paid) => {
+		recording([{ status: 200, json: failedCommitment({ count: 0, paid }) }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readRecurringGift(
+			notice('BILLING.SUBSCRIPTION.PAYMENT.FAILED', 'I-BW452GLLEP1G')
+		);
+
+		expect(result.ok === false && isRetryable(result.reason)).toBe(true);
+	});
+
+	it('reads a failed collection as the attempt that failed', async () => {
+		recording([{ status: 200, json: failedCommitment() }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readRecurringGift(
+			notice('BILLING.SUBSCRIPTION.PAYMENT.FAILED', 'I-BW452GLLEP1G')
+		);
+
+		expect(result.ok && result.value.failedAttempt).toEqual({
+			attemptKey: 'WH-1AB23456CD789012E-3FG45678HI901234J',
+			attemptCount: 1,
+			nextRetryAt: new Date('2026-09-21T22:20:08Z'),
+			failedAt: new Date('2026-09-16T22:20:08Z'),
+			amountMinor: 2500,
+			currency: 'USD'
+		});
+	});
+
+	/**
+	 * one attempt is one key, however often it is delivered, and the next is another.
+	 *
+	 * the key is the delivery's own id, which PayPal repeats on a redelivery and mints afresh for
+	 * each failed payment. nothing read about the subscription can be the key: a delivery first
+	 * refused and redelivered after the next failure reads that failure, and would report under its
+	 * key — the next failure's own delivery then deduplicating into it and going unreported.
+	 */
+	it('keys a failed attempt on its delivery, not on the subscription read after it', async () => {
+		const keyOf = async (id: string, read: ReturnType<typeof failedCommitment>) => {
+			recording([{ status: 200, json: read }]);
+			const result = await createPaypalProvider(CREDENTIALS).readRecurringGift(
+				notice('BILLING.SUBSCRIPTION.PAYMENT.FAILED', 'I-BW452GLLEP1G', { id })
+			);
+			return result.ok ? result.value.failedAttempt?.attemptKey : undefined;
+		};
+		const retried = failedCommitment({
+			count: 2,
+			time: '2026-09-21T22:20:08Z',
+			retry: '2026-09-26T22:20:08Z'
+		});
+
+		const first = await keyOf('WH-FIRST', failedCommitment());
+		const redeliveredLate = await keyOf('WH-FIRST', retried);
+		const next = await keyOf('WH-SECOND', retried);
+
+		expect(first).toBeDefined();
+		expect(redeliveredLate).toBe(first);
+		expect(next).not.toBe(first);
+	});
+
+	it('reports no retry where PayPal names none', async () => {
+		recording([{ status: 200, json: failedCommitment({ count: 3, retry: null }) }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readRecurringGift(
+			notice('BILLING.SUBSCRIPTION.PAYMENT.FAILED', 'I-BW452GLLEP1G')
+		);
+
+		expect(result.ok && result.value.failedAttempt).toMatchObject({
+			attemptCount: 3,
+			nextRetryAt: null
+		});
+	});
+
+	/**
+	 * a failure whose amount cannot be read is refused, never passed on without its attempt.
+	 *
+	 * a collection notice with no attempt on it and no transaction is how a charge settled outside
+	 * PayPal reads (../donations/collect.ts), so a failure reported that way would be money received.
+	 */
+	it('refuses a failed collection whose amount it cannot read', async () => {
+		recording([{ status: 200, json: failedCommitment({ value: 'twenty-five' }) }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readRecurringGift(
+			notice('BILLING.SUBSCRIPTION.PAYMENT.FAILED', 'I-BW452GLLEP1G')
+		);
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
+		expect(result.ok === false && result.detail).toContain('last_failed_payment');
 	});
 
 	/** a lifecycle delivery is about the commitment itself and names no charge at all. */

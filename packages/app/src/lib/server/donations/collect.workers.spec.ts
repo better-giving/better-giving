@@ -11,6 +11,7 @@ import {
 	FEE_COVERED_METADATA_KEY,
 	GIFT_MINOR_METADATA_KEY,
 	INTERVAL_METADATA_KEY,
+	type FailedCollection,
 	type PaymentEvent,
 	type PaymentProvider,
 	type PaymentResult,
@@ -1446,6 +1447,116 @@ describe('settleDelivery() — a collection that did not succeed', () => {
 		// a commitment that lapsed rather than being cancelled reports no end date of its own, so
 		// the delivery's own time is what says when this deployment learned of it.
 		expect(plan?.endedAt).toEqual(new Date('2026-08-03T12:00:00.000Z'));
+	});
+});
+
+/** the processor's report of one failed attempt at a later collection. */
+const failedAttempt = (over: Partial<FailedCollection> = {}): FailedCollection => ({
+	attemptKey: 'in_collect_2:2',
+	attemptCount: 2,
+	nextRetryAt: new Date('2026-09-08T12:00:00.000Z'),
+	failedAt: new Date('2026-09-03T12:00:00.000Z'),
+	amountMinor: 2500,
+	currency: 'USD',
+	...over
+});
+
+/** a delivery reporting a failed attempt, under which no transaction may be read. */
+const failedDelivery = (attempt: FailedCollection, over: Partial<RecurringGiftNotice> = {}) =>
+	provider({
+		verify: {
+			ok: true,
+			value: collectionEvent({
+				id: 'evt_failed_1',
+				type: 'invoice.payment_failed',
+				providerNoticeId: 'in_collect_2'
+			})
+		},
+		gift: {
+			ok: true,
+			value: notice({
+				state: 'active',
+				providerTxnId: 'pi_collect_2',
+				failedAttempt: attempt,
+				...over
+			})
+		},
+		settled: { ok: false, reason: 'provider_error', detail: 'the attempt is not a figure to read' }
+	});
+
+describe('settleDelivery() — a failed attempt at a later collection', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
+	it('writes no gift, payment or ledger row, and reads no transaction', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: failedDelivery(failedAttempt()) }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+		expect(result.ok && result.detail).toContain('attempt 2 at a collection under');
+		// the opening collection's rows, and nothing beside them.
+		expect(await db.select().from(donation)).toHaveLength(1);
+		expect(await db.select().from(payment)).toHaveLength(1);
+		expect(await db.select().from(entryGroup)).toHaveLength(2);
+		// the transaction read is scripted to refuse, and a refusal there tells an operator: no mail
+		// means the attempt was answered off the notice alone.
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('reads an attempt with no transaction as a failure, not as money received', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const mail = mailer();
+
+		// refused for want of a payment method: no attempt reached a transaction at all.
+		const result = await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: failedDelivery(failedAttempt(), { providerTxnId: null })
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('writes the lapse the last miss carries', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		const result = await settleDelivery(
+			deps({
+				provider: failedDelivery(failedAttempt({ attemptCount: 4, nextRetryAt: null }), {
+					state: 'lapsed'
+				})
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'stopped' });
+		const [plan] = await db.select().from(recurringPlan);
+		expect(plan).toMatchObject({ status: 'lapsed', nextChargeAt: null });
+	});
+
+	it('writes nothing where no commitment has a row — the donor’s own first charge', async () => {
+		const result = await settleDelivery(
+			deps({
+				provider: failedDelivery(failedAttempt({ attemptKey: 'in_open:1', attemptCount: 1 }))
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+		expect(result.ok && result.detail).toContain('no repeating gift');
+		expect(await db.select().from(recurringPlan)).toHaveLength(0);
+		expect(await db.select().from(payment)).toHaveLength(0);
+		expect(await db.select().from(entryGroup)).toHaveLength(0);
 	});
 });
 

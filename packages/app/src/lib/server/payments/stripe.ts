@@ -18,6 +18,7 @@ import {
 } from '@better-giving/operator/stripe/webhook-endpoint';
 import type {
 	AccountChargeability,
+	FailedCollection,
 	RailCapabilityState,
 	Intent,
 	IntentRequest,
@@ -83,6 +84,10 @@ import type {
 
 /** the one dispute delivery whose own time is the close's: a `Dispute` records no close time. */
 const DISPUTE_CLOSED_EVENT = 'charge.dispute.closed' satisfies (typeof DISPUTE_EVENT_TYPES)[number];
+
+/** the one collection delivery that reports an attempt failing: one delivery per failed attempt. */
+const COLLECTION_FAILED_EVENT =
+	'invoice.payment_failed' satisfies (typeof RECURRING_COLLECTION_EVENT_TYPES)[number];
 
 /** what the adapter needs to talk to an account. */
 export type StripeCredentials = {
@@ -986,6 +991,44 @@ function collectedOn(collected: Stripe.Invoice): string | null {
 }
 
 /**
+ * the failed attempt an `invoice.payment_failed` reports, or null where it reports none a
+ * destination is owed.
+ *
+ * the invoice is the fresh read, so its count and its next retry are where the schedule stands
+ * now. two cases report nothing:
+ *
+ *   - the opening invoice (`subscription_create`). that is the donor's own first charge, failing on
+ *     the page, under a commitment no charge has opened yet — the page tells them, and no repeating
+ *     gift exists to report against.
+ *   - an invoice paid since. the retry that paid overtook this delivery, and a failure reported
+ *     after the charge that cured it tells a destination the donor's card is failing now.
+ *
+ * the key and the time are the delivery's: Stripe sends one `invoice.payment_failed` per failed
+ * attempt, keeps its id across a redelivery, and stamps it when the attempt failed. the invoice
+ * carries neither — a manual attempt after the first does not move `attempt_count`, a delivery held
+ * back past the next retry reads that retry's count, and its default payment is created when the
+ * invoice is finalized and records only paying and cancelling (`InvoicePayment` in the installed
+ * SDK). so in that held-back case the count and the retry are the later attempt's.
+ */
+function failedAttemptOf(
+	collected: Stripe.Invoice,
+	delivered: RecurringEvent
+): FailedCollection | null {
+	if (collected.billing_reason === 'subscription_create' || collected.status === 'paid') {
+		return null;
+	}
+	return {
+		attemptKey: delivered.id,
+		attemptCount: collected.attempt_count,
+		nextRetryAt:
+			collected.next_payment_attempt === null ? null : atMillis(collected.next_payment_attempt),
+		failedAt: delivered.occurredAt,
+		amountMinor: collected.amount_due,
+		currency: collected.currency.toUpperCase()
+	};
+}
+
+/**
  * why a price found under this app's own lookup key may not be charged against, or nothing.
  *
  * a lookup key belongs to one price at a time and can be moved between them, so what comes back
@@ -1538,9 +1581,11 @@ export function createStripeProvider(
 	 * on it at all, every collection reports no transaction, and that reads as a gift settled outside
 	 * Stripe rather than as a request missing a parameter.
 	 */
-	async function readCollection(invoiceId: string): Promise<PaymentResult<RecurringGiftNotice>> {
+	async function readCollection(
+		event: RecurringEvent
+	): Promise<PaymentResult<RecurringGiftNotice>> {
 		try {
-			const collected = await stripe.invoices.retrieve(invoiceId, {
+			const collected = await stripe.invoices.retrieve(event.providerNoticeId, {
 				expand: ['parent.subscription_details.subscription', 'payments']
 			});
 
@@ -1579,7 +1624,10 @@ export function createStripeProvider(
 				};
 			}
 
-			return { ok: true, value: noticeOf(commitment.value, 'collection', collectedOn(collected)) };
+			const notice = noticeOf(commitment.value, 'collection', collectedOn(collected));
+			const failed =
+				event.type === COLLECTION_FAILED_EVENT ? failedAttemptOf(collected, event) : null;
+			return { ok: true, value: failed ? { ...notice, failedAttempt: failed } : notice };
 		} catch (error) {
 			return classify(error);
 		}
@@ -2185,7 +2233,7 @@ export function createStripeProvider(
 		 */
 		async readRecurringGift(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>> {
 			return (RECURRING_COLLECTION_EVENT_TYPES as readonly string[]).includes(event.type)
-				? readCollection(event.providerNoticeId)
+				? readCollection(event)
 				: readCommitment(event.providerNoticeId);
 		},
 
