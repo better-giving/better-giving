@@ -141,6 +141,12 @@ export interface ConfigEnv {
 	readonly TURNSTILE_SITE_KEY?: string;
 	/** the Turnstile secret used server-side to verify a token. */
 	readonly TURNSTILE_SECRET_KEY?: string;
+	/**
+	 * the model the deployment's generated text is answered by: an id on `AI_MODELS` in
+	 * `@better-giving/operator/ai-models`, which the console writes. unset is the free Workers AI
+	 * model, and an id off that list is refused rather than guessed at (../ai/generate.ts).
+	 */
+	readonly AI_MODEL?: string;
 }
 
 /**
@@ -214,7 +220,8 @@ export const CONFIG_VAR_NAMES = [
 	'NOWPAYMENTS_OUTCOME_CURRENCY',
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
-	'QUICKBOOKS_API_URL'
+	'QUICKBOOKS_API_URL',
+	'AI_MODEL'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
 /**

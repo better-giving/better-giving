@@ -144,6 +144,18 @@
 		}
 	],
 
+	// the Workers AI binding, and the only way this deployment reaches a model — the free Workers
+	// AI one and the credit-billed Claude and GPT alike, each through AI Gateway
+	// (src/lib/server/ai/generate.ts). there is no resource behind it to create and no id to keep
+	// out of the repo: the binding is the account's, and the `default` gateway every call names
+	// creates itself on first use.
+	//
+	// Workers AI has no local simulator, so `pnpm dev` and `pnpm run preview` open a session to the
+	// account for this one binding and need `pnpm run login` first.
+	"ai": {
+		"binding": "AI"
+	},
+
 	// the three buckets this app charges: the whole public surface, the one endpoint on it that
 	// takes money, and the staff sign-in. CLAUDE.md names rate limiting as one of the things an
 	// endpoint on `/api/v1` owes before it ships; the sign-in is not on that surface and is here
@@ -307,12 +319,12 @@
 	// what an environment inherits is not what the published list says, and the two that matter
 	// most are the two it leaves out. wrangler runs `name` (suffixed, so this one deploys as
 	// `better-giving-test`), `main`, `assets`, `compatibility_date`, `compatibility_flags` and
-	// `observability` through its `inheritable` helper, and `d1_databases`, `ratelimits` and `vars`
-	// through `notInheritable`, which takes only what the environment itself declares and warns
-	// when the top level holds one the environment does not. that is why the database and all four
-	// limiters are repeated below in full: an entry left out of here is a binding this deployment
-	// does not have, not one it borrows. `vars` needs no repeating for the same reason there is no
-	// top-level `vars` block to inherit.
+	// `observability` through its `inheritable` helper, and `d1_databases`, `ratelimits`, `ai` and
+	// `vars` through `notInheritable`, which takes only what the environment itself declares and
+	// warns when the top level holds one the environment does not. that is why the database, the AI
+	// binding and all four limiters are repeated below in full: an entry left out of here is a
+	// binding this deployment does not have, not one it borrows. `vars` needs no repeating for the
+	// same reason there is no top-level `vars` block to inherit.
 	//
 	// one thing is shared and cannot be unshared, and it is local only: `wrangler dev` and
 	// `wrangler dev --env test` read one sqlite file under .wrangler/state/, because with no
@@ -337,6 +349,12 @@
 					"migrations_dir": "./migrations"
 				}
 			],
+
+			// the same binding under the same name; the model a rehearsal answers with is its own
+			// `AI_MODEL`, like every other value.
+			"ai": {
+				"binding": "AI"
+			},
 
 			// the same four buckets, the same three limits and the same probe, under four namespaces
 			// of their own.

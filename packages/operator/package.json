@@ -5,6 +5,7 @@
 	"type": "module",
 	"exports": {
 		"./admin-password": "./src/admin-password.ts",
+		"./ai-models": "./src/ai-models.ts",
 		"./code-spans": "./src/code-spans.ts",
 		"./marked-text.react": "./src/marked-text.react.tsx",
 		"./deploy-split": "./src/deploy-split.ts",

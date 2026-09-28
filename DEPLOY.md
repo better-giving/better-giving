@@ -62,6 +62,7 @@ pnpm run deploy:vars      # one deploy, carrying every line of the file as a var
 - Anyone who can open this Cloudflare account can read every one of them, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
 - `.deploy.vars` is not `.dev.vars`, which feeds `pnpm dev` and is never uploaded.
 - `CONSOLE_TOKEN` sits on the same Worker and is not one of these values: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
+- `AI_MODEL` is the model the dashboard's generated text is answered by, and the console's model setting writes it. Left unset it is the free Workers AI model. Claude and GPT are billed to this Cloudflare account's credits, with no provider key to store; when a call to one fails, an empty balance included, the free model answers in its place.
 - `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is a third configuration value usually left unset; the app refuses every port but 465.
 
 ## 2. The console jobs
