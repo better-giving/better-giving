@@ -93,6 +93,21 @@ describe('a model that does not draw', () => {
 	});
 });
 
+describe('a picture the database refuses', () => {
+	// a blank alt is refused by `image_alt_check`, which makes D1's own write throw.
+	it('is refused as failed, and stores nothing', async () => {
+		const before = await db.$count(image);
+
+		const result = await illustrate({ AI: answering(answer(jpegHeader(1024, 1024))) }, db, {
+			...ASK,
+			alt: '   '
+		});
+
+		expect(result).toEqual({ ok: false, reason: 'failed' });
+		expect(await db.$count(image)).toBe(before);
+	});
+});
+
 describe('an answer that is not a picture', () => {
 	it.each([
 		['bytes no image header opens', answer(new TextEncoder().encode('not a picture at all'))],

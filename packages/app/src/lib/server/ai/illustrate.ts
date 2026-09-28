@@ -14,11 +14,12 @@ import { aiBinding, isLocalStandIn } from './generate';
 // the binding is read off the env each call is handed, by the same rules as ./generate.ts: none,
 // or the local dev server's stand-in, is `unbound`.
 //
-// nothing the model does throws. a model that threw or answered with no picture is `failed`, a
-// picture no image header opens is `unreadable`, and one past `IMAGE_BYTES_MAX` — the cap an
-// upload is held to — is `too-large`, refused here because the table's own check would throw.
-// the type and size stored are what the bytes declare (../images/sniff.ts), never the model's
-// documented format. the write itself is D1's and fails the way every write does.
+// nothing here throws: the caller is a chat turn, and a picture that did not arrive is a sentence
+// in it rather than a 500. a model that threw or answered with no picture is `failed`, and so is a
+// write D1 refused. a picture no image header opens is `unreadable`, and one past
+// `IMAGE_BYTES_MAX` — the cap an upload is held to — is `too-large`, refused before the table's
+// own check would. the type and size stored are what the bytes declare (../images/sniff.ts), never
+// the model's documented format.
 
 export interface IllustrateRequest {
 	readonly prompt: string;
@@ -62,12 +63,17 @@ export async function illustrate(
 	const sniffed = sniffImage(bytes);
 	if (!sniffed) return { ok: false, reason: 'unreadable' };
 
-	const imageId = await createImage(
-		db,
-		{ kind: 'illustration', alt: request.alt, ...sniffed },
-		bytes
-	);
-	return { ok: true, imageId };
+	try {
+		const imageId = await createImage(
+			db,
+			{ kind: 'illustration', alt: request.alt, ...sniffed },
+			bytes
+		);
+		return { ok: true, imageId };
+	} catch (error) {
+		console.error(`${MODEL}'s picture was not stored:`, error);
+		return { ok: false, reason: 'failed' };
+	}
 }
 
 /** the model's base64 picture, or null where the answer holds none. */
