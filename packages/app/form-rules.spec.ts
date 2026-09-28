@@ -527,6 +527,18 @@ describe('a save that replaces a record’s columns is written against the versi
 		expect(unversionedWriteViolations(source)).toEqual([]);
 	});
 
+	it('takes the digest `submittedDigest` read off the body, for a part of a row other saves move', () => {
+		const source = `
+			${SEAM.replace('submittedVersion', 'submittedDigest')}
+			${WRITE}
+			export async function action() {
+				const seen = submittedDigest(body);
+				await updateThing(db, seen, parsed.value);
+			}
+		`;
+		expect(unversionedWriteViolations(source)).toEqual([]);
+	});
+
 	it('leaves a module holding no form alone', () => {
 		const source = `
 			${WRITE}
