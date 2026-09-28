@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { currentDestination, DESTINATION_GROUPS, DESTINATIONS } from './destinations';
+import {
+	currentDestination,
+	DESTINATION_GROUPS,
+	DESTINATIONS,
+	destinationGroupsFor
+} from './destinations';
 
 describe('the rail', () => {
 	it('opens on the dashboard, then goes to a bare path under /admin, one per section', () => {
@@ -11,12 +16,41 @@ describe('the rail', () => {
 			'/admin/donations',
 			'/admin/recurring',
 			'/admin/members',
+			'/admin/integrations/api',
 			'/admin/books'
 		]);
 	});
 
-	it('stands the dashboard alone, then the records of giving, then who can sign in, then the books', () => {
+	it('stands the dashboard alone, then the records of giving, then who can sign in, then the integrations, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
+			['Dashboard'],
+			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			['Members'],
+			['API'],
+			['Books']
+		]);
+	});
+
+	it('heads the integrations and no other group', () => {
+		expect(DESTINATION_GROUPS.map((group) => ('heading' in group ? group.heading : null))).toEqual([
+			null,
+			null,
+			null,
+			'Integrations',
+			null
+		]);
+	});
+});
+
+describe('who the rail is drawn for', () => {
+	it('is every group for the deployer', () => {
+		expect(destinationGroupsFor(true)).toEqual(DESTINATION_GROUPS);
+	});
+
+	it('leaves the integrations out for a member, and nothing else', () => {
+		expect(
+			destinationGroupsFor(false).map((group) => group.destinations.map((d) => d.label))
+		).toEqual([
 			['Dashboard'],
 			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Members'],

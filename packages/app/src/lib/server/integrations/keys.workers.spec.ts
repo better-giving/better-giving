@@ -2,7 +2,15 @@ import { createHash } from 'node:crypto';
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { API_KEY_SHAPE, findKeyByPresented, mintApiKey, revokeApiKey, touchLastUsed } from './keys';
+import {
+	API_KEY_SHAPE,
+	findKeyByPresented,
+	listApiKeys,
+	mintApiKey,
+	revokeAndArchiveApiKey,
+	revokeApiKey,
+	touchLastUsed
+} from './keys';
 
 // the integration keys against a real D1: what is stored is read back from the table rather than
 // from the module, so a key that reached a column is caught however it got there.
@@ -96,6 +104,70 @@ describe('revoking a key', () => {
 		await revokeApiKey(db, revoked.id);
 
 		expect((await findKeyByPresented(db, kept.key))?.revokedAt).toBeNull();
+	});
+});
+
+describe('the keys an organisation lists', () => {
+	it('is every api key still on the list, newest first, and never Zapier’s', async () => {
+		const older = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+		const newer = await mintApiKey(db, { name: 'Donor wall', kind: 'api' });
+		// the mint stamps the row with the statement's own clock, so two mints in one millisecond
+		// are told apart by setting one back rather than by waiting.
+		await env.DB.prepare('update api_key set created_at = created_at - 1000 where id = ?')
+			.bind(older.id)
+			.run();
+
+		expect((await listApiKeys(db)).map((key) => key.id)).toEqual([newer.id, older.id]);
+	});
+
+	it('names each key, when it was made and when it was last used, and holds nothing secret', async () => {
+		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+
+		expect(await listApiKeys(db)).toStrictEqual([
+			{ id: minted.id, name: 'Reporting sheet', createdAt: minted.createdAt, lastUsedAt: null }
+		]);
+	});
+});
+
+describe('revoking a key from the dashboard', () => {
+	it('stops the key at once and takes it off the list, in one statement', async () => {
+		const revoked = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		const kept = await mintApiKey(db, { name: 'Donor wall', kind: 'api' });
+
+		expect(await revokeAndArchiveApiKey(db, revoked.id)).toBe(true);
+
+		expect((await findKeyByPresented(db, revoked.key))?.revokedAt).toBeInstanceOf(Date);
+		expect((await listApiKeys(db)).map((key) => key.id)).toEqual([kept.id]);
+		expect((await findKeyByPresented(db, kept.key))?.revokedAt).toBeNull();
+	});
+
+	it('keeps the first revocation time of a key already revoked', async () => {
+		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		const first = await revokeApiKey(db, minted.id);
+
+		expect(await revokeAndArchiveApiKey(db, minted.id)).toBe(true);
+		expect((await findKeyByPresented(db, minted.key))?.revokedAt).toEqual(first);
+		expect(await listApiKeys(db)).toEqual([]);
+	});
+
+	it('answers false for a key already off the list, and for no key at all', async () => {
+		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		await revokeAndArchiveApiKey(db, minted.id);
+
+		expect(await revokeAndArchiveApiKey(db, minted.id)).toBe(false);
+		expect(await revokeAndArchiveApiKey(db, '0195-no-such-key')).toBe(false);
+	});
+
+	/** the dashboard's list never shows Zapier's key, so an id naming it is a body nobody pressed. */
+	it('leaves Zapier’s key working', async () => {
+		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+
+		expect(await revokeAndArchiveApiKey(db, zapier.id)).toBe(false);
+		expect(await findKeyByPresented(db, zapier.key)).toMatchObject({
+			revokedAt: null,
+			archivedAt: null
+		});
 	});
 });
 

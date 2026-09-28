@@ -35,13 +35,13 @@ async function mount(tree: ReactNode): Promise<HTMLElement> {
 }
 
 /** the layout, set up and named, over a list screen and a detail screen beneath it. */
-function frameAt(at: string): Promise<HTMLElement> {
+function frameAt(at: string, deployer = true): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
 		{
 			id: 'app',
 			Component: () =>
 				createElement(ProtectedLayout as never, {
-					loaderData: { shape: 'ready', orgName: 'Riverbank Trust' },
+					loaderData: { shape: 'ready', orgName: 'Riverbank Trust', deployer },
 					params: {},
 					matches: []
 				}),
@@ -103,6 +103,35 @@ it('draws no strip under no destination', async () => {
 	const root = await frameAt('/admin/elsewhere');
 
 	expect(strip(root)).toBeNull();
+});
+
+// the rail's Integrations group is the deployer's alone: every page in it answers a member with
+// not-found, and ./_app.admin.integrations.api.workers.spec.ts holds the loader's half.
+
+/** the column's headings and the destinations it offers, in the order it draws them. */
+function rail(root: HTMLElement): string[] {
+	return [...root.querySelectorAll('.adm-rail__heading, .adm-rail__cells > a .adm-dest__full')].map(
+		(node) => node.textContent ?? ''
+	);
+}
+
+it('draws the deployer the Integrations group, headed, between Members and Books', async () => {
+	const drawn = rail(await frameAt('/admin/forms'));
+
+	expect(drawn.slice(drawn.indexOf('Members'))).toEqual([
+		'Members',
+		'Integrations',
+		'API',
+		'Books'
+	]);
+});
+
+it('draws a member no Integrations group, and the rest of the rail as it is', async () => {
+	const drawn = rail(await frameAt('/admin/forms', false));
+
+	expect(drawn).not.toContain('Integrations');
+	expect(drawn).not.toContain('API');
+	expect(drawn.slice(drawn.indexOf('Members'))).toEqual(['Members', 'Books']);
 });
 
 // the bar over a move, drawn by the layout while the router reads the next page. the stub's loaders

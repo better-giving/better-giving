@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { type ApiKey, type ApiKeyKind, apiKey } from '../db/schema';
 
@@ -63,6 +63,46 @@ export async function revokeApiKey(db: Db, id: string): Promise<Date | null> {
 		.where(and(eq(apiKey.id, id), isNull(apiKey.revokedAt)))
 		.returning({ revokedAt: apiKey.revokedAt });
 	return row?.revokedAt ?? null;
+}
+
+/**
+ * revokes the `api` key `id` and archives it, in one statement, so a key leaves the list only as
+ * a key that admits nothing (`api_key_archived_revoked_check`). an earlier revocation time stands.
+ * `false` when no listed `api` key has that id — Zapier's included, which no list shows.
+ */
+export async function revokeAndArchiveApiKey(db: Db, id: string): Promise<boolean> {
+	const now = new Date();
+	const rows = await db
+		.update(apiKey)
+		.set({ revokedAt: sql`coalesce(${apiKey.revokedAt}, ${now.getTime()})`, archivedAt: now })
+		.where(and(eq(apiKey.id, id), eq(apiKey.kind, 'api'), isNull(apiKey.archivedAt)))
+		.returning({ id: apiKey.id });
+	return rows.length > 0;
+}
+
+/** a key as the dashboard lists it: what it is called and when, and nothing that admits a request. */
+export type ListedApiKey = {
+	readonly id: string;
+	readonly name: string;
+	readonly createdAt: Date;
+	readonly lastUsedAt: Date | null;
+};
+
+/**
+ * every `api` key not archived, newest first. Zapier's key is kept off this list, as `api_key`'s
+ * header in ../db/schema.ts says; ids break a tie in one millisecond because they are uuidv7.
+ */
+export async function listApiKeys(db: Db): Promise<ListedApiKey[]> {
+	return db
+		.select({
+			id: apiKey.id,
+			name: apiKey.name,
+			createdAt: apiKey.createdAt,
+			lastUsedAt: apiKey.lastUsedAt
+		})
+		.from(apiKey)
+		.where(and(eq(apiKey.kind, 'api'), isNull(apiKey.archivedAt)))
+		.orderBy(desc(apiKey.createdAt), desc(apiKey.id));
 }
 
 /** how coarse `last_used_at` is: a use within this long of the recorded one writes nothing. */

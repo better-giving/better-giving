@@ -1,9 +1,9 @@
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
  * one look, then the forms that take the money, the donors it came from, the gifts themselves, the
- * ones that repeat, who may sign in, and the books all of it lands in. the dashboard is first
- * because it is the surface's own address and what an operator opens on, and each record after it
- * is a step further from the form that produced it.
+ * ones that repeat, who may sign in, the systems outside that read it, and the books all of it
+ * lands in. the dashboard is first because it is the surface's own address and what an operator
+ * opens on, and each record after it is a step further from the form that produced it.
  *
  * the dashboard states figures and every other one is a collection. what a deployment holds one of
  * — payments, mail, spam protection, the site list, the organisation's legal identity — is set up
@@ -39,12 +39,19 @@
  * did would change every link and every server redirect at once rather than one call site at a
  * time.
  *
- * the rail's column draws the destinations in four groups, with a rule between each: the
- * dashboard alone, the one destination stating figures; the records of giving; Members, who can
- * open the rest and record no gift; and the books, which everything above writes into. no
- * group carries a heading: the rule is the whole of the separation. the groups are the shape
- * `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries flat, which is what a match
- * against an address walks.
+ * the rail's column draws the destinations in five groups: the dashboard alone, the one
+ * destination stating figures; the records of giving; Members, who can open the rest and record
+ * no gift; the integrations, the ways a system outside the deployment reaches it; and the books,
+ * which everything above writes into. a rule is the whole of the separation between the other
+ * four. the integrations carry the one heading, because their entries are named after a mechanism
+ * rather than a record — API — and that word in a run of records says nothing about what it holds.
+ * the groups are the shape `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries
+ * flat, which is what a match against an address walks.
+ *
+ * `deployer: true` marks a group drawn for the deployer's session alone: every page in it answers
+ * a member with not-found, and a cell leading there would be a way to a refusal.
+ * `destinationGroupsFor` picks the groups for a session, and ../../routes/_app.tsx hands it the
+ * same predicate the pages behind the group read.
  *
  * `mark` is the glyph the column draws beside a label — a name from
  * packages/operator/src/components/status/glyphs.js. the bar at a phone's width draws none, so a
@@ -84,6 +91,13 @@ export const DESTINATION_GROUPS = [
 		]
 	},
 	{
+		heading: 'Integrations',
+		deployer: true,
+		destinations: [
+			{ href: '/admin/integrations/api', label: 'API', short: 'API', mark: 'key-round' }
+		]
+	},
+	{
 		destinations: [
 			// last, in a group of its own: the journal entries every record above posts, and where a
 			// correction is posted against them. neither a record of giving nor a way in.
@@ -92,11 +106,19 @@ export const DESTINATION_GROUPS = [
 	}
 ] as const;
 
-type Destination = (typeof DESTINATION_GROUPS)[number]['destinations'][number];
+type DestinationGroup = (typeof DESTINATION_GROUPS)[number];
+type Destination = DestinationGroup['destinations'][number];
 
 export const DESTINATIONS: readonly Destination[] = DESTINATION_GROUPS.flatMap(
 	(group): readonly Destination[] => group.destinations
 );
+
+/** the rail drawn for a session: every group for the deployer, and none marked `deployer` for a member. */
+export function destinationGroupsFor(deployer: boolean): readonly DestinationGroup[] {
+	return deployer
+		? DESTINATION_GROUPS
+		: DESTINATION_GROUPS.filter((group) => !('deployer' in group));
+}
 
 /** the staff surface's own address, which is the dashboard's and is under no other destination. */
 const SURFACE = '/admin';
