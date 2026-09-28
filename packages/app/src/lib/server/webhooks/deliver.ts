@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
-import { type ApiGift, readGifts } from '../integrations/gift';
+import { type ApiGift, readByIds, readGifts } from '../integrations/gift';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import { signedHeaders } from './sign';
@@ -64,25 +64,32 @@ export const WEBHOOK_RETRY_SCHEDULE_MS: readonly number[] = [
  */
 const POST_TIMEOUT_MS = 15_000;
 
-/** posts in flight at once. */
-const POSTS_AT_ONCE = 10;
+/**
+ * posts in flight at once. an invocation may have six requests waiting on their response headers,
+ * and a seventh queues with its timeout already running
+ * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
+ * the minute cron runs this feed and ../zapier/deliver.ts in one invocation, three lanes each,
+ * beside ../accounting/deliver.ts, which sends one request at a time — so a QuickBooks request can
+ * still queue while all six lanes wait on headers.
+ */
+const POSTS_AT_ONCE = 3;
 
 /** how long a claimed row is the claiming run's alone, from that run's scheduled time. */
 const LEASE_MS = 2 * 60_000;
 
 /**
- * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes can each
- * start in turn while every destination times out, with the last post still answered inside
- * {@link LEASE_MS}.
+ * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes post
+ * inside {@link RUN_DEADLINE_MS} while each destination answers in four and a half seconds. where
+ * they are slower — every one timing out, at worst, leaves 21 posted — a row no lane reached stays
+ * leased, unposted, until the lease runs out and a later run takes it.
  */
 const CLAIMS_PER_RUN = 70;
 
 /**
- * no post starts later than this after the run's scheduled time: long enough for every claimed row
- * to be started when every destination times out, and short enough that the last post it lets
- * start answers or times out before {@link LEASE_MS} runs out.
+ * no post starts later than this after the run's scheduled time: the last moment a post can start
+ * and still answer or time out, {@link POST_TIMEOUT_MS} at most, before {@link LEASE_MS} runs out.
  */
-const RUN_DEADLINE_MS = (CLAIMS_PER_RUN / POSTS_AT_ONCE) * POST_TIMEOUT_MS;
+const RUN_DEADLINE_MS = LEASE_MS - POST_TIMEOUT_MS;
 
 const outbox = defineOutbox({
 	table: webhookDelivery,
@@ -202,19 +209,21 @@ type Claimed = Awaited<ReturnType<typeof claimDue>>['rows'][number];
 
 type Destination = { readonly url: string; readonly signingSecret: string };
 
-/** each destination's address and secret. the ids are one run's claims, under D1's 100 bound. */
+/** each destination's address and secret. */
 async function readDestinations(
 	db: Db,
 	destinationIds: readonly string[]
 ): Promise<Map<string, Destination>> {
-	const rows = await db
-		.select({
-			id: webhookDestination.id,
-			url: webhookDestination.url,
-			signingSecret: webhookDestination.signingSecret
-		})
-		.from(webhookDestination)
-		.where(inArray(webhookDestination.id, [...new Set(destinationIds)]));
+	const rows = await readByIds(destinationIds, (chunk) =>
+		db
+			.select({
+				id: webhookDestination.id,
+				url: webhookDestination.url,
+				signingSecret: webhookDestination.signingSecret
+			})
+			.from(webhookDestination)
+			.where(inArray(webhookDestination.id, chunk))
+	);
 	return new Map(rows.map((row) => [row.id, row]));
 }
 

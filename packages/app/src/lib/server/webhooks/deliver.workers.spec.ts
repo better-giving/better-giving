@@ -418,6 +418,28 @@ describe('sendDueWebhooks() — a post that fails', () => {
 	});
 });
 
+describe('sendDueWebhooks() — lanes', () => {
+	it('posts to at most three destinations at once, and to every one of them', async () => {
+		for (let made = 0; made < 7; made++) await destination();
+		await settle();
+		let inFlight = 0;
+		let most = 0;
+		const receiving = receivers(() => new Response('ok'));
+		const slow = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			inFlight += 1;
+			most = Math.max(most, inFlight);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			inFlight -= 1;
+			return receiving.fetch(input, init);
+		}) as typeof fetch;
+
+		await runAt(START, slow);
+
+		expect(most).toBe(3);
+		expect(new Set(receiving.posts.map((post) => post.url)).size).toBe(7);
+	});
+});
+
 describe('sendDueWebhooks() — what is not sent', () => {
 	it('sends a paused destination nothing, and leaves its rows owed', async () => {
 		const target = await destination();

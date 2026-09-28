@@ -354,10 +354,10 @@ describe('sendDueZapierEvents()', () => {
 		await sendDueZapierEvents({ db, fetch: throttled }, new Date(Date.now() + 1_000));
 		const after = Date.now();
 
-		// the ten lanes post before any answer is back; the other two are never posted.
-		expect(zapier.posts).toHaveLength(10);
+		// the three lanes post before any answer is back; the other nine are never posted.
+		expect(zapier.posts).toHaveLength(3);
 		const heldBack = (await deliveryRows()).filter((r) => r.attempts === 0);
-		expect(heldBack).toHaveLength(2);
+		expect(heldBack).toHaveLength(9);
 		for (const row of heldBack) {
 			expect(row.status).toBe('pending');
 			expect(row.next_attempt_at).toBeGreaterThanOrEqual(before + 10 * MINUTE);
@@ -727,9 +727,9 @@ describe('sendDueZapierEvents()', () => {
 		const now = Date.now() + 1_000;
 
 		const first = sendDueZapierEvents({ db, fetch: heldHooks }, new Date(now));
-		await expect.poll(() => posts.length).toBe(10);
+		await expect.poll(() => posts.length).toBe(3);
 		const second = sendDueZapierEvents({ db, fetch: heldHooks }, new Date(now + MINUTE));
-		await expect.poll(() => posts.length).toBe(20);
+		await expect.poll(() => posts.length).toBe(6);
 		open();
 		await Promise.all([first, second]);
 
@@ -755,7 +755,7 @@ describe('sendDueZapierEvents()', () => {
 		expect(zapier.posts).toEqual([]);
 	});
 
-	it('posts to at most ten hooks at once, and to every one of them', async () => {
+	it('posts to at most three hooks at once, and to every one of them', async () => {
 		for (let zap = 0; zap < 12; zap++) await listen();
 		await settle();
 		let inFlight = 0;
@@ -772,7 +772,7 @@ describe('sendDueZapierEvents()', () => {
 
 		await sendDueZapierEvents({ db, fetch: busyHooks }, new Date(Date.now() + 1_000));
 
-		expect(most).toBe(10);
+		expect(most).toBe(3);
 		expect(new Set(posts).size).toBe(12);
 	});
 
