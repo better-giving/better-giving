@@ -298,6 +298,32 @@ describe('the identity a shell draws', () => {
 		expect(heads(root)).toHaveLength(2);
 	});
 
+	it('leads the name with a same-tab link through the handed link where the site is on this surface', () => {
+		// the dashboard's globe: somewhere in-app, named for where it goes. a new tab or the
+		// console's name would be the outside address's reading of a place the reader is already on.
+		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
+			<a {...rest} data-handed="yes">
+				{children}
+			</a>
+		);
+		const root = render(AppShell, {
+			groups: GROUPS,
+			org: 'Riverbank Trust',
+			site: { href: '/admin/donation-page', label: 'Donation page' },
+			link: Handed
+		});
+
+		for (const head of heads(root)) {
+			const link = head.firstElementChild?.querySelector('a');
+			expect(link?.getAttribute('href')).toBe('/admin/donation-page');
+			expect(link?.getAttribute('aria-label')).toBe('Donation page');
+			expect(link?.getAttribute('title')).toBe('Donation page');
+			expect(link?.hasAttribute('target')).toBe(false);
+			expect(link?.getAttribute('data-handed')).toBe('yes');
+		}
+		expect(heads(root)).toHaveLength(2);
+	});
+
 	it('draws the name alone where no site is handed', () => {
 		const root = render(AppShell, { groups: GROUPS, org: 'Riverbank Trust' });
 
@@ -386,6 +412,136 @@ describe('the collapse a shell keeps for itself', () => {
 		act(() => toggle.click());
 
 		expect(shell.classList.contains('adm-shell--collapsed')).toBe(true);
+	});
+});
+
+describe('the destinations a phone bar folds under More', () => {
+	const FOLDING = [
+		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', href: '/admin' }] },
+		{
+			destinations: [
+				{
+					label: 'Donation forms',
+					short: 'Forms',
+					href: '/admin/forms',
+					mark: 'form' as const,
+					folded: true
+				},
+				{ label: 'Donors', short: 'Donors', href: '/admin/donors' },
+				{ label: 'Gifts', short: 'Gifts', href: '/admin/donations' },
+				{
+					label: 'Recurring gifts',
+					short: 'Recurring',
+					href: '/admin/recurring',
+					mark: 'repeat' as const,
+					folded: true
+				}
+			]
+		},
+		{
+			destinations: [
+				{
+					label: 'Books',
+					short: 'Books',
+					href: '/admin/books',
+					mark: 'book-open' as const,
+					folded: true
+				}
+			]
+		}
+	];
+
+	function more(root: HTMLElement): HTMLButtonElement {
+		const found = root.querySelector<HTMLButtonElement>('.adm-rail__cells > .adm-rail__more');
+		if (found === null) throw new Error('the bar drew no More tab');
+		return found;
+	}
+
+	it('keeps every destination in the column and marks the folded ones out of the bar', () => {
+		const root = render(AppShell, { groups: FOLDING, wayOut: null });
+
+		expect(railRun(root)).toEqual([
+			'Dashboard',
+			'adm-rail__rule',
+			'Donation forms',
+			'Donors',
+			'Gifts',
+			'Recurring gifts',
+			'adm-rail__rule',
+			'Books',
+			// the bar's last tab, after the column's last rule, which the bar does not draw.
+			'adm-dest adm-rail__more: More'
+		]);
+		const folded = [...root.querySelectorAll('.adm-rail__cells > .adm-dest--folded')].map(
+			(a) => a.querySelector('.adm-dest__full')?.textContent
+		);
+		expect(folded).toEqual(['Donation forms', 'Recurring gifts', 'Books']);
+	});
+
+	it('draws no More where nothing is folded, and every destination is a tab', () => {
+		const root = render(AppShell, { groups: GROUPS });
+
+		expect(root.querySelector('.adm-rail__more')).toBeNull();
+		expect(root.querySelector('.adm-dest--folded')).toBeNull();
+	});
+
+	it('opens a sheet holding the rest, in the rail order, with their marks', () => {
+		const root = render(AppShell, { groups: FOLDING, current: 'Donors' });
+		const tab = more(root);
+
+		expect(tab.getAttribute('aria-expanded')).toBe('false');
+		expect(root.querySelector('dialog')).toBeNull();
+		act(() => tab.click());
+
+		const sheet = root.querySelector('dialog.adm-sheet');
+		const heading = sheet?.querySelector('h2');
+		expect(sheet?.getAttribute('aria-labelledby')).toBe(heading?.id);
+		expect(heading?.textContent).toBe('More');
+		expect(tab.getAttribute('aria-expanded')).toBe('true');
+		const entries = [...(sheet?.querySelectorAll('nav.adm-morelist > a') ?? [])];
+		expect(entries.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+			['Donation forms', '/admin/forms'],
+			['Recurring gifts', '/admin/recurring'],
+			['Books', '/admin/books']
+		]);
+		expect(entries.every((a) => a.querySelector('svg.adm-mark') !== null)).toBe(true);
+		// the reader is on a tab, so neither More nor anything under it claims them.
+		expect(tab.hasAttribute('aria-current')).toBe(false);
+		expect(entries.some((a) => a.hasAttribute('aria-current'))).toBe(false);
+	});
+
+	it('marks More, and the entry under it, where the reader is in a folded destination', () => {
+		const root = render(AppShell, {
+			groups: FOLDING,
+			current: { label: 'Recurring gifts', kind: 'section' as const }
+		});
+		const tab = more(root);
+
+		expect(tab.getAttribute('aria-current')).toBe('true');
+		act(() => tab.click());
+		const here = root.querySelector('.adm-morelist [aria-current]');
+		expect(here?.textContent).toBe('Recurring gifts');
+		expect(here?.getAttribute('aria-current')).toBe('true');
+	});
+
+	it('closes the sheet when an entry in it is pressed, drawn as the handed link', () => {
+		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
+			<a {...rest} data-handed="yes">
+				{children}
+			</a>
+		);
+		const root = render(AppShell, { groups: FOLDING, link: Handed });
+		act(() => more(root).click());
+		// what a router's link does with the press: the page moves and the document stays.
+		root.addEventListener('click', (event) => event.preventDefault(), { capture: true });
+
+		const books = [...root.querySelectorAll<HTMLAnchorElement>('.adm-morelist > a')].find(
+			(a) => a.textContent === 'Books'
+		);
+		expect(books?.getAttribute('data-handed')).toBe('yes');
+		act(() => books?.click());
+
+		expect(root.querySelector('dialog')).toBeNull();
 	});
 });
 

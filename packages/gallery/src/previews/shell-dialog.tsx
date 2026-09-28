@@ -10,11 +10,12 @@ import { Dialog } from '@better-giving/operator/components/shell/Dialog';
  * simply on the page rather than opened. ./behaviour-dialog.tsx is the same element lifted into the
  * top layer, and it is the one that has to be opened.
  *
- * **the control row is not three independent slots.** `danger` suppresses `exit`
- * (packages/operator/src/components/shell/Dialog.jsx:122), so a card with a destructive control has
- * no primary one and the way out is `cancel` or nothing. that rule is invisible in any single
- * specimen and is the reason the arrangements are walked in order: exit alone, exit and cancel,
- * danger and cancel, danger alone, and none at all.
+ * **the control row is not independent slots.** `danger` and `commit` each suppress `exit`
+ * (packages/operator/src/components/shell/Dialog.jsx), so a card that asks has its act first and
+ * `cancel` or nothing beside it. that rule is invisible in any single specimen and is the reason the
+ * arrangements are walked in order: exit alone, exit and cancel, commit and cancel, danger and
+ * cancel, danger alone, and none at all. the commit and the danger pair stand the act in the same
+ * place and differ by rank alone, which is what the two drawn one after the other are for.
  *
  * danger alone is drawn because it is reachable and it is a card with no way out — worth seeing
  * next to the pair that has one, since a screen writing it has almost certainly forgotten a
@@ -63,6 +64,13 @@ export default function ShellDialogPreview() {
 				<p>
 					A short test message is sent to the address in the box. Nothing is recorded and no donor
 					hears about it.
+				</p>
+			</Dialog>
+
+			{/* an act that destroys nothing: the primary rank, where the danger pair below stands its act. */}
+			<Dialog title="Publish Winter coat drive?" commit="Publish" cancel="Cancel">
+				<p>
+					The page goes live at /winter-coat-drive and takes gifts from the moment it is published.
 				</p>
 			</Dialog>
 

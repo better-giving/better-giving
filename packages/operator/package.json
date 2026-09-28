@@ -65,6 +65,7 @@
 		"./components/shell/ErrorPanel": "./src/components/shell/ErrorPanel.jsx",
 		"./components/shell/Layout": "./src/components/shell/Layout.jsx",
 		"./components/shell/PageHeader": "./src/components/shell/PageHeader.jsx",
+		"./components/shell/Sheet": "./src/components/shell/Sheet.jsx",
 		"./components/shell/TopBar": "./src/components/shell/TopBar.jsx",
 		"./components/status/Banner": "./src/components/status/Banner.jsx",
 		"./components/status/Brand": "./src/components/status/Brand.jsx",

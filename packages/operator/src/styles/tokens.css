@@ -37,10 +37,9 @@
    count along. twenty-one of the forty-eight rungs are unread today and stay for
    that reason: `--admin-accent-1`, `-2`, `-7`, `-8`, `-9` and `-10`; `--admin-blocker-1`, `-2`,
    `-4`, `-5`, `-7` and `-8`; `--admin-attention-1`, `-2`, `-4`, `-5`, `-7`, `-8`, `-9` and
-   `-10`; `--admin-neutral-8`. four more are unread outside colour:
-   `--admin-text-xl`, `--admin-weight-bold`,
-   `--admin-space-11` and `--admin-space-12`. the exemption is membership of a scale and never
-   a token that has merely not been reached for yet. those twenty-five are named again in packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
+   `-10`; `--admin-neutral-8`. two more are unread outside colour:
+   `--admin-text-xl` and `--admin-weight-bold`. the exemption is membership of a scale and never
+   a token that has merely not been reached for yet. those twenty-three are named again in packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
    lists stop agreeing — in both directions, so a rung this paragraph calls unread that something
    has since reached for fails it as well.
 

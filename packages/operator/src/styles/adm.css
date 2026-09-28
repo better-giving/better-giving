@@ -4816,6 +4816,158 @@
 		gap: var(--admin-space-4);
 		margin-block-start: var(--admin-space-2);
 	}
+
+	/* the panel a press opens over the page when what it holds is more than a question: a list of
+	   places, a group of settings, a box to type into. a modal `dialog` like the card above, lifted
+	   by the same attachment and read against the same `::backdrop`, and not centred: it rises from
+	   the foot of a phone, where a thumb is, and stands at the right edge from the wide breakpoint
+	   (the layout layer) — so the page it was opened over stays in view beside it.
+
+	   every placement the platform gives a shown modal is restated, because a modal is centred and
+	   sized to its content and this is neither: pinned to three edges, the full width of a phone, and
+	   as tall as it holds up to a step short of the top, so the page still shows above it and the
+	   reader can see what they are over. `position` is stated for the element the server sends open
+	   and nothing has lifted yet, which the platform leaves `absolute`.
+
+	   the element does not scroll: the head and the foot stay where they are and the body between
+	   them is the one scroller, so the X and the Done are never scrolled off with the content.
+	   packages/operator/src/components/shell/Sheet.jsx is the only thing that writes it. */
+	.adm-sheet {
+		position: fixed;
+		inset-block: auto 0;
+		inset-inline: 0;
+		display: flex;
+		flex-direction: column;
+		inline-size: auto;
+		max-inline-size: none;
+		block-size: auto;
+		max-block-size: calc(100% - var(--admin-space-11));
+		overflow: hidden;
+		color: var(--admin-ink);
+		background: var(--admin-surface);
+		border-block-start: var(--admin-hairline);
+		border-start-start-radius: var(--admin-radius);
+		border-start-end-radius: var(--admin-radius);
+		box-shadow: var(--admin-elevation-dialog);
+	}
+
+	.adm-sheet::backdrop {
+		background: var(--admin-scrim);
+	}
+
+	/* the whole height a phone leaves it, whatever the body holds, for a body that grows while it is
+	   open: a sheet sized to its content would climb the screen under the reader as it did. */
+	.adm-sheet--tall {
+		block-size: calc(100% - var(--admin-space-11));
+	}
+
+	/* opened from inside another sheet. it stops a step lower so the sheet it came from still shows
+	   above it — which is what says closing this one goes back there — and it lays no second ground
+	   over the first: the scrim is already between the page and both sheets. */
+	.adm-sheet--stacked {
+		max-block-size: calc(100% - var(--admin-space-12));
+	}
+
+	.adm-sheet--stacked::backdrop {
+		background: transparent;
+	}
+
+	/* the heading and its X on one line. the X sits on the padding's own edge at the end, the
+	   heading on the body's edge at the start, so the title lines up with what is under it. */
+	.adm-sheet__head {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-4);
+		padding: var(--admin-space-5) var(--admin-space-5) var(--admin-space-5) var(--admin-space-7);
+		border-block-end: var(--admin-rule);
+	}
+
+	.adm-sheet__head > h2 {
+		flex: 1;
+		min-inline-size: 0;
+		font-size: var(--admin-section-size);
+		font-weight: var(--admin-section-weight);
+		line-height: var(--admin-section-lh);
+		letter-spacing: var(--admin-section-track);
+	}
+
+	.adm-sheet__body {
+		flex: 1;
+		overflow: auto;
+		display: grid;
+		align-content: start;
+		gap: var(--admin-space-9);
+		padding: var(--admin-space-7);
+	}
+
+	/* the foot keeps clear of the platform's own inset at the bottom of a phone, which the sheet is
+	   pinned against there. */
+	.adm-sheet__foot {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: flex-end;
+		gap: var(--admin-space-4);
+		/* raw-length-ok: 0px is env()'s fallback inside calc(), where a unitless 0 is invalid */
+		padding: var(--admin-space-5) var(--admin-space-7)
+			calc(var(--admin-space-5) + env(safe-area-inset-bottom, 0px));
+		border-block-start: var(--admin-rule);
+	}
+
+	/* the destinations the phone's bar folds under More, one row each with the mark the column
+	   draws beside it, in the rail's order. a row is a place rather than a run of words, so it takes
+	   the ring and a fill rather than the focused link's tint and underline, and the current one the
+	   rail's own tint — the same five states `.adm-dest` has. */
+	.adm-morelist {
+		display: grid;
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-morelist__item {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-5);
+		min-block-size: var(--admin-touch-min);
+		padding-block: var(--admin-space-4);
+		border-block-end: var(--admin-rule);
+		font-size: var(--admin-control-size);
+		font-weight: var(--admin-control-weight);
+		color: var(--admin-ink);
+		text-decoration: none;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-morelist__item > .adm-mark {
+		flex: none;
+		color: var(--admin-ink-2);
+	}
+
+	.adm-morelist__item:hover,
+	.adm-morelist__item.is-hover {
+		background: var(--admin-surface-fill);
+		color: var(--admin-ink);
+		text-decoration: none;
+	}
+
+	/* the focused link's tint, fill and underline are taken back to the row's resting ones and the
+	   system's ring drawn instead. */
+	.adm-morelist__item:focus-visible,
+	.adm-morelist__item.is-focus {
+		background: transparent;
+		color: var(--admin-ink);
+		text-decoration: none;
+		border-radius: var(--admin-radius-0);
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	.adm-morelist__item[aria-current] {
+		background: var(--admin-rail-current-bg);
+		color: var(--admin-rail-current-ink);
+	}
+
+	.adm-morelist__item[aria-current] > .adm-mark {
+		color: inherit;
+	}
 }
 
 @layer layout {
@@ -5159,6 +5311,13 @@
 	   tab order and out of the accessibility tree, so a destination announces exactly one name at
 	   every width. */
 	.adm-dest__full {
+		display: none;
+	}
+
+	/* a destination the caller folds is no tab in the bar; it is listed in the sheet the More tab
+	   opens instead, and the column draws it where it stands (the wide rules below).
+	   carried-ok: .adm-dest--folded — in DestinationCell.jsx's derived class list, as `.adm-dest`. */
+	.adm-rail__cells > .adm-dest--folded {
 		display: none;
 	}
 
@@ -6346,6 +6505,33 @@
 
 		.adm-dest__short {
 			display: none;
+		}
+
+		/* the column lists every destination, so nothing is folded and there is no More to open. */
+		.adm-rail__cells > .adm-dest--folded {
+			display: flex;
+		}
+
+		.adm-rail__cells > .adm-rail__more {
+			display: none;
+		}
+
+		/* the sheet at the right edge, the page's full height, at the panel's measure — or the
+		   dialog's for a wide one. an edge rather than a corner, so the rounding goes and the rule
+		   moves to the side it stands against. */
+		.adm-sheet {
+			inset-block: 0;
+			inset-inline: auto 0;
+			inline-size: var(--admin-measure-panel);
+			block-size: auto;
+			max-block-size: none;
+			border-block-start: 0;
+			border-inline-start: var(--admin-hairline);
+			border-radius: var(--admin-radius-0);
+		}
+
+		.adm-sheet--wide {
+			inline-size: var(--admin-measure-dialog);
 		}
 
 		.adm-dest__full {

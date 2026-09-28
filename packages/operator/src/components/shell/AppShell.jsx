@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { DestinationCell } from './DestinationCell.jsx';
+import { DestinationCell, DestinationGlyph } from './DestinationCell.jsx';
+import { Sheet } from './Sheet.jsx';
 import { Button } from '../controls/Button.jsx';
 
 /**
@@ -18,6 +19,10 @@ import { Button } from '../controls/Button.jsx';
  * specimen wants and no mounted rail does.
  * @property {DestinationMark | undefined} [mark] the column's mark; the bar draws none.
  * @property {DestinationStatus | undefined} [status]
+ * @property {boolean | undefined} [folded] on a phone, listed under More rather than standing as a
+ *   tab of its own. the column draws it where it is either way. which destinations fold is the
+ *   caller's: the bar is what an operator opens every week, and only the surface knows which those
+ *   are. no destination folded is no More, and every destination a tab.
  */
 
 /**
@@ -42,11 +47,23 @@ import { Button } from '../controls/Button.jsx';
  */
 
 /**
+ * where the globe leading the organisation's name goes when it goes somewhere on the same surface:
+ * an address the shell's `link` is handed, and the name the globe is read out by — a mark carries
+ * no word of its own.
+ *
+ * @typedef {object} SiteLink
+ * @property {string} href
+ * @property {string} label
+ */
+
+/**
  * @typedef {object} AppShellProps
  * @property {ReactNode} [org] the operating organisation's legal name. there is no logo.
- * @property {string | undefined} [site] the address of the deployment's dashboard. drawn as a globe
- * leading the name, in the narrow band and the rail's head alike, opening in a new tab: the address
- * is its `title` and never printed. the console hands it; the dashboard hands nothing.
+ * @property {string | SiteLink | undefined} [site] the globe leading the name, in the narrow band and
+ * the rail's head alike. an address is somewhere off this surface — the console hands its
+ * deployment's dashboard — and opens in a new tab, named "Open dashboard", with the address as its
+ * `title` and never printed. a `SiteLink` is somewhere on it, drawn as `link` in the same tab under
+ * its own name. absent, no globe.
  * @property {string | Whereabouts | undefined} [current] the destination the reader is in: a bare
  * word is the `label`, and the page itself. absent, the reader is in none of them and no cell is
  * marked — which is what a surface hands for an address under no destination, and is the only
@@ -104,7 +121,9 @@ const RAIL_STORAGE_KEY = 'bg-operator-rail';
    the top and a bar of tabs fixed to the foot of the viewport, one tab per destination on a row
    that never wraps — a tab is an equal share of the width whatever the count, so what bounds how
    many the bar holds is the share each is left with at the 375px floor rather than a number
-   written anywhere. the bar is flat: groups, marks and headings are the column's. above it: a
+   written anywhere. a destination the caller folds stands in no tab: the bar ends in a More tab
+   instead, opening a sheet that lists every folded one with its mark, in the rail's order. the
+   bar is flat: groups, marks and headings are the column's. above it: a
    left column with the identity and the collapse toggle at its head, the grouped destinations,
    and the foot; the page is a panel filling the rest of the window beside it.
    the identity slot renders the operating organisation's legal name — there is no logo. */
@@ -135,6 +154,7 @@ export function AppShell({
 	   render that differed from it would not hydrate. storage can be refused (a blocked or private
 	   window), and then the rail simply forgets the choice. */
 	const [collapsed, setCollapsed] = useState(false);
+	const [moreOpen, setMoreOpen] = useState(false);
 
 	useEffect(() => {
 		try {
@@ -161,6 +181,14 @@ export function AppShell({
 	   tint off a bare `[aria-current]` and off `.is-current`, and neither reads the kind. */
 	/** @type {Whereabouts | undefined} */
 	const at = typeof current === 'string' ? { label: current, kind: 'page' } : current;
+
+	/* the bar's More tab stands for every destination folded under it, so it is marked where the
+	   reader is in one of those — the bar would otherwise mark nothing at all while they are there.
+	   it claims `true`, the current one of these, and never the page: More is not an address. */
+	const folded = groups.flatMap((group) => group.destinations).filter((d) => d.folded === true);
+	const inFolded = at !== undefined && folded.some((d) => d.label === at.label);
+	const Cell = link ?? 'a';
+	const closeMore = () => setMoreOpen(false);
 
 	/* settled once and drawn in both slots, so the two cannot disagree about which control the way
 	   out is. the specimen's own button carries `.adm-signout` for the same reason a caller's node
@@ -189,17 +217,29 @@ export function AppShell({
 	const lead =
 		site === undefined ? null : (
 			<span className="adm-rail__lead">
-				<Button
-					as="a"
-					href={site}
-					target="_blank"
-					rel="noreferrer"
-					variant="quiet"
-					size="sm"
-					mark="globe"
-					aria-label="Open dashboard"
-					title={site}
-				/>
+				{typeof site === 'string' ? (
+					<Button
+						as="a"
+						href={site}
+						target="_blank"
+						rel="noreferrer"
+						variant="quiet"
+						size="sm"
+						mark="globe"
+						aria-label="Open dashboard"
+						title={site}
+					/>
+				) : (
+					<Button
+						as={Cell}
+						href={site.href}
+						variant="quiet"
+						size="sm"
+						mark="globe"
+						aria-label={site.label}
+						title={site.label}
+					/>
+				)}
 			</span>
 		);
 	const name = (
@@ -241,6 +281,18 @@ export function AppShell({
 							collapsed={collapsed}
 						/>
 					))}
+					{folded.length === 0 ? null : (
+						<button
+							type="button"
+							className="adm-dest adm-rail__more"
+							aria-haspopup="dialog"
+							aria-expanded={moreOpen}
+							aria-current={inFolded ? 'true' : undefined}
+							onClick={() => setMoreOpen(true)}
+						>
+							More
+						</button>
+					)}
 				</div>
 				{footing === null ? null : <div className="adm-rail__foot">{footing}</div>}
 			</nav>
@@ -254,6 +306,26 @@ export function AppShell({
 					{children}
 				</div>
 			</main>
+			{moreOpen ? (
+				<Sheet title="More" onDismiss={closeMore}>
+					<nav className="adm-morelist" aria-label="More sections">
+						{folded.map((d) => (
+							<Cell
+								key={d.label}
+								href={d.href ?? '#'}
+								className="adm-morelist__item"
+								aria-current={
+									at?.label === d.label ? (at.kind === 'section' ? 'true' : 'page') : undefined
+								}
+								onClick={closeMore}
+							>
+								{d.mark === undefined ? null : <DestinationGlyph mark={d.mark} />}
+								{d.label}
+							</Cell>
+						))}
+					</nav>
+				</Sheet>
+			) : null}
 		</div>
 	);
 }
@@ -302,6 +374,7 @@ function RailGroup({ group, rule, at, link, collapsed }) {
 					status={d.status}
 					title={collapsed ? d.label : undefined}
 					groupEnd={heading !== undefined && i === destinations.length - 1}
+					folded={d.folded}
 					link={link}
 					current={at && d.label === at.label ? at.kind : undefined}
 				>

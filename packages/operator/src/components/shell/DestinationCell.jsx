@@ -1,18 +1,22 @@
 import { Mark } from '../status/Mark.jsx';
 
 /**
- * @import { ComponentType, ReactNode } from 'react'
+ * @import { ComponentType, MouseEventHandler, ReactNode } from 'react'
  * @import { PointerState } from '../closed-sets.js'
  * @import { MarkName } from '../status/Mark.jsx'
  *
  * what a cell hands whatever it is drawn as: the address, the class list the sheet draws off, and
  * the claim about where the reader is. everything the cell settles, and nothing a caller restates.
+ * ./AppShell.jsx draws two more links through the same component — the globe, which is a mark and
+ * so is named by `aria-label`, and an entry under More, whose press also closes the sheet it is in.
  *
  * @typedef {{
  *   href: string;
  *   className: string;
  *   'aria-current'?: 'page' | 'true' | undefined;
+ *   'aria-label'?: string | undefined;
  *   title?: string | undefined;
+ *   onClick?: MouseEventHandler<HTMLAnchorElement> | undefined;
  *   children?: ReactNode | undefined;
  * }} DestinationLinkProps
  *
@@ -39,6 +43,8 @@ import { Mark } from '../status/Mark.jsx';
  *   off the screen.
  * @property {boolean | undefined} [groupEnd] the last entry of a headed group in the rail, which
  *   the column stands a step apart from what follows.
+ * @property {boolean | undefined} [folded] drawn in the column and not in the bar, where it stands
+ *   under ./AppShell.jsx's More instead.
  * @property {boolean | 'page' | 'section' | undefined} [current] where the reader is, and which
  *   kind of currency the cell announces. `page` — which bare `true` is — is the address itself;
  *   `section` is a destination that only contains it, which is every rail cell standing over a
@@ -77,6 +83,7 @@ export function DestinationCell({
 	status,
 	title,
 	groupEnd = false,
+	folded = false,
 	current,
 	state,
 	link
@@ -84,6 +91,7 @@ export function DestinationCell({
 	const cls = [
 		'adm-dest',
 		groupEnd ? 'adm-dest--groupend' : '',
+		folded ? 'adm-dest--folded' : '',
 		current ? 'is-current' : '',
 		state ? `is-${state}` : ''
 	]
@@ -97,11 +105,7 @@ export function DestinationCell({
 			title={title}
 			aria-current={current ? (current === 'section' ? 'true' : 'page') : undefined}
 		>
-			{mark === undefined ? null : typeof mark === 'string' ? (
-				<Mark name={mark} />
-			) : (
-				<img className="adm-mark" src={mark.src} alt="" />
-			)}
+			{mark === undefined ? null : <DestinationGlyph mark={mark} />}
 			{short ? <span className="adm-dest__short">{short}</span> : null}
 			<span className="adm-dest__full">{children}</span>
 			{status ? (
@@ -113,5 +117,19 @@ export function DestinationCell({
 				</>
 			) : null}
 		</Cell>
+	);
+}
+
+/**
+ * a destination's mark, wherever the destination is listed: a glyph, or a picture drawn as an unnamed
+ * image. the name beside it is what a reader hears, so neither is in the tree.
+ *
+ * @param {{ mark: DestinationMark }} props
+ */
+export function DestinationGlyph({ mark }) {
+	return typeof mark === 'string' ? (
+		<Mark name={mark} />
+	) : (
+		<img className="adm-mark" src={mark.src} alt="" />
 	);
 }
