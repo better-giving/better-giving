@@ -553,6 +553,23 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 		expect(more(root).getAttribute('aria-expanded')).toBe('false');
 	});
 
+	it('ends on a Close a screen reader reaches, which closes it and hands focus back to More', async () => {
+		// the one way out that needs neither Escape nor a destination: a phone's screen reader has no
+		// Escape to send, and the machine hides everything outside the sheet from it.
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+		const close = dialog.querySelector('button:last-child');
+
+		expect(close?.textContent).toBe('Close');
+		expect(close?.closest('[aria-hidden="true"], [hidden]')).toBeNull();
+		expect(dialog.lastElementChild).toBe(close);
+
+		await act(async () => (close as HTMLButtonElement).click());
+
+		expect(sheet(root)).toBeNull();
+		await vi.waitFor(() => expect(document.activeElement).toBe(more(root)));
+	});
+
 	it('closes on a destination chosen inside it, and More then reads current', async () => {
 		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, { groups: BARRED });
 		const dialog = await open(mounted.root);

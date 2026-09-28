@@ -318,6 +318,11 @@ export function AppShell({
 									/>
 								))}
 							</nav>
+							{/* last in the tab order and off the screen until it takes focus: the way out
+							    for a reader with no Escape to send, which a phone's screen reader is. */}
+							<Dialog.CloseTrigger className="adm-btn adm-btn--quiet adm-btn--sm adm-sheet__close">
+								Close
+							</Dialog.CloseTrigger>
 						</Dialog.Content>
 					</Dialog.Positioner>
 					{rail}
