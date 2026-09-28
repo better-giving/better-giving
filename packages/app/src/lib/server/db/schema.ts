@@ -3028,6 +3028,9 @@ export const webhookDelivery = sqliteTable(
 			sql`(${t.status} = 'delivered') = (${t.deliveredAt} is not null)`
 		),
 		uniqueIndex('webhook_delivery_event_idx').on(t.destinationId, t.event, t.subjectId),
+		// a destination's latest deliveries in `listDeliveries`' order (../webhooks/deliver.ts), read
+		// on every load of its page from a history that is never cleared.
+		index('webhook_delivery_recent_idx').on(t.destinationId, t.createdAt, t.id),
 		// `zapier_delivery_due_idx`'s shape, for the claim ../outbox/lease.ts makes.
 		index('webhook_delivery_due_idx').on(t.status, t.nextAttemptAt, t.id, t.leasedUntil)
 	]
