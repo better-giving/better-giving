@@ -279,10 +279,8 @@ export async function readRecurringPlan(db: Db, id: string): Promise<RecurringPl
  * the row first (`recordStanding` in ../donations/collect.ts), and a screen that reported a failure
  * there would be reporting one over a completed act. ./stop.ts is where that reading is made.
  *
- * the answer comes off the update's own `returning()` rather than a select in front of it, because
- * D1 has no transaction and a check-then-write would be two commits with a race between them.
- *
- * `updated_at` is not named — it carries `$onUpdateFn`, so drizzle adds it to every `set`.
+ * the statements and the answer are ./changes.ts's: the update's own `returning()`, with no select
+ * in front of it.
  */
 export async function stopRecurringPlan(db: Db, id: string, endedAt: Date): Promise<boolean> {
 	return applyPlanChange(db, id, ['active', 'lapsed'], {

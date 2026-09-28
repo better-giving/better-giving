@@ -813,7 +813,7 @@ describe('sendDueWebhooks() — a recurring gift started and a recurring gift en
 				START.getTime()
 			)
 			.run();
-		await db.batch([recurringGiftStartedWebhookStatements(db, PLAN_ID)]);
+		await db.batch(recurringGiftStartedWebhookStatements(db, { id: PLAN_ID, status: 'active' }));
 	}
 
 	it('posts a recurring gift started signed, as the read API’s recurring gift', async () => {

@@ -8,7 +8,7 @@ import { type RecurringGiftChange, recurringGiftChangeWebhookStatements } from '
 // every write to a commitment after the insert that opens it (../donations/collect.ts), and the
 // event each one owes a webhook destination: the stop in ./queries.ts, and in
 // ../donations/collect.ts the lapse, the ending, the revival and the next charge each collection
-// refreshes. ../donations/sole-inserter.spec.ts holds that no other module updates the table.
+// refreshes. ./sole-updater.spec.ts holds that no other module updates the table.
 //
 // **the event lands exactly when the change does, with no read in front.** each event's INSERT…
 // SELECT goes first in the same `batch()` and selects only where the update's own `where` holds —
@@ -19,15 +19,26 @@ import { type RecurringGiftChange, recurringGiftChangeWebhookStatements } from '
 // **which event is the move the status makes.** a live commitment (`active`) moving to `lapsed`
 // or `cancelled` has ended. every other change is an update — a revival, a next charge, and a
 // lapsed commitment stopped, which the read API shows moving from `payment_failed` to `stopped`. a
-// revived commitment that ends again is heard of ending again.
+// revived commitment that ends again is heard of ending again, and one opened already stopped is
+// heard of ending in the batch that opens it (`recurringGiftStartedWebhookStatements` in
+// ../webhooks/events.ts).
 
-/** what a standing change writes. absent keys are left as they stand. */
-export type PlanChange = {
-	readonly status?: RecurringPlanStatus;
-	/** a `coalesce` where an existing date must survive, which is the stop's. */
-	readonly endedAt?: Date | null | SQL;
-	readonly nextChargeAt?: Date | null;
-};
+/**
+ * what a standing change writes: a status, or a next charge, or both; absent keys are left as they
+ * stand. `endedAt` is written only alongside a status, which is what lets the status alone say
+ * whether the date moves. `SQL` is a `coalesce` where an existing date must survive, the stop's.
+ */
+export type PlanChange =
+	| {
+			readonly status: RecurringPlanStatus;
+			readonly endedAt?: Date | null | SQL;
+			readonly nextChargeAt?: Date | null;
+	  }
+	| {
+			readonly status?: undefined;
+			readonly endedAt?: undefined;
+			readonly nextChargeAt: Date | null;
+	  };
 
 /**
  * the events `change` owes, then the update writing it over the commitment `planId` where it
@@ -35,8 +46,8 @@ export type PlanChange = {
  * commitment, which event is owed is the stored status's, so a `from` holding both kinds gets one
  * statement for each, split on it. the update is last and returns the id it wrote.
  *
- * `ended_at` is not compared: `recurring_plan_ended_at_check` ties it to `status`, so it moves only
- * where the status does.
+ * `ended_at` is not compared: {@link PlanChange} writes it only beside a status, and a change the
+ * status makes is already a difference.
  */
 export function planChangeStatements(
 	db: Db,

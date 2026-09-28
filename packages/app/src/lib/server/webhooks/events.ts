@@ -8,6 +8,7 @@ import {
 	webhookDestinationEvent
 } from '../db/schema';
 import { hasSettledGift, isFirstSettledGift, refundStands } from '../donations/queries';
+import type { RecurringPlanStatus } from '../../recurring/statuses';
 import type { WebhookEvent } from '../../webhooks/catalog';
 
 // the whole rule about which destinations an event is owed to, and the statements that say so.
@@ -140,13 +141,25 @@ export function donorUpdatedWebhookStatements(
 }
 
 /**
- * the `recurring_gift.started` rows for the commitment `planId`, keyed on it, so a destination
- * hears of each commitment starting once. its one caller is `openCommitment` in
- * ../donations/collect.ts, which splices it into the batch that inserts the `recurring_plan` row —
- * the first charge that settles — so a refused insert takes these rows with it.
+ * the `recurring_gift.started` rows for the commitment `plan` opens, keyed on its id, so a
+ * destination hears of each commitment starting once — and where it opens already stopped, the
+ * `recurring_gift.ended` rows beside them, keyed on {@link changeSubject}, so a receiver counting
+ * started less ended never counts it live. the processor's ending can reach this deployment before
+ * the first charge does, and the charge then opens the commitment `lapsed` or `cancelled`.
+ *
+ * its one caller is `openCommitment` in ../donations/collect.ts, which splices it into the batch
+ * that inserts the `recurring_plan` row — the first charge that settles — so a refused insert takes
+ * these rows with it.
  */
-export function recurringGiftStartedWebhookStatements(db: Db, planId: string): BatchItem<'sqlite'> {
-	return fanOut(db, 'recurring_gift.started', planId, new Date());
+export function recurringGiftStartedWebhookStatements(
+	db: Db,
+	plan: { readonly id: string; readonly status: RecurringPlanStatus }
+): [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]] {
+	const now = new Date();
+	const started = fanOut(db, 'recurring_gift.started', plan.id, now);
+	return plan.status === 'active'
+		? [started]
+		: [started, fanOut(db, 'recurring_gift.ended', changeSubject(plan.id, now), now)];
 }
 
 /** what a standing change to a commitment is announced as. */

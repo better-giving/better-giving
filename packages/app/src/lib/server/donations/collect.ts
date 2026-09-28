@@ -528,7 +528,8 @@ type WriteOutcome = 'written' | 'duplicate' | 'refused' | 'failed';
  * unchanged by the gift being recorded at authorization: a `donation` with no successful payment
  * claims no income, because every figure in this app is a `SUM` over `ledger_entry` at read time.
  * the `recurring_gift.started` a webhook destination is owed rides the same batch, keyed on the
- * commitment, so a second delivery of this charge — refused as a duplicate — owes no second one.
+ * commitment, so a second delivery of this charge — refused as a duplicate — owes no second one; a
+ * commitment opened already stopped owes its `recurring_gift.ended` there too.
  */
 async function openCommitment(
 	deps: SettleDeps,
@@ -674,7 +675,7 @@ async function openCommitment(
 
 	const wrote = await attempt(deps.db, [
 		deps.db.insert(recurringPlan).values(planRow),
-		recurringGiftStartedWebhookStatements(deps.db, planId),
+		...recurringGiftStartedWebhookStatements(deps.db, { id: planId, status: planRow.status }),
 		...writes.statements
 	]);
 	if (wrote === 'duplicate') return 'duplicate';

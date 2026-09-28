@@ -2465,6 +2465,40 @@ describe('settleDelivery() — what a commitment owes a destination listening fo
 		expect(await owed()).toEqual([{ event: 'recurring_gift.started', subject_id: await planId() }]);
 	});
 
+	// the processor's ending can reach this deployment before the first charge does, which then
+	// opens the commitment already stopped: a destination hears it start and end together.
+	it.each(['ended', 'lapsed'] as const)(
+		'owes a commitment whose first charge opens it %s a recurring gift started and one ended',
+		async (state) => {
+			await settleDelivery(
+				deps({
+					provider: provider({
+						gift: {
+							ok: true,
+							value: notice({
+								state,
+								endedAt: new Date('2026-08-03T12:00:00.000Z'),
+								nextChargeAt: null
+							})
+						}
+					})
+				}),
+				DELIVERY
+			);
+
+			const id = await planId();
+			const rows = await owed();
+			expect(rows.map((row) => row.event).sort()).toEqual([
+				'recurring_gift.ended',
+				'recurring_gift.started'
+			]);
+			expect(rows.find((row) => row.event === 'recurring_gift.started')?.subject_id).toBe(id);
+			expect(rows.find((row) => row.event === 'recurring_gift.ended')?.subject_id).toMatch(
+				new RegExp(`^${id}:\\d+$`)
+			);
+		}
+	);
+
 	/** a later collection under the commitment, telling of `nextChargeAt` as the next charge. */
 	const collectAgain = (nextChargeAt: Date | null) =>
 		settleDelivery(
