@@ -91,13 +91,7 @@ describe('a draft becoming a page', () => {
 
 	it('refuses through the page rule a block the page type forbids', () => {
 		const goal = { id: 'goal', type: 'goal-bar', variant: 'bar', background: 'none', props: {} };
-		expect(
-			pageFromDraft(
-				'donation_page',
-				draft([goal, flow]),
-				defaultDonationPage({ name: 'Kisumu Water Trust' })
-			)
-		).toEqual({
+		expect(pageFromDraft('donation_page', draft([goal, flow]), defaultDonationPage())).toEqual({
 			ok: false,
 			path: ['blocks', 0, 'type'],
 			message: 'block 1 (id "goal"): the Donation page takes no goal-bar; only a campaign does'
@@ -216,7 +210,7 @@ describe('a page handed back as a draft', () => {
 	});
 
 	it('comes back through pageFromDraft as the page it was', () => {
-		const onto = defaultDonationPage({ name: 'Harbour Food Bank' });
+		const onto = defaultDonationPage();
 		expect(pageFromDraft('donation_page', draftFromPage(onto), onto)).toEqual({
 			ok: true,
 			page: onto

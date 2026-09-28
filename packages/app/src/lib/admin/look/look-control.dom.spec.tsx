@@ -1,7 +1,7 @@
 import { act, type ComponentProps, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { type Look, LookControl, type PageLook } from './look-control';
+import { type Look, LookControl, type PageLook, UNSEEDED_BRAND } from './look-control';
 
 // what the look control says to a reader and reports to its caller: which choice each face is, which
 // axis it belongs to, and the look a pick hands back.
@@ -65,6 +65,27 @@ const radio = (root: HTMLElement, name: string) => {
 };
 
 const press = (input: HTMLInputElement) => act(() => input.click());
+
+const well = (root: HTMLElement) => {
+	const found = root.querySelector<HTMLInputElement>('input[type="color"]');
+	if (!found) throw new Error('no brand colour');
+	return found;
+};
+
+/** what a reader hears after the well's name: the text its `aria-describedby` points at. */
+const describedAs = (input: HTMLInputElement) =>
+	(input.getAttribute('aria-describedby') ?? '')
+		.split(' ')
+		.map((id) => (id ? document.getElementById(id)?.textContent : null))
+		.filter(Boolean)
+		.join(' ');
+
+/** the operator settling on a colour in the picker. */
+const settleOn = (input: HTMLInputElement, hex: string) =>
+	act(() => {
+		input.value = hex;
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+	});
 
 describe('on a page', () => {
 	const page = (props: Partial<ComponentProps<typeof Held>> = {}) =>
@@ -199,12 +220,42 @@ describe('on a page', () => {
 		expect(chip('#1d6b4f')).toBe('light');
 		expect(chip('#f5d90a')).toBe('dark');
 	});
+
+	it('fills the Organisation chip with the donor page’s unseeded ink when it has no colour', () => {
+		const root = mount(
+			<LookControl
+				mode="page"
+				value={{ source: 'organisation' }}
+				organisation={{ ...ORGANISATION, brandColour: null }}
+				onChange={() => {}}
+			/>
+		);
+		const chip = radio(root, 'Organisation').closest('label');
+		expect(chip?.getAttribute('data-ink')).toBe('light');
+		expect(chip?.style.background).toBe(UNSEEDED_BRAND);
+	});
+
+	it('keeps a Custom look with no colour colourless through a corner pick', () => {
+		const onChange = vi.fn();
+		const root = page({
+			initial: { source: 'custom', shade: 'cool', corner: 'soft', brandColour: null },
+			onChange
+		});
+		expect(describedAs(well(root))).toBe('No colour set');
+		press(radio(root, 'Round'));
+		expect(onChange).toHaveBeenLastCalledWith({
+			source: 'custom',
+			shade: 'cool',
+			corner: 'round',
+			brandColour: null
+		});
+	});
 });
 
 describe('on the organisation page', () => {
-	function organisationPage(onChange = vi.fn()) {
+	function organisationPage(onChange = vi.fn(), initial: Look = ORGANISATION) {
 		function Own() {
-			const [value, setValue] = useState(ORGANISATION);
+			const [value, setValue] = useState(initial);
 			return (
 				<LookControl
 					mode="organisation"
@@ -243,5 +294,34 @@ describe('on the organisation page', () => {
 				.filter((r) => r.checked)
 				.map(nameOf)
 		).toEqual(['Cool', 'Soft']);
+	});
+
+	it('draws a look with no brand colour as No colour set, and only a set colour clears it', () => {
+		const root = organisationPage(vi.fn(), { ...ORGANISATION, brandColour: null });
+		const colour = well(root);
+		expect(colour.labels?.[0]?.textContent).toBe('Brand colour');
+		expect(describedAs(colour)).toBe('No colour set');
+		expect(colour.hasAttribute('data-empty')).toBe(true);
+	});
+
+	it('reports no colour, not the one the picker opens on, when a shade is picked', () => {
+		const onChange = vi.fn();
+		const root = organisationPage(onChange, { ...ORGANISATION, brandColour: null });
+		press(radio(root, 'Warm'));
+		expect(onChange).toHaveBeenLastCalledWith({
+			...ORGANISATION,
+			shade: 'warm',
+			brandColour: null
+		});
+		expect(describedAs(well(root))).toBe('No colour set');
+	});
+
+	it('sets a colour from none in lowercase, and stops saying none is set', () => {
+		const onChange = vi.fn();
+		const root = organisationPage(onChange, { ...ORGANISATION, brandColour: null });
+		settleOn(well(root), '#AA3300');
+		expect(onChange).toHaveBeenLastCalledWith({ ...ORGANISATION, brandColour: '#aa3300' });
+		expect(describedAs(well(root))).toBe('');
+		expect(well(root).hasAttribute('data-empty')).toBe(false);
 	});
 });

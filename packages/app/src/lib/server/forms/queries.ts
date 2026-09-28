@@ -3,7 +3,7 @@ import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
-import { form, type Form, page, program } from '../db/schema';
+import { form, type Form, mintFormId, page, program } from '../db/schema';
 import type { PageType } from '../../page/keys';
 import type {
 	FormRecord,
@@ -44,9 +44,9 @@ import {
 // `../contacts/queries.ts` does. `Db` has no `transaction` (D1 has none — see ../db/client.ts),
 // so a single `batch()` is the only atomic unit there is.
 //
-// there is no statement half here and that is a statement about the table, not an omission:
-// every write below is one row of `form` from a staff screen, and there is nothing any of
-// them could need to be atomic with. add the split the day something does.
+// the one statement half is `ownedFormInsert`: a page's settings row, which lands in the same
+// `batch()` as the page naming it. every other write below is one row of `form` from a staff
+// screen, with nothing it could need to be atomic with.
 // ---------------------------------------------------------------------------
 
 /**
@@ -247,14 +247,7 @@ export async function createForm(db: Db, input: ParsedForm): Promise<StoredForm 
 	// constraint error and a 500.
 	if (input.programId !== null && !(await offersProgram(db, input.programId))) return null;
 
-	const [row] = await db
-		.insert(form)
-		.values({
-			...toColumns(input),
-			currency: FORM_CURRENCY,
-			revenueAccountId: postableId('donationsDeductible')
-		})
-		.returning(FORM_DETAIL_COLUMNS);
+	const [row] = await db.insert(form).values(newRow(input)).returning(FORM_DETAIL_COLUMNS);
 
 	if (!row) {
 		// unreachable: an insert that stored no row would have thrown. it is here because the
@@ -263,6 +256,28 @@ export async function createForm(db: Db, input: ParsedForm): Promise<StoredForm 
 		throw new Error('inserting into `form` returned no row');
 	}
 	return toRecord(row);
+}
+
+/** a new row's columns: the parsed values, and the two `createForm` above writes rather than parses. */
+function newRow(input: ParsedForm) {
+	return {
+		...toColumns(input),
+		currency: FORM_CURRENCY,
+		revenueAccountId: postableId('donationsDeductible')
+	};
+}
+
+/**
+ * the insert for a settings row a page owns, and the id it will have, for the caller's `batch()`.
+ *
+ * the id is minted here rather than by the column's default because the page's own insert in the
+ * same batch names it, and nothing inside a batch can read one statement's `returning()` into the
+ * next. no pinned-cause read, unlike `createForm`: the caller states the mode, and a page's row is
+ * never made pinned.
+ */
+export function ownedFormInsert(db: Db, input: ParsedForm) {
+	const id = mintFormId();
+	return { id, statement: db.insert(form).values({ id, ...newRow(input) }) };
 }
 
 /**

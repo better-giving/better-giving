@@ -19,7 +19,7 @@ catalog:
   #
   # `@zag-js/combobox`, `@zag-js/select` and `@zag-js/vanilla` are declared by packages/form alone,
   # and the second package.json they drift against is `@ark-ui/react`'s own: they are the machines
-  # it carries, so the embed and the `/{form_id}` page run one select only while these equal the
+  # it carries, so the embed and the `/donate` page run one select only while these equal the
   # `@zag-js/*` version that `@ark-ui/react` pins. bump them with it or not at all.
   #
   # the workspace root takes `typescript` from the catalog as well, so a root opened in an editor

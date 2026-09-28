@@ -113,7 +113,7 @@ async function donationPage(config: FormConfig) {
 				config={config}
 				seams={seams}
 				type="donation_page"
-				page={defaultDonationPage({ name: 'Northside Neighbors' })}
+				page={defaultDonationPage()}
 				pageName={null}
 				org={{
 					name: 'Northside Neighbors',

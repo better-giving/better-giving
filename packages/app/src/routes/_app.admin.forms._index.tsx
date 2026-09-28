@@ -178,9 +178,6 @@ const SAMPLE = (
 		</div>
 		<ul className="adm-record__origins adm-record__foot">
 			<li>
-				<span className="adm-chip adm-press adm-press--words">form page</span>
-			</li>
-			<li>
 				<span className="adm-chip adm-press">riverside-shelter.org</span>
 			</li>
 		</ul>
@@ -191,13 +188,12 @@ const SAMPLE = (
 // own site, and a way to reach the screen that configures one. it writes nothing: every change to a
 // form happens on its own page.
 //
-// each record ends in the places that form is actually used — the deployment's own donation page
-// for it, then each site an operator has ticked — and every one of them is a press. a site's press
-// opens the embed card aimed at that site, because what an operator came for is the block to paste
-// into that page rather than a list of where the form is allowed. what the card hands over is two
-// placements rather than one block — the runtime, once per page, and the element, wherever the form
-// appears — because that is the instruction an integrator is following, and both are a value
-// somebody takes away rather than one they read down a list.
+// each record ends in the sites an operator has ticked for that form, and every one of them is a
+// press. a site's press opens the embed card aimed at that site, because what an operator came for
+// is the block to paste into that page rather than a list of where the form is allowed. what the
+// card hands over is two placements rather than one block — the runtime, once per page, and the
+// element, wherever the form appears — because that is the instruction an integrator is following,
+// and both are a value somebody takes away rather than one they read down a list.
 //
 // because it writes nothing, it gates nothing and reports nothing about the deployment's own state.
 // the status ledger is on the screens under `new` and `[id]`, which are the ones that refuse a
@@ -208,8 +204,8 @@ const SAMPLE = (
 //
 // that reaches the wording of a value as well as the presence of a block, and it is the rule a
 // record here is written to: a value a form has not been given is stated as a fact about that form
-// and never as a warning about it. a form nobody has ticked a site on has a shorter foot and no
-// sentence about it, because a line that reads as a blocker on the one screen that cannot act on
+// and never as a warning about it. a form nobody has ticked a site on has no foot and no sentence
+// about it, because a line that reads as a blocker on the one screen that cannot act on
 // one sends an operator looking for the button that clears it.
 export default function DonationForms({ loaderData }: Route.ComponentProps) {
 	const { created, embedding, forms } = loaderData;
@@ -307,46 +303,41 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
 							</StatusWord>
 						</div>
 
-						{/* the foot: where this form is used, in the order it is reached — the deployment's
-						    own donation page, which every form has, then the sites an operator ticked.
+						{/* the foot: the sites an operator ticked, in the form's own order.
 
 						    `Press` draws its own `<li>`, so the items are the part's and a screen
 						    assembling them itself is a screen that can drop the element a browser reports
 						    the run by.
 
-						    every press is drawn on a draft as well. a draft's donation page answers with a
-						    notice rather than the form and its pasted snippet loads nothing — the served
-						    config refuses a draft — and neither is a state this screen can repair:
-						    publishing is a press on the form's own page.
+						    every press is drawn on a draft as well. a draft's pasted snippet loads nothing —
+						    the served config refuses a draft — and that is not a state this screen can
+						    repair: publishing is a press on the form's own page.
 
 						    the role is stated for the reason `RecordCard` states it on the foot it draws:
 						    no marker and a flex row, either of which stops a browser reporting this as a
 						    list. removing the attribute re-opens the defect. */}
-						{/* biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as above. */}
-						<ul role="list" className="adm-record__origins adm-record__foot">
-							{/* words and an arrow, because it goes to a page. the site presses beside it
-							    hold a literal instead and take none. */}
-							<Press words as={Link} to={href('/:formId', { formId: form.id })}>
-								form page
-							</Press>
-							{form.origins.map((origin) => (
-								// the site is what is pressed and the card it opens is aimed at it, so the
-								// snippet an operator is about to paste names the page it is going into.
-								//
-								// named for the record it acts on, for the reason the members list names its
-								// per-row control: a screenful of presses all reading as the same act is a
-								// list a reader has to walk to reach the one they came for. the site is in
-								// the name as well as in the press, so what is read out holds what is seen.
-								<Press
-									key={origin}
-									as={Link}
-									to={`${SCREEN}?embed=${encodeURIComponent(form.id)}&site=${encodeURIComponent(origin)}`}
-									aria-label={`Embed ${form.name} on ${origin}`}
-								>
-									{origin}
-								</Press>
-							))}
-						</ul>
+						{form.origins.length === 0 ? null : (
+							// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as above.
+							<ul role="list" className="adm-record__origins adm-record__foot">
+								{form.origins.map((origin) => (
+									// the site is what is pressed and the card it opens is aimed at it, so the
+									// snippet an operator is about to paste names the page it is going into.
+									//
+									// named for the record it acts on, for the reason the members list names its
+									// per-row control: a screenful of presses all reading as the same act is a
+									// list a reader has to walk to reach the one they came for. the site is in
+									// the name as well as in the press, so what is read out holds what is seen.
+									<Press
+										key={origin}
+										as={Link}
+										to={`${SCREEN}?embed=${encodeURIComponent(form.id)}&site=${encodeURIComponent(origin)}`}
+										aria-label={`Embed ${form.name} on ${origin}`}
+									>
+										{origin}
+									</Press>
+								))}
+							</ul>
+						)}
 					</section>
 				))}
 			</List>
@@ -383,9 +374,7 @@ export default function DonationForms({ loaderData }: Route.ComponentProps) {
  * address the card was opened from.
  *
  * the requirement is stated rather than checked: the snippet loads on the sites the form lists, and
- * this screen writes nothing, so the sentence points at the page that does. the deployment's own
- * donation page is not on that list and never has to be — it is accepted off the request instead
- * (./$formId.tsx).
+ * this screen writes nothing, so the sentence points at the page that does.
  *
  * the site is named in that sentence when the press that opened the card carried one, and the
  * loader keeps it only when the form lists it: a card telling an operator to paste into a page the

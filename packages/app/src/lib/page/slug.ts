@@ -3,8 +3,7 @@
 // a campaign's address is a top-level segment (`/winter-coat-drive`) beside every address the app
 // already answers, so a slug equal to one of those would shadow a screen, an endpoint or a file the
 // build serves. the refused set is read off the route files themselves: a route file added later is
-// refused here with nothing in this module edited. `donate` is named outright because it is the
-// donation page's whether or not its route file exists yet.
+// refused here with nothing in this module edited.
 //
 // the rule names a clash and holds nothing. uniqueness between campaigns is the table's, and so is
 // an ended campaign's hold on its address.
@@ -65,8 +64,8 @@ function routeSegments(name: string): RouteSegment[] {
  * folder's `route`/`index` module, which is named by its folder.
  *
  * a pathless `_layout` is looked through, and an optional segment reserves the segment after it
- * too, since the address answers with it left out. a parameter reserves nothing: `$formId.tsx`
- * answers every address, and it is the route a campaign's address sits beside.
+ * too, since the address answers with it left out. a parameter reserves nothing: it answers any
+ * segment, a campaign's included.
  */
 export function reservedSegments(routeFiles: readonly string[]): ReadonlySet<string> {
 	const reserved = new Set<string>();
@@ -96,14 +95,13 @@ export function reservedSegments(routeFiles: readonly string[]): ReadonlySet<str
 const ROUTE_FILES: readonly string[] = routeFiles;
 
 /**
- * every segment a campaign's address may not be. beside the route files: `donate`, and the two
- * directories the client build serves — `assets`, vite's `build.assetsDir`, which ./vite.config.ts
+ * every segment a campaign's address may not be. beside the route files: the two directories the
+ * client build serves — `assets`, vite's `build.assetsDir`, which ./vite.config.ts
  * leaves at its default, and the embed runtime's. a file static/ serves at the top level carries a
  * `.`, which the character rule refuses before this set is read.
  */
 export const RESERVED_SEGMENTS: ReadonlySet<string> = new Set([
 	...reservedSegments(ROUTE_FILES),
-	'donate',
 	'assets',
 	RUNTIME_PATH_PREFIX.replaceAll('/', '')
 ]);

@@ -19,7 +19,16 @@ import { CONTACT_KINDS, type ContactKind } from '../../contacts/kinds';
 // `RECURRING_INTERVALS`, which is the wire's frequency vocabulary minus `one_time`.
 import type { Frequency } from '@better-giving/form/v1';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
-import { CORNERS, LOOK_KEYS, PAGE_KEYS, PAGE_TYPES, type PageType, SHADES } from '../../page/keys';
+import {
+	CHAT_NOTES,
+	type ChatNote,
+	CORNERS,
+	LOOK_KEYS,
+	PAGE_KEYS,
+	PAGE_TYPES,
+	type PageType,
+	SHADES
+} from '../../page/keys';
 import { FORM_STATUSES, type FormStatus } from '../../forms/statuses';
 import { PROGRAM_STATUSES, type ProgramStatus } from '../../programs/statuses';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '../../recurring/statuses';
@@ -87,7 +96,7 @@ import type { PostableAccountId } from './postable';
 //             reason too, with the page document's key names beside them
 //             (../../page/keys.ts), since the page catalog reads the keys the checks here do,
 //             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
-//             (../../page/catalog.ts).
+//             (../../page/catalog.ts). `CHAT_NOTES` was born there, for the chat's components.
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
@@ -256,15 +265,18 @@ const FORM_ID_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
  * than a convenience. the prefix is not constrained in the database — see
  * `form_id_length_check` below for why.
  */
-const formId = () =>
-	text('id')
-		.primaryKey()
-		.$defaultFn(() => {
-			const bytes = crypto.getRandomValues(new Uint8Array(16));
-			let out = 'frm_';
-			for (const b of bytes) out += FORM_ID_ALPHABET[b & 31];
-			return out;
-		});
+const formId = () => text('id').primaryKey().$defaultFn(mintFormId);
+
+/**
+ * a fresh `form.id`, as the column's default mints it. `ownedFormInsert` in ../forms/queries.ts
+ * says why a write names one itself.
+ */
+export function mintFormId(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	let out = 'frm_';
+	for (const b of bytes) out += FORM_ID_ALPHABET[b & 31];
+	return out;
+}
 
 /** ms-precision unix timestamp; drizzle surfaces it to TS as a `Date`. */
 const at = (name: string) => integer(name, { mode: 'timestamp_ms' });
@@ -3043,7 +3055,9 @@ export type ChatAuthor = (typeof CHAT_AUTHORS)[number];
  *
  * `model` names what wrote an assistant turn, and an operator's turn has none. `image_ids` is the
  * JSON array of the photos attached to the turn, by id; a turn's text may be blank only when a
- * photo is what it carries.
+ * photo is what it carries. `note` is `CHAT_NOTES`' word for an assistant turn the reply went
+ * wrong on, null otherwise, and an operator's turn has none: a column rather than words in `text`,
+ * which the model writes.
  *
  * `page_id` is `NO ACTION`, like every domain key here (rule 2 at the top of this file): a cascade
  * would fire during any rebuild of `page` and empty every chat. deleting a page deletes its turns
@@ -3061,11 +3075,16 @@ export const chatTurn = sqliteTable(
 		text: text('text').notNull(),
 		model: text('model'),
 		imageIds: text('image_ids').notNull().default('[]'),
-		createdAt: createdAt()
+		createdAt: createdAt(),
+		note: text('note').$type<ChatNote>()
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
 		check('chat_turn_author_check', enumCheck(t.author, CHAT_AUTHORS)),
+		check(
+			'chat_turn_note_check',
+			sql`${t.note} is null or (${t.author} = 'assistant' and ${enumCheck(t.note, CHAT_NOTES)})`
+		),
 		check(
 			'chat_turn_model_check',
 			sql`(${t.model} is not null) = (${t.author} = 'assistant') and (${optionalNotBlank(t.model)})`

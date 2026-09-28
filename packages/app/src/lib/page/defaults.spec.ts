@@ -1,25 +1,19 @@
-import { MAX_LEGAL_NAME } from '@better-giving/operator/console/org-rules';
 import { describe, expect, it } from 'vitest';
 import { parsePage } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
 // node pool, no database: each default is a page the rule accepts for its own type.
 
-const org = { name: 'Kisumu Water Trust' };
-
 describe('the default Donation page', () => {
 	it('passes the rule for the Donation page', () => {
-		const page = defaultDonationPage(org);
+		const page = defaultDonationPage();
 		expect(parsePage('donation_page', page)).toEqual({ ok: true, page });
 	});
 
-	it('passes with the longest name an organisation may have', () => {
-		const page = defaultDonationPage({ name: 'x'.repeat(MAX_LEGAL_NAME) });
-		expect(parsePage('donation_page', page)).toEqual({ ok: true, page });
-	});
-
-	it('is laid out as the design draws it, titled with the organisation’s name', () => {
-		const page = defaultDonationPage(org);
+	// an empty heading, which the page draws as "Donate to" the organisation's name as it stands on
+	// the day it is drawn (`titleHeading` in ../donate/page-view.tsx), so a rename reaches it.
+	it('is laid out as the design draws it, its title left to the organisation’s name', () => {
+		const page = defaultDonationPage();
 		expect({ layout: page.layout, palette: page.palette, look: page.look }).toEqual({
 			layout: 'box-right',
 			palette: 'tint',
@@ -29,7 +23,7 @@ describe('the default Donation page', () => {
 			expect.objectContaining({
 				type: 'title',
 				variant: 'left',
-				heading: 'Donate to Kisumu Water Trust'
+				heading: ''
 			}),
 			expect.objectContaining({ type: 'program-chooser', variant: 'cards' }),
 			expect.objectContaining({ type: 'donation-box' }),

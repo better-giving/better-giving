@@ -5097,6 +5097,16 @@
 		border-radius: var(--admin-radius-0);
 	}
 
+	/* no brand colour set: the well draws its own ground and no fill, since a native picker always
+	   holds some colour and the one it holds here is only where it opens. */
+	.adm-swatch--well[data-empty]::-webkit-color-swatch {
+		visibility: hidden;
+	}
+
+	.adm-swatch--well[data-empty]::-moz-color-swatch {
+		visibility: hidden;
+	}
+
 	/* ---------- the chat --------------------------------------------------------------
 
 	   a page's chat, in its sheet: the turns in the body, and under them in the foot the

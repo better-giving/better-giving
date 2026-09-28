@@ -22,13 +22,18 @@ import { inkOn } from './ink';
 //
 // the brand colour reports on the picker's `change`, when the operator settles on a colour, and not
 // on every `input` while a pointer drags across the picker's field.
+//
+// a look may hold no brand colour, and the donor page then fills with its own unseeded ink. the
+// picker draws that as an empty well described as "No colour set", the Organisation chip fills with
+// the unseeded ink the page will wear, and a shade or corner pick hands the colour back as it was,
+// `null` included: only the picker sets one.
 
 /** a look as the organisation holds it, and as a page holds its own. */
 export type Look = {
 	readonly shade: Shade;
 	readonly corner: Corner;
-	/** lowercase `#rrggbb`. */
-	readonly brandColour: string;
+	/** lowercase `#rrggbb`, or `null` for none set. */
+	readonly brandColour: string | null;
 };
 
 /** a page's look: the organisation's, or one of its own. */
@@ -78,6 +83,11 @@ export const CORNER_PICTURES: Record<Corner, CSSProperties> = {
 	round: { borderStartStartRadius: '12px' } // raw-length-ok: round's --_r
 };
 
+// what a donor page fills with while no brand colour is set: `--donate-primary`'s initial-value in
+// packages/form/src/styles/tokens.css, as a `#rrggbb` so ./ink.ts can read it, and held to that file
+// by ./pictures.spec.ts.
+export const UNSEEDED_BRAND = '#262626'; // raw-colour-ok: the donor page's unseeded brand
+
 export function LookControl(props: LookControlProps) {
 	const id = useId();
 	const look: Look =
@@ -106,23 +116,12 @@ export function LookControl(props: LookControlProps) {
 				<fieldset className="adm-fieldset">
 					<legend className="adm-fieldset__legend">Colour</legend>
 					<div className="adm-pickrow">
-						<label
-							className="adm-swatch"
-							data-ink={inkOn(props.organisation.brandColour)}
-							style={{
-								background: props.organisation.brandColour, // raw-colour-ok: the organisation's brand colour, as stored
-								borderColor: props.organisation.brandColour // raw-colour-ok: as above
-							}}
-						>
-							<input
-								className="adm-vh"
-								type="radio"
-								name={`${id}-source`}
-								checked={props.value.source === 'organisation'}
-								onChange={() => props.onChange({ source: 'organisation' })}
-							/>
-							Organisation
-						</label>
+						<OrganisationChoice
+							name={`${id}-source`}
+							brandColour={props.organisation.brandColour}
+							checked={props.value.source === 'organisation'}
+							onPick={() => props.onChange({ source: 'organisation' })}
+						/>
 						<label className="adm-swatch adm-swatch--icon">
 							<input
 								className="adm-vh"
@@ -185,16 +184,48 @@ export function LookControl(props: LookControlProps) {
 	);
 }
 
-/** the brand colour's picker, reporting a lowercase `#rrggbb` when a colour is settled on. */
+/** the Organisation choice, filled with the brand colour a page following the organisation wears. */
+function OrganisationChoice({
+	name,
+	brandColour,
+	checked,
+	onPick
+}: {
+	name: string;
+	brandColour: string | null;
+	checked: boolean;
+	onPick: () => void;
+}) {
+	const fill = brandColour ?? UNSEEDED_BRAND;
+	return (
+		<label
+			className="adm-swatch"
+			data-ink={inkOn(fill)}
+			style={{
+				background: fill, // raw-colour-ok: the organisation's brand colour, as stored, or the page's unseeded one
+				borderColor: fill // raw-colour-ok: as above
+			}}
+		>
+			<input className="adm-vh" type="radio" name={name} checked={checked} onChange={onPick} />
+			Organisation
+		</label>
+	);
+}
+
+/**
+ * the brand colour's picker, reporting a lowercase `#rrggbb` when a colour is settled on. with no
+ * colour set it draws empty and opens on the donor page's unseeded ink.
+ */
 function BrandColour({
 	id,
 	value,
 	onPick
 }: {
 	id: string;
-	value: string;
+	value: string | null;
 	onPick: (hex: string) => void;
 }) {
+	const shown = value ?? UNSEEDED_BRAND;
 	const ref = useRef<HTMLInputElement>(null);
 	const settle = useEffectEvent((event: Event) => {
 		onPick((event.currentTarget as HTMLInputElement).value.toLowerCase());
@@ -211,8 +242,8 @@ function BrandColour({
 	// left uncontrolled so a drag shows under the pointer before it is reported, and brought back
 	// in line whenever the value the caller holds moves.
 	useEffect(() => {
-		if (ref.current && ref.current.value !== value) ref.current.value = value;
-	}, [value]);
+		if (ref.current && ref.current.value !== shown) ref.current.value = shown;
+	}, [shown]);
 
 	return (
 		<div className="adm-field">
@@ -224,8 +255,15 @@ function BrandColour({
 				id={id}
 				className="adm-swatch adm-swatch--well"
 				type="color"
-				defaultValue={value}
+				defaultValue={shown}
+				data-empty={value === null || undefined}
+				aria-describedby={value === null ? `${id}-none` : undefined}
 			/>
+			{value === null ? (
+				<span id={`${id}-none`} className="adm-vh">
+					No colour set
+				</span>
+			) : null}
 		</div>
 	);
 }

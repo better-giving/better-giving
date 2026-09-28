@@ -18,7 +18,7 @@ import type { Route } from './+types/quickbooks.connect';
 //
 // the loader is run through react router's own matcher rather than called, so a refusal's status is
 // read off the context the framework builds rather than off the shape `data()` returns — the same
-// reason ./$formId.workers.spec.ts gives.
+// reason ./login.workers.spec.ts gives.
 
 /** this deployment's signing key, set as the variable so a case can mint an address with it. */
 const SECRET = 'a-signing-key-as-long-as-a-real-one-would-be';

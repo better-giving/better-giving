@@ -193,10 +193,7 @@ describe('every block in every variant, in every layout', () => {
 	});
 
 	it.each(PAGE_TYPES)('the %s default holds the box once, outside every block', (type) => {
-		const page =
-			type === 'campaign'
-				? defaultCampaign()
-				: defaultDonationPage({ name: 'Northside Neighbors' });
+		const page = type === 'campaign' ? defaultCampaign() : defaultDonationPage();
 		for (const layout of LAYOUTS) {
 			const root = mount(<PageView {...props(type, { ...page, layout })} />);
 			expect(theBox(root).outside).toBeNull();
@@ -271,7 +268,7 @@ describe('where the blocks stand', () => {
 });
 
 describe('a block with nothing to show leaves itself out', () => {
-	const donation = () => defaultDonationPage({ name: 'Northside Neighbors' });
+	const donation = () => defaultDonationPage();
 	const box =
 		(calls: { hideProgramSelect: boolean }[]) => (options: { hideProgramSelect: boolean }) => {
 			calls.push(options);
@@ -371,7 +368,7 @@ describe('the title', () => {
 describe('the program chooser', () => {
 	it('hands a pick to the route, and draws the pick it is handed', () => {
 		const onProgramPick = vi.fn();
-		const page = defaultDonationPage({ name: 'Northside Neighbors' });
+		const page = defaultDonationPage();
 		const root = mount(
 			<PageView
 				{...props('donation_page', page, { onProgramPick, chosenProgramId: 'prog-food' })}
@@ -396,7 +393,7 @@ describe('the program chooser', () => {
 
 	it('takes no pick while locked, and keeps each option reachable', () => {
 		const onProgramPick = vi.fn();
-		const page = defaultDonationPage({ name: 'Northside Neighbors' });
+		const page = defaultDonationPage();
 		const root = mount(
 			<PageView
 				{...props('donation_page', page, {

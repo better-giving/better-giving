@@ -5,18 +5,22 @@ import type { ParsedOrgProfile } from './org-input';
 import {
 	lookFromStored,
 	NO_LOOK,
+	NO_SHARING,
 	NO_STORY,
 	type OrgLook,
+	type OrgSharing,
 	partVersion,
+	sharingFromStored,
 	type Story,
 	storedLook,
 	storedStory,
 	storyFromStored
 } from './presentation';
 
-// every read and write of `org_profile` and of `org_presentation`'s story and look, so neither table
-// object leaves this module — the same boundary `contacts/queries.ts` and `ledger/posting.ts` draw,
-// and it is what makes "all the writes are here" true rather than aspirational.
+// every read and write of `org_profile` and of `org_presentation`'s story, look and sharing, so
+// neither table object leaves this module — the same boundary `contacts/queries.ts` and
+// `ledger/posting.ts` draw, and it is what makes "all the writes are here" true rather than
+// aspirational.
 //
 // ---------------------------------------------------------------------------
 // execute, or return statements — the rule for every write added below.
@@ -281,4 +285,13 @@ export async function updateOrgLookToPrevious(db: Db, seen: string): Promise<Loo
 		)
 		.returning({ look: orgPresentation.look });
 	return row ? { version: await partVersion(row.look) } : 'stale';
+}
+
+/** the sharing, each part read through its own rule; no row reads as none chosen. */
+export async function readOrgSharing(db: Db): Promise<OrgSharing> {
+	const [row] = await db
+		.select({ sharing: orgPresentation.sharing })
+		.from(orgPresentation)
+		.where(eq(orgPresentation.id, ORG_PRESENTATION_ID));
+	return sharingFromStored(row?.sharing ?? NO_SHARING);
 }
