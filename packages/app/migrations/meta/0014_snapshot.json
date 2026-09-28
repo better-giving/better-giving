@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5612380d-7c6b-4da3-93fe-ca02651e8b97",
+  "id": "cad95328-b2be-4ff6-82ff-5ad7ef0bd0ac",
   "prevId": "b9eacfe2-155a-4a42-ac13-fa3f5b420657",
   "tables": {
     "account": {
@@ -1135,6 +1135,13 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -1199,7 +1206,7 @@
       "checkConstraints": {
         "image_bytes_length_check": {
           "name": "image_bytes_length_check",
-          "value": "length(\"image_bytes\".\"bytes\") between 1 and 2000000"
+          "value": "length(\"image_bytes\".\"bytes\") between 1 and 1900000"
         }
       }
     },

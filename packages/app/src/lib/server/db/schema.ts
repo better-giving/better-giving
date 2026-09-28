@@ -3088,7 +3088,7 @@ export type ImageContentType = (typeof IMAGE_CONTENT_TYPES)[number];
 /**
  * what is known about one image, and never its bytes: those are `image_bytes`, behind the port in
  * ../images/bytes.ts, whose header argues the split. the bytes never change, so replacing a photo
- * on a page is a new image.
+ * on a page is a new image; `alt` is the one column edited after the insert.
  *
  * `alt` is the text a screen reader reads; null is a decorative image, drawn with `alt=""`, and a
  * blank string is refused so decorative has one spelling.
@@ -3103,7 +3103,8 @@ export const image = sqliteTable(
 		height: integer('height').notNull(),
 		byteSize: integer('byte_size').notNull(),
 		alt: text('alt'),
-		createdAt: createdAt()
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
@@ -3114,8 +3115,11 @@ export const image = sqliteTable(
 	]
 );
 
-/** D1's ceiling on one string, blob or row: https://developers.cloudflare.com/d1/platform/limits/ */
-export const IMAGE_BYTES_MAX = 2_000_000;
+/**
+ * under D1's 2,000,000-byte ceiling on one row (https://developers.cloudflare.com/d1/platform/limits/)
+ * by enough for the row's id and sqlite's record header beside the blob.
+ */
+export const IMAGE_BYTES_MAX = 1_900_000;
 
 /**
  * an image's bytes, one row per image, in a table of their own so that a rebuild of `image` or of

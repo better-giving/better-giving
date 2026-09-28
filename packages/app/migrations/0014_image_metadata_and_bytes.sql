@@ -6,7 +6,8 @@
 -- since drizzle's snapshot cannot record it.
 --
 -- `image_bytes.image_id` is its primary key and `NO ACTION`, like every other domain key in this
--- schema. its length check stops a blob at D1's 2,000,000-byte ceiling on a string, blob or row.
+-- schema. its length check stops a blob at 1,900,000 bytes, under D1's 2,000,000-byte ceiling on a
+-- row by enough for the id and the record header beside it.
 --
 -- nothing is seeded and nothing is backfilled: no image existed before this file.
 CREATE TABLE `image` (
@@ -18,6 +19,7 @@ CREATE TABLE `image` (
 	`byte_size` integer NOT NULL,
 	`alt` text,
 	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
 	CONSTRAINT "image_kind_check" CHECK("image"."kind" in ('photo', 'illustration')),
 	CONSTRAINT "image_content_type_check" CHECK("image"."content_type" in ('image/webp', 'image/jpeg', 'image/png')),
 	CONSTRAINT "image_size_check" CHECK("image"."width" > 0 and "image"."height" > 0 and "image"."byte_size" > 0),
@@ -28,5 +30,5 @@ CREATE TABLE `image_bytes` (
 	`image_id` text PRIMARY KEY NOT NULL,
 	`bytes` blob NOT NULL,
 	FOREIGN KEY (`image_id`) REFERENCES `image`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "image_bytes_length_check" CHECK(length("image_bytes"."bytes") between 1 and 2000000)
+	CONSTRAINT "image_bytes_length_check" CHECK(length("image_bytes"."bytes") between 1 and 1900000)
 ) STRICT;

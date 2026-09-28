@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { IMAGE_BYTES_MAX, image } from '../db/schema';
+import { image } from '../db/schema';
 import { rejectionCode } from '../db/rejection.testing';
 import { d1BytesPort } from './bytes';
 
@@ -62,15 +62,15 @@ describe('d1BytesPort()', () => {
 		expect(await port.get(id)).toBeNull();
 	});
 
-	it('takes bytes up to the ceiling and refuses one byte more', async () => {
+	it('takes 1,900,000 bytes and refuses one byte more', async () => {
 		const port = d1BytesPort(db);
 		const atCeiling = await metadata();
-		await port.put(atCeiling, new Uint8Array(IMAGE_BYTES_MAX), 'image/webp');
-		expect((await port.get(atCeiling))?.bytes.byteLength).toBe(IMAGE_BYTES_MAX);
+		await port.put(atCeiling, new Uint8Array(1_900_000), 'image/webp');
+		expect((await port.get(atCeiling))?.bytes.byteLength).toBe(1_900_000);
 
 		const over = await metadata();
 		expect(
-			await rejectionCode(() => port.put(over, new Uint8Array(IMAGE_BYTES_MAX + 1), 'image/webp'))
+			await rejectionCode(() => port.put(over, new Uint8Array(1_900_001), 'image/webp'))
 		).toContain('SQLITE_CONSTRAINT_CHECK');
 		expect(await port.get(over)).toBeNull();
 	});

@@ -8,7 +8,7 @@ export type ImageMetadata = Pick<NewImage, 'kind' | 'contentType' | 'width' | 'h
 
 /**
  * writes a new image's metadata and its bytes in one `batch()`, so neither lands without the
- * other, and returns its id. a blob past D1's ceiling fails the batch whole.
+ * other, and returns its id. a blob past `IMAGE_BYTES_MAX` fails the batch whole.
  */
 export async function createImage(db: Db, meta: ImageMetadata, bytes: Uint8Array): Promise<string> {
 	const id = uuidv7();
