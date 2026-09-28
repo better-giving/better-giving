@@ -2,6 +2,7 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
 import { Sheet } from '@better-giving/operator/components/shell/Sheet';
 import type { ReactNode } from 'react';
 import { formatMinorBrief } from '$lib/donations/money';
+import { dayWords } from '$lib/page/end-date';
 import { PicturePicker, type PictureOption } from './pictures';
 
 // the Settings sheet: everything about a page that is not a chat, one list. rows that hold a typed
@@ -81,13 +82,6 @@ export function BlockList({ blocks, onOpenBlock }: BlockListProps) {
 				/>
 			))}
 		</div>
-	);
-}
-
-/** a calendar day as a reader says it — `Dec 31, 2026` — the same on the server and in the browser. */
-function dayWords(day: string): string {
-	return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).format(
-		new Date(`${day}T00:00:00Z`)
 	);
 }
 
