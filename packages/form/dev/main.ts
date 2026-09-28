@@ -17,8 +17,8 @@ import { remember, remembered } from './state';
 // paints nothing paints nothing here too, and the page will look plausible while it does.
 //
 // **the panel is not the form.** everything it wears is ./page.css, which is this page's own chrome
-// and reads nothing from ../src/styles/. the element's one seed is set on the element itself, which
-// is what an integrating page does, and the panel writes no other property on it.
+// and reads nothing from ../src/styles/. the brand seed is set on the element itself, which is what
+// an integrating page does, and the panel writes no other property on it.
 //
 // the element is created here rather than in ./index.html, so the document never holds an
 // unupgraded one: the registration below is on the same line of module evaluation as the

@@ -104,15 +104,26 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	shade = null;
 	document.adoptedStyleSheets = [];
 	host.remove();
 	hostStyle.remove();
 	document.documentElement.style.removeProperty('font-size');
 });
 
+/**
+ * the three shade presets, and every contrast this file measures is measured under each: a preset
+ * moves every grey on the card at once, so a pair that clears under one is a claim about that one.
+ */
+const SHADES = ['light', 'warm', 'cool'] as const;
+
+/** the shade a block measures under, written ahead of whatever a case seeds; none outside one. */
+let shade: string | null = null;
+
 /** what a host page wrote on the element. */
 function seed(declarations: string): void {
-	hostStyle.textContent = `#donate-host { ${declarations} }`;
+	const preset = shade === null ? '' : `--donate-shade: ${shade}; `;
+	hostStyle.textContent = `#donate-host { ${preset}${declarations} }`;
 }
 
 /** resolves one declaration against the real cascade and reads a property back off it. */
@@ -247,6 +258,17 @@ describe('the light-DOM card root', () => {
 		expect(resolvesOn(card, '--_n12')).toBe(true);
 	});
 
+	// the presets switch on the node under the root, so a page can set them at its own root and the
+	// card follows — the same reading an embedding page gets by setting them above the element.
+	it('switches the presets a page sets above the root', () => {
+		hostStyle.textContent = 'body { --donate-shade: warm; --donate-corner: round; }';
+		card.style.cssText = 'color: oklch(from var(--_s) l c h); padding-left: var(--_r)';
+		const s = parseOklch(getComputedStyle(card).color);
+
+		expect(s?.h).toBeCloseTo(70, 0);
+		expect(getComputedStyle(card).paddingLeft).toBe('12px');
+	});
+
 	it('declares none of the private layer anywhere else in the document', () => {
 		const reaching = COLOR_TOKENS.filter((token) => resolvesOn(outside, token));
 
@@ -291,17 +313,37 @@ describe('the derived ramp', () => {
 		expect(RUNGS.map((token) => oklchOf(token).h)).toEqual(seeded);
 	});
 
-	it('gives the neutral steps a trace of chroma, never a colour', () => {
-		seed('');
+	// the root carries a trace and the dark rungs double it, so the ladder reads as a grey leaning
+	// one way rather than as a second colour on the card. the ceiling is the shade's: `light` leans
+	// by a hair, and `warm` and `cool` lean far enough to be read as a tone, doubled to 0.012 on the
+	// four dark rungs.
+	it.each([
+		['light', 0.004],
+		['warm', 0.012],
+		['cool', 0.012]
+	])('gives the neutral steps a trace of chroma, never a colour, under %s', (shade, ceiling) => {
+		seed(`--donate-shade: ${shade};`);
 
-		// the root carries a trace and the dark rungs double it, so the ladder reads as a grey
-		// leaning one way rather than as a second colour on the card.
-		expect(oklchOf('--_n12').c).toBeLessThanOrEqual(0.004 + 1e-4);
-		expect(oklchOf('--_n12').c).toBeGreaterThan(0);
+		for (const token of RUNGS) {
+			expect(oklchOf(token).c, token).toBeLessThanOrEqual(ceiling + 1e-4);
+			expect(oklchOf(token).c, token).toBeGreaterThan(0);
+		}
+	});
+
+	it.each(['warm', 'cool'])('takes the dark rungs to 0.012 under %s', (shade) => {
+		seed(`--donate-shade: ${shade};`);
+
+		for (const token of RUNGS.slice(8)) {
+			expect(oklchOf(token).c, token).toBeCloseTo(0.012, 4);
+		}
 	});
 });
 
-describe('the neutral ladder', () => {
+describe.each(SHADES)('the neutral ladder under %s', (preset) => {
+	beforeEach(() => {
+		shade = preset;
+	});
+
 	// the whole of what makes a rung number mean something: a reader who knows rung 7 is a border
 	// and rung 11 is text knows it without reading a legend, and that only holds while the ladder
 	// runs one way. a rung that crossed its neighbour would leave two numbers claiming one shade.
@@ -403,7 +445,7 @@ describe('the primary clamp band', () => {
 	});
 });
 
-describe('the one seed', () => {
+describe('an unseeded brand', () => {
 	// the card a host who seeded nothing gets, and it is the reason the chroma floor reaches zero.
 	//
 	// measured against one 8-bit step rather than against zero. a grey authored in oklch does not
@@ -429,7 +471,11 @@ describe('the one seed', () => {
 	});
 });
 
-describe('the primary as ink on the card', () => {
+describe.each(SHADES)('the primary as ink on the card under %s', (preset) => {
+	beforeEach(() => {
+		shade = preset;
+	});
+
 	// the brand is a word twice on this card — the quiet action, and the figure or label on a chosen
 	// amount or frequency — so the whole band it may be seeded to carries the text floor against the
 	// card. it is the looser of the two readings that bound the band (the fill's own foreground is
@@ -462,7 +508,11 @@ describe('the primary as ink on the card', () => {
 	});
 });
 
-describe('the focus ring', () => {
+describe.each(SHADES)('the focus ring under %s', (preset) => {
+	beforeEach(() => {
+		shade = preset;
+	});
+
 	// where the caret is standing, and it is a rung rather than the brand: nothing a host writes
 	// moves it, which is why these are single readings. it is drawn on four grounds, because a
 	// keyboard donor can be hovering or pressing what they have tabbed onto — the card, the receipt
@@ -512,7 +562,11 @@ describe('the focus ring', () => {
 	});
 });
 
-describe('on-primary', () => {
+describe.each(SHADES)('on-primary under %s', (preset) => {
+	beforeEach(() => {
+		shade = preset;
+	});
+
 	// the band is what makes this unconditional: nothing in the component selects a foreground
 	// for contrast, because a fill lighter than the band's ceiling never exists.
 	it.each([
@@ -537,7 +591,11 @@ describe('on-primary', () => {
 	});
 });
 
-describe('text on the card', () => {
+describe.each(SHADES)('text on the card under %s', (preset) => {
+	beforeEach(() => {
+		shade = preset;
+	});
+
 	// every neutral step the sheets actually set words in. `--_n10` is the smallest of them — the
 	// "(optional)" beside a label, an aside, the note under the fee — and it is the one this exists
 	// to hold, because it is authored below its own distribution to reach the floor at all. the
@@ -698,9 +756,9 @@ describe('a malformed seed', () => {
 });
 
 describe('the card the form draws for itself', () => {
-	// the seed is a colour and nothing else, so everything a host once reached is now the form's own
-	// literal. these are the four that were seeds: a rule that reintroduces one shows up here as a
-	// value that moved.
+	// what the card draws when a host sets nothing: the brand moves none of it, and the two presets
+	// that move the ground and the corners are at their initial values. a rule that let the brand
+	// reach one of these shows up here as a value that moved.
 	it('paints the card at one lightness whatever the brand is', () => {
 		seed('--donate-primary: oklch(0.45 0.2 265);');
 
@@ -734,13 +792,50 @@ describe('the card the form draws for itself', () => {
 			4
 		);
 	});
+});
 
-	// the step marks take `--_r` and the engine reduces a corner over half the box to that half, so
-	// 8px draws a circle at every root the clamp allows rather than a rounded square.
-	it('draws the step marks as circles at every root', () => {
+describe('the shade seed', () => {
+	// the root the ladder is derived from, per preset: a hue and a chroma swapped on today's
+	// lightness column, so every rung keeps the lightness it has under `light`.
+	it.each([
+		['light', { l: 0.995, c: 0.001, h: 264 }],
+		['warm', { l: 0.995, c: 0.006, h: 70 }],
+		['cool', { l: 0.995, c: 0.006, h: 240 }]
+	])('roots the ladder at the %s ground', (shade, root) => {
+		seed(`--donate-shade: ${shade};`);
+		const s = oklchOf('--_s');
+
+		expect(s.l).toBeCloseTo(root.l, 3);
+		expect(s.c).toBeCloseTo(root.c, 4);
+		expect(s.h).toBeCloseTo(root.h, 0);
+	});
+
+	// the registration refuses a keyword off the list at parse time, so what computes is the
+	// initial value and the card is the one a host who set nothing gets.
+	it('draws today’s ladder for a shade off the list', () => {
 		seed('');
+		const unseeded = RUNGS.map(oklchString);
+		seed('--donate-shade: dark;');
 
-		expect(parseFloat(lengthOf('--_mark')) / 2).toBeLessThan(8);
+		expect(RUNGS.map(oklchString)).toEqual(unseeded);
+	});
+});
+
+describe('the corner seed', () => {
+	// the card's corner, the corner of a control inside a box on it, the tick box's, which follows
+	// the inner corner up to `soft`'s and no further so it never rounds toward a radio, and where a
+	// floated label's band starts, which follows it down to `soft`'s and no further so a square box
+	// keeps its edge.
+	it.each([
+		['square', ['0px', '0px', '0px', '4px']],
+		['soft', ['8px', '4px', '4px', '4px']],
+		['round', ['12px', '8px', '4px', '8px']],
+		['a corner off the list', ['8px', '4px', '4px', '4px']]
+	])('draws %s', (name, corners) => {
+		const corner = name.includes(' ') ? 'pill' : name;
+		seed(`--donate-corner: ${corner};`);
+
+		expect(['--_r', '--_r-in', '--_r-box', '--_label-inset'].map(lengthOf)).toEqual(corners);
 	});
 });
 

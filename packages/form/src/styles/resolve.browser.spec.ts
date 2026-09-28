@@ -135,6 +135,23 @@ describe('what the provider is handed', () => {
 		expect(Number(coolBlue)).toBeGreaterThan(Number(warmBlue));
 	});
 
+	// the presets switch on the card rather than on the host, so this is the reading that shows the
+	// probe is standing where they land: the provider's fields take the card's ground and corner.
+	it('carries the host’s shade and corner into the provider’s fields', () => {
+		const light = resolveAppearance(card).variables.colorBackground ?? '';
+		seed('--donate-shade: warm; --donate-corner: round;');
+		const warm = resolveAppearance(card);
+		seed('--donate-corner: square;');
+		const square = resolveAppearance(card);
+
+		const [, red = '0', , blue = '0'] = RGB.exec(warm.variables.colorBackground ?? '') ?? [];
+
+		expect(warm.variables.colorBackground).not.toBe(light);
+		expect(Number(red)).toBeGreaterThan(Number(blue));
+		expect(warm.variables.borderRadius).toBe('12px');
+		expect(square.variables.borderRadius).toBe('0px');
+	});
+
 	// the split, proven off a real cascade rather than off a table: the fill inside the provider's
 	// frame follows the seed and the ring does not follow it anywhere. only this pool can see it —
 	// `--_p` and `--_focus-ring` are unregistered custom properties, so a lightweight DOM hands back

@@ -359,7 +359,8 @@ textarea[part~='field'] {
  * floated, the band starts at the corner the box is drawn with and no closer to it: a band flush with
  * the box's inline start leaves the arc of that corner standing outside it as a stub beside the gap,
  * so the inset is the box's own radius and the edge runs unbroken from the corner to the gap and on
- * from its other side. the other end takes the same inset, which is where a name too long for its box
+ * from its other side. a square box has no arc and holds `soft`'s inset instead, because a band
+ * flush with it takes the top of its inline-start edge (`--_label-inset` in ./tokens.css). the other end takes the same inset, which is where a name too long for its box
  * is cut — the arc at that corner is what the band would otherwise run over.
  *
  * the band is a notch and nothing more: the edge stops a little short of the name and picks up a
@@ -405,8 +406,8 @@ textarea[part~='field'] {
 	max-inline-size: 100%;
 	display: flex;
 	align-items: center;
-	/* the corner the box is drawn with, at both ends of it. */
-	padding-inline: var(--_r-in);
+	/* clear of the corner the box is drawn with, at both ends of it. */
+	padding-inline: var(--_label-inset);
 	/* the card's base, so the span's own step resolves against the root rather than compounding. */
 	font-size: var(--_t-md);
 	/*
@@ -497,8 +498,8 @@ textarea[part~='field'] {
  * `appearance: none` is why every line under it exists, and the corner is why it is there at all:
  * chromium computes `border-radius` to `0px` on a checkbox left at `appearance: auto`, whatever is
  * declared and wherever it is declared, so the ring the focus block lays around it squared off
- * around a box the engine drew round. a box this sheet draws takes the card's inner corner, and the
- * ring follows it.
+ * around a box the engine drew round. a box this sheet draws takes the card's inner corner, held
+ * at `soft`'s under `round` (`--_r-box` in ./tokens.css), and the ring follows it.
  *
  * so it is the field's construction at a field's fill and a field's edge, at the size and the
  * first-line offset it already stood at, and the primary fills it when it is ticked — the half of
@@ -530,7 +531,7 @@ textarea[part~='field'] {
 	margin-block-start: calc((1lh - var(--_box)) / 2);
 	background: var(--_n1);
 	border: var(--_border) solid var(--_edge-control);
-	border-radius: var(--_r-in);
+	border-radius: var(--_r-box);
 	outline: var(--_border) solid transparent;
 	outline-offset: calc(-1 * var(--_border));
 	cursor: pointer;
@@ -685,17 +686,16 @@ button.step-dot[aria-disabled='true'] {
  * the outline is `--_border`: the mark a donor is standing on is the state here, and the weight
  * that carries state is not spent on the ones they are not.
  *
- * the corner is `--_r`. over half the box the engine reduces it to that half
- * (https://www.w3.org/TR/css-backgrounds-3/#corner-overlap), so 8px draws a circle here rather than
- * a rounded square: ./tokens.css carries the arithmetic that keeps half of `--_mark` under 8px at
- * every zoom.
+ * a circle by construction, like the spinner, and not a corner of the card's: the marks are dots
+ * under every `--donate-corner`, because a row of three squares reads as three boxes to tick rather
+ * than as where the donor is standing.
  */
 .step-mark {
 	flex: none;
 	inline-size: var(--_mark);
 	block-size: var(--_mark);
 	border: var(--_border) solid var(--_edge-control);
-	border-radius: var(--_r);
+	border-radius: 50%;
 }
 
 .step-dot.current .step-mark {
@@ -1771,7 +1771,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .skeleton-mark {
 	inline-size: var(--_mark);
 	block-size: var(--_mark);
-	border-radius: var(--_r);
+	border-radius: 50%;
 }
 
 /*
