@@ -11,8 +11,9 @@ import { subscribe, type SubscribeRequest, type Subscribed } from './subscriptio
 // the delivery run against a real D1, with the hooks answered by a `fetch` written here.
 //
 // every gift is settled through `zapierStatements`, the statement the money path splices in, so
-// the rows a run reads are the rows production writes. the clock is the run's `now` and nothing
-// else: each run is handed a time, the way the cron hands it `scheduledTime`.
+// the rows a run reads are the rows production writes. the clock is the run's `now`: each run is
+// handed a time, the way the cron hands it `scheduledTime`. the one exception is a 429's delay in
+// seconds, which counts from the answer, on the wall clock.
 
 /** the hash of the key every subscribe here is verified under, standing in the `zapier_key` row. */
 const KEY_HASH = 'a'.repeat(64);
@@ -156,6 +157,23 @@ async function deliveryRows() {
 	return results;
 }
 
+/** when `subscriptionId`'s hook began failing, as stored. */
+async function failingSince(subscriptionId: string): Promise<number | null> {
+	const row = await env.DB.prepare('select failing_since from zapier_subscription where id = ?')
+		.bind(subscriptionId)
+		.first<{ failing_since: number | null }>();
+	return row?.failing_since ?? null;
+}
+
+async function markFailingSince(subscriptionId: string, at: number): Promise<void> {
+	await env.DB.prepare('update zapier_subscription set failing_since = ? where id = ?')
+		.bind(at, subscriptionId)
+		.run();
+}
+
+const HOOK_FAILED_FOR_THREE_DAYS =
+	'Not sent: its hook had refused every post for three days, and its subscription was ended.';
+
 describe('sendDueZapierEvents()', () => {
 	it('posts a due gift to its hook once and marks it sent', async () => {
 		const hook = await listen();
@@ -281,6 +299,71 @@ describe('sendDueZapierEvents()', () => {
 		]);
 	});
 
+	it('waits as long as a 429 asks in seconds before trying again', async () => {
+		await listen();
+		await settle();
+		const posts: string[] = [];
+		const throttled = (async (input: RequestInfo | URL) => {
+			posts.push(String(input));
+			return new Response('slow down', { status: 429, headers: { 'retry-after': '600' } });
+		}) as typeof fetch;
+		const now = Date.now() + 1_000;
+		const run = (at: number) => sendDueZapierEvents({ db, fetch: throttled }, new Date(at));
+
+		// the seconds count from the answer, which lands on the wall clock between these two.
+		const before = Date.now();
+		await run(now);
+		const after = Date.now();
+		const [row] = await deliveryRows();
+		expect(row).toEqual(
+			expect.objectContaining({
+				status: 'pending',
+				attempts: 1,
+				last_error: '429 Too Many Requests — slow down'
+			})
+		);
+		const asked = row?.next_attempt_at ?? 0;
+		expect(asked).toBeGreaterThanOrEqual(before + 10 * MINUTE);
+		expect(asked).toBeLessThanOrEqual(after + 10 * MINUTE);
+
+		await run(asked - 1);
+		expect(posts).toHaveLength(1);
+		await run(asked);
+		expect(posts).toHaveLength(2);
+	});
+
+	it('waits until the time a 429 names before trying again', async () => {
+		await listen();
+		await settle();
+		const now = Date.now() + 1_000;
+		const until = new Date(now + 20 * MINUTE).toUTCString();
+		const throttled = (async () =>
+			new Response('', { status: 429, headers: { 'retry-after': until } })) as typeof fetch;
+
+		await sendDueZapierEvents({ db, fetch: throttled }, new Date(now));
+
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({ status: 'pending', next_attempt_at: Date.parse(until) })
+		]);
+	});
+
+	it('waits no longer than the moment the row is given up on, whatever a 429 asks', async () => {
+		await listen();
+		await settle();
+		const now = Date.now() + 1_000;
+		const queuedAt = now - 71 * HOUR;
+		await env.DB.prepare('update zapier_delivery set created_at = ?').bind(queuedAt).run();
+		const until = new Date(now + 5 * 24 * HOUR).toUTCString();
+		const throttled = (async () =>
+			new Response('', { status: 429, headers: { 'retry-after': until } })) as typeof fetch;
+
+		await sendDueZapierEvents({ db, fetch: throttled }, new Date(now));
+
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({ status: 'pending', next_attempt_at: queuedAt + 72 * HOUR })
+		]);
+	});
+
 	it('rides out a hook unreachable for a quarter hour on a doubling wait, and delivers it once', async () => {
 		await listen();
 		await settle();
@@ -340,6 +423,94 @@ describe('sendDueZapierEvents()', () => {
 			'sent',
 			'sent'
 		]);
+	});
+
+	it('marks when a hook began refusing, and keeps that mark through its later refusals', async () => {
+		const hook = await listen();
+		await settle();
+		const zapier = hooksAnswering(() => 503);
+		const now = Date.now() + 1_000;
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(now));
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(now + MINUTE));
+
+		expect(zapier.posts).toHaveLength(2);
+		expect(await failingSince(hook.id)).toBe(now);
+	});
+
+	it('counts no post that went unanswered toward the three days', async () => {
+		const hook = await listen();
+		await settle();
+		const unreachable = hooksAnswering(() => new TypeError('Network connection lost.'));
+
+		await sendDueZapierEvents({ db, fetch: unreachable.fetch }, new Date(Date.now() + 1_000));
+
+		expect(unreachable.posts).toHaveLength(1);
+		expect(await failingSince(hook.id)).toBe(null);
+	});
+
+	it('ends a hook refusing for three days and drops what it was owed, the other Zaps untouched', async () => {
+		const failing = await listen();
+		const live = await listen();
+		await settle();
+		await settle();
+		const now = Date.now() + 1_000;
+		await markFailingSince(failing.id, now - 72 * HOUR);
+		const zapier = hooksAnswering((url) => (url === failing.hookUrl ? 500 : 200));
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(now));
+		const posted = zapier.posts.length;
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(now + HOUR));
+
+		expect(zapier.posts).toHaveLength(posted);
+		const { results: subscriptions } = await env.DB.prepare(
+			'select id, ended_reason from zapier_subscription order by id'
+		).all<{ id: string; ended_reason: string | null }>();
+		expect(subscriptions).toEqual([
+			{ id: failing.id, ended_reason: 'gone' },
+			{ id: live.id, ended_reason: null }
+		]);
+		const rows = await deliveryRows();
+		expect(rows.filter((r) => r.subscription_id === failing.id)).toEqual([
+			expect.objectContaining({ status: 'dropped', last_error: HOOK_FAILED_FOR_THREE_DAYS }),
+			expect.objectContaining({ status: 'dropped', last_error: HOOK_FAILED_FOR_THREE_DAYS })
+		]);
+		expect(rows.filter((r) => r.subscription_id === live.id).map((r) => r.status)).toEqual([
+			'sent',
+			'sent'
+		]);
+	});
+
+	it('keeps a hook refusing for a moment under three days', async () => {
+		const hook = await listen();
+		await settle();
+		const now = Date.now() + 1_000;
+		await markFailingSince(hook.id, now - 72 * HOUR + 1);
+
+		await sendDueZapierEvents({ db, fetch: hooksAnswering(() => 500).fetch }, new Date(now));
+
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({ status: 'pending', attempts: 1 })
+		]);
+		expect(await failingSince(hook.id)).toBe(now - 72 * HOUR + 1);
+	});
+
+	it('starts the three days over when a refusing hook takes a post', async () => {
+		const hook = await listen();
+		await settle();
+		const now = Date.now() + 1_000;
+		await markFailingSince(hook.id, now - 71 * HOUR);
+
+		await sendDueZapierEvents({ db, fetch: hooksAnswering(() => 200).fetch }, new Date(now));
+		expect(await failingSince(hook.id)).toBe(null);
+
+		await settle();
+		await sendDueZapierEvents(
+			{ db, fetch: hooksAnswering(() => 500).fetch },
+			new Date(now + 2 * HOUR)
+		);
+		expect(await failingSince(hook.id)).toBe(now + 2 * HOUR);
+		expect((await deliveryRows()).map((r) => r.status).sort()).toEqual(['pending', 'sent']);
 	});
 
 	it('gives up without posting on an event still undelivered 72 hours after it was queued', async () => {
@@ -412,6 +583,55 @@ describe('sendDueZapierEvents()', () => {
 		expect(await deliveryRows()).toEqual([expect.objectContaining({ status: 'sent' })]);
 	});
 
+	it('drains a backlog of a hundred rows in one run', async () => {
+		await listen();
+		await listen();
+		for (let gift = 0; gift < 50; gift++) await settle();
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(new Set(zapier.posts.map((p) => `${p.url} ${p.body.id}`)).size).toBe(100);
+		expect((await deliveryRows()).filter((r) => r.status !== 'sent')).toEqual([]);
+	});
+
+	it('drains a backlog of a hundred refunds in one run', async () => {
+		await listen('gift_refunded');
+		for (let gift = 0; gift < 100; gift++) await refund(await settle());
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(new Set(zapier.posts.map((p) => p.body.id)).size).toBe(100);
+	});
+
+	it('posts each row of a backlog once when two runs work it together', async () => {
+		for (let zap = 0; zap < 3; zap++) await listen();
+		for (let gift = 0; gift < 50; gift++) await settle();
+		const posts: string[] = [];
+		let open!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			open = resolve;
+		});
+		const heldHooks = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			posts.push(`${String(input)} ${JSON.parse(String(init?.body)).id}`);
+			await gate;
+			return new Response('{}', { status: 200 });
+		}) as typeof fetch;
+		const now = Date.now() + 1_000;
+
+		const first = sendDueZapierEvents({ db, fetch: heldHooks }, new Date(now));
+		await expect.poll(() => posts.length).toBe(10);
+		const second = sendDueZapierEvents({ db, fetch: heldHooks }, new Date(now + MINUTE));
+		await expect.poll(() => posts.length).toBe(20);
+		open();
+		await Promise.all([first, second]);
+
+		expect(posts).toHaveLength(150);
+		expect(new Set(posts).size).toBe(150);
+		expect((await deliveryRows()).filter((r) => r.status !== 'sent')).toEqual([]);
+	});
+
 	it('claims nothing owed to a subscription that has ended', async () => {
 		const hook = await listen();
 		await settle();
@@ -429,8 +649,8 @@ describe('sendDueZapierEvents()', () => {
 		expect(zapier.posts).toEqual([]);
 	});
 
-	it('posts to at most six hooks at once, and to every one of them', async () => {
-		for (let zap = 0; zap < 8; zap++) await listen();
+	it('posts to at most ten hooks at once, and to every one of them', async () => {
+		for (let zap = 0; zap < 12; zap++) await listen();
 		await settle();
 		let inFlight = 0;
 		let most = 0;
@@ -446,8 +666,8 @@ describe('sendDueZapierEvents()', () => {
 
 		await sendDueZapierEvents({ db, fetch: busyHooks }, new Date(Date.now() + 1_000));
 
-		expect(most).toBe(6);
-		expect(new Set(posts).size).toBe(8);
+		expect(most).toBe(10);
+		expect(new Set(posts).size).toBe(12);
 	});
 
 	it('leaves a row alone once a later run has taken it over, whatever its own post answers', async () => {
@@ -480,7 +700,7 @@ describe('sendDueZapierEvents()', () => {
 		]);
 	});
 
-	it('posts nothing it could not finish inside its own lease', async () => {
+	it('claims nothing when it starts too late to finish a post inside its own lease', async () => {
 		await listen();
 		await settle();
 		await env.DB.prepare('update zapier_delivery set next_attempt_at = 0').run();
@@ -492,7 +712,7 @@ describe('sendDueZapierEvents()', () => {
 
 		expect(zapier.posts).toEqual([]);
 		expect(await deliveryRows()).toEqual([
-			expect.objectContaining({ status: 'pending', attempts: 0, leased_until: late + 2 * MINUTE })
+			expect.objectContaining({ status: 'pending', attempts: 0, leased_until: null })
 		]);
 	});
 

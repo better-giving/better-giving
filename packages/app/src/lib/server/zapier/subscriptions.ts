@@ -18,8 +18,8 @@ import { eachAtMost } from '../outbox/each-at-most';
 // **ending one drops what it was still owed in the same batch**. a pending row behind an ended
 // subscription is an event queued for nobody, and the delivery run would carry on posting it to a
 // hook Zapier has let go of. `endSubscriptionStatements` is the one place that pairs the two, and
-// every end — Zapier unsubscribing, a hook answering 410, the key being replaced, a hook moving
-// trigger — goes through it.
+// every end — Zapier unsubscribing, a hook answering 410 or refusing for three days, the key being
+// replaced, a hook moving trigger — goes through it.
 
 /** a Zap asking for `trigger`'s events at `hookUrl`, already checked by the route. */
 export type SubscribeRequest = { readonly trigger: ZapierTrigger; readonly hookUrl: string };
@@ -124,7 +124,8 @@ export async function unsubscribe(db: Db, id: string): Promise<void> {
 /**
  * the statements that end the subscriptions in `scope` for `reason` at `now`, for one `batch()`.
  * `onlyIf` is a condition both statements also hold to: a replace ends nothing unless its own
- * key write landed.
+ * key write landed. `lastError`, where given, is written on every row dropped: why it was not sent,
+ * when the reason alone does not say.
  *
  * the pending rows are dropped first, while the subscriptions they belong to still read as open —
  * the other order would leave `every_open` naming nothing by the time the drop ran. a row already
@@ -139,7 +140,7 @@ export function endSubscriptionStatements(
 	scope: SubscriptionScope,
 	reason: ZapierEndReason,
 	now: Date,
-	onlyIf?: SQL
+	{ onlyIf, lastError }: { readonly onlyIf?: SQL; readonly lastError?: string } = {}
 ) {
 	const open = and(
 		scope === 'every_open' ? undefined : eq(zapierSubscription.id, scope.id),
@@ -149,7 +150,7 @@ export function endSubscriptionStatements(
 	return [
 		db
 			.update(zapierDelivery)
-			.set({ status: 'dropped', leasedUntil: null, updatedAt: now })
+			.set({ status: 'dropped', lastError, leasedUntil: null, updatedAt: now })
 			.where(
 				and(
 					eq(zapierDelivery.status, 'pending'),

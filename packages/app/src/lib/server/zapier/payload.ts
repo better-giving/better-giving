@@ -114,7 +114,7 @@ export type RefundEvent = {
  * payment ids per query. D1 caps a query at 100 bound parameters
  * (https://developers.cloudflare.com/d1/platform/limits/), and each id is one.
  */
-const IDS_PER_READ = 90;
+export const IDS_PER_READ = 90;
 
 /**
  * the events for `paymentIds`, keyed by payment id. an id with no payment behind it has no entry,
