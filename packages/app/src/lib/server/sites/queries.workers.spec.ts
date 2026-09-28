@@ -60,7 +60,9 @@ beforeAll(async () => {
 beforeEach(async () => {
 	await env.DB.prepare('delete from site').run();
 	// the forms too: `readSitesInUse` reads them through ../forms/queries.ts, so a form one case
-	// wrote would go on blocking a removal in the next.
+	// wrote would go on blocking a removal in the next. pages first, because `page.form_id` points
+	// at a form and nothing carries an ON DELETE.
+	await env.DB.prepare('delete from page').run();
 	await env.DB.prepare('delete from form').run();
 });
 
@@ -222,6 +224,23 @@ describe('readSitesInUse', () => {
 			archived: true
 		});
 		expect(await readSitesInUse(db, ['https://give.example.org'])).toEqual([]);
+	});
+
+	it('never names a page’s own donation settings', async () => {
+		// a page's row is edited in the page's editor and the form screen 404s it, so the link beside
+		// the sentence would go nowhere and nothing under /admin/forms could untick the site.
+		await insertForm('frm_springappealtest', 'Spring appeal', ['https://give.example.org']);
+		await insertForm('frm_donationpagerow', 'Page settings', ['https://give.example.org']);
+		await env.DB.prepare(
+			`insert into page (id, type, state, form_id, draft, published, created_at, updated_at)
+			 values ('pge_donationpage', 'donation_page', 'live', 'frm_donationpagerow', '{}', '{}', 0, 0)`
+		).run();
+		expect(await readSitesInUse(db, ['https://give.example.org'])).toEqual([
+			{
+				site: 'https://give.example.org',
+				forms: [{ id: 'frm_springappealtest', name: 'Spring appeal' }]
+			}
+		]);
 	});
 
 	it('leaves out a site no live form lists', async () => {

@@ -169,6 +169,10 @@ export type SiteInUse = {
  * be blocked forever, with no screen able to clear it. `readForms` already excludes them, which
  * is why this asks that question rather than the table.
  *
+ * **nor is a page's own donation-settings row**, for the same reason: every write in
+ * ../forms/queries.ts refuses it and the form screen the link goes to answers 404. `readForms`
+ * leaves it out too.
+ *
  * the order is the caller's for the sites and `readForms`' for the forms, and both are stable:
  * the sentence and the list of destinations beside it are one set in one order, and two sources
  * for that fact is how they drift.

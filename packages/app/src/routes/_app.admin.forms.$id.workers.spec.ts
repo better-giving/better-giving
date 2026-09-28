@@ -86,6 +86,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+	// before the forms, because `page.form_id` points there and nothing carries an ON DELETE.
+	await env.DB.prepare('delete from page').run();
 	await env.DB.prepare('delete from form').run();
 	// after the forms, because `form.program_id` points here and nothing carries an ON DELETE.
 	await env.DB.prepare('delete from program').run();
@@ -482,6 +484,96 @@ async function archiveInPlace(id = FORM_ID): Promise<void> {
 		.bind('archived', id)
 		.run();
 }
+
+/** the donation-settings rows the page-owned cases below write, one per kind of page. */
+const OWNED = { donation_page: 'frm_donationpage001', campaign: 'frm_campaignowned01' } as const;
+
+/**
+ * a live donation-settings row owned by a page of `type`, written past drizzle so the fixture is not
+ * the query under test. the campaign is named, the Donation page is not (`page_name_check`).
+ */
+async function pageOwned(type: keyof typeof OWNED): Promise<string> {
+	const id = OWNED[type];
+	await env.DB.prepare(
+		`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+		                   suggested_amounts, allowed_origins, created_at, updated_at)
+		 values (?, 'Page settings', 'live', ?, 'USD', 500, 1000000, '[2500]', '[]', 0, 0)`
+	)
+		.bind(id, revenueAccountId)
+		.run();
+	const campaign = type === 'campaign';
+	await env.DB.prepare(
+		`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+		 values (?, ?, ?, ?, 'live', ?, '{}', '{}', 0, 0)`
+	)
+		.bind(`pge_${id}`, type, campaign ? 'Winter coats' : null, campaign ? 'winter-coats' : null, id)
+		.run();
+	return id;
+}
+
+/** how a refusal names the page that owns a row: the Donation page by its word, a campaign by its name. */
+const OWNER_WORDS = { donation_page: 'the Donation page', campaign: 'Winter coats' } as const;
+
+describe('/admin/forms/[id] — a page’s own donation settings', () => {
+	it.each(['donation_page', 'campaign'] as const)(
+		'404s for the row a %s owns, naming the page and its editor',
+		async (type) => {
+			const id = await pageOwned(type);
+			const response = await visit({ id });
+			expect(response.status).toBe(404);
+			const body = (await response.json()) as string;
+			expect(body).toContain(id);
+			expect(body).toContain(OWNER_WORDS[type]);
+			expect(body).toContain('editor');
+		}
+	);
+});
+
+describe('/admin/forms/[id] — a write aimed at a page’s own donation settings', () => {
+	it.each(['donation_page', 'campaign'] as const)(
+		'refuses every group’s save on the row a %s owns, naming the page, and writes nothing',
+		async (type) => {
+			// no screen draws these boxes for a page's row, so this is a hand-built body. the refusal
+			// is at the write's own `where`, and the sentence comes off the read after it.
+			const id = await pageOwned(type);
+			const before = await readForm(db, id);
+
+			for (const form of [NAME_FORM, PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM]) {
+				const { failure } = await post(form, id, submission(form));
+				expect(failure?.status, form).toBe(404);
+				expect(failure?.message, form).toContain(OWNER_WORDS[type]);
+				expect(failure?.message, form).toContain('editor');
+				expect(failure?.errors, form).toEqual({});
+			}
+			expect(await readForm(db, id)).toEqual(before);
+		}
+	);
+
+	it.each(['donation_page', 'campaign'] as const)(
+		'refuses to archive the row a %s owns, naming the page, and leaves it serving',
+		async (type) => {
+			const id = await pageOwned(type);
+			const { failure } = await post(ARCHIVE_FORM, id, {});
+			expect(failure?.status).toBe(404);
+			expect(failure?.message).toContain(OWNER_WORDS[type]);
+			expect(failure?.message).toContain('editor');
+			expect((await readForm(db, id))?.status).toBe('live');
+		}
+	);
+
+	it('saves every group and the archive of a form while leaving every page’s settings as they were', async () => {
+		const owned = [await pageOwned('donation_page'), await pageOwned('campaign')];
+		const before = await Promise.all(owned.map((id) => readForm(db, id)));
+
+		for (const form of [NAME_FORM, PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM, ARCHIVE_FORM]) {
+			const { redirect } = await post(form, FORM_ID, submission(form));
+			expect(redirect?.status, form).toBe(303);
+		}
+		// the form's own writes landed, so the read below is of rows the same statements reached past.
+		expect((await readForm(db, FORM_ID))?.name).toBe('Gala 2026');
+		expect(await Promise.all(owned.map((id) => readForm(db, id)))).toEqual(before);
+	});
+});
 
 describe('/admin/forms/[id] load', () => {
 	it('renders the stored form into the boxes it was typed in', async () => {

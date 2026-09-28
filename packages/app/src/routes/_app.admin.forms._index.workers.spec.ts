@@ -72,6 +72,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+	// before the forms, because `page.form_id` points there and nothing carries an ON DELETE.
+	await env.DB.prepare('delete from page').run();
 	await env.DB.prepare('delete from form').run();
 	await env.DB.prepare(
 		`insert into form (id, name, status, revenue_account_id, currency, created_at, updated_at)
@@ -80,6 +82,32 @@ beforeEach(async () => {
 		.bind(FORM_ID, revenueAccountId)
 		.run();
 });
+
+/**
+ * a live donation-settings row owned by a page of `type`, written past drizzle so the fixture is not
+ * the query under test. created after the fixture form, so an oldest-first list would show it last.
+ */
+async function pageOwned(type: 'donation_page' | 'campaign', formId: string): Promise<void> {
+	await env.DB.prepare(
+		`insert into form (id, name, status, revenue_account_id, currency, created_at, updated_at)
+		 values (?, 'Page settings', 'live', ?, 'USD', 1, 1)`
+	)
+		.bind(formId, revenueAccountId)
+		.run();
+	const campaign = type === 'campaign';
+	await env.DB.prepare(
+		`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+		 values (?, ?, ?, ?, 'live', ?, '{}', '{}', 0, 0)`
+	)
+		.bind(
+			`pge_${formId}`,
+			type,
+			campaign ? 'Winter coats' : null,
+			campaign ? 'winter-coats' : null,
+			formId
+		)
+		.run();
+}
 
 /** a real session, as the `Cookie` header a browser would send back. */
 async function signIn(): Promise<string> {
@@ -312,6 +340,18 @@ describe('/admin/forms load', () => {
 		await env.DB.prepare('delete from form').run();
 		expect((await runLoad()).forms).toEqual([]);
 	});
+});
+
+describe('/admin/forms load — a page’s own donation settings', () => {
+	it.each(['donation_page', 'campaign'] as const)(
+		'leaves out the row a %s owns, and lists the form beside it',
+		async (type) => {
+			// the page's settings are edited in its editor, so a row here would be a second screen
+			// writing them.
+			await pageOwned(type, 'frm_pageownedlist01');
+			expect((await runLoad()).forms.map((f) => f.id)).toEqual([FORM_ID]);
+		}
+	);
 });
 
 describe('/admin/forms load — the form the create next door just made', () => {
