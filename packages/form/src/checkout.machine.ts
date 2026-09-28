@@ -135,10 +135,13 @@ export type CheckoutInput = {
 	readonly config: FormConfig;
 	readonly ports: CheckoutPorts;
 	readonly resume?: { readonly paymentToken: string };
+	/** where a fresh card starts when the page hosting it asks: `openingDraft` below reads it. */
+	readonly opening?: { readonly monthly?: boolean; readonly dedication?: boolean };
 };
 
 /**
- * the amount draft a fresh flow starts on: a cadence already chosen, and nothing else.
+ * the amount draft a fresh flow starts on where the page asks for nothing (`openingDraft` below):
+ * a cadence already chosen, and nothing else.
  *
  * one-time wherever the deployment offers it, and the first cadence it does offer where it does
  * not. that is one expression rather than two, because `FREQUENCIES` (./v1.ts) puts one-time first
@@ -171,6 +174,29 @@ function settledDraft(config: FormConfig): AmountDraft {
 	return {
 		...(frequency === undefined ? {} : { frequency }),
 		...(offered.length === 0 ? {} : { amountMinor: Math.min(...offered) })
+	};
+}
+
+/**
+ * the draft a flow starts on: `settledDraft`, with the page's `opening` laid over it.
+ *
+ * monthly is taken only where the form offers it, because a cadence the deployment cannot charge is
+ * never offered (CLAUDE.md, repeating gifts) — so the flag is dropped rather than seeding a chip the
+ * card does not draw. the dedication opens exactly as `TOGGLE_TRIBUTE` opens it, on
+ * `OPENED_TRIBUTE` with nothing typed. either is a starting point the donor changes with the same
+ * events as ever, and nothing past this step can tell it from their own choice.
+ *
+ * a resumed flow takes none of it: the donor decided before they left for their bank, and a
+ * declined return that hands them the card again hands it back as `settledDraft` alone.
+ */
+function openingDraft(input: CheckoutInput): AmountDraft {
+	const settled = settledDraft(input.config);
+	const opening = input.resume === undefined ? input.opening : undefined;
+	const monthly = opening?.monthly === true && input.config.frequencies.includes('monthly');
+	return {
+		...settled,
+		...(monthly ? { frequency: 'monthly' } : {}),
+		...(opening?.dedication === true ? { tribute: OPENED_TRIBUTE } : {})
 	};
 }
 
@@ -1277,7 +1303,7 @@ export const checkoutMachine = setup({
 		config: input.config,
 		ports: input.ports,
 		resumeToken: input.resume?.paymentToken ?? null,
-		draft: settledDraft(input.config),
+		draft: openingDraft(input),
 		fv: null,
 		payerDraft: {},
 		payer: null,

@@ -10,7 +10,7 @@ import {
 	MICRODEPOSIT_WINDOW_MS,
 	PORT_TIMEOUT_MS
 } from './checkout.machine';
-import type { CheckoutEvent } from './checkout.machine';
+import type { CheckoutEvent, CheckoutInput } from './checkout.machine';
 import type { CheckoutPorts, ConfirmInput } from './ports';
 import type { DonationStatus, FormConfig, Quote, QuoteRequest } from './v1';
 
@@ -112,6 +112,7 @@ const QUOTE: Quote = { paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor:
 type HarnessOptions = {
 	readonly config?: FormConfig;
 	readonly resume?: { readonly paymentToken: string };
+	readonly opening?: CheckoutInput['opening'];
 	readonly quote?: (request: QuoteRequest) => Promise<Quote>;
 	readonly confirm?: (input: ConfirmInput) => Promise<import('./ports').ConfirmOutcome>;
 	readonly resumeWith?: () => Promise<import('./ports').ConfirmOutcome>;
@@ -154,7 +155,8 @@ function harness(options: HarnessOptions = {}) {
 		input: {
 			config: options.config ?? CONFIG,
 			ports,
-			...(options.resume ? { resume: options.resume } : {})
+			...(options.resume ? { resume: options.resume } : {}),
+			...(options.opening ? { opening: options.opening } : {})
 		}
 	});
 	actor.start();
@@ -405,6 +407,89 @@ describe('the amount step', () => {
 		const { actor } = harness();
 		actor.send({ type: 'SET_TRIBUTE', honoree: 'Margaret Chen' });
 		expect(actor.getSnapshot().context.draft.tribute).toBeUndefined();
+	});
+});
+
+describe('a flow the page opens preset', () => {
+	it('opens on monthly when told to and the form offers monthly', () => {
+		const { actor } = harness({ opening: { monthly: true } });
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(actor.getSnapshot().context.draft.frequency).toBe('monthly');
+	});
+
+	it('opens on one-time when told monthly and the form offers only one-time', () => {
+		// a cadence the deployment cannot charge is never offered, so the flag is dropped rather
+		// than seeding a frequency the card draws no chip for.
+		const { actor } = harness({
+			config: { ...CONFIG, frequencies: ['one_time'] },
+			opening: { monthly: true }
+		});
+		expect(actor.getSnapshot().context.draft.frequency).toBe('one_time');
+	});
+
+	it('opens with the dedication asked and every box in it empty when told to', () => {
+		const { actor } = harness({ opening: { dedication: true } });
+		expect(actor.getSnapshot().context.draft.tribute).toEqual({
+			kind: 'honor',
+			honoree: '',
+			notifyName: '',
+			notifyEmail: ''
+		});
+	});
+
+	it('opens on monthly with the dedication asked when told both', () => {
+		const { actor } = harness({ opening: { monthly: true, dedication: true } });
+		const { draft } = actor.getSnapshot().context;
+		expect(draft.frequency).toBe('monthly');
+		expect(draft.tribute).toEqual({ kind: 'honor', honoree: '', notifyName: '', notifyEmail: '' });
+	});
+
+	it('lets the donor switch back to one-time and take the dedication back', () => {
+		// a preset is where the card starts, never a decision the donor is held to.
+		const { actor } = harness({ opening: { monthly: true, dedication: true } });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
+		actor.send({ type: 'TOGGLE_TRIBUTE' });
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().value).toBe('details');
+		expect(actor.getSnapshot().context.fv).toEqual({
+			amountMinor: 2500,
+			frequency: 'one_time',
+			programId: null
+		});
+	});
+
+	it('keeps a resumed flow on what it resumes, whatever it was told to open on', async () => {
+		// the donor decided before they left for their bank. a declined return that hands them the
+		// card again hands it back as a fresh one, not as the page's preset.
+		const { actor } = harness({
+			resume: { paymentToken: 'pi_3ds_secret_x' },
+			resumeWith: async () => ({ kind: 'declined', message: 'Your bank declined the payment.' }),
+			opening: { monthly: true, dedication: true }
+		});
+		await settle();
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().context.draft.frequency).toBe('one_time');
+		expect(actor.getSnapshot().context.draft.tribute).toBeUndefined();
+	});
+
+	it('asks for a monthly quote when the donor takes the monthly it opened on', async () => {
+		const { actor, calls } = harness({ opening: { monthly: true } });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toHaveLength(1);
+		expect(calls.quote[0]).toMatchObject({ amountMinor: 2500, frequency: 'monthly' });
 	});
 });
 
