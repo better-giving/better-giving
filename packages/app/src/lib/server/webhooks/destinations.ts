@@ -1,7 +1,7 @@
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { webhookDestination, webhookDestinationEvent } from '../db/schema';
-import type { WebhookEvent } from './catalog';
+import type { WebhookEvent } from '../../webhooks/catalog';
 
 // a destination: an https address the organisation's own system listens on, the events it takes,
 // and the secret every post to it is signed with (./sign.ts).

@@ -1216,8 +1216,8 @@ function chargeWrites(
 	return {
 		// foreign-key order: the gift, its line and its payment, then the entries keyed to that
 		// payment, then the queue row keyed to one of those entries, then the rows each listening
-		// Zap is owed, keyed to the payment. one statement per row and never a multi-row INSERT — D1
-		// caps a query at 100 bound parameters
+		// Zap and destination is owed, about the payment. one statement per row and never a
+		// multi-row INSERT — D1 caps a query at 100 bound parameters
 		// (https://developers.cloudflare.com/d1/platform/limits/).
 		statements: [
 			db.insert(donation).values(giftRow),

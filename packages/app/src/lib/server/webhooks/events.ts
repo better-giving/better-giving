@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination, webhookDestinationEvent } from '../db/schema';
-import type { WebhookEvent } from './catalog';
+import type { WebhookEvent } from '../../webhooks/catalog';
 
 // the whole rule about which destinations an event is owed to, and the statements that say so.
 //

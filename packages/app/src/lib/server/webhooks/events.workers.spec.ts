@@ -4,7 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { contact, donation, payment } from '../db/schema';
-import type { WebhookEvent } from './catalog';
+import type { WebhookEvent } from '../../webhooks/catalog';
 import { createDestination } from './destinations';
 import { webhookStatements } from './events';
 

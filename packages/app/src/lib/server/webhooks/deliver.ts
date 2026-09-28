@@ -44,8 +44,7 @@ export type WebhookDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetc
 
 /**
  * how long a row waits after each failed post, the first entry after the first: about 52 hours
- * from the first post to the ninth and last. published to receivers, so a step is added, never
- * shortened.
+ * from the first post to the ninth and last.
  */
 export const WEBHOOK_RETRY_SCHEDULE_MS: readonly number[] = [
 	60_000,

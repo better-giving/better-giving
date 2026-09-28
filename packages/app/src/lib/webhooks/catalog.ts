@@ -3,14 +3,14 @@
 //
 // **a closed set, and permanent.** a wire name is a `case` in some receiver's code and a row in
 // `webhook_destination_event`, so a name is never renamed or dropped. a new kind of event is a new
-// name, never a meaning stretched over an old one; its writer lands with it, and the docs tell a
-// receiver to acknowledge a type it does not know and ignore it.
+// name, never a meaning stretched over an old one, and its writer lands with it.
 //
-// names are `noun.past_tense`, lowercase `[a-z_]` either side of one full stop, the shape
-// https://www.standardwebhooks.com/ recommends for an event type.
+// names are `noun.past_tense`, lowercase `[a-z_]` either side of one full stop: this repo's choice
+// inside what https://www.standardwebhooks.com/ allows an event type, full-stop-delimited
+// `[a-zA-Z0-9_]`.
 //
-// imports nothing: ../db/schema.ts derives its checks from this list and may import only from
-// leaves.
+// a leaf that imports nothing, so $lib/server/db/schema.ts can derive its checks from this list and
+// a component can import the labels.
 
 /** each event's wire name and its label for a screen. */
 export const WEBHOOK_EVENTS = {

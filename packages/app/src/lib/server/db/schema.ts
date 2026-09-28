@@ -21,7 +21,7 @@ import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
 import { FORM_STATUSES, type FormStatus } from '../../forms/statuses';
 import { PROGRAM_STATUSES, type ProgramStatus } from '../../programs/statuses';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '../../recurring/statuses';
-import { WEBHOOK_EVENT_TYPES, type WebhookEvent } from '../webhooks/catalog';
+import { WEBHOOK_EVENT_TYPES, type WebhookEvent } from '../../webhooks/catalog';
 import type { PostableAccountId } from './postable';
 
 // one dialect (sqlite) and one driver behind it, and nothing here may reference D1 — see
@@ -82,9 +82,7 @@ import type { PostableAccountId } from './postable';
 //             `PROGRAM_STATUSES` and `PROGRAM_MODES` moved for that same reason (see
 //             ../../forms/statuses.ts, ../../programs/statuses.ts and
 //             ../../forms/program-modes.ts): a component renders the words and cannot
-//             import from `$lib/server/**` at all. `WEBHOOK_EVENT_TYPES` was never here:
-//             it is the webhooks' permanent wire catalog, with each name's label beside
-//             it, in ../webhooks/catalog.ts. this list is every vocabulary that has
+//             import from `$lib/server/**` at all. this list is every vocabulary that has
 //             left, and a move not added to it makes it read as complete while
 //             under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
@@ -2887,8 +2885,8 @@ export const zapierDelivery = sqliteTable(
  *
  * **the signing secret is stored retrievable**: every post is signed with it
  * (../webhooks/sign.ts), so a hash would sign nothing. it is a key the app mints for itself, the
- * carve-out CLAUDE.md's boundaries ban names, and nothing outside `$lib/server/**` reads it but the
- * screen that shows it. one per destination, so no receiver can forge a post to another.
+ * carve-out CLAUDE.md's boundaries ban names, and nothing outside `$lib/server/**` reads it. one
+ * per destination, so no receiver can forge a post to another.
  *
  * a destination is archived, never deleted: its deliveries point at it, and an archived row is
  * owed nothing new and sent nothing still owed.
@@ -2952,7 +2950,8 @@ export const webhookDestinationEvent = sqliteTable(
 );
 
 /**
- * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed
+ * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed,
+ * or one sent nothing because its destination or its subject could not be read
  * (../webhooks/deliver.ts); it is kept, for the destination's recent deliveries.
  */
 export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
