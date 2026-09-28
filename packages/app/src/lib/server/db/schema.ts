@@ -2929,7 +2929,9 @@ export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
  * `batch()` as the change it reports (../webhooks/events.ts).
  *
  * **the row holds a pointer, not a payload**: `subject_id` names what the event is about, and the
- * send renders it then, the way `zapier_delivery` is rendered. what it names follows `event`:
+ * send renders it then, the way `zapier_delivery` is rendered. the one exception is
+ * `recurring_gift.charge_failed`, whose attempt no later read can recover, so it also keeps that
+ * attempt in `detail`. what `subject_id` names follows `event`:
  *
  *   gift.made                    — the gift's payment id.
  *   gift.refunded,
@@ -2943,6 +2945,9 @@ export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
  *                                  (`changeSubject` in ../webhooks/events.ts), so each change is its
  *                                  own row; a join to the record takes the id before the colon
  *                                  (`changedRecordOf`).
+ *   recurring_gift.charge_failed — `<plan id>:<the processor's id for the delivery reporting the
+ *                                  attempt>` (`FailedCollection.attemptKey`), so each attempt is
+ *                                  its own row and a redelivery meets it; read back the same way.
  *
  * no foreign key, since one column names rows of several tables and not always a bare id; the send
  * fails a row whose subject it cannot read.

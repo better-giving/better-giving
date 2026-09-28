@@ -2784,7 +2784,6 @@ describe('settleDelivery() — what a failed attempt owes a destination listenin
 			attempt_count: 2,
 			next_retry_at: '2026-09-08T12:00:00.000Z',
 			failed_at: '2026-09-03T12:00:00.000Z',
-			amount: '25.00',
 			amount_minor: 2500,
 			currency: 'USD'
 		};
@@ -2843,6 +2842,38 @@ describe('settleDelivery() — what a failed attempt owes a destination listenin
 					failed_at: '2026-09-08T12:00:00.000Z'
 				})
 			})
+		]);
+	});
+
+	it('asks for a failure again when its rows could not be written, and still writes the lapse it carries', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const lastMiss = () =>
+			failedDelivery(failedAttempt({ attemptCount: 4, nextRetryAt: null }), { state: 'lapsed' });
+		let faulted = false;
+		const faulting = new Proxy(db, {
+			get(target, property, receiver) {
+				if (property !== 'batch' || faulted) return Reflect.get(target, property, receiver);
+				return async () => {
+					faulted = true;
+					throw new Error('D1_ERROR: Network connection lost.');
+				};
+			}
+		});
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		const first = await settleDelivery(deps({ db: faulting, provider: lastMiss() }), DELIVERY);
+
+		expect(first).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(await failures()).toEqual([]);
+		const [plan] = await db.select().from(recurringPlan);
+		expect(plan).toMatchObject({ status: 'lapsed' });
+
+		const again = await settleDelivery(deps({ provider: lastMiss() }), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true });
+		expect((await failures()).map((row) => row.subject_id)).toEqual([
+			`${await planId()}:in_collect_2:2`,
+			`${await planId()}:in_collect_2:2`
 		]);
 	});
 

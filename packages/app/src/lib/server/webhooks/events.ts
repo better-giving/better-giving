@@ -1,7 +1,6 @@
 import { and, eq, exists, isNull, type SQL, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { z } from 'zod';
-import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import {
 	payment,
@@ -187,15 +186,14 @@ export function recurringGiftChangeWebhookStatements(
 /**
  * what a `recurring_gift.charge_failed` row keeps of the attempt, as `webhook_delivery.detail`: the
  * attempt is not a row of its own and a later read of the commitment cannot recover it, so
- * ./payload.ts sends these keys as they were written. times are ISO 8601 in UTC, `amount` in the
- * read API's notation.
+ * ./payload.ts sends these keys as they were written, with `amount` rendered beside them. times are
+ * ISO 8601 in UTC.
  */
 export const CHARGE_FAILED_DETAIL = z.strictObject({
 	attempt_count: z.int().positive(),
 	/** null on the last miss: the processor will not try again. */
 	next_retry_at: z.iso.datetime().nullable(),
 	failed_at: z.iso.datetime(),
-	amount: z.string(),
 	amount_minor: z.int().positive(),
 	currency: z.string()
 });
@@ -219,7 +217,6 @@ export function recurringChargeFailedWebhookStatements(
 		attempt_count: attempt.attemptCount,
 		next_retry_at: attempt.nextRetryAt?.toISOString() ?? null,
 		failed_at: attempt.failedAt.toISOString(),
-		amount: majorText(attempt.amountMinor, attempt.currency),
 		amount_minor: attempt.amountMinor,
 		currency: attempt.currency
 	};

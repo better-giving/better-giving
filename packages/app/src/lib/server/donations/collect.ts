@@ -357,7 +357,9 @@ async function standingResult(
  * answered off the notice alone: the attempt moved no money, so there is no transaction to read —
  * an attempt refused for want of a payment method has none at all, and it is not a collection
  * settled outside the processor. the commitment's own standing is still written, because the last
- * miss is often the delivery that carries its lapse.
+ * miss is often the delivery that carries its lapse — even where the attempt's own rows were not,
+ * which then asks for the delivery again: both writes are keyed, so the second pass writes only
+ * what the first did not.
  */
 async function failedResult(
 	db: Db,
@@ -366,8 +368,15 @@ async function failedResult(
 	failed: FailedCollection,
 	plan: RecurringPlan | null
 ): Promise<SettleResult> {
-	const planId = await recordFailedCollection(db, plan, failed);
+	const owed = await recordFailedCollection(db, plan, failed);
 	const stood = await recordStanding(db, event, notice, plan);
+	if (owed !== null && owed !== 'written') {
+		return {
+			ok: false,
+			reason: 'incomplete',
+			detail: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed, and the recurring charge failed it owes could not be written (${owed}).`
+		};
+	}
 	if (stood !== null) return standingResult(db, event, notice, plan, stood);
 	const retry = failed.nextRetryAt
 		? `the rail tries again at ${failed.nextRetryAt.toISOString()}`
@@ -376,16 +385,16 @@ async function failedResult(
 		ok: true,
 		outcome: 'uncollected',
 		detail:
-			planId === null
+			owed === null
 				? `attempt ${failed.attemptCount} under ${notice.providerGiftId} failed, and no repeating gift here has collected under it; nothing was written.`
 				: `attempt ${failed.attemptCount} at a collection under ${notice.providerGiftId} failed and ${retry}; no gift was written, and recurring charge failed is owed to the destinations listening.`
 	};
 }
 
 /**
- * the commitment a failed attempt is reported against, or null where this deployment holds none —
- * the donor's own first charge failing on the page, before any repeating gift exists, or a
- * subscription this app did not make.
+ * how the rows a failed attempt owes were written, or null where this deployment holds no
+ * commitment to report it against — the donor's own first charge failing on the page, before any
+ * repeating gift exists, or a subscription this app did not make.
  *
  * under a commitment with a row, the attempt owes each destination listening a
  * `recurring_gift.charge_failed`, keyed on the attempt, so a redelivery owes nothing
@@ -396,10 +405,9 @@ async function recordFailedCollection(
 	db: Db,
 	plan: RecurringPlan | null,
 	failed: FailedCollection
-): Promise<string | null> {
+): Promise<WriteOutcome | null> {
 	if (plan === null) return null;
-	await db.batch([recurringChargeFailedWebhookStatements(db, plan.id, failed)]);
-	return plan.id;
+	return attempt(db, [recurringChargeFailedWebhookStatements(db, plan.id, failed)]);
 }
 
 /**

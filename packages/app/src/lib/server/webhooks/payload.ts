@@ -34,8 +34,8 @@ import { CHARGE_FAILED_DETAIL, type ChargeFailedDetail, changedRecordOf } from '
 //
 // **a `recurring_gift.charge_failed` carries the attempt as it was written**, from the row's own
 // `detail` (`ChargeFailedDetail` in ./events.ts): an attempt is not a record the read API holds, so
-// only `recurring_gift` beside it is read at send. a row whose `detail` is not that shape is
-// dropped rather than sent short of a key.
+// only its `amount` and the `recurring_gift` beside it are rendered at send. a row whose `detail`
+// is not that shape is dropped rather than sent short of a key.
 //
 // **a `gift.refunded` row is sent only while its refund still stands**, read at send
 // (`readStandingRefunds` in ../integrations/refund.ts, the read a Zap's is) as it was in the
@@ -105,7 +105,11 @@ export type AddedDonor = ApiDonor & { readonly first_gift: ApiGift };
  * send. the attempt's keys are the row's own `detail` (`ChargeFailedDetail` in ./events.ts), since
  * nothing read later can say which attempt this was.
  */
-export type FailedCharge = ChargeFailedDetail & { readonly recurring_gift: ApiRecurringGift };
+export type FailedCharge = ChargeFailedDetail & {
+	/** `amount_minor` in the read API's notation, rendered at send like every other `amount`. */
+	readonly amount: string;
+	readonly recurring_gift: ApiRecurringGift;
+};
 
 /** the subject a delivery row names, as ./deliver.ts claims it. */
 type Subject = {
@@ -208,7 +212,7 @@ export async function renderSubjects(
 				const planId = changedRecordOf(subjectId);
 				const plan = planId === null ? undefined : plans.get(planId);
 				if (plan === undefined) return unreadable('recurring gift', planId ?? subjectId);
-				return { data: { ...attempt, recurring_gift: plan } satisfies FailedCharge };
+				return { data: failedCharge(attempt, plan) };
 			}
 			default:
 				return { dropped: `A ${event} event is not one this deployment sends.` };
@@ -260,6 +264,14 @@ function refundedGift(row: RefundRow, gift: ApiGift): RefundedGift {
 		currency: row.currency,
 		source: row.source,
 		gift
+	};
+}
+
+function failedCharge(attempt: ChargeFailedDetail, plan: ApiRecurringGift): FailedCharge {
+	return {
+		...attempt,
+		amount: majorText(attempt.amount_minor, attempt.currency),
+		recurring_gift: plan
 	};
 }
 
