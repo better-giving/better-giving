@@ -38,6 +38,12 @@ import { FieldMessage } from './FieldMessage.jsx';
  *
  *   an input's alone: a textarea takes no type, so a masked one holds nothing back and draws no
  *   press at all.
+ * @property {string | undefined} [revealLabel] the press's accessible name while the value is
+ *   hidden, where a bare `Show the value` would not say which value — a screen holding a second
+ *   credential beside this one names it: `Show signing secret`.
+ * @property {string | undefined} [hideLabel] its name while the value is showing, which is the
+ *   same noun turned round: `Hide signing secret`. handed in as a pair with {@link revealLabel}, or
+ *   the press is named for one value and renamed for another.
  * @property {boolean | undefined} [copyable] a copy control inside the box, beside the masked
  *   box's press, taking the value the box was handed (`value`, else `defaultValue`). it is for a
  *   read-only box holding a credential somebody pastes elsewhere: copied from the box, the value
@@ -85,6 +91,8 @@ export function Field({
 	needed,
 	beside,
 	masked,
+	revealLabel = 'Show the value',
+	hideLabel = 'Hide the value',
 	copyable,
 	copyLabel,
 	copyRef,
@@ -124,7 +132,7 @@ export function Field({
 				size="sm"
 				mark={hidden ? 'eye' : 'eye-off'}
 				aria-controls={id}
-				aria-label={hidden ? 'Show the value' : 'Hide the value'}
+				aria-label={hidden ? revealLabel : hideLabel}
 				aria-disabled={rest.disabled || undefined}
 				onClick={() => {
 					if (!rest.disabled) setShown((was) => !was);

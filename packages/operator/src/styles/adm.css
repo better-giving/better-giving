@@ -5719,6 +5719,16 @@
 		gap: var(--admin-space-5);
 	}
 
+	/* a name that is one unbroken word — a webhook destination is named by its address — breaks at
+	   any glyph. ./base.css's `break-word` breaks it only once it has overflowed and leaves its
+	   min-content the whole word, so the heading, this row, the title block and the header are all
+	   floored at that word's width and push the page past a 375px window. `anywhere` is what takes
+	   the word out of min-content; a name with spaces still breaks between words, because the
+	   any-glyph break is taken only where a line has no other. */
+	.adm-pageheader__name h1 {
+		overflow-wrap: anywhere;
+	}
+
 	/* a quiet control at the start of the actions' own line aligns by its word rather than by its
 	   box: the quiet rank draws no ground, so what a reader takes for the start of the control is
 	   the first letter of its label, and that sits inside the inline padding and the transparent

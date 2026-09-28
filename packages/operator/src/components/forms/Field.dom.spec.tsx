@@ -164,6 +164,27 @@ describe('a field mounted into a document', () => {
 		expect(reveal(root).getAttribute('aria-label')).toBe('Hide the value');
 	});
 
+	it('names the press for the value it shows where the screen says which one', () => {
+		// a screen holding two credentials names each press for its own, or a reader tabbing through
+		// hears the same `Show the value` twice and cannot tell which box either one opens.
+		const root = render(Field, {
+			id: 'webhook-secret',
+			label: 'Signing secret',
+			masked: true,
+			revealLabel: 'Show signing secret',
+			hideLabel: 'Hide signing secret',
+			defaultValue: 'whsec_abc'
+		});
+
+		expect(reveal(root).getAttribute('aria-label')).toBe('Show signing secret');
+
+		press(reveal(root));
+		expect(reveal(root).getAttribute('aria-label')).toBe('Hide signing secret');
+
+		press(reveal(root));
+		expect(reveal(root).getAttribute('aria-label')).toBe('Show signing secret');
+	});
+
 	it('does not submit the form it stands in', () => {
 		// it stands inside the form whose boxes it is about, and a press that submitted would post a
 		// credential the operator only wanted to look at.
