@@ -130,7 +130,10 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	const claimed = claim.rows;
 	if (claimed.length === 0) return;
 
-	const hooks = await readHooks(deps.db, claimed.map((c) => c.subscriptionId));
+	const hooks = await readHooks(
+		deps.db,
+		claimed.map((c) => c.subscriptionId)
+	);
 	const isRefund = (row: Claimed) => hooks.get(row.subscriptionId)?.trigger === 'gift_refunded';
 	const refundIds = claimed.filter(isRefund).map((c) => c.paymentId);
 	const events: Events = {
