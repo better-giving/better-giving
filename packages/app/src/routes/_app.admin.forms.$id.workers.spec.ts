@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { WHICH_FORM } from '$lib/forms/definition';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { FormInputValues } from '$lib/forms/fields';
 import type { FormReadinessLine } from '$lib/forms/readiness';
 import { redact } from '$lib/redact';
@@ -171,6 +171,21 @@ async function listSites(...origins: string[]): Promise<void> {
 }
 
 /**
+ * runs `during` with `table` out of reach, and puts it back whatever happens.
+ *
+ * renamed rather than dropped, so the migrations' own constraints and the rows around it survive —
+ * the shape ./_app.admin.books.workers.spec.ts takes for a read that could not be answered.
+ */
+async function withoutTable<T>(table: string, during: () => Promise<T>): Promise<T> {
+	await env.DB.prepare(`alter table ${table} rename to ${table}_hidden`).run();
+	try {
+		return await during();
+	} finally {
+		await env.DB.prepare(`alter table ${table}_hidden rename to ${table}`).run();
+	}
+}
+
+/**
  * the deploy-time values a fully set-up deployment holds.
  *
  * nothing this route reads is among them, which is what the pair below is for: a deployment with
@@ -226,6 +241,7 @@ type Loaded = {
 	saved: 'name' | 'program' | 'giving' | 'origins' | null;
 	archivedJustNow: boolean;
 	confirmArchive: boolean;
+	version: number;
 };
 
 /** one visit to this screen, carrying the session and whatever the browser holds beside it. */
@@ -275,9 +291,14 @@ function identityLine(loaded: Loaded): FormReadinessLine {
  * the amounts are a repeating row editor, so each row carries its own indexed name; the sites are a
  * checkbox group, so each ticked box repeats one name.
  */
-function bodyOf(form: string, fields: Record<string, string | string[]>): FormData {
+function bodyOf(
+	form: string,
+	version: string,
+	fields: Record<string, string | string[]>
+): FormData {
 	const body = new FormData();
 	body.set(WHICH_FORM, form);
+	body.set(RECORD_VERSION, version);
 	for (const [field, value] of Object.entries(fields)) {
 		if (field === 'suggested_amounts') {
 			const rows = typeof value === 'string' ? [value] : value;
@@ -330,7 +351,21 @@ type Failure = {
 	valid: boolean;
 	errors: Record<string, string[]>;
 	message?: string;
+	/** the boxes as the rejection hands them back, which is what the screen re-renders them from. */
+	typed: Record<string, unknown>;
 };
+
+/**
+ * the version a page drawn this moment carries: the row's own `updated_at`, read past drizzle so
+ * the fixture is not the query under test. `0` when no row answers; the fixture row is inserted at
+ * `0` too.
+ */
+async function drawnNow(id: string): Promise<string> {
+	const row = await env.DB.prepare('select updated_at from form where id = ?')
+		.bind(id)
+		.first<{ updated_at: number }>();
+	return String(row?.updated_at ?? 0);
+}
 
 /** what a write that went through hands back: a redirect and the marker riding on it. */
 type Redirected = { status: number; location: string | null; cookie: string | null };
@@ -346,13 +381,14 @@ async function post(
 	form: string,
 	id: string,
 	fields: Record<string, string | string[]>,
-	vars: Record<string, string> = READY
+	vars: Record<string, string> = READY,
+	version?: string
 ): Promise<{ redirect?: Redirected; failure?: Failure }> {
 	const response = await request(
 		new Request(`${ORIGIN}/admin/forms/${id}`, {
 			method: 'POST',
 			headers: { cookie: session },
-			body: bodyOf(form, fields)
+			body: bodyOf(form, version ?? (await drawnNow(id)), fields)
 		}),
 		{ env: envOf(vars) }
 	);
@@ -368,7 +404,13 @@ async function post(
 	}
 
 	const body = (await response.json()) as {
-		form: { result: { status?: string; error?: Record<string, string[]> } };
+		form: {
+			result: {
+				status?: string;
+				error?: Record<string, string[]>;
+				initialValue?: Record<string, unknown>;
+			};
+		};
 	};
 	const keyed = body.form.result.error ?? {};
 	const banner = keyed['']?.at(-1);
@@ -377,7 +419,8 @@ async function post(
 			status: response.status,
 			valid: body.form.result.status !== 'error',
 			errors: Object.fromEntries(Object.entries(keyed).filter(([field]) => field !== '')),
-			...(banner === undefined ? {} : { message: banner })
+			...(banner === undefined ? {} : { message: banner }),
+			typed: body.form.result.initialValue ?? {}
 		}
 	};
 }
@@ -797,6 +840,89 @@ describe('/admin/forms/[id] — a group that cannot be saved', () => {
 	});
 });
 
+describe('/admin/forms/[id] — a save from a page drawn before another save', () => {
+	/** what a save from a stale tab is refused with, up to the move it names. */
+	const STALE = 'Nothing was saved: this form has changed since this page was opened.';
+
+	it('refuses a name fix from a tab drawn while the form was a draft, and it stays live', async () => {
+		// two tabs on one form. the first was drawn while it was a draft; the second publishes it.
+		const tab = await runLoad();
+		const published = await post(NAME_FORM, FORM_ID, { name: 'General Fund', status: 'live' });
+		expect(published.redirect?.status).toBe(303);
+
+		// the first tab fixes a typo, with its status box still reading what it was drawn with.
+		const { failure, redirect } = await post(
+			NAME_FORM,
+			FORM_ID,
+			{ name: 'General Fund 2026', status: 'draft' },
+			READY,
+			String(tab.version)
+		);
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(409);
+		expect(failure?.valid).toBe(false);
+		// a banner saying what to do, and no box blamed: every box on it holds a value the operator
+		// may save once the page shows what moved.
+		expect(failure?.errors).toEqual({});
+		expect(failure?.message).toContain(STALE);
+		expect(failure?.message).toContain('Reload the page');
+		expect(failure?.typed).toMatchObject({ name: 'General Fund 2026', status: 'draft' });
+
+		const after = await readForm(db, FORM_ID);
+		expect(after?.status).toBe('live');
+		expect(after?.name).toBe('General Fund');
+	});
+
+	it('refuses every other group’s save from that tab too, and writes none of them', async () => {
+		// the same lost update without the status in it: a tab drawn before a colleague's save puts
+		// back whatever that save moved in the group it submits.
+		const tab = await runLoad();
+		await post(NAME_FORM, FORM_ID, submission(NAME_FORM));
+		const before = await readForm(db, FORM_ID);
+
+		for (const form of [PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM]) {
+			const { failure } = await post(form, FORM_ID, submission(form), READY, String(tab.version));
+			expect(failure?.status, form).toBe(409);
+			expect(failure?.message, form).toContain(STALE);
+		}
+		expect(await readForm(db, FORM_ID)).toEqual(before);
+	});
+
+	it('still says an archived form is archived, rather than that the tab is behind', async () => {
+		// both are a `where` the write missed; the archived one is the sentence an operator can act on.
+		const tab = await runLoad();
+		await archiveInPlace();
+		const { failure } = await post(
+			NAME_FORM,
+			FORM_ID,
+			submission(NAME_FORM),
+			READY,
+			String(tab.version)
+		);
+		expect(failure?.status).toBe(400);
+		expect(failure?.message).not.toContain(STALE);
+	});
+
+	it('refuses a body carrying no version, naming the box, and writes nothing', async () => {
+		const before = await readForm(db, FORM_ID);
+		const response = await request(
+			new Request(`${ORIGIN}${EDITOR_PATH}`, {
+				method: 'POST',
+				headers: { cookie: session },
+				body: (() => {
+					const body = bodyOf(NAME_FORM, '', submission(NAME_FORM));
+					body.delete(RECORD_VERSION);
+					return body;
+				})()
+			}),
+			{ env: envOf(READY) }
+		);
+		expect(response.status).toBe(400);
+		expect(await response.text()).toContain(RECORD_VERSION);
+		expect(await readForm(db, FORM_ID)).toEqual(before);
+	});
+});
+
 describe('/admin/forms/[id] — Live while a blocker stands', () => {
 	it('does not offer Live on the screen while the identity columns are blank', async () => {
 		// the select renders `EDITABLE_FORM_STATUSES` filtered by this flag. a blocker means
@@ -875,6 +1001,18 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 	});
 });
 
+describe('/admin/forms/[id] — a read a save makes that could not be answered', () => {
+	it('answers a failed Live re-check with the group’s own sentence, keeping what was typed', async () => {
+		const { failure } = await withoutTable('org_profile', () =>
+			post(NAME_FORM, FORM_ID, { name: 'Gala 2026', status: 'live' })
+		);
+		expect(failure?.status).toBe(500);
+		expect(failure?.message).toBe('Saving this group failed and nothing was changed. Try again.');
+		expect(failure?.typed).toMatchObject({ name: 'Gala 2026', status: 'live' });
+		expect((await readForm(db, FORM_ID))?.status).toBe('draft');
+	});
+});
+
 describe('/admin/forms/[id] — the sites tick boxes', () => {
 	/** the group's message, which is the only channel a rule about the sites has. */
 	function underTheSites(failure: Failure | undefined): string | undefined {
@@ -893,16 +1031,27 @@ describe('/admin/forms/[id] — the sites tick boxes', () => {
 
 	it('lands two saves made from one mounted screen, with no reload between them', async () => {
 		// the screen is drawn once and saved twice, which is an operator ticking a site, seeing the
-		// tick, and then ticking another. the body is the boxes and nothing else, so the second save
-		// is the first one's with a box moved and there is nothing on it that ages between the two.
-		const first = await post(ORIGINS_FORM, FORM_ID, {
-			allowed_origins: ['https://acme.org', 'https://give.acme.org']
-		});
+		// tick, and then ticking another. the one thing on the body that ages is the version, and the
+		// first save's redirect revalidates the loader, so the second carries the one that landing
+		// published rather than the one the screen was first drawn with.
+		const drawn = await runLoad();
+		const first = await post(
+			ORIGINS_FORM,
+			FORM_ID,
+			{ allowed_origins: ['https://acme.org', 'https://give.acme.org'] },
+			READY,
+			String(drawn.version)
+		);
 		expect(first.redirect?.status).toBe(303);
 
-		const second = await post(ORIGINS_FORM, FORM_ID, {
-			allowed_origins: ['https://give.acme.org']
-		});
+		const landing = await runLoad({ flash: held(first.redirect?.cookie) });
+		const second = await post(
+			ORIGINS_FORM,
+			FORM_ID,
+			{ allowed_origins: ['https://give.acme.org'] },
+			READY,
+			String(landing.version)
+		);
 		expect(second.failure).toBeUndefined();
 		expect(second.redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.allowedOrigins).toEqual(['https://give.acme.org']);

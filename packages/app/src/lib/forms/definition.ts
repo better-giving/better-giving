@@ -248,3 +248,16 @@ export function defineForm<S extends z.ZodObject>(form: FormDefinition<S>): Stat
  * row editor's Add or Remove under `__intent__`, and `INTENT` in `$lib/server/conform.ts` argues why.
  */
 export const WHICH_FORM = '__form_id__';
+
+/**
+ * the box a submitted body carries the version of the record its page was drawn from under.
+ *
+ * the version is the row's `updated_at` in unix ms, as the loader published it, and a write that
+ * replaces columns lands only while the row still carries it — so a tab drawn before another save
+ * is refused rather than putting back what that save moved. a box rather than a schema key,
+ * because every save moves it: a group seeded with it would be every group on the screen
+ * re-seeded — and its typed boxes emptied — by a save made in any one of them.
+ * what reads it is `submittedVersion` in `$lib/server/conform.ts`; `recordVersion` in
+ * `$lib/admin/use-admin-form.ts` is the box.
+ */
+export const RECORD_VERSION = '__version__';

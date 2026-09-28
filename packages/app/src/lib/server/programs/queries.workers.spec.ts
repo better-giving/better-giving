@@ -171,6 +171,14 @@ describe('readActivePrograms', () => {
 	});
 });
 
+/** the version a page drawn this moment would carry, read past drizzle. */
+async function at(id: string): Promise<Date> {
+	const row = await env.DB.prepare('select updated_at from program where id = ?')
+		.bind(id)
+		.first<{ updated_at: number }>();
+	return new Date(row?.updated_at ?? 0);
+}
+
 describe('updateProgram', () => {
 	it('writes both values and moves `updated_at`', async () => {
 		// `updated_at` is unix ms, so a create and an update inside one millisecond carry one
@@ -179,7 +187,9 @@ describe('updateProgram', () => {
 		const created = await made('Clean Water');
 		await env.DB.prepare('update program set updated_at = 0 where id = ?').bind(created.id).run();
 
-		expect(await updateProgram(db, created.id, input('Water', 'wells'))).toBe('saved');
+		expect(await updateProgram(db, created.id, await at(created.id), input('Water', 'wells'))).toBe(
+			'saved'
+		);
 
 		const after = await readProgram(db, created.id);
 		expect(after).toMatchObject({ name: 'Water', description: 'wells' });
@@ -192,7 +202,9 @@ describe('updateProgram', () => {
 		await made('Clean Water');
 		const gala = await made('Gala');
 
-		expect(await updateProgram(db, gala.id, input('Clean Water'))).toBe('duplicate_name');
+		expect(await updateProgram(db, gala.id, await at(gala.id), input('Clean Water'))).toBe(
+			'duplicate_name'
+		);
 		expect(await readProgram(db, gala.id)).toMatchObject({ name: 'Gala' });
 	});
 
@@ -200,7 +212,9 @@ describe('updateProgram', () => {
 		await made('Clean water');
 		const gala = await made('Gala');
 
-		expect(await updateProgram(db, gala.id, input('Clean Water'))).toBe('duplicate_name');
+		expect(await updateProgram(db, gala.id, await at(gala.id), input('Clean Water'))).toBe(
+			'duplicate_name'
+		);
 		expect(await readProgram(db, gala.id)).toMatchObject({ name: 'Gala' });
 	});
 
@@ -208,15 +222,32 @@ describe('updateProgram', () => {
 		// the index is over one column, so a row rewriting its own name is not a repeat of itself —
 		// worth pinning, because a guard written as a read in front of the write would say it is.
 		const water = await made('Clean Water', 'wells');
-		expect(await updateProgram(db, water.id, input('Clean Water', 'wells in the east'))).toBe(
-			'saved'
-		);
+		expect(
+			await updateProgram(
+				db,
+				water.id,
+				await at(water.id),
+				input('Clean Water', 'wells in the east')
+			)
+		).toBe('saved');
+	});
+
+	it('refuses a write drawn at a version the row has moved past, and writes nothing', async () => {
+		// backdated for the reason the first case gives: the first save's own stamp must not be able
+		// to land on the version both tabs were drawn at.
+		const water = await made('Clean Water', 'wells');
+		await env.DB.prepare('update program set updated_at = 0 where id = ?').bind(water.id).run();
+		const drawn = new Date(0);
+
+		expect(await updateProgram(db, water.id, drawn, input('Water', 'wells'))).toBe('saved');
+		expect(await updateProgram(db, water.id, drawn, input('Clean Water', 'wells'))).toBe('stale');
+		expect(await readProgram(db, water.id)).toMatchObject({ name: 'Water' });
 	});
 
 	it('reports an unknown id instead of writing anything', async () => {
-		expect(await updateProgram(db, '019fb100-0000-7000-8000-00000000dead', input('Water'))).toBe(
-			'gone'
-		);
+		expect(
+			await updateProgram(db, '019fb100-0000-7000-8000-00000000dead', new Date(0), input('Water'))
+		).toBe('gone');
 	});
 
 	it('refuses an archived program, which no write here can bring back', async () => {
@@ -226,7 +257,9 @@ describe('updateProgram', () => {
 		const created = await made('Gala');
 		await archiveProgram(db, created.id);
 
-		expect(await updateProgram(db, created.id, input('Gala 2025'))).toBe('gone');
+		expect(await updateProgram(db, created.id, await at(created.id), input('Gala 2025'))).toBe(
+			'gone'
+		);
 		expect(await readProgram(db, created.id)).toMatchObject({ name: 'Gala' });
 	});
 });

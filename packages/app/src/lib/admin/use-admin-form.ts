@@ -2,7 +2,12 @@ import { type DefaultValue, useForm } from '@conform-to/react';
 import { parseWithZod, type SubmissionResult } from '@conform-to/zod/v4';
 import { type MouseEventHandler, useEffect, useRef } from 'react';
 import type { z } from 'zod';
-import { type FormRejection, type StatedForm, WHICH_FORM } from '$lib/forms/definition';
+import {
+	type FormRejection,
+	RECORD_VERSION,
+	type StatedForm,
+	WHICH_FORM
+} from '$lib/forms/definition';
 
 // the browser half of the form seam: the one way an /admin screen mounts a form it stated.
 //
@@ -112,6 +117,22 @@ export function whichForm(id: string): {
 	readonly value: string;
 } {
 	return { type: 'hidden', name: WHICH_FORM, value: id };
+}
+
+/**
+ * the hidden box carrying the version of the record a form's page was drawn from.
+ *
+ * one per `<form>` whose save replaces columns, with the version the loader published — so a
+ * revalidation after any save hands every form on the screen the new one without touching what is
+ * typed in its boxes. what it is for is `$lib/forms/definition.ts`; what reads it is
+ * `submittedVersion` in `$lib/server/conform.ts`.
+ */
+export function recordVersion(version: number): {
+	readonly type: 'hidden';
+	readonly name: string;
+	readonly value: string;
+} {
+	return { type: 'hidden', name: RECORD_VERSION, value: String(version) };
 }
 
 /** what a screen may say about a form beyond the statement the action reads too. */

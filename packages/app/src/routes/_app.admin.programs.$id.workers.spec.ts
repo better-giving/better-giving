@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { WHICH_FORM } from '$lib/forms/definition';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { readProgram } from '$lib/server/programs/queries';
 import { insertProgram, ORIGIN, signIn } from '../program-routes.testing';
@@ -50,6 +50,7 @@ type Loaded = {
 	saved: 'details' | null;
 	archivedJustNow: boolean;
 	confirmArchive: boolean;
+	version: number;
 };
 
 function visit(options: { id?: string; query?: string; flash?: string } = {}): Promise<Response> {
@@ -74,13 +75,26 @@ type Failure = {
 };
 type Redirected = { status: number; location: string | null; cookie: string | null };
 
+/**
+ * the version a page drawn this moment carries: the row's own `updated_at`, read past drizzle.
+ * `0` when no row answers; the fixture row is inserted at `0` too.
+ */
+async function drawnNow(id: string): Promise<string> {
+	const row = await env.DB.prepare('select updated_at from program where id = ?')
+		.bind(id)
+		.first<{ updated_at: number }>();
+	return String(row?.updated_at ?? 0);
+}
+
 async function post(
 	form: string,
 	fields: Record<string, string> = {},
-	id = PROGRAM_ID
+	id = PROGRAM_ID,
+	version?: string
 ): Promise<{ redirect?: Redirected; failure?: Failure }> {
 	const body = new FormData();
 	body.set(WHICH_FORM, form);
+	body.set(RECORD_VERSION, version ?? (await drawnNow(id)));
 	for (const [field, value] of Object.entries(fields)) body.set(field, value);
 
 	const response = await request(
@@ -215,6 +229,33 @@ describe('/admin/programs/[id] save', () => {
 		expect(failure?.status).toBe(400);
 		expect(failure?.message).toContain('archived');
 		expect(await readProgram(db, PROGRAM_ID)).toMatchObject({ name: 'Clean Water' });
+	});
+});
+
+describe('/admin/programs/[id] — a save from a page drawn before another save', () => {
+	it('refuses it at a 409 saying to reload, and writes nothing', async () => {
+		const tab = await load();
+		const first = await post(DETAILS_FORM, { name: 'Water', description: 'wells' });
+		expect(first.redirect?.status).toBe(303);
+
+		const { failure, redirect } = await post(
+			DETAILS_FORM,
+			{ name: 'Clean Water', description: 'Wells in the east, and the north.' },
+			PROGRAM_ID,
+			String(tab.version)
+		);
+		expect(redirect).toBeUndefined();
+		expect(failure?.status).toBe(409);
+		expect(failure?.valid).toBe(false);
+		expect(failure?.errors).toEqual({});
+		expect(failure?.message).toContain(
+			'Nothing was saved: this program has changed since this page was opened.'
+		);
+		expect(failure?.message).toContain('Reload the page');
+		expect(await readProgram(db, PROGRAM_ID)).toMatchObject({
+			name: 'Water',
+			description: 'wells'
+		});
 	});
 });
 

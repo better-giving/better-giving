@@ -229,6 +229,8 @@ type SaveFailure = {
 	valid: boolean;
 	errors: Record<string, string[]>;
 	formErrors: string[];
+	/** the boxes as the rejection hands them back, which is what the screen re-renders them from. */
+	typed: Record<string, unknown>;
 };
 
 /** what a save that went through hands back: a redirect and the marker riding on it. */
@@ -263,7 +265,13 @@ async function save(fields: Record<string, string[]>, vars: Record<string, strin
 	}
 
 	const body = (await response.json()) as {
-		form: { result: { status?: string; error?: Record<string, string[]> } };
+		form: {
+			result: {
+				status?: string;
+				error?: Record<string, string[]>;
+				initialValue?: Record<string, unknown>;
+			};
+		};
 	};
 	const keyed = body.form.result.error ?? {};
 	return {
@@ -271,7 +279,8 @@ async function save(fields: Record<string, string[]>, vars: Record<string, strin
 			status: response.status,
 			valid: body.form.result.status !== 'error',
 			errors: Object.fromEntries(Object.entries(keyed).filter(([field]) => field !== '')),
-			formErrors: keyed[''] ?? []
+			formErrors: keyed[''] ?? [],
+			typed: body.form.result.initialValue ?? {}
 		} satisfies SaveFailure
 	};
 }
@@ -365,7 +374,35 @@ describe('/admin/forms/new load', () => {
 	});
 });
 
+/**
+ * runs `during` with `table` out of reach, and puts it back whatever happens.
+ *
+ * renamed rather than dropped, so the migrations' own constraints and the rows around it survive —
+ * the shape ./_app.admin.books.workers.spec.ts takes for a read that could not be answered.
+ */
+async function withoutTable<T>(table: string, during: () => Promise<T>): Promise<T> {
+	await env.DB.prepare(`alter table ${table} rename to ${table}_hidden`).run();
+	try {
+		return await during();
+	} finally {
+		await env.DB.prepare(`alter table ${table}_hidden rename to ${table}`).run();
+	}
+}
+
 describe('/admin/forms/new save', () => {
+	it('answers a read it could not make with its own sentence, keeping what was typed', async () => {
+		// the two reads in front of the create, either one out of reach.
+		for (const table of ['org_profile', 'site']) {
+			const { failure } = await withoutTable(table, () => save(submission()));
+			expect(failure?.status, table).toBe(500);
+			expect(failure?.formErrors, table).toEqual([
+				'Making this form failed and nothing was saved. Try again.'
+			]);
+			expect(failure?.typed, table).toMatchObject({ name: 'Gala 2026', status: 'live' });
+		}
+		expect(await readForms(db)).toEqual([]);
+	});
+
 	it('stores the form as it was configured', async () => {
 		await save(submission());
 		const [stored] = await readForms(db);
