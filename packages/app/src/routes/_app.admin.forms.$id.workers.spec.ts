@@ -357,8 +357,8 @@ type Failure = {
 
 /**
  * the version a page drawn this moment carries: the row's own `updated_at`, read past drizzle so
- * the fixture is not the query under test. `0` for an id no row carries, which is what the fixture
- * row is inserted with.
+ * the fixture is not the query under test. `0` when no row answers; the fixture row is inserted at
+ * `0` too.
  */
 async function drawnNow(id: string): Promise<string> {
 	const row = await env.DB.prepare('select updated_at from form where id = ?')
@@ -841,8 +841,8 @@ describe('/admin/forms/[id] — a group that cannot be saved', () => {
 });
 
 describe('/admin/forms/[id] — a save from a page drawn before another save', () => {
-	/** what the fixture row was inserted with, as the one version the stale tab below was drawn at. */
-	const DRAWN_AT = '`1970-01-01T00:00:00.000Z`';
+	/** what a save from a stale tab is refused with, up to the move it names. */
+	const STALE = 'Nothing was saved: this form has changed since this page was opened.';
 
 	it('refuses a name fix from a tab drawn while the form was a draft, and it stays live', async () => {
 		// two tabs on one form. the first was drawn while it was a draft; the second publishes it.
@@ -861,10 +861,10 @@ describe('/admin/forms/[id] — a save from a page drawn before another save', (
 		expect(redirect).toBeUndefined();
 		expect(failure?.status).toBe(409);
 		expect(failure?.valid).toBe(false);
-		// a banner naming the version the tab was drawn from and what to do, and no box blamed: every
-		// box on it holds a value the operator may save once the page shows what moved.
+		// a banner saying what to do, and no box blamed: every box on it holds a value the operator
+		// may save once the page shows what moved.
 		expect(failure?.errors).toEqual({});
-		expect(failure?.message).toContain(DRAWN_AT);
+		expect(failure?.message).toContain(STALE);
 		expect(failure?.message).toContain('Reload the page');
 		expect(failure?.typed).toMatchObject({ name: 'General Fund 2026', status: 'draft' });
 
@@ -883,7 +883,7 @@ describe('/admin/forms/[id] — a save from a page drawn before another save', (
 		for (const form of [PROGRAM_FORM, GIVING_FORM, ORIGINS_FORM]) {
 			const { failure } = await post(form, FORM_ID, submission(form), READY, String(tab.version));
 			expect(failure?.status, form).toBe(409);
-			expect(failure?.message, form).toContain(DRAWN_AT);
+			expect(failure?.message, form).toContain(STALE);
 		}
 		expect(await readForm(db, FORM_ID)).toEqual(before);
 	});
@@ -900,7 +900,7 @@ describe('/admin/forms/[id] — a save from a page drawn before another save', (
 			String(tab.version)
 		);
 		expect(failure?.status).toBe(400);
-		expect(failure?.message).not.toContain(DRAWN_AT);
+		expect(failure?.message).not.toContain(STALE);
 	});
 
 	it('refuses a body carrying no version, naming the box, and writes nothing', async () => {

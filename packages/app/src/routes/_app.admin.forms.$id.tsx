@@ -237,16 +237,11 @@ const ROW_GONE =
  * the sentence a group save answers with when the form has been saved since its page was drawn.
  *
  * answered at a 409 and keyed to no box: nothing typed is wrong, and the same body is refused
- * until the page is redrawn. it names the version the body carried, which is the value that went
- * stale, and the one move that clears it.
+ * until the page is redrawn, which is the one move it names.
  */
-function staleSave(version: Date): string {
-	return (
-		`Nothing was saved: this page shows the form as it was saved at \`${version.toISOString()}\`, ` +
-		'and it has been saved again since. Reload the page to see how it stands, then make this ' +
-		'change again.'
-	);
-}
+const STALE_SAVE =
+	'Nothing was saved: this form has changed since this page was opened. Reload the page to see ' +
+	'how it stands, then make this change again.';
 
 /**
  * the sentence a group save answers with when the write itself threw.
@@ -696,7 +691,7 @@ export async function action(args: Route.ActionArgs) {
 
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
-			return invalid(409, submission.reject({ formErrors: [staleSave(version)] }));
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
 		}
 
 		// POST-redirect-GET, so a reload does not re-post: the body in the browser's reload buffer
@@ -742,7 +737,7 @@ export async function action(args: Route.ActionArgs) {
 		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
-			return invalid(409, submission.reject({ formErrors: [staleSave(version)] }));
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
 		}
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'program');
 	}
@@ -779,7 +774,7 @@ export async function action(args: Route.ActionArgs) {
 
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
-			return invalid(409, submission.reject({ formErrors: [staleSave(version)] }));
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
 		}
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'giving');
 	}
@@ -841,7 +836,7 @@ export async function action(args: Route.ActionArgs) {
 
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
-			return invalid(409, submission.reject({ formErrors: [staleSave(version)] }));
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
 		}
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), 'origins');
 	}
@@ -1074,22 +1069,22 @@ function Editor({
 		defaultValue: editor.originsBoxes
 	});
 
-	// which group is being submitted right now, read off the body the router is carrying rather than
-	// off the navigation state alone: four forms post to one address, and a bare `submitting` would
-	// put the dots on all four at once.
+	// whether a save from this screen is in flight, over the whole navigation the press started and
+	// not its `submitting` half, which is the create screens' test. `useFormAction` is the address
+	// these forms post to, query included, and it stays on the navigation through the loading phase
+	// the redirect starts.
 	//
-	// the whole navigation the press started and not its `submitting` half, which is the create
-	// screens' test: a save answers with a redirect, so `submitting` ends before the landing renders
-	// and would leave the button pressable again in the middle of its own write — and a second press
-	// carries the version the first one moved past. `useFormAction` is the address these forms post
-	// to, query included, and it stays on the navigation through the loading phase the redirect
-	// starts.
+	// it holds all four presses and not only the pressed one. the version the forms carry is the
+	// row's, so any second press before the landing renders carries the version the first moved past
+	// and is refused as stale — and that 4xx cuts off the landing's revalidation, leaving the screen
+	// on the old seed and the old version until a reload.
 	const navigation = useNavigation();
 	const here = useFormAction();
-	const submitting =
-		navigation.state !== 'idle' && navigation.formAction === here
-			? navigation.formData?.get(WHICH_FORM)
-			: null;
+	const writing = navigation.state !== 'idle' && navigation.formAction === here;
+
+	// which group that save is, read off the body the router is carrying: the dots go on the button
+	// that was pressed, and the other three are held without them.
+	const submitting = writing ? navigation.formData?.get(WHICH_FORM) : null;
 
 	// `!actionData` on each, and the reason is the same for all four: a refused write is answered
 	// with a rejection rather than a redirect, so the marker the last landing published may still be
@@ -1149,7 +1144,13 @@ function Editor({
 					<FormNameFields
 						boxes={{ name: nameFields.name, status: nameFields.status }}
 						liveOffered={data.liveOffered}
-						footer={<SaveButton label="Save name and status" state={buttonState(nameSave)} />}
+						footer={
+							<SaveButton
+								label="Save name and status"
+								state={buttonState(nameSave)}
+								disabled={writing}
+							/>
+						}
 					/>
 				</Section>
 			</Form>
@@ -1168,7 +1169,13 @@ function Editor({
 						}}
 						programs={data.programs}
 						retired={data.retiredProgram}
-						footer={<SaveButton label="Save program" state={buttonState(programSave)} />}
+						footer={
+							<SaveButton
+								label="Save program"
+								state={buttonState(programSave)}
+								disabled={writing}
+							/>
+						}
 					/>
 				</Section>
 			</Form>
@@ -1196,7 +1203,11 @@ function Editor({
 						}}
 						currency={data.currency}
 						footer={
-							<SaveButton label="Save what a donor may give" state={buttonState(givingSave)} />
+							<SaveButton
+								label="Save what a donor may give"
+								state={buttonState(givingSave)}
+								disabled={writing}
+							/>
 						}
 					/>
 				</Section>
@@ -1219,7 +1230,11 @@ function Editor({
 						sites={data.sites}
 						donatePageOrigin={data.donatePageOrigin}
 						footer={
-							<SaveButton label="Save where it may be used" state={buttonState(originsSave)} />
+							<SaveButton
+								label="Save where it may be used"
+								state={buttonState(originsSave)}
+								disabled={writing}
+							/>
 						}
 					/>
 				</Section>
@@ -1403,9 +1418,9 @@ function ArchiveSection({
 }) {
 	const navigate = useNavigate();
 
-	// held for the whole navigation the press started, for the reason the groups' saves are: a
-	// second press during the redirect's loading phase is refused as already archived, and that
-	// refusal is not revalidated, so it would stand above a form still drawn as editable.
+	// held for the whole navigation the press started: a second press during the redirect's loading
+	// phase is refused as already archived, and that refusal is not revalidated, so it would stand
+	// above a form still drawn as editable.
 	const navigation = useNavigation();
 	const here = useFormAction();
 	const archiving =

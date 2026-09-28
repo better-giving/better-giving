@@ -107,16 +107,11 @@ const ROW_GONE =
  * what a save says when the cause has been saved since its page was drawn.
  *
  * answered at a 409 and keyed to no box: nothing typed is wrong, and the same body is refused
- * until the page is redrawn. it names the version the body carried, which is the value that went
- * stale, and the one move that clears it.
+ * until the page is redrawn, which is the one move it names.
  */
-function staleSave(version: Date): string {
-	return (
-		`Nothing was saved: this page shows the program as it was saved at \`${version.toISOString()}\`, ` +
-		'and it has been saved again since. Reload the page to see how it stands, then make this ' +
-		'change again.'
-	);
-}
+const STALE_SAVE =
+	'Nothing was saved: this program has changed since this page was opened. Reload the page to ' +
+	'see how it stands, then make this change again.';
 
 /** what a save says when the write itself threw. */
 const WRITE_FAILED = 'Saving this program failed and nothing was changed. Try again.';
@@ -265,7 +260,7 @@ export async function action(args: Route.ActionArgs) {
 		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
-			return invalid(409, submission.reject({ formErrors: [staleSave(version)] }));
+			return invalid(409, submission.reject({ formErrors: [STALE_SAVE] }));
 		}
 
 		// POST-redirect-GET, so a reload does not re-post: the body in the browser's reload buffer
@@ -550,9 +545,9 @@ function ArchiveSection({
 }) {
 	const navigate = useNavigate();
 
-	// held for the whole navigation the press started, for the reason the save is: a second press
-	// during the redirect's loading phase is refused as already archived, and that refusal is not
-	// revalidated, so it would stand above a cause still drawn as editable.
+	// held for the whole navigation the press started: a second press during the redirect's loading
+	// phase is refused as already archived, and that refusal is not revalidated, so it would stand
+	// above a cause still drawn as editable.
 	const navigation = useNavigation();
 	const here = useFormAction();
 	const archiving =

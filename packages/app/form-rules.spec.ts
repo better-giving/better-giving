@@ -9,7 +9,8 @@ import {
 	FORM_SEAM,
 	formIdViolations,
 	formMountViolations,
-	serverSchemaViolations
+	serverSchemaViolations,
+	unversionedWriteViolations
 } from './form-rules';
 
 // the form layer's rules, held against the tree that is supposed to keep them.
@@ -478,5 +479,65 @@ describe('a schema the browser runs lives outside $lib/server', () => {
 
 	it('is where the tree keeps them', () => {
 		expect(acrossTheTree(serverSchemaViolations)).toEqual([]);
+	});
+});
+
+describe('a save that replaces a record’s columns is written against the version it was drawn from', () => {
+	// the version rides in the body and the write compares it in its `where`, so a tab drawn before
+	// another save is refused rather than putting back what that save moved. the write is what can
+	// be read for it: an `update*` from a queries module, called from a module holding a form,
+	// handed the version `submittedVersion` read off the body.
+	const SEAM = `import { invalid, parseForm, submittedVersion } from '$lib/server/conform';`;
+	const WRITE = `import { updateThing } from '$lib/server/things/queries';`;
+
+	it('refuses a write handed no version', () => {
+		const source = `
+			${SEAM}
+			${WRITE}
+			export async function action() {
+				await updateThing(db, id, parsed.value);
+			}
+		`;
+		expect(unversionedWriteViolations(source)).toEqual(['updateThing(db, id, parsed.value)']);
+	});
+
+	it('refuses a version the body never carried', () => {
+		// a clock read passes the type check and compares against nothing the page was drawn from.
+		const source = `
+			${SEAM}
+			${WRITE}
+			export async function action() {
+				await updateThing(db, id, new Date(), parsed.value);
+			}
+		`;
+		expect(unversionedWriteViolations(source)).toEqual([
+			'updateThing(db, id, new Date(), parsed.value)'
+		]);
+	});
+
+	it('takes the version `submittedVersion` read off the body', () => {
+		const source = `
+			${SEAM}
+			${WRITE}
+			export async function action() {
+				const version = submittedVersion(body);
+				await updateThing(db, id, version, parsed.value);
+			}
+		`;
+		expect(unversionedWriteViolations(source)).toEqual([]);
+	});
+
+	it('leaves a module holding no form alone', () => {
+		const source = `
+			${WRITE}
+			export async function settle() {
+				await updateThing(db, id, parsed.value);
+			}
+		`;
+		expect(unversionedWriteViolations(source)).toEqual([]);
+	});
+
+	it('is how the tree saves', () => {
+		expect(acrossTheTree(unversionedWriteViolations)).toEqual([]);
 	});
 });

@@ -424,12 +424,14 @@ export async function updateFormOrigins(
 }
 
 /**
- * what a save of the program group did, which is three answers rather than two.
+ * what a save of the program group did, which is four answers: the three every group write has
+ * (`FormSave`), and one of its own.
  *
  * `unknown_program` is its own word because it is its own sentence on the screen, and it is the
- * one of the three an operator can fix without leaving the page: `gone` says this form is not
- * there to write to, where this says the cause it was pointed at is not one this deployment still
- * offers.
+ * one of the four an operator can fix without leaving the page: `gone` says this form is not there
+ * to write to and `stale` that the page is behind it, where this says the cause it was pointed at
+ * is not one this deployment still offers. it is decided before the write, so a stale tab pinning
+ * a retired cause hears about the cause first.
  */
 export type ProgramSave = FormSave | 'unknown_program';
 

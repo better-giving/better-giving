@@ -56,6 +56,14 @@ import {
 // replace. `submittedForm` below is that reading; `whichForm` in `$lib/admin/use-admin-form.ts`
 // is the box, and `$lib/forms/definition.ts` is where the name is stated for both halves.
 //
+// **a save that replaces a record's columns is written against the version its page was drawn
+// from.** the loader publishes the row's `updated_at`, the form carries it in `recordVersion`'s
+// box (`$lib/admin/use-admin-form.ts`), `submittedVersion` below reads it, and the write compares
+// it in its own `where` — so a tab drawn before another save is refused at a 409 rather than
+// putting back what that save moved, and there is no read in front of the write for a race to
+// fall between. the version is a box and not a schema key because every save moves it, and
+// `$lib/forms/definition.ts` argues what seeding a group with it would cost.
+//
 // **no `z.coerce.*` anywhere.** it is javascript coercion, and the values it silently accepts are
 // exactly the ones a form sends: the string `'false'` coerces to true, an empty box to 0.
 // conform's own coercion is not that and is left on — it strips an empty box to `undefined`,
@@ -93,7 +101,7 @@ import {
 // browser's half of this seam is `$lib/admin/use-admin-form.ts`, which mounts the form the screen
 // stated and is the only module in this app that calls conform's `useForm`.
 //
-// `packages/app/form-rules.spec.ts` is what holds the tree to the five of these a gate can read
+// `packages/app/form-rules.spec.ts` is what holds the tree to the six of these a gate can read
 // off the source; the rest are held by ./conform.spec.ts, because a body that never carried a box
 // and a rejection that still claims to be valid are shapes no file states.
 // ---------------------------------------------------------------------------

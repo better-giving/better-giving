@@ -2,7 +2,7 @@
  * the form layer's rules, as far as source text can decide them.
  *
  * `src/lib/server/conform.ts` states every rule and is where each one is argued; these are the
- * five a file can be read for rather than a submission. six checks over those five: the id rule is
+ * six a file can be read for rather than a submission. seven checks over those six: the id rule is
  * held from both ends, because a form stating one is no use while a screen may still mount a second
  * form of its own beside it. ./form-rules.spec.ts is what runs them — over a fixture that breaks
  * each rule, and over the tree.
@@ -257,19 +257,12 @@ export function bareFailureViolations(source: string): string[] {
 }
 
 /**
- * every `$lib/server/**` binding the browser half of a form reaches for.
- *
- * everything handed to these calls is evaluated in the browser — the validator most of all — and a
- * component cannot import from `$lib/server/**` at all. a route module importing server code for
- * its own loader is not this, and is left alone.
- *
- * four calls, because a schema reaches the browser by more than one road: `useForm` and
- * `parseWithZod` are the seam's own, `defineForm` is where a screen names the schema both halves
- * read, and `useAdminForm` is where it seeds the boxes from a record.
+ * every local name a module binds from an import whose specifier matches `from`, as the module
+ * spells it — past `as`, and with `type`-only clauses left out.
  */
-export function serverSchemaViolations(source: string): string[] {
-	const imports = source.matchAll(/import\s+([^;]*?)\s+from\s+'\$lib\/server\/[^']*'/g);
-	const bound = [...imports].flatMap((found) =>
+function importedNames(source: string, from: RegExp): string[] {
+	const imports = source.matchAll(new RegExp(`import\\s+([^;]*?)\\s+from\\s+${from.source}`, 'g'));
+	return [...imports].flatMap((found) =>
 		(found[1] as string)
 			.replace(/[{}]/g, ' ')
 			.split(',')
@@ -283,6 +276,21 @@ export function serverSchemaViolations(source: string): string[] {
 			)
 			.filter((name) => name !== '' && name !== 'type' && /^[A-Za-z_$][\w$]*$/.test(name))
 	);
+}
+
+/**
+ * every `$lib/server/**` binding the browser half of a form reaches for.
+ *
+ * everything handed to these calls is evaluated in the browser — the validator most of all — and a
+ * component cannot import from `$lib/server/**` at all. a route module importing server code for
+ * its own loader is not this, and is left alone.
+ *
+ * four calls, because a schema reaches the browser by more than one road: `useForm` and
+ * `parseWithZod` are the seam's own, `defineForm` is where a screen names the schema both halves
+ * read, and `useAdminForm` is where it seeds the boxes from a record.
+ */
+export function serverSchemaViolations(source: string): string[] {
+	const bound = importedNames(source, /'\$lib\/server\/[^']*'/);
 	if (bound.length === 0) return [];
 
 	// every call the browser side of a form is written as. hoisting the validator out of `useForm`
@@ -295,4 +303,27 @@ export function serverSchemaViolations(source: string): string[] {
 		...callSites(source, 'parseWithZod')
 	].join('\n');
 	return bound.filter((name) => new RegExp(`\\b${name}\\b`).test(browserSide));
+}
+
+/**
+ * every write a module holding a form makes without the version its page was drawn from.
+ *
+ * a write is an `update*` bound from a queries module, and what it must be handed is a name bound
+ * from `submittedVersion(…)` in the same module — so a version the body never carried, a clock
+ * read or a literal, is refused as surely as none at all. what makes a module subject is that it
+ * reaches for the form seam, as `bareFailureViolations` reads it.
+ */
+export function unversionedWriteViolations(source: string): string[] {
+	if (!/from\s+'[^']*\/conform'/.test(source)) return [];
+	const writes = importedNames(source, /'[^']*\/queries'/).filter((name) =>
+		/^update[A-Z]/.test(name)
+	);
+	const versions = [
+		...source.matchAll(/\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*submittedVersion\s*\(/g)
+	].map((found) => found[1] as string);
+	return writes.flatMap((name) =>
+		callSites(source, name)
+			.filter((call) => !versions.some((version) => new RegExp(`\\b${version}\\b`).test(call)))
+			.map((call) => `${name}(${call})`)
+	);
 }

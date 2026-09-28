@@ -77,7 +77,7 @@ type Redirected = { status: number; location: string | null; cookie: string | nu
 
 /**
  * the version a page drawn this moment carries: the row's own `updated_at`, read past drizzle.
- * `0` for an id no row carries, which is what the fixture row is inserted with.
+ * `0` when no row answers; the fixture row is inserted at `0` too.
  */
 async function drawnNow(id: string): Promise<string> {
 	const row = await env.DB.prepare('select updated_at from program where id = ?')
@@ -233,7 +233,7 @@ describe('/admin/programs/[id] save', () => {
 });
 
 describe('/admin/programs/[id] — a save from a page drawn before another save', () => {
-	it('refuses it at a 409 naming the version it was drawn from, and writes nothing', async () => {
+	it('refuses it at a 409 saying to reload, and writes nothing', async () => {
 		const tab = await load();
 		const first = await post(DETAILS_FORM, { name: 'Water', description: 'wells' });
 		expect(first.redirect?.status).toBe(303);
@@ -248,7 +248,9 @@ describe('/admin/programs/[id] — a save from a page drawn before another save'
 		expect(failure?.status).toBe(409);
 		expect(failure?.valid).toBe(false);
 		expect(failure?.errors).toEqual({});
-		expect(failure?.message).toContain('`1970-01-01T00:00:00.000Z`');
+		expect(failure?.message).toContain(
+			'Nothing was saved: this program has changed since this page was opened.'
+		);
 		expect(failure?.message).toContain('Reload the page');
 		expect(await readProgram(db, PROGRAM_ID)).toMatchObject({
 			name: 'Water',
