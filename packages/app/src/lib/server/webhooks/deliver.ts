@@ -32,8 +32,8 @@ import { signedHeaders } from './sign';
 //              and the row's outcome in one batch.
 // a failed row is kept, for the destination's recent deliveries.
 //
-// **a paused or archived destination's rows are not claimed.** a paused one's wait, owed, until it
-// is resumed; an archived one is sent nothing more.
+// **a paused or archived destination's rows are not claimed.** a paused one's rows wait, owed,
+// until it is resumed; an archived one is sent nothing more.
 //
 // the run's scheduled time decides what is due and when a failure is next due, so steps line up
 // with the cron; the wall clock stamps each attempt's `webhook-timestamp` and `delivered_at`, the
