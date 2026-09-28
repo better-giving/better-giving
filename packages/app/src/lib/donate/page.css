@@ -859,6 +859,113 @@ body {
 	visibility: visible;
 }
 
+/* hero and image: a stored photo cropped to its block's frame, so the frame holds its place before
+   the bytes arrive and a photo of any shape fills it. on a phone a `wide` photo runs edge to edge,
+   and a hero opening the page meets the masthead. from the widest breakpoint a wide hero in a flow
+   runs the page's full width, one in the box's split keeps to its column with the card's corner,
+   and a wide image in a flow stands out past the column. the cover is the hero under the cover
+   layout, its title over the photo's lower edge on `--page-scrim` in the one ink the header
+   measures there. */
+.page-photo {
+	display: block;
+	inline-size: 100%;
+	block-size: auto;
+	object-fit: cover;
+}
+
+.page-hero[data-variant='wide'] .page-photo {
+	aspect-ratio: 4 / 3;
+}
+
+.page-hero[data-variant='framed'] .page-photo,
+.page-image .page-photo {
+	aspect-ratio: 3 / 2;
+	border-radius: var(--_r);
+}
+
+.page-hero[data-variant='wide'],
+.page-image[data-variant='wide'] {
+	margin-inline: calc(-1 * var(--page-gutter));
+}
+
+.page-image[data-variant='wide'] .page-photo {
+	border-radius: 0;
+}
+
+.page-body > .page-flow:first-child > .page-block[data-block='hero']:first-child,
+.page-body > .page-split > .page-lead:first-child > .page-block[data-block='hero']:first-child {
+	margin-block-start: calc(-1 * var(--page-gap-lead));
+}
+
+.page-hero[data-variant='cover'] {
+	position: relative;
+}
+
+.page-hero[data-variant='cover'] .page-photo {
+	aspect-ratio: 4 / 3;
+	min-block-size: 26rem; /* raw-length-ok: the cover's height, a shape */
+}
+
+.page-hero-over {
+	position: absolute;
+	inset: auto 0 0;
+	padding-block: 5rem 2rem; /* raw-length-ok: the scrim's run above and under the title, a shape */
+	background: var(--page-scrim);
+	color: var(--_n1);
+}
+
+.page-hero-over .page-title-lede {
+	color: var(--_n1);
+}
+
+@container page (min-width: 60rem) {
+	.page-flow > .page-block[data-block='hero'] > .page-in:has(> .page-hero[data-variant='wide']) {
+		max-inline-size: none;
+	}
+
+	.page-flow > .page-block[data-block='hero'] .page-hero[data-variant='wide'] .page-photo {
+		aspect-ratio: 21 / 8;
+	}
+
+	.page-split .page-hero[data-variant='wide'],
+	.page-image[data-variant='wide'] {
+		margin-inline: 0;
+	}
+
+	.page-split .page-hero[data-variant='wide'] .page-photo {
+		aspect-ratio: 16 / 9;
+	}
+
+	.page-split .page-hero .page-photo,
+	.page-image[data-variant='wide'] .page-photo {
+		border-radius: var(--_r);
+	}
+
+	.page-flow > .page-block[data-block='image'] > .page-in:has(> .page-image[data-variant='wide']) {
+		max-inline-size: calc(
+			var(--page-width) +
+			8rem /* raw-length-ok: the wide image's overhang, a shape */
+		);
+	}
+
+	.page-body > .page-split > .page-lead:first-child > .page-block[data-block='hero']:first-child {
+		margin-block-start: 0;
+	}
+
+	.page-hero[data-variant='cover'] .page-photo {
+		aspect-ratio: 21 / 8;
+		min-block-size: 30rem; /* raw-length-ok: the cover's height, a shape */
+	}
+
+	.page-hero-over {
+		padding-block-end: 1.5rem; /* raw-length-ok: the scrim's run under the title, a shape */
+	}
+
+	.page-hero-over .page-in {
+		padding-inline-end: calc(var(--page-box) + var(--page-col-gap) + var(--page-gutter));
+	}
+}
+
 /* goal bar */
 .page-goal-figures {
 	display: flex;
