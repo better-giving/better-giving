@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSTING_ACCOUNTS, postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -21,6 +21,7 @@ import { recordReversal } from './reverse';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { failureIsNewsToTheDonor, settleDelivery, settleTransaction } from './settle';
 import { soleProcessor } from '../payments/processors.testing';
+import { createDestination } from '../webhooks/destinations';
 
 // the settlement half, against a real D1: what a verified delivery does to the payment row and to
 // the books.
@@ -2351,5 +2352,48 @@ describe('settleDelivery() — what a settled gift owes a listening Zap', () => 
 			{ trigger: 'new_donor', payment_id: gift.paymentId },
 			{ trigger: 'new_gift', payment_id: gift.paymentId }
 		]);
+	});
+});
+
+describe('settleDelivery() — what a settled gift owes a listening destination', () => {
+	// per-file storage: the destinations are put up and taken down around these cases alone.
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	it('owes each destination taking gift.made one row about the gift, in the commit that posted it', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
+		await createDestination(db, { url: 'https://crm.example.org/b', events: ['gift.made'] });
+		await createDestination(db, { url: 'https://crm.example.org/c', events: ['gift.refunded'] });
+		const gift = await pendingGift();
+
+		await settleDelivery(deps(), DELIVERY);
+
+		const { results } = await env.DB.prepare(
+			`select d.url, w.event, w.subject_id, w.status from webhook_delivery w
+			 join webhook_destination d on d.id = w.destination_id order by d.url`
+		).all();
+		expect(results).toEqual(
+			['https://crm.example.org/a', 'https://crm.example.org/b'].map((url) => ({
+				url,
+				event: 'gift.made',
+				subject_id: gift.paymentId,
+				status: 'pending'
+			}))
+		);
+	});
+
+	it('owes nothing a second time when the same settlement is delivered again', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
+		await pendingGift();
+		await settleDelivery(deps(), DELIVERY);
+
+		const again = await settleDelivery(deps(), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const { results } = await env.DB.prepare('select id from webhook_delivery').all();
+		expect(results).toHaveLength(1);
 	});
 });

@@ -8,6 +8,7 @@ import { parseContact, type ParsedContact } from '../contacts/contact-input';
 import { listContacts, readDonorSummary } from '../contacts/queries';
 import { findEntryGroup } from '../ledger/queries';
 import { listDonations, readGiftsByMonth } from './queries';
+import { createDestination } from '../webhooks/destinations';
 import { recordGiftInHand, type GiftInHand } from './record-in-hand';
 
 // the hand-entry write, against a real D1 and read back through the screens' own reads.
@@ -245,6 +246,32 @@ describe('recordGiftInHand() — what the gift owes a listening Zap', () => {
 		).all();
 		expect(results).toEqual([
 			{ event_id: input.paymentId, payment_id: input.paymentId, status: 'pending' }
+		]);
+	});
+});
+
+describe('recordGiftInHand() — what the gift owes a listening destination', () => {
+	// per-file storage, as above: the destination is put up and taken down around this case alone.
+	beforeEach(async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
+	});
+
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	it('owes the destination a gift made in the commit that recorded it', async () => {
+		const input = gift();
+
+		await recordGiftInHand(db, input);
+
+		const { results } = await env.DB.prepare(
+			'select event, subject_id, status from webhook_delivery'
+		).all();
+		expect(results).toEqual([
+			{ event: 'gift.made', subject_id: input.paymentId, status: 'pending' }
 		]);
 	});
 });

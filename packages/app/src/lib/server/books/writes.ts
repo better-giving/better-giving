@@ -4,16 +4,18 @@ import type { Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { type Posting, postingStatements } from '../ledger/posting';
 import type { ReversalKind } from '../payments/provider';
+import { webhookStatements } from '../webhooks/events';
 import { giftRefundedStatements, zapierStatements } from '../zapier/events';
 
 // the one place a posting becomes everything its batch owes: the entry group and its lines, the
-// QuickBooks queue row (../accounting/outbox.ts), and the rows each listening Zap is owed
-// (../zapier/events.ts). a writer that puts money into the books takes its statements from here and
-// from nowhere else — ./sole-composer.spec.ts fails on an import of those modules' builders
+// QuickBooks queue row (../accounting/outbox.ts), the rows each listening Zap is owed
+// (../zapier/events.ts), and the rows each listening webhook destination is owed
+// (../webhooks/events.ts). a writer that puts money into the books takes its statements from here
+// and from nowhere else — ./sole-composer.spec.ts fails on an import of those modules' builders
 // outside this directory.
 //
 // what it hides from a writer: the foreign-key order, the null fee, which postings owe QuickBooks
-// and under which gate, and which Zap triggers a money event fires.
+// and under which gate, and which Zap triggers and webhook events a money event fires.
 //
 // the contract every function here keeps:
 //
@@ -23,8 +25,9 @@ import { giftRefundedStatements, zapierStatements } from '../zapier/events';
 //     the statements themselves, inside the batch.
 //   - **appended after the caller's statement that writes the payment row it names**, where there
 //     is one: `zapier_delivery.payment_id` points at it.
-//   - **in order: the groups and their lines, then the queue rows, then the Zap rows.**
-//     `quickbooks_sync.entry_group_id` points at a group, and D1 checks a foreign key per statement.
+//   - **in order: the groups and their lines, then the queue rows, then the Zap and destination
+//     rows.** `quickbooks_sync.entry_group_id` points at a group, and D1 checks a foreign key per
+//     statement.
 //   - **it never commits.** each caller keeps its own `batch()` and its own reading of a rejection,
 //     because they read `SQLITE_*` codes differently.
 //   - **it throws only on a posting in the wrong slot** — a source type the slot does not take, a
@@ -47,7 +50,10 @@ export type SettledGiftEntry = {
 
 const GIFT_BUILDERS = '$lib/server/donations/entries.ts';
 
-/** a settled gift's groups, the queue row its charge owes, and its `new_gift` and `new_donor` rows. */
+/**
+ * a settled gift's groups, the queue row its charge owes, its `new_gift` and `new_donor` rows, and
+ * its `gift.made` rows.
+ */
 export function settledGiftWrites(db: Db, gift: SettledGiftEntry): Writes {
 	const { charge, fee } = gift;
 	const paymentId = charge.group.sourceId;
@@ -57,7 +63,8 @@ export function settledGiftWrites(db: Db, gift: SettledGiftEntry): Writes {
 		...postingStatements(db, charge),
 		...(fee === null ? [] : postingStatements(db, fee)),
 		...outboxStatements(db, [charge, fee]),
-		...zapierStatements(db, { paymentId, contactId: gift.contactId })
+		...zapierStatements(db, { paymentId, contactId: gift.contactId }),
+		...webhookStatements(db, { paymentId })
 	];
 }
 
