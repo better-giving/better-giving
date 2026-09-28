@@ -149,14 +149,15 @@ func TestTheReadyFaceCarriesTheAddressAndWhatTheDeploymentSaid(t *testing.T) {
 	}
 }
 
-// the donor-facing page is a route on this deployment's own worker and no second one is deployed
-// (CLAUDE.md → Product surface), so where it answers is where the deployment answers.
+// the donor-facing page is the one route `/donate` on this deployment's own worker and no second
+// one is deployed (CLAUDE.md → Product surface), so it answers at that path on the deployment's
+// own address.
 func TestTheReadyFaceCarriesTheDeploymentsOwnDonationPage(t *testing.T) {
 	read := reading(t, whole(), true)
-	if read.DonatePage != read.Face.Address {
+	if read.DonatePage != read.Face.Address+"/donate" {
 		t.Fatalf("donation page %q, and the deployment answers at %q", read.DonatePage, read.Face.Address)
 	}
-	if read.DonatePage != "https://better-giving.hound-haven.workers.dev" {
+	if read.DonatePage != "https://better-giving.hound-haven.workers.dev/donate" {
 		t.Fatalf("donation page %q", read.DonatePage)
 	}
 }
