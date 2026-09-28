@@ -1,7 +1,7 @@
 import { Mark } from '../status/Mark.jsx';
 
 /**
- * @import { ComponentType, ReactNode } from 'react'
+ * @import { ComponentType, MouseEventHandler, ReactNode } from 'react'
  * @import { PointerState } from '../closed-sets.js'
  * @import { MarkName } from '../status/Mark.jsx'
  *
@@ -13,6 +13,7 @@ import { Mark } from '../status/Mark.jsx';
  *   className: string;
  *   'aria-current'?: 'page' | 'true' | undefined;
  *   title?: string | undefined;
+ *   onClick?: MouseEventHandler<HTMLAnchorElement> | undefined;
  *   children?: ReactNode | undefined;
  * }} DestinationLinkProps
  *
@@ -39,6 +40,10 @@ import { Mark } from '../status/Mark.jsx';
  *   off the screen.
  * @property {boolean | undefined} [groupEnd] the last entry of a headed group in the rail, which
  *   the column stands a step apart from what follows.
+ * @property {boolean | undefined} [offBar] a destination the phone's bar leaves to its More sheet:
+ *   drawn in the column at the wide width and hidden from the bar below it.
+ * @property {MouseEventHandler<HTMLAnchorElement> | undefined} [onClick] a press on the cell, before
+ *   it navigates. the More sheet closes itself on it.
  * @property {boolean | 'page' | 'section' | undefined} [current] where the reader is, and which
  *   kind of currency the cell announces. `page` — which bare `true` is — is the address itself;
  *   `section` is a destination that only contains it, which is every rail cell standing over a
@@ -77,13 +82,16 @@ export function DestinationCell({
 	status,
 	title,
 	groupEnd = false,
+	offBar = false,
 	current,
 	state,
-	link
+	link,
+	onClick
 }) {
 	const cls = [
 		'adm-dest',
 		groupEnd ? 'adm-dest--groupend' : '',
+		offBar ? 'adm-dest--offbar' : '',
 		current ? 'is-current' : '',
 		state ? `is-${state}` : ''
 	]
@@ -95,6 +103,7 @@ export function DestinationCell({
 			className={cls}
 			href={href}
 			title={title}
+			onClick={onClick}
 			aria-current={current ? (current === 'section' ? 'true' : 'page') : undefined}
 		>
 			{mark === undefined ? null : typeof mark === 'string' ? (

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { Dialog } from '@ark-ui/react/dialog';
+import { useEffect, useRef, useState } from 'react';
 import { DestinationCell } from './DestinationCell.jsx';
 import { Button } from '../controls/Button.jsx';
 
@@ -18,6 +19,9 @@ import { Button } from '../controls/Button.jsx';
  * specimen wants and no mounted rail does.
  * @property {DestinationMark | undefined} [mark] the column's mark; the bar draws none.
  * @property {DestinationStatus | undefined} [status]
+ * @property {boolean | undefined} [bar] a tab on the phone's bar. where any destination in the rail
+ * carries it, the bar draws those and a More tab opening a sheet with the rest; where none does,
+ * the bar draws every destination. the column at the wide width draws every one either way.
  */
 
 /**
@@ -101,12 +105,15 @@ import { Button } from '../controls/Button.jsx';
 const RAIL_STORAGE_KEY = 'bg-operator-rail';
 
 /* two arrangements from one markup order. below the shell's breakpoint: an identity band across
-   the top and a bar of tabs fixed to the foot of the viewport, one tab per destination on a row
-   that never wraps — a tab is an equal share of the width whatever the count, so what bounds how
-   many the bar holds is the share each is left with at the 375px floor rather than a number
-   written anywhere. the bar is flat: groups, marks and headings are the column's. above it: a
-   left column with the identity and the collapse toggle at its head, the grouped destinations,
-   and the foot; the page is a panel filling the rest of the window beside it.
+   the top and a bar of tabs fixed to the foot of the viewport on a row that never wraps — a tab is
+   an equal share of the width whatever the count, so what bounds how many the bar holds is the
+   share each is left with at the 375px floor rather than a number written anywhere. a rail whose
+   destinations state `bar` puts those on it and ends it with More, which opens a sheet holding the
+   rest in the column's order, under the column's rules and headings; a rail stating none has a tab
+   per destination. the bar itself is flat: groups, marks and headings are the column's and the
+   sheet's. above it: a left column with the identity and the collapse toggle at its head, the
+   grouped destinations, and the foot; the page is a panel filling the rest of the window beside
+   it.
    the identity slot renders the operating organisation's legal name — there is no logo. */
 /** @param {AppShellProps} props */
 export function AppShell({
@@ -135,6 +142,23 @@ export function AppShell({
 	   render that differed from it would not hydrate. storage can be refused (a blocked or private
 	   window), and then the rail simply forgets the choice. */
 	const [collapsed, setCollapsed] = useState(false);
+	const [sheetOpen, setSheetOpen] = useState(false);
+	/** @type {import('react').RefObject<HTMLButtonElement | null>} */
+	const moreTab = useRef(null);
+
+	/* the sheet closes when the tab that opened it stops being drawn — a window widened past the
+	   shell's breakpoint, a tablet turned on its side — because a modal left open under a column
+	   that has no More holds the keyboard in something nobody can see. the tab's own boxes are the
+	   signal: `display: none` leaves it none, and no width is restated here. */
+	useEffect(() => {
+		const tab = moreTab.current;
+		if (!sheetOpen || tab === null) return;
+		const watch = new ResizeObserver(() => {
+			if (tab.getClientRects().length === 0) setSheetOpen(false);
+		});
+		watch.observe(tab);
+		return () => watch.disconnect();
+	}, [sheetOpen]);
 
 	useEffect(() => {
 		try {
@@ -161,6 +185,13 @@ export function AppShell({
 	   tint off a bare `[aria-current]` and off `.is-current`, and neither reads the kind. */
 	/** @type {Whereabouts | undefined} */
 	const at = typeof current === 'string' ? { label: current, kind: 'page' } : current;
+
+	const barred = groups.some((group) => group.destinations.some((d) => d.bar));
+	const sheet = barred ? offBar(groups) : [];
+	/* the tab stands for every destination it opens, so it claims containment while the reader is
+	   in any of them: it is never the page itself. */
+	const inSheet =
+		at !== undefined && sheet.some((group) => group.destinations.some((d) => d.label === at.label));
 
 	/* settled once and drawn in both slots, so the two cannot disagree about which control the way
 	   out is. the specimen's own button carries `.adm-signout` for the same reason a caller's node
@@ -208,6 +239,49 @@ export function AppShell({
 		</div>
 	);
 
+	const rail = (
+		<nav className="adm-rail" aria-label="Sections">
+			<div className="adm-rail__identity">
+				{lead}
+				{name}
+				<Button
+					type="button"
+					variant="quiet"
+					size="sm"
+					mark="panel-left"
+					className="adm-rail__toggle"
+					aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+					aria-expanded={!collapsed}
+					onClick={toggle}
+				/>
+			</div>
+			<div className="adm-rail__cells">
+				{groups.map((group, index) => (
+					<RailGroup
+						key={group.heading ?? `group-${index}`}
+						group={group}
+						rule={ruleBefore(group, groups[index - 1])}
+						at={at}
+						link={link}
+						collapsed={collapsed}
+						barred={barred}
+					/>
+				))}
+				{barred ? (
+					<Dialog.Trigger
+						ref={moreTab}
+						className="adm-dest adm-rail__more"
+						aria-current={inSheet ? 'true' : undefined}
+					>
+						<span className="adm-dest__short">More</span>
+						<span className="adm-dest__full">More</span>
+					</Dialog.Trigger>
+				) : null}
+			</div>
+			{footing === null ? null : <div className="adm-rail__foot">{footing}</div>}
+		</nav>
+	);
+
 	return (
 		<div className={collapsed ? 'adm-shell adm-shell--collapsed' : 'adm-shell'}>
 			<div className="adm-identity">
@@ -215,35 +289,42 @@ export function AppShell({
 				{name}
 				{out}
 			</div>
-			<nav className="adm-rail" aria-label="Sections">
-				<div className="adm-rail__identity">
-					{lead}
-					{name}
-					<Button
-						type="button"
-						variant="quiet"
-						size="sm"
-						mark="panel-left"
-						className="adm-rail__toggle"
-						aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-						aria-expanded={!collapsed}
-						onClick={toggle}
-					/>
-				</div>
-				<div className="adm-rail__cells">
-					{groups.map((group, index) => (
-						<RailGroup
-							key={group.heading ?? `group-${index}`}
-							group={group}
-							rule={ruleBefore(group, groups[index - 1])}
-							at={at}
-							link={link}
-							collapsed={collapsed}
-						/>
-					))}
-				</div>
-				{footing === null ? null : <div className="adm-rail__foot">{footing}</div>}
-			</nav>
+			{barred ? (
+				<Dialog.Root
+					open={sheetOpen}
+					onOpenChange={(details) => setSheetOpen(details.open)}
+					aria-label="More"
+					lazyMount
+					unmountOnExit
+				>
+					{/* before the bar in the markup and at its step (../../styles/adm.css, `.adm-rail`), so
+					    the bar draws over the scrim rather than under it. while it is open the machine
+					    hides everything but the sheet from the tree, and a press anywhere outside it —
+					    More included — closes it. */}
+					<Dialog.Backdrop className="adm-sheetscrim" />
+					<Dialog.Positioner>
+						<Dialog.Content className="adm-sheet">
+							<nav className="adm-sheet__cells" aria-label="More sections">
+								{sheet.map((group, index) => (
+									<RailGroup
+										key={group.heading ?? `group-${index}`}
+										group={group}
+										rule={ruleBefore(group, sheet[index - 1])}
+										at={at}
+										link={link}
+										collapsed={false}
+										barred={false}
+										onChoose={() => setSheetOpen(false)}
+									/>
+								))}
+							</nav>
+						</Dialog.Content>
+					</Dialog.Positioner>
+					{rail}
+				</Dialog.Root>
+			) : (
+				rail
+			)}
 			<main className="adm-main">
 				{head === undefined || head === null ? null : (
 					<div className="adm-head">
@@ -275,18 +356,34 @@ function ruleBefore(group, previous) {
 }
 
 /**
+ * the rail's groups with every bar destination taken out, and a group left with none dropped: what
+ * the sheet stands, rules and headings still decided by `ruleBefore` over what remains.
+ *
+ * @param {readonly DestinationGroup[]} groups
+ * @returns {DestinationGroup[]}
+ */
+function offBar(groups) {
+	return groups
+		.map((group) => ({ ...group, destinations: group.destinations.filter((d) => !d.bar) }))
+		.filter((group) => group.destinations.length > 0);
+}
+
+/**
  * @typedef {object} RailGroupProps
  * @property {DestinationGroup} group
  * @property {'none' | 'plain' | 'group'} rule
  * @property {Whereabouts | undefined} at
  * @property {ComponentType<DestinationLinkProps> | undefined} link
  * @property {boolean} collapsed
+ * @property {boolean} barred hide from the bar the cells it leaves to the More sheet: the rail's own
+ *   run in a rail whose destinations state `bar`, and never the sheet's.
+ * @property {(() => void) | undefined} [onChoose] a press on any cell — the sheet's close.
  */
 
 /* one group's run of cells, flat inside `.adm-rail__cells` so the bar can stand every entry as a
-   tab of its own. */
+   tab of its own, and inside `.adm-sheet__cells` for the More sheet's rows. */
 /** @param {RailGroupProps} props */
-function RailGroup({ group, rule, at, link, collapsed }) {
+function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 	const { heading, destinations } = group;
 	return (
 		<>
@@ -302,6 +399,8 @@ function RailGroup({ group, rule, at, link, collapsed }) {
 					status={d.status}
 					title={collapsed ? d.label : undefined}
 					groupEnd={heading !== undefined && i === destinations.length - 1}
+					offBar={barred && !d.bar}
+					onClick={onChoose}
 					link={link}
 					current={at && d.label === at.label ? at.kind : undefined}
 				>

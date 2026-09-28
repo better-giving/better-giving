@@ -15,13 +15,21 @@
  * not be one: `/admin/donations` is Gifts. CLAUDE.md → Product surface is the rule, and it is why a
  * section is never named after the table under it.
  *
- * two words per destination, because the rail is drawn twice. the bar at the foot of a phone is one
- * tab per destination across the width of the screen — an equal share whatever the count, which
+ * two words per destination, because the rail is drawn twice. the bar at the foot of a phone is a
+ * row of tabs across the width of the screen — an equal share each whatever the count, which
  * `packages/operator/src/styles/adm.css` sets — and `short` is a word that clears that share; the
  * column at the wide width has the room for `label`, which is the name the page itself carries and
  * is what a destination is called everywhere else. both words are in the markup and that sheet
  * chooses between them — a cell that swapped its own text would be a name changing under a reader
  * between two widths.
+ *
+ * the bar holds four destinations and a More tab, and `bar: true` marks the four. a tab for every
+ * destination stops clearing `short` at the 375px floor once the integrations pages join the rail,
+ * so the bar takes the destinations an operator opens most — the figures, the forms, the donors and
+ * the gifts, in the rail's own order — and More opens a sheet holding every other one in the
+ * column's order, under its rules and headings. a destination added here is on the sheet until it
+ * is argued onto the bar, and one that joins it narrows every tab's share. More reads current while
+ * the reader is in any of the sheet's destinations, so the bar never goes blank under them.
  *
  * `short` is one of `label`'s own words and never a synonym for it: a tab reading a word that
  * appears nowhere on the page it lands on is a second name for the same place, and the reader who
@@ -47,17 +55,23 @@ export const DESTINATION_GROUPS = [
 		destinations: [
 			// the surface's own address, and the one destination with nothing under it —
 			// `currentDestination` below matches it exactly for that reason.
-			{ href: '/admin', label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }
+			{
+				href: '/admin',
+				label: 'Dashboard',
+				short: 'Dashboard',
+				mark: 'layout-dashboard',
+				bar: true
+			}
 		]
 	},
 	{
 		destinations: [
-			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'form' },
+			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'form', bar: true },
 			// directly after the forms, because a program is what a form asks a donor about: it is named
 			// here and then pinned or offered there, and neither screen means anything without the other.
 			{ href: '/admin/programs', label: 'Programs', short: 'Programs', mark: 'folder-heart' },
-			{ href: '/admin/donors', label: 'Donors', short: 'Donors', mark: 'users' },
-			{ href: '/admin/donations', label: 'Gifts', short: 'Gifts', mark: 'hand-heart' },
+			{ href: '/admin/donors', label: 'Donors', short: 'Donors', mark: 'users', bar: true },
+			{ href: '/admin/donations', label: 'Gifts', short: 'Gifts', mark: 'hand-heart', bar: true },
 			{ href: '/admin/recurring', label: 'Recurring gifts', short: 'Recurring', mark: 'repeat' }
 		]
 	},

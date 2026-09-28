@@ -19,9 +19,17 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  *
  * **narrow the window past 64rem and every rail below becomes `position: fixed` at the foot of the
  * viewport**, one over another, because that is what a rail is at that width: a bar of tabs pinned
- * to the bottom of the screen. one shell on a page is one bar; five shells on a page is five bars
- * in the same strip. it is the arrangement being correct rather than a defect in it, and it is the
- * one thing on this page a second specimen makes worse.
+ * to the bottom of the screen. one shell on a page is one bar; six shells on a page is six bars
+ * in the same strip, and the one drawn over the rest is the last shell's. it is the arrangement
+ * being correct rather than a defect in it, and it is the one thing on this page a second specimen
+ * makes worse.
+ *
+ * **the last shell is the bar with a More tab, which is why it is last**: narrowed, its bar is the
+ * one on top, and More is the press that opens the sheet. the sheet is a modal, so it cannot be a
+ * resting specimen for the reason ./behaviour-dialog.tsx gives — standing open it would cover every
+ * other preview and hold the keyboard — and open is one press on More. at the wide width there is
+ * no More and the column draws every destination, which is the closed state beside every other
+ * rail on this page.
  *
  * the screens inside are built out of the real components the surfaces use, never filler: the
  * shell's whole job is the space around a page and the step from the rail to the first heading, and
@@ -34,7 +42,8 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * marked, which is the only honest rail to draw there and is what the centred specimen has.
  *
  * `groups` is drawn as the component's own, as the dashboard's three groups with marks, as the
- * console's run with a headed group, logos and status marks, as one entry, and as none. the empty
+ * console's run with a headed group, logos and status marks, as one entry, as none, and as the
+ * dashboard's with four entries stating `bar` and a headed integrations group on the sheet. the empty
  * rail is a `nav` with no cells in it, which below the wide breakpoint is an empty strip across the
  * foot of the window. a tab is an equal share of the width whatever the count, and the bar is flat:
  * a headed group's entries stand as tabs of their own.
@@ -259,6 +268,56 @@ export default function ShellAppShellPreview() {
 					<EmptyState>
 						The rail was handed an empty run, so the nav is drawn with no cells in it.
 					</EmptyState>
+				</Column>
+			</AppShell>
+
+			{/* the bar with a More tab, last so that its bar is the one drawn on top when the window is
+			    narrowed. the reader is in Webhooks, a sheet destination under a headed group, so More
+			    reads current on the closed bar and Webhooks is marked inside the open sheet. */}
+			<AppShell
+				org="Riverside Shelter"
+				current={{ label: 'Webhooks', kind: 'page' }}
+				groups={[
+					{
+						destinations: [
+							{
+								label: 'Dashboard',
+								short: 'Dashboard',
+								href: '#',
+								mark: 'layout-dashboard',
+								bar: true
+							}
+						]
+					},
+					{
+						destinations: [
+							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'file-text', bar: true },
+							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
+							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users', bar: true },
+							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart', bar: true },
+							{ label: 'Recurring gifts', short: 'Recurring', href: '#', mark: 'repeat' }
+						]
+					},
+					{
+						destinations: [{ label: 'Members', short: 'Members', href: '#', mark: 'shield-check' }]
+					},
+					{
+						heading: 'Integrations',
+						destinations: [
+							{ label: 'API', short: 'API', href: '#', mark: 'key-round' },
+							{ label: 'Webhooks', short: 'Webhooks', href: '#', mark: 'external-link' }
+						]
+					},
+					{ destinations: [{ label: 'Books', short: 'Books', href: '#', mark: 'book-open' }] }
+				]}
+				link={StandInLink}
+			>
+				<Column>
+					<PageHeader
+						title="Webhooks"
+						standfirst="Where this deployment posts a gift once it settles."
+					/>
+					<EmptyState>No endpoint has been added yet.</EmptyState>
 				</Column>
 			</AppShell>
 

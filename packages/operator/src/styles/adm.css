@@ -4750,9 +4750,10 @@
 		margin: auto;
 	}
 
-	/* the ground a shown modal is read against, and the one place the system's single alpha is
-	   painted. it is the element's own `::backdrop`, which the browser draws with no box in the
-	   markup to carry a class at all — so a screen showing a modal draws no ground of its own.
+	/* the ground a shown modal is read against, and one of the two places the system's single alpha
+	   is painted — `.adm-sheetscrim` is the other, under the phone bar's More sheet. it is the
+	   element's own `::backdrop`, which the browser draws with no box in the markup to carry a
+	   class at all — so a screen showing a modal draws no ground of its own.
 	   the pseudo-element exists only for an element in the top layer, which is why this states no
 	   `:modal`: the open, whole, in-page presentation below has no backdrop to paint. */
 	.adm-dialog::backdrop {
@@ -4835,8 +4836,21 @@
 
 	/* the shell with a rail stands on a tinted ground and the page is a full-bleed panel on it
 	   (`.adm-rail ~ .adm-main` below). the bare shell keeps the page's own ground: it has no panel
-	   for the tint to set off. */
+	   for the tint to set off.
+
+	   `--_bar-reserve` is the strip at the foot the bar stands in: the page's end is held back by it
+	   and the More sheet stands on top of it (`.adm-rail ~ .adm-main`, `.adm-sheet` below). the
+	   terms are the tab's: the floor it is never shorter than, its taller top step, the step it pads
+	   itself by at each end, and whatever the platform holds back under it. the tab's own contents
+	   are shorter than that floor, so the sum can only overstate the bar. */
 	.adm-shell:has(> .adm-rail) {
+		--_bar-reserve: calc(
+			var(--admin-touch-min) +
+			var(--admin-edge) +
+			var(--admin-space-3) +
+			var(--admin-space-3) +
+			env(safe-area-inset-bottom)
+		);
 		background: var(--admin-surface-sunken);
 	}
 
@@ -5082,7 +5096,10 @@
 	   at 2, and the anchored panel and note at 3 — each of those is opened over the bar and is
 	   portalled to the body, so they too are settled by their step and not by where they stand in
 	   the document. a modal is in the top layer and is over all three without asking for a step at
-	   all.
+	   all. the bar's More sheet and its scrim are the one pair that stand at the bar's own step, 2,
+	   and it is the order that settles them: packages/operator/src/components/shell/AppShell.jsx
+	   writes both before the bar, so the bar draws over them and stays undimmed while the sheet is
+	   open.
 
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
 	   them, so a tab keeps the whole of its height wherever it is drawn. */
@@ -5106,6 +5123,27 @@
 	.adm-rail__heading,
 	.adm-dest__status {
 		display: none;
+	}
+
+	/* the rule and the heading as the column and the More sheet both draw them. hidden in the bar
+	   by the rule above, and each arrangement that stands one says so with `display` alone. */
+	.adm-rail__rule {
+		margin: var(--admin-space-4);
+		border: 0;
+		border-block-start: var(--admin-rule);
+	}
+
+	/* a group stands apart: a step of space above its rule and after its last entry, the heading
+	   tight to its first. the heading is small print, not a destination. */
+	.adm-rail__rule--group {
+		margin-block-start: var(--admin-space-6);
+	}
+
+	.adm-rail__heading {
+		padding: 0 var(--admin-space-4) var(--admin-space-2);
+		font-size: var(--admin-caption-size);
+		line-height: var(--admin-caption-lh);
+		color: var(--admin-ink-muted);
 	}
 
 	.adm-rail__cells {
@@ -5134,6 +5172,82 @@
 			var(--admin-space-3);
 		font-size: var(--admin-caption-size);
 		line-height: var(--admin-caption-lh);
+	}
+
+	/* carried-ok: .adm-dest--offbar — in DestinationCell.jsx's derived class list, as `.adm-dest`.
+	   a rail whose destinations state which are the bar's leaves the rest to the More sheet: the
+	   column draws them at the wide width, and the bar ends on More instead. */
+	.adm-rail__cells > .adm-dest--offbar {
+		display: none;
+	}
+
+	/* the bar's More sheet: a modal card standing on the page's foot, where the bar's reserved
+	   strip begins, holding the rail's other destinations as the column draws them — the name, the
+	   mark, the rules and the headings — at the height a finger needs. it is only ever open below
+	   the wide breakpoint, because AppShell.jsx closes it the moment More stops being drawn.
+
+	   what it stands on is `--_bar-reserve`, the strip `.adm-rail ~ .adm-main` holds back, and the
+	   card is capped to what is left above it, scrolling inside itself on a short landscape screen
+	   rather than running off the top of it. */
+	.adm-sheetscrim {
+		position: fixed;
+		inset: 0;
+		z-index: 2;
+		background: var(--admin-scrim);
+	}
+
+	/* the machine's positioner is the element that stands the card, and it carries no class of
+	   ours: matched by its part, as the anchored cards' step is above. */
+	[data-scope='dialog'][data-part='positioner']:has(> .adm-sheet) {
+		position: fixed;
+		inset-inline: 0;
+		inset-block-end: var(--_bar-reserve);
+		z-index: 2;
+	}
+
+	.adm-sheet {
+		max-block-size: calc(100dvh - var(--_bar-reserve));
+		overflow-y: auto;
+		padding: var(--admin-space-4) var(--admin-space-4) var(--admin-space-5);
+		background: var(--admin-surface);
+		border-block-start: var(--admin-hairline);
+		border-start-start-radius: var(--admin-radius);
+		border-start-end-radius: var(--admin-radius);
+		box-shadow: var(--admin-elevation-dialog);
+	}
+
+	.adm-sheet__cells {
+		display: grid;
+		gap: var(--admin-space-1);
+	}
+
+	/* a row, as the column's cell is, kept at the tab's floor: the name beside its mark, centred on
+	   the row rather than hung from its first line, because a row here is always one line. */
+	.adm-sheet__cells > .adm-dest {
+		padding: var(--admin-space-3) var(--admin-space-4);
+		line-height: var(--admin-body-lh);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-sheet__cells > .adm-dest > .adm-mark {
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-sheet__cells > .adm-dest:is([aria-current], .is-current) > .adm-mark {
+		color: inherit;
+	}
+
+	.adm-sheet__cells > .adm-dest--groupend {
+		margin-block-end: var(--admin-space-6);
+	}
+
+	.adm-sheet__cells > :is(.adm-rail__rule, .adm-rail__heading),
+	.adm-sheet__cells .adm-dest__full {
+		display: block;
+	}
+
+	.adm-sheet__cells .adm-dest__short {
+		display: none;
 	}
 
 	/* the short word is the bar's and the name is the column's. both words are drawn and one of
@@ -5241,23 +5355,15 @@
 	   because `.adm-main` is also the bare shell's page, which has no panel. two classes of weight,
 	   so the `.adm-main` padding the two widths below restate for the bare shell never reaches it.
 
-	   the page reserves the strip the bar stands in, because below the wide breakpoint the bar is
-	   out of the flow and would otherwise be laid over the end of it. the terms are the tab's: the
-	   floor it is never shorter than, its taller top step, the step it pads itself by at each end,
-	   and whatever the platform holds back under it. the tab's own contents are shorter than that
-	   floor, so the sum can only overstate the bar. */
+	   the page reserves the strip the bar stands in, `--_bar-reserve` on the shell above, because
+	   below the wide breakpoint the bar is out of the flow and would otherwise be laid over the end
+	   of it. */
 	.adm-rail ~ .adm-main {
 		--_panel-inset: var(--admin-space-6);
 		display: flex;
 		flex-direction: column;
 		padding: 0;
-		padding-block-end: calc(
-			var(--admin-touch-min) +
-			var(--admin-edge) +
-			var(--admin-space-3) +
-			var(--admin-space-3) +
-			env(safe-area-inset-bottom)
-		);
+		padding-block-end: var(--_bar-reserve);
 		background: var(--admin-surface);
 		border-block-start: var(--admin-hairline);
 	}
@@ -6361,17 +6467,9 @@
 			color: var(--admin-tone-attention-mark);
 		}
 
-		.adm-rail__rule {
+		.adm-rail__rule,
+		.adm-rail__heading {
 			display: block;
-			margin: var(--admin-space-4);
-			border: 0;
-			border-block-start: var(--admin-rule);
-		}
-
-		/* a group stands apart: a step of space above its rule and after its last entry, the
-		   heading tight to its first. the heading is small print, not a destination. */
-		.adm-rail__rule--group {
-			margin-block-start: var(--admin-space-6);
 		}
 
 		/* carried-ok: .adm-dest--groupend — in DestinationCell.jsx's derived class list, as `.adm-dest`. */
@@ -6379,12 +6477,13 @@
 			margin-block-end: var(--admin-space-6);
 		}
 
-		.adm-rail__heading {
-			display: block;
-			padding: 0 var(--admin-space-4) var(--admin-space-2);
-			font-size: var(--admin-caption-size);
-			line-height: var(--admin-caption-lh);
-			color: var(--admin-ink-muted);
+		/* the column draws every destination, so the bar's split is undone and More is not drawn. */
+		.adm-rail__cells > .adm-dest--offbar {
+			display: flex;
+		}
+
+		.adm-rail__more {
+			display: none;
 		}
 
 		.adm-rail__foot {

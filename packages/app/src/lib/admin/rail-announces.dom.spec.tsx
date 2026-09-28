@@ -85,3 +85,15 @@ it('claims only containment on the cell a screen one level down sits under', () 
 
 	expect(claim(root, 'Donation forms')).toBe('true');
 });
+
+it('claims containment on More while the reader is in a destination the bar leaves to it', () => {
+	// Programs is on the sheet More opens, and a bar with no tab marked under it would say the
+	// reader is nowhere.
+	const root = railAt('/admin/programs');
+	const more = root.querySelector('.adm-rail__more');
+
+	expect(more?.getAttribute('aria-current')).toBe('true');
+	expect(
+		railAt('/admin/donors').querySelector('.adm-rail__more')?.hasAttribute('aria-current')
+	).toBe(false);
+});

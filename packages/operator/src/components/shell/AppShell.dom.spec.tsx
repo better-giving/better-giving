@@ -1,6 +1,6 @@
-import { act } from 'react';
+import { type ComponentProps, act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '../render.testing';
+import { mount, render } from '../render.testing';
 import { AppShell, PanelRoute } from './AppShell.jsx';
 import type { DestinationLinkProps } from './DestinationCell.jsx';
 
@@ -404,6 +404,200 @@ describe('the link a rail draws its cells as', () => {
 		const root = render(AppShell, { groups: GROUPS, link: Handed });
 
 		expect(root.querySelectorAll('.adm-rail__cells > a[data-handed]')).toHaveLength(2);
+	});
+});
+
+describe('the bar at a phone width, and the sheet its More tab opens', () => {
+	// the dashboard's rail with an integrations group added, so the sheet is read with a headed
+	// group in it. four entries carry `bar`, and everything else is the sheet's.
+	const BARRED = [
+		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', href: '#dashboard', bar: true }] },
+		{
+			destinations: [
+				{ label: 'Donation forms', short: 'Forms', href: '#forms', bar: true },
+				{ label: 'Programs', short: 'Programs', href: '#programs' },
+				{ label: 'Donors', short: 'Donors', href: '#donors', bar: true },
+				{ label: 'Gifts', short: 'Gifts', href: '#gifts', bar: true },
+				{ label: 'Recurring gifts', short: 'Recurring', href: '#recurring' }
+			]
+		},
+		{ destinations: [{ label: 'Members', short: 'Members', href: '#members' }] },
+		{
+			heading: 'Integrations',
+			destinations: [
+				{ label: 'Zapier', short: 'Zapier', href: '#zapier' },
+				{ label: 'API', short: 'API', href: '#api' },
+				{ label: 'Webhooks', short: 'Webhooks', href: '#webhooks' }
+			]
+		},
+		{ destinations: [{ label: 'Books', short: 'Books', href: '#books' }] }
+	];
+
+	function more(root: HTMLElement): HTMLButtonElement {
+		const found = root.querySelector<HTMLButtonElement>('.adm-rail__cells > button.adm-rail__more');
+		if (found === null) throw new Error('the bar drew no More tab');
+		return found;
+	}
+
+	/**
+	 * the open sheet, read off the document: it is the dialog the More tab controls. a closed one is
+	 * `data-state="closed"` for the moment before it is taken off the page, so the state is read
+	 * rather than the node's presence.
+	 */
+	function sheet(root: HTMLElement): HTMLElement | null {
+		const id = more(root).getAttribute('aria-controls');
+		const found = id === null ? null : document.getElementById(id);
+		return found?.getAttribute('data-state') === 'open' ? found : null;
+	}
+
+	/** the sheet's run of entries, spelled as `railRun` spells the rail's. */
+	function sheetRun(dialog: HTMLElement): string[] {
+		return [...(dialog.querySelector('.adm-sheet__cells')?.children ?? [])].map((node) => {
+			if (node.matches('a')) {
+				const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
+				return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
+			}
+			if (node.matches('hr')) return node.className;
+			return `${node.className}: ${node.textContent}`;
+		});
+	}
+
+	async function open(root: HTMLElement): Promise<HTMLElement> {
+		await act(async () => more(root).click());
+		const dialog = sheet(root);
+		if (dialog === null) throw new Error('More opened no sheet');
+		return dialog;
+	}
+
+	/** Escape, pressed until the machine's deferred listener has taken it. */
+	async function pressEscape(root: HTMLElement) {
+		await vi.waitFor(async () => {
+			await act(async () => {
+				(document.activeElement ?? document.body).dispatchEvent(
+					new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+				);
+			});
+			if (sheet(root) !== null) throw new Error('the sheet is still open');
+		});
+	}
+
+	it('stands the bar entries as tabs, leaves the rest to the sheet, and ends on More', () => {
+		const root = render(AppShell, { groups: BARRED });
+		const onBar = [...root.querySelectorAll('.adm-rail__cells > a:not(.adm-dest--offbar)')];
+
+		expect(onBar.map((a) => a.querySelector('.adm-dest__short')?.textContent)).toEqual([
+			'Dashboard',
+			'Forms',
+			'Donors',
+			'Gifts'
+		]);
+		// the column at the wide width still draws every destination; the sheet's are the ones the
+		// bar hides.
+		expect(root.querySelectorAll('.adm-rail__cells > a.adm-dest--offbar')).toHaveLength(7);
+		const tab = more(root);
+		expect(tab.textContent).toContain('More');
+		expect(root.querySelector('.adm-rail__cells')?.lastElementChild).toBe(tab);
+		expect(tab.getAttribute('aria-haspopup')).toBe('dialog');
+		expect(tab.getAttribute('aria-expanded')).toBe('false');
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('draws no More and hides nothing where no destination is on the bar', () => {
+		// the console's rail and every specimen that states no `bar`: one tab per destination.
+		const root = render(AppShell, { groups: GROUPS });
+
+		expect(root.querySelector('.adm-rail__more')).toBeNull();
+		expect(root.querySelectorAll('.adm-dest--offbar')).toHaveLength(0);
+	});
+
+	it('opens a sheet holding the rest, each a link, with the rail rules and headings', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+
+		expect(dialog.getAttribute('role')).toBe('dialog');
+		expect(dialog.getAttribute('aria-label')).toBe('More');
+		expect(more(root).getAttribute('aria-expanded')).toBe('true');
+		expect(sheetRun(dialog)).toEqual([
+			'Programs',
+			'Recurring gifts',
+			'adm-rail__rule',
+			'Members',
+			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__heading: Integrations',
+			'Zapier',
+			'API',
+			'Webhooks (end)',
+			'Books'
+		]);
+		expect(
+			[...dialog.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])
+		).toEqual([
+			['ProgramsPrograms', '#programs'],
+			['RecurringRecurring gifts', '#recurring'],
+			['MembersMembers', '#members'],
+			['ZapierZapier', '#zapier'],
+			['APIAPI', '#api'],
+			['WebhooksWebhooks', '#webhooks'],
+			['BooksBooks', '#books']
+		]);
+	});
+
+	it('moves focus into the sheet on open, and back to More on Escape', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+
+		await vi.waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+		await pressEscape(root);
+
+		await vi.waitFor(() => expect(document.activeElement).toBe(more(root)));
+		expect(more(root).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('closes on a destination chosen inside it, and More then reads current', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, { groups: BARRED });
+		const dialog = await open(mounted.root);
+		const programs = [...dialog.querySelectorAll('a')].find((a) => a.href.endsWith('#programs'));
+
+		await act(async () => programs?.click());
+		// the surface resolves the new address and hands the shell where the reader now is.
+		mounted.again({ groups: BARRED, current: { label: 'Programs', kind: 'page' } });
+
+		expect(sheet(mounted.root)).toBeNull();
+		expect(more(mounted.root).getAttribute('aria-current')).toBe('true');
+	});
+
+	it('reads More as current while the reader is under a sheet destination, and not otherwise', () => {
+		const inSheet = render(AppShell, {
+			groups: BARRED,
+			current: { label: 'Webhooks', kind: 'section' as const }
+		});
+		const onBar = render(AppShell, { groups: BARRED, current: 'Donors' });
+
+		expect(more(inSheet).getAttribute('aria-current')).toBe('true');
+		expect(more(onBar).hasAttribute('aria-current')).toBe(false);
+	});
+
+	it('marks the current destination inside the open sheet with its own kind', async () => {
+		const root = render(AppShell, {
+			groups: BARRED,
+			current: { label: 'API', kind: 'page' as const }
+		});
+		const dialog = await open(root);
+		const claims = [...dialog.querySelectorAll('a')].map((a) => a.getAttribute('aria-current'));
+
+		expect(claims).toEqual([null, null, null, null, 'page', null, null]);
+	});
+
+	it('draws the sheet cells as the handed link too', async () => {
+		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
+			<a {...rest} data-handed="yes">
+				{children}
+			</a>
+		);
+		const root = render(AppShell, { groups: BARRED, link: Handed });
+		const dialog = await open(root);
+
+		expect(dialog.querySelectorAll('a[data-handed]')).toHaveLength(7);
 	});
 });
 

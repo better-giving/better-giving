@@ -25,6 +25,17 @@ describe('the rail', () => {
 	});
 });
 
+describe('the bar at a phone width', () => {
+	it('carries the dashboard, the forms, the donors and the gifts, and leaves the rest to More', () => {
+		expect(DESTINATIONS.filter((d) => 'bar' in d && d.bar).map((d) => d.label)).toEqual([
+			'Dashboard',
+			'Donation forms',
+			'Donors',
+			'Gifts'
+		]);
+	});
+});
+
 describe('what a destination is called', () => {
 	it('takes the word a fundraiser says, which the path need not', () => {
 		// the path takes the domain word and the label takes the word on the page — `/admin/donations`
