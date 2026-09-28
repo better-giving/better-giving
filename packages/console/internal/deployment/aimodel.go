@@ -14,15 +14,14 @@ import (
 // other one — so it reads back as what was stored, and taking it off is the free model. the ids a
 // write may carry are internal/release's AIModels, which the handler holds a write to.
 //
-// **credits are a hint, read only for a choice that spends them.** the models beside the free one
-// are billed to the account's Cloudflare credits through AI Gateway, and no binding call reads what
-// is left: the account-level read below does, on AI Gateway Read. a call is billed after it is made,
-// so the balance can go below zero, and anything at or under zero is an account the deployment's
-// credit-billed calls fail on — each of which the deployment answers with the free model instead
-// (`generate` in packages/app/src/lib/server/ai/generate.ts). a read that did not land is unknown,
-// never a balance of nothing: this console's own sign-in asks for no AI Gateway scope
-// (internal/oauth's Scopes), so on it the read is refused, and an environment token carrying that
-// permission is what gets a number.
+// **credits are a hint, read only for a choice that spends them, and only on an api token.** the
+// read is AI Gateway's account-level balance, on AI Gateway Read; the balance can go below zero, so
+// anything at or under zero is missing, and what the deployment does on an empty account is
+// `generate`'s header in packages/app/src/lib/server/ai/generate.ts. this console's own browser
+// sign-in asks for no AI Gateway scope (internal/oauth's Scopes), so on it the read is never made
+// and the choice's credits are unknown in CreditsUnreadOnSignIn's words; an environment token
+// carrying that permission is what gets a number. a read that did not land is unknown too, never a
+// balance of nothing.
 
 // AIModelName is the configuration value the choice is held under.
 const AIModelName = "AI_MODEL"
@@ -32,7 +31,8 @@ type CreditsKind string
 
 const (
 	// CreditsNotAsked is a choice that spends no credits this console knows of — the free model, no
-	// choice at all, an id off the list, a value it cannot read — or a choice it could not read.
+	// choice at all, an id off the list, a value held as a secret — or a values read that did not
+	// land.
 	CreditsNotAsked CreditsKind = "not-asked"
 	// CreditsHeld is a balance above zero.
 	CreditsHeld CreditsKind = "held"
@@ -42,12 +42,18 @@ const (
 	CreditsUnknown CreditsKind = "unknown"
 )
 
+// CreditsUnreadOnSignIn is what a credit-billed choice's credits say on the browser sign-in, which
+// cannot read them.
+const CreditsUnreadOnSignIn = "This console's Cloudflare sign-in cannot read the account's credits. " +
+	"If they run out, the chat answers from the free model and says so."
+
 // Credits is the account's balance as the choice needs it.
 type Credits struct {
 	Kind CreditsKind `json:"kind"`
 	// Balance is what cloudflare reported, on held and missing alone.
 	Balance *float64 `json:"balance"`
-	// Detail is cloudflare's own words, on unknown alone.
+	// Detail is why the balance is not known, on unknown alone: cloudflare's own words, or
+	// CreditsUnreadOnSignIn.
 	Detail string `json:"detail"`
 }
 
@@ -63,8 +69,9 @@ type ModelChoice struct {
 }
 
 // ReadModelChoice is the choice `workerName` in `accountID` holds, with the account's credits where
-// that choice spends them.
-func ReadModelChoice(ctx context.Context, get cf.Get, accountID, workerName string) ModelChoice {
+// that choice spends them. `apiToken` is whether `get` carries the environment's api token
+// (internal/oauth's TokenVar) rather than the browser sign-in, and a balance read is made on it alone.
+func ReadModelChoice(ctx context.Context, get cf.Get, accountID, workerName string, apiToken bool) ModelChoice {
 	notAsked := Credits{Kind: CreditsNotAsked}
 	read := DeployedVars(ctx, get, accountID, workerName)
 	if read.Kind != ValuesRead {
@@ -77,9 +84,14 @@ func ReadModelChoice(ctx context.Context, get cf.Get, accountID, workerName stri
 		}
 	}
 	choice := ModelChoice{Kind: ValuesRead, Model: row, Credits: notAsked}
-	if model, listed := release.ModelByID(row.Value); row.Kind == VarValue && listed && model.CreditBilled {
-		choice.Credits = creditBalance(ctx, get, accountID)
+	if model, listed := release.ModelByID(row.Value); row.Kind != VarValue || !listed || !model.CreditBilled {
+		return choice
 	}
+	if !apiToken {
+		choice.Credits = Credits{Kind: CreditsUnknown, Detail: CreditsUnreadOnSignIn}
+		return choice
+	}
+	choice.Credits = creditBalance(ctx, get, accountID)
 	return choice
 }
 

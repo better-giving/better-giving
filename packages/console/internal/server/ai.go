@@ -36,7 +36,7 @@ func aiRoutes(
 			})
 			return
 		}
-		answer(w, http.StatusOK,
-			deployment.ReadModelChoice(r.Context(), reads(credential), accountID, release.Baked.Name))
+		answer(w, http.StatusOK, deployment.ReadModelChoice(
+			r.Context(), reads(credential), accountID, release.Baked.Name, flow.TokenSet()))
 	})
 }

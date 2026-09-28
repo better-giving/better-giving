@@ -23,14 +23,15 @@ import (
 // and removing are one door because they are one patch of the worker's bindings — internal/deployment
 // is where that is argued.
 //
-// **a body is refused in four cases.** internal/release holds that list, and a name off it is
-// refused here rather than written under whatever the page said — the console's own session
-// credential is on no enumeration and is not reachable through this door. the second is PayPal's
-// four values, Chariot's four and NOWPayments' three, argued at ./paypalSetUpOnly,
-// ./chariotSetUpOnly and ./nowpaymentsSetUpOnly.
-// the third is a name carrying a blank, which is neither a value the deployment reads nor the
-// removal `null` is. the fourth is the charity-rate switch carrying anything but its one word,
-// argued at ./charityRate, and the model choice carrying an id off internal/release's AIModels.
+// **a body is refused for a name off the enumeration.** internal/release holds that list, and a name
+// off it is refused here rather than written under whatever the page said — the console's own
+// session credential is on no enumeration and is not reachable through this door. it is refused
+// for PayPal's four values, Chariot's four and NOWPayments' three, argued at ./paypalSetUpOnly,
+// ./chariotSetUpOnly and ./nowpaymentsSetUpOnly. it is refused for a name carrying a blank, which
+// is neither a value the deployment reads nor the removal `null` is, and for the charity-rate switch
+// carrying anything but its one word, argued at ./charityRate. and it is refused for a model choice
+// naming an id off internal/release's AIModels, which the deployment would refuse on every request
+// reaching a model.
 //
 // **every one of them answers 200 carrying how the write went.** each way a write did not happen is
 // a state the fold draws at the control that was pressed, with a sentence and a way out of its own,

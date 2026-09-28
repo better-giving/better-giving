@@ -151,11 +151,11 @@ export type DeployedValues = { vars: VarsRead };
 /**
  * what the account's cloudflare credits say about the model choice, from `GET /api/ai-model`.
  *
- * read only for a choice billed to credits, and a hint rather than a gate: a call is billed after
- * it is made, so the balance can go below zero. `missing` is a balance at or under zero, on which
- * the deployment answers every credit-billed call with the free model. `unknown` is a balance that
- * could not be read, in cloudflare's words — the console's own sign-in asks for no AI Gateway
- * scope, so on it every credit-billed choice reads as this.
+ * read only for a choice billed to credits, and a hint rather than a gate; what the deployment does
+ * on an empty account is `generate`'s header in packages/app/src/lib/server/ai/generate.ts.
+ * `missing` is a balance at or under zero. `unknown` is a balance not read: in cloudflare's words
+ * where the read was refused, or in a fixed sentence on the browser sign-in, which cannot read it
+ * and so never asks (`CreditsUnreadOnSignIn` in packages/console/internal/deployment/aimodel.go).
  */
 export type ModelCredits =
 	| { kind: 'not-asked' }

@@ -10,7 +10,7 @@ var balancePath = "/accounts/" + account + "/ai-gateway/billing/credit-balance"
 
 func chosen(t *testing.T, answers map[string]any) ModelChoice {
 	t.Helper()
-	return ReadModelChoice(context.Background(), fake(t, answers), account, worker)
+	return ReadModelChoice(context.Background(), fake(t, answers), account, worker, true)
 }
 
 func holding(model string) map[string]any {
@@ -109,5 +109,19 @@ func TestAChoiceReadThatDidNotLandCarriesItsOwnKind(t *testing.T) {
 	read := chosen(t, map[string]any{settings: failed(10007, "workers.api.error.script_not_found")})
 	if read.Kind != ValuesNotDeployed || read.Credits.Kind != CreditsNotAsked {
 		t.Fatalf("read %+v", read)
+	}
+}
+
+// the console's own sign-in carries no AI Gateway scope (internal/oauth's Scopes), so a balance read
+// on it is one cloudflare is certain to refuse: it is never made, and what the operator is told is
+// what running out costs rather than cloudflare's refusal.
+func TestASignInThatCannotReadCreditsAsksNothingAndSaysWhatRunningOutCosts(t *testing.T) {
+	read := ReadModelChoice(context.Background(), fake(t, map[string]any{
+		settings:    holding("anthropic/claude-sonnet-4.6"),
+		balancePath: envelope(map[string]any{"balance": 12.5}),
+	}), account, worker, false)
+	if read.Credits.Kind != CreditsUnknown || read.Credits.Balance != nil ||
+		read.Credits.Detail != CreditsUnreadOnSignIn {
+		t.Fatalf("credits %+v", read.Credits)
 	}
 }
