@@ -75,6 +75,10 @@ const (
 // would be sent to their browser again every hour. The other five are the reads and writes a first
 // deploy makes — the account and the user for the connect screen, the script upload, the migration
 // over d1's query api, and the turnstile widget.
+//
+// no AI Gateway scope is on it. wrangler, whose client ClientID is, asks for none, so one named here
+// is a scope that client may not be granted — and the credit balance internal/deployment's
+// aimodel.go reads is refused on this sign-in and reported as unknown.
 var Scopes = []string{
 	"account:read",
 	"user:read",
