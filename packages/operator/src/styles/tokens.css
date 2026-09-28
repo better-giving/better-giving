@@ -987,6 +987,11 @@
 		--admin-mark-size-lg: 1.25rem;
 		--admin-mark-gutter: 1.75rem;
 
+		/* a photo's thumbnail beside its name, on its way into the chat: a picture read at a glance,
+		   as tall as the row floor so the attachment is one row. a size of its own rather than the
+		   floor's name, because a picture does not follow a finger's target if that one moves. */
+		--admin-thumb-size: 2.75rem;
+
 		/* ---- motion ---------------------------------------------------------------------
 
 		   six motions and each is motivated in one sentence. nothing else in /admin may
