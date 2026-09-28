@@ -13,6 +13,10 @@ import { PicturePicker, type PictureOption } from './pictures';
 // block's sheet (./preview-frame.tsx), and a row here is that click for a reader who cannot point.
 //
 // a campaign carries its name, address, goal and end date; the Donation page has none of the four.
+//
+// every group is the caller's to leave out, and a group left out is not drawn: no heading over
+// nothing, no row that opens nothing. a group's value and its handler arrive together or not at
+// all, and the rows that open a sheet of their own take `onOpen` as soon as one of them is drawn.
 
 /** a row that opens a sheet of its own. */
 export type SettingsRow =
@@ -85,35 +89,56 @@ export function BlockList({ blocks, onOpenBlock }: BlockListProps) {
 	);
 }
 
+/** a campaign's own four rows, each drawn only when it is handed. */
 type CampaignSettings = {
-	readonly name: string;
+	readonly name?: string | undefined;
 	/** the campaign's address as a path — `/winter-coat-drive`. */
-	readonly address: string;
-	readonly goalMinor: number | null;
-	readonly currency: string;
+	readonly address?: string | undefined;
 	/** `YYYY-MM-DD`, or null for none. */
-	readonly endDate: string | null;
-};
+	readonly endDate?: string | null | undefined;
+} & (
+	| { readonly goalMinor: number | null; readonly currency: string }
+	| { readonly goalMinor?: undefined; readonly currency?: undefined }
+);
+
+type BlocksGroup =
+	| { readonly blocks: readonly BlockRow[]; readonly onOpenBlock: (id: string) => void }
+	| { readonly blocks?: undefined; readonly onOpenBlock?: undefined };
+
+type LayoutGroup =
+	| {
+			/** the layouts the page may take, from the block catalog. */
+			readonly layouts: readonly PictureOption[];
+			readonly layout: string;
+			readonly onLayout: (layout: string) => void;
+	  }
+	| { readonly layouts?: undefined; readonly layout?: undefined; readonly onLayout?: undefined };
+
+type OpenRows =
+	| {
+			/** a campaign's own four; absent on the Donation page. */
+			readonly campaign?: CampaignSettings | undefined;
+			/** the page's own share message, or null while it takes the Organisation's. */
+			readonly shareMessage?: string | null | undefined;
+			/** what the page's donation settings come to — `One program · Winter coats`. */
+			readonly donationSettings?: string | undefined;
+			/** a row that opens a sheet of its own was pressed. */
+			readonly onOpen: (row: SettingsRow) => void;
+	  }
+	| {
+			readonly campaign?: undefined;
+			readonly shareMessage?: undefined;
+			readonly donationSettings?: undefined;
+			readonly onOpen?: undefined;
+	  };
 
 type SettingsSheetProps = {
 	readonly onDismiss: () => void;
-	/** a campaign's own four; absent on the Donation page. */
-	readonly campaign?: CampaignSettings | undefined;
-	readonly blocks: readonly BlockRow[];
-	readonly onOpenBlock: (id: string) => void;
-	/** the layouts the page may take, from the block catalog. */
-	readonly layouts: readonly PictureOption[];
-	readonly layout: string;
-	readonly onLayout: (layout: string) => void;
 	/** the look controls, which apply on pick as the pictures do. */
-	readonly look: ReactNode;
-	/** the page's own share message, or null while it takes the Organisation's. */
-	readonly shareMessage: string | null;
-	/** what the page's donation settings come to — `One program · Winter coats`. */
-	readonly donationSettings: string;
-	/** a row that opens a sheet of its own was pressed. */
-	readonly onOpen: (row: SettingsRow) => void;
-};
+	readonly look?: ReactNode;
+} & BlocksGroup &
+	LayoutGroup &
+	OpenRows;
 
 export function SettingsSheet({
 	onDismiss,
@@ -128,67 +153,88 @@ export function SettingsSheet({
 	donationSettings,
 	onOpen
 }: SettingsSheetProps) {
+	const campaignTop = campaign?.name !== undefined || campaign?.address !== undefined;
+	const campaignDates = campaign?.goalMinor !== undefined || campaign?.endDate !== undefined;
+	const sharing = shareMessage !== undefined || donationSettings !== undefined;
 	return (
 		<Sheet title="Settings" tall onDismiss={onDismiss}>
-			{campaign ? (
+			{campaign && campaignTop ? (
 				<Part>
 					<div className="adm-openrow-list">
-						<OpenRow label="Name" value={campaign.name} onOpen={() => onOpen('name')} />
-						<OpenRow label="Address" value={campaign.address} onOpen={() => onOpen('address')} />
+						{campaign.name === undefined ? null : (
+							<OpenRow label="Name" value={campaign.name} onOpen={() => onOpen('name')} />
+						)}
+						{campaign.address === undefined ? null : (
+							<OpenRow label="Address" value={campaign.address} onOpen={() => onOpen('address')} />
+						)}
 					</div>
 				</Part>
 			) : null}
-			<Part title="Blocks">
-				<BlockList blocks={blocks} onOpenBlock={onOpenBlock} />
-			</Part>
-			<Part title="Layout">
-				<PicturePicker
-					legend="Layout"
-					name="layout"
-					set="layout"
-					options={layouts}
-					value={layout}
-					onPick={onLayout}
-				/>
-			</Part>
-			<Part title="Look">{look}</Part>
-			{campaign ? (
+			{blocks ? (
+				<Part title="Blocks">
+					<BlockList blocks={blocks} onOpenBlock={onOpenBlock} />
+				</Part>
+			) : null}
+			{layouts ? (
+				<Part title="Layout">
+					<PicturePicker
+						legend="Layout"
+						name="layout"
+						set="layout"
+						options={layouts}
+						value={layout}
+						onPick={onLayout}
+					/>
+				</Part>
+			) : null}
+			{look === undefined || look === null ? null : <Part title="Look">{look}</Part>}
+			{campaign && campaignDates ? (
 				<Part title="Goal and end date">
 					<div className="adm-openrow-list">
-						<OpenRow
-							label="Goal"
-							value={
-								campaign.goalMinor === null
-									? 'None'
-									: formatMinorBrief(campaign.goalMinor, campaign.currency)
-							}
-							unset={campaign.goalMinor === null}
-							onOpen={() => onOpen('goal')}
-						/>
-						<OpenRow
-							label="End date"
-							value={campaign.endDate === null ? 'None' : dayWords(campaign.endDate)}
-							unset={campaign.endDate === null}
-							onOpen={() => onOpen('end-date')}
-						/>
+						{campaign.goalMinor === undefined ? null : (
+							<OpenRow
+								label="Goal"
+								value={
+									campaign.goalMinor === null
+										? 'None'
+										: formatMinorBrief(campaign.goalMinor, campaign.currency)
+								}
+								unset={campaign.goalMinor === null}
+								onOpen={() => onOpen('goal')}
+							/>
+						)}
+						{campaign.endDate === undefined ? null : (
+							<OpenRow
+								label="End date"
+								value={campaign.endDate === null ? 'None' : dayWords(campaign.endDate)}
+								unset={campaign.endDate === null}
+								onOpen={() => onOpen('end-date')}
+							/>
+						)}
 					</div>
 				</Part>
 			) : null}
-			<Part title="Sharing and gifts">
-				<div className="adm-openrow-list">
-					<OpenRow
-						label="Share message"
-						value={shareMessage ?? 'The Organisation’s'}
-						unset={shareMessage === null}
-						onOpen={() => onOpen('share-message')}
-					/>
-					<OpenRow
-						label="Donation settings"
-						value={donationSettings}
-						onOpen={() => onOpen('donation-settings')}
-					/>
-				</div>
-			</Part>
+			{onOpen && sharing ? (
+				<Part title="Sharing and gifts">
+					<div className="adm-openrow-list">
+						{shareMessage === undefined ? null : (
+							<OpenRow
+								label="Share message"
+								value={shareMessage ?? 'The Organisation’s'}
+								unset={shareMessage === null}
+								onOpen={() => onOpen('share-message')}
+							/>
+						)}
+						{donationSettings === undefined ? null : (
+							<OpenRow
+								label="Donation settings"
+								value={donationSettings}
+								onOpen={() => onOpen('donation-settings')}
+							/>
+						)}
+					</div>
+				</Part>
+			) : null}
 		</Sheet>
 	);
 }

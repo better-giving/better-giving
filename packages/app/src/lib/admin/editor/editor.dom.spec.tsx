@@ -2,6 +2,7 @@ import { type ReactNode, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { AddressSheet } from './address-sheet';
 import { BlockSheet } from './block-sheet';
 import { EditorEntries, EditorShell } from './editor-shell';
 import { GoalSheet } from './goal-sheet';
@@ -12,8 +13,10 @@ import { PublishBar } from './publish-bar';
 import { SettingsSheet } from './settings-sheet';
 
 // the editor's parts, mounted so what a reader meets is looked at: the sheet a floating entry opens
-// and the two ways out of it, the names a picture and the name box carry, where Reset to default is
-// offered, the goal's figure in and out, and which messages the preview frame listens to. nothing
+// and the two ways out of it, the groups Settings draws only when handed, the names a picture and
+// the name box carry, where Reset to default is offered and which presses the bar draws without a
+// handler, the address's refusal at Save, the goal's figure in and out, and which messages the
+// preview frame listens to. nothing
 // here reads a class or a sentence's look — how the editor looks is left to a person looking at it.
 //
 // the tab ring kept inside a sheet and the page made inert behind it are the top layer's, which
@@ -23,7 +26,8 @@ import { SettingsSheet } from './settings-sheet';
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function mount(tree: ReactNode): HTMLElement {
+/** a tree mounted, and a way to draw the same root again with new props. */
+function mountable(tree: ReactNode): { root: HTMLElement; redraw: (next: ReactNode) => void } {
 	const root = document.createElement('div');
 	document.body.appendChild(root);
 	const mounted = createRoot(root);
@@ -32,7 +36,11 @@ function mount(tree: ReactNode): HTMLElement {
 		act(() => mounted.unmount());
 		root.remove();
 	});
-	return root;
+	return { root, redraw: (next) => act(() => mounted.render(next)) };
+}
+
+function mount(tree: ReactNode): HTMLElement {
+	return mountable(tree).root;
 }
 
 /** a tree inside a router, for a part whose way out is a link. */
@@ -113,6 +121,92 @@ describe('a sheet opened from a floating entry', () => {
 		act(() => button(sheet, 'Close').click());
 		expect(root.querySelector('dialog')).toBeNull();
 		expect(document.activeElement).toBe(entry);
+	});
+});
+
+describe('the settings sheet', () => {
+	const headings = (root: HTMLElement) =>
+		[...root.querySelectorAll('dialog h3')].map((one) => one.textContent);
+	/** each row that opens a sheet, as its label and the value beside it read together. */
+	const rows = (root: HTMLElement) =>
+		[...root.querySelectorAll('dialog button[aria-haspopup="dialog"]')].map(
+			(one) => one.textContent
+		);
+
+	it('draws every group it is handed', () => {
+		const root = mount(
+			<SettingsSheet
+				onDismiss={() => {}}
+				campaign={{
+					name: 'Winter coat drive',
+					address: '/winter-coat-drive',
+					goalMinor: null,
+					currency: 'USD',
+					endDate: null
+				}}
+				blocks={[{ id: 'b1', label: 'Story', summary: 'Last winter…' }]}
+				onOpenBlock={() => {}}
+				layouts={[{ value: 'box-right', label: 'Box on the right' }]}
+				layout="box-right"
+				onLayout={() => {}}
+				look={<p>Colour</p>}
+				shareMessage={null}
+				donationSettings="Donor chooses"
+				onOpen={() => {}}
+			/>
+		);
+		expect(headings(root)).toEqual([
+			'Blocks',
+			'Layout',
+			'Look',
+			'Goal and end date',
+			'Sharing and gifts'
+		]);
+		expect(rows(root)).toEqual([
+			'NameWinter coat drive',
+			'Address/winter-coat-drive',
+			'StoryLast winter…',
+			'GoalNone',
+			'End dateNone',
+			'Share messageThe Organisation’s',
+			'Donation settingsDonor chooses'
+		]);
+	});
+
+	it('draws no group it is not handed, and no heading over nothing', () => {
+		const onOpenBlock = vi.fn();
+		const root = mount(
+			<SettingsSheet
+				onDismiss={() => {}}
+				blocks={[{ id: 'b1', label: 'Story', summary: 'Last winter…' }]}
+				onOpenBlock={onOpenBlock}
+			/>
+		);
+		expect(headings(root)).toEqual(['Blocks']);
+		expect(rows(root)).toEqual(['StoryLast winter…']);
+		expect(root.querySelector('[role="radiogroup"]')).toBeNull();
+		act(() => button(root, 'StoryLast winter…').click());
+		expect(onOpenBlock).toHaveBeenCalledWith('b1');
+	});
+
+	it('draws only the rows of a group it is handed', () => {
+		const onOpen = vi.fn();
+		const root = mount(
+			<SettingsSheet
+				onDismiss={() => {}}
+				campaign={{ name: 'Winter coat drive', address: '/winter-coat-drive' }}
+				shareMessage="Help us keep 400 children warm this winter."
+				onOpen={onOpen}
+			/>
+		);
+		expect(headings(root)).toEqual(['Sharing and gifts']);
+		expect(rows(root)).toEqual([
+			'NameWinter coat drive',
+			'Address/winter-coat-drive',
+			'Share messageHelp us keep 400 children warm this winter.'
+		]);
+		act(() => button(root, 'Address/winter-coat-drive').click());
+		expect(onOpen).toHaveBeenCalledWith('address');
 	});
 });
 
@@ -256,6 +350,92 @@ describe('the publish bar', () => {
 		const region = routed(bar(undefined)).querySelector('[role="status"]');
 		expect(region).not.toBeNull();
 		expect(region?.textContent).toBe('');
+	});
+
+	type Handlers = {
+		onPublish?: () => void;
+		onUndo?: () => void;
+		onDiscard?: () => void;
+	};
+	const handled = (handlers: Handlers, republished = false) => (
+		<PublishBar
+			closeHref="/admin"
+			page={{ kind: 'donation' }}
+			state="changed"
+			livePath="/donate"
+			publishing={false}
+			republished={republished}
+			publishHeld="Publishing opens once donation settings are set."
+			undoing={false}
+			{...handlers}
+		/>
+	);
+	it('draws Publish held, described by why, when it has no handler', () => {
+		const root = routed(handled({}));
+		const press = button(root, 'Publish');
+		expect(press.getAttribute('aria-disabled')).toBe('true');
+		const reason = document.getElementById(press.getAttribute('aria-describedby') ?? '');
+		expect(reason?.textContent).toBe('Publishing opens once donation settings are set.');
+		expect(reason?.closest('[role="status"]')).not.toBeNull();
+		act(() => press.click());
+	});
+
+	it('draws Publish open and says nothing of a hold while it has a handler', () => {
+		const onPublish = vi.fn();
+		const root = routed(handled({ onPublish }));
+		const press = button(root, 'Publish');
+		expect(press.hasAttribute('aria-disabled')).toBe(false);
+		expect(root.querySelector('[role="status"]')?.textContent).toBe('');
+		act(() => press.click());
+		expect(onPublish).toHaveBeenCalledOnce();
+	});
+
+	it('draws no Undo and no Discard changes without their handlers', () => {
+		expect(names(routed(handled({}, true)))).not.toContain('Undo');
+		expect(names(routed(handled({}, true)))).not.toContain('Discard changes');
+		const both = names(routed(handled({ onUndo: () => {}, onDiscard: () => {} }, true)));
+		expect(both).toContain('Undo');
+		expect(both).toContain('Discard changes');
+	});
+});
+
+describe('the address', () => {
+	const sheet = (refusal: ReactNode) => (
+		<AddressSheet
+			host="give.riverbanktrust.org/"
+			slug="winter-coat-drive"
+			onSave={() => {}}
+			saving={false}
+			saved={false}
+			refusal={refusal}
+			onDismiss={() => {}}
+		/>
+	);
+
+	it('has its refusal region on the page before there is a refusal', () => {
+		const root = mount(sheet(null));
+		const save = button(root, 'Save address');
+		expect(save.hasAttribute('aria-describedby')).toBe(false);
+		const region = root.querySelector('dialog p[role="status"]');
+		expect(region?.textContent).toBe('');
+	});
+
+	it('draws a refusal at Save and puts the focus there once, when it lands', () => {
+		const { root, redraw } = mountable(sheet(null));
+		const box = root.querySelector<HTMLInputElement>('dialog input');
+		if (box === null) throw new Error('no address box');
+		act(() => box.focus());
+
+		redraw(sheet(<>The campaign changed while this was open. Reload to see it.</>));
+		const save = button(root, 'Save address');
+		const region = document.getElementById(save.getAttribute('aria-describedby') ?? '');
+		expect(region?.getAttribute('role')).toBe('status');
+		expect(region?.textContent).toBe('The campaign changed while this was open. Reload to see it.');
+		expect(document.activeElement).toBe(save);
+
+		act(() => box.focus());
+		redraw(sheet(<>The campaign changed while this was open. Reload to see it.</>));
+		expect(document.activeElement).toBe(box);
 	});
 });
 

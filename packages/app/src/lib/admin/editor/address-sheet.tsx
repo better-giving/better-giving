@@ -1,6 +1,7 @@
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Sheet } from '@better-giving/operator/components/shell/Sheet';
-import { type FormEvent, useId, useRef, useState } from 'react';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { AffixedField } from './affixed-field';
 import { useFocusOnRefusal } from './done-sheet';
 
@@ -11,6 +12,10 @@ import { useFocusOnRefusal } from './done-sheet';
 //
 // the host stands on the box in front of what is typed, so the box holds the part an operator
 // writes and nothing else.
+//
+// a refusal that is not about the address — the campaign changed under the sheet, the save did not
+// land — is drawn at Save, in a region that is there before it speaks, and Save takes the focus
+// when it arrives, as ./done-sheet.tsx draws one at Done.
 
 type AddressSheetProps = {
 	/** where every address on this deployment starts — `give.riverbanktrust.org/`. */
@@ -25,6 +30,8 @@ type AddressSheetProps = {
 	readonly saved: boolean;
 	/** the predicate the last save refused the address with. */
 	readonly error?: string | null | undefined;
+	/** the last save's refusal that is not about the address itself. */
+	readonly refusal?: ReactNode;
 	readonly onDismiss: () => void;
 };
 
@@ -35,15 +42,27 @@ export function AddressSheet({
 	saving,
 	saved,
 	error,
+	refusal,
 	onDismiss
 }: AddressSheetProps) {
 	const id = useId();
 	const form = `${id}-form`;
+	const refusalId = `${id}-refusal`;
+	const saveId = `${id}-save`;
 	const box = useRef<HTMLInputElement>(null);
+	const region = useRef<HTMLParagraphElement>(null);
+	// keyed to the words the region holds rather than to `refusal`, whose identity a caller's
+	// re-render renews: Save takes the focus when a refusal lands or changes, never on a redraw.
+	const refusalSaid = useRef('');
 	const [text, setText] = useState(slug);
 	// the predicate a Save found the box empty with, until something is typed.
 	const [empty, setEmpty] = useState(false);
 	useFocusOnRefusal(error, box);
+	useEffect(() => {
+		const said = region.current?.textContent ?? '';
+		if (said !== '' && said !== refusalSaid.current) document.getElementById(saveId)?.focus();
+		refusalSaid.current = said;
+	});
 
 	const unchanged = text.trim() === slug;
 	const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -63,12 +82,25 @@ export function AddressSheet({
 			title="Address"
 			onDismiss={onDismiss}
 			foot={
-				<SaveButton
-					form={form}
-					label="Save address"
-					doneLabel="Saved"
-					state={saving ? 'pending' : saved && unchanged ? 'done' : unchanged ? 'disabled' : 'idle'}
-				/>
+				<>
+					<p id={refusalId} role="status" ref={region}>
+						{refusal ? (
+							<StatusWord register="momentary" blocked mark="circle-alert">
+								{refusal}
+							</StatusWord>
+						) : null}
+					</p>
+					<SaveButton
+						id={saveId}
+						form={form}
+						label="Save address"
+						doneLabel="Saved"
+						state={
+							saving ? 'pending' : saved && unchanged ? 'done' : unchanged ? 'disabled' : 'idle'
+						}
+						aria-describedby={refusal ? refusalId : undefined}
+					/>
+				</>
 			}
 		>
 			<form id={form} className="adm-sheet__form" noValidate onSubmit={submit}>

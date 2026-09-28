@@ -20,6 +20,11 @@ import { InPlaceName } from './in-place-name';
 //
 // Reset to default is the Donation page's alone and is drawn only once the page has edits; Discard
 // changes only while the draft differs from what is live; Open only while something is live.
+//
+// **nothing pressable does nothing.** a caller with no handler for Undo or Discard changes gets no
+// such press drawn. Publish is the bar's one press that is always there, so without `onPublish` it
+// is drawn held — `aria-disabled`, the press turned away — and described by `publishHeld`, which
+// stands in the report region beside any refusal.
 
 /** where the page stands against what donors see. */
 export type PublishState =
@@ -42,6 +47,19 @@ const STATE_WORDS = {
 /** which press a refusal answers. */
 export type BarPress = 'publish' | 'undo' | 'name';
 
+function publishPressState(at: {
+	held: boolean;
+	publishing: boolean;
+	republished: boolean;
+	state: PublishState;
+}) {
+	if (at.held) return 'disabled';
+	if (at.publishing) return 'pending';
+	if (at.republished) return 'done';
+	// a page that is all live has nothing to publish.
+	return at.state === 'live' ? 'disabled' : 'idle';
+}
+
 type PublishBarPage =
 	| { readonly kind: 'donation' }
 	| {
@@ -62,11 +80,16 @@ type PublishBarProps = {
 	readonly publishing: boolean;
 	/** the latest thing that happened is a republish: Publish reads Published and Undo stands beside it. */
 	readonly republished: boolean;
-	readonly onPublish: () => void;
+	/** absent: Publish is drawn held. */
+	readonly onPublish?: (() => void) | undefined;
+	/** why Publish is held, drawn in the report region while `onPublish` is absent. */
+	readonly publishHeld?: string | undefined;
 	/** an Undo is in flight. */
 	readonly undoing: boolean;
-	readonly onUndo: () => void;
-	readonly onDiscard: () => void;
+	/** absent: no Undo is drawn. */
+	readonly onUndo?: (() => void) | undefined;
+	/** absent: no Discard changes is drawn. */
+	readonly onDiscard?: (() => void) | undefined;
 	/** the Donation page's Reset to default. absent on a campaign, which has none. */
 	readonly reset?: { readonly hasEdits: boolean; readonly onReset: () => void } | undefined;
 	/** the last press's refusal, as a sentence naming what to change. */
@@ -81,6 +104,7 @@ export function PublishBar({
 	publishing,
 	republished,
 	onPublish,
+	publishHeld,
 	undoing,
 	onUndo,
 	onDiscard,
@@ -88,7 +112,10 @@ export function PublishBar({
 	report
 }: PublishBarProps) {
 	const reportId = useId();
+	const heldId = useId();
 	const describe = (press: BarPress) => (report?.press === press ? reportId : undefined);
+	const held = onPublish === undefined;
+	const heldReason = held && publishHeld ? publishHeld : null;
 	const { word, tone } = STATE_WORDS[state];
 	const live = state === 'changed' || state === 'live';
 
@@ -143,7 +170,7 @@ export function PublishBar({
 							Reset to default
 						</Button>
 					) : null}
-					{state === 'changed' ? (
+					{state === 'changed' && onDiscard ? (
 						<Button
 							type="button"
 							variant="quiet"
@@ -161,13 +188,11 @@ export function PublishBar({
 						label="Publish"
 						doneLabel="Published"
 						elsewhere=""
-						state={
-							publishing ? 'pending' : republished ? 'done' : state === 'live' ? 'disabled' : 'idle'
-						}
-						aria-describedby={describe('publish')}
+						state={publishPressState({ held, publishing, republished, state })}
+						aria-describedby={heldReason ? heldId : describe('publish')}
 						onClick={onPublish}
 					/>
-					{republished ? (
+					{republished && onUndo ? (
 						<Button
 							type="button"
 							variant="quiet"
@@ -185,11 +210,20 @@ export function PublishBar({
 					) : null}
 				</div>
 			</div>
-			<p className="adm-publishbar__report" id={reportId} role="status">
+			<p className="adm-publishbar__report" role="status">
 				{report ? (
-					<StatusWord register="momentary" blocked mark="circle-alert">
-						{report.text}
-					</StatusWord>
+					<span id={reportId}>
+						<StatusWord register="momentary" blocked mark="circle-alert">
+							{report.text}
+						</StatusWord>
+					</span>
+				) : null}
+				{heldReason ? (
+					<span id={heldId}>
+						<StatusWord register="momentary" neutral>
+							{heldReason}
+						</StatusWord>
+					</span>
 				) : null}
 			</p>
 		</header>
