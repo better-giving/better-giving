@@ -1680,11 +1680,13 @@ export type RecurringGiftNotice = {
 	 */
 	readonly endedAt: Date | null;
 	/**
-	 * the attempt this delivery reports failing, on any collection after the commitment's opening
-	 * one. absent on every other notice — a collection that paid, the commitment's own
-	 * standing, and the donor's own first charge failing on the page, which is no repeating gift yet.
-	 * ./stripe.ts reports it (`failedAttemptOf`); from an adapter that does not, a failed attempt
-	 * reads as a collection that did not collect, and ../donations/collect.ts reports nothing for it.
+	 * the attempt this delivery reports failing at a collection under the commitment. absent on
+	 * every other notice — a collection that paid, and the commitment's own standing.
+	 * ./stripe.ts and ./paypal.ts report it (`failedAttemptOf` in each). stripe's omits the opening
+	 * invoice, the donor's own first charge failing on the page; paypal's reports a subscription's
+	 * first payment too, which no commitment row stands behind yet, and ../donations/collect.ts
+	 * reports nothing for an attempt under none. from an adapter that reports no attempt, a failed
+	 * one reads as a collection that did not collect, and ../donations/collect.ts reports nothing.
 	 */
 	readonly failedAttempt?: FailedCollection;
 };

@@ -490,3 +490,80 @@ describe('POST /api/paypal/webhook — a capture refund', () => {
 		expect(await refundRows()).toEqual([{ provider_txn_id: REFUND_ID, amount_minor: 10_000 }]);
 	});
 });
+
+describe('POST /api/paypal/webhook — a failed repeat payment', () => {
+	const SUBSCRIPTION_ID = 'I-BW452GLLEP1G';
+
+	/** the rows a collection would write, counted, since earlier cases in this file leave theirs. */
+	async function rowCounts() {
+		const counts: Record<string, number> = {};
+		for (const table of ['recurring_plan', 'donation', 'payment', 'entry_group']) {
+			const rows = await env.DB.prepare(`select count(*) as n from ${table}`).first<{
+				n: number;
+			}>();
+			counts[table] = rows?.n ?? 0;
+		}
+		return counts;
+	}
+
+	/** PayPal vouching for every delivery and holding one subscription whose last payment failed. */
+	function paypalHoldsAFailure(): void {
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const request = input instanceof Request ? input : new Request(String(input), init);
+			const { pathname } = new URL(request.url);
+			if (pathname === '/v1/oauth2/token') {
+				return Response.json({
+					access_token: 'A21AA-token',
+					token_type: 'Bearer',
+					expires_in: 32400
+				});
+			}
+			if (pathname === '/v1/notifications/verify-webhook-signature') {
+				return Response.json({ verification_status: 'SUCCESS' });
+			}
+			if (pathname === `/v1/billing/subscriptions/${SUBSCRIPTION_ID}`) {
+				return Response.json({
+					id: SUBSCRIPTION_ID,
+					status: 'ACTIVE',
+					subscriber: { payer_id: 'QYR5Z8CTNNPXA' },
+					billing_info: {
+						outstanding_balance: { currency_code: 'USD', value: '0.00' },
+						failed_payments_count: 1,
+						next_billing_time: '2026-10-16T22:20:08Z',
+						last_failed_payment: {
+							amount: { currency_code: 'USD', value: '25.00' },
+							time: '2026-09-16T22:20:08Z',
+							reason_code: 'PAYMENT_DENIED',
+							next_payment_retry_time: '2026-09-21T22:20:08Z'
+						}
+					}
+				});
+			}
+			return Response.json(
+				{ name: 'RESOURCE_NOT_FOUND', details: [{ issue: 'INVALID_RESOURCE_ID' }] },
+				{ status: 404 }
+			);
+		});
+	}
+
+	it('answers a failure under a subscription no gift here collected on, and writes nothing', async () => {
+		paypalHoldsAFailure();
+		const before = await rowCounts();
+
+		const { response } = await deliver(
+			JSON.stringify({
+				id: 'WH-F1',
+				event_version: '1.0',
+				event_type: 'BILLING.SUBSCRIPTION.PAYMENT.FAILED',
+				resource_type: 'subscription',
+				resource_version: '2.0',
+				create_time: '2026-09-16T22:20:10Z',
+				resource: { id: SUBSCRIPTION_ID }
+			})
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ outcome: 'uncollected' });
+		expect(await rowCounts()).toEqual(before);
+	});
+});
