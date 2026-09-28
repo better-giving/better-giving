@@ -17,8 +17,9 @@ import {
 import { refundStands } from '../donations/queries';
 
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
-// (../zapier/payload.ts) and each entry the read API's gifts list answers with
-// (src/routes/integrations.v1.gifts.ts). one projection, so the two never disagree about a field.
+// (../zapier/payload.ts), each entry the read API's gifts list answers with
+// (src/routes/integrations.v1.gifts.ts), and the `data` of a `gift.made` webhook
+// (../webhooks/deliver.ts). one projection, so the three never disagree about a field.
 //
 // a gift is one settled inbound payment — a `succeeded`, `direction = 'inbound'` row. an
 // authorization nothing has settled yet is not one, and neither is a refund row: that is a fact
@@ -86,9 +87,41 @@ const FIRST_PAGE_SIZE = 50;
 /** the newest settled gifts, newest first by when the money moved, then by id. */
 export async function readGiftPage(db: Db): Promise<ApiGift[]> {
 	const rows = await selectGifts(db)
-		.where(and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound')))
+		.where(settledGift)
 		.orderBy(desc(payment.occurredAt), desc(payment.id))
 		.limit(FIRST_PAGE_SIZE);
+	return withStanding(db, rows);
+}
+
+/**
+ * payment ids per query: each is a bound parameter, and D1 refuses a query binding more than 100
+ * (https://developers.cloudflare.com/d1/platform/limits/).
+ */
+const IDS_PER_READ = 90;
+
+/**
+ * the settled gifts among `paymentIds`, keyed by payment id. an id that is not a settled gift has
+ * no entry, which is the caller's to answer for.
+ */
+export async function readGifts(
+	db: Db,
+	paymentIds: readonly string[]
+): Promise<Map<string, ApiGift>> {
+	const ids = [...new Set(paymentIds)];
+	const gifts = new Map<string, ApiGift>();
+	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
+		const rows = await selectGifts(db).where(
+			and(settledGift, inArray(payment.id, ids.slice(start, start + IDS_PER_READ)))
+		);
+		for (const gift of await withStanding(db, rows)) gifts.set(gift.id, gift);
+	}
+	return gifts;
+}
+
+const settledGift = and(eq(payment.status, 'succeeded'), eq(payment.direction, 'inbound'));
+
+/** each gift rendered, with where it stands now. `rows` is one read's, under D1's bound. */
+async function withStanding(db: Db, rows: readonly GiftRow[]): Promise<ApiGift[]> {
 	const standing = await readRefundStanding(
 		db,
 		rows.map((row) => row.id)
@@ -113,8 +146,7 @@ const NOTHING_SENT_BACK: RefundStanding = { refundedMinor: 0, disputeOpen: false
  * what has been sent back from each of `giftIds` and whether a dispute on it is open, keyed by
  * gift id. a gift with no refund row has no entry. an open dispute's withdrawal is not counted,
  * where `projectStatus` in ../donations/queries.ts reads the gift `disputed`: that money comes back
- * if the dispute is won. the ids are one page's, under D1's 100 bound
- * parameters (https://developers.cloudflare.com/d1/platform/limits/).
+ * if the dispute is won. the ids are one read's, under D1's 100 bound parameters.
  */
 async function readRefundStanding(
 	db: Db,
