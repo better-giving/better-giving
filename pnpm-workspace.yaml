@@ -47,11 +47,33 @@ catalog:
   # dist imports only `Await`, `useLoaderData`, `useNavigate` from `react-router`, all present in 8,
   # so the peerDependencyRules entry below allows 8 for that one peer of that one package, rather
   # than loosening what any other package may peer on react-router.
+  #
+  # `@json-render/core`, `@assistant-ui/react` and the `@tiptap/*` set earn their catalog entry on a
+  # different rule from the rest: packages/app is their only consumer today, but `@json-render/core`
+  # and `@assistant-ui/react` are both 0.x and release often, so the entry here is the upgrade gate —
+  # a bump is one reviewed line rather than a line buried in packages/app/package.json. the
+  # `@tiptap/*` set rides one entry as a block: `@tiptap/core`, `@tiptap/pm` and `@tiptap/react` peer
+  # on each other at this exact version, and every `@tiptap/extension-*` package here peers on
+  # `@tiptap/core` at the same exact version, so the set moves together or not at all. it is the
+  # minimal set for bold, italic, bullet and numbered lists and links — `@tiptap/extension-list`
+  # carries `BulletList`, `OrderedList` and `ListItem` — and nothing past those five features.
   '@ark-ui/react': 5.39.2
+  '@assistant-ui/react': 0.15.22
   '@conform-to/react': 1.21.1
   '@conform-to/zod': 1.21.1
+  '@json-render/core': 0.21.0
   '@react-router/dev': 8.3.0
   '@react-router/fs-routes': 8.3.0
+  '@tiptap/core': 3.31.3
+  '@tiptap/extension-bold': 3.31.3
+  '@tiptap/extension-document': 3.31.3
+  '@tiptap/extension-italic': 3.31.3
+  '@tiptap/extension-link': 3.31.3
+  '@tiptap/extension-list': 3.31.3
+  '@tiptap/extension-paragraph': 3.31.3
+  '@tiptap/extension-text': 3.31.3
+  '@tiptap/pm': 3.31.3
+  '@tiptap/react': 3.31.3
   '@types/node': 24.13.3
   '@types/react': 19.2.18
   '@types/react-dom': 19.2.4
