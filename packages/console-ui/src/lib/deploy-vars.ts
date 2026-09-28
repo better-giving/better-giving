@@ -2,7 +2,7 @@ import type { DeployVarName } from '../api/types';
 
 // the values no group's press sets, and why each is in no group.
 //
-// **no fold on this console draws a box for these four.** `STRIPE_PUBLISHABLE_KEY` has one of its
+// **no fold on this console draws a box for these.** `STRIPE_PUBLISHABLE_KEY` has one of its
 // own beside the secret key, because one press pastes the pair and the chain writes both
 // (./stripe-section.tsx) — it is not in a group because that press is not a group's.
 // `TURNSTILE_SITE_KEY` is minted with the widget on the first deploy out of the answer that made it
@@ -20,6 +20,11 @@ import type { DeployVarName } from '../api/types';
 // from, set months after the keys are — and PayPal's credentials and their address are one group
 // beside it (`PAYPAL_GROUP` in ./secret-groups.ts).
 //
+// `AI_MODEL` is a choice off a closed list (`AI_MODELS` in packages/operator/src/ai-models.ts)
+// rather than a credential. the vars press writes it like any other value and refuses an id off
+// that list, and `GET /api/ai-model` reads it back beside the credits it spends
+// (packages/console/internal/server/ai.go).
+//
 // it is a list rather than a remark in a header because ./secret-groups.spec.ts reads it: the
 // covering there is two-directional, so a name added to the enumeration lands in a group or here,
 // and a name that lands in neither is a value with nowhere to be typed.
@@ -28,5 +33,6 @@ export const UNGROUPED_VARS: readonly DeployVarName[] = [
 	'STRIPE_PUBLISHABLE_KEY',
 	'TURNSTILE_SITE_KEY',
 	'BETTER_AUTH_URL',
-	'PAYPAL_CHARITY_RATE_APPROVED'
+	'PAYPAL_CHARITY_RATE_APPROVED',
+	'AI_MODEL'
 ];

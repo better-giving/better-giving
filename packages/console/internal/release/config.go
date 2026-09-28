@@ -71,10 +71,12 @@ func WriteManifest(manifest Manifest) ([]byte, error) {
 // reader of a file the operator does not have.
 //
 // ./config_test.go is the gate: every field below is compared against what
-// packages/app/wrangler.jsonc declares, so a binding added there and not here fails `go test`
+// packages/app/wrangler.jsonc declares, and internal/deploy's wrangler_test.go holds the whole
+// binding set the upload sends to that file's, so a binding added there and not here fails `go test`
 // rather than shipping a deployment missing it.
 var Upload = UploadShape{
 	D1Binding: "DB",
+	AIBinding: "AI",
 	RateLimits: []RateLimit{
 		{Name: "API_RATE_LIMITER", NamespaceID: "7412", Simple: Simple{Limit: 600, Period: 60}},
 		{Name: "QUOTE_RATE_LIMITER", NamespaceID: "7413", Simple: Simple{Limit: 60, Period: 60}},
@@ -89,6 +91,8 @@ var Upload = UploadShape{
 type UploadShape struct {
 	// D1Binding is the name the app's own queries reach its database under.
 	D1Binding string
+	// AIBinding is the name the app reaches Workers AI under, and through it every model.
+	AIBinding string
 	// RateLimits is every bucket this deployment is uploaded with.
 	RateLimits []RateLimit
 	// CompatibilityDate and CompatibilityFlags are the runtime the worker runs under.
@@ -186,9 +190,42 @@ var DeployVars = []string{
 	"QUICKBOOKS_CLIENT_ID",
 	"QUICKBOOKS_CLIENT_SECRET",
 	"QUICKBOOKS_API_URL",
+	"AI_MODEL",
 	"BETTER_AUTH_SECRET",
 	"BETTER_AUTH_URL",
 	"ADMIN_PASSWORD",
+}
+
+// AIModels is every model `AI_MODEL` may name, in the order packages/operator/src/ai-models.ts
+// lists them — the deployment's own list, which refuses any other id.
+//
+// **stated here and gated rather than trusted, the way DeployVars above is.** ./config_test.go holds
+// the ids and which of them bill the account's credits to that module, so a model added there and
+// not here is a choice this console refuses to write, and one taken off there is a choice this
+// console would store for a deployment to refuse. the first entry is the free model an unset
+// `AI_MODEL` means.
+var AIModels = []AIModel{
+	{ID: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", CreditBilled: false},
+	{ID: "anthropic/claude-sonnet-4.6", CreditBilled: true},
+	{ID: "openai/gpt-5-mini", CreditBilled: true},
+}
+
+// AIModel is one model a deployment may answer with.
+type AIModel struct {
+	// ID is what `AI_MODEL` holds.
+	ID string
+	// CreditBilled is spent from the account's Cloudflare credits, where the free model is not.
+	CreditBilled bool
+}
+
+// ModelByID is the entry `id` names, and false for an id off the list.
+func ModelByID(id string) (AIModel, bool) {
+	for _, model := range AIModels {
+		if model.ID == id {
+			return model, true
+		}
+	}
+	return AIModel{}, false
 }
 
 // the closed sets a deployment answers its own console surface in.

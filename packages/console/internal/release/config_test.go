@@ -527,3 +527,29 @@ func TestTheAccountTheRunPressesAboutIsOneTheWireNames(t *testing.T) {
 		}
 	}
 }
+
+// the models `AI_MODEL` may name, against the module both ends read them from.
+//
+// gated the way DeployVars is: the deployment refuses an id off packages/operator/src/ai-models.ts,
+// so an id this binary would write and that module does not list is a choice stored and then
+// refused on every request that reaches a model — and a model billed to credits here and free there
+// is a credit balance the console reads for nothing, or never reads for one that spends it.
+func TestTheModelsAreTheOnesBothEndsRead(t *testing.T) {
+	source := read(t, "packages/operator/src/ai-models.ts")
+	block := regexp.MustCompile(`export const AI_MODELS\s*=\s*\[([^\]]*)\]`).FindStringSubmatch(source)
+	if block == nil {
+		t.Fatal("no AI_MODELS is stated")
+	}
+	entries := regexp.MustCompile(`id:\s*'([^']+)'[^}]*creditBilled:\s*(true|false)`).
+		FindAllStringSubmatch(block[1], -1)
+	stated := []AIModel{}
+	for _, entry := range entries {
+		stated = append(stated, AIModel{ID: entry[1], CreditBilled: entry[2] == "true"})
+	}
+	if len(stated) == 0 {
+		t.Fatal("AI_MODELS names nothing")
+	}
+	if !slices.Equal(stated, AIModels) {
+		t.Errorf("AI_MODELS states %v and this binary holds %v", stated, AIModels)
+	}
+}

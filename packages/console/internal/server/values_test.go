@@ -357,3 +357,45 @@ func TestASpellingTheDeploymentDoesNotReadAsApprovedIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// the deployment answers only with a model packages/operator/src/ai-models.ts lists, so an id off
+// it stored here is a choice every request reaching a model is refused over.
+func TestAModelChoiceOffTheListIsRefusedNamingIt(t *testing.T) {
+	api, asked := writes(t, nil)
+	status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars",
+		`{"values":{"AI_MODEL":"anthropic/claude-opus-9"}}`)
+	said, _ := answer["error"].(string)
+	if status != http.StatusBadRequest || !strings.Contains(said, "anthropic/claude-opus-9") ||
+		!strings.Contains(said, "ai-models.ts") {
+		t.Fatalf("%d %q", status, said)
+	}
+	if len(*asked) != 0 {
+		t.Fatalf("cloudflare was asked %v", *asked)
+	}
+}
+
+func TestAModelChoiceOnTheListIsWrittenAndTakingItOffIsTheFreeModel(t *testing.T) {
+	worker := release.Baked.Name
+	stored := map[string]any{"name": "AI_MODEL", "type": "plain_text", "text": "openai/gpt-5-mini"}
+	for what, one := range map[string]struct {
+		bindings []any
+		body     string
+	}{
+		"chosen":    {bindings: []any{}, body: `{"values":{"AI_MODEL":"anthropic/claude-sonnet-4.6"}}`},
+		"taken off": {bindings: []any{stored}, body: `{"values":{"AI_MODEL":null}}`},
+	} {
+		api, asked := writes(t, map[string]any{
+			"GET " + settingsOf(worker): map[string]any{
+				"success": true, "errors": []any{},
+				"result": map[string]any{"bindings": one.bindings},
+			},
+		})
+		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars", one.body)
+		if status != http.StatusOK || answer["kind"] != "set" {
+			t.Errorf("%s answered %d %v", what, status, answer)
+		}
+		if len(*asked) != 2 || (*asked)[1] != "PATCH "+settingsOf(worker) {
+			t.Errorf("%s asked cloudflare %v", what, *asked)
+		}
+	}
+}

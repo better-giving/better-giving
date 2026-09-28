@@ -410,6 +410,7 @@ func bindings(options Options) []any {
 			"simple":       map[string]any{"limit": limiter.Simple.Limit, "period": limiter.Simple.Period},
 		})
 	}
+	held = append(held, map[string]any{"name": options.Shape.AIBinding, "type": "ai"})
 	if options.Release != "" {
 		held = append(held, map[string]any{
 			"name": deployment.RecordedReleaseName,
@@ -448,7 +449,7 @@ func verify(ctx context.Context, options Options) failure {
 			}
 		}
 	}
-	for _, want := range append([]string{options.Shape.D1Binding}, limiterNames(options)...) {
+	for _, want := range boundNames(options) {
 		if !named[want] {
 			return failure{Kind: Stopped, Detail: "the deployment came back without its " + want + " binding"}
 		}
@@ -456,10 +457,11 @@ func verify(ctx context.Context, options Options) failure {
 	return failure{}
 }
 
-func limiterNames(options Options) []string {
-	names := []string{}
+// every binding the upload names but the release record, which is the console's own.
+func boundNames(options Options) []string {
+	names := []string{options.Shape.D1Binding}
 	for _, limiter := range options.Shape.RateLimits {
 		names = append(names, limiter.Name)
 	}
-	return names
+	return append(names, options.Shape.AIBinding)
 }

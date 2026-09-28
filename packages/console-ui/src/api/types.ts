@@ -149,6 +149,30 @@ export type VarsRead =
 export type DeployedValues = { vars: VarsRead };
 
 /**
+ * what the account's cloudflare credits say about the model choice, from `GET /api/ai-model`.
+ *
+ * read only for a choice billed to credits, and a hint rather than a gate; what the deployment does
+ * on an empty account is `generate`'s header in packages/app/src/lib/server/ai/generate.ts.
+ * `missing` is a balance at or under zero. `unknown` is a balance not read: in cloudflare's words
+ * where the read was refused, or in a fixed sentence on the browser sign-in, which cannot read it
+ * and so never asks (`CreditsUnreadOnSignIn` in packages/console/internal/deployment/aimodel.go).
+ */
+export type ModelCredits =
+	| { kind: 'not-asked' }
+	| { kind: 'held' | 'missing'; balance: number }
+	| { kind: 'unknown'; detail: string };
+
+/**
+ * `AI_MODEL` as the deployment holds it, and the credits that choice spends.
+ *
+ * the choice is written through the vars press like every other value, and refused there for an id
+ * off `AI_MODELS` in `@better-giving/operator/ai-models`; an absent row is the free model.
+ */
+export type ModelChoice =
+	| { kind: 'read'; model: DeployedVar; credits: ModelCredits }
+	| Exclude<VarsRead, { kind: 'read' }>;
+
+/**
  * the account this console was started in, and the two names every screen under it is about.
  *
  * it answers within a loopback round trip because everything in it is this machine's own memory and

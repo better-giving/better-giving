@@ -47,6 +47,11 @@
 // company: Intuit rotates that one on every refresh, so the worker rewrites its own copy — which a
 // var cannot be, since editing one takes a key able to edit the worker itself. it is a row
 // instead, and `quickbooksConnection` in `packages/app/src/lib/server/db/schema.ts` argues it.
+//
+// `AI_MODEL` is on the list though it is a choice rather than a credential or an address: which
+// model on `AI_MODELS` (./ai-models.ts) the deployment's generated text is answered by. the models
+// beside the free one are billed to the Cloudflare account's own credits through the Workers AI
+// binding, so choosing one stores no key — this name is the whole of what the choice writes.
 
 /**
  * every name, in the order the app reads them — `CONFIG_VAR_NAMES` in
@@ -88,6 +93,7 @@ export const DEPLOY_VARS = [
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL',
+	'AI_MODEL',
 	'BETTER_AUTH_SECRET',
 	'BETTER_AUTH_URL',
 	'ADMIN_PASSWORD'

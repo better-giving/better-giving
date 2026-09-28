@@ -66,8 +66,8 @@ func TestTheScriptGoesUpWithTheBindingsThisAppHas(t *testing.T) {
 	}
 
 	bindings, _ := metadata["bindings"].([]any)
-	if len(bindings) != 3 {
-		t.Fatalf("bindings = %v, want the database, the limiter and the record of this release",
+	if len(bindings) != 4 {
+		t.Fatalf("bindings = %v, want the database, the limiter, workers ai and the record of this release",
 			bindings)
 	}
 	database, _ := bindings[0].(map[string]any)
@@ -81,6 +81,9 @@ func TestTheScriptGoesUpWithTheBindingsThisAppHas(t *testing.T) {
 	}
 	if simple, _ := limiter["simple"].(map[string]any); simple["limit"] != float64(600) {
 		t.Errorf("the limiter's bucket is %v", limiter["simple"])
+	}
+	if ai, _ := bindings[2].(map[string]any); ai["type"] != "ai" || ai["name"] != "AI" {
+		t.Errorf("the workers ai binding is %v", ai)
 	}
 }
 
@@ -259,6 +262,15 @@ func TestADeploymentThatCameBackWithoutABindingIsNotDeployed(t *testing.T) {
 	}
 	if !strings.Contains(run.Detail, "API_RATE_LIMITER") {
 		t.Errorf("detail = %q, want the binding that did not come back", run.Detail)
+	}
+}
+
+func TestADeploymentThatCameBackWithoutWorkersAIIsNotDeployed(t *testing.T) {
+	held := &account{bound: []string{"DB", "API_RATE_LIMITER"}}
+	run, _ := deployed(t, held, packed(t, baked()))
+
+	if run.Kind != Stopped || run.At != Verifying || !strings.Contains(run.Detail, "AI binding") {
+		t.Fatalf("kind = %q at %q (%s), want a stop naming the AI binding", run.Kind, run.At, run.Detail)
 	}
 }
 

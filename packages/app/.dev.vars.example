@@ -347,3 +347,15 @@ TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
 # QUICKBOOKS_CLIENT_ID=""
 # QUICKBOOKS_CLIENT_SECRET=""
 # QUICKBOOKS_API_URL="https://sandbox-quickbooks.api.intuit.com"
+
+# The model the dashboard's generated text is answered by. Unset is the free
+# Workers AI model. The others are billed to the Cloudflare account's credits
+# through AI Gateway, so no provider key is ever stored. The console writes
+# this value. The ids it takes are `AI_MODELS` in
+# packages/operator/src/ai-models.ts, and any other value is refused.
+#
+# Every model runs on Cloudflare, locally too, and `pnpm dev` reaches none of
+# them unless it is started with BETTER_GIVING_REMOTE_AI=1 after
+# `pnpm run login` (CONTRIBUTING.md, Setup). That is a shell variable, not a
+# line in this file.
+# AI_MODEL="anthropic/claude-sonnet-4.6"
