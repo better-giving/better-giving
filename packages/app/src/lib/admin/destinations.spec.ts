@@ -20,6 +20,7 @@ describe('the rail', () => {
 			'/admin/members',
 			'/admin/integrations/zapier',
 			'/admin/integrations/api',
+			'/admin/integrations/webhooks',
 			'/admin/books'
 		]);
 	});
@@ -29,7 +30,7 @@ describe('the rail', () => {
 			['Dashboard'],
 			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Members'],
-			['Zapier', 'API'],
+			['Zapier', 'API', 'Webhooks'],
 			['Books']
 		]);
 	});

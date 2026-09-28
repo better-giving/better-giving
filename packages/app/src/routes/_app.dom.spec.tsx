@@ -125,6 +125,7 @@ it('draws the deployer the Integrations group, headed, between Members and Books
 		'Integrations',
 		'Zapier',
 		'API',
+		'Webhooks',
 		'Books'
 	]);
 	// the one cell marked with a company's own image rather than a glyph.

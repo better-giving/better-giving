@@ -8,6 +8,8 @@ import { handle as newFormHandle } from '../../routes/_app.admin.forms.new';
 import { handle as programHandle } from '../../routes/_app.admin.programs.$id';
 import { handle as newProgramHandle } from '../../routes/_app.admin.programs.new';
 import { handle as recurringHandle } from '../../routes/_app.admin.recurring.$id';
+import { handle as destinationHandle } from '../../routes/_app.admin.integrations.webhooks.$id';
+import { handle as newDestinationHandle } from '../../routes/_app.admin.integrations.webhooks.new';
 import { ScreenCrumbs } from './crumbs';
 
 // the trail each screen standing under a section states, and what a press on its way back does.
@@ -147,6 +149,35 @@ describe('the trail each screen states', () => {
 		expect(trail(root)).toEqual([
 			{ label: 'Gifts', href: '/admin/donations', current: false },
 			{ label: 'Export', href: null, current: true }
+		]);
+	});
+
+	it('a webhook destination: Webhooks, then the destination by its address', async () => {
+		const root = await screen({
+			path: '/admin/integrations/webhooks/:id',
+			at: '/admin/integrations/webhooks/1',
+			handle: destinationHandle,
+			loaderData: { title: 'crm.example.net/webhooks/better-giving' },
+			section: '/admin/integrations/webhooks'
+		});
+
+		expect(trail(root)).toEqual([
+			{ label: 'Webhooks', href: '/admin/integrations/webhooks', current: false },
+			{ label: 'crm.example.net/webhooks/better-giving', href: null, current: true }
+		]);
+	});
+
+	it('a new webhook destination: Webhooks, then the screen that adds one', async () => {
+		const root = await screen({
+			path: '/admin/integrations/webhooks/new',
+			at: '/admin/integrations/webhooks/new',
+			handle: newDestinationHandle,
+			section: '/admin/integrations/webhooks'
+		});
+
+		expect(trail(root)).toEqual([
+			{ label: 'Webhooks', href: '/admin/integrations/webhooks', current: false },
+			{ label: 'Add destination', href: null, current: true }
 		]);
 	});
 

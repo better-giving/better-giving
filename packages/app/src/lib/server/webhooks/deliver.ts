@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { inPage } from '../integrations/paging';
@@ -286,35 +286,80 @@ function afterFailure(attempts: number, now: Date): Outcome<typeof webhookDelive
 }
 
 /**
- * the held window of the paused destination `destinationId`, due at `now`: every row still owed,
- * and every `failed` row whose last failure came at or after `failing_since`, the start of the run
- * of failures that paused it — `updated_at` is stamped by that failure's landing. each starts the
- * schedule afresh under its own id, and the statement answers with the ids it re-queued. it
- * matches nothing once the destination is resumed, so it runs in front of the write that resumes
- * it.
+ * the held window of the paused destination `destinationId`: every row still owed, and every
+ * `failed` row whose last failure came at or after `failing_since`, the start of the run of
+ * failures that paused it — `updated_at` is stamped by that failure's landing. a destination not
+ * paused, or deleted, holds nothing.
  */
-export function requeueHeldStatement(db: Db, destinationId: string, now: Date) {
+function heldWindow(db: Db, destinationId: string) {
 	const paused = db
 		.select({ id: webhookDestination.id })
 		.from(webhookDestination)
-		.where(and(eq(webhookDestination.id, destinationId), isNotNull(webhookDestination.pausedAt)));
+		.where(
+			and(
+				eq(webhookDestination.id, destinationId),
+				isNotNull(webhookDestination.pausedAt),
+				isNull(webhookDestination.archivedAt)
+			)
+		);
 	const failingSince = db
 		.select({ failingSince: webhookDestination.failingSince })
 		.from(webhookDestination)
 		.where(eq(webhookDestination.id, destinationId));
+	return and(
+		eq(webhookDelivery.destinationId, paused),
+		or(
+			eq(webhookDelivery.status, 'pending'),
+			and(eq(webhookDelivery.status, 'failed'), gte(webhookDelivery.updatedAt, failingSince))
+		)
+	);
+}
+
+/**
+ * the held window of `destinationId` ({@link heldWindow}) due at `now`, each row starting the
+ * schedule afresh under its own id, answered with the ids it re-queued. it matches nothing once the
+ * destination is resumed, so it runs in front of the write that resumes it.
+ */
+export function requeueHeldStatement(db: Db, destinationId: string, now: Date) {
 	return db
 		.update(webhookDelivery)
 		.set({ status: 'pending', attempts: 0, nextAttemptAt: now, updatedAt: now })
+		.where(heldWindow(db, destinationId))
+		.returning({ id: webhookDelivery.id });
+}
+
+/** how many rows a resume of `destinationId` would re-queue now. */
+export async function countHeld(db: Db, destinationId: string): Promise<number> {
+	const [row] = await db
+		.select({ n: count() })
+		.from(webhookDelivery)
+		.where(heldWindow(db, destinationId));
+	return row?.n ?? 0;
+}
+
+/**
+ * every row the destination `destinationId` is still owed, `dropped` at `now` because it is being
+ * deleted; what was delivered or failed is kept, for its record. it matches nothing once the
+ * destination is archived, so it runs in front of the write that archives it.
+ */
+export function dropOwedStatement(db: Db, destinationId: string, now: Date) {
+	return db
+		.update(webhookDelivery)
+		.set({ status: 'dropped', lastError: 'Its destination was deleted.', updatedAt: now })
 		.where(
 			and(
-				eq(webhookDelivery.destinationId, paused),
-				or(
-					eq(webhookDelivery.status, 'pending'),
-					and(eq(webhookDelivery.status, 'failed'), gte(webhookDelivery.updatedAt, failingSince))
+				eq(webhookDelivery.status, 'pending'),
+				eq(
+					webhookDelivery.destinationId,
+					db
+						.select({ id: webhookDestination.id })
+						.from(webhookDestination)
+						.where(
+							and(eq(webhookDestination.id, destinationId), isNull(webhookDestination.archivedAt))
+						)
 				)
 			)
-		)
-		.returning({ id: webhookDelivery.id });
+		);
 }
 
 /** the due rows of destinations neither paused nor archived, leased to this run. */

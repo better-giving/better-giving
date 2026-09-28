@@ -103,7 +103,13 @@ export const DESTINATION_GROUPS = [
 				short: 'Zapier',
 				mark: { src: zapierImage }
 			},
-			{ href: '/admin/integrations/api', label: 'API', short: 'API', mark: 'key-round' }
+			{ href: '/admin/integrations/api', label: 'API', short: 'API', mark: 'key-round' },
+			{
+				href: '/admin/integrations/webhooks',
+				label: 'Webhooks',
+				short: 'Webhooks',
+				mark: 'webhook'
+			}
 		]
 	},
 	{

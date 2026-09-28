@@ -2,7 +2,17 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { rejectionCode } from '../db/rejection.testing';
-import { createDestination, resumeDestination } from './destinations';
+import { sql } from 'drizzle-orm';
+import {
+	createDestination,
+	deleteDestination,
+	resumeDestination,
+	updateDestination
+} from './destinations';
+import {
+	recurringGiftChangeWebhookStatements,
+	recurringGiftStartedWebhookStatements
+} from './events';
 
 // a destination as it is made, against a real D1: what is stored, what comes back once, and the
 // address refused before anything is written. the https rule is held twice — here, where a caller
@@ -72,7 +82,7 @@ describe('createDestination()', () => {
 		expect(first.destination.signingSecret).not.toBe(second.destination.signingSecret);
 	});
 
-	it.each(['http://crm.example.org/hooks', 'ftp://crm.example.org/hooks', 'crm.example.org/hooks'])(
+	it.each(['http://crm.example.org/hooks', 'ftp://crm.example.org/hooks', 'https://'])(
 		'refuses %s and writes nothing',
 		async (url) => {
 			const made = await createDestination(db, { url, events: ['gift.made'] });
@@ -80,11 +90,59 @@ describe('createDestination()', () => {
 			expect(made).toEqual({
 				ok: false,
 				reason: 'not_https',
+				box: 'must start with https://',
 				detail: expect.stringContaining(url)
 			});
 			expect(await stored()).toEqual([]);
 		}
 	);
+
+	it.each([
+		['https://localhost/hooks', 'localhost names the machine the post is sent from'],
+		['https://api.localhost/hooks', 'api.localhost names the machine the post is sent from'],
+		['https://127.0.0.1/hooks', '127.0.0.1 is a loopback address'],
+		['https://10.1.2.3/hooks', '10.1.2.3 is a private network address'],
+		['https://172.20.0.9/hooks', '172.20.0.9 is a private network address'],
+		['https://192.168.1.20/hooks', '192.168.1.20 is a private network address'],
+		['https://169.254.169.254/latest', '169.254.169.254 is a link-local address'],
+		['https://0x7f000001/hooks', '127.0.0.1 is a loopback address'],
+		['https://[::1]/hooks', '[::1] is a loopback address'],
+		['https://[fe80::1]/hooks', '[fe80::1] is a link-local address'],
+		['https://[fd12:3456::1]/hooks', '[fd12:3456::1] is a unique local address'],
+		['https://[::ffff:10.0.0.1]/hooks', '[::ffff:a00:1] is a private network address'],
+		['https://crm.local/hooks', 'crm.local names a host on a local network'],
+		['https://crm.local./hooks', 'crm.local. names a host on a local network'],
+		['https://db.corp.internal/hooks', 'db.corp.internal names a host on an internal network']
+	])('refuses %s, a host the internet cannot reach, and writes nothing', async (url, why) => {
+		const made = await createDestination(db, { url, events: ['gift.made'] });
+
+		expect(made).toEqual({
+			ok: false,
+			reason: 'not_public',
+			box: `must be reachable from the internet: ${why}`,
+			detail: expect.stringContaining(why)
+		});
+		expect(await stored()).toEqual([]);
+	});
+
+	it.each([
+		'https://203.0.113.7/hooks',
+		'https://172.32.0.1/hooks',
+		'https://[2001:db8::1]/hooks',
+		'https://local.example.org/hooks',
+		'https://internal.example.org/hooks'
+	])('takes %s, a public host', async (url) => {
+		expect((await createDestination(db, { url, events: ['gift.made'] })).ok).toBe(true);
+	});
+
+	it('takes an address typed without a scheme as https', async () => {
+		const made = await createDestination(db, {
+			url: '  crm.example.org/hooks ',
+			events: ['gift.made']
+		});
+
+		expect(made.ok && made.destination.url).toBe('https://crm.example.org/hooks');
+	});
 
 	it('stores the address as parsed, so a scheme typed in capitals is https', async () => {
 		const made = await createDestination(db, {
@@ -147,6 +205,35 @@ describe('resumeDestination()', () => {
 		});
 	});
 
+	it('refuses a deleted destination as not found, and re-queues none of its rows', async () => {
+		const id = await made();
+		await env.DB.prepare(
+			'update webhook_destination set paused_at = 1, failing_since = 1, archived_at = 2 where id = ?'
+		)
+			.bind(id)
+			.run();
+		await env.DB.prepare(
+			`insert into webhook_delivery (id, destination_id, event, subject_id, status, attempts,
+			   next_attempt_at, created_at, updated_at)
+			 values (?, ?, 'gift.made', 'pay_1', 'failed', 3, 5, 0, 5)`
+		)
+			.bind(`msg_${crypto.randomUUID()}`, id)
+			.run();
+
+		expect(await resumeDestination(db, id, NOW)).toEqual({
+			ok: false,
+			reason: 'not_found',
+			detail: `No destination has the id ${id}.`
+		});
+		expect(await env.DB.prepare('select status, attempts from webhook_delivery').first()).toEqual({
+			status: 'failed',
+			attempts: 3
+		});
+		expect(await env.DB.prepare('select paused_at from webhook_destination').first()).toEqual({
+			paused_at: 1
+		});
+	});
+
 	it('refuses a destination that is not paused, and re-queues none of its rows', async () => {
 		const id = await made();
 		await env.DB.prepare(
@@ -176,5 +263,171 @@ describe('resumeDestination()', () => {
 			await env.DB.prepare('select paused_at, failing_since from webhook_destination').first()
 		).toEqual({ paused_at: null, failing_since: null });
 		expect(await resumeDestination(db, id, NOW)).toMatchObject({ ok: false, reason: 'not_paused' });
+	});
+});
+
+describe('updateDestination()', () => {
+	async function made(events: Parameters<typeof createDestination>[1]['events']) {
+		const created = await createDestination(db, {
+			url: 'https://crm.example.org/hooks/giving',
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination.id;
+	}
+
+	/** a commitment starting and changing, which owes whichever destinations take each event. */
+	async function planStartsAndChanges(planId: string) {
+		await db.batch([
+			...recurringGiftStartedWebhookStatements(db, { id: planId, status: 'active' }),
+			recurringGiftChangeWebhookStatements(db, 'recurring_gift.updated', planId, sql`1`)
+		]);
+	}
+
+	async function owed() {
+		const { results } = await env.DB.prepare(
+			'select event, subject_id from webhook_delivery order by event, subject_id'
+		).all<{ event: string; subject_id: string }>();
+		return results.map((row) => `${row.event} ${row.subject_id.split(':')[0]}`);
+	}
+
+	it('stops the events taken off and starts the ones added, for events after it', async () => {
+		const id = await made(['recurring_gift.started']);
+		await planStartsAndChanges('plan_before');
+
+		expect(
+			await updateDestination(db, id, {
+				url: 'https://crm.example.org/hooks/giving',
+				events: ['recurring_gift.updated']
+			})
+		).toEqual({ ok: true });
+		await planStartsAndChanges('plan_after');
+
+		expect(await owed()).toEqual([
+			'recurring_gift.started plan_before',
+			'recurring_gift.updated plan_after'
+		]);
+	});
+
+	it('moves the address, and keeps the signing secret', async () => {
+		const id = await made(['gift.made']);
+		const before = await stored();
+
+		await updateDestination(db, id, { url: 'crm.example.net/hooks', events: ['gift.made'] });
+
+		expect(await stored()).toEqual([
+			{ ...before[0], url: 'https://crm.example.net/hooks', events: 'gift.made' }
+		]);
+	});
+
+	it('refuses an address it would not make a destination with, and changes nothing', async () => {
+		const id = await made(['gift.made']);
+		const before = await stored();
+
+		expect(
+			await updateDestination(db, id, { url: 'https://10.0.0.8/hooks', events: ['donor.added'] })
+		).toMatchObject({ ok: false, reason: 'not_public' });
+		expect(await stored()).toEqual(before);
+	});
+
+	it('refuses a destination that was deleted, or never was, as not found', async () => {
+		const id = await made(['gift.made']);
+		await env.DB.prepare('update webhook_destination set archived_at = 1 where id = ?')
+			.bind(id)
+			.run();
+		const before = await stored();
+
+		for (const which of [id, '019fb300-0000-7000-8000-00000000dead']) {
+			expect(
+				await updateDestination(db, which, { url: 'https://a.example.org/', events: ['gift.made'] })
+			).toEqual({ ok: false, reason: 'not_found', detail: `No destination has the id ${which}.` });
+		}
+		expect(await stored()).toEqual(before);
+	});
+});
+
+describe('deleteDestination()', () => {
+	const NOW = new Date('2026-09-28T12:00:00.000Z');
+
+	async function made() {
+		const created = await createDestination(db, {
+			url: 'https://crm.example.org/hooks/giving',
+			events: ['recurring_gift.started']
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination.id;
+	}
+
+	async function row(subject: string, status: string, destinationId: string) {
+		await env.DB.prepare(
+			`insert into webhook_delivery (id, destination_id, event, subject_id, status, attempts,
+			   next_attempt_at, delivered_at, created_at, updated_at)
+			 values (?, ?, 'gift.made', ?, ?, 1, 0, ?, 0, 0)`
+		)
+			.bind(
+				`msg_${crypto.randomUUID()}`,
+				destinationId,
+				subject,
+				status,
+				status === 'delivered' ? 1 : null
+			)
+			.run();
+	}
+
+	async function rows() {
+		const { results } = await env.DB.prepare(
+			'select subject_id, status, last_error, updated_at from webhook_delivery order by subject_id'
+		).all();
+		return results;
+	}
+
+	it('drops what it was still owed, keeps what it was sent, and owes it nothing new', async () => {
+		const id = await made();
+		const other = await made();
+		await row('a_pending', 'pending', id);
+		await row('b_delivered', 'delivered', id);
+		await row('c_failed', 'failed', id);
+		await row('d_other', 'pending', other);
+
+		expect(await deleteDestination(db, id, NOW)).toEqual({
+			ok: true,
+			url: 'https://crm.example.org/hooks/giving'
+		});
+		await db.batch([
+			...recurringGiftStartedWebhookStatements(db, { id: 'plan_1', status: 'active' })
+		]);
+
+		expect(await rows()).toEqual([
+			{
+				subject_id: 'a_pending',
+				status: 'dropped',
+				last_error: 'Its destination was deleted.',
+				updated_at: NOW.getTime()
+			},
+			{ subject_id: 'b_delivered', status: 'delivered', last_error: null, updated_at: 0 },
+			{ subject_id: 'c_failed', status: 'failed', last_error: null, updated_at: 0 },
+			{ subject_id: 'd_other', status: 'pending', last_error: null, updated_at: 0 },
+			{ subject_id: 'plan_1', status: 'pending', last_error: null, updated_at: expect.any(Number) }
+		]);
+		expect(
+			await env.DB.prepare('select archived_at from webhook_destination where id = ?')
+				.bind(id)
+				.first()
+		).toEqual({ archived_at: NOW.getTime() });
+	});
+
+	it('refuses one already deleted, or never made, as not found, and drops nothing', async () => {
+		const id = await made();
+		await deleteDestination(db, id, NOW);
+		await row('late', 'pending', id);
+
+		for (const which of [id, '019fb300-0000-7000-8000-00000000dead']) {
+			expect(await deleteDestination(db, which, NOW)).toEqual({
+				ok: false,
+				reason: 'not_found',
+				detail: `No destination has the id ${which}.`
+			});
+		}
+		expect(await rows()).toMatchObject([{ subject_id: 'late', status: 'pending' }]);
 	});
 });
