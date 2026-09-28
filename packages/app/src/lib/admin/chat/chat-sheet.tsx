@@ -5,7 +5,7 @@ import {
 	useExternalStoreRuntime
 } from '@assistant-ui/react';
 import { Sheet } from '@better-giving/operator/components/shell/Sheet';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ChatComposer } from './chat-composer';
 import { ChatLog } from './chat-log';
 
@@ -51,6 +51,15 @@ export type ChatAttachment = {
 	| { readonly state: 'refused'; readonly reason: string }
 );
 
+/**
+ * a send the route could not take, handed back: the words the operator sent and why they did not
+ * go, as a sentence the operator reads.
+ */
+export interface ChatUnsent {
+	readonly text: string;
+	readonly reason: string;
+}
+
 /** a new campaign's first draft being written from its title and "What's it for?" line. */
 export interface ChatWaiting {
 	readonly title: string;
@@ -70,6 +79,12 @@ export interface ChatSheetProps {
 	readonly attachment?: ChatAttachment | undefined;
 	/** the attach press, drawn at the start of the composer's row. `held` while a reply is written. */
 	readonly attach?: ((composer: { held: boolean }) => ReactNode) | undefined;
+	/**
+	 * the last send refused. a value is new when its words or its reason differ from the one before,
+	 * so the route may build a fresh object on every render; to hand back the same refusal twice, pass
+	 * `undefined` while the second send is in flight.
+	 */
+	readonly unsent?: ChatUnsent | undefined;
 }
 
 const convertMessage = (message: ChatMessage): ThreadMessageLike => ({
@@ -93,7 +108,11 @@ const textOf = (message: AppendMessage) =>
 
    a reply is being written while `isRunning` or `waiting` is set. Send is held and the suggestions
    go, and that is all: the box keeps its words and its focus, which is why nothing here hands the
-   runtime `isDisabled`. */
+   runtime `isDisabled`.
+
+   a refused send comes back through `unsent`. its reason is drawn at the composer until the next
+   send, which every press reaches through `onNew`, so that is where it is cleared; putting the words
+   back and the focus in the box is the composer's, off the value this holds. */
 export function ChatSheet({
 	messages,
 	isRunning,
@@ -103,15 +122,25 @@ export function ChatSheet({
 	imageSrc,
 	waiting,
 	attachment,
-	attach
+	attach,
+	unsent
 }: ChatSheetProps) {
 	const running = isRunning || waiting !== undefined;
 	const imageIds = attachment?.state === 'ready' ? [attachment.imageId] : [];
+	const [landed, setLanded] = useState(unsent);
+	const [reason, setReason] = useState(unsent?.reason ?? '');
+	if (unsent?.text !== landed?.text || unsent?.reason !== landed?.reason) {
+		setLanded(unsent);
+		if (unsent !== undefined) setReason(unsent.reason);
+	}
 	const runtime = useExternalStoreRuntime<ChatMessage>({
 		messages,
 		isRunning: running,
 		convertMessage,
-		onNew: async (message) => onSend({ text: textOf(message), imageIds })
+		onNew: async (message) => {
+			setReason('');
+			onSend({ text: textOf(message), imageIds });
+		}
 	});
 
 	return (
@@ -126,6 +155,8 @@ export function ChatSheet({
 						suggestions={suggestions}
 						attachment={attachment}
 						attach={attach}
+						unsent={landed}
+						reason={reason}
 					/>
 				}
 			>
