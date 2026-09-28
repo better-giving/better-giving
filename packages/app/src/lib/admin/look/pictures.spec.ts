@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { CORNERS, SHADES } from '../../page/keys';
-import { CORNER_PICTURES, SHADE_CARDS, SHADE_TRAYS } from './look-control';
+import { CORNER_PICTURES, SHADE_CARDS, SHADE_TRAYS, UNSEEDED_BRAND } from './look-control';
 
 // the look control's swatches are literals under a `raw-colour-ok:` note, because they are pictures
 // of the donor page rather than values of the operator system — and a picture is only true while it
@@ -43,4 +43,18 @@ it.each(CORNERS)('pictures %s at the card radius the form draws', (corner) => {
 	expect(String(CORNER_PICTURES[corner].borderStartStartRadius)).toBe(
 		declared('corner', corner, '--_r')
 	);
+});
+
+it('fills a look with no brand colour as the form does with no --donate-primary', () => {
+	const initial = tokens.match(
+		/@property --donate-primary \{[^}]*initial-value:\s*oklch\(([\d.]+) 0 0\);/
+	)?.[1];
+	expect(initial).toBeDefined();
+	// a grey's oklab lightness cubed is its linear luminance; encoded to srgb, it is one byte thrice.
+	const linear = Number(initial) ** 3;
+	const srgb = linear <= 0.0031308 ? 12.92 * linear : 1.055 * linear ** (1 / 2.4) - 0.055;
+	const byte = Math.round(srgb * 255)
+		.toString(16)
+		.padStart(2, '0');
+	expect(UNSEEDED_BRAND).toBe(`#${byte}${byte}${byte}`);
 });
