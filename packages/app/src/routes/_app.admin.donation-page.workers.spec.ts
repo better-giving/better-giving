@@ -4,7 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { plainText, textDocument } from '$lib/rich-text/document';
 import { createDb, type Db } from '$lib/server/db/client';
-import { page } from '$lib/server/db/schema';
+import { form, page } from '$lib/server/db/schema';
 import { readOrgStory, updateOrgStory } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -39,7 +39,14 @@ beforeEach(async () => {
 	]);
 });
 
-type Drawn = { state: string; preview: string; askMission: boolean; storyVersion: string };
+type Drawn = {
+	state: string;
+	preview: string;
+	version: number;
+	askMission: boolean;
+	storyVersion: string;
+	settings: { summary: string; boxes: Record<string, unknown> };
+};
 
 async function open(): Promise<Drawn> {
 	const response = await request(
@@ -64,6 +71,77 @@ describe('the Donation page editor', () => {
 		const made = await donationPage();
 		expect(made).not.toBeNull();
 		expect(drawn).toMatchObject({ state: 'live', preview: `/preview/${made?.id}` });
+	});
+});
+
+describe('the donation settings', () => {
+	async function save(fields: Record<string, string>, version: number) {
+		const body = new FormData();
+		body.set(WHICH_FORM, 'page-settings');
+		body.set(RECORD_VERSION, String(version));
+		body.set('program_mode', 'none');
+		body.set('program_id', '');
+		for (const [name, value] of Object.entries(fields)) body.set(name, value);
+		return request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+	}
+
+	async function owned(formId: string) {
+		const [row] = await db.select().from(form).where(eq(form.id, formId));
+		return row;
+	}
+
+	it('draws the live row’s settings while the draft holds none of its own', async () => {
+		const drawn = await open();
+
+		const made = await donationPage();
+		const row = await owned(made?.formId ?? '');
+		expect(drawn.settings.boxes).toMatchObject({
+			program_mode: row?.programMode,
+			suggested_amounts: expect.any(Array)
+		});
+		expect(drawn.settings.summary).toMatch(/^No program · \$/);
+	});
+
+	it('writes the draft only: the live page and the settings row a gift is charged against stay', async () => {
+		const drawn = await open();
+		const made = await donationPage();
+		if (made === null) throw new Error('the editor made no Donation page');
+		const row = await owned(made.formId);
+
+		const response = await save(
+			{
+				min_minor: '10',
+				max_minor: '500',
+				'suggested_amounts[0]': '20',
+				'suggested_amounts[1]': '40'
+			},
+			drawn.version
+		);
+
+		expect(response.status).toBe(200);
+		const after = await donationPage();
+		expect(JSON.parse(after?.draft ?? '{}').settings).toEqual({
+			revenueAccountId: row?.revenueAccountId,
+			currency: row?.currency,
+			allowedOrigins: [],
+			programMode: 'none',
+			programId: null,
+			minMinor: 1000,
+			maxMinor: 50_000,
+			suggestedAmounts: [2000, 4000]
+		});
+		expect(after?.published).toBe(made.published);
+		expect(await owned(made.formId)).toEqual(row);
+
+		const redrawn = await open();
+		expect(redrawn.version).not.toBe(drawn.version);
+		expect(redrawn).toMatchObject({
+			state: 'changed',
+			settings: { summary: 'No program · $20, $40' }
+		});
 	});
 });
 

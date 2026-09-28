@@ -3,9 +3,9 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
-import { page } from '$lib/server/db/schema';
+import { form, page, program } from '$lib/server/db/schema';
 import { readServedCampaign } from '$lib/server/pages/campaign';
-import { insertPage } from '$lib/server/pages/page-row.testing';
+import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
@@ -31,7 +31,8 @@ beforeEach(async () => {
 	await env.DB.batch([
 		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
-		env.DB.prepare('delete from form')
+		env.DB.prepare('delete from form'),
+		env.DB.prepare('delete from program')
 	]);
 });
 
@@ -270,6 +271,140 @@ describe('the name', () => {
 			form: { id: 'campaign-name', result: { initialValue: { name: 'Warm hands winter' } } }
 		});
 		expect((await stored(pageId)).name).toBe('Winter coat drive');
+	});
+});
+
+describe('the donation settings', () => {
+	/** the owned settings row as it stands: what /donate, the campaign's address and a gift read. */
+	async function owned(pageId: string) {
+		const [row] = await db
+			.select()
+			.from(form)
+			.where(eq(form.id, (await stored(pageId)).formId));
+		return row;
+	}
+
+	const settings = (pageId: string, fields: Record<string, string>, drawn?: string) =>
+		post(pageId, 'page-settings', { program_mode: 'none', program_id: '', ...fields }, drawn);
+
+	it('writes the draft’s settings, leaving the live page and the owned settings row as they were', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		const live = (await stored(pageId)).published;
+		const row = await owned(pageId);
+
+		const response = await settings(pageId, {
+			min_minor: '10',
+			max_minor: '500',
+			'suggested_amounts[0]': '20',
+			'suggested_amounts[1]': '40'
+		});
+
+		expect(response.status).toBe(200);
+		const after = await stored(pageId);
+		expect(JSON.parse(after.draft).settings).toEqual({
+			...SETTINGS,
+			minMinor: 1000,
+			maxMinor: 50_000,
+			suggestedAmounts: [2000, 4000]
+		});
+		expect(after.published).toBe(live);
+		expect(await owned(pageId)).toEqual(row);
+	});
+
+	it('refuses a save drawn from an older version, keeping what was typed and writing nothing', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const drawn = await version(pageId);
+		await post(pageId, 'campaign-name', { name: 'Warm hands winter' });
+		const draft = (await stored(pageId)).draft;
+
+		const response = await settings(
+			pageId,
+			{ min_minor: '10', max_minor: '500', 'suggested_amounts[0]': '20' },
+			drawn
+		);
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toMatchObject({
+			form: {
+				id: 'page-settings',
+				result: {
+					initialValue: { min_minor: '10', max_minor: '500', suggested_amounts: ['20'] },
+					error: { '': [expect.stringContaining('has been saved since the editor was opened')] }
+				}
+			}
+		});
+		expect((await stored(pageId)).draft).toBe(draft);
+	});
+
+	it.each([
+		[
+			'bounds the wrong way round',
+			{ min_minor: '500', max_minor: '10', 'suggested_amounts[0]': '20' },
+			'max_minor',
+			'must be larger than smallest gift'
+		],
+		[
+			'an amount outside the bounds',
+			{
+				min_minor: '10',
+				max_minor: '500',
+				'suggested_amounts[0]': '20',
+				'suggested_amounts[1]': '900'
+			},
+			'suggested_amounts[1]',
+			expect.stringContaining('$500')
+		],
+		[
+			'one program with none named',
+			{ program_mode: 'pinned', min_minor: '10', max_minor: '500', 'suggested_amounts[0]': '20' },
+			'program_id',
+			expect.any(String)
+		]
+	])('refuses %s, naming the box, and writes nothing', async (_, fields, box, sentence) => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const draft = (await stored(pageId)).draft;
+
+		const response = await settings(pageId, fields);
+
+		expect(response.status).toBe(400);
+		const answer = (await response.json()) as {
+			form: { result: { error: Record<string, string[]> } };
+		};
+		expect(answer.form.result.error[box]).toEqual([sentence]);
+		expect((await stored(pageId)).draft).toBe(draft);
+	});
+
+	it('pins an active program, and refuses one no longer offered', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		const [coats, camp] = await db
+			.insert(program)
+			.values([
+				{ name: 'Winter coats' },
+				{ name: 'Summer camp', status: 'archived', archivedAt: new Date('2026-09-01T00:00:00Z') }
+			])
+			.returning({ id: program.id });
+		const amounts = { min_minor: '10', max_minor: '500', 'suggested_amounts[0]': '20' };
+
+		const retired = await settings(pageId, {
+			...amounts,
+			program_mode: 'pinned',
+			program_id: camp?.id ?? ''
+		});
+		expect(retired.status).toBe(400);
+		expect(await retired.json()).toMatchObject({
+			form: { result: { error: { program_id: ['Choose an active program.'] } } }
+		});
+
+		const pinned = await settings(pageId, {
+			...amounts,
+			program_mode: 'pinned',
+			program_id: coats?.id ?? ''
+		});
+		expect(pinned.status).toBe(200);
+		expect(JSON.parse((await stored(pageId)).draft).settings).toMatchObject({
+			programMode: 'pinned',
+			programId: coats?.id
+		});
 	});
 });
 

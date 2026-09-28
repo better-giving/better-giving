@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { MissionAsk } from '$lib/admin/editor/confirms';
+import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
@@ -9,6 +10,7 @@ import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
 import { parseRichText, textDocument } from '$lib/rich-text/document';
 import { invalid, parseForm, submittedDigest, submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
@@ -16,7 +18,7 @@ import type { Page } from '$lib/server/db/schema';
 import type { Story } from '$lib/server/org/presentation';
 import { readOrgStory, type StoryWrite, updateOrgStory } from '$lib/server/org/queries';
 import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages/donation-page';
-import { editorPage } from '$lib/server/pages/editor';
+import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
 import { database } from '../context';
 import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
@@ -29,6 +31,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 // **the loader makes the page on first need** (`ensureDonationPage` in
 // $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens an editor rather
 // than a 404, as /donate answers before anyone has opened it.
+//
+// **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
+// only at Publish, as a campaign's are ($lib/server/pages/editor.ts).
 //
 // **the mission ask.** while the Organisation's mission is empty and this editor has never been
 // answered, it asks for the mission once, optionally. a Save writes what was typed to the
@@ -52,13 +57,14 @@ const MISSION_SAVE = defineForm({
 /** the mission ask's Skip, and every other way out of it. */
 const MISSION_SKIP = defineForm({ id: SKIP_FORM_ID, schema: z.object({}) });
 
-const SCREEN_FORMS = [SAVE_FORM_ID, SKIP_FORM_ID] as const;
+const SCREEN_FORMS = [SAVE_FORM_ID, SKIP_FORM_ID, PAGE_SETTINGS_FORM_ID] as const;
 
 const STALE_STORY =
 	'Nothing was saved: the Organisation page’s story has been saved since this editor was opened. ' +
 	'Reload the editor to see it.';
 const MISSION_FAILED = 'Saving the mission failed and nothing was changed. Try again.';
 const SKIP_FAILED = 'Skipping failed, so this will be asked again. Try again.';
+const NO_DONATION_PAGE = 'Nothing was saved: there is no Donation page yet. Reload the editor.';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
@@ -68,15 +74,17 @@ export async function loader({ context }: Route.LoaderArgs) {
 	const db = context.get(database);
 	let row: Page;
 	let story: { story: Story; version: string };
+	let settings: SettingsSeed;
 	try {
 		row = await ensureDonationPage(db);
-		story = await readOrgStory(db);
+		[story, settings] = await Promise.all([readOrgStory(db), readEditorSettings(db, row)]);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
 		loadFailed('The Donation page');
 	}
 	return {
 		...editorPage(row),
+		settings,
 		askMission: story.story.mission === null && row.editorVisitedAt === null,
 		storyVersion: story.version
 	};
@@ -124,6 +132,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 			}
 			return { saved: 'mission-skipped' as const };
 		}
+		case PAGE_SETTINGS_FORM_ID:
+			return saveDraftSettings(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
 	}
 }
 
@@ -140,6 +150,7 @@ function noPress() {}
 export default function DonationPageEditor({ loaderData }: Route.ComponentProps) {
 	const { state, version, preview, askMission, storyVersion } = loaderData;
 	const [settings, setSettings] = useState(false);
+	const [donationSettings, setDonationSettings] = useState(false);
 
 	const mission = useFetcher<Answer>({ key: 'mission-ask' });
 	const busy = mission.state !== 'idle';
@@ -192,8 +203,18 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					onLayout={noPress}
 					look={null}
 					shareMessage={loaderData.shareMessage}
-					donationSettings=""
-					onOpen={noPress}
+					donationSettings={loaderData.settings.summary}
+					onOpen={(row) => {
+						if (row === 'donation-settings') setDonationSettings(true);
+					}}
+				/>
+			) : null}
+			{donationSettings ? (
+				<DonationSettingsSheet
+					seed={loaderData.settings}
+					version={version}
+					onDismiss={() => setDonationSettings(false)}
+					onSaved={() => setDonationSettings(false)}
 				/>
 			) : null}
 			{/* a Skip is taken down as it is pressed; one that failed puts the ask back, saying so. */}

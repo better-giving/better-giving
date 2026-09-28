@@ -1,12 +1,17 @@
 import { and, eq, exists, inArray, isNotNull, ne, notExists } from 'drizzle-orm';
+import { type Page as PageDocument, parsePage } from '../../page/catalog';
 import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { chatTurn, form, type Page, page } from '../db/schema';
+import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
+import { readForm } from '../forms/queries';
+import { readActivePrograms } from '../programs/queries';
 
 // one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
-// where a live campaign ends, and the editor's two writes that are not page content: a campaign's
-// name and its address, each against the version the editor was drawn at.
+// where a live campaign ends, the editor's two writes that are not page content — a campaign's
+// name and its address — and its donation settings, which are, each against the version the editor
+// was drawn at.
 //
 // a page is deleted only while it is a campaign nobody has ever been shown. once a page has been
 // live a gift may point at its owned settings row, and ending it is the campaign's own state rather
@@ -220,4 +225,87 @@ export async function updateCampaignName(
 			}
 		}
 	}
+}
+
+/** a page's draft donation settings, as its draft holds them. */
+export type DraftSettings = NonNullable<PageDocument['settings']>;
+
+/**
+ * the donation settings a page's draft stands for: its own where it holds them, else the owned
+ * settings row's, which is what the draft publishes unchanged.
+ */
+export async function draftSettingsOf(db: Db, row: Page): Promise<DraftSettings> {
+	const draft = parsePage(row.type, JSON.parse(row.draft));
+	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
+	if (draft.page.settings !== undefined) return draft.page.settings;
+	const owned = await readForm(db, row.formId);
+	if (owned === null) throw new Error(`page ${row.id}'s settings row ${row.formId} is gone`);
+	const { revenueAccountId, minMinor, maxMinor, currency, programMode, programId } = owned;
+	const { suggestedAmounts, allowedOrigins } = owned;
+	return {
+		revenueAccountId,
+		minMinor,
+		maxMinor,
+		currency,
+		programMode,
+		programId,
+		suggestedAmounts,
+		allowedOrigins
+	};
+}
+
+/** the page a donation-settings save writes: a campaign by its id, or the one Donation page. */
+export type SettingsTarget =
+	| { readonly type: 'campaign'; readonly id: string }
+	| { readonly type: 'donation_page' };
+
+/** what a donation-settings save did; `unknown_program` pins a cause no longer offered. */
+export type SettingsWrite = 'written' | 'stale' | 'gone' | 'unknown_program';
+
+/**
+ * writes a page's draft donation settings — the program and what a donor may give — while the page
+ * is still the version it was drawn at. the draft alone: the owned settings row, which /donate, a
+ * campaign's address and every gift read, moves only at Publish. the fund, currency and sites stay
+ * as the draft holds them.
+ *
+ * a cause newly pinned must be one still offered; a pin the draft already holds is kept as it is,
+ * as the form screen keeps a form's.
+ */
+export async function updateDraftSettings(
+	db: Db,
+	target: SettingsTarget,
+	version: Date,
+	input: { readonly program: ParsedFormProgram; readonly giving: ParsedFormGiving }
+): Promise<SettingsWrite> {
+	const [row] = await db
+		.select()
+		.from(page)
+		.where(
+			target.type === 'campaign'
+				? and(eq(page.id, target.id), eq(page.type, 'campaign'))
+				: eq(page.type, 'donation_page')
+		);
+	if (!row) return 'gone';
+
+	const held = await draftSettingsOf(db, row);
+	const { programMode, programId } = input.program;
+	if (programId !== null && programId !== held.programId) {
+		const offered = await readActivePrograms(db);
+		if (!offered.some((cause) => cause.id === programId)) return 'unknown_program';
+	}
+	const settings: DraftSettings = {
+		...held,
+		programMode,
+		programId,
+		minMinor: input.giving.minMinor,
+		maxMinor: input.giving.maxMinor,
+		suggestedAmounts: [...input.giving.suggestedAmounts]
+	};
+	const draft = JSON.stringify({ ...JSON.parse(row.draft), settings });
+	const written = await db
+		.update(page)
+		.set({ draft })
+		.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
+		.returning({ id: page.id });
+	return written.length === 1 ? 'written' : 'stale';
 }
