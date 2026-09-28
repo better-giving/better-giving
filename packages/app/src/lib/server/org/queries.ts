@@ -2,11 +2,21 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { orgPresentation, orgProfile, type OrgProfile } from '../db/schema';
 import type { ParsedOrgProfile } from './org-input';
-import { NO_STORY, type Story, storedStory, storyFromStored, storyVersion } from './presentation';
+import {
+	lookFromStored,
+	NO_LOOK,
+	NO_STORY,
+	type OrgLook,
+	partVersion,
+	type Story,
+	storedLook,
+	storedStory,
+	storyFromStored
+} from './presentation';
 
-// every read and write of `org_profile` and of `org_presentation`'s story, so neither table object
-// leaves this module — the same boundary `contacts/queries.ts` and `ledger/posting.ts` draw, and it
-// is what makes "all the writes are here" true rather than aspirational.
+// every read and write of `org_profile` and of `org_presentation`'s story and look, so neither table
+// object leaves this module — the same boundary `contacts/queries.ts` and `ledger/posting.ts` draw,
+// and it is what makes "all the writes are here" true rather than aspirational.
 //
 // ---------------------------------------------------------------------------
 // execute, or return statements — the rule for every write added below.
@@ -134,7 +144,7 @@ export async function saveOrgProfile(db: Db, input: ParsedOrgProfile): Promise<O
 // later one are the same upsert.
 //
 // every story write is compare-and-set on the story column's own text, which the page was drawn
-// from as `storyVersion`'s digest (`submittedDigest` in ../conform.ts). the digest is checked
+// from as `partVersion`'s digest (`submittedDigest` in ../conform.ts). the digest is checked
 // against a read, and the write then compares the text that read returned in its own `where` — so
 // a save landing between the two is refused by the write rather than overwritten.
 //
@@ -162,13 +172,13 @@ async function storedStoryText(db: Db): Promise<string> {
 /** the story, and the version a save of it is written against. */
 export async function readOrgStory(db: Db): Promise<{ story: Story; version: string }> {
 	const stored = await storedStoryText(db);
-	return { story: storyFromStored(stored), version: await storyVersion(stored) };
+	return { story: storyFromStored(stored), version: await partVersion(stored) };
 }
 
 /** write the story, keeping the one it replaces for Undo — while the story is still `seen`. */
 export async function updateOrgStory(db: Db, seen: string, story: Story): Promise<StoryWrite> {
 	const current = await storedStoryText(db);
-	if ((await storyVersion(current)) !== seen) return 'stale';
+	if ((await partVersion(current)) !== seen) return 'stale';
 	const next = storedStory(story);
 	const [row] = await db
 		.insert(orgPresentation)
@@ -190,7 +200,7 @@ export async function updateOrgStory(db: Db, seen: string, story: Story): Promis
  */
 export async function updateOrgStoryToPrevious(db: Db, seen: string): Promise<StoryWrite> {
 	const current = await storedStoryText(db);
-	if ((await storyVersion(current)) !== seen) return 'stale';
+	if ((await partVersion(current)) !== seen) return 'stale';
 	const [row] = await db
 		.update(orgPresentation)
 		.set({
@@ -206,4 +216,69 @@ export async function updateOrgStoryToPrevious(db: Db, seen: string): Promise<St
 		)
 		.returning({ id: orgPresentation.id });
 	return row ? 'written' : 'stale';
+}
+
+// ---------------------------------------------------------------------------
+// the look, written as the story is: compare-and-set on the look column's own text, the replaced
+// look kept in `look_previous`, and Undo the one-statement swap.
+// ---------------------------------------------------------------------------
+
+/** the column's text, or `NO_LOOK` where there is no row. */
+async function storedLookText(db: Db): Promise<string> {
+	const [row] = await db
+		.select({ look: orgPresentation.look })
+		.from(orgPresentation)
+		.where(eq(orgPresentation.id, ORG_PRESENTATION_ID));
+	return row?.look ?? NO_LOOK;
+}
+
+/** the look, and the version a save of it is written against. */
+export async function readOrgLook(db: Db): Promise<{ look: OrgLook; version: string }> {
+	const stored = await storedLookText(db);
+	return { look: lookFromStored(stored), version: await partVersion(stored) };
+}
+
+/** what a look write answers: the version it left the look at, or `stale`, as a story write's. */
+export type LookWrite = { readonly version: string } | 'stale';
+
+/** write the look, keeping the one it replaces for Undo — while the look is still `seen`. */
+export async function updateOrgLook(db: Db, seen: string, look: OrgLook): Promise<LookWrite> {
+	const current = await storedLookText(db);
+	if ((await partVersion(current)) !== seen) return 'stale';
+	const next = storedLook(look);
+	const [row] = await db
+		.insert(orgPresentation)
+		.values({ id: ORG_PRESENTATION_ID, look: next, lookPrevious: current })
+		.onConflictDoUpdate({
+			target: orgPresentation.id,
+			set: { look: next, lookPrevious: sql`${orgPresentation.look}` },
+			setWhere: eq(orgPresentation.look, current)
+		})
+		.returning({ look: orgPresentation.look });
+	return row ? { version: await partVersion(row.look) } : 'stale';
+}
+
+/**
+ * swap the look with the one the last save replaced — while the look is still `seen`.
+ *
+ * `stale` too where no look was ever saved, for `updateOrgStoryToPrevious`'s reason.
+ */
+export async function updateOrgLookToPrevious(db: Db, seen: string): Promise<LookWrite> {
+	const current = await storedLookText(db);
+	if ((await partVersion(current)) !== seen) return 'stale';
+	const [row] = await db
+		.update(orgPresentation)
+		.set({
+			look: sql`${orgPresentation.lookPrevious}`,
+			lookPrevious: sql`${orgPresentation.look}`
+		})
+		.where(
+			and(
+				eq(orgPresentation.id, ORG_PRESENTATION_ID),
+				eq(orgPresentation.look, current),
+				isNotNull(orgPresentation.lookPrevious)
+			)
+		)
+		.returning({ look: orgPresentation.look });
+	return row ? { version: await partVersion(row.look) } : 'stale';
 }

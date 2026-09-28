@@ -3,13 +3,15 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { useCallback, useState } from 'react';
-import { data, Form, useFormAction, useNavigation } from 'react-router';
+import { useCallback, useEffect, useState } from 'react';
+import { data, Form, useFetcher, useFormAction, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { RichTextEditor } from '$lib/admin/rich-text/rich-text-editor';
+import { type Look, LookControl } from '$lib/admin/look/look-control';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -20,15 +22,20 @@ import {
 	useAdminForm,
 	whichForm
 } from '$lib/admin/use-admin-form';
-import { defineForm, WHICH_FORM } from '$lib/forms/definition';
+import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { CORNERS, type Corner, SHADES, type Shade } from '$lib/page/keys';
 import { isEmptyDocument, type RichTextDocument } from '$lib/rich-text/document';
 import { invalid, parseForm, submittedDigest, submittedForm, unread } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
-import { storyInput } from '$lib/server/org/presentation';
+import { lookInput, storyInput } from '$lib/server/org/presentation';
 import {
+	type LookWrite,
+	readOrgLook,
 	readOrgStory,
 	type StoryWrite,
+	updateOrgLook,
+	updateOrgLookToPrevious,
 	updateOrgStory,
 	updateOrgStoryToPrevious
 } from '$lib/server/org/queries';
@@ -50,6 +57,11 @@ import type { Route } from './+types/_app.admin.organisation';
 //
 // each editor is keyed to that version, so a landed save or Undo redraws it from the fresh read and
 // a refusal, which moves no version, leaves what was typed where it is.
+//
+// the look is the second section, and its control has no Save: every pick posts the whole look
+// through the section's fetcher and answers in place rather than by a redirect, with the version it
+// wrote. its version is a digest of the look column alone, on the story's rule, and its Undo swaps
+// the look with the one the save replaced as the story's does.
 
 const SCREEN_TITLE = 'Organisation';
 
@@ -66,7 +78,21 @@ const STORY_EDIT = defineForm({
 });
 const STORY_UNDO = defineForm({ id: UNDO_FORM_ID, schema: z.object({}) });
 
-const SCREEN_FORMS = [STORY_FORM_ID, UNDO_FORM_ID] as const;
+const LOOK_FORM_ID = 'org-look';
+const LOOK_UNDO_FORM_ID = 'org-look-undo';
+
+/** a pick posts the whole look; each box's rule, and a blank colour's meaning, is the look rule's. */
+const LOOK_EDIT = defineForm({
+	id: LOOK_FORM_ID,
+	schema: z.object({
+		shade: z.string().optional(),
+		corner: z.string().optional(),
+		brandColour: z.string().optional()
+	})
+});
+const LOOK_UNDO = defineForm({ id: LOOK_UNDO_FORM_ID, schema: z.object({}) });
+
+const SCREEN_FORMS = [STORY_FORM_ID, UNDO_FORM_ID, LOOK_FORM_ID, LOOK_UNDO_FORM_ID] as const;
 
 /** what a landing names: a save, or an Undo, of the story. */
 const SAVED_SECTIONS = ['story', 'story-undone'] as const;
@@ -80,16 +106,23 @@ const STALE_STORY =
 const SAVE_FAILED = 'Saving the story failed and nothing was changed. Try again.';
 const UNDO_FAILED = 'Undoing the last save failed and nothing was changed. Try again.';
 
+const STALE_LOOK =
+	'Nothing was changed: the look has been saved since this page was opened. Reload the page to ' +
+	'see it, then make this change again.';
+const LOOK_SAVE_FAILED = 'Saving the look failed and nothing was changed. Try again.';
+
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
 export async function loader({ context, request }: Route.LoaderArgs) {
 	let read: Awaited<ReturnType<typeof readOrgStory>>;
+	let look: Awaited<ReturnType<typeof readOrgLook>>;
 	try {
-		read = await readOrgStory(context.get(database));
+		const db = context.get(database);
+		[read, look] = await Promise.all([readOrgStory(db), readOrgLook(db)]);
 	} catch (e) {
-		console.error('reading the organisation story failed:', e);
+		console.error('reading the organisation story and look failed:', e);
 		loadFailed('The Organisation page');
 	}
 
@@ -101,7 +134,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			mission: read.story.mission,
 			vision: read.story.vision,
 			version: read.version,
-			saved: savedSection(landed?.marker ?? null, SAVED_SECTIONS)
+			saved: savedSection(landed?.marker ?? null, SAVED_SECTIONS),
+			look: look.look,
+			lookVersion: look.version
 		},
 		// a `Set-Cookie` from a loader is sent without a `headers` export
 		// (react-router/docs/how-to/headers.md).
@@ -122,6 +157,10 @@ export async function action(args: Route.ActionArgs) {
 			return saveStory(args, body);
 		case UNDO_FORM_ID:
 			return undoStory(args, body);
+		case LOOK_FORM_ID:
+			return saveLook(args, body);
+		case LOOK_UNDO_FORM_ID:
+			return undoLook(args, body);
 	}
 
 	// declared inside the action: react router strips the `action` export from the browser bundle
@@ -166,6 +205,47 @@ export async function action(args: Route.ActionArgs) {
 
 		return redirectWithFlash(request, SAVED_FLASH, SCREEN, 'story-undone');
 	}
+
+	// a look press answers in place rather than by a redirect: the section's fetcher posts it, and
+	// the version it answers with is what its landing is read against.
+	async function saveLook({ context }: Route.ActionArgs, body: FormData) {
+		const submission = parseForm(body, LOOK_EDIT);
+		if (!submission.ok) return invalid(400, submission.reject());
+
+		const parsed = lookInput(submission.value);
+		if (!parsed.ok) {
+			const fieldErrors = Object.fromEntries(
+				Object.entries(parsed.errors).map(([box, sentence]) => [box, [sentence]])
+			);
+			return invalid(400, submission.reject({ fieldErrors }));
+		}
+
+		const seen = submittedDigest(body);
+		let written: LookWrite;
+		try {
+			written = await updateOrgLook(context.get(database), seen, parsed.look);
+		} catch (e) {
+			console.error('saving the organisation look failed:', e);
+			return invalid(500, submission.reject({ formErrors: [LOOK_SAVE_FAILED] }));
+		}
+		if (written === 'stale') return invalid(409, submission.reject({ formErrors: [STALE_LOOK] }));
+
+		return { saved: 'look' as const, version: written.version };
+	}
+
+	async function undoLook({ context }: Route.ActionArgs, body: FormData) {
+		const seen = submittedDigest(body);
+		let written: LookWrite;
+		try {
+			written = await updateOrgLookToPrevious(context.get(database), seen);
+		} catch (e) {
+			console.error('undoing the organisation look failed:', e);
+			return invalid(500, unread(LOOK_UNDO, UNDO_FAILED));
+		}
+		if (written === 'stale') return invalid(409, unread(LOOK_UNDO, STALE_LOOK));
+
+		return { saved: 'look-undone' as const, version: written.version };
+	}
 }
 
 export default function Organisation({ loaderData, actionData }: Route.ComponentProps) {
@@ -178,6 +258,7 @@ export default function Organisation({ loaderData, actionData }: Route.Component
 				saved={loaderData.saved}
 				actionData={actionData}
 			/>
+			<LookSection look={loaderData.look} version={loaderData.lookVersion} />
 		</Column>
 	);
 }
@@ -333,6 +414,151 @@ function StorySection({
 				<input {...whichForm(STORY_UNDO.id)} />
 				<input {...recordVersion(version)} />
 			</Form>
+		</Section>
+	);
+}
+
+/** the organisation's look as the loader reads it: a brand colour, or `null` for none set. */
+type StoredLook = Omit<Look, 'brandColour'> & { readonly brandColour: string | null };
+
+/**
+ * the colour the picker shows while no brand colour is set: the donation form's own grey,
+ * `--donate-primary`'s `oklch(0.27 0 0)` in packages/form/src/styles/tokens.css, as the picker's
+ * `#rrggbb`. a pick of a shade or a corner reports it back, and it is read as no colour then.
+ */
+const NO_BRAND_SHOWN = '#262626'; // raw-colour-ok: the donor page's unseeded brand, as a picker value
+
+/** the look a body carries, where its shade and corner are ones the control can draw. */
+function lookIn(read: (box: string) => unknown): StoredLook | null {
+	const shade = read('shade');
+	const corner = read('corner');
+	const colour = read('brandColour');
+	if (!SHADES.includes(shade as Shade) || !CORNERS.includes(corner as Corner)) return null;
+	return {
+		shade: shade as Shade,
+		corner: corner as Corner,
+		brandColour: typeof colour === 'string' && colour !== '' ? colour : null
+	};
+}
+
+/** what a look press was refused with: the sentence for the whole press, else a box's. */
+function lookRefusal(answer: AdminActionData): string | undefined {
+	const form = formRefusal(LOOK_EDIT, answer) ?? formRefusal(LOOK_UNDO, answer);
+	if (form !== undefined) return form;
+	const boxes = Object.values(resultFor(LOOK_EDIT, answer)?.error ?? {});
+	return boxes.flatMap((sentences) => sentences ?? []).at(0);
+}
+
+/**
+ * the organisation's look, saved at every pick.
+ *
+ * a landing stands while the look the page holds is the version it wrote. a pick made while one is
+ * in flight waits for its answer and goes with the version that answer revalidated, so quick picks
+ * land in turn rather than the second one reading as stale; only the latest waiting pick is sent.
+ *
+ * a refusal leaves the refused pick drawn, the way a refused form keeps what was typed, and a 4xx
+ * revalidates nothing, so a stale page stays stale until it is reloaded, as the refusal says.
+ */
+function LookSection({ look, version }: { readonly look: StoredLook; readonly version: string }) {
+	const fetcher = useFetcher<Route.ComponentProps['actionData']>({ key: LOOK_FORM_ID });
+	const [waiting, setWaiting] = useState<StoredLook | null>(null);
+
+	const busy = fetcher.state !== 'idle';
+	const sent = busy ? fetcher.formData?.get(WHICH_FORM) : null;
+	const answer = busy ? undefined : fetcher.data;
+
+	const post = useCallback(
+		(form: string, at: string, next?: StoredLook) => {
+			const body = new FormData();
+			body.set(WHICH_FORM, form);
+			body.set(RECORD_VERSION, at);
+			if (next !== undefined) {
+				body.set('shade', next.shade);
+				body.set('corner', next.corner);
+				body.set('brandColour', next.brandColour ?? '');
+			}
+			fetcher.submit(body, { method: 'post' });
+		},
+		[fetcher.submit]
+	);
+
+	useEffect(() => {
+		if (busy || waiting === null) return;
+		setWaiting(null);
+		post(LOOK_EDIT.id, version, waiting);
+	}, [busy, waiting, version, post]);
+
+	const refusedPick =
+		answer !== undefined && 'form' in answer && answer.form?.id === LOOK_EDIT.id
+			? lookIn((box) => answer.form?.result.initialValue?.[box])
+			: null;
+	const inFlight =
+		sent === LOOK_EDIT.id && fetcher.formData ? lookIn((box) => fetcher.formData?.get(box)) : null;
+	const shown = waiting ?? inFlight ?? refusedPick ?? look;
+
+	const onChange = (picked: Look) => {
+		const next: StoredLook = {
+			...picked,
+			brandColour:
+				shown.brandColour === null && picked.brandColour === NO_BRAND_SHOWN
+					? null
+					: picked.brandColour
+		};
+		if (busy) setWaiting(next);
+		else post(LOOK_EDIT.id, version, next);
+	};
+
+	const undoing = sent === LOOK_UNDO.id;
+	const landed =
+		answer !== undefined && 'saved' in answer && answer.version === version ? answer.saved : null;
+	const refusal = answer === undefined ? undefined : lookRefusal(answer);
+
+	return (
+		<Section card>
+			<h2>Look</h2>
+			<LookControl
+				mode="organisation"
+				value={{ ...shown, brandColour: shown.brandColour ?? NO_BRAND_SHOWN }}
+				onChange={onChange}
+			/>
+			<div className="adm-actions">
+				{/* mounted empty, so the answer arriving in it is announced. */}
+				<span role="status">
+					{busy || waiting !== null ? (
+						<StatusWord register="momentary" neutral>
+							{undoing ? 'Undoing…' : 'Saving…'}
+						</StatusWord>
+					) : refusal !== undefined ? (
+						<StatusWord register="momentary" blocked>
+							<MarkedText text={refusal} />
+						</StatusWord>
+					) : landed === 'look' ? (
+						<StatusWord register="momentary">
+							Saved to every page using the organisation’s look.
+						</StatusWord>
+					) : landed === 'look-undone' ? (
+						<StatusWord register="momentary">
+							Undone on every page using the organisation’s look.
+						</StatusWord>
+					) : null}
+				</span>
+				{/* kept while its own press is in flight, so the focus it holds is not dropped. */}
+				{landed !== null || undoing ? (
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="undo-2"
+						aria-busy={undoing}
+						aria-disabled={undoing || undefined}
+						onClick={() => {
+							if (!undoing) post(LOOK_UNDO.id, version);
+						}}
+					>
+						Undo
+					</Button>
+				) : null}
+			</div>
 		</Section>
 	);
 }
