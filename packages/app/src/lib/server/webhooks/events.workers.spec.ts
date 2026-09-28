@@ -43,8 +43,8 @@ async function destination(events: readonly WebhookEvent[]): Promise<string> {
 	return created.destination.id;
 }
 
-/** one $50 gift, committed with what it owes in one batch, the payment first. */
-async function settle(): Promise<string> {
+/** one $50 gift from a new donor, committed with what it owes in one batch, the payment first. */
+async function settle(): Promise<{ paymentId: string; contactId: string }> {
 	const contactId = uuidv7();
 	const donationId = uuidv7();
 	const paymentId = uuidv7();
@@ -67,7 +67,7 @@ async function settle(): Promise<string> {
 		}),
 		...webhookStatements(db, { paymentId, contactId })
 	]);
-	return paymentId;
+	return { paymentId, contactId };
 }
 
 async function deliveries() {
@@ -86,7 +86,7 @@ describe('webhookStatements() — who is owed a gift made', () => {
 			await destination(['gift.made', 'gift.refunded'])
 		].sort();
 
-		const paymentId = await settle();
+		const { paymentId } = await settle();
 
 		expect(await deliveries()).toEqual(
 			destinations.map((destination_id) => ({
@@ -141,7 +141,7 @@ describe('webhookStatements() — who is owed a gift made', () => {
 	});
 
 	it('owes nothing where no destination is made, and the gift still commits', async () => {
-		const paymentId = await settle();
+		const { paymentId } = await settle();
 
 		expect(await deliveries()).toEqual([]);
 		const stored = await env.DB.prepare('select status from payment where id = ?')
@@ -153,12 +153,16 @@ describe('webhookStatements() — who is owed a gift made', () => {
 
 describe('webhookStatements() — once', () => {
 	it('writes nothing when the batch it rides in fails', async () => {
-		await destination(['gift.made']);
+		await destination(['gift.made', 'donor.added']);
+		const contactId = uuidv7();
+		await db
+			.insert(contact)
+			.values({ id: contactId, kind: 'individual', displayName: 'Ada Okafor' });
 		const paymentId = uuidv7();
 
 		const refused = await db
 			.batch([
-				...webhookStatements(db, { paymentId, contactId: uuidv7() }),
+				...webhookStatements(db, { paymentId, contactId }),
 				// a payment naming no donation: the foreign key refuses the whole batch.
 				db.insert(payment).values({
 					id: paymentId,
@@ -181,14 +185,15 @@ describe('webhookStatements() — once', () => {
 		expect(await deliveries()).toEqual([]);
 	});
 
-	it('meets its own key on a second commit for the same gift: the row owed stands, and the batch commits', async () => {
-		await destination(['gift.made']);
-		const paymentId = await settle();
-		const [first] = await deliveries();
+	it('meets its own key on a second commit for the same gift: the rows owed stand, and the batch commits', async () => {
+		await destination(['gift.made', 'donor.added']);
+		const gift = await settle();
+		const owed = await deliveries();
 
-		await db.batch(webhookStatements(db, { paymentId, contactId: uuidv7() }));
+		await db.batch(webhookStatements(db, gift));
 
-		expect(await deliveries()).toEqual([first]);
+		expect(owed.map((row) => row.event).sort()).toEqual(['donor.added', 'gift.made']);
+		expect(await deliveries()).toEqual(owed);
 	});
 });
 

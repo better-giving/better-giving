@@ -18,9 +18,9 @@ import { inPage, type PageOf, type PageQuery, pageOf, storedTimesWalk } from './
 //
 // **when a donor last changed is the row's own `updated_at`.** every write to a contact row is a
 // drizzle `.update(contact)` that leaves the column unnamed, so the column's `$onUpdateFn` in
-// ../db/schema.ts stamps it in the same statement — today that is
-// `contactConsentUpdateStatements` in ../contacts/queries.ts alone, the consent a returning donor's
-// gift carries, and only where it changes the answer. a writer naming
+// ../db/schema.ts stamps it in the same statement — today that is `contactConsentUpdate` in
+// ../contacts/queries.ts alone, the consent a returning donor's gift carries, and only where it
+// changes the answer. a writer naming
 // `updated_at` itself, or writing the row past drizzle, would hide its change from `updated_since`.
 // what this does not see is a donor leaving the list: an archived contact drops out of both orders
 // rather than appearing as changed. nothing archives a contact yet.

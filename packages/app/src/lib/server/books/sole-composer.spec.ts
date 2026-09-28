@@ -11,11 +11,10 @@ import { describe, expect, it } from 'vitest';
 // says what it hides.
 //
 // the builders that report no money are held the same way, each with its own composer:
-// `donorUpdatedWebhookStatements` goes into a batch only beside the contact write it reports, and
-// ../contacts/queries.ts is where that write is built; `recurringGiftStartedWebhookStatements` only
-// beside the insert that opens a commitment, in ../donations/collect.ts; and
-// `recurringGiftChangeWebhookStatements` only beside a standing change to one, in
-// ../recurring/changes.ts.
+// `donorUpdatedWebhookStatements` goes into a batch only beside the consent write it reports, in
+// ../donations/donor.ts; `recurringGiftStartedWebhookStatements` only beside the insert that opens
+// a commitment, in ../donations/collect.ts; and `recurringGiftChangeWebhookStatements` only beside
+// a standing change to one, in ../recurring/changes.ts.
 //
 // a source scan rather than a runtime hook, written the way ../ledger/sole-writer.spec.ts is, so it
 // catches the writer nobody wrote a test for; it reads text, so a namespace import or a computed
@@ -69,19 +68,9 @@ function buildersImportedBy(source: string): string[] {
 /** a static or dynamic import of a `.testing` module, with or without its extension. */
 const IMPORTS_A_TEST_HELPER = /\b(?:from|import)\s*\(?\s*['"][^'"]*\.testing(?:\.[jt]sx?)?['"]/;
 
-const CONTACT_WRITES = resolve(import.meta.dirname, '../contacts/queries.ts');
-
-const CONTACT_CHANGE_BUILDER = /\b(donorUpdatedWebhookStatements)\b/g;
-
-/** every contact-change builder an import or re-export names. */
-function contactChangeBuildersImportedBy(source: string): string[] {
-	return [...source.matchAll(IMPORT_BRACES)].flatMap(([, names = '']) =>
-		[...names.matchAll(CONTACT_CHANGE_BUILDER)].map((match) => match[1] ?? '')
-	);
-}
-
-/** each builder of rows reporting a commitment, and the one module that may import it. */
-const RECURRING_COMPOSERS = [
+/** each builder of rows reporting no money, and the one module that may import it. */
+const EVENT_COMPOSERS = [
+	['donorUpdatedWebhookStatements', resolve(import.meta.dirname, '../donations/donor.ts')],
 	[
 		'recurringGiftStartedWebhookStatements',
 		resolve(import.meta.dirname, '../donations/collect.ts')
@@ -136,27 +125,7 @@ describe('books/ is the only importer of the statement builders', () => {
 		]);
 	});
 
-	it('finds no import of the donor-change builder outside contacts/queries.ts', () => {
-		const offenders = production
-			.filter((file) => file !== CONTACT_WRITES && !DEFINERS.includes(file))
-			.flatMap((file) =>
-				contactChangeBuildersImportedBy(readFileSync(file, 'utf8')).map(
-					(builder) => `${relative(SRC, file)} (${builder})`
-				)
-			);
-		expect(
-			offenders,
-			`these modules write donor.updated rows by hand: ${offenders.join(', ')}. take the contact's write from src/lib/server/contacts/queries.ts, which splices the rows it owes in front of it.`
-		).toEqual([]);
-	});
-
-	it('matches the contact module itself, so that pattern is known to work', () => {
-		expect(contactChangeBuildersImportedBy(readFileSync(CONTACT_WRITES, 'utf8'))).toEqual([
-			'donorUpdatedWebhookStatements'
-		]);
-	});
-
-	it.each(RECURRING_COMPOSERS)(
+	it.each(EVENT_COMPOSERS)(
 		'finds no import of %s outside the module whose write it reports',
 		(builder, composer) => {
 			const offenders = production
@@ -165,12 +134,12 @@ describe('books/ is the only importer of the statement builders', () => {
 				.map((file) => relative(SRC, file));
 			expect(
 				offenders,
-				`these modules write ${builder} rows by hand: ${offenders.join(', ')}. a commitment's events are spliced beside its own write, in ${relative(SRC, composer)}.`
+				`these modules write ${builder} rows by hand: ${offenders.join(', ')}. these events are spliced beside the write they report, in ${relative(SRC, composer)}.`
 			).toEqual([]);
 		}
 	);
 
-	it.each(RECURRING_COMPOSERS)(
+	it.each(EVENT_COMPOSERS)(
 		'matches %s in its composer, so the pattern is known to work',
 		(builder, composer) => {
 			expect(importsBuilder(readFileSync(composer, 'utf8'), builder)).toBe(true);

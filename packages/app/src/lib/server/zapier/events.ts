@@ -23,9 +23,9 @@ import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from 
 // only where no other succeeded inbound payment of theirs exists (`isFirstSettledGift` in
 // ../donations/queries.ts, which a destination's `donor.added` reads too), and D1 runs one batch
 // at a time, so of two first gifts settling together the one that commits second sees the first
-// and owes no donor row. the primary key `(subscription_id, event_id)`, with the contact id as the event, is
-// what refuses a second one per Zap regardless — `on conflict do nothing` answers that refusal,
-// and only that one: a NOT NULL, CHECK or foreign-key fault still refuses the whole batch.
+// and owes no donor row. the primary key `(subscription_id, event_id)`, with the contact id as the
+// event, is what refuses a second one per Zap regardless — `on conflict do nothing` answers that
+// refusal, and only that one: a NOT NULL, CHECK or foreign-key fault still refuses the whole batch.
 //
 // the predicate reads the ledger's own truth rather than a marker, so:
 // - a Zap subscribed after a donor's first gift does not hear of them on their second.

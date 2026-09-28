@@ -183,8 +183,9 @@ export function isFirstSettledGift(
 
 /**
  * the contact `contactId` has a settled gift: the fact {@link isFirstSettledGift} reads, held the
- * other way round — a donor a destination has heard of (`donorUpdatedWebhookStatements` in
- * ../webhooks/events.ts).
+ * other way round — a `donor.updated` is queued only once a gift of theirs has settled
+ * (`donorUpdatedWebhookStatements` in ../webhooks/events.ts, which lists where that still lets a
+ * destination hear of a change before a `donor.added`).
  */
 export function hasSettledGift(db: Db, contactId: string): SQL {
 	return exists(settledGiftsOf(db, contactId));

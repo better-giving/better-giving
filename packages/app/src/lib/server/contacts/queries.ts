@@ -9,12 +9,12 @@ import {
 	inArray,
 	isNull,
 	or,
+	type SQL,
 	sql
 } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
-import { donorUpdatedWebhookStatements } from '../webhooks/events';
 import { overMonths, type MonthlyRun } from '../months';
 import {
 	contact,
@@ -478,8 +478,11 @@ export function contactInsertStatement(db: Db, row: NewContactRow) {
 }
 
 /**
- * the `donor.updated` rows a donor's new consent answer owes, then the answer itself over the one
- * they gave before — unexecuted, for the same `batch()` that writes the gift it arrived with.
+ * the consent answer a donor just gave, over the one they gave before — unexecuted, for the same
+ * `batch()` that writes the gift it arrived with — and `changes`, which holds while the stored
+ * answer differs from it: the gate a statement reporting the change takes, spliced **in front of**
+ * `update` so it reads the answer before `update` replaces it (`resolveDonor` in
+ * ../donations/donor.ts).
  *
  * a returning donor is matched to the contact row they already have, so an answer written only on
  * insert would be the first one they ever gave and every later one would be discarded. true -> false
@@ -490,11 +493,9 @@ export function contactInsertStatement(db: Db, row: NewContactRow) {
  * resolved which contact this is, and the one value read inside the write, the stored answer,
  * decides whether it writes and never what.
  *
- * both statements run only where the answer differs from the stored one — `is not` rather than
- * `<>`, so a donor nobody had asked (`null`) answering for the first time is a change — and the
- * event rows go first, because their gate reads the stored answer before the update replaces it.
- * the same answer given again writes nothing: no event, and no `updated_at` a read API caller's
- * `updated_since` would take for a change.
+ * `update` runs only where the answer differs — `is not` rather than `<>`, so a donor nobody had
+ * asked (`null`) answering for the first time is a change — so the same answer given again writes
+ * nothing, and moves no `updated_at` a read API caller's `updated_since` would take for a change.
  *
  * `updated_at` moves with a change, from the column's own `$onUpdateFn` rather than from anything
  * here: this is a write to the row, and system time is what that column records.
@@ -503,23 +504,19 @@ export function contactInsertStatement(db: Db, row: NewContactRow) {
  * that reaches this function is one — the gift carries a required answer. a caller that would pass
  * null wants no statement at all.
  */
-export function contactConsentUpdateStatements(
+export function contactConsentUpdate(
 	db: Db,
 	id: string,
 	consented: boolean
-): [BatchItem<'sqlite'>, BatchItem<'sqlite'>] {
+): { readonly changes: SQL; readonly update: BatchItem<'sqlite'> } {
 	const changesRow = and(
 		eq(contact.id, id),
 		sql`${contact.consentedToContact} is not ${consented ? 1 : 0}`
 	);
-	return [
-		donorUpdatedWebhookStatements(
-			db,
-			id,
-			exists(db.select({ one: sql`1` }).from(contact).where(changesRow))
-		),
-		db.update(contact).set({ consentedToContact: consented }).where(changesRow)
-	];
+	return {
+		changes: exists(db.select({ one: sql`1` }).from(contact).where(changesRow)),
+		update: db.update(contact).set({ consentedToContact: consented }).where(changesRow)
+	};
 }
 
 /**

@@ -4,7 +4,8 @@ import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, dispute, donation, payment } from '../db/schema';
-import { contactConsentUpdateStatements } from '../contacts/queries';
+import { parseContact } from '../contacts/contact-input';
+import { commitDonor } from '../donations/donor';
 import { readGiftPage, readGifts } from '../integrations/gift';
 import type { WebhookEvent } from '../../webhooks/catalog';
 import { sendDueWebhooks, WEBHOOK_RETRY_SCHEDULE_MS } from './deliver';
@@ -715,7 +716,14 @@ describe('sendDueWebhooks() — a donor added and a donor updated', () => {
 		const donorId = await donorOf(await settle());
 		const CHANGED = new Date(START.getTime() + MINUTE);
 		vi.setSystemTime(CHANGED);
-		await db.batch(contactConsentUpdateStatements(db, donorId, true));
+		const returning = parseContact({
+			kind: 'individual',
+			first_name: 'Ada',
+			last_name: 'Okafor',
+			primary_email: 'ada@example.org'
+		});
+		if (!returning.ok) throw new Error('the fixture donor does not parse');
+		await commitDonor(db, returning.value, true);
 		const receiving = receivers();
 
 		await runAt(new Date(CHANGED.getTime() + MINUTE), receiving.fetch);

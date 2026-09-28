@@ -106,13 +106,23 @@ export function changedRecordOf(subject: string): string | null {
 
 /**
  * the `donor.updated` rows for a write to the contact `contactId`, owed only where `changed` holds
- * and a gift of theirs has settled ({@link hasSettledGift}): a destination never hears of a donor
- * before their `donor.added`, so a change to one whose checkout never settled, or one typed in on
- * the dashboard with no gift yet, owes nothing. the write itself happens either way.
+ * and a gift of theirs has settled ({@link hasSettledGift}): queued only once a gift of theirs has
+ * settled, so a change to a donor whose checkout never settled, or one typed in on the dashboard
+ * with no gift yet, owes nothing. the write itself happens either way.
  *
- * outside the specs its one caller is `contactConsentUpdateStatements` in ../contacts/queries.ts,
- * which splices it **in front of** the update it reports: `changed` compares the row as it stands
- * with what the update will write, so a write that changes nothing owes nothing.
+ * the gate is the deployment's, not each destination's, so a destination can hear of a donor's
+ * change with no `donor.added` before it:
+ * - a destination subscribed after the donor's first gift hears of their next change, and was
+ *   never owed their `donor.added`.
+ * - a settlement that marks a payment `succeeded` but posts nothing (`recognition` failing in
+ *   ../donations/settle.ts) settles a gift that queues no `donor.added`, and every later change is
+ *   still owed.
+ * - a `donor.added` waiting out a failed post's retry can be overtaken by a `donor.updated` queued
+ *   after it.
+ *
+ * outside the specs its one caller is `consentWrites` in ../donations/donor.ts, which splices it
+ * **in front of** the update it reports: `changed` compares the row as it stands with what the
+ * update will write, so a write that changes nothing owes nothing.
  */
 export function donorUpdatedWebhookStatements(
 	db: Db,
