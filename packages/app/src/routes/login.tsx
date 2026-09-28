@@ -6,7 +6,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
 import { APIError } from 'better-auth/api';
-import { data, Form, Link, redirect, useNavigation } from 'react-router';
+import { data, Form, Link, redirect, useFormAction, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { useAdminForm } from '$lib/admin/use-admin-form';
@@ -418,8 +418,13 @@ function SignInScreen({
 	actionData: Route.ComponentProps['actionData'];
 }) {
 	const [form, fields] = useAdminForm(LOGIN_FORM, actionData);
+	// the whole navigation the press started and not its `submitting` half, which is the create
+	// screens' test: a sign-in answers with a redirect, and a second press during its loading phase
+	// spends the sign-in bucket again and mints a second session. `useFormAction` is the address the
+	// form posts to, `?next=` included, and it stays on the navigation through that phase.
 	const navigation = useNavigation();
-	const signingIn = navigation.state === 'submitting';
+	const here = useFormAction();
+	const signingIn = navigation.state !== 'idle' && navigation.formAction === here;
 
 	// what a refused attempt says about the attempt as a whole, above the form. the sentence about
 	// the box is under the box and is the field's own.
@@ -518,10 +523,16 @@ function SignInScreen({
 						    switching this one off at the moment it is pressed throws the focus that
 						    pressed it to the document body, and `aria-busy` on a control nothing can
 						    reach announces to nobody. a second press while the first is in flight is
-						    the router's to coalesce rather than something to buy by taking the
-						    control away. the console's submits are the same shape
-						    (packages/console-ui/src/routes/_index.tsx). */}
-						<Button variant="primary" aria-busy={signingIn}>
+						    closed in the handler instead, which is what `aria-disabled` stops doing
+						    once it is only advisory. */}
+						<Button
+							variant="primary"
+							aria-disabled={signingIn}
+							aria-busy={signingIn}
+							onClick={(event) => {
+								if (signingIn) event.preventDefault();
+							}}
+						>
 							{SCREEN_TITLE}
 						</Button>
 					</div>

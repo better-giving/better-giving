@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import RecurringGift from './_app.admin.recurring.$id';
 
@@ -22,6 +22,9 @@ import RecurringGift from './_app.admin.recurring.$id';
 // `showModal()` as a flag with no top layer and no focus move, so nothing here claims to have
 // watched a page go inert — that half is the platform's and
 // packages/operator/src/behaviour/Dialog.dom.spec.tsx says why it is nobody's to assert.
+//
+// and the one press: the stop stays held through the `loading` phase its redirect starts, which is
+// `redirectingScreen`'s and no other case's.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
 // style or a class. what is asserted is which words are on the page.
@@ -81,7 +84,7 @@ type Refused = Parameters<typeof RecurringGift>[0]['actionData'];
  * inside a `createRoutesStub` because the page holds a `Form` and two `Link`s and reads
  * `useNavigation`, none of which exist outside a router. the action never settles, so a press that
  * reached it would leave the screen mid-flight rather than re-rendering over the evidence — no case
- * here presses, and it is the shape ./_app.admin.forms.new.dom.spec.tsx states.
+ * on it presses, and it is the shape ./_app.admin.forms.new.dom.spec.tsx states.
  *
  * a refusal is handed in as the action's result rather than pressed for, for that same reason: what
  * this file reads is the screen a rejected stop renders, which is the render the router performs
@@ -229,6 +232,68 @@ it('leaves the card standing with the refusal in it when a stop is rejected', ()
 
 	expect(dialog.textContent).toContain('Not stopped');
 	expect(dialog.textContent).toContain('Stripe refused the cancellation.');
+});
+
+/**
+ * the confirmation, under a router whose action answers the stop with a redirect back onto the
+ * record and whose loader for it never settles — the `loading` phase a real stop spends reading
+ * the record again, held open. hydrated, so the first render reaches no loader.
+ */
+function redirectingScreen(): { root: HTMLElement; posted: string[] } {
+	const posted: string[] = [];
+	const record = `/admin/recurring/${PLAN_ID}`;
+	const Stub = createRoutesStub([
+		{
+			id: 'record',
+			path: '/admin/recurring/:id',
+			loader: () => new Promise<never>(() => {}),
+			Component: () =>
+				createElement(RecurringGift as never, {
+					loaderData: commitment({ confirmStop: true }),
+					actionData: undefined,
+					params: { id: PLAN_ID },
+					matches: []
+				}),
+			action: () => {
+				posted.push('stop');
+				return redirect(record);
+			}
+		}
+	]);
+	const root = mount(
+		createElement(Stub, {
+			initialEntries: [`${record}?confirm=stop`],
+			hydrationData: { loaderData: { record: null } }
+		})
+	);
+	return { root, posted };
+}
+
+/** lets the router carry a press through its action and into whatever comes after. */
+async function settle(): Promise<void> {
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+}
+
+it('holds the stop through the redirect’s loading, and a second press posts nothing', async () => {
+	const { root, posted } = redirectingScreen();
+	const stop = [...card(root).querySelectorAll('button')].find(
+		(b) => b.textContent === 'Yes, stop this gift'
+	);
+	if (stop === undefined) throw new Error('the card drew no stop');
+
+	await act(async () => stop.click());
+	await settle();
+	expect(posted).toEqual(['stop']);
+	// the action has answered and the record is being read again: the press is still this one's.
+	expect(stop.getAttribute('aria-disabled')).toBe('true');
+
+	await act(async () => stop.click());
+	await settle();
+	// a second stop is refused as already stopped, and that refusal stands over a gift still
+	// reading Active once the landing renders.
+	expect(posted).toEqual(['stop']);
 });
 
 it('reads a refusal on the page where there is no card left to read it in', () => {

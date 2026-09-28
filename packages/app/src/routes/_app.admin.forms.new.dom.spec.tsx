@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import NewDonationForm from './_app.admin.forms.new';
 
@@ -26,8 +26,10 @@ import NewDonationForm from './_app.admin.forms.new';
 // style, a class or a sentence: what is asserted is which boxes exist, what each is named and what
 // each holds — the form state the submitted body is built out of.
 //
-// the action never settles, so a press that does reach it leaves the screen mid-flight rather than
-// re-rendering over the evidence — which is what the pending-state cases read. an intent submission
+// the action never settles unless a case answers it, so a press that does reach it leaves the
+// screen mid-flight rather than re-rendering over the evidence — which is what the pending-state
+// cases read. the one that answers redirects to the list, and holds the screen in the `loading`
+// phase the list is read in. an intent submission
 // is not one of those presses: it is `formNoValidate` and conform stops it before react router sees
 // it, so an added row that reached the network would be a different defect from the one this file
 // is here for, and a case of its own holds that it does not.
@@ -91,8 +93,17 @@ const FILLED_FORM = {
  *
  * one site, which is the least that leaves the submit pressable: no site only switches it off.
  * nothing here is a blocker, so the form is drawn rather than replaced by the disabled button.
+ *
+ * `answer` is what the action returns once it has counted the press. by default it never settles,
+ * so a press that did reach the action leaves the screen mid-flight rather than re-rendering over
+ * the evidence. the list a created form redirects to is routed with a loader that never settles
+ * either, so an answer that redirects holds the screen in the `loading` phase the landing is read
+ * in.
  */
-function screen(values: Record<string, unknown> = EMPTY_FORM): {
+function screen(
+	values: Record<string, unknown> = EMPTY_FORM,
+	answer: () => unknown = () => new Promise<never>(() => {})
+): {
 	root: HTMLElement;
 	posted: string[];
 } {
@@ -115,10 +126,12 @@ function screen(values: Record<string, unknown> = EMPTY_FORM): {
 				}),
 			action: () => {
 				posted.push('post');
-				// never settles, so a press that did reach the action leaves the screen mid-flight
-				// rather than re-rendering over the evidence.
-				return new Promise<never>(() => {});
+				return answer();
 			}
+		},
+		{
+			path: '/admin/forms',
+			loader: () => new Promise<never>(() => {})
 		}
 	]);
 	return { root: mount(createElement(Stub, { initialEntries: ['/admin/forms/new'] })), posted };
@@ -302,5 +315,21 @@ it('ignores a second press while the write is in flight', () => {
 
 	// `aria-disabled` is advisory and stops nothing, so the press is closed in the handler: one
 	// operator intent that reached the action twice is two donation forms made.
+	expect(posted).toEqual(['post']);
+});
+
+it('ignores a second press while the redirect to the list is loading', async () => {
+	const { root, posted } = screen(FILLED_FORM, () => redirect('/admin/forms'));
+
+	const submit = submitControl(root);
+	await act(async () => submit.click());
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	expect(posted).toEqual(['post']);
+	// the form is made and the list is being read: the press is still this one's.
+	expect(submit.getAttribute('aria-disabled')).toBe('true');
+
+	await act(async () => submit.click());
 	expect(posted).toEqual(['post']);
 });
