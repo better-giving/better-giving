@@ -5,6 +5,7 @@ describe('the rail', () => {
 	it('opens on the dashboard, then goes to a bare path under /admin, one per section', () => {
 		expect(DESTINATIONS.map((d) => d.href)).toEqual([
 			'/admin',
+			'/admin/campaigns',
 			'/admin/forms',
 			'/admin/programs',
 			'/admin/donors',
@@ -19,7 +20,7 @@ describe('the rail', () => {
 	it('stands the dashboard alone, then the records of giving, then the organisation and who can sign in, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
-			['Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Organisation', 'Members'],
 			['Books']
 		]);
@@ -27,9 +28,10 @@ describe('the rail', () => {
 });
 
 describe('the bar at a phone’s width', () => {
-	it('keeps the dashboard, the donors and the gifts, and folds the rest under More', () => {
+	it('keeps the dashboard, the campaigns, the donors and the gifts, and folds the rest under More', () => {
 		expect(DESTINATIONS.filter((d) => !('folded' in d)).map((d) => d.label)).toEqual([
 			'Dashboard',
+			'Campaigns',
 			'Donors',
 			'Gifts'
 		]);

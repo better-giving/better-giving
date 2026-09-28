@@ -1,5 +1,6 @@
 import { data } from 'react-router';
 import { z } from 'zod';
+import { isTimeZone } from '$lib/page/end-date';
 import { draftTurn, MESSAGE_MAX, readChat, TURN_IMAGES_MAX } from '$lib/server/pages/draft';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.pages.$pageId.chat';
@@ -80,14 +81,5 @@ function jsonOf(value: FormDataEntryValue | null): unknown {
 		return JSON.parse(value);
 	} catch {
 		return value;
-	}
-}
-
-function isTimeZone(zone: string) {
-	try {
-		new Intl.DateTimeFormat('en-US', { timeZone: zone });
-		return true;
-	} catch {
-		return false;
 	}
 }
