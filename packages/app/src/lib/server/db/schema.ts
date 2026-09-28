@@ -2726,8 +2726,8 @@ export const ZAPIER_TRIGGERS = ['new_gift', 'new_donor', 'gift_refunded'] as con
 export type ZapierTrigger = (typeof ZAPIER_TRIGGERS)[number];
 
 /**
- * why a subscription stopped: Zapier unsubscribed it, its hook answered 410, or the key it was
- * made under was replaced.
+ * why a subscription stopped: Zapier unsubscribed it; `gone`, its hook answered 410 or failed every
+ * post for three days (../zapier/deliver.ts); or the key it was made under was replaced.
  */
 export const ZAPIER_END_REASONS = ['unsubscribed', 'gone', 'key_replaced'] as const;
 export type ZapierEndReason = (typeof ZAPIER_END_REASONS)[number];

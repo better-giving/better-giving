@@ -35,16 +35,20 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 //   410      — the Zap is off or deleted (Zapier's REST-hook convention). its subscription is ended
 //              `gone` and everything still owed to it dropped, in one batch; no retry.
 //   429      — a failure, below, except that the row waits at least as long as the hook's
-//              `Retry-After` asks, and never past the moment the row is given up on.
+//              `Retry-After` asks, and never past the moment the row is given up on. the hook's
+//              rows this run has not yet posted wait for the same time, unposted.
 //   anything
 //   else     — a failure: any other status, a network fault or a timeout. `attempts` goes up, the
 //              row waits out {@link backoffMs}, and the hook's `failing_since` is set unless it
-//              already was. a hook that never answers is as dead as one that refuses.
-// a failure on a hook whose `failing_since` is {@link GIVE_UP_AFTER_MS} or more behind ends it the
-// way a 410 does: every post to it for three days failed and none taken. `ended_reason` has no
-// value of its own for that, so the end reads `gone`, and each row dropped with it says why in
-// `last_error`. Zapier, unlike after a 410, does not know, so the Zap is then paused the way a
-// replaced key pauses every Zap (`pauseZaps` in ./subscriptions.ts).
+//              already was — the mark and the row's outcome in one batch. a hook that never
+//              answers is as dead as one that refuses.
+// a failure on a hook whose `failing_since` is {@link GIVE_UP_AFTER_MS} or more behind, of a row
+// that had already failed before, ends it the way a 410 does: every post to it for three days
+// failed and none taken. a row's first failure never ends a hook, since a mark can outlive a quiet
+// spell with nothing posted. `ended_reason` has no value of its own for that end, so it reads
+// `gone`, and each row dropped with it says why in `last_error`. Zapier, unlike after a 410, does
+// not know, so the Zap is then paused the way a replaced key pauses every Zap (`pauseZaps` in
+// ./subscriptions.ts).
 //
 // a row still owed {@link GIVE_UP_AFTER_MS} after it was queued is `failed` at the next run's
 // start, without another post; the console counts those and nothing re-queues one. one hook
@@ -61,18 +65,13 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 export type ZapierDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetch };
 
 /**
- * rows claimed per run, the longest-waiting first. a hundred because the run reads its claimed rows
- * back by `in` — each subscription's hook in one statement, binding one parameter per id — and D1
- * refuses a statement binding more than 100
- * (https://developers.cloudflare.com/d1/platform/limits/). at a run a minute, that carries 6,000
- * posts an hour.
+ * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes can each
+ * start in turn while every hook times out, with the last post still answered inside
+ * {@link LEASE_MS} ({@link RUN_DEADLINE_MS}).
  */
 const CLAIMS_PER_RUN = 100;
 
-/**
- * posts in flight at once. ten, so a claim whose every hook times out is ten rounds of
- * {@link POST_TIMEOUT_MS}, which {@link RUN_DEADLINE_MS} makes room for inside the lease.
- */
+/** posts in flight at once. */
 const POSTS_AT_ONCE = 10;
 
 /** how long a hook is given to answer before the post counts as failed. */
@@ -83,8 +82,8 @@ const LEASE_MS = 2 * 60_000;
 
 /**
  * no post starts later than this after the run's scheduled time: long enough for every claimed row
- * to be started when every hook times out, and the last post it lets start answers or times out
- * ten seconds before the lease ends.
+ * to be started when every hook times out, and short enough that the last post it lets start
+ * answers or times out, {@link POST_TIMEOUT_MS} at most, before {@link LEASE_MS} runs out.
  */
 const RUN_DEADLINE_MS = (CLAIMS_PER_RUN / POSTS_AT_ONCE) * POST_TIMEOUT_MS;
 
@@ -131,7 +130,7 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	const claimed = claim.rows;
 	if (claimed.length === 0) return;
 
-	const hooks = await readHooks(deps.db, [...new Set(claimed.map((c) => c.subscriptionId))]);
+	const hooks = await readHooks(deps.db, claimed.map((c) => c.subscriptionId));
 	const isRefund = (row: Claimed) => hooks.get(row.subscriptionId)?.trigger === 'gift_refunded';
 	const refundIds = claimed.filter(isRefund).map((c) => c.paymentId);
 	const events: Events = {
@@ -143,6 +142,8 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	};
 	const standing = await readStandingRefunds(deps.db, refundIds);
 	const gone = new Set<string>();
+	// each hook that answered 429 with a time, and when its rows this run holds are next due.
+	const throttled = new Map<string, Date>();
 	const landing = (row: Claimed, outcome: Outcome<typeof zapierDelivery>) =>
 		claim.landing(row, { ...outcome, attempts: row.attempts + 1, updatedAt: now });
 	const land = (row: Claimed, outcome: Outcome<typeof zapierDelivery>) =>
@@ -150,6 +151,11 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 
 	await claim.each(async (row) => {
 		if (gone.has(row.subscriptionId)) return;
+		const heldUntil = throttled.get(row.subscriptionId);
+		if (heldUntil !== undefined) {
+			await claim.land(row, { nextAttemptAt: heldUntil, updatedAt: now });
+			return;
+		}
 		const hook = hooks.get(row.subscriptionId);
 		const event = hook === undefined ? undefined : eventFor(hook.trigger, row.paymentId, events);
 		if (hook === undefined || event === undefined) {
@@ -190,7 +196,20 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 			]);
 			return;
 		}
-		const [, , ended] = await deps.db.batch(failedStatements(deps.db, row.subscriptionId, now));
+		const nextAttemptAt = nextAttempt(row, answer.retryAt, now);
+		if (answer.retryAt !== undefined) throttled.set(row.subscriptionId, nextAttemptAt);
+		const failed = [
+			markFailing(deps.db, row.subscriptionId, now),
+			landing(row, { nextAttemptAt, lastError: answer.error })
+		] as const;
+		if (row.attempts === 0) {
+			await deps.db.batch(failed);
+			return;
+		}
+		const [, , , ended] = await deps.db.batch([
+			...failed,
+			...endAfterFailing(deps.db, row.subscriptionId, now)
+		]);
 		if (ended.length > 0) {
 			gone.add(row.subscriptionId);
 			// so the Zap reads as off in its owner's account. the end has committed and stands
@@ -199,32 +218,28 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 				deps.fetch,
 				ended.map((e) => e.hookUrl)
 			);
-			return;
 		}
-		await land(row, {
-			nextAttemptAt: nextAttempt(row, answer.retryAt, now),
-			lastError: answer.error
-		});
 	});
 }
 
+/** a failed post to a hook at `now`: the start of its run of failures, where none is marked. */
+function markFailing(db: Db, subscriptionId: string, now: Date) {
+	return db
+		.update(zapierSubscription)
+		.set({ failingSince: sql`coalesce(${zapierSubscription.failingSince}, ${now.getTime()})` })
+		.where(and(eq(zapierSubscription.id, subscriptionId), isNull(zapierSubscription.endedAt)));
+}
+
 /**
- * the statements a failed post to a hook at `now` writes, for one `batch()`: the start of its run
- * of failures marked where none is, and — where that run began {@link GIVE_UP_AFTER_MS} or more
- * ago — the subscription ended and everything still owed to it dropped, as a 410 does. the third
- * statement answers with the subscription it ended, if it did.
+ * the subscription ended and everything still owed to it dropped, as a 410 does — only where its
+ * run of failures began {@link GIVE_UP_AFTER_MS} or more before `now`. the second statement
+ * answers with the subscription it ended, if it did.
  */
-function failedStatements(db: Db, subscriptionId: string, now: Date) {
-	return [
-		db
-			.update(zapierSubscription)
-			.set({ failingSince: sql`coalesce(${zapierSubscription.failingSince}, ${now.getTime()})` })
-			.where(and(eq(zapierSubscription.id, subscriptionId), isNull(zapierSubscription.endedAt))),
-		...endSubscriptionStatements(db, { id: subscriptionId }, 'gone', now, {
-			onlyIf: lte(zapierSubscription.failingSince, new Date(now.getTime() - GIVE_UP_AFTER_MS)),
-			lastError: FAILED_FOR_THREE_DAYS
-		})
-	] as const;
+function endAfterFailing(db: Db, subscriptionId: string, now: Date) {
+	return endSubscriptionStatements(db, { id: subscriptionId }, 'gone', now, {
+		onlyIf: lte(zapierSubscription.failingSince, new Date(now.getTime() - GIVE_UP_AFTER_MS)),
+		lastError: FAILED_FOR_THREE_DAYS
+	});
 }
 
 const FAILED_FOR_THREE_DAYS =
@@ -287,17 +302,22 @@ type Claimed = Awaited<ReturnType<typeof claimDue>>['rows'][number];
 
 type Hook = { readonly url: string; readonly trigger: ZapierTrigger };
 
-/** each subscription's hook and trigger: at most {@link CLAIMS_PER_RUN} ids, D1's parameter cap. */
-async function readHooks(db: Db, ids: readonly string[]): Promise<Map<string, Hook>> {
-	const rows = await db
-		.select({
-			id: zapierSubscription.id,
-			url: zapierSubscription.hookUrl,
-			trigger: zapierSubscription.trigger
-		})
-		.from(zapierSubscription)
-		.where(inArray(zapierSubscription.id, [...ids]));
-	return new Map(rows.map((r) => [r.id, { url: r.url, trigger: r.trigger }]));
+/** each subscription's hook and trigger. */
+async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Map<string, Hook>> {
+	const ids = [...new Set(subscriptionIds)];
+	const hooks = new Map<string, Hook>();
+	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
+		const rows = await db
+			.select({
+				id: zapierSubscription.id,
+				url: zapierSubscription.hookUrl,
+				trigger: zapierSubscription.trigger
+			})
+			.from(zapierSubscription)
+			.where(inArray(zapierSubscription.id, ids.slice(start, start + IDS_PER_READ)));
+		for (const row of rows) hooks.set(row.id, { url: row.url, trigger: row.trigger });
+	}
+	return hooks;
 }
 
 /**
@@ -381,14 +401,15 @@ async function post(fetcher: typeof fetch, hookUrl: string, event: unknown): Pro
 
 /**
  * a `Retry-After` value as a time: delay-seconds from the answer, or an HTTP-date
- * (https://www.rfc-editor.org/rfc/rfc9110#field.retry-after). anything else is no ask.
+ * (https://www.rfc-editor.org/rfc/rfc9110#field.retry-after). anything else, or a time past what
+ * a `Date` holds, is no ask.
  */
 function retryAfter(value: string | null): Date | undefined {
 	if (value === null) return undefined;
 	const trimmed = value.trim();
-	if (/^\d+$/.test(trimmed)) return new Date(Date.now() + Number(trimmed) * 1_000);
-	const at = Date.parse(trimmed);
-	return Number.isNaN(at) ? undefined : new Date(at);
+	const at = /^\d+$/.test(trimmed) ? Date.now() + Number(trimmed) * 1_000 : Date.parse(trimmed);
+	const asked = new Date(at);
+	return Number.isFinite(asked.getTime()) ? asked : undefined;
 }
 
 /** the status line and the head of the body a hook refused with. */

@@ -173,6 +173,13 @@ async function markFailingSince(subscriptionId: string, at: number): Promise<voi
 		.run();
 }
 
+/** every row still owed to `subscriptionId` as if its first post had already failed. */
+async function failedOnceAlready(subscriptionId: string): Promise<void> {
+	await env.DB.prepare('update zapier_delivery set attempts = 1 where subscription_id = ?')
+		.bind(subscriptionId)
+		.run();
+}
+
 const HOOK_FAILED_FOR_THREE_DAYS =
 	'Not sent: every post to its hook had failed for three days, and its subscription was ended.';
 
@@ -334,6 +341,30 @@ describe('sendDueZapierEvents()', () => {
 		expect(posts).toHaveLength(2);
 	});
 
+	it("holds back the rest of a run's rows for a hook once it answers 429, until the time it asked", async () => {
+		await listen();
+		for (let gift = 0; gift < 12; gift++) await settle();
+		const zapier = hooksAnswering(() => 200);
+		const throttled = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			await zapier.fetch(input, init);
+			return new Response('', { status: 429, headers: { 'retry-after': '600' } });
+		}) as typeof fetch;
+
+		const before = Date.now();
+		await sendDueZapierEvents({ db, fetch: throttled }, new Date(Date.now() + 1_000));
+		const after = Date.now();
+
+		// the ten lanes post before any answer is back; the other two are never posted.
+		expect(zapier.posts).toHaveLength(10);
+		const heldBack = (await deliveryRows()).filter((r) => r.attempts === 0);
+		expect(heldBack).toHaveLength(2);
+		for (const row of heldBack) {
+			expect(row.status).toBe('pending');
+			expect(row.next_attempt_at).toBeGreaterThanOrEqual(before + 10 * MINUTE);
+			expect(row.next_attempt_at).toBeLessThanOrEqual(after + 10 * MINUTE);
+		}
+	});
+
 	it('waits until the time a 429 names before trying again', async () => {
 		await listen();
 		await settle();
@@ -346,6 +377,23 @@ describe('sendDueZapierEvents()', () => {
 
 		expect(await deliveryRows()).toEqual([
 			expect.objectContaining({ status: 'pending', next_attempt_at: Date.parse(until) })
+		]);
+	});
+
+	it('waits out the fixed backoff when a 429 asks for a time no clock can hold', async () => {
+		await listen();
+		await settle();
+		const now = Date.now() + 1_000;
+		const throttled = (async () =>
+			new Response('', {
+				status: 429,
+				headers: { 'retry-after': '99999999999999999' }
+			})) as typeof fetch;
+
+		await sendDueZapierEvents({ db, fetch: throttled }, new Date(now));
+
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({ status: 'pending', attempts: 1, next_attempt_at: now + MINUTE })
 		]);
 	});
 
@@ -459,6 +507,7 @@ describe('sendDueZapierEvents()', () => {
 		await settle();
 		const now = Date.now() + 1_000;
 		await markFailingSince(failing.id, now - 72 * HOUR);
+		await failedOnceAlready(failing.id);
 		const zapier = hooksAnswering((url) => (url === failing.hookUrl ? 500 : 200));
 
 		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(now));
@@ -483,6 +532,48 @@ describe('sendDueZapierEvents()', () => {
 		expect(rows.filter((r) => r.subscription_id === live.id).map((r) => r.status)).toEqual([
 			'sent',
 			'sent'
+		]);
+	});
+
+	it('never ends a hook on a row failing its first post, however long the hook has been marked', async () => {
+		const hook = await listen();
+		await settle();
+		const now = Date.now() + 1_000;
+		await markFailingSince(hook.id, now - 30 * 24 * HOUR);
+
+		await sendDueZapierEvents({ db, fetch: hooksAnswering(() => 503).fetch }, new Date(now));
+
+		const ended = await env.DB.prepare('select ended_at from zapier_subscription where id = ?')
+			.bind(hook.id)
+			.first<{ ended_at: number | null }>();
+		expect(ended?.ended_at).toBe(null);
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({ status: 'pending', attempts: 1 })
+		]);
+	});
+
+	it("writes neither a failure's mark nor its row's outcome when their batch faults", async () => {
+		const hook = await listen();
+		await settle();
+		const zapier = hooksAnswering(() => 500);
+		// a stand-in fault: the row's outcome refused inside the batch that also marks the hook.
+		await env.DB.prepare(
+			`create trigger refuse_outcome before update on zapier_delivery
+			 when new.last_error = '500 Internal Server Error — nope'
+			 begin select raise(abort, 'outcome refused'); end`
+		).run();
+		try {
+			await expect(
+				sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000))
+			).rejects.toThrow();
+		} finally {
+			await env.DB.prepare('drop trigger refuse_outcome').run();
+		}
+
+		expect(zapier.posts).toHaveLength(1);
+		expect(await failingSince(hook.id)).toBe(null);
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({ status: 'pending', attempts: 0, last_error: null })
 		]);
 	});
 
@@ -598,6 +689,16 @@ describe('sendDueZapierEvents()', () => {
 
 		expect(new Set(zapier.posts.map((p) => `${p.url} ${p.body.id}`)).size).toBe(100);
 		expect((await deliveryRows()).filter((r) => r.status !== 'sent')).toEqual([]);
+	});
+
+	it('drains a backlog owed to a hundred hooks in one run', async () => {
+		for (let zap = 0; zap < 100; zap++) await listen();
+		await settle();
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(new Set(zapier.posts.map((p) => p.url)).size).toBe(100);
 	});
 
 	it('drains a backlog of a hundred refunds in one run', async () => {
