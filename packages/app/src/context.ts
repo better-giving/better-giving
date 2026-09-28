@@ -4,7 +4,6 @@ import { createContext } from 'react-router';
 import type { Auth } from '$lib/server/auth';
 import type { ConsoleSession } from '$lib/server/console/access';
 import type { Db } from '$lib/server/db/client';
-import type { ApiKey } from '$lib/server/db/schema';
 
 /**
  * the platform a request arrived on, as a react router request context.
@@ -99,13 +98,3 @@ export const consoleSession = createContext<ConsoleSession>();
  * cannot be reached by a caller the check refused.
  */
 export const zapierKeyHash = createContext<string>();
-
-/**
- * the API key a caller on `/integrations/v1` presented, its row as the key check read it, set by
- * `keyGate` in src/routes/integrations.v1.ts once the key is admitted.
- *
- * the row as read, not as it stands: `lastUsedAt` is the value before this request. no `null`
- * case, for the reason `staff` above has none — a route beneath that layout cannot be reached by a
- * caller the check refused.
- */
-export const integrationsKey = createContext<ApiKey>();

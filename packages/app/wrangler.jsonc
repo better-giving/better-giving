@@ -174,7 +174,7 @@
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
 	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
 	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
-	// `test` runs ahead of the deploy.
+	// `test` runs in ci.yml on every push and pull request.
 	"ratelimits": [
 		{
 			"name": "API_RATE_LIMITER",
@@ -300,7 +300,7 @@
 				// two a second, sized against the caller this surface has: a sync job paging
 				// through gifts, where every request is one page. that is well above a job reading
 				// a page at a time and waiting on its own writes, and a leaked key reads no faster
-				// than it however many addresses it is presented from.
+				// than it however many addresses in one Cloudflare location it is presented from.
 				//
 				// charged behind the per-address bucket above and sized below it, so a key presented
 				// from one address is refused by its own limit first.

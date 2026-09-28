@@ -451,6 +451,16 @@ describe('the rate limit on each address', () => {
 		expect(body.message).toContain('600 requests a minute, which is counted per address');
 	});
 
+	it('skips a caller the edge gave no address, rather than pooling every such caller in one bucket', async () => {
+		const unattributed = { headers: { authorization: 'Bearer bgk_x7Qp' } };
+		const statuses = new Set<number>();
+
+		for (let ask = 0; ask < 40; ask++)
+			statuses.add((await giftsRoute(new Request(GIFTS, unattributed))).status);
+
+		expect([...statuses]).toEqual([401]);
+	});
+
 	it('refuses a live key from a spent address, and answers it from another', async () => {
 		const key = await apiKey();
 		await askUntilRefused(malformed(), 40);
@@ -501,6 +511,18 @@ describe('when a key was last used', () => {
 		await readAndSettle(bearer(minted.key));
 
 		expect((await lastUsed(minted.id))?.getTime()).toBeGreaterThanOrEqual(before);
+	});
+
+	it('is written after the gifts are read, so the answer never waits on it', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const statements: string[] = [];
+
+		await readAndSettle(bearer(minted.key), { env: envWatchingStatements(statements) });
+
+		const write = statements.findIndex((sql) => /^update "api_key"/i.test(sql));
+		const giftsRead = statements.findIndex((sql) => /from "payment"/i.test(sql));
+		expect(giftsRead).toBeGreaterThan(-1);
+		expect(write).toBeGreaterThan(giftsRead);
 	});
 
 	it('writes nothing on a second use inside the minute', async () => {

@@ -11,7 +11,7 @@ import {
 	readOnlyRefusal
 } from '$lib/server/integrations/surface';
 import { touchLastUsed } from '$lib/server/integrations/keys';
-import { database, integrationsKey, platform } from '../context';
+import { database, platform } from '../context';
 import type { Route } from './+types/integrations.v1';
 
 // the layout every route of the read API sits under, and the one place the method and the key are
@@ -29,22 +29,25 @@ import type { Route } from './+types/integrations.v1';
 // bounds:
 //
 // - **per address, first**, on `API_RATE_LIMITER` under this surface's own key
-//   (`integrationsCallerRateLimitKey` in $lib/server/api/rate-limit.ts), for every request and
-//   ahead of the key lookup — so it bounds what one address costs before anything is known about
-//   it: the indexed read each well-formed key costs, and so guessing. that binding counts 600 a
-//   minute against a key's 120, so it reaches a real key only when one address runs more than five
-//   keys flat out. callers the edge attributes no address to share one bucket, as on `/api/v1`.
+//   (`integrationsCallerRateLimitKey` in $lib/server/api/rate-limit.ts), ahead of the key lookup
+//   and whatever the request presents — so it bounds what one address costs before anything is
+//   known about it: the indexed read each well-formed key costs, and so guessing. it is sized
+//   above the per-key bucket (wrangler.jsonc has both numbers), so it reaches a real key only when
+//   one address runs several keys flat out. a caller the edge attributes no address to is not
+//   charged it at all, rather than pooled with every other such caller into one bucket anyone
+//   could hold closed on every integration: the 256-bit key and the per-key bucket still bound
+//   them.
 // - **per key, once admitted**, on `INTEGRATIONS_KEY_RATE_LIMITER` under the key's row id
-//   (`integrationsKeyRateLimitKey`) — how fast one key reads the database, from however many
-//   addresses it is presented, with two keys on one host holding two budgets. it cannot be charged
-//   before the lookup that names the key, and that lookup is the read the charge above bounds.
+//   (`integrationsKeyRateLimitKey`) — how fast one key reads the database, with two keys on one
+//   host holding two budgets. it cannot be charged before the lookup that names the key, and that
+//   lookup is the read the charge above bounds.
 //
 // both fail open, as `isRateLimited` argues.
 //
-// the admitted row goes down on the context (`integrationsKey` in ../context.ts). when the key was
-// last used is recorded after the answer, through `waitUntil`, at most once a minute per key and
-// decided on the row the lookup already read, so a key used within the minute costs no statement
-// (`touchLastUsed` in $lib/server/integrations/keys.ts).
+// when the key was last used is recorded once the route beneath has answered, through
+// `waitUntil`, so its write never queues ahead of the route's own reads on D1 — at most once a
+// minute per key, decided on the row the lookup already read, so a key used within the minute
+// costs no statement (`touchLastUsed` in $lib/server/integrations/keys.ts).
 
 /**
  * GET and HEAD, and nothing else. react router hands OPTIONS to a loader and every other method to
@@ -65,9 +68,9 @@ const keyGate: Route.MiddlewareFunction = async ({ context, request }, next) => 
 		await isRateLimited(env.INTEGRATIONS_KEY_RATE_LIMITER, integrationsKeyRateLimitKey(admitted.id))
 	)
 		return keyRateLimitRefusal();
+	const answer = await next();
 	ctx.waitUntil(touchLastUsed(db, admitted));
-	context.set(integrationsKey, admitted);
-	return next();
+	return answer;
 };
 
 export const middleware: Route.MiddlewareFunction[] = [readOnly, keyGate];

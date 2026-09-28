@@ -101,8 +101,8 @@ export function keyRateLimitRefusal(): Response {
 }
 
 /**
- * the 429 an address that has spent its own bucket is answered with, charged on every request
- * against `API_RATE_LIMITER` before the key is looked up (`integrationsCallerRateLimitKey` in
+ * the 429 an address that has spent its own bucket is answered with, charged against
+ * `API_RATE_LIMITER` before the key is looked up (`integrationsCallerRateLimitKey` in
  * ../api/rate-limit.ts).
  *
  * the literals are that binding's, held to it by `../api/rate-limit.config.spec.ts` as

@@ -405,9 +405,9 @@ describe('what a request from Zapier counts against', () => {
 });
 
 /**
- * the bucket every request on `/integrations/v1` spends before its key is looked up, charged
- * through the surface binding the way `/zapier`'s is — so its prefix is what keeps it off both
- * other surfaces' counts.
+ * the bucket a request on `/integrations/v1` spends before its key is looked up, charged through
+ * the surface binding the way `/zapier`'s is — so its prefix is what keeps it off both other
+ * surfaces' counts.
  */
 describe('what a request on the read API counts against before its key is looked up', () => {
 	it('is the /integrations/v1 surface and the payer', () => {
@@ -417,12 +417,13 @@ describe('what a request on the read API counts against before its key is looked
 		expect(integrationsCallerRateLimitKey(from)).not.toBe(zapierRateLimitKey(from));
 	});
 
-	it('puts every caller it cannot attribute in one bucket', () => {
-		expect(integrationsCallerRateLimitKey(request('/integrations/v1/gifts'))).toBe(
+	it('has no bucket for a caller it cannot attribute', () => {
+		expect(integrationsCallerRateLimitKey(request('/integrations/v1/gifts'))).toBeNull();
+		expect(
 			integrationsCallerRateLimitKey(
 				request('/integrations/v1/gifts', { 'cf-connecting-ip': 'not-an-ip' })
 			)
-		);
+		).toBeNull();
 	});
 });
 
