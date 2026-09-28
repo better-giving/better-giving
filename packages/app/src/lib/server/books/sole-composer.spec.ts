@@ -10,6 +10,10 @@ import { describe, expect, it } from 'vitest';
 // foreign-key order wrong in a way no single call site's suite would notice. ./writes.ts's header
 // says what it hides.
 //
+// the one builder that reports no money is held the same way with its own composer:
+// `donorUpdatedWebhookStatements` goes into a batch only beside the contact write it reports, and
+// ../contacts/queries.ts is where that write is built.
+//
 // a source scan rather than a runtime hook, written the way ../ledger/sole-writer.spec.ts is, so it
 // catches the writer nobody wrote a test for; it reads text, so a namespace import or a computed
 // name fools it, and the failure it defends against is a shortcut, not an adversary. the three
@@ -62,6 +66,17 @@ function buildersImportedBy(source: string): string[] {
 /** a static or dynamic import of a `.testing` module, with or without its extension. */
 const IMPORTS_A_TEST_HELPER = /\b(?:from|import)\s*\(?\s*['"][^'"]*\.testing(?:\.[jt]sx?)?['"]/;
 
+const CONTACT_WRITES = resolve(import.meta.dirname, '../contacts/queries.ts');
+
+const CONTACT_CHANGE_BUILDER = /\b(donorUpdatedWebhookStatements)\b/g;
+
+/** every contact-change builder an import or re-export names. */
+function contactChangeBuildersImportedBy(source: string): string[] {
+	return [...source.matchAll(IMPORT_BRACES)].flatMap(([, names = '']) =>
+		[...names.matchAll(CONTACT_CHANGE_BUILDER)].map((match) => match[1] ?? '')
+	);
+}
+
 describe('books/ is the only importer of the statement builders', () => {
 	const production = sourceFiles(SRC);
 	const files = production.filter(
@@ -100,6 +115,26 @@ describe('books/ is the only importer of the statement builders', () => {
 			'postingStatements',
 			'webhookStatements',
 			'zapierStatements'
+		]);
+	});
+
+	it('finds no import of the donor-change builder outside contacts/queries.ts', () => {
+		const offenders = production
+			.filter((file) => file !== CONTACT_WRITES && !DEFINERS.includes(file))
+			.flatMap((file) =>
+				contactChangeBuildersImportedBy(readFileSync(file, 'utf8')).map(
+					(builder) => `${relative(SRC, file)} (${builder})`
+				)
+			);
+		expect(
+			offenders,
+			`these modules write donor.updated rows by hand: ${offenders.join(', ')}. take the contact's write from src/lib/server/contacts/queries.ts, which splices the rows it owes in front of it.`
+		).toEqual([]);
+	});
+
+	it('matches the contact module itself, so that pattern is known to work', () => {
+		expect(contactChangeBuildersImportedBy(readFileSync(CONTACT_WRITES, 'utf8'))).toEqual([
+			'donorUpdatedWebhookStatements'
 		]);
 	});
 

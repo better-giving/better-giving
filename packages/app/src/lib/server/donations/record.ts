@@ -62,7 +62,7 @@ import type { Tribute } from './quote-input';
 // both of those hand statements up rather than committing, precisely so a call site can make one
 // atomic write out of several tables. this is that call site. there is nothing above it left to be
 // atomic with — the ledger is deliberately absent, by the paragraph above — so this is where the
-// single commit belongs. the donor's own statement is decided by `resolveDonor` in ./donor.ts,
+// single commit belongs. the donor's own statements are decided by `resolveDonor` in ./donor.ts,
 // which uses those two modules exactly as their headers describe — the id is minted so the donation
 // can name it while statements are still being built, and the row becomes a statement without this
 // module ever naming the `contact` table. that decision lives there rather than here because the
@@ -560,7 +560,7 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 	};
 
 	// foreign-key order, and non-empty by construction rather than by assertion: the gift's own
-	// three kinds of row are always there, and the donor's statement goes in front of them because
+	// three kinds of row are always there, and the donor's statements go in front of them because
 	// `donation.contact_id` has to resolve when its statement runs — which is a requirement of the
 	// insert case and harmless in the update one.
 	const gift: Writes = [
@@ -570,7 +570,7 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 	];
 	// a matched donor whose consent was never asked contributes no statement at all — see
 	// `resolveDonor` in ./donor.ts. the batch stays non-empty either way, which is what `Writes` says.
-	const writes: Writes = donor.statement === null ? gift : [donor.statement, ...gift];
+	const writes: Writes = [...donor.statements, ...gift];
 
 	await db.batch(writes);
 

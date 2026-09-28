@@ -56,7 +56,7 @@ const GIFT_BUILDERS = '$lib/server/donations/entries.ts';
 
 /**
  * a settled gift's groups, the queue row its charge owes, its `new_gift` and `new_donor` rows, and
- * its `gift.made` rows.
+ * its `gift.made` and `donor.added` rows.
  */
 export function settledGiftWrites(db: Db, gift: SettledGiftEntry): Writes {
 	const { charge, fee } = gift;
@@ -68,7 +68,7 @@ export function settledGiftWrites(db: Db, gift: SettledGiftEntry): Writes {
 		...(fee === null ? [] : postingStatements(db, fee)),
 		...outboxStatements(db, [charge, fee]),
 		...zapierStatements(db, { paymentId, contactId: gift.contactId }),
-		...webhookStatements(db, { paymentId })
+		...webhookStatements(db, { paymentId, contactId: gift.contactId })
 	];
 }
 

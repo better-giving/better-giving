@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import {
@@ -14,6 +14,7 @@ import {
 	program
 } from '../db/schema';
 import { parseContact, type ParsedContact } from '../contacts/contact-input';
+import { createDestination } from '../webhooks/destinations';
 import { commitDonor } from './donor';
 import {
 	RECORD_FAILURE_REASONS,
@@ -729,5 +730,51 @@ describe('the cause a gift is credited to', () => {
 		);
 
 		expect(result.ok || result.reason).toBe('missing_reference');
+	});
+});
+
+describe('recordDonation() — what a returning donor’s answer owes a listening destination', () => {
+	// per-file storage: the destination is put up and taken down around these cases alone.
+	beforeEach(async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['donor.updated'] });
+	});
+
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function owed() {
+		const { results } = await env.DB.prepare('select event, subject_id from webhook_delivery').all<{
+			event: string;
+			subject_id: string;
+		}>();
+		return results;
+	}
+
+	it('owes donor.updated in the gift’s own batch when the answer changes, and leaves the row unstamped when it does not', async () => {
+		const first = await recorded(
+			gift({ donor: donor('changes.mind@example.org'), consentedToContact: true })
+		);
+		await env.DB.prepare('update contact set updated_at = 1 where id = ?')
+			.bind(first.contactId)
+			.run();
+
+		await recorded(gift({ donor: donor('changes.mind@example.org'), consentedToContact: true }));
+
+		// the same answer again is no change: no event, and no write a caller of `updated_since`
+		// would read as one.
+		expect(await owed()).toEqual([]);
+		const stamp = await env.DB.prepare('select updated_at from contact where id = ?')
+			.bind(first.contactId)
+			.first<{ updated_at: number }>();
+		expect(stamp?.updated_at).toBe(1);
+
+		await recorded(gift({ donor: donor('changes.mind@example.org'), consentedToContact: false }));
+
+		expect(await owed()).toEqual([
+			{ event: 'donor.updated', subject_id: expect.stringMatching(`^${first.contactId}:\\d+$`) }
+		]);
 	});
 });

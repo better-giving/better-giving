@@ -2385,6 +2385,33 @@ describe('settleDelivery() — what a settled gift owes a listening destination'
 		);
 	});
 
+	it('owes each destination taking donor.added the donor of a first gift, in the commit that posted it', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['donor.added'] });
+		const gift = await pendingGift();
+
+		await settleDelivery(deps(), DELIVERY);
+
+		const [recorded] = await db
+			.select({ contactId: donation.contactId })
+			.from(donation)
+			.where(eq(donation.id, gift.donationId));
+		const { results } = await env.DB.prepare(
+			'select event, subject_id, status from webhook_delivery'
+		).all();
+		expect(results).toEqual([
+			{ event: 'donor.added', subject_id: recorded?.contactId, status: 'pending' }
+		]);
+	});
+
+	it('owes no donor.added for a donor whose checkout never settles', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['donor.added'] });
+
+		await pendingGift();
+
+		const { results } = await env.DB.prepare('select id from webhook_delivery').all();
+		expect(results).toEqual([]);
+	});
+
 	it('owes nothing a second time when the same settlement is delivered again', async () => {
 		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
 		await pendingGift();

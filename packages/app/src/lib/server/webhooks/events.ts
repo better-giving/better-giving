@@ -7,7 +7,7 @@ import {
 	webhookDestination,
 	webhookDestinationEvent
 } from '../db/schema';
-import { refundStands } from '../donations/queries';
+import { isFirstSettledGift, refundStands } from '../donations/queries';
 import type { WebhookEvent } from '../../webhooks/catalog';
 
 // the whole rule about which destinations an event is owed to, and the statements that say so.
@@ -29,19 +29,31 @@ import type { WebhookEvent } from '../../webhooks/catalog';
 // statement does not know how many destinations it will write for: `msg_` and a version 4 uuid
 // from `randomblob`.
 
-/** the gift a settlement just made `succeeded`. */
-export type MadeGift = { readonly paymentId: string };
+/** the gift a settlement just made `succeeded`, and the donor it is filed under. */
+export type MadeGift = { readonly paymentId: string; readonly contactId: string };
 
 /**
- * the `gift.made` rows for one settled payment, for splicing into a caller's single `batch()`.
- * outside the specs its one caller is `settledGiftWrites` in ../books/writes.ts, and a writer
- * takes them from there.
+ * the `gift.made` rows for one settled payment, and the `donor.added` rows where it is its donor's
+ * first settled gift, for splicing into a caller's single `batch()`. outside the specs its one
+ * caller is `settledGiftWrites` in ../books/writes.ts, and a writer takes them from there.
+ *
+ * `donor.added` is keyed on the contact, so a destination hears of each donor once, and owed only
+ * where {@link isFirstSettledGift} holds — the rule a `new_donor` Zap is owed by, so both feeds
+ * agree on who is new. a donor whose checkout never settles, or one typed in on the dashboard with
+ * no gift, is not heard of until a gift of theirs settles.
  *
  * pure apart from the clock. an INSERT…SELECT never runs a column's `$defaultFn`, so the
  * timestamps are bound here, from one `new Date()`.
  */
-export function webhookStatements(db: Db, gift: MadeGift): [BatchItem<'sqlite'>] {
-	return [fanOut(db, 'gift.made', gift.paymentId, new Date())];
+export function webhookStatements(
+	db: Db,
+	gift: MadeGift
+): [BatchItem<'sqlite'>, BatchItem<'sqlite'>] {
+	const now = new Date();
+	return [
+		fanOut(db, 'gift.made', gift.paymentId, now),
+		fanOut(db, 'donor.added', gift.contactId, now, isFirstSettledGift(db, gift))
+	];
 }
 
 /**
@@ -74,6 +86,37 @@ export function disputeOpenedWebhookStatements(
 	withdrawalPaymentId: string
 ): BatchItem<'sqlite'> {
 	return fanOut(db, 'gift.dispute_opened', withdrawalPaymentId, new Date());
+}
+
+/**
+ * the subject of an event about one change to a record: `<record id>:<epoch ms of the change>`, so
+ * each change is its own event under `webhook_delivery_event_idx` where the record's id alone would
+ * let a destination hear of its first change only. ./payload.ts renders the record as it stands at
+ * send, from {@link changedRecordOf}.
+ */
+export function changeSubject(recordId: string, at: Date): string {
+	return `${recordId}:${at.getTime()}`;
+}
+
+/** the record a {@link changeSubject} names, or null where `subject` is not one. */
+export function changedRecordOf(subject: string): string | null {
+	const colon = subject.indexOf(':');
+	return colon <= 0 ? null : subject.slice(0, colon);
+}
+
+/**
+ * the `donor.updated` rows for a write to the contact `contactId`, owed only where `changed` holds.
+ * outside the specs its one caller is `contactConsentUpdateStatements` in ../contacts/queries.ts,
+ * which splices it **in front of** the update it reports: `changed` compares the row as it stands
+ * with what the update will write, so a write that changes nothing owes nothing.
+ */
+export function donorUpdatedWebhookStatements(
+	db: Db,
+	contactId: string,
+	changed: SQL
+): BatchItem<'sqlite'> {
+	const now = new Date();
+	return fanOut(db, 'donor.updated', changeSubject(contactId, now), now, changed);
 }
 
 /** a version 4 uuid, lowercase, from sqlite's own random source. */

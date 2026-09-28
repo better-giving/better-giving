@@ -64,10 +64,17 @@ async function subscribe(trigger: ZapierTrigger): Promise<void> {
 		.run();
 }
 
-/** a donor, and the rows of one $50 gift of theirs as a writer would insert them: unwritten. */
-async function giftFrom() {
-	const contactId = uuidv7();
-	await db.insert(contact).values({ id: contactId, kind: 'individual', displayName: 'Ada Okafor' });
+/**
+ * a donor, and the rows of one $50 gift of theirs as a writer would insert them: unwritten. the
+ * donor is `donorId` where one is named, and a new one written here where none is.
+ */
+async function giftFrom(donorId?: string) {
+	const contactId = donorId ?? uuidv7();
+	if (donorId === undefined) {
+		await db
+			.insert(contact)
+			.values({ id: contactId, kind: 'individual', displayName: 'Ada Okafor' });
+	}
 	const donationId = uuidv7();
 	const paymentId = uuidv7();
 	return {
@@ -732,6 +739,78 @@ describe('reversalWrites() — what webhook destinations are owed', () => {
 			);
 
 		expect(refused).toBe('SQLITE_CONSTRAINT_UNIQUE');
+		expect(await owedToDestinations()).toEqual([]);
+	});
+});
+
+describe('settledGiftWrites() — what webhook destinations are owed', () => {
+	async function clearDestinations() {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	}
+	beforeEach(clearDestinations);
+	afterEach(clearDestinations);
+
+	async function listening(events: readonly WebhookEvent[]): Promise<string> {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination.id;
+	}
+
+	/** one $50 gift settled with everything it owes, from `donorId` or a new donor. */
+	async function settled(donorId?: string) {
+		const gift = await giftFrom(donorId);
+		await db.batch([
+			...gift.rows,
+			...settledGiftWrites(db, {
+				charge: chargeOf(gift.paymentId),
+				fee: null,
+				contactId: gift.contactId
+			})
+		]);
+		return gift;
+	}
+
+	async function owedToDestinations() {
+		const { results } = await env.DB.prepare(
+			'select destination_id, event, subject_id from webhook_delivery order by destination_id, event'
+		).all<{ destination_id: string; event: string; subject_id: string }>();
+		return results;
+	}
+
+	it('owes each destination taking donor.added one row about a donor’s first settled gift, keyed on the donor, and none that does not', async () => {
+		const addedOnly = await listening(['donor.added']);
+		const both = await listening(['donor.added', 'gift.made']);
+		const madeOnly = await listening(['gift.made']);
+
+		const gift = await settled();
+
+		const added = { event: 'donor.added', subject_id: gift.contactId };
+		const made = { event: 'gift.made', subject_id: gift.paymentId };
+		expect(await owedToDestinations()).toEqual(
+			[
+				{ destination_id: addedOnly, ...added },
+				{ destination_id: both, ...added },
+				{ destination_id: both, ...made },
+				{ destination_id: madeOnly, ...made }
+			].sort((a, b) =>
+				a.destination_id === b.destination_id
+					? a.event.localeCompare(b.event)
+					: a.destination_id.localeCompare(b.destination_id)
+			)
+		);
+	});
+
+	it('owes no donor.added on the donor’s second settled gift', async () => {
+		const first = await settled();
+		await listening(['donor.added']);
+
+		await settled(first.contactId);
+
 		expect(await owedToDestinations()).toEqual([]);
 	});
 });

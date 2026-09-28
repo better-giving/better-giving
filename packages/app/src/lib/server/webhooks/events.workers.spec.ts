@@ -6,7 +6,7 @@ import { sqliteResultCode } from '../db/rejection';
 import { contact, donation, payment } from '../db/schema';
 import type { WebhookEvent } from '../../webhooks/catalog';
 import { createDestination } from './destinations';
-import { webhookStatements } from './events';
+import { changedRecordOf, changeSubject, webhookStatements } from './events';
 
 // the delivery rows a settled gift owes the destinations listening, against a real D1.
 //
@@ -65,7 +65,7 @@ async function settle(): Promise<string> {
 			provider: 'manual',
 			occurredAt: at
 		}),
-		...webhookStatements(db, { paymentId })
+		...webhookStatements(db, { paymentId, contactId })
 	]);
 	return paymentId;
 }
@@ -118,7 +118,7 @@ describe('webhookStatements() — who is owed a gift made', () => {
 
 	it('owes nothing to a destination that does not take gift.made, or to an archived one', async () => {
 		const listening = await destination(['gift.made']);
-		await destination(['gift.refunded', 'donor.added']);
+		await destination(['gift.refunded', 'donor.updated']);
 		const archived = await destination(['gift.made']);
 		await env.DB.prepare('update webhook_destination set archived_at = 1 where id = ?')
 			.bind(archived)
@@ -158,7 +158,7 @@ describe('webhookStatements() — once', () => {
 
 		const refused = await db
 			.batch([
-				...webhookStatements(db, { paymentId }),
+				...webhookStatements(db, { paymentId, contactId: uuidv7() }),
 				// a payment naming no donation: the foreign key refuses the whole batch.
 				db.insert(payment).values({
 					id: paymentId,
@@ -186,8 +186,25 @@ describe('webhookStatements() — once', () => {
 		const paymentId = await settle();
 		const [first] = await deliveries();
 
-		await db.batch(webhookStatements(db, { paymentId }));
+		await db.batch(webhookStatements(db, { paymentId, contactId: uuidv7() }));
 
 		expect(await deliveries()).toEqual([first]);
+	});
+});
+
+describe('changeSubject() and changedRecordOf()', () => {
+	it('names a record and the moment it changed, and gives the record back', () => {
+		const subject = changeSubject(
+			'01a0e7e2-de00-7c82-9455-17f50f3e681b',
+			new Date(1_790_000_000_000)
+		);
+
+		expect(subject).toBe('01a0e7e2-de00-7c82-9455-17f50f3e681b:1790000000000');
+		expect(changedRecordOf(subject)).toBe('01a0e7e2-de00-7c82-9455-17f50f3e681b');
+	});
+
+	it('gives back no record for a subject that names no change', () => {
+		expect(changedRecordOf('01a0e7e2-de00-7c82-9455-17f50f3e681b')).toBeNull();
+		expect(changedRecordOf(':1790000000000')).toBeNull();
 	});
 });

@@ -6,13 +6,14 @@ import {
 	eq,
 	inArray,
 	isNull,
+	lt,
 	ne,
 	notExists,
 	or,
 	type SQL,
 	sql
 } from 'drizzle-orm';
-import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { dispute, donation, payment, program, type Donation, type Payment } from '../db/schema';
@@ -164,6 +165,61 @@ export function refundStands(db: Db, row: typeof payment) {
 			and(eq(dispute.paymentId, row.id), or(isNull(dispute.outcome), ne(dispute.outcome, 'lost')))
 		);
 	return and(eq(row.direction, 'refund'), eq(row.status, 'succeeded'), notExists(unsettled));
+}
+
+/**
+ * `gift` is its donor's first settled gift: no other succeeded inbound payment of theirs exists.
+ * the one rule both feeds read "new donor" by — `zapierStatements` in ../zapier/events.ts and
+ * `webhookStatements` in ../webhooks/events.ts — inside the statement that owes the event, never
+ * in a read before it; the first of those argues the race it settles.
+ */
+export function isFirstSettledGift(
+	db: Db,
+	gift: { readonly paymentId: string; readonly contactId: string }
+): SQL {
+	const prior = alias(payment, 'prior');
+	const priorDonation = alias(donation, 'prior_donation');
+	return notExists(
+		db
+			.select({ one: sql`1` })
+			.from(prior)
+			.innerJoin(priorDonation, eq(priorDonation.id, prior.donationId))
+			.where(
+				and(
+					eq(priorDonation.contactId, gift.contactId),
+					eq(prior.status, 'succeeded'),
+					eq(prior.direction, 'inbound'),
+					ne(prior.id, gift.paymentId)
+				)
+			)
+	);
+}
+
+/**
+ * a settled gift from the same donor as the outer row's, dated before it — so the outer row with
+ * none is that donor's first. a tie on the date falls to the lower id, so exactly one row per
+ * donor is first. the outer query reads `payment` joined to `donation`, both unaliased: a
+ * `new_donor` Zap's samples (../zapier/payload.ts) and a `donor.added` destination's
+ * `first_gift` (../webhooks/payload.ts) read the first gift by it.
+ */
+export function earlierSettledGiftOfDonor(db: Db) {
+	const earlier = alias(payment, 'earlier');
+	const earlierDonation = alias(donation, 'earlier_donation');
+	return db
+		.select({ one: sql`1` })
+		.from(earlier)
+		.innerJoin(earlierDonation, eq(earlierDonation.id, earlier.donationId))
+		.where(
+			and(
+				eq(earlierDonation.contactId, donation.contactId),
+				eq(earlier.status, 'succeeded'),
+				eq(earlier.direction, 'inbound'),
+				or(
+					lt(earlier.occurredAt, payment.occurredAt),
+					and(eq(earlier.occurredAt, payment.occurredAt), lt(earlier.id, payment.id))
+				)
+			)
+		);
 }
 
 /**

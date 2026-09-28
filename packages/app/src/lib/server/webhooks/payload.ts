@@ -1,17 +1,26 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, notExists } from 'drizzle-orm';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
-import { payment } from '../db/schema';
-import { refundStands } from '../donations/queries';
+import { donation, payment } from '../db/schema';
+import { earlierSettledGiftOfDonor, refundStands } from '../donations/queries';
+import { type ApiDonor, readDonors } from '../integrations/donor';
 import { type ApiGift, readGifts } from '../integrations/gift';
 import { inPage } from '../integrations/paging';
 import { type RefundRow, type RefundSource, selectRefunds } from '../integrations/refund';
 import type { WebhookEvent } from '../../webhooks/catalog';
+import { changedRecordOf } from './events';
 
 // the `data` a destination is posted for each event, rendered at send from the row's subject
-// (./deliver.ts). every gift in it is the read API's (`readGifts` in ../integrations/gift.ts) as it
-// stands at that moment, and every key is held to that module's rule: permanent, and present, null
-// where there is nothing to say.
+// (./deliver.ts). every gift in it is the read API's (`readGifts` in ../integrations/gift.ts) and
+// every donor the read API's (`readDonors` in ../integrations/donor.ts), each as it stands at that
+// moment, and every key is held to those modules' rule: permanent, and present, null where there is
+// nothing to say.
+//
+// **a donor event says who, not what changed.** `donor.updated` carries the donor as they stand at
+// send, not the change its row was queued for, so of two changes queued close together both posts
+// may read alike; a receiver keeps the latest by `updated_at`. `donor.added`'s `first_gift` is the
+// donor's earliest settled gift by date (`earlierSettledGiftOfDonor` in ../donations/queries.ts) —
+// the gift whose settlement queued the row, unless one dated earlier was entered by hand since.
 //
 // **a `gift.refunded` row is sent only while its refund still stands**, read here at send as it was
 // in the statement that queued it (`giftRefundedWebhookStatements` in ./events.ts). a refund that
@@ -66,6 +75,14 @@ export type OpenedDispute = {
 	readonly gift: ApiGift;
 };
 
+/**
+ * a donor's first settled gift, as a `donor.added` destination receives it: the donor as the read
+ * API answers them, and `first_gift` as it answers that gift — the event a `new_donor` Zap
+ * receives (../zapier/payload.ts), with the donor's keys where the Zap has `name` and `email`. `id`
+ * is the donor's, so a destination hears of each donor once however many gifts follow.
+ */
+export type AddedDonor = ApiDonor & { readonly first_gift: ApiGift };
+
 /** the subject a delivery row names, as ./deliver.ts claims it. */
 type Subject = { readonly event: WebhookEvent; readonly subjectId: string };
 
@@ -81,18 +98,23 @@ export async function renderSubjects(
 		subjects.filter((s) => s.event === event).map((s) => s.subjectId);
 	const refundedIds = ofEvent('gift.refunded');
 	const withdrawalIds = [...refundedIds, ...ofEvent('gift.dispute_opened')];
-	const [withdrawals, standing] = await Promise.all([
+	const addedIds = ofEvent('donor.added');
+	const updatedIds = ofEvent('donor.updated').flatMap((subject) => changedRecordOf(subject) ?? []);
+	const [withdrawals, standing, donors, firstGiftIds] = await Promise.all([
 		withdrawalIds.length === 0
 			? []
 			: selectRefunds(db).where(
 					and(eq(payment.direction, 'refund'), inPage(payment.id, withdrawalIds))
 				),
-		readStandingRefunds(db, refundedIds)
+		readStandingRefunds(db, refundedIds),
+		readDonors(db, [...addedIds, ...updatedIds]),
+		readFirstGifts(db, addedIds)
 	]);
 	const byId = new Map(withdrawals.map((row) => [row.id, row]));
 	const gifts = await readGifts(db, [
 		...ofEvent('gift.made'),
-		...withdrawals.flatMap((row) => (row.giftId === null ? [] : [row.giftId]))
+		...withdrawals.flatMap((row) => (row.giftId === null ? [] : [row.giftId])),
+		...firstGiftIds.values()
 	]);
 	const withdrawalOf = (id: string) => {
 		const row = byId.get(id);
@@ -117,6 +139,19 @@ export async function renderSubjects(
 				if (found === undefined) return unreadable('dispute withdrawal', subjectId);
 				return { data: openedDispute(found.row, found.gift) };
 			}
+			case 'donor.added': {
+				const donor = donors.get(subjectId);
+				if (donor === undefined) return unreadable('donor', subjectId);
+				const giftId = firstGiftIds.get(subjectId);
+				const gift = giftId === undefined ? undefined : gifts.get(giftId);
+				if (gift === undefined) return unreadable('first settled gift of the donor', subjectId);
+				return { data: { ...donor, first_gift: gift } satisfies AddedDonor };
+			}
+			case 'donor.updated': {
+				const contactId = changedRecordOf(subjectId);
+				const donor = contactId === null ? undefined : donors.get(contactId);
+				return donor === undefined ? unreadable('donor', contactId ?? subjectId) : { data: donor };
+			}
 			default:
 				return { unsent: `A ${event} event is not one this deployment sends.` };
 		}
@@ -129,6 +164,24 @@ function unreadable(what: string, id: string): Rendered {
 
 const REFUND_NO_LONGER_STANDS =
 	'The refund this event was queued for no longer stands: it failed, or its dispute no longer reads as lost. It was not sent.';
+
+/** each of `contactIds`' first settled gift, by the donor's id: the one with no earlier one. */
+async function readFirstGifts(db: Db, contactIds: readonly string[]): Promise<Map<string, string>> {
+	if (contactIds.length === 0) return new Map();
+	const rows = await db
+		.select({ contactId: donation.contactId, paymentId: payment.id })
+		.from(payment)
+		.innerJoin(donation, eq(donation.id, payment.donationId))
+		.where(
+			and(
+				inPage(donation.contactId, contactIds),
+				eq(payment.status, 'succeeded'),
+				eq(payment.direction, 'inbound'),
+				notExists(earlierSettledGiftOfDonor(db))
+			)
+		);
+	return new Map(rows.map((row) => [row.contactId, row.paymentId]));
+}
 
 /** of `refundIds`, the refunds that still stand, read as this run renders them. */
 async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promise<Set<string>> {

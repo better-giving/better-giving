@@ -4,6 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, dispute, donation, payment } from '../db/schema';
+import { contactConsentUpdateStatements } from '../contacts/queries';
 import { readGiftPage, readGifts } from '../integrations/gift';
 import type { WebhookEvent } from '../../webhooks/catalog';
 import { sendDueWebhooks, WEBHOOK_RETRY_SCHEDULE_MS } from './deliver';
@@ -98,7 +99,7 @@ async function settle(): Promise<string> {
 			provider: 'manual',
 			occurredAt: at
 		}),
-		...webhookStatements(db, { paymentId })
+		...webhookStatements(db, { paymentId, contactId })
 	]);
 	return paymentId;
 }
@@ -654,5 +655,102 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 				last_error: `The refund ${refundId} this event was queued for could not be read.`
 			})
 		]);
+	});
+});
+
+describe('sendDueWebhooks() — a donor added and a donor updated', () => {
+	async function listening(events: readonly WebhookEvent[]) {
+		const created = await createDestination(db, {
+			url: `https://crm.example.org/hooks/${uuidv7()}`,
+			events
+		});
+		if (!created.ok) throw new Error(created.detail);
+		return created.destination;
+	}
+
+	async function donorOf(paymentId: string): Promise<string> {
+		const [row] = await db
+			.select({ contactId: donation.contactId })
+			.from(donation)
+			.innerJoin(payment, eq(payment.donationId, donation.id))
+			.where(eq(payment.id, paymentId));
+		if (row === undefined) throw new Error('no donor for that gift');
+		return row.contactId;
+	}
+
+	it('posts a donor added signed, as the read API’s donor and their first gift', async () => {
+		const target = await listening(['donor.added']);
+		const giftId = await settle();
+		const donorId = await donorOf(giftId);
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, START)).toBe(true);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'donor.added',
+			timestamp: START.toISOString(),
+			data: {
+				id: donorId,
+				name: 'Ada Okafor',
+				email: 'ada@example.org',
+				consent: 'unasked',
+				created_at: START.toISOString(),
+				updated_at: START.toISOString(),
+				first_gift: (await readGifts(db, [giftId])).get(giftId)
+			}
+		});
+		expect(await rows()).toEqual([expect.objectContaining({ status: 'delivered' })]);
+	});
+
+	it('posts a donor updated signed, as the donor stands at send', async () => {
+		const target = await listening(['donor.updated']);
+		const donorId = await donorOf(await settle());
+		const CHANGED = new Date(START.getTime() + MINUTE);
+		vi.setSystemTime(CHANGED);
+		await db.batch(contactConsentUpdateStatements(db, donorId, true));
+		const receiving = receivers();
+
+		await runAt(new Date(CHANGED.getTime() + MINUTE), receiving.fetch);
+
+		const [post] = receiving.posts;
+		expect(receiving.posts.map((p) => p.url)).toEqual([target.url]);
+		if (post === undefined) return;
+		expect(await verifies(target.signingSecret, post, new Date(CHANGED.getTime() + MINUTE))).toBe(
+			true
+		);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'donor.updated',
+			timestamp: CHANGED.toISOString(),
+			data: {
+				id: donorId,
+				name: 'Ada Okafor',
+				email: 'ada@example.org',
+				consent: 'agreed',
+				created_at: START.toISOString(),
+				updated_at: CHANGED.toISOString()
+			}
+		});
+	});
+
+	it('fails a donor row whose donor cannot be read, unposted, and says why', async () => {
+		await listening(['donor.added']);
+		const giftId = await settle();
+		const donorId = await donorOf(giftId);
+		await env.DB.prepare('update webhook_delivery set subject_id = ?').bind(uuidv7()).run();
+		const receiving = receivers();
+
+		await runAt(START, receiving.fetch);
+
+		expect(receiving.posts).toEqual([]);
+		const [row] = await rows();
+		expect(row).toMatchObject({ status: 'failed', attempts: 0 });
+		expect(row?.last_error).toMatch(
+			/^The donor [0-9a-f-]{36} this event was queued for could not be read\.$/
+		);
+		expect(row?.last_error).not.toContain(donorId);
 	});
 });
