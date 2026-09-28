@@ -836,6 +836,22 @@ describe('the labels on the pair under the name', () => {
 		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + arc);
 	});
 
+	// under `square` the box has no arc to clear, and a band starting flush with the box would take
+	// the top of its inline-start edge with it and leave the corner open. so the band starts where
+	// `soft`'s inner corner ends, and the edge stays drawn up to the corner.
+	it('starts the floated band clear of the edge under square', async () => {
+		page('body { --donate-corner: square; }');
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		expect(corner(box)).toBe(0);
+		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + 4);
+	});
+
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
 	// two fills and not one: the half above the edge covers the card and the half below covers the
 	// box, and a single flat colour would match one of them and show as a patch on the other. the

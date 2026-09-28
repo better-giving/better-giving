@@ -359,7 +359,8 @@ textarea[part~='field'] {
  * floated, the band starts at the corner the box is drawn with and no closer to it: a band flush with
  * the box's inline start leaves the arc of that corner standing outside it as a stub beside the gap,
  * so the inset is the box's own radius and the edge runs unbroken from the corner to the gap and on
- * from its other side. the other end takes the same inset, which is where a name too long for its box
+ * from its other side. a square box has no arc and holds `soft`'s inset instead, because a band
+ * flush with it takes the top of its inline-start edge (`--_label-inset` in ./tokens.css). the other end takes the same inset, which is where a name too long for its box
  * is cut — the arc at that corner is what the band would otherwise run over.
  *
  * the band is a notch and nothing more: the edge stops a little short of the name and picks up a
@@ -405,8 +406,8 @@ textarea[part~='field'] {
 	max-inline-size: 100%;
 	display: flex;
 	align-items: center;
-	/* the corner the box is drawn with, at both ends of it. */
-	padding-inline: var(--_r-in);
+	/* clear of the corner the box is drawn with, at both ends of it. */
+	padding-inline: var(--_label-inset);
 	/* the card's base, so the span's own step resolves against the root rather than compounding. */
 	font-size: var(--_t-md);
 	/*

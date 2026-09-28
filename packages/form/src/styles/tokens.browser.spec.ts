@@ -822,18 +822,20 @@ describe('the shade seed', () => {
 });
 
 describe('the corner seed', () => {
-	// the card's corner, the corner of a control inside a box on it, and the tick box's, which
-	// follows the inner corner up to `soft`'s and no further so it never rounds toward a radio.
+	// the card's corner, the corner of a control inside a box on it, the tick box's, which follows
+	// the inner corner up to `soft`'s and no further so it never rounds toward a radio, and where a
+	// floated label's band starts, which follows it down to `soft`'s and no further so a square box
+	// keeps its edge.
 	it.each([
-		['square', ['0px', '0px', '0px']],
-		['soft', ['8px', '4px', '4px']],
-		['round', ['12px', '8px', '4px']],
-		['a corner off the list', ['8px', '4px', '4px']]
+		['square', ['0px', '0px', '0px', '4px']],
+		['soft', ['8px', '4px', '4px', '4px']],
+		['round', ['12px', '8px', '4px', '8px']],
+		['a corner off the list', ['8px', '4px', '4px', '4px']]
 	])('draws %s', (name, corners) => {
 		const corner = name.includes(' ') ? 'pill' : name;
 		seed(`--donate-corner: ${corner};`);
 
-		expect(['--_r', '--_r-in', '--_r-box'].map(lengthOf)).toEqual(corners);
+		expect(['--_r', '--_r-in', '--_r-box', '--_label-inset'].map(lengthOf)).toEqual(corners);
 	});
 });
 

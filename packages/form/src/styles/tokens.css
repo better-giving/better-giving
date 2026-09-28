@@ -1066,6 +1066,14 @@
 	--_r-box: var(--_r-in);
 
 	/*
+	 * where the band behind a floated label starts (`.floating > [part~='label']` in ./parts.css):
+	 * the inner corner's end, so the words knock the edge out past the arc and not through it. under
+	 * `square` there is no arc, and a band flush with the box would take the top of its inline-start
+	 * edge with it and leave the corner open — so `square` holds it at `soft`'s 4px below.
+	 */
+	--_label-inset: var(--_r-in);
+
+	/*
 	 * the one elevation this component draws, and it is bounded to one place: a box standing on this
 	 * card's own ladder, never the card itself. the card's outer edge stays flat, because a shadow
 	 * laid there falls on a page this element cannot see and has no ground to be measured against.
@@ -1109,6 +1117,7 @@
 	[data-donate-root] > * {
 		--_r: 0;
 		--_r-in: 0;
+		--_label-inset: 4px;
 	}
 }
 
