@@ -47,10 +47,25 @@ export function endOfDay({
 	return { ok: true, endsAt };
 }
 
+/** whether the runtime knows `zone` as an IANA time zone. */
+export function isTimeZone(zone: string): boolean {
+	return wallClock(zone) !== null;
+}
+
 /** the day, `YYYY-MM-DD`, that the instant `at` falls on in `timeZone`; null for an unknown zone. */
 export function dayOf(at: number, timeZone: string): string | null {
 	const wall = wallClock(timeZone);
 	return wall === null ? null : new Date(wall(at)).toISOString().slice(0, 10);
+}
+
+/** `YYYY-MM-DD` as a fundraiser reads it: Dec 31, 2026. */
+export function dayWords(day: string): string {
+	return new Intl.DateTimeFormat('en-US', {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+		timeZone: 'UTC'
+	}).format(Date.parse(`${day}T00:00:00Z`));
 }
 
 /** the zone's wall clock at an instant, to the second, as the instant UTC shows the same reading at. */

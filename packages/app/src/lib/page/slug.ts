@@ -140,18 +140,19 @@ export function checkSlug(slug: string): SlugCheck {
 
 /**
  * the address a campaign's name suggests, while its slug still follows the name: accents folded,
- * every run of anything else one hyphen, and cut on a word where the limit allows. it can come back
- * empty or reserved, and `checkSlug` is still what decides.
+ * every run of anything else one hyphen, and cut on a word where `max` allows — shorter than the
+ * limit where a suffix follows. it can come back empty or reserved, and `checkSlug` is still what
+ * decides.
  */
-export function slugFromTitle(title: string): string {
+export function slugFromTitle(title: string, max = SLUG_MAX_LENGTH): string {
 	const slug = title
 		.normalize('NFKD')
 		.replace(/\p{M}/gu, '')
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-|-$/g, '');
-	if (slug.length <= SLUG_MAX_LENGTH) return slug;
-	const cut = slug.slice(0, SLUG_MAX_LENGTH + 1);
+	if (slug.length <= max) return slug;
+	const cut = slug.slice(0, max + 1);
 	const lastBreak = cut.lastIndexOf('-');
-	return lastBreak > 0 ? cut.slice(0, lastBreak) : cut.slice(0, SLUG_MAX_LENGTH);
+	return lastBreak > 0 ? cut.slice(0, lastBreak) : cut.slice(0, max);
 }

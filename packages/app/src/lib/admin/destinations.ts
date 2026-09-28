@@ -1,9 +1,9 @@
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
- * one look, then the forms that take the money, the donors it came from, the gifts themselves, the
- * ones that repeat, who may sign in, and the books all of it lands in. the dashboard is first
- * because it is the surface's own address and what an operator opens on, and each record after it
- * is a step further from the form that produced it.
+ * one look, then the campaigns and forms that take the money, the donors it came from, the gifts
+ * themselves, the ones that repeat, who may sign in, and the books all of it lands in. the
+ * dashboard is first because it is the surface's own address and what an operator opens on, and
+ * each record after it is a step further from the page or form that produced it.
  *
  * the dashboard states figures and every other one but Organisation is a collection. what a
  * deployment holds one of — payments, mail, spam protection, the site list, the organisation's
@@ -42,8 +42,9 @@
  * against an address walks.
  *
  * `folded` is a destination the phone's bar holds under its More tab rather than as a tab of its
- * own: the bar keeps what an operator opens every week — the dashboard, the donors and the gifts —
- * and the rest are a press further away there and nowhere else, the column listing all of them.
+ * own: the bar keeps what an operator opens every week — the dashboard, the campaigns, the donors
+ * and the gifts — and the rest are a press further away there and nowhere else, the column listing
+ * all of them.
  *
  * `mark` is the glyph the column draws beside a label — a name from
  * packages/operator/src/components/status/glyphs.js. the bar at a phone's width draws none, so a
@@ -59,6 +60,9 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
+			// first of the records of giving, and a tab on the phone's bar: a campaign is what an
+			// operator opens most weeks, and its page is where the gifts it raises come in.
+			{ href: '/admin/campaigns', label: 'Campaigns', short: 'Campaigns', mark: 'megaphone' },
 			{
 				href: '/admin/forms',
 				label: 'Donation forms',

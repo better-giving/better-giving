@@ -12,7 +12,7 @@ import {
 } from '../../page/accept-reply';
 import { draftFromPage, pageCatalog } from '../../page/ai-catalog';
 import { type Page, parsePage } from '../../page/catalog';
-import { dayOf } from '../../page/end-date';
+import { dayOf, dayWords } from '../../page/end-date';
 import type { ChatNote, PageType } from '../../page/keys';
 import { plainText } from '../../rich-text/document';
 import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
@@ -361,7 +361,7 @@ function changeWords(change: Change, programs: readonly ProgramOption[]): string
 		case 'goal':
 			return `Goal set to ${money(change.to)}.`;
 		case 'endDate':
-			return `Ends ${worded(change.to)}.`;
+			return `Ends ${dayWords(change.to)}.`;
 		case 'program': {
 			const named = programs.find(({ id }) => id === change.to.programId)?.name;
 			return `Gifts go to ${named ?? change.to.programId}.`;
@@ -373,14 +373,4 @@ function changeWords(change: Change, programs: readonly ProgramOption[]): string
 
 function money(minor: number) {
 	return formatMinorBrief(minor, FORM_CURRENCY);
-}
-
-/** `YYYY-MM-DD` as a fundraiser reads it: Dec 31, 2026. */
-function worded(day: string) {
-	return new Intl.DateTimeFormat('en-US', {
-		month: 'short',
-		day: 'numeric',
-		year: 'numeric',
-		timeZone: 'UTC'
-	}).format(Date.parse(`${day}T00:00:00Z`));
 }
