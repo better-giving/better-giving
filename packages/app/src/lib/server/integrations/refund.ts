@@ -19,7 +19,8 @@ import { inPage } from './paging';
  * a value is never split into two later. the `gift_refunded` trigger's own description in
  * packages/zapier says the same to a Zap's author.
  */
-export type RefundSource = 'refund' | 'dispute';
+export const REFUND_SOURCES = ['refund', 'dispute'] as const;
+export type RefundSource = (typeof REFUND_SOURCES)[number];
 
 /**
  * every column a refund-direction row is rendered from, its dispute's joined where it has one. the

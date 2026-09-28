@@ -1,6 +1,7 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { ShownOnce, useShownOnce } from '@better-giving/operator/behaviour/ShownOnce';
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { CopyControl } from '@better-giving/operator/components/controls/CopyControl';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { CodeChip } from '@better-giving/operator/components/data/CodeSlab';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
@@ -17,12 +18,14 @@ import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
+import { agentPromptFor } from '$lib/server/integrations/agent-prompt';
 import {
 	listApiKeys,
 	mintApiKey,
 	revokeAndArchiveApiKey,
 	revokedApiKeyName
 } from '$lib/server/integrations/keys';
+import { OPENAPI_PATH } from '$lib/server/integrations/openapi';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.api';
 
@@ -48,6 +51,11 @@ import type { Route } from './+types/_app.admin.integrations.api';
 // a revoke reports by the state it leaves — the row is gone from the list the redirect lands on —
 // and says so to a reader who cannot see it go: the key's id rides the redirect as a flash
 // ($lib/server/flash.ts), and the loader turns it back into the name a status region reads out.
+//
+// the API reference and the agent prompt are the read API's two documents, each built for this
+// request's own origin ($lib/server/integrations/openapi.ts, agent-prompt.ts): the reference is a
+// link to the document the deployment serves, and the prompt is copied whole from the loader's
+// answer, so the press needs no fetch.
 //
 // both dialogs take their opener off the page as they answer — a made key remounts the form that
 // asked, a revoked row takes its Revoke with it — so each hands `fallbackFocus` the Name box, the
@@ -134,7 +142,13 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const revoked = landed === null ? null : await revokedApiKeyName(db, landed.marker);
 
 	return data(
-		{ keys, revoking: keys.find((key) => key.id === asked) ?? null, revoked },
+		{
+			keys,
+			revoking: keys.find((key) => key.id === asked) ?? null,
+			revoked,
+			apiReference: `${url.origin}${OPENAPI_PATH}`,
+			agentPrompt: agentPromptFor(url.origin)
+		},
 		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
 	);
 }
@@ -200,6 +214,20 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 					{/* remounted on each key made, so the box empties: a create form that stays on its
 					    screen starts over once it has answered. */}
 					<MakeKey key={made?.key ?? 'none'} actionData={actionData} box={nameBox} />
+					<div className="adm-actions">
+						<Button
+							as="a"
+							href={loaderData.apiReference}
+							target="_blank"
+							rel="noreferrer"
+							variant="quiet"
+							size="sm"
+							markAfter="external-link"
+						>
+							API reference
+						</Button>
+						<CopyControl text={loaderData.agentPrompt} label="Copy agent prompt" />
+					</div>
 				</Grouped>
 				<KeyPlane keys={loaderData.keys} />
 			</Groups>

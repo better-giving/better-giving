@@ -218,7 +218,14 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// endpoint above it, same-origin, which owes all four of that surface's checks. and what its
 	// loader hands the browser is the served config alone, never the `form` row it was read from —
 	// that row carries `allowed_origins`.
-	DONOR_PAGE
+	DONOR_PAGE,
+	// the read API's OpenAPI document and the agent prompt beside it: documentation a developer or
+	// an agent reads before they hold a key, so neither is under ./routes/integrations.v1.ts's key
+	// check. each is built from constants and the request's own origin and reads nothing from the
+	// database, which is what makes it safe to serve to anyone and to cache publicly
+	// ($lib/server/integrations/openapi.ts).
+	'routes/integrations.openapi[.]json.ts',
+	'routes/integrations.agent-prompt[.]md.ts'
 ];
 
 /**
