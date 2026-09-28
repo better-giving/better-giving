@@ -1531,6 +1531,48 @@
 		animation: adm-reveal var(--admin-dur-reveal) var(--admin-ease-reveal);
 	}
 
+	/* ---------- the trigger list -------------------------------------------------------
+
+	   what an outside app is handed to act on — Zapier's triggers — one line each: a mark, the
+	   trigger's name in a fundraiser's words, and at the trailing end how many of the app's own
+	   automations are listening, when any are. packages/operator/src/components/data/TriggerList.jsx
+	   is what draws it.
+
+	   it is a list read down and not a ledger: nothing on a line asks the operator to act, so no
+	   line carries a tone, and the mark is the muted ink every name-beside-a-mark takes rather than
+	   a status. the lines are ruled apart because the count stands at the far end of its line, and
+	   a count with no rule under the line before it reads as belonging to either. the measure is the
+	   panel's, so a count never stands a table's width from the name it counts. */
+	.adm-triggers {
+		display: grid;
+		max-inline-size: var(--admin-measure-panel);
+	}
+
+	.adm-triggers > li {
+		display: flex;
+		align-items: start;
+		gap: var(--admin-space-4);
+		padding-block: var(--admin-space-3);
+	}
+
+	.adm-triggers > li + li {
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-triggers > li > .adm-mark {
+		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-triggers__name {
+		flex: 1;
+		min-inline-size: 0;
+	}
+
+	.adm-triggers__count {
+		color: var(--admin-ink-2);
+	}
+
 	/* ---------- the named block --------------------------------------------------------
 
 	   a section opens onto several blocks — what is set, a procedure to carry out, a form, a list
@@ -3457,6 +3499,50 @@
 		background: var(--admin-control-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
 		cursor: not-allowed;
+	}
+
+	/* ---------- boxes in named groups ------------------------------------------------------
+
+	   one question answered from several short lists — which events a webhook destination is sent,
+	   under Gifts, Donors and Recurring gifts. each list is a group named in the label's bundle,
+	   a rank under the question's own legend, so the two names never read as level.
+	   packages/operator/src/components/forms/CheckboxGroups.jsx is what draws it.
+
+	   a group reads along one line: its options stand side by side, each as wide as its label, and
+	   wrap inside their own group at the narrow width. stacked one per row, nine options are a column
+	   a reader walks to find where Donors starts; on a line, a group's name is the start of the line
+	   it heads. every option keeps the touch row the plain `.adm-check` above gives it.
+
+	   the steps are the four tiers from the inside out: a group's name sits on its options with no
+	   step of its own, because each option's touch row already stands its label off the name; the
+	   gap between options on a line is the stack's step; groups stand off each other at the break
+	   step; and the question's legend stands a stack step above its first group, wider than the
+	   close step `.adm-fieldset__legend + *` gives a single box, so the first group's name is not
+	   read as the legend's second line. the refusal takes no step: the last group's touch row is
+	   already the space it stands off by, and under it the group's buttons are further away. */
+	.adm-checkgroups {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--admin-space-8);
+	}
+
+	.adm-fieldset > .adm-fieldset__legend + .adm-checkgroups {
+		margin-block-start: var(--admin-space-6);
+	}
+
+	.adm-checkgroups > .adm-fieldset > .adm-checkgroup {
+		display: flex;
+		flex-wrap: wrap;
+		column-gap: var(--admin-space-6);
+		margin-block-start: 0;
+	}
+
+	.adm-checkgroups .adm-check {
+		grid-template-columns: auto auto;
+	}
+
+	.adm-fieldset > .adm-checkgroups + .adm-field__error {
+		margin-block-start: 0;
 	}
 
 	/* a stated value is not a disabled input: a greyed control reads as something the
@@ -5762,6 +5848,28 @@
 	   centred that way loses the edge a reader's eye returns to on every line. */
 	.adm-stack--centred {
 		justify-items: center;
+	}
+
+	/* the tier between a stack's items and a section's rule, for a page that is one section of a
+	   few groups with no heading over any of them — the API page's form and the list of keys it
+	   makes, the Zapier page's two sentences and what each opens onto. `.adm-grouped` holds one
+	   group's items a step closer than the stack does, and `.adm-groups` stands the groups a break
+	   step apart, so a squint reads the page as its groups: inside a group the step is
+	   `--admin-space-5`, between groups `--admin-space-8`, and a group's own parts — a label and
+	   its box — stay the `--admin-space-3` a field already spends. a group that stands in a
+	   `.adm-stack` rather than in `.adm-groups` — a page header and the banner that qualifies it —
+	   is held together the same way and stands off the rest by the stack's own gap.
+
+	   neither draws an edge: a group named in a band is `.adm-group` in the layer above, and these
+	   are the groups with nothing to write there. */
+	.adm-groups {
+		display: grid;
+		gap: var(--admin-space-8);
+	}
+
+	.adm-grouped {
+		display: grid;
+		gap: var(--admin-space-5);
 	}
 
 	.adm-list {

@@ -47,6 +47,9 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  *
  * @typedef {object} CodeChipProps
  * @property {ReactNode} [children]
+ *
+ * @typedef {object} UrlTextProps
+ * @property {ReactNode} [children]
  */
 
 /* a block of text a person copies rather than reads — an embed snippet — and the control that puts
@@ -169,4 +172,13 @@ export function InlineCode({ children }) {
 /** @param {CodeChipProps} props */
 export function CodeChip({ children }) {
 	return <code className="adm-chip">{children}</code>;
+}
+
+/* an address standing as the name of a thing — a webhook destination, inside the link in the row
+   that opens it. the code face with no ground: `.adm-url` in ../../styles/base.css says why the
+   tint `InlineCode` wears would be a second box in a row the table already draws. it is a span so a
+   caller puts it inside whatever element carries the address — a router's link, a plain `a`. */
+/** @param {UrlTextProps} props */
+export function UrlText({ children }) {
+	return <span className="adm-url">{children}</span>;
 }

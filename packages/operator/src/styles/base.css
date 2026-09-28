@@ -404,6 +404,20 @@
 		overflow-wrap: anywhere;
 	}
 
+	/* an address standing as the name of a thing — a webhook destination in the row that opens it —
+	   rather than a literal quoted in a sentence. it takes the code face so the address reads as the
+	   one a reader pasted, character for character, and no ground: `.adm-code`'s tint is what marks
+	   a literal inside prose, and on a link in a table cell it would be a second box inside the row
+	   the plane already draws. the weight is stated because the cell it most often stands in, a
+	   pinned row head, sets its own; an address is a value and not the row's label. it wraps at any
+	   glyph for `.adm-code`'s reason. */
+	.adm-url {
+		font-family: var(--admin-font-mono);
+		font-size: var(--admin-code-size);
+		font-weight: var(--admin-code-weight);
+		overflow-wrap: anywhere;
+	}
+
 	/* the mark, which is the <svg> lucide renders and which
 	   packages/operator/src/components/status/Mark.jsx puts this class straight onto. it strokes
 	   with `currentColor`, so a mark takes its ink from the text it stands with exactly as text

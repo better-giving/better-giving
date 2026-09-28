@@ -3,6 +3,8 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import {
 	Column,
 	Group,
+	Grouped,
+	Groups,
 	List,
 	Section,
 	Stack,
@@ -10,10 +12,10 @@ import {
 } from '@better-giving/operator/components/shell/Layout';
 
 /*
- * the six arrangements every operator screen is built out of, each drawn at the one thing it
+ * the eight arrangements every operator screen is built out of, each drawn at the one thing it
  * decides and nothing else.
  *
- * spacing is the whole of what five of these do, so every specimen holds at least two blocks: one
+ * spacing is the whole of what seven of these do, so every specimen holds at least two blocks: one
  * block in a `Stack` shows no gap, and a gap is the only thing there is to look at. the pairs are
  * drawn tight and loose beside each other for the same reason — a step is a step relative to
  * another step, and a single run of rows says nothing about which one it took.
@@ -35,6 +37,11 @@ import {
  * screen in this system is ever read at, and the specimen answers a question nobody asked. the box
  * is the panel alone and not the route around it:
  * `.adm-panelroute` is a screen tall, and a page of specimens cannot spend a viewport on each.
+ *
+ * `Groups` and `Grouped` are drawn together because the pair is one decision: the step inside a
+ * group against the step between groups. the specimen is the API page's shape — a form and the
+ * presses under it, then the list the form adds to — and the second group is a lone block standing
+ * as a group of its own, which is how a table plane with its caption sits in one.
  *
  * `Section` is the one arrangement whose rule is drawn by the element rather than written: two
  * adjacent sections take a rule between them and a lone section takes none
@@ -161,6 +168,27 @@ export default function ShellLayoutPreview() {
 				<li>Copy the endpoint address.</li>
 				<li>Paste it into Stripe.</li>
 			</Steps>
+
+			<Groups>
+				<Grouped>
+					<Field
+						id="shell-layout-groups-name"
+						label="Name"
+						beside={<Button variant="primary">Make key</Button>}
+					/>
+					<div className="adm-actions">
+						<Button variant="quiet" size="sm" markAfter="external-link">
+							API reference
+						</Button>
+						<Button variant="quiet" size="sm" mark="copy">
+							Copy agent prompt
+						</Button>
+					</div>
+				</Grouped>
+				<p>
+					The second group, a break step under the first: the list of keys the form above adds to.
+				</p>
+			</Groups>
 
 			<Group label="Corrections" labelAs="h2">
 				<p>
