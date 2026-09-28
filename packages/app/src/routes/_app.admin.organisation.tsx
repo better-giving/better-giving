@@ -1,6 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
-import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
@@ -9,6 +8,7 @@ import { getFormProps } from '@conform-to/react';
 import { useCallback, useState } from 'react';
 import { data, Form, useFormAction, useNavigation } from 'react-router';
 import { z } from 'zod';
+import { useFocusOnRefusal } from '$lib/admin/editor/done-sheet';
 import { RichTextEditor } from '$lib/admin/rich-text/rich-text-editor';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
@@ -71,8 +71,8 @@ const SCREEN_FORMS = [STORY_FORM_ID, UNDO_FORM_ID] as const;
 /** what a landing names: a save, or an Undo, of the story. */
 const SAVED_SECTIONS = ['story', 'story-undone'] as const;
 
-/** the id of the sentence under each editor, which the editor is described by while it stands. */
-const REFUSAL_IDS = { mission: 'story-mission-err', vision: 'story-vision-err' } as const;
+/** each editor's editable, which a refusal naming that box moves the focus onto. */
+const EDITOR_IDS = { mission: 'story-mission', vision: 'story-vision' } as const;
 
 const STALE_STORY =
 	'Nothing was changed: the story has been saved since this page was opened. Reload the page to ' +
@@ -256,6 +256,11 @@ function StorySection({
 	const visionError = fields.vision.errors?.[0];
 	const saveRefusal = formRefusal(STORY_EDIT, actionData);
 	const undoRefusal = formRefusal(STORY_UNDO, actionData);
+	// the first refused box in reading order, as a failed submit leaves the focus there.
+	useFocusOnRefusal(
+		missionError ?? visionError,
+		missionError === undefined ? EDITOR_IDS.vision : EDITOR_IDS.mission
+	);
 
 	return (
 		<Section card>
@@ -270,13 +275,9 @@ function StorySection({
 						label="Mission"
 						{...(mission === null ? {} : { defaultValue: mission })}
 						onChange={onMission}
-						{...(missionError === undefined ? {} : { describedBy: REFUSAL_IDS.mission })}
+						id={EDITOR_IDS.mission}
+						error={missionError === undefined ? null : <MarkedText text={missionError} />}
 					/>
-					{missionError === undefined ? null : (
-						<FieldMessage id={REFUSAL_IDS.mission}>
-							<MarkedText text={missionError} />
-						</FieldMessage>
-					)}
 					<RichTextEditor
 						key={`vision-${version}`}
 						name={fields.vision.name}
@@ -284,13 +285,9 @@ function StorySection({
 						optional
 						{...(vision === null ? {} : { defaultValue: vision })}
 						onChange={onVision}
-						{...(visionError === undefined ? {} : { describedBy: REFUSAL_IDS.vision })}
+						id={EDITOR_IDS.vision}
+						error={visionError === undefined ? null : <MarkedText text={visionError} />}
 					/>
-					{visionError === undefined ? null : (
-						<FieldMessage id={REFUSAL_IDS.vision}>
-							<MarkedText text={visionError} />
-						</FieldMessage>
-					)}
 				</div>
 				{saveRefusal === undefined ? null : (
 					<Banner tone="blocker" word="Not saved">

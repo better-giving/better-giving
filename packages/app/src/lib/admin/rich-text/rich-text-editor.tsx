@@ -1,5 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
+import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import type { MarkName } from '@better-giving/operator/components/status/Mark';
 import {
 	type Editor,
@@ -8,7 +9,15 @@ import {
 	useEditor,
 	useEditorState
 } from '@tiptap/react';
-import { Fragment, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import {
+	Fragment,
+	type KeyboardEvent,
+	type ReactNode,
+	useEffect,
+	useId,
+	useRef,
+	useState
+} from 'react';
 import { parseRichText, type RichTextDocument } from '$lib/rich-text/document';
 import { RichText } from '$lib/rich-text/render';
 import { linkRefusal, normaliseAddress, RICH_TEXT_EXTENSIONS } from './extensions';
@@ -41,8 +50,14 @@ export type RichTextEditorProps = {
 	defaultValue?: RichTextDocument;
 	/** each change the rule accepts, as the parsed document. */
 	onChange?: (doc: RichTextDocument) => void;
-	/** ids of the caller's own sentences about the box — a hint, a refusal from the action. */
+	/** ids of the caller's own sentences about the box, such as a hint. */
 	describedBy?: string;
+	/** the refusal the action answered with, drawn in the field's own error row and marking the
+	 *  box refused. */
+	error?: ReactNode;
+	/** the editable's id, so a caller can move the focus onto it once a refusal arrives. it is on
+	 *  the page from the editor's first client render; the server render has no editable to carry it. */
+	id?: string;
 };
 
 const BLANK: RichTextDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
@@ -85,13 +100,20 @@ function refusalOf(typed: string) {
 	return href === '' ? 'required' : linkRefusal(href);
 }
 
-function contentAttributes(labelId: string, describedBy: string | undefined) {
+function contentAttributes(
+	id: string | undefined,
+	labelId: string,
+	describedBy: string | undefined,
+	refused: boolean
+) {
 	return {
 		class: 'adm-rte__content',
 		role: 'textbox',
 		'aria-multiline': 'true',
 		'aria-labelledby': labelId,
-		...(describedBy === undefined ? {} : { 'aria-describedby': describedBy })
+		...(id === undefined ? {} : { id }),
+		...(describedBy === undefined ? {} : { 'aria-describedby': describedBy }),
+		...(refused ? { 'aria-invalid': 'true' } : {})
 	};
 }
 
@@ -101,12 +123,18 @@ export function RichTextEditor({
 	optional,
 	defaultValue,
 	onChange,
-	describedBy
+	describedBy,
+	error,
+	id
 }: RichTextEditorProps) {
-	const id = useId();
-	const labelId = `${id}-label`;
-	const rowId = `${id}-link`;
-	const addressId = `${id}-address`;
+	const own = useId();
+	const labelId = `${own}-label`;
+	const errorId = `${own}-err`;
+	const rowId = `${own}-link`;
+	const addressId = `${own}-address`;
+	const refused = Boolean(error);
+	const described =
+		[describedBy, refused ? errorId : undefined].filter(Boolean).join(' ') || undefined;
 	const initial = defaultValue ?? BLANK;
 
 	const [value, setValue] = useState(() => JSON.stringify(initial));
@@ -120,7 +148,7 @@ export function RichTextEditor({
 		// the rule's type is a narrowing of tiptap's; only an optional key's `| undefined` differs.
 		content: initial as JSONContent,
 		immediatelyRender: false,
-		editorProps: { attributes: contentAttributes(labelId, describedBy) }
+		editorProps: { attributes: contentAttributes(id, labelId, described, refused) }
 	});
 
 	const active = useEditorState({
@@ -138,8 +166,10 @@ export function RichTextEditor({
 	});
 
 	useEffect(() => {
-		editor?.setOptions({ editorProps: { attributes: contentAttributes(labelId, describedBy) } });
-	}, [editor, labelId, describedBy]);
+		editor?.setOptions({
+			editorProps: { attributes: contentAttributes(id, labelId, described, refused) }
+		});
+	}, [editor, id, labelId, described, refused]);
 
 	useEffect(() => {
 		if (editor === null) return;
@@ -323,6 +353,7 @@ export function RichTextEditor({
 					</div>
 				)}
 			</div>
+			{refused ? <FieldMessage id={errorId}>{error}</FieldMessage> : null}
 			<input type="hidden" name={name} value={value} />
 		</div>
 	);
