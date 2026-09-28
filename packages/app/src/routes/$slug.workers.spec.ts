@@ -18,6 +18,7 @@ import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.tes
 import { endCampaign } from '$lib/server/pages/queries';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { readOrgLook, updateOrgLook } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes } from '../route-request.testing';
@@ -177,6 +178,36 @@ describe('a published campaign at its address', () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		await expectRecordedAsAForm(db, answered.data.view.config.formId);
+	});
+});
+
+/** the seeds the page root sets, read off the drawn page as the browser receives them. */
+function seeds(html: string) {
+	const root = /<div[^>]*data-donate-root[^>]*>/.exec(html)?.[0];
+	if (root === undefined) throw new Error('the page drew no root');
+	return {
+		shade: /data-shade="([^"]*)"/.exec(root)?.[1],
+		corner: /data-corner="([^"]*)"/.exec(root)?.[1],
+		brandColour: /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null
+	};
+}
+
+describe('the look a published campaign is drawn in', () => {
+	it('moves with a save of the Organisation’s, unless the campaign holds its own', async () => {
+		const own = { shade: 'cool', corner: 'square', brandColour: '#6b2d8a' } as const;
+		await campaign();
+		await campaign({
+			name: 'Spring fun run',
+			slug: 'spring-fun-run',
+			published: { ...defaultCampaign(), look: own }
+		});
+
+		const { version } = await readOrgLook(db);
+		const saved = { shade: 'warm', corner: 'round', brandColour: '#1d6b4f' } as const;
+		expect(await updateOrgLook(db, version, saved)).not.toBe('stale');
+
+		expect(seeds(markup((await visit()).data))).toEqual(saved);
+		expect(seeds(markup((await visit('/spring-fun-run')).data))).toEqual(own);
 	});
 });
 

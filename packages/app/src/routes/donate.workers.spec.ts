@@ -12,9 +12,12 @@ import { readSetupState } from '$lib/server/config/setup-state';
 import { createDb } from '$lib/server/db/client';
 import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
+import type { OrgLook } from '$lib/server/org/presentation';
 import {
+	readOrgLook,
 	readOrgSharing,
 	readOrgStory,
+	updateOrgLook,
 	updateOrgSharing,
 	updateOrgStory
 } from '$lib/server/org/queries';
@@ -28,6 +31,8 @@ import * as surface from './api.v1';
 import * as gifts from './api.v1.forms.$id.donations';
 import type { Route } from './+types/donate';
 import * as donatePage from './donate';
+import type { Route as PreviewRoute } from './+types/preview.$pageId';
+import * as preview from './preview.$pageId';
 
 // the donation page at /donate, against the real D1 the pool binds.
 //
@@ -132,6 +137,11 @@ async function writeMission(text: string): Promise<void> {
 	if (!mission.ok) throw new Error(`the fixture mission did not parse: ${mission.message}`);
 	const written = await updateOrgStory(db, version, { mission: mission.doc, vision: null });
 	if (written !== 'written') throw new Error('the fixture mission was not written');
+}
+
+async function saveOrgLook(look: OrgLook): Promise<void> {
+	const { version } = await readOrgLook(db);
+	expect(await updateOrgLook(db, version, look)).not.toBe('stale');
 }
 
 async function activePrograms(...names: string[]): Promise<void> {
@@ -265,6 +275,63 @@ describe('the organisation’s sharing on /donate', () => {
 	});
 });
 
+/** the seeds the page root sets, read off the drawn page as the browser receives them. */
+function seeds(html: string) {
+	const root = /<div[^>]*data-donate-root[^>]*>/.exec(html)?.[0];
+	if (root === undefined) throw new Error('the page drew no root');
+	return {
+		shade: /data-shade="([^"]*)"/.exec(root)?.[1],
+		corner: /data-corner="([^"]*)"/.exec(root)?.[1],
+		brandColour: /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null
+	};
+}
+
+describe('the look /donate is drawn in', () => {
+	it('is the form’s own where neither the Organisation nor the page holds one', async () => {
+		expect(seeds(markup((await visit()).data))).toEqual({
+			shade: 'light',
+			corner: 'soft',
+			brandColour: null
+		});
+	});
+
+	it('follows each save of the Organisation’s look while the page holds none of its own', async () => {
+		await saveOrgLook({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		expect(seeds(markup((await visit()).data))).toEqual({
+			shade: 'warm',
+			corner: 'round',
+			brandColour: '#1d6b4f'
+		});
+
+		await saveOrgLook({ shade: 'cool', corner: 'square', brandColour: null });
+		expect(seeds(markup((await visit()).data))).toEqual({
+			shade: 'cool',
+			corner: 'square',
+			brandColour: null
+		});
+	});
+
+	it('keeps the page’s own look through a save of the Organisation’s', async () => {
+		await visit();
+		await env.DB.prepare(`update page set published = ? where type = 'donation_page'`)
+			.bind(
+				JSON.stringify({
+					...defaultDonationPage(),
+					look: { shade: 'cool', corner: 'square', brandColour: '#6b2d8a' }
+				})
+			)
+			.run();
+
+		await saveOrgLook({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+
+		expect(seeds(markup((await visit()).data))).toEqual({
+			shade: 'cool',
+			corner: 'square',
+			brandColour: '#6b2d8a'
+		});
+	});
+});
+
 describe('a published Donation page the read rule refuses', () => {
 	async function publish(document: unknown): Promise<string> {
 		await visit();
@@ -362,6 +429,7 @@ describe('/donate after the editor’s presses', () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/donation-page', module: editor }
 	]);
+	const previewRoute = mountRoutes([{ path: 'preview/:pageId', module: preview }]);
 	const giftRoute = mountRoutes([
 		{ path: 'api/v1', module: surface },
 		{ path: 'forms/:id/donations', module: gifts }
@@ -463,6 +531,45 @@ describe('/donate after the editor’s presses', () => {
 
 		await press('page-undo');
 		expect((await drawn()).sharing.message).toBe('Donate to Hope Foundation');
+	});
+
+	/** the page the editor's preview draws, as its document hands it to the browser. */
+	async function previewed(): Promise<string> {
+		const [row] = await db.select().from(page);
+		if (!row) throw new Error('there is no Donation page to preview');
+		await edgeCache().put(
+			new Request(`${ORIGIN}/__recurring-cadences`),
+			new Response(JSON.stringify(['one_time', 'yearly']), {
+				headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+			})
+		);
+		const response = await previewRoute(
+			new Request(`${ORIGIN}/preview/${row.id}`, { headers: { cookie: session } }),
+			{ env: envWith(STRIPE) }
+		);
+		expect(response.status).toBe(200);
+		const loaderData = (await response.json()) as PreviewRoute.ComponentProps['loaderData'];
+		return renderToStaticMarkup(
+			createElement(preview.default, { loaderData } as unknown as PreviewRoute.ComponentProps)
+		);
+	}
+
+	it('shows a look picked in the editor in the preview, and on /donate only once published', async () => {
+		await visit();
+		const today = { shade: 'light', corner: 'soft', brandColour: null };
+		const picked = { shade: 'warm', corner: 'round', brandColour: '#b5462a' };
+
+		await press('page-look', {
+			look: 'custom',
+			shade: 'warm',
+			corner: 'round',
+			brand_colour: '#b5462a'
+		});
+		expect(seeds(await previewed())).toEqual(picked);
+		expect(seeds(markup((await visit()).data))).toEqual(today);
+
+		await press('page-publish');
+		expect(seeds(markup((await visit()).data))).toEqual(picked);
 	});
 
 	it('keeps drawing the published page through Discard changes', async () => {
