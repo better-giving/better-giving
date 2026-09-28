@@ -21,7 +21,7 @@
    above it.
 
    no colour is spelled here either, and no length that is a measure. what a rule may still
-   write is a shape — a caret's geometry, a checkbox's own square, a textarea's floor, a
+   write is a shape — a caret's geometry, a coin's circle, a textarea's floor, a
    grid track's bound — because a token per shape is a scale nobody counts along; each one
    carries a `raw-length-ok:` note at its line. packages/app/src/lib/admin/styles/raw-color.spec.ts reads this file by name.
 
@@ -2524,9 +2524,8 @@
 	}
 
 	/* a coin's mark: the round shape a logo stands in, holding the first letter of the coin's name.
-	   raw-length-ok: the circle is a shape rather than a measure, like the checkbox's own square
-	   above, and `--admin-mark-size` is not it — that one is reserved for state and this is a
-	   picture. raw-length-ok: 50% — a circle. */
+	   raw-length-ok: the circle is a shape rather than a measure, and `--admin-mark-size` is not
+	   it — that one is reserved for state and this is a picture. raw-length-ok: 50% — a circle. */
 	.adm-coinmark {
 		display: grid;
 		place-items: center;
@@ -3348,12 +3347,14 @@
 		min-block-size: var(--admin-touch-min);
 	}
 
+	/* the square is the label's own type size and never larger: a box bigger than the words
+	   beside it outweighs them, and the row's `--admin-touch-min` above is the target a finger
+	   aims at, not the square. `.adm-check__text` below sets the label from the same token, so
+	   the two move together. it aligns to the first line of the label, off that line's own box. */
 	.adm-check input {
-		/* raw-length-ok: the checkbox's own square is a shape rather than a measure. */
-		inline-size: 1.125rem;
-		block-size: 1.125rem; /* raw-length-ok: as above; the box is square. */
-		/* it aligns to the first line of the label beside it, off that line's own box. */
-		margin-block-start: calc((1lh - 1.125rem) / 2); /* raw-length-ok: the square again. */
+		inline-size: var(--admin-body-size);
+		block-size: var(--admin-body-size);
+		margin-block-start: calc((1lh - var(--admin-body-size)) / 2);
 		accent-color: var(--admin-accent-ink);
 	}
 
