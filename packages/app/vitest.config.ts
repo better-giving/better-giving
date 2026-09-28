@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { routeFiles } from './vite/route-files';
 
 // the spec pools, and a config of their own rather than a `test` block inside ./vite.config.ts.
 //
@@ -29,6 +30,10 @@ import { defineConfig } from 'vitest/config';
 // everything else runs in node, which is faster to start and enough for pure logic.
 
 export default defineConfig({
+	// the "server" project below resolves src/lib/page/slug.ts, which imports `virtual:route-files`
+	// — the same plugin ./vite.config.ts registers for the build, so a spec sees the same route
+	// list a request does.
+	plugins: [routeFiles(resolve(import.meta.dirname, 'src/routes'))],
 	test: {
 		expect: { requireAssertions: true },
 		// a spy or fake one test installs is restored before the next runs; vitest 4 leaves this off
