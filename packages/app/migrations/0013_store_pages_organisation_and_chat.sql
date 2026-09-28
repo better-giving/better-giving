@@ -1,23 +1,22 @@
 -- the pages this deployment serves on its own address, and what they say about the organisation.
 -- three new tables and nothing else: `org_presentation`, the one row of the organisation's story,
--- look and sharing, each beside the version it replaced; `page`, the Donation page or a campaign,
+-- look and sharing, each beside the version it replaced; `page`, the donation page or a campaign,
 -- owning one `form` row as its donation settings and holding its draft, published and last
 -- published documents; and `chat_turn`, each page's chat in order. `src/lib/server/db/schema.ts`
--- argues each column beside it.
+-- argues each column beside it, and `src/lib/page/keys.ts` names the document keys its checks read.
 --
--- no table is rebuilt. all three are plain creates, so none of the rebuild hand-edits apply: no
--- deferral, no unqualified CHECK, no backtick strip, no index moved ahead of a drop. `STRICT` is
--- hand-written onto each `CREATE TABLE`, since drizzle's snapshot cannot record it.
+-- no table is rebuilt: all three are plain creates. `STRICT` is hand-written onto each
+-- `CREATE TABLE`, since drizzle's snapshot cannot record it.
 --
 -- `page.form_id` and `chat_turn.page_id` are `NO ACTION`, like every other domain key in this
 -- schema; each is found by a unique index that leads with it. `chat_turn` is created ahead of
 -- `page`, which sqlite allows: a foreign key's parent is resolved when a row is written, not when
 -- the table is.
 --
--- one Donation page is `page_one_donation_page_idx`, a unique index over `type` for that type
+-- one donation page is `page_one_donation_page_idx`, a unique index over `type` for that type
 -- alone; a campaign's slug is unique among the slugs held, by `page_slug_idx`.
 --
--- no row is seeded in any of the three: the Donation page is made by the app on first need, and an
+-- no row is seeded in any of the three: the donation page is made by the app on first need, and an
 -- organisation that has saved nothing reads as the defaults. no backfill: nothing existed to copy.
 CREATE TABLE `chat_turn` (
 	`id` text PRIMARY KEY NOT NULL,
@@ -79,6 +78,9 @@ CREATE TABLE `page` (
 	CONSTRAINT "page_draft_object_check" CHECK(json_valid("page"."draft") and json_type("page"."draft") = 'object'),
 	CONSTRAINT "page_published_object_check" CHECK("page"."published" is null or (json_valid("page"."published") and json_type("page"."published") = 'object')),
 	CONSTRAINT "page_last_published_object_check" CHECK("page"."last_published" is null or (json_valid("page"."last_published") and json_type("page"."last_published") = 'object')),
+	CONSTRAINT "page_draft_look_check" CHECK(json_extract("page"."draft", '$.look') is null or (json_type("page"."draft", '$.look') = 'object' and (json_extract("page"."draft", '$.look.shade') is null or json_extract("page"."draft", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract("page"."draft", '$.look.corner') is null or json_extract("page"."draft", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract("page"."draft", '$.look.brandColour') is null or json_extract("page"."draft", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))),
+	CONSTRAINT "page_published_look_check" CHECK(json_extract("page"."published", '$.look') is null or (json_type("page"."published", '$.look') = 'object' and (json_extract("page"."published", '$.look.shade') is null or json_extract("page"."published", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract("page"."published", '$.look.corner') is null or json_extract("page"."published", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract("page"."published", '$.look.brandColour') is null or json_extract("page"."published", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))),
+	CONSTRAINT "page_last_published_look_check" CHECK(json_extract("page"."last_published", '$.look') is null or (json_type("page"."last_published", '$.look') = 'object' and (json_extract("page"."last_published", '$.look.shade') is null or json_extract("page"."last_published", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract("page"."last_published", '$.look.corner') is null or json_extract("page"."last_published", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract("page"."last_published", '$.look.brandColour') is null or json_extract("page"."last_published", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))),
 	CONSTRAINT "page_campaign_only_settings_check" CHECK("page"."type" <> 'donation_page' or (json_extract("page"."draft", '$.goalMinor') is null and json_extract("page"."draft", '$.endsAt') is null and json_extract("page"."published", '$.goalMinor') is null and json_extract("page"."published", '$.endsAt') is null and json_extract("page"."last_published", '$.goalMinor') is null and json_extract("page"."last_published", '$.endsAt') is null)),
 	CONSTRAINT "page_editor_visited_check" CHECK("page"."editor_visited_at" is null or "page"."type" = 'donation_page')
 ) STRICT;

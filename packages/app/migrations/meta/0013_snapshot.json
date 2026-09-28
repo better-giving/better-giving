@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ff3d31bc-e020-4ff0-b7bb-e24291d999ec",
+  "id": "b9eacfe2-155a-4a42-ac13-fa3f5b420657",
   "prevId": "a85f2e98-5b6e-4491-bf24-6571a52c963e",
   "tables": {
     "account": {
@@ -1735,6 +1735,18 @@
         "page_last_published_object_check": {
           "name": "page_last_published_object_check",
           "value": "\"page\".\"last_published\" is null or (json_valid(\"page\".\"last_published\") and json_type(\"page\".\"last_published\") = 'object')"
+        },
+        "page_draft_look_check": {
+          "name": "page_draft_look_check",
+          "value": "json_extract(\"page\".\"draft\", '$.look') is null or (json_type(\"page\".\"draft\", '$.look') = 'object' and (json_extract(\"page\".\"draft\", '$.look.shade') is null or json_extract(\"page\".\"draft\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"draft\", '$.look.corner') is null or json_extract(\"page\".\"draft\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"draft\", '$.look.brandColour') is null or json_extract(\"page\".\"draft\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
+        },
+        "page_published_look_check": {
+          "name": "page_published_look_check",
+          "value": "json_extract(\"page\".\"published\", '$.look') is null or (json_type(\"page\".\"published\", '$.look') = 'object' and (json_extract(\"page\".\"published\", '$.look.shade') is null or json_extract(\"page\".\"published\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"published\", '$.look.corner') is null or json_extract(\"page\".\"published\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"published\", '$.look.brandColour') is null or json_extract(\"page\".\"published\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
+        },
+        "page_last_published_look_check": {
+          "name": "page_last_published_look_check",
+          "value": "json_extract(\"page\".\"last_published\", '$.look') is null or (json_type(\"page\".\"last_published\", '$.look') = 'object' and (json_extract(\"page\".\"last_published\", '$.look.shade') is null or json_extract(\"page\".\"last_published\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"last_published\", '$.look.corner') is null or json_extract(\"page\".\"last_published\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"last_published\", '$.look.brandColour') is null or json_extract(\"page\".\"last_published\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
         },
         "page_campaign_only_settings_check": {
           "name": "page_campaign_only_settings_check",

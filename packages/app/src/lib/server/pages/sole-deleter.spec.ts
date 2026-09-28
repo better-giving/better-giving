@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 // the guard on "./queries.ts is the only module that deletes a page".
 //
 // written the way ../donations/sole-inserter.spec.ts is. a page that has been live may have gifts
-// pointing at its owned settings row, and the Donation page is never deleted at all, so the one
+// pointing at its owned settings row, and the donation page is never deleted at all, so the one
 // delete is `deleteNeverPublishedCampaign`, whose every statement carries the never-published
 // guard. a second delete — a tidy-up of ended campaigns, a reset that drops and remakes the
-// Donation page — is a delete with no such guard.
+// donation page — is a delete with no such guard.
 //
 // a source scan rather than a runtime hook, so it catches the writer nobody wrote a test for, and
 // it reads text, so a computed table name fools it; the failure it defends against is a shortcut,
@@ -70,7 +70,7 @@ describe('pages/queries.ts is the only deleter of page', () => {
 		}
 		expect(
 			offenders,
-			`these modules delete from page: ${offenders.join(', ')}. only src/lib/server/pages/queries.ts may, and only a campaign that has never been live — once a page has been live, gifts may point at its settings row, and the Donation page is never deleted. end a campaign instead of deleting it.`
+			`these modules delete from page: ${offenders.join(', ')}. only src/lib/server/pages/queries.ts may, and only a campaign that has never been live — once a page has been live, gifts may point at its settings row, and the donation page is never deleted. end a campaign instead of deleting it.`
 		).toEqual([]);
 	});
 

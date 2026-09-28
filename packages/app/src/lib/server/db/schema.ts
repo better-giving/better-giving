@@ -18,6 +18,7 @@ import { CONTACT_KINDS, type ContactKind } from '../../contacts/kinds';
 // `RECURRING_INTERVALS`, which is the wire's frequency vocabulary minus `one_time`.
 import type { Frequency } from '@better-giving/form/v1';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
+import { CORNERS, LOOK_KEYS, PAGE_KEYS, SHADES } from '../../page/keys';
 import { FORM_STATUSES, type FormStatus } from '../../forms/statuses';
 import { PROGRAM_STATUSES, type ProgramStatus } from '../../programs/statuses';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '../../recurring/statuses';
@@ -81,9 +82,11 @@ import type { PostableAccountId } from './postable';
 //             `PROGRAM_STATUSES` and `PROGRAM_MODES` moved for that same reason (see
 //             ../../forms/statuses.ts, ../../programs/statuses.ts and
 //             ../../forms/program-modes.ts): a component renders the words and cannot
-//             import from `$lib/server/**` at all. this list is every vocabulary that has
-//             left, and a move not added to it makes it read as complete while
-//             under-reporting.
+//             import from `$lib/server/**` at all. `SHADES` and `CORNERS` moved for that
+//             reason too, with the page document's key names beside them
+//             (../../page/keys.ts), since the page catalog reads the keys the checks here do.
+//             this list is every vocabulary that has left, and a move not added to it makes
+//             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
 //             which arrived by `ADD COLUMN` on a table with children, where a check is
 //             the rebuild rule 2 below describes. `TRIBUTE_KINDS` is the donation form's
@@ -898,7 +901,7 @@ export const program = sqliteTable(
  * one they can use. `donation.form_id` is nullable because staff-entered cash and cheques
  * have no form behind them.
  *
- * a page — the Donation page or a campaign — owns one row here as its donation settings
+ * a page — the donation page or a campaign — owns one row here as its donation settings
  * (`page.form_id`), made with the page rather than in /admin/forms. `page` says what owning it means.
  */
 export const form = sqliteTable(
@@ -2801,14 +2804,17 @@ export const zapierDelivery = sqliteTable(
 // each page and each of the organisation's three parts is held as a JSON document whose shape is
 // the parse boundary's, and the database reads a handful of keys out of them with `json_extract`.
 // a key a check reads is pinned by that check: rename it in the document and the check reads null,
-// which it accepts, so the check and the parser move together or the check stops meaning anything.
+// which it accepts. so every such key is named once, in ../../page/keys.ts, for the checks here and
+// the page catalog's parser alike.
 // ---------------------------------------------------------------------------
 
-export const SHADES = ['light', 'warm', 'cool'] as const;
-export type Shade = (typeof SHADES)[number];
-
-export const CORNERS = ['square', 'soft', 'round'] as const;
-export type Corner = (typeof CORNERS)[number];
+/**
+ * a quoted JSON path from the document root through `keys`, for `json_extract` in a check.
+ *
+ * `sql.raw` is safe for the reason `quotedList` gives: every key is a constant from
+ * ../../page/keys.ts, never a value off a request.
+ */
+const jsonPath = (...keys: readonly string[]) => sql.raw(`'${['$', ...keys].join('.')}'`);
 
 /** check body: the key at `path`, a quoted JSON path, is absent from `doc` or one of `values`. */
 const jsonKeyIn = (doc: SQLiteColumn, path: SQL, values: readonly string[]) => {
@@ -2817,16 +2823,19 @@ const jsonKeyIn = (doc: SQLiteColumn, path: SQL, values: readonly string[]) => {
 };
 
 /**
- * check body for a look: a JSON object whose `shade` and `corner` are from their closed sets and
- * whose `brandColour` is a lowercase `#rrggbb`, each where present.
+ * check body for the look held at `at` in `doc` (no keys: the document itself): its shade and
+ * corner from their closed sets and its brand colour a lowercase `#rrggbb`, each where present.
  *
  * the colour is the one free value on a donor page's stylesheet, so anything but six hex digits —
  * a colour name, `#fa0`, a trailing `;` — is refused here as well as at the parse.
  */
-const lookCheck = (doc: SQLiteColumn) => {
-	const colour = sql`json_extract(${doc}, '$.brandColour')`;
-	return sql`${jsonObject(doc)} and ${jsonKeyIn(doc, sql`'$.shade'`, SHADES)} and ${jsonKeyIn(doc, sql`'$.corner'`, CORNERS)} and (${colour} is null or ${colour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')`;
+const lookFields = (doc: SQLiteColumn, at: readonly string[]) => {
+	const colour = sql`json_extract(${doc}, ${jsonPath(...at, LOOK_KEYS.brandColour)})`;
+	return sql`${jsonKeyIn(doc, jsonPath(...at, LOOK_KEYS.shade), SHADES)} and ${jsonKeyIn(doc, jsonPath(...at, LOOK_KEYS.corner), CORNERS)} and (${colour} is null or ${colour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')`;
 };
+
+/** check body for a column holding a look: a JSON object, with `lookFields`. */
+const lookCheck = (doc: SQLiteColumn) => sql`${jsonObject(doc)} and ${lookFields(doc, [])}`;
 
 /**
  * the organisation as its donor pages present it — its story (mission and an optional vision),
@@ -2834,7 +2843,7 @@ const lookCheck = (doc: SQLiteColumn) => {
  * share message, its social links).
  *
  * not `org_profile`, which is the legal identity a receipt carries and the console's to edit. this
- * row is the dashboard's Organisation page, and every page reads it when drawn, so a save reaches
+ * row is the dashboard's organisation page, and every page reads it when drawn, so a save reaches
  * every page that uses the organisation's story, look or sharing at once.
  *
  * one row, ever — `org_presentation_id_check`, as on `org_profile` — and none is seeded: absent,
@@ -2842,11 +2851,11 @@ const lookCheck = (doc: SQLiteColumn) => {
  * `{}`, which also reads as the defaults key by key.
  *
  * each part is saved on its own and keeps the version it replaced in its `_previous` column, so
- * Undo is one statement per part — `set look = look_previous, look_previous = look`, which sqlite
+ * undo is one statement per part — `set look = look_previous, look_previous = look`, which sqlite
  * evaluates against the row as it stood — and a `_previous` that is null has nothing to undo.
  *
  * `story` holds the mission and vision as structured rich-text documents, never HTML. `look` is
- * checked by `lookCheck` in both of its columns, since Undo writes the previous look back unread.
+ * checked by `lookCheck` in both of its columns, since undo writes the previous look back unread.
  * `story` and `sharing` are asserted to be objects and nothing more.
  */
 export const orgPresentation = sqliteTable(
@@ -2888,7 +2897,7 @@ export const PAGE_TYPES = ['donation_page', 'campaign'] as const;
 export type PageType = (typeof PAGE_TYPES)[number];
 
 /**
- * `never_published` until a campaign's first Publish; `live` while it answers at its address;
+ * `never_published` until a campaign's first publish; `live` while it answers at its address;
  * `ended` once it has been taken down. a campaign goes back from `ended` to `live` by publishing
  * again, and never back to `never_published`.
  */
@@ -2897,10 +2906,19 @@ export type PageState = (typeof PAGE_STATES)[number];
 
 /** check body: a page document carries neither of a campaign's two keys, a goal and an end date. */
 const noCampaignSettings = (doc: SQLiteColumn) =>
-	sql`json_extract(${doc}, '$.goalMinor') is null and json_extract(${doc}, '$.endsAt') is null`;
+	sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.goalMinor)}) is null and json_extract(${doc}, ${jsonPath(PAGE_KEYS.endsAt)}) is null`;
 
 /**
- * a donor page served on this deployment's own address: the Donation page at `/donate`, or a
+ * check body for a page document's own look: absent or null, meaning the organisation's, or an
+ * object `lookFields` accepts. a null document extracts null and passes.
+ */
+const pageLookCheck = (doc: SQLiteColumn) => {
+	const look = jsonPath(PAGE_KEYS.look);
+	return sql`json_extract(${doc}, ${look}) is null or (json_type(${doc}, ${look}) = 'object' and ${lookFields(doc, [PAGE_KEYS.look])})`;
+};
+
+/**
+ * a donor page served on this deployment's own address: the donation page at `/donate`, or a
  * campaign at `/<slug>`. there is no third kind.
  *
  * **a page owns one `form` row** — `form_id`, unique, so no two pages share one — and that row is
@@ -2911,23 +2929,23 @@ const noCampaignSettings = (doc: SQLiteColumn) =>
  *
  * **three documents, in the page format.** `draft` is what the editor changes; `published` is what
  * donors are served, present exactly once the page has been live; `last_published` is the page
- * `published` replaced, kept for Undo. the page's own look, its share message, its two switches
- * ("Open on monthly", "Dedication on by default"), a campaign's goal (`goalMinor`, minor units of
- * the owned row's currency) and end date (`endsAt`, unix ms: the end of the chosen day in the time
- * zone of the browser that set it) and its donation settings are keys inside those documents and
- * never columns — so nothing is live that Publish did not put there, and a draft's donation
- * settings reach the owned row, and so what donors are charged, only when Publish writes them in
- * the same `batch()` as `published`. a published document keeps the settings it went live with, so
- * Undo puts those back on the owned row alongside the page.
+ * `published` replaced, kept for undo. the page's own look, its share message, its two switches
+ * ("Open on monthly", "Dedication on by default"), a campaign's goal and end date, and its
+ * donation settings are keys inside those documents and never columns — so nothing is live that
+ * publish did not put there, and a draft's donation settings reach the owned row, and so what
+ * donors are charged, only when publish writes them in the same `batch()` as `published`. a
+ * published document keeps the settings it went live with, so undo puts those back on the owned
+ * row alongside the page.
  *
- * the database reads two of those keys: `goalMinor` and `endsAt` are refused on the Donation page,
- * in all three documents (`page_campaign_only_settings_check`). the header over this section says
- * what reading a key pins.
+ * the database reads three of those keys, named in ../../page/keys.ts: `goalMinor` and `endsAt` are
+ * refused on the donation page (`page_campaign_only_settings_check`), and `look`, where present, is
+ * held to the closed sets the organisation's look is (`page_<document>_look_check`), each in all
+ * three documents. the header over this section says what reading a key pins.
  *
- * **one Donation page**, held by `page_one_donation_page_idx` rather than by any read. no row is
- * seeded, for the reason `form` gives; the app makes the Donation page on first need, and two
+ * **one donation page**, held by `page_one_donation_page_idx` rather than by any read. no row is
+ * seeded, for the reason `form` gives; the app makes the donation page on first need, and two
  * first needs at once are settled by that index: the losing `batch()` fails whole, its owned
- * `form` insert with it, and the loser then reads the winner's row. the Donation page is always
+ * `form` insert with it, and the loser then reads the winner's row. the donation page is always
  * `live`, and has no name (screens call it "Donation page"), no slug, no goal and no end date.
  * `editor_visited_at` is its alone: when its editor was first opened, so the mission is asked for
  * once.
@@ -2946,9 +2964,9 @@ export const page = sqliteTable(
 	{
 		id: id(),
 		type: text('type').$type<PageType>().notNull(),
-		/** a campaign's name, which its first slug is made from; null on the Donation page. */
+		/** a campaign's name, which its first slug is made from; null on the donation page. */
 		name: text('name'),
-		/** a campaign's address under the deployment's own origin; null on the Donation page. */
+		/** a campaign's address under the deployment's own origin; null on the donation page. */
 		slug: text('slug'),
 		state: text('state').$type<PageState>().notNull(),
 		/** no `ON DELETE` action — see the `ON DELETE` note over `program`. */
@@ -2985,8 +3003,8 @@ export const page = sqliteTable(
 			'page_last_published_check',
 			sql`${t.lastPublished} is null or ${t.published} is not null`
 		),
-		// the three object checks come before `page_campaign_only_settings_check`, which calls
-		// `json_extract` and would raise a malformed-JSON error of its own on a document these refuse.
+		// the three object checks come before the look and campaign-only checks, which call
+		// `json_extract` and would raise a malformed-JSON error of their own on a document these refuse.
 		check('page_draft_object_check', jsonObject(t.draft)),
 		check(
 			'page_published_object_check',
@@ -2996,6 +3014,9 @@ export const page = sqliteTable(
 			'page_last_published_object_check',
 			sql`${t.lastPublished} is null or (${jsonObject(t.lastPublished)})`
 		),
+		check('page_draft_look_check', pageLookCheck(t.draft)),
+		check('page_published_look_check', pageLookCheck(t.published)),
+		check('page_last_published_look_check', pageLookCheck(t.lastPublished)),
 		check(
 			'page_campaign_only_settings_check',
 			sql`${t.type} <> 'donation_page' or (${noCampaignSettings(t.draft)} and ${noCampaignSettings(t.published)} and ${noCampaignSettings(t.lastPublished)})`
@@ -3017,7 +3038,7 @@ export type ChatAuthor = (typeof CHAT_AUTHORS)[number];
  * one turn of a page's chat, in the order `seq` gives — unique per page, and the index that finds a
  * page's turns. a turn is written once and never changed, so there is no `updated_at`.
  *
- * the chat is kept across Publish and cleared for one page by one statement,
+ * the chat is kept across publish and cleared for one page by one statement,
  * `delete from chat_turn where page_id = ?`.
  *
  * `model` names what wrote an assistant turn, and an operator's turn has none. `image_ids` is the
