@@ -1,5 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { expect, it, onTestFinished } from 'vitest';
 import { boxErrorId } from '../use-admin-form';
 import { FormGivingFields } from './giving-fields';
@@ -323,4 +324,46 @@ it('gives the bounds no named field but the two boxes', () => {
 	expect(
 		[...fieldset.querySelectorAll('[name]')].map((field) => field.getAttribute('name'))
 	).toEqual(['min_minor', 'max_minor']);
+});
+
+// Add and Remove are the form's intents, drawn so they are never the form's default button once the
+// page runs script — the platform clicks the first submit button in tree order for Enter in a box,
+// and these sit above the screen's own submit. before hydration they are the intents' own submits,
+// which the action answers without script.
+
+/** the amounts' presses as `group` hands them over, with the row count that draws Remove. */
+const PRESSES = { rows: [row(0), row(1)] };
+
+function presses(within: Element) {
+	return [...within.querySelectorAll('button')].filter((one) =>
+		/^(Add an amount|Remove)$/.test(one.textContent?.trim() ?? '')
+	);
+}
+
+it('draws Add and Remove as submits of the intent before hydration', () => {
+	const served = document.createElement('div');
+	served.innerHTML = renderToString(
+		createElement(FormGivingFields, {
+			boxes: {
+				min_minor: { id: MIN_BOX, name: 'min_minor', defaultValue: '5' },
+				max_minor: { id: MAX_BOX, name: 'max_minor', defaultValue: '500' }
+			},
+			amounts: { id: GROUP, ...PRESSES, add: intent, remove: () => intent },
+			currency: 'USD'
+		})
+	);
+
+	expect(presses(served).map((one) => [one.type, one.name, one.value, one.formNoValidate])).toEqual(
+		[
+			['submit', 'intent', 'insert', true],
+			['submit', 'intent', 'insert', true],
+			['submit', 'intent', 'insert', true]
+		]
+	);
+});
+
+it('draws Add and Remove as no submit at all once hydrated', () => {
+	const root = group(PRESSES);
+
+	expect(presses(root).map((one) => one.type)).toEqual(['button', 'button', 'button']);
 });
