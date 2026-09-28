@@ -5793,6 +5793,93 @@
 		background: var(--admin-surface-fill);
 		border-radius: var(--admin-radius);
 	}
+
+	/* ---------- rich text -------------------------------------------------------------
+
+	   a box an operator writes formatted words in: the formatting presses in a bar along its top,
+	   the words under them, and the address row along its foot while a link is being made.
+	   packages/app/src/lib/admin/rich-text/ draws it. the box is the field, so the ring is the
+	   box's, as `.adm-coinbox`'s is, and the editable region inside it draws none of its own. */
+	.adm-field > .adm-rte {
+		grid-row: 3;
+	}
+
+	.adm-rte {
+		display: grid;
+		background: var(--admin-field-bg);
+		border: var(--admin-border-width) solid var(--admin-field-border);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-rte:has(.adm-rte__content:focus-visible),
+	.adm-rte:has(.adm-rte__content.is-focus) {
+		outline: var(--admin-focus-width) solid transparent;
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	.adm-rte__bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--admin-space-1);
+		padding: var(--admin-space-2);
+		border-block-end: var(--admin-rule);
+	}
+
+	/* a mark or a list the words at the caret carry. the fill is the soft rank's pressed one, so a
+	   press standing on is read as held down. */
+	.adm-rte__bar > .adm-btn[aria-pressed='true'] {
+		background: var(--admin-control-soft-bg-active);
+		color: var(--admin-ink);
+	}
+
+	/* a rule between groups of presses, as tall as the line it stands in. */
+	.adm-rte__sep {
+		inline-size: var(--admin-border-width);
+		margin-inline: var(--admin-space-2);
+		background: var(--admin-divider);
+	}
+
+	/* five lines tall at rest, and taller as the words need it. */
+	.adm-rte__content {
+		display: grid;
+		align-content: start;
+		gap: var(--admin-space-4);
+		min-block-size: 5lh;
+		padding: var(--admin-space-4) var(--admin-space-5);
+		font-size: var(--admin-field-size);
+		line-height: var(--admin-field-lh);
+		color: var(--admin-ink);
+	}
+
+	.adm-rte__content:focus-visible,
+	.adm-rte__content.is-focus {
+		outline: none;
+		box-shadow: none;
+	}
+
+	.adm-rte__content :is(ul, ol) {
+		display: grid;
+		gap: var(--admin-space-1);
+		padding-inline-start: var(--admin-space-8);
+	}
+
+	.adm-rte__content ul {
+		list-style: disc;
+	}
+
+	.adm-rte__content ol {
+		list-style: decimal;
+	}
+
+	/* the address row: a field with Apply beside its box. its lower corners are the box's, so the
+	   sunken ground stays inside the rounded edge. */
+	.adm-rte__link {
+		padding: var(--admin-space-5);
+		background: var(--admin-surface-sunken);
+		border-block-start: var(--admin-rule);
+		border-end-start-radius: inherit;
+		border-end-end-radius: inherit;
+	}
 }
 
 @layer layout {
