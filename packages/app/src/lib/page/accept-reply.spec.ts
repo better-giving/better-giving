@@ -95,13 +95,13 @@ describe('a reply too big to take', () => {
 		const ops = Array.from({ length: 22 }, (_, index) => ({
 			op: 'copy',
 			from: '/blocks',
-			path: `/blocks/0/props/k${index}`
+			path: `/blocks/1/props/k${index}`
 		}));
 		refusedFast(
 			JSON.stringify({ say: 'Copied.', page: { kind: 'patch', ops } }),
 			expect.stringMatching(
 				new RegExp(
-					`^operation \\d+ \\(copy /blocks/0/props/k\\d+\\): the page would nest deeper than ${DEPTH_MAX}$`
+					`^operation \\d+ \\(copy /blocks/1/props/k\\d+\\): the page would nest deeper than ${DEPTH_MAX}$`
 				)
 			)
 		);
@@ -111,18 +111,18 @@ describe('a reply too big to take', () => {
 		const long = 'x'.repeat(60 * 1024);
 		const copies = Array.from({ length: 5 }, (_, index) => ({
 			op: 'copy',
-			from: '/blocks/0/props/heading',
-			path: `/blocks/0/props/h${index}`
+			from: '/blocks/1/props/heading',
+			path: `/blocks/1/props/h${index}`
 		}));
 		refusedFast(
 			JSON.stringify({
 				say: 'Longer.',
 				page: {
 					kind: 'patch',
-					ops: [{ op: 'replace', path: '/blocks/0/props/heading', value: long }, ...copies]
+					ops: [{ op: 'replace', path: '/blocks/1/props/heading', value: long }, ...copies]
 				}
 			}),
-			`operation 5 (copy /blocks/0/props/h3): the page would be over ${DRAFT_BYTES_MAX} bytes`
+			`operation 5 (copy /blocks/1/props/h3): the page would be over ${DRAFT_BYTES_MAX} bytes`
 		);
 	});
 
@@ -166,8 +166,8 @@ describe('a reply that edits the page', () => {
 			page: {
 				kind: 'patch',
 				ops: [
-					{ op: 'replace', path: '/blocks/0/variant', value: 'center' },
-					{ op: 'add', path: '/blocks/0/props/lede', value: 'Keep a neighbour warm.' }
+					{ op: 'replace', path: '/blocks/1/variant', value: 'center' },
+					{ op: 'add', path: '/blocks/1/props/lede', value: 'Keep a neighbour warm.' }
 				]
 			}
 		});
@@ -177,6 +177,7 @@ describe('a reply that edits the page', () => {
 			draft: {
 				...campaign(),
 				blocks: [
+					campaign().blocks[0],
 					{
 						id: 'title',
 						type: 'title',
@@ -185,7 +186,7 @@ describe('a reply that edits the page', () => {
 						heading: '',
 						lede: 'Keep a neighbour warm.'
 					},
-					...campaign().blocks.slice(1)
+					...campaign().blocks.slice(2)
 				]
 			}
 		});
@@ -207,7 +208,7 @@ describe('a reply that edits the page', () => {
 		const result = accept(
 			{
 				say: 'Removed the box.',
-				page: { kind: 'patch', ops: [{ op: 'remove', path: '/blocks/3' }] }
+				page: { kind: 'patch', ops: [{ op: 'remove', path: '/blocks/4' }] }
 			},
 			{ current }
 		);
@@ -269,7 +270,7 @@ describe('what a reply never changes', () => {
 		],
 		[
 			'a share message moved in',
-			{ kind: 'patch', ops: [{ op: 'move', from: '/shareMessage', path: '/blocks/0/props/lede' }] },
+			{ kind: 'patch', ops: [{ op: 'move', from: '/shareMessage', path: '/blocks/1/props/lede' }] },
 			'"shareMessage"'
 		],
 		[
@@ -584,7 +585,7 @@ describe('an impact figure', () => {
 	});
 	const addTiers = (amounts: number[]) => ({
 		say: 'Added impact tiers.',
-		page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/2', value: tiers(amounts) }] }
+		page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/3', value: tiers(amounts) }] }
 	});
 	const operator = (text: string) => ({ author: 'operator' as const, text });
 	const tiersOf = (result: ReturnType<typeof accept>) =>
@@ -610,7 +611,7 @@ describe('an impact figure', () => {
 
 	it('stands when the page already held it, set by hand', () => {
 		const current = campaign();
-		current.blocks.splice(2, 0, {
+		current.blocks.splice(3, 0, {
 			id: 'impact',
 			type: 'impact-tiers',
 			variant: 'list',
@@ -620,7 +621,7 @@ describe('an impact figure', () => {
 		const result = accept(
 			{
 				say: 'Cards now.',
-				page: { kind: 'patch', ops: [{ op: 'replace', path: '/blocks/2/variant', value: 'cards' }] }
+				page: { kind: 'patch', ops: [{ op: 'replace', path: '/blocks/3/variant', value: 'cards' }] }
 			},
 			{ current }
 		);
@@ -635,7 +636,7 @@ describe('an impact figure', () => {
 
 	it('with what it buys rewritten is a new tier, kept only when the operator stated its figure', () => {
 		const current = campaign();
-		current.blocks.splice(2, 0, {
+		current.blocks.splice(3, 0, {
 			id: 'impact',
 			type: 'impact-tiers',
 			variant: 'list',
@@ -649,7 +650,7 @@ describe('an impact figure', () => {
 				ops: [
 					{
 						op: 'replace',
-						path: '/blocks/2/props/tiers/0/buys',
+						path: '/blocks/3/props/tiers/0/buys',
 						value: 'heats a family’s home for a winter'
 					}
 				]
@@ -707,7 +708,7 @@ describe('a figure in the words', () => {
 	const operator = (text: string) => ({ author: 'operator' as const, text });
 	const lede = (text: string) => ({
 		say: 'Wrote a lede.',
-		page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/0/props/lede', value: text }] }
+		page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/1/props/lede', value: text }] }
 	});
 	const paragraph = (text: string) => ({
 		type: 'doc' as const,
@@ -720,7 +721,7 @@ describe('a figure in the words', () => {
 		expect(result).toEqual({
 			ok: false,
 			reason:
-				'block 1 (id "title"): "$25" is not a figure the operator wrote in the chat or one the page already shows',
+				'block 2 (id "title"): "$25" is not a figure the operator wrote in the chat or one the page already shows',
 			current
 		});
 	});
@@ -729,14 +730,14 @@ describe('a figure in the words', () => {
 		const result = accept(lede('Every $25 feeds 40 children for a week.'), {
 			messages: [operator('twenty-five dollars, so $25, feeds 40 children')]
 		});
-		expect(result.ok && result.draft.blocks[0]).toMatchObject({
+		expect(result.ok && result.draft.blocks[1]).toMatchObject({
 			lede: 'Every $25 feeds 40 children for a week.'
 		});
 	});
 
 	it('the page already shows lands: in its words, a tier or its goal', () => {
 		const current = { ...campaign(), goalMinor: 500_000 };
-		current.blocks[2] = {
+		current.blocks[3] = {
 			id: 'story',
 			type: 'story',
 			variant: 'plain',
@@ -767,7 +768,7 @@ describe('a figure in the words', () => {
 		expect(result).toMatchObject({
 			ok: false,
 			reason:
-				'block 1 (id "title"): "$15 million" is not a figure the operator wrote in the chat or one the page already shows'
+				'block 2 (id "title"): "$15 million" is not a figure the operator wrote in the chat or one the page already shows'
 		});
 	});
 
@@ -776,7 +777,7 @@ describe('a figure in the words', () => {
 		expect(result).toMatchObject({
 			ok: false,
 			reason:
-				'block 1 (id "title"): "$1.234567k" is not a figure the operator wrote in the chat or one the page already shows'
+				'block 2 (id "title"): "$1.234567k" is not a figure the operator wrote in the chat or one the page already shows'
 		});
 	});
 
@@ -806,12 +807,12 @@ describe('a figure in the words', () => {
 		};
 		const result = accept({
 			say: 'Added a FAQ.',
-			page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/3', value: faq }] }
+			page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/4', value: faq }] }
 		});
 		expect(result).toMatchObject({
 			ok: false,
 			reason:
-				'block 4 (id "faq"): "10 dollars" is not a figure the operator wrote in the chat or one the page already shows'
+				'block 5 (id "faq"): "10 dollars" is not a figure the operator wrote in the chat or one the page already shows'
 		});
 	});
 });
@@ -824,7 +825,7 @@ describe('a link', () => {
 	});
 	const withStory = (): Page => {
 		const page = campaign();
-		page.blocks[2] = {
+		page.blocks[3] = {
 			id: 'story',
 			type: 'story',
 			variant: 'plain',
@@ -848,7 +849,7 @@ describe('a link', () => {
 					ops: [
 						{
 							op: 'add',
-							path: '/blocks/2/props/body/content/-',
+							path: '/blocks/3/props/body/content/-',
 							value: {
 								type: 'paragraph',
 								content: [
@@ -866,7 +867,7 @@ describe('a link', () => {
 			ok: true,
 			dropped: [{ what: 'link', href: 'https://evil.example/pay', text: 'donate on our site' }]
 		});
-		const story = result.ok ? result.draft.blocks[2] : undefined;
+		const story = result.ok ? result.draft.blocks[3] : undefined;
 		expect(story).toMatchObject({
 			body: {
 				content: [
@@ -891,7 +892,7 @@ describe('a link', () => {
 					ops: [
 						{
 							op: 'replace',
-							path: '/blocks/2/props/body/content/0/content/0/marks/1/attrs/href',
+							path: '/blocks/3/props/body/content/0/content/0/marks/1/attrs/href',
 							value: 'https://harbour.org/report?ref=ai'
 						}
 					]
@@ -903,7 +904,7 @@ describe('a link', () => {
 			ok: true,
 			dropped: [{ what: 'link', href: 'https://harbour.org/report?ref=ai' }]
 		});
-		const story = result.ok ? result.draft.blocks[2] : undefined;
+		const story = result.ok ? result.draft.blocks[3] : undefined;
 		expect(story).toMatchObject({
 			body: { content: [{ content: [{ text: 'our report', marks: [{ type: 'bold' }] }] }] }
 		});
@@ -911,30 +912,84 @@ describe('a link', () => {
 });
 
 describe('an image', () => {
-	const pictured = (imageId: string) => ({
-		say: 'Added your photo.',
+	const mine = '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f';
+	const elsewhere = '01926f3e-0000-7b2e-9d4f-3a5b6c7d8e9f';
+	const inHero = (imageId: string) => ({
+		say: 'Put your photo in the hero.',
 		page: {
 			kind: 'patch',
-			ops: [{ op: 'add', path: '/blocks/0/props/imageId', value: imageId }]
+			ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: imageId }]
 		}
+	});
+	const withHero = (imageId: string): Page => {
+		const current = campaign();
+		current.blocks[0] = {
+			...defaultCampaign().blocks[0],
+			imageId,
+			alt: 'A well'
+		} as Page['blocks'][number];
+		return current;
+	};
+
+	it('attached in this chat lands where the reply places it', () => {
+		const result = accept(inHero(mine), { attached: [mine] });
+		expect(result.ok && result.draft.blocks[0]).toEqual({
+			id: 'hero',
+			type: 'hero',
+			variant: 'framed',
+			background: 'none',
+			imageId: mine,
+			alt: null
+		});
 	});
 
 	it('not attached in this chat is refused, the whole reply with it', () => {
 		const current = campaign();
-		const result = accept(pictured('img_elsewhere'), { current, attached: ['img_mine'] });
+		const result = accept(inHero(elsewhere), { current, attached: [mine] });
 		expect(result).toEqual({
 			ok: false,
-			reason: 'blocks.0.props.imageId: image "img_elsewhere" was not attached in this chat',
+			reason: `blocks.0.props.imageId: image "${elsewhere}" was not attached in this chat`,
 			current
 		});
 	});
 
-	it('attached in this chat passes, on to the block’s own rule', () => {
-		const result = accept(pictured('img_mine'), { attached: ['img_mine'] });
-		expect(result).toMatchObject({
+	it('already on the page stands through a reply that leaves it, and may move to another block', () => {
+		const current = withHero(mine);
+		const layout = accept(
+			{ say: 'Cover now.', page: { kind: 'merge', doc: { layout: 'cover' } } },
+			{ current }
+		);
+		expect(layout).toMatchObject({ ok: true, draft: { layout: 'cover', blocks: current.blocks } });
+		const image = {
+			id: 'photo',
+			type: 'image',
+			variant: 'column',
+			background: 'none',
+			props: { imageId: mine, alt: null }
+		};
+		const moved = accept(
+			{
+				say: 'Moved it down.',
+				page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/4', value: image }] }
+			},
+			{ current }
+		);
+		expect(moved.ok && moved.draft.blocks[4]).toMatchObject({ type: 'image', imageId: mine });
+	});
+
+	it('named by an address instead of an id is refused, attached or not', () => {
+		const url = 'https://elsewhere.example/a.png';
+		expect(accept(inHero(url), { attached: [url] })).toMatchObject({
 			ok: false,
-			reason:
-				'blocks.0: block 1 (id "title"): title carries no "imageId"; it carries id, type, variant, background, heading and lede'
+			reason: expect.stringContaining('blocks.0.props.imageId: ')
+		});
+		const beside = {
+			say: 'Linked it.',
+			page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/0/props/src', value: url }] }
+		};
+		expect(accept(beside)).toMatchObject({
+			ok: false,
+			reason: expect.stringContaining('hero carries no "src"')
 		});
 	});
 });

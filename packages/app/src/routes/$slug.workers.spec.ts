@@ -173,6 +173,43 @@ describe('a published campaign at its address', () => {
 		]);
 	});
 
+	it('names its cover photo, by id, as its share image', async () => {
+		const photo = '0192a4c1-0000-7000-8000-000000000001';
+		const published = defaultCampaign();
+		published.blocks[0] = {
+			id: 'hero',
+			type: 'hero',
+			variant: 'framed',
+			background: 'none',
+			imageId: photo,
+			alt: null
+		};
+		await campaign({ published });
+		const answered = await visit();
+		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Winter coat drive' },
+			{ property: 'og:image', content: `${OWN}/image/${photo}` }
+		]);
+	});
+
+	it('names no share image without a cover photo, a photo lower on the page included', async () => {
+		const photo = '0192a4c1-0000-7000-8000-000000000001';
+		const published = defaultCampaign();
+		published.blocks[0] = {
+			id: 'photo',
+			type: 'image',
+			variant: 'wide',
+			background: 'none',
+			imageId: photo,
+			alt: null
+		};
+		await campaign({ published });
+		const answered = await visit();
+		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Winter coat drive' }
+		]);
+	});
+
 	it('takes a gift that records against its owned row, as a gift through a form', async () => {
 		await campaign();
 		const answered = await visit();

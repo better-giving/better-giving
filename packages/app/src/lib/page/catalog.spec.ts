@@ -28,7 +28,7 @@ describe('which blocks a page holds', () => {
 			ok: false,
 			path: ['blocks', 1, 'type'],
 			message:
-				'block 2 (id "x"): "carousel" is not a block; a page holds title, story, impact-tiers, faq, about-us, org-info, share, goal-bar, program-chooser and the donation box'
+				'block 2 (id "x"): "carousel" is not a block; a page holds title, story, impact-tiers, faq, about-us, org-info, share, hero, image, goal-bar, program-chooser and the donation box'
 		});
 	});
 
@@ -57,6 +57,85 @@ describe('which blocks a page holds', () => {
 	] as const)('accepts on a %s the block only its type takes', (type, only) => {
 		const blocks = [{ ...only, background: 'none' }, box];
 		expect(parsePage(type, page(blocks))).toEqual({ ok: true, page: page(blocks) });
+	});
+});
+
+describe('photo blocks', () => {
+	const photoId = '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f';
+
+	it.each(['donation_page', 'campaign'] as const)(
+		'accepts a hero and an image on a %s, by the image id alone',
+		(type) => {
+			const blocks = [
+				{
+					id: 'hero',
+					type: 'hero',
+					variant: 'framed',
+					background: 'none',
+					imageId: photoId,
+					alt: 'A well'
+				},
+				box,
+				{
+					id: 'photo',
+					type: 'image',
+					variant: 'wide',
+					background: 'none',
+					imageId: null,
+					alt: null
+				}
+			];
+			expect(parsePage(type, page(blocks))).toEqual({ ok: true, page: page(blocks) });
+		}
+	);
+
+	it.each(['url', 'src'])('refuses a %s on a photo block, naming what it carries', (key) => {
+		const hero = {
+			id: 'hero',
+			type: 'hero',
+			variant: 'wide',
+			background: 'none',
+			imageId: null,
+			alt: null
+		};
+		expect(
+			parsePage('campaign', page([{ ...hero, [key]: 'https://elsewhere.example/a.png' }, box]))
+		).toEqual({
+			ok: false,
+			path: ['blocks', 0],
+			message: `block 1 (id "hero"): hero carries no "${key}"; it carries id, type, variant, background, imageId and alt`
+		});
+	});
+
+	it('refuses an image id that is an address, not an id', () => {
+		const image = {
+			id: 'photo',
+			type: 'image',
+			variant: 'column',
+			background: 'none',
+			imageId: 'https://elsewhere.example/a.png',
+			alt: null
+		};
+		expect(parsePage('campaign', page([image, box]))).toMatchObject({
+			ok: false,
+			path: ['blocks', 0, 'imageId']
+		});
+	});
+
+	it('refuses a photo block on a ground, since a photo stands on none', () => {
+		const hero = {
+			id: 'hero',
+			type: 'hero',
+			variant: 'wide',
+			background: 'soft',
+			imageId: null,
+			alt: null
+		};
+		expect(parsePage('campaign', page([hero, box]))).toEqual({
+			ok: false,
+			path: ['blocks', 0, 'background'],
+			message: 'block 1 (id "hero"): "soft" is not a background hero takes; it takes none'
+		});
 	});
 });
 

@@ -197,6 +197,34 @@ describe('the page /donate draws', () => {
 		]);
 	});
 
+	it('names its cover photo, by id, as its share image once it has one', async () => {
+		const photo = '0192a4c1-0000-7000-8000-000000000001';
+		await visit();
+		const withHero = {
+			...defaultDonationPage(),
+			blocks: [
+				{
+					id: 'hero',
+					type: 'hero',
+					variant: 'wide',
+					background: 'none',
+					imageId: photo,
+					alt: null
+				},
+				...defaultDonationPage().blocks
+			]
+		};
+		await env.DB.prepare(`update page set published = ? where type = 'donation_page'`)
+			.bind(JSON.stringify(withHero))
+			.run();
+
+		const answered = await visit();
+		expect(donatePage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
+			{ title: 'Donate to Hope Foundation' },
+			{ property: 'og:image', content: `${OWN}/image/${photo}` }
+		]);
+	});
+
 	/**
 	 * the served config and never the row it was read from: a loader's value is serialized into the
 	 * document, and the row carries `allowed_origins`.

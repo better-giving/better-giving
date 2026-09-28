@@ -1,12 +1,15 @@
 import { type ReactNode, useEffect } from 'react';
 import type { ProgramMode } from '../forms/program-modes';
 import type { Block, Page } from '../page/catalog';
+import { imageSrc } from '../page/image-src';
 import type { Background, Corner, Layout, PageType, Shade } from '../page/keys';
 import { BLOCK_MESSAGE, type BlockMessage } from '../page/preview-message';
 import { isEmptyDocument, type RichTextDocument } from '../rich-text/document';
 import { AboutUsBlock } from './blocks/about-us';
 import { FaqBlock } from './blocks/faq';
 import { GoalBarBlock } from './blocks/goal-bar';
+import { HeroBlock } from './blocks/hero';
+import { ImageBlock } from './blocks/image';
 import { ImpactTiersBlock } from './blocks/impact-tiers';
 import { OrgInfoBlock } from './blocks/org-info';
 import { ProgramChooserBlock } from './blocks/program-chooser';
@@ -34,9 +37,9 @@ import { PageRoot } from './page-root';
 // `banner` does the same inside a band at the top, the blocks after the box running full width
 // under it; `column` keeps one narrow column at every width. a goal bar or program chooser listed
 // directly before the box travels into the box's column with it, so the chooser always stands
-// against the box it drives. `cover` needs a hero and then a title first, and the page has no hero
-// block, so it draws as `box-right`. an org-info footer always closes the page, wherever it is
-// listed.
+// against the box it drives. `cover` draws as `box-right`, a hero in the flow where it is listed.
+// an org-info footer always closes the page, wherever it is listed. a hero or image block with no
+// photo leaves itself out.
 
 export type PageLook = {
 	/** lowercase `#rrggbb`, or null for the form's own grey. */
@@ -208,6 +211,9 @@ function isDrawn(block: Block, props: PageViewProps): boolean {
 			return hasWords(props.org.mission) || hasWords(props.org.vision);
 		case 'share':
 			return props.sharing.channels.length > 0;
+		case 'hero':
+		case 'image':
+			return block.imageId !== null;
 		case 'title':
 		case 'org-info':
 		case 'donation-box':
@@ -250,6 +256,10 @@ function content(
 					heading={props.type === 'campaign' ? 'Share this campaign' : 'Share this page'}
 				/>
 			);
+		case 'hero':
+			return <HeroBlock block={block} imageSrc={imageSrc} />;
+		case 'image':
+			return <ImageBlock block={block} imageSrc={imageSrc} />;
 		case 'goal-bar':
 			// isDrawn left the bar out where there is no goal
 			return props.goal === null ? null : (

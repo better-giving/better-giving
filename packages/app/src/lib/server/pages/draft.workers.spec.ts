@@ -135,7 +135,7 @@ describe('a campaign’s goal and end date', () => {
 			page: {
 				kind: 'patch',
 				ops: [
-					{ op: 'add', path: '/blocks/0/props/lede', value: 'Help us reach $15,000 by winter.' }
+					{ op: 'add', path: '/blocks/1/props/lede', value: 'Help us reach $15,000 by winter.' }
 				]
 			},
 			set: { goalMinor: 1_500_000, endDate: '2026-12-31' }
@@ -251,7 +251,7 @@ describe('a credit-billed model that fails', () => {
 describe('what the model is told', () => {
 	const handEdited = (): Page => {
 		const draft = { ...defaultCampaign(), settings: SETTINGS };
-		draft.blocks[0] = {
+		draft.blocks[1] = {
 			id: 'title',
 			type: 'title',
 			variant: 'left',
@@ -335,7 +335,7 @@ describe('what the model is told', () => {
 		await turn(pageId, 'two-tone please', AI);
 
 		const after = await stored(pageId);
-		expect([after.draft.palette, after.draft.blocks[0]]).toEqual(['duo', handEdited().blocks[0]]);
+		expect([after.draft.palette, after.draft.blocks[1]]).toEqual(['duo', handEdited().blocks[1]]);
 	});
 });
 
@@ -356,7 +356,7 @@ describe('an impact tier', () => {
 		};
 		const AI = answering({
 			say: 'Added what a gift buys.',
-			page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/3', value: tiers }] }
+			page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/4', value: tiers }] }
 		});
 
 		await turn(pageId, '$25 buys a coat', AI);
@@ -450,6 +450,50 @@ describe('a photo sent with a turn', () => {
 			role: 'user',
 			content: `our volunteers\n\n(attached photos: ${imageId})`
 		});
+	});
+
+	it('attached on an earlier turn is placed in the hero when a later one asks', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const imageId = await photo();
+		await draftTurn(
+			db,
+			{ ...env, AI: answering({ say: 'Lovely photo.' }) },
+			{ pageId, message: 'our volunteers', imageIds: [imageId], timeZone: ZONE, now: NOW }
+		);
+		const AI = answering({
+			say: 'Your photo is in the hero.',
+			page: {
+				kind: 'patch',
+				ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: imageId }]
+			}
+		});
+
+		expect(await turn(pageId, 'put it in the hero', AI)).toMatchObject({ outcome: 'accepted' });
+		expect((await stored(pageId)).draft.blocks[0]).toMatchObject({ type: 'hero', imageId });
+	});
+
+	it('attached in another page’s chat is refused, and the draft stays as it was', async () => {
+		const elsewhere = await insertPage(db, 'campaign');
+		const imageId = await photo();
+		await draftTurn(
+			db,
+			{ ...env, AI: answering({ say: 'Nice.' }) },
+			{ pageId: elsewhere, message: 'ours', imageIds: [imageId], timeZone: ZONE, now: NOW }
+		);
+		const pageId = await insertPage(db, 'campaign');
+		const before = await stored(pageId);
+		const AI = answering({
+			say: 'Your photo is in the hero.',
+			page: {
+				kind: 'patch',
+				ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: imageId }]
+			}
+		});
+
+		expect(await turn(pageId, 'use the photo from the other campaign', AI)).toMatchObject({
+			outcome: 'refused'
+		});
+		expect((await stored(pageId)).draft).toEqual(before.draft);
 	});
 
 	it('that is no stored image is refused by its id, asking no model', async () => {
