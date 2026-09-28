@@ -1,4 +1,5 @@
-import { and, count, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { inPage } from '../integrations/paging';
@@ -180,7 +181,11 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 			return;
 		}
 
-		const answer = await post(deps.fetch, destination, row, rendered.data);
+		const answer = await post(deps.fetch, destination, row.id, {
+			type: row.event,
+			timestamp: row.createdAt,
+			data: rendered.data
+		});
 		const attempts = row.attempts + 1;
 		if (answer.delivered) {
 			await db.batch([
@@ -413,22 +418,22 @@ type Answer =
 	| { readonly delivered: true; readonly status: number; readonly at: Date }
 	| { readonly delivered: false; readonly status: number | null; readonly error: string };
 
-/** the row's event, serialized once, signed, and posted as the same string. */
+/** an event, serialized once, signed as delivery `id`, and posted as the same string. */
 async function post(
 	fetcher: typeof fetch,
 	destination: Destination,
-	row: Claimed,
-	data: unknown
+	id: string,
+	event: { readonly type: string; readonly timestamp: Date; readonly data: unknown }
 ): Promise<Answer> {
 	const body = JSON.stringify({
-		type: row.event,
-		timestamp: row.createdAt.toISOString(),
-		data
+		type: event.type,
+		timestamp: event.timestamp.toISOString(),
+		data: event.data
 	});
 	try {
 		const signed = await signedHeaders({
 			secret: destination.signingSecret,
-			id: row.id,
+			id,
 			at: new Date(),
 			body
 		});
@@ -449,4 +454,51 @@ async function post(
 	} catch (error) {
 		return { delivered: false, status: null, error: String(error) };
 	}
+}
+
+/** what a test post was answered with, as the press reports it. */
+export type TestAnswer =
+	| { readonly outcome: 'sent' | 'refused'; readonly status: number }
+	| { readonly outcome: 'unanswered' };
+
+/**
+ * a test posted to `destination` at `now`, at once: signed with its secret like any delivery and
+ * held to the same timeout and redirect rule, under a `webhook-id` of its own. it writes nothing,
+ * so a paused destination is sent it without being resumed, and a failing answer neither pauses
+ * the destination nor marks it failing.
+ */
+export async function sendTestWebhook(
+	fetcher: typeof fetch,
+	destination: Destination,
+	now: Date
+): Promise<TestAnswer> {
+	const answer = await post(fetcher, destination, `msg_test_${crypto.randomUUID()}`, {
+		type: WEBHOOK_TEST_TYPE,
+		timestamp: now,
+		data: { test: true, message: 'A test from your Better Giving dashboard.' }
+	});
+	if (answer.delivered) return { outcome: 'sent', status: answer.status };
+	return answer.status === null
+		? { outcome: 'unanswered' }
+		: { outcome: 'refused', status: answer.status };
+}
+
+/**
+ * the latest `limit` rows of the destination `destinationId`, newest first by when each event was
+ * recorded: its recent deliveries, as far back as this table keeps them.
+ */
+export function listDeliveries(db: Db, destinationId: string, limit: number) {
+	return db
+		.select({
+			id: webhookDelivery.id,
+			event: webhookDelivery.event,
+			status: webhookDelivery.status,
+			lastStatus: webhookDelivery.lastStatus,
+			attempts: webhookDelivery.attempts,
+			createdAt: webhookDelivery.createdAt
+		})
+		.from(webhookDelivery)
+		.where(eq(webhookDelivery.destinationId, destinationId))
+		.orderBy(desc(webhookDelivery.createdAt), desc(webhookDelivery.id))
+		.limit(limit);
 }

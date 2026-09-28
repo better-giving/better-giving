@@ -1,15 +1,17 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
+import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
+import type { Tone } from '@better-giving/operator/components/closed-sets';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { Fragment, type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import {
 	data,
 	Form,
@@ -32,6 +34,7 @@ import {
 import { DestinationFields, eventsBox } from '$lib/admin/webhooks/destination-fields';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { redactPublicId } from '$lib/redact';
+import { WEBHOOK_EVENTS } from '$lib/webhooks/catalog';
 import { DESTINATION_INPUT } from '$lib/webhooks/destination-input';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm, unread } from '$lib/server/conform';
@@ -43,12 +46,14 @@ import {
 	resumeDestination,
 	updateDestination
 } from '$lib/server/webhooks/destinations';
+import { listDeliveries, sendTestWebhook } from '$lib/server/webhooks/deliver';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 
-// one webhook destination: its signing secret, its address and events edited, a paused one
-// resumed, and the destination deleted. what each write does is its function's doc in
-// $lib/server/webhooks/destinations.ts; this route turns a press into one of them.
+// one webhook destination: its recent deliveries, a test sent to it, its signing secret, its
+// address and events edited, a paused one resumed, and the destination deleted. what each write
+// does is its function's doc in $lib/server/webhooks/destinations.ts; this route turns a press into
+// one of them.
 //
 // **only the deployer's session reaches this page**, as ./_app.admin.integrations.webhooks._index.tsx
 // argues; a member's GET and POST alike are answered with the dashboard's not-found.
@@ -65,6 +70,14 @@ import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 // header's status line, where its press stood; a delete lands on the list, which names what it
 // took. a refused resume answers 409, and `shouldRevalidate` reads the page again after it so the
 // header shows the destination as it stands.
+//
+// the test is sent at once and reports at the same status line, in the word its answer earns:
+// `Sent — 200`, `Refused — 500`, or `No answer` for a fault or a timeout. it is offered on a paused
+// destination too, since it is how a fix is checked before the resume; what it posts, and why it
+// changes nothing, is `sendTestWebhook`'s doc in $lib/server/webhooks/deliver.ts.
+//
+// the recent deliveries are the destination's latest rows, and the page states no period for them:
+// how far back they reach is whatever the delivery table still holds.
 
 const NOT_HERE =
 	'No page at /admin/integrations/webhooks/:id for a member’s session. Webhook destinations are ' +
@@ -73,12 +86,14 @@ const NOT_HERE =
 const EDIT_FORM_ID = 'webhook-destination-edit';
 const RESUME_FORM_ID = 'webhook-destination-resume';
 const DELETE_FORM_ID = 'webhook-destination-delete';
-const SCREEN_FORMS = [EDIT_FORM_ID, RESUME_FORM_ID, DELETE_FORM_ID] as const;
+const TEST_FORM_ID = 'webhook-destination-test';
+const SCREEN_FORMS = [EDIT_FORM_ID, RESUME_FORM_ID, DELETE_FORM_ID, TEST_FORM_ID] as const;
 
 const EDIT_FORM = defineForm({ id: EDIT_FORM_ID, schema: DESTINATION_INPUT });
-/** the resume and the delete state no box; the body says which form it came from, and nothing else. */
+/** the resume, the delete and the test state no box; the body says which form it came from. */
 const RESUME_FORM = defineForm({ id: RESUME_FORM_ID, schema: z.object({}) });
 const DELETE_FORM = defineForm({ id: DELETE_FORM_ID, schema: z.object({}) });
+const TEST_FORM = defineForm({ id: TEST_FORM_ID, schema: z.object({}) });
 
 const NOT_PAUSED = 'This destination is not paused, so there was nothing to resume.';
 
@@ -89,6 +104,19 @@ const SAVED = 'details';
 const titleOf = (url: string) => url.replace(/^https:\/\//, '');
 
 const screen = (id: string) => href('/admin/integrations/webhooks/:id', { id });
+
+/** how many of its deliveries the page lists. */
+const RECENT_DELIVERIES = 50;
+
+const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
+const twoDigits = (n: number) => String(n).padStart(2, '0');
+/**
+ * a moment as the deliveries list says it, in UTC and formatted here: an `Intl.DateTimeFormat` in
+ * the page would run once on the Worker during ssr and again in the browser, in two time zones.
+ */
+const whenOf = (at: Date) =>
+	`${at.getUTCDate()} ${MONTH.format(at)} ${at.getUTCFullYear()}, ` +
+	`${twoDigits(at.getUTCHours())}:${twoDigits(at.getUTCMinutes())} UTC`;
 
 export const handle = {
 	crumbs: ({ pathname, loaderData }) => [
@@ -108,7 +136,11 @@ const noSuchDestination = (id: string) =>
 export async function loader({ context, params, request, url }: Route.LoaderArgs) {
 	if (context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
 
-	const destination = await readDestination(context.get(database), params.id);
+	const db = context.get(database);
+	const [destination, deliveries] = await Promise.all([
+		readDestination(db, params.id),
+		listDeliveries(db, params.id, RECENT_DELIVERIES)
+	]);
 	if (destination === null) notFound(noSuchDestination(params.id));
 
 	const asked = url.searchParams.get('confirm');
@@ -139,7 +171,16 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 						? ('resume' as const)
 						: null,
 			added: added?.marker === destination.id,
-			saved: saved?.marker === SAVED
+			saved: saved?.marker === SAVED,
+			deliveries: deliveries.map((delivery) => ({
+				id: delivery.id,
+				event: delivery.event,
+				status: delivery.status,
+				at: delivery.createdAt.toISOString(),
+				when: whenOf(delivery.createdAt),
+				answer: delivery.lastStatus,
+				attempts: delivery.attempts
+			}))
 		},
 		{ headers }
 	);
@@ -160,6 +201,8 @@ export async function action(args: Route.ActionArgs) {
 			return resume(args, body);
 		case DELETE_FORM_ID:
 			return remove(args, body);
+		case TEST_FORM_ID:
+			return test(args, body);
 	}
 
 	// the arms are declared inside the action for the reason ./_app.admin.integrations.api.tsx gives:
@@ -187,6 +230,15 @@ export async function action(args: Route.ActionArgs) {
 		return invalid(409, unread(RESUME_FORM, NOT_PAUSED));
 	}
 
+	async function test({ context, params }: Route.ActionArgs, body: FormData) {
+		const submission = parseForm(body, TEST_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+
+		const target = await readDestination(context.get(database), params.id);
+		if (target === null) notFound(noSuchDestination(params.id));
+		return { tested: await sendTestWebhook(fetch, target, new Date()) };
+	}
+
 	async function remove({ context, params, request }: Route.ActionArgs, body: FormData) {
 		const submission = parseForm(body, DELETE_FORM);
 		if (!submission.ok) return invalid(400, submission.reject());
@@ -204,37 +256,42 @@ export async function action(args: Route.ActionArgs) {
 
 /**
  * the page is read again after a refused resume, which react router skips for a 4xx by default: a
- * 409 means the destination was resumed under the page, and the header should stop offering it.
+ * 409 means the destination was resumed under the page, and the header should stop offering it. a
+ * test changes nothing, so nothing is read again after one, and its press is free again the moment
+ * its answer lands.
  */
 export function shouldRevalidate({
 	actionStatus,
 	formData,
 	defaultShouldRevalidate
 }: ShouldRevalidateFunctionArgs) {
-	return actionStatus === 409 && formData?.get(WHICH_FORM) === RESUME_FORM_ID
-		? true
-		: defaultShouldRevalidate;
-}
-
-/**
- * an address as a heading draws it, with a break opportunity after each separator: the heading's
- * own wrapping breaks only between words, and an address is one word as wide as its whole path.
- */
-function breakable(address: string): ReactNode {
-	return address.split(/(?<=[/.?&=-])/).map((part, i) => (
-		<Fragment key={i}>
-			{i > 0 ? <wbr /> : null}
-			{part}
-		</Fragment>
-	));
+	const form = formData?.get(WHICH_FORM);
+	if (form === TEST_FORM_ID) return false;
+	return actionStatus === 409 && form === RESUME_FORM_ID ? true : defaultShouldRevalidate;
 }
 
 type Loaded = Route.ComponentProps['loaderData'];
 
 const events = (n: number) => `${n} held ${n === 1 ? 'event' : 'events'}`;
 
+type Report = { readonly text: string; readonly refused: boolean };
+
+/** what the header's status line says of the test that just answered, or nothing. */
+function testReport(actionData: Route.ComponentProps['actionData']): Report | null {
+	if (!actionData || !('tested' in actionData)) return null;
+	const { tested } = actionData;
+	switch (tested.outcome) {
+		case 'sent':
+			return { text: `Sent — ${tested.status}`, refused: false };
+		case 'refused':
+			return { text: `Refused — ${tested.status}`, refused: true };
+		case 'unanswered':
+			return { text: 'No answer', refused: true };
+	}
+}
+
 /** what the header's status line says of the resume that just answered, or nothing. */
-function resumeReport(actionData: AdminActionData): { text: string; refused: boolean } | null {
+function resumeReport(actionData: AdminActionData): Report | null {
 	if (actionData && 'resumed' in actionData && typeof actionData.resumed === 'number') {
 		const n = actionData.resumed;
 		return {
@@ -250,7 +307,10 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 	const { id, title, paused, held, confirming } = loaderData;
 	const said = useRef<HTMLParagraphElement>(null);
 	const deleteLink = useRef<HTMLAnchorElement>(null);
-	const report = resumeReport(actionData);
+	const report = testReport(actionData) ?? resumeReport(actionData);
+	const navigation = useNavigation();
+	// held from the press until its answer lands, and the dots only while the post is out.
+	const testing = navigation.formData?.get(WHICH_FORM) === TEST_FORM.id;
 
 	// the add that just landed, written into the status line after it mounts: the add was pressed on
 	// another page, and a region arriving with its words already in it is announced by nobody.
@@ -258,9 +318,9 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 	useEffect(() => sayArrived(loaderData.added), [loaderData.added]);
 
 	return (
-		<Column>
+		<Column wide>
 			<PageHeader
-				title={breakable(title)}
+				title={title}
 				pageAction={
 					<div className="adm-actions">
 						{paused ? (
@@ -274,11 +334,29 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 								Resume
 							</Button>
 						) : null}
-						{/* mounted empty and written when a resume answers or an add lands. it holds focus
-						    when the resume's dialog comes down, since the press that opened it is gone. */}
+						<Form method="post" preventScrollReset>
+							<input {...whichForm(TEST_FORM.id)} />
+							<Button
+								type="submit"
+								aria-busy={testing && navigation.state === 'submitting'}
+								aria-disabled={testing || undefined}
+								onClick={(event) => {
+									if (testing) event.preventDefault();
+								}}
+							>
+								Send a test
+							</Button>
+						</Form>
+						{/* mounted empty and written when a test or a resume answers or an add lands. it
+						    holds focus when the resume's dialog comes down, since the press that opened
+						    it is gone. */}
 						<p ref={said} role="status" tabIndex={-1}>
 							{report ? (
-								<StatusWord register="momentary" blocked={report.refused}>
+								<StatusWord
+									register="momentary"
+									blocked={report.refused}
+									mark={report.refused ? 'triangle-alert' : undefined}
+								>
 									{report.text}
 								</StatusWord>
 							) : arrived ? (
@@ -295,6 +373,7 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 						: `${held === 1 ? 'One event is' : `${held} events are`} held until you resume.`}
 				</Banner>
 			) : null}
+			<RecentDeliveries deliveries={loaderData.deliveries} />
 			<SigningSecret secret={loaderData.signingSecret} />
 			<Editor loaderData={loaderData} actionData={actionData} />
 			<Section>
@@ -312,6 +391,51 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 	);
 }
 
+/** each way a delivery can stand, as the list says it and the tone the word takes. */
+const OUTCOMES: Record<Loaded['deliveries'][number]['status'], { word: string; tone: Tone }> = {
+	delivered: { word: 'Delivered', tone: 'done' },
+	pending: { word: 'Waiting', tone: 'attention' },
+	failed: { word: 'Failed', tone: 'blocker' },
+	dropped: { word: 'Withheld', tone: 'note' }
+};
+
+/** the five columns; the shares sum to the whole of the table. */
+const DELIVERY_COLUMNS = [
+	{ key: 'event', label: 'Event', width: '30%' },
+	{ key: 'when', label: 'When', kind: 'date', width: '26%' },
+	{ key: 'outcome', label: 'Outcome', width: '18%' },
+	{ key: 'answer', label: 'Answer', width: '13%' },
+	{ key: 'attempts', label: 'Attempts', kind: 'count', width: '13%' }
+] as const;
+
+/** the destination's latest deliveries, newest first, as the loader read them. */
+function RecentDeliveries({ deliveries }: { readonly deliveries: Loaded['deliveries'] }) {
+	return (
+		<Section>
+			<h2 id="recent-deliveries-heading">Recent deliveries</h2>
+			<DataTable
+				namedBy="recent-deliveries-heading"
+				columns={DELIVERY_COLUMNS}
+				rows={deliveries.map((delivery) => ({
+					id: delivery.id,
+					cells: {
+						event: WEBHOOK_EVENTS[delivery.event],
+						when: <time dateTime={delivery.at}>{delivery.when}</time>,
+						outcome: (
+							<StatusWord tone={OUTCOMES[delivery.status].tone}>
+								{OUTCOMES[delivery.status].word}
+							</StatusWord>
+						),
+						answer: delivery.answer,
+						attempts: delivery.attempts
+					}
+				}))}
+				empty="No deliveries yet"
+			/>
+		</Section>
+	);
+}
+
 /** the secret, masked, with the presses that show it and copy it inside the box. */
 function SigningSecret({ secret }: { readonly secret: string }) {
 	return (
@@ -326,6 +450,8 @@ function SigningSecret({ secret }: { readonly secret: string }) {
 				masked
 				copyable
 				copyLabel="Copy signing secret"
+				revealLabel="Show signing secret"
+				hideLabel="Hide signing secret"
 				spellCheck={false}
 				autoComplete="off"
 			/>

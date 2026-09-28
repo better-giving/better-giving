@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { createDestination } from '$lib/server/webhooks/destinations';
 import type { WebhookEvent } from '$lib/webhooks/catalog';
@@ -18,7 +18,8 @@ import * as list from './_app.admin.integrations.webhooks._index';
 
 // one destination's page, through the protected layout against the real D1: what it shows, and
 // the three presses on it — the edit, the resume and the delete — carried through to what the
-// delivery run then posts.
+// delivery run then posts, and the test, which a receiving system stood in for by `fetch` checks
+// as it would any post.
 
 const LIST = '/admin/integrations/webhooks';
 const URL_ = 'https://crm.example.net/webhooks/better-giving';
@@ -34,6 +35,15 @@ type Screen = {
 	confirming: 'resume' | 'delete' | null;
 	added: boolean;
 	saved: boolean;
+	deliveries: {
+		id: string;
+		event: string;
+		status: string;
+		at: string;
+		when: string;
+		answer: number | null;
+		attempts: number;
+	}[];
 };
 
 let db: Db;
@@ -83,6 +93,96 @@ async function refusals(response: Response): Promise<Record<string, string[]> | 
 
 const resuming = () => formBody({ __form_id__: 'webhook-destination-resume' });
 const deleting = () => formBody({ __form_id__: 'webhook-destination-delete' });
+const testing = () => formBody({ __form_id__: 'webhook-destination-test' });
+
+type Post = { readonly url: string; readonly init: RequestInit; readonly body: string };
+
+/** the receiving system: each post to `URL_` recorded, and answered by `answer`. */
+function receiving(answer: () => Response | Error): Post[] {
+	const posts: Post[] = [];
+	vi.stubGlobal('fetch', async (input: RequestInfo | URL, init: RequestInit = {}) => {
+		posts.push({ url: String(input), init, body: String(init.body) });
+		const answered = answer();
+		if (answered instanceof Error) throw answered;
+		return answered;
+	});
+	return posts;
+}
+
+/**
+ * a receiver's check, by the Standard Webhooks algorithm as the spec states it
+ * (https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md,
+ * "Verifying signatures"), written without $lib/server/webhooks/sign.ts.
+ */
+async function verifies(secret: string, post: Post): Promise<boolean> {
+	const headers = new Headers(post.init.headers);
+	const id = headers.get('webhook-id');
+	const timestamp = headers.get('webhook-timestamp');
+	const signatures = headers.get('webhook-signature');
+	if (id === null || timestamp === null || signatures === null) return false;
+	if (Math.abs(Date.now() / 1_000 - Number(timestamp)) > 5 * 60) return false;
+	const key = await crypto.subtle.importKey(
+		'raw',
+		Uint8Array.from(atob(secret.replace(/^whsec_/, '')), (c) => c.charCodeAt(0)),
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['verify']
+	);
+	const content = new TextEncoder().encode(`${id}.${timestamp}.${post.body}`);
+	for (const versioned of signatures.split(' ')) {
+		const [version, signature] = versioned.split(',');
+		if (version !== 'v1' || signature === undefined) continue;
+		const mac = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
+		if (await crypto.subtle.verify('HMAC', key, mac, content)) return true;
+	}
+	return false;
+}
+
+/** one delivery row for `destinationId`, recorded at `at`, standing where `row` says. */
+async function delivery(
+	destinationId: string,
+	row: {
+		status: 'pending' | 'delivered' | 'failed' | 'dropped';
+		at: number;
+		answer?: number;
+		attempts?: number;
+		event?: WebhookEvent;
+	}
+) {
+	await env.DB.prepare(
+		`insert into webhook_delivery (id, destination_id, event, subject_id, status, attempts,
+		   next_attempt_at, last_status, delivered_at, created_at, updated_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	)
+		.bind(
+			`msg_${crypto.randomUUID()}`,
+			destinationId,
+			row.event ?? 'gift.made',
+			crypto.randomUUID(),
+			row.status,
+			row.attempts ?? 0,
+			row.at,
+			row.answer ?? null,
+			row.status === 'delivered' ? row.at : null,
+			row.at,
+			row.at
+		)
+		.run();
+}
+
+/** the destination's pause and its run of failures, as stored. */
+async function standing(id: string) {
+	return env.DB.prepare('select paused_at, failing_since from webhook_destination where id = ?')
+		.bind(id)
+		.first();
+}
+
+async function deliveryRows(): Promise<number> {
+	const row = await env.DB.prepare('select count(*) as n from webhook_delivery').first<{
+		n: number;
+	}>();
+	return row?.n ?? 0;
+}
 
 describe('GET /admin/integrations/webhooks/:id', () => {
 	it('shows the address, the events it takes and its signing secret', async () => {
@@ -98,8 +198,69 @@ describe('GET /admin/integrations/webhooks/:id', () => {
 			held: 0,
 			confirming: null,
 			added: false,
-			saved: false
+			saved: false,
+			deliveries: []
 		});
+	});
+
+	it('lists its latest fifty deliveries, newest first, with where each stands', async () => {
+		const { id } = await made(['gift.made']);
+		const other = await createDestination(db, {
+			url: 'https://b.example.org/',
+			events: ['gift.made']
+		});
+		if (!other.ok) throw new Error(other.detail);
+		const minute = (n: number) => Date.UTC(2026, 8, 28, 10, n);
+		await delivery(other.destination.id, { status: 'delivered', at: minute(59), answer: 200 });
+		for (let n = 0; n < 47; n++) {
+			await delivery(id, { status: 'delivered', at: minute(n), answer: 200, attempts: 1 });
+		}
+		await delivery(id, {
+			status: 'failed',
+			at: minute(47),
+			answer: 503,
+			attempts: 9,
+			event: 'donor.added'
+		});
+		await delivery(id, { status: 'dropped', at: minute(48), attempts: 0, event: 'gift.refunded' });
+		await delivery(id, { status: 'pending', at: minute(49), answer: 500, attempts: 2 });
+		await delivery(id, { status: 'pending', at: minute(50), attempts: 0 });
+
+		const { deliveries } = await visit(id);
+
+		expect(deliveries).toHaveLength(50);
+		expect(deliveries.slice(0, 5)).toEqual([
+			expect.objectContaining({
+				event: 'gift.made',
+				status: 'pending',
+				answer: null,
+				attempts: 0,
+				when: '28 Sep 2026, 10:50 UTC',
+				at: '2026-09-28T10:50:00.000Z'
+			}),
+			expect.objectContaining({
+				event: 'gift.made',
+				status: 'pending',
+				answer: 500,
+				attempts: 2,
+				when: '28 Sep 2026, 10:49 UTC'
+			}),
+			expect.objectContaining({
+				event: 'gift.refunded',
+				status: 'dropped',
+				answer: null,
+				attempts: 0
+			}),
+			expect.objectContaining({ event: 'donor.added', status: 'failed', answer: 503, attempts: 9 }),
+			expect.objectContaining({
+				event: 'gift.made',
+				status: 'delivered',
+				answer: 200,
+				attempts: 1,
+				when: '28 Sep 2026, 10:46 UTC'
+			})
+		]);
+		expect(deliveries.at(-1)?.when).toBe('28 Sep 2026, 10:01 UTC');
 	});
 
 	it('reads paused, with how many events it is holding', async () => {
@@ -232,20 +393,83 @@ describe('POST /admin/integrations/webhooks/:id — the delete', () => {
 	});
 });
 
+describe('POST /admin/integrations/webhooks/:id — send a test', () => {
+	it('posts a test signed with the destination’s secret at once, and reports the answer', async () => {
+		const { id, signingSecret } = await made(['gift.made']);
+		const posts = receiving(() => new Response('ok'));
+
+		const answer = await destination.post(at(id), deployer, testing());
+
+		expect(answer.status).toBe(200);
+		expect(await answer.json()).toEqual({ tested: { outcome: 'sent', status: 200 } });
+		expect(posts.map((post) => post.url)).toEqual([URL_]);
+		const [post] = posts as [Post];
+		expect(await verifies(signingSecret, post)).toBe(true);
+		expect(new Headers(post.init.headers).get('webhook-id')).toMatch(
+			/^msg_test_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+		);
+		expect(JSON.parse(post.body)).toEqual({
+			type: 'test',
+			timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+			data: { test: true, message: 'A test from your Better Giving dashboard.' }
+		});
+		expect(post.init.redirect).toBe('manual');
+		expect(post.init.signal).toBeInstanceOf(AbortSignal);
+		expect(await deliveryRows()).toBe(0);
+	});
+
+	it('reports a refusal, even the 410 a delivery pauses on, and leaves the destination as it was', async () => {
+		const { id } = await made(['gift.made']);
+		receiving(() => new Response('gone', { status: 410 }));
+
+		const answer = await destination.post(at(id), deployer, testing());
+
+		expect(await answer.json()).toEqual({ tested: { outcome: 'refused', status: 410 } });
+		expect(await standing(id)).toEqual({ paused_at: null, failing_since: null });
+	});
+
+	it('reports no answer where the post never got one', async () => {
+		const { id } = await made(['gift.made']);
+		receiving(() => new TypeError('Network connection lost.'));
+
+		const answer = await destination.post(at(id), deployer, testing());
+
+		expect(await answer.json()).toEqual({ tested: { outcome: 'unanswered' } });
+	});
+
+	it('is sent to a paused destination, which stays paused and holding what it held', async () => {
+		const { id } = await made(['gift.made']);
+		await pause(id);
+		await settleGift(db);
+		const before = await standing(id);
+		const posts = receiving(() => new Response('ok'));
+
+		const answer = await destination.post(at(id), deployer, testing());
+
+		expect(await answer.json()).toEqual({ tested: { outcome: 'sent', status: 200 } });
+		expect(posts.map((post) => JSON.parse(post.body).type)).toEqual(['test']);
+		expect(await standing(id)).toEqual(before);
+		expect(await visit(id)).toMatchObject({ paused: true, held: 1 });
+	});
+});
+
 describe('a member’s session', () => {
 	it('gets not-found for the page and each press, and no press does anything', async () => {
 		const member = await signInAsMember(db);
 		const { id } = await made(['gift.made']);
 		await pause(id);
+		const posts = receiving(() => new Response('ok'));
 
 		expect((await destination.get(at(id), member)).status).toBe(404);
 		for (const body of [
 			editing('https://a.example.org/', ['donor.added']),
 			resuming(),
-			deleting()
+			deleting(),
+			testing()
 		]) {
 			expect((await destination.post(at(id), member, body)).status).toBe(404);
 		}
+		expect(posts).toEqual([]);
 		expect(await visit(id)).toMatchObject({ url: URL_, events: ['gift.made'], paused: true });
 	});
 });

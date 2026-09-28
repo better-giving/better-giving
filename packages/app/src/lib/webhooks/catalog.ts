@@ -9,6 +9,9 @@
 // inside what https://www.standardwebhooks.com/ allows an event type, full-stop-delimited
 // `[a-zA-Z0-9_]`.
 //
+// one `type` besides these reaches a destination, `WEBHOOK_TEST_TYPE` below, and it names no
+// event.
+//
 // a leaf that imports nothing, so $lib/server/db/schema.ts can derive its checks from this list and
 // a component can import the labels.
 
@@ -26,6 +29,14 @@ export const WEBHOOK_EVENTS = {
 } as const;
 
 export type WebhookEvent = keyof typeof WEBHOOK_EVENTS;
+
+/**
+ * the one `type` a destination receives that is not an event: the post a super admin sends from
+ * the destination's page to check the receiving system, `data` being `{ test: true, message }`.
+ * outside the catalog, so no destination subscribes to it and no delivery row carries it, and
+ * permanent like the names above — a receiver's `switch` sets it aside by this name.
+ */
+export const WEBHOOK_TEST_TYPE = 'test';
 
 /** the wire names, in the order a screen lists them. */
 export const WEBHOOK_EVENT_TYPES = Object.keys(WEBHOOK_EVENTS) as readonly WebhookEvent[];
