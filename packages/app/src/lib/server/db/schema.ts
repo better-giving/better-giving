@@ -82,9 +82,11 @@ import type { PostableAccountId } from './postable';
 //             `PROGRAM_STATUSES` and `PROGRAM_MODES` moved for that same reason (see
 //             ../../forms/statuses.ts, ../../programs/statuses.ts and
 //             ../../forms/program-modes.ts): a component renders the words and cannot
-//             import from `$lib/server/**` at all. `SHADES`, `CORNERS` and `PAGE_TYPES` moved
-//             for that reason too, with the page document's key names beside them
-//             (../../page/keys.ts), since the page catalog reads the keys the checks here do.
+//             import from `$lib/server/**` at all. `SHADES` and `CORNERS` moved for that
+//             reason too, with the page document's key names beside them
+//             (../../page/keys.ts), since the page catalog reads the keys the checks here do,
+//             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
+//             (../../page/catalog.ts).
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,

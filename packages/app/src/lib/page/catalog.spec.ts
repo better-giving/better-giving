@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { FAQ_MAX, HEADING_MAX, ID_MAX, parsePage, SHARE_MESSAGE_MAX, TIERS_MAX } from './catalog';
@@ -28,7 +28,7 @@ describe('which blocks a page holds', () => {
 			ok: false,
 			path: ['blocks', 1, 'type'],
 			message:
-				'block 2 (id "x"): "carousel" is not a block; a page holds title, story, impact-tiers, faq, about-us, org-info, share, goal-bar, program-chooser and donation-box'
+				'block 2 (id "x"): "carousel" is not a block; a page holds title, story, impact-tiers, faq, about-us, org-info, share, goal-bar, program-chooser and the donation box'
 		});
 	});
 
@@ -71,6 +71,15 @@ describe('the donation box', () => {
 			ok: false,
 			path: ['blocks'],
 			message: 'a page holds exactly one donation box, and this one holds none'
+		});
+	});
+
+	it('names it as a screen does when it carries a key it has no use for', () => {
+		expect(parsePage('campaign', page([{ ...box, variant: 'wide' }]))).toEqual({
+			ok: false,
+			path: ['blocks', 0],
+			message:
+				'block 1 (id "donate"): the donation box carries no "variant"; it carries id, type and background'
 		});
 	});
 
@@ -266,6 +275,20 @@ describe('what a page carries beside its blocks', () => {
 		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
 	});
 
+	it('reads a null look as the organisation’s', () => {
+		expect(parsePage('campaign', page([box], { look: null }))).toEqual({
+			ok: true,
+			page: page([box], { look: null })
+		});
+	});
+
+	it('refuses a partial look, naming the key it lacks', () => {
+		expect(parsePage('campaign', page([box], { look: { shade: 'warm' } }))).toMatchObject({
+			ok: false,
+			path: ['look', 'corner']
+		});
+	});
+
 	it.each([
 		['goalMinor', 5_000_000, 'the Donation page has no goal; only a campaign does'],
 		['endsAt', endsAt, 'the Donation page has no end date; only a campaign does']
@@ -345,11 +368,10 @@ describe('one rule', () => {
 	});
 
 	it('reaches json-render from the drafting side alone, so an upgrade there never touches a stored page', () => {
-		for (const name of ['catalog.ts', 'defaults.ts', 'keys.ts']) {
-			const source = readFileSync(resolve(import.meta.dirname, name), 'utf8');
-			expect([name, source.includes('@json-render/')]).toEqual([name, false]);
-		}
-		const drafting = readFileSync(resolve(import.meta.dirname, 'ai-catalog.ts'), 'utf8');
-		expect(drafting).toContain("from '@json-render/core'");
+		const src = resolve(import.meta.dirname, '../..');
+		const reaching = readdirSync(src, { recursive: true, encoding: 'utf8' })
+			.filter((file) => /\.tsx?$/.test(file) && !/\.spec\.tsx?$/.test(file))
+			.filter((file) => /from '@json-render\//.test(readFileSync(join(src, file), 'utf8')));
+		expect(reaching).toEqual([join('lib', 'page', 'ai-catalog.ts')]);
 	});
 });

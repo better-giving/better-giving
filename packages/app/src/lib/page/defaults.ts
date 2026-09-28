@@ -6,7 +6,8 @@
 // absent, so both draw in the organisation's own. a block with nothing to show yet — the campaign's
 // goal bar with no goal, its story with a blank body — is placed anyway and leaves itself out at
 // render until it has content. the campaign's title heading is empty, which draws the campaign's
-// name (`BLOCK_DATA.title` in ./catalog.ts).
+// name (`BLOCK_DATA.title` in ./catalog.ts). the Donation page's is written out as the words an
+// empty one would draw, so the editor opens on text the operator can change.
 //
 // a fresh object per call: the editor changes what it is handed.
 import type { Page } from './catalog';

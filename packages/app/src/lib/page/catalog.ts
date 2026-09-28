@@ -20,8 +20,7 @@
 // donation settings the editor writes and publish copies onto the page's owned form row; its shape
 // is that editor's rule, and it is carried here unread.
 //
-// pure and not under `$lib/server/**`: a component renders what this returns. it imports zod, the
-// rich-text rule and ./keys.ts, nothing else.
+// pure and not under `$lib/server/**`: a component renders what this returns.
 import { z } from 'zod';
 import { richTextDocument } from '../rich-text/document';
 import { CORNERS, LOOK_KEYS, PAGE_KEYS, PAGE_TYPES, type PageType, SHADES } from './keys';
@@ -78,7 +77,10 @@ const TIER_AMOUNT = 'a tier\u2019s amount is a whole number of minor units above
  */
 export const BLOCK_DATA = {
 	title: {
-		/** empty draws the page's own name; a campaign's is not in this document. */
+		/**
+		 * empty draws the campaign's name on a campaign, which is not in this document, and
+		 * "Donate to" the organisation's name on the Donation page.
+		 */
 		heading: z.string().max(HEADING_MAX, {
 			error: `a heading holds at most ${HEADING_MAX} characters`
 		}),
@@ -144,9 +146,14 @@ function frame<T extends BlockType, V extends Names, B extends Names>(
 	return {
 		id: blockId,
 		type: z.literal(type),
-		variant: oneOf(variants, `a variant of ${type}`, 'it is'),
-		background: oneOf(backgrounds, `a background ${type} takes`, 'it takes')
+		variant: oneOf(variants, `a variant of ${blockLabel(type)}`, 'it is'),
+		background: oneOf(backgrounds, `a background ${blockLabel(type)} takes`, 'it takes')
 	};
+}
+
+/** a block as a refusal names it: its type, but the donation box as a screen calls it. */
+function blockLabel(type: BlockType) {
+	return type === 'donation-box' ? 'the donation box' : type;
 }
 
 /** a block's rule: its frame and its data, and nothing else — a key off the list is refused. */
@@ -155,7 +162,7 @@ function strictBlock<S extends z.ZodRawShape>(type: BlockType, shape: S) {
 	return z.strictObject(shape, {
 		error: (issue) =>
 			issue.code === 'unrecognized_keys'
-				? `${type} carries no ${issue.keys.map((key) => `"${key}"`).join(', ')}; it carries ${listed(keys)}`
+				? `${blockLabel(type)} carries no ${issue.keys.map((key) => `"${key}"`).join(', ')}; it carries ${listed(keys)}`
 				: undefined
 	});
 }
@@ -190,14 +197,14 @@ const block = z.discriminatedUnion(
 		strictBlock('donation-box', {
 			id: blockId,
 			type: z.literal('donation-box'),
-			background: oneOf(NO_GROUND, 'a background donation-box takes', 'it takes')
+			background: oneOf(NO_GROUND, 'a background the donation box takes', 'it takes')
 		})
 	],
 	{
 		error: (issue) =>
 			isRecord(issue.input) && typeof issue.input.type === 'string'
-				? `"${issue.input.type}" is not a block; a page holds ${listed(BLOCK_TYPES)}`
-				: `expected a block, an object with a type; a page holds ${listed(BLOCK_TYPES)}`
+				? `"${issue.input.type}" is not a block; a page holds ${listed(BLOCK_TYPES.map(blockLabel))}`
+				: `expected a block, an object with a type; a page holds ${listed(BLOCK_TYPES.map(blockLabel))}`
 	}
 );
 
@@ -220,7 +227,7 @@ const pageDocument = (type: PageType) =>
 		.strictObject({
 			layout: oneOf(LAYOUTS, 'a layout', 'a page is laid out'),
 			palette: oneOf(PALETTES, 'a palette', 'a page takes'),
-			[PAGE_KEYS.look]: look.optional(),
+			[PAGE_KEYS.look]: look.nullable().optional(),
 			shareMessage: z
 				.string()
 				.max(SHARE_MESSAGE_MAX, {
@@ -266,7 +273,7 @@ const pageDocument = (type: PageType) =>
 					code: 'custom',
 					input: blockType,
 					path: ['blocks', index, 'type'],
-					message: `${PAGE_NAMES[type]} takes no ${blockType}; only ${listed(takenOn.map((page) => PAGE_NAMES[page]))} does`
+					message: `${PAGE_NAMES[type]} takes no ${blockLabel(blockType)}; only ${listed(takenOn.map((page) => PAGE_NAMES[page]))} does`
 				});
 			}
 			const boxes = [...ctx.value.blocks.entries()].filter(

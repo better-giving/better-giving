@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pageCatalog, pageFromDraft } from './ai-catalog';
+import { HEADING_MAX } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
 // node pool, no database: the prompt is a string built from the catalog, and a draft goes through
@@ -108,6 +109,62 @@ describe('a draft becoming a page', () => {
 			path: ['blocks', 0],
 			message:
 				'block 1 (id "share"): share carries no "colour"; it carries id, type, variant and background'
+		});
+	});
+
+	it('keeps what the operator owns from the page it redrafts, whatever the draft says', () => {
+		const onto = {
+			...defaultCampaign(),
+			look: { shade: 'cool' as const, corner: 'square' as const, brandColour: '#1f6feb' },
+			shareMessage: 'Join me',
+			switches: { openOnMonthly: true, dedicationOn: false },
+			goalMinor: 5_000_000,
+			endsAt: Date.UTC(2026, 11, 31),
+			settings: { min_minor: 500 }
+		};
+		const grabbing = {
+			...draft([flow]),
+			look: { shade: 'warm', corner: 'round', brandColour: '#ff0000' },
+			shareMessage: 'Give now!',
+			switches: { openOnMonthly: false, dedicationOn: true },
+			goalMinor: 1,
+			endsAt: 1,
+			settings: { min_minor: 1 }
+		};
+		expect(pageFromDraft('campaign', grabbing, onto)).toEqual({
+			ok: true,
+			page: {
+				...onto,
+				layout: 'column',
+				palette: 'duo',
+				blocks: [{ id: 'donate', type: 'donation-box', background: 'none' }]
+			}
+		});
+	});
+
+	it.each([null, ''])(
+		'drops a DonationFlow variant of %j, which the box has none of',
+		(variant) => {
+			const result = pageFromDraft('campaign', draft([{ ...flow, variant }]), defaultCampaign());
+			expect(result).toMatchObject({
+				ok: true,
+				page: { blocks: [{ id: 'donate', type: 'donation-box', background: 'none' }] }
+			});
+		}
+	);
+
+	it('places a refused prop under props, where the draft put it', () => {
+		const title = {
+			id: 'title',
+			type: 'title',
+			variant: 'left',
+			background: 'none',
+			props: { heading: 'x'.repeat(HEADING_MAX + 1) }
+		};
+		expect(pageFromDraft('campaign', draft([title, flow]), defaultCampaign())).toEqual({
+			ok: false,
+			path: ['blocks', 0, 'props', 'heading'],
+			message: `block 1 (id "title"): a heading holds at most ${HEADING_MAX} characters`
 		});
 	});
 });

@@ -9,10 +9,12 @@
 // `donation-box` in a stored page, and "Donation box" on a screen. the two names meet in this file
 // and nowhere else.
 //
-// `pageFromDraft` is the only way a draft becomes a page, and it ends in `parsePage`: the catalog's
-// own `validate` is never the rule, and a draft is refused with the same message and path a save
-// would be. the stored format is ours, so a json-render upgrade reaches this file and never a
-// stored page.
+// `pageFromDraft` converts a draft to a page and ends in `parsePage`: the catalog's own `validate`
+// is never the rule, and a draft is refused with the message a save would get, its path pointing
+// into the draft. it converts and no more: whatever accepts a chat reply decides whether a reply
+// lands at all, and compares its links with the page it replaces, since the model is told to add
+// none. the stored format is ours, so a json-render upgrade reaches this file and never a stored
+// page.
 import { defineCatalog, defineSchema, type PromptContext } from '@json-render/core';
 import { z } from 'zod';
 import {
@@ -30,14 +32,18 @@ import {
 	TIERS_MAX
 } from './catalog';
 import type { PageType } from './keys';
+import { LIST_DEPTH_MAX } from '../rich-text/document';
 
 const DONATION_FLOW = 'DonationFlow';
 
+// the prompt's type rendering cannot show a list item's content, a tuple.
+const RICH_TEXT = `a rich-text document; a listItem's content is one paragraph, then any paragraphs, bulletLists and orderedLists, nested at most ${LIST_DEPTH_MAX} lists deep`;
+
 const DESCRIPTIONS: Record<BlockType, string> = {
 	title: 'the page’s heading, with an optional lede under it',
-	story: 'why this matters, in the organisation’s words; body is a rich-text document',
+	story: `why this matters, in the organisation’s words; body is ${RICH_TEXT}`,
 	'impact-tiers': `up to ${TIERS_MAX} amounts, each with what it buys; amountMinor is in minor units`,
-	faq: `up to ${FAQ_MAX} questions, each answered in a rich-text document`,
+	faq: `up to ${FAQ_MAX} questions, each answer ${RICH_TEXT}`,
 	'about-us': 'what the organisation does, drawn from its own profile',
 	'org-info': 'the organisation’s name, address and legal details',
 	share: 'buttons that share the page',
@@ -117,7 +123,7 @@ function prompt({ catalog, options, formatZodType }: PromptContext<DraftCatalog>
 		options.system ?? `You draft ${catalog.page}.`,
 		'',
 		'Answer with one JSON object and nothing else:',
-		'{"layout": ..., "palette": ..., "blocks": [{"id": ..., "type": ..., "variant": ..., "background": ..., "props": {...}}]}',
+		`{"layout": ..., "palette": ..., "blocks": [{"id": ..., "type": ..., "variant": ..., "background": ..., "props": {...}}, {"id": ..., "type": "${DONATION_FLOW}", "background": "none", "props": {}}]}`,
 		'',
 		`LAYOUTS: ${LAYOUTS.join(' | ')}`,
 		`PALETTES: ${PALETTES.join(' | ')}`,
@@ -128,7 +134,8 @@ function prompt({ catalog, options, formatZodType }: PromptContext<DraftCatalog>
 		'RULES:',
 		`- exactly one ${DONATION_FLOW}, with no variant and empty props`,
 		`- every id is unique on the page, 1 to ${ID_MAX} letters, digits, "-" or "_"`,
-		'- use only the names above; no colour, HTML or action anywhere, and a URL only as a link in rich text',
+		'- use only the names above; no colour, HTML or action anywhere',
+		'- add no link; keep a link already in the text exactly as it is',
 		...(options.customRules ?? []).map((rule) => `- ${rule}`)
 	].join('\n');
 }
@@ -146,21 +153,39 @@ export function pageFromDraft(
 ): { ok: true; page: Page } | PageRefusal {
 	if (!isRecord(draft)) return parsePage(type, draft);
 	const { layout, palette, blocks } = draft;
-	return parsePage(type, {
+	const result = parsePage(type, {
 		...onto,
 		layout,
 		palette,
 		blocks: Array.isArray(blocks) ? blocks.map(storedBlock) : blocks
 	});
+	if (result.ok) return result;
+	return { ...result, path: draftPath(result.path, blocks) };
+}
+
+const FRAME_KEYS: readonly unknown[] = ['id', 'type', 'variant', 'background'];
+
+/** a refusal's path inside a block's data, put back under the `props` the draft wrote it in. */
+function draftPath(path: (string | number)[], blocks: unknown) {
+	const [list, index, key, ...rest] = path;
+	if (list !== 'blocks' || typeof index !== 'number' || key === undefined) return path;
+	if (FRAME_KEYS.includes(key)) return path;
+	const block = Array.isArray(blocks) ? blocks[index] : undefined;
+	if (!isRecord(block) || !isRecord(block.props)) return path;
+	return [list, index, 'props', key, ...rest];
 }
 
 /**
  * a draft block in the stored format: its props lifted beside its frame, its type renamed back.
  * props that are not an object stay under `props`, which no block carries, so the rule names them.
+ * a blank variant on the donation box, which has none, is dropped.
  */
 function storedBlock(block: unknown) {
 	if (!isRecord(block)) return block;
 	const { props, type, ...frame } = block;
+	if (type === DONATION_FLOW && (frame.variant === null || frame.variant === '')) {
+		delete frame.variant;
+	}
 	return {
 		...(isRecord(props) ? props : props === undefined ? {} : { props }),
 		...frame,

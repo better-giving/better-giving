@@ -16,7 +16,10 @@ export const PAGE_KEYS = {
 	goalMinor: 'goalMinor',
 	/** a campaign's end: the end of the chosen day, unix ms, in the setting browser's time zone. */
 	endsAt: 'endsAt',
-	/** the page's own look; absent or null means the organisation's. */
+	/**
+	 * the page's own look; absent or null means the organisation's. the database checks a look's keys
+	 * one by one, each where present, and ./catalog.ts's parse refuses a look missing any of them.
+	 */
 	look: 'look'
 } as const;
 
