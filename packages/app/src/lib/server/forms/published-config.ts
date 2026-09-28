@@ -203,6 +203,9 @@ export interface PublishedConfigSources {
  * the pure half keeps its `ConfigEnv` and its already-read cadences (see
  * `PublishedConfigSources`), because a judgement stated against values is what makes every
  * refusal decidable with no D1 in sight.
+ *
+ * `drafted` is the editor's preview alone ($lib/server/pages/view.ts): the row as a page's draft
+ * would leave it once published, laid over the stored row before anything is judged or read from it.
  */
 export async function readPublishedConfig(
 	db: Db,
@@ -210,10 +213,12 @@ export async function readPublishedConfig(
 	source: unknown,
 	readCadences: () => Promise<readonly Frequency[]>,
 	readRails: () => Promise<readonly PaymentMethod[]>,
-	readCoins: () => Promise<readonly PayableCoin[] | null>
+	readCoins: () => Promise<readonly PayableCoin[] | null>,
+	drafted: (stored: FormRecord) => FormRecord = (stored) => stored
 ): Promise<PublishedConfigResult> {
 	const env = readConfigEnv(source);
-	const form = await readForm(db, id);
+	const stored = await readForm(db, id);
+	const form = stored === null ? null : drafted(stored);
 	if (form === null) {
 		// no row, so nothing is read and nothing is asked of the processor: this answers
 		// `form_not_found` before it reaches the config the empty lists would have gone into.

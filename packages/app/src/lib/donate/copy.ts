@@ -541,3 +541,16 @@ export function confirming(method: PaymentMethod | undefined): string {
  * was turned down says nothing back about what would have been accepted.
  */
 export const NO_FORM = 'This link does not open a donation form. Check the address you were given.';
+
+/** an ended campaign's heading, at its address and in the tab. */
+export function campaignEnded(name: string): string {
+	return `${name} has ended`;
+}
+
+/** the ended screen's one line, which says what neither the heading nor the way on says. */
+export const CAMPAIGN_ENDED_THANKS = 'Thank you to everyone who gave.';
+
+/** the way on from an ended campaign to the Donation page, naming the organisation where set. */
+export function donateTo(orgName: string | null): string {
+	return orgName === null ? 'Donate' : `Donate to ${orgName}`;
+}
