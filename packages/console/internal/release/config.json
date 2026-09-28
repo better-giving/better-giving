@@ -16,12 +16,13 @@
 		"0010_gift_refunded_trigger_and_dispute.sql",
 		"0011_quickbooks_sync_realm.sql",
 		"0012_payment_provider_reference.sql",
-		"0013_store_pages_organisation_and_chat.sql"
+		"0013_store_pages_organisation_and_chat.sql",
+		"0014_image_metadata_and_bytes.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "63b37fe9ea307fa05fa9790a84481e0592a35cb3"
+	"commit": "fb11b7e48a35f0e22a69bbdfea435cd44ddc4fd4"
 }

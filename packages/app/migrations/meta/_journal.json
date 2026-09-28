@@ -99,6 +99,13 @@
       "when": 1790615135770,
       "tag": "0013_store_pages_organisation_and_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1790615633087,
+      "tag": "0014_image_metadata_and_bytes",
+      "breakpoints": true
     }
   ]
 }
