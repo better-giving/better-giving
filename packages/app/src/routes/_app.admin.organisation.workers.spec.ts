@@ -17,6 +17,8 @@ const STORY_FORM = 'org-story';
 const UNDO_FORM = 'org-story-undo';
 const LOOK_FORM = 'org-look';
 const LOOK_UNDO_FORM = 'org-look-undo';
+const SHARING_FORM = 'org-sharing';
+const SHARING_UNDO_FORM = 'org-sharing-undo';
 
 let request: RouteRequester;
 let session: string;
@@ -46,6 +48,13 @@ type Loaded = {
 	saved: 'story' | 'story-undone' | null;
 	look: { shade: string; corner: string; brandColour: string | null };
 	lookVersion: string;
+	sharing: {
+		channels: string[];
+		message: string | null;
+		links: { label: string; href: string }[];
+	};
+	sharingVersion: string;
+	sharingSaved: 'sharing' | 'sharing-undone' | null;
 };
 
 async function load(flash = ''): Promise<Loaded> {
@@ -67,11 +76,18 @@ type Answer =
 			typed: Record<string, unknown>;
 	  };
 
-async function post(form: string, version: string, fields: Record<string, string> = {}) {
+/** each value a box posts; a list is posted as the same name repeated, as ticked boxes are. */
+async function post(
+	form: string,
+	version: string,
+	fields: Record<string, string | readonly string[]> = {}
+) {
 	const body = new FormData();
 	body.set(WHICH_FORM, form);
 	body.set(RECORD_VERSION, version);
-	for (const [field, value] of Object.entries(fields)) body.set(field, value);
+	for (const [field, value] of Object.entries(fields)) {
+		for (const one of typeof value === 'string' ? [value] : value) body.append(field, one);
+	}
 	const response = await request(
 		new Request(`${ORIGIN}${SCREEN}`, { method: 'POST', headers: { cookie: session }, body }),
 		{ env }
@@ -415,6 +431,200 @@ describe('Undo of the look', () => {
 		await save(words('Second mission.'));
 		await pick({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
 		await postLook(LOOK_UNDO_FORM, (await load()).lookVersion);
+		expect((await load()).mission).toEqual(words('Second mission.'));
+	});
+});
+
+/** a sharing save as the page drawn this moment would post it: each link a row of two boxes. */
+async function share(
+	channels: readonly string[],
+	message: string,
+	links: readonly (readonly [string, string])[] = []
+) {
+	const { sharingVersion } = await load();
+	return post(SHARING_FORM, sharingVersion, {
+		channels,
+		message,
+		...Object.fromEntries(
+			links.flatMap(([label, url], row) => [
+				[`linkLabel[${row}]`, label],
+				[`linkUrl[${row}]`, url]
+			])
+		)
+	});
+}
+
+describe('the sharing', () => {
+	it('is saved and read back, the channels in the order they were posted', async () => {
+		const answer = await share(['whatsapp', 'x', 'copy-link'], 'Every meal counts.', [
+			['Instagram', 'https://instagram.com/hope']
+		]);
+		expect(answer).toMatchObject({ redirected: true, location: SCREEN });
+		if (!answer.redirected) return;
+
+		const landed = await load(answer.flash);
+		expect(landed.sharing).toEqual({
+			channels: ['whatsapp', 'x', 'copy-link'],
+			message: 'Every meal counts.',
+			links: [{ label: 'Instagram', href: 'https://instagram.com/hope' }]
+		});
+		expect(landed.sharingSaved).toBe('sharing');
+	});
+
+	it('offers the default channels, no message and no links before anything is saved', async () => {
+		expect((await load()).sharing).toEqual({
+			channels: ['facebook', 'email', 'copy-link'],
+			message: null,
+			links: []
+		});
+	});
+
+	it('is saved with no channels ticked as a page with no share buttons, and no blank message', async () => {
+		await share([], '   ');
+		expect((await load()).sharing).toMatchObject({ channels: [], message: null });
+	});
+
+	it('drops a link row left wholly blank', async () => {
+		await share(['email'], '', [
+			['', ''],
+			['Facebook', 'https://facebook.com/hope']
+		]);
+		expect((await load()).sharing.links).toEqual([
+			{ label: 'Facebook', href: 'https://facebook.com/hope' }
+		]);
+	});
+
+	it('saves a link typed without its scheme as https', async () => {
+		await share(['email'], '', [['Instagram', ' instagram.com/hope ']]);
+		expect((await load()).sharing.links).toEqual([
+			{ label: 'Instagram', href: 'https://instagram.com/hope' }
+		]);
+	});
+
+	it('refuses a channel off the list, naming it, and hands back what was typed', async () => {
+		const answer = await share(['email', 'myspace'], 'Every meal counts.', [
+			['Instagram', 'https://instagram.com/hope']
+		]);
+
+		expect(answer).toMatchObject({ redirected: false, status: 400 });
+		if (answer.redirected) return;
+		expect(answer.errors).toEqual({
+			channels: [
+				'"myspace" is not a share channel; a channel is facebook, whatsapp, email, copy-link, linkedin or x'
+			]
+		});
+		expect(answer.typed).toMatchObject({
+			channels: ['email', 'myspace'],
+			message: 'Every meal counts.',
+			linkLabel: ['Instagram'],
+			linkUrl: ['https://instagram.com/hope']
+		});
+		expect((await load()).sharing.channels).toEqual(['facebook', 'email', 'copy-link']);
+	});
+
+	it('refuses a link that is not an http(s) address, naming it at its row', async () => {
+		const answer = await share(['email'], '', [
+			['Facebook', 'https://facebook.com/hope'],
+			['Site', 'javascript:alert(1)']
+		]);
+
+		expect(answer).toMatchObject({ redirected: false, status: 400 });
+		if (answer.redirected) return;
+		expect(answer.errors).toEqual({
+			'linkUrl[1]': [
+				'"javascript:alert(1)" is not a web address; a social link starts with https:// or http://'
+			]
+		});
+		expect(answer.typed).toMatchObject({
+			linkUrl: ['https://facebook.com/hope', 'javascript:alert(1)']
+		});
+		expect((await load()).sharing.links).toEqual([]);
+	});
+
+	it('refuses a link row with one of its two boxes blank, naming the blank one', async () => {
+		const answer = await share(['email'], '', [['', 'https://facebook.com/hope']]);
+		expect(answer).toMatchObject({
+			redirected: false,
+			status: 400,
+			errors: { 'linkLabel[0]': ['needs a label, the name the link is shown under'] }
+		});
+	});
+
+	it('refuses a message past the share message bound, naming its length', async () => {
+		const answer = await share(['email'], 'x'.repeat(281));
+		expect(answer).toMatchObject({
+			redirected: false,
+			status: 400,
+			errors: { message: ['holds 281 characters; a share message holds at most 280'] }
+		});
+	});
+
+	it('refuses a save from a page drawn before another save, at a 409, and keeps that save', async () => {
+		const { sharingVersion: drawn } = await load();
+		await share(['x'], 'From the other tab.');
+
+		const answer = await post(SHARING_FORM, drawn, { channels: ['email'], message: 'This tab.' });
+		expect(answer).toMatchObject({ redirected: false, status: 409 });
+		if (answer.redirected) return;
+		expect(answer.message).toMatch(/sharing has been saved since this page was opened/);
+		expect((await load()).sharing.message).toBe('From the other tab.');
+	});
+
+	it('is saved beside a story saved meanwhile, which moves the row but not the sharing', async () => {
+		const { sharingVersion: drawn } = await load();
+		await save(words('We keep families warm.'));
+
+		const answer = await post(SHARING_FORM, drawn, { channels: ['email'], message: '' });
+		expect(answer).toMatchObject({ redirected: true });
+	});
+});
+
+describe('Undo of the sharing', () => {
+	it('restores the previous sharing, and a second Undo puts the save back', async () => {
+		await share(['whatsapp', 'email'], 'First.', [['Facebook', 'https://facebook.com/hope']]);
+		await share(['x'], 'Second.');
+
+		const undone = await post(SHARING_UNDO_FORM, (await load()).sharingVersion);
+		expect(undone).toMatchObject({ redirected: true, location: SCREEN });
+		if (!undone.redirected) return;
+		const landed = await load(undone.flash);
+		expect(landed.sharing).toEqual({
+			channels: ['whatsapp', 'email'],
+			message: 'First.',
+			links: [{ label: 'Facebook', href: 'https://facebook.com/hope' }]
+		});
+		expect(landed.sharingSaved).toBe('sharing-undone');
+		expect(landed.saved).toBeNull();
+
+		await post(SHARING_UNDO_FORM, landed.sharingVersion);
+		expect((await load()).sharing).toMatchObject({ channels: ['x'], message: 'Second.' });
+	});
+
+	it('takes the first save back to the defaults', async () => {
+		await share(['x'], 'First.');
+		await post(SHARING_UNDO_FORM, (await load()).sharingVersion);
+		expect((await load()).sharing).toEqual({
+			channels: ['facebook', 'email', 'copy-link'],
+			message: null,
+			links: []
+		});
+	});
+
+	it('refuses an Undo from a page drawn before another save, at a 409, and keeps that save', async () => {
+		await share(['x'], 'First.');
+		const { sharingVersion: drawn } = await load();
+		await share(['email'], 'From the other tab.');
+
+		const answer = await post(SHARING_UNDO_FORM, drawn);
+		expect(answer).toMatchObject({ redirected: false, status: 409 });
+		expect((await load()).sharing.message).toBe('From the other tab.');
+	});
+
+	it('leaves the story where it is', async () => {
+		await save(words('First mission.'));
+		await save(words('Second mission.'));
+		await share(['x'], 'First.');
+		await post(SHARING_UNDO_FORM, (await load()).sharingVersion);
 		expect((await load()).mission).toEqual(words('Second mission.'));
 	});
 });

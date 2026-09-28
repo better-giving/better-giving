@@ -1,16 +1,17 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
-import { beforeEach, expect, it, onTestFinished } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import Organisation from './_app.admin.organisation';
 
 // what the Look section posts and says: a pick is the whole look against the version the page
 // holds, a pick made while one is in flight goes after it with the version its answer revalidated,
-// and the answer is reported beside the control with an Undo.
+// and the answer is reported beside the control with an Undo. and what the Sharing section's
+// reorder presses do to the order its channels post in.
 //
-// in the dom pool because every case is a fetcher round trip — a press, an action that has not
-// settled, a revalidation — and a server render is one idle pass. the action here is a stand-in
+// in the dom pool because every case is a press, and a look's is a fetcher round trip — a press, an
+// action that has not settled, a revalidation — where a server render is one idle pass. the action here is a stand-in
 // that records what arrived: what the real one does with it is
 // ./_app.admin.organisation.workers.spec.ts's.
 
@@ -33,12 +34,15 @@ type Stored = { shade: string; corner: string; brandColour: string | null };
 /** the row the stand-in action writes, and each version it moves through: v0, v1, … */
 let stored: { look: Stored; version: string };
 let posted: Record<string, string>[];
+/** each sharing save as it arrived, kept whole: its channels are one name repeated. */
+let shared: FormData[];
 /** each post waits here until the case lets it land. */
 let held: (() => void)[];
 
 beforeEach(() => {
 	stored = { look: { shade: 'light', corner: 'soft', brandColour: null }, version: 'v0' };
 	posted = [];
+	shared = [];
 	held = [];
 });
 
@@ -52,12 +56,22 @@ function screen(): HTMLElement {
 				version: 'story-v0',
 				saved: null,
 				look: stored.look,
-				lookVersion: stored.version
+				lookVersion: stored.version,
+				sharing: {
+					channels: ['facebook', 'email', 'copy-link'],
+					message: null,
+					links: []
+				},
+				sharingVersion: 'sharing-v0',
+				sharingSaved: null
 			}),
 			action: async ({ request }) => {
-				const body = Object.fromEntries(
-					[...(await request.formData())].map(([k, v]) => [k, String(v)])
-				);
+				const form = await request.formData();
+				if (form.get(WHICH_FORM) === 'org-sharing') {
+					shared.push(form);
+					return null;
+				}
+				const body = Object.fromEntries([...form].map(([k, v]) => [k, String(v)]));
 				posted.push(body);
 				await new Promise<void>((resolve) => held.push(resolve));
 				const version = `v${posted.length}`;
@@ -167,4 +181,96 @@ it('reports the landed save beside the control, and its Undo posts against the v
 	await settle();
 	expect(posted[1]).toEqual({ [WHICH_FORM]: 'org-look-undo', [RECORD_VERSION]: 'v1' });
 	expect(undo.getAttribute('aria-disabled')).toBe('true');
+});
+
+describe('the sharing channels', () => {
+	function press(root: HTMLElement, name: string): HTMLButtonElement {
+		const found = [...root.querySelectorAll('button')].find(
+			(b) => b.getAttribute('aria-label') === name
+		);
+		if (found === undefined) throw new Error(`no button named ${name}`);
+		return found;
+	}
+
+	function drawnOrder(root: HTMLElement): string[] {
+		return [...root.querySelectorAll<HTMLInputElement>('input[name="channels"]')].map(
+			(box) => box.value
+		);
+	}
+
+	async function saveSharing(root: HTMLElement): Promise<FormData> {
+		const save = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Save sharing');
+		if (save === undefined) throw new Error('no Save sharing');
+		act(() => save.click());
+		await settle();
+		const sent = shared.at(-1);
+		if (sent === undefined) throw new Error('the sharing posted nothing');
+		return sent;
+	}
+
+	it('draws the chosen channels first, in their order, and the rest of the list unticked after', async () => {
+		const root = await drawn();
+		expect(drawnOrder(root)).toEqual([
+			'facebook',
+			'email',
+			'copy-link',
+			'whatsapp',
+			'linkedin',
+			'x'
+		]);
+		const ticked = [...root.querySelectorAll<HTMLInputElement>('input[name="channels"]:checked')];
+		expect(ticked.map((box) => box.value)).toEqual(['facebook', 'email', 'copy-link']);
+	});
+
+	it('moves a channel down and up, keeping the focus on the pressed button', async () => {
+		const root = await drawn();
+
+		const down = press(root, 'Move Facebook down');
+		down.focus();
+		act(() => down.click());
+		await settle();
+		expect(drawnOrder(root).slice(0, 3)).toEqual(['email', 'facebook', 'copy-link']);
+		expect(document.activeElement).toBe(press(root, 'Move Facebook down'));
+
+		const up = press(root, 'Move Copy link up');
+		up.focus();
+		act(() => up.click());
+		await settle();
+		expect(drawnOrder(root).slice(0, 3)).toEqual(['email', 'copy-link', 'facebook']);
+		expect(document.activeElement).toBe(press(root, 'Move Copy link up'));
+	});
+
+	it('holds Move up on the first channel and Move down on the last, and a press there moves nothing', async () => {
+		const root = await drawn();
+		const top = press(root, 'Move Facebook up');
+		const bottom = press(root, 'Move X down');
+		expect(top.getAttribute('aria-disabled')).toBe('true');
+		expect(bottom.getAttribute('aria-disabled')).toBe('true');
+		expect(press(root, 'Move Facebook down').getAttribute('aria-disabled')).toBeNull();
+
+		act(() => top.click());
+		act(() => bottom.click());
+		await settle();
+		expect(drawnOrder(root)).toEqual([
+			'facebook',
+			'email',
+			'copy-link',
+			'whatsapp',
+			'linkedin',
+			'x'
+		]);
+	});
+
+	it('saves the ticked channels in the order they are drawn, against the sharing’s version', async () => {
+		const root = await drawn();
+		act(() => press(root, 'Move Copy link up').click());
+		act(() => press(root, 'Move Copy link up').click());
+		act(() => root.querySelector<HTMLInputElement>('input[value="x"]')?.click());
+		act(() => root.querySelector<HTMLInputElement>('input[value="email"]')?.click());
+		await settle();
+
+		const sent = await saveSharing(root);
+		expect(sent.getAll('channels')).toEqual(['copy-link', 'facebook', 'x']);
+		expect(sent.get(RECORD_VERSION)).toBe('sharing-v0');
+	});
 });

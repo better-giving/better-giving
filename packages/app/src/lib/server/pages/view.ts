@@ -5,7 +5,7 @@ import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import { parsePage } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
-import type { ShareChannel } from '../../page/share';
+import { SHARE_CHANNELS_DEFAULT } from '../../page/share';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
@@ -59,9 +59,6 @@ export type LoadedPage =
 	/** the served config refuses the owned row: no card can be drawn. */
 	| { readonly kind: 'refused' };
 
-/** the channels a page offers where the organisation has chosen none. */
-const SHARE_CHANNELS_DEFAULT: readonly ShareChannel[] = ['facebook', 'email', 'copy-link'];
-
 export async function loadPageView(
 	db: Db,
 	env: unknown,
@@ -70,7 +67,7 @@ export async function loadPageView(
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
-	const [served, story, orgLook, sharing, profile] = await Promise.all([
+	const [served, story, orgLook, orgSharing, profile] = await Promise.all([
 		readPublishedConfig(
 			db,
 			source.formId,
@@ -99,6 +96,7 @@ export async function loadPageView(
 		return { kind: 'plain', config, look: orgLook.look };
 	}
 	const { page } = parsed;
+	const { sharing } = orgSharing;
 	const orgName = config.orgLegalName;
 	const firstTitle = page.blocks.find((block) => block.type === 'title');
 
