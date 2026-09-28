@@ -97,14 +97,8 @@ export type AddedDonor = ApiDonor & { readonly first_gift: ApiGift };
 /** the subject a delivery row names, as ./deliver.ts claims it. */
 type Subject = { readonly event: WebhookEvent; readonly subjectId: string };
 
-/**
- * a row's `data`, or the words `last_error` keeps for why it is not sent: `unsent` where it could
- * not be rendered, `dropped` where it was rightly withheld.
- */
-type Rendered =
-	| { readonly data: unknown }
-	| { readonly unsent: string }
-	| { readonly dropped: string };
+/** a row's `data`, or the words `last_error` keeps for why it is not sent. */
+type Rendered = { readonly data: unknown } | { readonly dropped: string };
 
 /** each of `subjects` rendered, read in one pass over the lot. */
 export async function renderSubjects(
@@ -189,13 +183,13 @@ export async function renderSubjects(
 					: { data: plan };
 			}
 			default:
-				return { unsent: `A ${event} event is not one this deployment sends.` };
+				return { dropped: `A ${event} event is not one this deployment sends.` };
 		}
 	};
 }
 
 function unreadable(what: string, id: string): Rendered {
-	return { unsent: `The ${what} ${id} this event was queued for could not be read.` };
+	return { dropped: `The ${what} ${id} this event was queued for could not be read.` };
 }
 
 /** each of `contactIds`' first settled gift, by the donor's id: the one with no earlier one. */

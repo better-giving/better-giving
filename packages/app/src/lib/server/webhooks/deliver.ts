@@ -22,8 +22,8 @@ import { signedHeaders } from './sign';
 // when the event was recorded — the row's `created_at`, the same on every attempt — and `data` is
 // the event's subject with its gift as the read API answers it at that moment. a retry renders
 // again, so it carries where the gift stands by then. a row whose destination or subject cannot be
-// read is `failed` unposted, and one whose refund no longer stands `dropped` unposted, each with
-// why in `last_error`.
+// read, or whose refund no longer stands, is `dropped` unposted, with why in `last_error`: `failed`
+// is a delivery failure and nothing else.
 //
 // where each answer lands:
 //   2xx      — `delivered`, with the status and the time, and the destination's run of failures,
@@ -40,11 +40,14 @@ import { signedHeaders } from './sign';
 //
 // **a destination failing for {@link DESTINATION_PAUSE_AFTER_MS} is paused.** a failure on a row
 // that had already failed before, where the destination's `failing_since` is that far behind,
-// pauses it in the row's outcome batch — every post to it for three days failed and none taken. a
-// row's first failure never pauses, since a mark can outlive a quiet spell with nothing posted.
+// pauses it in the row's outcome batch — every post to it for {@link DESTINATION_PAUSE_AFTER_MS}
+// failed and none taken. a row's first failure never pauses, since a mark can outlive a quiet
+// spell with nothing posted.
 // the pause is a guarded write that answers only where it took, so of the runs that fail on one
 // destination at once exactly one learns it paused it, and tells `onPaused` after its batch has
-// committed. a hook that throws is logged and never asked again, so no pause is told of twice.
+// committed. a hook that throws is logged and never asked again, so no pause is told of twice. the
+// destination's rows the run has not yet reached are left leased and unposted, and a post already
+// in flight that is taken does not clear `failing_since`, which marks the window a resume re-sends.
 //
 // **a paused or archived destination's rows are not claimed.** a paused one's rows wait, owed,
 // until it is resumed (`resumeDestination` in ./destinations.ts); an archived one is sent nothing
@@ -155,25 +158,24 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 		claim.rows.map((row) => row.destinationId)
 	);
 	const render = await renderSubjects(db, claim.rows);
-	const unsent = (row: Claimed, lastError: string) =>
-		claim.land(row, { status: 'failed', lastError, updatedAt: now });
+	const drop = (row: Claimed, lastError: string) =>
+		claim.land(row, { status: 'dropped', lastError, updatedAt: now });
+
+	const pausedThisRun = new Set<string>();
 
 	await claim.each(async (row) => {
+		if (pausedThisRun.has(row.destinationId)) return;
 		const destination = destinations.get(row.destinationId);
 		if (destination === undefined) {
-			await unsent(
+			await drop(
 				row,
 				`The destination ${row.destinationId} this event was queued for could not be read.`
 			);
 			return;
 		}
 		const rendered = render(row);
-		if ('unsent' in rendered) {
-			await unsent(row, rendered.unsent);
-			return;
-		}
 		if ('dropped' in rendered) {
-			await claim.land(row, { status: 'dropped', lastError: rendered.dropped, updatedAt: now });
+			await drop(row, rendered.dropped);
 			return;
 		}
 
@@ -195,7 +197,8 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 					.where(
 						and(
 							eq(webhookDestination.id, row.destinationId),
-							isNotNull(webhookDestination.failingSince)
+							isNotNull(webhookDestination.failingSince),
+							isNull(webhookDestination.pausedAt)
 						)
 					)
 			]);
@@ -219,11 +222,13 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 			await db.batch(failed);
 			return;
 		}
-		const [, , [paused]] = await db.batch([
+		const [, , [pausedHere]] = await db.batch([
 			...failed,
 			pauseStatement(db, row.destinationId, reason, now)
 		]);
-		if (paused !== undefined) await tellPaused(deps.onPaused, { ...paused, reason });
+		if (pausedHere === undefined) return;
+		pausedThisRun.add(row.destinationId);
+		await tellPaused(deps.onPaused, { ...pausedHere, reason });
 	});
 }
 
@@ -282,11 +287,11 @@ function afterFailure(attempts: number, now: Date): Outcome<typeof webhookDelive
 
 /**
  * the held window of the paused destination `destinationId`, due at `now`: every row still owed,
- * and every row failed on every post the retry schedule allows that was queued since its run of
- * failures began. each starts the schedule afresh under its own id, and the statement answers with
- * the ids it re-queued. a row failed unsent — its subject unreadable — or dropped is not re-sent,
- * since sending it again would find the same. it matches nothing once the destination is resumed,
- * so it runs in front of the write that resumes it.
+ * and every `failed` row whose last failure came at or after `failing_since`, the start of the run
+ * of failures that paused it — `updated_at` is stamped by that failure's landing. each starts the
+ * schedule afresh under its own id, and the statement answers with the ids it re-queued. it
+ * matches nothing once the destination is resumed, so it runs in front of the write that resumes
+ * it.
  */
 export function requeueHeldStatement(db: Db, destinationId: string, now: Date) {
 	const paused = db
@@ -305,11 +310,7 @@ export function requeueHeldStatement(db: Db, destinationId: string, now: Date) {
 				eq(webhookDelivery.destinationId, paused),
 				or(
 					eq(webhookDelivery.status, 'pending'),
-					and(
-						eq(webhookDelivery.status, 'failed'),
-						gte(webhookDelivery.attempts, WEBHOOK_RETRY_SCHEDULE_MS.length + 1),
-						gte(webhookDelivery.createdAt, failingSince)
-					)
+					and(eq(webhookDelivery.status, 'failed'), gte(webhookDelivery.updatedAt, failingSince))
 				)
 			)
 		)

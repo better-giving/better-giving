@@ -2916,11 +2916,10 @@ export const webhookDestinationEvent = sqliteTable(
 );
 
 /**
- * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed,
- * or one sent nothing because its destination or its subject could not be read. `dropped` is a
- * `gift.refunded` row withheld because its refund no longer stands (../webhooks/payload.ts): the
- * event was right not to go, and is not a failure. both are kept, for the destination's recent
- * deliveries.
+ * where one delivery stands. `failed` is a row whose every post on the retry schedule failed, and
+ * nothing else. `dropped` is a row sent nothing: its destination or its subject could not be read,
+ * or it is a `gift.refunded` whose refund no longer stands (../webhooks/payload.ts). both are kept,
+ * for the destination's recent deliveries, and a resume re-sends only `failed` ones.
  */
 export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed', 'dropped'] as const;
 export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
@@ -2993,10 +2992,9 @@ export const webhookDelivery = sqliteTable(
 		updatedAt: updatedAt(),
 
 		/**
-		 * a JSON object of the facts the event's payload needs that cannot be read again at send —
-		 * for `recurring_gift.charge_failed`, the attempt that failed. written with the row, in the
-		 * batch of the change it reports; everything that can be read again is still rendered at
-		 * send from `subject_id`. null where the event needs nothing kept. parsed by its reader.
+		 * reserved for a JSON object of the facts an event's payload needs that cannot be read again
+		 * at send, for `recurring_gift.charge_failed`'s writer (ticket t10's event slice). every event
+		 * writes it null today, and nothing reads it.
 		 */
 		detail: text('detail')
 		// append new columns below this line — see rule 1 at the top of this file.

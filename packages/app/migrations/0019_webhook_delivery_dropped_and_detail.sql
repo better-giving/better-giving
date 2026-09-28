@@ -1,6 +1,6 @@
--- a `webhook_delivery` row may be `dropped` — a `gift.refunded` event withheld because its refund
--- no longer stands, which is not a failure — and carries `detail`, a JSON object of what its
--- payload needs that cannot be read again at send. `src/lib/server/db/schema.ts` argues both.
+-- a `webhook_delivery` row may be `dropped` — sent nothing, because its destination or subject
+-- could not be read or its refund no longer stands, which is not a delivery failure — and gains
+-- `detail`, a JSON object column. `src/lib/server/db/schema.ts` argues both.
 --
 -- changing a CHECK is not one of sqlite's native ALTERs, so `webhook_delivery` is the
 -- create-copy-drop-rename rebuild `src/lib/server/db/schema.ts`'s rule 2 describes, with the
