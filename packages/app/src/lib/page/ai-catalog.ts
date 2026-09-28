@@ -11,9 +11,10 @@
 //
 // `pageFromDraft` converts a draft to a page and ends in `parsePage`: the catalog's own `validate`
 // is never the rule, and a draft is refused with the message a save would get, its path pointing
-// into the draft. it converts and no more: whatever accepts a chat reply decides whether a reply
-// lands at all, and compares its links with the page it replaces, since the model is told to add
-// none. the stored format is ours, so a json-render upgrade reaches this file and never a stored
+// into the draft. it converts and no more: ./accept-reply.ts decides whether a chat reply lands at
+// all, and compares its links with the page it replaces, since the model is told to add none.
+// `draftFromPage` is the way back, the page as the model reads it and as a reply's patch addresses
+// it. the stored format is ours, so a json-render upgrade reaches this file and never a stored
 // page.
 import { defineCatalog, defineSchema, type PromptContext } from '@json-render/core';
 import { z } from 'zod';
@@ -161,6 +162,33 @@ export function pageFromDraft(
 	});
 	if (result.ok) return result;
 	return { ...result, path: draftPath(result.path, blocks) };
+}
+
+type DraftBlock = {
+	id: string;
+	type: string;
+	variant?: string;
+	background: string;
+	props: Record<string, unknown>;
+};
+export type Draft = { layout: string; palette: string; blocks: DraftBlock[] };
+
+/** a page in the model's terms: its layout, palette and blocks, and nothing the operator owns. */
+export function draftFromPage(page: Page): Draft {
+	return {
+		layout: page.layout,
+		palette: page.palette,
+		blocks: page.blocks.map(({ id, type, background, ...values }) => {
+			const { variant, ...props }: { variant?: string } = values;
+			return {
+				id,
+				type: componentName(type),
+				...(variant === undefined ? {} : { variant }),
+				background,
+				props
+			};
+		})
+	};
 }
 
 const FRAME_KEYS: readonly unknown[] = ['id', 'type', 'variant', 'background'];
