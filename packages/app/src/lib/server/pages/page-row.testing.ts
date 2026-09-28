@@ -6,6 +6,7 @@ import type { PageType } from '../../page/keys';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
 import { form, page } from '../db/schema';
+import { endCampaign, readPage } from './queries';
 
 // a page and its owned settings row, put in for a spec that needs one. not a spec itself — no
 // pool's `include` matches this name — and nothing in the app imports it.
@@ -91,6 +92,14 @@ export async function campaignOwning(
 			state === 'ended' ? '{}' : null
 		)
 		.run();
+}
+
+/** ends the live campaign `pageId` as End does, at the version it stands at; throws where it did not. */
+export async function endAsItStands(db: Db, pageId: string): Promise<void> {
+	const row = await readPage(db, pageId);
+	if (row === null || !(await endCampaign(db, pageId, row.updatedAt))) {
+		throw new Error(`the fixture campaign ${pageId} did not end`);
+	}
 }
 
 /** a Workers AI binding answering each call with the next of `replies`, in the free model's format. */

@@ -463,10 +463,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 						endDate: loaderData.endDate
 					}}
 					blocks={loaderData.blocks}
-					onOpenBlock={(id) => {
-						if (!isDonationBox(loaderData.blocks, id)) setSettings(false);
-						openBlockSheet(id);
-					}}
+					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
 					{...layoutPick.sheet}
 					look={<PageLookSettings seed={loaderData.pageSettings} version={version} />}
@@ -482,6 +479,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					version={version}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
+					stacked={settings}
 				/>
 			)}
 			{opened === 'name' ? (

@@ -274,10 +274,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}
 					blocks={loaderData.blocks}
-					onOpenBlock={(id) => {
-						if (!isDonationBox(loaderData.blocks, id)) setSettings(false);
-						openBlockSheet(id);
-					}}
+					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
 					{...layoutPick.sheet}
 					look={<PageLookSettings seed={loaderData.pageSettings} version={version} />}
@@ -296,6 +293,7 @@ export default function DonationPageEditor({ loaderData }: Route.ComponentProps)
 					version={version}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
+					stacked={settings}
 				/>
 			)}
 			{shareMessage ? (

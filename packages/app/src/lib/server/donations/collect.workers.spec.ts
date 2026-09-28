@@ -27,7 +27,7 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
-import { endCampaign } from '../pages/queries';
+import { endAsItStands } from '../pages/page-row.testing';
 import { stopRecurringPlan } from '../recurring/queries';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
@@ -535,7 +535,7 @@ describe('settleDelivery() — a later collection under a commitment already ope
 				published: '{}'
 			})
 			.returning({ id: page.id });
-		expect(await endCampaign(db, campaign!.id)).toBe(true);
+		await endAsItStands(db, campaign!.id);
 
 		const result = await settleDelivery(
 			deps({
