@@ -13,7 +13,7 @@ import {
 } from 'react-router';
 import type { Route } from './+types/root';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
-// below renders the donor's page at `/{form_id}` as well as every operator screen, and the donation
+// below renders the Donation page at `/donate` as well as every operator screen, and the donation
 // form's four sheets are unlayered while every operator declaration is layered (./app.css) — so a
 // document that carried both would let one side outrank the other on every property only one of
 // them sets. each surface links its own chain from its own `links`; $lib/admin/operator-links.ts is

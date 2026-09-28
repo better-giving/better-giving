@@ -121,7 +121,7 @@ const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 };
 
 /**
- * the donor's page, which is the one screen outside the layout that wears no operator stylesheet.
+ * the Donation page, which is the one screen outside the layout that wears no operator stylesheet.
  *
  * it draws the donation form's own card and links the form's four sheets in its own `links`, and
  * those four are unlayered while every operator declaration is layered (src/app.css) — so a
@@ -129,7 +129,7 @@ const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
  * it is named here so the sweep below can hold every *other* screen outside the layout to carrying
  * the operator sheet without holding this one to it.
  */
-const DONOR_PAGE = 'routes/$formId.tsx';
+const DONOR_PAGE = 'routes/donate.tsx';
 
 /**
  * every route file that is deliberately served to anonymous callers.
@@ -209,12 +209,13 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// stands in for a session is the `state` that went out with it, in a cookie on that same browser
 	// and cleared on every arm — so the round trip cannot be made twice.
 	'routes/quickbooks.callback.tsx',
-	// the donor's page, opened from a link the organisation published. it is unauthenticated
+	// the Donation page, opened from a link the organisation published. it is unauthenticated
 	// because a donor holds no session and never could — there is nobody for a gate here to ask
 	// about. it initiates no payment itself and takes no submission: the gift goes through the
-	// endpoint above it, same-origin, which owes all four of that surface's checks. and what its
-	// loader hands the browser is the served config alone, never the `form` row it was read from —
-	// that row carries `allowed_origins`.
+	// endpoint above it, same-origin, which owes all four of that surface's checks. the one write
+	// its loader makes is the page itself, once per deployment — the one-Donation-page index turns
+	// every later arrival into a read. and what it hands the browser is the served config alone,
+	// never the `form` row it was read from — that row carries `allowed_origins`.
 	DONOR_PAGE,
 	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by an
 	// unguessable id and writes nothing, and a draft's image is as reachable by its id as a live one's
@@ -618,37 +619,24 @@ describe('the route surface', () => {
 	 * so. ./root.tsx's `ErrorBoundary` is what renders it; the 404 here is the half a component
 	 * cannot claim for itself.
 	 *
-	 * a single top-level segment is not one of those addresses. `/not-a-page` matches the
-	 * donor's page, whose loader finds no form and draws its own notice with a 404 of its own
-	 * (./routes/$formId.workers.spec.ts) — a donor holding a link that did not work is not shown the
-	 * operator error panel. what still reaches the boundary is everything that segment cannot be:
-	 * a path under a route that claims no such child, and any address of more than one segment.
+	 * a single top-level segment is one of those addresses: no route answers `/{anything}`, a form
+	 * id included.
 	 */
 	it('answers an address matching no route with a 404, above every layout', async () => {
 		expect(await statusAt('/admin/not-a-screen')).toBe(404);
 		expect(await statusAt('/a/b')).toBe(404);
+		expect(await statusAt('/frm_something')).toBe(404);
+		expect(await statusAt('/.env')).toBe(404);
 		expect(routes.filter((r) => r.path === '/admin/not-a-screen' || r.path === '/a/b')).toEqual([]);
-	});
-
-	/**
-	 * and a single segment reaches the donor's page whatever it holds, malformed included.
-	 *
-	 * the guard on the form id is the loader's rather than the router's, and it draws the same
-	 * notice: `/.env` is a scanner asking, and answering it with the operator error panel would be
-	 * putting /admin's dress on a stranger's screen to say the same 404.
-	 */
-	it('answers every single segment with the donor’s page', async () => {
-		expect(await matchedFileAt('/frm_something')).toBe(DONOR_PAGE);
-		expect(await matchedFileAt('/.env')).toBe(DONOR_PAGE);
 	});
 
 	/**
 	 * every static top-level route this app serves still answers its own address.
 	 *
-	 * a dynamic top-level segment matches all of them, and what keeps them theirs is react router's
-	 * own ranking rather than anything either file says — so it is asked of the matcher. nothing in
-	 * ./routes/$formId.tsx names them and nothing there may: a list of reserved words in a loader
-	 * would be a second copy of this tree, wrong the moment a route is added.
+	 * a dynamic top-level segment would match all of them, and what keeps them theirs is react
+	 * router's own ranking rather than anything either file says — so it is asked of the matcher. a
+	 * list of reserved words in a loader would be a second copy of this tree, wrong the moment a
+	 * route is added.
 	 *
 	 * `/embed.js` is not here because it is not a route at all — static/ is copied whole into the
 	 * client build and the worker serves it as an asset before routing (CLAUDE.md, ../vite.config.ts).
@@ -659,6 +647,7 @@ describe('the route surface', () => {
 		{ address: '/forgot', file: 'routes/forgot.tsx' },
 		{ address: '/reset', file: 'routes/reset.tsx' },
 		{ address: '/admin', file: 'routes/_app.admin._index.tsx' },
+		{ address: '/donate', file: DONOR_PAGE },
 		{ address: API_BASE_PATH, file: API_LAYOUT },
 		{ address: CONSOLE_BASE_PATH, file: CONSOLE_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {

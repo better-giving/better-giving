@@ -226,9 +226,9 @@ body {
 	color: var(--page-on-strong);
 }
 
-/* the form page at `/{form_id}`: the card alone under the organisation's name, in the box's own
-   column. the card sits high rather than centred in the viewport. a donation form is taller than
-   most windows once the payment step opens, so a page that centred it would start every donor
+/* the plain page: the card alone, in the box's own column ($lib/donate/plain-page.tsx). the card
+   sits high rather than centred in the viewport. a donation form is taller than most windows
+   once the payment step opens, so a page that centred it would start every donor
    part-way down a scroll; anchored to the top, the card grows downward from where it began. */
 .stage {
 	box-sizing: border-box;

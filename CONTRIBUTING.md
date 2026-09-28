@@ -20,7 +20,7 @@ Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants
 
 | command            | what                                    | port        |
 | ------------------ | --------------------------------------- | ----------- |
-| `pnpm dev`         | the app: `/admin`, `/api/v1`, and the donation page at `/{form_id}` | 5321        |
+| `pnpm dev`         | the app: `/admin`, `/api/v1`, and the Donation page at `/donate`    | 5321        |
 | `pnpm run console` | console screens + its Go api            | 5322 (5325) |
 | `pnpm run gallery` | every `packages/operator` component     | 5323        |
 | `pnpm run form`    | the donation form against fixtures      | 5324        |
@@ -61,7 +61,7 @@ The copy deletes a tracked placeholder. Restore it with `git checkout packages/c
 
 Seven packages under `packages/`; commands run from the root:
 
-- `packages/app` is the deployed Worker: React Router app, D1 server code, `/admin`, `/console` routes, and the donation page at `/{form_id}`.
+- `packages/app` is the deployed Worker: React Router app, D1 server code, `/admin`, `/console` routes, and the Donation page at `/donate`.
 - `packages/form` is the embeddable element and its flow logic, a permanent public contract; the donation page draws the same flow in React off the same machine.
 - `packages/emails` is the mail templates, rendered to strings by the app at send time; `packages/emails-preview` is their preview page, dev-only.
 - `packages/operator` is the leaf both operator surfaces consume: components, stylesheets, shared vocabulary.

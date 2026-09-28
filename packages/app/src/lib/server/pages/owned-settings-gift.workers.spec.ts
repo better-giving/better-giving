@@ -6,6 +6,7 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import { donation, form, lineItem, page, payment } from '../db/schema';
 import { recordDonation, type RecordDonationInput } from '../donations/record';
+import { ensureDonationPage } from './donation-page';
 
 // a gift against a page's owned donation-settings row records exactly as a gift through a form.
 //
@@ -90,23 +91,30 @@ async function stored(donationId: string) {
 	};
 }
 
+/** a gift against `owned` and one through the plain form, stored alike but for the form. */
+async function expectRecordedAsAForm(owned: string) {
+	const throughForm = await recordDonation(db, gift(formId));
+	const throughPage = await recordDonation(db, gift(owned));
+	if (!throughForm.ok || !throughPage.ok) {
+		throw new Error(`expected both gifts recorded: ${JSON.stringify([throughForm, throughPage])}`);
+	}
+
+	const [row] = await db
+		.select({ formId: donation.formId })
+		.from(donation)
+		.where(eq(donation.id, throughPage.value.donationId));
+	expect(row).toEqual({ formId: owned });
+	expect(await stored(throughPage.value.donationId)).toEqual(
+		await stored(throughForm.value.donationId)
+	);
+}
+
 describe('a gift against a page-owned settings row', () => {
 	it('records against the owned row, exactly as a gift through a form', async () => {
-		const throughForm = await recordDonation(db, gift(formId));
-		const throughPage = await recordDonation(db, gift(ownedId));
-		if (!throughForm.ok || !throughPage.ok) {
-			throw new Error(
-				`expected both gifts recorded: ${JSON.stringify([throughForm, throughPage])}`
-			);
-		}
+		await expectRecordedAsAForm(ownedId);
+	});
 
-		const [row] = await db
-			.select({ formId: donation.formId })
-			.from(donation)
-			.where(eq(donation.id, throughPage.value.donationId));
-		expect(row).toEqual({ formId: ownedId });
-		expect(await stored(throughPage.value.donationId)).toEqual(
-			await stored(throughForm.value.donationId)
-		);
+	it('records against the Donation page made on first need, exactly as a gift through a form', async () => {
+		await expectRecordedAsAForm((await ensureDonationPage(db)).formId);
 	});
 });

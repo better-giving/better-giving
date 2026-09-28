@@ -19,8 +19,8 @@
    the layers buy ordering inside /admin and nothing beyond it. they are not a boundary
    around the donation form, and no rule here needs one, because the two systems never share
    a document: this sheet is linked by the operator screens' own `links` exports
-   (src/lib/admin/operator-links.ts) and by nothing else, and the donor's page at
-   `/{form_id}` links the form's four sheets instead. src/lib/donate/page.css states the same
+   (src/lib/admin/operator-links.ts) and by nothing else, and the donor pages
+   (`/donate`) link the form's four sheets instead. src/lib/donate/page.css states the same
    from the other side. what makes the absence the mechanism rather than a tidiness is that
    the form's four sheets are unlayered: an unlayered rule outranks every layer below, and
    base.css's reset zeroes properties the form sets — so a document holding both would let
