@@ -111,6 +111,23 @@ describe('the rail', () => {
 		]);
 	});
 
+	it('reads one word per cell across a narrow window', () => {
+		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
+		expect(groups.flatMap((group) => group.destinations.map((d) => d.short))).toEqual([
+			'Password',
+			'Legal',
+			'Stripe',
+			'PayPal',
+			'Chariot',
+			'NOWPayments',
+			'Sites',
+			'SMTP',
+			'Notifications',
+			'QuickBooks',
+			'Zapier'
+		]);
+	});
+
 	it('ends with the integrations under a heading of their own, marked as the cells beside them are', () => {
 		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
 		expect(groups.at(-1)).toEqual({
