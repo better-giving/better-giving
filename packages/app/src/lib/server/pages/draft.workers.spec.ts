@@ -282,6 +282,23 @@ describe('what the model is told', () => {
 		]);
 	});
 
+	it('states the end date as the day chosen, in the zone it was chosen in', async () => {
+		// the end of 31 December in los angeles, already 1 January in new york where it is read
+		const pageId = await insertPage(db, 'campaign', {
+			...defaultCampaign(),
+			settings: SETTINGS,
+			endsAt: Date.parse('2027-01-01T08:00:00Z') - 1,
+			endsZone: 'America/Los_Angeles'
+		});
+		const AI = answering({ say: 'Warmer.' });
+
+		await turn(pageId, 'warmer colours', AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		const [system] = input.messages;
+		expect(system.content).toContain('- end date: 2026-12-31\n');
+	});
+
 	it('of the chat so far, is only what the model said, leaving out each exchange that changed nothing', async () => {
 		const pageId = await insertPage(db, 'campaign');
 		await turn(

@@ -121,6 +121,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: null,
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -145,6 +146,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord({ status: 'draft' }),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -172,6 +174,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord({ status: 'archived' }),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -213,6 +216,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(bounds),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -246,6 +250,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(bounds),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -285,6 +290,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile,
 			env: STRIPE
 		});
@@ -329,6 +335,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env
 		});
@@ -367,6 +374,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env
 		});
@@ -384,6 +392,7 @@ describe('publishedConfig — refusals', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env: {}
 		});
@@ -410,6 +419,7 @@ describe('publishedConfig — refusals', () => {
 			rails: [],
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -439,6 +449,7 @@ describe('publishedConfig — the row it carries out', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form,
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -459,6 +470,7 @@ describe('publishedConfig — the row it carries out', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE,
 			...sources
@@ -479,6 +491,7 @@ describe('publishedConfig — the row it carries out', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: null,
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -496,6 +509,7 @@ describe('publishedConfig — the row it carries out', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -525,6 +539,7 @@ describe('renderableConfig', () => {
 			rails,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -556,6 +571,7 @@ describe('renderableConfig', () => {
 				rails: [],
 				coins: [],
 				form: formRecord(),
+				owner: null,
 				profile: orgProfile(),
 				env: PAYPAL
 			})
@@ -578,6 +594,7 @@ describe('renderableConfig', () => {
 				rails: ['crypto'],
 				coins,
 				form: formRecord(),
+				owner: null,
 				profile: orgProfile(),
 				env: NOWPAYMENTS
 			})
@@ -627,6 +644,7 @@ describe('renderableConfig', () => {
 			rails: [],
 			coins: [],
 			form: formRecord({ status: 'draft' }),
+			owner: null,
 			profile: orgProfile(),
 			env: STRIPE
 		});
@@ -659,6 +677,7 @@ function served(sources: Partial<PublishedConfigSources> = {}) {
 		rails: OFFERED_PAYMENT_METHODS,
 		coins: [USDT],
 		form: formRecord(),
+		owner: null,
 		profile: orgProfile(),
 		env: STRIPE,
 		...sources
@@ -818,6 +837,7 @@ describe('publishedConfig — the config it serves', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env: {
 				PAYPAL_CLIENT_ID: 'notarealclientid',
@@ -849,6 +869,7 @@ describe('publishedConfig — the config it serves', () => {
 			rails: OFFERED_PAYMENT_METHODS,
 			coins: [],
 			form: formRecord(),
+			owner: null,
 			profile: orgProfile(),
 			env: {
 				NOWPAYMENTS_API_KEY: 'notarealnowpaymentskey',

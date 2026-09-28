@@ -16,7 +16,7 @@ import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinorBrief } from '$lib/donations/money';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm } from '$lib/forms/definition';
-import { dayOf, dayWords } from '$lib/page/end-date';
+import { dayWords } from '$lib/page/end-date';
 import { NEW_CAMPAIGN_SCHEMA } from '$lib/page/new-campaign';
 import { invalid, parseForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
@@ -29,8 +29,9 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 // `?new` whose action makes the campaign ($lib/server/pages/campaign.ts) and opens its editor. the
 // Donation page is no campaign and is not on this list.
 //
-// the goal and end date are the draft's, which is what the editor shows. an end date is a day in
-// the operator's own zone, which only the browser knows, so it is drawn once the page runs there.
+// the goal and end date are the draft's, which is what the editor shows. an end date is the day
+// chosen, in the zone it was chosen in ($lib/page/end-date.ts's `endDayOf`), so every operator reads
+// the same day wherever they are.
 
 const SCREEN_TITLE = 'Campaigns';
 
@@ -69,10 +70,10 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 		state: campaign.state,
 		goal: campaign.goalMinor === null ? null : formatMinorBrief(campaign.goalMinor, FORM_CURRENCY),
 		// a campaign ended before its end date did not end on it.
-		endsAt:
-			campaign.state === 'ended' && campaign.endsAt !== null && campaign.endsAt > now
+		ends:
+			campaign.end === null || (campaign.state === 'ended' && campaign.end.at > now)
 				? null
-				: campaign.endsAt
+				: dayWords(campaign.end.day)
 	}));
 	return {
 		campaigns: rows.filter((row) => row.state !== 'ended'),
@@ -153,7 +154,7 @@ export default function Campaigns({ loaderData, actionData }: Route.ComponentPro
 					New campaign
 				</CreateCard>
 				{campaigns.map((row) => (
-					<CampaignRecord key={row.id} row={row} zone={zone} />
+					<CampaignRecord key={row.id} row={row} />
 				))}
 			</List>
 
@@ -161,7 +162,7 @@ export default function Campaigns({ loaderData, actionData }: Route.ComponentPro
 				<Disclosure summary={`Ended (${ended.length})`}>
 					<List>
 						{ended.map((row) => (
-							<CampaignRecord key={row.id} row={row} zone={zone} />
+							<CampaignRecord key={row.id} row={row} />
 						))}
 					</List>
 				</Disclosure>
@@ -172,11 +173,10 @@ export default function Campaigns({ loaderData, actionData }: Route.ComponentPro
 	);
 }
 
-function CampaignRecord({ row, zone }: { readonly row: Row; readonly zone: string | null }) {
-	const day = row.endsAt === null || zone === null ? null : dayOf(row.endsAt, zone);
+function CampaignRecord({ row }: { readonly row: Row }) {
 	const facts = [
 		row.goal === null ? null : `Goal ${row.goal}`,
-		day === null ? null : `${row.state === 'ended' ? 'Ended' : 'Ends'} ${dayWords(day)}`
+		row.ends === null ? null : `${row.state === 'ended' ? 'Ended' : 'Ends'} ${row.ends}`
 	].filter((fact) => fact !== null);
 
 	return (

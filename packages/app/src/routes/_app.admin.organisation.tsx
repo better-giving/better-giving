@@ -823,58 +823,52 @@ function SharingSection({
 						}
 					>
 						<legend className="adm-fieldset__legend">Share buttons, in order</legend>
-						<div className="adm-rows">
+						<div className="adm-orderlist">
 							{edit.order.map((channel, at) => {
 								const label = SHARE_CHANNEL_LABELS[channel];
 								const first = at === 0;
 								const last = at === edit.order.length - 1;
 								return (
-									<div className="adm-rows__row" key={channel}>
-										{/* the field class places the tick box in the row's first track, where the
-										    rows draw their box; the presses take the trailing one. */}
-										<div className="adm-field">
-											<label className="adm-check">
-												<input
-													type="checkbox"
-													id={sharingIds.channel(channel)}
-													name={fields.channels.name}
-													value={channel}
-													checked={edit.chosen.has(channel)}
-													onChange={(event) => {
-														const on = event.currentTarget.checked;
-														change((was) => {
-															const chosen = new Set(was.chosen);
-															if (on) chosen.add(channel);
-															else chosen.delete(channel);
-															return { chosen };
-														});
-													}}
-												/>
-												<span className="adm-check__text">{label}</span>
-											</label>
-										</div>
-										<span>
-											<Button
-												type="button"
-												variant="quiet"
-												size="sm"
-												mark="chevron-up"
-												id={sharingIds.move(channel, 'up')}
-												aria-label={`Move ${label} up`}
-												aria-disabled={first || undefined}
-												onClick={() => move(channel, 'up')}
+									<div className="adm-orderrow" key={channel}>
+										<label className="adm-check">
+											<input
+												type="checkbox"
+												id={sharingIds.channel(channel)}
+												name={fields.channels.name}
+												value={channel}
+												checked={edit.chosen.has(channel)}
+												onChange={(event) => {
+													const on = event.currentTarget.checked;
+													change((was) => {
+														const chosen = new Set(was.chosen);
+														if (on) chosen.add(channel);
+														else chosen.delete(channel);
+														return { chosen };
+													});
+												}}
 											/>
-											<Button
-												type="button"
-												variant="quiet"
-												size="sm"
-												mark="chevron-down"
-												id={sharingIds.move(channel, 'down')}
-												aria-label={`Move ${label} down`}
-												aria-disabled={last || undefined}
-												onClick={() => move(channel, 'down')}
-											/>
-										</span>
+											<span className="adm-check__text">{label}</span>
+										</label>
+										<Button
+											type="button"
+											variant="quiet"
+											size="sm"
+											mark="chevron-up"
+											id={sharingIds.move(channel, 'up')}
+											aria-label={`Move ${label} up`}
+											aria-disabled={first || undefined}
+											onClick={() => move(channel, 'up')}
+										/>
+										<Button
+											type="button"
+											variant="quiet"
+											size="sm"
+											mark="chevron-down"
+											id={sharingIds.move(channel, 'down')}
+											aria-label={`Move ${label} down`}
+											aria-disabled={last || undefined}
+											onClick={() => move(channel, 'down')}
+										/>
 									</div>
 								);
 							})}
@@ -932,19 +926,19 @@ function SharingSection({
 										value={row.url}
 										onChange={(event) => editRow(row.key, 'url', event.currentTarget.value)}
 										error={urlError === undefined ? null : <MarkedText text={urlError} />}
+										beside={
+											<Button
+												type="button"
+												variant="quiet"
+												size="sm"
+												mark="trash-2"
+												aria-label={`Remove link ${at + 1}`}
+												onClick={() => removeRow(row.key)}
+											>
+												Remove
+											</Button>
+										}
 									/>
-									<div className="adm-actions">
-										<Button
-											type="button"
-											variant="quiet"
-											size="sm"
-											mark="trash-2"
-											aria-label={`Remove link ${at + 1}`}
-											onClick={() => removeRow(row.key)}
-										>
-											Remove
-										</Button>
-									</div>
 								</div>
 							);
 						})}

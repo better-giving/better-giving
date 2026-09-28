@@ -270,6 +270,7 @@ describe('what a page carries beside its blocks', () => {
 			name: 'Coats for Kids',
 			goalMinor: 5_000_000,
 			endsAt,
+			endsZone: 'America/New_York',
 			look: { shade: 'warm', corner: 'round', brandColour: '#1f6feb' },
 			shareMessage: 'I just gave to clean water. Join me?'
 		});
@@ -283,6 +284,30 @@ describe('what a page carries beside its blocks', () => {
 		expect(parsePage('campaign', page([box], { name }))).toMatchObject({
 			ok: false,
 			path: ['name']
+		});
+	});
+
+	it('refuses an end date without the time zone it ends in', () => {
+		expect(parsePage('campaign', page([box], { endsAt }))).toEqual({
+			ok: false,
+			path: ['endsZone'],
+			message: 'an end date names the time zone its day ends in'
+		});
+	});
+
+	it('refuses a time zone without an end date', () => {
+		expect(parsePage('campaign', page([box], { endsZone: 'America/New_York' }))).toEqual({
+			ok: false,
+			path: ['endsAt'],
+			message: 'a time zone belongs to an end date, and there is none'
+		});
+	});
+
+	it('refuses a time zone the runtime does not know', () => {
+		expect(parsePage('campaign', page([box], { endsAt, endsZone: 'Mars/Olympus' }))).toEqual({
+			ok: false,
+			path: ['endsZone'],
+			message: '"Mars/Olympus" is not a time zone'
 		});
 	});
 
@@ -303,6 +328,7 @@ describe('what a page carries beside its blocks', () => {
 	it.each([
 		['goalMinor', 5_000_000, 'the Donation page has no goal; only a campaign does'],
 		['endsAt', endsAt, 'the Donation page has no end date; only a campaign does'],
+		['endsZone', 'UTC', 'the Donation page has no end date; only a campaign does'],
 		['name', 'Spring', 'the Donation page has no name; only a campaign does']
 	])('refuses %s on the Donation page', (key, value, message) => {
 		expect(parsePage('donation_page', page([box], { [key]: value }))).toEqual({

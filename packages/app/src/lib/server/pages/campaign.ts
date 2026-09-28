@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { NEW_FORM } from '../../forms/new-form';
 import { type Page as PageDocument, parsePage } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
+import { endDayOf } from '../../page/end-date';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import { freeSlug } from '../../page/slug';
 import type { Db } from '../db/client';
@@ -47,10 +48,15 @@ export async function readServedCampaign(db: Db, slug: string): Promise<ServedCa
 export type CampaignListing = Pick<Page, 'id' | 'slug' | 'state'> & {
 	name: string;
 	goalMinor: number | null;
-	endsAt: number | null;
+	/** the draft's end, and the day it closes on in the zone it was chosen in; null for no end. */
+	end: { readonly at: number; readonly day: string } | null;
 };
 
-/** every campaign, newest first. the Donation page is no campaign and is not among them. */
+/**
+ * every campaign, newest first. the Donation page is no campaign and is not among them. a draft
+ * the read rule refuses is listed without its goal and end, and logged, so one broken draft leaves
+ * every other campaign on the list and its own editor reachable.
+ */
 export async function readCampaigns(db: Db): Promise<CampaignListing[]> {
 	const rows = await db
 		.select({ id: page.id, name: page.name, slug: page.slug, state: page.state, draft: page.draft })
@@ -58,16 +64,24 @@ export async function readCampaigns(db: Db): Promise<CampaignListing[]> {
 		.where(eq(page.type, 'campaign'))
 		.orderBy(desc(page.createdAt), desc(page.id));
 	return rows.map(({ draft, name, ...row }) => {
-		const parsed = parsePage('campaign', JSON.parse(draft));
-		if (!parsed.ok)
-			throw new Error(`page ${row.id}'s stored draft fails its rule: ${parsed.message}`);
 		// unreachable: `page_name_check` refuses a campaign without a name.
 		if (name === null) throw new Error(`campaign ${row.id} has no name`);
+		// `page_draft_object_check` holds the draft to a JSON object, so it always parses as JSON.
+		const parsed = parsePage('campaign', JSON.parse(draft));
+		if (!parsed.ok) {
+			console.error(
+				`page ${row.id}'s stored draft fails the read rule at \`${parsed.path.join('.')}\`, so it is listed without its goal and end:`,
+				parsed.message
+			);
+			return { ...row, name, goalMinor: null, end: null };
+		}
+		const { goalMinor, endsAt } = parsed.page;
+		const day = endDayOf(parsed.page);
 		return {
 			...row,
 			name,
-			goalMinor: parsed.page.goalMinor ?? null,
-			endsAt: parsed.page.endsAt ?? null
+			goalMinor: goalMinor ?? null,
+			end: endsAt === undefined || day === null ? null : { at: endsAt, day }
 		};
 	});
 }

@@ -4,15 +4,20 @@ import { ROLLUPS } from '../db/accounts';
 import type { Db } from '../db/client';
 import {
 	account,
+	donation,
 	entryGroup,
+	form,
 	ledgerEntry,
 	type EntryGroup,
 	type EntrySourceType,
-	type LedgerEntry
+	type LedgerEntry,
+	payment
 } from '../db/schema';
 
 // every read of `entry_group` and `ledger_entry`, so the table objects never leave this
-// directory — the same boundary ../donations/queries.ts draws around `donation`.
+// directory — the same boundary ../donations/queries.ts draws around `donation`. one read crosses
+// that boundary from this side: `readRaisedThroughForm` names `form`, `donation` and `payment` to
+// reach a form's entries in one statement, and says why.
 //
 // no writes, and that is a rule rather than a description. ./posting.ts is the only module that
 // may INSERT into either table, and ./sole-writer.spec.ts enforces it by exempting this whole
@@ -295,6 +300,18 @@ async function withLines(
 	return headers.map((row) => ({ ...row, lines: byGroup.get(row.id) ?? [] }));
 }
 
+/**
+ * `donations(id)`: every account under `ROLLUPS.donations`, the rollup included — the accounts whose
+ * credit side is what raised means. the reads below argue why it is walked rather than listed.
+ */
+const DONATIONS_SUBTREE = sql`
+	with recursive donations(id) as (
+		select ${account.id} from ${account} where ${account.id} = ${ROLLUPS.donations.id}
+		union all
+		select ${account.id} from ${account} join donations on ${account.parentId} = donations.id
+	)
+`;
+
 /** one month's raised, as the grouped read hands it back. */
 export type RaisedMonth = {
 	/** the UTC calendar month, `2026-09` — `../months.ts` is the spelling on the other side. */
@@ -340,11 +357,7 @@ export type RaisedMonth = {
  */
 export async function readRaisedByMonth(db: Db): Promise<RaisedMonth[]> {
 	return db.all<RaisedMonth>(sql`
-		with recursive donations(id) as (
-			select ${account.id} from ${account} where ${account.id} = ${ROLLUPS.donations.id}
-			union all
-			select ${account.id} from ${account} join donations on ${account.parentId} = donations.id
-		)
+		${DONATIONS_SUBTREE}
 		select
 			strftime('%Y-%m', ${entryGroup.occurredAt} / 1000, 'unixepoch') as "month",
 			-sum(${ledgerEntry.amountMinor}) as "raisedMinor"
@@ -353,4 +366,62 @@ export async function readRaisedByMonth(db: Db): Promise<RaisedMonth[]> {
 		where ${ledgerEntry.accountId} in (select id from donations)
 		group by "month"
 	`);
+}
+
+/** what one form has raised, in the form's currency. */
+export type RaisedThroughForm = {
+	/** minor units, net of anything that has been given back. */
+	raisedMinor: number;
+	/** the form's own, ISO-4217 uppercase. */
+	currency: string;
+};
+
+/**
+ * the entry groups whose `source_id` is a `payment.id` — every grain `entry_group_source_idx` in
+ * ../db/schema.ts lists but `'donation'`, which no writer posts. a hand correction is
+ * `'adjustment'` too, keyed on an id minted for it, so it matches no payment and names no form.
+ */
+const PAYMENT_KEYED: readonly EntrySourceType[] = ['payment', 'refund', 'fee', 'adjustment'];
+
+/**
+ * what has been raised through one form: `readRaisedByMonth`'s figure — the credit side of the
+ * donations subtree, so a refund, a dispute's withdrawal and a settle-up take themselves back off it
+ * — over the entries posted for that form's gifts alone. a repeating gift's every charge is a
+ * `donation` row of its own on the commitment's form, so each counts here as it settles.
+ *
+ * a gift reaches the books when its money settles (../donations/record.ts), so a gift still pending
+ * has no entry and adds nothing. only entries in the form's own currency are summed, since two
+ * currencies do not add.
+ *
+ * one statement from `form` through `donation` and `payment` to the entries, which is why
+ * `form`, `donation` and `payment` are named here: the gifts of a form are unbounded, and reading
+ * their payment ids first would bind one parameter per payment against D1's cap of 100.
+ * `donation_form_id_idx`, `payment_donation_id_idx`, `entry_group_source_idx` (probed once per
+ * `PAYMENT_KEYED` type) and `ledger_entry_entry_group_id_idx` carry each join.
+ *
+ * null for a form no row carries.
+ */
+export async function readRaisedThroughForm(
+	db: Db,
+	formId: string
+): Promise<RaisedThroughForm | null> {
+	const [row] = await db.all<RaisedThroughForm>(sql`
+		${DONATIONS_SUBTREE}
+		select
+			${form.currency} as "currency",
+			coalesce(-sum(${ledgerEntry.amountMinor}), 0) as "raisedMinor"
+		from ${form}
+		left join ${donation} on ${donation.formId} = ${form.id}
+		left join ${payment} on ${payment.donationId} = ${donation.id}
+		left join ${entryGroup}
+			on ${entryGroup.sourceId} = ${payment.id}
+			and ${inArray(entryGroup.sourceType, PAYMENT_KEYED)}
+			and ${entryGroup.currency} = ${form.currency}
+		left join ${ledgerEntry}
+			on ${ledgerEntry.entryGroupId} = ${entryGroup.id}
+			and ${ledgerEntry.accountId} in (select id from donations)
+		where ${form.id} = ${formId}
+		group by ${form.id}
+	`);
+	return row ?? null;
 }

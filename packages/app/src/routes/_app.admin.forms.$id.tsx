@@ -685,8 +685,8 @@ export async function action(args: Route.ActionArgs) {
 			// select does not offer Live while a blocker stands, but a filtered `<option>` list is markup
 			// and markup is not what stops a POST.
 			//
-			// a form on no site is not the second thing. it loads on the donation page this deployment
-			// serves on its own address whatever is ticked, so an empty list publishes.
+			// a form on no site is not the second thing. a form is made ahead of the site it goes on, so an
+			// empty list publishes and the form serves wherever a site is ticked later.
 			let profile: Awaited<ReturnType<typeof readOrgProfile>>;
 			try {
 				profile = await readOrgProfile(db);

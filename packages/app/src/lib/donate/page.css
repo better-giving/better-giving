@@ -1120,7 +1120,8 @@ body {
 	color: var(--_p);
 }
 
-.page-choose[data-variant='cards'] .page-choose-option:hover:not(:has(:checked)) {
+.page-choose[data-variant='cards']
+	.page-choose-option:hover:not(:has(:checked, [aria-disabled='true'])) {
 	border-color: var(--_n11);
 }
 
@@ -1181,4 +1182,27 @@ body {
 
 .page-choose[data-variant='list'] .page-choose-option:has(:checked) .page-choose-mark::before {
 	border: calc(var(--_box) * 0.3125) solid var(--_p);
+}
+
+/* locked, from the press on Donate until the donor is back on a step they edit (./card.tsx). the
+   pick standing keeps its mark, and every other option is drawn the way the form draws a control a
+   donor cannot reach yet: its boundary in `--_edge-unavailable`, dashed, as `.step-mark` in
+   packages/form/src/styles/parts.css is — the card's, and the list's radio ring — and its name in
+   the description's quiet ink. the dash is a pattern rather than a colour, so it still says so under
+   forced-colors. each radio is `aria-disabled` and still focusable, so the ring a focus draws stays;
+   what goes is the pointer and the hover step, because no press is answered. */
+.page-choose-option:has([aria-disabled='true']) {
+	cursor: default;
+}
+
+.page-choose-option:has([aria-disabled='true']:not(:checked)) .page-choose-name {
+	color: var(--_n10);
+}
+
+.page-choose[data-variant='cards'] .page-choose-option:has([aria-disabled='true']:not(:checked)),
+.page-choose[data-variant='list']
+	.page-choose-option:has([aria-disabled='true']:not(:checked))
+	.page-choose-mark::before {
+	border-color: var(--_edge-unavailable);
+	border-style: dashed;
 }
