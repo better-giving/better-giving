@@ -4968,6 +4968,495 @@
 	.adm-morelist__item[aria-current] > .adm-mark {
 		color: inherit;
 	}
+
+	/* ---------- the page editor ---------------------------------------------------------------
+
+	   a route of its own outside the rail, for the Donation page and a campaign alike: the publish
+	   bar across the top, the page's own preview filling everything under it, and the two floating
+	   presses over the preview's foot. what either press opens is `.adm-sheet` above. every part in
+	   this section is drawn by packages/app/src/lib/admin/editor/.
+
+	   space tiers, inside out: a picture's drawing space-2, a control group space-4, the bar's two
+	   halves space-6; in a sheet a part's heading to its rows space-5 and part to part the body's
+	   space-9. */
+
+	.adm-editor {
+		position: fixed;
+		inset: 0;
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+		background: var(--admin-page);
+	}
+
+	.adm-editor__preview {
+		position: relative;
+		min-block-size: 0;
+		background: var(--admin-surface-fill);
+	}
+
+	/* the page's own document, filling the region and scrolling itself. */
+	.adm-editor__frame {
+		display: block;
+		inline-size: 100%;
+		block-size: 100%;
+		border: 0;
+	}
+
+	/* the name and where the page stands at the start, its presses at the end, and the report of the
+	   last press on a row of its own under them. on a phone the presses wrap under the name. */
+	.adm-publishbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		column-gap: var(--admin-space-6);
+		row-gap: var(--admin-space-3);
+		padding: var(--admin-space-3) var(--admin-space-5);
+		background: var(--admin-surface);
+		border-block-end: var(--admin-hairline);
+	}
+
+	.adm-publishbar__who {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-4);
+		/* raw-length-ok: the wrap point of a flex item, a track bound and not a measure */
+		flex: 1 1 12rem;
+		min-inline-size: 0;
+	}
+
+	.adm-publishbar__name {
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
+		line-height: var(--admin-subhead-lh);
+	}
+
+	/* the state word never wraps; the name gives way first. */
+	.adm-publishbar__who > .adm-state {
+		flex: none;
+		white-space: nowrap;
+	}
+
+	.adm-publishbar__acts {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--admin-space-4);
+		margin-inline-start: auto;
+	}
+
+	.adm-publishbar__quiet {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--admin-space-2);
+	}
+
+	/* Published and the Undo beside it, one pair. */
+	.adm-publishbar__done {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--admin-space-2);
+	}
+
+	/* the refusal a press came back with, on its own row under the presses. the region is on the
+	   page before it has anything to say, so it is announced when it does; while it is empty the
+	   bar's row gap above it is taken back, and it holds no room. */
+	.adm-publishbar__report {
+		flex-basis: 100%;
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.adm-publishbar__report:empty {
+		margin-block-start: calc(-1 * var(--admin-space-3));
+	}
+
+	/* the refusal an editor confirm's act came back with, last in the card's body. it is there before
+	   it speaks, and while empty the body's gap above it is taken back, so it holds no room. */
+	.adm-dialog__refusal:empty {
+		margin-block-start: calc(-1 * var(--admin-space-5));
+	}
+
+	/* a name edited where it stands: the words at rest, and a box only once it is pointed at or holds
+	   the caret. the ring is ./base.css's own, on the box. */
+	.adm-inplace {
+		flex: 0 1 auto;
+		min-inline-size: 0;
+		max-inline-size: 100%;
+		field-sizing: content;
+		padding: var(--admin-space-1) var(--admin-space-3);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
+		line-height: var(--admin-subhead-lh);
+		color: var(--admin-ink);
+		background: transparent;
+		border: var(--admin-border-width) solid transparent;
+		border-radius: var(--admin-radius);
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-inplace:hover,
+	.adm-inplace.is-hover,
+	.adm-inplace:focus-visible,
+	.adm-inplace.is-focus {
+		background: var(--admin-field-bg);
+		border-color: var(--admin-field-border-hover);
+	}
+
+	.adm-inplace[aria-invalid='true'] {
+		border-color: var(--admin-field-border-invalid);
+	}
+
+	/* the two floating presses, bottom right at both widths, over the preview. */
+	.adm-fabs {
+		position: fixed;
+		inset-inline-end: var(--admin-space-6);
+		/* raw-length-ok: 0px is env()'s fallback inside calc(), where a unitless 0 is invalid */
+		inset-block-end: calc(var(--admin-space-6) + env(safe-area-inset-bottom, 0px));
+		display: flex;
+		gap: var(--admin-space-4);
+	}
+
+	.adm-fabs > .adm-btn {
+		min-block-size: var(--admin-touch-min);
+		padding-inline: var(--admin-space-6);
+		box-shadow: var(--admin-elevation-float);
+	}
+
+	/* the float stays under the ring: this layer outranks ./base.css's, so the ring is restated
+	   over the shadow rather than left to it. */
+	.adm-fabs > .adm-btn:focus-visible,
+	.adm-fabs > .adm-btn.is-focus {
+		box-shadow:
+			0 0 0 var(--admin-focus-width) var(--admin-focus-ring),
+			var(--admin-elevation-float);
+	}
+
+	/* the form a sheet's Done submits, round the sheet's boxes. it draws no box of its own, so the
+	   boxes inside it are spaced as the body's own parts are. */
+	.adm-sheet__form {
+		display: contents;
+	}
+
+	/* a division of a sheet: its heading sits closer to its own rows than to the division above. */
+	.adm-sheetpart {
+		display: grid;
+		gap: var(--admin-space-5);
+	}
+
+	.adm-sheetpart > h3 {
+		font-size: var(--admin-subhead-size);
+		font-weight: var(--admin-subhead-weight);
+		line-height: var(--admin-subhead-lh);
+	}
+
+	/* a row that opens a sheet of its own: the name, what it holds, and the caret. */
+	.adm-openrow-list {
+		display: grid;
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-openrow {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-5);
+		inline-size: 100%;
+		min-block-size: var(--admin-touch-min);
+		padding-block: var(--admin-space-4);
+		font-size: var(--admin-body-size);
+		text-align: start;
+		color: var(--admin-ink);
+		background: transparent;
+		border: 0;
+		border-block-end: var(--admin-rule);
+		cursor: pointer;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-openrow:hover,
+	.adm-openrow.is-hover {
+		background: var(--admin-control-bg-hover);
+	}
+
+	.adm-openrow__label {
+		flex: none;
+		font-weight: var(--admin-label-weight);
+	}
+
+	.adm-openrow__value {
+		flex: 1;
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		text-align: end;
+		color: var(--admin-ink-2);
+	}
+
+	.adm-openrow__value--unset {
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-openrow > .adm-mark {
+		flex: none;
+		color: var(--admin-ink-muted);
+	}
+
+	/* a box with its unit or its address in front stated on the box itself, as `.adm-coinbox` is:
+	   the box is the field, and the ring and the refusal are the box's rather than the input's. */
+	.adm-field > .adm-affixed {
+		grid-row: 3;
+	}
+
+	.adm-affixed {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-3);
+		inline-size: 100%;
+		min-block-size: var(--admin-field-height);
+		padding: var(--admin-space-3) var(--admin-space-4);
+		font-size: var(--admin-field-size);
+		color: var(--admin-ink);
+		background: var(--admin-field-bg);
+		border: var(--admin-border-width) solid var(--admin-field-border);
+		border-radius: var(--admin-radius);
+		cursor: text;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-affixed:hover,
+	.adm-affixed.is-hover {
+		border-color: var(--admin-field-border-hover);
+	}
+
+	.adm-affixed:has(input:focus-visible),
+	.adm-affixed:has(input.is-focus) {
+		outline: var(--admin-focus-width) solid transparent;
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	.adm-affixed:has(input[aria-invalid='true']) {
+		border-color: var(--admin-field-border-invalid);
+	}
+
+	.adm-affixed__unit {
+		flex: none;
+		color: var(--admin-ink-muted);
+	}
+
+	.adm-affixed__input {
+		flex: 1;
+		min-inline-size: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+	}
+
+	.adm-affixed__input:focus-visible,
+	.adm-affixed__input.is-focus {
+		outline: none;
+		box-shadow: none;
+	}
+
+	/* layout and variant pictures: the drawing is the control. a picked one is ringed in the ink
+	   outside its face, so the picture itself is never recoloured; the radio is out of sight
+	   (`.adm-vh`) and the keyboard's ring lands on the face. */
+	.adm-pictures {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: var(--admin-space-6) var(--admin-space-5);
+	}
+
+	.adm-picture {
+		display: grid;
+		align-content: start;
+		gap: var(--admin-space-3);
+		font-size: var(--admin-label-size);
+		font-weight: var(--admin-label-weight);
+		color: var(--admin-ink);
+		cursor: pointer;
+	}
+
+	.adm-picture__art {
+		display: flex;
+		flex-direction: column;
+		gap: var(--admin-space-2);
+		aspect-ratio: 4 / 3;
+		padding: var(--admin-space-3);
+		overflow: hidden;
+		background: var(--admin-surface);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-picture:hover > .adm-picture__art,
+	.adm-picture.is-hover > .adm-picture__art {
+		border-color: var(--admin-field-border-hover);
+	}
+
+	.adm-picture:has(:checked) > .adm-picture__art {
+		outline: var(--admin-border-width-strong) solid var(--admin-ink);
+		outline-offset: var(--admin-border-width-strong);
+	}
+
+	.adm-picture:has(:focus-visible) > .adm-picture__art,
+	.adm-picture:has(.is-focus) > .adm-picture__art {
+		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
+	}
+
+	/* the drawing's parts: a line of words, a photo, a band of ground, the donation box in the
+	   accent's tint, and the rows and columns they stand in. */
+	.adm-picture__line {
+		flex: none;
+		block-size: var(--admin-space-2);
+		background: var(--admin-divider);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-picture__line--head {
+		block-size: var(--admin-space-4);
+	}
+
+	.adm-picture__line--short {
+		/* raw-length-ok: a line's share of its row in a drawing, a shape and not a measure */
+		inline-size: 60%;
+	}
+
+	.adm-picture__line--centre {
+		align-self: center;
+	}
+
+	.adm-picture__fill {
+		display: flex;
+		flex: 1 1 0;
+		flex-direction: column;
+		justify-content: flex-end;
+		gap: var(--admin-space-2);
+		min-block-size: var(--admin-space-4);
+		padding: var(--admin-space-2);
+		background: var(--admin-surface-fill);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-picture__band {
+		display: flex;
+		flex: 1 1 0;
+		flex-direction: column;
+		justify-content: center;
+		gap: var(--admin-space-2);
+		padding: var(--admin-space-2);
+		background: var(--admin-surface-sunken);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-picture__box {
+		min-block-size: var(--admin-space-6);
+		background: var(--admin-accent-tint);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-picture__box--lifted {
+		margin-block-start: calc(-1 * var(--admin-space-6));
+	}
+
+	.adm-picture__cols {
+		display: grid;
+		flex: 1 1 0;
+		grid-template-columns: 3fr 2fr;
+		gap: var(--admin-space-2);
+		min-block-size: 0;
+	}
+
+	.adm-picture__cols--even {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.adm-picture__stack {
+		display: flex;
+		flex-direction: column;
+		gap: var(--admin-space-2);
+		min-inline-size: 0;
+	}
+
+	.adm-picture__narrow {
+		display: flex;
+		flex: 1 1 0;
+		flex-direction: column;
+		align-self: center;
+		gap: var(--admin-space-2);
+		/* raw-length-ok: a narrow column's share of the drawing, a shape and not a measure */
+		inline-size: 60%;
+	}
+
+	.adm-picture__card {
+		display: flex;
+		flex: 1 1 0;
+		flex-direction: column;
+		gap: var(--admin-space-2);
+		padding: var(--admin-space-2);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-picture__tiles {
+		display: grid;
+		flex: 1 1 0;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: var(--admin-space-2);
+	}
+
+	.adm-picture__row {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-2);
+		padding-block-end: var(--admin-space-2);
+		border-block-end: var(--admin-rule);
+	}
+
+	.adm-picture__row > .adm-picture__line {
+		flex: 1;
+	}
+
+	.adm-picture__dot {
+		flex: none;
+		inline-size: var(--admin-space-4);
+		block-size: var(--admin-space-4);
+		background: var(--admin-divider);
+		border-radius: var(--admin-radius-pill);
+	}
+
+	.adm-picture__pills {
+		display: flex;
+		gap: var(--admin-space-2);
+	}
+
+	.adm-picture__pills > .adm-picture__line {
+		flex: 1;
+		block-size: var(--admin-space-4);
+	}
+
+	.adm-picture__track {
+		display: flex;
+		flex: none;
+		block-size: var(--admin-space-3);
+		overflow: hidden;
+		background: var(--admin-surface-fill);
+		border-radius: var(--admin-radius-pill);
+	}
+
+	.adm-picture__track > .adm-picture__box {
+		min-block-size: 0;
+		/* raw-length-ok: how far the pictured goal is met, a shape and not a measure */
+		inline-size: 60%;
+		border-radius: var(--admin-radius-pill);
+	}
 }
 
 @layer layout {

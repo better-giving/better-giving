@@ -952,6 +952,10 @@
 		/* raw-colour-ok: paired with `--admin-scrim` and drawn in the same channels, for the
 		   same reason it is the one alpha here. */
 		--admin-elevation-dialog: 0 1.25rem 3rem oklch(0.27 0.013 250 / 0.28);
+		/* a control floating over content rather than in the flow — the editor's Chat and Settings
+		   presses over the full-bleed preview. the one shadow under a second name, so the rule above
+		   still holds: a role that floats reads it, and none draws one of its own. */
+		--admin-elevation-float: var(--admin-elevation-dialog);
 
 		/* ---- control metrics -------------------------------------------------------------
 
