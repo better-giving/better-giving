@@ -311,11 +311,7 @@ describe('a picture', () => {
 
 		expect(refusal(variant)).toMatchObject({
 			status: 400,
-			error: {
-				variant: [
-					expect.stringContaining('"zigzag" is not a variant of story; it is plain, lede or split')
-				]
-			}
+			error: { variant: ['"zigzag" is not a variant of story; it is plain, lede or split'] }
 		});
 		expect(refusal(layout)).toMatchObject({
 			status: 400,

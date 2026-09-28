@@ -159,11 +159,17 @@ const ONE_WAY = 'the donation box has one way to draw it and takes no variant';
 
 /**
  * a picture's name refused by `parsePage` goes under the pictures' own name, `box`: the page's
- * `layout`, or a block's `variant`. the message is the catalog's, naming the block and the name.
+ * `layout`, or a block's `variant`.
  */
 function pickedUnder(box: 'layout' | 'variant') {
 	return (path: readonly (string | number)[]) => (path.at(-1) === box ? box : null);
 }
+
+/**
+ * `parsePage` opens a refusal inside a block by naming the block — `block 3 (id "story"): ` — which
+ * a sentence under the block's own sheet does not need. the name is the rest, and says the value.
+ */
+const BLOCK_NAMED = /^block \d+(?: \(id "[^"]*"\))?: /;
 
 /**
  * the questions as their rows posted them. a row with no question and no words in its answer is
@@ -390,7 +396,7 @@ async function editDraft(
 			refusal:
 				box === null
 					? { formErrors: [checked.message] }
-					: { fieldErrors: { [box]: [checked.message] } }
+					: { fieldErrors: { [box]: [checked.message.replace(BLOCK_NAMED, '')] } }
 		};
 	}
 	const written = await db

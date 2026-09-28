@@ -9,7 +9,8 @@ import { BlockSheet } from './block-sheet';
 import { useFocusOnRefusal } from './done-sheet';
 
 // a block's sheet as both editors open it — from a click on the block in the preview and from its
-// row in Settings' block list alike — and the layout pictures' pick, each posted through a fetcher
+// row in Settings' block list alike, the donation box's being Donation settings — and the layout
+// pictures' pick, each posted through a fetcher
 // to the editor route's action (`saveBlockForm` in $lib/server/pages/blocks.ts), so the editor does
 // not navigate. a landed write moves the page's version, which reloads the preview.
 //
@@ -238,6 +239,14 @@ function boxNames(text: BlockText): string[] {
 
 function boxId(block: string, box: string): string {
 	return `block-${block}-${box.replace(/[[\]]/g, '-')}`;
+}
+
+/**
+ * the donation box has no sheet of its own: what it draws is the page's donation settings, so a
+ * click on it, or its row in the block list, opens the Donation settings sheet instead.
+ */
+export function isDonationBox(blocks: readonly EditorBlock[], id: string): boolean {
+	return blocks.some((block) => block.id === id && block.type === 'donation-box');
 }
 
 /**
