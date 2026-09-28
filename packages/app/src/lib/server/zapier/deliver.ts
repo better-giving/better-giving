@@ -52,7 +52,7 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 // ./subscriptions.ts).
 //
 // a row still owed {@link GIVE_UP_AFTER_MS} after it was queued is `failed` at the next run's
-// start, without another post; the console counts those and nothing re-queues one. one hook
+// start, without another post; ./report.ts counts those and nothing re-queues one. one hook
 // failing never stops the rest: every row's outcome is its own write.
 //
 // **a `gift_refunded` row is sent only while its refund still stands**, read at send as well as at

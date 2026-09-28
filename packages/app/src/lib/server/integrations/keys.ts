@@ -1,14 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { type ApiKey, type ApiKeyKind, apiKey } from '../db/schema';
+import { type ApiKey, type ApiKeyKind, apiKey, type NewApiKey } from '../db/schema';
 
 // the keys a system outside this deployment presents to it: minted here, and looked up here by
 // the hash of what a request presents.
 //
-// **the plaintext key exists only in `mintApiKey`'s return value.** no column holds it
-// (`api_key`'s header in ../db/schema.ts), nothing here logs it, and a caller that shows it does so
-// once. a lost key is revoked and a new one minted, never recovered.
+// **the plaintext key exists only in `mintApiKey`'s and `newApiKeyRow`'s return values.** no
+// column holds it (`api_key`'s header in ../db/schema.ts), nothing here logs it, and a caller that
+// shows it does so once. a lost key is revoked and a new one minted, never recovered.
 //
 // the stored hash is plain SHA-256, unsalted and unstretched: the key is 256 bits from a CSPRNG.
 
@@ -21,20 +21,45 @@ export type MintedApiKey = {
 	readonly createdAt: Date;
 };
 
-/** a new key of `kind`, named `name`, stored as its hash. */
+/** a new key of `kind`, in that kind's shape, named `name`, stored as its hash. */
 export async function mintApiKey(
 	db: Db,
 	input: { readonly name: string; readonly kind: ApiKeyKind }
 ): Promise<MintedApiKey> {
-	const key = newKey();
-	const prefix = key.slice(0, 8);
-	const lastFour = key.slice(-4);
-	const row = await db
+	const { key, row } = newApiKeyRow(input);
+	const stored = await db
 		.insert(apiKey)
-		.values({ name: input.name, kind: input.kind, keyHash: hashOf(key), prefix, lastFour })
+		.values(row)
 		.returning({ id: apiKey.id, createdAt: apiKey.createdAt })
 		.get();
-	return { id: row.id, key, prefix, lastFour, createdAt: row.createdAt };
+	return {
+		id: stored.id,
+		key,
+		prefix: row.prefix,
+		lastFour: row.lastFour,
+		createdAt: stored.createdAt
+	};
+}
+
+/**
+ * a new key of `kind` and the row that stores it, unwritten: `mintApiKey`'s, for a caller whose
+ * insert must land in a `batch()` of its own. `key` is the plaintext, the one place it exists.
+ */
+export function newApiKeyRow(input: { readonly name: string; readonly kind: ApiKeyKind }): {
+	readonly key: string;
+	readonly row: NewApiKey;
+} {
+	const key = NEW_KEY[input.kind]();
+	return {
+		key,
+		row: {
+			name: input.name,
+			kind: input.kind,
+			keyHash: hashOf(key),
+			prefix: key.slice(0, 8),
+			lastFour: key.slice(-4)
+		}
+	};
 }
 
 /**
@@ -53,14 +78,17 @@ export async function findKeyByPresented(db: Db, presented: string): Promise<Api
 }
 
 /**
- * stops the key `id` admitting anything, and answers when; `null` when there is no such key or it
- * was already revoked, whose first revocation time stands — it is the one a refusal names.
+ * stops the `api` key `id` admitting anything, and answers when; `null` when there is no such key
+ * or it was already revoked, whose first revocation time stands — it is the one a refusal names.
+ *
+ * a `zapier` key is `null` here too: it is revoked only by `replaceZapierKey` in ../zapier/key.ts,
+ * in the batch that ends every Zap subscribed on it.
  */
 export async function revokeApiKey(db: Db, id: string): Promise<Date | null> {
 	const [row] = await db
 		.update(apiKey)
 		.set({ revokedAt: new Date() })
-		.where(and(eq(apiKey.id, id), isNull(apiKey.revokedAt)))
+		.where(and(eq(apiKey.id, id), eq(apiKey.kind, 'api'), isNull(apiKey.revokedAt)))
 		.returning({ revokedAt: apiKey.revokedAt });
 	return row?.revokedAt ?? null;
 }
@@ -142,15 +170,23 @@ const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 /** 62^43 exceeds 2^256, so 43 characters hold any 32 bytes. */
 const SECRET_LENGTH = 43;
 
-/** every key `mintApiKey` makes, and nothing else: `bgk_` and 43 base62 characters. */
+/** every `api` key `mintApiKey` makes, and nothing else: `bgk_` and 43 base62 characters. */
 export const API_KEY_SHAPE = /^bgk_[0-9A-Za-z]{43}$/;
+
+/**
+ * every `zapier` key, and nothing else: `bgz_` and 43 base64url characters, the value
+ * packages/zapier's authentication presents as its bearer.
+ */
+export const ZAPIER_KEY_SHAPE = /^bgz_[A-Za-z0-9_-]{43}$/;
+
+const NEW_KEY: Record<ApiKeyKind, () => string> = { api: newApiKey, zapier: newZapierKey };
 
 /**
  * `bgk_` and 32 random bytes in base62, left-padded to a fixed 43 characters: 256 bits, a prefix a
  * secret scanner can find, and no `_` or `-` in the secret for a split or a double-click to break
  * on.
  */
-function newKey(): string {
+function newApiKey(): string {
 	let n = BigInt(`0x${randomBytes(32).toString('hex')}`);
 	let secret = '';
 	for (let i = 0; i < SECRET_LENGTH; i++) {
@@ -158,6 +194,11 @@ function newKey(): string {
 		n /= 62n;
 	}
 	return `bgk_${secret}`;
+}
+
+/** `bgz_` and 32 random bytes as unpadded base64url: 256 bits in 43 characters. */
+function newZapierKey(): string {
+	return `bgz_${randomBytes(32).toString('base64url')}`;
 }
 
 /** the lowercase hex SHA-256 of the whole key string, as `api_key.key_hash` holds it. */

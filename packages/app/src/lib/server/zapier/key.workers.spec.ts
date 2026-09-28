@@ -7,8 +7,8 @@ import { contact, donation, payment } from '../db/schema';
 import { makeZapierKey, readZapierKey, replaceZapierKey, verifyZapierKey } from './key';
 import { subscribe, unsubscribe } from './subscriptions';
 
-// the deployment's Zapier key, against a real D1: the singleton and hash checks are the
-// database's, so what is stored is read back from the table rather than from the module.
+// the deployment's Zapier key, against a real D1: one live key and the hash lookup are the
+// database's, so what is stored is read back from `api_key` rather than from the module.
 
 let db: Db;
 
@@ -19,27 +19,42 @@ beforeAll(() => {
 beforeEach(async () => {
 	await env.DB.prepare('delete from zapier_delivery').run();
 	await env.DB.prepare('delete from zapier_subscription').run();
-	await env.DB.prepare('delete from zapier_key').run();
+	await env.DB.prepare('delete from api_key').run();
 });
 
 async function storedKeys() {
-	const { results } = await env.DB.prepare('select key, key_hash from zapier_key').all<{
-		key: string;
-		key_hash: string;
-	}>();
+	const { results } = await env.DB.prepare(
+		`select kind, key_hash, prefix, last_four, revoked_at is not null as revoked
+		 from api_key order by revoked_at is null, created_at`
+	).all<Record<string, unknown>>();
 	return results;
+}
+
+/** every value `api_key` holds, as text, so a key in any column is caught. */
+async function everyStoredValue(): Promise<string[]> {
+	const { results } = await env.DB.prepare('select * from api_key').all();
+	return results.flatMap((row) => Object.values(row).map(String));
 }
 
 /** the digest worked out apart from ./key.ts, so a hash that drifts from its key is caught. */
 const sha256Hex = (key: string) => createHash('sha256').update(key).digest('hex');
 
 describe('making the key', () => {
-	it('stores the key it hands over beside the hash a request is checked against', async () => {
+	it('stores the hash of the key it hands over as a zapier key, and the key nowhere', async () => {
 		const made = await makeZapierKey(db);
 		if (!made.ok) throw new Error('a first make was refused');
 		expect(made.key).toMatch(/^bgz_[A-Za-z0-9_-]{43}$/);
 
-		expect(await storedKeys()).toEqual([{ key: made.key, key_hash: sha256Hex(made.key) }]);
+		expect(await storedKeys()).toEqual([
+			{
+				kind: 'zapier',
+				key_hash: sha256Hex(made.key),
+				prefix: made.key.slice(0, 8),
+				last_four: made.key.slice(-4),
+				revoked: 0
+			}
+		]);
+		expect((await everyStoredValue()).filter((v) => v.includes(made.key.slice(4)))).toEqual([]);
 	});
 
 	it('refuses a second make and keeps the first key working', async () => {
@@ -69,16 +84,16 @@ describe('checking a presented key', () => {
 		expect(await verifyZapierKey(db, bearer(`bgz_${'A'.repeat(43)}`))).toBeNull();
 	});
 
-	it('admits by the stored hash, never by the stored key', async () => {
-		const [shown, hashed] = [`bgz_${'A'.repeat(43)}`, `bgz_${'B'.repeat(43)}`];
+	it('admits a key made before 0017, by the hash that migration carried into api_key', async () => {
+		const madeBefore = `bgz_${'C'.repeat(43)}`;
 		await env.DB.prepare(
-			`insert into zapier_key (id, key, key_hash, created_at, updated_at) values ('zapier', ?, ?, 0, 0)`
+			`insert into api_key (id, name, kind, key_hash, prefix, last_four, created_at)
+			 values ('0192f0c4-7d2a-7000-8000-000000000000', 'Zapier', 'zapier', ?, 'bgz_CCCC', 'CCCC', 0)`
 		)
-			.bind(shown, sha256Hex(hashed))
+			.bind(sha256Hex(madeBefore))
 			.run();
 
-		expect(await verifyZapierKey(db, bearer(shown))).toBeNull();
-		expect(await verifyZapierKey(db, bearer(hashed))).toBe(sha256Hex(hashed));
+		expect(await verifyZapierKey(db, bearer(madeBefore))).toBe(sha256Hex(madeBefore));
 	});
 
 	it('reads the scheme in any case', async () => {
@@ -123,11 +138,16 @@ async function owe(subscriptionId: string): Promise<void> {
 }
 
 describe('reading the key', () => {
-	it('gives the current key and when it was made, and nothing before one is', async () => {
+	it('gives the current key\u2019s head, tail and make date, and nothing before one is', async () => {
 		expect(await readZapierKey(db)).toBeNull();
 		const made = await makeZapierKey(db);
 		if (!made.ok) throw new Error('a first make was refused');
-		expect(await readZapierKey(db)).toEqual({ madeAt: made.madeAt, key: made.key });
+
+		expect(await readZapierKey(db)).toStrictEqual({
+			prefix: made.key.slice(0, 8),
+			lastFour: made.key.slice(-4),
+			madeAt: made.madeAt
+		});
 	});
 });
 
@@ -144,13 +164,22 @@ describe('replacing the key', () => {
 		expect(await verifyZapierKey(db, bearer(replaced.key))).not.toBeNull();
 	});
 
-	it('stores the new key and its hash in place of the old pair', async () => {
-		await makeZapierKey(db);
+	it('revokes the old key\u2019s row beside the new one\u2019s, and stores neither key', async () => {
+		const old = await makeZapierKey(db);
+		if (!old.ok) throw new Error('a first make was refused');
 
 		const replaced = await replaceZapierKey(db, zapier);
 		if (!replaced.ok) throw new Error('the replace was refused');
 
-		expect(await storedKeys()).toEqual([{ key: replaced.key, key_hash: sha256Hex(replaced.key) }]);
+		expect(await storedKeys()).toEqual([
+			expect.objectContaining({ key_hash: sha256Hex(old.key), revoked: 1 }),
+			expect.objectContaining({ key_hash: sha256Hex(replaced.key), revoked: 0 })
+		]);
+		const secrets = [old.key, replaced.key].map((key) => key.slice(4));
+		expect((await everyStoredValue()).filter((v) => secrets.some((k) => v.includes(k)))).toEqual(
+			[]
+		);
+		expect(await readZapierKey(db)).toMatchObject({ lastFour: replaced.key.slice(-4) });
 	});
 
 	it('ends every open Zap as key_replaced and drops what they were still owed', async () => {
@@ -297,7 +326,7 @@ describe('replacing the key', () => {
 		expect(most).toBe(6);
 	});
 
-	it('answers inside the ten seconds the console waits on a press, however many hooks stay silent', async () => {
+	it('answers a replace press within the pause pass, however many hooks stay silent', async () => {
 		const keyHash = await currentKeyHash();
 		for (let hook = 0; hook < 40; hook += 1)
 			await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}${hook}/` }, keyHash);
@@ -305,8 +334,8 @@ describe('replacing the key', () => {
 
 		const replaced = await replaceZapierKey(db, async (_, init) => untilAborted(init?.signal));
 
-		// packages/console/internal/cf/client.go's `ReadTimeout`, which the press is sent under.
-		expect(Date.now() - started).toBeLessThan(10_000);
+		// the pass's four seconds (`PAUSE_PASS_MS` in ./subscriptions.ts), and room for the batch.
+		expect(Date.now() - started).toBeLessThan(6_000);
 		expect(replaced).toMatchObject({ ok: true, disconnected: 40, paused: 0, notPaused: 40 });
 	}, 30_000);
 

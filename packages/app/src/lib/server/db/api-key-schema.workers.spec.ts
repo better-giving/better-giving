@@ -25,24 +25,34 @@ type Row = {
 	kind?: string;
 	keyHash?: string;
 	prefix?: string;
+	lastFour?: string;
 	revokedAt?: number | null;
 	archivedAt?: number | null;
 };
 
-const insertKey = (row: Row) =>
-	env.DB.prepare(
+/** a prefix and tail each kind's own mint could have cut. */
+const SHAPED = {
+	api: { prefix: 'bgk_7Qm2', lastFour: 'wxyz' },
+	zapier: { prefix: 'bgz_7Q-_', lastFour: 'w-y_' }
+} as const;
+
+const insertKey = (row: Row) => {
+	const kind = (row.kind ?? 'api') as keyof typeof SHAPED;
+	return env.DB.prepare(
 		`insert into api_key (id, name, kind, key_hash, prefix, last_four, created_at, revoked_at, archived_at)
-		 values (?, 'a key', ?, ?, ?, 'wxyz', 0, ?, ?)`
+		 values (?, 'a key', ?, ?, ?, ?, 0, ?, ?)`
 	)
 		.bind(
 			row.id,
-			row.kind ?? 'api',
+			kind,
 			row.keyHash ?? row.id.padEnd(64, '0'),
-			row.prefix ?? 'bgk_7Qm2',
+			row.prefix ?? SHAPED[kind].prefix,
+			row.lastFour ?? SHAPED[kind].lastFour,
 			row.revokedAt ?? null,
 			row.archivedAt ?? null
 		)
 		.run();
+};
 
 beforeEach(async () => {
 	await env.DB.prepare('delete from api_key').run();
@@ -82,6 +92,70 @@ describe('the key is never stored, whole or in pieces', () => {
 		const message = await rejection(() => insertKey({ id: 'a', keyHash: `bgk_${'A'.repeat(43)}` }));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('api_key_key_hash_check');
+	});
+});
+
+describe('the hash is 64 lowercase hex digits and nothing else', () => {
+	it('takes 64 lowercase hex digits', async () => {
+		const hash = '0123456789abcdef'.repeat(4);
+		await insertKey({ id: 'a', keyHash: hash });
+		const row = await env.DB.prepare(`select key_hash as h from api_key`).first();
+		expect(row).toEqual({ h: hash });
+	});
+
+	// uppercase hex is the right digest in a case a comparison against the lowercase one misses;
+	// 63 and 65 are a digest cut or padded by one.
+	it.each([
+		['uppercase hex', 'A'.repeat(64)],
+		['63 digits', 'a'.repeat(63)],
+		['65 digits', 'a'.repeat(65)],
+		['empty', '']
+	])('refuses %s', async (_, keyHash) => {
+		const message = await rejection(() => insertKey({ id: 'a', keyHash }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('api_key_key_hash_check');
+	});
+});
+
+describe("each kind's prefix and tail are cut from that kind's own shape", () => {
+	it('takes a zapier key cut from bgz_ and base64url', async () => {
+		await insertKey({ id: 'a', kind: 'zapier' });
+		const row = await env.DB.prepare(`select prefix, last_four from api_key`).first();
+		expect(row).toEqual({ prefix: 'bgz_7Q-_', last_four: 'w-y_' });
+	});
+
+	it.each([
+		[
+			'an api prefix on a zapier key',
+			{ kind: 'zapier', prefix: 'bgk_7Qm2' },
+			'api_key_prefix_check'
+		],
+		['a zapier prefix on an api key', { kind: 'api', prefix: 'bgz_7Qm2' }, 'api_key_prefix_check'],
+		[
+			'a base64url prefix on an api key',
+			{ kind: 'api', prefix: 'bgk_7Q-_' },
+			'api_key_prefix_check'
+		],
+		[
+			'a base64url tail on an api key',
+			{ kind: 'api', lastFour: 'w-y_' },
+			'api_key_last_four_check'
+		],
+		['a zapier prefix in capitals', { kind: 'zapier', prefix: 'BGZ_7Qm2' }, 'api_key_prefix_check'],
+		[
+			'a zapier prefix longer than bgz_ and four',
+			{ kind: 'zapier', prefix: 'bgz_7Qm2x' },
+			'api_key_prefix_check'
+		],
+		[
+			'a zapier tail outside base64url',
+			{ kind: 'zapier', lastFour: 'w+y/' },
+			'api_key_last_four_check'
+		]
+	] as const)('refuses %s', async (_what, shape, constraint) => {
+		const message = await rejection(() => insertKey({ id: 'a', ...shape }));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain(constraint);
 	});
 });
 

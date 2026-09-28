@@ -3,8 +3,8 @@ import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import {
+	apiKey,
 	zapierDelivery,
-	zapierKey,
 	zapierSubscription,
 	type ZapierEndReason,
 	type ZapierTrigger
@@ -67,8 +67,10 @@ export async function subscribe(
 					updatedAt: sql`${now.getTime()}`.as('updated_at'),
 					failingSince: sql`null`.as('failing_since')
 				})
-				.from(zapierKey)
-				.where(eq(zapierKey.keyHash, keyHash))
+				.from(apiKey)
+				.where(
+					and(eq(apiKey.keyHash, keyHash), eq(apiKey.kind, 'zapier'), isNull(apiKey.revokedAt))
+				)
 		)
 		.returning({ id: zapierSubscription.id });
 	try {
@@ -203,9 +205,9 @@ const PAUSES_AT_ONCE = 6;
 const PAUSE_TIMEOUT_MS = 2_000;
 
 /**
- * how long the whole pass may take; a hook not reached by then is `notPaused`. the replace is
- * answered to a console that waits ten seconds (`ReadTimeout` in
- * packages/console/internal/cf/client.go), and the pass is most of that answer.
+ * how long the whole pass may take; a hook not reached by then is `notPaused`. a replace is the
+ * dashboard's form post, answered only once the pass is over, so this is how long an operator
+ * pressing replace watches it pending on hooks that never answer.
  */
 const PAUSE_PASS_MS = 4_000;
 

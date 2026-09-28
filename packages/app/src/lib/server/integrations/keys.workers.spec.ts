@@ -9,7 +9,8 @@ import {
 	mintApiKey,
 	revokeAndArchiveApiKey,
 	revokeApiKey,
-	touchLastUsed
+	touchLastUsed,
+	ZAPIER_KEY_SHAPE
 } from './keys';
 
 // the integration keys against a real D1: what is stored is read back from the table rather than
@@ -61,6 +62,23 @@ describe('minting a key', () => {
 	});
 });
 
+describe("minting Zapier's key", () => {
+	it('mints the bgz_ and base64url shape Zapier has always presented, stored like any key', async () => {
+		const minted = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+		expect(minted.key).toMatch(ZAPIER_KEY_SHAPE);
+		expect(minted.key).not.toMatch(API_KEY_SHAPE);
+
+		const [row] = await storedRows();
+		expect(row).toMatchObject({
+			kind: 'zapier',
+			key_hash: sha256Hex(minted.key),
+			prefix: minted.key.slice(0, 8),
+			last_four: minted.key.slice(-4)
+		});
+		expect(await findKeyByPresented(db, minted.key)).toMatchObject({ id: minted.id });
+	});
+});
+
 describe('finding the key a request presents', () => {
 	it('finds the row a minted key was stored as', async () => {
 		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
@@ -96,6 +114,13 @@ describe('revoking a key', () => {
 
 		expect(await revokeApiKey(db, minted.id)).toBeNull();
 		expect((await findKeyByPresented(db, minted.key))?.revokedAt).toEqual(first);
+	});
+
+	it('leaves Zapier\u2019s key admitting: only a replace revokes that one', async () => {
+		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+
+		expect(await revokeApiKey(db, zapier.id)).toBeNull();
+		expect((await findKeyByPresented(db, zapier.key))?.revokedAt).toBeNull();
 	});
 
 	it('revokes no other key', async () => {
