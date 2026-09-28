@@ -212,8 +212,8 @@ export type HomeReading = {
 	/** the deployment's own site list, which the sites fold seeds its boxes from. */
 	sites: string[];
 	/**
-	 * where this deployment answers, which is where its donation page is served, and `''` where the
-	 * binary could read no address for it (`packages/console/internal/deployment/address.go`).
+	 * where this deployment's one donation page is served, `/donate` on the address it answers at, and
+	 * `''` where the binary could read no address for it (`packages/console/internal/deployment/address.go`).
 	 *
 	 * it is on no site row and on no form's allowed origins, so the sites fold states it beside that
 	 * list rather than holding it in one: nothing an operator can untick takes their own donation

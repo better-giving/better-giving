@@ -21,8 +21,8 @@ import { CHARGE_PAIRS } from './processor-links';
 //
 // **five of the six folds are jobs and `sites` is not, which is what {@link sitesRow} is.** the
 // dashboard is not served until every one of `SETUP_JOBS` is done, and that list does not hold the
-// site list: a deployment with no website of its own gives its forms on the donation page it
-// serves at its own address (CLAUDE.md → Product surface). so the fold stays — an operator who has a website
+// site list: a deployment with no website of its own gives on the donation page it serves at
+// `/donate` (CLAUDE.md → Product surface). so the fold stays — an operator who has a website
 // still needs somewhere to type it — and its row carries no `Configured`/`Incomplete`, because a
 // job word over something that can never be outstanding is work reported against nobody. it states
 // what the list holds instead, which is what somebody deciding whether to open it wants.
@@ -135,7 +135,7 @@ const TONES: Record<SectionState, SectionTone> = {
  * a count and not the addresses: the fold itself renders every one of them, and a row repeating the
  * list is the fold drawn twice on a page where five other rows are one line each. `Incomplete` is
  * not one of the words because nothing is owed — a deployment that has typed no site gives on the
- * donation page it serves at its own address, which is a state to leave alone as often as it is one
+ * donation page it serves at `/donate`, which is a state to leave alone as often as it is one
  * to change.
  *
  * **the ink says nothing is owed and the shape says nothing is finished.** the rail has two
