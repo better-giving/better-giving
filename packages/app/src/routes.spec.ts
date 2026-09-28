@@ -7,6 +7,7 @@ import {
 	QUICKBOOKS_CONNECT_PATH
 } from '$lib/server/accounting/connect-link';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
+import { INTEGRATIONS_BASE_PATH } from '$lib/server/integrations/surface';
 import { ZAPIER_BASE_PATH } from '$lib/server/zapier/surface';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
 import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
@@ -64,6 +65,8 @@ import {
 // `/zapier` is the console's shape one credential over: Zapier's servers present the deployment's
 // Zapier key ($lib/server/zapier/key.ts), checked by the layout's middleware, so every route
 // served there is held to sitting under that layout and is none of the three categories above.
+// `/integrations/v1` is the same shape again: an organisation's own systems present an API key
+// ($lib/server/integrations/surface.ts), checked by that surface's layout.
 
 /** the layout the gate is mounted on, and being under it is what makes a route gated. */
 const PROTECTED_LAYOUT = 'routes/_app.tsx';
@@ -283,6 +286,12 @@ const CONSOLE_LAYOUT = 'routes/console.ts';
  */
 const ZAPIER_LAYOUT = 'routes/zapier.ts';
 
+/**
+ * the layout the read API's key check is mounted on — the same mounting again.
+ * src/routes/integrations.v1.ts argues it.
+ */
+const INTEGRATIONS_LAYOUT = 'routes/integrations.v1.ts';
+
 let routes: RouteRecord[];
 beforeAll(async () => {
 	routes = await routeManifest();
@@ -296,6 +305,13 @@ function consoleRoute(route: RouteRecord): boolean {
 /** whether a route is served on the surface Zapier's servers call. */
 function zapierRoute(route: RouteRecord): boolean {
 	return route.path === ZAPIER_BASE_PATH || route.path.startsWith(`${ZAPIER_BASE_PATH}/`);
+}
+
+/** whether a route is served on the read API an organisation's own systems call. */
+function integrationsRoute(route: RouteRecord): boolean {
+	return (
+		route.path === INTEGRATIONS_BASE_PATH || route.path.startsWith(`${INTEGRATIONS_BASE_PATH}/`)
+	);
 }
 
 /** whether a route is served on the public api. */
@@ -337,7 +353,8 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 				!under(route, PROTECTED_LAYOUT) &&
 				!allowed.includes(route.file) &&
 				!consoleRoute(route) &&
-				!zapierRoute(route)
+				!zapierRoute(route) &&
+				!integrationsRoute(route)
 		)
 		.map(
 			(route) =>
@@ -412,6 +429,16 @@ function uncheckedZapierRoutes(manifest: readonly RouteRecord[]): string[] {
 		.map(
 			(route) =>
 				`${route.file} is served at ${route.path} and is not under ${ZAPIER_LAYOUT}, so nothing checks the Zapier key for it. Name it so it nests under that layout.`
+		);
+}
+
+/** every route on the read API that is not under the layout checking the key. */
+function uncheckedIntegrationsRoutes(manifest: readonly RouteRecord[]): string[] {
+	return manifest
+		.filter((route) => integrationsRoute(route) && !under(route, INTEGRATIONS_LAYOUT))
+		.map(
+			(route) =>
+				`${route.file} is served at ${route.path} and is not under ${INTEGRATIONS_LAYOUT}, so nothing checks the API key for it. Name it so it nests under that layout.`
 		);
 }
 
@@ -511,6 +538,20 @@ describe('the rules the sweep runs on', () => {
 		expect(uncheckedZapierRoutes(manifest)).toEqual([]);
 	});
 
+	it('reports a read API route that sits outside the checked layout', () => {
+		const manifest = [route('routes/integrations.v1_.gifts.ts', '/integrations/v1/gifts')];
+		expect(uncheckedIntegrationsRoutes(manifest)).toHaveLength(1);
+		expect(ungatedRoutes(manifest, [])).toEqual([]);
+	});
+
+	it('passes a read API route that is under it, and the layout itself', () => {
+		const manifest = [
+			route(INTEGRATIONS_LAYOUT, '/integrations/v1'),
+			route('routes/integrations.v1.gifts.ts', '/integrations/v1/gifts', [INTEGRATIONS_LAYOUT])
+		];
+		expect(uncheckedIntegrationsRoutes(manifest)).toEqual([]);
+	});
+
 	it('passes a console route that is under it, and the layout itself', () => {
 		const manifest = [
 			route(CONSOLE_LAYOUT, '/console'),
@@ -567,6 +608,11 @@ describe('the route surface', () => {
 	it('checks the key for every route it serves on the Zapier surface', () => {
 		expect(routes.map((r) => r.file)).toContain(ZAPIER_LAYOUT);
 		expect(uncheckedZapierRoutes(routes)).toEqual([]);
+	});
+
+	it('checks the key for every route it serves on the read API', () => {
+		expect(routes.map((r) => r.file)).toContain(INTEGRATIONS_LAYOUT);
+		expect(uncheckedIntegrationsRoutes(routes)).toEqual([]);
 	});
 
 	it('lists no console route as public', () => {
@@ -713,7 +759,8 @@ describe('reaching for middleware', () => {
 describe('where middleware is mounted', () => {
 	// the surface layouts and nothing else, each covering one surface: the session gate over every
 	// screen behind the login, the meter over every route on the public api, the credential check
-	// over every route on the operator console, and the key check over every route Zapier calls.
+	// over every route on the operator console, and a key check over every route Zapier calls and
+	// another over every route of the read API.
 	// any other name here is a route that took a decision one of those makes for a whole surface,
 	// which is the shape they all exist to remove.
 	//
@@ -727,7 +774,9 @@ describe('where middleware is mounted', () => {
 			.filter((r) => exportsMiddleware(readFromDisk(r.file) ?? ''))
 			.map((r) => r.file)
 			.sort();
-		expect(mounted).toEqual([API_LAYOUT, CONSOLE_LAYOUT, PROTECTED_LAYOUT, ZAPIER_LAYOUT].sort());
+		expect(mounted).toEqual(
+			[API_LAYOUT, CONSOLE_LAYOUT, INTEGRATIONS_LAYOUT, PROTECTED_LAYOUT, ZAPIER_LAYOUT].sort()
+		);
 	});
 
 	it('is never the root route, which every request passes through', () => {
