@@ -60,7 +60,7 @@ const gone = ({ workerName, accountName }: Names): CloudflareGate => ({
 });
 
 /** the gate over a settings read that did not land, by the way it did not. */
-function valuesGate(vars: VarsRead, names: Names): CloudflareGate {
+export function valuesGate(vars: VarsRead, names: Names): CloudflareGate {
 	switch (vars.kind) {
 		case 'not-deployed':
 			return gone(names);

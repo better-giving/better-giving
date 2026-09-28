@@ -100,6 +100,7 @@ describe('the rail', () => {
 			'Sites → /sites',
 			'SMTP → /smtp',
 			'Notifications → /notifications',
+			'AI model → /ai-model',
 			'QuickBooks → /quickbooks',
 			'Zapier → /zapier'
 		]);
@@ -123,6 +124,7 @@ describe('the rail', () => {
 			'Sites',
 			'SMTP',
 			'Notifications',
+			'AI',
 			'QuickBooks',
 			'Zapier'
 		]);
@@ -142,6 +144,21 @@ describe('the rail', () => {
 				{ label: 'Zapier', short: 'Zapier', href: '/zapier', mark: { src: '/zapier.png' } }
 			]
 		});
+	});
+
+	it('draws the model cell after notifications, marked and with no status', () => {
+		// no set-up job waits on the model: an unset one is the free model, which answers.
+		const model = (...todo: readonly SectionId[]) =>
+			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, INTEGRATIONS)[2]?.destinations.at(
+				-1
+			);
+		expect(model()).toEqual({
+			label: 'AI model',
+			short: 'AI',
+			href: '/ai-model',
+			mark: 'sparkles'
+		});
+		expect(model(...IDS)?.status).toBeUndefined();
 	});
 
 	it('marks the integration cells with no status, however the set-up jobs stand', () => {
