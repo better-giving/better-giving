@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -24,6 +24,7 @@ import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
 import { settleDelivery } from './settle';
 import { soleProcessor } from '../payments/processors.testing';
+import { createDestination } from '../webhooks/destinations';
 
 // the books for a gift that repeats, against a real D1: what a collection under a commitment
 // writes, and what a second delivery about the same money does not.
@@ -2369,5 +2370,54 @@ describe('settleDelivery() — what a collection owes a listening Zap', () => {
 			{ trigger: 'new_donor', payment_id: first },
 			...[first, second].sort().map((payment_id) => ({ trigger: 'new_gift', payment_id }))
 		]);
+	});
+});
+
+describe('settleDelivery() — what a collection owes a listening destination', () => {
+	beforeEach(async () => {
+		await authorizeGift();
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
+	});
+
+	// per-file storage: the destination is put up and taken down around these cases alone.
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function owedGifts() {
+		const { results } = await env.DB.prepare(
+			`select event, subject_id from webhook_delivery order by subject_id`
+		).all<{ event: string; subject_id: string }>();
+		return results;
+	}
+
+	it('owes the charge that opens a commitment as a gift made', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await owedGifts()).toEqual([
+			{ event: 'gift.made', subject_id: await paymentFor('pi_collect_1') }
+		]);
+	});
+
+	it('owes every later collection as a gift made of its own', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		await settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: secondCollection.event },
+					gift: { ok: true, value: secondCollection.notice },
+					settled: { ok: true, value: secondCollection.settlement }
+				})
+			}),
+			DELIVERY
+		);
+
+		const payments = [await paymentFor('pi_collect_1'), await paymentFor('pi_collect_2')];
+		expect(await owedGifts()).toEqual(
+			payments.sort().map((subject_id) => ({ event: 'gift.made', subject_id }))
+		);
 	});
 });

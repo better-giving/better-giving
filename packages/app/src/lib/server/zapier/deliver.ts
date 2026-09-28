@@ -1,12 +1,13 @@
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { payment, zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
+import { inPage } from '../integrations/paging';
 import { defineOutbox, type Outcome } from '../outbox/lease';
+import { refusal } from '../outbox/refusal';
 import { refundStands } from './events';
 import {
 	donorEventOf,
 	type GiftEvent,
-	IDS_PER_READ,
 	readGiftEvents,
 	readRefundEvents,
 	type RefundEvent,
@@ -65,14 +66,21 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 export type ZapierDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetch };
 
 /**
- * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes can each
- * start in turn while every hook times out, with the last post still answered inside
- * {@link LEASE_MS} ({@link RUN_DEADLINE_MS}).
+ * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes post
+ * inside {@link RUN_DEADLINE_MS} while each hook answers in about three seconds. where hooks are
+ * slower — every one timing out, at worst, leaves 33 posted — a row no lane reached stays leased,
+ * unposted, until the lease runs out and a later run takes it.
  */
 const CLAIMS_PER_RUN = 100;
 
-/** posts in flight at once. */
-const POSTS_AT_ONCE = 10;
+/**
+ * posts in flight at once. an invocation may have six requests waiting on their response headers,
+ * and a seventh queues with its timeout already running
+ * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
+ * the minute cron's three feeds share those six in one invocation: these three lanes,
+ * ../webhooks/deliver.ts's two, and ../accounting/deliver.ts's one request at a time.
+ */
+const POSTS_AT_ONCE = 3;
 
 /** how long a hook is given to answer before the post counts as failed. */
 const POST_TIMEOUT_MS = 10_000;
@@ -81,11 +89,10 @@ const POST_TIMEOUT_MS = 10_000;
 const LEASE_MS = 2 * 60_000;
 
 /**
- * no post starts later than this after the run's scheduled time: long enough for every claimed row
- * to be started when every hook times out, and short enough that the last post it lets start
- * answers or times out, {@link POST_TIMEOUT_MS} at most, before {@link LEASE_MS} runs out.
+ * no post starts later than this after the run's scheduled time: the last moment a post can start
+ * and still answer or time out, {@link POST_TIMEOUT_MS} at most, before {@link LEASE_MS} runs out.
  */
-const RUN_DEADLINE_MS = (CLAIMS_PER_RUN / POSTS_AT_ONCE) * POST_TIMEOUT_MS;
+const RUN_DEADLINE_MS = LEASE_MS - POST_TIMEOUT_MS;
 
 const BACKOFF_FIRST_MS = 60_000;
 
@@ -97,9 +104,6 @@ const BACKOFF_CEILING_MS = 60 * 60_000;
  * webhook in.
  */
 const GIVE_UP_AFTER_MS = 72 * 60 * 60_000;
-
-/** how much of a refusal's body `last_error` keeps. */
-const ERROR_BODY_CHARS = 200;
 
 const outbox = defineOutbox({
 	table: zapierDelivery,
@@ -307,20 +311,15 @@ type Hook = { readonly url: string; readonly trigger: ZapierTrigger };
 
 /** each subscription's hook and trigger. */
 async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Map<string, Hook>> {
-	const ids = [...new Set(subscriptionIds)];
-	const hooks = new Map<string, Hook>();
-	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
-		const rows = await db
-			.select({
-				id: zapierSubscription.id,
-				url: zapierSubscription.hookUrl,
-				trigger: zapierSubscription.trigger
-			})
-			.from(zapierSubscription)
-			.where(inArray(zapierSubscription.id, ids.slice(start, start + IDS_PER_READ)));
-		for (const row of rows) hooks.set(row.id, { url: row.url, trigger: row.trigger });
-	}
-	return hooks;
+	const rows = await db
+		.select({
+			id: zapierSubscription.id,
+			url: zapierSubscription.hookUrl,
+			trigger: zapierSubscription.trigger
+		})
+		.from(zapierSubscription)
+		.where(inPage(zapierSubscription.id, subscriptionIds));
+	return new Map(rows.map((row) => [row.id, { url: row.url, trigger: row.trigger }]));
 }
 
 /**
@@ -328,18 +327,11 @@ async function readHooks(db: Db, subscriptionIds: readonly string[]): Promise<Ma
  * them.
  */
 async function readStandingRefunds(db: Db, refundIds: readonly string[]): Promise<Set<string>> {
-	const ids = [...new Set(refundIds)];
-	const standing = new Set<string>();
-	for (let start = 0; start < ids.length; start += IDS_PER_READ) {
-		const rows = await db
-			.select({ id: payment.id })
-			.from(payment)
-			.where(
-				and(inArray(payment.id, ids.slice(start, start + IDS_PER_READ)), refundStands(db, payment))
-			);
-		for (const row of rows) standing.add(row.id);
-	}
-	return standing;
+	const rows = await db
+		.select({ id: payment.id })
+		.from(payment)
+		.where(and(inPage(payment.id, refundIds), refundStands(db, payment)));
+	return new Set(rows.map((row) => row.id));
 }
 
 const REFUND_NO_LONGER_STANDS =
@@ -388,8 +380,8 @@ async function post(fetcher: typeof fetch, hookUrl: string, event: unknown): Pro
 			signal: AbortSignal.timeout(POST_TIMEOUT_MS)
 		});
 		if (response.ok) {
-			// an unread body holds its connection, and a run posts as many at once as a worker may
-			// open. the post is taken either way, so a body that will not cancel is not a failure.
+			// an unread body holds its connection open. the post is taken either way, so a body that
+			// will not cancel is not a failure.
 			await response.body?.cancel().catch(() => undefined);
 			return 'taken';
 		}
@@ -413,11 +405,4 @@ function retryAfter(value: string | null): Date | undefined {
 	const at = /^\d+$/.test(trimmed) ? Date.now() + Number(trimmed) * 1_000 : Date.parse(trimmed);
 	const asked = new Date(at);
 	return Number.isFinite(asked.getTime()) ? asked : undefined;
-}
-
-/** the status line and the head of the body a hook refused with. */
-async function refusal(response: Response): Promise<string> {
-	const line = `${response.status} ${response.statusText}`.trim();
-	const body = (await response.text()).slice(0, ERROR_BODY_CHARS).trim();
-	return body === '' ? line : `${line} — ${body}`;
 }

@@ -6,8 +6,9 @@ import { describe, expect, it } from 'vitest';
 // imports the statement builders a money event's batch is made of.
 //
 // another batch assembled by hand is the least-effort next writer — the builders are right
-// there, exported — and it gets the queue row, the Zap rows or their foreign-key order wrong in a
-// way no single call site's suite would notice. ./writes.ts's header says what it hides.
+// there, exported — and it gets the queue row, the Zap rows, the destination rows or their
+// foreign-key order wrong in a way no single call site's suite would notice. ./writes.ts's header
+// says what it hides.
 //
 // a source scan rather than a runtime hook, written the way ../ledger/sole-writer.spec.ts is, so it
 // catches the writer nobody wrote a test for; it reads text, so a namespace import or a computed
@@ -18,9 +19,12 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(import.meta.dirname, '../../..');
 const BOOKS_DIR = resolve(import.meta.dirname);
-const DEFINERS = ['ledger/posting.ts', 'accounting/outbox.ts', 'zapier/events.ts'].map((path) =>
-	resolve(import.meta.dirname, '..', path)
-);
+const DEFINERS = [
+	'ledger/posting.ts',
+	'accounting/outbox.ts',
+	'zapier/events.ts',
+	'webhooks/events.ts'
+].map((path) => resolve(import.meta.dirname, '..', path));
 
 const EXTENSIONS = ['.ts', '.tsx', '.js'];
 
@@ -45,7 +49,8 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 /** an import or re-export's braces, across however many lines they take. */
 const IMPORT_BRACES = /\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\b/g;
 
-const BUILDER = /\b(postingStatements|outboxStatements|zapierStatements|giftRefundedStatements)\b/g;
+const BUILDER =
+	/\b(postingStatements|outboxStatements|zapierStatements|giftRefundedStatements|webhookStatements)\b/g;
 
 /** every builder an import or re-export names, several to one pair of braces included. */
 function buildersImportedBy(source: string): string[] {
@@ -71,7 +76,7 @@ describe('books/ is the only importer of the statement builders', () => {
 		expect(names.some((n) => /\.(?:spec|test)\./.test(n))).toBe(false);
 	});
 
-	it('finds no import of postingStatements, outboxStatements, zapierStatements or giftRefundedStatements outside books/', () => {
+	it('finds no import of postingStatements, outboxStatements, zapierStatements, giftRefundedStatements or webhookStatements outside books/', () => {
 		const offenders = files.flatMap((file) =>
 			buildersImportedBy(readFileSync(file, 'utf8')).map(
 				(builder) => `${relative(SRC, file)} (${builder})`
@@ -91,6 +96,7 @@ describe('books/ is the only importer of the statement builders', () => {
 			'giftRefundedStatements',
 			'outboxStatements',
 			'postingStatements',
+			'webhookStatements',
 			'zapierStatements'
 		]);
 	});

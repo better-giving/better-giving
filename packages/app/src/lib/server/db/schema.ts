@@ -21,6 +21,7 @@ import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
 import { FORM_STATUSES, type FormStatus } from '../../forms/statuses';
 import { PROGRAM_STATUSES, type ProgramStatus } from '../../programs/statuses';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '../../recurring/statuses';
+import { WEBHOOK_EVENT_TYPES, type WebhookEvent } from '../../webhooks/catalog';
 import type { PostableAccountId } from './postable';
 
 // one dialect (sqlite) and one driver behind it, and nothing here may reference D1 — see
@@ -1785,6 +1786,17 @@ export const payment = sqliteTable(
 			.on(t.provider, t.createdAt)
 			.where(sql`${t.method} = 'crypto' and ${t.status} = 'pending'`),
 		/**
+		 * the read API's gifts, newest first by when the money moved and then by id: its first page
+		 * (`readGiftPage` in ../integrations/gift.ts) and the keyset walk past it (`pastKeyset` in
+		 * ../integrations/paging.ts). partial, so it holds settled inbound payments alone, in the
+		 * order the walk reads them, and the page is neither a scan nor a sort of `payment`. usable
+		 * only while the query's `where` names `status` and `direction` with these values —
+		 * ../integrations/gift-page.plan.workers.spec.ts holds the plan to it.
+		 */
+		index('payment_settled_gift_occurred_at_idx')
+			.on(t.occurredAt, t.id)
+			.where(sql`${t.status} = 'succeeded' and ${t.direction} = 'inbound'`),
+		/**
 		 * payment-grain idempotency, sitting underneath `entry_group_source_idx`'s
 		 * posting-grain idempotency. a redelivered Stripe charge carries the same
 		 * `(provider, provider_txn_id)` and is refused by the database rather than by a
@@ -2878,6 +2890,163 @@ export const zapierDelivery = sqliteTable(
 	]
 );
 
+/**
+ * one address outside this deployment that events are posted to, signed, made by the organisation
+ * for its own system (../webhooks/destinations.ts).
+ *
+ * **the signing secret is stored retrievable**: every post is signed with it
+ * (../webhooks/sign.ts), so a hash would sign nothing. it is a key the app mints for itself, the
+ * carve-out CLAUDE.md's boundaries ban names, and nothing outside `$lib/server/**` reads it. one
+ * per destination, so no receiver can forge a post to another.
+ *
+ * a destination is archived, never deleted: its deliveries point at it, and an archived row is
+ * owed nothing new and sent nothing still owed.
+ */
+export const webhookDestination = sqliteTable(
+	'webhook_destination',
+	{
+		id: id(),
+
+		/** where events are posted. https only: a post carries donors' names and addresses. */
+		url: text('url').notNull(),
+
+		/** `whsec_` and the base64 of 32 random bytes, the Standard Webhooks serialization. */
+		signingSecret: text('signing_secret').notNull(),
+
+		/** while set, the destination's rows are owed and queue, and none is sent. */
+		pausedAt: at('paused_at'),
+
+		/**
+		 * when the destination's current run of failures began: the first post it failed since it
+		 * last took one. null while it takes what it is posted.
+		 */
+		failingSince: at('failing_since'),
+
+		createdAt: createdAt(),
+		updatedAt: updatedAt(),
+		archivedAt: at('archived_at')
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		/** `zapier_subscription_hook_url_check`'s body, for the reasons given there. */
+		check('webhook_destination_url_check', sql`substr(${t.url}, 1, 8) = 'https://'`),
+		/**
+		 * 32 bytes is 44 base64 characters, the last one padding. `glob` is case-sensitive, so the
+		 * prefix cannot pass as `WHSEC_`.
+		 */
+		check(
+			'webhook_destination_signing_secret_check',
+			sql`length(${t.signingSecret}) = 50 and ${t.signingSecret} glob 'whsec_*' and substr(${t.signingSecret}, 7) not glob '*[^A-Za-z0-9+/=]*'`
+		)
+	]
+);
+
+/**
+ * the events a destination takes, one row each, so the fan-out decides who is owed an event in
+ * its own `where` (../webhooks/events.ts).
+ */
+export const webhookDestinationEvent = sqliteTable(
+	'webhook_destination_event',
+	{
+		destinationId: text('destination_id')
+			.notNull()
+			.references(() => webhookDestination.id),
+
+		event: text('event').$type<WebhookEvent>().notNull()
+	},
+	(t) => [
+		primaryKey({ columns: [t.destinationId, t.event] }),
+		check('webhook_destination_event_event_check', enumCheck(t.event, WEBHOOK_EVENT_TYPES))
+	]
+);
+
+/**
+ * where one delivery stands. `failed` is a row whose every attempt on the retry schedule failed,
+ * or one sent nothing because its destination or its subject could not be read
+ * (../webhooks/deliver.ts); it is kept, for the destination's recent deliveries.
+ */
+export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'delivered', 'failed'] as const;
+export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
+
+/**
+ * one row per (event, destination) — the outbox ../webhooks/deliver.ts reads — written in the same
+ * `batch()` as the change it reports (../webhooks/events.ts).
+ *
+ * **the row holds a pointer, not a payload**: `subject_id` names what the event is about, and the
+ * send renders it then, the way `zapier_delivery` is rendered. what it names follows `event`: the
+ * payment for a `gift.*` event. no foreign key, since a later event names a donor or a recurring
+ * gift in the same column; the send fails a row whose subject it cannot read.
+ *
+ * **`(destination_id, event, subject_id)` is unique**, and it is where "once" comes from: a
+ * settlement delivered twice meets its own key.
+ */
+export const webhookDelivery = sqliteTable(
+	'webhook_delivery',
+	{
+		/**
+		 * `msg_` and a random uuid: the Standard Webhooks `webhook-id`, the same on every attempt,
+		 * which a receiver dedupes on. the fan-out mints it in sql, one per destination.
+		 */
+		id: text('id').primaryKey(),
+
+		destinationId: text('destination_id')
+			.notNull()
+			.references(() => webhookDestination.id),
+
+		event: text('event').$type<WebhookEvent>().notNull(),
+
+		subjectId: text('subject_id').notNull(),
+
+		status: text('status').$type<WebhookDeliveryStatus>().notNull().default('pending'),
+
+		/** how many posts have been made. */
+		attempts: integer('attempts').notNull().default(0),
+
+		/** when the next post is due. */
+		nextAttemptAt: at('next_attempt_at').notNull(),
+
+		/** while this is in the future, the row belongs to the delivery run that wrote it (../outbox/lease.ts). */
+		leasedUntil: at('leased_until'),
+
+		/** the HTTP status the last post was answered with; null where none came. */
+		lastStatus: integer('last_status'),
+
+		/** the last failure: the status line and the head of the body, or the fault. */
+		lastError: text('last_error'),
+
+		deliveredAt: at('delivered_at'),
+
+		// the fan-out writes these rows with an INSERT…SELECT, which never runs a `$defaultFn`,
+		// so it binds both itself.
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check(
+			'webhook_delivery_id_check',
+			sql`length(${t.id}) = 40 and ${t.id} glob 'msg_*' and substr(${t.id}, 5) not glob '*[^0-9a-f-]*'`
+		),
+		check('webhook_delivery_event_check', enumCheck(t.event, WEBHOOK_EVENT_TYPES)),
+		check('webhook_delivery_subject_id_not_blank_check', notBlank(t.subjectId)),
+		check('webhook_delivery_status_check', enumCheck(t.status, WEBHOOK_DELIVERY_STATUSES)),
+		check('webhook_delivery_attempts_check', sql`${t.attempts} >= 0`),
+		check(
+			'webhook_delivery_last_status_check',
+			sql`${t.lastStatus} is null or ${t.lastStatus} between 100 and 599`
+		),
+		check('webhook_delivery_last_error_not_blank_check', optionalNotBlank(t.lastError)),
+		// a delivered row says when, and no other row does.
+		check(
+			'webhook_delivery_delivered_check',
+			sql`(${t.status} = 'delivered') = (${t.deliveredAt} is not null)`
+		),
+		uniqueIndex('webhook_delivery_event_idx').on(t.destinationId, t.event, t.subjectId),
+		// `zapier_delivery_due_idx`'s shape, for the claim ../outbox/lease.ts makes.
+		index('webhook_delivery_due_idx').on(t.status, t.nextAttemptAt, t.id, t.leasedUntil)
+	]
+);
+
 export type Contact = typeof contact.$inferSelect;
 export type NewContact = typeof contact.$inferInsert;
 export type Account = typeof account.$inferSelect;
@@ -2914,6 +3083,10 @@ export type ZapierSubscription = typeof zapierSubscription.$inferSelect;
 export type NewZapierSubscription = typeof zapierSubscription.$inferInsert;
 export type ZapierDelivery = typeof zapierDelivery.$inferSelect;
 export type NewZapierDelivery = typeof zapierDelivery.$inferInsert;
+export type WebhookDestination = typeof webhookDestination.$inferSelect;
+export type NewWebhookDestination = typeof webhookDestination.$inferInsert;
+export type WebhookDelivery = typeof webhookDelivery.$inferSelect;
+export type NewWebhookDelivery = typeof webhookDelivery.$inferInsert;
 
 // tables better-auth owns, kept in their own file because their columns are dictated
 // by better-auth's core schema rather than by the domain. re-exported here — not

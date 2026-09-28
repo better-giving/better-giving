@@ -164,7 +164,7 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 
 		// foreign-key order: the donor, the gift, what names the gift, then the books, then what the
 		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
-		// what the gift owes each listening Zap, keyed to the payment above.
+		// what the gift owes each listening Zap and destination, about the payment above.
 		const rows: Writes = [
 			db.insert(donation).values(donationRow),
 			db.insert(lineItem).values(lineRow),

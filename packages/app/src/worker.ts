@@ -6,6 +6,7 @@ import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
+import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import { requestContext } from './request-context';
 
@@ -56,7 +57,7 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 		),
 
 	'* * * * *': (env, now) => {
-		// one handle, shared by both deliveries and by the connection the accounting provider reads
+		// one handle, shared by every delivery and by the connection the accounting provider reads
 		// its tokens through: the store the factory builds is over this same database.
 		const db = requestDb(env);
 		return allRun([
@@ -64,7 +65,8 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 				{ db, provider: createAccountingProvider(env, db), email: createEmailProvider(env) },
 				now
 			),
-			sendDueZapierEvents({ db, fetch }, now)
+			sendDueZapierEvents({ db, fetch }, now),
+			sendDueWebhooks({ db, fetch }, now)
 		]);
 	}
 };

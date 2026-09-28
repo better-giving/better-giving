@@ -20,8 +20,9 @@ import { refundStands } from '../donations/queries';
 import { inPage, type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } from './paging';
 
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
-// (../zapier/payload.ts) and each entry the read API's gifts list answers with
-// (src/routes/integrations.v1.gifts.ts). one projection, so the two never disagree about a field.
+// (../zapier/payload.ts), each entry the read API's gifts list answers with
+// (src/routes/integrations.v1.gifts.ts), and the `data` of a `gift.made` webhook
+// (../webhooks/deliver.ts). one projection, so the three never disagree about a field.
 //
 // a gift is one settled inbound payment — a `succeeded`, `direction = 'inbound'` row. an
 // authorization nothing has settled yet is not one, and neither is a refund row: that is a fact
@@ -118,33 +119,44 @@ export async function readGiftPage(db: Db, query: PageQuery): Promise<PageOf<Api
 	const keys =
 		query.order === 'newest' ? await newestKeys(db, query) : await changedKeys(db, query);
 	const page = pageOf(keys, query.limit, (key) => key);
-	const ids = page.rows.map((key) => key.id);
-	if (ids.length === 0) return { rows: [], next: null };
+	const gifts = await readGifts(
+		db,
+		page.rows.map((key) => key.id)
+	);
+	return { rows: page.rows.flatMap((key) => gifts.get(key.id) ?? []), next: page.next };
+}
+
+/**
+ * the settled gifts among `paymentIds`, as the read API answers each, keyed by payment id. an id
+ * that is not a settled gift has no entry, which is the caller's to answer for.
+ */
+export async function readGifts(
+	db: Db,
+	paymentIds: readonly string[]
+): Promise<Map<string, ApiGift>> {
+	const ids = [...new Set(paymentIds)];
+	if (ids.length === 0) return new Map();
 	// two reads rather than one `batch()`: drizzle maps a D1 batch's rows by column name, and the
 	// gift's joined columns repeat `id` and `name`.
 	const [rows, standing] = await Promise.all([
-		selectGifts(db).where(inPage(payment.id, ids)),
+		selectGifts(db).where(and(isGift(payment), inPage(payment.id, ids))),
 		selectStanding(db, ids)
 	]);
-	const gifts = new Map(rows.map((row) => [row.id, renderGift(row)]));
 	const standings = new Map(standing.map((row) => [row.id, row]));
-	return {
-		rows: ids.flatMap((id) => {
-			const gift = gifts.get(id);
-			const stands = standings.get(id);
-			if (gift === undefined || stands === undefined) return [];
-			return [
-				{
-					...gift,
-					status: statusOf(gift.amount_minor, stands.refundedMinor),
-					amount_refunded_minor: stands.refundedMinor,
-					dispute_open: stands.disputeOpen === 1,
-					updated_at: new Date(stands.updatedAt).toISOString()
-				}
-			];
-		}),
-		next: page.next
-	};
+	const gifts = new Map<string, ApiGift>();
+	for (const row of rows) {
+		const stands = standings.get(row.id);
+		if (stands === undefined) continue;
+		const gift = renderGift(row);
+		gifts.set(row.id, {
+			...gift,
+			status: statusOf(gift.amount_minor, stands.refundedMinor),
+			amount_refunded_minor: stands.refundedMinor,
+			dispute_open: stands.disputeOpen === 1,
+			updated_at: new Date(stands.updatedAt).toISOString()
+		});
+	}
+	return gifts;
 }
 
 /**
@@ -153,6 +165,10 @@ export async function readGiftPage(db: Db, query: PageQuery): Promise<PageOf<Api
  */
 const gift = alias(payment, 'gift');
 
+/**
+ * a gift. `payment_settled_gift_occurred_at_idx` in ../db/schema.ts is partial on these values,
+ * so the newest-first walk reads it only while the two agree (./gift-page.plan.workers.spec.ts).
+ */
 const isGift = (row: typeof payment | typeof gift) =>
 	and(eq(row.status, 'succeeded'), eq(row.direction, 'inbound'));
 

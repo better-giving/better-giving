@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readWranglerConfig } from './lib/server/wrangler-config.testing';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import worker, { CRON_RUNS } from './worker';
 
@@ -22,8 +23,8 @@ import worker, { CRON_RUNS } from './worker';
 // the jobs are mocked, because what is under test is which ones an expression reaches and with
 // what time — their own behaviour is held by
 // $lib/server/donations/pending-crypto-read.workers.spec.ts,
-// $lib/server/accounting/deliver.workers.spec.ts and $lib/server/zapier/deliver.workers.spec.ts,
-// against a real database.
+// $lib/server/accounting/deliver.workers.spec.ts, $lib/server/zapier/deliver.workers.spec.ts and
+// $lib/server/webhooks/deliver.workers.spec.ts, against a real database.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})
@@ -33,6 +34,9 @@ vi.mock('$lib/server/accounting/deliver', () => ({
 }));
 vi.mock('$lib/server/zapier/deliver', () => ({
 	sendDueZapierEvents: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/webhooks/deliver', () => ({
+	sendDueWebhooks: vi.fn(async () => {})
 }));
 
 /** the fields this file reads. everything else in the config is somebody else's concern. */
@@ -87,7 +91,12 @@ async function fires(cron: string): Promise<Promise<unknown>[]> {
 }
 
 /** every job a cron can reach, for the cases asserting on none of them or all. */
-const JOBS = [readPendingCryptoGifts, sendDueEntries, sendDueZapierEvents] as const;
+const JOBS = [
+	readPendingCryptoGifts,
+	sendDueEntries,
+	sendDueZapierEvents,
+	sendDueWebhooks
+] as const;
 
 // `restoreMocks` in ../vitest.config.ts restores a spy's implementation and leaves a module mock's
 // call history and a rejection a case set on it alone, so a case would be reading every case
@@ -133,7 +142,7 @@ describe('which run an expression reaches', () => {
 		expect(sendDueEntries).not.toHaveBeenCalled();
 	});
 
-	it('sends what the books and the Zaps are owed every minute, from the run’s own time', async () => {
+	it('sends what the books, the Zaps and the destinations are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');
 
 		expect(sendDueEntries).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
@@ -141,32 +150,41 @@ describe('which run an expression reaches', () => {
 			{ db: expect.anything(), fetch: expect.any(Function) },
 			SCHEDULED_AT
 		);
+		expect(sendDueWebhooks).toHaveBeenCalledWith(
+			{ db: expect.anything(), fetch: expect.any(Function) },
+			SCHEDULED_AT
+		);
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
 	});
 
 	it.each([
-		['the books', sendDueEntries, sendDueZapierEvents],
-		['the Zaps', sendDueZapierEvents, sendDueEntries]
+		['the books', sendDueEntries, [sendDueZapierEvents, sendDueWebhooks]],
+		['the Zaps', sendDueZapierEvents, [sendDueEntries, sendDueWebhooks]],
+		['the destinations', sendDueWebhooks, [sendDueEntries, sendDueZapierEvents]]
 	] as const)(
-		'still runs the other minute job when %s one throws, and reports the throw',
-		async (_, failing, other) => {
+		'still runs the other minute jobs when %s one throws, and reports the throw',
+		async (_, failing, others) => {
 			const fault = new Error('the database went away');
 			vi.mocked(failing).mockRejectedValue(fault);
 
 			await expect(fires('* * * * *')).rejects.toBe(fault);
-			expect(other).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+			for (const other of others) {
+				expect(other).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+			}
 		}
 	);
 
-	it('reports both throws when both minute jobs throw', async () => {
+	it('reports every throw when more than one minute job throws', async () => {
 		const books = new Error('books');
 		const zaps = new Error('zaps');
+		const destinations = new Error('destinations');
 		vi.mocked(sendDueEntries).mockRejectedValue(books);
 		vi.mocked(sendDueZapierEvents).mockRejectedValue(zaps);
+		vi.mocked(sendDueWebhooks).mockRejectedValue(destinations);
 
 		const thrown = await fires('* * * * *').catch((error: unknown) => error);
 		expect(thrown).toBeInstanceOf(AggregateError);
-		expect((thrown as AggregateError).errors).toEqual([books, zaps]);
+		expect((thrown as AggregateError).errors).toEqual([books, zaps, destinations]);
 	});
 
 	it('runs nothing at all on an expression it does not answer', async () => {
