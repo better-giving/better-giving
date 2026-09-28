@@ -4,7 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page, program } from '$lib/server/db/schema';
-import { readServedCampaign } from '$lib/server/pages/campaign';
+import { createCampaign, readServedCampaign } from '$lib/server/pages/campaign';
 import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -504,6 +504,53 @@ describe('the editor', () => {
 			.where(eq(page.id, pageId));
 
 		expect(await (await open(pageId)).json()).toMatchObject({ endDate: '2026-12-31' });
+	});
+
+	/** a campaign made from the Campaigns list as `title`, with no "What's it for?". */
+	async function created(title: string): Promise<string> {
+		const made = await createCampaign(db, env, {
+			title,
+			line: '',
+			timeZone: 'UTC',
+			now: Date.now()
+		});
+		return made.pageId;
+	}
+
+	it('names the address a never-published campaign’s name asked for, where another campaign holds it', async () => {
+		await campaign('Winter coat drive', 'winter-coat-drive', 'ended');
+		const pageId = await created('Winter coat drive');
+
+		expect(await (await open(pageId)).json()).toMatchObject({
+			address: '/winter-coat-drive-2',
+			asked: '/winter-coat-drive'
+		});
+	});
+
+	it('names no address asked for where the name’s own is free', async () => {
+		const pageId = await created('Winter coat drive');
+
+		expect(await (await open(pageId)).json()).toMatchObject({
+			address: '/winter-coat-drive',
+			asked: null
+		});
+	});
+
+	it('names no address asked for where the address was set by hand', async () => {
+		const pageId = await created('Winter coat drive');
+		await address(pageId, 'coats');
+
+		expect(await (await open(pageId)).json()).toMatchObject({ address: '/coats', asked: null });
+	});
+
+	it('names no address asked for once the campaign has been published', async () => {
+		await campaign('Winter coat drive', 'winter-coat-drive', 'ended');
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive-2', 'live');
+
+		expect(await (await open(pageId)).json()).toMatchObject({
+			address: '/winter-coat-drive-2',
+			asked: null
+		});
 	});
 
 	it('answers 404 for the Donation page and for an id no page has', async () => {

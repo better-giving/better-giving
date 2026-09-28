@@ -49,6 +49,7 @@ import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/p
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import {
+	addressAsked,
 	type NameWrite,
 	readPage,
 	type SlugWrite,
@@ -66,7 +67,8 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 //
 // **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
 // which the dashboard shows, and the draft's, which donors see from the next Publish. until the
-// first Publish the address follows it.
+// first Publish the address follows it, to the next free one where another page holds the one the
+// name suggests, and the first Publish's confirm names the one it did not get (`addressAsked`).
 //
 // **the address** takes effect when it is saved, not at Publish. a save the address rule refuses is
 // answered naming the clash; one that would stop a published campaign's address working, or take
@@ -150,6 +152,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	let row: Page | null;
 	let settings: SettingsSeed;
 	let pageSettings: PageSettingsSeed;
+	let asked: string | null;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
@@ -158,9 +161,10 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	}
 	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
 	try {
-		[settings, pageSettings] = await Promise.all([
+		[settings, pageSettings, asked] = await Promise.all([
 			readEditorSettings(db, row),
-			readPageSettings(db, row)
+			readPageSettings(db, row),
+			addressAsked(db, row)
 		]);
 	} catch (e) {
 		console.error(`loading campaign ${params.pageId}'s settings failed:`, e);
@@ -173,6 +177,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		pageSettings,
 		name: row.name,
 		address: row.slug === null ? null : `/${row.slug}`,
+		asked: asked === null ? null : `/${asked}`,
 		host: `${new URL(request.url).host}/`
 	};
 }
@@ -354,7 +359,12 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 		state,
 		first:
 			state === 'unpublished'
-				? { name, address: address ?? '', ...giftsGoTo(donationSettings) }
+				? {
+						name,
+						address: address ?? '',
+						asked: loaderData.asked ?? undefined,
+						...giftsGoTo(donationSettings)
+					}
 				: undefined
 	});
 	const nameFetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
