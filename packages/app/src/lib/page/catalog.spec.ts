@@ -318,11 +318,30 @@ describe('what a page carries beside its blocks', () => {
 		});
 	});
 
-	it('carries the draft donation settings through unread', () => {
-		const settings = { min_minor: 500, suggested_amounts: [2500, 5000], program_mode: 'none' };
+	const settings = {
+		revenueAccountId: '4110',
+		minMinor: 500,
+		maxMinor: null,
+		currency: 'USD',
+		programMode: 'none',
+		programId: null,
+		suggestedAmounts: [2500, 5000],
+		allowedOrigins: []
+	};
+
+	it('carries the draft donation settings', () => {
 		expect(parsePage('donation_page', page([box], { settings }))).toEqual({
 			ok: true,
 			page: page([box], { settings })
+		});
+	});
+
+	it('refuses draft donation settings off their rule, naming where', () => {
+		const loose = { ...settings, suggestedAmounts: [2500, 0] };
+		expect(parsePage('campaign', page([box], { settings: loose }))).toEqual({
+			ok: false,
+			path: ['settings', 'suggestedAmounts', 1],
+			message: 'an amount is a whole number of minor units above zero'
 		});
 	});
 });

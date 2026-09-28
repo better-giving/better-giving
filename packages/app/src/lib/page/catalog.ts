@@ -17,13 +17,13 @@
 // the rule reads shape only and never the page's data: nothing here looks up a program, a goal's
 // progress or the organisation. a block with nothing to show — no tiers, a blank story, a goal bar
 // on a campaign with no goal — is accepted and leaves itself out at render. `settings` is the draft
-// donation settings the editor writes and publish copies onto the page's owned form row; its shape
-// is that editor's rule, and it is carried here unread.
+// donation settings publish copies onto the page's owned form row, read by ./settings.ts's rule.
 //
 // pure and not under `$lib/server/**`: a component renders what this returns.
 import { z } from 'zod';
 import { richTextDocument } from '../rich-text/document';
 import { CORNERS, LOOK_KEYS, PAGE_KEYS, PAGE_TYPES, type PageType, SHADES } from './keys';
+import { draftSettings } from './settings';
 
 export const LAYOUTS = ['box-right', 'banner', 'column', 'cover'] as const;
 export const PALETTES = ['plain', 'tint', 'duo', 'bright', 'bold'] as const;
@@ -237,7 +237,7 @@ const pageDocument = (type: PageType) =>
 			switches: z.strictObject({ openOnMonthly: z.boolean(), dedicationOn: z.boolean() }),
 			[PAGE_KEYS.goalMinor]: z.int({ error: GOAL }).positive({ error: GOAL }).optional(),
 			[PAGE_KEYS.endsAt]: z.int({ error: END }).positive({ error: END }).optional(),
-			settings: z.unknown().optional(),
+			settings: draftSettings.optional(),
 			blocks: z.array(block)
 		})
 		.check((ctx) => {

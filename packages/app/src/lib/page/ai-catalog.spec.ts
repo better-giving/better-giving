@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pageCatalog, pageFromDraft } from './ai-catalog';
+import { draftFromPage, pageCatalog, pageFromDraft } from './ai-catalog';
 import { HEADING_MAX } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
@@ -120,7 +120,16 @@ describe('a draft becoming a page', () => {
 			switches: { openOnMonthly: true, dedicationOn: false },
 			goalMinor: 5_000_000,
 			endsAt: Date.UTC(2026, 11, 31),
-			settings: { min_minor: 500 }
+			settings: {
+				revenueAccountId: '4110',
+				minMinor: 500,
+				maxMinor: null,
+				currency: 'USD',
+				programMode: 'none' as const,
+				programId: null,
+				suggestedAmounts: [],
+				allowedOrigins: []
+			}
 		};
 		const grabbing = {
 			...draft([flow]),
@@ -129,7 +138,7 @@ describe('a draft becoming a page', () => {
 			switches: { openOnMonthly: false, dedicationOn: true },
 			goalMinor: 1,
 			endsAt: 1,
-			settings: { min_minor: 1 }
+			settings: { minMinor: 1 }
 		};
 		expect(pageFromDraft('campaign', grabbing, onto)).toEqual({
 			ok: true,
@@ -165,6 +174,44 @@ describe('a draft becoming a page', () => {
 			ok: false,
 			path: ['blocks', 0, 'props', 'heading'],
 			message: `block 1 (id "title"): a heading holds at most ${HEADING_MAX} characters`
+		});
+	});
+});
+
+describe('a page handed back as a draft', () => {
+	it('nests each block’s values under props and names the donation box DonationFlow', () => {
+		const onto = defaultCampaign();
+		expect(draftFromPage(onto)).toEqual({
+			layout: 'box-right',
+			palette: 'tint',
+			blocks: [
+				{
+					id: 'title',
+					type: 'title',
+					variant: 'left',
+					background: 'none',
+					props: { heading: '' }
+				},
+				{ id: 'goal', type: 'goal-bar', variant: 'bar', background: 'none', props: {} },
+				{
+					id: 'story',
+					type: 'story',
+					variant: 'plain',
+					background: 'none',
+					props: { body: { type: 'doc', content: [{ type: 'paragraph' }] } }
+				},
+				{ id: 'donate', type: 'DonationFlow', background: 'none', props: {} },
+				{ id: 'share', type: 'share', variant: 'buttons', background: 'none', props: {} },
+				{ id: 'footer', type: 'org-info', variant: 'footer', background: 'none', props: {} }
+			]
+		});
+	});
+
+	it('comes back through pageFromDraft as the page it was', () => {
+		const onto = defaultDonationPage({ name: 'Harbour Food Bank' });
+		expect(pageFromDraft('donation_page', draftFromPage(onto), onto)).toEqual({
+			ok: true,
+			page: onto
 		});
 	});
 });

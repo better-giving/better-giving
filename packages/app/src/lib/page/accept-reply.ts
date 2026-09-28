@@ -1,0 +1,381 @@
+// the one door through which a chat reply becomes a page draft: `acceptReply` reads the model's
+// answer, applies it to the page as it stands and hands back the draft to store, or refuses it
+// whole and hands `current` back unchanged. ./accept-reply.spec.ts holds that nothing else in the
+// app calls `pageFromDraft`.
+//
+// a reply is `{ say, page?, set? }`. `say` is what the chat shows. `page` edits the page as the
+// model reads it (`draftFromPage` in ./ai-catalog.ts: layout, palette and blocks, each block's
+// values under `props`), as an RFC 6902 patch or an RFC 7396 merge (./json-patch.ts); an edit
+// reaching past those three keys is refused, so the look, the switches, the share message, the
+// donation settings, the goal and the end date never move through it. `set` names the five things
+// a reply may change beside the page — a campaign's name, goal and end date, the program the page's
+// gifts are pinned to and its suggested amounts — and anything else it names is refused: the fund,
+// the program's destination, the payment options, the look and the switches are the operator's
+// alone. each value `set` changes comes back in `changes`, so the reply's own words can be held to
+// what it did.
+//
+// what the model is told and cannot be trusted to keep is enforced here, after the edit:
+// - a link: kept only where the page already held its address. any other has its link taken off
+//   and its text kept, noted in `dropped`.
+// - an impact tier: kept only where its amount is a figure the operator wrote in the chat or one
+//   the page already held in a tier. any other tier is dropped and noted; the rest of the reply
+//   lands. a figure is what the model cannot check and a donor reads as a promise.
+// - an image: any `imageId`, whichever block carries it, is one attached in this page's chat, or
+//   the reply is refused.
+// - a block its page type does not take, and everything else about a page's shape, is
+//   `parsePage`'s, which the draft passes last.
+//
+// a figure the operator wrote is read out of their own messages, never the assistant's, by this
+// grammar, case aside:
+// - an amount is digits, optionally grouped in threes by commas (`1,000`, `12,500`), optionally with
+//   a point and cents (`12.50`), and read by `readAmount` in ../forms/amounts.ts, so `12.505` is no
+//   figure at all.
+// - it is a figure only beside the currency: after `$`, `US$` or `USD` (`$25`, `$ 25`, `USD 40`),
+//   or before `dollar`, `dollars` or `USD` (`25 dollars`, `40 usd`). a bare number — `25 children`
+//   — is not one.
+// - dollars, since every page's settings are in `FORM_CURRENCY`.
+//
+// pure and not under `$lib/server/**`, beside the catalog it reads.
+import { z } from 'zod';
+import { formatMinorBrief } from '../donations/money';
+import { FORM_CURRENCY, majorEntry, readAmount, readSuggestedAmounts } from '../forms/amounts';
+import { draftFromPage, pageFromDraft } from './ai-catalog';
+import { HEADING_MAX, type Page, parsePage } from './catalog';
+import type { PageType } from './keys';
+import { applyPatch, mergePatch, pointer } from './json-patch';
+
+const patchOp = z.discriminatedUnion('op', [
+	z.object({ op: z.enum(['add', 'replace', 'test']), path: z.string(), value: z.json() }),
+	z.object({ op: z.literal('remove'), path: z.string() }),
+	z.object({ op: z.enum(['move', 'copy']), from: z.string(), path: z.string() })
+]);
+
+const replySchema = z.strictObject({
+	say: z.string().min(1),
+	page: z
+		.discriminatedUnion('kind', [
+			z.strictObject({ kind: z.literal('patch'), ops: z.array(patchOp) }),
+			z.strictObject({ kind: z.literal('merge'), doc: z.record(z.string(), z.json()) })
+		])
+		.optional(),
+	set: z
+		.strictObject(
+			{
+				name: z.string().trim().min(1).max(HEADING_MAX).optional(),
+				goalMinor: z.int().positive().optional(),
+				endsAt: z.int().positive().optional(),
+				programId: z.string().min(1).optional(),
+				suggestedAmounts: z.array(z.int().positive()).optional()
+			},
+			{
+				error: (issue) =>
+					issue.code === 'unrecognized_keys'
+						? `a reply sets only name, goalMinor, endsAt, programId and suggestedAmounts, not ${issue.keys.map((key) => `"${key}"`).join(', ')}`
+						: undefined
+			}
+		)
+		.optional()
+});
+
+/** what a page edit reaches: the page as the model reads it, `draftFromPage`'s keys. */
+const DRAFT_KEYS: readonly string[] = ['layout', 'palette', 'blocks'];
+const THROUGH_SET: Record<string, string> = {
+	name: 'a name',
+	goalMinor: 'a goal',
+	endsAt: 'an end date'
+};
+
+export type ChatMessage = { author: 'operator' | 'assistant'; text: string };
+export type ActiveProgram = { id: string; name: string };
+
+export type AcceptInput = {
+	type: PageType;
+	current: Page;
+	/** the campaign's name as it stands; null on the Donation page. */
+	name: string | null;
+	/** the model's answer as it arrived. */
+	reply: string;
+	attached: readonly string[];
+	messages: readonly ChatMessage[];
+	activePrograms: readonly ActiveProgram[];
+};
+
+export type Change =
+	| { field: 'name'; from: string | null; to: string }
+	| { field: 'goal'; from: number | null; to: number }
+	| { field: 'endDate'; from: number | null; to: number }
+	| { field: 'program'; from: string | null; to: string }
+	| { field: 'amounts'; from: number[]; to: number[] };
+
+export type Dropped =
+	| { what: 'tier'; blockId: string; amountMinor: number }
+	| { what: 'link'; href: string; text: string };
+
+export type Accepted = {
+	ok: true;
+	draft: Page;
+	/** the campaign's new name, where the reply changed it. */
+	name?: string;
+	say: string;
+	changes: Change[];
+	dropped: Dropped[];
+};
+export type Refused = { ok: false; reason: string; current: Page };
+
+export function acceptReply(input: AcceptInput): Accepted | Refused {
+	const { type, current } = input;
+	const refuse = (reason: string): Refused => ({ ok: false, reason, current });
+
+	let json: unknown;
+	try {
+		json = JSON.parse(input.reply);
+	} catch {
+		return refuse('the reply is not JSON');
+	}
+	const parsed = replySchema.safeParse(json);
+	if (!parsed.success) return refuse(issueText(parsed.error.issues));
+	const reply = parsed.data;
+
+	let draft: unknown = draftFromPage(current);
+	if (reply.page?.kind === 'patch') {
+		for (const op of reply.page.ops) {
+			for (const text of 'from' in op ? [op.from, op.path] : [op.path]) {
+				const [key] = pointer(text) ?? [];
+				if (key !== undefined && !DRAFT_KEYS.includes(key)) return refuse(outsideDraft(key));
+			}
+		}
+		const applied = applyPatch(draft, reply.page.ops);
+		if (!applied.ok) return refuse(applied.message);
+		draft = applied.doc;
+	} else if (reply.page?.kind === 'merge') {
+		draft = mergePatch(draft, reply.page.doc);
+	}
+
+	const outside = isRecord(draft)
+		? Object.keys(draft).find((key) => !DRAFT_KEYS.includes(key))
+		: undefined;
+	if (outside !== undefined) return refuse(outsideDraft(outside));
+
+	const stray = imageIdsIn(draft).find(({ id }) => !input.attached.includes(id));
+	if (stray !== undefined) {
+		return refuse(located(stray.path, `image "${stray.id}" was not attached in this chat`));
+	}
+
+	const set = settle(input, reply.set ?? {});
+	if (!set.ok) return refuse(set.reason);
+
+	const page = pageFromDraft(type, draft, set.onto);
+	if (!page.ok) return refuse(located(page.path, page.message));
+	const dropped: Dropped[] = [];
+	const figures = new Set([...statedFigures(input.messages), ...tierAmounts(current)]);
+	const blocks = page.page.blocks.map((block) => {
+		if (block.type !== 'impact-tiers') return block;
+		const tiers = block.tiers.filter(({ amountMinor }) => {
+			if (figures.has(amountMinor)) return true;
+			dropped.push({ what: 'tier', blockId: block.id, amountMinor });
+			return false;
+		});
+		return { ...block, tiers };
+	});
+
+	const known = new Set(hrefsIn(current));
+	const unlinked = withoutLinks({ ...page.page, blocks }, (href, text) => {
+		if (known.has(href)) return false;
+		dropped.push({ what: 'link', href, text });
+		return true;
+	});
+	const checked = parsePage(type, unlinked);
+	if (!checked.ok) return refuse(located(checked.path, checked.message));
+
+	return {
+		ok: true,
+		draft: checked.page,
+		...(set.renamed === undefined ? {} : { name: set.renamed }),
+		say: reply.say,
+		changes: set.changes,
+		dropped
+	};
+}
+
+const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?![\d,.]?\d)`;
+const FIGURES = [
+	new RegExp(String.raw`(?:\bUS\$|\$|\bUSD\b)\s?${NUMBER}`, 'gi'),
+	new RegExp(String.raw`(?<![\d.,$])${NUMBER}\s?(?:dollars?|USD)\b`, 'gi')
+];
+
+/** every amount an operator wrote in the chat, in minor units. */
+function statedFigures(messages: readonly ChatMessage[]): number[] {
+	return messages
+		.filter(({ author }) => author === 'operator')
+		.flatMap(({ text }) => FIGURES.flatMap((pattern) => [...text.matchAll(pattern)]))
+		.flatMap(([, whole = '', fraction]) => {
+			const { minor } = readAmount(
+				`${whole.replaceAll(',', '')}${fraction === undefined ? '' : `.${fraction}`}`,
+				FORM_CURRENCY
+			);
+			return minor === null ? [] : [minor];
+		});
+}
+
+function tierAmounts(page: Page): number[] {
+	return page.blocks.flatMap((block) =>
+		block.type === 'impact-tiers' ? block.tiers.map(({ amountMinor }) => amountMinor) : []
+	);
+}
+
+type Settable = NonNullable<z.infer<typeof replySchema>['set']>;
+
+const CAMPAIGN_ONLY = [
+	['name', 'name'],
+	['goalMinor', 'goal'],
+	['endsAt', 'end date']
+] as const;
+
+/** `current` with what the reply sets put onto it, and each change it makes. */
+function settle(
+	{ type, current, name, activePrograms }: AcceptInput,
+	set: Settable
+):
+	| { ok: true; onto: Page; renamed: string | undefined; changes: Change[] }
+	| { ok: false; reason: string } {
+	if (type === 'donation_page') {
+		for (const [key, what] of CAMPAIGN_ONLY) {
+			if (set[key] !== undefined) {
+				return { ok: false, reason: `the Donation page has no ${what}; only a campaign does` };
+			}
+		}
+	}
+	const onto: Page = { ...current };
+	const changes: Change[] = [];
+	const renamed = set.name !== undefined && set.name !== name ? set.name : undefined;
+	if (renamed !== undefined) changes.push({ field: 'name', from: name, to: renamed });
+	if (set.goalMinor !== undefined && set.goalMinor !== current.goalMinor) {
+		changes.push({ field: 'goal', from: current.goalMinor ?? null, to: set.goalMinor });
+		onto.goalMinor = set.goalMinor;
+	}
+	if (set.endsAt !== undefined && set.endsAt !== current.endsAt) {
+		changes.push({ field: 'endDate', from: current.endsAt ?? null, to: set.endsAt });
+		onto.endsAt = set.endsAt;
+	}
+	if (set.programId === undefined && set.suggestedAmounts === undefined) {
+		return { ok: true, onto, renamed, changes };
+	}
+
+	let settings = current.settings;
+	if (settings === undefined) {
+		return { ok: false, reason: 'set: this page’s draft holds no donation settings to change' };
+	}
+	if (set.programId !== undefined) {
+		const { programId } = set;
+		if (!activePrograms.some(({ id }) => id === programId)) {
+			const active = activePrograms.map(({ id, name }) => `${id} (${name})`);
+			return {
+				ok: false,
+				reason: `set.programId: "${programId}" is not an active program; ${active.length === 0 ? 'none is active' : `the active ones are ${listed(active)}`}`
+			};
+		}
+		const pinned = settings.programMode === 'pinned' ? settings.programId : null;
+		if (pinned !== programId) {
+			changes.push({ field: 'program', from: pinned, to: programId });
+			settings = { ...settings, programMode: 'pinned', programId };
+		}
+	}
+	if (set.suggestedAmounts !== undefined) {
+		const rows = set.suggestedAmounts.map((amount) => majorEntry(amount, FORM_CURRENCY));
+		const read = readSuggestedAmounts(rows, settings.minMinor, settings.maxMinor);
+		if (read.problem !== null) {
+			return { ok: false, reason: `set.suggestedAmounts: a page suggests ${read.problem}` };
+		}
+		const [first] = read.problems;
+		if (first !== undefined) {
+			const amount = formatMinorBrief(set.suggestedAmounts[first.row] ?? 0, FORM_CURRENCY);
+			return { ok: false, reason: `set.suggestedAmounts: ${amount} ${first.problem}` };
+		}
+		if (!sameList(read.amounts, settings.suggestedAmounts)) {
+			changes.push({ field: 'amounts', from: settings.suggestedAmounts, to: read.amounts });
+			settings = { ...settings, suggestedAmounts: read.amounts };
+		}
+	}
+	onto.settings = settings;
+	return { ok: true, onto, renamed, changes };
+}
+
+function sameList(a: readonly number[], b: readonly number[]) {
+	return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function listed(names: readonly string[]) {
+	return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
+function issueText(issues: readonly z.core.$ZodIssue[]) {
+	const [issue] = issues;
+	if (issue === undefined) return 'the reply is off its schema';
+	return located(
+		issue.path.filter((key) => typeof key !== 'symbol'),
+		issue.message
+	);
+}
+
+/** a refusal prefixed with where it lands, as dotted keys and indexes from the document's root. */
+function located(path: readonly (string | number)[], message: string) {
+	return path.length === 0 ? message : `${path.join('.')}: ${message}`;
+}
+
+function outsideDraft(key: string) {
+	const through = THROUGH_SET[key];
+	return `a page edit reaches layout, palette and blocks only, not "${key}"${through === undefined ? '' : `; ${through} goes through set`}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type LinkMark = { type: 'link'; attrs: { href: string } };
+
+function isLinkMark(mark: unknown): mark is LinkMark {
+	return (
+		isRecord(mark) &&
+		mark.type === 'link' &&
+		isRecord(mark.attrs) &&
+		typeof mark.attrs.href === 'string'
+	);
+}
+
+/** every link's address anywhere in `value`: a link mark on rich text, wherever a block holds it. */
+function hrefsIn(value: unknown): string[] {
+	if (Array.isArray(value)) return value.flatMap(hrefsIn);
+	if (!isRecord(value)) return [];
+	const own = Array.isArray(value.marks)
+		? value.marks.filter(isLinkMark).map(({ attrs }) => attrs.href)
+		: [];
+	return [...own, ...Object.values(value).flatMap(hrefsIn)];
+}
+
+/** `value` with each link mark `strip` answers true for taken off its text, the text kept. */
+function withoutLinks(value: unknown, strip: (href: string, text: string) => boolean): unknown {
+	if (Array.isArray(value)) return value.map((item) => withoutLinks(item, strip));
+	if (!isRecord(value)) return value;
+	const copy = Object.fromEntries(
+		Object.entries(value).map(([key, item]) => [key, withoutLinks(item, strip)])
+	);
+	if (!Array.isArray(copy.marks)) return copy;
+	const text = typeof copy.text === 'string' ? copy.text : '';
+	const marks = copy.marks.filter((mark) => !(isLinkMark(mark) && strip(mark.attrs.href, text)));
+	return { ...copy, marks };
+}
+
+/** every `imageId` anywhere in `value`, whichever block carries it, with where it sits. */
+function imageIdsIn(
+	value: unknown,
+	path: (string | number)[] = []
+): { id: string; path: (string | number)[] }[] {
+	if (Array.isArray(value))
+		return value.flatMap((item, index) => imageIdsIn(item, [...path, index]));
+	if (!isRecord(value)) return [];
+	return Object.entries(value).flatMap(([key, item]) =>
+		key === 'imageId' && typeof item === 'string'
+			? [{ id: item, path: [...path, key] }]
+			: imageIdsIn(item, [...path, key])
+	);
+}
