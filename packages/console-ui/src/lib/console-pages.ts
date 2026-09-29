@@ -75,8 +75,8 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
 
 /**
  * the rail, in four groups: the two sections an operator opens on, the processors under their own
- * heading, the three that carry a gift out to the world, and
- * the integrations under a heading of their own.
+ * heading, the three that carry a gift out to the world, and the integrations under a heading of
+ * their own.
  *
  * every label is the section's own row label, except the site list's: its row label is a sentence
  * (`FOLD_LABELS.sites`), which the page states under its name rather than a cell carrying it.

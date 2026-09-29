@@ -20,6 +20,11 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 // the tab ring inside the card and the page behind it inert, and Escape reaches the element as a
 // `cancel` event before it is a dismissal.
 //
+// **an answer is this card's only when the event is its own element's.** a card may be drawn inside
+// another — a confirm inside a panel — and react hands both a `cancel` and a click up through every
+// dialog its fiber sits under, so the outer card would answer the inner one's Escape too. a press
+// is held to it by `onGround`, and no `close` is listened for.
+//
 // **where focus lands is this module's, because the call is.** `showModal()` moves focus itself and
 // overrides anything a mount already did, so the card is put under the keyboard in the same effect
 // that lifts it — the reason is beside the call. where it goes back to is this module's for the
@@ -164,6 +169,8 @@ export function Modal<
 			inPage={inPage}
 			ref={element}
 			onCancel={(event) => {
+				// a card drawn inside this one hands its own Escape up through here (the header says why).
+				if (event.target !== element.current) return;
 				event.preventDefault();
 				onDismiss();
 			}}
