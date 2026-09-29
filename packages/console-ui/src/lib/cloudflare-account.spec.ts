@@ -3,10 +3,9 @@ import type { ReactNode } from 'react';
 import { prerenderToNodeStream } from 'react-dom/static';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import type { DeployedVar } from '../api/types';
+import type { DeployedVar, FeedsInUse } from '../api/types';
 import type { CloudflareAccountPanelProps } from './cloudflare-account';
 import { CloudflareAccount, CloudflareAccountPanel, PACED_WORD } from './cloudflare-account';
-import type { FeedsInUse } from './cloudflare-plan';
 import { PAID_PLAN, PLAN_FIELD } from './cloudflare-plan';
 import { heldValues } from './held-values';
 
@@ -72,7 +71,7 @@ describe('the account row', () => {
 
 const IDLE: FeedsInUse = { zapier: false, webhooks: false, books: false };
 
-const panel = (vars: DeployedVar[], feedsInUse: FeedsInUse) => {
+const panel = (vars: DeployedVar[], feedsInUse: FeedsInUse | null) => {
 	const props: CloudflareAccountPanelProps = {
 		name: 'Riverside Shelter’s Account',
 		feedsInUse,
@@ -105,7 +104,7 @@ describe('the account panel', () => {
 		expect(await panel([], { zapier: true, webhooks: true, books: true })).toContain(
 			'This deployment delivers to Zapier, webhook destinations and QuickBooks at the Free plan’s pace.'
 		);
-		expect(await panel([], { zapier: false, webhooks: true, books: null })).toContain(
+		expect(await panel([], { zapier: false, webhooks: true, books: false })).toContain(
 			'This deployment delivers to webhook destinations at the Free plan’s pace.'
 		);
 	});
@@ -114,6 +113,7 @@ describe('the account panel', () => {
 		const all = { zapier: true, webhooks: true, books: true };
 		for (const page of [
 			await panel([], IDLE),
+			await panel([], null),
 			await panel(PAID, all),
 			await panel([{ name: PAID_PLAN, kind: 'withheld' }], all)
 		]) {

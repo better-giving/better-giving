@@ -8,6 +8,7 @@ import { Column, Group, Section } from '@better-giving/operator/components/shell
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Brand } from '@better-giving/operator/components/status/Brand';
+import { Mark } from '@better-giving/operator/components/status/Mark';
 
 /*
  * the shell a surface with a rail takes, and the panel route that stands outside it.
@@ -53,8 +54,11 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * so every specimen on this page follows it once the page is reloaded.
  *
  * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
- * `foot` stands in the rail in its place, which is the console's shape: its close in the band and
- * its account in the foot. `null` for both drops the rail's foot rather than standing an empty one.
+ * `foot` stands in the rail in its place, which is the console's shape: its account and close in
+ * the band, and in the foot the account's name as the link opening its panel, marked here as a
+ * deployment delivering at the Free plan's pace draws it
+ * (packages/console-ui/src/lib/cloudflare-account.tsx). `null` for both drops the rail's foot
+ * rather than standing an empty one.
  *
  * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
  * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
@@ -215,22 +219,43 @@ export default function ShellAppShellPreview() {
 					}
 				]}
 				wayOut={
-					<Button
-						variant="quiet"
-						size="sm"
-						mark="unplug"
-						className="adm-signout"
-						aria-label="Close console"
-					/>
+					<>
+						<Button
+							as="a"
+							href="#shell-app-shell-account"
+							variant="quiet"
+							size="sm"
+							title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4"
+							aria-label="Cloudflare account Riverside Shelter's Account, Deliveries paced for the Free plan"
+						>
+							<Brand name="cloudflare" />
+							<Mark name="triangle-alert" />
+						</Button>
+						<Button
+							variant="quiet"
+							size="sm"
+							mark="unplug"
+							className="adm-signout"
+							aria-label="Close console"
+						/>
+					</>
 				}
 				foot={
 					<div className="adm-footaccount">
 						<span className="adm-rail__lead">
 							<Brand name="cloudflare" label="Cloudflare" />
 						</span>
-						<span className="adm-footaccount__name" title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4">
-							Riverside Shelter's Account
-						</span>
+						<a
+							className="adm-footaccount__open"
+							href="#shell-app-shell-account"
+							title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4"
+						>
+							<span className="adm-footaccount__name">Riverside Shelter's Account</span>
+							<span className="adm-footaccount__status">
+								<Mark name="triangle-alert" />
+							</span>
+							<span className="adm-vh">, Deliveries paced for the Free plan</span>
+						</a>
 						<span className="adm-footaccount__out">
 							<Button
 								variant="quiet"

@@ -93,7 +93,6 @@ describe('the rail', () => {
 		expect(cells(groups)).toEqual([
 			'Dashboard password → /password',
 			'Organisation → /organisation',
-			'Cloudflare plan → /cloudflare-plan',
 			'Stripe → /payments/stripe',
 			'PayPal → /payments/paypal',
 			'Chariot → /payments/chariot',
@@ -163,28 +162,8 @@ describe('the rail', () => {
 		);
 		expect(first?.destinations.map((d) => d.status)).toEqual([
 			{ tone: 'done', mark: 'check', label: 'Configured' },
-			{ tone: 'attention', mark: 'circle-dashed', label: 'Incomplete' },
-			undefined
+			{ tone: 'attention', mark: 'circle-dashed', label: 'Incomplete' }
 		]);
-	});
-
-	it('marks the Cloudflare plan cell with no status, however the set-up jobs stand', () => {
-		// the plan is an answer no set-up job waits on: a deployment left on the Free plan's pace is
-		// not half set up, so there is no row to read a status off.
-		const plan = (...todo: readonly SectionId[]) =>
-			railGroups(
-				rows(...todo),
-				processorLinks(new Set()),
-				LOGOS,
-				INTEGRATIONS
-			)[0]?.destinations.find((d) => d.href === '/cloudflare-plan');
-		expect(plan()).toEqual({
-			label: 'Cloudflare plan',
-			short: 'Cloudflare plan',
-			href: '/cloudflare-plan',
-			mark: 'server'
-		});
-		expect(plan(...IDS)?.status).toBeUndefined();
 	});
 
 	it('marks the sites cell in the note ink, and not at all where its row carries no word', () => {

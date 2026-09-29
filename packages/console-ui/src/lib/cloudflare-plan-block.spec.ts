@@ -4,6 +4,7 @@ import { prerenderToNodeStream } from 'react-dom/static';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { DeployedVar } from '../api/types';
+import { SHELL_ACTION } from './close-confirm';
 import { PAID_PLAN, PLAN_FIELD, PLAN_INTENT, PLAN_PAID } from './cloudflare-plan';
 import { CloudflarePlan } from './cloudflare-plan-block';
 import { heldValues } from './held-values';
@@ -12,8 +13,8 @@ import { heldValues } from './held-values';
 // so the press is held as what its one form posts — the box's name and value and the button's
 // intent — and what one press writes is ./cloudflare-plan.spec.ts's `planEdit`.
 
-/** the whole block, over the deployment holding `vars`, awaited. */
-async function drawn(vars: DeployedVar[]): Promise<string> {
+/** the whole block, over the deployment holding `vars`, drawn over the page at `at`, awaited. */
+async function drawn(vars: DeployedVar[], at = '/'): Promise<string> {
 	const props = {
 		values: heldValues(vars),
 		written: null,
@@ -22,9 +23,10 @@ async function drawn(vars: DeployedVar[]): Promise<string> {
 		busy: false,
 		pending: null
 	};
-	const router = createMemoryRouter([
-		{ path: '/', Component: () => createElement(CloudflarePlan, props) }
-	]);
+	const router = createMemoryRouter(
+		[{ path: at, Component: () => createElement(CloudflarePlan, props) }],
+		{ initialEntries: [at] }
+	);
 	const { prelude } = await prerenderToNodeStream(createElement(RouterProvider, { router }));
 	let page = '';
 	for await (const chunk of prelude) page += chunk;
@@ -50,6 +52,12 @@ describe('the switch', () => {
 		expect(press).toHaveLength(1);
 		expect(press[0]).toContain('name="intent"');
 		expect(press[0]).toContain(`value="${PLAN_INTENT}"`);
+	});
+
+	it('posts to `/`, which answers it, whatever page it is drawn over', async () => {
+		const forms = (await drawn([], '/quickbooks')).match(/<form[^>]*>/g) ?? [];
+		expect(forms).toHaveLength(1);
+		expect(forms[0]).toContain(`action="${SHELL_ACTION}"`);
 	});
 
 	it('is off where the deployment holds no answer', async () => {

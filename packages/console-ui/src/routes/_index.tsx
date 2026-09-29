@@ -12,9 +12,10 @@ import type { ReactNode } from 'react';
 import { useCallback, useRef } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { Form, Link, redirect, useNavigation, useSearchParams } from 'react-router';
-import { closeConsole, connect } from '../api/client';
+import { closeConsole, connect, freeWithheldVars, setVars } from '../api/client';
 import type { Blocked, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
+import { PLAN_INTENT, planEdit } from '../lib/cloudflare-plan';
 import { firstUnfinishedPage } from '../lib/console-pages';
 import { gatedPage, handOver, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
@@ -24,6 +25,7 @@ import { forgetReadings } from '../lib/processor-cache';
 import { ProductFoot } from '../lib/product-foot';
 import { Said } from '../lib/said';
 import { UNREAD_ANSWER_TITLE } from '../lib/unread-answer';
+import { FREE_INTENT } from '../lib/withheld-values';
 import type { Route } from './+types/_index';
 
 // `/` — what the console draws before a deployment is ready, and the way into one that is.
@@ -123,8 +125,9 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 }
 
 /**
- * the presses answered here: the re-connect on this page's gate, and the two that stand over every
- * screen of this console, which post here wherever they are pressed (../lib/close-confirm.tsx).
+ * the presses answered here: the re-connect on this page's gate, and those that stand over every
+ * screen of this console, which post here wherever they are pressed — the check again and the close
+ * (../lib/close-confirm.tsx), and the account panel's two (../lib/cloudflare-account.tsx).
  *
  * **the binary owns all of them**: each is one call on the loopback address, and what a press
  * carries is what the operator asked for. the account it is spent on, the worker it is addressed to
@@ -151,6 +154,21 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	 * finding is decided.
 	 */
 	if (intent === CHECK_INTENT) return { checked: true };
+
+	/**
+	 * stores that the account is on the Workers Paid plan, or takes the name off, from the account
+	 * panel over any page (../lib/cloudflare-account.tsx). one of the deploy-time values, through the
+	 * door every other one goes through, with the payload composed from the switch's two positions
+	 * rather than from what the body claimed (`planEdit` in ../lib/cloudflare-plan.ts).
+	 */
+	if (intent === PLAN_INTENT) return { plan: await setVars(planEdit(posted)) };
+
+	/**
+	 * takes every value this deployment is holding in a form nothing can read back off it, from the
+	 * same panel, where the paid-plan answer is one of them. which names are freed is read inside the
+	 * binary off cloudflare's own answer and never posted.
+	 */
+	if (intent === FREE_INTENT) return { freed: await freeWithheldVars() };
 
 	/**
 	 * ends the run this console is inside, and asks the browser for the tab back.

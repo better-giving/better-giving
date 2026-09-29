@@ -4,7 +4,7 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { FeedsInUse } from './cloudflare-plan';
+import type { FeedsInUse } from '../api/types';
 import { planConcern } from './cloudflare-plan';
 import type { CloudflarePlanProps } from './cloudflare-plan-block';
 import { CloudflarePlan } from './cloudflare-plan-block';
@@ -73,8 +73,8 @@ export function CloudflareAccount({
 export type CloudflareAccountPanelProps = CloudflarePlanProps & {
 	/** the account's name, which heads the panel. */
 	name: string;
-	/** which feeds are in use, which is what says why the row is marked. */
-	feedsInUse: FeedsInUse;
+	/** which feeds are in use, which is what says why the row is marked, or `null` where unsaid. */
+	feedsInUse: FeedsInUse | null;
 	/** the address the panel was opened over, without the parameter that opened it. */
 	back: string;
 };
@@ -95,9 +95,10 @@ export function CloudflareAccountPanel({
 	...plan
 }: CloudflareAccountPanelProps): ReactNode {
 	const navigate = useNavigate();
-	const paced = planConcern(plan.values, feedsInUse)
-		? (Object.keys(FEED_NAMES) as Feed[]).filter((feed) => feedsInUse[feed] === true)
-		: [];
+	const paced =
+		feedsInUse !== null && planConcern(plan.values, feedsInUse)
+			? (Object.keys(FEED_NAMES) as Feed[]).filter((feed) => feedsInUse[feed])
+			: [];
 	return (
 		<Modal
 			title={name}

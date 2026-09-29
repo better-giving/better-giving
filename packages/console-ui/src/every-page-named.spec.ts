@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CLOUDFLARE_PLAN_TITLE, SITES_TITLE } from './lib/console-pages';
+import { SITES_TITLE } from './lib/console-pages';
 import { FOLD_LABELS } from './lib/home-sections';
 import { processorLinks } from './lib/processor-links';
 
@@ -47,7 +47,6 @@ const DOCUMENT = '../../../DEPLOY.md';
 const WALKED: readonly string[] = [
 	FOLD_LABELS.password,
 	FOLD_LABELS.organisation,
-	CLOUDFLARE_PLAN_TITLE,
 	...processorLinks(new Set()).map((link) => link.name),
 	SITES_TITLE
 ];

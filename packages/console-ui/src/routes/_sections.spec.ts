@@ -1,14 +1,19 @@
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter, RouterProvider, UNSAFE_withComponentProps } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HomeFace, HomeReading } from '../api/types';
+import type { FeedsInUse, HomeFace, HomeReading } from '../api/types';
 
 // the sections layout's gate, through a router: which face a page stands behind when cloudflare
 // would not say what the deployment holds, and what its read again asks. the client is replaced so
 // every reading of the deployment is a count.
 
-const binary = vi.hoisted(() => ({ homeReads: 0, booksReads: 0, ready: false }));
+const binary = vi.hoisted(() => ({
+	homeReads: 0,
+	booksReads: 0,
+	ready: false,
+	feeds: null as FeedsInUse | null
+}));
 
 const READY: HomeFace = { kind: 'ready', address: 'https://a.example' };
 const UNANSWERED: HomeFace = {
@@ -35,7 +40,7 @@ vi.mock('../api/client', async (original) => ({
 			donatePage: '',
 			org: null,
 			holdsStripeKey: false,
-			feedsInUse: null
+			feedsInUse: binary.feeds
 		};
 	},
 	readQuickbooks: async () => {
@@ -52,6 +57,7 @@ vi.mock('../api/client', async (original) => ({
 }));
 
 const bar = await import('@better-giving/operator/progress-bar');
+const { PLAN_FIELD } = await import('../lib/cloudflare-plan');
 const { gatedBy } = await import('../lib/console-reading');
 const { forgetReadings } = await import('../lib/processor-cache');
 const { quickbooksIntent } = await import('../lib/quickbooks-standing');
@@ -63,8 +69,8 @@ const LAYOUT = 'sections';
 
 const BOOKS = 'books';
 
-/** the layout and one kept page under it, opened at that page, with every bar seen to its end. */
-async function open() {
+/** the layout and one kept page under it, opened at `at`, with every bar seen to its end. */
+async function open(at = '/quickbooks') {
 	const off = bar.subscribeProgressBar(() => {
 		if (bar.progressBarFinishing()) queueMicrotask(bar.progressBarLanded);
 	});
@@ -74,6 +80,7 @@ async function open() {
 				id: LAYOUT,
 				loader: sections.clientLoader as never,
 				shouldRevalidate: sections.shouldRevalidate,
+				Component: UNSAFE_withComponentProps(sections.default as never),
 				ErrorBoundary: sections.ErrorBoundary as never,
 				children: [
 					{
@@ -86,7 +93,7 @@ async function open() {
 				]
 			}
 		],
-		{ initialEntries: ['/quickbooks'] }
+		{ initialEntries: [at] }
 	);
 	await router.initialize();
 	await vi.waitFor(() => expect(router.state.initialized).toBe(true));
@@ -98,6 +105,7 @@ beforeEach(async () => {
 	binary.homeReads = 0;
 	binary.booksReads = 0;
 	binary.ready = false;
+	binary.feeds = null;
 	bar.pageDrawn('/organisation');
 });
 
@@ -239,5 +247,80 @@ describe('the books page', () => {
 			off();
 			router.dispose();
 		}
+	});
+});
+
+/** the ready layout opened at `at`, drawn, with react's text-node seams taken out. */
+async function drawnReady(at: string): Promise<string> {
+	binary.ready = true;
+	const { router, off } = await open(at);
+	try {
+		return renderToString(createElement(RouterProvider, { router })).replaceAll('<!-- -->', '');
+	} finally {
+		off();
+		router.dispose();
+	}
+}
+
+const ZAPIER_ONLY: FeedsInUse = { zapier: true, webhooks: false, books: false };
+
+/** the rail foot's account row, open tag to its close control. */
+const footRow = (page: string): string => {
+	const found = page.match(/<div class="adm-footaccount">[\s\S]*?<\/a>/);
+	if (found === null) throw new Error('no account row drawn');
+	return found[0];
+};
+
+/** the narrow band across the top, which is what a phone draws in place of the rail's foot. */
+const band = (page: string): string => {
+	const found = page.match(/<div class="adm-identity">[\s\S]*?<\/div>(?=<)/);
+	if (found === null) throw new Error('no band drawn');
+	return page.slice(found.index, page.indexOf('<nav', found.index));
+};
+
+/** the one link in `markup` opening the account panel over the books page, as its open tag. */
+const opener = (markup: string): string => {
+	const found = (markup.match(/<a\b[^>]*>/g) ?? []).filter((tag) =>
+		tag.includes('href="/quickbooks?account"')
+	);
+	expect(found).toHaveLength(1);
+	return found[0] as string;
+};
+
+describe('the Cloudflare account', () => {
+	it('is the rail’s foot, marked where a feed is in use on a deployment reading the plan as Free', async () => {
+		binary.feeds = ZAPIER_ONLY;
+		const row = footRow(await drawnReady('/quickbooks'));
+		expect(row).toContain('Riverbank Trust');
+		expect(row).toContain('href="/quickbooks?account"');
+		expect(row).toContain('adm-footaccount__status');
+	});
+
+	it('is not marked where the deployment did not say which feeds are in use', async () => {
+		expect(footRow(await drawnReady('/quickbooks'))).not.toContain('adm-footaccount__status');
+	});
+
+	it('stands in the narrow band beside the close, opening the same panel, marked alike', async () => {
+		binary.feeds = ZAPIER_ONLY;
+		const marked = band(await drawnReady('/quickbooks'));
+		expect(opener(marked)).toContain(
+			'aria-label="Cloudflare account Riverbank Trust, Deliveries paced for the Free plan"'
+		);
+		expect(marked).toContain('aria-label="Close console"');
+
+		binary.feeds = null;
+		expect(opener(band(await drawnReady('/quickbooks')))).toContain(
+			'aria-label="Cloudflare account Riverbank Trust"'
+		);
+	});
+
+	it('opens its panel off the address, headed by the account and holding the paid-plan switch', async () => {
+		const closed = await drawnReady('/quickbooks');
+		expect(closed).not.toContain(`name="${PLAN_FIELD}"`);
+
+		const page = await drawnReady('/quickbooks?account');
+		expect(page).toMatch(/<h2 id="[^"]+">Riverbank Trust<\/h2>/);
+		expect(page).toContain(`name="${PLAN_FIELD}"`);
+		expect(page).toMatch(/<a\b[^>]*href="\/quickbooks"[^>]*>/);
 	});
 });

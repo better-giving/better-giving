@@ -4,6 +4,7 @@ import type {
 	QuickbooksPressReport,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
+import type { FeedsInUse } from '@better-giving/operator/console/report';
 import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 
 // what the binary answers, in the shapes it answers in.
@@ -218,10 +219,11 @@ export type HomeReading = {
 };
 
 /**
- * each outbound feed the deployment sends and whether it is in use, every member stated
- * (`FeedsInUse` in `packages/console/internal/deployment/report.go`).
+ * each outbound feed the deployment sends and whether it is in use, every member stated. the
+ * deployment's own report type, which the binary passes through whole (`FeedsInUse` in
+ * `packages/console/internal/deployment/report.go`).
  */
-export type FeedsInUse = { zapier: boolean; webhooks: boolean; books: boolean };
+export type { FeedsInUse };
 
 /**
  * why there was nowhere to write a deploy-time value to.
