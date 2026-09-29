@@ -212,9 +212,8 @@ async function newestKeys(db: Db, query: PageQuery): Promise<Keyset[]> {
  * twice the rows the page reads to begin with, so a stream whose writes are rarely a gift's latest
  * stops there rather than reading on to its index's end. every gift whose latest write falls
  * inside the window is in it, and every gift past it comes after them in the order, so a window
- * that yields more than a page
- * holds the page. one that yields less is read again twice as wide, and one that reaches past the
- * last write is not closed at all.
+ * that yields more than a page holds the page. one that yields less is read again twice as wide,
+ * and one that reaches past the last write is not closed at all.
  */
 async function changedKeys(db: Db, query: PageQuery & { order: 'changed' }): Promise<Keyset[]> {
 	const from =
