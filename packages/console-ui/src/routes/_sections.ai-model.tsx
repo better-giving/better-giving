@@ -77,7 +77,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 
 export default function ModelPage({ loaderData, actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
-	const { intent, busy } = usePress();
+	const { intent, busy, revalidating } = usePress();
 	const { vars } = shell.reading.values;
 	const written: VarsWritten | null = actionData && 'model' in actionData ? actionData.model : null;
 	const freed: VarsWritten | null = actionData && 'freed' in actionData ? actionData.freed : null;
@@ -93,6 +93,7 @@ export default function ModelPage({ loaderData, actionData, matches }: Route.Com
 				accountName={shell.account}
 				busy={busy}
 				pending={intent}
+				revalidating={revalidating}
 			/>
 		</Column>
 	);

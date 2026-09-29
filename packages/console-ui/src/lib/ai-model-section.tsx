@@ -16,7 +16,17 @@ import type {
 	ModelCredits,
 	VarsWritten
 } from '../api/types';
-import { MODEL_FIELD, MODEL_INTENT, chosenModel, creditsLine, modelOptions } from './ai-model';
+import {
+	MODEL_FIELD,
+	MODEL_INTENT,
+	chosenModel,
+	creditsLine,
+	modelOptions,
+	modelPhase,
+	pressSays,
+	settles
+} from './ai-model';
+import { useReseeded } from './reseed';
 import { Said } from './said';
 import { refusalIn, secretTrouble } from './secret-trouble';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
@@ -58,6 +68,8 @@ export type ModelSectionProps = {
 	busy: boolean;
 	/** which intent is in flight, or `null` where none is. */
 	pending: string | null;
+	/** the router has a press's answer and is reading the page again over it. */
+	revalidating: boolean;
 };
 
 export function ModelSection({
@@ -69,17 +81,26 @@ export function ModelSection({
 	workerName,
 	accountName,
 	busy,
-	pending
+	pending,
+	revalidating
 }: ModelSectionProps): ReactNode {
 	const group = `${useId()}-model`;
 	const chosen = chosenModel(model);
 	const line = creditsLine(credits);
-	const sending = pending === MODEL_INTENT;
+	const says = pressSays(written);
+	const own = pending === MODEL_INTENT;
 	const failure = written === null ? null : refusalIn(written);
+	const settled = settles(written);
+	/* the radios go back to what the deployment holds on the reading that lands after this press,
+	   not on the answer ahead of it (./reseed.ts): `model` is the whole of what they are drawn from,
+	   so it is what says which reading is on the screen. */
+	const spent = useReseeded({ landed: settled, pending: own, reading: model });
+	const { underway, closed } = modelPhase({ own, revalidating, busy, settled, spent });
 
 	const { form, state, onInput, onSubmit } = useSavedFormState({
 		report: written,
 		landed: written?.kind === 'set',
+		spent,
 		// read off the element at every press, as a block with no form layer does
 		// (`SavedFormInputs.changed` in packages/operator/src/saved-form-state.react.ts).
 		changed: (element) => {
@@ -88,8 +109,8 @@ export function ModelSection({
 			);
 			return (ticked?.value ?? null) !== chosen;
 		},
-		busy,
-		pending: sending
+		busy: closed,
+		pending: underway
 	});
 
 	/* the race every press on this console meets: the Worker answered a moment ago and is not in the
@@ -168,9 +189,9 @@ export function ModelSection({
 						sub: option.sub ?? undefined,
 						note: option.note ?? undefined,
 						defaultChecked: option.id === chosen,
-						// closed while this press is in flight and while another on the page writes: the
+						// closed while this press is underway and while another on the page writes: the
 						// choice is read once, at the press.
-						disabled: busy || sending
+						disabled: closed
 					}))}
 				/>
 
@@ -187,7 +208,7 @@ export function ModelSection({
 					consequence="Until a model is saved again, the chat answers from the free one."
 					written={freed}
 					trouble={trouble}
-					busy={busy}
+					busy={closed}
 					freeing={pending === FREE_INTENT}
 				/>
 
@@ -195,8 +216,14 @@ export function ModelSection({
 					<SaveButton name="intent" value={MODEL_INTENT} state={state} label="Save model" />
 				</div>
 
-				{/* a press that landed is the button's own tick, so what is left is the ways it did not. a
-				    choice held as a secret is drawn at the block above, where its way out is. */}
+				{/* a press that landed is the button's own tick, so what is left is the ways it did not:
+				    one that stored nothing says why here, and one that failed is its trouble. */}
+				{says?.tone === 'refused' ? <FieldMessage>{says.sentence}</FieldMessage> : null}
+				{/* mounted empty and written into, since a region arriving with its text is announced
+				    by nobody. */}
+				<p role="status" className={says?.tone === 'status' ? 'adm-hint' : 'adm-vh'}>
+					{says?.tone === 'status' ? says.sentence : null}
+				</p>
 				{failure === null ? null : trouble(failure)}
 			</Form>
 		</>
