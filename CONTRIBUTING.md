@@ -12,7 +12,7 @@ pnpm dev                                                   # http://localhost:53
 
 - `pnpm install` runs `prepare`: route typegen, `worker-configuration.d.ts`. Stale types after editing `wrangler.jsonc` want `pnpm wrangler types`, not a reinstall.
 - `pnpm dev` does not build the embed: `/embed.js` 404s until `pnpm run build` has run once.
-- `pnpm dev` and `pnpm run preview` reach no model: Workers AI has no local simulator, so every generate is refused as `not_bound`. To reach one, `pnpm run login`, then `BETTER_GIVING_REMOTE_AI=1 pnpm dev`. Calls are real and a credit-billed `AI_MODEL` spends the account's credits.
+- `pnpm dev` and `pnpm run preview` reach no model: Workers AI has no local simulator, so every AI request is refused as `not_bound`. To reach one, `pnpm run login`, then `BETTER_GIVING_REMOTE_AI=1 pnpm dev`. Calls are real and a credit-billed `AI_MODEL` spends the account's credits.
 
 Before changing code, read [`CLAUDE.md`](./.claude/CLAUDE.md) for the invariants, several non-obvious enough that inferring intent from the code gets them backwards.
 

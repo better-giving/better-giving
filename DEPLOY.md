@@ -62,7 +62,7 @@ pnpm run deploy:vars      # one deploy, carrying every line of the file as a var
 - Anyone who can open this Cloudflare account can read every one of them, and that is the trade: the console shows you a stored processor key and a stored SMTP password rather than four dots, because it already runs on your Cloudflare session. Treat account access as credential access.
 - `.deploy.vars` is not `.dev.vars`, which feeds `pnpm dev` and is never uploaded.
 - `CONSOLE_TOKEN` sits on the same Worker and is not one of these values: a Worker secret holding the console's session, minted when a console connects, twelve hours, replaced by the next connect. `pnpm run secret:list` names it, and `pnpm run secret:delete CONSOLE_TOKEN` closes the console surface until a console connects again.
-- `AI_MODEL` is the model the dashboard's generated text is answered by, and the console's model setting writes it. Left unset it is the free Workers AI model. Claude and GPT are billed to this Cloudflare account's credits, with no provider key to store, and when a call to one fails the free model answers in its place (`packages/app/src/lib/server/ai/generate.ts` says why).
+- `AI_MODEL` picks the model that writes the dashboard's generated text, and the console's model setting writes it. Left unset it is the free Workers AI model. Claude and GPT are billed to this Cloudflare account's credits, with no provider key to store, and when a call to one fails the free model answers in its place (`packages/app/src/lib/server/ai/generate.ts` says why).
 - `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are escape hatches, not setup steps: the first revokes every session, the second pins a canonical origin (read the caveat in `.dev.vars.example` first). `SMTP_PORT` is a third configuration value usually left unset; the app refuses every port but 465.
 
 ## 2. The console jobs
@@ -219,7 +219,7 @@ pnpm run db:export --output ./backup.sql          # the books: every table, phot
 pnpm run db:export:photos --output ./photos       # one file per photo, named by its id
 ```
 
-The photos are kept apart because D1 refuses any statement over 100 KB, and a photo written into SQL is twice its size. A backup holding them could not be restored. Both paths are relative to `packages/app`.
+The photos are kept apart because a backup holding them as SQL could not be restored (`packages/app/scripts/db-export.js` says why). Both paths are relative to `packages/app`.
 
 Restore into an empty database, books first: a photo is stored only under an image the books already hold. Don't apply migrations to it first: the books carry the schema and the record of which migrations ran.
 
