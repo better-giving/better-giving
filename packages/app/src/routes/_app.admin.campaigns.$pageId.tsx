@@ -153,6 +153,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	let settings: SettingsSeed;
 	let pageSettings: PageSettingsSeed;
 	let asked: string | null;
+	let drafted: Awaited<ReturnType<typeof editorDraft>>;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
@@ -166,13 +167,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			readPageSettings(db, row),
 			addressAsked(db, row)
 		]);
+		drafted = await editorDraft(db, row, settings.currency);
 	} catch (e) {
 		console.error(`loading campaign ${params.pageId}'s settings failed:`, e);
 		loadFailed('This campaign');
 	}
 	return {
 		...editorPage(row, Date.now()),
-		...editorDraft(row, settings.currency),
+		...drafted,
 		settings,
 		pageSettings,
 		name: row.name,

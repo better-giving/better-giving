@@ -36,7 +36,7 @@ function unpublished(): Loaded {
 		shareMessage: null,
 		goalMinor: null,
 		endDate: null,
-		blocks: editorBlocks(DRAFT, 'USD'),
+		blocks: editorBlocks(DRAFT, 'USD', new Set()),
 		layout: DRAFT.layout,
 		layouts: layoutPictures(),
 		settings: {

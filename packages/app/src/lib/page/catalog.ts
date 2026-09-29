@@ -77,7 +77,7 @@ export const BUYS_MAX = 140;
 export const FAQ_MAX = 10;
 export const QUESTION_MAX = 200;
 export const SHARE_MESSAGE_MAX = 280;
-const ALT_MAX = 250;
+export const ALT_MAX = 250;
 
 const TIER_AMOUNT = 'a tier\u2019s amount is a whole number of minor units above zero';
 

@@ -120,6 +120,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 	let settings: SettingsSeed;
 	let pageSettings: PageSettingsSeed;
 	let edited: boolean;
+	let drafted: Awaited<ReturnType<typeof editorDraft>>;
 	try {
 		row = await ensureDonationPage(db);
 		[story, settings, pageSettings, edited] = await Promise.all([
@@ -128,13 +129,14 @@ export async function loader({ context }: Route.LoaderArgs) {
 			readPageSettings(db, row),
 			hasEditsToReset(db, row)
 		]);
+		drafted = await editorDraft(db, row, settings.currency);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
 		loadFailed('The Donation page');
 	}
 	return {
 		...editorPage(row, Date.now()),
-		...editorDraft(row, settings.currency),
+		...drafted,
 		settings,
 		pageSettings,
 		hasEdits: edited,

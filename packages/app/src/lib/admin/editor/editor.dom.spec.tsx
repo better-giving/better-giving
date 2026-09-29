@@ -342,7 +342,7 @@ describe('the pictures', () => {
 
 	it('draw every variant the catalog gives a block, each under its label', () => {
 		const undrawn: string[] = [];
-		for (const block of editorBlocks(everyBlock(), 'USD')) {
+		for (const block of editorBlocks(everyBlock(), 'USD', new Set())) {
 			if (block.variant === null) continue;
 			const root = mount(
 				<PicturePicker

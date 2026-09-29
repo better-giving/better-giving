@@ -17,6 +17,7 @@ import { formatMinorBrief } from '../donations/money';
 import { majorEntry } from '../forms/amounts';
 import { plainText, type RichTextDocument } from '../rich-text/document';
 import { BLOCKS, type Block, type BlockType, LAYOUTS, type Page } from './catalog';
+import { isIllustrated } from './illustration';
 import type { Layout } from './keys';
 
 export const BLOCK_FORMS = {
@@ -113,13 +114,22 @@ export type EditorBlock = {
 	/** the variants it may take, empty where `variant` is null. */
 	readonly variants: readonly Picture[];
 	readonly text: BlockText | null;
+	/** a hero or an image block whose picture an AI drew, until a photo replaces it. */
+	readonly illustration: boolean;
 };
 
 /** a picture a picker offers: the catalog's name, and what the picture is called. */
 export type Picture = { readonly value: string; readonly label: string };
 
-/** the draft's blocks in its order; `currency` is the draft's donation settings'. */
-export function editorBlocks(draft: Page, currency: string): EditorBlock[] {
+/**
+ * the draft's blocks in its order; `currency` is the draft's donation settings', `illustrations`
+ * the ids of its pictures an AI drew.
+ */
+export function editorBlocks(
+	draft: Page,
+	currency: string,
+	illustrations: ReadonlySet<string>
+): EditorBlock[] {
 	return draft.blocks.map((block) => ({
 		id: block.id,
 		type: block.type,
@@ -134,7 +144,8 @@ export function editorBlocks(draft: Page, currency: string): EditorBlock[] {
 						label: VARIANT_LABELS[name]
 					}))
 				}),
-		text: blockText(block, currency)
+		text: blockText(block, currency),
+		illustration: isIllustrated(block, illustrations)
 	}));
 }
 

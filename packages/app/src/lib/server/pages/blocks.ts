@@ -16,11 +16,12 @@ import {
 	PAGE_LAYOUT_INPUT
 } from '../../page/block-edit';
 import { BLOCK_DATA, type Block, type BlockType, type Page, parsePage } from '../../page/catalog';
+import { placedImageIds } from '../../page/illustration';
 import { isEmptyDocument, parseRichText } from '../../rich-text/document';
 import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { type Page as PageRow, page } from '../db/schema';
-import { firstMissingImage } from '../images/queries';
+import { firstMissingImage, illustrationsAmong } from '../images/queries';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
@@ -76,12 +77,16 @@ type Words = {
 
 type ReadWords = { ok: true; read: Words } | { ok: false; refusal: RejectionReasons };
 
-/** the draft's blocks and layout as the editor draws them; `currency` is the draft settings'. */
-export function editorDraft(row: PageRow, currency: string) {
+/**
+ * the draft's blocks and layout as the editor draws them; `currency` is the draft settings'. which
+ * pictures an AI drew is one read of their kinds.
+ */
+export async function editorDraft(db: Db, row: PageRow, currency: string) {
 	const draft = parsePage(row.type, JSON.parse(row.draft));
 	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
+	const illustrations = await illustrationsAmong(db, placedImageIds(draft.page));
 	return {
-		blocks: editorBlocks(draft.page, currency),
+		blocks: editorBlocks(draft.page, currency, illustrations),
 		layout: draft.page.layout,
 		layouts: layoutPictures()
 	};

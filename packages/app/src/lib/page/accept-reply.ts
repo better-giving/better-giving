@@ -39,6 +39,8 @@
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat or
 //   one `current` already places, or the reply is refused. that it names a stored image is
 //   $lib/server/pages/draft.ts's to check, and that it is an id and never an address the catalog's.
+//   an illustration asked for in an `imageId`'s place is `illustrationRequests`' to read, and
+//   reaches this rule as the id drawn for it, attached in this chat, or as null.
 // - a block its page type does not take, and everything else about a page's shape, is
 //   `parsePage`'s, which the draft passes last.
 //
@@ -61,7 +63,7 @@ import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
 import { FORM_CURRENCY, majorEntry, readAmount, readSuggestedAmounts } from '../forms/amounts';
 import type { ProgramMode } from '../forms/program-modes';
-import { draftFromPage, pageFromDraft } from './ai-catalog';
+import { draftFromPage, illustrationRequest, pageFromDraft } from './ai-catalog';
 import { endDayOf, endOfDay } from './end-date';
 import { HEADING_MAX, type Page, parsePage } from './catalog';
 import { PAGE_KEYS, type PageType } from './keys';
@@ -288,6 +290,117 @@ function accept(input: AcceptInput): Accepted | Refused {
 		changes: set.changes,
 		dropped
 	};
+}
+
+/** the illustrations a reply asks for, in the order it wrote them, and how the reply takes them. */
+export type IllustrationRequests =
+	| {
+			ok: true;
+			descriptions: string[];
+			/**
+			 * the reply's text with each request replaced by the image id at its index, null where the
+			 * picture was not drawn: a reply `acceptReply` reads like any other.
+			 */
+			place: (imageIds: readonly (string | null)[]) => string;
+	  }
+	| { ok: false; reason: string };
+
+/**
+ * each `{ "illustrate": … }` a reply writes where a photo's `imageId` goes — as that key's value
+ * inside a page edit, or as the value of a patch operation whose path ends at it — with its
+ * description trimmed. a request whose description breaks `illustrationRequest` refuses the reply,
+ * as `say` past its length does; one anywhere else is left standing for `parsePage` to refuse. a
+ * reply this door would refuse before reading it has no requests, and `place` hands it back as it
+ * came.
+ */
+export function illustrationRequests(reply: string): IllustrationRequests {
+	const none = { ok: true as const, descriptions: [], place: () => reply };
+	if (new TextEncoder().encode(reply).byteLength > REPLY_BYTES_MAX) return none;
+	let json: unknown;
+	try {
+		json = JSON.parse(reply);
+	} catch {
+		return none;
+	}
+	if (deeperThan(json, REPLY_DEPTH_MAX) || !isRecord(json) || !isRecord(json.page)) return none;
+
+	const found: RequestSite[] = [];
+	const { page } = json;
+	if (page.kind === 'patch' && Array.isArray(page.ops)) {
+		page.ops.forEach((op: unknown, index) => {
+			if (!isRecord(op) || !('value' in op)) return;
+			const at = ['page', 'ops', index, 'value'];
+			const target = typeof op.path === 'string' ? pointer(op.path) : null;
+			if (target?.at(-1) === 'imageId' && isRequest(op.value)) {
+				found.push({
+					value: op.value,
+					path: at,
+					set: (id) => {
+						op.value = id;
+					}
+				});
+			} else {
+				found.push(...requestsIn(op.value, at));
+			}
+		});
+	} else if (page.kind === 'merge') {
+		found.push(...requestsIn(page.doc, ['page', 'doc']));
+	}
+
+	const descriptions: string[] = [];
+	for (const { value, path } of found) {
+		const read = illustrationRequest.safeParse(value);
+		if (!read.success) {
+			const [issue] = read.error.issues;
+			return {
+				ok: false,
+				reason: located([...path, ...(issue?.path ?? [])].filter(isKey), issue?.message ?? '')
+			};
+		}
+		descriptions.push(read.data.illustrate);
+	}
+	return {
+		ok: true,
+		descriptions,
+		place: (imageIds) => {
+			for (const [index, { set }] of found.entries()) set(imageIds[index] ?? null);
+			return JSON.stringify(json);
+		}
+	};
+}
+
+/** where a reply asks for an illustration, and how its image id is put in that place. */
+type RequestSite = {
+	value: unknown;
+	path: (string | number)[];
+	set: (imageId: string | null) => void;
+};
+
+function requestsIn(value: unknown, path: (string | number)[]): RequestSite[] {
+	if (Array.isArray(value))
+		return value.flatMap((item, index) => requestsIn(item, [...path, index]));
+	if (!isRecord(value)) return [];
+	return Object.entries(value).flatMap(([key, item]) =>
+		key === 'imageId' && isRequest(item)
+			? [
+					{
+						value: item,
+						path: [...path, key],
+						set: (id: string | null) => {
+							value[key] = id;
+						}
+					}
+				]
+			: requestsIn(item, [...path, key])
+	);
+}
+
+function isRequest(value: unknown) {
+	return isRecord(value) && 'illustrate' in value;
+}
+
+function isKey(key: PropertyKey): key is string | number {
+	return typeof key !== 'symbol';
 }
 
 const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(k|m|thousand|million)\b)?(?![\d,.]?\d)`;

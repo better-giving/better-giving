@@ -19,6 +19,7 @@
 import { defineCatalog, defineSchema, type PromptContext } from '@json-render/core';
 import { z } from 'zod';
 import {
+	ALT_MAX,
 	BLOCK_DATA,
 	BLOCK_TYPES,
 	BLOCKS,
@@ -36,6 +37,29 @@ import type { Layout, PageType, Palette } from './keys';
 import { LIST_DEPTH_MAX } from '../rich-text/document';
 
 const DONATION_FLOW = 'DonationFlow';
+
+/** the most illustrations one reply is drawn. */
+export const ILLUSTRATIONS_MAX = 2;
+
+/**
+ * a reply's ask for an illustration, written where a hero's or an image block's `imageId` goes.
+ * the description is the picture's prompt and, once drawn, its alt text, so it is held to a photo
+ * description's length. it lives on a reply alone: $lib/server/pages/draft.ts puts the drawn
+ * picture's id, or null, in its place before ./accept-reply.ts reads the reply, and `parsePage`
+ * refuses one left standing.
+ */
+export const illustrationRequest = z.strictObject({
+	illustrate: z
+		.string()
+		.trim()
+		.min(1, { error: 'an illustration request describes the picture wanted' })
+		.max(ALT_MAX, {
+			error: `an illustration’s description holds at most ${ALT_MAX} characters`
+		})
+});
+
+/** the blocks a photo sits in, whose `imageId` a reply may ask an illustration for. */
+const PHOTO_BLOCKS: readonly BlockType[] = ['hero', 'image'];
 
 // the prompt's type rendering cannot show a list item's content, a tuple.
 const RICH_TEXT = `a rich-text document; a listItem's content is one paragraph, then any paragraphs, bulletLists and orderedLists, nested at most ${LIST_DEPTH_MAX} lists deep`;
@@ -123,8 +147,11 @@ export function pageCatalog(type: PageType) {
 	for (const block of BLOCK_TYPES) {
 		const { variants, backgrounds, pages } = BLOCKS[block];
 		if (!(pages as readonly PageType[]).includes(type)) continue;
+		const data: z.ZodRawShape = PHOTO_BLOCKS.includes(block)
+			? { ...BLOCK_DATA[block], imageId: BLOCK_DATA.hero.imageId.or(illustrationRequest) }
+			: BLOCK_DATA[block];
 		components[componentName(block)] = {
-			props: z.object(BLOCK_DATA[block]),
+			props: z.object(data),
 			description: DESCRIPTIONS[block],
 			variants: variants === null ? [] : [...variants],
 			backgrounds: [...backgrounds]
@@ -165,6 +192,7 @@ function prompt({ catalog, options, formatZodType }: PromptContext<DraftCatalog>
 		'- add no link; keep a link already in the text exactly as it is',
 		// the chat names a turn's photos this way: `withImages` in $lib/server/pages/draft.ts.
 		'- a photo’s imageId is an id from "(attached photos: …)" in the chat or one the page already holds, never an address; null leaves the block out',
+		`- where no photo attached in the chat or already on the page fits a hero or image block, its imageId may be {"illustrate": "a short description of the picture wanted"} and an illustration is drawn from it; a photo that fits always wins, and a reply asks for at most ${ILLUSTRATIONS_MAX}`,
 		...(options.customRules ?? []).map((rule) => `- ${rule}`)
 	].join('\n');
 }

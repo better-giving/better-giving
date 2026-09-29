@@ -10,7 +10,15 @@ import { form, page as pageTable } from '$lib/server/db/schema';
 import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert, readForm } from '$lib/server/forms/queries';
 import { edgeCache } from '$lib/server/edge-cache.testing';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import { BLOCK_FORMS } from '$lib/page/block-edit';
+import { jpegHeader } from '$lib/server/images/headers.testing';
+import { createImage } from '$lib/server/images/queries';
+import { saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
+import { draftTurn } from '$lib/server/pages/draft';
+import { answering } from '$lib/server/pages/page-row.testing';
+import { readPage } from '$lib/server/pages/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
@@ -55,6 +63,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	await env.DB.batch([
+		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from org_profile')
@@ -218,6 +227,52 @@ describe('the donation box in a preview', () => {
 		expect(config.suggestedAmountsMinor).toEqual([1500, 4000]);
 		expect(config.minAmountMinor).toBe(500);
 		expect(config.maxAmountMinor).toBe(50_000);
+	});
+});
+
+describe('a picture the chat had drawn', () => {
+	it('is marked an illustration where the draft places it, and no longer once a photo replaces it by hand', async () => {
+		const campaign = await neverPublishedCampaign(defaultCampaign());
+		let binary = '';
+		for (const byte of jpegHeader(1024, 768)) binary += String.fromCharCode(byte);
+		const AI = answering({
+			say: 'Added a picture.',
+			page: {
+				kind: 'patch',
+				ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: { illustrate: 'a van' } }]
+			}
+		});
+		AI.run.mockImplementationOnce(async () => ({ image: btoa(binary) }));
+		await draftTurn(
+			db,
+			{ ...env, AI },
+			{
+				pageId: campaign.id,
+				message: 'no photo yet',
+				imageIds: [],
+				timeZone: 'UTC',
+				now: Date.now()
+			}
+		);
+		const hero = async () => (await open(campaign.id)).page.blocks[0];
+		expect(await hero()).toMatchObject({ type: 'hero', illustration: true });
+
+		const row = await readPage(db, campaign.id);
+		if (row === null) throw new Error('the fixture campaign is gone');
+		const photo = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+		const body = new FormData();
+		body.set(WHICH_FORM, BLOCK_FORMS.photo);
+		body.set(RECORD_VERSION, String(row.updatedAt.getTime()));
+		body.set('block_id', 'hero');
+		body.set('image_id', photo);
+		body.set('alt', 'Volunteers');
+		await saveBlockForm(db, { type: 'campaign', id: campaign.id }, BLOCK_FORMS.photo, body, 'gone');
+
+		expect(await hero()).toMatchObject({ type: 'hero', imageId: photo, illustration: false });
 	});
 });
 

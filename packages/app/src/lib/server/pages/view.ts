@@ -4,6 +4,7 @@ import type { OrgInfo } from '../../donate/blocks/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import { type Page, parsePage } from '../../page/catalog';
+import { type MarkedPage, markIllustrations, placedImageIds } from '../../page/illustration';
 import type { PageType } from '../../page/keys';
 import { SHARE_CHANNELS_DEFAULT } from '../../page/share';
 import type { Db } from '../db/client';
@@ -13,6 +14,7 @@ import { cachedCoins } from '../forms/coin-cache';
 import type { FormRecord } from '../forms/form-input';
 import { readPublishedConfig, renderableConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
+import { illustrationsAmong } from '../images/queries';
 import type { OrgSharing } from '../org/presentation';
 import { readOrgLook, readOrgProfile, readOrgSharing, readOrgStory } from '../org/queries';
 import { present } from '../org/receipt-fields';
@@ -37,7 +39,9 @@ import { pageGoal } from './goal';
 //
 // the organisation's story, look and sharing are read live on every draw, so a save on the
 // dashboard's organisation page reaches every page at once, and so is a campaign's raised figure
-// (./goal.ts), a sum over the books that is never cached.
+// (./goal.ts), a sum over the books that is never cached. which of its pictures an AI drew is read
+// on every draw too, one read of their kinds (../../page/illustration.ts), so a photo put in one's
+// place clears the mark on the next.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -53,8 +57,13 @@ export type PageSource = {
 	readonly address: string;
 };
 
-/** what a donor page's component is handed: `PageWithCard`'s props, every one serializable. */
-export type PageViewData = Omit<PageWithCardProps, 'seams'>;
+/**
+ * what a donor page's component is handed: `PageWithCard`'s props, every one serializable, its page
+ * with each hero and image block marked where an AI drew its picture.
+ */
+export type PageViewData = Omit<PageWithCardProps, 'seams' | 'page'> & {
+	readonly page: MarkedPage;
+};
 
 export type LoadedPage =
 	| { readonly kind: 'page'; readonly view: PageViewData }
@@ -80,7 +89,7 @@ export async function loadPageView(
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
 	const parsed = parsePage(source.type, storedDocument(source.document));
-	const [served, story, orgLook, orgSharing, profile] = await Promise.all([
+	const [served, story, orgLook, orgSharing, profile, illustrations] = await Promise.all([
 		readPublishedConfig(
 			db,
 			source.formId,
@@ -98,7 +107,8 @@ export async function loadPageView(
 		readOrgStory(db),
 		readOrgLook(db),
 		readOrgSharing(db),
-		readOrgProfile(db)
+		readOrgProfile(db),
+		illustrationsAmong(db, parsed.ok ? placedImageIds(parsed.page) : [])
 	]);
 	const result = renderableConfig(served);
 	// the served config alone reaches the page: `result.form` carries `allowed_origins`, the sites
@@ -125,7 +135,7 @@ export async function loadPageView(
 		kind: 'page',
 		view: {
 			type: source.type,
-			page,
+			page: markIllustrations(page, illustrations),
 			pageName,
 			org: {
 				name: orgName,
