@@ -73,11 +73,11 @@ import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 // (`?confirm=resume`, `?confirm=delete`) so the question can be reloaded and backed out of. each
 // press posts to the page's own address rather than the question's, in place of it in the history:
 // whatever the action answers lands on the page with the question down. a resume reports at the
-// header's status line, where its press stood; a delete lands on the list, which names what it
-// took. a refused resume answers 409, and `shouldRevalidate` reads the page again after it so the
-// header shows the destination as it stands.
+// status line under the header, where its press stood; a delete lands on the list, which names
+// what it took. a refused resume answers 409, and `shouldRevalidate` reads the page again after it
+// so the header shows the destination as it stands.
 //
-// the test is sent at once and reports at the same status line, in the word its answer earns:
+// the test is sent at once and reports at that same status line, in the word its answer earns:
 // `Sent — 200`, `Refused — 500`, or `No answer` for a fault or a timeout. it is offered on a paused
 // destination too, since it is how a fix is checked before the resume; what it posts, and why it
 // changes nothing, is `sendTestWebhook`'s doc in $lib/server/webhooks/deliver.ts.
@@ -286,7 +286,7 @@ type Loaded = Route.ComponentProps['loaderData'];
 
 const events = (n: number) => `${n} held ${n === 1 ? 'event' : 'events'}`;
 
-/** a line the header's status says: done, refused, or a press that changed nothing. */
+/** what the status line under the header says: done, refused, or a press that changed nothing. */
 type Report = { readonly text: string; readonly reading: 'done' | 'blocked' | 'neutral' };
 
 /** how the status line's word is drawn for each reading. */
@@ -296,7 +296,7 @@ const READINGS = {
 	neutral: { neutral: true }
 } as const;
 
-/** what the header's status line says of the test that just answered, or nothing. */
+/** what the status line says of the test that just answered, or nothing. */
 function testReport(actionData: Route.ComponentProps['actionData']): Report | null {
 	if (!actionData || !('tested' in actionData)) return null;
 	const { tested } = actionData;
@@ -310,7 +310,7 @@ function testReport(actionData: Route.ComponentProps['actionData']): Report | nu
 	}
 }
 
-/** what the header's status line says of the resume that just answered, or nothing. */
+/** what the status line says of the resume that just answered, or nothing. */
 function resumeReport(actionData: AdminActionData): Report | null {
 	if (actionData && 'resumed' in actionData && typeof actionData.resumed === 'number') {
 		const n = actionData.resumed;
@@ -356,19 +356,6 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 				title={title}
 				pageAction={
 					<div className="adm-actions">
-						{/* mounted empty and written when a test or a resume answers or an add lands. it
-						    takes focus when a resume's dialog comes down after the resume took the Resume
-						    press off the page. it stands before the presses, so the words growing it move
-						    neither of them under a repeat press. */}
-						<p ref={said} role="status" tabIndex={-1}>
-							{report ? (
-								<StatusWord register="momentary" {...READINGS[report.reading]}>
-									{report.text}
-								</StatusWord>
-							) : arrived !== null && !testing ? (
-								<StatusWord register="momentary">{arrived}</StatusWord>
-							) : null}
-						</p>
 						{paused ? (
 							// a link dressed as a button, because it writes nothing: it asks.
 							<Button
@@ -397,6 +384,20 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 					</div>
 				}
 			/>
+			{/* mounted empty and written when a test or a resume answers or an add lands. it takes
+			    focus when a resume's dialog comes down after the resume took the Resume press off the
+			    page. it is a line of its own under the header rather than a child of the presses'
+			    row: in that row its words push the presses along it, or wrap the row under the title,
+			    and a repeat press lands on whatever slid into the spot. */}
+			<p ref={said} role="status" tabIndex={-1}>
+				{report ? (
+					<StatusWord register="momentary" {...READINGS[report.reading]}>
+						{report.text}
+					</StatusWord>
+				) : arrived !== null && !testing ? (
+					<StatusWord register="momentary">{arrived}</StatusWord>
+				) : null}
+			</p>
 			{paused ? (
 				<Banner tone="attention" word="Paused">
 					{held === 0

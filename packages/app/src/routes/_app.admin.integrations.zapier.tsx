@@ -314,6 +314,11 @@ function triggers(listening: Listening) {
  * the key as a page may show it — its head and tail, never the key — in a box that states it,
  * and the press that acts on it: Make key where there is none, and Replace key, which asks first,
  * where there is one. a refused press is said under the box, and the press is pointed at it.
+ *
+ * the make's form stands beside the row, hidden, and Make key and the box reach it by their `form`
+ * attribute rather than by being inside it: a refused make is read again into Replace key, and a
+ * row that moved out of a wrapping form would be torn down and drawn again with its refusal —
+ * inserted twice, and said twice by a screen reader.
  */
 function KeyRow({
 	held,
@@ -342,12 +347,14 @@ function KeyRow({
 			code
 			readOnly
 			spellCheck={false}
+			form={held === null ? MAKE_FORM_ELEMENT : undefined}
 			value={held === null ? '' : `${held.prefix}${'•'.repeat(12)}${held.lastFour}`}
 			beside={
 				held === null ? (
 					<Button
 						ref={hold}
 						type="submit"
+						form={MAKE_FORM_ELEMENT}
 						mark="key-round"
 						aria-label="Make key"
 						aria-describedby={describedBy}
@@ -373,18 +380,22 @@ function KeyRow({
 		/>
 	);
 
-	return held === null ? (
-		<Form method="post" preventScrollReset>
-			<input {...whichForm(MAKE_FORM.id)} />
+	return (
+		<>
+			{held === null ? (
+				<Form id={MAKE_FORM_ELEMENT} method="post" preventScrollReset hidden>
+					<input {...whichForm(MAKE_FORM.id)} />
+				</Form>
+			) : null}
 			{row}
-		</Form>
-	) : (
-		row
+		</>
 	);
 }
 
 /** the key box's id, which `Field` names its refusal row from (`${id}-err`). */
 const KEY_BOX = 'zapier-key';
+
+const MAKE_FORM_ELEMENT = `${KEY_BOX}-make`;
 
 /**
  * the question over the page, in the top layer: a replace ends every Zap on the old key, and that

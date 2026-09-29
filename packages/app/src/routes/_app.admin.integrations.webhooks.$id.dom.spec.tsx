@@ -341,12 +341,16 @@ it('says the pace deliveries go out at on the Free plan, and nothing of it once 
 	expect(paid.textContent).not.toContain('Free plan');
 });
 
-it('stands the status line before the presses, so an answer landing moves neither', async () => {
+it('stands the status line on its own line under the header, so an answer landing moves no press', async () => {
+	// inside the presses' row the words growing it push the presses along it, or wrap the row
+	// under the title, at one width or another; a line of its own under the header grows downward
+	// alone.
 	const root = await flow(SCREEN, { paused: true });
 	const said = root.querySelector('p[role="status"]');
-	const group = said?.parentElement;
+	const header = root.querySelector('header.adm-pageheader');
 
-	expect(group?.contains(press(root, 'Resume'))).toBe(true);
-	expect(group?.contains(press(root, 'Send a test'))).toBe(true);
-	expect(group?.firstElementChild).toBe(said);
+	expect(header?.contains(press(root, 'Resume'))).toBe(true);
+	expect(header?.contains(press(root, 'Send a test'))).toBe(true);
+	expect(header?.contains(said ?? null)).toBe(false);
+	expect(header?.nextElementSibling).toBe(said);
 });
