@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { stripComments } from './raw-values';
+import { ruleOf, sheet } from './sheet-rule.testing';
 
 // the descriptive status word is a pill everywhere on an operator surface except inside a table,
 // where ./adm.css takes the pill off at `.adm-table .adm-state` and leaves the word standing in its
@@ -30,8 +29,6 @@ import { stripComments } from './raw-values';
 // no /admin screen gets a `*.browser.spec.ts` (CLAUDE.md) — so a computed ground is not something
 // any pool that renders one of these components can see.
 
-const SHEET = new URL('./adm.css', import.meta.url).pathname;
-
 /** the properties that are the word and not the shape around it, which a cell keeps as they are. */
 const WORD = new Set(['color', 'display', 'font-style', 'font-weight', 'white-space']);
 
@@ -52,25 +49,7 @@ const PLANE = new Map([
 /** the sheet's word for nothing, in the two spellings ./tokens.css names and the css keyword. */
 const NOTHING = /^(?:none|var\(--admin-(?:space|radius)-0\))$/;
 
-/**
- * the declarations one rule states, by property, last one wins as css itself resolves them.
- *
- * the selector is matched from the start of its own line, which is what keeps `.adm-state` from
- * also matching the `.adm-table .adm-state` further down the sheet.
- */
-function ruleOf(css: string, selector: string) {
-	const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const found = css.match(new RegExp(`(?:^|\\n)[ \\t]*${escaped}\\s*\\{([^}]*)\\}`));
-	const stated = new Map<string, string>();
-	for (const declaration of (found?.[1] ?? '').split(';')) {
-		const colon = declaration.indexOf(':');
-		if (colon === -1) continue;
-		stated.set(declaration.slice(0, colon).trim(), declaration.slice(colon + 1).trim());
-	}
-	return stated;
-}
-
-const css = stripComments(readFileSync(SHEET, 'utf8'));
+const css = sheet('adm.css');
 const pill = ruleOf(css, '.adm-state');
 const cell = ruleOf(css, '.adm-table .adm-state');
 

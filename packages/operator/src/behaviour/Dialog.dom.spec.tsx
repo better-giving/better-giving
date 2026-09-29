@@ -95,9 +95,8 @@ describe('the shell over the dialog', () => {
 	});
 
 	it('does not read a press that went down before the card was lifted as one on the ground', () => {
-		// a question drawn in the server's markup stands in the page until the lift, and then
-		// somewhere else: the press aimed at it went down on the page, and only its click reaches the
-		// element once it is lifted.
+		// a question drawn in the server's markup is pressable before the lift: a press that went
+		// down on the page under its ground reaches the element only as the click it ends in.
 		const onDismiss = vi.fn();
 		const root = render(Modal, { title: 'Delete this destination?', onDismiss });
 

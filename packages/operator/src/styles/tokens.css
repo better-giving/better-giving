@@ -940,8 +940,8 @@
 		/* ---- elevation ------------------------------------------------------------------
 
 		   an operator screen has exactly one shadow and it is spent on what floats over the page:
-		   the modal in the top layer, and the card a positioner places over whatever it was opened
-		   from. everywhere else depth is a rule, a band or a change of surface — a table header is
+		   the modal in the top layer and the question the server draws where that modal will stand,
+		   and the card a positioner places over whatever it was opened from. everywhere else depth is a rule, a band or a change of surface — a table header is
 		   a sunken band, a record is a hairline on white, a section break is a 1px rule. a screen
 		   that floats is performing a confidence the deployment has not earned, and a surface that
 		   genuinely covers another and says so with a band alone reads as having replaced it.
@@ -949,7 +949,6 @@
 		   a shape whose parts have to read as joined takes the edge where they meet rather than a
 		   shadow round the pair: two fills sharing an edge with no gap between them are already one
 		   object, and nothing in this system spends a shadow to say it again. */
-		--admin-elevation-flat: none;
 		/* raw-colour-ok: paired with `--admin-scrim` and drawn in the same channels, for the
 		   same reason it is the one alpha here. */
 		--admin-elevation-dialog: 0 1.25rem 3rem oklch(0.27 0.013 250 / 0.28);
