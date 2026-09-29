@@ -38,10 +38,12 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 // control, then the target the screen named, then that box while it is on the page, then the body.
 //
 // **a press on the ground counts only when it went down there after the card was lifted.** a
-// question that arrived in the server's markup is drawn in the page until this runs, and then
-// stands somewhere else: a press aimed at where the card was, begun before the lift, would land on
-// the ground and dismiss a question the reader was answering. the same rule keeps a drag that
-// starts inside the card and ends outside it from reading as a press on the ground.
+// question that arrived in the server's markup is pressable before this runs, and a press begun
+// then ends after the lift: one that went down on the page under the in-page ground would end on
+// the `::backdrop` and dismiss a question nobody answered. the in-page card stands in the box the
+// lifted one does (`.adm-dialog--inline` in ../styles/adm.css), which is what keeps a press begun
+// on one of its controls ending on the same control. the same rule keeps a drag that starts
+// inside the card and ends outside it from reading as a press on the ground.
 
 type ModalProps<
 	C extends ElementType = 'button',
@@ -91,8 +93,8 @@ export function Modal<
 	D extends ElementType = 'button'
 >({ onDismiss, fallbackFocus, ...interior }: ModalProps<C, X, D>) {
 	// which presentation the element is drawn in. it starts as the one the server sent — an open,
-	// whole, non-modal column in the page — and the effect turns it off at the moment the same
-	// element is lifted, so the modifier and the presentation cannot disagree.
+	// whole, non-modal card where the lifted one will stand — and the effect turns it off at the
+	// moment the same element is lifted, so the modifier and the presentation cannot disagree.
 	const [inPage, setInPage] = useState(true);
 	const element = useRef<HTMLDialogElement>(null);
 	// the effect below runs once per card and reads this when the card comes down, so it takes the
@@ -131,7 +133,7 @@ export function Modal<
 		node.focus();
 		setInPage(false);
 		// listened for from here on and not before, which is the whole of the rule: a press that went
-		// down while the card was still in the page is never recorded.
+		// down before the card was lifted is never recorded.
 		const pressDown = (event: PointerEvent) => {
 			groundPress.current = onGround(node, event);
 		};

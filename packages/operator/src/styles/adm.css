@@ -4675,7 +4675,8 @@
 	   of the list they have just read. it stands after the table rather than in its body, so a
 	   reader moving by rows meets only records — the rule, the inset and the size are a row's,
 	   restated, and the whole row is what the pointer and the finger have to land on rather than
-	   the mark alone.
+	   the mark alone. so it takes the row's floor as well: the inset and a line of type come to less
+	   than `--admin-touch-min`, which ./tokens.css holds every row to.
 
 	   it is as wide as the plane's view and not as the table, which scrolls inside the plane, so it
 	   is held at the view's start edge: a table scrolled sideways would otherwise carry the row's
@@ -4687,6 +4688,7 @@
 		grid-template-columns: auto 1fr;
 		align-items: center;
 		gap: var(--admin-space-4);
+		min-block-size: var(--admin-touch-min);
 		padding: var(--admin-space-4) var(--admin-space-5);
 		font-size: var(--admin-table-size);
 		color: var(--admin-ink-2);
@@ -4881,6 +4883,9 @@
 		display: grid;
 		gap: var(--admin-space-5);
 		inline-size: min(var(--admin-measure-dialog), calc(100% - var(--admin-space-9)));
+		max-inline-size: none;
+		max-block-size: calc(100% - var(--admin-space-9));
+		overflow: auto;
 		padding: var(--admin-space-8);
 		background: var(--admin-surface);
 		border: var(--admin-hairline);
@@ -4888,48 +4893,66 @@
 		box-shadow: var(--admin-elevation-dialog);
 	}
 
-	/* both rules below put back a `dialog` default the reset takes off every element, and
-	   neither is a choice this sheet is making: ./base.css zeroes `margin` and `padding` over
-	   `*`, which is written for the elements /admin draws as boxes and reaches `dialog` as
-	   well. what it removes there is what positions the element, so each presentation has to
-	   state its own — and neither can be left to the browser again without the reset growing
-	   an exception for one element. */
+	/* the card stands in one box whichever presentation it is in, and that box is stated here and
+	   in the rule above rather than left to the browser: its own sheet caps a shown modal's width
+	   and height by amounts of its own and gives the open, never-lifted element neither. so the
+	   caps above are this sheet's — the inline cap is the width itself, and the block cap leaves the
+	   same margin the width does, scrolling inside the card past it.
 
-	/* the top layer. a shown modal is `position: fixed` against all four insets, so the
-	   `margin: auto` the reset took off is the whole of what centres it: without it the card
-	   sits in the corner the insets pin it to. */
-	.adm-dialog:modal {
+	   the margin is put back too: ./base.css zeroes `margin` and `padding` over `*`, which is
+	   written for the elements /admin draws as boxes and reaches `dialog` as well, and what it
+	   removes there is what centres the element. a shown modal is `position: fixed` against all four
+	   insets, so `margin: auto` is the whole of what centres it; the in-page presentation below is
+	   given the same position and insets, so the one margin centres both. */
+	.adm-dialog:modal,
+	.adm-dialog--inline {
 		margin: auto;
 	}
 
 	/* the ground a shown modal is read against, and one of the two places the system's single alpha
-	   is painted — `.adm-sheetscrim` is the other, under the phone bar's More sheet. it is the
-	   element's own `::backdrop`, which the browser draws with no box in the markup to carry a
-	   class at all — so a screen showing a modal draws no ground of its own.
+	   is painted as a ground — `.adm-sheetscrim` is the other, under the phone bar's More sheet. it
+	   is the element's own `::backdrop`, which the browser draws with no box in the markup to carry
+	   a class at all — so a screen showing a modal draws no ground of its own.
 	   the pseudo-element exists only for an element in the top layer, which is why this states no
-	   `:modal`: the open, whole, in-page presentation below has no backdrop to paint. */
+	   `:modal`, and why the in-page presentation below paints the same ground by another means. */
 	.adm-dialog::backdrop {
 		background: var(--admin-scrim);
 	}
 
 	/* the presentation of a dialog the server rendered open, held until the attachment lifts the
-	   same element into the top layer: an open, whole, non-modal column in the page. the shadow is
-	   for a surface that floats over another and this one is a column in the flow, so it takes none.
+	   same element into the top layer: the card standing exactly where the lifted one will, over the
+	   page, on the same ground.
 
-	   `position` is stated because an open `dialog` that was never shown modally is
-	   `position: absolute`, which would lift this column out of the flow and draw it over
-	   whatever the page put next.
+	   **nothing may move when the card is lifted.** a question reached by a link or a reload is in
+	   the server's markup and pressable before the script arrives, and a press that goes down on
+	   "Yes, delete" and comes up after `showModal()` has to come up on the same control — a card
+	   that stood anywhere else before the lift ends that press on the ground instead, and the answer
+	   is lost. so this states the modal's own position and insets, and the box above is the one both
+	   are drawn in.
+
+	   the ground is the card's own shadow spread past every edge of the window, because an open
+	   `dialog` that was never shown modally has no `::backdrop` and a pseudo-element of the card's
+	   would paint over the card's own surface. a shadow takes no press: before the script, a press
+	   on the ground reaches the page under it, which is the one way out a question with no script
+	   over it has besides its own controls. it stands at step 3 of the ladder stated at `.adm-rail`,
+	   over the bar and the band as the top layer is.
+
+	   `:not(:modal)` because the lift and the modifier coming off are two moments — the element is in
+	   the top layer a frame before ../behaviour/Dialog.tsx's render takes the class away, and a
+	   ground painted in both would darken for that frame.
 
 	   packages/operator/src/components/shell/Dialog.jsx is the only thing that writes it, and it is
 	   the presentation with no script over it rather than a stand-in for one: the element arrives
 	   open in the server's markup and packages/operator/src/behaviour/Dialog.tsx is what takes the
 	   modifier off, at the moment the same element is lifted. */
-	.adm-dialog--inline {
-		position: static;
-		inline-size: 100%;
-		max-inline-size: var(--admin-measure-column);
-		border-radius: var(--admin-radius);
-		box-shadow: var(--admin-elevation-flat);
+	.adm-dialog--inline:not(:modal) {
+		position: fixed;
+		inset: 0;
+		z-index: 3;
+		/* raw-length-ok: the spread is past the longest side of any window, which no step is. */
+		box-shadow:
+			var(--admin-elevation-dialog),
+			0 0 0 100vmax var(--admin-scrim);
 	}
 
 	/* the body a dialog is described by. it is one element so `aria-describedby` has one thing to
@@ -4986,11 +5009,17 @@
 		grid-template-rows: auto 1fr auto;
 	}
 
-	/* `--_bar-reserve` is the strip at the foot the bar stands in: the page's end is held back by it
-	   and the More sheet stands on top of it (`.adm-rail ~ .adm-main`, `.adm-sheet` below). the
-	   terms are the tab's: the floor it is never shorter than, its taller top step, the step it pads
-	   itself by at each end, and whatever the platform holds back under it. the tab's own contents
-	   are shorter than that floor, so the sum can only overstate the bar.
+	/* `--_bar-reserve` is the strip at the foot the bar stands in, and the page's end is held back by
+	   it (`.adm-rail ~ .adm-main`). the terms are the tab's: the floor it is never shorter than, its
+	   taller top step, the step it pads itself by at each end, and whatever the platform holds back
+	   under it. the tab's own contents are shorter than that floor, so the sum can only overstate
+	   the bar — which is right for a page's end and wrong for anything standing on the bar.
+
+	   `--_bar-height` is the bar as it is drawn, and it is what the More sheet stands on
+	   (`.adm-sheet` below): contents shorter than the floor make the tab the floor exactly, and
+	   `.adm-rail` adds its rule above the tabs and the platform's inset under them. a sheet on the
+	   reserve instead stands clear of the bar by the overstatement, with the page showing through
+	   the gap.
 
 	   it is stated on the root because below the wide breakpoint the document is the scroller, and
 	   scroll padding is read off the scroller alone: without it a control focused in the bottom
@@ -5002,6 +5031,11 @@
 			var(--admin-edge) +
 			var(--admin-space-3) +
 			var(--admin-space-3) +
+			env(safe-area-inset-bottom)
+		);
+		--_bar-height: calc(
+			var(--admin-touch-min) +
+			var(--admin-border-width) +
 			env(safe-area-inset-bottom)
 		);
 		scroll-padding-block-end: var(--_bar-reserve);
@@ -5253,10 +5287,11 @@
 	   the order of the markup: a pinned table column takes `z-index: 1` in this sheet and stands
 	   later in the document, so a bar at the same step would pass under the first column of every
 	   table. the whole ladder is that column at 1, this bar and the console's `.adm-navigation-bar`
-	   at 2, and the anchored panel and note and the shell's skip link at 3 — each of those is drawn
-	   over the bar, and the panel and note are portalled to the body, so they too are settled by
-	   their step and not by where they stand in the document. a modal is in the top layer and is
-	   over all three without asking for a step at all. the bar's More sheet and its scrim are the
+	   at 2, and the anchored panel and note, the shell's skip link and a question the server drew
+	   before the script lifts it (`.adm-dialog--inline`) at 3 — each of those is drawn over the bar,
+	   and the panel and note are portalled to the body, so they too are settled by their step and
+	   not by where they stand in the document. a modal is in the top layer and is over all three
+	   without asking for a step at all. the bar's More sheet and its scrim are the
 	   one pair that stand at the bar's own step, 2, and it is the order that settles them:
 	   packages/operator/src/components/shell/AppShell.jsx writes both before the bar, so the bar
 	   draws over them and stays undimmed while the sheet is open — and live, which that file's
@@ -5356,14 +5391,14 @@
 		display: none;
 	}
 
-	/* the bar's More sheet: a modal card standing on the page's foot, where the bar's reserved
-	   strip begins, holding the rail's other destinations as the column draws them — the name, the
-	   mark, the rules and the headings — at the height a finger needs. it is only ever open below
-	   the wide breakpoint, because AppShell.jsx closes it the moment More stops being drawn.
+	/* the bar's More sheet: a modal card standing on the top edge of the bar, holding the rail's
+	   other destinations as the column draws them — the name, the mark, the rules and the headings —
+	   at the height a finger needs. it is only ever open below the wide breakpoint, because
+	   AppShell.jsx closes it the moment More stops being drawn.
 
-	   what it stands on is `--_bar-reserve`, the strip `.adm-rail ~ .adm-main` holds back, and the
-	   card is capped to what is left above it, scrolling inside itself on a short landscape screen
-	   rather than running off the top of it. */
+	   what it stands on is `--_bar-height`, the bar as it is drawn, and the card is capped to what
+	   is left above it, scrolling inside itself on a short landscape screen rather than running off
+	   the top of it. */
 	.adm-sheetscrim {
 		position: fixed;
 		inset: 0;
@@ -5376,12 +5411,12 @@
 	[data-scope='dialog'][data-part='positioner']:has(> .adm-sheet) {
 		position: fixed;
 		inset-inline: 0;
-		inset-block-end: var(--_bar-reserve);
+		inset-block-end: var(--_bar-height);
 		z-index: 2;
 	}
 
 	.adm-sheet {
-		max-block-size: calc(100dvh - var(--_bar-reserve));
+		max-block-size: calc(100dvh - var(--_bar-height));
 		overflow-y: auto;
 		padding: var(--admin-space-4) var(--admin-space-4) var(--admin-space-5);
 		background: var(--admin-surface);
@@ -5428,8 +5463,11 @@
 	/* the sheet's Close: the last stop in its tab order, for a reader with no Escape to send, and
 	   drawn at every moment rather than on focus — a phone screen reader's cursor lands on a control
 	   without focusing it, and a Close drawn only on focus is a pixel to double-tap. the quiet
-	   button it is, under the last row. */
+	   button it is, under the last row, and at the rows' floor rather than the small control's: the
+	   sheet is only ever open on a phone, so what a finger aims at in it is a row, and the density
+	   ./tokens.css spends the small control on is a desk screen's. */
 	.adm-sheet__close {
+		min-block-size: var(--admin-touch-min);
 		margin-block-start: var(--admin-space-4);
 	}
 
@@ -5813,9 +5851,23 @@
 	   a group's own row of presses (`Grouped` in
 	   packages/operator/src/components/shell/Layout.jsx) always starts at the column's edge, under
 	   the labels of the boxes above it — the API page's reference link and its agent prompt copy
-	   under the key form — so it takes the same pull with nothing to space apart. */
-	.adm-pageheader__row .adm-actions > .adm-btn--quiet.adm-btn--sm:first-child,
-	.adm-grouped > .adm-actions > .adm-btn--quiet.adm-btn--sm:first-child {
+	   under the key form — so it takes the same pull with nothing to space apart.
+
+	   **a row of quiet small controls alone takes the pull on the row, not on its first control.**
+	   the row wraps at the 375px floor, and a control that wraps starts a line of its own with the
+	   same padding the first one had: pulled as one, every line starts on the column's edge by its
+	   word, while the gap between two controls on a line stays what it was. the live region a copy
+	   control stands beside it (`.adm-vh`) is out of the flow and no item of the row. a row with
+	   any other item in it keeps the pull on its first control alone, because a control with a
+	   ground aligns by its box and the row cannot know which item a line will start with. */
+	.adm-pageheader__row .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))),
+	.adm-grouped > .adm-actions:not(:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))),
+	.adm-pageheader__row
+		.adm-actions:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))
+		> .adm-btn--quiet.adm-btn--sm:first-child,
+	.adm-grouped
+		> .adm-actions:has(> :not(.adm-btn--quiet.adm-btn--sm, .adm-vh))
+		> .adm-btn--quiet.adm-btn--sm:first-child {
 		margin-inline-start: calc(-1 * (var(--admin-space-4) + var(--admin-border-width)));
 	}
 
