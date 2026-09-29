@@ -10,7 +10,7 @@ import { WEBHOOK_EVENT_TYPES } from '$lib/webhooks/catalog';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { notFound } from '$lib/server/db/load-failure';
 import { SAVED_FLASH, takeFlash } from '$lib/server/flash';
-import { deliveryPace } from '$lib/server/outbox/budget';
+import { freePlanPace } from '$lib/server/outbox/budget';
 import { listDestinations } from '$lib/server/webhooks/destinations';
 import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks._index';
@@ -62,12 +62,11 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// the delete that just landed, taken: read and cleared on this one response, so a reload says
 	// nothing. the marker is the deleted destination's address.
 	const landed = await takeFlash(request, SAVED_FLASH);
-	const pace = deliveryPace(context.get(platform).env);
 	return data(
 		{
 			destinations,
 			deleted: landed?.marker ?? null,
-			freePlanPace: pace.plan === 'paid' ? null : pace.webhooksPerMinute
+			freePlanPace: freePlanPace(context.get(platform).env, 'webhooks')
 		},
 		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
 	);

@@ -19,13 +19,12 @@ import { z } from 'zod';
 import { FreePlanPace } from '$lib/admin/free-plan-pace';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, resultFor, whichForm } from '$lib/admin/use-admin-form';
-import type { ZapierPressReport, ZapierReport } from '$lib/admin/zapier';
+import type { ZapierPressReport, ZapierReport } from '$lib/zapier/report';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
-import { readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
+import { publishedOrigin, readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm, unread } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
-import { publishedOrigin } from '$lib/server/integrations/openapi';
-import { deliveryPace } from '$lib/server/outbox/budget';
+import { freePlanPace } from '$lib/server/outbox/budget';
 import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import { readZapierDeliveries } from '$lib/server/zapier/report';
 import { countListening } from '$lib/server/zapier/subscriptions';
@@ -58,10 +57,10 @@ import type { Route } from './+types/_app.admin.integrations.zapier';
 // key box, and `shouldRevalidate` reads the page again after it, so the row the sentence sits in
 // shows the key that stands and the press it offers.
 //
-// the address is the origin the API page publishes (`publishedOrigin` in
-// $lib/server/integrations/openapi.ts): the pinned one where `BETTER_AUTH_URL` names one, this
-// request's own where not, and `https:` whichever it is, so a page reached over plain http never
-// hands Zapier an address it would send the key over in the clear.
+// the address is the origin the API page publishes (`publishedOrigin` in $lib/server/auth/env.ts):
+// the pinned one where `BETTER_AUTH_URL` names one, this request's own where not, and `https:`
+// whichever it is, so a page reached over plain http never hands Zapier an address it would send
+// the key over in the clear.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Zapier';
@@ -143,11 +142,10 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 		deliveries.oldestWaitingAt !== null &&
 		now.getTime() - deliveries.oldestWaitingAt.getTime() > LATE_MS;
 	const { env } = context.get(platform);
-	const pace = deliveryPace(env);
 
 	return {
 		address: publishedOrigin(url, readPin(readAuthEnv(env))),
-		freePlanPace: pace.plan === 'paid' ? null : pace.zapierPerMinute,
+		freePlanPace: freePlanPace(env, 'zapier'),
 		report,
 		late,
 		replacing: key !== null && url.searchParams.get('confirm') === 'replace'

@@ -4,6 +4,7 @@ import {
 	CONNECTIONS_AT_ONCE,
 	CONNECTIONS_KEPT,
 	deliveryPace,
+	freePlanPace,
 	HEADROOM,
 	MINUTE_RUN,
 	PACE,
@@ -88,5 +89,17 @@ describe('deliveryPace()', () => {
 			webhooksPerMinute: PACE.free.webhooks,
 			booksPerMinute: PACE.free.books
 		});
+	});
+});
+
+describe('freePlanPace()', () => {
+	it("names the feed's Free pace where the account is not stated as Paid", () => {
+		expect(freePlanPace({}, 'zapier')).toBe(PACE.free.zapier);
+		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'false' }, 'webhooks')).toBe(PACE.free.webhooks);
+	});
+
+	it('names none once the account is stated as Paid', () => {
+		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'true' }, 'zapier')).toBeNull();
+		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'TRUE' }, 'webhooks')).toBeNull();
 	});
 });

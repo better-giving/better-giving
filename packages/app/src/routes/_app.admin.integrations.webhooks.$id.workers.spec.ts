@@ -403,7 +403,11 @@ describe('POST /admin/integrations/webhooks/:id — the delete', () => {
 		expect(answer.status).toBe(303);
 		expect(answer.headers.get('location')).toBe(LIST);
 		const landed = await listed.get(LIST, withFlash(deployer, answer));
-		expect(await landed.json()).toMatchObject({ destinations: [], deleted: URL_ });
+		expect(await landed.json()).toEqual({
+			destinations: [],
+			deleted: URL_,
+			freePlanPace: PACE.free.webhooks
+		});
 		const owed = await env.DB.prepare('select status, last_error from webhook_delivery').first();
 		expect(owed).toEqual({ status: 'dropped', last_error: 'Its destination was deleted.' });
 		expect((await destination.get(at(id), deployer)).status).toBe(404);

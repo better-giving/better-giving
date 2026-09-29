@@ -2,7 +2,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 
 // the standing note over a page whose deliveries the Cloudflare plan paces: how many go out a
 // minute on the Free plan, the pace the delivery run claims at until the operator states the
-// account is on Workers Paid (`deliveryPace` in $lib/server/outbox/budget.ts). the page's loader
+// account is on Workers Paid (`freePlanPace` in $lib/server/outbox/budget.ts). the page's loader
 // hands the Free pace, or null once Paid is stated, and the note is gone with it.
 
 export function FreePlanPace({

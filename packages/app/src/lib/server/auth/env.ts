@@ -76,8 +76,8 @@ export type PinReading =
 
 /**
  * the one reading of the pin, which better-auth's `baseURL` and loopback check (./index.ts), the
- * QuickBooks address (../accounting/connect-link.ts) and the paused-destination mail
- * (src/worker.ts) all take.
+ * QuickBooks address (../accounting/connect-link.ts), the paused-destination mail (src/worker.ts)
+ * and `publishedOrigin` below all take.
  *
  * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
  * path on it is not part of it. a pin that names no http(s) origin is refused, naming the value:
@@ -107,4 +107,21 @@ export function pinnedOrigin(env: AuthEnv): string | null {
 	const pin = readPin(env);
 	if (!pin.ok) throw new Error(pin.message);
 	return pin.origin;
+}
+
+/** the hosts a local dev server answers on, which keep the scheme they were asked at. */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * the origin this deployment tells an integrator to call, for a request at `url`: the one
+ * `BETTER_AUTH_URL` pins where `pin` (`readPin` above) names one, so an address read at another
+ * host the deployment answers on — its workers.dev one, or behind a proxy that rewrites `Host` —
+ * never bakes that host into an integrator's config. where none is pinned, or the pin names no
+ * origin, the request's own. either is published as `https:` for every host but this machine, so
+ * neither a page read over plain http nor an `http:` pin ever tells a reader to send a key over
+ * it.
+ */
+export function publishedOrigin(url: URL, pin: PinReading): string {
+	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
+	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
 }

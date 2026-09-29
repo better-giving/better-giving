@@ -6,7 +6,6 @@ import {
 	WEBHOOK_TEST_TYPE,
 	type WebhookEvent
 } from '../../webhooks/catalog';
-import type { PinReading } from '../auth';
 import { PAYMENT_METHODS, RECURRING_INTERVALS } from '../db/schema';
 import {
 	DESTINATION_PAUSE_AFTER_MS,
@@ -64,8 +63,8 @@ import {
 // added later is not a breaking change to a reader told to let one pass.
 //
 // **nothing about an organisation is in it.** it names this deployment's origin
-// (`publishedOrigin`) and nothing read from the database, so it is served without a key
-// (src/routes/integrations.openapi[.]json.ts).
+// (`publishedOrigin` in ../auth/env.ts) and nothing read from the database, so it is served
+// without a key (src/routes/integrations.openapi[.]json.ts).
 
 /** where this document is served, and where ./agent-prompt.ts is. */
 export const OPENAPI_PATH = '/integrations/openapi.json';
@@ -81,22 +80,6 @@ export const DOCS_HEADERS = {
 	'cache-control': 'public, max-age=300',
 	'access-control-allow-origin': '*'
 } as const;
-
-/** the hosts a local dev server answers on, which keep the scheme they were asked at. */
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
-/**
- * the origin both documents publish for a request at `url`: the one `BETTER_AUTH_URL` pins where
- * `pin` (`readPin` in ../auth/env.ts) names one, so a document fetched at another host the
- * deployment answers on — its workers.dev one, or behind a proxy that rewrites `Host` — never
- * bakes that host into an integrator's config. where none is pinned, or the pin names no origin,
- * the request's own. either is published as `https:` for every host but this machine, so neither
- * a document fetched over plain http nor an `http:` pin ever tells a reader to send a key over it.
- */
-export function publishedOrigin(url: URL, pin: PinReading): string {
-	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
-	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
-}
 
 /** a JSON Schema 2020-12 schema, as the document carries one. */
 export type JsonSchema = { readonly [keyword: string]: unknown };

@@ -1,12 +1,15 @@
 import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
-import { inviteMember, redeemInvitation } from '$lib/server/auth';
 import type { Db } from '$lib/server/db/client';
 import { contact, donation, payment } from '$lib/server/db/schema';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { webhookStatements } from '$lib/server/webhooks/events';
 import { type MountedRoute, mountRoutes, type RouteRequester } from './route-request.testing';
-import { asCookieHeader, signInAsDeployer as signIn, staffAuth } from './staff-session.testing';
+import {
+	deployedBindings,
+	signInAsDeployer as signInDeployer,
+	signInAsMember as signInMember
+} from './staff-session.testing';
 import * as layout from './routes/_app';
 
 // what the three Webhooks route specs share: a deployment set up far enough for the layout to serve
@@ -19,20 +22,10 @@ import * as layout from './routes/_app';
 export const ORIGIN = 'https://give.example';
 
 const PASSWORD = 'a-very-long-random-staff-password';
-const MEMBER_PASSWORD = 'a-colleagues-own-password';
 
 /** the bindings a set-up deployment carries. */
 export function deployed(): Env {
-	return {
-		...env,
-		ADMIN_PASSWORD: PASSWORD,
-		STRIPE_SECRET_KEY: 'sk_test_x',
-		STRIPE_PUBLISHABLE_KEY: 'pk_test_x',
-		SMTP_HOST: 'smtp.example.org',
-		SMTP_USERNAME: 'apikey',
-		SMTP_PASSWORD: 'mail-secret',
-		MAIL_FROM: 'giving@example.org'
-	} as unknown as Env;
+	return deployedBindings(PASSWORD);
 }
 
 /** every table these specs write emptied, and the one row the five set-up jobs are read off. */
@@ -61,26 +54,12 @@ const DEPLOYMENT = { env: deployed(), password: PASSWORD, origin: ORIGIN };
 
 /** the deployer's session, as the `Cookie` header a browser would send back. */
 export function signInAsDeployer(db: Db): Promise<string> {
-	return signIn(db, DEPLOYMENT);
+	return signInDeployer(db, DEPLOYMENT);
 }
 
 /** a colleague who accepted an invitation, through the real invite and redeem. */
-export async function signInAsMember(db: Db): Promise<string> {
-	const invited = await inviteMember(db, {
-		email: 'nadia@riverbanktrust.org',
-		now: new Date(),
-		invitedBy: null
-	});
-	if (!invited.ok) throw new Error(`the fixture could not invite: ${invited.reason}`);
-	const redeemed = await redeemInvitation(db, await staffAuth(db, DEPLOYMENT), {
-		token: invited.token,
-		name: 'Nadia Hart',
-		password: MEMBER_PASSWORD,
-		headers: new Headers({ origin: ORIGIN }),
-		now: new Date()
-	});
-	if (!redeemed.ok) throw new Error(`the fixture could not redeem: ${redeemed.reason}`);
-	return asCookieHeader([...redeemed.cookies]);
+export function signInAsMember(db: Db): Promise<string> {
+	return signInMember(db, DEPLOYMENT);
 }
 
 /** a GET and a form POST to one page mounted at `path` under the protected layout. */

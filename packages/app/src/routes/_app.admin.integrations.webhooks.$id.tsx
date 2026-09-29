@@ -51,7 +51,7 @@ import {
 	updateDestination
 } from '$lib/server/webhooks/destinations';
 import { listDeliveries, sendTestWebhook } from '$lib/server/webhooks/deliver';
-import { deliveryPace } from '$lib/server/outbox/budget';
+import { freePlanPace } from '$lib/server/outbox/budget';
 import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 
@@ -159,7 +159,6 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 
 	const headers = new Headers();
 	for (const clear of cleared) headers.append('Set-Cookie', clear);
-	const pace = deliveryPace(context.get(platform).env);
 	return data(
 		{
 			id: destination.id,
@@ -178,7 +177,7 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 						: null,
 			added: added?.marker === destination.id,
 			saved: saved?.marker === SAVED,
-			freePlanPace: pace.plan === 'paid' ? null : pace.webhooksPerMinute,
+			freePlanPace: freePlanPace(context.get(platform).env, 'webhooks'),
 			deliveries: deliveries.map((delivery) => ({
 				id: delivery.id,
 				event: delivery.event,

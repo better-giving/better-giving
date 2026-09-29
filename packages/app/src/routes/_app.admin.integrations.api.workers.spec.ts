@@ -1,10 +1,9 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { inviteMember, redeemInvitation } from '$lib/server/auth';
 import { createDb, type Db } from '$lib/server/db/client';
 import { API_KEY_SHAPE, mintApiKey } from '$lib/server/integrations/keys';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
-import { asCookieHeader, signInAsDeployer, staffAuth } from '../staff-session.testing';
+import { deployedBindings, signInAsDeployer, signInAsMember } from '../staff-session.testing';
 import * as layout from './_app';
 import * as screen from './_app.admin.integrations.api';
 import * as surface from './integrations.v1';
@@ -20,19 +19,9 @@ import * as gifts from './integrations.v1.gifts';
 const ORIGIN = 'https://give.example';
 const SCREEN = '/admin/integrations/api';
 const PASSWORD = 'a-very-long-random-staff-password';
-const MEMBER_PASSWORD = 'a-colleagues-own-password';
 
 function deployed() {
-	return {
-		...env,
-		ADMIN_PASSWORD: PASSWORD,
-		STRIPE_SECRET_KEY: 'sk_test_x',
-		STRIPE_PUBLISHABLE_KEY: 'pk_test_x',
-		SMTP_HOST: 'smtp.example.org',
-		SMTP_USERNAME: 'apikey',
-		SMTP_PASSWORD: 'mail-secret',
-		MAIL_FROM: 'giving@example.org'
-	} as unknown as Env;
+	return deployedBindings(PASSWORD);
 }
 
 let db: Db;
@@ -78,25 +67,6 @@ beforeEach(async () => {
 });
 
 const DEPLOYMENT = { env: deployed(), password: PASSWORD, origin: ORIGIN };
-
-/** a colleague who accepted an invitation, through the real invite and redeem. */
-async function signInAsMember(): Promise<string> {
-	const invited = await inviteMember(db, {
-		email: 'nadia@riverbanktrust.org',
-		now: new Date(),
-		invitedBy: null
-	});
-	if (!invited.ok) throw new Error(`the fixture could not invite: ${invited.reason}`);
-	const redeemed = await redeemInvitation(db, await staffAuth(db, DEPLOYMENT), {
-		token: invited.token,
-		name: 'Nadia Hart',
-		password: MEMBER_PASSWORD,
-		headers: new Headers({ origin: ORIGIN }),
-		now: new Date()
-	});
-	if (!redeemed.ok) throw new Error(`the fixture could not redeem: ${redeemed.reason}`);
-	return asCookieHeader([...redeemed.cookies]);
-}
 
 type ListedKey = {
 	id: string;
@@ -341,7 +311,7 @@ describe('POST /admin/integrations/api — revoking a key', () => {
 
 describe('a member’s session', () => {
 	it('is drawn no Integrations group, which the deployer is', async () => {
-		const member = await signInAsMember();
+		const member = await signInAsMember(db, DEPLOYMENT);
 		const read = async (cookie: string) =>
 			(await (
 				await frame(new Request(`${ORIGIN}/admin`, { headers: { cookie } }), { env: deployed() })
@@ -352,13 +322,13 @@ describe('a member’s session', () => {
 	});
 
 	it('gets not-found for the page', async () => {
-		const member = await signInAsMember();
+		const member = await signInAsMember(db, DEPLOYMENT);
 
 		expect((await get(member)).status).toBe(404);
 	});
 
 	it('gets not-found for each press, and neither press does anything', async () => {
-		const member = await signInAsMember();
+		const member = await signInAsMember(db, DEPLOYMENT);
 		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
 
 		expect((await post(member, makeBody('Warehouse'))).status).toBe(404);
