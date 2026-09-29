@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keyRateLimitRefusal, notFoundRefusal } from './surface';
+import { keyRateLimitRefusal, notFoundRefusal, readOnlyRefusal } from './surface';
 
 // what a key that has spent its bucket is told. the numbers are held to the binding wrangler.jsonc
 // declares by `../api/rate-limit.config.spec.ts`; these cases hold the shape.
@@ -28,5 +28,16 @@ describe('what an address no list answers is told', () => {
 
 		expect(body.error).toBe('not_found');
 		expect(body.message).toContain(`\`${path.slice(0, 64)}…\``);
+	});
+});
+
+describe('what a method other than GET or HEAD is told', () => {
+	it('quotes a long method cut short, as every refusal quotes a value it names', async () => {
+		const method = 'X'.repeat(200);
+		const body = (await readOnlyRefusal(method).json()) as Record<string, string>;
+
+		expect(body.error).toBe('method_not_allowed');
+		expect(body.message).toContain(`${method.slice(0, 64)}… is not a method`);
+		expect(body.message).not.toContain(method);
 	});
 });

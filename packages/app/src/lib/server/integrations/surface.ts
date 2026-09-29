@@ -108,7 +108,7 @@ export function readOnlyRefusal(method: string): Response {
 	return integrationsRefusal(
 		405,
 		'method_not_allowed',
-		`${method} is not a method this endpoint answers. The read API at ${INTEGRATIONS_BASE_PATH} only reads.`,
+		`${shown(method)} is not a method this endpoint answers. The read API at ${INTEGRATIONS_BASE_PATH} only reads.`,
 		'Send it as GET, or HEAD for the headers alone. Nothing on this surface writes.',
 		{ allow: 'GET, HEAD' }
 	);

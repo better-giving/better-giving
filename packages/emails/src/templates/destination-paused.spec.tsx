@@ -4,14 +4,14 @@ import * as destinationPaused from './destination-paused';
 import type { DestinationPausedData } from './destination-paused';
 
 const ADDRESS = 'https://crm.example.org/hooks/gifts';
-const PATH = '/admin/integrations/webhooks';
+const PATH = '/admin/integrations/webhooks/01926f3a-5b2c-7d4e-8f90-1a2b3c4d5e6f';
 const LINK = `https://donate.example.org${PATH}`;
 
 function data(overrides: Partial<DestinationPausedData> = {}): DestinationPausedData {
 	return {
 		url: ADDRESS,
 		cause: { reason: 'failing', days: 3 },
-		webhooksPath: PATH,
+		destinationPath: PATH,
 		origin: 'https://donate.example.org',
 		...overrides
 	};
@@ -63,7 +63,15 @@ describe('destinationPaused.template', () => {
 		}
 	});
 
-	it('links to the Webhooks page, printing the address once in the text arm', async () => {
+	it('sends the operator to the destination’s own page to resume it, never the list', async () => {
+		const message = await rendered();
+		for (const arm of [message.text, message.html]) {
+			expect(arm).toContain('resume it from the destination’s page');
+			expect(arm).not.toContain('Webhooks page');
+		}
+	});
+
+	it('links to the destination’s page, printing the address once in the text arm', async () => {
 		const message = await rendered();
 		expect(message.html).toContain(`href="${LINK}"`);
 		expect(message.text.split(LINK).length - 1).toBe(1);
@@ -76,6 +84,7 @@ describe('destinationPaused.template', () => {
 		expect(message.html).not.toContain('href=');
 		for (const arm of [message.text, message.html]) {
 			expect(arm).toContain(PATH);
+			expect(arm).toContain('under Integrations, then Webhooks');
 		}
 	});
 
