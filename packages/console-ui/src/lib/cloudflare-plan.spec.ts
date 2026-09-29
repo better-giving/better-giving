@@ -1,6 +1,14 @@
 import { DELIVERY_PACE } from '@better-giving/operator/delivery-pace';
 import { describe, expect, it } from 'vitest';
-import { PAID_PLAN, PLAN_FIELD, PLAN_PAID, freePlanPace, planEdit } from './cloudflare-plan';
+import type { FeedsInUse } from './cloudflare-plan';
+import {
+	PAID_PLAN,
+	PLAN_FIELD,
+	PLAN_PAID,
+	freePlanPace,
+	planConcern,
+	planEdit
+} from './cloudflare-plan';
 import { heldValues } from './held-values';
 
 // the two positions the paid-plan switch can be in, what each writes, and the pace the screen
@@ -51,6 +59,48 @@ describe('the pace stated while the account is on the Free plan', () => {
 
 	it('is not stated where the answer is withheld, which the deployment may be reading as paid', () => {
 		expect(freePlanPace(heldValues([{ name: PAID_PLAN, kind: 'withheld' }]))).toBeNull();
+	});
+});
+
+/** every feed idle but the ones named, which are in use. */
+const using = (...feeds: (keyof FeedsInUse)[]): FeedsInUse => ({
+	zapier: feeds.includes('zapier'),
+	webhooks: feeds.includes('webhooks'),
+	books: feeds.includes('books')
+});
+
+const UNREAD: FeedsInUse = { zapier: null, webhooks: null, books: null };
+
+describe('whether the plan is a concern', () => {
+	it('is, where the plan reads as Free and any one feed is in use', () => {
+		for (const feed of ['zapier', 'webhooks', 'books'] as const) {
+			expect(planConcern(holding(null), using(feed))).toBe(true);
+			expect(planConcern(holding('false'), using(feed))).toBe(true);
+		}
+	});
+
+	it('is not where nothing is delivered, whatever the plan reads as', () => {
+		expect(planConcern(holding(null), using())).toBe(false);
+	});
+
+	it('is not where the plan reads as paid, in any case or with the whitespace round it', () => {
+		const all = using('zapier', 'webhooks', 'books');
+		expect(planConcern(holding('true'), all)).toBe(false);
+		expect(planConcern(holding(' TRUE\n'), all)).toBe(false);
+	});
+
+	it('is not where the answer is withheld, which the deployment may be reading as paid', () => {
+		const withheld = heldValues([{ name: PAID_PLAN, kind: 'withheld' }]);
+		expect(planConcern(withheld, using('zapier', 'webhooks', 'books'))).toBe(false);
+	});
+
+	it('is never raised by a feed this console could not read', () => {
+		expect(planConcern(holding(null), UNREAD)).toBe(false);
+		expect(planConcern(holding(null), { ...UNREAD, books: false })).toBe(false);
+	});
+
+	it('is raised by a feed read as in use beside one that could not be read', () => {
+		expect(planConcern(holding(null), { ...UNREAD, webhooks: true })).toBe(true);
 	});
 });
 
