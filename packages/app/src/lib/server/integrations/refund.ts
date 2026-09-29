@@ -1,14 +1,16 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
+import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { dispute, payment } from '../db/schema';
 import { refundStands } from '../donations/queries';
-import { inPage } from './paging';
+import { inPage } from '../db/id-set';
 
 // one refund-direction row as a system outside this deployment is told of it: the `gift_refunded`
 // event a Zap receives (../zapier/payload.ts), and the `data` of a `gift.refunded` or
-// `gift.dispute_opened` webhook (../webhooks/payload.ts). one read, so the feeds never disagree
-// about what sent money back.
+// `gift.dispute_opened` webhook (../webhooks/payload.ts). one read and one rendering
+// (`renderRefund`), so the feeds never disagree about what sent money back: each wraps it around
+// the gift in its own shape, and a key added here reaches both.
 //
 // a refund row with a `dispute` row on it is a dispute's withdrawal; any other is a refund.
 
@@ -59,6 +61,40 @@ export async function readStandingRefunds(
 		.from(payment)
 		.where(and(inPage(payment.id, refundIds), refundStands(db, payment)));
 	return new Set(rows.map((row) => row.id));
+}
+
+/** one refund as both feeds render it, around `G`, the gift in the feed's own shape. */
+export type RenderedRefund<G> = {
+	/** the refund's own payment id, distinct from the gift's: a second refund is a second event. */
+	readonly id: string;
+	/**
+	 * when the money left the organisation, ISO 8601 in UTC: for a refund, when it was made; for a
+	 * dispute, when it opened and withdrew the money, or where no opening was recorded, when it
+	 * closed.
+	 */
+	readonly occurred_at: string;
+	/**
+	 * what left, in `amount`'s notation on the gift: for a refund, what it gave back; for a dispute,
+	 * what the processor took as the close left it, which can be less than the opening withdrew.
+	 */
+	readonly amount: string;
+	readonly amount_minor: number;
+	readonly currency: string;
+	readonly source: RefundSource;
+	readonly gift: G;
+};
+
+/** `row` rendered around `gift`, the gift it reverses as the calling feed renders one. */
+export function renderRefund<G>(row: RefundRow, gift: G): RenderedRefund<G> {
+	return {
+		id: row.id,
+		occurred_at: row.occurredAt.toISOString(),
+		amount: majorText(row.amountMinor, row.currency),
+		amount_minor: row.amountMinor,
+		currency: row.currency,
+		source: row.source,
+		gift
+	};
 }
 
 /** the `last_error` of a queued refund row that stopped standing, and was not posted. */

@@ -324,6 +324,20 @@ describe('the published schemas, against what this deployment renders', () => {
 		expect(schemaErrors(document, 'Donor', donor)).toEqual([]);
 		expect(schemaErrors(document, 'Donor', { ...donor, lifetime_minor: 5_000 })).not.toEqual([]);
 	});
+
+	it('refuses a value a set’s known values do not name, though the document takes one', () => {
+		const donor = {
+			id: 'd',
+			name: 'Ada Okafor',
+			email: null,
+			consent: 'unasked',
+			created_at: '2026-09-10T12:00:00.000Z',
+			updated_at: '2026-09-10T12:00:00.000Z'
+		};
+
+		expect(schemaErrors(document, 'Donor', donor)).toEqual([]);
+		expect(schemaErrors(document, 'Donor', { ...donor, consent: 'maybe' })).not.toEqual([]);
+	});
 });
 
 /** a well-formed key this deployment never made. */

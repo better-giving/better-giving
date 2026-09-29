@@ -9,9 +9,11 @@ import type { openApiDocument } from './openapi';
 // `components` is declared a keyword with no meaning of its own: the schema holding them is only
 // where they live, and each is compiled — strictly — when a spec asks for it by name.
 //
-// **every object is closed here, and only here.** the document leaves its objects open, since a
-// reader is told to let a key it does not know pass; a spec holding a rendered object to them
-// closes each one, so a key the deployment renders and the document never describes fails.
+// **every object and every value set is closed here, and only here.** the document leaves both
+// open, since a reader is told to let a key or a value it does not know pass; a spec holding a
+// rendered object to them closes each object and holds each set to its `examples`
+// (./openapi.ts's header), so a key or a value the deployment renders and the document never
+// describes fails.
 
 const COMPONENTS = 'https://openapi.invalid/components';
 
@@ -39,14 +41,20 @@ export function schemaErrors(
 	return validate(value) ? [] : (validate.errors ?? []);
 }
 
-/** `schema` with `unevaluatedProperties: false` on every object schema naming its properties. */
+/**
+ * `schema` with `unevaluatedProperties: false` on every object schema naming its properties, and
+ * every value set held to its `examples` — and to null besides, where its type admits null.
+ */
 function closed(schema: unknown): unknown {
 	if (Array.isArray(schema)) return schema.map(closed);
 	if (typeof schema !== 'object' || schema === null) return schema;
+	const { type, examples } = schema as { type?: unknown; examples?: unknown };
 	const entries = Object.entries(schema).map(([keyword, value]) => [keyword, closed(value)]);
-	return Object.fromEntries(
-		'properties' in schema && (schema as { type?: unknown }).type === 'object'
-			? [...entries, ['unevaluatedProperties', false]]
-			: entries
-	);
+	if ('properties' in schema && type === 'object')
+		return Object.fromEntries([...entries, ['unevaluatedProperties', false]]);
+	if (Array.isArray(examples)) {
+		const nullable = Array.isArray(type) && type.includes('null');
+		return Object.fromEntries([...entries, ['enum', nullable ? [...examples, null] : examples]]);
+	}
+	return Object.fromEntries(entries);
 }

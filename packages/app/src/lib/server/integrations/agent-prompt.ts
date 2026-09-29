@@ -86,6 +86,7 @@ curl -H "Authorization: Bearer $${API_KEY_VARIABLE}" "${api}/gifts"
 2. Upsert each entry by \`id\`. The same entry can be served more than once; keep the answer with the latest \`updated_at\`.
 3. On the last page, store \`resume_updated_since\`, and send it as \`updated_since\` on the next sync. Never compute it yourself: it overlaps on purpose.
 4. Link gifts to donors by \`donor_id\`. What a donor has given is the sum of their gifts.
+5. A gift's \`updated_at\` moves only when its money does: a renamed donor, form or program moves no gift. Take the donor's current name and email from the donors list by \`donor_id\`, never from the gift.
 
 ## Limits and refusals
 

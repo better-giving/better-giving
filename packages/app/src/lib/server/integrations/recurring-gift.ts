@@ -2,7 +2,8 @@ import type { RecurringPlanStatus } from '../../recurring/statuses';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { type RecurringInterval, recurringPlan } from '../db/schema';
-import { inPage, type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
+import { inPage } from '../db/id-set';
+import { type PageOf, type PageQuery, pageOf, storedTimesWalk } from './paging';
 
 // one recurring gift as the read API's recurring-gifts list answers it
 // (src/routes/integrations.v1.recurring-gifts.ts): a donor's standing commitment to give on a

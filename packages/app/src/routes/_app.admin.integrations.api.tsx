@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
-import { STAFF_USER_ID } from '$lib/server/auth';
+import { readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
@@ -26,7 +26,7 @@ import {
 	revokedApiKeyName
 } from '$lib/server/integrations/keys';
 import { AGENT_PROMPT_PATH, OPENAPI_PATH, publishedOrigin } from '$lib/server/integrations/openapi';
-import { database, staff } from '../context';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.api';
 
 // the keys an organisation's own systems present to /integrations/v1: made and named here, shown
@@ -142,7 +142,7 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const landed = await takeFlash(request, SAVED_FLASH);
 	const revoked = landed === null ? null : await revokedApiKeyName(db, landed.marker);
 
-	const published = publishedOrigin(url);
+	const published = publishedOrigin(url, readPin(readAuthEnv(context.get(platform).env)));
 	return data(
 		{
 			keys,

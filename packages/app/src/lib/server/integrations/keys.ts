@@ -63,17 +63,22 @@ export function newApiKeyRow(input: { readonly name: string; readonly kind: ApiK
 }
 
 /**
- * the row `presented` was minted as, or `null` when no key hashes to it. a revoked key is still
- * found, with `revokedAt` set, so the caller can say it was revoked and when; admitting it is the
- * caller's refusal to make.
+ * the `kind` key `presented` was minted as, or `null` when no key of that kind hashes to it. a
+ * revoked key is still found, with `revokedAt` set, so the caller can say it was revoked and when;
+ * admitting it is the caller's refusal to make.
  *
- * looking up by the hash of the presented value leaks nothing about any stored key.
+ * the kind is in the query, so a surface reading its own kind can never admit another surface's
+ * key. looking up by the hash of the presented value leaks nothing about any stored key.
  */
-export async function findKeyByPresented(db: Db, presented: string): Promise<ApiKey | null> {
+export async function findKeyByPresented(
+	db: Db,
+	presented: string,
+	kind: ApiKeyKind
+): Promise<ApiKey | null> {
 	const [row] = await db
 		.select()
 		.from(apiKey)
-		.where(eq(apiKey.keyHash, hashOf(presented)));
+		.where(and(eq(apiKey.keyHash, hashOf(presented)), eq(apiKey.kind, kind)));
 	return row ?? null;
 }
 
@@ -212,6 +217,20 @@ function newApiKey(): string {
 function newZapierKey(): string {
 	return `bgz_${randomBytes(32).toString('base64url')}`;
 }
+
+/**
+ * the token an `Authorization` header carries as `Bearer <token>`, or `null` for any other header:
+ * the one parse of that header for every key-authenticated surface. the scheme is compared
+ * case-insensitively (https://www.rfc-editor.org/rfc/rfc9110#section-11.1) and followed by one or
+ * more spaces, never a tab, then the token alone, as RFC 6750 writes the header
+ * (https://www.rfc-editor.org/rfc/rfc6750#section-2.1). whether the token is a key of the surface's
+ * shape is the caller's check; the token itself is compared case-sensitively, by its hash.
+ */
+export function parseBearer(authorization: string): string | null {
+	return BEARER_TOKEN.exec(authorization.trim())?.[1] ?? null;
+}
+
+const BEARER_TOKEN = /^bearer +(\S+)$/i;
 
 /** the lowercase hex SHA-256 of the whole key string, as `api_key.key_hash` holds it. */
 function hashOf(key: string): string {

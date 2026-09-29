@@ -157,7 +157,7 @@ export async function verifyZapierKey(
 ): Promise<string | null> {
 	const presented = authorization?.trim().match(BEARER_VALUE)?.[1];
 	if (presented === undefined || !ZAPIER_KEY_SHAPE.test(presented)) return null;
-	const key = await findKeyByPresented(db, presented);
+	const key = await findKeyByPresented(db, presented, 'zapier');
 	return key !== null && key.kind === 'zapier' && key.revokedAt === null ? key.keyHash : null;
 }
 

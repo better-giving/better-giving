@@ -5,7 +5,7 @@ import { donation, payment } from '../db/schema';
 import { earlierSettledGiftOfDonor } from '../donations/queries';
 import { type ApiDonor, readDonors } from '../integrations/donor';
 import { type ApiGift, readGifts } from '../integrations/gift';
-import { inPage } from '../integrations/paging';
+import { inPage } from '../db/id-set';
 import { type ApiRecurringGift, readRecurringGifts } from '../integrations/recurring-gift';
 import {
 	REFUND_NO_LONGER_STANDS,

@@ -1,6 +1,6 @@
 import { and, asc, desc, gte, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
-import { INTEGRATIONS_BASE_PATH, integrationsJson, integrationsRefusal } from './surface';
+import { INTEGRATIONS_BASE_PATH, integrationsJson, integrationsRefusal, shown } from './surface';
 
 // how a list on the read API is walked a page at a time: the page size, the cursor, and the
 // keyset condition a list's own query splices in. every list under `/integrations/v1` takes these,
@@ -14,12 +14,14 @@ import { INTEGRATIONS_BASE_PATH, integrationsJson, integrationsRefusal } from '.
 // the same walk, so a caller keeps one row per `id`, the later answer winning.
 //
 // **the cursor is opaque to the caller and is not a secret.** it is base64url of the order it was
-// issued for and the last row's time and id. the order is in it so a cursor from another order or
-// another list is refused rather than answered with a page that belongs to neither. a list labels
-// its two orders `<list>.newest` and `<list>.changed`, `<list>` being its path under
-// `/integrations/v1` with `-` written `_` (`recurring_gifts.newest`), which is what lets a refusal
-// name the list a stray cursor came from. anyone can decode and forge one, and a forged cursor is
-// only another place to start the same read.
+// issued for, the last row's time and id, and in the order of changes the `updated_since` the walk
+// was asked from. the order is in it so a cursor from another order or another list is refused
+// rather than answered with a page that belongs to neither, and the instant so a cursor sent with
+// another `updated_since` is refused naming both, rather than answered with a page of neither
+// walk. a list labels its two orders `<list>.newest` and `<list>.changed`, `<list>` being its
+// path under `/integrations/v1` with `-` written `_` (`recurring_gifts.newest`), which is what lets
+// a refusal name the list a stray cursor came from. anyone can decode and forge one, and a forged
+// cursor is only another place to start the same read.
 //
 // **a list answers `{ data, next_cursor, resume_updated_since }`, and stays an object**: a bare
 // array could never grow a cursor. `next_cursor` is null on the last page — a page is read one row
@@ -90,7 +92,8 @@ export function readPageQuery(url: URL, orders: ListOrders): PageQuery | Respons
 	if (since instanceof Response) return since;
 	const after = readCursor(
 		url.searchParams.get('cursor'),
-		since === null ? orders.newest : orders.changed
+		since === null ? orders.newest : orders.changed,
+		since
 	);
 	if (after instanceof Response) return after;
 	return since === null
@@ -105,7 +108,14 @@ export function readPageQuery(url: URL, orders: ListOrders): PageQuery | Respons
 export function listAnswer<T>(page: PageOf<T>, orders: ListOrders, query: PageQuery): Response {
 	return integrationsJson({
 		data: page.rows,
-		next_cursor: page.next === null ? null : encodeCursor(orders[query.order], page.next),
+		next_cursor:
+			page.next === null
+				? null
+				: encodeCursor(
+						orders[query.order],
+						page.next,
+						query.order === 'changed' ? query.since : null
+					),
 		resume_updated_since:
 			query.order === 'changed' && page.next === null ? resumeFrom(page.last, query) : null
 	});
@@ -182,20 +192,10 @@ export function pastKeyset(
 	return sql`(${at}, ${id}) ${sql.raw(direction === 'asc' ? '>' : '<')} (${after.at}, ${after.id})`;
 }
 
-/**
- * `column` is one of `ids`, bound as one JSON parameter: a page's ids as an `IN` list would bind
- * one each and a 100-row page would meet D1's bound-parameter limit
- * (https://developers.cloudflare.com/d1/platform/limits/).
- */
-export function inPage(column: SQLWrapper, ids: readonly string[]): SQL {
-	return sql`${column} in (select value from json_each(${JSON.stringify(ids)}))`;
-}
-
-function encodeCursor(order: string, last: Keyset): string {
-	return btoa(JSON.stringify([order, last.at, last.id]))
-		.replaceAll('+', '-')
-		.replaceAll('/', '_')
-		.replace(/=+$/, '');
+function encodeCursor(order: string, last: Keyset, since: Date | null): string {
+	const fields =
+		since === null ? [order, last.at, last.id] : [order, last.at, last.id, since.getTime()];
+	return btoa(JSON.stringify(fields)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
 /**
@@ -228,13 +228,26 @@ function readLimit(raw: string | null): number | Response {
 }
 
 /**
- * where the page `raw` continues from, in the order named `order`: null where the request carries
- * no cursor, and the 400 refusing it where it is not one this order issued.
+ * where the page `raw` continues from, in the order named `order` from `since`: null where the
+ * request carries no cursor, and the 400 refusing it where it is not one this walk issued.
  */
-function readCursor(raw: string | null, order: string): Keyset | null | Response {
+function readCursor(
+	raw: string | null,
+	order: string,
+	since: Date | null
+): Keyset | null | Response {
 	if (raw === null) return null;
 	const decoded = decodeCursor(raw);
-	if (decoded !== null && decoded.order === order) return decoded.keyset;
+	if (decoded !== null && decoded.order === order) {
+		if (decoded.since === since?.getTime()) return decoded.keyset;
+		if (decoded.since !== undefined && since !== null)
+			return integrationsRefusal(
+				400,
+				'invalid_cursor',
+				`\`cursor=${shown(raw)}\` continues the walk of changes asked for with \`updated_since=${new Date(decoded.since).toISOString()}\`, and this request sends \`updated_since=${since.toISOString()}\`.`,
+				'Send the same `updated_since` as the request that returned this cursor, or send no `cursor` to start a walk from the new `updated_since`.'
+			);
+	}
 	const issuer = decoded === null ? null : listOf(decoded.order);
 	if (issuer !== null && issuer !== listOf(order))
 		return integrationsRefusal(
@@ -296,7 +309,13 @@ function isoInstant(raw: string): Date | null {
 	return new Date(ms - sign * (hours * 60 + minutes) * 60_000);
 }
 
-function decodeCursor(raw: string): { order: string; keyset: Keyset } | null {
+/**
+ * a cursor's fields: `since` in epoch milliseconds on one a walk of changes issued, and absent on
+ * one the newest-first walk issued.
+ */
+function decodeCursor(
+	raw: string
+): { order: string; keyset: Keyset; since: number | undefined } | null {
 	if (!/^[A-Za-z0-9_-]+$/.test(raw)) return null;
 	let parsed: unknown;
 	try {
@@ -304,14 +323,12 @@ function decodeCursor(raw: string): { order: string; keyset: Keyset } | null {
 	} catch {
 		return null;
 	}
-	if (!Array.isArray(parsed) || parsed.length !== 3) return null;
-	const [order, at, id] = parsed as unknown[];
+	if (!Array.isArray(parsed) || (parsed.length !== 3 && parsed.length !== 4)) return null;
+	const [order, at, id, since] = parsed as unknown[];
 	if (typeof order !== 'string' || !Number.isSafeInteger(at) || typeof id !== 'string') return null;
 	if (id.length === 0) return null;
-	return { order, keyset: { at: at as number, id } };
-}
-
-/** a refused value as a refusal quotes it: cut short, so a pasted blob does not fill the body. */
-function shown(raw: string): string {
-	return raw.length > 64 ? `${raw.slice(0, 64)}…` : raw;
+	const ofChanges = order.endsWith('.changed');
+	if (ofChanges !== (since !== undefined) || (ofChanges && !Number.isSafeInteger(since)))
+		return null;
+	return { order, keyset: { at: at as number, id }, since: since as number | undefined };
 }

@@ -6,6 +6,7 @@ import {
 	WEBHOOK_TEST_TYPE,
 	type WebhookEvent
 } from '../../webhooks/catalog';
+import type { PinReading } from '../auth';
 import { PAYMENT_METHODS, RECURRING_INTERVALS } from '../db/schema';
 import {
 	DESTINATION_PAUSE_AFTER_MS,
@@ -25,6 +26,7 @@ import { REFUND_SOURCES } from './refund';
 import {
 	ADDRESS_RATE_LIMIT,
 	INTEGRATIONS_BASE_PATH,
+	type IntegrationsList,
 	type IntegrationsRefusalCode,
 	KEY_RATE_LIMIT
 } from './surface';
@@ -44,13 +46,26 @@ import {
 // catalog, and each rate limit to wrangler.jsonc; ./openapi.workers.spec.ts validates real rendered
 // objects against the schemas below and provokes every refusal against its documented status.
 //
+// **it and ./agent-prompt.ts are the only modules here that import ../webhooks/.** the document
+// describes both surfaces, so it reads both, while ../webhooks/payload.ts renders each post's
+// `data` from this directory's gift, donor, recurring-gift and refund modules. this directory
+// reaches ../webhooks/ through these two files and no others; a third module here importing it is
+// where a file-level cycle would start.
+//
+// **no value set is closed.** a set that may gain values — each `growingSet`, `dedication_kind`,
+// a refusal's `error` — is published as a plain string with its values today as `examples`, never
+// as an `enum`, so a client generated from the document keeps working when a value is added.
+// ./openapi.testing.ts closes each set to its `examples` again, so a spec still fails on a value
+// rendered and never described.
+//
 // **each object schema names every key its type has**: `SchemaOf<T>` refuses a schema missing a
 // key of the type it describes, and every key is `required`, as the modules that render them
 // promise (./gift.ts's header). a schema states no `additionalProperties: false`, since a key
 // added later is not a breaking change to a reader told to let one pass.
 //
-// **nothing about an organisation is in it.** it names the request's host and nothing read
-// from the database, so it is served without a key (src/routes/integrations.openapi[.]json.ts).
+// **nothing about an organisation is in it.** it names this deployment's origin
+// (`publishedOrigin`) and nothing read from the database, so it is served without a key
+// (src/routes/integrations.openapi[.]json.ts).
 
 /** where this document is served, and where ./agent-prompt.ts is. */
 export const OPENAPI_PATH = '/integrations/openapi.json';
@@ -71,11 +86,16 @@ export const DOCS_HEADERS = {
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
- * the origin both documents publish for a request at `url`: `https:` for every host but this
- * machine, so a document fetched over plain http never tells a reader to send a key over it.
+ * the origin both documents publish for a request at `url`: the one `BETTER_AUTH_URL` pins where
+ * `pin` (`readPin` in ../auth/env.ts) names one, so a document fetched at another host the
+ * deployment answers on — its workers.dev one, or behind a proxy that rewrites `Host` — never
+ * bakes that host into an integrator's config. where none is pinned, or the pin names no origin,
+ * the request's own. either is published as `https:` for every host but this machine, so neither
+ * a document fetched over plain http nor an `http:` pin ever tells a reader to send a key over it.
  */
-export function publishedOrigin(url: URL): string {
-	return LOCAL_HOSTS.has(url.hostname) ? url.origin : `https://${url.host}`;
+export function publishedOrigin(url: URL, pin: PinReading): string {
+	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
+	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
 }
 
 /** a JSON Schema 2020-12 schema, as the document carries one. */
@@ -101,7 +121,7 @@ export const REFUSAL_STATUS: Readonly<
 	unknown_parameter: 400
 };
 
-/** each list the read API serves, by its path under `INTEGRATIONS_BASE_PATH`. */
+/** each list the read API serves (`INTEGRATIONS_LISTS`), as the document describes it. */
 const LIST_PATHS = {
 	'/gifts': {
 		operationId: 'listGifts',
@@ -127,7 +147,7 @@ const LIST_PATHS = {
 		description:
 			'Every commitment to give on a schedule, live or ended. Each charge it makes is a gift on the gifts list. `payment_failed` is not final: it turns `active` again if the processor collects after all, and only `stopped` never comes back. Without `updated_since`, newest first by when the commitment was recorded; with it, every recurring gift whose `updated_at` is at or after it, oldest change first.'
 	}
-} as const;
+} as const satisfies Record<IntegrationsList, unknown>;
 
 const text = (description?: string): JsonSchema => ({
 	type: 'string',
@@ -148,10 +168,11 @@ const nullableInstant = (description: string): JsonSchema => ({
 	description
 });
 const minor = (description: string): JsonSchema => ({ type: 'integer', minimum: 0, description });
-const MAY_GAIN = 'The set may gain values: let one you do not know pass.';
+const MAY_GAIN =
+	'Its values today are its `examples`, and the set may gain values: let one you do not know pass.';
 const growingSet = (values: readonly string[], description: string): JsonSchema => ({
 	type: 'string',
-	enum: [...values],
+	examples: [...values],
 	description: `${description} ${MAY_GAIN}`
 });
 const ref = (name: string): JsonSchema => ({ $ref: `#/components/schemas/${name}` });
@@ -197,7 +218,7 @@ const GIFT = record<ApiGift>(
 		program_name: nullableText('The program the gift was designated to.'),
 		dedication_kind: {
 			type: ['string', 'null'],
-			enum: [...TRIBUTE_KINDS, null],
+			examples: [...TRIBUTE_KINDS],
 			description: `Given in honor or in memory of someone; null where it is neither. ${MAY_GAIN}`
 		},
 		dedication_honoree: nullableText('Whom the dedication names.'),
@@ -218,7 +239,9 @@ const GIFT = record<ApiGift>(
 			type: 'boolean',
 			description: 'A dispute on this gift is open, and its money is withdrawn until it closes.'
 		},
-		updated_at: instant('When this gift last changed, in UTC: what `updated_since` compares.')
+		updated_at: instant(
+			'When this gift’s money last changed, in UTC: what `updated_since` compares. It moves when money on the gift is posted — its settling, a refund of it recorded or failing, a dispute on it opening, changing or closing — and on nothing else. A write that posts no money, such as its method, time or reference restated, does not move it, and neither does a change to what it names — the donor’s name or email, the form’s or the program’s name — which each page reads fresh: a copy keeps the names it last read until the gift next moves, so join on `donor_id` and `form_id` for the current ones.'
+		)
 	}
 );
 
@@ -313,7 +336,7 @@ const FAILED_CHARGE = record<FailedCharge>(
 			description: 'Which attempt at this charge failed, from 1.'
 		},
 		next_retry_at: nullableInstant(
-			'When the processor tries again, in UTC; null on its last attempt.'
+			'When the processor has scheduled its next try at this collection, as of this failed attempt, in UTC, or null where it scheduled none — the last miss. A schedule and not a promise: after a decline the processor treats as final, the try runs only if the donor gives a new payment method, and a collection closed since runs none.'
 		),
 		failed_at: instant('When the attempt failed, in UTC.'),
 		amount: AMOUNT,
@@ -521,8 +544,9 @@ export function openApiDocument(origin: string) {
 					properties: {
 						error: {
 							type: 'string',
-							enum: codesAnswered(status),
-							description: 'What to switch on. A code you do not know is read by its status.'
+							examples: codesAnswered(status),
+							description:
+								'What to switch on. Its codes today are its `examples`, and the set may gain codes: read one you do not know by its status.'
 						},
 						message: text('What was refused, naming the value.'),
 						fix: text('What to send instead.')
@@ -666,7 +690,7 @@ export function openApiDocument(origin: string) {
 				}),
 				NotFound: refusal(
 					404,
-					`Nothing is served at the address: \`${INTEGRATIONS_BASE_PATH}\` itself is only the prefix.`
+					`Nothing is served at the address: under \`${INTEGRATIONS_BASE_PATH}\`, only the lists are.`
 				),
 				MethodNotAllowed: refusal(405, 'Only GET and HEAD are answered: nothing here writes.', {
 					Allow: header('`GET, HEAD`.')

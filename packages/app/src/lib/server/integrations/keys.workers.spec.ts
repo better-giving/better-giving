@@ -6,6 +6,7 @@ import {
 	API_KEY_SHAPE,
 	findKeyByPresented,
 	listApiKeys,
+	parseBearer,
 	mintApiKey,
 	revokeAndArchiveApiKey,
 	revokeApiKey,
@@ -76,7 +77,7 @@ describe("minting Zapier's key", () => {
 			prefix: minted.key.slice(0, 8),
 			last_four: minted.key.slice(-4)
 		});
-		expect(await findKeyByPresented(db, minted.key)).toMatchObject({ id: minted.id });
+		expect(await findKeyByPresented(db, minted.key, 'zapier')).toMatchObject({ id: minted.id });
 	});
 });
 
@@ -85,7 +86,7 @@ describe('finding the key a request presents', () => {
 		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
 		await mintApiKey(db, { name: 'warehouse', kind: 'api' });
 
-		const found = await findKeyByPresented(db, minted.key);
+		const found = await findKeyByPresented(db, minted.key, 'api');
 		expect(found).toMatchObject({ id: minted.id, name: 'CRM sync', kind: 'api', revokedAt: null });
 	});
 
@@ -93,9 +94,18 @@ describe('finding the key a request presents', () => {
 		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
 		const lastSwapped = `${minted.key.slice(0, -1)}${minted.key.endsWith('A') ? 'B' : 'A'}`;
 
-		expect(await findKeyByPresented(db, lastSwapped)).toBeNull();
-		expect(await findKeyByPresented(db, `bgk_${'A'.repeat(43)}`)).toBeNull();
-		expect(await findKeyByPresented(db, '')).toBeNull();
+		expect(await findKeyByPresented(db, lastSwapped, 'api')).toBeNull();
+		expect(await findKeyByPresented(db, `bgk_${'A'.repeat(43)}`, 'api')).toBeNull();
+		expect(await findKeyByPresented(db, '', 'api')).toBeNull();
+	});
+
+	it('finds a key only as the kind asked for', async () => {
+		const api = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+
+		expect(await findKeyByPresented(db, zapier.key, 'api')).toBeNull();
+		expect(await findKeyByPresented(db, api.key, 'zapier')).toBeNull();
+		expect(await findKeyByPresented(db, zapier.key, 'zapier')).toMatchObject({ id: zapier.id });
 	});
 });
 
@@ -106,7 +116,10 @@ describe('revoking a key', () => {
 		const revokedAt = await revokeApiKey(db, minted.id);
 		expect(revokedAt).toBeInstanceOf(Date);
 
-		expect(await findKeyByPresented(db, minted.key)).toMatchObject({ id: minted.id, revokedAt });
+		expect(await findKeyByPresented(db, minted.key, 'api')).toMatchObject({
+			id: minted.id,
+			revokedAt
+		});
 	});
 
 	it('keeps the first revocation time when revoked again', async () => {
@@ -114,14 +127,14 @@ describe('revoking a key', () => {
 		const first = await revokeApiKey(db, minted.id);
 
 		expect(await revokeApiKey(db, minted.id)).toBeNull();
-		expect((await findKeyByPresented(db, minted.key))?.revokedAt).toEqual(first);
+		expect((await findKeyByPresented(db, minted.key, 'api'))?.revokedAt).toEqual(first);
 	});
 
 	it('leaves Zapier\u2019s key admitting: only a replace revokes that one', async () => {
 		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
 
 		expect(await revokeApiKey(db, zapier.id)).toBeNull();
-		expect((await findKeyByPresented(db, zapier.key))?.revokedAt).toBeNull();
+		expect((await findKeyByPresented(db, zapier.key, 'zapier'))?.revokedAt).toBeNull();
 	});
 
 	it('revokes no other key', async () => {
@@ -129,7 +142,7 @@ describe('revoking a key', () => {
 		const kept = await mintApiKey(db, { name: 'warehouse', kind: 'api' });
 		await revokeApiKey(db, revoked.id);
 
-		expect((await findKeyByPresented(db, kept.key))?.revokedAt).toBeNull();
+		expect((await findKeyByPresented(db, kept.key, 'api'))?.revokedAt).toBeNull();
 	});
 });
 
@@ -163,9 +176,9 @@ describe('revoking a key from the dashboard', () => {
 
 		expect(await revokeAndArchiveApiKey(db, revoked.id)).toBe(true);
 
-		expect((await findKeyByPresented(db, revoked.key))?.revokedAt).toBeInstanceOf(Date);
+		expect((await findKeyByPresented(db, revoked.key, 'api'))?.revokedAt).toBeInstanceOf(Date);
 		expect((await listApiKeys(db)).map((key) => key.id)).toEqual([kept.id]);
-		expect((await findKeyByPresented(db, kept.key))?.revokedAt).toBeNull();
+		expect((await findKeyByPresented(db, kept.key, 'api'))?.revokedAt).toBeNull();
 	});
 
 	it('keeps the first revocation time of a key already revoked', async () => {
@@ -173,7 +186,7 @@ describe('revoking a key from the dashboard', () => {
 		const first = await revokeApiKey(db, minted.id);
 
 		expect(await revokeAndArchiveApiKey(db, minted.id)).toBe(true);
-		expect((await findKeyByPresented(db, minted.key))?.revokedAt).toEqual(first);
+		expect((await findKeyByPresented(db, minted.key, 'api'))?.revokedAt).toEqual(first);
 		expect(await listApiKeys(db)).toEqual([]);
 	});
 
@@ -200,7 +213,7 @@ describe('revoking a key from the dashboard', () => {
 		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
 
 		expect(await revokeAndArchiveApiKey(db, zapier.id)).toBe(false);
-		expect(await findKeyByPresented(db, zapier.key)).toMatchObject({
+		expect(await findKeyByPresented(db, zapier.key, 'zapier')).toMatchObject({
 			revokedAt: null,
 			archivedAt: null
 		});
@@ -210,7 +223,7 @@ describe('revoking a key from the dashboard', () => {
 describe('recording when a key was last used', () => {
 	/** the row as a request's own lookup read it, before any use was recorded. */
 	async function readRow(key: string) {
-		const row = await findKeyByPresented(db, key);
+		const row = await findKeyByPresented(db, key, 'api');
 		if (row === null) throw new Error('the minted key was not found');
 		return row;
 	}
@@ -246,6 +259,34 @@ describe('recording when a key was last used', () => {
 		expect(logged.mock.calls.map(([line]) => line)).toEqual([
 			`recording when API key ${minted.id} was last used failed:`
 		]);
+	});
+});
+
+describe('reading the key out of an `Authorization` header', () => {
+	it.each([
+		['Bearer abc', 'abc'],
+		['bearer abc', 'abc'],
+		['BEARER   abc', 'abc'],
+		['  Bearer abc  ', 'abc'],
+		['Bearer "abc"', '"abc"']
+	])('reads %j as %j', (header, value) => {
+		expect(parseBearer(header)).toBe(value);
+	});
+
+	it.each([
+		'Basic dXNlcjpwYXNz',
+		'Bearerish abc',
+		'abc',
+		'',
+		'Bearer',
+		'Bearer   ',
+		'Bearer\tabc',
+		'Bearer \tabc',
+		'Bearer abc def',
+		'Bearer abc\tdef',
+		'Bearer\u00a0abc'
+	])('reads %j as carrying no bearer value', (header) => {
+		expect(parseBearer(header)).toBeNull();
 	});
 });
 

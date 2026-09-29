@@ -653,6 +653,37 @@ describe('a request naming a page the endpoint cannot serve', () => {
 		expect(intoNewest.message).toContain('another order');
 	});
 
+	it('refuses a cursor from a walk of changes sent with another updated_since, naming both', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 10);
+		await seedGift(donorId, 11);
+		const cursor = (await walk('limit=1&updated_since=2026-09-01T00:00:00Z'))[0]?.next_cursor;
+
+		const body = await refusedQuery(`updated_since=2026-09-05T00:00:00Z&cursor=${cursor}`);
+
+		expect(body.error).toBe('invalid_cursor');
+		expect(body.message).toContain('`updated_since=2026-09-01T00:00:00.000Z`');
+		expect(body.message).toContain('`updated_since=2026-09-05T00:00:00.000Z`');
+		expect(body.fix).toContain('same `updated_since`');
+	});
+
+	it('continues a walk of changes sent the same updated_since with another offset', async () => {
+		const donorId = await seedDonor();
+		await seedGift(donorId, 10);
+		const later = await seedGift(donorId, 11);
+		const cursor = (await walk('limit=1&updated_since=2026-09-01T00:00:00Z'))[0]?.next_cursor;
+		const since = encodeURIComponent('2026-09-01T02:00:00+02:00');
+
+		const response = await giftsRoute(
+			new Request(`${GIFTS}?updated_since=${since}&cursor=${cursor}`, bearer(await apiKey()))
+		);
+
+		expect(response.status).toBe(200);
+		expect(((await response.json()) as Page).data.map((gift) => gift.id)).toEqual([
+			later.paymentId
+		]);
+	});
+
 	it.each([
 		{ value: 'yesterday', what: 'a word' },
 		{ value: '2026-09-10', what: 'a date with no time' },
@@ -719,7 +750,11 @@ describe('a request whose key does not check out', () => {
 	});
 
 	it.each([
-		{ what: 'another scheme', value: 'Basic dXNlcjpwYXNz', says: '`Bearer` scheme' },
+		{
+			what: 'another scheme',
+			value: 'Basic dXNlcjpwYXNz',
+			says: '`Bearer`, one space and the key'
+		},
 		{ what: 'a key cut short', value: 'Bearer bgk_x7Qp', says: '47 characters' },
 		{ what: 'a quoted key', value: `Bearer "bgk_${'Q'.repeat(43)}"`, says: '47 characters' }
 	])('is refused as malformed for $what, without echoing it', async ({ value, says }) => {
@@ -732,6 +767,16 @@ describe('a request whose key does not check out', () => {
 
 	it('is refused as malformed for the scheme with nothing after it', async () => {
 		expect((await refusedWith('Bearer')).error).toBe('malformed_key');
+	});
+
+	it.each([
+		{ what: 'a tab after the scheme', value: `Bearer\tbgk_${'A'.repeat(43)}` },
+		{ what: 'text after the key', value: `Bearer bgk_${'A'.repeat(43)} extra` }
+	])('is refused as malformed for $what, naming the form a header takes', async ({ value }) => {
+		const body = await refusedWith(value);
+
+		expect(body.error).toBe('malformed_key');
+		expect(body.message).toContain('`Bearer`, one space and the key');
 	});
 
 	it('is refused as unknown for a key this deployment never made', async () => {
@@ -751,12 +796,13 @@ describe('a request whose key does not check out', () => {
 		expect(body.message).toContain(`revoked at ${revokedAt?.toISOString()}`);
 	});
 
-	it('refuses Zapier’s key exactly as it refuses one of its shape never made', async () => {
+	it('refuses Zapier’s key exactly as it refuses a key never made', async () => {
 		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
 
-		expect(await refusedWith(`Bearer ${zapier.key}`)).toStrictEqual(
-			await refusedWith(`Bearer bgz_${'A'.repeat(43)}`)
-		);
+		const body = await refusedWith(`Bearer ${zapier.key}`);
+
+		expect(body.error).toBe('unknown_key');
+		expect(body).toStrictEqual(await refusedWith(`Bearer bgk_${'A'.repeat(43)}`));
 	});
 
 	it('admits a live key with the scheme in any case', async () => {
@@ -789,16 +835,16 @@ describe('a method other than GET', () => {
 });
 
 describe('the bare surface address', () => {
-	it('answers a keyed request with a 404 naming the surface', async () => {
+	it('answers a keyed request with a 404 naming it and the lists', async () => {
 		const key = await apiKey();
 
 		const response = await surfaceRoute(new Request(`${OWN}/integrations/v1`, bearer(key)));
 
 		expect(response.status).toBe(404);
-		expect(await response.json()).toMatchObject({
-			error: 'not_found',
-			fix: 'Call an endpoint on it, such as GET /integrations/v1/gifts.'
-		});
+		const body = (await response.json()) as Refusal;
+		expect(body.error).toBe('not_found');
+		expect(body.message).toContain('`/integrations/v1`');
+		expect(body.fix).toContain('GET /integrations/v1/gifts');
 	});
 
 	it('checks the key there too', async () => {
