@@ -2,6 +2,8 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
+import type { ImageKind } from '$lib/server/db/schema';
+import { createImage } from '$lib/server/images/queries';
 import { readProgram } from '$lib/server/programs/queries';
 import { insertProgram, ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -47,6 +49,7 @@ type Loaded = {
 	status: string;
 	archived: boolean;
 	editor: { name: string; description: string } | null;
+	imageId: string | null;
 	saved: 'details' | null;
 	archivedJustNow: boolean;
 	confirmArchive: boolean;
@@ -95,6 +98,8 @@ async function post(
 	const body = new FormData();
 	body.set(WHICH_FORM, form);
 	body.set(RECORD_VERSION, version ?? (await drawnNow(id)));
+	// the photo's box is in the details form on every save, and empty unless a case sets one.
+	if (form === DETAILS_FORM) body.set('image_id', '');
 	for (const [field, value] of Object.entries(fields)) body.set(field, value);
 
 	const response = await request(
@@ -143,6 +148,15 @@ async function archiveInPlace(): Promise<void> {
 		.run();
 }
 
+/** an image stored the way the images route stores one, of `kind`. */
+function stored(kind: ImageKind = 'photo'): Promise<string> {
+	return createImage(
+		db,
+		{ kind, contentType: 'image/webp', width: 800, height: 800, alt: null },
+		new Uint8Array([1])
+	);
+}
+
 describe('/admin/programs/[id] load', () => {
 	it('seeds the boxes from the row, with the description as text rather than null', async () => {
 		// `null` is the column and `''` is the box: a box seeded from `null` would show the word.
@@ -174,6 +188,15 @@ describe('/admin/programs/[id] load', () => {
 		const response = await visit({ id: 'prg_nosuchcause01' });
 		expect(response.status).toBe(404);
 		expect(await response.text()).toContain('/admin/programs');
+	});
+
+	it('hands over the photo’s id, and null for a cause with none', async () => {
+		expect((await load()).imageId).toBeNull();
+		const photo = await stored();
+		await env.DB.prepare('update program set image_id = ? where id = ?')
+			.bind(photo, PROGRAM_ID)
+			.run();
+		expect((await load()).imageId).toBe(photo);
 	});
 
 	it('offers the archive confirmation only from the address that asks for it', async () => {
@@ -232,6 +255,68 @@ describe('/admin/programs/[id] save', () => {
 	});
 });
 
+describe('/admin/programs/[id] save — the photo', () => {
+	it('stores an uploaded photo’s id', async () => {
+		const photo = await stored();
+		const { redirect } = await post(DETAILS_FORM, {
+			name: 'Clean Water',
+			description: '',
+			image_id: photo
+		});
+		expect(redirect?.status).toBe(303);
+		expect((await readProgram(db, PROGRAM_ID))?.imageId).toBe(photo);
+	});
+
+	it('replaces one photo with another', async () => {
+		await post(DETAILS_FORM, { name: 'Clean Water', description: '', image_id: await stored() });
+		const next = await stored();
+		const { redirect } = await post(DETAILS_FORM, {
+			name: 'Clean Water',
+			description: '',
+			image_id: next
+		});
+		expect(redirect?.status).toBe(303);
+		expect((await readProgram(db, PROGRAM_ID))?.imageId).toBe(next);
+	});
+
+	it('clears the photo on an empty box', async () => {
+		await post(DETAILS_FORM, { name: 'Clean Water', description: '', image_id: await stored() });
+		const { redirect } = await post(DETAILS_FORM, {
+			name: 'Clean Water',
+			description: '',
+			image_id: ''
+		});
+		expect(redirect?.status).toBe(303);
+		expect((await readProgram(db, PROGRAM_ID))?.imageId).toBeNull();
+	});
+
+	it('refuses an illustration’s id at the photo box, and writes nothing', async () => {
+		const drawn = await stored('illustration');
+		const { failure } = await post(DETAILS_FORM, {
+			name: 'Water',
+			description: '',
+			image_id: drawn
+		});
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors.image_id?.at(-1)).toContain('illustration');
+		expect(await readProgram(db, PROGRAM_ID)).toMatchObject({ name: 'Clean Water', imageId: null });
+	});
+
+	it('refuses an id no stored image has at the photo box, and writes nothing', async () => {
+		const unknown = '019fb700-0000-7000-8000-00000000dead';
+		const { failure } = await post(DETAILS_FORM, {
+			name: 'Water',
+			description: '',
+			image_id: unknown
+		});
+		expect(failure?.status).toBe(400);
+		expect(failure?.errors.image_id?.at(-1)).toContain(
+			`No stored photo has the id "${unknown.slice(0, 32)}`
+		);
+		expect(await readProgram(db, PROGRAM_ID)).toMatchObject({ name: 'Clean Water', imageId: null });
+	});
+});
+
 describe('/admin/programs/[id] — a save from a page drawn before another save', () => {
 	it('refuses it at a 409 saying to reload, and writes nothing', async () => {
 		const tab = await load();
@@ -240,7 +325,11 @@ describe('/admin/programs/[id] — a save from a page drawn before another save'
 
 		const { failure, redirect } = await post(
 			DETAILS_FORM,
-			{ name: 'Clean Water', description: 'Wells in the east, and the north.' },
+			{
+				name: 'Clean Water',
+				description: 'Wells in the east, and the north.',
+				image_id: await stored()
+			},
 			PROGRAM_ID,
 			String(tab.version)
 		);
@@ -254,7 +343,8 @@ describe('/admin/programs/[id] — a save from a page drawn before another save'
 		expect(failure?.message).toContain('Reload the page');
 		expect(await readProgram(db, PROGRAM_ID)).toMatchObject({
 			name: 'Water',
-			description: 'wells'
+			description: 'wells',
+			imageId: null
 		});
 	});
 });

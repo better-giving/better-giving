@@ -7,10 +7,22 @@ import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { type ReactNode, useEffect, useRef } from 'react';
-import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+	data,
+	Form,
+	href,
+	Link,
+	useFetcher,
+	useFormAction,
+	useNavigate,
+	useNavigation
+} from 'react-router';
 import { z } from 'zod';
+import { replaceRefusal } from '$lib/admin/editor/replace-photo';
+import { postPhoto, type UploadAnswer } from '$lib/admin/editor/photo-upload';
 import { ProgramFields } from '$lib/admin/programs/fields';
+import { ProgramPhotoControl } from '$lib/admin/programs/photo-control';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
@@ -24,7 +36,8 @@ import {
 } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { PROGRAM_TEXT_FIELDS, type ProgramInputValues } from '$lib/programs/fields';
-import { PROGRAM_INPUT_FORM } from '$lib/programs/input-schema';
+import type { Resized } from '$lib/images/resize';
+import { PROGRAM_EDIT_FORM } from '$lib/programs/input-schema';
 import { PROGRAM_STATUS_LABELS } from '$lib/programs/statuses';
 import { redactPublicId } from '$lib/redact';
 import { invalid, parseForm, submittedForm, submittedVersion, unread } from '$lib/server/conform';
@@ -71,7 +84,7 @@ import type { Route } from './+types/_app.admin.programs.$id';
 const DETAILS_FORM_ID = 'program-edit';
 const ARCHIVE_FORM_ID = 'program-archive';
 
-const PROGRAM_EDIT = defineForm({ id: DETAILS_FORM_ID, schema: PROGRAM_INPUT_FORM });
+const PROGRAM_EDIT = defineForm({ id: DETAILS_FORM_ID, schema: PROGRAM_EDIT_FORM });
 const PROGRAM_ARCHIVE = defineForm({ id: ARCHIVE_FORM_ID, schema: z.object({}) });
 
 /** every form this screen carries, which is the list a submitted body is read against. */
@@ -112,6 +125,16 @@ const ROW_GONE =
 const STALE_SAVE =
 	'Nothing was saved: this program has changed since this page was opened. Reload the page to ' +
 	'see how it stands, then make this change again.';
+
+/**
+ * what a photo id no stored image has says, at the photo's box. worded as the control's own
+ * refusals are (`$lib/admin/editor/replace-photo.tsx`), since it is drawn under the same press.
+ */
+const noImage = (id: string) =>
+	`No stored photo has the id "${redactPublicId(id)}". Choose the photo again.`;
+
+/** what an illustration's id says, at the photo's box. */
+const NOT_PHOTO = 'That image is an illustration, and a program takes a photo. Choose a photo.';
 
 /** what a save says when the write itself threw. */
 const WRITE_FAILED = 'Saving this program failed and nothing was changed. Try again.';
@@ -185,6 +208,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// the boxes, or nothing for a cause nobody may edit: an archived one draws a record, so a
 			// seed for it would be values for a form nothing renders.
 			editor: archived ? null : programInputValuesFrom(record),
+			// the photo the editor's hidden box is seeded with, drawn by id.
+			imageId: record.imageId,
 			// which group's save just landed here, so the confirmation is drawn on the button that did
 			// it. `null` for a marker no section answers to.
 			saved: savedSection(landed?.marker ?? null, SAVED_SECTIONS),
@@ -245,18 +270,26 @@ export async function action(args: Route.ActionArgs) {
 		}
 
 		const version = submittedVersion(body);
+		const imageId = submission.value.image_id;
 		let saved: ProgramSave;
 		try {
-			saved = await updateProgram(context.get(database), id, version, parsed.value);
+			saved = await updateProgram(context.get(database), id, version, parsed.value, imageId);
 		} catch (e) {
 			console.error('saving a program failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
 
-		// four answers and four sentences. the name is the one an operator can fix without leaving
-		// the page, so it is keyed to the box they retype rather than banner-ed.
+		// one sentence per answer. the name and the photo are the ones an operator can fix without
+		// leaving the page, so each is keyed to its own box rather than banner-ed.
 		if (saved === 'duplicate_name') {
 			return invalid(400, submission.reject({ fieldErrors: { name: [NAME_TAKEN] } }));
+		}
+		if (saved === 'no_image') {
+			const said = noImage(imageId ?? '');
+			return invalid(400, submission.reject({ fieldErrors: { image_id: [said] } }));
+		}
+		if (saved === 'not_photo') {
+			return invalid(400, submission.reject({ fieldErrors: { image_id: [NOT_PHOTO] } }));
 		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {
@@ -400,6 +433,7 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 			) : (
 				<Editor
 					boxes={editor}
+					imageId={loaderData.imageId}
 					version={loaderData.version}
 					saved={loaderData.saved}
 					actionData={actionData}
@@ -434,17 +468,23 @@ function formRefusal(
  */
 function Editor({
 	boxes,
+	imageId,
 	version,
 	saved,
 	actionData
 }: {
 	readonly boxes: ProgramInputValues;
+	/** the photo as the record holds it, which the hidden box is seeded with. */
+	readonly imageId: string | null;
 	/** the version of the cause this page was drawn from, which the save is written against. */
 	readonly version: number;
 	readonly saved: 'details' | null;
 	readonly actionData: AdminActionData;
 }) {
-	const [form, fields] = useAdminForm(PROGRAM_EDIT, actionData, { defaultValue: boxes });
+	const [form, fields] = useAdminForm(PROGRAM_EDIT, actionData, {
+		defaultValue: { ...boxes, image_id: imageId ?? '' }
+	});
+	const photo = useProgramPhoto(imageId, actionData, fields.image_id.errors?.[0]);
 
 	// which form is being submitted right now, read off the body the router is carrying rather than
 	// off the navigation state alone: two forms post to one address, and a bare `submitting` would
@@ -483,10 +523,77 @@ function Editor({
 			<input {...recordVersion(version)} />
 			<ProgramFields
 				boxes={{ name: fields.name, description: fields.description }}
-				footer={<SaveButton label="Save program" state={buttonState(save)} />}
+				photo={
+					<ProgramPhotoControl
+						imageId={photo.id}
+						name={fields.image_id.name}
+						onResized={photo.resized}
+						state={photo.state}
+						onRemove={photo.remove}
+					/>
+				}
+				// held while a photo is uploading: the box still holds the photo it replaces, so a press
+				// would save that one.
+				footer={
+					<SaveButton
+						label="Save program"
+						state={photo.state === 'uploading' ? 'pending' : buttonState(save)}
+					/>
+				}
 			/>
 		</Form>
 	);
+}
+
+/**
+ * the photo the editor's hidden box holds: the record's until an upload lands or Remove clears it,
+ * and written by nothing until Save program posts the box.
+ *
+ * `refused` is the one sentence at the press — a resize or an upload that failed, or the save's own
+ * refusal of the id, heard once per answer so a new pick clears it.
+ */
+function useProgramPhoto(seeded: string | null, actionData: AdminActionData, said?: string) {
+	const upload = useFetcher<UploadAnswer>();
+	const [id, setId] = useState(seeded);
+	const [refused, setRefused] = useState(said ?? null);
+
+	const [answer, setAnswer] = useState(actionData);
+	if (answer !== actionData) {
+		setAnswer(actionData);
+		setRefused(said ?? null);
+	}
+
+	const [landed, setLanded] = useState(upload.data);
+	if (upload.data !== landed) {
+		setLanded(upload.data);
+		if (upload.data !== undefined && 'error' in upload.data) {
+			setRefused(
+				upload.data.reason === 'failed'
+					? 'That didn’t go through. Choose the photo again.'
+					: upload.data.error
+			);
+		} else if (upload.data !== undefined) {
+			setId(upload.data.id);
+		}
+	}
+
+	return {
+		id,
+		state:
+			upload.state !== 'idle' ? ('uploading' as const) : refused === null ? undefined : { refused },
+		resized: (result: Resized) => {
+			if (!result.ok) {
+				setRefused(replaceRefusal(result.reason));
+				return;
+			}
+			setRefused(null);
+			postPhoto(upload, result.blob);
+		},
+		remove: () => {
+			setRefused(null);
+			setId(null);
+		}
+	};
 }
 
 /**

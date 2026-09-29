@@ -98,3 +98,26 @@ export const PROGRAM_FIELD_RULES = {
 export const PROGRAM_INPUT_FORM = z.object(PROGRAM_FIELD_RULES);
 
 export type ProgramInputForm = z.infer<typeof PROGRAM_INPUT_FORM>;
+
+/**
+ * a cause as its own screen saves it: the two boxes, and the photo's id from the hidden box
+ * `$lib/admin/programs/photo-control.tsx` posts.
+ *
+ * the create screen offers no photo, so the id is this schema's alone — on the shared one it would
+ * be a box that screen has to post and never draws.
+ *
+ * blank is no photo and `null` is what the column holds for it; `.optional()` in front of the
+ * transform so conform's `undefined` for a blank box reaches the same answer, where a body missing
+ * the box outright is refused by `mustArrive` (`$lib/server/conform.ts`) before this runs. no shape
+ * check: an id is minted by the images route and never typed, and whether one names a stored photo
+ * is the write's question (`updateProgram` in `$lib/server/programs/queries.ts`).
+ */
+export const PROGRAM_EDIT_FORM = PROGRAM_INPUT_FORM.extend({
+	image_id: z
+		.string()
+		.optional()
+		.transform((value) => {
+			const id = value?.trim() ?? '';
+			return id === '' ? null : id;
+		})
+});
