@@ -4608,7 +4608,10 @@
 		min-inline-size: 8rem;
 	}
 
+	/* the header's own band and weight, restated: `.adm-table [data-pin]` above outranks
+	   `.adm-table thead th` and would give the pinned header the body's. */
 	.adm-table thead [data-pin] {
+		font-weight: var(--admin-label-weight-strong);
 		background: var(--admin-surface-sunken);
 		z-index: 1;
 	}
@@ -5222,13 +5225,13 @@
 	   the order of the markup: a pinned table column takes `z-index: 1` in this sheet and stands
 	   later in the document, so a bar at the same step would pass under the first column of every
 	   table. the whole ladder is that column at 1, this bar and the console's `.adm-navigation-bar`
-	   at 2, and the anchored panel and note at 3 — each of those is opened over the bar and is
-	   portalled to the body, so they too are settled by their step and not by where they stand in
-	   the document. a modal is in the top layer and is over all three without asking for a step at
-	   all. the bar's More sheet and its scrim are the one pair that stand at the bar's own step, 2,
-	   and it is the order that settles them: packages/operator/src/components/shell/AppShell.jsx
-	   writes both before the bar, so the bar draws over them and stays undimmed while the sheet is
-	   open.
+	   at 2, and the anchored panel and note and the shell's skip link at 3 — each of those is drawn
+	   over the bar, and the panel and note are portalled to the body, so they too are settled by
+	   their step and not by where they stand in the document. a modal is in the top layer and is
+	   over all three without asking for a step at all. the bar's More sheet and its scrim are the
+	   one pair that stand at the bar's own step, 2, and it is the order that settles them:
+	   packages/operator/src/components/shell/AppShell.jsx writes both before the bar, so the bar
+	   draws over them and stays undimmed while the sheet is open.
 
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
 	   them, so a tab keeps the whole of its height wherever it is drawn. */
@@ -5407,6 +5410,39 @@
 		border: 0;
 	}
 
+	/* the shell's skip link: its first stop, off the screen until it takes focus, and then a button
+	   over the top corner of whatever is there, so arriving on it moves nothing under it. it is
+	   `.adm-vh` in ./base.css, restated, for the reason `.adm-sheet__close` above gives. it stands at
+	   step 3 of the ladder stated at `.adm-rail` below, over the bar and the band alike. */
+	.adm-skip {
+		position: fixed;
+		inset-block-start: var(--admin-space-4);
+		inset-inline-start: var(--admin-space-4);
+		z-index: 3;
+	}
+
+	.adm-skip:not(:focus) {
+		position: absolute;
+		inline-size: 1px; /* raw-length-ok: as `.adm-vh`. */
+		block-size: 1px; /* raw-length-ok: as `.adm-vh`. */
+		min-block-size: 0;
+		margin: -1px; /* raw-length-ok: as `.adm-vh`. */
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	/* where the skip link lands, which is the page and no control: the ring ./base.css gives every
+	   focused element would be a frame round the whole panel, and the next press of Tab is what the
+	   reader came for. */
+	.adm-shell > .adm-main:focus-visible,
+	.adm-shell > .adm-main.is-focus {
+		outline: 0;
+		box-shadow: none;
+	}
+
 	/* the short word is the bar's and the name is the column's. both words are drawn and one of
 	   them hidden rather than switched in the markup: what `display: none` hides is out of the
 	   tab order and out of the accessibility tree, so a destination announces exactly one name at
@@ -5502,7 +5538,12 @@
 		display: none;
 	}
 
+	/* at zero rather than the default minimum, for the reason `.adm-identity` gives: the page is a
+	   grid item of the shell, and a line in it that will not break — a crumb cut to one line, a
+	   pasted address — would otherwise widen the page to its own length and run it past the
+	   window, where the line should have been cut or wrapped inside the page. */
 	.adm-main {
+		min-inline-size: 0;
 		padding: var(--admin-space-6);
 	}
 
@@ -5755,9 +5796,19 @@
 	   one, and take the focus treatment of ./base.css's link. the page being looked at is the one item
 	   in full ink, because it is the one that is not a link.
 
-	   the list wraps between items and a label wraps inside its own item, so a trail longer than
-	   the column breaks onto a second line rather than pushing the column wider. no row gap: a
-	   wrapped trail is read as a short run of lines, and the line height already spaces those. */
+	   the list wraps between items, so a trail longer than the column breaks onto a second line
+	   rather than pushing the column wider. a label never wraps inside its own item: it is cut to
+	   one line with an ellipsis, because the label that runs long is a record's own name — a
+	   destination's whole address — and the page it names draws it in full. the words are all
+	   still in the markup, so the crumb's accessible name is the whole of it. no row gap: a
+	   wrapped trail is read as a short run of lines, and each link's box already spaces those. */
+	/* the trail is an item in whatever row stands it — the panel's head strip — and a label that no
+	   longer wraps is a line exactly as wide as its words, so without this the trail takes that
+	   width and runs the strip past the window rather than cutting its last label. */
+	.adm-crumbs {
+		min-inline-size: 0;
+	}
+
 	.adm-crumbs__list {
 		display: flex;
 		flex-wrap: wrap;
@@ -5769,15 +5820,27 @@
 
 	.adm-crumbs__item {
 		display: flex;
-		align-items: start;
+		align-items: center;
 		gap: var(--admin-space-3);
 		min-inline-size: 0;
-		overflow-wrap: anywhere;
 	}
 
-	/* the separator centres on the first line of the label after it, which may wrap. */
+	/* the label is what gives way to a narrow column, never the separator before it. */
 	.adm-crumbs__sep {
-		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+		flex-shrink: 0;
+	}
+
+	/* a crumb is a link on its own line and no run of words inside a sentence, so it is a target a
+	   finger is aimed at: padded on the block axis out to the small control's height, the least any
+	   press on these screens stands at. the current page is no link and takes the same padding, so
+	   the last item stands on the same centre line as the rest. */
+	.adm-crumbs__link,
+	.adm-crumbs__current {
+		min-inline-size: 0;
+		padding-block: calc((var(--admin-control-height-sm) - 1lh) / 2);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.adm-crumbs__link {
@@ -6171,6 +6234,8 @@
 	.adm-headstrip {
 		display: flex;
 		flex-wrap: wrap;
+		/* a grid item of the head, and at zero for the reason `.adm-main` gives. */
+		min-inline-size: 0;
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--admin-space-5);

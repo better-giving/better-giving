@@ -32,8 +32,10 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  *
  * `mark` is the momentary register's only variable and defaults to the tick. `blocked` is the
  * momentary word that reports the thing could not be done, and it is the whole of the second
- * drawing: same shape, attention ink. `neutral` is the third: a press that changed nothing, in ink
- * with the info mark, and it cannot be handed alongside `blocked`.
+ * drawing: same shape, attention ink, and the triangle in place of the tick — drawn beside one
+ * handed the triangle by name, because the two are identical and a refusal left to the default
+ * never reads as done. `neutral` is the third: a press that changed nothing, in ink with the info
+ * mark, and it cannot be handed alongside `blocked`.
  *
  * a word with no children is the last specimen in each register, because `children` is optional in
  * both. descriptive draws an empty inline box and momentary draws its mark with nothing after it —

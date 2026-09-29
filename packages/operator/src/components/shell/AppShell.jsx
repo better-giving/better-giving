@@ -145,6 +145,9 @@ export function AppShell({
 	const [sheetOpen, setSheetOpen] = useState(false);
 	/** @type {import('react').RefObject<HTMLButtonElement | null>} */
 	const moreTab = useRef(null);
+	const mainId = useId();
+	/** @type {import('react').RefObject<HTMLElement | null>} */
+	const page = useRef(null);
 
 	/* the sheet closes when the tab that opened it stops being drawn — a window widened past the
 	   shell's breakpoint, a tablet turned on its side — because a modal left open under a column
@@ -284,6 +287,21 @@ export function AppShell({
 
 	return (
 		<div className={collapsed ? 'adm-shell adm-shell--collapsed' : 'adm-shell'}>
+			{/* the first stop, and the way past the identity and every destination the rail holds. it
+			    points at the page's own id, so it works before the script arrives; once it has, the
+			    press moves focus itself and leaves the address alone, because a fragment on the address
+			    is a history entry, and Back would then land on this same page rather than leave it. */}
+			<Button
+				as="a"
+				href={`#${mainId}`}
+				className="adm-skip"
+				onClick={(/** @type {import('react').MouseEvent} */ event) => {
+					event.preventDefault();
+					page.current?.focus();
+				}}
+			>
+				Skip to content
+			</Button>
 			<div className="adm-identity">
 				{lead}
 				{name}
@@ -330,7 +348,7 @@ export function AppShell({
 			) : (
 				rail
 			)}
-			<main className="adm-main">
+			<main className="adm-main" id={mainId} tabIndex={-1} ref={page}>
 				{head === undefined || head === null ? null : (
 					<div className="adm-head">
 						<div className="adm-headstrip">{head}</div>

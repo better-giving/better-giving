@@ -55,6 +55,10 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * `foot` stands in the rail in its place, which is the console's shape: its close in the band and
  * its account in the foot. `null` for both drops the rail's foot rather than standing an empty one.
  *
+ * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
+ * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
+ * shell's page past the whole rail. the page draws no ring when it lands there.
+ *
  * `head` is the strip across the top of the panel, and `site` is the globe leading the
  * organisation's name — the console's link to its deployment's dashboard.
  *

@@ -40,7 +40,7 @@ export function Breadcrumbs({ items, state, link }) {
 	const Crumb = link ?? 'a';
 	const current = items.length - 1;
 	return (
-		<nav aria-label="Breadcrumb">
+		<nav className="adm-crumbs" aria-label="Breadcrumb">
 			<ol className="adm-crumbs__list">
 				{items.map((item, at) => (
 					<li className="adm-crumbs__item" key={item.href}>

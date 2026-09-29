@@ -26,7 +26,14 @@ export type DestinationBoxes = {
 	readonly events: EventsBox;
 };
 
-export function DestinationFields({ boxes }: { readonly boxes: DestinationBoxes }) {
+export function DestinationFields({
+	boxes,
+	revision
+}: {
+	readonly boxes: DestinationBoxes;
+	/** changes once per answered submission, so a repeat refusal of the events is announced again. */
+	readonly revision?: string | number | undefined;
+}) {
 	const { url, events } = boxes;
 	return (
 		<>
@@ -44,6 +51,7 @@ export function DestinationFields({ boxes }: { readonly boxes: DestinationBoxes 
 				name={events.name}
 				legend="Events"
 				error={events.errors?.[0]}
+				revision={revision}
 				groups={WEBHOOK_EVENT_GROUPS.map((group) => ({
 					id: `${events.id}-${group.id}`,
 					legend: group.legend,

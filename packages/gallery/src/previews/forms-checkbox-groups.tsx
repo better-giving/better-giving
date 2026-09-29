@@ -5,10 +5,11 @@ import { CheckboxGroups } from '@better-giving/operator/components/forms/Checkbo
  * the three states the destination form draws it: nothing ticked, the choices a saved destination
  * holds, and refused for having nothing ticked at all.
  *
- * the refusal is the question's and never a box's, so the refused specimen marks the outer group
- * and draws its sentence once, under the last list, with every box left as it was. the two with no
- * refusal are drawn beside it so the step from the last list to the sentence reads against the
- * step the same list stands at with nothing under it.
+ * the refusal is the question's and never a box's, so the refused specimen draws its sentence
+ * once, under the last list, with every box looking as it was — each is marked refused and pointed
+ * at the sentence in the tree alone, where a failed submit's focus lands. the two with no refusal
+ * are drawn beside it so the step from the last list to the sentence reads against the step the
+ * same list stands at with nothing under it.
  *
  * the groups are the webhook catalog's nine events in a fundraiser's words. at 375px each list
  * wraps inside itself, and Recurring gifts, the longest, is the one that shows it.

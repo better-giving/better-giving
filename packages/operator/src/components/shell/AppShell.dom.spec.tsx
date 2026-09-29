@@ -365,6 +365,31 @@ describe('the panel a shell draws the page in', () => {
 	});
 });
 
+describe('the way past the rail a shell draws', () => {
+	it('is the first stop in the shell and points at the page', () => {
+		// what a keyboard reader meets first, before the identity and every destination: anything
+		// focusable written ahead of it is a stop they pay on every page before they can skip.
+		const root = render(AppShell, { groups: GROUPS, children: <p>The page</p> });
+		const first = root.querySelector('a[href], button, input, [tabindex]:not([tabindex="-1"])');
+		const main = root.querySelector('main');
+
+		expect(first?.textContent).toBe('Skip to content');
+		expect(main?.id).not.toBe('');
+		expect(first?.getAttribute('href')).toBe(`#${main?.id}`);
+	});
+
+	it('puts focus on the page when pressed, and leaves the address as it was', () => {
+		const root = render(AppShell, { groups: GROUPS, children: <p>The page</p> });
+		const skip = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Skip to content');
+		const before = window.location.href;
+
+		act(() => skip?.click());
+
+		expect(document.activeElement).toBe(root.querySelector('main'));
+		expect(window.location.href).toBe(before);
+	});
+});
+
 describe('the collapse a shell keeps for itself', () => {
 	/** the shell's own element and its toggle. */
 	function parts(root: HTMLElement) {

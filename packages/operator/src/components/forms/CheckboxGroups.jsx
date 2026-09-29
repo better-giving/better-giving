@@ -23,6 +23,11 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   as one value repeated whichever group they stand in. an item naming itself beats it.
  * @property {ReactNode} legend the question the groups answer together — `Events`.
  * @property {ReactNode} [error] the question's refusal, drawn once under the last group.
+ * @property {string | number | undefined} [revision] whatever changes once per answered
+ *   submission — the caller's count of refusals, the submission's own id. the refusal is redrawn as
+ *   a new node whenever it changes, so a live region announces a second refusal whose words match
+ *   the first: the same text left in the same node is no change, and a reader who pressed again
+ *   hears nothing. unstated, a refusal is announced when it first appears and when its words change.
  * @property {readonly NamedCheckboxes[]} groups
  */
 
@@ -32,27 +37,30 @@ import { FieldMessage } from './FieldMessage.jsx';
    that names them.
 
    a refusal is the question's rather than a group's or a box's — "choose at least one" is failed by
-   every box together and fixed by any one of them — so it marks the outer fieldset and is
-   placed once beneath the last group, and no box is drawn refused. a failed submit puts focus on the
-   first box, which is the caller's: the box's own `id` is what it reaches for. */
+   every box together and fixed by any one of them — so it is placed once beneath the last group.
+   it is marked on the boxes and not on the fieldsets, for ./CheckboxGroup.jsx's reason: a failed
+   submit puts focus on the first box, which is the caller's (the box's own `id` is what it reaches
+   for), and a box is where a reader landing on it is told why. the fieldset's own description is
+   not reliably read on entry, and where it is, it is the sentence twice. */
 /** @param {CheckboxGroupsProps} props */
-export function CheckboxGroups({ id, name, legend, error, groups }) {
+export function CheckboxGroups({ id, name, legend, error, revision, groups }) {
+	const errorId = error ? `${id}-err` : undefined;
 	return (
-		<fieldset
-			className="adm-fieldset"
-			aria-invalid={error ? 'true' : undefined}
-			aria-describedby={error ? `${id}-err` : undefined}
-		>
+		<fieldset className="adm-fieldset">
 			<legend className="adm-fieldset__legend">{legend}</legend>
 			<div className="adm-checkgroups">
 				{groups.map((group) => (
 					<fieldset className="adm-fieldset" key={group.id}>
 						<legend className="adm-field__label">{group.legend}</legend>
-						<CheckboxGroup id={group.id} name={name} items={group.items} />
+						<CheckboxGroup id={group.id} name={name} errorId={errorId} items={group.items} />
 					</fieldset>
 				))}
 			</div>
-			{error ? <FieldMessage id={`${id}-err`}>{error}</FieldMessage> : null}
+			{error ? (
+				<FieldMessage key={revision} id={errorId}>
+					{error}
+				</FieldMessage>
+			) : null}
 		</fieldset>
 	);
 }
