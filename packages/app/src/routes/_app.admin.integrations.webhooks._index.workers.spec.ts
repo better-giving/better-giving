@@ -1,7 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { PACE } from '$lib/server/outbox/budget';
 import { createDestination } from '$lib/server/webhooks/destinations';
 import {
 	deployed,
@@ -23,7 +22,7 @@ type Listed = {
 	events: string;
 	paused: boolean;
 };
-type Screen = { destinations: Listed[]; deleted: string | null; freePlanPace: number | null };
+type Screen = { destinations: Listed[]; deleted: string | null };
 
 let db: Db;
 let deployer: string;
@@ -44,24 +43,13 @@ async function made(url: string, events: Parameters<typeof createDestination>[1]
 	return created.destination.id;
 }
 
-async function visit(cookie = deployer, bindings = deployed()): Promise<Screen> {
-	const response = await list.get(SCREEN, cookie, bindings);
+async function visit(): Promise<Screen> {
+	const response = await list.get(SCREEN, deployer, deployed());
 	expect(response.status).toBe(200);
 	return (await response.json()) as Screen;
 }
 
 describe('GET /admin/integrations/webhooks', () => {
-	it('states the pace deliveries go out at on the Free plan, where the plan is not stated', async () => {
-		expect((await visit()).freePlanPace).toBe(PACE.free.webhooks);
-		expect(PACE.free.webhooks).toBeGreaterThan(0);
-	});
-
-	it('states no pace once the account is stated as on the Paid plan', async () => {
-		const paid = { ...deployed(), CLOUDFLARE_PAID_PLAN: 'true' } as Env;
-
-		expect((await visit(deployer, paid)).freePlanPace).toBeNull();
-	});
-
 	it('lists each destination by address, with its events counted and whether it is paused', async () => {
 		const first = await made('https://hooks.riverbanktrust.org/giving', [
 			'gift.made',

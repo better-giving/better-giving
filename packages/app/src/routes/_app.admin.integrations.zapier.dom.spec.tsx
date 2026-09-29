@@ -39,7 +39,6 @@ type Reading = {
 	};
 	late: boolean;
 	replacing: boolean;
-	freePlanPace: number | null;
 };
 
 const NOBODY = { newGift: 0, newDonor: 0, giftRefunded: 0 };
@@ -56,7 +55,6 @@ function reading(over: Partial<Reading> = {}, report: Partial<Reading['report']>
 		address: ADDRESS,
 		late: false,
 		replacing: false,
-		freePlanPace: null,
 		...over,
 		report: { key: null, listening: NOBODY, deliveries: QUIET, ...report }
 	};
@@ -400,14 +398,4 @@ it('re-reads the page after its own refused press, and otherwise takes the defau
 	expect(shouldRevalidate(args('zapier-key-replace', 409))).toBe(true);
 	expect(shouldRevalidate(args('zapier-key-replace', 400))).toBe(false);
 	expect(shouldRevalidate(args('sign-out', 409))).toBe(false);
-});
-
-it('says the pace deliveries go out at on the Free plan, and nothing of it once Paid is stated', () => {
-	const free = screen(reading({ freePlanPace: 6 }));
-	expect(free.textContent).toContain(
-		'On the Cloudflare Free plan, deliveries to your Zaps go out 6 a minute, so a busy day can take hours to reach every Zap. If this account is on the Workers Paid plan, say so on the console’s Cloudflare plan page.'
-	);
-	act(() => free.remove());
-
-	expect(screen(reading()).textContent).not.toContain('Free plan');
 });

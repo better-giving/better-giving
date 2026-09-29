@@ -24,6 +24,18 @@ import { countHeld, dropOwedStatement, requeueHeldStatements } from './deliver';
 // still owed, and every row that failed while it was failing, sent again under the `webhook-id` it
 // was queued with, so a receiver that did take one dedupes it.
 
+/**
+ * one destination not deleted, paused or not, or none: a statement for a caller's `batch()` asking
+ * whether anything is posted to.
+ */
+export function anyDestinationStatement(db: Db) {
+	return db
+		.select({ id: webhookDestination.id })
+		.from(webhookDestination)
+		.where(isNull(webhookDestination.archivedAt))
+		.limit(1);
+}
+
 /** a destination as a list shows it: never its secret. */
 export type ListedDestination = {
 	readonly id: string;

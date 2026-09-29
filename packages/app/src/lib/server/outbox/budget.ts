@@ -5,7 +5,7 @@ import {
 	type Plan,
 	planAnswered
 } from '@better-giving/operator/delivery-pace';
-import { type ConfigEnv, readConfigEnv } from '../config/env';
+import type { ConfigEnv } from '../config/env';
 
 // what the minute cron's one invocation may spend, each feed's share of it, and the pace each feed
 // claims at on the plan the deployment runs on. src/worker.ts runs ../accounting/deliver.ts,
@@ -197,32 +197,4 @@ export const PACE: Readonly<Record<Plan, Pace>> = DELIVERY_PACE;
 /** the plan `env` says the account is on (`planAnswered` in packages/operator/src/delivery-pace.ts). */
 export function planOf(env: ConfigEnv): Plan {
 	return planAnswered(env.CLOUDFLARE_PAID_PLAN);
-}
-
-/** what a screen tells an operator of how fast this deployment delivers. */
-export type DeliveryPace = {
-	readonly plan: Plan;
-	readonly zapierPerMinute: number;
-	readonly webhooksPerMinute: number;
-	readonly booksPerMinute: number;
-};
-
-/** the plan the platform env `source` names, and each feed's deliveries a minute on it. */
-export function deliveryPace(source: unknown): DeliveryPace {
-	const plan = planOf(readConfigEnv(source));
-	const pace = PACE[plan];
-	return {
-		plan,
-		zapierPerMinute: pace.zapier,
-		webhooksPerMinute: pace.webhooks,
-		booksPerMinute: pace.books
-	};
-}
-
-/**
- * `feed`'s deliveries a minute on the Free plan, the pace a screen's note names, or null once the
- * platform env `source` states the account is on Paid and the note has nothing to say.
- */
-export function freePlanPace(source: unknown, feed: Feed): number | null {
-	return planOf(readConfigEnv(source)) === 'paid' ? null : PACE.free[feed];
 }
