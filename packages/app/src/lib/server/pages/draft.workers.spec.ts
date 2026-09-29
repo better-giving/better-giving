@@ -526,6 +526,34 @@ describe('an impact tier', () => {
 	});
 });
 
+describe('an impact tier the page held', () => {
+	it('reworded without the operator’s word is left out, and the reply says the words are theirs', async () => {
+		const before: Page = { ...defaultCampaign(), settings: SETTINGS };
+		before.blocks.splice(3, 0, {
+			id: 'impact',
+			type: 'impact-tiers',
+			variant: 'list',
+			background: 'none',
+			tiers: [{ amountMinor: 4000, buys: 'boots' }]
+		});
+		const pageId = await insertPage(db, 'campaign', before);
+		const AI = answering({
+			say: 'Warmer words.',
+			page: {
+				kind: 'patch',
+				ops: [{ op: 'replace', path: '/blocks/3/props/tiers/0/buys', value: 'a warm home' }]
+			}
+		});
+
+		await turn(pageId, 'make the tiers warmer', AI);
+
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe(
+			'Warmer words.\nLeft out the $40 tier I reworded: what $40 buys is yours to say, so tell me and I’ll use your words.'
+		);
+	});
+});
+
 describe('a turn no model answers', () => {
 	it('leaves the draft as it was and says so plainly, with what the operator can do', async () => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
