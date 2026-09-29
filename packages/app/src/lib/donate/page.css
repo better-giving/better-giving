@@ -48,7 +48,9 @@
  * with their answers, about-us's parts); `--page-gap-group` is a heading to its content and a
  * companion to the box; `--page-gap-lead` is the masthead to the first block; `--page-gap-section`
  * is block to block; `--page-band-inset` is the inset of a section drawn on a ground of its own;
- * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin.
+ * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin. the cover
+ * stands its title `--page-cover-run` under the top of its scrim and `--page-cover-end` off the
+ * photo's lower edge, a step shorter from the widest breakpoint.
  *
  * grounds. the page ground is `--_n2`. a section sets `data-background` to stand on another —
  * `soft`, `tint` or `strong` — and the palette on the root says what each of those is. every
@@ -94,9 +96,11 @@
  *   and states no floor, 1.15:1 on the page ground and 1.06:1 at its closest, on bright's tint.
  *
  *   `--page-scrim` is the one translucent colour here, laid under the cover's title over a photo the
- *   page cannot see, and carries the note that says so. `--_n1` over its darkest stop on a white
- *   photo reads 9.33:1, held to 4.5:1; the gradient clears by 70% of its height, so a title set above the
- *   lowest part of it is standing on the photo.
+ *   page cannot see, and carries the note that says so. it is solid at its darkest stop from the
+ *   cover's lower edge to where the title starts, and fades out only across `--page-cover-run`, the
+ *   run above the title that `.page-hero-over` pads by the same token, so the title's whole box
+ *   stands on the darkest stop however many lines it and its lede run to. `--_n1` there on a white
+ *   photo reads 9.33:1, held to 4.5:1 at the top of the title's first line.
  */
 
 body {
@@ -160,12 +164,18 @@ body {
 	--page-gap-section: clamp(3rem, 2rem + 4cqi, 5.5rem);
 	--page-band-inset: clamp(2.25rem, 1.5rem + 3cqi, 4rem);
 	--page-col-gap: clamp(2rem, 1rem + 4cqi, 5rem);
+	--page-cover-run: 5rem;
+	--page-cover-end: 2rem;
 
 	--page-ground: var(--_n2);
 	--page-quiet: var(--_n10);
 	--page-track: var(--_n4);
 	/* raw-colour-ok: laid over a photo, so a solid shade would hide it; the header measures it */
-	--page-scrim: linear-gradient(to top, oklch(0.18 0.01 260 / 0.78), oklch(0.18 0.01 260 / 0) 70%);
+	--page-scrim: linear-gradient(
+		to top,
+		oklch(0.18 0.01 260 / 0.78) calc(100% - var(--page-cover-run)),
+		oklch(0.18 0.01 260 / 0)
+	);
 
 	flex: 1 0 auto;
 	background: var(--page-ground);
@@ -993,7 +1003,7 @@ figure:is(.page-hero, .page-image) {
 .page-hero-over {
 	position: absolute;
 	inset: auto 0 0;
-	padding-block: 5rem 2rem; /* raw-length-ok: the scrim's run above and under the title, a shape */
+	padding-block: var(--page-cover-run) var(--page-cover-end);
 	background: var(--page-scrim);
 	color: var(--_n1);
 }
@@ -1003,6 +1013,10 @@ figure:is(.page-hero, .page-image) {
 }
 
 @container page (min-width: 60rem) {
+	.page > .page-ground {
+		--page-cover-end: 1.5rem;
+	}
+
 	.page-flow > .page-block[data-block='hero'] > .page-in:has(> .page-hero[data-variant='wide']) {
 		max-inline-size: none;
 	}
@@ -1039,10 +1053,6 @@ figure:is(.page-hero, .page-image) {
 	.page-hero[data-variant='cover'] .page-photo {
 		aspect-ratio: 21 / 8;
 		min-block-size: 30rem; /* raw-length-ok: the cover's height, a shape */
-	}
-
-	.page-hero-over {
-		padding-block-end: 1.5rem; /* raw-length-ok: the scrim's run under the title, a shape */
 	}
 
 	.page-hero-over .page-in {
