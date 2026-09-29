@@ -532,7 +532,14 @@ function Editor({
 						onRemove={photo.remove}
 					/>
 				}
-				footer={<SaveButton label="Save program" state={buttonState(save)} />}
+				// held while a photo is uploading: the box still holds the photo it replaces, so a press
+				// would save that one.
+				footer={
+					<SaveButton
+						label="Save program"
+						state={photo.state === 'uploading' ? 'pending' : buttonState(save)}
+					/>
+				}
 			/>
 		</Form>
 	);

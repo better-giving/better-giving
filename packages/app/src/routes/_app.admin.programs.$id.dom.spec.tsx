@@ -86,9 +86,14 @@ function record(confirmArchive: boolean, imageId: string | null): Loaded {
  * again, held open. hydrated, so the first render reaches no loader.
  *
  * `posted` is the form each body named, in the order the action received them, and `photos` the
- * photo's box in each. the images route answers every upload with `STORED`.
+ * photo's box in each. the images route answers every upload with `STORED`, or never where
+ * `uploadHeld` is set.
  */
-function screen({ confirmArchive = false, imageId = null as string | null } = {}): {
+function screen({
+	confirmArchive = false,
+	imageId = null as string | null,
+	uploadHeld = false
+} = {}): {
 	root: HTMLElement;
 	posted: string[];
 	photos: (string | null)[];
@@ -116,7 +121,8 @@ function screen({ confirmArchive = false, imageId = null as string | null } = {}
 		},
 		{
 			path: '/admin/images',
-			action: () => ({ id: STORED, width: 800, height: 800 })
+			action: () =>
+				uploadHeld ? new Promise<never>(() => {}) : { id: STORED, width: 800, height: 800 }
 		}
 	]);
 	const root = mount(
@@ -231,5 +237,20 @@ describe('the photo', () => {
 		await press(save);
 		expect(posted).toEqual(['program-edit']);
 		expect(photos).toEqual([STORED]);
+	});
+
+	it('holds Save program while an upload is unanswered, and a press posts nothing', async () => {
+		const { root, posted } = screen({ imageId: PLACED, uploadHeld: true });
+		type(root, 'name', 'Winter Shelter 2026');
+		const save = buttonReading(root, 'Save program');
+		expect(save.getAttribute('aria-disabled')).toBeNull();
+
+		await pick(root);
+		expect(save.getAttribute('aria-disabled')).toBe('true');
+		expect(save.getAttribute('aria-busy')).toBe('true');
+
+		// the box still holds the photo the upload is replacing.
+		await press(save);
+		expect(posted).toEqual([]);
 	});
 });
