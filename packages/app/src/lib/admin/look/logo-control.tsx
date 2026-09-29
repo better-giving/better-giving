@@ -87,7 +87,7 @@ export function LogoControl({
 						type="button"
 						variant="quiet"
 						size="sm"
-						mark="undo-2"
+						mark={report.redo ? 'redo-2' : 'undo-2'}
 						aria-busy={undoing || undefined}
 						aria-disabled={undoing || undefined}
 						onClick={() => {
