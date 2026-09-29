@@ -304,8 +304,8 @@ const updatedAt = () =>
 /**
  * a closed vocabulary as a SQL list, for a check's `in (...)`.
  *
- * `sql.raw` is safe here and only here: every input is a literal from this module's
- * own `as const` arrays, never a value off a request.
+ * `sql.raw` is safe because every input is one of the `as const` vocabularies this module
+ * declares or imports from a leaf, never a value off a request.
  */
 const quotedList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
@@ -3065,8 +3065,8 @@ export type ChatAuthor = (typeof CHAT_AUTHORS)[number];
  * `model` names what wrote an assistant turn, and an operator's turn has none. `image_ids` is the
  * JSON array of the photos attached to the turn, by id; a turn's text may be blank only when a
  * photo is what it carries. `note` is `CHAT_NOTES`' word for an assistant turn the reply went
- * wrong on, null otherwise, and an operator's turn has none: a column rather than words in `text`,
- * which the model writes.
+ * wrong on, null otherwise, and an operator's turn has none. it is a column of its own because
+ * `text` is what the model writes.
  *
  * `page_id` is `NO ACTION`, like every domain key here (rule 2 at the top of this file): a cascade
  * would fire during any rebuild of `page` and empty every chat. deleting a page deletes its turns

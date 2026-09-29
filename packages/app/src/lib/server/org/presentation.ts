@@ -334,9 +334,9 @@ export function sharingInput(
 			continue;
 		}
 		if (label === '') {
-			errors[`linkLabel[${row}]`] = 'needs a label, the name the link is shown under';
+			errors[`linkLabel[${row}]`] = 'required';
 		}
-		if (href === '') errors[`linkUrl[${row}]`] = 'needs a web address';
+		if (href === '') errors[`linkUrl[${row}]`] = 'required';
 		else if (!sharingLink.shape.href.safeParse(href).success) {
 			errors[`linkUrl[${row}]`] =
 				`${shown(typedUrl)} is not a web address; a social link starts with https:// or http://`;

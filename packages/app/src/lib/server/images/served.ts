@@ -20,10 +20,11 @@ import type { BytesPort } from './bytes';
 // states: `caches.default` is the zone's store keyed by URL. keying on the id alone also means a
 // query string on a view cannot mint a second entry, or a second read, for the same bytes.
 //
-// the store is per data centre and is not tiered (developers.cloudflare.com/workers/runtime-apis/
-// cache/), so a photo is read once in each place it is viewed from, not once in all. a miss is
-// answered at once and put behind the answer with `waitUntil`, so the viewer never waits on the
-// write; a burst that misses together reads together.
+// the store is per data centre and is not tiered
+// (https://developers.cloudflare.com/workers/runtime-apis/cache/), so a photo is read once in each
+// place it is viewed from, not once in all. a miss is answered at once and put behind the answer
+// with `waitUntil`, so the viewer never waits on the write; a burst that misses together reads
+// together.
 
 /** where a view is answered: the origin it arrived on, and the image's id. */
 export interface ImageAddress {

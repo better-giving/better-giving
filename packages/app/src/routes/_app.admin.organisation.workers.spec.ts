@@ -568,7 +568,7 @@ describe('the sharing', () => {
 		expect(answer).toMatchObject({
 			redirected: false,
 			status: 400,
-			errors: { 'linkLabel[0]': ['needs a label, the name the link is shown under'] }
+			errors: { 'linkLabel[0]': ['required'] }
 		});
 	});
 
