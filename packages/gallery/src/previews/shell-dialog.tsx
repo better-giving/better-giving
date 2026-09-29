@@ -11,9 +11,9 @@ import { useState } from 'react';
  * what makes a dialog survive a navigation and a refused submit. ./behaviour-dialog.tsx is the same
  * element lifted into the top layer.
  *
- * **the server's presentation cannot be a resting specimen either, and that is the element rather
- * than the gallery.** it stands where the lifted card will — fixed and centred over the window, on
- * the scrim spread past every edge (`.adm-dialog--inline` in
+ * **the server's presentation cannot rest on this page either, and that is the element's doing
+ * rather than the gallery's.** it stands where the lifted card will — fixed and centred over the
+ * window, on the scrim spread past every edge (`.adm-dialog--inline` in
  * packages/operator/src/styles/adm.css) — so that nothing moves when the script lifts it. two of
  * them resting on this page would stand in one place, one over the other, on a ground darkened
  * twice. so each arrangement is opened by the press beside it and taken off by any control it

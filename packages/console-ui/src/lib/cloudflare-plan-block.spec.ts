@@ -71,9 +71,9 @@ describe('what the switch changes', () => {
 		const page = await drawn([]);
 		const { free, paid } = DELIVERY_PACE;
 		expect(page).toContain(
-			`sends gifts to Zapier at ${free.zapier} a minute, to webhook destinations at ${free.webhooks} and to QuickBooks at ${free.books}`
+			`makes ${free.zapier} deliveries a minute to Zapier, ${free.webhooks} to webhook destinations and ${free.books} to QuickBooks`
 		);
-		expect(page).toContain(`it sends ${paid.zapier}, ${paid.webhooks} and ${paid.books}`);
+		expect(page).toContain(`it makes ${paid.zapier}, ${paid.webhooks} and ${paid.books}`);
 	});
 });
 

@@ -386,9 +386,9 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 			/>
 			{/* mounted empty and written when a test or a resume answers or an add lands. it takes
 			    focus when a resume's dialog comes down after the resume took the Resume press off the
-			    page. it is a line of its own under the header rather than a child of the presses'
-			    row: in that row its words push the presses along it, or wrap the row under the title,
-			    and a repeat press lands on whatever slid into the spot. */}
+			    page. it stands on a line of its own under the header and outside the presses' row:
+			    in that row its words would push the presses along it, or wrap the row under the
+			    title, and a repeat press would land on whatever slid into the spot. */}
 			<p ref={said} role="status" tabIndex={-1}>
 				{report ? (
 					<StatusWord register="momentary" {...READINGS[report.reading]}>

@@ -36,7 +36,7 @@ export type CloudflarePlanProps = {
 const { free: FREE, paid: PAID } = DELIVERY_PACE;
 
 /** what ticking the box changes, and what ticking it wrongly costs. */
-const PLAN_NOTE = `On the Free plan this deployment sends gifts to Zapier at ${FREE.zapier} a minute, to webhook destinations at ${FREE.webhooks} and to QuickBooks at ${FREE.books}, to stay inside the plan’s limits. On the Workers Paid plan it sends ${PAID.zapier}, ${PAID.webhooks} and ${PAID.books}. Ticked on a Free account, what goes past those limits fails.`;
+const PLAN_NOTE = `On the Free plan this deployment makes ${FREE.zapier} deliveries a minute to Zapier, ${FREE.webhooks} to webhook destinations and ${FREE.books} to QuickBooks, to stay inside the plan’s limits. On the Workers Paid plan it makes ${PAID.zapier}, ${PAID.webhooks} and ${PAID.books}. Ticked on a Free account, what goes past those limits fails.`;
 
 export function CloudflarePlan({
 	values,

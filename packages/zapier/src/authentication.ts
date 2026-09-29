@@ -45,7 +45,7 @@ export default {
 			type: 'password',
 			required: true,
 			helpText:
-				'The key made on your Better Giving dashboard, under Integrations → Zapier. It starts with `bgz_`.'
+				'The key made on your Better Giving dashboard, under Integrations, then Zapier. It starts with `bgz_`.'
 		}
 	],
 	test,
