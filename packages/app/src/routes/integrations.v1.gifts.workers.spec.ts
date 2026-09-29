@@ -975,7 +975,7 @@ function envWritingAfterTheOrder(write: () => Promise<void>): Env {
 	const db = new Proxy(env.DB, {
 		get(target, property) {
 			if (property === 'prepare')
-				return (sql: string) => gated(target.prepare(sql), /\) "changes"/.test(sql));
+				return (sql: string) => gated(target.prepare(sql), / union /.test(sql));
 			const value: unknown = Reflect.get(target, property);
 			return typeof value === 'function' ? value.bind(target) : value;
 		}

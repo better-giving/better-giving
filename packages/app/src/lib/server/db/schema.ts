@@ -485,7 +485,20 @@ export const contact = sqliteTable(
 		// case-insensitive email lookup — the dedupe path. lower() is deterministic,
 		// so sqlite permits it in an index.
 		index('contact_primary_email_lower_idx').on(sql`lower(${t.primaryEmail})`),
-		index('contact_last_name_idx').on(t.lastName)
+		index('contact_last_name_idx').on(t.lastName),
+		/**
+		 * the read API's donors in its two orders: newest first by when the donor was recorded, and
+		 * oldest change first (`readDonorPage` in ../integrations/donor.ts). partial on that list's own
+		 * `archived_at is null`, so each holds the donors the list serves, in the order a page reads
+		 * them, and a page is neither a scan nor a sort of `contact` —
+		 * ../integrations/list-pages.plan.workers.spec.ts holds the plan to them.
+		 */
+		index('contact_unarchived_created_at_idx')
+			.on(t.createdAt, t.id)
+			.where(sql`${t.archivedAt} is null`),
+		index('contact_unarchived_updated_at_idx')
+			.on(t.updatedAt, t.id)
+			.where(sql`${t.archivedAt} is null`)
 	]
 );
 
@@ -704,7 +717,10 @@ export const entryGroup = sqliteTable(
 		 */
 		uniqueIndex('entry_group_source_idx').on(t.sourceType, t.sourceId),
 		// the bitemporal audit query filters on business time.
-		index('entry_group_occurred_at_idx').on(t.occurredAt)
+		index('entry_group_occurred_at_idx').on(t.occurredAt),
+		// system time, for the read API's walk of changed gifts: `payment_settled_gift_created_at_idx`
+		// below says how.
+		index('entry_group_created_at_idx').on(t.createdAt, t.sourceId)
 	]
 );
 
@@ -1791,11 +1807,26 @@ export const payment = sqliteTable(
 		 * ../integrations/paging.ts). partial, so it holds settled inbound payments alone, in the
 		 * order the walk reads them, and the page is neither a scan nor a sort of `payment`. usable
 		 * only while the query's `where` names `status` and `direction` with these values —
-		 * ../integrations/gift-page.plan.workers.spec.ts holds the plan to it.
+		 * ../integrations/list-pages.plan.workers.spec.ts holds the plan to it.
 		 */
 		index('payment_settled_gift_occurred_at_idx')
 			.on(t.occurredAt, t.id)
 			.where(sql`${t.status} = 'succeeded' and ${t.direction} = 'inbound'`),
+		/**
+		 * the read API's gifts oldest change first (`changedKeys` in ../integrations/gift.ts). a gift's
+		 * `updated_at` is the latest of several writes and is stored nowhere, so the walk merges one
+		 * stream per kind of write, each read in `(time, gift id)` order off an index of its own: the
+		 * settled gift's own row here, partial like the one above and usable only while the query
+		 * names `status` and `direction` with these values; the refund-direction rows by the gift they
+		 * reverse, next; `entry_group_created_at_idx` for the postings; and `dispute_updated_at_idx`.
+		 * ../integrations/list-pages.plan.workers.spec.ts holds the plan to all four.
+		 */
+		index('payment_settled_gift_created_at_idx')
+			.on(t.createdAt, t.id)
+			.where(sql`${t.status} = 'succeeded' and ${t.direction} = 'inbound'`),
+		index('payment_refund_created_at_idx')
+			.on(t.createdAt, t.parentPaymentId)
+			.where(sql`${t.direction} = 'refund'`),
 		/**
 		 * payment-grain idempotency, sitting underneath `entry_group_source_idx`'s
 		 * posting-grain idempotency. a redelivered Stripe charge carries the same
@@ -1870,7 +1901,9 @@ export const dispute = sqliteTable(
 			'dispute_closed_with_outcome_check',
 			sql`(${t.outcome} is null) = (${t.closedAt} is null)`
 		),
-		check('dispute_reason_not_blank_check', optionalNotBlank(t.reason))
+		check('dispute_reason_not_blank_check', optionalNotBlank(t.reason)),
+		// the read API's walk of changed gifts: `payment_settled_gift_created_at_idx` says how.
+		index('dispute_updated_at_idx').on(t.updatedAt, t.paymentId)
 	]
 );
 
@@ -2047,7 +2080,12 @@ export const recurringPlan = sqliteTable(
 		// deployment has commitments in the low thousands at most and both of those reads are
 		// a full list, and unlike a check an index is a free `CREATE INDEX` the day one
 		// proves slow.
-		index('recurring_plan_contact_id_idx').on(t.contactId)
+		index('recurring_plan_contact_id_idx').on(t.contactId),
+		// the read API's recurring gifts in its two orders (`readRecurringGiftPage` in
+		// ../integrations/recurring-gift.ts), so a page is neither a scan nor a sort of the table —
+		// ../integrations/list-pages.plan.workers.spec.ts holds the plan to them.
+		index('recurring_plan_created_at_idx').on(t.createdAt, t.id),
+		index('recurring_plan_updated_at_idx').on(t.updatedAt, t.id)
 	]
 );
 

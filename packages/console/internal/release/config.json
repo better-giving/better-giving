@@ -23,12 +23,13 @@
 		"0017_zapier_key_is_an_api_key.sql",
 		"0018_zapier_key_dropped.sql",
 		"0019_webhook_delivery_dropped_and_detail.sql",
-		"0020_webhook_delivery_recent_index.sql"
+		"0020_webhook_delivery_recent_index.sql",
+		"0021_list_walk_indexes.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "b95ec2a8d999380f50184e31f084bb7872be952a"
+	"commit": "a8aff863251594d3b70bc36db143f1dcf1710b1a"
 }
