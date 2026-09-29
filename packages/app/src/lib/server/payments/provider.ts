@@ -831,8 +831,9 @@ export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
  * what every verified delivery carries, whatever it turns out to be about.
  *
  * it holds no metadata, no amount and no status, and that is a rule rather than an omission: a
- * delivery is serialised in the API version the account held when it happened, so a replayed one
- * can carry an older shape for any field. what is read here is the little that has never moved.
+ * delivery's body is in whatever version its processor rendered it in, which need not be the one
+ * a read pins — stripe's rule is `RENDERED_VERSION` in ./stripe.ts — so it can carry another shape
+ * for any field. what is read here is the little that has never moved.
  * everything a handler acts on comes from a read — `readSettlement`, `readRecurringGift` or
  * `readReversal` — which fetches the object fresh against one pinned version.
  * `SettlementEvent.delivered`, `ReversalEvent.delivered` and `RecurringEvent.delivered` are the
@@ -884,8 +885,9 @@ export type RecurringEvent = VerifiedDelivery & {
 	 * the failed attempt as the verified body itself states it — an exception to
 	 * `VerifiedDelivery`'s rule, and stripe's alone: the invoice a read fetches afterwards already
 	 * holds the next attempt's count and schedule when a delivery arrives late, and only the body
-	 * was stamped by the attempt it reports. ./stripe.ts sets it on every collection failure and
-	 * its own `readRecurringGift` is its one reader; absent on every other delivery and processor.
+	 * was stamped by the attempt it reports. ./stripe.ts sets it on every collection failure, and
+	 * its own `readRecurringGift` is its one reader and refuses a failure without it; absent on
+	 * every other delivery and processor.
 	 */
 	readonly delivered?: DeliveredAttempt;
 };

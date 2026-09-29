@@ -198,8 +198,10 @@ function spells(source: string, name: string): boolean {
 }
 
 /**
- * the source's lines less its comments, which name a delivery in backticks as markdown does. a
- * line opening with `//`, `/*` or `*` is dropped, and a `//` after code cuts the rest of its line.
+ * the lines a backticked name is looked for in: comments name a delivery in backticks as markdown
+ * does. a line opening with `//`, `/*` or `*` is dropped, and a whitespace-led `//` cuts the rest of
+ * its line; every other comment form is read as code. the quoted match in `spells` reads the whole
+ * source, comments included.
  */
 function codeOf(source: string): string[] {
 	return source

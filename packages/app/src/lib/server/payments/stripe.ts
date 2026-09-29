@@ -86,6 +86,16 @@ import type {
 /** the one dispute delivery whose own time is the close's: a `Dispute` records no close time. */
 const DISPUTE_CLOSED_EVENT = 'charge.dispute.closed' satisfies (typeof DISPUTE_EVENT_TYPES)[number];
 
+/**
+ * the version a delivery's body is rendered in, as an operator reads it: the receiving endpoint's
+ * `api_version` (`WebhookEndpoint` in the installed SDK) — `API_VERSION` on the endpoint
+ * `createEndpoint` registers, the account's default on any other, a `stripe listen` session among
+ * them. every read below re-fetches at `API_VERSION` whatever the body's version was.
+ */
+const RENDERED_VERSION =
+	`A delivery is rendered in its endpoint's API version: ${API_VERSION} on the endpoint this app ` +
+	"registers, the account's default on any other, a `stripe listen` session included.";
+
 /** the one collection delivery that reports an attempt failing: one delivery per failed attempt. */
 const COLLECTION_FAILED_EVENT =
 	'invoice.payment_failed' satisfies (typeof RECURRING_COLLECTION_EVENT_TYPES)[number];
@@ -992,13 +1002,15 @@ function collectedOn(collected: Stripe.Invoice): string | null {
 }
 
 /**
- * the attempt an `invoice.payment_failed` body states, or null where the body is no invoice.
+ * the attempt an `invoice.payment_failed` body states, or null where the body does not state it —
+ * any of the four fields missing or of the wrong type.
  *
  * read off the verified body rather than the invoice fetched afterwards, which by a late delivery
- * holds the next attempt's count and schedule. the endpoint is created at `API_VERSION`
- * (`createEndpoint` below), so the body is the shape every read here takes. the figure is
- * `amount_remaining`: an attempt charges what is still owed, and on an invoice paid in part
- * `amount_due` is still the whole.
+ * holds the next attempt's count and schedule. the body is in its endpoint's version
+ * (`RENDERED_VERSION`), which need not be `API_VERSION`, so each field is checked rather than
+ * trusted and a body missing one is refused (`verifyEvent`). the figure is `amount_remaining`: an
+ * attempt charges what is still owed, and on an invoice paid in part `amount_due` is still the
+ * whole.
  */
 function deliveredAttemptOf(object: unknown): DeliveredAttempt | null {
 	if (typeof object !== 'object' || object === null) return null;
@@ -1378,8 +1390,8 @@ export function createStripeProvider(
 				// subscribe only to what the integration handles — every other delivery is a request
 				// this deployment answers and discards.
 				enabled_events: [...SUBSCRIBED_EVENT_TYPES],
-				// pinned, so deliveries to this endpoint are serialised in the version this app reads
-				// them against rather than in whatever version the account happens to be set to.
+				// pinned, so deliveries to this endpoint are rendered in the version this app reads
+				// them against (`RENDERED_VERSION`).
 				api_version: API_VERSION,
 				description: ENDPOINT_DESCRIPTION
 			});
@@ -1607,15 +1619,29 @@ export function createStripeProvider(
 	async function readCollection(
 		event: RecurringEvent
 	): Promise<PaymentResult<RecurringGiftNotice>> {
+		const fails = event.type === COLLECTION_FAILED_EVENT;
+		if (fails && !event.delivered) {
+			return {
+				ok: false,
+				reason: 'provider_error',
+				detail:
+					`The \`${event.type}\` delivery about invoice ${redactPublicId(event.providerNoticeId)} ` +
+					'reached this read without the attempt its body stated, so which attempt failed could ' +
+					'not be told and nothing was recorded. `verifyEvent` sets it on every such delivery; ' +
+					'one built any other way is a bug in this app rather than anything about the gift.'
+			};
+		}
+		const attempt = fails ? event.delivered : undefined;
+
 		try {
 			const collected = await stripe.invoices.retrieve(event.providerNoticeId, {
 				expand: ['parent.subscription_details.subscription', 'payments']
 			});
 
 			// where this API version keeps it. an invoice's own `subscription` field is not read
-			// anywhere here, and a delivery replayed from an account on an older version is answered
-			// by this read rather than by the shape that arrived — which is why nothing but a failed
-			// attempt's own figures is taken off the event body (`deliveredAttemptOf`).
+			// anywhere here, and a delivery rendered in another version (`RENDERED_VERSION`) is
+			// answered by this read rather than by the shape that arrived — which is why nothing but
+			// a failed attempt's own figures is taken off the event body (`deliveredAttemptOf`).
 			const commitment = expansionOf<Stripe.Subscription>(
 				collected.parent?.subscription_details?.subscription
 			);
@@ -1648,20 +1674,9 @@ export function createStripeProvider(
 			}
 
 			const notice = noticeOf(commitment.value, 'collection', collectedOn(collected));
-			if (event.type !== COLLECTION_FAILED_EVENT) return { ok: true, value: notice };
+			if (!attempt) return { ok: true, value: notice };
 
-			if (!event.delivered) {
-				return {
-					ok: false,
-					reason: 'provider_error',
-					detail:
-						`The \`${event.type}\` delivery about invoice ${redactPublicId(collected.id)} reached ` +
-						'this read without the attempt its body stated, so which attempt failed could not be ' +
-						'told and nothing was recorded. `verifyEvent` sets it on every such delivery; one ' +
-						'built any other way is a bug in this app rather than anything about the gift.'
-				};
-			}
-			const failed = failedAttemptOf(collected, event, event.delivered);
+			const failed = failedAttemptOf(collected, event, attempt);
 			return { ok: true, value: failed ? { ...notice, failedAttempt: failed } : notice };
 		} catch (error) {
 			return classify(error);
@@ -2169,8 +2184,8 @@ export function createStripeProvider(
 					: null;
 
 			if (id === null) {
-				// verified, subscribed, and unreadable. an event is serialised in the API version the
-				// account held when it happened, so a replayed old delivery can carry a shape this
+				// verified, subscribed, and unreadable. a delivery to an endpoint this app did not
+				// register is in the account's version (`RENDERED_VERSION`), which can be a shape this
 				// app does not know. reported as `ignored` it would be a settlement dropped in
 				// silence under a 200, which is the failure that loses a gift.
 				return {
@@ -2178,8 +2193,7 @@ export function createStripeProvider(
 					reason: 'provider_error',
 					detail:
 						`A verified \`${redactPublicId(type)}\` delivery carried no readable object id, so ` +
-						'there is nothing to reconcile it against. Events are serialised in the API ' +
-						`version the account held when they happened; this app reads them against ${API_VERSION}.`
+						`there is nothing to reconcile it against. ${RENDERED_VERSION}`
 				};
 			}
 
@@ -2216,8 +2230,7 @@ export function createStripeProvider(
 					detail:
 						`A verified \`${type}\` delivery about ${redactPublicId(id)} did not state the ` +
 						'attempt it reports — its count, next retry, amount or currency — so which attempt ' +
-						'failed could not be told and nothing was recorded. Events are serialised in the ' +
-						`API version the account held when they happened; this app reads them against ${API_VERSION}.`
+						`failed could not be told and nothing was recorded. ${RENDERED_VERSION}`
 				};
 			}
 			return {

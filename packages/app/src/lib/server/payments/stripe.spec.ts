@@ -5055,6 +5055,21 @@ describe('readRecurringGift', () => {
 	});
 
 	/**
+	 * a failure handed over without the attempt its body stated is refused before anything is
+	 * fetched: what the fetch would answer cannot say which attempt failed.
+	 */
+	it('refuses a failure carrying no attempt without reading the invoice', async () => {
+		const { httpClient, calls } = recording([{ status: 200, json: failedInvoice() }]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
+			notice('invoice.payment_failed', 'in_1')
+		);
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
+		expect(calls).toEqual([]);
+	});
+
+	/**
 	 * the opening invoice failing is the donor's own first charge on the page, which no repeating gift
 	 * stands behind yet — so it reports no failed attempt, however late its delivery arrives.
 	 */
