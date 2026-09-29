@@ -191,7 +191,8 @@ function CalendarHead() {
  *
  * **the calendar opens under the box whose press opened it**, not under the control: the picker's
  * control stands over both boxes, so anchored to it the far end's calendar would open under the
- * near box. it is portalled and placed as ./DateField.jsx's is, for the reasons that header gives.
+ * near box. it is portalled and placed as ./DateField.jsx's is, for the reasons given there beside
+ * its `layer` and its `positioning`.
  *
  * **`.adm-datefield` appears twice.** the outer one is the picker's root. each inner one is a box's
  * own row in its field — `.adm-field > .adm-datefield` is what puts a date box on the third of the
