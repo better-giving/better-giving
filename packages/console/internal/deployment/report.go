@@ -95,6 +95,20 @@ type ReportRead struct {
 	// and one built from a checkout rather than a tagged release. Neither can be weighed against a
 	// release, so a reading that offers an update judges such a deployment by its migrations alone.
 	Version *string `json:"version"`
+	// FeedsInUse is which outbound feeds the deployment has in use, or nil where the envelope does
+	// not state all three: a deployment older than this member answers without it, and that is
+	// unknown rather than no feed at all.
+	FeedsInUse *FeedsInUse `json:"feedsInUse"`
+}
+
+// FeedsInUse is each outbound feed the deployment sends, and whether it is in use.
+//
+// No member is omitted when false: a feed that is off is an answer the page weighs, and a dropped
+// false would read as a deployment that never said.
+type FeedsInUse struct {
+	Zapier   bool `json:"zapier"`
+	Webhooks bool `json:"webhooks"`
+	Books    bool `json:"books"`
 }
 
 // Calls is how a call to a deployment's own console surface is bound.
@@ -192,11 +206,24 @@ func readReport(answer cf.Answer) ReportRead {
 		}
 	}
 	return ReportRead{
-		NoReport: NoReport{Kind: Reported},
-		Sites:    rows,
-		Org:      body["org"],
-		Version:  text(body["version"]),
+		NoReport:   NoReport{Kind: Reported},
+		Sites:      rows,
+		Org:        body["org"],
+		Version:    text(body["version"]),
+		FeedsInUse: feedsInUse(body["feedsInUse"]),
 	}
+}
+
+// the feeds the envelope states, or nil where it does not state every one of them as a yes or a no.
+func feedsInUse(value any) *FeedsInUse {
+	stated, _ := value.(map[string]any)
+	zapier, zapierStated := stated["zapier"].(bool)
+	webhooks, webhooksStated := stated["webhooks"].(bool)
+	books, booksStated := stated["books"].(bool)
+	if !zapierStated || !webhooksStated || !booksStated {
+		return nil
+	}
+	return &FeedsInUse{Zapier: zapier, Webhooks: webhooks, Books: books}
 }
 
 // what the deployment said about a failure, in its own words where it wrote any.

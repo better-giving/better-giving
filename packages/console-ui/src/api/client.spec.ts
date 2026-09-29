@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	chariotRun,
 	consoleVersion,
+	homeReading,
 	levelWallets,
 	pressQuickbooks,
 	readQuickbooks,
@@ -10,6 +11,7 @@ import {
 	startChariotSetup,
 	startStripeSetup
 } from './client';
+import type { HomeReading } from './types';
 
 // what the page does with each way the binary answers a press.
 //
@@ -60,6 +62,34 @@ describe('the release this binary was built as', () => {
 		answering(200, { version: 41, commit: null });
 
 		await expect(consoleVersion()).resolves.toEqual({ version: '', commit: '' });
+	});
+});
+
+describe('the slower home reading', () => {
+	const read = (feedsInUse: HomeReading['feedsInUse']): HomeReading => ({
+		face: { kind: 'ready', address: 'https://a.example' },
+		values: { vars: { kind: 'read', vars: [] } },
+		sites: [],
+		donatePage: 'https://a.example',
+		org: null,
+		holdsStripeKey: false,
+		feedsInUse
+	});
+
+	it('carries every feed the deployment stated, a feed that is off included', async () => {
+		// the account row weighs a free plan against these, and a `false` lost on the way is a feed
+		// the page could not tell from one nobody reported.
+		const feedsInUse = { zapier: false, webhooks: true, books: false };
+		answering(200, read(feedsInUse));
+
+		await expect(homeReading()).resolves.toMatchObject({ feedsInUse });
+	});
+
+	it('carries a deployment that stated no feeds as unknown', async () => {
+		// a deployment older than the member: the binary writes `null`, never three `false`s.
+		answering(200, read(null));
+
+		await expect(homeReading()).resolves.toMatchObject({ feedsInUse: null });
 	});
 });
 

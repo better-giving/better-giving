@@ -34,7 +34,8 @@ vi.mock('../api/client', async (original) => ({
 			sites: [],
 			donatePage: '',
 			org: null,
-			holdsStripeKey: false
+			holdsStripeKey: false,
+			feedsInUse: null
 		};
 	},
 	readQuickbooks: async () => {
