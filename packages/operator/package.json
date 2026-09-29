@@ -9,6 +9,7 @@
 		"./marked-text.react": "./src/marked-text.react.tsx",
 		"./deploy-split": "./src/deploy-split.ts",
 		"./deductibility": "./src/deductibility.ts",
+		"./delivery-pace": "./src/delivery-pace.ts",
 		"./origins": "./src/origins.ts",
 		"./motion-end": "./src/motion-end.ts",
 		"./progress-bar": "./src/progress-bar.ts",

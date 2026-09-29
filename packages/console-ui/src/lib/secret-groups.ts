@@ -40,9 +40,9 @@ export type SecretGroup = {
  * the eight groups.
  *
  * the order is `DEPLOY_VARS`'s own, so a name added to the enumeration lands in a group here
- * without the screen and the split having an order each to drift from the other. four names are in
- * no group and ./deploy-vars.ts names them: they are the values no group's press sets, and that is
- * where each is argued.
+ * without the screen and the split having an order each to drift from the other. the names in no
+ * group are `UNGROUPED_VARS` in ./deploy-vars.ts: they are the values no group's press sets, and that
+ * is where each is argued.
  *
  * two of the grouped names belong to no fold's own errand, and they are the first group:
  * `ADMIN_PASSWORD` is the credential that opens the dashboard for the operator who set the
