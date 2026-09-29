@@ -28,7 +28,10 @@ function mount(node: ReactElement) {
 
 const ALT = 'Children at Eastside School trying on new winter coats';
 
-function props(over: Partial<ReplacePhotoControlProps> = {}): ReplacePhotoControlProps {
+/** the control with its description box, as a block's sheet draws it. */
+type Described = Extract<ReplacePhotoControlProps, { readonly alt: string }>;
+
+function props(over: Partial<Described> = {}): Described {
 	return {
 		imageSrc: '/image/0192a4c1',
 		alt: ALT,
@@ -137,8 +140,7 @@ describe('the replace press', () => {
 });
 
 describe('a block with no photo yet', () => {
-	const empty = (over: Partial<ReplacePhotoControlProps> = {}) =>
-		props({ imageSrc: undefined, alt: '', ...over });
+	const empty = (over: Partial<Described> = {}) => props({ imageSrc: undefined, alt: '', ...over });
 
 	it('offers Add photo alone: no photo drawn and no box describing one', () => {
 		const { host } = mount(<ReplacePhotoControl {...empty()} />);
@@ -175,5 +177,97 @@ describe('a block with no photo yet', () => {
 		expect(press(host).textContent).toBe('Replace photo');
 		expect(one(host, 'img').getAttribute('src')).toBe('/image/0192a4c1');
 		expect(host.querySelector('input:not([type="file"])')).not.toBeNull();
+	});
+});
+
+/** the control with no description box, as the logo and a program's photo draw it. */
+const bare = (over: Partial<Extract<ReplacePhotoControlProps, { describe: false }>> = {}) =>
+	({
+		imageSrc: '/image/0192a4c1',
+		describe: false,
+		onResized: () => {},
+		...over
+	}) as const;
+
+describe('an image whose words stand beside it', () => {
+	it('draws no description box, and the art as decoration', () => {
+		const { host } = mount(<ReplacePhotoControl {...bare()} />);
+		expect(host.querySelector('input:not([type="file"])')).toBeNull();
+		expect(one(host, 'img').getAttribute('alt')).toBe('');
+	});
+
+	it('names the press for what the image is', () => {
+		const { host, redraw } = mount(<ReplacePhotoControl {...bare({ noun: 'logo' })} />);
+		expect(press(host).textContent).toBe('Replace logo');
+
+		redraw(<ReplacePhotoControl {...bare({ noun: 'logo', imageSrc: undefined })} />);
+		expect(press(host).textContent).toBe('Add logo');
+	});
+
+	it('frames the art whole or square, and as the sheet crops it by default', () => {
+		const art = (frame?: 'whole' | 'square') =>
+			one(mount(<ReplacePhotoControl {...bare({ frame })} />).host, 'img').className;
+		expect(art()).toBe('adm-placed__art');
+		expect(art('whole')).toBe('adm-placed__art adm-placed__art--whole');
+		expect(art('square')).toBe('adm-placed__art adm-placed__art--square');
+	});
+});
+
+describe('Remove', () => {
+	const remove = (host: HTMLElement) =>
+		[...host.querySelectorAll('button')].find((button) => button.textContent === 'Remove');
+
+	it('stands beside the press, named for what it takes away, and reports the press', () => {
+		const onRemove = vi.fn();
+		const { host } = mount(<ReplacePhotoControl {...bare({ noun: 'logo', onRemove })} />);
+		const button = remove(host);
+
+		expect(button?.getAttribute('aria-label')).toBe('Remove the logo');
+		act(() => button?.click());
+		expect(onRemove).toHaveBeenCalledOnce();
+	});
+
+	it('is not drawn without a handler, with nothing placed, or while a photo is in flight', () => {
+		expect(remove(mount(<ReplacePhotoControl {...bare()} />).host)).toBeUndefined();
+		const onRemove = () => {};
+		expect(
+			remove(mount(<ReplacePhotoControl {...bare({ onRemove, imageSrc: undefined })} />).host)
+		).toBeUndefined();
+		expect(
+			remove(mount(<ReplacePhotoControl {...bare({ onRemove, state: 'uploading' })} />).host)
+		).toBeUndefined();
+	});
+
+	it('hands the focus to the press once the image it removed is gone', () => {
+		const onRemove = vi.fn();
+		const { host, redraw } = mount(<ReplacePhotoControl {...bare({ noun: 'logo', onRemove })} />);
+		const button = remove(host);
+		act(() => {
+			button?.focus();
+			button?.click();
+		});
+		redraw(<ReplacePhotoControl {...bare({ noun: 'logo', onRemove, imageSrc: undefined })} />);
+
+		expect(document.activeElement).toBe(press(host));
+		expect(press(host).textContent).toBe('Add logo');
+	});
+});
+
+describe('the flag', () => {
+	it('stands over the art as a plain word', () => {
+		const { host } = mount(<ReplacePhotoControl {...props({ flag: 'Illustration' })} />);
+		const flag = one<HTMLElement>(host, '.adm-placed > .adm-actions:first-child');
+		expect(flag.textContent).toBe('Illustration');
+		expect(one(flag, '.adm-state').className).toBe('adm-state');
+		expect(flag.nextElementSibling?.tagName).toBe('IMG');
+	});
+
+	it('is not drawn without it, nor over no art', () => {
+		expect(mount(<ReplacePhotoControl {...props()} />).host.querySelector('.adm-state')).toBeNull();
+		expect(
+			mount(
+				<ReplacePhotoControl {...props({ flag: 'Illustration', imageSrc: undefined })} />
+			).host.querySelector('.adm-state')
+		).toBeNull();
 	});
 });

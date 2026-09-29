@@ -53,12 +53,17 @@ const hero: EditorBlock = {
 	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' }
 };
 
-function editor() {
+function editor({ illustration = false }: { readonly illustration?: boolean } = {}) {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
 			Component: () => (
-				<BlockEditSheet block={hero} version={3} onDismiss={() => {}} onSaved={() => {}} />
+				<BlockEditSheet
+					block={{ ...hero, illustration }}
+					version={3}
+					onDismiss={() => {}}
+					onSaved={() => {}}
+				/>
 			),
 			action: async ({ request }) => {
 				saves.push(
@@ -213,5 +218,28 @@ describe('a placed photo’s sheet', () => {
 		);
 		await done(root);
 		expect(saves).toEqual([expect.objectContaining({ image_id: PLACED, alt: 'Volunteers' })]);
+	});
+});
+
+describe('an AI illustration in its sheet', () => {
+	const flag = (root: HTMLElement) => root.querySelector('.adm-placed .adm-state')?.textContent;
+
+	it('stands the plain word Illustration over the art', () => {
+		const root = editor({ illustration: true });
+		expect(flag(root)).toBe('Illustration');
+		expect(root.querySelector('.adm-placed .adm-state')?.className).toBe('adm-state');
+	});
+
+	it('drops the word once a photo replaces it', async () => {
+		const root = editor({ illustration: true });
+		await pick(root);
+		await uploaded({ id: STORED, width: 1600, height: 1067 });
+
+		expect(shown(root)).toBe(`/image/${STORED}`);
+		expect(flag(root)).toBeUndefined();
+	});
+
+	it('flags nothing over a photo', () => {
+		expect(flag(editor())).toBeUndefined();
 	});
 });

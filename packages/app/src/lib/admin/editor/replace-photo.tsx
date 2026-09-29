@@ -1,34 +1,62 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Mark } from '@better-giving/operator/components/status/Mark';
-import { useId } from 'react';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { useEffect, useId, useRef } from 'react';
 import type { Resized, ResizeRefusal } from '$lib/images/resize';
 import { usePhotoPicker } from '../photo-picker';
 
-export interface ReplacePhotoControlProps {
+/** the box that describes the photo, or none for an image whose words stand beside it. */
+type Description =
+	| {
+			readonly describe?: true | undefined;
+			/** what a screen reader reads for it. empty is a photo that only decorates the page. */
+			readonly alt: string;
+			readonly onAltChange: (alt: string) => void;
+			/** the description box's id, for a caller that moves the caret there on a refusal. */
+			readonly altId?: string | undefined;
+			/** the last save's refusal of the description, under its box. */
+			readonly altError?: string | null | undefined;
+	  }
+	| {
+			/** no box: a logo's words are the name beside it, a program photo's the program's name. */
+			readonly describe: false;
+			readonly alt?: undefined;
+			readonly onAltChange?: undefined;
+			readonly altId?: undefined;
+			readonly altError?: undefined;
+	  };
+
+export type ReplacePhotoControlProps = Description & {
 	/** the placed photo as it is served; absent while the block holds none. */
 	readonly imageSrc?: string | undefined;
-	/** what a screen reader reads for it. empty is a photo that only decorates the page. */
-	readonly alt: string;
 	/** a new photo, resized or refused. the route posts `blob` and moves `state`. */
 	readonly onResized: (result: Resized) => void;
-	readonly onAltChange: (alt: string) => void;
 	/** `uploading` while the route posts; `refused` with the words to show at the press. */
 	readonly state?: 'uploading' | { readonly refused: string } | undefined;
-	/** the description box's id, for a caller that moves the caret there on a refusal. */
-	readonly altId?: string | undefined;
-	/** the last save's refusal of the description, under its box. */
-	readonly altError?: string | null | undefined;
-}
+	/** what the press calls the image — Add logo, Replace logo. */
+	readonly noun?: string | undefined;
+	/** how the art is framed: absent, cropped to the sheet's frame; `whole`, never cropped, as a
+	 *  logo is; `square`, cropped as the program chooser crops a program's photo. */
+	readonly frame?: 'whole' | 'square' | undefined;
+	/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
+	readonly onRemove?: (() => void) | undefined;
+	/** a plain word over the art, naming what kind of image it is — Illustration. */
+	readonly flag?: string | undefined;
+};
 
-/* a block's photo in its edit sheet: the photo, the press that swaps it, and the box that
-   describes it. a new photo is resized here and reported; the route uploads it and hands back
-   `state`. a block with no photo yet draws the press alone, as Add photo, on the same path; the box
-   comes with the photo it describes.
+/* a placed image and the press that swaps it: a block's photo in its edit sheet, the organisation's
+   logo, a program's photo. a new image is resized here and reported; the route uploads it and hands
+   back `state`. none placed yet draws the press alone, as Add photo, on the same path; the box that
+   describes a photo comes with the photo, unless the caller leaves it off.
 
-   the press reports its own outcome. while the photo resizes or uploads it says so, held with
+   the press reports its own outcome. while the image resizes or uploads it says so, held with
    `aria-disabled` so the focus stays on it; a refusal stands under it and the press is described
-   by it. the refusal's region is mounted before it speaks and is out of sight while it is empty. */
+   by it. the refusal's region is mounted before it speaks and is out of sight while it is empty.
+
+   Remove stands beside the press while an image is placed and nothing is in flight, named for what
+   it takes away. the image it removed goes with it, so the focus is handed to the press, which then
+   reads Add. */
 export function ReplacePhotoControl({
 	imageSrc,
 	alt,
@@ -36,23 +64,53 @@ export function ReplacePhotoControl({
 	onAltChange,
 	state,
 	altId,
-	altError
+	altError,
+	describe = true,
+	noun = 'photo',
+	frame,
+	onRemove,
+	flag
 }: ReplacePhotoControlProps) {
 	const picker = usePhotoPicker({ onResized });
 	const id = useId();
+	const pressRef = useRef<HTMLButtonElement>(null);
+	const removing = useRef(false);
 	const uploading = state === 'uploading';
 	const busy = picker.resizing || uploading;
 	const refusal = typeof state === 'object' && !picker.resizing ? state.refused : '';
 	const refusalId = `${id}-refused`;
+	const placed = imageSrc !== undefined;
+
+	useEffect(() => {
+		if (placed || !removing.current) return;
+		removing.current = false;
+		pressRef.current?.focus();
+	}, [placed]);
 
 	return (
 		<>
 			<div className="adm-placed">
-				{imageSrc === undefined ? null : (
-					<img className="adm-placed__art" src={imageSrc} alt={alt} />
+				{flag === undefined || !placed ? null : (
+					<div className="adm-actions">
+						<StatusWord>{flag}</StatusWord>
+					</div>
 				)}
+				{placed ? (
+					<img
+						className={
+							frame === 'whole'
+								? 'adm-placed__art adm-placed__art--whole'
+								: frame === 'square'
+									? 'adm-placed__art adm-placed__art--square'
+									: 'adm-placed__art'
+						}
+						src={imageSrc}
+						alt={alt ?? ''}
+					/>
+				) : null}
 				<div className="adm-actions">
 					<Button
+						ref={pressRef}
 						type="button"
 						mark="image-up"
 						state={picker.choosing ? 'active' : undefined}
@@ -67,10 +125,24 @@ export function ReplacePhotoControl({
 							? 'Resizing'
 							: uploading
 								? 'Uploading'
-								: imageSrc === undefined
-									? 'Add photo'
-									: 'Replace photo'}
+								: placed
+									? `Replace ${noun}`
+									: `Add ${noun}`}
 					</Button>
+					{onRemove === undefined || !placed || busy ? null : (
+						<Button
+							type="button"
+							variant="quiet"
+							mark="trash-2"
+							aria-label={`Remove the ${noun}`}
+							onClick={() => {
+								removing.current = true;
+								onRemove();
+							}}
+						>
+							Remove
+						</Button>
+					)}
 					{picker.field}
 				</div>
 				<p
@@ -86,7 +158,7 @@ export function ReplacePhotoControl({
 					)}
 				</p>
 			</div>
-			{imageSrc === undefined ? null : (
+			{!placed || describe === false || onAltChange === undefined ? null : (
 				<Field
 					id={altId ?? `${id}-alt`}
 					label="Describe the photo"

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { expect, it, onTestFinished } from 'vitest';
 import { boxErrorId } from '../use-admin-form';
 import { ProgramFields } from './fields';
+import { ProgramPhotoControl } from './photo-control';
 
 // what a program's two boxes are bound to, and where a refusal about one of them is said.
 //
@@ -31,7 +32,10 @@ const NAME = 'program-edit-name';
 const DESCRIPTION = 'program-edit-description';
 
 /** the group as the screen that makes a program and the screen that edits one both mount it. */
-function group(errors: { name?: string[]; description?: string[] } = {}): HTMLElement {
+function group(
+	errors: { name?: string[]; description?: string[] } = {},
+	photo?: ReactNode
+): HTMLElement {
 	return mount(
 		createElement(
 			'form',
@@ -50,7 +54,8 @@ function group(errors: { name?: string[]; description?: string[] } = {}): HTMLEl
 						defaultValue: 'Wells and filters in the eastern districts.',
 						...(errors.description === undefined ? {} : { errors: errors.description })
 					}
-				}
+				},
+				photo
 			})
 		)
 	);
@@ -85,15 +90,15 @@ it('takes the description in a box a sentence fits in', () => {
 	expect(box(group(), NAME).tagName).toBe('INPUT');
 });
 
-it('says which of the two boxes a donor reads', () => {
+it('says no donor reads the description', () => {
 	const root = group();
 
 	// the one fact neither label nor box can carry: it is about a donation form on somebody else's
-	// site, so there is nothing on this screen that could demonstrate it.
+	// site and the Donation page's chooser, so there is nothing on this screen that could show it.
 	const described = box(root, DESCRIPTION).getAttribute('aria-describedby');
 	expect(described).toBe(`${DESCRIPTION}-hint`);
 	expect(root.querySelector(`[id="${DESCRIPTION}-hint"]`)?.textContent).toBe(
-		'For your team. Donors see only the name.'
+		'For your team. Donors never see it.'
 	);
 });
 
@@ -124,4 +129,29 @@ it('draws a marked value in a refusal as code rather than showing the marks', ()
 	const said = root.querySelector(`[id="${boxErrorId(NAME)}"]`);
 	expect(said?.textContent).not.toContain('`');
 	expect(said?.querySelector('code')?.textContent).toBe('Clean water');
+});
+
+it('stands the photo beside the name and posts it with the program', () => {
+	const root = group(
+		{},
+		createElement(ProgramPhotoControl, {
+			imageId: 'img-coats',
+			name: 'photo_id',
+			onResized: () => {},
+			onRemove: () => {}
+		})
+	);
+	const stack = root.querySelector('.adm-stack');
+	const order = [...(stack?.children ?? [])].map((part) =>
+		part.tagName === 'FIELDSET'
+			? 'photo'
+			: part.querySelector('input, textarea')?.getAttribute('name')
+	);
+
+	expect(order).toEqual(['name', 'photo', 'description']);
+	expect(submitted(root)).toEqual([
+		['name', 'Clean water'],
+		['photo_id', 'img-coats'],
+		['description', 'Wells and filters in the eastern districts.']
+	]);
 });
