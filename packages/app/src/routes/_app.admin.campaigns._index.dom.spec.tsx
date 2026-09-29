@@ -219,9 +219,11 @@ describe('the list', () => {
 		const live = record(root, 'Winter coat drive');
 		expect(live.textContent).toContain('Live');
 		expect(live.textContent).toContain('Goal $15K · Ends Dec 31, 2026');
-		expect(control('Open Winter coat drive at /winter-coat-drive', live).getAttribute('href')).toBe(
-			'/winter-coat-drive'
-		);
+		const open = control('Open Winter coat drive at /winter-coat-drive', live);
+		expect(open.getAttribute('href')).toBe('/winter-coat-drive');
+		// the same chip an unpublished row draws, standing in its list's own item.
+		expect(open.parentElement?.tagName).toBe('LI');
+		expect(open.querySelector('code.adm-chip')?.textContent).toBe('/winter-coat-drive');
 		expect(control('End Winter coat drive', live).getAttribute('href')).toBe(
 			'/admin/campaigns?end=pg_live'
 		);

@@ -68,8 +68,10 @@ import type { Route } from './+types/_app.admin.organisation';
 // section saved beside it does not make a story typed meanwhile stale; `$lib/server/conform.ts`'s
 // header states the rule.
 //
-// each editor is keyed to that version, so a landed save or Undo redraws it from the fresh read and
-// a refusal, which moves no version, leaves what was typed where it is.
+// each section's boxes are redrawn from the fresh read at every landing of its own save or Undo, and
+// wherever its version moves without one; a refusal moves neither, so what was typed stays where it
+// is. a landing is told by the id the loader mints as it takes the flash, never by the version: an
+// Undo brings back the version from before the save, and edits tagged with it would come back too.
 //
 // the look is the second section, and its control has no Save: every pick posts the whole look
 // through the section's fetcher and answers in place rather than by a redirect, with the version it
@@ -192,6 +194,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			vision: read.story.vision,
 			version: read.version,
 			saved: savedSection(landed?.marker ?? null, SAVED_SECTIONS),
+			landing: landed === null ? null : crypto.randomUUID(),
 			look: look.look,
 			lookVersion: look.version,
 			sharing: {
@@ -365,6 +368,7 @@ export default function Organisation({ loaderData, actionData }: Route.Component
 				vision={loaderData.vision}
 				version={loaderData.version}
 				saved={loaderData.saved}
+				landing={loaderData.saved === null ? null : loaderData.landing}
 				actionData={actionData}
 			/>
 			<LookSection look={loaderData.look} version={loaderData.lookVersion} />
@@ -372,6 +376,7 @@ export default function Organisation({ loaderData, actionData }: Route.Component
 				sharing={loaderData.sharing}
 				version={loaderData.sharingVersion}
 				saved={loaderData.sharingSaved}
+				landing={loaderData.sharingSaved === null ? null : loaderData.landing}
 				actionData={actionData}
 			/>
 		</Column>
@@ -390,16 +395,29 @@ function differs(typed: RichTextDocument | undefined, drawn: RichTextDocument | 
 	return JSON.stringify(typed) !== JSON.stringify(drawn);
 }
 
-/** what the editors have reported since the page was drawn at `version`. */
+/**
+ * how many times a section's boxes have been drawn afresh from the read: once more at each landing
+ * of its own save or Undo (`landing`, null on every other load), and wherever `version` moves
+ * without one. it only ever counts up, so edits tagged with an older count never come back.
+ */
+function useRedraws(version: string, landing: string | null): number {
+	const [seen, setSeen] = useState({ version, landing, count: 0 });
+	if (seen.version === version && (landing === null || landing === seen.landing)) return seen.count;
+	const next = { version, landing: landing ?? seen.landing, count: seen.count + 1 };
+	setSeen(next);
+	return next.count;
+}
+
+/** what the editors have reported since the story was last drawn afresh. */
 type Typed = {
-	readonly version: string;
+	readonly drawn: number;
 	readonly mission?: RichTextDocument;
 	readonly vision?: RichTextDocument;
 };
 
-/** the reports made at `version`, or none where they were made at an older one. */
-function since(was: Typed, version: string): Typed {
-	return was.version === version ? was : { version };
+/** the reports made since drawing `drawn`, or none where they were made before it. */
+function since(was: Typed, drawn: number): Typed {
+	return was.drawn === drawn ? was : { drawn };
 }
 
 function StorySection({
@@ -407,12 +425,14 @@ function StorySection({
 	vision,
 	version,
 	saved,
+	landing,
 	actionData
 }: {
 	readonly mission: RichTextDocument | null;
 	readonly vision: RichTextDocument | null;
 	readonly version: string;
 	readonly saved: (typeof SAVED_SECTIONS)[number] | null;
+	readonly landing: string | null;
 	readonly actionData: AdminActionData;
 }) {
 	const [form, fields] = useAdminForm(STORY_EDIT, actionData);
@@ -429,19 +449,20 @@ function StorySection({
 
 	// the group's own reading of what changed, handed to the save state in place of conform's
 	// `dirty`: the editors post through a hidden box whose value they set themselves, and conform
-	// counts a change only from an input event, which no hidden box fires. a report tagged with an
-	// older version is a story since replaced by a save or an Undo, and counts for nothing.
-	const [typed, setTyped] = useState<Typed>({ version });
+	// counts a change only from an input event, which no hidden box fires. a report made before the
+	// story was last drawn afresh is one a save or an Undo has since replaced, and counts for nothing.
+	const drawn = useRedraws(version, landing);
+	const [typed, setTyped] = useState<Typed>({ drawn });
 	const onMission = useCallback(
-		(doc: RichTextDocument) => setTyped((was) => ({ ...since(was, version), mission: doc })),
-		[version]
+		(doc: RichTextDocument) => setTyped((was) => ({ ...since(was, drawn), mission: doc })),
+		[drawn]
 	);
 	const onVision = useCallback(
-		(doc: RichTextDocument) => setTyped((was) => ({ ...since(was, version), vision: doc })),
-		[version]
+		(doc: RichTextDocument) => setTyped((was) => ({ ...since(was, drawn), vision: doc })),
+		[drawn]
 	);
 	const changed =
-		typed.version === version && (differs(typed.mission, mission) || differs(typed.vision, vision));
+		typed.drawn === drawn && (differs(typed.mission, mission) || differs(typed.vision, vision));
 
 	// `!actionData`: a refusal is answered in place, so the marker the last landing published is
 	// still on the page under it.
@@ -465,61 +486,63 @@ function StorySection({
 				<input {...whichForm(STORY_EDIT.id)} />
 				<input {...recordVersion(version)} />
 				<div className="adm-stack">
-					<RichTextEditor
-						key={`mission-${version}`}
-						name={fields.mission.name}
-						label="Mission"
-						{...(mission === null ? {} : { defaultValue: mission })}
-						onChange={onMission}
-						id={EDITOR_IDS.mission}
-						error={missionError === undefined ? null : <MarkedText text={missionError} />}
-					/>
-					<RichTextEditor
-						key={`vision-${version}`}
-						name={fields.vision.name}
-						label="Vision"
-						optional
-						{...(vision === null ? {} : { defaultValue: vision })}
-						onChange={onVision}
-						id={EDITOR_IDS.vision}
-						error={visionError === undefined ? null : <MarkedText text={visionError} />}
-					/>
-				</div>
-				{saveRefusal === undefined ? null : (
-					<Banner tone="blocker" word="Not saved">
-						<MarkedText text={saveRefusal} />
-					</Banner>
-				)}
-				{undoRefusal === undefined ? null : (
-					<Banner tone="blocker" word="Not undone">
-						<MarkedText text={undoRefusal} />
-					</Banner>
-				)}
-				<div className="adm-actions">
-					<SaveButton
-						label="Save story"
-						doneLabel={saved === 'story-undone' ? 'Undone' : 'Saved'}
-						state={buttonState(save)}
-					/>
-					{/* offered while the landing stands and nothing is typed over it: an Undo under
-					    fresh edits would put back a story the operator is no longer looking at. it
-					    submits the form below, since a form cannot hold another. */}
-					{landed && !changed ? (
-						<Button
-							type="submit"
-							form={STORY_UNDO.id}
-							variant="quiet"
-							size="sm"
-							mark="undo-2"
-							aria-busy={undoing}
-							aria-disabled={undoing || undefined}
-							onClick={(event) => {
-								if (undoing) event.preventDefault();
-							}}
-						>
-							Undo
-						</Button>
-					) : null}
+					<div className="adm-stack">
+						<RichTextEditor
+							key={`mission-${drawn}`}
+							name={fields.mission.name}
+							label="Mission"
+							{...(mission === null ? {} : { defaultValue: mission })}
+							onChange={onMission}
+							id={EDITOR_IDS.mission}
+							error={missionError === undefined ? null : <MarkedText text={missionError} />}
+						/>
+						<RichTextEditor
+							key={`vision-${drawn}`}
+							name={fields.vision.name}
+							label="Vision"
+							optional
+							{...(vision === null ? {} : { defaultValue: vision })}
+							onChange={onVision}
+							id={EDITOR_IDS.vision}
+							error={visionError === undefined ? null : <MarkedText text={visionError} />}
+						/>
+					</div>
+					{saveRefusal === undefined ? null : (
+						<Banner tone="blocker" word="Not saved">
+							<MarkedText text={saveRefusal} />
+						</Banner>
+					)}
+					{undoRefusal === undefined ? null : (
+						<Banner tone="blocker" word="Not undone">
+							<MarkedText text={undoRefusal} />
+						</Banner>
+					)}
+					<div className="adm-actions">
+						<SaveButton
+							label="Save story"
+							doneLabel={saved === 'story-undone' ? 'Undone' : 'Saved'}
+							state={buttonState(save)}
+						/>
+						{/* offered while the landing stands and nothing is typed over it: an Undo under
+						    fresh edits would put back a story the operator is no longer looking at. it
+						    submits the form below, since a form cannot hold another. */}
+						{landed && !changed ? (
+							<Button
+								type="submit"
+								form={STORY_UNDO.id}
+								variant="quiet"
+								size="sm"
+								mark="undo-2"
+								aria-busy={undoing}
+								aria-disabled={undoing || undefined}
+								onClick={(event) => {
+									if (undoing) event.preventDefault();
+								}}
+							>
+								Undo
+							</Button>
+						) : null}
+					</div>
 				</div>
 			</Form>
 			<Form method="post" preventScrollReset id={STORY_UNDO.id}>
@@ -664,9 +687,9 @@ type SharingDrawn = {
 /** a link row; `key` is the row's own identity, and its position is only where it stands now. */
 type LinkRow = { readonly key: number; readonly label: string; readonly url: string };
 
-/** the section's boxes since the page was drawn at `version`. */
+/** the section's boxes since they were last drawn afresh, the `drawn`th time. */
 type SharingEdit = {
-	readonly version: string;
+	readonly drawn: number;
 	/** every channel on the list, in the order drawn: the chosen first, then the rest. */
 	readonly order: readonly ShareChannel[];
 	readonly chosen: ReadonlySet<ShareChannel>;
@@ -674,9 +697,9 @@ type SharingEdit = {
 	readonly rows: readonly LinkRow[];
 };
 
-function freshEdit(sharing: SharingDrawn, version: string): SharingEdit {
+function freshEdit(sharing: SharingDrawn, drawn: number): SharingEdit {
 	return {
-		version,
+		drawn,
 		order: [...sharing.channels, ...SHARE_CHANNELS.filter((c) => !sharing.channels.includes(c))],
 		chosen: new Set(sharing.channels),
 		message: sharing.message ?? '',
@@ -713,8 +736,8 @@ const sharingIds = {
  *
  * the boxes are held in state rather than read off the form, because the order is what a move
  * changes and no box records it: the ticked channels post in the order they are drawn. that state
- * is tagged with the version it was drawn at, so a landed save or Undo draws the fresh read, and a
- * refusal, which moves no version, leaves what was typed.
+ * is tagged with the redraw it was made after, so a landed save or Undo draws the fresh read, and a
+ * refusal, which lands nothing, leaves what was typed.
  *
  * a move keeps the focus on the pressed button, which a reorder of keyed rows would otherwise drop,
  * and says where the channel now stands.
@@ -723,11 +746,13 @@ function SharingSection({
 	sharing,
 	version,
 	saved,
+	landing,
 	actionData
 }: {
 	readonly sharing: SharingDrawn;
 	readonly version: string;
 	readonly saved: (typeof SHARING_SAVED)[number] | null;
+	readonly landing: string | null;
 	readonly actionData: AdminActionData;
 }) {
 	const [form, fields] = useAdminForm(SHARING_EDIT, actionData);
@@ -740,14 +765,15 @@ function SharingSection({
 			: null;
 	const undoing = pressed === SHARING_UNDO.id;
 
-	const [held, setEdit] = useState<SharingEdit>(() => freshEdit(sharing, version));
-	const edit = held.version === version ? held : freshEdit(sharing, version);
+	const drawn = useRedraws(version, landing);
+	const [held, setEdit] = useState<SharingEdit>(() => freshEdit(sharing, drawn));
+	const edit = held.drawn === drawn ? held : freshEdit(sharing, drawn);
 	const change = (next: (was: SharingEdit) => Partial<SharingEdit>) =>
 		setEdit((was) => {
-			const current = was.version === version ? was : freshEdit(sharing, version);
+			const current = was.drawn === drawn ? was : freshEdit(sharing, drawn);
 			return { ...current, ...next(current) };
 		});
-	const changed = sharingText(edit) !== sharingText(freshEdit(sharing, version));
+	const changed = sharingText(edit) !== sharingText(freshEdit(sharing, drawn));
 
 	const landed = saved !== null && !actionData;
 	const save = useSaveState({ landed, changed, pending: pressed === SHARING_EDIT.id });
@@ -816,179 +842,181 @@ function SharingSection({
 				<input {...whichForm(SHARING_EDIT.id)} />
 				<input {...recordVersion(version)} />
 				<div className="adm-stack">
-					<fieldset
-						className="adm-fieldset"
-						aria-describedby={
-							channelsError === undefined ? undefined : `${sharingIds.channels}-err`
-						}
-					>
-						<legend className="adm-fieldset__legend">Share buttons, in order</legend>
-						<div className="adm-orderlist">
-							{edit.order.map((channel, at) => {
-								const label = SHARE_CHANNEL_LABELS[channel];
-								const first = at === 0;
-								const last = at === edit.order.length - 1;
-								return (
-									<div className="adm-orderrow" key={channel}>
-										<label className="adm-check">
-											<input
-												type="checkbox"
-												id={sharingIds.channel(channel)}
-												name={fields.channels.name}
-												value={channel}
-												checked={edit.chosen.has(channel)}
-												onChange={(event) => {
-													const on = event.currentTarget.checked;
-													change((was) => {
-														const chosen = new Set(was.chosen);
-														if (on) chosen.add(channel);
-														else chosen.delete(channel);
-														return { chosen };
-													});
-												}}
-											/>
-											<span className="adm-check__text">{label}</span>
-										</label>
-										<Button
-											type="button"
-											variant="quiet"
-											size="sm"
-											mark="chevron-up"
-											id={sharingIds.move(channel, 'up')}
-											aria-label={`Move ${label} up`}
-											aria-disabled={first || undefined}
-											onClick={() => move(channel, 'up')}
-										/>
-										<Button
-											type="button"
-											variant="quiet"
-											size="sm"
-											mark="chevron-down"
-											id={sharingIds.move(channel, 'down')}
-											aria-label={`Move ${label} down`}
-											aria-disabled={last || undefined}
-											onClick={() => move(channel, 'down')}
-										/>
-									</div>
-								);
-							})}
-						</div>
-						{channelsError === undefined ? null : (
-							<FieldMessage id={`${sharingIds.channels}-err`}>
-								<MarkedText text={channelsError} />
-							</FieldMessage>
-						)}
-						{/* mounted empty, so each move is announced. */}
-						<span role="status" className="adm-vh">
-							{moved}
-						</span>
-					</fieldset>
-					<Field
-						id={sharingIds.message}
-						name={fields.message.name}
-						label="Share message"
-						optional
-						as="textarea"
-						rows={3}
-						hint="Pages use it unless they have their own."
-						value={edit.message}
-						onChange={(event) => {
-							const message = event.currentTarget.value;
-							change(() => ({ message }));
-						}}
-						error={messageError === undefined ? null : <MarkedText text={messageError} />}
-					/>
-					<fieldset
-						className="adm-fieldset"
-						aria-describedby={linksError === undefined ? undefined : `${sharingIds.links}-err`}
-					>
-						<legend className="adm-fieldset__legend">Social links</legend>
-						{edit.rows.map((row, at) => {
-							const labelError = rowError('linkLabel', at);
-							const urlError = rowError('linkUrl', at);
-							return (
-								<div className="adm-pair adm-pair--side" key={row.key}>
-									<Field
-										id={sharingIds.linkLabel(row.key)}
-										name={`${fields.linkLabel.name}[${at}]`}
-										label={`Link ${at + 1} name`}
-										placeholder="Instagram"
-										value={row.label}
-										onChange={(event) => editRow(row.key, 'label', event.currentTarget.value)}
-										error={labelError === undefined ? null : <MarkedText text={labelError} />}
-									/>
-									<Field
-										id={sharingIds.linkUrl(row.key)}
-										name={`${fields.linkUrl.name}[${at}]`}
-										label={`Link ${at + 1} web address`}
-										type="url"
-										placeholder="https://"
-										value={row.url}
-										onChange={(event) => editRow(row.key, 'url', event.currentTarget.value)}
-										error={urlError === undefined ? null : <MarkedText text={urlError} />}
-										beside={
+					<div className="adm-stack">
+						<fieldset
+							className="adm-fieldset"
+							aria-describedby={
+								channelsError === undefined ? undefined : `${sharingIds.channels}-err`
+							}
+						>
+							<legend className="adm-fieldset__legend">Share buttons, in order</legend>
+							<div className="adm-orderlist">
+								{edit.order.map((channel, at) => {
+									const label = SHARE_CHANNEL_LABELS[channel];
+									const first = at === 0;
+									const last = at === edit.order.length - 1;
+									return (
+										<div className="adm-orderrow" key={channel}>
+											<label className="adm-check">
+												<input
+													type="checkbox"
+													id={sharingIds.channel(channel)}
+													name={fields.channels.name}
+													value={channel}
+													checked={edit.chosen.has(channel)}
+													onChange={(event) => {
+														const on = event.currentTarget.checked;
+														change((was) => {
+															const chosen = new Set(was.chosen);
+															if (on) chosen.add(channel);
+															else chosen.delete(channel);
+															return { chosen };
+														});
+													}}
+												/>
+												<span className="adm-check__text">{label}</span>
+											</label>
 											<Button
 												type="button"
 												variant="quiet"
 												size="sm"
-												mark="trash-2"
-												aria-label={`Remove link ${at + 1}`}
-												onClick={() => removeRow(row.key)}
-											>
-												Remove
-											</Button>
-										}
-									/>
-								</div>
-							);
-						})}
-						{edit.rows.length < SOCIAL_LINKS_MAX ? (
-							<div>
-								<Button type="button" size="sm" mark="plus" id={sharingIds.add} onClick={addRow}>
-									Add a link
-								</Button>
+												mark="chevron-up"
+												id={sharingIds.move(channel, 'up')}
+												aria-label={`Move ${label} up`}
+												aria-disabled={first || undefined}
+												onClick={() => move(channel, 'up')}
+											/>
+											<Button
+												type="button"
+												variant="quiet"
+												size="sm"
+												mark="chevron-down"
+												id={sharingIds.move(channel, 'down')}
+												aria-label={`Move ${label} down`}
+												aria-disabled={last || undefined}
+												onClick={() => move(channel, 'down')}
+											/>
+										</div>
+									);
+								})}
 							</div>
-						) : null}
-						{linksError === undefined ? null : (
-							<FieldMessage id={`${sharingIds.links}-err`}>
-								<MarkedText text={linksError} />
-							</FieldMessage>
-						)}
-					</fieldset>
-				</div>
-				{saveRefusal === undefined ? null : (
-					<Banner tone="blocker" word="Not saved">
-						<MarkedText text={saveRefusal} />
-					</Banner>
-				)}
-				{undoRefusal === undefined ? null : (
-					<Banner tone="blocker" word="Not undone">
-						<MarkedText text={undoRefusal} />
-					</Banner>
-				)}
-				<div className="adm-actions">
-					<SaveButton
-						label="Save sharing"
-						doneLabel={saved === 'sharing-undone' ? 'Undone' : 'Saved'}
-						state={buttonState(save)}
-					/>
-					{/* offered while the landing stands and nothing is changed over it, as the story's. */}
-					{landed && !changed ? (
-						<Button
-							type="submit"
-							form={SHARING_UNDO.id}
-							variant="quiet"
-							size="sm"
-							mark="undo-2"
-							aria-busy={undoing}
-							aria-disabled={undoing || undefined}
-							onClick={(event) => {
-								if (undoing) event.preventDefault();
+							{channelsError === undefined ? null : (
+								<FieldMessage id={`${sharingIds.channels}-err`}>
+									<MarkedText text={channelsError} />
+								</FieldMessage>
+							)}
+							{/* mounted empty, so each move is announced. */}
+							<span role="status" className="adm-vh">
+								{moved}
+							</span>
+						</fieldset>
+						<Field
+							id={sharingIds.message}
+							name={fields.message.name}
+							label="Share message"
+							optional
+							as="textarea"
+							rows={3}
+							hint="Pages use it unless they have their own."
+							value={edit.message}
+							onChange={(event) => {
+								const message = event.currentTarget.value;
+								change(() => ({ message }));
 							}}
+							error={messageError === undefined ? null : <MarkedText text={messageError} />}
+						/>
+						<fieldset
+							className="adm-fieldset"
+							aria-describedby={linksError === undefined ? undefined : `${sharingIds.links}-err`}
 						>
-							Undo
-						</Button>
-					) : null}
+							<legend className="adm-fieldset__legend">Social links</legend>
+							{edit.rows.map((row, at) => {
+								const labelError = rowError('linkLabel', at);
+								const urlError = rowError('linkUrl', at);
+								return (
+									<div className="adm-pair adm-pair--side" key={row.key}>
+										<Field
+											id={sharingIds.linkLabel(row.key)}
+											name={`${fields.linkLabel.name}[${at}]`}
+											label={`Link ${at + 1} name`}
+											placeholder="Instagram"
+											value={row.label}
+											onChange={(event) => editRow(row.key, 'label', event.currentTarget.value)}
+											error={labelError === undefined ? null : <MarkedText text={labelError} />}
+										/>
+										<Field
+											id={sharingIds.linkUrl(row.key)}
+											name={`${fields.linkUrl.name}[${at}]`}
+											label={`Link ${at + 1} web address`}
+											type="url"
+											placeholder="https://"
+											value={row.url}
+											onChange={(event) => editRow(row.key, 'url', event.currentTarget.value)}
+											error={urlError === undefined ? null : <MarkedText text={urlError} />}
+											beside={
+												<Button
+													type="button"
+													variant="quiet"
+													size="sm"
+													mark="trash-2"
+													aria-label={`Remove link ${at + 1}`}
+													onClick={() => removeRow(row.key)}
+												>
+													Remove
+												</Button>
+											}
+										/>
+									</div>
+								);
+							})}
+							{edit.rows.length < SOCIAL_LINKS_MAX ? (
+								<div>
+									<Button type="button" size="sm" mark="plus" id={sharingIds.add} onClick={addRow}>
+										Add a link
+									</Button>
+								</div>
+							) : null}
+							{linksError === undefined ? null : (
+								<FieldMessage id={`${sharingIds.links}-err`}>
+									<MarkedText text={linksError} />
+								</FieldMessage>
+							)}
+						</fieldset>
+					</div>
+					{saveRefusal === undefined ? null : (
+						<Banner tone="blocker" word="Not saved">
+							<MarkedText text={saveRefusal} />
+						</Banner>
+					)}
+					{undoRefusal === undefined ? null : (
+						<Banner tone="blocker" word="Not undone">
+							<MarkedText text={undoRefusal} />
+						</Banner>
+					)}
+					<div className="adm-actions">
+						<SaveButton
+							label="Save sharing"
+							doneLabel={saved === 'sharing-undone' ? 'Undone' : 'Saved'}
+							state={buttonState(save)}
+						/>
+						{/* offered while the landing stands and nothing is changed over it, as the story's. */}
+						{landed && !changed ? (
+							<Button
+								type="submit"
+								form={SHARING_UNDO.id}
+								variant="quiet"
+								size="sm"
+								mark="undo-2"
+								aria-busy={undoing}
+								aria-disabled={undoing || undefined}
+								onClick={(event) => {
+									if (undoing) event.preventDefault();
+								}}
+							>
+								Undo
+							</Button>
+						) : null}
+					</div>
 				</div>
 			</Form>
 			<Form method="post" preventScrollReset id={SHARING_UNDO.id}>

@@ -2,7 +2,6 @@ import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
 import { Disclosure } from '@better-giving/operator/components/data/Disclosure';
-import { Press } from '@better-giving/operator/components/data/Press';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
@@ -46,7 +45,7 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 // the Campaigns list: every campaign with its name, address, state, goal and end date, each linking
 // to its editor, the ended ones in a collapsed group of their own; and New campaign, a dialog on
 // `?new` whose action makes the campaign ($lib/server/pages/campaign.ts) and opens its editor — on
-// its chat when a "What's it for?" line drafted it, the first turn already answered. the Donation
+// its chat when a "What’s it for?" line drafted it, the first turn already answered. the Donation
 // page is no campaign and is not on this list.
 //
 // each row has the one press its state allows. End on a live campaign and Delete on one never
@@ -451,21 +450,16 @@ function CampaignRecord({
 				{row.address === null ? null : (
 					// biome-ignore lint/a11y/noRedundantRoles: no marker and a flex row, as `RecordCard` states it.
 					<ul role="list" className="adm-record__origins adm-record__foot">
-						{row.state === 'never_published' ? (
-							// nothing answers there until the first Publish, so it is no link yet.
-							<li>
+						<li>
+							{row.state === 'never_published' ? (
+								// nothing answers there until the first Publish, so it is no link yet.
 								<code className="adm-chip">{row.address}</code>
-							</li>
-						) : (
-							<Press
-								words
-								as="a"
-								href={row.address}
-								aria-label={`Open ${row.name} at ${row.address}`}
-							>
-								{row.address}
-							</Press>
-						)}
+							) : (
+								<a href={row.address} aria-label={`Open ${row.name} at ${row.address}`}>
+									<code className="adm-chip">{row.address}</code>
+								</a>
+							)}
+						</li>
 					</ul>
 				)}
 				{row.state === 'live' ? (
@@ -633,7 +627,7 @@ function NewCampaignCard({
 					/>
 					<Field
 						as="textarea"
-						label="What's it for?"
+						label="What’s it for?"
 						optional
 						placeholder="Coats for 300 kids, goal $15k by Dec 31"
 						{...boxProps(fields.purpose)}
