@@ -36,8 +36,9 @@ import { describe, expect, it } from 'vitest';
 //
 // **a fold with no form layer calls the hook underneath the seam itself**, and its seeds are the
 // element's own — `defaultChecked` on the model page's radios — which `form.reset()` puts back just
-// the same. so every direct call states `spent` whatever it seeds from; a call spreading its options
-// in is the seam passing its own caller's statement through, and that caller is the one read.
+// the same. so a direct call states `spent` whatever it seeds from, and the two that do not yet are
+// `STANDING` below; a call spreading its options in is the seam passing its own caller's statement
+// through, and that caller is the one read.
 //
 // the shape is ./forms-mounted-through-the-seam.spec.ts's and ./closed-while-writing.spec.ts's:
 // findings come back as a list so one failure names every offender at once, the source is parsed

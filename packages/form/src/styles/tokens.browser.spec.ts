@@ -795,7 +795,7 @@ describe('the card the form draws for itself', () => {
 });
 
 describe('the shade seed', () => {
-	// the root the ladder is derived from, per preset: a hue and a chroma swapped on today's
+	// the root the ladder is derived from, per preset: a hue and a chroma swapped on `light`'s
 	// lightness column, so every rung keeps the lightness it has under `light`.
 	it.each([
 		['light', { l: 0.995, c: 0.001, h: 264 }],
@@ -810,8 +810,8 @@ describe('the shade seed', () => {
 		expect(s.h).toBeCloseTo(root.h, 0);
 	});
 
-	// the registration refuses a keyword off the list at parse time, so what computes is the
-	// initial value and the card is the one a host who set nothing gets.
+	// the registration makes a keyword off the list invalid at computed-value time, so with nothing
+	// above setting one what computes is the initial value, the card a host who set nothing gets.
 	it('draws today’s ladder for a shade off the list', () => {
 		seed('');
 		const unseeded = RUNGS.map(oklchString);

@@ -814,8 +814,8 @@
 	 * size reads as an artifact rather than as a ring, and a change to the box has to carry the
 	 * stroke with it.
 	 *
-	 * no radius. it is a circle by construction, which is the exception `--_r` in the preset layer
-	 * states.
+	 * no radius. it is a circle by construction, one of the three shapes the comment on `--_r` in the
+	 * preset layer sets outside the pair.
 	 */
 	--_spinner: 0.875em;
 	--_spinner-stroke: calc(var(--_spinner) * 0.16);
@@ -868,8 +868,8 @@
 
 /*
  * the preset layer: every token a `--donate-shade` or `--donate-corner` preset moves, and every token
- * derived from one of those. the three `light` and `soft` values are declared here, and each other
- * preset is a container style query at the end of this layer re-declaring only the root it moves.
+ * derived from one of those. the `light` and `soft` values are declared here, and each other
+ * preset is a container style query at the end of this layer re-declaring only the roots it moves.
  * an engine without container style queries on custom properties matches none of them, so it draws
  * the light, soft card whatever the host set — the declared values, never an unresolved token.
  *

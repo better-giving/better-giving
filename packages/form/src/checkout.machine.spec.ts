@@ -724,7 +724,7 @@ describe('the press that spends the money', () => {
 
 	it('takes a cause picked on the two steps after the amount onto the gift it sends', async () => {
 		// a host can draw the choice outside the card, where it stands beside every step: the app's
-		// Donation page does (its program chooser). a pick the flow dropped there is a gift sent
+		// donation page does (its program chooser). a pick the flow dropped there is a gift sent
 		// to a cause the page no longer shows.
 		const { actor, calls } = atDetails({ config: CHOICE_CONFIG });
 		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
