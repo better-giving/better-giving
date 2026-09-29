@@ -40,7 +40,7 @@ export type SecretGroup = {
  * the eight groups.
  *
  * the order is `DEPLOY_VARS`'s own, so a name added to the enumeration lands in a group here
- * without the screen and the split having an order each to drift from the other. four names are in
+ * without the screen and the split having an order each to drift from the other. five names are in
  * no group and ./deploy-vars.ts names them: they are the values no group's press sets, and that is
  * where each is argued.
  *

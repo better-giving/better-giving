@@ -1,3 +1,10 @@
+import {
+	DELIVERY_PACE,
+	type Feed,
+	type Pace,
+	type Plan,
+	planAnswered
+} from '@better-giving/operator/delivery-pace';
 import { type ConfigEnv, readConfigEnv } from '../config/env';
 
 // what the minute cron's one invocation may spend, each feed's share of it, and the pace each feed
@@ -8,7 +15,8 @@ import { type ConfigEnv, readConfigEnv } from '../config/env';
 // **the plan is the operator's answer, `CLOUDFLARE_PAID_PLAN`**: whether the Cloudflare account
 // is on Workers Paid, a fact about the account that no call this deployment makes reports. unset,
 // and any value but `true`, is Free — the plan that cannot be overrun by reading it wrong (see
-// {@link planOf}). src/worker.ts reads it off each invocation's env, never once at module scope.
+// `planAnswered` in packages/operator/src/delivery-pace.ts). src/worker.ts reads it off each
+// invocation's env, never once at module scope.
 //
 // **the per-invocation limits** (https://developers.cloudflare.com/workers/platform/limits/ and
 // https://developers.cloudflare.com/d1/platform/limits/):
@@ -43,11 +51,15 @@ import { type ConfigEnv, readConfigEnv } from '../config/env';
 // limits. a feed claims what its share pays for at its worst — {@link RunCost}, every row claimed
 // taking the path that costs most — and never more than its {@link paceOf}: what its lanes answer
 // in the minute before the next run, at {@link ANSWER_MS} an answer. on Free the share is what
-// binds; on Paid the pace is. a feed whose run starts spending more per row changes its cost here
-// in the same change, or its claims overrun its share.
+// binds; on Paid the pace is.
+//
+// **the claims are {@link PACE}, a table in packages/operator** (`DELIVERY_PACE` in
+// packages/operator/src/delivery-pace.ts), because the console states the same numbers and reaches
+// no module here. ./budget.spec.ts holds that table equal to the lesser of {@link claimsWithin} and
+// {@link paceOf} on each plan, so a feed whose run starts spending more per row changes its cost
+// here and its number there in the same change, or the spec fails.
 
-/** the Cloudflare plan the deployment's account is on, as the operator answered. */
-export type Plan = 'free' | 'paid';
+export type { Plan };
 
 /** one invocation's limits on one plan. */
 export type Limits = {
@@ -153,15 +165,7 @@ export const MINUTE_RUN = {
 	zapier: { lanes: 2, external: 10, queries: 12 },
 	webhooks: { lanes: 2, external: 8, queries: 17 },
 	books: { lanes: 1, external: 11, queries: 16 }
-} as const satisfies Readonly<Record<string, Share>>;
-
-export type Feed = keyof typeof MINUTE_RUN;
-
-const COSTS: Readonly<Record<Feed, RunCost>> = {
-	zapier: ZAPIER_RUN_COST,
-	webhooks: WEBHOOK_RUN_COST,
-	books: ACCOUNTING_RUN_COST
-};
+} as const satisfies Readonly<Record<Feed, Share>>;
 
 /** `share` of the Free invocation, as the same part of `plan`'s. */
 export function shareOn(plan: Plan, share: Share): Share {
@@ -187,30 +191,12 @@ export function paceOf(share: Share, cost: RunCost): number {
 	return Math.floor((share.lanes * RUN_EVERY_MS) / (ANSWER_MS * cost.answersPerRow));
 }
 
-/** rows each feed claims in one run on `plan`, which the minute schedule makes its rate a minute. */
-export type Pace = Readonly<Record<Feed, number>>;
+/** each feed's claim in one run on each plan, which the minute schedule makes its rate a minute. */
+export const PACE: Readonly<Record<Plan, Pace>> = DELIVERY_PACE;
 
-function paceOn(plan: Plan): Pace {
-	const claims = (feed: Feed) => {
-		const share = MINUTE_RUN[feed];
-		const cost = COSTS[feed];
-		return Math.min(claimsWithin(shareOn(plan, share), cost), paceOf(share, cost));
-	};
-	return { zapier: claims('zapier'), webhooks: claims('webhooks'), books: claims('books') };
-}
-
-/** each feed's claim on each plan. */
-export const PACE: Readonly<Record<Plan, Pace>> = { free: paceOn('free'), paid: paceOn('paid') };
-
-/**
- * the plan `env` says the account is on. `true` is the one spelling of Paid, in any case, the way
- * `paypalFeeRules` in ../payments/fees.ts reads its answer; every other value, and none, is Free.
- * read as Paid on a Free account, a run claims past what the invocation may spend and its posts
- * past the fiftieth fail as the receiver's; read as Free on a Paid one, deliveries go at the
- * slower pace. so an answer that is not the word falls to the plan that cannot overrun.
- */
+/** the plan `env` says the account is on (`planAnswered` in packages/operator/src/delivery-pace.ts). */
 export function planOf(env: ConfigEnv): Plan {
-	return env.CLOUDFLARE_PAID_PLAN?.toLowerCase() === 'true' ? 'paid' : 'free';
+	return planAnswered(env.CLOUDFLARE_PAID_PLAN);
 }
 
 /** what a screen tells an operator of how fast this deployment delivers. */

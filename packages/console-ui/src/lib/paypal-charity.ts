@@ -11,7 +11,7 @@ import type { DeployValueName } from '@better-giving/operator/deploy-split';
 // over on a deployment priced at the standard rate, and a third shape to word with nothing true to
 // say in it.
 //
-// **the console's door refuses every other spelling before cloudflare is asked** (`charityRate` in
+// **the console's door refuses every other spelling before cloudflare is asked** (`answerSwitches` in
 // packages/console/internal/server/values.go). {@link charityEdit} is what makes a refusal there
 // unreachable from this page rather than merely unlikely: the payload is composed from the switch's
 // two positions, so no third thing can be carried whatever a box holds.

@@ -3,12 +3,14 @@ import {
 	ACCOUNTING_RUN_COST,
 	CONNECTIONS_AT_ONCE,
 	CONNECTIONS_KEPT,
+	claimsWithin,
 	deliveryPace,
 	HEADROOM,
 	MINUTE_RUN,
 	PACE,
 	type Plan,
 	PLAN_LIMITS,
+	paceOf,
 	type RunCost,
 	type Share,
 	shareOn,
@@ -64,6 +66,16 @@ describe.each([
 	it('goes faster on the Paid plan', () => {
 		expect(paid).toBeGreaterThan(free);
 	});
+
+	it.each([
+		['free', free],
+		['paid', paid]
+	] as const)(
+		'claims on %s all its share pays for and its lanes answer in a minute, and no fewer',
+		(plan, claims) => {
+			expect(claims).toBe(Math.min(claimsWithin(shareOn(plan, share), cost), paceOf(share, cost)));
+		}
+	);
 });
 
 describe('deliveryPace()', () => {

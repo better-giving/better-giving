@@ -311,49 +311,57 @@ func TestAVarPressCarryingNothingIsRefused(t *testing.T) {
 	}
 }
 
-// **the charity-rate switch has two positions and its off one is the name being taken off.** the
-// deployment reads one word as approved and every other value — a stored `false` among them — as
-// the standard rate, so a switch left off with a word in it is a box this console draws full over a
-// deployment that is not on that rate. the removal above is the off position, and nothing else is.
-func TestTheCharityRateSwitchIsOnlyEverStoredAsTheWordTheDeploymentReads(t *testing.T) {
+// the two names holding an answer about an account rather than a credential: whether PayPal approved
+// the charity rate, and whether the Cloudflare account is on the Workers Paid plan.
+var answerNames = []string{"PAYPAL_CHARITY_RATE_APPROVED", "CLOUDFLARE_PAID_PLAN"}
+
+// **an answer switch has two positions and its off one is the name being taken off.** the
+// deployment reads one word as yes and every other value — a stored `false` among them — as no, so
+// a switch left off with a word in it is a box this console draws full over a deployment acting on
+// no. the removal above is the off position, and nothing else is.
+func TestAnAnswerSwitchIsOnlyEverStoredAsTheWordTheDeploymentReads(t *testing.T) {
 	worker := release.Baked.Name
-	stored := map[string]any{"name": "PAYPAL_CHARITY_RATE_APPROVED", "type": "plain_text", "text": "true"}
-	for what, one := range map[string]struct {
-		bindings []any
-		body     string
-	}{
-		"switched on":  {bindings: []any{}, body: `{"values":{"PAYPAL_CHARITY_RATE_APPROVED":"true"}}`},
-		"switched off": {bindings: []any{stored}, body: `{"values":{"PAYPAL_CHARITY_RATE_APPROVED":null}}`},
-	} {
-		api, asked := writes(t, map[string]any{
-			"GET " + settingsOf(worker): map[string]any{
-				"success": true, "errors": []any{},
-				"result": map[string]any{"bindings": one.bindings},
-			},
-		})
-		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars", one.body)
-		if status != http.StatusOK || answer["kind"] != "set" {
-			t.Errorf("%s answered %d %v", what, status, answer)
-		}
-		if len(*asked) != 2 || (*asked)[1] != "PATCH "+settingsOf(worker) {
-			t.Errorf("%s asked cloudflare %v", what, *asked)
+	for _, name := range answerNames {
+		stored := map[string]any{"name": name, "type": "plain_text", "text": "true"}
+		for what, one := range map[string]struct {
+			bindings []any
+			body     string
+		}{
+			"switched on":  {bindings: []any{}, body: `{"values":{"` + name + `":"true"}}`},
+			"switched off": {bindings: []any{stored}, body: `{"values":{"` + name + `":null}}`},
+		} {
+			api, asked := writes(t, map[string]any{
+				"GET " + settingsOf(worker): map[string]any{
+					"success": true, "errors": []any{},
+					"result": map[string]any{"bindings": one.bindings},
+				},
+			})
+			status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars", one.body)
+			if status != http.StatusOK || answer["kind"] != "set" {
+				t.Errorf("%s %s answered %d %v", name, what, status, answer)
+			}
+			if len(*asked) != 2 || (*asked)[1] != "PATCH "+settingsOf(worker) {
+				t.Errorf("%s %s asked cloudflare %v", name, what, *asked)
+			}
 		}
 	}
 }
 
-// a third position is one the fold cannot draw and the deployment does not act on: `false` and `no`
-// price at the standard rate exactly as an absent value does, so storing one would be a value an
-// operator could read back and a deployment that reads nothing of it.
-func TestASpellingTheDeploymentDoesNotReadAsApprovedIsRefused(t *testing.T) {
-	for _, spelling := range []string{"false", "no", "True", "1"} {
-		api, asked := writes(t, nil)
-		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars",
-			`{"values":{"PAYPAL_CHARITY_RATE_APPROVED":"`+spelling+`"}}`)
-		if status != http.StatusBadRequest || answer["error"] == "" {
-			t.Errorf("%q answered %d %v", spelling, status, answer)
-		}
-		if len(*asked) != 0 {
-			t.Errorf("%q asked cloudflare %v", spelling, *asked)
+// a third position is one no fold can draw and the deployment does not act on: `false` and `no`
+// read exactly as an absent value does, so storing one would be a value an operator could read back
+// and a deployment that reads nothing of it.
+func TestASpellingTheDeploymentDoesNotReadAsYesIsRefused(t *testing.T) {
+	for _, name := range answerNames {
+		for _, spelling := range []string{"false", "no", "True", "1"} {
+			api, asked := writes(t, nil)
+			status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars",
+				`{"values":{"`+name+`":"`+spelling+`"}}`)
+			if status != http.StatusBadRequest || answer["error"] == "" {
+				t.Errorf("%s %q answered %d %v", name, spelling, status, answer)
+			}
+			if len(*asked) != 0 {
+				t.Errorf("%s %q asked cloudflare %v", name, spelling, *asked)
+			}
 		}
 	}
 }

@@ -60,7 +60,7 @@ describe('what one press of the switch puts on the deployment', () => {
 
 	it('falls to off for anything that is not the word, so no third thing reaches the door', () => {
 		// the case this composition exists for. the door refuses every other spelling with a 400
-		// (`charityRate` in packages/console/internal/server/values.go), and a payload built from what
+		// (`answerSwitches` in packages/console/internal/server/values.go), and a payload built from what
 		// a body claimed rather than from the two positions is how a press on this page reaches it.
 		const posted = new FormData();
 		posted.set(CHARITY_FIELD, 'false');
