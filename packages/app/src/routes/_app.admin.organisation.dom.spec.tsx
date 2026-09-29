@@ -359,7 +359,13 @@ it('reports the landed save beside the control, and its Undo posts against the v
 	expect(undo.getAttribute('aria-disabled')).toBe('true');
 });
 
-it('reads Redo at the press once an Undo has landed', async () => {
+/** the undo or redo mark a swap press draws, and only that. */
+const swapMark = (press: HTMLElement) =>
+	[...(press.querySelector('svg')?.classList ?? [])].filter((name) =>
+		/^lucide-(undo|redo)-2$/.test(name)
+	);
+
+it('reads Undo after a save, Redo once its Undo lands, and Undo again once the Redo lands', async () => {
 	const root = await drawn();
 	act(() => radio(root, 'warm').click());
 	await settle();
@@ -367,18 +373,27 @@ it('reads Redo at the press once an Undo has landed', async () => {
 	await settle();
 	await settle();
 
-	const undo = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
-	if (undo === undefined) throw new Error('no Undo after a landed save');
-	act(() => undo.click());
+	const press = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
+	if (press === undefined) throw new Error('no Undo after a landed save');
+	expect(swapMark(press)).toEqual(['lucide-undo-2']);
+
+	act(() => press.click());
 	await settle();
 	act(() => held.shift()?.());
 	await settle();
 	await settle();
-
 	expect(said(root)).toContain('Undone on every page using the organisation’s look.');
-	expect(undo.textContent).toBe('Redo');
-	const marks = [...(undo.querySelector('svg')?.classList ?? [])];
-	expect(marks.filter((name) => /^lucide-(undo|redo)-2$/.test(name))).toEqual(['lucide-redo-2']);
+	expect(press.textContent).toBe('Redo');
+	expect(swapMark(press)).toEqual(['lucide-redo-2']);
+
+	act(() => press.click());
+	await settle();
+	act(() => held.shift()?.());
+	await settle();
+	await settle();
+	expect(said(root)).toContain('Saved to every page using the organisation’s look.');
+	expect(press.textContent).toBe('Undo');
+	expect(swapMark(press)).toEqual(['lucide-undo-2']);
 });
 
 it('reports a refused save beside the control under the alert mark, not the check', async () => {
@@ -481,16 +496,19 @@ describe('the story', () => {
 		expect(save?.getAttribute('aria-disabled')).toBe('true');
 	});
 
-	it('reads Redo at the press once an Undo has landed', async () => {
+	it('reads Undo after a save, Redo once its Undo lands, and Undo again once the Redo lands', async () => {
 		const root = await drawn();
 		await saveStory(root);
-		await pressOwned(button(card(root), 'Undo'));
+		const buttons = () => [...card(root).querySelectorAll('.adm-actions button')];
+		expect(swapMark(button(card(root), 'Undo'))).toEqual(['lucide-undo-2']);
 
-		const actions = card(root).querySelector('.adm-actions');
-		expect([...(actions?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toEqual([
-			'Undone',
-			'Redo'
-		]);
+		await pressOwned(button(card(root), 'Undo'));
+		expect(buttons().map((b) => b.textContent)).toEqual(['Undone', 'Redo']);
+		expect(swapMark(button(card(root), 'Redo'))).toEqual(['lucide-redo-2']);
+
+		await pressOwned(button(card(root), 'Redo'));
+		expect(buttons().map((b) => b.textContent)).toEqual(['Saved', 'Undo']);
+		expect(swapMark(button(card(root), 'Undo'))).toEqual(['lucide-undo-2']);
 	});
 
 	it('reports a refused save under the alert mark, in the card it was pressed in', async () => {
@@ -679,21 +697,28 @@ describe('the sharing channels', () => {
 		expect(save?.getAttribute('aria-disabled')).toBe('true');
 	});
 
-	it('reads Redo at the press once an Undo has landed', async () => {
+	it('reads Undo after a save, Redo once its Undo lands, and Undo again once the Redo lands', async () => {
 		const root = await drawn();
 		act(() => root.querySelector<HTMLInputElement>('input[value="x"]')?.click());
 		await saveSharing(root);
 		await settle();
-		const undo = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
-		if (undo === undefined) throw new Error('no Undo after a landed save');
-		await pressOwned(undo);
-
 		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');
-		const actions = card?.parentElement?.querySelector('.adm-actions');
-		expect([...(actions?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toEqual([
-			'Undone',
-			'Redo'
-		]);
+		const buttons = () => [...(card?.parentElement?.querySelectorAll('.adm-actions button') ?? [])];
+		const swap = () => {
+			const found = buttons().at(1);
+			if (found === undefined) throw new Error('no swap press beside Save sharing');
+			return found as HTMLButtonElement;
+		};
+		expect(buttons().map((b) => b.textContent)).toEqual(['Saved', 'Undo']);
+		expect(swapMark(swap())).toEqual(['lucide-undo-2']);
+
+		await pressOwned(swap());
+		expect(buttons().map((b) => b.textContent)).toEqual(['Undone', 'Redo']);
+		expect(swapMark(swap())).toEqual(['lucide-redo-2']);
+
+		await pressOwned(swap());
+		expect(buttons().map((b) => b.textContent)).toEqual(['Saved', 'Undo']);
+		expect(swapMark(swap())).toEqual(['lucide-undo-2']);
 	});
 });
 
@@ -752,17 +777,25 @@ describe('the logo', () => {
 		expect(logoPosts[1]).toEqual({ [WHICH_FORM]: 'org-logo-undo', [RECORD_VERSION]: 'logo-v1' });
 	});
 
-	it('reads Redo at the press once an Undo has landed', async () => {
+	it('reads Undo after a save, Redo once its Undo lands, and Undo again once the Redo lands', async () => {
 		const root = await drawn();
 		await upload(root);
+		const press = button(root, 'Undo');
+		expect(swapMark(press)).toEqual(['lucide-undo-2']);
 
-		const undo = button(root, 'Undo');
-		act(() => undo.click());
+		act(() => press.click());
 		await settle();
 		await settle();
-
-		expect(undo.textContent).toBe('Redo');
 		expect(logo.now).toBeNull();
+		expect(press.textContent).toBe('Redo');
+		expect(swapMark(press)).toEqual(['lucide-redo-2']);
+
+		act(() => press.click());
+		await settle();
+		await settle();
+		expect(logo.now?.imageId).toBe(STORED);
+		expect(press.textContent).toBe('Undo');
+		expect(swapMark(press)).toEqual(['lucide-undo-2']);
 	});
 
 	it('posts an empty id for Remove, and reports it removed', async () => {
