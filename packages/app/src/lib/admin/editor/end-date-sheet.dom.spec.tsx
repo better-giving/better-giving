@@ -92,6 +92,36 @@ describe('the end date', () => {
 		expect(onDone.mock.calls).toEqual([['2026-12-24']]);
 	});
 
+	it('offers no day before today, in the browser’s zone', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		vi.setSystemTime(new Date(2026, 11, 15, 23, 30));
+		const onDone = vi.fn();
+		const { root } = mountable(sheet('2026-12-31', onDone));
+		const opener = root.querySelector<HTMLButtonElement>('[data-part="trigger"]');
+		if (opener === null) throw new Error('no calendar press');
+		act(() => opener.click());
+		await flushed();
+		const cell = (day: string) => {
+			const found = root.querySelector<HTMLElement>(
+				`[data-part="table-cell-trigger"][data-value="${day}"]`
+			);
+			if (found === null) throw new Error(`the calendar drew no ${day}`);
+			return found;
+		};
+
+		expect(cell('2026-12-14').hasAttribute('data-disabled')).toBe(true);
+		expect(cell('2026-12-15').hasAttribute('data-disabled')).toBe(false);
+
+		act(() => cell('2026-12-14').click());
+		await flushed();
+		act(() => button(root, 'Done').click());
+
+		expect(onDone.mock.calls).toEqual([['2026-12-31']]);
+	});
+
 	it('hands back no end date for a box left empty', () => {
 		const onDone = vi.fn();
 		const { root } = mountable(sheet(null, onDone));

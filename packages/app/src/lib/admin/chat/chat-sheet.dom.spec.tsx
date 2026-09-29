@@ -124,6 +124,29 @@ describe('the chat sheet', () => {
 		expect(host.querySelector('.adm-chat__suggestions')).toBeNull();
 	});
 
+	it("draws a reply's backticked spans as code, and an operator's backticks as typed", () => {
+		const fix = 'Run `pnpm run login`, then start it again with `BETTER_GIVING_REMOTE_AI=1`.';
+		const { host } = mount(
+			props({
+				messages: [
+					{ id: 't1', role: 'operator', text: 'Why is `AI` missing?' },
+					{ id: 't2', role: 'assistant', text: fix }
+				]
+			})
+		);
+		const [mine, reply] = [...one(host, '.adm-chat__log').querySelectorAll('.adm-chat__turn')];
+
+		expect([...(reply?.querySelectorAll('code') ?? [])].map((code) => code.textContent)).toEqual([
+			'pnpm run login',
+			'BETTER_GIVING_REMOTE_AI=1'
+		]);
+		expect(reply?.textContent).toBe(
+			'Run pnpm run login, then start it again with BETTER_GIVING_REMOTE_AI=1.'
+		);
+		expect(mine?.querySelector('code')).toBeNull();
+		expect(mine?.textContent).toBe('Why is `AI` missing?');
+	});
+
 	it('draws a line under a reply that did not fit the page, and under no other', () => {
 		const { host } = mount(
 			props({

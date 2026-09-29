@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Resized } from '$lib/images/resize';
 import type { ChatMessage } from '../chat/chat-sheet';
 import { useEditorChat } from './chat-wiring';
+import { EditorEntries, EditorShell } from './editor-shell';
 
 // happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
 // `resizes` until the case hands it a result.
@@ -38,6 +39,8 @@ let refusals: { body: { error: string; reason?: string }; status: number }[];
 let uploads: { type: string; size: number }[];
 /** each upload waits here until the case lets it land, answered with what it is handed. */
 let uploadsHeld: ((answer: { body: unknown; status: number }) => void)[];
+/** while set, each read of the chat waits here until the case lets it land. */
+let historyHeld: (() => void)[] | null;
 
 beforeEach(() => {
 	stored = [
@@ -50,6 +53,7 @@ beforeEach(() => {
 	refusals = [];
 	uploads = [];
 	uploadsHeld = [];
+	historyHeld = null;
 	resizes.length = 0;
 });
 
@@ -65,19 +69,24 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** an editor as the two editor routes mount the chat: its Chat press and the sheet. */
+/** an editor as the two editor routes mount the chat: its Chat entry and the sheet. */
 function Editor() {
 	const { version } = useLoaderData<{ version: number }>();
 	const chat = useEditorChat(CHAT);
+	const search = useLocation().search;
 	return (
-		<>
-			<button type="button" onClick={chat.open}>
-				Chat
-			</button>
-			<output>{version}</output>
-			<samp>{useLocation().search}</samp>
+		<EditorShell
+			bar={null}
+			preview={
+				<>
+					<output>{version}</output>
+					<samp>{search}</samp>
+				</>
+			}
+			entries={<EditorEntries onChat={chat.open} onSettings={() => {}} />}
+		>
 			{chat.sheet}
-		</>
+		</EditorShell>
 	);
 }
 
@@ -94,7 +103,11 @@ function screen(entry = PAGE): HTMLElement {
 		},
 		{
 			path: '/admin/pages/:pageId/chat',
-			loader: () => ({ turns: stored }),
+			loader: async () => {
+				const waiting = historyHeld;
+				if (waiting !== null) await new Promise<void>((resolve) => waiting.push(resolve));
+				return { turns: stored };
+			},
 			action: async ({ request }) => {
 				const body = Object.fromEntries(
 					[...(await request.formData())].map(([k, v]) => [k, String(v)])
@@ -190,6 +203,29 @@ describe('the editor’s chat', () => {
 		await settle();
 
 		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
+	});
+
+	it('holds the Chat entry busy from its press until the sheet is up', async () => {
+		historyHeld = [];
+		screen();
+		await settle();
+		const entry = button('Chat');
+		expect(entry.hasAttribute('aria-busy')).toBe(false);
+
+		await press(entry);
+		await settle();
+
+		expect(document.querySelector('dialog')).toBeNull();
+		expect(entry.getAttribute('aria-busy')).toBe('true');
+		expect(entry.getAttribute('aria-disabled')).toBe('true');
+		expect(document.activeElement).toBe(entry);
+
+		await act(async () => historyHeld?.shift()?.());
+		await settle();
+
+		expect(document.querySelector('dialog')).not.toBeNull();
+		expect(entry.hasAttribute('aria-busy')).toBe(false);
+		expect(entry.hasAttribute('aria-disabled')).toBe(false);
 	});
 
 	it('posts a send as the message, no photos, and the browser’s time zone', async () => {

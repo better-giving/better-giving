@@ -10,6 +10,7 @@ import {
 	ChatSheet,
 	type ChatUnsent
 } from '../chat/chat-sheet';
+import { ChatOpening } from './editor-shell';
 import { postPhoto, type UploadAnswer } from './photo-upload';
 
 // the Chat sheet as both editors mount it: `open` for the Chat entry, and the sheet while it is
@@ -32,7 +33,8 @@ import { postPhoto, type UploadAnswer } from './photo-upload';
 //
 // the sheet mounts once the chat has loaded rather than on an empty log: the log takes the chat it
 // opens on as already read ($lib/admin/chat/chat-log.tsx), and would speak the whole history as it
-// arrived.
+// arrived. until then `ChatOpening` stands in its place and holds the Chat entry busy
+// (./editor-shell.tsx).
 //
 // a photo is attached by the sheet's attach press, which resizes it in the browser and reports
 // here; the resized photo is posted at once to the images route (./photo-upload.ts) by a third
@@ -202,20 +204,21 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 	};
 
 	const running = turn.state !== 'idle';
-	const sheet =
-		open && history.data !== undefined ? (
-			<ChatSheet
-				messages={inFlight(history.data.turns, turn.formData)}
-				isRunning={running}
-				onSend={send}
-				onDismiss={dismiss}
-				suggestions={SUGGESTIONS}
-				imageSrc={imageSrc}
-				unsent={unsent}
-				attachment={photo && { ...photo, onRemove: remove }}
-				attach={({ held }) => <AttachControl held={held} onPicked={picked} onResized={resized} />}
-			/>
-		) : null;
+	const sheet = !open ? null : history.data === undefined ? (
+		<ChatOpening />
+	) : (
+		<ChatSheet
+			messages={inFlight(history.data.turns, turn.formData)}
+			isRunning={running}
+			onSend={send}
+			onDismiss={dismiss}
+			suggestions={SUGGESTIONS}
+			imageSrc={imageSrc}
+			unsent={unsent}
+			attachment={photo && { ...photo, onRemove: remove }}
+			attach={({ held }) => <AttachControl held={held} onPicked={picked} onResized={resized} />}
+		/>
+	);
 
 	return {
 		open: () => {

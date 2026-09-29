@@ -145,11 +145,14 @@ export function PublishBar({
 				) : (
 					<span className="adm-publishbar__name">Donation page</span>
 				)}
+			</div>
+			{/* the state word stands with the presses rather than with the name, so that on a phone
+			    where the two do not fit one line it is the name that takes a line of its own and
+			    Publish stays on the state word's (`.adm-publishbar__acts` in adm.css). */}
+			<div className="adm-publishbar__acts">
 				<span className="adm-publishbar__state" ref={statusRef} tabIndex={-1}>
 					<StatusWord tone={tone}>{word}</StatusWord>
 				</span>
-			</div>
-			<div className="adm-publishbar__acts">
 				<div className="adm-publishbar__quiet">
 					{live && livePath ? (
 						<Button

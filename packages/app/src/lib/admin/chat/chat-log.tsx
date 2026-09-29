@@ -5,6 +5,7 @@ import {
 	ThreadPrimitive
 } from '@assistant-ui/react';
 import { Mark } from '@better-giving/operator/components/status/Mark';
+import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ChatWaiting } from './chat-sheet';
 
@@ -17,6 +18,17 @@ const noteOf = (message: ChatMessage) =>
 
 function Text({ text }: TextMessagePartProps) {
 	return <p>{text}</p>;
+}
+
+/* a reply's words, with a backticked span drawn as code: the fix-it sentences the server answers
+   with mark a command or a name that way ($lib/server/ai/generate.ts). an operator's own words
+   are drawn as typed, backticks and all. */
+function ReplyText({ text }: TextMessagePartProps) {
+	return (
+		<p>
+			<MarkedText text={text} />
+		</p>
+	);
 }
 
 function OperatorTurn({
@@ -43,7 +55,7 @@ function OperatorTurn({
 function AssistantTurn({ message }: { message: ChatMessage }) {
 	return (
 		<MessagePrimitive.Root className="adm-chat__turn">
-			<MessagePrimitive.Parts components={{ Text }} />
+			<MessagePrimitive.Parts components={{ Text: ReplyText }} />
 			{message.note === 'fell-back' ? (
 				<p className="adm-chat__note">
 					<Mark name="info" />
@@ -135,7 +147,9 @@ export function ChatLog({
 			<div className="adm-vh">
 				<div role="log" aria-live="polite">
 					{replies.map((m) => (
-						<p key={m.id}>{[m.text, noteOf(m)].filter(Boolean).join(' ')}</p>
+						<p key={m.id}>
+							<MarkedText text={[m.text, noteOf(m)].filter(Boolean).join(' ')} />
+						</p>
 					))}
 				</div>
 				<p role="status">{writing}</p>
