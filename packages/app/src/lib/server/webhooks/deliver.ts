@@ -111,7 +111,7 @@ export const WEBHOOK_RETRY_SCHEDULE_MS: readonly number[] = [
  * how long a destination is given to answer before the post counts as failed: the least the
  * Standard Webhooks spec recommends ("Request timeouts").
  */
-const POST_TIMEOUT_MS = 15_000;
+export const WEBHOOK_POST_TIMEOUT_MS = 15_000;
 
 /**
  * posts in flight at once. an invocation may have six requests waiting on their response headers,
@@ -135,16 +135,17 @@ const CLAIMS_PER_RUN = 70;
 
 /**
  * no post starts later than this after the run's scheduled time: the last moment a post can start
- * and still answer or time out, {@link POST_TIMEOUT_MS} at most, before {@link LEASE_MS} runs out.
+ * and still answer or time out, {@link WEBHOOK_POST_TIMEOUT_MS} at most, before {@link LEASE_MS}
+ * runs out.
  */
-const RUN_DEADLINE_MS = LEASE_MS - POST_TIMEOUT_MS;
+const RUN_DEADLINE_MS = LEASE_MS - WEBHOOK_POST_TIMEOUT_MS;
 
 const outbox = defineOutbox({
 	table: webhookDelivery,
 	key: { id: webhookDelivery.id },
 	leaseMs: LEASE_MS,
 	deadlineMs: RUN_DEADLINE_MS,
-	attemptMs: POST_TIMEOUT_MS,
+	attemptMs: WEBHOOK_POST_TIMEOUT_MS,
 	claimsPerRun: CLAIMS_PER_RUN,
 	lanes: POSTS_AT_ONCE
 });
@@ -244,9 +245,12 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 	});
 }
 
+/** the status that pauses a destination on its first answer: Standard Webhooks' endpoint withdrawn. */
+export const PAUSED_AT_ONCE_ON = 410;
+
 /** why a failed post may pause its destination, or undefined where it may not. */
 function pauseReason(row: Claimed, status: number | null): PauseReason | undefined {
-	if (status === 410) return 'gone';
+	if (status === PAUSED_AT_ONCE_ON) return 'gone';
 	return row.attempts > 0 ? 'failing' : undefined;
 }
 
@@ -452,7 +456,7 @@ async function post(
 			headers: { 'content-type': 'application/json', ...signed },
 			body,
 			redirect: 'manual',
-			signal: AbortSignal.timeout(POST_TIMEOUT_MS)
+			signal: AbortSignal.timeout(WEBHOOK_POST_TIMEOUT_MS)
 		});
 		if (response.ok) {
 			// an unread body holds its connection. the post is taken either way, so a body that will
@@ -465,6 +469,12 @@ async function post(
 		return { delivered: false, status: null, error: String(error) };
 	}
 }
+
+/** the `data` of every test post, `WEBHOOK_TEST_TYPE`'s in $lib/webhooks/catalog.ts. */
+export const WEBHOOK_TEST_DATA = {
+	test: true,
+	message: 'A test from your Better Giving dashboard.'
+} as const;
 
 /** what a test post was answered with, as the press reports it. */
 export type TestAnswer =
@@ -485,7 +495,7 @@ export async function sendTestWebhook(
 	const answer = await post(fetcher, destination, `msg_test_${crypto.randomUUID()}`, {
 		type: WEBHOOK_TEST_TYPE,
 		timestamp: now,
-		data: { test: true, message: 'A test from your Better Giving dashboard.' }
+		data: WEBHOOK_TEST_DATA
 	});
 	if (answer.delivered) return { outcome: 'sent', status: answer.status };
 	return answer.status === null

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { WEBHOOK_EVENT_TYPES } from '../../webhooks/catalog';
-import { agentPromptFor } from './agent-prompt';
+import { WEBHOOK_POST_TIMEOUT_MS } from '../webhooks/deliver';
+import { API_KEY_VARIABLE, agentPromptFor, WEBHOOK_SECRET_VARIABLE } from './agent-prompt';
+import { WEBHOOK_EVENT_DATA } from './openapi';
 
 // the prompt an organisation's developer pastes into an AI coding agent, held to the deployment it
 // names. src/routes/integrations.openapi[.]json.workers.spec.ts follows its instructions against a
@@ -38,7 +40,27 @@ describe('agentPromptFor()', () => {
 		expect(prompt).toContain('72 hours');
 	});
 
-	it('names every event a destination can be sent', () => {
-		for (const type of WEBHOOK_EVENT_TYPES) expect(prompt).toContain(`\`${type}\``);
+	it('names every event a destination can be sent, and the record each one carries', () => {
+		for (const type of WEBHOOK_EVENT_TYPES) {
+			const line = prompt.split('\n').find((text) => text.startsWith(`- \`${type}\``));
+			const { at } = WEBHOOK_EVENT_DATA[type].record;
+			expect(line).toContain(`keep the latest per \`${at}.id\` by \`${at}.updated_at\``);
+		}
+	});
+
+	it('says how long a receiver has to answer', () => {
+		expect(prompt).toContain(`within ${WEBHOOK_POST_TIMEOUT_MS / 1_000} seconds`);
+	});
+
+	it('has the developer set both secrets in the environment themselves, before the conversation', () => {
+		expect(prompt).toContain(`export ${API_KEY_VARIABLE}=`);
+		expect(prompt).toContain(`export ${WEBHOOK_SECRET_VARIABLE}=`);
+		expect(prompt).toContain(`"Authorization: Bearer $${API_KEY_VARIABLE}"`);
+		expect(prompt).toMatch(/unset/);
+	});
+
+	it('never has the agent ask for a secret or print one', () => {
+		expect(prompt).not.toMatch(/ask (the user|them|the developer) for (it|a live one|the key)/i);
+		expect(prompt).toMatch(/never ask for either/i);
 	});
 });

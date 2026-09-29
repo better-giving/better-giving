@@ -77,7 +77,8 @@ export type PageQuery = { readonly limit: number; readonly after: Keyset | null 
 	| { readonly order: 'changed'; readonly since: Date }
 );
 
-const PARAMETERS = ['limit', 'cursor', 'updated_since'] as const;
+/** the query parameters every list reads; any other is refused as `unknown_parameter`. */
+export const PARAMETERS = ['limit', 'cursor', 'updated_since'] as const;
 
 /** the page `url` asks a list walked in `orders` for, or the 400 refusing its query. */
 export function readPageQuery(url: URL, orders: ListOrders): PageQuery | Response {

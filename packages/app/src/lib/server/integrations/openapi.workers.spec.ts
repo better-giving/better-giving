@@ -7,12 +7,12 @@ import * as surface from '../../../routes/integrations.v1';
 import * as donorsList from '../../../routes/integrations.v1.donors';
 import * as giftsList from '../../../routes/integrations.v1.gifts';
 import * as recurringList from '../../../routes/integrations.v1.recurring-gifts';
-import { WEBHOOK_EVENT_TYPES } from '../../webhooks/catalog';
+import { WEBHOOK_EVENT_TYPES, WEBHOOK_TEST_TYPE, type WebhookEvent } from '../../webhooks/catalog';
 import { parseContact } from '../contacts/contact-input';
 import { createDb, type Db } from '../db/client';
 import { contact, dispute, donation, payment } from '../db/schema';
 import { commitDonor } from '../donations/donor';
-import { sendDueWebhooks } from '../webhooks/deliver';
+import { sendDueWebhooks, sendTestWebhook } from '../webhooks/deliver';
 import { createDestination } from '../webhooks/destinations';
 import {
 	disputeOpenedWebhookStatements,
@@ -23,7 +23,7 @@ import {
 	webhookStatements
 } from '../webhooks/events';
 import { mintApiKey, revokeApiKey } from './keys';
-import { openApiDocument, REFUSAL_STATUS } from './openapi';
+import { openApiDocument, REFUSAL_STATUS, WEBHOOK_EVENT_DATA } from './openapi';
 import { schemaErrors } from './openapi.testing';
 import type { IntegrationsRefusalCode } from './surface';
 
@@ -81,13 +81,16 @@ beforeEach(async () => {
 
 const PLAN_ID = '019fb900-0000-7000-8000-00000000a002';
 
+/** the id of the record on each list that everything seeded is about. */
+type Seeded = Readonly<Record<'/gifts' | '/donors' | '/recurring-gifts', string>>;
+
 /**
  * a $50 gift from Ada Okafor, settled with the rows it owes; $20 of it refunded and a dispute
  * opened on another $20; Ada's consent changed; and a $25 monthly commitment from her, started,
  * updated, its charge failed and ended. every one of the nine events, queued the way its writer
  * queues it.
  */
-async function seedEverything(): Promise<void> {
+async function seedEverything(): Promise<Seeded> {
 	const contactId = uuidv7();
 	const donationId = uuidv7();
 	const giftId = uuidv7();
@@ -191,35 +194,49 @@ async function seedEverything(): Promise<void> {
 		}),
 		recurringGiftChangeWebhookStatements(db, 'recurring_gift.ended', PLAN_ID, sql`1 = 1`)
 	]);
+	return { '/gifts': giftId, '/donors': contactId, '/recurring-gifts': PLAN_ID };
 }
 
 /** every body the delivery run posts to one destination subscribed to every event. */
-async function postedBodies(): Promise<{ type: string }[]> {
+async function postedBodies(): Promise<{ bodies: Posted[]; seeded: Seeded }> {
 	const created = await createDestination(db, {
 		url: 'https://crm.example.org/hooks/openapi',
 		events: WEBHOOK_EVENT_TYPES
 	});
 	if (!created.ok) throw new Error(created.box);
-	await seedEverything();
-	const bodies: { type: string }[] = [];
-	const receiver = (async (_: RequestInfo | URL, init?: RequestInit) => {
-		bodies.push(JSON.parse(String(init?.body)) as { type: string });
-		return new Response('ok');
-	}) as typeof fetch;
+	const seeded = await seedEverything();
+	const { bodies, receiver } = receiving();
 
 	await sendDueWebhooks(
 		{ db, fetch: receiver, onPaused: async () => undefined },
 		new Date(Date.now() + 60_000)
 	);
-	return bodies;
+	return { bodies, seeded };
+}
+
+type Posted = { type: string; data: Record<string, unknown> };
+
+/** a `fetch` standing in for a receiver, keeping every body posted to it. */
+function receiving() {
+	const bodies: Posted[] = [];
+	const receiver = (async (_: RequestInfo | URL, init?: RequestInit) => {
+		bodies.push(JSON.parse(String(init?.body)) as Posted);
+		return new Response('ok');
+	}) as typeof fetch;
+	return { bodies, receiver };
+}
+
+/** the operation the document gives a post of `type`. */
+function postOf(type: string) {
+	return (document.webhooks as Record<string, { post: unknown }>)[type]?.post as {
+		'x-record'?: string;
+		requestBody: { content: { 'application/json': { schema: { $ref: string } } } };
+	};
 }
 
 /** the component schema the document gives a post of `type` as its body. */
 function envelopeOf(type: string): string {
-	const post = (document.webhooks as Record<string, { post: unknown }>)[type]?.post as {
-		requestBody: { content: { 'application/json': { schema: { $ref: string } } } };
-	};
-	return post.requestBody.content['application/json'].schema.$ref.split('/').at(-1) ?? '';
+	return postOf(type).requestBody.content['application/json'].schema.$ref.split('/').at(-1) ?? '';
 }
 
 describe('the published schemas, against what this deployment renders', () => {
@@ -248,7 +265,7 @@ describe('the published schemas, against what this deployment renders', () => {
 	);
 
 	it('describes the body of every event the delivery run posts', async () => {
-		const bodies = await postedBodies();
+		const { bodies } = await postedBodies();
 
 		expect(bodies.map((body) => body.type).sort()).toEqual([...WEBHOOK_EVENT_TYPES].sort());
 		for (const body of bodies)
@@ -256,6 +273,42 @@ describe('the published schemas, against what this deployment renders', () => {
 				type: body.type,
 				errors: schemaErrors(document, envelopeOf(body.type), body)
 			}).toEqual({ type: body.type, errors: [] });
+	});
+
+	it('names, for every event, where its record sits and which list it is an entry of', async () => {
+		const { bodies, seeded } = await postedBodies();
+
+		expect(bodies).toHaveLength(WEBHOOK_EVENT_TYPES.length);
+		for (const body of bodies) {
+			const at = postOf(body.type)['x-record'] ?? '';
+			const record = at
+				.split('.')
+				.slice(1)
+				.reduce<Record<string, unknown>>(
+					(inside, key) => inside[key] as Record<string, unknown>,
+					body.data
+				);
+			const { list } = WEBHOOK_EVENT_DATA[body.type as WebhookEvent].record;
+			expect({ type: body.type, id: record.id, stamped: typeof record.updated_at }).toEqual({
+				type: body.type,
+				id: seeded[list],
+				stamped: 'string'
+			});
+		}
+	});
+
+	it('describes the body of the test post a destination’s page sends', async () => {
+		const created = await createDestination(db, {
+			url: 'https://crm.example.org/hooks/test',
+			events: ['gift.made']
+		});
+		if (!created.ok) throw new Error(created.box);
+		const { bodies, receiver } = receiving();
+
+		await sendTestWebhook(receiver, created.destination, new Date());
+
+		expect(bodies.map((body) => body.type)).toEqual([WEBHOOK_TEST_TYPE]);
+		expect(schemaErrors(document, envelopeOf(WEBHOOK_TEST_TYPE), bodies[0])).toEqual([]);
 	});
 
 	it('refuses an object carrying a key its schema does not describe', () => {

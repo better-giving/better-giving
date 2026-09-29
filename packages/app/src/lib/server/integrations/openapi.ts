@@ -1,13 +1,25 @@
 import { FREQUENCIES, TRIBUTE_KINDS } from '@better-giving/form/v1';
 import { CONSENT_STATES } from '../../contacts/consent';
-import { WEBHOOK_EVENT_TYPES, WEBHOOK_EVENTS, type WebhookEvent } from '../../webhooks/catalog';
+import {
+	WEBHOOK_EVENT_TYPES,
+	WEBHOOK_EVENTS,
+	WEBHOOK_TEST_TYPE,
+	type WebhookEvent
+} from '../../webhooks/catalog';
 import { PAYMENT_METHODS, RECURRING_INTERVALS } from '../db/schema';
-import { DESTINATION_PAUSE_AFTER_MS, WEBHOOK_RETRY_SCHEDULE_MS } from '../webhooks/deliver';
+import {
+	DESTINATION_PAUSE_AFTER_MS,
+	PAUSED_AT_ONCE_ON,
+	WEBHOOK_POST_TIMEOUT_MS,
+	WEBHOOK_RETRY_SCHEDULE_MS,
+	type WEBHOOK_TEST_DATA
+} from '../webhooks/deliver';
 import type { AddedDonor, FailedCharge, OpenedDispute, RefundedGift } from '../webhooks/payload';
+import type { SignedHeaders } from '../webhooks/sign';
 import type { ApiDonor } from './donor';
 import { type ApiGift, GIFT_STATUSES } from './gift';
 import { API_KEY_SHAPE } from './keys';
-import { DEFAULT_PAGE_SIZE, PAGE_SIZE_CEILING } from './paging';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_CEILING, PARAMETERS } from './paging';
 import { type ApiRecurringGift, RECURRING_GIFT_STATUSES } from './recurring-gift';
 import { REFUND_SOURCES } from './refund';
 import {
@@ -22,10 +34,12 @@ import {
 // it, reads to call this deployment without reading this repository.
 //
 // **built from the constants, never retyped.** every number, list and name in it is read from the
-// module that enforces it — the page sizes from ./paging.ts, the refusal codes and rate limits from
-// ./surface.ts, the key's shape from ./keys.ts, the events from $lib/webhooks/catalog.ts, the retry
-// schedule and the pause from ../webhooks/deliver.ts. what no constant carries is written here
-// once: each object's schema, and which status each refusal code is answered with.
+// module that enforces it — the page sizes and query parameters from ./paging.ts, the refusal codes
+// and rate limits from ./surface.ts, the key's shape from ./keys.ts, the events and the test type
+// from $lib/webhooks/catalog.ts, the signed headers' names from ../webhooks/sign.ts, and the retry
+// schedule, the pause, the status that pauses at once, the answer timeout and the test post's
+// `data` from ../webhooks/deliver.ts. what no constant carries is written here once: each object's
+// schema, which status each refusal code is answered with, and which record each event carries.
 // ./openapi.spec.ts holds the document to the OpenAPI 3.1 schema, to the route files and the
 // catalog, and each rate limit to wrangler.jsonc; ./openapi.workers.spec.ts validates real rendered
 // objects against the schemas below and provokes every refusal against its documented status.
@@ -35,7 +49,7 @@ import {
 // promise (./gift.ts's header). a schema states no `additionalProperties: false`, since a key
 // added later is not a breaking change to a reader told to let one pass.
 //
-// **nothing about an organisation is in it.** it names the request's own origin and nothing read
+// **nothing about an organisation is in it.** it names the request's host and nothing read
 // from the database, so it is served without a key (src/routes/integrations.openapi[.]json.ts).
 
 /** where this document is served, and where ./agent-prompt.ts is. */
@@ -43,10 +57,26 @@ export const OPENAPI_PATH = '/integrations/openapi.json';
 export const AGENT_PROMPT_PATH = '/integrations/agent-prompt.md';
 
 /**
- * how both are cached: by anyone, since neither names anything read from the database, and for
- * five minutes, so a deploy that changes them reaches every reader within that.
+ * what both are served with. neither names anything read from the database, so anyone may cache
+ * them — for five minutes, so a deploy that changes them reaches every reader within that — and any
+ * page may read them, a viewer hosted elsewhere included. neither holds a credential, which is what
+ * keeps `*` here from being the keyed surface's CORS: that surface sends none.
  */
-export const DOCS_CACHE_CONTROL = 'public, max-age=300';
+export const DOCS_HEADERS = {
+	'cache-control': 'public, max-age=300',
+	'access-control-allow-origin': '*'
+} as const;
+
+/** the hosts a local dev server answers on, which keep the scheme they were asked at. */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * the origin both documents publish for a request at `url`: `https:` for every host but this
+ * machine, so a document fetched over plain http never tells a reader to send a key over it.
+ */
+export function publishedOrigin(url: URL): string {
+	return LOCAL_HOSTS.has(url.hostname) ? url.origin : `https://${url.host}`;
+}
 
 /** a JSON Schema 2020-12 schema, as the document carries one. */
 export type JsonSchema = { readonly [keyword: string]: unknown };
@@ -54,7 +84,7 @@ export type JsonSchema = { readonly [keyword: string]: unknown };
 /** an object schema naming each key of `T`, each required. */
 type SchemaOf<T> = { readonly [K in keyof T]-?: JsonSchema };
 
-/** the status each refusal code is answered with; a code added to ./surface.ts must be placed here. */
+/** the status each refusal code is answered with. */
 export const REFUSAL_STATUS: Readonly<
 	Record<IntegrationsRefusalCode, 400 | 401 | 404 | 405 | 429>
 > = {
@@ -71,14 +101,12 @@ export const REFUSAL_STATUS: Readonly<
 	unknown_parameter: 400
 };
 
-/** the `type` of the test post a destination can be sent, beside every catalog event. */
-const WEBHOOK_TEST_TYPE = 'test';
-
 /** each list the read API serves, by its path under `INTEGRATIONS_BASE_PATH`. */
 const LIST_PATHS = {
 	'/gifts': {
 		operationId: 'listGifts',
 		summary: 'List gifts',
+		noun: 'gifts',
 		entry: 'Gift',
 		description:
 			'Every settled gift, with where it stands now: what refunds and lost disputes have taken back, and whether a dispute is open. A gift authorized and not yet settled is not listed. Without `updated_since`, newest first by `occurred_at`; with it, every gift whose `updated_at` is at or after it, oldest change first.'
@@ -86,6 +114,7 @@ const LIST_PATHS = {
 	'/donors': {
 		operationId: 'listDonors',
 		summary: 'List donors',
+		noun: 'donors',
 		entry: 'Donor',
 		description:
 			'Every donor the organisation’s dashboard lists, whether or not a gift of theirs has settled. What a donor has given is not here: the gifts list answers it gift by gift, each naming its `donor_id`. Without `updated_since`, newest first by `created_at`; with it, every donor whose `updated_at` is at or after it, oldest change first.'
@@ -93,6 +122,7 @@ const LIST_PATHS = {
 	'/recurring-gifts': {
 		operationId: 'listRecurringGifts',
 		summary: 'List recurring gifts',
+		noun: 'recurring gifts',
 		entry: 'RecurringGift',
 		description:
 			'Every commitment to give on a schedule, live or ended. Each charge it makes is a gift on the gifts list. `payment_failed` is not final: it turns `active` again if the processor collects after all, and only `stopped` never comes back. Without `updated_since`, newest first by when the commitment was recorded; with it, every recurring gift whose `updated_at` is at or after it, oldest change first.'
@@ -118,10 +148,11 @@ const nullableInstant = (description: string): JsonSchema => ({
 	description
 });
 const minor = (description: string): JsonSchema => ({ type: 'integer', minimum: 0, description });
+const MAY_GAIN = 'The set may gain values: let one you do not know pass.';
 const growingSet = (values: readonly string[], description: string): JsonSchema => ({
 	type: 'string',
 	enum: [...values],
-	description: `${description} The set may gain values: let one you do not know pass.`
+	description: `${description} ${MAY_GAIN}`
 });
 const ref = (name: string): JsonSchema => ({ $ref: `#/components/schemas/${name}` });
 
@@ -167,7 +198,7 @@ const GIFT = record<ApiGift>(
 		dedication_kind: {
 			type: ['string', 'null'],
 			enum: [...TRIBUTE_KINDS, null],
-			description: 'Given in honor or in memory of someone; null where it is neither.'
+			description: `Given in honor or in memory of someone; null where it is neither. ${MAY_GAIN}`
 		},
 		dedication_honoree: nullableText('Whom the dedication names.'),
 		note: nullableText('What the donor wrote with the gift.'),
@@ -292,58 +323,93 @@ const FAILED_CHARGE = record<FailedCharge>(
 	}
 );
 
-const TEST_DATA: JsonSchema = {
-	type: 'object',
-	description:
-		'A test post, sent from the destination’s page on the dashboard to check the receiver. It names no record and its keys are not promised: acknowledge it and act on nothing in it.'
+const TEST_DATA = record<typeof WEBHOOK_TEST_DATA>(
+	'A test post, sent from the destination’s page on the dashboard to check the receiver. It names no record: acknowledge it and act on nothing in it.',
+	{
+		test: { const: true, description: 'Always `true`: this post is a test.' },
+		message: text('A sentence saying so, for whoever reads the receiver’s log.')
+	}
+);
+
+/**
+ * the record an event is about: where it sits in the post's body, and the list it is an entry of.
+ * a post carries that record as it stands when posted, so a receiver keeps the latest per its `id`
+ * by its `updated_at` — which is the record's own, never the event's `data`'s where the two differ.
+ */
+export type EventRecord = {
+	readonly at: 'data' | 'data.gift' | 'data.recurring_gift';
+	readonly list: keyof typeof LIST_PATHS;
 };
 
-/** each event's `data`, by the component schema that describes it. */
+/** each event's `data`, by the component schema that describes it, and the record it carries. */
 export const WEBHOOK_EVENT_DATA: Readonly<
-	Record<WebhookEvent, { readonly schema: string; readonly about: string }>
+	Record<
+		WebhookEvent,
+		{ readonly schema: string; readonly about: string; readonly record: EventRecord }
+	>
 > = {
-	'gift.made': { schema: 'Gift', about: 'A gift settled. `data` is the gift.' },
+	'gift.made': {
+		schema: 'Gift',
+		about: 'A gift settled. `data` is the gift.',
+		record: { at: 'data', list: '/gifts' }
+	},
 	'gift.refunded': {
 		schema: 'RefundedGift',
 		about:
-			'Money went back from a gift: a refund the organisation made, or a dispute it lost. Posted only while the refund still stands.'
+			'Money went back from a gift: a refund the organisation made, or a dispute it lost. Posted only while the refund still stands. `data.id` is the refund’s own.',
+		record: { at: 'data.gift', list: '/gifts' }
 	},
 	'gift.dispute_opened': {
 		schema: 'OpenedDispute',
-		about: 'A donor’s bank opened a dispute on a gift, and withdrew its money until it closes.'
+		about:
+			'A donor’s bank opened a dispute on a gift, and withdrew its money until it closes. `data.id` is the withdrawal’s own.',
+		record: { at: 'data.gift', list: '/gifts' }
 	},
 	'donor.added': {
 		schema: 'AddedDonor',
 		about:
-			'A donor’s first gift settled. Posted once per donor, on that gift — never when a gift is only started.'
+			'A donor’s first gift settled. Posted once per donor, on that gift — never when a gift is only started.',
+		record: { at: 'data', list: '/donors' }
 	},
 	'donor.updated': {
 		schema: 'Donor',
-		about: 'A donor changed. `data` is the donor as they stand when posted, not the change.'
+		about: 'A donor changed. `data` is the donor as they stand when posted, not the change.',
+		record: { at: 'data', list: '/donors' }
 	},
 	'recurring_gift.started': {
 		schema: 'RecurringGift',
-		about: 'A recurring gift’s first charge settled.'
+		about: 'A recurring gift’s first charge settled.',
+		record: { at: 'data', list: '/recurring-gifts' }
 	},
 	'recurring_gift.updated': {
 		schema: 'RecurringGift',
 		about:
-			'A recurring gift changed. `data` is the recurring gift as it stands when posted, not the change.'
+			'A recurring gift changed. `data` is the recurring gift as it stands when posted, not the change.',
+		record: { at: 'data', list: '/recurring-gifts' }
 	},
 	'recurring_gift.charge_failed': {
 		schema: 'FailedCharge',
-		about: 'An attempt at a recurring gift’s charge failed.'
+		about: 'An attempt at a recurring gift’s charge failed. The attempt itself has no id.',
+		record: { at: 'data.recurring_gift', list: '/recurring-gifts' }
 	},
 	'recurring_gift.ended': {
 		schema: 'RecurringGift',
 		about:
-			'A recurring gift ended. `data` is the recurring gift as it stands when posted, which a revival since can show `active`.'
+			'A recurring gift ended. `data` is the recurring gift as it stands when posted, which a revival since can show `active`.',
+		record: { at: 'data', list: '/recurring-gifts' }
 	}
 };
 
-/** `ms` as words: `1 minute`, `24 hours`. every entry the schedule holds is whole minutes. */
+/** what a receiver keeps of `event`'s record, in words the document and the prompt both say. */
+export function recordWords(event: WebhookEvent): string {
+	const { at, list } = WEBHOOK_EVENT_DATA[event].record;
+	return `Its record is \`${at}\`, an entry on the ${LIST_PATHS[list].noun} list: keep the latest per \`${at}.id\` by \`${at}.updated_at\`.`;
+}
+
+/** `ms` as words: `1 minute`, `24 hours`. `ms` is whole minutes, and anything else throws. */
 export function spokenDuration(ms: number): string {
 	const minutes = ms / 60_000;
+	if (!Number.isInteger(minutes)) throw new Error(`${ms} ms is not whole minutes`);
 	const [count, unit] = minutes % 60 === 0 ? [minutes / 60, 'hour'] : [minutes, 'minute'];
 	return `${count} ${unit}${count === 1 ? '' : 's'}`;
 }
@@ -353,18 +419,71 @@ export function retryScheduleWords(): string {
 	return WEBHOOK_RETRY_SCHEDULE_MS.map(spokenDuration).join(', ');
 }
 
+/** the query parameters every list reads, keyed as ./paging.ts names them. */
+const LIST_PARAMETERS: Readonly<Record<(typeof PARAMETERS)[number], JsonSchema>> = {
+	limit: {
+		name: 'limit',
+		in: 'query',
+		description: 'How many entries a page holds. A larger one is refused, never cut.',
+		schema: { type: 'integer', minimum: 1, maximum: PAGE_SIZE_CEILING, default: DEFAULT_PAGE_SIZE }
+	},
+	cursor: {
+		name: 'cursor',
+		in: 'query',
+		description:
+			'The `next_cursor` of the page before, exactly as it came, with the same other parameters. Opaque.',
+		schema: { type: 'string' }
+	},
+	updated_since: {
+		name: 'updated_since',
+		in: 'query',
+		description:
+			'Every entry whose `updated_at` is at or after this instant, oldest change first. Send the `resume_updated_since` your last walk ended on, or an early instant such as `1970-01-01T00:00:00Z` for everything. An offset other than `Z` has its `+` sent as `%2B`.',
+		schema: { type: 'string', format: 'date-time' }
+	}
+};
+
+/** the headers every post carries, keyed as ../webhooks/sign.ts writes them, in its order. */
+const WEBHOOK_HEADERS: Readonly<Record<keyof SignedHeaders, JsonSchema>> = {
+	'webhook-id': {
+		name: 'webhook-id',
+		in: 'header',
+		required: true,
+		description: 'The event’s id: the same on every attempt at it. Dedupe on it.',
+		schema: { type: 'string' }
+	},
+	'webhook-timestamp': {
+		name: 'webhook-timestamp',
+		in: 'header',
+		required: true,
+		description:
+			'When this attempt was signed, in whole seconds since the Unix epoch. Reject one more than 5 minutes from now.',
+		schema: { type: 'string', pattern: '^[0-9]+$' }
+	},
+	'webhook-signature': {
+		name: 'webhook-signature',
+		in: 'header',
+		required: true,
+		description:
+			'A space-separated list of `v1,<base64 signature>`: HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{body}`, keyed with the base64-decoded part of the signing secret after `whsec_`.',
+		schema: { type: 'string' }
+	}
+};
+
 /** how many times a post is attempted before it is given up: the first, and one per wait. */
 export const WEBHOOK_ATTEMPTS = WEBHOOK_RETRY_SCHEDULE_MS.length + 1;
 
 const DELIVERY_PROSE = [
 	`**Signed to the Standard Webhooks spec** (https://www.standardwebhooks.com/): verify every post before trusting it. The signed content is \`{webhook-id}.{webhook-timestamp}.{body}\` — the body exactly as received, never re-serialized — HMAC-SHA256 keyed with the destination's signing secret's bytes: base64-decode what follows \`whsec_\`. \`webhook-signature\` is a space-separated list of \`v1,<base64 signature>\`; accept the post where any entry matches, compared in constant time, and reject a \`webhook-timestamp\` more than 5 minutes from now. A Standard Webhooks library does all of it.`,
-	'**At least once, and unordered.** A post whose answer never came is posted again under the same `webhook-id`: dedupe on it. Each post carries the record as it stands when posted, so keep the latest per record by its `updated_at`.',
-	`**Any 2xx is received.** Anything else, a redirect (never followed) or no answer is a failed post, retried after ${retryScheduleWords()} — ${WEBHOOK_ATTEMPTS} attempts in all — and then given up.`,
-	`**A destination whose every post fails for ${spokenDuration(DESTINATION_PAUSE_AFTER_MS)} is paused**, and one answering 410 is paused at once. The organisation is emailed; what it is owed while paused is held, and posted when it is resumed.`,
+	'**At least once, and unordered.** A post whose answer never came is posted again under the same `webhook-id`: dedupe on it. Each event names its record — `data`, `data.gift` or `data.recurring_gift` — carried as it stands when posted: keep the latest per that record’s `id` by that record’s `updated_at`.',
+	`**Answer within ${WEBHOOK_POST_TIMEOUT_MS / 1_000} seconds, with any 2xx**, and do the work after. Anything else, a redirect (never followed) or no answer in time is a failed post, retried after ${retryScheduleWords()} — ${WEBHOOK_ATTEMPTS} attempts in all — and then given up.`,
+	`**A destination whose every post fails for ${spokenDuration(DESTINATION_PAUSE_AFTER_MS)} is paused**, and one answering ${PAUSED_AT_ONCE_ON} is paused at once. The organisation is emailed; what it is owed while paused is held, and posted when it is resumed.`,
 	'**New event types may be added.** Answer a `type` you do not know with a 2xx and act on nothing in it.'
 ].join('\n\n');
 
-/** the OpenAPI 3.1 document, with `origin` — the request's own — as the server. */
+/**
+ * the OpenAPI 3.1 document, with `origin` — `publishedOrigin`'s for the request — as the server.
+ */
 export function openApiDocument(origin: string) {
 	const pageOf = (entry: string): JsonSchema => ({
 		type: 'object',
@@ -426,9 +545,7 @@ export function openApiDocument(origin: string) {
 				operationId: list.operationId,
 				summary: list.summary,
 				description: list.description,
-				parameters: ['limit', 'cursor', 'updated_since'].map((name) => ({
-					$ref: `#/components/parameters/${name}`
-				})),
+				parameters: PARAMETERS.map((name) => ({ $ref: `#/components/parameters/${name}` })),
 				responses: {
 					'200': {
 						description: 'A page.',
@@ -446,12 +563,20 @@ export function openApiDocument(origin: string) {
 	const eventName = (type: string) =>
 		`${type.replace(/(^|[._])([a-z])/g, (_, __, letter: string) => letter.toUpperCase())}Event`;
 
-	const webhook = (type: string, summary: string, about: string, data: JsonSchema) => ({
+	const webhook = (
+		type: string,
+		summary: string,
+		about: string,
+		data: JsonSchema,
+		record?: EventRecord
+	) => ({
 		type,
 		post: {
 			summary,
 			description: about,
-			parameters: ['webhook-id', 'webhook-timestamp', 'webhook-signature'].map((name) => ({
+			...(record === undefined ? {} : { 'x-record': record.at }),
+			security: [],
+			parameters: Object.keys(WEBHOOK_HEADERS).map((name) => ({
 				$ref: `#/components/parameters/${name}`
 			})),
 			requestBody: {
@@ -459,8 +584,10 @@ export function openApiDocument(origin: string) {
 				content: { 'application/json': { schema: ref(eventName(type)) } }
 			},
 			responses: {
-				'2XX': { description: 'Received. Answer first and do the work after.' },
-				'410': { description: 'The destination is withdrawn: it is paused at once.' },
+				'2XX': {
+					description: `Received. Answer within ${WEBHOOK_POST_TIMEOUT_MS / 1_000} seconds and do the work after.`
+				},
+				[PAUSED_AT_ONCE_ON]: { description: 'The destination is withdrawn: it is paused at once.' },
 				default: {
 					description: `A failed post: retried after ${retryScheduleWords()}, then given up.`
 				}
@@ -485,8 +612,9 @@ export function openApiDocument(origin: string) {
 			webhook(
 				type,
 				WEBHOOK_EVENTS[type],
-				WEBHOOK_EVENT_DATA[type].about,
-				ref(WEBHOOK_EVENT_DATA[type].schema)
+				`${WEBHOOK_EVENT_DATA[type].about} ${recordWords(type)}`,
+				ref(WEBHOOK_EVENT_DATA[type].schema),
+				WEBHOOK_EVENT_DATA[type].record
 			)
 		),
 		webhook(
@@ -530,56 +658,7 @@ export function openApiDocument(origin: string) {
 						'An API key, sent as `Authorization: Bearer <key>` on every request. The organisation makes one per system on its dashboard, under Integrations → API, and it is shown once. It reads donors’ names and email addresses: keep it on a server, never in a browser or an app. This API sends no CORS headers.'
 				}
 			},
-			parameters: {
-				limit: {
-					name: 'limit',
-					in: 'query',
-					description: 'How many entries a page holds. A larger one is refused, never cut.',
-					schema: {
-						type: 'integer',
-						minimum: 1,
-						maximum: PAGE_SIZE_CEILING,
-						default: DEFAULT_PAGE_SIZE
-					}
-				},
-				cursor: {
-					name: 'cursor',
-					in: 'query',
-					description:
-						'The `next_cursor` of the page before, exactly as it came, with the same other parameters. Opaque.',
-					schema: { type: 'string' }
-				},
-				updated_since: {
-					name: 'updated_since',
-					in: 'query',
-					description:
-						'Every entry whose `updated_at` is at or after this instant, oldest change first. Send the `resume_updated_since` your last walk ended on, or an early instant such as `1970-01-01T00:00:00Z` for everything. An offset other than `Z` has its `+` sent as `%2B`.',
-					schema: { type: 'string', format: 'date-time' }
-				},
-				'webhook-id': {
-					name: 'webhook-id',
-					in: 'header',
-					required: true,
-					description: 'The event’s id: the same on every attempt at it. Dedupe on it.',
-					schema: { type: 'string' }
-				},
-				'webhook-timestamp': {
-					name: 'webhook-timestamp',
-					in: 'header',
-					required: true,
-					description:
-						'When this attempt was signed, in whole seconds since the Unix epoch. Reject one more than 5 minutes from now.',
-					schema: { type: 'string', pattern: '^[0-9]+$' }
-				},
-				'webhook-signature': {
-					name: 'webhook-signature',
-					in: 'header',
-					required: true,
-					description:
-						'A space-separated list of `v1,<base64 signature>`: HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{body}`, keyed with the base64-decoded part of the signing secret after `whsec_`.',
-					schema: { type: 'string' }
-				}
-			},
+			parameters: { ...LIST_PARAMETERS, ...WEBHOOK_HEADERS },
 			responses: {
 				InvalidQuery: refusal(400, 'The query names a value this list does not take.'),
 				Unauthorized: refusal(401, 'No live API key was presented.', {
@@ -640,7 +719,8 @@ export function openApiDocument(origin: string) {
 			retry_schedule_seconds: WEBHOOK_RETRY_SCHEDULE_MS.map((ms) => ms / 1_000),
 			attempts: WEBHOOK_ATTEMPTS,
 			pause_after_seconds: DESTINATION_PAUSE_AFTER_MS / 1_000,
-			paused_at_once_on: 410
+			paused_at_once_on: PAUSED_AT_ONCE_ON,
+			answer_within_seconds: WEBHOOK_POST_TIMEOUT_MS / 1_000
 		}
 	};
 }

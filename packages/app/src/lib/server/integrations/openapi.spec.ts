@@ -3,20 +3,26 @@ import { resolve } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
-import { WEBHOOK_EVENT_TYPES } from '../../webhooks/catalog';
-import { DESTINATION_PAUSE_AFTER_MS, WEBHOOK_RETRY_SCHEDULE_MS } from '../webhooks/deliver';
+import { WEBHOOK_EVENT_TYPES, WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
+import {
+	DESTINATION_PAUSE_AFTER_MS,
+	PAUSED_AT_ONCE_ON,
+	WEBHOOK_POST_TIMEOUT_MS,
+	WEBHOOK_RETRY_SCHEDULE_MS
+} from '../webhooks/deliver';
+import { signedHeaders } from '../webhooks/sign';
 import { readWranglerConfig } from '../wrangler-config.testing';
 import officialSchema from './oas-3.1-schema.testing.json';
-import { openApiDocument } from './openapi';
+import { openApiDocument, publishedOrigin, spokenDuration } from './openapi';
 import { componentValidator } from './openapi.testing';
-import { DEFAULT_PAGE_SIZE, PAGE_SIZE_CEILING } from './paging';
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_CEILING, PARAMETERS } from './paging';
 import { INTEGRATIONS_BASE_PATH, INTEGRATIONS_REFUSALS } from './surface';
 
 // the OpenAPI document ./openapi.ts builds, held to the OpenAPI 3.1 schema.
 //
 // ./oas-3.1-schema.testing.json is the schema the OpenAPI Initiative publishes at
 // https://spec.openapis.org/oas/3.1/schema/2022-10-07, vendored byte for byte but for biome's
-// formatting (Apache-2.0, https://github.com/OAI/OpenAPI-Specification/blob/main/LICENSE). it
+// formatting, under the Apache-2.0 licence THIRD_PARTY_NOTICES.md at the repository root carries. it
 // checks the document's own shape and leaves each Schema Object to its dialect, so every
 // component and webhook schema is compiled here as JSON Schema 2020-12 as well.
 //
@@ -105,7 +111,9 @@ describe('openApiDocument() against what it describes', () => {
 	});
 
 	it('describes every event the catalog holds, and the test post, and nothing else', () => {
-		expect(Object.keys(document.webhooks).sort()).toEqual([...WEBHOOK_EVENT_TYPES, 'test'].sort());
+		expect(Object.keys(document.webhooks).sort()).toEqual(
+			[...WEBHOOK_EVENT_TYPES, WEBHOOK_TEST_TYPE].sort()
+		);
 	});
 
 	it('publishes the retry schedule the delivery run waits out', () => {
@@ -126,6 +134,59 @@ describe('openApiDocument() against what it describes', () => {
 		const prose = document['x-webhook-delivery'].description;
 		expect(prose).toContain('retried after 1 minute, 5 minutes, 30 minutes, 2 hours');
 		expect(prose).toContain(`${DESTINATION_PAUSE_AFTER_MS / 3_600_000} hours is paused`);
+	});
+
+	it('publishes the pause at once on the status the delivery run pauses on', () => {
+		expect(document['x-webhook-delivery'].paused_at_once_on).toBe(PAUSED_AT_ONCE_ON);
+		expect(document['x-webhook-delivery'].description).toContain(
+			`one answering ${PAUSED_AT_ONCE_ON} is paused at once`
+		);
+	});
+
+	it('publishes how long a receiver has to answer, as the delivery run times it', () => {
+		expect(document['x-webhook-delivery'].answer_within_seconds * 1_000).toBe(
+			WEBHOOK_POST_TIMEOUT_MS
+		);
+		expect(document['x-webhook-delivery'].description).toContain(
+			`Answer within ${WEBHOOK_POST_TIMEOUT_MS / 1_000} seconds`
+		);
+	});
+
+	it('describes on every list the query parameters the lists read, and no other', () => {
+		expect(
+			Object.keys(document.components.parameters).filter((name) => !name.startsWith('webhook-'))
+		).toEqual([...PARAMETERS]);
+		for (const operation of Object.values(document.paths))
+			expect(operation.get.parameters).toEqual(
+				PARAMETERS.map((name) => ({ $ref: `#/components/parameters/${name}` }))
+			);
+	});
+
+	it('describes on every post the headers the signing writes, and no other', async () => {
+		const written = Object.keys(
+			await signedHeaders({ secret: 'whsec_AAAA', id: 'msg_1', at: new Date(0), body: '{}' })
+		);
+		for (const webhook of Object.values(document.webhooks))
+			expect(webhook.post.parameters).toEqual(
+				written.map((name) => ({ $ref: `#/components/parameters/${name}` }))
+			);
+	});
+
+	it('asks no API key of a post to a receiver', () => {
+		for (const webhook of Object.values(document.webhooks))
+			expect(webhook.post.security).toEqual([]);
+		expect(document.security).toEqual([{ apiKey: [] }]);
+	});
+
+	it('marks every value set as one that may gain values', () => {
+		const sets = Object.values(document.components.schemas).flatMap((schema) =>
+			Object.entries(
+				(schema as { properties?: Record<string, { enum?: unknown; description?: string }> })
+					.properties ?? {}
+			).filter(([name, property]) => property.enum !== undefined && name !== 'error')
+		);
+		expect(sets.map(([name]) => name)).toContain('dedication_kind');
+		for (const [, property] of sets) expect(property.description).toContain('may gain values');
 	});
 
 	it('pages as the lists do', () => {
@@ -151,5 +212,32 @@ describe('openApiDocument() against what it describes', () => {
 			limit: limits.per_address.requests,
 			period: limits.per_address.period_seconds
 		}).toEqual(bound('API_RATE_LIMITER'));
+	});
+});
+
+describe('publishedOrigin()', () => {
+	it('publishes https for any host but this machine', () => {
+		expect(publishedOrigin(new URL('http://give.example.org/integrations/openapi.json'))).toBe(
+			'https://give.example.org'
+		);
+		expect(publishedOrigin(new URL('http://give.example.workers.dev:8080/x'))).toBe(
+			'https://give.example.workers.dev:8080'
+		);
+	});
+
+	it('keeps the scheme a local dev server answers on', () => {
+		expect(publishedOrigin(new URL('http://localhost:5321/x'))).toBe('http://localhost:5321');
+		expect(publishedOrigin(new URL('http://127.0.0.1:5321/x'))).toBe('http://127.0.0.1:5321');
+	});
+});
+
+describe('spokenDuration()', () => {
+	it('says whole minutes and whole hours in words', () => {
+		expect(spokenDuration(60_000)).toBe('1 minute');
+		expect(spokenDuration(72 * 3_600_000)).toBe('72 hours');
+	});
+
+	it('refuses a duration that is not whole minutes', () => {
+		expect(() => spokenDuration(90_000)).toThrow(/whole minutes/);
 	});
 });

@@ -25,7 +25,7 @@ import {
 	revokeAndArchiveApiKey,
 	revokedApiKeyName
 } from '$lib/server/integrations/keys';
-import { OPENAPI_PATH } from '$lib/server/integrations/openapi';
+import { OPENAPI_PATH, publishedOrigin } from '$lib/server/integrations/openapi';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.api';
 
@@ -52,10 +52,10 @@ import type { Route } from './+types/_app.admin.integrations.api';
 // and says so to a reader who cannot see it go: the key's id rides the redirect as a flash
 // ($lib/server/flash.ts), and the loader turns it back into the name a status region reads out.
 //
-// the API reference and the agent prompt are the read API's two documents, each built for this
-// request's own origin ($lib/server/integrations/openapi.ts, agent-prompt.ts): the reference is a
-// link to the document the deployment serves, and the prompt is copied whole from the loader's
-// answer, so the press needs no fetch.
+// the API reference and the agent prompt are the read API's two documents, each built for the
+// origin this request publishes (`publishedOrigin` in $lib/server/integrations/openapi.ts): the
+// reference is a link to the document the deployment serves, and the prompt is copied whole from
+// the loader's answer.
 //
 // both dialogs take their opener off the page as they answer — a made key remounts the form that
 // asked, a revoked row takes its Revoke with it — so each hands `fallbackFocus` the Name box, the
@@ -141,13 +141,14 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const landed = await takeFlash(request, SAVED_FLASH);
 	const revoked = landed === null ? null : await revokedApiKeyName(db, landed.marker);
 
+	const published = publishedOrigin(url);
 	return data(
 		{
 			keys,
 			revoking: keys.find((key) => key.id === asked) ?? null,
 			revoked,
-			apiReference: `${url.origin}${OPENAPI_PATH}`,
-			agentPrompt: agentPromptFor(url.origin)
+			apiReference: `${published}${OPENAPI_PATH}`,
+			agentPrompt: agentPromptFor(published)
 		},
 		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
 	);
@@ -226,7 +227,7 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 						>
 							API reference
 						</Button>
-						<CopyControl text={loaderData.agentPrompt} label="Copy agent prompt" />
+						<CopyControl text={loaderData.agentPrompt} wording="Copy agent prompt" />
 					</div>
 				</Grouped>
 				<KeyPlane keys={loaderData.keys} />

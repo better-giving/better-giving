@@ -7,6 +7,7 @@ import {
 	QUICKBOOKS_CONNECT_PATH
 } from '$lib/server/accounting/connect-link';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
+import { AGENT_PROMPT_PATH, OPENAPI_PATH } from '$lib/server/integrations/openapi';
 import { INTEGRATIONS_BASE_PATH } from '$lib/server/integrations/surface';
 import { ZAPIER_BASE_PATH } from '$lib/server/zapier/surface';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
@@ -582,6 +583,17 @@ describe('the route surface', () => {
 
 	// the sweep finding nothing would make the case below vacuous, the same way an empty route tree
 	// would make the whole file vacuous — and a renamed api layout is exactly how that happens.
+	/**
+	 * the read API's two documents are linked from the dashboard and named inside each other by
+	 * these constants, so a route file renamed without them leaves every link a 404.
+	 */
+	it('serves the read API’s documents at the addresses they are linked by', () => {
+		const servedAt = (file: string) => routes.find((route) => route.file === file)?.path;
+
+		expect(servedAt('routes/integrations.openapi[.]json.ts')).toBe(OPENAPI_PATH);
+		expect(servedAt('routes/integrations.agent-prompt[.]md.ts')).toBe(AGENT_PROMPT_PATH);
+	});
+
 	it('has a public api, with its metered layout in it', () => {
 		expect(routes.filter(apiRoute).length).toBeGreaterThan(0);
 		expect(routes.map((r) => r.file)).toContain(API_LAYOUT);

@@ -101,6 +101,7 @@ it('links the API reference in a new tab, and copies the agent prompt', async ()
 	expect(reference?.getAttribute('target')).toBe('_blank');
 
 	const copy = root.querySelector<HTMLButtonElement>('button[aria-label="Copy agent prompt"]');
+	expect(copy?.textContent).toBe('Copy agent prompt');
 	await act(async () => copy?.click());
 	expect(writes).toEqual([AGENT_PROMPT]);
 });

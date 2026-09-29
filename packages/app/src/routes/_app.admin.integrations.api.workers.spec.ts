@@ -255,6 +255,20 @@ describe('GET /admin/integrations/api — the documents', () => {
 		expect(agentPrompt).toContain(`${ORIGIN}/integrations/v1/gifts`);
 		expect(agentPrompt).toContain(apiReference);
 	});
+
+	it('publishes https for both when the page is asked over plain http', async () => {
+		const plain = ORIGIN.replace('https:', 'http:');
+		const response = await request(
+			new Request(`${plain}${SCREEN}`, { headers: { cookie: deployer } }),
+			{
+				env: deployed()
+			}
+		);
+		const { apiReference, agentPrompt } = (await response.json()) as Screen;
+
+		expect(apiReference).toBe(`${ORIGIN}/integrations/openapi.json`);
+		expect(agentPrompt).not.toContain(plain);
+	});
 });
 
 describe('POST /admin/integrations/api — making a key', () => {
