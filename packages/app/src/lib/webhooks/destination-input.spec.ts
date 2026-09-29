@@ -7,7 +7,9 @@ describe('DESTINATION_INPUT', () => {
 	it.each([
 		'https://user:secret@crm.example.org/hooks',
 		'https://token@crm.example.org',
-		'user:secret@crm.example.org/hooks'
+		'user:secret@crm.example.org/hooks',
+		'https:\\\\user:secret@crm.example.org/hooks',
+		'https:/\\token@crm.example.org/hooks'
 	])('refuses %s, which carries a user name or password, under the address box', (url) => {
 		const parsed = parse(url);
 

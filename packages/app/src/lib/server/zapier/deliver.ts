@@ -7,6 +7,7 @@ import { MINUTE_RUN, PACE, type Plan } from '../outbox/budget';
 import { defineFailing } from '../outbox/failing';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
+import { askedWait } from '../outbox/retry-after';
 import {
 	donorEventOf,
 	type GiftEvent,
@@ -43,8 +44,9 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 //   410      — the Zap is off or deleted (Zapier's REST-hook convention). its subscription is ended
 //              `gone` and everything still owed to it dropped, in one batch; no retry.
 //   429      — a failure, below, except that the row waits at least as long as the hook's
-//              `Retry-After` asks, and never past the moment the row is given up on. the hook's
-//              rows this run has not yet posted wait for the same time, unposted.
+//              `Retry-After` asks (../outbox/retry-after.ts), and never past the moment the row is
+//              given up on. the hook's rows this run has not yet posted wait for the same time,
+//              unposted.
 //   anything
 //   else     — a failure: any other status, a network fault or a timeout. `attempts` goes up, the
 //              row waits out {@link backoffMs}, and the hook's `failing_since` marks the start of
@@ -358,23 +360,16 @@ async function post(fetcher: typeof fetch, hookUrl: string, event: unknown): Pro
 			return 'taken';
 		}
 		if (response.status === 410) return 'gone';
-		const retryAt =
-			response.status === 429 ? retryAfter(response.headers.get('retry-after')) : undefined;
-		return { error: await refusal(response), retryAt };
+		const answeredAt = Date.now();
+		const wait =
+			response.status === 429
+				? askedWait(response.headers.get('retry-after'), answeredAt)
+				: undefined;
+		return {
+			error: await refusal(response),
+			retryAt: wait === undefined ? undefined : new Date(answeredAt + wait)
+		};
 	} catch (error) {
 		return { error: String(error) };
 	}
-}
-
-/**
- * a `Retry-After` value as a time: delay-seconds from the answer, or an HTTP-date
- * (https://www.rfc-editor.org/rfc/rfc9110#field.retry-after). anything else, or a time past what
- * a `Date` holds, is no ask.
- */
-function retryAfter(value: string | null): Date | undefined {
-	if (value === null) return undefined;
-	const trimmed = value.trim();
-	const at = /^\d+$/.test(trimmed) ? Date.now() + Number(trimmed) * 1_000 : Date.parse(trimmed);
-	const asked = new Date(at);
-	return Number.isFinite(asked.getTime()) ? asked : undefined;
 }

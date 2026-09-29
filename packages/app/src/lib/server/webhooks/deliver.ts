@@ -52,9 +52,9 @@ import { signedHeaders } from './sign';
 //              is not the one the organisation gave), a network fault or a timeout. the row waits
 //              out the next step of {@link WEBHOOK_RETRY_SCHEDULE_MS}, spread by
 //              {@link WEBHOOK_RETRY_JITTER}, or where a 429 or 503 asked with `Retry-After` for
-//              longer, what it asked (../outbox/retry-after.ts) up to the schedule's longest step;
-//              or it is `failed` after the last step. the destination's run of failures is marked
-//              (../outbox/failing.ts) in the row's outcome batch.
+//              longer, what it asked (../outbox/retry-after.ts) from when it answered, up to the
+//              schedule's longest step; or it is `failed` after the last step. the destination's
+//              run of failures is marked (../outbox/failing.ts) in the row's outcome batch.
 //   410      — a failure as above, and the destination paused at once: Standard Webhooks reads a
 //              410 as the endpoint withdrawn.
 // a failed row is kept, for the destination's recent deliveries. the mark, its clear and the pause
@@ -351,23 +351,31 @@ async function tellPaused(
 
 /**
  * where a row owed to `destinationId` that has now failed `attempts` posts stands: failed after the
- * last step, or waiting out its next — the step spread by {@link WEBHOOK_RETRY_JITTER}, or where a
- * 429 or 503 asked for longer, what it asked up to {@link LONGEST_ASK_MS}. a row whose destination
- * was paused while its post was out is held with the rest (`holdStatement`).
+ * last step, or waiting out its next — the step from `now` spread by {@link WEBHOOK_RETRY_JITTER},
+ * or where a 429 or 503 asked for longer, what it asked up to {@link LONGEST_ASK_MS} from the moment
+ * the answer came. a row whose destination was paused while its post was out is held with the rest
+ * (`holdStatement`).
  */
 function afterFailure(
 	db: Db,
 	destinationId: string,
 	attempts: number,
 	now: Date,
-	answer: { readonly asked?: number | undefined }
+	answer: { readonly asked?: Asked | undefined }
 ): Outcome<typeof webhookDelivery> {
 	const step = WEBHOOK_RETRY_SCHEDULE_MS[attempts - 1];
 	if (step === undefined) return { status: 'failed' };
 	const spread = step * (1 + WEBHOOK_RETRY_JITTER * (2 * Math.random() - 1));
-	const wait = Math.round(Math.max(spread, Math.min(answer.asked ?? 0, LONGEST_ASK_MS)));
+	const due = Math.round(
+		Math.max(
+			now.getTime() + spread,
+			answer.asked === undefined
+				? 0
+				: answer.asked.answeredAt + Math.min(answer.asked.wait, LONGEST_ASK_MS)
+		)
+	);
 	return {
-		nextAttemptAt: sql`case when ${exists(pausedDestination(db, destinationId))} then ${HELD_UNTIL.getTime()} else ${now.getTime() + wait} end`
+		nextAttemptAt: sql`case when ${exists(pausedDestination(db, destinationId))} then ${HELD_UNTIL.getTime()} else ${due} end`
 	};
 }
 
@@ -522,6 +530,9 @@ async function readDestinations(
 	return new Map(rows.map((row) => [row.id, row]));
 }
 
+/** how long a 429 or 503 asked to be left, and the moment it was answered. */
+type Asked = { readonly wait: number; readonly answeredAt: number };
+
 /**
  * what a destination answered: delivered, with the status and the moment the answer came, or
  * failed, with the status where one came, the words `last_error` keeps and, for a 429 or 503 that
@@ -533,7 +544,7 @@ type Answer =
 			readonly delivered: false;
 			readonly status: number | null;
 			readonly error: string;
-			readonly asked?: number | undefined;
+			readonly asked?: Asked | undefined;
 	  };
 
 /** an event, serialized once, signed as delivery `id`, and posted as the same string. */
@@ -568,10 +579,16 @@ async function post(
 			await response.body?.cancel().catch(() => undefined);
 			return { delivered: true, status: response.status, at: new Date() };
 		}
-		const asked = WAITS_ON_RETRY_AFTER.has(response.status)
-			? askedWait(response.headers.get('retry-after'), Date.now())
+		const answeredAt = Date.now();
+		const wait = WAITS_ON_RETRY_AFTER.has(response.status)
+			? askedWait(response.headers.get('retry-after'), answeredAt)
 			: undefined;
-		return { delivered: false, status: response.status, error: await refusal(response), asked };
+		return {
+			delivered: false,
+			status: response.status,
+			error: await refusal(response),
+			asked: wait === undefined ? undefined : { wait, answeredAt }
+		};
 	} catch (error) {
 		return { delivered: false, status: null, error: String(error) };
 	}

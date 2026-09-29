@@ -17,11 +17,24 @@ export const HAS_CREDENTIALS =
 	'can’t carry a user name or password: remove everything up to and including the @';
 
 /**
- * whether the address `typed` names a user name or password: an `@` in its host part, the text
- * after any scheme's `//` up to the first `/`, `\`, `?` or `#` — where the URL parser looks for
- * one, and where an address typed with no scheme has it too.
+ * the address `typed` as the URL parser reads it, or null where it reads none: surrounding space
+ * dropped, and an address typed with no scheme — nothing before a colon but a host, or a host and
+ * its port — taken as https. the write stores what this reads.
+ */
+export function parseAddress(typed: string): URL | null {
+	const trimmed = typed.trim();
+	return URL.parse(/^[a-z][a-z\d+.-]*:(?!\d)/i.test(trimmed) ? trimmed : `https://${trimmed}`);
+}
+
+/**
+ * whether the address `typed` names a user name or password: where {@link parseAddress} reads one
+ * from it, however the text spells the separators, or where an `@` sits in its host part, the text
+ * after any scheme's `//` up to the first `/`, `\`, `?` or `#` — which catches one the parser drops
+ * as empty (`https://@host`) or reads as a scheme of its own (`user:secret@host`).
  */
 export function carriesCredentials(typed: string): boolean {
+	const url = parseAddress(typed);
+	if (url !== null && (url.username !== '' || url.password !== '')) return true;
 	const afterScheme = typed.trim().replace(/^[a-z][a-z\d+.-]*:\/\//i, '');
 	const [host = ''] = afterScheme.split(/[/\\?#]/, 1);
 	return host.includes('@');

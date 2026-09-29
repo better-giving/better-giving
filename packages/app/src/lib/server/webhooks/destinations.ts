@@ -3,7 +3,12 @@ import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { webhookDestination, webhookDestinationEvent } from '../db/schema';
 import { WEBHOOK_EVENT_TYPES, type WebhookEvent } from '../../webhooks/catalog';
-import { carriesCredentials, HAS_CREDENTIALS, NO_EVENTS } from '../../webhooks/destination-input';
+import {
+	carriesCredentials,
+	HAS_CREDENTIALS,
+	NO_EVENTS,
+	parseAddress
+} from '../../webhooks/destination-input';
 import type { Plan } from '../outbox/budget';
 import { countHeld, dropOwedStatement, requeueHeldStatements } from './deliver';
 
@@ -252,12 +257,11 @@ function notFound(id: string) {
 }
 
 /**
- * the address a destination is stored under, or why it may not be one. surrounding space is
- * dropped, and an address typed with no scheme — nothing before a colon but a host, or a host and
- * its port — is taken as https.
+ * the address a destination is stored under, or why it may not be one: the typed text as
+ * `parseAddress` ($lib/webhooks/destination-input.ts) reads it.
  *
- * no user name or password ($lib/webhooks/destination-input.ts says why), checked on the text as
- * typed, before a scheme is taken for it.
+ * no user name or password (`carriesCredentials` there, which says why), checked before anything
+ * else, on the same read and on the text as typed.
  *
  * https only: every post carries donors' names and addresses. and a host the internet reaches: a
  * post goes out from this deployment's own network, so a name with no domain, `localhost`, a name
@@ -273,8 +277,7 @@ function destinationAddress(
 	if (carriesCredentials(typed)) {
 		return { ok: false, reason: 'has_credentials', field: 'url', box: HAS_CREDENTIALS };
 	}
-	const trimmed = typed.trim();
-	const url = URL.parse(/^[a-z][a-z\d+.-]*:(?!\d)/i.test(trimmed) ? trimmed : `https://${trimmed}`);
+	const url = parseAddress(typed);
 	if (url === null || url.hostname === '') {
 		return {
 			ok: false,
@@ -439,7 +442,7 @@ export async function resumeDestination(
 	db: Db,
 	id: string,
 	now: Date,
-	plan: Plan = 'free'
+	plan: Plan
 ): Promise<ResumeDestinationResult> {
 	const [requeued, , resumed] = await db.batch([
 		...requeueHeldStatements(db, id, now, plan),

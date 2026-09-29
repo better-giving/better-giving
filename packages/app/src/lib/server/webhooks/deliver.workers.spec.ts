@@ -394,6 +394,21 @@ describe('sendDueWebhooks() — a post that fails', () => {
 		}
 	);
 
+	it('measures an ask from when the answer came, not from when the run began', async () => {
+		await destination();
+		await settle();
+		const answeredAt = later(40_000);
+		const receiving = receivers(() => {
+			vi.setSystemTime(answeredAt);
+			return new Response('', { status: 503, headers: { 'retry-after': '900' } });
+		});
+
+		await runAt(START, receiving.fetch);
+
+		const [row] = await rows();
+		expect(row?.next_attempt_at).toBe(answeredAt.getTime() + 900_000);
+	});
+
 	it('retries with the same webhook-id and a fresh timestamp and signature, each verifying', async () => {
 		const target = await destination();
 		await settle();
@@ -565,7 +580,7 @@ describe('sendDueWebhooks() — a destination failing for three days', () => {
 			url: target.url,
 			reason: 'failing'
 		});
-		expect(await resumeDestination(db, target.id, later(11 * 24 * HOUR))).toEqual({
+		expect(await resumeDestination(db, target.id, later(11 * 24 * HOUR), 'free')).toEqual({
 			ok: true,
 			requeued: 1
 		});
@@ -939,7 +954,7 @@ describe('resumeDestination() — the held window, re-sent', () => {
 
 		const resumedAt = later(180 * HOUR);
 		vi.setSystemTime(resumedAt);
-		const resumed = await resumeDestination(db, target.id, resumedAt);
+		const resumed = await resumeDestination(db, target.id, resumedAt, 'free');
 		expect(resumed).toEqual({ ok: true, requeued: 3 });
 
 		answering = 200;
@@ -977,7 +992,7 @@ describe('resumeDestination() — the held window, re-sent', () => {
 			)
 				.bind(START.getTime(), START.getTime(), target.id)
 				.run();
-			await resumeDestination(db, target.id, START);
+			await resumeDestination(db, target.id, START, 'free');
 			return new Response('', { status: 503 });
 		}) as typeof fetch;
 
@@ -1002,7 +1017,10 @@ describe('resumeDestination() — the held window, re-sent', () => {
 
 		const resumedAt = later(HOUR);
 		vi.setSystemTime(resumedAt);
-		expect(await resumeDestination(db, held.id, resumedAt)).toEqual({ ok: true, requeued: 45 });
+		expect(await resumeDestination(db, held.id, resumedAt, 'free')).toEqual({
+			ok: true,
+			requeued: 45
+		});
 		const { results } = await env.DB.prepare(
 			'select next_attempt_at from webhook_delivery order by created_at, id'
 		).all<{ next_attempt_at: number }>();

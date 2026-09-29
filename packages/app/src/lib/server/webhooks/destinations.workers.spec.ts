@@ -204,7 +204,9 @@ describe('createDestination()', () => {
 		'https://user:secret@crm.example.org/hooks',
 		'https://token@crm.example.org/hooks',
 		'https://:secret@crm.example.org/hooks',
-		'user:secret@crm.example.org/hooks'
+		'user:secret@crm.example.org/hooks',
+		'https:\\\\user:secret@crm.example.org/hooks',
+		'https:/\\token@crm.example.org/hooks'
 	])('refuses %s, which carries a user name or password, and writes nothing', async (url) => {
 		const made = await createDestination(db, { url, events: ['gift.made'] });
 
@@ -298,7 +300,7 @@ describe('resumeDestination()', () => {
 	it('refuses a destination that does not exist, naming the id', async () => {
 		const id = '019fb300-0000-7000-8000-00000000dead';
 
-		expect(await resumeDestination(db, id, NOW)).toEqual({
+		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({
 			ok: false,
 			reason: 'not_found',
 			detail: `No destination has the id ${id}.`
@@ -320,7 +322,7 @@ describe('resumeDestination()', () => {
 			.bind(`msg_${crypto.randomUUID()}`, id)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW)).toEqual({
+		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({
 			ok: false,
 			reason: 'not_found',
 			detail: `No destination has the id ${id}.`
@@ -344,7 +346,10 @@ describe('resumeDestination()', () => {
 			.bind(`msg_${crypto.randomUUID()}`, id, NOW.getTime() + 60_000)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW)).toMatchObject({ ok: false, reason: 'not_paused' });
+		expect(await resumeDestination(db, id, NOW, 'free')).toMatchObject({
+			ok: false,
+			reason: 'not_paused'
+		});
 		expect(
 			await env.DB.prepare('select attempts, next_attempt_at from webhook_delivery').first()
 		).toEqual({ attempts: 3, next_attempt_at: NOW.getTime() + 60_000 });
@@ -358,11 +363,14 @@ describe('resumeDestination()', () => {
 			.bind(id)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW)).toEqual({ ok: true, requeued: 0 });
+		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({ ok: true, requeued: 0 });
 		expect(
 			await env.DB.prepare('select paused_at, failing_since from webhook_destination').first()
 		).toEqual({ paused_at: null, failing_since: null });
-		expect(await resumeDestination(db, id, NOW)).toMatchObject({ ok: false, reason: 'not_paused' });
+		expect(await resumeDestination(db, id, NOW, 'free')).toMatchObject({
+			ok: false,
+			reason: 'not_paused'
+		});
 	});
 });
 
