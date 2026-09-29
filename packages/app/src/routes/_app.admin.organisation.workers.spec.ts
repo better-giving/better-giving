@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { RichTextDocument } from '$lib/rich-text/document';
 import { createDb } from '$lib/server/db/client';
+import { createImage } from '$lib/server/images/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
@@ -19,6 +20,8 @@ const LOOK_FORM = 'org-look';
 const LOOK_UNDO_FORM = 'org-look-undo';
 const SHARING_FORM = 'org-sharing';
 const SHARING_UNDO_FORM = 'org-sharing-undo';
+const LOGO_FORM = 'org-logo';
+const LOGO_UNDO_FORM = 'org-logo-undo';
 
 let request: RouteRequester;
 let session: string;
@@ -56,6 +59,9 @@ type Loaded = {
 	};
 	sharingVersion: string;
 	sharingSaved: 'sharing' | 'sharing-undone' | null;
+	logo: { imageId: string; width: number; height: number } | null;
+	logoVersion: string;
+	logoUndoable: boolean;
 };
 
 async function load(flash = ''): Promise<Loaded> {
@@ -272,7 +278,7 @@ describe('Undo of the story', () => {
 
 type LookAnswer = {
 	status: number;
-	saved?: 'look' | 'look-undone';
+	saved?: 'look' | 'look-undone' | 'logo';
 	version?: string;
 	errors: Record<string, string[]>;
 	message: string | undefined;
@@ -294,7 +300,7 @@ async function postLook(
 		{ env }
 	);
 	const answered = (await response.json()) as {
-		saved?: 'look' | 'look-undone';
+		saved?: 'look' | 'look-undone' | 'logo';
 		version?: string;
 		form?: { result: { error?: Record<string, string[]>; initialValue?: Record<string, unknown> } };
 	};
@@ -642,5 +648,112 @@ describe('Undo of the sharing', () => {
 		await share(['x'], 'First.');
 		await post(SHARING_UNDO_FORM, (await load()).sharingVersion);
 		expect((await load()).mission).toEqual(words('Second mission.'));
+	});
+});
+
+/** an image stored as the images route stores an upload, or as an illustration is stored. */
+async function stored(kind: 'photo' | 'illustration', width = 640, height = 320) {
+	return createImage(
+		createDb(env.DB),
+		{ kind, contentType: 'image/png', width, height, alt: null },
+		new Uint8Array([1])
+	);
+}
+
+/** a logo write as the page drawn this moment would post it; an empty id is Remove. */
+async function setLogo(imageId: string) {
+	return postLook(LOGO_FORM, (await load()).logoVersion, { imageId });
+}
+
+describe('the logo', () => {
+	it('is none, with nothing to undo, before anything is saved', async () => {
+		expect(await load()).toMatchObject({ logo: null, logoUndoable: false });
+	});
+
+	it('is set and read back with its size, answering in place with the version it wrote', async () => {
+		const id = await stored('photo', 640, 320);
+		const answer = await setLogo(id);
+		expect(answer).toMatchObject({ status: 200, saved: 'logo' });
+
+		const landed = await load();
+		expect(landed.logo).toEqual({ imageId: id, width: 640, height: 320 });
+		expect(answer.version).toBe(landed.logoVersion);
+	});
+
+	it('keeps the logo it replaced, which Undo swaps back, and a second Undo swaps again', async () => {
+		const first = await stored('photo');
+		const second = await stored('photo');
+		await setLogo(first);
+		await setLogo(second);
+		expect((await load()).logoUndoable).toBe(true);
+
+		const undone = await postLook(LOGO_UNDO_FORM, (await load()).logoVersion);
+		expect(undone).toMatchObject({ status: 200, saved: 'logo' });
+		const landed = await load();
+		expect(landed.logo?.imageId).toBe(first);
+		expect(undone.version).toBe(landed.logoVersion);
+
+		await postLook(LOGO_UNDO_FORM, landed.logoVersion);
+		expect((await load()).logo?.imageId).toBe(second);
+	});
+
+	it('is removed by an empty id, and Undo puts it back', async () => {
+		const id = await stored('photo');
+		await setLogo(id);
+
+		expect(await setLogo('')).toMatchObject({ status: 200, saved: 'logo' });
+		expect(await load()).toMatchObject({ logo: null, logoUndoable: true });
+
+		await postLook(LOGO_UNDO_FORM, (await load()).logoVersion);
+		expect((await load()).logo?.imageId).toBe(id);
+	});
+
+	it('takes the first logo back to none', async () => {
+		await setLogo(await stored('photo'));
+		await postLook(LOGO_UNDO_FORM, (await load()).logoVersion);
+		expect(await load()).toMatchObject({ logo: null, logoUndoable: true });
+	});
+
+	it('refuses a write from a page drawn before another, at a 409, and keeps that write', async () => {
+		const { logoVersion: drawn } = await load();
+		const theirs = await stored('photo');
+		await setLogo(theirs);
+
+		const answer = await postLook(LOGO_FORM, drawn, { imageId: await stored('photo') });
+		expect(answer.status).toBe(409);
+		expect(answer.message).toMatch(/logo has been changed since this page was opened/);
+		expect((await load()).logo?.imageId).toBe(theirs);
+	});
+
+	it('refuses an illustration, naming it, and writes nothing', async () => {
+		const drawing = await stored('illustration');
+		const answer = await setLogo(drawing);
+		expect(answer.status).toBe(400);
+		expect(answer.errors).toEqual({
+			imageId: [`"${drawing}" is an illustration; a logo is a photo uploaded here`]
+		});
+		expect(await load()).toMatchObject({ logo: null, logoUndoable: false });
+	});
+
+	it('refuses an id no stored image has, naming it, and writes nothing', async () => {
+		const unknown = '0192a4c1-0000-7000-8000-00000000dead';
+		const answer = await setLogo(unknown);
+		expect(answer.status).toBe(400);
+		expect(answer.errors).toEqual({
+			imageId: [`"${unknown}" names no stored image; a logo is a photo uploaded here`]
+		});
+		expect(await load()).toMatchObject({ logo: null, logoUndoable: false });
+	});
+
+	it('refuses an Undo with nothing to undo, before any logo and after a Remove of none', async () => {
+		const before = await postLook(LOGO_UNDO_FORM, (await load()).logoVersion);
+		expect(before.status).toBe(409);
+		expect(before.message).toMatch(/nothing to undo/);
+
+		await setLogo('');
+		expect((await load()).logoUndoable).toBe(false);
+		const after = await postLook(LOGO_UNDO_FORM, (await load()).logoVersion);
+		expect(after.status).toBe(409);
+		expect(after.message).toMatch(/nothing to undo/);
 	});
 });

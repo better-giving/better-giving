@@ -8,10 +8,13 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { data, Form, useFetcher, useFormAction, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { useFocusOnRefusal } from '$lib/admin/editor/done-sheet';
+import { postPhoto, type UploadAnswer } from '$lib/admin/editor/photo-upload';
+import { replaceRefusal } from '$lib/admin/editor/replace-photo';
+import { type LogoControlProps, LogoControl } from '$lib/admin/look/logo-control';
 import { RichTextEditor } from '$lib/admin/rich-text/rich-text-editor';
 import { type Look, LookControl } from '$lib/admin/look/look-control';
 import { buttonState } from '$lib/admin/save-button-state';
@@ -39,12 +42,17 @@ import { loadFailed } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { lookInput, sharingInput, storyInput } from '$lib/server/org/presentation';
 import {
+	type LogoUndo,
+	type LogoWrite,
 	type LookWrite,
+	readOrgLogo,
 	readOrgLook,
 	readOrgSharing,
 	readOrgStory,
 	type SharingWrite,
 	type StoryWrite,
+	updateOrgLogo,
+	updateOrgLogoToPrevious,
 	updateOrgLook,
 	updateOrgLookToPrevious,
 	updateOrgSharing,
@@ -77,6 +85,11 @@ import type { Route } from './+types/_app.admin.organisation';
 // through the section's fetcher and answers in place rather than by a redirect, with the version it
 // wrote. its version is a digest of the look column alone, on the story's rule, and its Undo swaps
 // the look with the one the save replaced as the story's does.
+//
+// the logo stands first in the look, and applies as a look pick does, answering in place: an upload
+// posts its write the moment the photo is stored, and Remove posts no photo. its version is a digest
+// of the logo column alone, and its Undo swaps the logo with the one the write replaced — offered
+// only while the two differ, which the loader reads.
 //
 // the sharing is the third, a text form saved and undone as the story is, against a digest of the
 // sharing column alone; its landing is its own marker, so a sharing save lights no story button.
@@ -113,6 +126,16 @@ const LOOK_EDIT = defineForm({
 });
 const LOOK_UNDO = defineForm({ id: LOOK_UNDO_FORM_ID, schema: z.object({}) });
 
+const LOGO_FORM_ID = 'org-logo';
+const LOGO_UNDO_FORM_ID = 'org-logo-undo';
+
+/** the stored photo the logo becomes; blank is Remove. */
+const LOGO_EDIT = defineForm({
+	id: LOGO_FORM_ID,
+	schema: z.object({ imageId: z.string().optional() })
+});
+const LOGO_UNDO = defineForm({ id: LOGO_UNDO_FORM_ID, schema: z.object({}) });
+
 const SHARING_FORM_ID = 'org-sharing';
 const SHARING_UNDO_FORM_ID = 'org-sharing-undo';
 
@@ -136,6 +159,8 @@ const SCREEN_FORMS = [
 	UNDO_FORM_ID,
 	LOOK_FORM_ID,
 	LOOK_UNDO_FORM_ID,
+	LOGO_FORM_ID,
+	LOGO_UNDO_FORM_ID,
 	SHARING_FORM_ID,
 	SHARING_UNDO_FORM_ID
 ] as const;
@@ -160,6 +185,13 @@ const STALE_LOOK =
 	'see it, then make this change again.';
 const LOOK_SAVE_FAILED = 'Saving the look failed and nothing was changed. Try again.';
 
+const STALE_LOGO =
+	'Nothing was changed: the logo has been changed since this page was opened. Reload the page to ' +
+	'see it, then make this change again.';
+const LOGO_SAVE_FAILED = 'Saving the logo failed and nothing was changed. Try again.';
+const NOTHING_TO_UNDO_LOGO =
+	'Nothing was changed: the logo is the same as the one before it, so there is nothing to undo.';
+
 const STALE_SHARING =
 	'Nothing was changed: the sharing has been saved since this page was opened. Reload the page ' +
 	'to see it, then make this change again.';
@@ -173,15 +205,17 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	let read: Awaited<ReturnType<typeof readOrgStory>>;
 	let look: Awaited<ReturnType<typeof readOrgLook>>;
 	let sharing: Awaited<ReturnType<typeof readOrgSharing>>;
+	let logo: Awaited<ReturnType<typeof readOrgLogo>>;
 	try {
 		const db = context.get(database);
-		[read, look, sharing] = await Promise.all([
+		[read, look, sharing, logo] = await Promise.all([
 			readOrgStory(db),
 			readOrgLook(db),
-			readOrgSharing(db)
+			readOrgSharing(db),
+			readOrgLogo(db)
 		]);
 	} catch (e) {
-		console.error('reading the organisation story, look and sharing failed:', e);
+		console.error('reading the organisation story, look, sharing and logo failed:', e);
 		loadFailed('The Organisation page');
 	}
 
@@ -197,6 +231,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			landing: landed === null ? null : crypto.randomUUID(),
 			look: look.look,
 			lookVersion: look.version,
+			logo: logo.logo,
+			logoVersion: logo.version,
+			logoUndoable: logo.undoable,
 			sharing: {
 				channels: sharing.sharing.channels ?? SHARE_CHANNELS_DEFAULT,
 				message: sharing.sharing.message,
@@ -228,6 +265,10 @@ export async function action(args: Route.ActionArgs) {
 			return saveLook(args, body);
 		case LOOK_UNDO_FORM_ID:
 			return undoLook(args, body);
+		case LOGO_FORM_ID:
+			return saveLogo(args, body);
+		case LOGO_UNDO_FORM_ID:
+			return undoLogo(args, body);
 		case SHARING_FORM_ID:
 			return saveSharing(args, body);
 		case SHARING_UNDO_FORM_ID:
@@ -318,6 +359,47 @@ export async function action(args: Route.ActionArgs) {
 		return { saved: 'look-undone' as const, version: written.version };
 	}
 
+	// a logo write answers in place as a look press does, whether it set, removed or undid: the
+	// section's words are read off the logo it lands on, not off which press it was.
+	async function saveLogo({ context }: Route.ActionArgs, body: FormData) {
+		const submission = parseForm(body, LOGO_EDIT);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const imageId = submission.value.imageId ?? null;
+
+		const seen = submittedDigest(body);
+		let written: LogoWrite;
+		try {
+			written = await updateOrgLogo(context.get(database), seen, imageId);
+		} catch (e) {
+			console.error('saving the organisation logo failed:', e);
+			return invalid(500, submission.reject({ formErrors: [LOGO_SAVE_FAILED] }));
+		}
+		if (written === 'stale') return invalid(409, submission.reject({ formErrors: [STALE_LOGO] }));
+		if (written === 'unknown') {
+			const refused = `"${imageId}" names no stored image; a logo is a photo uploaded here`;
+			return invalid(400, submission.reject({ fieldErrors: { imageId: [refused] } }));
+		}
+		if (written === 'illustration') {
+			const refused = `"${imageId}" is an illustration; a logo is a photo uploaded here`;
+			return invalid(400, submission.reject({ fieldErrors: { imageId: [refused] } }));
+		}
+		return { saved: 'logo' as const, version: written.version };
+	}
+
+	async function undoLogo({ context }: Route.ActionArgs, body: FormData) {
+		const seen = submittedDigest(body);
+		let written: LogoUndo;
+		try {
+			written = await updateOrgLogoToPrevious(context.get(database), seen);
+		} catch (e) {
+			console.error('undoing the organisation logo failed:', e);
+			return invalid(500, unread(LOGO_UNDO, UNDO_FAILED));
+		}
+		if (written === 'stale') return invalid(409, unread(LOGO_UNDO, STALE_LOGO));
+		if (written === 'nothing') return invalid(409, unread(LOGO_UNDO, NOTHING_TO_UNDO_LOGO));
+		return { saved: 'logo' as const, version: written.version };
+	}
+
 	async function saveSharing({ context, request }: Route.ActionArgs, body: FormData) {
 		const submission = parseForm(body, SHARING_EDIT);
 		if (!submission.ok) return invalid(400, submission.reject());
@@ -371,7 +453,17 @@ export default function Organisation({ loaderData, actionData }: Route.Component
 				landing={loaderData.saved === null ? null : loaderData.landing}
 				actionData={actionData}
 			/>
-			<LookSection look={loaderData.look} version={loaderData.lookVersion} />
+			<LookSection
+				look={loaderData.look}
+				version={loaderData.lookVersion}
+				logo={
+					<LogoPart
+						logo={loaderData.logo}
+						version={loaderData.logoVersion}
+						undoable={loaderData.logoUndoable}
+					/>
+				}
+			/>
 			<SharingSection
 				sharing={loaderData.sharing}
 				version={loaderData.sharingVersion}
@@ -584,7 +676,15 @@ function lookRefusal(answer: AdminActionData): string | undefined {
  * a refusal leaves the refused pick drawn, the way a refused form keeps what was typed, and a 4xx
  * revalidates nothing, so a stale page stays stale until it is reloaded, as the refusal says.
  */
-function LookSection({ look, version }: { readonly look: Look; readonly version: string }) {
+function LookSection({
+	look,
+	version,
+	logo
+}: {
+	readonly look: Look;
+	readonly version: string;
+	readonly logo: ReactNode;
+}) {
 	const fetcher = useFetcher<Route.ComponentProps['actionData']>({ key: LOOK_FORM_ID });
 	const [waiting, setWaiting] = useState<Look | null>(null);
 
@@ -630,11 +730,18 @@ function LookSection({ look, version }: { readonly look: Look; readonly version:
 	const landed =
 		answer !== undefined && 'saved' in answer && answer.version === version ? answer.saved : null;
 	const refusal = answer === undefined ? undefined : lookRefusal(answer);
+	// read off the answer the press stands on even while its own post is in flight, so the word under
+	// the focus does not change mid-press.
+	const redo =
+		fetcher.data !== undefined && 'saved' in fetcher.data && fetcher.data.saved === 'look-undone';
 
 	return (
 		<Section card>
 			<h2>Look</h2>
-			<LookControl mode="organisation" value={shown} onChange={onChange} />
+			<div className="adm-stack">
+				{logo}
+				<LookControl mode="organisation" value={shown} onChange={onChange} />
+			</div>
 			<div className="adm-actions">
 				{/* mounted empty, so the answer arriving in it is announced. */}
 				<span role="status">
@@ -669,11 +776,135 @@ function LookSection({ look, version }: { readonly look: Look; readonly version:
 							if (!undoing) post(LOOK_UNDO.id, version);
 						}}
 					>
-						Undo
+						{redo ? 'Redo' : 'Undo'}
 					</Button>
 				) : null}
 			</div>
 		</Section>
+	);
+}
+
+/** what a logo write or Undo was refused with: the sentence for the whole press, else its id's. */
+function logoRefusal(answer: AdminActionData): string | null {
+	return (
+		formRefusal(LOGO_EDIT, answer) ??
+		formRefusal(LOGO_UNDO, answer) ??
+		resultFor(LOGO_EDIT, answer)?.error?.imageId?.at(0) ??
+		null
+	);
+}
+
+/**
+ * the organisation's logo, written the moment it changes: an upload posts its write once the photo
+ * is stored, and Remove posts none. a write asked for while another is in flight waits for its
+ * answer and goes with the version it revalidated, as a look pick does.
+ *
+ * while a write is in flight the control draws what it writes, so a removed logo takes its Remove
+ * with it at once. every refusal, of the resize, the upload or the write, stands at the press until
+ * the next pick or Remove.
+ */
+function LogoPart({
+	logo,
+	version,
+	undoable
+}: {
+	readonly logo: { readonly imageId: string } | null;
+	readonly version: string;
+	readonly undoable: boolean;
+}) {
+	const upload = useFetcher<UploadAnswer>();
+	const fetcher = useFetcher<Route.ComponentProps['actionData']>();
+	const [waiting, setWaiting] = useState<{ readonly imageId: string | null } | null>(null);
+	const [refused, setRefused] = useState<string | null>(null);
+
+	// each answer is taken once, in the render it arrives in.
+	const [uploaded, setUploaded] = useState(upload.data);
+	if (upload.data !== uploaded) {
+		setUploaded(upload.data);
+		if (upload.data !== undefined && 'error' in upload.data) {
+			setRefused(
+				upload.data.reason === 'failed'
+					? 'That didn’t go through. Choose the logo again.'
+					: upload.data.error
+			);
+		} else if (upload.data !== undefined) {
+			setWaiting({ imageId: upload.data.id });
+		}
+	}
+	const [written, setWritten] = useState(fetcher.data);
+	if (fetcher.data !== written) {
+		setWritten(fetcher.data);
+		setRefused(logoRefusal(fetcher.data));
+	}
+
+	const busy = fetcher.state !== 'idle';
+	const sent = busy ? fetcher.formData?.get(WHICH_FORM) : null;
+
+	const post = useCallback(
+		(form: string, at: string, imageId?: string | null) => {
+			const body = new FormData();
+			body.set(WHICH_FORM, form);
+			body.set(RECORD_VERSION, at);
+			if (imageId !== undefined) body.set('imageId', imageId ?? '');
+			fetcher.submit(body, { method: 'post' });
+		},
+		[fetcher.submit]
+	);
+
+	useEffect(() => {
+		if (busy || waiting === null) return;
+		setWaiting(null);
+		post(LOGO_EDIT.id, version, waiting.imageId);
+	}, [busy, waiting, version, post]);
+
+	const sentId = sent === LOGO_EDIT.id ? fetcher.formData?.get('imageId') : undefined;
+	const writing =
+		waiting ?? (typeof sentId === 'string' ? { imageId: sentId === '' ? null : sentId } : null);
+	const shown = writing === null ? (logo?.imageId ?? null) : writing.imageId;
+
+	const state: LogoControlProps['state'] =
+		upload.state !== 'idle' || (writing !== null && writing.imageId !== null)
+			? 'uploading'
+			: refused === null
+				? undefined
+				: { refused };
+
+	const answer = busy ? undefined : fetcher.data;
+	const landed =
+		answer !== undefined &&
+		'saved' in answer &&
+		answer.saved === 'logo' &&
+		answer.version === version;
+	const undoing = sent === LOGO_UNDO.id;
+
+	return (
+		<LogoControl
+			imageId={shown}
+			onResized={(result) => {
+				if (!result.ok) {
+					setRefused(replaceRefusal(result.reason));
+					return;
+				}
+				setRefused(null);
+				postPhoto(upload, result.blob);
+			}}
+			state={state}
+			onRemove={() => {
+				setRefused(null);
+				if (busy) setWaiting({ imageId: null });
+				else post(LOGO_EDIT.id, version, null);
+			}}
+			report={
+				// kept while its own press is in flight, so the focus it holds is not dropped.
+				(landed && undoable) || undoing
+					? {
+							landed: logo === null ? 'removed' : 'saved',
+							onUndo: () => post(LOGO_UNDO.id, version),
+							undoing
+						}
+					: null
+			}
+		/>
 	);
 }
 

@@ -1,6 +1,7 @@
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { orgPresentation, orgProfile, type OrgProfile } from '../db/schema';
+import { image, orgPresentation, orgProfile, type OrgProfile } from '../db/schema';
+import { firstMissingImage, illustrationsAmong } from '../images/queries';
 import type { ParsedOrgProfile } from './org-input';
 import {
 	lookFromStored,
@@ -18,7 +19,7 @@ import {
 	storyFromStored
 } from './presentation';
 
-// every read and write of `org_profile` and of `org_presentation`'s story, look and sharing, so
+// every read and write of `org_profile` and of `org_presentation`'s story, look, sharing and logo, so
 // neither table object leaves this module — the same boundary `contacts/queries.ts` and
 // `ledger/posting.ts` draw, and it is what makes "all the writes are here" true rather than
 // aspirational.
@@ -358,4 +359,116 @@ export async function updateOrgSharingToPrevious(db: Db, seen: string): Promise<
 		)
 		.returning({ id: orgPresentation.id });
 	return row ? 'written' : 'stale';
+}
+
+// ---------------------------------------------------------------------------
+// the logo, written as the look is — compare-and-set on the logo column alone, the replaced logo
+// kept in `logo_image_id_previous`, and Undo the one-statement swap — with null a value on both
+// sides: no logo is written and undone like any other. so null-safe `IS` compares where the other
+// parts use `=`, and there is nothing to undo exactly where the two columns are equal.
+// ---------------------------------------------------------------------------
+
+/** the logo as a page lays it out: its image and that image's stored size. */
+export type OrgLogo = { readonly imageId: string; readonly width: number; readonly height: number };
+
+/**
+ * what a logo write answers: the version it left the logo at, `stale` as a look write's, or the
+ * id refused — `unknown` names no stored image, `illustration` an image that is not a photo.
+ */
+export type LogoWrite = { readonly version: string } | 'stale' | 'unknown' | 'illustration';
+
+/**
+ * what a logo Undo answers: as a write, or `nothing` where the logo and the one before it are the
+ * same, which includes no row at all.
+ */
+export type LogoUndo = { readonly version: string } | 'stale' | 'nothing';
+
+/** the version of a logo column's value; no logo is a value too, and digests as empty text. */
+const logoVersion = (imageId: string | null) => partVersion(imageId ?? '');
+
+async function storedLogoIds(db: Db) {
+	const [row] = await db
+		.select({
+			current: orgPresentation.logoImageId,
+			previous: orgPresentation.logoImageIdPrevious
+		})
+		.from(orgPresentation)
+		.where(eq(orgPresentation.id, ORG_PRESENTATION_ID));
+	return { current: row?.current ?? null, previous: row?.previous ?? null };
+}
+
+/** the logo with its size, the version a write of it is made against, and whether Undo has one. */
+export async function readOrgLogo(
+	db: Db
+): Promise<{ logo: OrgLogo | null; version: string; undoable: boolean }> {
+	const [row] = await db
+		.select({
+			current: orgPresentation.logoImageId,
+			previous: orgPresentation.logoImageIdPrevious,
+			width: image.width,
+			height: image.height
+		})
+		.from(orgPresentation)
+		.leftJoin(image, eq(image.id, orgPresentation.logoImageId))
+		.where(eq(orgPresentation.id, ORG_PRESENTATION_ID));
+	const current = row?.current ?? null;
+	return {
+		// the foreign key holds a stored id to a stored image, so the size is there whenever the id is.
+		logo:
+			current === null || row?.width == null || row.height == null
+				? null
+				: { imageId: current, width: row.width, height: row.height },
+		version: await logoVersion(current),
+		undoable: current !== (row?.previous ?? null)
+	};
+}
+
+/**
+ * set the logo to the photo `imageId`, or to none where it is null, keeping the one it replaces for
+ * Undo — while the logo is still `seen`. the photo-only rule is held here, since the kind is on the
+ * image's row and no check on this table can read it (../db/schema.ts, `orgPresentation`).
+ */
+export async function updateOrgLogo(
+	db: Db,
+	seen: string,
+	imageId: string | null
+): Promise<LogoWrite> {
+	const { current } = await storedLogoIds(db);
+	if ((await logoVersion(current)) !== seen) return 'stale';
+	if (imageId !== null) {
+		if ((await firstMissingImage(db, [imageId])) !== null) return 'unknown';
+		if ((await illustrationsAmong(db, [imageId])).has(imageId)) return 'illustration';
+	}
+	const [row] = await db
+		.insert(orgPresentation)
+		.values({ id: ORG_PRESENTATION_ID, logoImageId: imageId, logoImageIdPrevious: current })
+		.onConflictDoUpdate({
+			target: orgPresentation.id,
+			set: { logoImageId: imageId, logoImageIdPrevious: sql`${orgPresentation.logoImageId}` },
+			setWhere: sql`${orgPresentation.logoImageId} is ${current}`
+		})
+		.returning({ logo: orgPresentation.logoImageId });
+	return row ? { version: await logoVersion(row.logo) } : 'stale';
+}
+
+/** swap the logo with the one the last write replaced — while the logo is still `seen`. */
+export async function updateOrgLogoToPrevious(db: Db, seen: string): Promise<LogoUndo> {
+	const { current, previous } = await storedLogoIds(db);
+	if ((await logoVersion(current)) !== seen) return 'stale';
+	if (current === previous) return 'nothing';
+	const [row] = await db
+		.update(orgPresentation)
+		.set({
+			logoImageId: sql`${orgPresentation.logoImageIdPrevious}`,
+			logoImageIdPrevious: sql`${orgPresentation.logoImageId}`
+		})
+		.where(
+			and(
+				eq(orgPresentation.id, ORG_PRESENTATION_ID),
+				sql`${orgPresentation.logoImageId} is ${current}`,
+				sql`${orgPresentation.logoImageIdPrevious} is ${previous}`
+			)
+		)
+		.returning({ logo: orgPresentation.logoImageId });
+	return row ? { version: await logoVersion(row.logo) } : 'stale';
 }
