@@ -11,7 +11,7 @@ import {
 } from '$lib/donate/plain-page';
 import { shareImage } from '$lib/page/image-src';
 import { checkSlug } from '$lib/page/slug';
-import { readOrgLook, readOrgProfile } from '$lib/server/org/queries';
+import { readOrgLogo, readOrgLook, readOrgProfile } from '$lib/server/org/queries';
 import { readServedCampaign } from '$lib/server/pages/campaign';
 import { loadPageView, refusedPage } from '$lib/server/pages/view';
 import { database, platform } from '../context';
@@ -38,8 +38,8 @@ import type { Route } from './+types/$slug';
 //
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
-// the organisation's name atop it, the campaign's name, that it has ended, and the way on to
-// /donate — in the organisation's look, with none of its blocks and no donation box, since its
+// the organisation's name and logo atop it, the campaign's name, that it has ended, and the way on
+// to /donate — in the organisation's look, with none of its blocks and no donation box, since its
 // owned settings row is out of service (`endCampaign` in $lib/server/pages/queries.ts, and read so
 // past the end date by `readPublishedConfig`). `no-store`, because publishing it again puts it back
 // live at the same address.
@@ -56,13 +56,18 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const campaign = await readServedCampaign(db, address.slug, now);
 	if (campaign === null) return refusedPage();
 	if (campaign.state === 'ended') {
-		const [profile, orgLook] = await Promise.all([readOrgProfile(db), readOrgLook(db)]);
+		const [profile, orgLook, orgLogo] = await Promise.all([
+			readOrgProfile(db),
+			readOrgLook(db),
+			readOrgLogo(db)
+		]);
 		return data(
 			{
 				kind: 'ended',
 				name: campaign.name,
 				orgName: profile?.legalName ?? null,
-				look: orgLook.look
+				look: orgLook.look,
+				logo: orgLogo.logo
 			} as const,
 			{ headers: { 'cache-control': 'no-store' } }
 		);
@@ -130,6 +135,7 @@ export default function CampaignPage({ loaderData }: Route.ComponentProps) {
 					name={loaderData.name}
 					orgName={loaderData.orgName}
 					look={loaderData.look}
+					logo={loaderData.logo}
 				/>
 			);
 		case 'refused':

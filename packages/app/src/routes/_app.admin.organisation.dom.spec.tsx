@@ -219,7 +219,10 @@ function screen(): HTMLElement {
 								? { imageId: body.imageId, width: 640, height: 320 }
 								: null;
 					logo = { now: next, before: logo.now, version: `logo-v${logoPosts.length}` };
-					return { saved: 'logo', version: logo.version };
+					return {
+						saved: which === 'org-logo-undo' ? 'logo-undone' : 'logo',
+						version: logo.version
+					};
 				}
 				const body = fieldsOf(form);
 				posted.push(body);
@@ -716,6 +719,19 @@ describe('the logo', () => {
 		act(() => button(root, 'Undo').click());
 		await settle();
 		expect(logoPosts[1]).toEqual({ [WHICH_FORM]: 'org-logo-undo', [RECORD_VERSION]: 'logo-v1' });
+	});
+
+	it('reads Redo at the press once an Undo has landed', async () => {
+		const root = await drawn();
+		await upload(root);
+
+		const undo = button(root, 'Undo');
+		act(() => undo.click());
+		await settle();
+		await settle();
+
+		expect(undo.textContent).toBe('Redo');
+		expect(logo.now).toBeNull();
 	});
 
 	it('posts an empty id for Remove, and reports it removed', async () => {
