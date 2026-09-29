@@ -1,6 +1,6 @@
 import type { Frequency, TributeKind } from '@better-giving/form/v1';
-import { and, asc, desc, eq, inArray, isNull, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/sqlite-core';
+import { and, asc, desc, eq, isNull, ne, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { alias, union, unionAll } from 'drizzle-orm/sqlite-core';
 import { projectTribute } from '../../donations/tributes';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
@@ -42,14 +42,25 @@ import { inPage, type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } 
 // `cancelled`, a lost dispute lowers what it took — and `payment` has no `updated_at` to show it.
 // every one of those writes lands in the same `batch()` as its journal entry (../books/writes.ts),
 // and `entry_group` is append-only, so an entry's `created_at` is when that change was written. no
-// money writer stamps anything for this read. what it does not see is a change the books could not
-// take — a settlement ../donations/settle.ts corrects with nothing to post — and a change to the
-// donor, form or program a gift names: those are read fresh on every page, not announced here.
+// money writer stamps anything for this read.
+//
+// **those writes move it, and nothing else does.** a settlement ../donations/settle.ts writes with
+// nothing to post — the row turned `succeeded`, its rail, time or reference corrected, and no entry
+// — moves nothing, so the gift is served at its row's first writing, likely behind where a copy
+// resumes. neither does a change to what a gift names rather than holds: the donor's name or
+// address, and the form's or the program's name. those are read fresh on every page, and a copy
+// keeps the value it last read until the gift next moves; the donors list announces a donor's
+// changes, and `donor_id` and `form_id` are what a copy joins on.
 //
 // **two orders.** with no `updated_since`, newest first by when the money moved, then id. with
 // `updated_since`, every gift whose `updated_at` is at or after it, oldest change first, then id.
 // a system keeping a copy walks the second from any instant before the first gift, and resumes
-// from the `resume_updated_since` its last page answers (./paging.ts's header).
+// from the `resume_updated_since` its last page answers (./paging.ts's header). the second is read
+// as a merge of one stream per kind of write above, each in order off an index of its own, inside
+// a window closed at a counted write. what a page reads is bounded by the writes from where it
+// starts through its last gift's change — a constant multiple of them, across every window it
+// tries — and not by the writes past it, except that a walk's last page reads to the last write
+// (`changedKeys`).
 
 /** one settled gift, as a `new_gift` Zap receives it. `id` is the payment's, stable across retries. */
 export type GiftEvent = {
@@ -162,8 +173,9 @@ export async function readGifts(
 const gift = alias(payment, 'gift');
 
 /**
- * a gift. `payment_settled_gift_occurred_at_idx` in ../db/schema.ts is partial on these values,
- * so the newest-first walk reads it only while the two agree (./gift-page.plan.workers.spec.ts).
+ * a gift. `payment_settled_gift_occurred_at_idx` and `payment_settled_gift_created_at_idx` in
+ * ../db/schema.ts are partial on these values, so each walk reads its index only while the two
+ * agree (./list-pages.plan.workers.spec.ts).
  */
 const isGift = (row: typeof payment | typeof gift) =>
 	and(eq(row.status, 'succeeded'), eq(row.direction, 'inbound'));
@@ -185,23 +197,124 @@ async function newestKeys(db: Db, query: PageQuery): Promise<Keyset[]> {
 	return rows.map((row) => ({ id: row.id, at: row.at.getTime() }));
 }
 
+/**
+ * the page's gifts in the order of changes: one stream per kind of write `changedAt` takes the
+ * latest of, each read in `(time, gift id)` order off its own index in ../db/schema.ts
+ * (`payment_settled_gift_created_at_idx` names them), merged. a stream offers every write of its
+ * kind inside the page's window, and keeps one only where it is its gift's latest. so a stream may
+ * reach wider than `changedAt` does: a write it does not count is never its gift's latest unless
+ * another write shares its time, and then both name the same position. the reversal postings and
+ * the disputes name no `direction`, which would hand sqlite `payment_refund_created_at_idx` to
+ * drive them by in place of their own. the `union` drops a position two writes at one instant both
+ * name, so each gift is served once.
+ *
+ * the window closes at the time of the n-th write from where the page starts (`nthWriteAt`), n
+ * twice the rows the page reads to begin with, so a stream whose writes are rarely a gift's latest
+ * stops there rather than reading on to its index's end. every gift whose latest write falls
+ * inside the window is in it, and every gift past it comes after them in the order, so a window
+ * that yields more than a page
+ * holds the page. one that yields less is read again twice as wide, and one that reaches past the
+ * last write is not closed at all.
+ */
 async function changedKeys(db: Db, query: PageQuery & { order: 'changed' }): Promise<Keyset[]> {
-	const changes = db
-		.select({ id: gift.id, at: changedAt(db).as('updated_at') })
+	const from =
+		query.after === null ? query.since.getTime() : Math.max(query.since.getTime(), query.after.at);
+	for (let writes = 2 * (query.limit + 1); ; writes *= 2) {
+		const through = await nthWriteAt(db, from, writes);
+		const keys = await changedWithin(db, query, from, through);
+		if (through === null || keys.length > query.limit) return keys;
+	}
+}
+
+/**
+ * when the `n`-th write at or after `from` landed, of every write the streams in `changedWithin`
+ * read, or null where there are fewer. each posting is counted once however many streams read it.
+ * read off the same four indexes, and off nothing else, so it reads about `n` index entries and no
+ * table row.
+ */
+async function nthWriteAt(db: Db, from: number, n: number): Promise<number | null> {
+	const [nth] = await unionAll(
+		db
+			.select({ at: gift.createdAt })
+			.from(gift)
+			.where(and(isGift(gift), sql`${gift.createdAt} >= ${from}`)),
+		db
+			.select({ at: payment.createdAt })
+			.from(payment)
+			.where(and(eq(payment.direction, 'refund'), sql`${payment.createdAt} >= ${from}`)),
+		db
+			.select({ at: entryGroup.createdAt })
+			.from(entryGroup)
+			.where(sql`${entryGroup.createdAt} >= ${from}`),
+		db.select({ at: dispute.updatedAt }).from(dispute).where(sql`${dispute.updatedAt} >= ${from}`)
+	)
+		.orderBy(asc(gift.createdAt))
+		.limit(1)
+		.offset(n - 1);
+	return nth === undefined ? null : nth.at.getTime();
+}
+
+/** the page's gifts among those whose latest write lands from `from` through `through`. */
+async function changedWithin(
+	db: Db,
+	query: PageQuery & { order: 'changed' },
+	from: number,
+	through: number | null
+): Promise<Keyset[]> {
+	// the lower bound on its own, beside the row value: a stream whose id is on another row than its
+	// time reads its index by the time alone, and sqlite takes no range from a row value there.
+	const latestInPage = (at: SQLWrapper, giftId: SQLWrapper) =>
+		and(
+			sql`${at} >= ${from}`,
+			through === null ? undefined : sql`${at} <= ${through}`,
+			query.after === null ? undefined : pastKeyset('asc', at, giftId, query.after),
+			sql`${at} = ${changedAt(db)}`
+		);
+	const reversal = alias(payment, 'reversal');
+	const posting = alias(entryGroup, 'posting');
+	const disputed = alias(dispute, 'disputed');
+	// `<>` rather than `in`: sqlite takes an `in` on `source_type` to `entry_group_source_idx`, which
+	// leads with it, and sorts every posting. the two name the same set.
+	const keyedOnPayment = ne(posting.sourceType, 'donation');
+
+	const settled = db
+		.select({ at: gift.createdAt, id: gift.id })
 		.from(gift)
-		.where(isGift(gift))
-		.as('changes');
-	return db
-		.select({ id: changes.id, at: changes.at })
-		.from(changes)
+		.where(and(isGift(gift), latestInPage(gift.createdAt, gift.id)));
+	const reversed = db
+		.select({ at: reversal.createdAt, id: sql<string>`${reversal.parentPaymentId}` })
+		.from(reversal)
+		.innerJoin(gift, eq(gift.id, reversal.parentPaymentId))
 		.where(
 			and(
-				sql`${changes.at} >= ${query.since.getTime()}`,
-				query.after === null ? undefined : pastKeyset('asc', changes.at, changes.id, query.after)
+				eq(reversal.direction, 'refund'),
+				isGift(gift),
+				latestInPage(reversal.createdAt, reversal.parentPaymentId)
 			)
-		)
-		.orderBy(asc(changes.at), asc(changes.id))
+		);
+	const posted = db
+		.select({ at: posting.createdAt, id: posting.sourceId })
+		.from(posting)
+		.innerJoin(gift, eq(gift.id, posting.sourceId))
+		.where(and(keyedOnPayment, isGift(gift), latestInPage(posting.createdAt, posting.sourceId)));
+	const reversalPosted = db
+		.select({ at: posting.createdAt, id: gift.id })
+		.from(posting)
+		.innerJoin(reversal, eq(reversal.id, posting.sourceId))
+		.innerJoin(gift, eq(gift.id, reversal.parentPaymentId))
+		.where(and(keyedOnPayment, isGift(gift), latestInPage(posting.createdAt, gift.id)));
+	const disputeMoved = db
+		.select({ at: disputed.updatedAt, id: gift.id })
+		.from(disputed)
+		.innerJoin(reversal, eq(reversal.id, disputed.paymentId))
+		.innerJoin(gift, eq(gift.id, reversal.parentPaymentId))
+		.where(and(isGift(gift), latestInPage(disputed.updatedAt, gift.id)));
+
+	const rows = await union(settled, reversed, posted, reversalPosted, disputeMoved)
+		// a compound orders by its first select's column names: `created_at`, then `id`.
+		.orderBy(asc(gift.createdAt), asc(gift.id))
 		.limit(query.limit + 1);
+	return rows.map((row) => ({ id: row.id, at: row.at.getTime() }));
 }
 
 /**
@@ -262,10 +375,21 @@ function postedAt(db: Db, paymentId: SQLWrapper, name: string) {
 	return db
 		.select({ at: sql`max(${posted.createdAt})` })
 		.from(posted)
-		.where(and(inArray(posted.sourceType, PAYMENT_KEYED_SOURCES), eq(posted.sourceId, paymentId)));
+		.where(
+			and(sql`${posted.sourceType} in ${PAYMENT_KEYED_SOURCES}`, eq(posted.sourceId, paymentId))
+		);
 }
 
-const PAYMENT_KEYED_SOURCES = ENTRY_SOURCE_TYPES.filter((type) => type !== 'donation');
+/**
+ * written into the statement rather than bound: `changedAt` names them twice in each stream, and
+ * bound they would spend D1's 100 parameters a query on every source type the ledger gains
+ * (https://developers.cloudflare.com/d1/platform/limits/).
+ */
+const PAYMENT_KEYED_SOURCES = sql.raw(
+	`(${ENTRY_SOURCE_TYPES.filter((type) => type !== 'donation')
+		.map((type) => `'${type}'`)
+		.join(', ')})`
+);
 
 function statusOf(amountMinor: number, refundedMinor: number): GiftStatus {
 	if (refundedMinor === 0) return 'settled';
