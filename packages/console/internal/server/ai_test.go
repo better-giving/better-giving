@@ -14,7 +14,7 @@ import (
 )
 
 // the choice as the deployment holds it and, for a credit-billed one, what the account has left —
-// both read off cloudflare with this console's own sign-in.
+// both read off cloudflare on the environment's api token, the one credential a balance is read on.
 func TestTheModelChoiceIsAnsweredWithTheCreditsItSpends(t *testing.T) {
 	api, asked := writes(t, map[string]any{
 		"GET " + settingsOf(release.Baked.Name): map[string]any{

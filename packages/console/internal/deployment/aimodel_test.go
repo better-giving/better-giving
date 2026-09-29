@@ -42,7 +42,8 @@ func TestAModelChoiceIsWrittenAsAPlainVarAndReadBack(t *testing.T) {
 	}
 }
 
-// an unset choice is the free model, which spends no credits, so nobody asks what is left of them.
+// a choice that spends no credits — unset, the free model, an id off the list, a value held as a
+// secret — asks nothing about what is left of them.
 func TestTheFreeModelAsksNothingAboutCredits(t *testing.T) {
 	for what, bindings := range map[string]map[string]any{
 		"unset":     varsHeld(),
@@ -50,7 +51,7 @@ func TestTheFreeModelAsksNothingAboutCredits(t *testing.T) {
 		"off-list":  holding("anthropic/claude-opus-9"),
 		"as secret": varsHeld(map[string]any{"name": "AI_MODEL", "type": "secret_text"}),
 	} {
-		// no answer is bound for the balance, so a read of it would come back missing.
+		// no answer is bound for the balance, so a read of it would come back unknown and fail here.
 		read := chosen(t, map[string]any{settings: bindings})
 		if read.Credits.Kind != CreditsNotAsked || read.Credits.Balance != nil {
 			t.Errorf("%s: credits %+v", what, read.Credits)
@@ -79,8 +80,8 @@ func TestACreditBilledChoiceReportsWhetherTheAccountHoldsCredits(t *testing.T) {
 	}
 }
 
-// the console's own cloudflare sign-in carries no AI Gateway scope (internal/oauth's Scopes), so on
-// that sign-in the read is refused, and a refusal is not a balance of nothing.
+// an api token without AI Gateway Read is refused the read, and a refusal, or an answer carrying no
+// balance, is unknown rather than a balance of nothing.
 func TestABalanceThatCouldNotBeReadIsUnknownInCloudflaresWords(t *testing.T) {
 	for what, answer := range map[string]any{
 		"refused":    failed(10000, "Authentication error"),

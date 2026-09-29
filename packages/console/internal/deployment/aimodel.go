@@ -12,7 +12,8 @@ import (
 // **the choice is one of the configuration values and nothing more.** it is `AI_MODEL`, a plain var
 // read off the worker's settings by ./values.go and written through ./write.go's SetVars like every
 // other one — so it reads back as what was stored, and taking it off is the free model. the ids a
-// write may carry are internal/release's AIModels, which the handler holds a write to.
+// write may carry are internal/release's AIModels, which internal/server's values.go holds a write
+// to.
 //
 // **credits are a hint, read only for a choice that spends them, and only on an api token.** the
 // read is AI Gateway's account-level balance, on AI Gateway Read; the balance can go below zero, so

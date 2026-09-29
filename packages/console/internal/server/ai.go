@@ -16,7 +16,7 @@ import (
 // configuration values, so a choice goes up through `POST /api/values/vars` like any other, held
 // there to internal/release's AIModels (./values.go); a page that chose re-reads here to learn what
 // the account's credits say about it. what the read carries and why is internal/deployment's
-// ./aimodel.go.
+// aimodel.go.
 func aiRoutes(
 	routes *http.ServeMux,
 	flow *oauth.Flow,

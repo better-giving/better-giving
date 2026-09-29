@@ -23,7 +23,7 @@ export const MODEL_PAGE = '/ai-model';
  * answers with.
  *
  * nothing stored is the free model, which is what the deployment calls then. an id off the list is
- * a refusal on every request that reaches a model rather than a fall back to the free one
+ * a refusal on every request that reaches a model rather than a fallback to the free one
  * (packages/operator/src/ai-models.ts), and a value held as a secret cannot be read back, so both
  * draw no choice taken rather than one the deployment is not answering with.
  */

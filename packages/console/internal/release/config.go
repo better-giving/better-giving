@@ -70,10 +70,10 @@ func WriteManifest(manifest Manifest) ([]byte, error) {
 // fixed shape (CLAUDE.md's founding rule), and a `wrangler.jsonc` interpreter would be a second
 // reader of a file the operator does not have.
 //
-// ./config_test.go is the gate: every field below is compared against what
-// packages/app/wrangler.jsonc declares, and internal/deploy's wrangler_test.go holds the whole
-// binding set the upload sends to that file's, so a binding added there and not here fails `go test`
-// rather than shipping a deployment missing it.
+// ./config_test.go is the gate for the database binding, the buckets and the runtime, each compared
+// against what packages/app/wrangler.jsonc declares, and internal/deploy's wrangler_test.go holds
+// the whole binding set the upload sends to that file's, so a binding added there and not here fails
+// `go test` rather than shipping a deployment missing it.
 var Upload = UploadShape{
 	D1Binding: "DB",
 	AIBinding: "AI",
@@ -197,7 +197,7 @@ var DeployVars = []string{
 }
 
 // AIModels is every model `AI_MODEL` may name, in the order packages/operator/src/ai-models.ts
-// lists them — the deployment's own list, which refuses any other id.
+// lists them — the deployment's own list, and the deployment refuses any other id.
 //
 // **stated here and gated rather than trusted, the way DeployVars above is.** ./config_test.go holds
 // the ids and which of them bill the account's credits to that module, so a model added there and
@@ -214,7 +214,8 @@ var AIModels = []AIModel{
 type AIModel struct {
 	// ID is what `AI_MODEL` holds.
 	ID string
-	// CreditBilled is spent from the account's Cloudflare credits, where the free model is not.
+	// CreditBilled is whether the model is paid for out of the account's Cloudflare credits, which
+	// the free model is not.
 	CreditBilled bool
 }
 
