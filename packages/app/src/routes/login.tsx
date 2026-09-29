@@ -526,8 +526,8 @@ function SignInScreen({
 						    switching this one off at the moment it is pressed throws the focus that
 						    pressed it to the document body, and `aria-busy` on a control nothing can
 						    reach announces to nobody. a second press while the first is in flight is
-						    closed in the handler instead, which is what `aria-disabled` stops doing
-						    once it is only advisory. */}
+						    stopped in the handler, because `aria-disabled` only announces the control
+						    as unavailable and stops no press. */}
 						<Button
 							variant="primary"
 							aria-disabled={signingIn}

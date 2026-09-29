@@ -200,7 +200,7 @@ describe('an address save that comes back with a question', () => {
 	const ended = {
 		body: { ask: { kind: 'takeover', holder: 'Giving Tuesday', to: '/giving-tuesday' } }
 	};
-	const takeover = '/giving-tuesday shows Giving Tuesday’s ended screen. Use it here?';
+	const takeover = 'Use /giving-tuesday here?';
 
 	it('asks before taking an ended campaign’s address, and posts the yes with the version', async () => {
 		drawn = { ...drawn, version: 7 };
@@ -211,7 +211,7 @@ describe('an address save that comes back with a question', () => {
 		expect(posted).toEqual([
 			{ [WHICH_FORM]: 'campaign-address', [RECORD_VERSION]: '7', slug: 'giving-tuesday' }
 		]);
-		expect(card(takeover).textContent).toContain('Giving Tuesday is left with no address.');
+		expect(card(takeover).textContent).toContain('It shows the ended screen of Giving Tuesday.');
 
 		await press(button('Use it here', card(takeover)));
 

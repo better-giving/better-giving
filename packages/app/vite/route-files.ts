@@ -3,10 +3,11 @@
 //
 // src/lib/page/slug.ts wants only the names: it walks each one apart with its own tokenizer and
 // never calls the module a route file names. `import.meta.glob` has no names-only mode — every key
-// it returns is a lazy `import()` — so the only way to read the names through it is to build 45
-// dynamic-import edges nothing ever calls. vite warns INEFFECTIVE_DYNAMIC_IMPORT once per
-// environment for each one, and every route module gains an import edge into a rule about URL
-// segments. this plugin is the fix: the names, and nothing that imports them.
+// it returns is a lazy `import()` — so the only way to read the names through it is to build one
+// dynamic-import edge per route file, none of which is ever called. vite warns
+// INEFFECTIVE_DYNAMIC_IMPORT once per environment for each one, and every route module gains an
+// import edge into a rule about URL segments. this plugin serves the names, and nothing that
+// imports them.
 //
 // `IGNORED_ROUTE_FILE_GLOBS` is exported so src/routes.ts's `ignoredRouteFiles` can pass the same
 // array to `flatRoutes` — a spec beside its subject is a test and not an address in both places,

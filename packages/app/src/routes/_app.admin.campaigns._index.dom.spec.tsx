@@ -382,7 +382,7 @@ describe('a row’s press', () => {
 		expect(asked.textContent).toContain('It was never published.');
 		expect(posted).toEqual([]);
 
-		await press(control('Delete', asked));
+		await press(control('Delete campaign', asked));
 
 		expect(posted).toEqual([
 			{ [WHICH_FORM]: 'campaign-delete', [RECORD_VERSION]: '12', page_id: 'pg_draft' }
@@ -469,7 +469,7 @@ describe('a press in flight', () => {
 		answers = [first];
 		await screen(`${SCREEN}?delete=pg_draft`);
 
-		const held = await pressedTwice(() => control('Delete', shown('Delete Spring gala?')));
+		const held = await pressedTwice(() => control('Delete campaign', shown('Delete Spring gala?')));
 
 		expect(posted).toHaveLength(1);
 		expect(held.getAttribute('aria-disabled')).toBe('true');
@@ -561,7 +561,7 @@ describe('a press that lands', () => {
 		const root = await screen(`${SCREEN}?delete=pg_draft`);
 		const region = status(root);
 
-		await press(control('Delete', shown('Delete Spring gala?')));
+		await press(control('Delete campaign', shown('Delete Spring gala?')));
 
 		expect(document.activeElement?.tagName).toBe('H1');
 		expect(document.activeElement?.textContent).toBe('Campaigns');

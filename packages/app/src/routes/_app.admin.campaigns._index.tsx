@@ -462,7 +462,7 @@ export default function Campaigns({ loaderData, actionData }: Route.ComponentPro
 					form={CAMPAIGN_DELETE}
 					row={deleting}
 					title={`Delete ${deleting.name}?`}
-					act="Delete"
+					act="Delete campaign"
 					word="Not deleted"
 					refusal={rowRefusal(CAMPAIGN_DELETE, deleting.id, actionData)}
 				>
