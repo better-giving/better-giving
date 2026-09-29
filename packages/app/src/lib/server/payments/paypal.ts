@@ -6,6 +6,7 @@ import {
 	IntervalUnit,
 	OrderStatus,
 	OrdersController,
+	PatchOp,
 	PaymentsController,
 	PlanRequestStatus,
 	RefundStatus,
@@ -38,7 +39,7 @@ import { redact, redactPublicId } from '../../redact';
 import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY, refusing } from './provider';
 import type {
 	AccountChargeability,
-	FailedCollection,
+	DeliveredAttempt,
 	Intent,
 	IntentRequest,
 	PayableCoin,
@@ -89,11 +90,12 @@ import type {
 // source and carries no `custom_id` — which is why a collection settles with no rail and no
 // metadata of its own, argued at `saleSettlementOf`.
 //
-// **a failed collection is `BILLING.SUBSCRIPTION.PAYMENT.FAILED`, read into the attempt that
-// failed** (`failedAttemptOf`). it is on `RECURRING_COLLECTION_EVENT_TYPES`, so a listener the
-// console brought level already delivers it and a deployment reads it with its code alone. how
-// many arrive in a row before PayPal suspends the commitment is the plan's to say
-// (`PAYMENT_FAILURE_THRESHOLD`).
+// **a failed collection is `BILLING.SUBSCRIPTION.PAYMENT.FAILED`, and the attempt that failed is
+// read off its own verified body** (`deliveredAttemptOf`), and off a read made afterwards only where
+// the body states none and the read has not moved past the delivery (`readFailure`). it is
+// on `RECURRING_COLLECTION_EVENT_TYPES`, so a listener the console brought level already delivers
+// it and a deployment reads it with its code alone. how many arrive in a row before PayPal
+// suspends the commitment is the plan's to say (`PAYMENT_FAILURE_THRESHOLD`).
 //
 // **the reads a repeating gift makes cross two API generations.** the commitment is Subscriptions
 // v1 through the SDK's controller; one collection is a v1 sale, read through this module's own
@@ -994,54 +996,47 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 	/**
 	 * the commitment a `BILLING.SUBSCRIPTION.PAYMENT.FAILED` names, with the attempt that failed.
 	 *
-	 * the attempt's figures are read off the same fresh read as the commitment, under
-	 * `RecurringGiftNotice`'s rule in ./provider.ts: the subscription carries the last failed payment
-	 * and the count of failures in a row. its key is the delivery's own id (`failedAttemptOf`).
+	 * the attempt is the delivery's own where its body states it (`deliveredAttemptOf`): a read made
+	 * after a later failure counts that one. where the body states none, the fresh read's is taken
+	 * only while its last failed payment is no later than the delivery; a later one is the next
+	 * attempt's, reported by its own delivery, and this one reports the commitment's standing alone.
+	 * a read stating no attempt either is refused (`unstatedFailure`).
 	 *
-	 * a read counting no failure, with a payment after the delivery, is a delivery the retry that
-	 * paid overtook, and it reports the commitment's standing alone: a destination told of it would
-	 * hear the donor's card is failing after the charge that cured it. counting no failure and no
-	 * payment since, the read has not caught up with the delivery, and a retryable refusal has PayPal
-	 * deliver it again where a 2xx would lose it. a failure it cannot read is refused rather than
-	 * passed on without its attempt, because a collection with neither an attempt nor a transaction
-	 * is how a charge settled outside PayPal reads in ../donations/collect.ts.
+	 * a payment after the delivery is the retry that paid overtaking it, and the commitment's
+	 * standing alone is reported: a destination told of the failure now would hear the donor's card
+	 * is failing after the charge that cured it.
 	 *
 	 * no gift can be opened by this: a subscription's first payment failing leaves no commitment
 	 * row, since the first charge that settles is what writes one, and the collection path reports
 	 * nothing for an attempt under none.
 	 */
 	async function readFailure(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>> {
-		const giftId = event.providerNoticeId;
 		try {
-			const { result } = await subscriptions.getSubscription({ id: giftId, fields: 'plan' });
-			if ((result.billingInfo?.failedPaymentsCount ?? 0) < 1) {
-				const paid = whenever(result.billingInfo?.lastPayment?.time);
-				if (paid !== null && paid > event.occurredAt) {
-					return { ok: true, value: noticeOf(result, 'commitment', null) };
-				}
-				return {
-					ok: false,
-					reason: 'provider_error',
-					detail:
-						`PayPal reported a failed payment under ${redactPublicId(giftId)}, and the ` +
-						'subscription read back counts no failure and no payment since the delivery. ' +
-						'Nothing was recorded, and PayPal will deliver it again.'
-				};
-			}
-			const failed = failedAttemptOf(result, event);
-			if (failed === null) {
-				return {
-					ok: false,
-					reason: 'provider_error',
-					detail:
-						`PayPal reported a failed payment under ${redactPublicId(giftId)} with a ` +
-						'`last_failed_payment` whose amount, currency or time this app could not read, so ' +
-						'the attempt was not reported and nothing was recorded.'
-				};
+			const { result } = await subscriptions.getSubscription({
+				id: event.providerNoticeId,
+				fields: 'plan'
+			});
+			const standing = { ok: true, value: noticeOf(result, 'commitment', null) } as const;
+			const paid = whenever(result.billingInfo?.lastPayment?.time);
+			if (paid !== null && paid > event.occurredAt) return standing;
+
+			let attempt: DeliveredAttempt | undefined = event.delivered;
+			if (attempt === undefined) {
+				const read = readAttemptOf(result);
+				if (read === null) return unstatedFailure(event);
+				if (read.failedAt > event.occurredAt) return standing;
+				attempt = read;
 			}
 			return {
 				ok: true,
-				value: { ...noticeOf(result, 'collection', null), failedAttempt: failed }
+				value: {
+					...noticeOf(result, 'collection', null),
+					failedAttempt: {
+						...attempt,
+						attemptKey: event.id,
+						failedAt: attempt.failedAt ?? event.occurredAt
+					}
+				}
 			};
 		} catch (error) {
 			return classify(error);
@@ -1778,7 +1773,22 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 					);
 				}
 
-				return { ok: true, value: { id, kind: 'recurring', type, providerNoticeId, occurredAt } };
+				// the one recurring delivery whose body is read past its id, and `deliveredAttemptOf`
+				// says why. a body that states no attempt is passed on without one, and `readFailure`
+				// takes it off the fresh read instead.
+				const delivered =
+					type === COLLECTION_FAILED_EVENT ? deliveredAttemptOf(event.resource) : null;
+				return {
+					ok: true,
+					value: {
+						id,
+						kind: 'recurring',
+						type,
+						providerNoticeId,
+						occurredAt,
+						...(delivered === null ? {} : { delivered })
+					}
+				};
 			}
 
 			if ((REVERSAL_EVENT_TYPES as readonly string[]).includes(type)) {
@@ -2006,8 +2016,8 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 
 			try {
 				const { result } = await subscriptions.createSubscription({
-					// derived from the caller's key rather than sent as it stands: this arm makes two
-					// writes on PayPal's side and the plan's own key is `planRequestId`'s, so an
+					// derived from the caller's key rather than sent as it stands: this arm can make two
+					// creates on PayPal's side and the plan's own key is `planRequestId`'s, so an
 					// undecorated key here would be one of them replayed at the call that wanted the other.
 					paypalRequestId: `${DERIVED_KEY}:gift:${request.idempotencyKey}`,
 					prefer: 'return=representation',
@@ -2285,15 +2295,18 @@ function planName(key: RecurringPlanKey): string {
 /**
  * what makes two requests for the same plan one create.
  *
- * derived from the amount, the currency, the cadence and {@link PAYMENT_FAILURE_THRESHOLD}, which is
- * the whole of what {@link charges} matches a plan on — so the second of two requests that both
- * found nothing is a repeat rather than a first attempt, and PayPal answers it with the plan the
- * first made. the header is honoured for 72 hours on this API
+ * derived from the amount, the currency and the cadence, which is what {@link charges} matches a
+ * plan on — so the second of two requests that both found nothing is a repeat rather than a first
+ * attempt, and PayPal answers it with the plan the first made. the header is honoured for 72 hours
+ * on this API
  * (https://github.com/paypal/paypal-rest-api-specifications/blob/main/openapi/billing_subscriptions_v1.json),
  * which is the window a race can be settled inside; past it, {@link findOrCreateBillingPlan}'s own
- * read is what finds the plan and no create is reached. a plan held on another threshold is passed
- * over by the read, so a key without it would be answered inside that window with the very plan
- * the read refused.
+ * read is what finds the plan and no create is reached.
+ *
+ * {@link PAYMENT_FAILURE_THRESHOLD} is in it too, though no plan is matched on it: a create is
+ * answered inside that window with whatever plan was first made under the key, and a key without
+ * the threshold would be answered with a plan made on an earlier one — a gift committed to a count
+ * this app did not send, until the next read patches it.
  */
 function planRequestId(key: RecurringPlanKey): string {
 	return `${DERIVED_KEY}:plan:${key.interval}:${key.currency}:${key.amountMinor}:failures-${PAYMENT_FAILURE_THRESHOLD}`;
@@ -2326,8 +2339,8 @@ const PLAN_PAGE_LIMIT = 10;
  * set, because the spec's default of 0 (`payment_preferences` in billing_subscriptions_v1.json in
  * https://github.com/paypal/paypal-rest-api-specifications) says neither whether it suspends on the
  * first miss or never, and either one breaks the lapse ../donations/collect.ts writes and revives.
- * {@link charges} passes over a plan holding any other value, and {@link planRequestId} keys a
- * create on it.
+ * {@link findOrCreateBillingPlan} patches a plan it finds holding any other value, and
+ * {@link planRequestId} keys a create on it.
  */
 const PAYMENT_FAILURE_THRESHOLD = 3;
 
@@ -2348,6 +2361,10 @@ const PAYMENT_FAILURE_THRESHOLD = 3;
  * edit in PayPal's own dashboard and the price is what a donor is committed to, so matching on the
  * figure is what keeps a gift from being charged an amount this app never computed — an edited plan
  * simply stops being found, and the right one is made beside it.
+ *
+ * **a plan found stating any other failure threshold, or none, is patched to
+ * {@link PAYMENT_FAILURE_THRESHOLD}** (`patchFailureThreshold`), and the gift is committed to it
+ * whether or not the patch lands.
  */
 export async function findOrCreateBillingPlan(
 	plans: SubscriptionsController,
@@ -2363,8 +2380,8 @@ export async function findOrCreateBillingPlan(
 				pageSize: PLAN_PAGE_SIZE,
 				page,
 				// the whole plan rather than the id, the name and a link. what a plan is matched on is
-				// its status and what it charges, and a minimal answer — which is what this API returns
-				// when it is not asked — carries neither.
+				// its status and what it charges, and its failure threshold is read off it too; a minimal
+				// answer — which is what this API returns when it is not asked — carries none of them.
 				prefer: 'return=representation'
 			});
 			const held = result.plans ?? [];
@@ -2373,11 +2390,15 @@ export async function findOrCreateBillingPlan(
 			// request id there are two of them, and neither is deleted — a gift is already committed to
 			// whichever one won. what is fixed is the choice, so every later request lands on the same
 			// one (CLAUDE.md: a lost race is settled by a correcting entry rather than a rollback).
-			const matched = held
-				.flatMap((plan) => (plan.id && charges(plan, key) ? [plan.id] : []))
-				.sort();
-			const found = matched[0];
-			if (found) return { ok: true, value: found };
+			const found = held
+				.flatMap((plan) => (plan.id && charges(plan, key) ? [{ ...plan, id: plan.id }] : []))
+				.sort((one, other) => (one.id < other.id ? -1 : one.id > other.id ? 1 : 0))[0];
+			if (found) {
+				if (found.paymentPreferences?.paymentFailureThreshold !== PAYMENT_FAILURE_THRESHOLD) {
+					await patchFailureThreshold(plans, found.id);
+				}
+				return { ok: true, value: found.id };
+			}
 			if (held.length < PLAN_PAGE_SIZE) break;
 		}
 
@@ -2432,14 +2453,49 @@ export async function findOrCreateBillingPlan(
 }
 
 /**
+ * brings a found plan's failure threshold to {@link PAYMENT_FAILURE_THRESHOLD}: PayPal takes a
+ * `replace` of `payment_preferences.payment_failure_threshold` on an active plan (`plans.patch` in
+ * billing_subscriptions_v1.json in https://github.com/paypal/paypal-rest-api-specifications).
+ *
+ * best-effort, and a refusal is logged rather than returned: the plan already charges what the gift
+ * is to be charged, so the donor's commitment goes ahead on it, and the next checkout on the same
+ * plan patches again.
+ */
+async function patchFailureThreshold(
+	plans: SubscriptionsController,
+	planId: string
+): Promise<void> {
+	try {
+		await plans.patchBillingPlan({
+			id: planId,
+			body: [
+				{
+					op: PatchOp.Replace,
+					path: '/payment_preferences/payment_failure_threshold',
+					value: PAYMENT_FAILURE_THRESHOLD
+				}
+			]
+		});
+	} catch (error) {
+		const { reason, detail } = classify(error);
+		console.warn(
+			'a PayPal billing plan was used without its failure threshold patched:',
+			JSON.stringify({ plan: planId, threshold: PAYMENT_FAILURE_THRESHOLD, reason, detail })
+		);
+	}
+}
+
+/**
  * whether a plan the account holds is the one this gift is to be charged on.
  *
  * every clause is a way a plan can look right and charge wrong: an `INACTIVE` one takes no new
  * subscription, a second regular cycle is a schedule this app does not model, and an amount or a
- * cadence read off somebody else's plan is a donor committed to a figure nobody computed. a plan
- * suspending on any count but {@link PAYMENT_FAILURE_THRESHOLD} lapses a dead card's gift at a point
- * this app did not choose, or never. the amount is compared in minor units rather than as text, so
- * a price PayPal wrote as `25.0` is the same plan as one it wrote as `25.00`.
+ * cadence read off somebody else's plan is a donor committed to a figure nobody computed. the amount
+ * is compared in minor units rather than as text, so a price PayPal wrote as `25.0` is the same plan
+ * as one it wrote as `25.00`.
+ *
+ * the failure threshold is not a clause: it is the one thing about a plan PayPal lets an active
+ * plan change, so {@link findOrCreateBillingPlan} patches it rather than passing the plan over.
  */
 function charges(plan: BillingPlan, key: RecurringPlanKey): boolean {
 	if (plan.status !== SubscriptionPlanStatus.Active) return false;
@@ -2455,7 +2511,6 @@ function charges(plan: BillingPlan, key: RecurringPlanKey): boolean {
 		cycle.frequency.intervalUnit === PLAN_INTERVALS[key.interval] &&
 		(cycle.frequency.intervalCount ?? 1) === 1 &&
 		cycle.totalCycles === 0 &&
-		plan.paymentPreferences?.paymentFailureThreshold === PAYMENT_FAILURE_THRESHOLD &&
 		price.currencyCode.toUpperCase() === key.currency &&
 		minorOf(price.value, key.currency) === key.amountMinor
 	);
@@ -2535,36 +2590,91 @@ function noticeOf(
 }
 
 /**
- * the attempt a commitment's last failed payment reports, or null where its amount, currency or time
- * cannot be read (`failed_payment_details` in billing_subscriptions_v1.json in
- * https://github.com/paypal/paypal-rest-api-specifications).
+ * the attempt a subscription's `billing_info` states, or null where it does not state it — a count
+ * of failures below one, or a last failed payment whose amount, currency, time or retry time cannot
+ * be read (`subscription_billing_info` and `failed_payment_details` in
+ * billing_subscriptions_v1.json in https://github.com/paypal/paypal-rest-api-specifications). read
+ * off a `BILLING.SUBSCRIPTION.PAYMENT.FAILED` body first and off the fresh subscription only where
+ * that body states none (`readFailure`).
  *
- * the key is the delivery's own id, which PayPal repeats on a redelivery and mints afresh for each
- * failed payment. nothing read about the subscription can be it: a delivery redelivered after the
- * next failure reads that failure. `failedAt` is the failure's own recorded time rather than the
- * delivery's.
+ * the body is the subscription as the failure left it, and a redelivery repeats it unchanged, so it
+ * is the one account of this attempt that no later failure overwrites. `readFailure` keys it on the
+ * delivery's id, which a redelivery repeats too.
  *
  * `attemptCount` is `failed_payments_count`, the failures in a row since a payment last settled,
  * which is what `PAYMENT_FAILURE_THRESHOLD` is counted against. `nextRetryAt` is PayPal's retry of
  * this payment and never `next_billing_time`, which is the next cycle's payment rather than another
  * try at this one.
  */
-function failedAttemptOf(committed: Subscription, event: RecurringEvent): FailedCollection | null {
+function deliveredAttemptOf(resource: unknown): Required<DeliveredAttempt> | null {
+	const billing = json(json(resource)?.billing_info);
+	const failed = json(billing?.last_failed_payment);
+	const amount = json(failed?.amount);
+	return attemptOf({
+		count: billing?.failed_payments_count,
+		time: failed?.time,
+		retry: failed?.next_payment_retry_time,
+		currency: amount?.currency_code,
+		value: amount?.value
+	});
+}
+
+/** the attempt a subscription read back states, under {@link deliveredAttemptOf}'s rule. */
+function readAttemptOf(committed: Subscription): Required<DeliveredAttempt> | null {
 	const billing = committed.billingInfo;
 	const failed = billing?.lastFailedPayment;
-	if (!billing || !failed) return null;
-	const failedAt = whenever(failed.time);
-	const currency = failed.amount.currencyCode.toUpperCase();
-	const amountMinor = minorOf(failed.amount.value, currency);
-	if (failedAt === null || amountMinor === null) return null;
+	return attemptOf({
+		count: billing?.failedPaymentsCount,
+		time: failed?.time,
+		retry: failed?.nextPaymentRetryTime,
+		currency: failed?.amount.currencyCode,
+		value: failed?.amount.value
+	});
+}
 
+/** `billing_info`'s attempt fields, as either spelling of the subscription carries them. */
+type StatedBilling = Readonly<Record<'count' | 'time' | 'retry' | 'currency' | 'value', unknown>>;
+
+/** the attempt {@link StatedBilling} states, checked once for both spellings. */
+function attemptOf(stated: StatedBilling): Required<DeliveredAttempt> | null {
+	const { count, time, retry, currency: code, value } = stated;
+	if (
+		typeof count !== 'number' ||
+		!Number.isSafeInteger(count) ||
+		count < 1 ||
+		typeof time !== 'string' ||
+		typeof code !== 'string' ||
+		typeof value !== 'string' ||
+		(retry !== undefined && typeof retry !== 'string')
+	) {
+		return null;
+	}
+	const currency = code.toUpperCase();
+	const amountMinor = minorOf(value, currency);
+	const failedAt = whenever(time);
+	const nextRetryAt = whenever(retry);
+	if (amountMinor === null || failedAt === null || (retry !== undefined && nextRetryAt === null)) {
+		return null;
+	}
+	return { attemptCount: count, nextRetryAt, failedAt, amountMinor, currency };
+}
+
+/**
+ * the refusal for a failed payment neither its delivery nor the subscription read back states the
+ * attempt of: terminal, and ../donations/collect.ts alerts an operator on it.
+ */
+function unstatedFailure(event: RecurringEvent): PaymentFailure {
 	return {
-		attemptKey: event.id,
-		attemptCount: billing.failedPaymentsCount,
-		nextRetryAt: whenever(failed.nextPaymentRetryTime),
-		failedAt,
-		amountMinor,
-		currency
+		ok: false,
+		reason: 'unsupported',
+		detail:
+			`PayPal reported a failed payment under ${redactPublicId(event.providerNoticeId)}, and neither ` +
+			'the delivery nor the subscription read back states the attempt — a ' +
+			'`billing_info.failed_payments_count` of at least one and a `billing_info.last_failed_payment` ' +
+			'with an amount and a time this app can read — so which attempt failed could not be told. ' +
+			'No money moved: a failed payment collects nothing, so the books are complete. What is lost ' +
+			'is the `recurring_gift.charge_failed` notice for this attempt; a suspension after repeated ' +
+			'failures still arrives as its own `BILLING.SUBSCRIPTION.SUSPENDED` delivery.'
 	};
 }
 

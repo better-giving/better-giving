@@ -1,10 +1,11 @@
 import { env } from 'cloudflare:test';
 import type { MiddlewareFunction } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact } from '$lib/server/contacts/contact-input';
 import { postableId } from '$lib/server/db/accounts';
 import { createDb } from '$lib/server/db/client';
 import { recordDonation } from '$lib/server/donations/record';
+import { createDestination } from '$lib/server/webhooks/destinations';
 import { mountRoutes } from '../route-request.testing';
 import * as webhook from './api.paypal.webhook';
 
@@ -494,6 +495,42 @@ describe('POST /api/paypal/webhook — a capture refund', () => {
 describe('POST /api/paypal/webhook — a failed repeat payment', () => {
 	const SUBSCRIPTION_ID = 'I-BW452GLLEP1G';
 
+	/**
+	 * the subscription after its september payment failed once: what PayPal answers a read of it
+	 * with, and what the failure's delivery carries as its resource.
+	 */
+	const FAILED_SUBSCRIPTION = {
+		id: SUBSCRIPTION_ID,
+		status: 'ACTIVE',
+		subscriber: { payer_id: 'QYR5Z8CTNNPXA' },
+		billing_info: {
+			outstanding_balance: { currency_code: 'USD', value: '0.00' },
+			failed_payments_count: 1,
+			next_billing_time: '2026-10-16T22:20:08Z',
+			last_failed_payment: {
+				amount: { currency_code: 'USD', value: '25.00' },
+				time: '2026-09-16T22:20:08Z',
+				reason_code: 'PAYMENT_DENIED',
+				next_payment_retry_time: '2026-09-21T22:20:08Z'
+			}
+		}
+	};
+
+	/** the failure's delivery, under the event id a redelivery repeats. */
+	function failure(id: string, resource: object = FAILED_SUBSCRIPTION) {
+		return deliver(
+			JSON.stringify({
+				id,
+				event_version: '1.0',
+				event_type: 'BILLING.SUBSCRIPTION.PAYMENT.FAILED',
+				resource_type: 'subscription',
+				resource_version: '2.0',
+				create_time: '2026-09-16T22:20:10Z',
+				resource
+			})
+		);
+	}
+
 	/** the rows a collection would write, counted, since earlier cases in this file leave theirs. */
 	async function rowCounts() {
 		const counts: Record<string, number> = {};
@@ -522,22 +559,7 @@ describe('POST /api/paypal/webhook — a failed repeat payment', () => {
 				return Response.json({ verification_status: 'SUCCESS' });
 			}
 			if (pathname === `/v1/billing/subscriptions/${SUBSCRIPTION_ID}`) {
-				return Response.json({
-					id: SUBSCRIPTION_ID,
-					status: 'ACTIVE',
-					subscriber: { payer_id: 'QYR5Z8CTNNPXA' },
-					billing_info: {
-						outstanding_balance: { currency_code: 'USD', value: '0.00' },
-						failed_payments_count: 1,
-						next_billing_time: '2026-10-16T22:20:08Z',
-						last_failed_payment: {
-							amount: { currency_code: 'USD', value: '25.00' },
-							time: '2026-09-16T22:20:08Z',
-							reason_code: 'PAYMENT_DENIED',
-							next_payment_retry_time: '2026-09-21T22:20:08Z'
-						}
-					}
-				});
+				return Response.json(FAILED_SUBSCRIPTION);
 			}
 			return Response.json(
 				{ name: 'RESOURCE_NOT_FOUND', details: [{ issue: 'INVALID_RESOURCE_ID' }] },
@@ -550,20 +572,114 @@ describe('POST /api/paypal/webhook — a failed repeat payment', () => {
 		paypalHoldsAFailure();
 		const before = await rowCounts();
 
-		const { response } = await deliver(
-			JSON.stringify({
-				id: 'WH-F1',
-				event_version: '1.0',
-				event_type: 'BILLING.SUBSCRIPTION.PAYMENT.FAILED',
-				resource_type: 'subscription',
-				resource_version: '2.0',
-				create_time: '2026-09-16T22:20:10Z',
-				resource: { id: SUBSCRIPTION_ID }
-			})
-		);
+		const { response } = await failure('WH-F1');
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({ outcome: 'uncollected' });
 		expect(await rowCounts()).toEqual(before);
+	});
+
+	describe('under a donor’s repeating gift', () => {
+		let planId: string;
+
+		beforeEach(async () => {
+			const contactId = crypto.randomUUID();
+			const formId = crypto.randomUUID();
+			planId = crypto.randomUUID();
+			await env.DB.batch([
+				env.DB.prepare(
+					`insert into contact (id, kind, display_name, attributes, created_at, updated_at)
+					 values (?, 'individual', 'Ada Okafor', '{}', 0, 0)`
+				).bind(contactId),
+				env.DB.prepare(
+					`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+					                   suggested_amounts, allowed_origins, created_at, updated_at)
+					 values (?, 'General Fund', 'live', ?, 'USD', 500, 1000000, '[]', '[]', 0, 0)`
+				).bind(formId, postableId('donationsDeductible')),
+				env.DB.prepare(
+					`insert into recurring_plan (id, contact_id, form_id, amount_minor, currency, interval,
+					                             status, provider, provider_subscription_id,
+					                             provider_customer_id, started_at, next_charge_at, ended_at,
+					                             created_at, updated_at)
+					 values (?, ?, ?, 2500, 'USD', 'monthly', 'active', 'paypal', ?, 'QYR5Z8CTNNPXA', 0,
+					         null, null, 0, 0)`
+				).bind(planId, contactId, formId, SUBSCRIPTION_ID)
+			]);
+			const listening = await createDestination(createDb(env.DB), {
+				url: 'https://crm.example.org/failed',
+				events: ['recurring_gift.charge_failed']
+			});
+			if (!listening.ok) throw new Error('the fixture destination was not created');
+			paypalHoldsAFailure();
+		});
+
+		afterEach(async () => {
+			await env.DB.batch(
+				['webhook_delivery', 'webhook_destination_event', 'webhook_destination'].map((table) =>
+					env.DB.prepare(`delete from ${table}`)
+				)
+			);
+			await env.DB.prepare('delete from recurring_plan where id = ?').bind(planId).run();
+		});
+
+		async function chargesFailed() {
+			const { results } = await env.DB.prepare(
+				`select subject_id, detail from webhook_delivery
+				 where event = 'recurring_gift.charge_failed'`
+			).all<{ subject_id: string; detail: string }>();
+			return results.map((row) => ({ ...row, detail: JSON.parse(row.detail) }));
+		}
+
+		it('owes the destination one recurring charge failed, with the attempt its delivery states', async () => {
+			const { response } = await failure('WH-F2');
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ outcome: 'uncollected' });
+			expect(await chargesFailed()).toEqual([
+				{
+					subject_id: `${planId}:WH-F2`,
+					detail: {
+						attempt_count: 1,
+						next_retry_at: '2026-09-21T22:20:08.000Z',
+						failed_at: '2026-09-16T22:20:08.000Z',
+						amount_minor: 2500,
+						currency: 'USD'
+					}
+				}
+			]);
+		});
+
+		/**
+		 * a delivery rendered without `last_failed_payment`, which the subscription schema leaves
+		 * optional, still owes its notice: the attempt is the subscription's own, read back fresh.
+		 */
+		it('owes the notice for a failure whose delivery does not state the attempt', async () => {
+			const { billing_info: _stated, ...unstated } = FAILED_SUBSCRIPTION;
+
+			const { response } = await failure('WH-F4', unstated);
+
+			expect(response.status).toBe(200);
+			expect(await chargesFailed()).toEqual([
+				{
+					subject_id: `${planId}:WH-F4`,
+					detail: {
+						attempt_count: 1,
+						next_retry_at: '2026-09-21T22:20:08.000Z',
+						failed_at: '2026-09-16T22:20:08.000Z',
+						amount_minor: 2500,
+						currency: 'USD'
+					}
+				}
+			]);
+		});
+
+		it('owes one recurring charge failed for the same failure delivered twice', async () => {
+			const first = await failure('WH-F3');
+			const again = await failure('WH-F3');
+
+			expect(first.response.status).toBe(200);
+			expect(again.response.status).toBe(200);
+			expect((await chargesFailed()).map((row) => row.subject_id)).toEqual([`${planId}:WH-F3`]);
+		});
 	});
 });
