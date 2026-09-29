@@ -213,11 +213,13 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * organisation's website. the gate's rule is what covers that case. both controls bound other
 	 * origins only: a script running on this origin, the donor pages included, is inside them.
 	 *
-	 * the routes that sign someone in (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`) sit outside
-	 * the gate, so its rule does not reach them. what stands there is `lax`, and for the login the
-	 * bucket `signInRateLimitKey` charges (CLAUDE.md). login-CSRF gets past both: the victim's browser
-	 * submits credentials the attacker holds, and the victim is signed into the attacker's account.
-	 * it needs no cookie from the victim, which is why the cookie attribute does not reach it.
+	 * the routes that sign someone in (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`) and the
+	 * reset request at `forgot.tsx` sit outside the gate, so each action calls its rule itself
+	 * (`refuseWriteFromAnotherOrigin`), after charging the bucket `signInRateLimitKey` names
+	 * (CLAUDE.md). that rule is what stands against login-CSRF, where the victim's browser submits
+	 * credentials the attacker holds and the victim is signed into the attacker's account: it needs
+	 * no cookie from the victim, which is why the cookie attribute does not reach it. a browser that
+	 * sends no `Sec-Fetch-Site` passes the rule, and nothing else here stops it.
 	 *
 	 * `x-forwarded-host` is not consulted: better-auth honours forwarded headers only
 	 * when `advanced.trustedProxyHeaders` is set, and it is not. that is also why

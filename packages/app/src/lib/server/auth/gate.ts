@@ -130,7 +130,7 @@ export async function staffGate(
  * nothing here grants a request anything, so it is not an authorization control on `Origin`
  * (CLAUDE.md → Bans → Boundaries).
  *
- * a request with no `Sec-Fetch-Site` goes on to the session check as before — an older browser,
+ * a request with no `Sec-Fetch-Site` goes on to the checks behind this one — an older browser,
  * or a client that is not a browser at all and so holds no operator's cookie unless it was given
  * one. against a same-site page in a browser that old, `lax` is the only line and it does not
  * hold. GET and HEAD pass whatever the header says, because following a link into /admin from

@@ -63,10 +63,10 @@ import type { Route } from './+types/_app.admin.donation-page';
 // than a 404, as /donate answers before anyone has opened it.
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
-// only at Publish, as a campaign's are ($lib/server/pages/editor.ts); until the first such Publish
-// the program follows the active programs ($lib/server/pages/donation-page.ts). so are the look and the share
+// only at Publish, as a campaign's are ($lib/server/pages/editor.ts). so are the look and the share
 // message ($lib/server/pages/page-settings.ts); a goal and an end date are a campaign's alone, and
-// this action refuses them.
+// this action refuses them. until a Publish carries donation settings, the program follows the
+// active programs ($lib/server/pages/donation-page.ts).
 //
 // **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
 // in the preview's place, with Discard changes where the live page reads and Reset to default
@@ -271,8 +271,8 @@ function UnreadableDraftEditor({
 				<div className="adm-main">
 					<Banner tone="attention" word={UNREADABLE_WORD}>
 						{discardable
-							? 'The Donation page no longer holds what a page may hold. Discard changes to go back to the live page, or reset it to the default.'
-							: 'The Donation page no longer holds what a page may hold. Reset it to the default to repair it.'}
+							? 'It holds something the Donation page can no longer hold. Discard changes to go back to the live page, or reset the page to the default.'
+							: 'It holds something the Donation page can no longer hold. Reset the page to the default to repair it.'}
 					</Banner>
 				</div>
 			}
