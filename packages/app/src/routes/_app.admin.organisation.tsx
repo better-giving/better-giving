@@ -68,10 +68,12 @@ import type { Route } from './+types/_app.admin.organisation';
 //
 // each section is its own form with its own save; the story is the first. a save applies at once
 // with no confirm, because Undo stands at its button once it lands: Undo swaps the story with the
-// one the save replaced, and the same press, reading Redo once an Undo lands, swaps it back. every
-// section's press reads so, from its own undone marker. the rule a story passes is
-// `$lib/server/org/presentation.ts`'s, and the reads and writes, with the compare-and-set each
-// write is, are `$lib/server/org/queries.ts`'s.
+// one the save replaced, and the same press, reading Redo once an Undo lands, swaps it back, and
+// reads Undo again once that lands. the swap is one write either way and answers with the part's
+// undone marker whichever it was, so each part turns its reading over at every landed swap and
+// starts again at Undo on a landed save (`useRedoNext`); a reload forgets it. the rule a story
+// passes is `$lib/server/org/presentation.ts`'s, and the reads and writes, with the compare-and-set
+// each write is, are `$lib/server/org/queries.ts`'s.
 //
 // the story's version is a digest of the story alone rather than the row's `updated_at`, so a
 // section saved beside it does not make a story typed meanwhile stale; `$lib/server/conform.ts`'s
@@ -501,6 +503,33 @@ function useRedraws(version: string, landing: string | null): number {
 	return next.count;
 }
 
+/** a part's landed answer as its swap press counts it; a refusal is none. */
+type SwapLanding = 'save' | 'swap' | null;
+
+/**
+ * whether the part's swap press, pressed next, puts back what the last one undid, so it reads Redo.
+ * a landed save reads Undo and each landed swap turns the reading over. `landing` names one landing
+ * and a render carrying the same one turns nothing; mounted on a swap, the part reads it as an Undo.
+ */
+function useRedoNext(landing: unknown, landed: SwapLanding): boolean {
+	const [seen, setSeen] = useState({ landing, redo: landed === 'swap' });
+	if (landed === null || landing === seen.landing) return seen.redo;
+	const next = { landing, redo: landed === 'swap' && !seen.redo };
+	setSeen(next);
+	return next.redo;
+}
+
+/** the marker an in-place answer landed with, or null for a refusal or no answer yet. */
+function savedIn(answer: Route.ComponentProps['actionData']): string | null {
+	return answer !== undefined && 'saved' in answer ? answer.saved : null;
+}
+
+/** a part's landed marker as its swap press counts it: its undone marker is a swap. */
+function swapOrSave(marker: string | null, undone: string): SwapLanding {
+	if (marker === null) return null;
+	return marker === undone ? 'swap' : 'save';
+}
+
 /** what the editors have reported since the story was last drawn afresh. */
 type Typed = {
 	readonly drawn: number;
@@ -560,7 +589,7 @@ function StorySection({
 	// `!actionData`: a refusal is answered in place, so the marker the last landing published is
 	// still on the page under it.
 	const landed = saved !== null && !actionData;
-	const redo = saved === 'story-undone';
+	const redo = useRedoNext(landing, swapOrSave(saved, 'story-undone'));
 	const save = useSaveState({ landed, changed, pending: pressed === STORY_EDIT.id });
 
 	const missionError = fields.mission.errors?.[0];
@@ -614,7 +643,7 @@ function StorySection({
 					<div className="adm-actions">
 						<SaveButton
 							label="Save story"
-							doneLabel={saved === 'story-undone' ? 'Undone' : 'Saved'}
+							doneLabel={redo ? 'Undone' : 'Saved'}
 							state={buttonState(save)}
 						/>
 						{/* offered while the landing stands and nothing is typed over it: an Undo under
@@ -734,8 +763,7 @@ function LookSection({
 	const refusal = answer === undefined ? undefined : lookRefusal(answer);
 	// read off the answer the press stands on even while its own post is in flight, so the word under
 	// the focus does not change mid-press.
-	const redo =
-		fetcher.data !== undefined && 'saved' in fetcher.data && fetcher.data.saved === 'look-undone';
+	const redo = useRedoNext(fetcher.data, swapOrSave(savedIn(fetcher.data), 'look-undone'));
 
 	return (
 		<Section card>
@@ -755,15 +783,15 @@ function LookSection({
 						<StatusWord register="momentary" blocked mark="circle-alert">
 							<MarkedText text={refusal} />
 						</StatusWord>
-					) : landed === 'look' ? (
-						<StatusWord register="momentary">
-							Saved to every page using the organisation’s look.
-						</StatusWord>
-					) : landed === 'look-undone' ? (
+					) : landed === null ? null : redo ? (
 						<StatusWord register="momentary">
 							Undone on every page using the organisation’s look.
 						</StatusWord>
-					) : null}
+					) : (
+						<StatusWord register="momentary">
+							Saved to every page using the organisation’s look.
+						</StatusWord>
+					)}
 				</span>
 				{/* kept while its own press is in flight, so the focus it holds is not dropped. */}
 				{landed !== null || undoing ? (
@@ -879,8 +907,7 @@ function LogoPart({
 		answer.version === version;
 	const undoing = sent === LOGO_UNDO.id;
 	// read off the answer the press stands on even while its own post is in flight, as the look's is.
-	const redo =
-		fetcher.data !== undefined && 'saved' in fetcher.data && fetcher.data.saved === 'logo-undone';
+	const redo = useRedoNext(fetcher.data, swapOrSave(savedIn(fetcher.data), 'logo-undone'));
 
 	return (
 		<LogoControl
@@ -1013,7 +1040,7 @@ function SharingSection({
 	const changed = sharingText(edit) !== sharingText(freshEdit(sharing, drawn));
 
 	const landed = saved !== null && !actionData;
-	const redo = saved === 'sharing-undone';
+	const redo = useRedoNext(landing, swapOrSave(saved, 'sharing-undone'));
 	const save = useSaveState({ landed, changed, pending: pressed === SHARING_EDIT.id });
 
 	// the box or press a move, an Add or a Remove leaves the focus on, taken after the render that
@@ -1234,7 +1261,7 @@ function SharingSection({
 					<div className="adm-actions">
 						<SaveButton
 							label="Save sharing"
-							doneLabel={saved === 'sharing-undone' ? 'Undone' : 'Saved'}
+							doneLabel={redo ? 'Undone' : 'Saved'}
 							state={buttonState(save)}
 						/>
 						{/* offered while the landing stands and nothing is changed over it, as the story's. */}
