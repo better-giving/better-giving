@@ -4,6 +4,7 @@ import { parseContact } from '../contacts/contact-input';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
 import { donation, form, lineItem, payment } from '../db/schema';
+import type { Tribute } from '../donations/quote-input';
 import { recordDonation, type RecordDonationInput } from '../donations/record';
 
 // the claim ./owned-settings-gift.workers.spec.ts makes, for any spec holding a page's owned
@@ -17,7 +18,7 @@ const FUND = postableId('donationsDeductible');
 
 let sequence = 0;
 
-function gift(through: string): RecordDonationInput {
+function gift(through: string, tribute: Tribute | null): RecordDonationInput {
 	sequence += 1;
 	const donor = parseContact({
 		kind: 'individual',
@@ -41,7 +42,7 @@ function gift(through: string): RecordDonationInput {
 		occurredAt: new Date('2026-09-28T12:00:00.000Z'),
 		consentedToContact: false,
 		note: undefined,
-		tribute: null,
+		tribute,
 		programId: null
 	};
 }
@@ -62,16 +63,23 @@ async function stored(db: Db, donationId: string) {
 	};
 }
 
-/** a gift against `owned` and one through a plain form made for it, stored alike but for the form. */
-export async function expectRecordedAsAForm(db: Db, owned: string): Promise<void> {
+/**
+ * a gift against `owned` and one through a plain form made for it, each carrying `tribute`, stored
+ * alike but for the form. answers the id of the gift against `owned`.
+ */
+export async function expectRecordedAsAForm(
+	db: Db,
+	owned: string,
+	tribute: Tribute | null = null
+): Promise<string> {
 	const [plain] = await db
 		.insert(form)
 		.values({ name: 'embedded appeal', revenueAccountId: FUND, currency: 'USD', status: 'live' })
 		.returning({ id: form.id });
 	if (!plain) throw new Error('inserting the fixture form returned no row');
 
-	const throughForm = await recordDonation(db, gift(plain.id));
-	const throughPage = await recordDonation(db, gift(owned));
+	const throughForm = await recordDonation(db, gift(plain.id, tribute));
+	const throughPage = await recordDonation(db, gift(owned, tribute));
 	if (!throughForm.ok || !throughPage.ok) {
 		throw new Error(`expected both gifts recorded: ${JSON.stringify([throughForm, throughPage])}`);
 	}
@@ -84,4 +92,5 @@ export async function expectRecordedAsAForm(db: Db, owned: string): Promise<void
 	expect(await stored(db, throughPage.value.donationId)).toEqual(
 		await stored(db, throughForm.value.donationId)
 	);
+	return throughPage.value.donationId;
 }

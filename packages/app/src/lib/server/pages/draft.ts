@@ -18,6 +18,7 @@ import { type Page, parsePage } from '../../page/catalog';
 import { placedImageIds } from '../../page/illustration';
 import { dayOf, dayWords, endDayOf } from '../../page/end-date';
 import type { ChatNote, PageType } from '../../page/keys';
+import { SWITCH_LABELS } from '../../page/settings-form';
 import { plainText } from '../../rich-text/document';
 import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
 import { illustrate } from '../ai/illustrate';
@@ -35,9 +36,10 @@ import { type ProgramOption, readActivePrograms } from '../programs/queries';
 // draft, so nothing a turn does reaches a donor before Publish.
 //
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
-// all), its type, name, goal, end date and donation settings, the organisation's story and look,
-// the active programs, and what it said so far: each accepted exchange as the operator's message
-// and the reply's `say`, cut at `SAY_MAX`. which model is `generate`'s, never the chat's.
+// all), its type, name, goal, end date, donation settings and where its donation box opens, the
+// organisation's story and look, the active programs, and what it said so far: each accepted
+// exchange as the operator's message and the reply's `say`, cut at `SAY_MAX`. which model is
+// `generate`'s, never the chat's.
 //
 // an illustration the reply asks for in a photo's place (`illustrationRequests` in
 // ../../page/accept-reply.ts) is drawn only for a reply `acceptReply` would take: the reply is read
@@ -342,6 +344,7 @@ function replyFormat(type: PageType): string[] {
 			: [
 					'- the Donation page has no name, goal or end date; when asked for one, change nothing and say why.'
 				]),
+		'- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.',
 		'- write an amount in the words, or an impact tier, only from a figure the operator stated in the chat; with none, leave the impact tiers out.'
 	];
 }
@@ -374,9 +377,12 @@ function contextLines({
 		settings === undefined
 			? '- donation settings: none yet'
 			: `- donation settings: minimum ${settings.minMinor === null ? 'none' : money(settings.minMinor)}, maximum ${settings.maxMinor === null ? 'none' : money(settings.maxMinor)}, suggested amounts ${settings.suggestedAmounts.map(money).join(', ') || 'none'}, program ${settings.programMode === 'pinned' ? `pinned to ${programName(settings.programId)}` : settings.programMode === 'choice' ? 'chosen by each donor' : 'none'}`,
+		`- donation box: ${SWITCH_LABELS.open_on_monthly} ${onOff(current.switches.openOnMonthly)}, ${SWITCH_LABELS.dedication_on} ${onOff(current.switches.dedicationOn)}`,
 		`- active programs: ${programs.map(({ id, name }) => `${id} (${name})`).join(', ') || 'none'}`
 	];
 }
+
+const onOff = (on: boolean) => (on ? 'on' : 'off');
 
 /**
  * an illustration a reply asked for, and the id of the picture drawn for it, or null. `honoured` is

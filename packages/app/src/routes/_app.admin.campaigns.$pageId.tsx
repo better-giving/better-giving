@@ -56,7 +56,7 @@ import {
 	updateCampaignName,
 	updateCampaignSlug
 } from '$lib/server/pages/queries';
-import { database } from '../context';
+import { database, platform } from '../context';
 import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
@@ -163,7 +163,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
 	try {
 		[settings, pageSettings, asked, illustrations] = await Promise.all([
-			readEditorSettings(db, row),
+			readEditorSettings(db, context.get(platform).env, row, new URL(request.url).origin),
 			readPageSettings(db, row),
 			addressAsked(db, row),
 			draftIllustrations(db, row)
