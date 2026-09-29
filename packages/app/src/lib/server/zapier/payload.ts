@@ -1,11 +1,15 @@
 import { and, desc, eq, exists, notExists, sql } from 'drizzle-orm';
-import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
 import { entryGroup, payment, type ZapierTrigger } from '../db/schema';
 import { earlierSettledGiftOfDonor, refundStands } from '../donations/queries';
 import { type GiftEvent, renderGift, selectGifts } from '../integrations/gift';
 import { inPage } from '../db/id-set';
-import { type RefundRow, type RefundSource, selectRefunds } from '../integrations/refund';
+import {
+	type RefundRow,
+	type RenderedRefund,
+	renderRefund,
+	selectRefunds
+} from '../integrations/refund';
 
 export type { GiftEvent };
 
@@ -35,30 +39,11 @@ export function donorEventOf(gift: GiftEvent): DonorEvent {
 }
 
 /**
- * one refund, or one dispute lost, as a `gift_refunded` Zap receives it: what left, and the gift it
- * left. `id` is the refund's own payment id, stable across retries and distinct from the gift's, so
- * a second refund of one gift is a second event.
+ * one refund, or one dispute lost, as a `gift_refunded` Zap receives it: what left
+ * (`RenderedRefund` in ../integrations/refund.ts, which a webhook's refund carries too), and the
+ * gift it left as a `new_gift` Zap receives it.
  */
-export type RefundEvent = {
-	readonly id: string;
-	/**
-	 * when the money left the organisation, ISO 8601 in UTC. for a refund, when it was made. for a
-	 * dispute, when it opened and withdrew the money, which may be weeks before it was lost and this
-	 * event sent; where no opening was recorded, when it closed.
-	 */
-	readonly occurred_at: string;
-	/**
-	 * what left, in `amount`'s notation on `GiftEvent`. for a refund, what it gave back. for a
-	 * dispute, what the processor took as the close left it, which can be less than the opening
-	 * withdrew.
-	 */
-	readonly amount: string;
-	readonly amount_minor: number;
-	readonly currency: string;
-	readonly source: RefundSource;
-	/** the gift the money came out of, as a `new_gift` Zap receives it. */
-	readonly gift: GiftEvent;
-};
+export type RefundEvent = RenderedRefund<GiftEvent>;
 
 /**
  * the events for `paymentIds`, keyed by payment id. an id with no payment behind it has no entry,
@@ -98,15 +83,7 @@ async function refundEventsOf(
 	for (const refund of refunds) {
 		const gift = refund.giftId === null ? undefined : gifts.get(refund.giftId);
 		if (gift === undefined) continue;
-		events.set(refund.id, {
-			id: refund.id,
-			occurred_at: refund.occurredAt.toISOString(),
-			amount: majorText(refund.amountMinor, refund.currency),
-			amount_minor: refund.amountMinor,
-			currency: refund.currency,
-			source: refund.source,
-			gift
-		});
+		events.set(refund.id, renderRefund(refund, gift));
 	}
 	return events;
 }

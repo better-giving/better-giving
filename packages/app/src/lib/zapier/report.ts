@@ -1,11 +1,11 @@
-// the one key Zapier presents to this deployment, and the Zaps listening on it: what the
-// dashboard's Zapier page, under Integrations, draws and the presses it takes.
+// the one key Zapier presents to this deployment, and the Zaps listening on it, as the dashboard's
+// Zapier page (../../routes/_app.admin.integrations.zapier.tsx) reads them and its presses answer.
+//
+// a leaf that imports nothing, so $lib/server/zapier/ can build the reading to this shape and the
+// page can draw it.
 //
 // **the key is in no reading.** a reading shows its head and tail; the plaintext is in the answer
 // to the press that made it and nowhere after, since the deployment stores only its hash.
-//
-// **it is a block and never a member of the report**, the decision ./quickbooks.ts states: a
-// deployment nobody connects to Zapier is not half set up.
 
 /**
  * every press this surface takes, as the `press` its answer names.

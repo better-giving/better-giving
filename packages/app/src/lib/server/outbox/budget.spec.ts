@@ -3,12 +3,15 @@ import {
 	ACCOUNTING_RUN_COST,
 	CONNECTIONS_AT_ONCE,
 	CONNECTIONS_KEPT,
+	claimsWithin,
 	deliveryPace,
+	freePlanPace,
 	HEADROOM,
 	MINUTE_RUN,
 	PACE,
 	type Plan,
 	PLAN_LIMITS,
+	paceOf,
 	type RunCost,
 	type Share,
 	shareOn,
@@ -64,6 +67,16 @@ describe.each([
 	it('goes faster on the Paid plan', () => {
 		expect(paid).toBeGreaterThan(free);
 	});
+
+	it.each([
+		['free', free],
+		['paid', paid]
+	] as const)(
+		'claims on %s all its share pays for and its lanes answer in a minute, and no fewer',
+		(plan, claims) => {
+			expect(claims).toBe(Math.min(claimsWithin(shareOn(plan, share), cost), paceOf(share, cost)));
+		}
+	);
 });
 
 describe('deliveryPace()', () => {
@@ -88,5 +101,17 @@ describe('deliveryPace()', () => {
 			webhooksPerMinute: PACE.free.webhooks,
 			booksPerMinute: PACE.free.books
 		});
+	});
+});
+
+describe('freePlanPace()', () => {
+	it("names the feed's Free pace where the account is not stated as Paid", () => {
+		expect(freePlanPace({}, 'zapier')).toBe(PACE.free.zapier);
+		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'false' }, 'webhooks')).toBe(PACE.free.webhooks);
+	});
+
+	it('names none once the account is stated as Paid', () => {
+		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'true' }, 'zapier')).toBeNull();
+		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'TRUE' }, 'webhooks')).toBeNull();
 	});
 });

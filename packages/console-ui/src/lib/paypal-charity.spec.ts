@@ -34,6 +34,14 @@ describe('where the switch is drawn', () => {
 		expect(charityApproved('TRUE')).toBe(true);
 	});
 
+	it('is on for the word carried with the whitespace a hand edit leaves round it', () => {
+		// the deployment trims every value before it reads one (`readConfigEnv` in
+		// packages/app/src/lib/server/config/env.ts), so a screen reading this untrimmed would say
+		// standard rate over a deployment quoting the charity one.
+		expect(charityApproved(' true')).toBe(true);
+		expect(charityApproved('TRUE\n')).toBe(true);
+	});
+
 	it('is off for a deployment holding nothing', () => {
 		expect(charityApproved('')).toBe(false);
 	});
@@ -60,7 +68,7 @@ describe('what one press of the switch puts on the deployment', () => {
 
 	it('falls to off for anything that is not the word, so no third thing reaches the door', () => {
 		// the case this composition exists for. the door refuses every other spelling with a 400
-		// (`charityRate` in packages/console/internal/server/values.go), and a payload built from what
+		// (`answerSwitches` in packages/console/internal/server/values.go), and a payload built from what
 		// a body claimed rather than from the two positions is how a press on this page reaches it.
 		const posted = new FormData();
 		posted.set(CHARITY_FIELD, 'false');

@@ -1,6 +1,6 @@
-import { readAuthEnv, readPin } from '$lib/server/auth';
+import { publishedOrigin, readAuthEnv, readPin } from '$lib/server/auth';
 import { agentPromptFor } from '$lib/server/integrations/agent-prompt';
-import { DOCS_HEADERS, publishedOrigin } from '$lib/server/integrations/openapi';
+import { DOCS_HEADERS } from '$lib/server/integrations/openapi';
 import { platform } from '../context';
 import type { Route } from './+types/integrations.agent-prompt[.]md';
 

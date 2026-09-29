@@ -101,6 +101,14 @@ describe('checking a presented key', () => {
 		if (!made.ok) throw new Error('a first make was refused');
 		expect(await verifyZapierKey(db, `bearer ${made.key}`)).not.toBeNull();
 	});
+
+	it('admits the key after any run of spaces, and never after a tab or with a word behind it', async () => {
+		const made = await makeZapierKey(db);
+		if (!made.ok) throw new Error('a first make was refused');
+		expect(await verifyZapierKey(db, `Bearer   ${made.key}`)).not.toBeNull();
+		expect(await verifyZapierKey(db, `Bearer\t${made.key}`)).toBeNull();
+		expect(await verifyZapierKey(db, `Bearer ${made.key} extra`)).toBeNull();
+	});
 });
 
 /** a settled gift, and a delivery of it owed to `subscriptionId`. */

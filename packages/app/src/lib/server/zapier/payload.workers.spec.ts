@@ -19,6 +19,7 @@ import { post, postingStatements } from '../ledger/posting';
 import {
 	donorEventOf,
 	readGiftEvents,
+	readRefundEvents,
 	readSamples,
 	SAMPLE_DONOR,
 	SAMPLE_GIFT,
@@ -453,4 +454,26 @@ describe('a live event and its sample carry the same fields', () => {
 		expect(live?.id).toBe(refundId);
 		expect(wireKeys(live)).toEqual(wireKeys(SAMPLE_REFUND));
 	});
+});
+
+describe('readRefundEvents()', () => {
+	it.each([
+		['a refund', undefined, 'refund'],
+		['a dispute the organisation lost', 'lost', 'dispute']
+	] as const)(
+		'posts %s as the same bytes, around the gift as a new_gift Zap receives it',
+		async (_what, dispute, source) => {
+			const gift = await seedGift(await seedDonor(), onDay(1));
+			const refundId = await seedRefund(gift, 2, dispute === undefined ? {} : { dispute });
+
+			const event = (await readRefundEvents(db, [refundId])).get(refundId);
+
+			expect(JSON.stringify({ ...event, gift: 'the gift' })).toBe(
+				`{"id":"${refundId}","occurred_at":"2026-09-02T12:00:00.000Z","amount":"20.00","amount_minor":2000,"currency":"USD","source":"${source}","gift":"the gift"}`
+			);
+			expect(event?.gift).toStrictEqual(
+				(await readGiftEvents(db, [gift.paymentId])).get(gift.paymentId)
+			);
+		}
+	);
 });

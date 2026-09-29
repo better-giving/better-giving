@@ -2,9 +2,10 @@ import type { DeployVarName } from '../api/types';
 
 // the values no group's press sets, and why each is in no group.
 //
-// **no fold on this console draws a box for these four.** `STRIPE_PUBLISHABLE_KEY` has one of its
-// own beside the secret key, because one press pastes the pair and the chain writes both
-// (./stripe-section.tsx) — it is not in a group because that press is not a group's.
+// **no fold on this console draws a box for a name in {@link UNGROUPED_VARS}.**
+// `STRIPE_PUBLISHABLE_KEY` has one of its own beside the secret key, because one press pastes the
+// pair and the chain writes both (./stripe-section.tsx) — it is not in a group because that press
+// is not a group's.
 // `TURNSTILE_SITE_KEY` is minted with the widget on the first deploy out of the answer that made it
 // (`packages/console/internal/first`), so there is no value for an operator to paste. and
 // `BETTER_AUTH_URL` has a box on no screen at all: the app falls back to the origin a request
@@ -20,6 +21,10 @@ import type { DeployVarName } from '../api/types';
 // from, set months after the keys are — and PayPal's credentials and their address are one group
 // beside it (`PAYPAL_GROUP` in ./secret-groups.ts).
 //
+// `CLOUDFLARE_PAID_PLAN` is in no group for that same reason: it is an answer about the Cloudflare
+// account the deployment runs on rather than a credential, set as a two-position switch with a press
+// of its own (./cloudflare-plan.ts).
+//
 // it is a list rather than a remark in a header because ./secret-groups.spec.ts reads it: the
 // covering there is two-directional, so a name added to the enumeration lands in a group or here,
 // and a name that lands in neither is a value with nowhere to be typed.
@@ -28,5 +33,6 @@ export const UNGROUPED_VARS: readonly DeployVarName[] = [
 	'STRIPE_PUBLISHABLE_KEY',
 	'TURNSTILE_SITE_KEY',
 	'BETTER_AUTH_URL',
-	'PAYPAL_CHARITY_RATE_APPROVED'
+	'PAYPAL_CHARITY_RATE_APPROVED',
+	'CLOUDFLARE_PAID_PLAN'
 ];
