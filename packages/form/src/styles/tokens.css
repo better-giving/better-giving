@@ -62,8 +62,9 @@
  * light only. no dark ramp, no `prefers-color-scheme` branch, no mode detection. a
  * dark-themed host page gets a light card sitting in a dark page. the greys are `--_s` below and
  * every rung off it is a fixed lightness, so the shade a host picks tints the card by a trace and
- * cannot darken it — none of the three is dark, a keyword off the list is refused at parse time, and
- * the failure is a rule an integrator reads rather than a value quietly clamped back.
+ * cannot darken it — none of the three is dark, a keyword off the list takes what the element
+ * inherits instead, and the failure is a rule an integrator reads rather than a value quietly
+ * clamped back.
  *
  * a dark-themed host getting a light card is the accepted cost rather than a gap, and
  * retrofitting dark is authoring a second system rather than adding an attribute: a second
@@ -110,8 +111,9 @@
  */
 
 /*
- * the seeds are registered so that a host's malformed value is rejected at parse time and
- * the `initial-value` below is what computes instead.
+ * the seeds are registered so that a host's malformed value is invalid at computed-value time and
+ * falls back to what the element inherits: the value an ancestor set, and the `initial-value` below
+ * where nothing above sets one.
  *
  * unregistered, a bad seed is not a bad color — it substitutes into every
  * `oklch(from var(--donate-primary) …)`, each one is invalid at computed-value time, and each
@@ -159,11 +161,11 @@
 }
 
 /*
- * the two presets. each is a keyword out of a closed set, so a value off the list is refused at
- * parse time exactly as a malformed brand is, and the `initial-value` computes instead: `light` and
- * `soft`, the card a host who set nothing gets. neither is substituted into any declaration. each
- * is compared by the container style queries at the end of the preset layer below, which is why that
- * layer sits on the node under `:host` rather than on it.
+ * the two presets. each is a keyword out of a closed set, so a value off the list falls back exactly
+ * as a malformed brand does: to the preset an ancestor set, and to the `initial-value` where nothing
+ * above sets one — `light` and `soft`, the card a host who set nothing gets. neither is substituted
+ * into any declaration. each is compared by the container style queries at the end of the preset
+ * layer below, which is why that layer sits on the node under `:host` rather than on it.
  */
 @property --donate-shade {
 	syntax: 'light | warm | cool';
@@ -868,6 +870,8 @@
  * the preset layer: every token a `--donate-shade` or `--donate-corner` preset moves, and every token
  * derived from one of those. the three `light` and `soft` values are declared here, and each other
  * preset is a container style query at the end of this layer re-declaring only the root it moves.
+ * an engine without container style queries on custom properties matches none of them, so it draws
+ * the light, soft card whatever the host set — the declared values, never an unresolved token.
  *
  * it is declared on the node under `:host` and under `[data-donate-root]` rather than on either,
  * and that is what a style query costs. a query compares the value the seed has on an ancestor, so
@@ -888,10 +892,12 @@
  * ./resolve.ts hangs off the provider's node reads a preset exactly as the card paints it, and the
  * provider's fields take the shade and the corner the host picked.
  *
- * a value off either list never reaches a query — the registrations above refuse it at parse time
- * and the initial value computes — so the card a host who typed a preset wrong gets is the card a
- * host who set nothing gets. "draws today's card for a preset off either list" in
- * ./parts.browser.spec.ts holds it on the drawn card.
+ * a value off either list never reaches a query — the registrations above make it invalid at
+ * computed-value time, and what the query compares is the preset the element inherits — so a host
+ * who typed a preset wrong gets the preset set above the element, or the card a host who set nothing
+ * gets where nothing above sets one. "draws today’s card for a preset off either list" and "draws
+ * the presets the page above set for a preset off either list on the element" in
+ * ./parts.browser.spec.ts hold both on the drawn card.
  */
 :host > *,
 [data-donate-root] > * {

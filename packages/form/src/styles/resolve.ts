@@ -116,9 +116,8 @@ const UNRESOLVED = 'rgba(0, 0, 0, 0)';
  * every length in `LENGTH_TOKENS` is non-negative and cannot be made otherwise from outside: no
  * seed carries a length — the corner seed picks among the zero and the positive literals
  * ./tokens.css authors — and every other length there is a literal or a positive multiple of a root
- * clamped into `[15px, 18px]`. so a negative computed length is not a
- * token this form could ever have been given, and it is the one length that can stand for "this did
- * not resolve".
+ * clamped into `[15px, 18px]`. so a negative computed length is not a token this form could ever
+ * have been given, and it is the one length that can stand for "this did not resolve".
  *
  * compared exactly rather than by sign, because the value is read straight back off the computed
  * style: `text-indent` resolves to the computed value, not a used one, so what is written here is

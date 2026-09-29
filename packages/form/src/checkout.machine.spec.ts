@@ -459,10 +459,10 @@ describe('a flow the page opens preset', () => {
 		});
 	});
 
-	it('keeps a resumed flow on what it resumes, whatever it was told to open on', async () => {
-		// the donor decided before they left for their bank. a declined return that hands them the
-		// card again hands it back as a fresh one, not as the page's preset.
-		const { actor } = harness({
+	it('lands a declined return on the cadence and dedication the page opens on', async () => {
+		// a resumed page load remembers neither the donor's choice nor the page's, so the page's
+		// opening is where the card starts again. the resume still reads the token it carried.
+		const { actor, calls } = harness({
 			resume: { paymentToken: 'pi_3ds_secret_x' },
 			resumeWith: async () => ({ kind: 'declined', message: 'Your bank declined the payment.' }),
 			opening: { monthly: true, dedication: true }
@@ -470,8 +470,10 @@ describe('a flow the page opens preset', () => {
 		await settle();
 		actor.send({ type: 'RETRY' });
 
-		expect(actor.getSnapshot().context.draft.frequency).toBe('one_time');
-		expect(actor.getSnapshot().context.draft.tribute).toBeUndefined();
+		expect(calls.resume).toEqual(['pi_3ds_secret_x']);
+		const { draft } = actor.getSnapshot().context;
+		expect(draft.frequency).toBe('monthly');
+		expect(draft.tribute).toEqual({ kind: 'honor', honoree: '', notifyName: '', notifyEmail: '' });
 	});
 
 	it('asks for a monthly quote when the donor takes the monthly it opened on', async () => {
