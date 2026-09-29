@@ -278,7 +278,7 @@ describe('Undo of the story', () => {
 
 type LookAnswer = {
 	status: number;
-	saved?: 'look' | 'look-undone' | 'logo';
+	saved?: 'look' | 'look-undone' | 'logo' | 'logo-undone';
 	version?: string;
 	errors: Record<string, string[]>;
 	message: string | undefined;
@@ -300,7 +300,7 @@ async function postLook(
 		{ env }
 	);
 	const answered = (await response.json()) as {
-		saved?: 'look' | 'look-undone' | 'logo';
+		saved?: 'look' | 'look-undone' | 'logo' | 'logo-undone';
 		version?: string;
 		form?: { result: { error?: Record<string, string[]>; initialValue?: Record<string, unknown> } };
 	};
@@ -688,7 +688,7 @@ describe('the logo', () => {
 		expect((await load()).logoUndoable).toBe(true);
 
 		const undone = await postLook(LOGO_UNDO_FORM, (await load()).logoVersion);
-		expect(undone).toMatchObject({ status: 200, saved: 'logo' });
+		expect(undone).toMatchObject({ status: 200, saved: 'logo-undone' });
 		const landed = await load();
 		expect(landed.logo?.imageId).toBe(first);
 		expect(undone.version).toBe(landed.logoVersion);

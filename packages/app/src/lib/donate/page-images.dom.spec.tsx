@@ -4,11 +4,13 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { type Page, parsePage } from '../page/catalog';
 import type { PageType } from '../page/keys';
 import { PageView, type PageViewProps } from './page-view';
+import { EndedCampaignPage } from './plain-page';
 
 // the images a page draws beside its blocks' own photos, through the renderer: the organisation's
 // logo in the masthead, a program's photo on its chooser option, and the caption on a hero or image
-// block marked as an AI illustration, the cover's included. every one is drawn from the deployment's
-// image route by its stored id. how any of it looks is left to a person looking at it.
+// block marked as an AI illustration, the cover's included — and the logo on an ended campaign's
+// screen, which is drawn beside the renderer rather than by it. every one is drawn from the
+// deployment's image route by its stored id. how any of it looks is left to a person looking at it.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -154,6 +156,33 @@ describe('the logo atop the page', () => {
 			/>
 		);
 		expect(root.querySelector('.page-mast img')?.getAttribute('alt')).toBe(ORG);
+	});
+
+	describe('on an ended campaign', () => {
+		const ended = (logo: PageViewProps['logo']) =>
+			mount(
+				<EndedCampaignPage
+					name="Winter coat drive"
+					orgName={ORG}
+					logo={logo}
+					look={{ brandColour: '#1d6b4f', shade: 'warm', corner: 'soft' }}
+				/>
+			).querySelector('.page-mast');
+
+		it('a wide logo stands in for the name, carrying it as its alt', () => {
+			const mast = ended({ imageId: LOGO, width: 420, height: 80 });
+			const logo = mast?.querySelector('img');
+
+			expect(logo?.getAttribute('src')).toBe(`/image/${LOGO}`);
+			expect(logo?.getAttribute('alt')).toBe(ORG);
+			expect(mast?.textContent).toBe('');
+		});
+
+		it('none: the name alone, as the ended screen has always drawn it', () => {
+			const mast = ended(null);
+			expect(mast?.querySelector('img')).toBeNull();
+			expect(mast?.querySelector('.page-mast-name')?.textContent).toBe(ORG);
+		});
 	});
 });
 

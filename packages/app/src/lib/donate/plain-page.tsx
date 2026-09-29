@@ -9,7 +9,7 @@ import { DonateCard } from './card';
 import * as copy from './copy';
 import pageChrome from './page.css?url';
 import { PageRoot } from './page-root';
-import { Masthead, type PageLook } from './page-view';
+import { Masthead, type PageLogo, type PageLook } from './page-view';
 
 // what every donor page route shares beyond the renderer: its stylesheets, and the plain page drawn
 // where the stored page cannot be — the donation box alone, the notice where there is no box, and
@@ -76,15 +76,18 @@ export function PlainDonationPage({
  * an ended campaign's address: the organisation's name over the page as /donate draws it, then the
  * campaign's name, that it has ended, and the way on to /donate — at the page's reading measure,
  * in the organisation's look, with no donation box. a deployment with no organisation name yet
- * draws no masthead.
+ * draws no masthead, logo or not.
  */
 export function EndedCampaignPage({
 	name,
 	orgName,
+	logo,
 	look
 }: {
 	readonly name: string;
 	readonly orgName: string | null;
+	/** the organisation's logo, in the masthead; null or absent where it has none. */
+	readonly logo?: PageLogo | null | undefined;
 	readonly look: PageLook;
 }) {
 	return (
@@ -95,7 +98,7 @@ export function EndedCampaignPage({
 			palette="plain"
 			layout="column"
 		>
-			{orgName === null ? null : <Masthead name={orgName} logo={null} />}
+			{orgName === null ? null : <Masthead name={orgName} logo={logo ?? null} />}
 			<main className="stage ended">
 				<h1>{copy.campaignEnded(name)}</h1>
 				<p>{copy.CAMPAIGN_ENDED_THANKS}</p>

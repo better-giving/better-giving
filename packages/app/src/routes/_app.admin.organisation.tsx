@@ -397,7 +397,7 @@ export async function action(args: Route.ActionArgs) {
 		}
 		if (written === 'stale') return invalid(409, unread(LOGO_UNDO, STALE_LOGO));
 		if (written === 'nothing') return invalid(409, unread(LOGO_UNDO, NOTHING_TO_UNDO_LOGO));
-		return { saved: 'logo' as const, version: written.version };
+		return { saved: 'logo-undone' as const, version: written.version };
 	}
 
 	async function saveSharing({ context, request }: Route.ActionArgs, body: FormData) {
@@ -873,9 +873,12 @@ function LogoPart({
 	const landed =
 		answer !== undefined &&
 		'saved' in answer &&
-		answer.saved === 'logo' &&
+		(answer.saved === 'logo' || answer.saved === 'logo-undone') &&
 		answer.version === version;
 	const undoing = sent === LOGO_UNDO.id;
+	// read off the answer the press stands on even while its own post is in flight, as the look's is.
+	const redo =
+		fetcher.data !== undefined && 'saved' in fetcher.data && fetcher.data.saved === 'logo-undone';
 
 	return (
 		<LogoControl
@@ -900,7 +903,8 @@ function LogoPart({
 					? {
 							landed: logo === null ? 'removed' : 'saved',
 							onUndo: () => post(LOGO_UNDO.id, version),
-							undoing
+							undoing,
+							redo
 						}
 					: null
 			}

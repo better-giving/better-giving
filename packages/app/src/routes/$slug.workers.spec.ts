@@ -370,6 +370,22 @@ describe('an ended campaign at its address', () => {
 		expect(masthead(markup(answered.data))).toContain('Hope Foundation');
 	});
 
+	it('draws the organisation’s logo atop the screen by its id, and none where none is set', async () => {
+		await endedCampaign();
+		expect(masthead(markup((await visit()).data))).not.toContain('<img');
+
+		const id = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/png', width: 200, height: 200, alt: null },
+			new Uint8Array([1])
+		);
+		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, id)).toHaveProperty('version');
+		const mast = masthead(markup((await visit()).data));
+		expect(mast).toContain(`src="/image/${id}"`);
+		expect(mast).toContain('width="200"');
+		expect(mast).toContain('Hope Foundation');
+	});
+
 	it('says in the tab that it has ended', async () => {
 		await endedCampaign();
 		const answered = await visit();
