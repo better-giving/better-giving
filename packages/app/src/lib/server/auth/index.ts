@@ -6,7 +6,7 @@ import { betterAuth } from 'better-auth/minimal';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '$lib/server/db/client';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/auth-schema';
-import type { AuthEnv } from './env';
+import { type AuthEnv, pinnedOrigin } from './env';
 import { MEMBER_PASSWORD_MIN_LENGTH } from './invitations';
 import { staffCredentialPlugin } from './staff-plugin';
 
@@ -225,8 +225,12 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * when `advanced.trustedProxyHeaders` is set, and it is not. that is also why
 	 * `baseURL: { allowedHosts }` is deliberately unused — on 1.6.25 that path defaults
 	 * `trustedProxyHeaders` to `true`, which would trust an attacker-supplied header.
+	 *
+	 * a pin is read by `pinnedOrigin` (./env.ts), the reading QuickBooks and the paused-destination
+	 * mail take too, so its origin and not the value as typed is `baseURL` and what the loopback
+	 * check below sees, and a pin that names no http(s) origin throws here.
 	 */
-	const configuredBaseURL = env.BETTER_AUTH_URL?.trim() || undefined;
+	const configuredBaseURL = pinnedOrigin(env) ?? undefined;
 	const effectiveOrigin = configuredBaseURL ?? runtime.requestOrigin;
 	const isLoopback = isLoopbackOrigin(effectiveOrigin);
 

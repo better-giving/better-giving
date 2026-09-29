@@ -72,9 +72,9 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 				{
 					db,
 					fetch,
-					// the pin is read when a pause is mailed, so one that does not parse costs that mail
-					// and not the run: `new URL` throws on it, and ./lib/server/webhooks/deliver.ts logs a
-					// throw from the hook.
+					// the pin is read when a pause is mailed, so one that names no http(s) origin costs that
+					// mail and not the run: `pinnedOrigin` throws on it, and ./lib/server/webhooks/deliver.ts
+					// logs a throw from the hook.
 					onPaused: (destination) =>
 						mailPause({
 							db,

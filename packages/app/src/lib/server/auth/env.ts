@@ -70,10 +70,26 @@ export function readAuthEnv(source: unknown): AuthEnv {
 }
 
 /**
- * the origin `BETTER_AUTH_URL` pins, or null where it is unset. `.origin` and never the value as
- * typed: an operator pastes the pin, and a trailing slash or a path on it is not part of it.
+ * the origin `BETTER_AUTH_URL` pins, or null where it is unset — the one reading of the pin, which
+ * better-auth's `baseURL` and loopback check (./index.ts), the QuickBooks address
+ * (../accounting/connect-link.ts) and the paused-destination mail (src/worker.ts) all take.
+ *
+ * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
+ * path on it is not part of it. a pin that names no http(s) origin throws, naming the value:
+ * `localhost:8787` parses as a scheme called `localhost` whose `.origin` is the string "null", and
+ * better-auth refuses such a `baseURL` itself — reading it off the Worker's `process.env` when it
+ * is passed none — so no caller may read it as unset.
  */
 export function pinnedOrigin(env: AuthEnv): string | null {
 	const pinned = env.BETTER_AUTH_URL?.trim();
-	return pinned ? new URL(pinned).origin : null;
+	if (!pinned) return null;
+	const url = URL.parse(pinned);
+	if (url?.protocol !== 'https:' && url?.protocol !== 'http:') {
+		throw new Error(
+			`BETTER_AUTH_URL is "${pinned}", which names no http(s) origin. Set it to the address ` +
+				'the deployment answers on, scheme included (https://donate.example.org), or unset it ' +
+				'so the origin is read off each request (DEPLOY.md, .dev.vars.example).'
+		);
+	}
+	return url.origin;
 }
