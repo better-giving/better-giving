@@ -4,6 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, dispute, donation, payment, type ZapierTrigger } from '../db/schema';
+import { MINUTE_RUN, PACE } from '../outbox/budget';
 import { sendDueZapierEvents } from './deliver';
 import { giftRefundedStatements, zapierStatements } from './events';
 import { subscribe, type SubscribeRequest, type Subscribed } from './subscriptions';
@@ -344,7 +345,7 @@ describe('sendDueZapierEvents()', () => {
 
 	it("holds back the rest of a run's rows for a hook once it answers 429, until the time it asked", async () => {
 		await listen();
-		for (let gift = 0; gift < 12; gift++) await settle();
+		for (let gift = 0; gift < PACE.free.zapier; gift++) await settle();
 		const zapier = hooksAnswering(() => 200);
 		const throttled = (async (input: RequestInfo | URL, init?: RequestInit) => {
 			await zapier.fetch(input, init);
@@ -355,10 +356,11 @@ describe('sendDueZapierEvents()', () => {
 		await sendDueZapierEvents({ db, fetch: throttled }, new Date(Date.now() + 1_000));
 		const after = Date.now();
 
-		// the three lanes post before any answer is back; the other nine are never posted.
-		expect(zapier.posts).toHaveLength(3);
+		// the lanes post before any answer is back; the rest of the claim is never posted.
+		const lanes = MINUTE_RUN.zapier.lanes;
+		expect(zapier.posts).toHaveLength(lanes);
 		const heldBack = (await deliveryRows()).filter((r) => r.attempts === 0);
-		expect(heldBack).toHaveLength(9);
+		expect(heldBack).toHaveLength(PACE.free.zapier - lanes);
 		for (const row of heldBack) {
 			expect(row.status).toBe('pending');
 			expect(row.next_attempt_at).toBeGreaterThanOrEqual(before + 10 * MINUTE);
@@ -680,36 +682,50 @@ describe('sendDueZapierEvents()', () => {
 		expect(await deliveryRows()).toEqual([expect.objectContaining({ status: 'sent' })]);
 	});
 
-	it('drains a backlog of a hundred rows in one run', async () => {
+	/**
+	 * runs one after another until one claims nothing, each posting no more than a claim's worth,
+	 * as the cron's minutes would.
+	 */
+	async function drain(zapier: ReturnType<typeof hooksAnswering>): Promise<void> {
+		for (;;) {
+			const before = zapier.posts.length;
+			await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+			const posted = zapier.posts.length - before;
+			expect(posted).toBeLessThanOrEqual(PACE.free.zapier);
+			if (posted === 0) return;
+		}
+	}
+
+	it("drains a backlog of forty rows over the runs after it, a claim's worth each", async () => {
 		await listen();
 		await listen();
-		for (let gift = 0; gift < 50; gift++) await settle();
+		for (let gift = 0; gift < 20; gift++) await settle();
 		const zapier = hooksAnswering();
 
-		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+		await drain(zapier);
 
-		expect(new Set(zapier.posts.map((p) => `${p.url} ${p.body.id}`)).size).toBe(100);
+		expect(new Set(zapier.posts.map((p) => `${p.url} ${p.body.id}`)).size).toBe(40);
 		expect((await deliveryRows()).filter((r) => r.status !== 'sent')).toEqual([]);
 	});
 
-	it('drains a backlog owed to a hundred hooks in one run', async () => {
-		for (let zap = 0; zap < 100; zap++) await listen();
+	it("drains a backlog owed to twenty hooks over the runs after it, a claim's worth each", async () => {
+		for (let zap = 0; zap < 20; zap++) await listen();
 		await settle();
 		const zapier = hooksAnswering();
 
-		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+		await drain(zapier);
 
-		expect(new Set(zapier.posts.map((p) => p.url)).size).toBe(100);
+		expect(new Set(zapier.posts.map((p) => p.url)).size).toBe(20);
 	});
 
-	it('drains a backlog of a hundred refunds in one run', async () => {
+	it("drains a backlog of twenty refunds over the runs after it, a claim's worth each", async () => {
 		await listen('gift_refunded');
-		for (let gift = 0; gift < 100; gift++) await refund(await settle());
+		for (let gift = 0; gift < 20; gift++) await refund(await settle());
 		const zapier = hooksAnswering();
 
-		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+		await drain(zapier);
 
-		expect(new Set(zapier.posts.map((p) => p.body.id)).size).toBe(100);
+		expect(new Set(zapier.posts.map((p) => p.body.id)).size).toBe(20);
 	});
 
 	it('posts each row of a backlog once when two runs work it together', async () => {
@@ -727,16 +743,19 @@ describe('sendDueZapierEvents()', () => {
 		}) as typeof fetch;
 		const now = Date.now() + 1_000;
 
+		const lanes = MINUTE_RUN.zapier.lanes;
 		const first = sendDueZapierEvents({ db, fetch: heldHooks }, new Date(now));
-		await expect.poll(() => posts.length).toBe(3);
+		await expect.poll(() => posts.length).toBe(lanes);
 		const second = sendDueZapierEvents({ db, fetch: heldHooks }, new Date(now + MINUTE));
-		await expect.poll(() => posts.length).toBe(6);
+		await expect.poll(() => posts.length).toBe(2 * lanes);
 		open();
 		await Promise.all([first, second]);
 
-		expect(posts).toHaveLength(150);
-		expect(new Set(posts).size).toBe(150);
-		expect((await deliveryRows()).filter((r) => r.status !== 'sent')).toEqual([]);
+		expect(posts).toHaveLength(2 * PACE.free.zapier);
+		expect(new Set(posts).size).toBe(2 * PACE.free.zapier);
+		expect((await deliveryRows()).filter((r) => r.status === 'sent')).toHaveLength(
+			2 * PACE.free.zapier
+		);
 	});
 
 	it('claims nothing owed to a subscription that has ended', async () => {
@@ -756,8 +775,8 @@ describe('sendDueZapierEvents()', () => {
 		expect(zapier.posts).toEqual([]);
 	});
 
-	it('posts to at most three hooks at once, and to every one of them', async () => {
-		for (let zap = 0; zap < 12; zap++) await listen();
+	it("posts to at most the feed's lanes at once, and to every hook it claimed", async () => {
+		for (let zap = 0; zap < PACE.free.zapier; zap++) await listen();
 		await settle();
 		let inFlight = 0;
 		let most = 0;
@@ -773,8 +792,8 @@ describe('sendDueZapierEvents()', () => {
 
 		await sendDueZapierEvents({ db, fetch: busyHooks }, new Date(Date.now() + 1_000));
 
-		expect(most).toBe(3);
-		expect(new Set(posts).size).toBe(12);
+		expect(most).toBe(MINUTE_RUN.zapier.lanes);
+		expect(new Set(posts).size).toBe(PACE.free.zapier);
 	});
 
 	it('leaves a row alone once a later run has taken it over, whatever its own post answers', async () => {

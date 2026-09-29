@@ -3,6 +3,7 @@ import type { Db } from '../db/client';
 import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { inPage } from '../db/id-set';
 import { REFUND_NO_LONGER_STANDS, readStandingRefunds } from '../integrations/refund';
+import { MINUTE_RUN, PACE, type Plan } from '../outbox/budget';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import {
@@ -62,37 +63,26 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 // that came back. what already went out stays out. a `new_gift` row is sent as it happened,
 // because a refund of it since is an event of its own.
 
-/** everything one run needs, per invocation. `fetch` is handed in so a spec can answer for Zapier. */
-export type ZapierDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetch };
-
 /**
- * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes post
- * inside {@link RUN_DEADLINE_MS} while each hook answers in about three seconds. where hooks are
- * slower — every one timing out, at worst, leaves 33 posted — a row no lane reached stays leased,
- * unposted, until the lease runs out and a later run takes it.
+ * everything one run needs, per invocation. `fetch` is handed in so a spec can answer for Zapier.
+ * `plan` is the Cloudflare plan the invocation runs on, Free where it is not said: a run claims
+ * this feed's pace on it, the longest-waiting first (../outbox/budget.ts), and a row no lane
+ * reached stays leased, unposted, until the lease runs out and a later run takes it.
  */
-const CLAIMS_PER_RUN = 100;
+export type ZapierDeliveryDeps = {
+	readonly db: Db;
+	readonly fetch: typeof fetch;
+	readonly plan?: Plan;
+};
 
-/**
- * posts in flight at once. an invocation may have six requests waiting on their response headers,
- * and a seventh queues with its timeout already running
- * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
- * the minute cron's three feeds share those six in one invocation: these three lanes,
- * ../webhooks/deliver.ts's two, and ../accounting/deliver.ts's one request at a time.
- */
-const POSTS_AT_ONCE = 3;
+/** posts in flight at once: this feed's share of the minute cron's connections (../outbox/budget.ts). */
+const POSTS_AT_ONCE = MINUTE_RUN.zapier.lanes;
 
 /** how long a hook is given to answer before the post counts as failed. */
 const POST_TIMEOUT_MS = 10_000;
 
 /** how long a claimed row is the claiming run's alone, from that run's scheduled time. */
 const LEASE_MS = 2 * 60_000;
-
-/**
- * no post starts later than this after the run's scheduled time: the last moment a post can start
- * and still answer or time out, {@link POST_TIMEOUT_MS} at most, before {@link LEASE_MS} runs out.
- */
-const RUN_DEADLINE_MS = LEASE_MS - POST_TIMEOUT_MS;
 
 const BACKOFF_FIRST_MS = 60_000;
 
@@ -109,9 +99,7 @@ const outbox = defineOutbox({
 	table: zapierDelivery,
 	key: { subscriptionId: zapierDelivery.subscriptionId, eventId: zapierDelivery.eventId },
 	leaseMs: LEASE_MS,
-	deadlineMs: RUN_DEADLINE_MS,
 	attemptMs: POST_TIMEOUT_MS,
-	claimsPerRun: CLAIMS_PER_RUN,
 	lanes: POSTS_AT_ONCE
 });
 
@@ -130,7 +118,7 @@ export function backoffMs(attempts: number): number {
  */
 export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): Promise<void> {
 	await giveUpOnStale(deps.db, now);
-	const claim = await claimDue(deps.db, now);
+	const claim = await claimDue(deps.db, now, PACE[deps.plan ?? 'free'].zapier);
 	const claimed = claim.rows;
 	if (claimed.length === 0) return;
 
@@ -287,8 +275,9 @@ const NEVER_DELIVERED = 'Not delivered within 72 hours of being queued.';
  * the due rows, leased to this run. the subscription filter keeps a Zap that has ended from being
  * posted to even if a row of its was somehow left pending.
  */
-function claimDue(db: Db, now: Date) {
+function claimDue(db: Db, now: Date, claims: number) {
 	return outbox.claim(db, now, {
+		claims,
 		set: { updatedAt: now },
 		returning: {
 			paymentId: zapierDelivery.paymentId,

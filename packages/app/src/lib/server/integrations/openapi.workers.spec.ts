@@ -207,8 +207,9 @@ async function postedBodies(): Promise<{ bodies: Posted[]; seeded: Seeded }> {
 	const seeded = await seedEverything();
 	const { bodies, receiver } = receiving();
 
+	// the Paid plan's pace, so one run posts every event seeded.
 	await sendDueWebhooks(
-		{ db, fetch: receiver, onPaused: async () => undefined },
+		{ db, fetch: receiver, onPaused: async () => undefined, plan: 'paid' },
 		new Date(Date.now() + 60_000)
 	);
 	return { bodies, seeded };

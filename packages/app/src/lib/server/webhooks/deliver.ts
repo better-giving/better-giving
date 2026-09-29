@@ -3,6 +3,7 @@ import { WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { inPage } from '../db/id-set';
+import { MINUTE_RUN, PACE, type Plan } from '../outbox/budget';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import { renderSubjects } from './payload';
@@ -79,11 +80,15 @@ export type PausedDestination = {
 /**
  * everything one run needs, per invocation. `fetch` is handed in so a spec can answer for
  * receivers. `onPaused` is told of each pause once, after the batch that made it has committed.
+ * `plan` is the Cloudflare plan the invocation runs on, Free where it is not said: a run claims
+ * this feed's pace on it, the longest-waiting first (../outbox/budget.ts), and a row no lane
+ * reached stays leased, unposted, until the lease runs out and a later run takes it.
  */
 export type WebhookDeliveryDeps = {
 	readonly db: Db;
 	readonly fetch: typeof fetch;
 	readonly onPaused: (destination: PausedDestination) => Promise<void>;
+	readonly plan?: Plan;
 };
 
 /**
@@ -113,40 +118,17 @@ export const WEBHOOK_RETRY_SCHEDULE_MS: readonly number[] = [
  */
 export const WEBHOOK_POST_TIMEOUT_MS = 15_000;
 
-/**
- * posts in flight at once. an invocation may have six requests waiting on their response headers,
- * and a seventh queues with its timeout already running
- * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
- * the minute cron's three feeds share those six in one invocation: ../zapier/deliver.ts's three
- * lanes, these two, and ../accounting/deliver.ts's one request at a time.
- */
-const POSTS_AT_ONCE = 2;
+/** posts in flight at once: this feed's share of the minute cron's connections (../outbox/budget.ts). */
+const POSTS_AT_ONCE = MINUTE_RUN.webhooks.lanes;
 
 /** how long a claimed row is the claiming run's alone, from that run's scheduled time. */
 const LEASE_MS = 2 * 60_000;
-
-/**
- * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes post
- * inside {@link RUN_DEADLINE_MS} while each destination answers in three seconds. where they are
- * slower — every one timing out, at worst, leaves 14 posted — a row no lane reached stays leased,
- * unposted, until the lease runs out and a later run takes it.
- */
-const CLAIMS_PER_RUN = 70;
-
-/**
- * no post starts later than this after the run's scheduled time: the last moment a post can start
- * and still answer or time out, {@link WEBHOOK_POST_TIMEOUT_MS} at most, before {@link LEASE_MS}
- * runs out.
- */
-const RUN_DEADLINE_MS = LEASE_MS - WEBHOOK_POST_TIMEOUT_MS;
 
 const outbox = defineOutbox({
 	table: webhookDelivery,
 	key: { id: webhookDelivery.id },
 	leaseMs: LEASE_MS,
-	deadlineMs: RUN_DEADLINE_MS,
 	attemptMs: WEBHOOK_POST_TIMEOUT_MS,
-	claimsPerRun: CLAIMS_PER_RUN,
 	lanes: POSTS_AT_ONCE
 });
 
@@ -157,7 +139,7 @@ const outbox = defineOutbox({
  */
 export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Promise<void> {
 	const { db } = deps;
-	const claim = await claimDue(db, now);
+	const claim = await claimDue(db, now, PACE[deps.plan ?? 'free'].webhooks);
 	if (claim.rows.length === 0) return;
 
 	const destinations = await readDestinations(
@@ -383,8 +365,9 @@ export function dropOwedStatement(db: Db, destinationId: string, now: Date) {
 }
 
 /** the due rows of destinations neither paused nor archived, leased to this run. */
-function claimDue(db: Db, now: Date) {
+function claimDue(db: Db, now: Date, claims: number) {
 	return outbox.claim(db, now, {
+		claims,
 		set: { updatedAt: now },
 		returning: {
 			destinationId: webhookDelivery.destinationId,
