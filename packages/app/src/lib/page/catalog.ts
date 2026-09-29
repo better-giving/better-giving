@@ -5,9 +5,9 @@
 // the document is flat and ours: a layout, a palette and a list of blocks, each block a type, a
 // variant, a background and the few values that block draws — no tree, no conditions, no state, no
 // actions, no colour, no markup, and no address but a link inside rich text, since every block is
-// a strict object whose only free text is plain strings and rich-text documents. drafting speaks a different format
-// (./ai-catalog.ts) and lands here through the same parse, so an upgrade on that side never
-// touches a stored page.
+// a strict object whose only free text is plain strings and rich-text documents. drafting speaks a
+// different format (./ai-catalog.ts) and lands here through the same parse, so an upgrade on that
+// side never touches a stored page.
 //
 // every name is from a closed set: `LAYOUTS`, `PALETTES`, `BACKGROUNDS`, and per block `BLOCKS`,
 // which also says which page type takes the block. the donation box is on every page exactly once,

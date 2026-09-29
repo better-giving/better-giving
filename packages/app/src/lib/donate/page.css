@@ -359,6 +359,8 @@ body {
 	padding-block-start: var(--_sp5);
 }
 
+/* a name with no space in it wraps inside the column rather than widening the document: `anywhere`
+   is what keeps a 375px viewport off a horizontal scrollbar for a name longer than the column. */
 .page-mast-name {
 	margin: 0;
 	overflow-wrap: anywhere;
@@ -1266,8 +1268,8 @@ figure:is(.page-hero, .page-image) {
 
 /* a program's photo: a square at the option's start, cropped to the option's own row height, with
    the inner corner the card draws inside a box. it says nothing of its own, since the name beside it
-   is the option's name. an option with no photo draws as it does without one, so a chooser holding a
-   mix draws a mix, and where the gift is needed most is no program and never has one. the name's
+   is the option's name. an option with no photo keeps the plain option's grid, so a chooser holding
+   a mix draws a mix, and where the gift is needed most is no program and never has one. the name's
    first line centres on the photo, and the mark stands on that same first line however many lines
    the name takes. */
 .page-choose-thumb {

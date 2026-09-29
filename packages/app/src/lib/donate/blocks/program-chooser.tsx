@@ -13,7 +13,7 @@ import type { BlockOf, PageProgram } from './types';
 //
 // a program with a photo draws it at the option's start, from the deployment's image route by its
 // id. it says nothing of its own — the name beside it is the option's name. a program with none
-// draws as it always has, and where the gift is needed most is no program and never has one. the
+// draws its name alone, and where the gift is needed most is no program and never has one. the
 // photos arrive beside the programs, keyed by program id, and never on a program itself: the
 // programs are the served config's `v1` options, and a photo is no part of that contract.
 

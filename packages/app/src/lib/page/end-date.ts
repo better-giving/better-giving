@@ -7,7 +7,7 @@
 // at 01:00 because the clocks skip midnight, ends where the zone says it does. an IANA name the
 // runtime does not know is refused rather than read as UTC.
 //
-// pure and not under `$lib/server/**`: a component renders what `dayOf` returns.
+// pure and not under `$lib/server/**`: a component renders what `dayWords` returns.
 
 const DAY_MS = 86_400_000;
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
