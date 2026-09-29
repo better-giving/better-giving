@@ -150,6 +150,10 @@ Optional, and not a set-up job. It starts a Zap on three events: a settled gift 
 
 **When it stops.** A delivery Zapier turns away is retried with a growing wait, and given up after three days. The page says so in a strip at the top, red when deliveries were given up in the past week and amber when your Zaps are more than an hour behind, both with a link to your Zaps on Zapier: a Zap that is off or erroring is the usual cause. A Zap that is turned off or deleted is dropped at once and never leaves anything behind.
 
+## Your own systems, through the read API and webhooks
+
+**The read API and the webhooks are described at your deployment's address followed by `/integrations/openapi.json`, and `/integrations/agent-prompt.md` says the same as instructions for an AI coding agent**; both are served without a key, and the dashboard's Integrations → API page links the first and copies the second.
+
 ## Refunds and disputes
 
 **A refund is made in the processor's own dashboard, and reaches everything else by itself.** When Stripe, PayPal or NOWPayments reports a refund of a gift, the gift reads Refunded or Partly refunded in `/admin`, the donor's total drops by it, and the money comes out of the books from the accounts and funds the gift went into. A part refund comes off each fund in proportion; correct any other split in `/admin/books`. The processor's fee stays booked, except any part the processor reports giving back. The donor gets a short email naming what was refunded and what of the gift is still deductible; it is not a new receipt. The refund reaches QuickBooks and Zapier as the two sections above say. Refunding one charge of a monthly gift leaves the monthly gift collecting: stopping it is its own act. A refund the processor later reports as failed puts the money back on the gift and emails you, because the donor may already have been told it is on its way.

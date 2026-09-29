@@ -27,6 +27,9 @@ function mount(tree: ReactNode): HTMLElement {
 
 const KEY = 'bgk_7Qm2Xc9Lr4Tz8Vh1Nw6Pd3Ks5Yb0EjRaQm2Xc9L';
 
+const API_REFERENCE = 'https://give.example/integrations/openapi.json';
+const AGENT_PROMPT = '# Connect a system to the donation deployment at https://give.example';
+
 const LISTED = {
 	id: 'key-1',
 	name: 'Reporting sheet',
@@ -42,7 +45,13 @@ function screen(over: { keys?: readonly object[]; actionData?: object } = {}): H
 			path: '/admin/integrations/api',
 			Component: () =>
 				createElement(Api as never, {
-					loaderData: { keys: over.keys ?? [LISTED], revoking: null, revoked: null },
+					loaderData: {
+						keys: over.keys ?? [LISTED],
+						revoking: null,
+						revoked: null,
+						apiReference: API_REFERENCE,
+						agentPrompt: AGENT_PROMPT
+					},
 					actionData: over.actionData,
 					params: {},
 					matches: []
@@ -74,6 +83,26 @@ it('keeps the card down once Done is pressed, though the page still holds the an
 
 	expect(card()).toBeNull();
 	expect(document.body.textContent).not.toContain(KEY);
+});
+
+it('links the API reference in a new tab, and copies the agent prompt', async () => {
+	const writes: string[] = [];
+	Object.defineProperty(navigator, 'clipboard', {
+		configurable: true,
+		value: { writeText: async (text: string) => void writes.push(text) }
+	});
+	onTestFinished(() => {
+		Reflect.deleteProperty(navigator, 'clipboard');
+	});
+	const root = screen();
+
+	const reference = [...root.querySelectorAll('a')].find((a) => a.textContent === 'API reference');
+	expect(reference?.getAttribute('href')).toBe(API_REFERENCE);
+	expect(reference?.getAttribute('target')).toBe('_blank');
+
+	const copy = root.querySelector<HTMLButtonElement>('button[aria-label="Copy agent prompt"]');
+	await act(async () => copy?.click());
+	expect(writes).toEqual([AGENT_PROMPT]);
 });
 
 it('draws no card and no key where no key was made', () => {

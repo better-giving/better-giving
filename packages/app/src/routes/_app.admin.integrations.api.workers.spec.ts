@@ -130,7 +130,13 @@ type ListedKey = {
 	lastUsedOn: string;
 };
 
-type Screen = { keys: ListedKey[]; revoking: ListedKey | null; revoked: string | null };
+type Screen = {
+	keys: ListedKey[];
+	revoking: ListedKey | null;
+	revoked: string | null;
+	apiReference: string;
+	agentPrompt: string;
+};
 
 function get(cookie: string, search = ''): Promise<Response> {
 	return request(new Request(`${ORIGIN}${SCREEN}${search}`, { headers: { cookie } }), {
@@ -238,6 +244,16 @@ describe('GET /admin/integrations/api — the keys', () => {
 			name: 'Reporting sheet'
 		});
 		expect((await visit(deployer, '?confirm=0195-no-such-key')).revoking).toBeNull();
+	});
+});
+
+describe('GET /admin/integrations/api — the documents', () => {
+	it('links the API reference and hands over the agent prompt, both at this address', async () => {
+		const { apiReference, agentPrompt } = await visit(deployer);
+
+		expect(apiReference).toBe(`${ORIGIN}/integrations/openapi.json`);
+		expect(agentPrompt).toContain(`${ORIGIN}/integrations/v1/gifts`);
+		expect(agentPrompt).toContain(apiReference);
 	});
 });
 

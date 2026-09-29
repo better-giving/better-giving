@@ -41,10 +41,10 @@ import { INTEGRATIONS_BASE_PATH, integrationsJson, integrationsRefusal } from '.
 // the rest.
 
 /** how many rows a page holds when the request names no `limit`. */
-const DEFAULT_PAGE_SIZE = 50;
+export const DEFAULT_PAGE_SIZE = 50;
 
 /** the most a page holds. a larger `limit` is refused naming this, never quietly cut to it. */
-const PAGE_SIZE_CEILING = 100;
+export const PAGE_SIZE_CEILING = 100;
 
 /** where a page ends in its order: the last row's sort time in epoch milliseconds, and its id. */
 export type Keyset = { readonly at: number; readonly id: string };

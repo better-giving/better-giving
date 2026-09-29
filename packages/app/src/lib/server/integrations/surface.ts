@@ -86,40 +86,47 @@ export function readOnlyRefusal(method: string): Response {
 }
 
 /**
- * the 429 a key that has spent its own bucket is answered with, charged per key against
- * `INTEGRATIONS_KEY_RATE_LIMITER` (`integrationsKeyRateLimitKey` in ../api/rate-limit.ts).
+ * each bucket a request on this surface is charged against: `INTEGRATIONS_KEY_RATE_LIMITER` per
+ * key, and `API_RATE_LIMITER` per address ahead of the key lookup.
  *
- * the numbers are literals because the binding's are, in wrangler.jsonc, and nothing in the
- * language joins them: `../api/rate-limit.config.spec.ts` holds this body and `Retry-After` to the
- * limit and period every block there declares. the wait is the whole period, which is the longest
- * the bucket can hold a key.
+ * literals because the bindings' are, in wrangler.jsonc, and nothing in the language joins them:
+ * `../api/rate-limit.config.spec.ts` holds both refusals below to the limit and period every block
+ * there declares, and `./openapi.spec.ts` holds the published document to the same. `requests` is
+ * per minute in every sentence that names it, which that spec holds the period to.
+ */
+export const KEY_RATE_LIMIT = { requests: 120, periodSeconds: 60 } as const;
+export const ADDRESS_RATE_LIMIT = { requests: 600, periodSeconds: 60 } as const;
+
+/**
+ * the 429 a key that has spent its own bucket is answered with, charged per key against
+ * `INTEGRATIONS_KEY_RATE_LIMITER` (`integrationsKeyRateLimitKey` in ../api/rate-limit.ts). the
+ * wait is the whole period, which is the longest the bucket can hold a key.
  */
 export function keyRateLimitRefusal(): Response {
+	const { requests, periodSeconds } = KEY_RATE_LIMIT;
 	return integrationsRefusal(
 		429,
 		'rate_limited',
-		'This API key has used its limit of 120 requests a minute, which is counted per key. Nothing about the request is wrong.',
-		'Wait 60 seconds, as `Retry-After` says, and send it again; then pace this system under 120 requests a minute. Another system’s key has a limit of its own and is not slowed by this one.',
-		{ 'retry-after': '60' }
+		`This API key has used its limit of ${requests} requests a minute, which is counted per key. Nothing about the request is wrong.`,
+		`Wait ${periodSeconds} seconds, as \`Retry-After\` says, and send it again; then pace this system under ${requests} requests a minute. Another system’s key has a limit of its own and is not slowed by this one.`,
+		{ 'retry-after': String(periodSeconds) }
 	);
 }
 
 /**
  * the 429 an address that has spent its own bucket is answered with, charged against
  * `API_RATE_LIMITER` before the key is looked up (`integrationsCallerRateLimitKey` in
- * ../api/rate-limit.ts).
- *
- * the literals are that binding's, held to it by `../api/rate-limit.config.spec.ts` as
- * `keyRateLimitRefusal`'s are to its own. it says a per-key limit is not what refused it, so an
- * integrator pacing one key under 120 a minute is not sent looking at the wrong number.
+ * ../api/rate-limit.ts). it says a per-key limit is not what refused it, so an integrator pacing
+ * one key under its limit is not sent looking at the wrong number.
  */
 export function callerRateLimitRefusal(): Response {
+	const { requests, periodSeconds } = ADDRESS_RATE_LIMIT;
 	return integrationsRefusal(
 		429,
 		'rate_limited',
-		'This address has used its limit of 600 requests a minute, which is counted per address before any key is checked. Nothing about the request is wrong.',
-		'Wait 60 seconds, as `Retry-After` says, and send it again. Several systems behind one address share this limit, whatever keys they hold; a key’s own limit is 120 requests a minute and is not what refused this.',
-		{ 'retry-after': '60' }
+		`This address has used its limit of ${requests} requests a minute, which is counted per address before any key is checked. Nothing about the request is wrong.`,
+		`Wait ${periodSeconds} seconds, as \`Retry-After\` says, and send it again. Several systems behind one address share this limit, whatever keys they hold; a key’s own limit is ${KEY_RATE_LIMIT.requests} requests a minute and is not what refused this.`,
+		{ 'retry-after': String(periodSeconds) }
 	);
 }
 
