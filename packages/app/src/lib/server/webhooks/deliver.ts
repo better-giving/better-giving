@@ -2,7 +2,7 @@ import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } f
 import { WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
-import { inPage } from '../integrations/paging';
+import { inPage } from '../db/id-set';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import { renderSubjects } from './payload';

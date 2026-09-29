@@ -63,17 +63,22 @@ export function newApiKeyRow(input: { readonly name: string; readonly kind: ApiK
 }
 
 /**
- * the row `presented` was minted as, or `null` when no key hashes to it. a revoked key is still
- * found, with `revokedAt` set, so the caller can say it was revoked and when; admitting it is the
- * caller's refusal to make.
+ * the `kind` key `presented` was minted as, or `null` when no key of that kind hashes to it. a
+ * revoked key is still found, with `revokedAt` set, so the caller can say it was revoked and when;
+ * admitting it is the caller's refusal to make.
  *
- * looking up by the hash of the presented value leaks nothing about any stored key.
+ * the kind is in the query, so a surface reading its own kind can never admit another surface's
+ * key. looking up by the hash of the presented value leaks nothing about any stored key.
  */
-export async function findKeyByPresented(db: Db, presented: string): Promise<ApiKey | null> {
+export async function findKeyByPresented(
+	db: Db,
+	presented: string,
+	kind: ApiKeyKind
+): Promise<ApiKey | null> {
 	const [row] = await db
 		.select()
 		.from(apiKey)
-		.where(eq(apiKey.keyHash, hashOf(presented)));
+		.where(and(eq(apiKey.keyHash, hashOf(presented)), eq(apiKey.kind, kind)));
 	return row ?? null;
 }
 
@@ -211,6 +216,18 @@ function newApiKey(): string {
 /** `bgz_` and 32 random bytes as unpadded base64url: 256 bits in 43 characters. */
 function newZapierKey(): string {
 	return `bgz_${randomBytes(32).toString('base64url')}`;
+}
+
+/**
+ * the value after a `Bearer` scheme in an `Authorization` header, trimmed, or `null` for another
+ * scheme: the one reading every key-authenticated surface takes. the scheme is case-insensitive,
+ * as HTTP says every scheme is (https://www.rfc-editor.org/rfc/rfc9110#section-11.1), and must be
+ * followed by whitespace, so `Bearerish x` is another scheme rather than this one. `Bearer` with
+ * nothing after it is `''`, which no key's shape matches.
+ */
+export function parseBearer(authorization: string): string | null {
+	const match = /^bearer(?:\s+(.*))?$/i.exec(authorization.trim());
+	return match === null ? null : (match[1] ?? '').trim();
 }
 
 /** the lowercase hex SHA-256 of the whole key string, as `api_key.key_hash` holds it. */

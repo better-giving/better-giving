@@ -17,7 +17,8 @@ import {
 	type PaymentMethod
 } from '../db/schema';
 import { refundStands } from '../donations/queries';
-import { inPage, type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } from './paging';
+import { inPage } from '../db/id-set';
+import { type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } from './paging';
 
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
 // (../zapier/payload.ts), each entry the read API's gifts list answers with

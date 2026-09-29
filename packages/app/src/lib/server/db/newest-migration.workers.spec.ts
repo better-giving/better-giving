@@ -409,7 +409,7 @@ describe('the migrations not yet applied keep every row the database already hel
 	it.skipIf(nowhereToStop)(
 		'keeps a key already made admitting, and every Zap on it stays subscribed',
 		async () => {
-			expect(await findKeyByPresented(createDb(db()), ZAPIER_KEY)).toMatchObject({
+			expect(await findKeyByPresented(createDb(db()), ZAPIER_KEY, 'zapier')).toMatchObject({
 				kind: 'zapier',
 				revokedAt: null
 			});

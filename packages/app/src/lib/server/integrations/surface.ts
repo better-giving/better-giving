@@ -1,6 +1,6 @@
 import type { Db } from '../db/client';
 import type { ApiKey } from '../db/schema';
-import { API_KEY_SHAPE, findKeyByPresented } from './keys';
+import { API_KEY_SHAPE, findKeyByPresented, parseBearer, ZAPIER_KEY_SHAPE } from './keys';
 
 // the read API an organisation's own systems call — a CRM, a warehouse, a script — to read the
 // organisation's records: what "under `/integrations/v1`" means and what every answer on it
@@ -8,11 +8,14 @@ import { API_KEY_SHAPE, findKeyByPresented } from './keys';
 //
 // **key-authenticated.** every request presents an API key minted by ./keys.ts in
 // `Authorization: Bearer`, and nothing else admits one: no cookie is read, no session is made. a
-// `zapier` key is refused like a key never minted, because it is Zapier's credential for its own
-// surface and a leak of it reads nothing here.
+// `zapier` key is refused like a key never minted — `unknown_key`, the lookup asking for an `api`
+// key alone — because it is Zapier's credential for its own surface and a leak of it reads nothing
+// here.
 //
 // **read-only.** every route answers GET and HEAD, and the layout refuses any other method with a
-// 405 before the key is read. writes through this surface would touch the books, and none exists.
+// 405 before the key is read — or react router does, for a method outside its own set (`readOnly`
+// in src/routes/integrations.v1.ts). writes through this surface would touch the books, and none
+// exists.
 //
 // **server to server, so no CORS.** no `Access-Control-*` header is sent and there is no preflight
 // branch: a key that runs in a browser has already leaked, and without CORS a page holding one
@@ -33,6 +36,13 @@ import { API_KEY_SHAPE, findKeyByPresented } from './keys';
  * method and the key; `src/routes.spec.ts` fails on a route served under this prefix that sits anywhere else.
  */
 export const INTEGRATIONS_BASE_PATH = '/integrations/v1';
+
+/**
+ * each list the read API serves, by its path under `INTEGRATIONS_BASE_PATH`: every endpoint it
+ * has. ./openapi.ts describes each, and ./openapi.spec.ts holds this to the route files.
+ */
+export const INTEGRATIONS_LISTS = ['/gifts', '/donors', '/recurring-gifts'] as const;
+export type IntegrationsList = (typeof INTEGRATIONS_LISTS)[number];
 
 /**
  * every value a refusal's `error` holds on this surface: what an integrator's code switches on,
@@ -72,6 +82,21 @@ export function integrationsRefusal(
 	headers: Readonly<Record<string, string>> = {}
 ): Response {
 	return integrationsJson({ error, message, fix }, status, headers);
+}
+
+/**
+ * the 404 for `pathname`, an address under this surface that no list answers: the bare prefix, a
+ * path beneath it no route serves, or react router's own `.data` address for a list.
+ */
+export function notFoundRefusal(pathname: string): Response {
+	const lists = INTEGRATIONS_LISTS.map((list) => `GET ${INTEGRATIONS_BASE_PATH}${list}`);
+	const shownPath = pathname.length > 96 ? `${pathname.slice(0, 96)}…` : pathname;
+	return integrationsRefusal(
+		404,
+		'not_found',
+		`Nothing is served at \`${shownPath}\`. The read API at ${INTEGRATIONS_BASE_PATH} serves its lists and nothing else, at their own addresses.`,
+		`Call ${lists.slice(0, -1).join(', ')} or ${lists.at(-1)}. None takes an id in its path: a single record is found on its list.`
+	);
 }
 
 /** the 405 this surface answers a method other than GET or HEAD with. */
@@ -149,8 +174,8 @@ export async function admitKey(db: Db, authorization: string | null): Promise<Ap
 			`Send the key in an \`Authorization: Bearer <key>\` header on every request. ${WHERE_KEYS_COME_FROM}`
 		);
 
-	const presented = bearerValue(authorization);
-	if (presented === null || !API_KEY_SHAPE.test(presented))
+	const presented = parseBearer(authorization);
+	if (presented === null || !isKeyShaped(presented))
 		return keyRefusal(
 			'malformed_key',
 			presented === null
@@ -159,8 +184,8 @@ export async function admitKey(db: Db, authorization: string | null): Promise<Ap
 			'Send `Authorization: Bearer <key>` with the whole key and nothing else: a key cut short, or with a quote or a space inside it, is the usual cause.'
 		);
 
-	const key = await findKeyByPresented(db, presented);
-	if (key === null || key.kind !== 'api')
+	const key = await findKeyByPresented(db, presented, 'api');
+	if (key === null)
 		return keyRefusal(
 			'unknown_key',
 			'The API key presented is not one this deployment made.',
@@ -185,12 +210,7 @@ function keyRefusal(error: IntegrationsRefusalCode, message: string, fix: string
 	return integrationsRefusal(401, error, message, fix, { 'www-authenticate': 'Bearer' });
 }
 
-/**
- * the value after a `Bearer` scheme, or `null` for another scheme. the scheme is case-insensitive,
- * as HTTP says every scheme is, and must be followed by whitespace, so `Bearerish x` is another
- * scheme rather than this one.
- */
-function bearerValue(authorization: string): string | null {
-	const match = /^bearer(?:\s+(.*))?$/i.exec(authorization.trim());
-	return match === null ? null : (match[1] ?? '').trim();
+/** a value in the shape of a key this deployment mints, of either kind. */
+function isKeyShaped(presented: string): boolean {
+	return API_KEY_SHAPE.test(presented) || ZAPIER_KEY_SHAPE.test(presented);
 }

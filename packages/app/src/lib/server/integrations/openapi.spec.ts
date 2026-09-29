@@ -4,6 +4,7 @@ import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 import { WEBHOOK_EVENT_TYPES, WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
+import type { PinReading } from '../auth';
 import {
 	DESTINATION_PAUSE_AFTER_MS,
 	PAUSED_AT_ONCE_ON,
@@ -16,7 +17,7 @@ import officialSchema from './oas-3.1-schema.testing.json';
 import { openApiDocument, publishedOrigin, spokenDuration } from './openapi';
 import { componentValidator } from './openapi.testing';
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_CEILING, PARAMETERS } from './paging';
-import { INTEGRATIONS_BASE_PATH, INTEGRATIONS_REFUSALS } from './surface';
+import { INTEGRATIONS_BASE_PATH, INTEGRATIONS_LISTS, INTEGRATIONS_REFUSALS } from './surface';
 
 // the OpenAPI document ./openapi.ts builds, held to the OpenAPI 3.1 schema.
 //
@@ -67,13 +68,14 @@ describe('openApiDocument()', () => {
 
 /**
  * the path under the read API's layout each route file beneath it serves, spelt as an OpenAPI path:
- * `integrations.v1.gifts.$id.ts` is `/gifts/{id}`.
+ * `integrations.v1.gifts.$id.ts` is `/gifts/{id}`. the splat, `integrations.v1.$.ts`, serves no
+ * path: it is the 404 for every path nothing else serves.
  */
 function servedPaths(): string[] {
 	const routes = resolve(import.meta.dirname, '../../../routes');
 	return readdirSync(routes)
 		.map((file) => /^integrations\.v1\.(.+)\.tsx?$/.exec(file)?.[1])
-		.filter((name): name is string => name !== undefined && !name.endsWith('.spec'))
+		.filter((name): name is string => name !== undefined && name !== '$' && !name.endsWith('.spec'))
 		.map((name) =>
 			name
 				.split('.')
@@ -108,6 +110,7 @@ describe('openApiDocument() against what it describes', () => {
 	it('describes every path a route file serves, and no path none serves', () => {
 		expect(servedPaths()).toContain('/gifts');
 		expect(Object.keys(document.paths).sort()).toEqual(servedPaths());
+		expect([...INTEGRATIONS_LISTS].sort()).toEqual(servedPaths());
 	});
 
 	it('describes every event the catalog holds, and the test post, and nothing else', () => {
@@ -178,14 +181,20 @@ describe('openApiDocument() against what it describes', () => {
 		expect(document.security).toEqual([{ apiKey: [] }]);
 	});
 
-	it('marks every value set as one that may gain values', () => {
+	it('closes no value set, so a client generated from it takes a value added later', () => {
+		expect(keywordPaths(document, 'enum')).toEqual([]);
+	});
+
+	it('publishes every value set’s known values, and says it may gain more', () => {
 		const sets = Object.values(document.components.schemas).flatMap((schema) =>
 			Object.entries(
-				(schema as { properties?: Record<string, { enum?: unknown; description?: string }> })
+				(schema as { properties?: Record<string, { examples?: unknown; description?: string }> })
 					.properties ?? {}
-			).filter(([name, property]) => property.enum !== undefined && name !== 'error')
+			).filter(([, property]) => property.examples !== undefined)
 		);
-		expect(sets.map(([name]) => name)).toContain('dedication_kind');
+		expect(sets.map(([name]) => name)).toEqual(
+			expect.arrayContaining(['method', 'status', 'dedication_kind', 'consent', 'source'])
+		);
 		for (const [, property] of sets) expect(property.description).toContain('may gain values');
 	});
 
@@ -196,7 +205,7 @@ describe('openApiDocument() against what it describes', () => {
 
 	it('answers each refusal code under exactly one status', () => {
 		const documented = Object.values(document.components.responses).flatMap(
-			(response) => response.content['application/json'].schema.properties.error.enum
+			(response) => response.content['application/json'].schema.properties.error.examples
 		);
 		expect([...documented].sort()).toEqual([...INTEGRATIONS_REFUSALS].sort());
 	});
@@ -215,19 +224,55 @@ describe('openApiDocument() against what it describes', () => {
 	});
 });
 
+/** the path to each place `keyword` is used as a keyword in `schema`, a property named it aside. */
+function keywordPaths(schema: unknown, keyword: string, at = '#'): string[] {
+	if (Array.isArray(schema))
+		return schema.flatMap((item, index) => keywordPaths(item, keyword, `${at}/${index}`));
+	if (typeof schema !== 'object' || schema === null) return [];
+	return Object.entries(schema).flatMap(([name, value]) => [
+		...(name === keyword && !at.endsWith('/properties') ? [`${at}/${name}`] : []),
+		...keywordPaths(value, keyword, `${at}/${name}`)
+	]);
+}
+
 describe('publishedOrigin()', () => {
-	it('publishes https for any host but this machine', () => {
-		expect(publishedOrigin(new URL('http://give.example.org/integrations/openapi.json'))).toBe(
+	const UNSET: PinReading = { ok: true, origin: null };
+
+	it('publishes the pinned origin, whatever host the request came in on', () => {
+		const pinned: PinReading = { ok: true, origin: 'https://donate.example.org' };
+
+		expect(publishedOrigin(new URL('https://give.example.workers.dev/x'), pinned)).toBe(
+			'https://donate.example.org'
+		);
+	});
+
+	it('publishes the request’s own origin where the pin names none', () => {
+		const refused: PinReading = { ok: false, message: '`BETTER_AUTH_URL` is `localhost:8787`' };
+
+		expect(publishedOrigin(new URL('https://give.example.org/x'), refused)).toBe(
 			'https://give.example.org'
 		);
-		expect(publishedOrigin(new URL('http://give.example.workers.dev:8080/x'))).toBe(
+		expect(publishedOrigin(new URL('https://give.example.org/x'), UNSET)).toBe(
+			'https://give.example.org'
+		);
+	});
+
+	it('publishes https for any host but this machine', () => {
+		expect(
+			publishedOrigin(new URL('http://give.example.org/integrations/openapi.json'), UNSET)
+		).toBe('https://give.example.org');
+		expect(publishedOrigin(new URL('http://give.example.workers.dev:8080/x'), UNSET)).toBe(
 			'https://give.example.workers.dev:8080'
 		);
 	});
 
 	it('keeps the scheme a local dev server answers on', () => {
-		expect(publishedOrigin(new URL('http://localhost:5321/x'))).toBe('http://localhost:5321');
-		expect(publishedOrigin(new URL('http://127.0.0.1:5321/x'))).toBe('http://127.0.0.1:5321');
+		expect(publishedOrigin(new URL('http://localhost:5321/x'), UNSET)).toBe(
+			'http://localhost:5321'
+		);
+		expect(publishedOrigin(new URL('http://127.0.0.1:5321/x'), UNSET)).toBe(
+			'http://127.0.0.1:5321'
+		);
 	});
 });
 

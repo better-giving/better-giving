@@ -50,6 +50,21 @@ describe('GET /integrations/openapi.json', () => {
 		expect(document.servers[0]?.url).toBe(`${OWN}/integrations/v1`);
 	});
 
+	it('names the pinned origin where the deployment pins one, whatever host it was asked at', async () => {
+		const pinned = { ...env, BETTER_AUTH_URL: 'https://donate.example.org/' };
+
+		const document = (await (
+			await openapiRoute(new Request(`${OWN}/integrations/openapi.json`), { env: pinned })
+		).json()) as { servers: { url: string }[] };
+		const text = await (
+			await promptRoute(new Request(`${OWN}/integrations/agent-prompt.md`), { env: pinned })
+		).text();
+
+		expect(document.servers[0]?.url).toBe('https://donate.example.org/integrations/v1');
+		expect(text).toContain('https://donate.example.org/integrations/v1');
+		expect(text).not.toContain(OWN);
+	});
+
 	it('may be cached by anyone for five minutes, and read from any page', async () => {
 		const response = await openapiRoute(new Request(`${OWN}/integrations/openapi.json`));
 

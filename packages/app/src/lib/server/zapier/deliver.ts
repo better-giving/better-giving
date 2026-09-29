@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
-import { inPage } from '../integrations/paging';
+import { inPage } from '../db/id-set';
 import { REFUND_NO_LONGER_STANDS, readStandingRefunds } from '../integrations/refund';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';

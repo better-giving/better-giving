@@ -4,7 +4,7 @@ import type { Db } from '../db/client';
 import { entryGroup, payment, type ZapierTrigger } from '../db/schema';
 import { earlierSettledGiftOfDonor, refundStands } from '../donations/queries';
 import { type GiftEvent, renderGift, selectGifts } from '../integrations/gift';
-import { inPage } from '../integrations/paging';
+import { inPage } from '../db/id-set';
 import { type RefundRow, type RefundSource, selectRefunds } from '../integrations/refund';
 
 export type { GiftEvent };

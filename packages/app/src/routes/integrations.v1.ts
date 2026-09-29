@@ -6,8 +6,9 @@ import {
 import {
 	admitKey,
 	callerRateLimitRefusal,
-	integrationsRefusal,
+	INTEGRATIONS_BASE_PATH,
 	keyRateLimitRefusal,
+	notFoundRefusal,
 	readOnlyRefusal
 } from '$lib/server/integrations/surface';
 import { touchLastUsed } from '$lib/server/integrations/keys';
@@ -24,6 +25,10 @@ import type { Route } from './+types/integrations.v1';
 //
 // what the surface is and what every answer on it carries is $lib/server/integrations/surface.ts's
 // header. neither check reads the body.
+//
+// every address under the prefix that no list answers is this surface's JSON 404, behind the same
+// key check: the bare prefix (this file's `loader`), a path beneath it no route serves
+// (./integrations.v1.$.ts), and react router's own `.data` address for a list (`noSingleFetch`).
 //
 // a request that passes the method check is charged twice, and where each charge sits is what it
 // bounds:
@@ -50,9 +55,12 @@ import type { Route } from './+types/integrations.v1';
 // costs no statement (`touchLastUsed` in $lib/server/integrations/keys.ts).
 
 /**
- * GET and HEAD, and nothing else. react router hands OPTIONS to a loader and every other method to
- * an action, so without this a route with no action would answer a write with the framework's own
- * 405 and no `Allow`, and a keyed OPTIONS would read the loader.
+ * GET and HEAD, and nothing else. react router hands OPTIONS to a loader and POST, PUT, PATCH and
+ * DELETE to an action, so without this a route with no action would answer a write with the
+ * framework's own 405 and no `Allow`, and a keyed OPTIONS would read the loader. a method outside
+ * those seven — PROPFIND, QUERY — never reaches this: react router's server runtime answers it
+ * with its own 405, a `{ message }` body and no `Allow`, before any middleware runs
+ * (`queryRoute` in react-router/dist/development/lib/router/router.js).
  */
 const readOnly: Route.MiddlewareFunction = ({ request }, next) =>
 	request.method === 'GET' || request.method === 'HEAD' ? next() : readOnlyRefusal(request.method);
@@ -73,18 +81,27 @@ const keyGate: Route.MiddlewareFunction = async ({ context, request }, next) => 
 	return answer;
 };
 
-export const middleware: Route.MiddlewareFunction[] = [readOnly, keyGate];
+/**
+ * a list asked for at its `.data` address is refused, never answered. react router's server
+ * runtime reads any path ending `.data` as its own single-fetch request (`derive` in
+ * react-router/dist/development/lib/server-runtime/server.js), runs this layout's `loader` beside
+ * the list's, and answers both as a turbo-stream with neither's `cache-control`. that is no
+ * address this surface publishes, and donor records must not leave it in a second format a cache
+ * may keep. the path is read off the request itself, which keeps its `.data`; the router's `url`
+ * has it stripped.
+ */
+const noSingleFetch: Route.MiddlewareFunction = ({ request }, next) => {
+	const { pathname } = new URL(request.url);
+	return pathname.endsWith('.data') ? notFoundRefusal(pathname) : next();
+};
+
+export const middleware: Route.MiddlewareFunction[] = [readOnly, keyGate, noSingleFetch];
 
 /**
  * the bare surface address, which react router matches as this layout with no child beneath it —
- * and without a loader answers 400 with its own internal message. a 404 naming the surface
- * instead, for a caller who trimmed a URL to see what is here.
+ * and without a loader answers 400 with its own internal message. a 404 naming the lists instead,
+ * for a caller who trimmed a URL to see what is here.
  */
 export function loader(_: Route.LoaderArgs): Response {
-	return integrationsRefusal(
-		404,
-		'not_found',
-		'There is nothing served at /integrations/v1 itself. It is the prefix every endpoint of this deployment’s read API sits under.',
-		'Call an endpoint on it, such as GET /integrations/v1/gifts.'
-	);
+	return notFoundRefusal(INTEGRATIONS_BASE_PATH);
 }
