@@ -867,7 +867,13 @@ export const program = sqliteTable(
 		updatedAt: updatedAt(),
 		// causes archive, they never delete. this is the timestamp of the `status = 'archived'`
 		// transition, not a soft delete.
-		archivedAt: at('archived_at')
+		archivedAt: at('archived_at'),
+		/**
+		 * the cause's photo on a donor page's chooser, null for none. it rides the program's own save,
+		 * so there is no `_previous` beside it. it must be an `image` of kind `photo`, which no check
+		 * here can read — the kind is on the image's row — so the write path holds it.
+		 */
+		imageId: text('image_id').references(() => image.id)
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
@@ -2875,6 +2881,12 @@ const lookCheck = (doc: SQLiteColumn) => sql`${jsonObject(doc)} and ${lookFields
  * `story` holds the mission and vision as structured rich-text documents, never HTML. `look` is
  * checked by `lookCheck` in both of its columns, since undo writes the previous look back unread.
  * `story` and `sharing` are asserted to be objects and nothing more.
+ *
+ * the logo, atop every page, is a fourth part: `logo_image_id`, null for none, with its undo in
+ * `logo_image_id_previous` by the same swap. null is a value here, so a null `_previous` does not
+ * mean nothing to undo — there is nothing to undo exactly when the two columns are equal. both
+ * must name an `image` of kind `photo`, which no check here can read — the kind is on the image's
+ * row — so the write path holds it.
  */
 export const orgPresentation = sqliteTable(
 	'org_presentation',
@@ -2888,7 +2900,9 @@ export const orgPresentation = sqliteTable(
 		lookPrevious: text('look_previous'),
 		sharingPrevious: text('sharing_previous'),
 		createdAt: createdAt(),
-		updatedAt: updatedAt()
+		updatedAt: updatedAt(),
+		logoImageId: text('logo_image_id').references(() => image.id),
+		logoImageIdPrevious: text('logo_image_id_previous').references(() => image.id)
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
