@@ -15,8 +15,9 @@ import { DoneSheet } from './done-sheet';
 // the first submit button in tree order among the form's own elements. what the case holds is
 // which button that is.
 //
-// one case reads a class, the part each group's heading stands in, and none asks how any of it
-// looks, which is what keeps it clear of CLAUDE.md's ban on a browser spec over a dashboard screen.
+// three cases read a class — the part each group's heading stands in, and whether the sheet stands
+// over another — and none asks how any of it looks, which is what keeps it clear of CLAUDE.md's ban
+// on a browser spec over a dashboard screen.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -53,7 +54,7 @@ function seed(amounts: string[], over: Partial<SettingsSeed>): SettingsSeed {
 }
 
 /** the sheet under the editor's route, whose action records every body posted to it. */
-function sheet(amounts: string[], over: Partial<SettingsSeed> = {}) {
+function sheet(amounts: string[], over: Partial<SettingsSeed> = {}, stacked?: boolean) {
 	const posted: FormData[] = [];
 	const onSaved = vi.fn();
 	const Stub = createRoutesStub([
@@ -65,6 +66,7 @@ function sheet(amounts: string[], over: Partial<SettingsSeed> = {}) {
 					version={3}
 					onDismiss={() => {}}
 					onSaved={onSaved}
+					stacked={stacked}
 				/>
 			),
 			action: async ({ request }) => {
@@ -190,6 +192,18 @@ describe('the Donation settings sheet', () => {
 	});
 });
 
+describe('where the sheet stands', () => {
+	const drawn = (stacked?: boolean) => sheet(['25'], {}, stacked).root.querySelector('dialog');
+
+	it('lays its own ground when nothing is under it, as from a click in the preview', () => {
+		expect(drawn()?.classList.contains('adm-sheet--stacked')).toBe(false);
+	});
+
+	it('stands over Settings when it is opened from there', () => {
+		expect(drawn(true)?.classList.contains('adm-sheet--stacked')).toBe(true);
+	});
+});
+
 describe('how the donation box opens', () => {
 	it('seeds both rows from the draft’s switches, and Done posts them untouched', async () => {
 		const { root, posted } = sheet(['25'], {
@@ -249,20 +263,21 @@ describe('how the donation box opens', () => {
 		expect(root.querySelector('.adm-check__note')).toBeNull();
 	});
 
-	it('stands each group’s heading in a part of its own', () => {
+	it('heads each group with an h3 under the sheet’s h2, in a part of its own', () => {
 		const { root } = sheet(['25']);
 		const form = check(root, 'Open on monthly').form;
-		const headings = [...(form?.querySelectorAll('h2') ?? [])];
+		const headings = [...(form?.querySelectorAll('h2, h3') ?? [])];
 
-		expect(headings.map((one) => one.textContent)).toEqual([
-			'Program',
-			'What a donor may give',
-			'How the donation box opens'
+		expect(headings.map((one) => `${one.tagName} ${one.textContent}`)).toEqual([
+			'H3 Program',
+			'H3 What a donor may give',
+			'H3 How the donation box opens'
 		]);
+		expect(root.querySelector('dialog h2')?.textContent).toBe('Donation settings');
 		for (const heading of headings) {
 			const part = heading.parentElement;
 			expect(part?.className).toBe('adm-sheetpart');
-			expect(part?.querySelectorAll(':scope > h2')).toHaveLength(1);
+			expect(part?.querySelectorAll(':scope > h3')).toHaveLength(1);
 		}
 	});
 });

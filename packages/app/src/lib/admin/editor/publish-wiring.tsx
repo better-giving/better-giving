@@ -24,9 +24,10 @@ import type { BarPress, PublishState } from './publish-bar';
 // stands while the latest answer is a republish and the draft is still what is live, so the next
 // edit takes both down. a press stays held from its post until the revalidation it brings lands,
 // and a confirm stays up, held, until its answer does: a refusal is said in it, and a success takes
-// it down. a confirm cancelled on a refusal opens again without it. a Reset or a Discard that lands
-// takes its press off the bar with its confirm, so the focus goes to the bar's state word
-// (`statusRef`) once the confirm is down — before then the page behind it is inert.
+// it down. a confirm cancelled on a refusal opens again without it. a Reset, a Discard or an Undo
+// that lands takes its press off the bar (a Reset or a Discard with its confirm), so the focus goes
+// to the bar's state word (`statusRef`) once any confirm is down — before then the page behind it
+// is inert.
 
 /** what the editor's action answers the presses: what one did, or a refusal. */
 type PressAnswer = {
@@ -86,7 +87,7 @@ export function usePublishPresses({
 	const [asked, setAsked] = useState<'first-publish' | 'discard' | 'reset' | null>(null);
 	/** the answer a confirm was cancelled on, whose refusal it does not open on again. */
 	const [cancelledOn, setCancelledOn] = useState<PressAnswer | undefined>(undefined);
-	/** the Reset or Discard answer that took its press away, which hands the focus to the state word. */
+	/** the Reset, Discard or Undo answer that took its press away, which hands the focus to the state word. */
 	const [pressGoneOn, setPressGoneOn] = useState<PressAnswer | undefined>(undefined);
 	const statusRef = useRef<HTMLSpanElement>(null);
 
@@ -97,7 +98,7 @@ export function usePublishPresses({
 	// an answer that landed takes its confirm down; a refusal leaves it up, saying why.
 	useEffect(() => {
 		if (answer?.published || answer?.discarded || answer?.reset) setAsked(null);
-		if (answer?.discarded || answer?.reset) setPressGoneOn(answer);
+		if (answer?.discarded || answer?.reset || answer?.undone) setPressGoneOn(answer);
 	}, [answer]);
 
 	// runs in the commit that takes the confirm down, after the confirm's own cleanup has let go of

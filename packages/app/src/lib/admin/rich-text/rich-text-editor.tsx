@@ -33,7 +33,8 @@ import { linkRefusal, normaliseAddress, RICH_TEXT_EXTENSIONS } from './extension
    the presses are one toolbar and one tab stop: the arrow keys, Home and End move along it. a
    press made from the keyboard keeps the focus on the toolbar so a second can follow; a press
    made with a pointer never takes the focus out of the words. each press that is a mark or a list
-   says whether the words at the caret carry it.
+   says whether the words at the caret carry it; Link toggles nothing, and says whether the row it
+   opens is open.
 
    a link is made at an address row under the words, opened by the Link press: the address is
    typed by a person, repaired where that is unambiguous (./extensions.ts's `normaliseAddress`),
@@ -160,8 +161,7 @@ export function RichTextEditor({
 						bold: editor.isActive('bold'),
 						italic: editor.isActive('italic'),
 						bulletList: editor.isActive('bulletList'),
-						orderedList: editor.isActive('orderedList'),
-						link: editor.isActive('link')
+						orderedList: editor.isActive('orderedList')
 					}
 	});
 
@@ -302,8 +302,9 @@ export function RichTextEditor({
 										size="sm"
 										mark={each.mark}
 										aria-label={each.label}
-										aria-pressed={active?.[each.id] ?? false}
-										aria-controls={each.id === 'link' && row !== null ? rowId : undefined}
+										aria-pressed={each.id === 'link' ? undefined : (active?.[each.id] ?? false)}
+										aria-expanded={each.id === 'link' ? rowOpen : undefined}
+										aria-controls={each.id === 'link' && rowOpen ? rowId : undefined}
 										tabIndex={at === rover ? 0 : -1}
 										onFocus={() => setRover(at)}
 										onMouseDown={(event) => event.preventDefault()}

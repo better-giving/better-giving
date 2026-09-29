@@ -165,6 +165,20 @@ describe('Publish', () => {
 		);
 	});
 
+	it('hands the focus to the state an Undo left, its own press gone', async () => {
+		answers = [
+			{ body: { published: true, undoable: true }, leaves: { version: 2, state: 'live' } },
+			{ body: { undone: true }, leaves: { version: 3, state: 'changed' } }
+		];
+		await screen();
+		await press(button('Publish', bar()));
+
+		await press(button('Undo', bar()));
+
+		expect(document.activeElement).toBe(stateWord());
+		expect(stateWord()?.textContent).toBe('Changes not published');
+	});
+
 	it('says a refusal at the bar', async () => {
 		const text =
 			'Nothing was published: a page holds exactly one donation box, and this one holds none.';

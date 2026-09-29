@@ -194,9 +194,17 @@ type FormGivingFieldsProps = {
 	 * has one submit for all four groups.
 	 */
 	readonly footer?: ReactNode;
+	/** the group's heading level: `h2` on a form screen, `h3` in a sheet whose title is the `h2`. */
+	readonly heading?: 'h2' | 'h3' | undefined;
 };
 
-export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivingFieldsProps) {
+export function FormGivingFields({
+	boxes,
+	amounts,
+	currency,
+	footer,
+	heading: Heading = 'h2'
+}: FormGivingFieldsProps) {
 	const capError = amounts.errors?.[0];
 	const hydrated = useHydrated();
 
@@ -311,7 +319,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 
 	return (
 		<>
-			<h2>What a donor may give</h2>
+			<Heading>What a donor may give</Heading>
 
 			<div className="adm-stack">
 				{/* a value that is stated and never editable. it is not a disabled box: disabled reads

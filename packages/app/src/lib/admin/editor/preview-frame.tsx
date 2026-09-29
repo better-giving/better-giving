@@ -9,9 +9,11 @@ import { BLOCK_MESSAGE, type BlockMessage } from '../../page/preview-message';
 // own origin, and only in the one shape the preview posts — anything else on the channel is some
 // other page's and is not read.
 //
-// the frame itself is out of the tab order: the keyboard's way to a block is the Settings sheet's
-// block list (./settings-sheet.tsx), and a tab stop on a document nothing inside can be operated in
-// is one the reader has to walk past on every lap.
+// the frame is the preview's one tab stop, which an iframe is without a `tabIndex`, and `title`
+// names it. tabbed to, the keyboard lands in the framed document, whose arrows and Page Down scroll
+// the draft. nothing inside is a stop of its own ($lib/donate/page-view.tsx's `usePreviewReport`),
+// so the next Tab leaves the frame. the keyboard's way to a block is the Settings sheet's block
+// list (./settings-sheet.tsx).
 
 function isBlockMessage(data: unknown): data is BlockMessage {
 	if (typeof data !== 'object' || data === null) return false;
@@ -45,5 +47,5 @@ export function PreviewFrame({ src, title, onBlockClick }: PreviewFrameProps) {
 		return () => window.removeEventListener('message', listen);
 	}, []);
 
-	return <iframe ref={frame} className="adm-editor__frame" src={src} title={title} tabIndex={-1} />;
+	return <iframe ref={frame} className="adm-editor__frame" src={src} title={title} />;
 }

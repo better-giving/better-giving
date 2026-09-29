@@ -4,7 +4,8 @@ import { type KeyboardEvent, useState } from 'react';
 // it is pointed at or holds the caret (`.adm-inplace`). the Donation page has no name to edit and
 // draws its word instead (./publish-bar.tsx).
 //
-// the name is committed when the box is left or on Enter, and only when it changed. a box emptied
+// the name is committed when the box is left or on Enter, and only when it changed — or when the
+// last rename was refused, so the same words can be sent again once the refusal lands. a box emptied
 // and left goes back to the stored name: a campaign always has one, and nothing typed is lost that
 // was not already the stored value. Escape puts the stored name back without committing.
 //
@@ -41,6 +42,13 @@ export function InPlaceName({
 		setSeed(value);
 		setDraft(value);
 		setSent(value);
+	}
+	// a refusal landing clears what was sent: the guard below keeps Enter and the blur after it one
+	// rename, and a refused one stored nothing to guard.
+	const [refused, setRefused] = useState(invalid);
+	if (refused !== invalid) {
+		setRefused(invalid);
+		if (invalid) setSent(value);
 	}
 
 	const commit = () => {

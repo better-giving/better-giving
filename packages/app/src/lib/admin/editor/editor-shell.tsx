@@ -1,5 +1,14 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { createContext, type ReactNode, useContext, useLayoutEffect, useState } from 'react';
+import {
+	createContext,
+	type ReactNode,
+	type RefObject,
+	useContext,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState
+} from 'react';
 
 // the editor, one for the Donation page and a campaign alike: a route of its own outside the rail,
 // the publish bar across the top (./publish-bar.tsx), the page's preview filling everything under
@@ -25,20 +34,25 @@ type EditorShellProps = {
 /** whether the Chat entry's sheet is on its way, and the way `ChatOpening` says so. */
 const ChatOpeningFlag = createContext(false);
 const ReportChatOpening = createContext<(opening: boolean) => void>(() => {});
+/** the Chat entry, for `ChatClosed` to hand the focus to. */
+const ChatEntry = createContext<RefObject<HTMLButtonElement | null>>({ current: null });
 
 export function EditorShell({ bar, preview, entries, children }: EditorShellProps) {
 	const [chatOpening, setChatOpening] = useState(false);
+	const chatEntry = useRef<HTMLButtonElement>(null);
 	return (
 		<ReportChatOpening.Provider value={setChatOpening}>
 			<ChatOpeningFlag.Provider value={chatOpening}>
-				<div className="adm-editor">
-					{bar}
-					<main className="adm-editor__preview" aria-label="Preview">
-						{preview}
-					</main>
-					{entries}
-					{children}
-				</div>
+				<ChatEntry.Provider value={chatEntry}>
+					<div className="adm-editor">
+						{bar}
+						<main className="adm-editor__preview" aria-label="Preview">
+							{preview}
+						</main>
+						{entries}
+						{children}
+					</div>
+				</ChatEntry.Provider>
 			</ChatOpeningFlag.Provider>
 		</ReportChatOpening.Provider>
 	);
@@ -59,6 +73,20 @@ export function ChatOpening() {
 	return null;
 }
 
+/**
+ * stands where a chat sheet nobody's press opened was, and hands the focus to the Chat entry as the
+ * sheet goes. a sheet opened on arrival (`?chat`, ./chat-wiring.tsx) was put up with the focus on
+ * the document, which is where its own return would leave it. it mounts in the commit that takes the
+ * sheet down, so its effect runs after the sheet's cleanup has let go of the page.
+ */
+export function ChatClosed() {
+	const entry = useContext(ChatEntry);
+	useEffect(() => {
+		entry.current?.focus();
+	}, [entry]);
+	return null;
+}
+
 type EditorEntriesProps = {
 	readonly onChat: () => void;
 	readonly onSettings: () => void;
@@ -74,9 +102,11 @@ type EditorEntriesProps = {
  */
 export function EditorEntries({ onChat, onSettings }: EditorEntriesProps) {
 	const chatOpening = useContext(ChatOpeningFlag);
+	const chatEntry = useContext(ChatEntry);
 	return (
 		<div className="adm-fabs">
 			<Button
+				ref={chatEntry}
 				type="button"
 				mark="message-square"
 				aria-haspopup="dialog"
