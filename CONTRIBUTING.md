@@ -59,7 +59,7 @@ The copy deletes a tracked placeholder. Restore it with `git checkout packages/c
 
 ## The workspace
 
-Seven packages under `packages/`; commands run from the root:
+Eight packages under `packages/`; commands run from the root:
 
 - `packages/app` is the deployed Worker: React Router app, D1 server code, `/admin`, `/console` routes, and the Donation page at `/donate`.
 - `packages/form` is the embeddable element and its flow logic, a permanent public contract; the donation page draws the same flow in React off the same machine.
@@ -67,6 +67,7 @@ Seven packages under `packages/`; commands run from the root:
 - `packages/operator` is the leaf both operator surfaces consume: components, stylesheets, shared vocabulary.
 - `packages/console-ui` is the console's screens; client-only React, embedded into the Go binary at `packages/console` beside it (no `package.json`, invisible to `pnpm -r`).
 - `packages/gallery` is the component gallery, dev-only.
+- `packages/zapier` is the Zapier integration, pushed with its own CLI; it reaches no other package and none reaches it.
 
 Which package may import which is enforced by `biome.jsonc`'s overrides (`CLAUDE.md` → *The map*). `pnpm run build` is three ordered steps, and `CLAUDE.md` holds the chain and what silently breaks when a step moves.
 
