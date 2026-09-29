@@ -25,7 +25,7 @@ import type {
 	VarsRead,
 	VarsWritten
 } from '../api/types';
-import { PAID_PLAN, freePlanPace } from './cloudflare-plan';
+import { freePlanPace } from './cloudflare-plan';
 import { CLOUDFLARE_PLAN_PAGE, CLOUDFLARE_PLAN_TITLE } from './console-pages';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldInGroup } from './held-values';
@@ -127,6 +127,8 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // which is slow enough to be mistaken for a sync that has stopped, and the answer that lifts it is
 // on the Cloudflare plan page (./cloudflare-plan-block.tsx) — so the notice names the pace and links
 // that page, and goes the moment the stored answer reads as paid (`freePlanPace` in ./cloudflare-plan.ts).
+// it is not said where the answer is withheld either: the deployment reads a value this console
+// cannot, so the pace is not one this screen knows.
 //
 // **the address an operator registers arrives on the report, whole.** it is this deployment's own
 // address and the path Intuit sends a browser back to, and only the deployment can say either: no
@@ -319,7 +321,7 @@ export function QuickbooksSection({
 
 	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
 	if (values.vars.kind !== 'read' || holding === null) return null;
-	const pace = freePlanPace(holding.seeds[PAID_PLAN] ?? '');
+	const pace = freePlanPace(holding);
 	const presses: Presses = {
 		answer,
 		preview,

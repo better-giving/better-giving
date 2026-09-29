@@ -2,9 +2,10 @@ import type { DeployVarName } from '../api/types';
 
 // the values no group's press sets, and why each is in no group.
 //
-// **no fold on this console draws a box for these five.** `STRIPE_PUBLISHABLE_KEY` has one of its
-// own beside the secret key, because one press pastes the pair and the chain writes both
-// (./stripe-section.tsx) — it is not in a group because that press is not a group's.
+// **no fold on this console draws a box for a name in {@link UNGROUPED_VARS}.**
+// `STRIPE_PUBLISHABLE_KEY` has one of its own beside the secret key, because one press pastes the
+// pair and the chain writes both (./stripe-section.tsx) — it is not in a group because that press
+// is not a group's.
 // `TURNSTILE_SITE_KEY` is minted with the widget on the first deploy out of the answer that made it
 // (`packages/console/internal/first`), so there is no value for an operator to paste. and
 // `BETTER_AUTH_URL` has a box on no screen at all: the app falls back to the origin a request

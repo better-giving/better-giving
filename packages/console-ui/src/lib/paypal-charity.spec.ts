@@ -34,6 +34,14 @@ describe('where the switch is drawn', () => {
 		expect(charityApproved('TRUE')).toBe(true);
 	});
 
+	it('is on for the word carried with the whitespace a hand edit leaves round it', () => {
+		// the deployment trims every value before it reads one (`readConfigEnv` in
+		// packages/app/src/lib/server/config/env.ts), so a screen reading this untrimmed would say
+		// standard rate over a deployment quoting the charity one.
+		expect(charityApproved(' true')).toBe(true);
+		expect(charityApproved('TRUE\n')).toBe(true);
+	});
+
 	it('is off for a deployment holding nothing', () => {
 		expect(charityApproved('')).toBe(false);
 	});

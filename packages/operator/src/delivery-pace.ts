@@ -40,10 +40,14 @@ export const PAID_PLAN_ANSWER = 'true';
  * answer is read (`paypalFeeRules` in packages/app/src/lib/server/payments/fees.ts); every other
  * value, and none, is Free.
  *
+ * it trims before it compares, whatever the caller did: the deployment hands it a value
+ * `readConfigEnv` (packages/app/src/lib/server/config/env.ts) has already trimmed and the console
+ * hands it the raw seed, so a `true ` left by a hand edit reads as one plan on both surfaces.
+ *
  * read as Paid on a Free account, a run claims past what the invocation may spend and its posts past
  * the fiftieth fail as the receiver's; read as Free on a Paid one, deliveries go at the slower pace.
  * so an answer that is not the word falls to the plan that cannot overrun.
  */
 export function planAnswered(answer: string | undefined): Plan {
-	return answer?.toLowerCase() === PAID_PLAN_ANSWER ? 'paid' : 'free';
+	return answer?.trim().toLowerCase() === PAID_PLAN_ANSWER ? 'paid' : 'free';
 }

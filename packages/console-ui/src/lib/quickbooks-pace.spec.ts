@@ -1,3 +1,4 @@
+import { DELIVERY_PACE } from '@better-giving/operator/delivery-pace';
 import { createElement } from 'react';
 import { prerenderToNodeStream } from 'react-dom/static';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -52,7 +53,8 @@ async function section(vars: DeployedVar[]): Promise<string> {
 	return page;
 }
 
-const NOTICE = 'The books reach QuickBooks 1 gift a minute';
+const { books } = DELIVERY_PACE.free;
+const NOTICE = `The books reach QuickBooks ${books} ${books === 1 ? 'gift' : 'gifts'} a minute`;
 
 describe('the Free plan’s pace', () => {
 	it('is said, with where to change it, where the deployment holds no answer', async () => {
@@ -63,6 +65,11 @@ describe('the Free plan’s pace', () => {
 
 	it('is said where the answer is one the deployment reads as Free', async () => {
 		expect(await section([{ name: PAID_PLAN, kind: 'value', value: 'yes' }])).toContain(NOTICE);
+	});
+
+	it('is not said where the answer is withheld, since the deployment may be reading it as paid', async () => {
+		const page = await section([{ name: PAID_PLAN, kind: 'withheld' }]);
+		expect(page).not.toContain('The books reach QuickBooks');
 	});
 
 	it('is gone once the deployment reads the account as on the paid plan', async () => {
