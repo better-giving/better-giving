@@ -133,4 +133,16 @@ describe('the report', () => {
 		expect(onUndo).not.toHaveBeenCalled();
 		expect(document.activeElement).toBe(undo);
 	});
+
+	it('reads Redo when what landed was an Undo, and the press still calls onUndo', () => {
+		const onUndo = vi.fn();
+		const { host } = mount(
+			<LogoControl {...props({ report: { landed: 'removed', onUndo, redo: true } })} />
+		);
+		const redo = [...host.querySelectorAll('button')].find((one) => one.textContent === 'Redo');
+
+		expect(buttons(host)).not.toContain('Undo');
+		act(() => redo?.click());
+		expect(onUndo).toHaveBeenCalledOnce();
+	});
 });
