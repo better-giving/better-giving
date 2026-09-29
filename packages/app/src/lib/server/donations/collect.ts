@@ -203,8 +203,10 @@ export async function collectRecurringGift(
 			headline: 'A delivery about a repeating gift could not be read and was not acted on',
 			body:
 				'The delivery verified and the repeating gift behind it could not be read. Nothing was ' +
-				'written. If it was a collection, money moved and the books do not have it. Repeating ' +
-				'the call answers the same way, so this needs a person.',
+				'written. If it was a collection, money moved and the books do not have it. If it was a ' +
+				'failed payment, no money moved and the books are complete: what is lost is the ' +
+				'recurring charge failed notice for that attempt. Repeating the call answers the same ' +
+				'way, so this needs a person.',
 			facts: [
 				{ label: 'Event', value: event.id },
 				{ label: 'Event type', value: event.type },
@@ -386,8 +388,8 @@ async function failedResult(
 	}
 	if (stood !== null) return standingResult(db, event, notice, plan, stood);
 	const retry = failed.nextRetryAt
-		? `the rail tries again at ${failed.nextRetryAt.toISOString()}`
-		: 'the rail will not try again';
+		? `the rail has its next try scheduled for ${failed.nextRetryAt.toISOString()}`
+		: 'the rail has no next try scheduled';
 	return {
 		ok: true,
 		outcome: 'uncollected',

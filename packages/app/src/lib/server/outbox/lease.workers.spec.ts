@@ -525,3 +525,40 @@ describe('each()', () => {
 		expect(worked.sort()).toEqual(['e0', 'e1', 'e2', 'e3', 'e4']);
 	});
 });
+
+describe('takeBack()', () => {
+	it('gives back a live lease, so the run holding the row holds it no longer and lands nothing', async () => {
+		const now = Date.now();
+		await owe(backlog(1, now));
+		const outbox = outboxOf();
+		const claim = await outbox.claim(db, new Date(now), { claims: CLAIMS, returning });
+		const [row] = claim.rows;
+		if (row === undefined) throw new Error('nothing was claimed');
+		const held = () =>
+			db
+				.select({ held: sql<number>`${claim.holds(row)}` })
+				.from(zapierSubscription)
+				.where(eq(zapierSubscription.id, subscriptionId));
+		expect(await held()).toEqual([{ held: 1 }]);
+
+		const [taken] = await db.batch([
+			outbox.takeBack(db, {
+				where: eq(zapierDelivery.eventId, row.eventId),
+				outcome: { attempts: 0, nextAttemptAt: new Date(now + HOUR) }
+			})
+		]);
+
+		expect(taken).toEqual([{ subscriptionId, eventId: row.eventId }]);
+		expect(await held()).toEqual([{ held: 0 }]);
+		expect(await claim.land(row, { status: 'sent', attempts: 1 })).toBe(false);
+		expect(await rowsNow()).toEqual([
+			expect.objectContaining({
+				event_id: row.eventId,
+				status: 'pending',
+				attempts: 0,
+				next_attempt_at: now + HOUR,
+				leased_until: null
+			})
+		]);
+	});
+});

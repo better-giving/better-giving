@@ -3,8 +3,9 @@ import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { webhookDestination, webhookDestinationEvent } from '../db/schema';
 import { WEBHOOK_EVENT_TYPES, type WebhookEvent } from '../../webhooks/catalog';
-import { NO_EVENTS } from '../../webhooks/destination-input';
-import { countHeld, dropOwedStatement, requeueHeldStatement } from './deliver';
+import { carriesCredentials, HAS_CREDENTIALS, NO_EVENTS } from '../../webhooks/destination-input';
+import type { Plan } from '../outbox/budget';
+import { countHeld, dropOwedStatement, requeueHeldStatements } from './deliver';
 
 // a destination: an https address the organisation's own system listens on, the events it takes,
 // and the secret every post to it is signed with (./sign.ts).
@@ -126,7 +127,7 @@ export type CreatedDestination = {
  */
 export type DestinationRefusal = {
 	readonly ok: false;
-	readonly reason: 'not_an_address' | 'not_https' | 'not_public' | 'no_events';
+	readonly reason: 'not_an_address' | 'has_credentials' | 'not_https' | 'not_public' | 'no_events';
 	readonly field: 'url' | 'events';
 	readonly box: string;
 };
@@ -136,9 +137,9 @@ export type CreateDestinationResult =
 	| DestinationRefusal;
 
 /**
- * a destination posting `events` to `url`, stored as the parsed address. an address that is not
- * https, or names a host the internet cannot reach (`destinationAddress`), or no events, is
- * refused and nothing is written.
+ * a destination posting `events` to `url`, stored as the parsed address. an address that carries
+ * a user name or password, is not https, or names a host the internet cannot reach
+ * (`destinationAddress`), or no events, is refused and nothing is written.
  */
 export async function createDestination(
 	db: Db,
@@ -219,7 +220,8 @@ export type DeleteDestinationResult =
  * the destination `id` deleted at `now`, answered with the address it posted to: archived, owed
  * nothing new, and every row it was still owed that no delivery run holds dropped in the same batch
  * (`dropOwedStatement` in ./deliver.ts), so nothing waits on a destination nobody can resume. a
- * run already holding rows finishes their posts. what it was sent is kept.
+ * run already holding rows finishes their posts, and what they leave owed is dropped by the next
+ * delivery run's claim. what it was sent is kept.
  */
 export async function deleteDestination(
 	db: Db,
@@ -254,6 +256,9 @@ function notFound(id: string) {
  * dropped, and an address typed with no scheme — nothing before a colon but a host, or a host and
  * its port — is taken as https.
  *
+ * no user name or password ($lib/webhooks/destination-input.ts says why), checked on the text as
+ * typed, before a scheme is taken for it.
+ *
  * https only: every post carries donors' names and addresses. and a host the internet reaches: a
  * post goes out from this deployment's own network, so a name with no domain, `localhost`, a name
  * under `.localhost`, `.local`, `.internal` or `.home.arpa`, and an IP literal in any range that
@@ -265,6 +270,9 @@ function notFound(id: string) {
 function destinationAddress(
 	typed: string
 ): { readonly ok: true; readonly href: string } | DestinationRefusal {
+	if (carriesCredentials(typed)) {
+		return { ok: false, reason: 'has_credentials', field: 'url', box: HAS_CREDENTIALS };
+	}
 	const trimmed = typed.trim();
 	const url = URL.parse(/^[a-z][a-z\d+.-]*:(?!\d)/i.test(trimmed) ? trimmed : `https://${trimmed}`);
 	if (url === null || url.hostname === '') {
@@ -319,6 +327,10 @@ type Range =
 	| 'a carrier-grade NAT address'
 	| 'a link-local address'
 	| 'a benchmarking address'
+	| 'a protocol assignment address'
+	| 'a documentation address'
+	| 'a Teredo address'
+	| 'a discard-only address'
 	| 'a multicast or reserved address'
 	| 'a unique local address'
 	| 'a site-local address'
@@ -341,7 +353,7 @@ const isIpv4 = (host: string) => octetsOf(host) !== null;
 function ipv4Range(host: string): Range | null {
 	const octets = octetsOf(host);
 	if (octets === null) return null;
-	const [a = 0, b = 0] = octets;
+	const [a = 0, b = 0, c = 0] = octets;
 	if (a === 0) return 'an address on no network';
 	if (a === 127) return 'a loopback address';
 	if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
@@ -350,6 +362,12 @@ function ipv4Range(host: string): Range | null {
 	if (a === 100 && b >= 64 && b <= 127) return 'a carrier-grade NAT address';
 	if (a === 169 && b === 254) return 'a link-local address';
 	if (a === 198 && (b === 18 || b === 19)) return 'a benchmarking address';
+	if (a === 192 && b === 0 && c === 0) return 'a protocol assignment address';
+	const documentation =
+		(a === 192 && b === 0 && c === 2) ||
+		(a === 198 && b === 51 && c === 100) ||
+		(a === 203 && b === 0 && c === 113);
+	if (documentation) return 'a documentation address';
 	if (a >= 224) return 'a multicast or reserved address';
 	return null;
 }
@@ -375,6 +393,10 @@ function ipv6Range(literal: string): Range | null {
 		return 'an IPv4-translated address';
 	}
 	if (first === 0x64 && second === 0xff9b && zeroes(2, 6)) return 'a NAT64 address';
+	if (first === 0x64 && second === 0xff9b && hextets[2] === 1) return 'a NAT64 address';
+	if (first === 0x2001 && second === 0) return 'a Teredo address';
+	if (first === 0x2001 && second === 0x0db8) return 'a documentation address';
+	if (first === 0x100 && zeroes(1, 4)) return 'a discard-only address';
 	if (first === 0x2002) return 'a 6to4 address';
 	if ((first & 0xffc0) === 0xfe80) return 'a link-local address';
 	if ((first & 0xffc0) === 0xfec0) return 'a site-local address';
@@ -406,8 +428,9 @@ export type ResumeDestinationResult =
 	| { readonly ok: false; readonly reason: 'not_found' | 'not_paused'; readonly detail: string };
 
 /**
- * the destination `id` resumed at `now`, its held window due at once (`requeueHeldStatement` in
- * ./deliver.ts says which rows) and answered with how many rows that re-queued. the pause and the
+ * the destination `id` resumed at `now`, its held window re-queued and let out a few at a time
+ * from `now` at the pace `plan` allows (`requeueHeldStatements` in ./deliver.ts says which rows
+ * and how fast), and answered with how many rows that re-queued. the pause and the
  * failing mark are cleared in the same batch, and only while the destination is paused, so of two
  * resumes one re-queues and the other is refused. a deleted destination is not found: it is sent
  * nothing, so a row re-queued for it would wait forever.
@@ -415,10 +438,11 @@ export type ResumeDestinationResult =
 export async function resumeDestination(
 	db: Db,
 	id: string,
-	now: Date
+	now: Date,
+	plan: Plan = 'free'
 ): Promise<ResumeDestinationResult> {
-	const [requeued, resumed] = await db.batch([
-		requeueHeldStatement(db, id, now),
+	const [requeued, , resumed] = await db.batch([
+		...requeueHeldStatements(db, id, now, plan),
 		db
 			.update(webhookDestination)
 			.set({ pausedAt: null, failingSince: null })

@@ -9,7 +9,6 @@ import {
 	inArray,
 	isNull,
 	or,
-	type SQL,
 	sql
 } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
@@ -27,8 +26,9 @@ import {
 import type { ContactSort, ContactView, SortDir } from '../../contacts/sorts';
 import type { ParsedContact } from './contact-input';
 
-// every read and write of `contact`, so the two non-obvious query shapes below have one
-// place to be stated rather than being re-derived at each call site.
+// every read of `contact` and the insert that makes one, so the two non-obvious query shapes below
+// have one place to be stated rather than being re-derived at each call site. a change to a
+// contact once made is ./changes.ts's, beside the event it owes.
 //
 // `donation` and `payment` are named here too, in `listContacts` and `readDonorSummary` and
 // nowhere else — the two places either table is read outside ../donations/queries.ts, whose header
@@ -475,48 +475,6 @@ export function contactInsertStatement(db: Db, row: NewContactRow) {
 	const statement = db.insert(contact).values(row);
 	statement satisfies BatchItem<'sqlite'>;
 	return statement;
-}
-
-/**
- * the consent answer a donor just gave, over the one they gave before — unexecuted, for the same
- * `batch()` that writes the gift it arrived with — and `changes`, which holds while the stored
- * answer differs from it: the gate a statement reporting the change takes, spliced **in front of**
- * `update` so it reads the answer before `update` replaces it (`resolveDonor` in
- * ../donations/donor.ts).
- *
- * a returning donor is matched to the contact row they already have, so an answer written only on
- * insert would be the first one they ever gave and every later one would be discarded. true -> false
- * is a withdrawal and false -> true is a grant; a consent record that holds neither is worse than
- * one that was never kept, because it reads as an answer.
- *
- * it names the row by id, so it is not the read-then-write CLAUDE.md bans: the caller has already
- * resolved which contact this is, and the one value read inside the write, the stored answer,
- * decides whether it writes and never what.
- *
- * `update` runs only where the answer differs — `is not` rather than `<>`, so a donor nobody had
- * asked (`null`) answering for the first time is a change — so the same answer given again writes
- * nothing, and moves no `updated_at` a read API caller's `updated_since` would take for a change.
- *
- * `updated_at` moves with a change, from the column's own `$onUpdateFn` rather than from anything
- * here: this is a write to the row, and system time is what that column records.
- *
- * it takes a boolean and never null: absent is the state of a contact nobody asked, and no path
- * that reaches this function is one — the gift carries a required answer. a caller that would pass
- * null wants no statement at all.
- */
-export function contactConsentUpdate(
-	db: Db,
-	id: string,
-	consented: boolean
-): { readonly changes: SQL; readonly update: BatchItem<'sqlite'> } {
-	const changesRow = and(
-		eq(contact.id, id),
-		sql`${contact.consentedToContact} is not ${consented ? 1 : 0}`
-	);
-	return {
-		changes: exists(db.select({ one: sql`1` }).from(contact).where(changesRow)),
-		update: db.update(contact).set({ consentedToContact: consented }).where(changesRow)
-	};
 }
 
 /**

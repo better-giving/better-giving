@@ -50,7 +50,9 @@ import {
 	updateDestination
 } from '$lib/server/webhooks/destinations';
 import { listDeliveries, sendTestWebhook } from '$lib/server/webhooks/deliver';
-import { database, staff } from '../context';
+import { readConfigEnv } from '$lib/server/config/env';
+import { planOf } from '$lib/server/outbox/budget';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 
 // one webhook destination: its recent deliveries, a test sent to it, its signing secret, its
@@ -227,7 +229,12 @@ export async function action(args: Route.ActionArgs) {
 		const submission = parseForm(body, RESUME_FORM);
 		if (!submission.ok) return invalid(400, submission.reject());
 
-		const resumed = await resumeDestination(context.get(database), params.id, new Date());
+		const resumed = await resumeDestination(
+			context.get(database),
+			params.id,
+			new Date(),
+			planOf(readConfigEnv(context.get(platform).env))
+		);
 		if (resumed.ok) return { resumed: resumed.requeued };
 		if (resumed.reason === 'not_found') notFound(noSuchDestination(params.id));
 		return invalid(409, unread(RESUME_FORM, NOT_PAUSED));

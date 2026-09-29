@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, isNull, lte, or, type SQL, sql } from 'drizzle-orm';
 import type { BatchItem } from 'drizzle-orm/batch';
 import type { SelectResultFields } from 'drizzle-orm/query-builders/select.types';
 import type { RunnableQuery } from 'drizzle-orm/runnable-query';
@@ -33,7 +33,10 @@ import { eachAtMost } from '../each-at-most';
 // plan's five million rows read a day (https://developers.cloudflare.com/d1/platform/pricing/) a
 // backlog of a few thousand spends in a day. so the window runs over the candidates alone, read off
 // the due index in order and stopping at the limit, and what a claim reads is the same however long
-// the backlog is. a receiver whose rows alone fill the candidates still fills the claim.
+// the backlog of rows it may take. a due row the claim's `where` refuses is read past on every run
+// and counts toward none of that, so a feed keeps a row it will not take out of the due set, its
+// `next_attempt_at` ahead, rather than refusing it there. a receiver whose rows alone fill the
+// candidates still fills the claim, so a feed spaces out many rows it makes due at once.
 //
 // **the lease runs from the run's scheduled time**, the `now` a claim is handed, to `leaseMs`
 // after it. a lease that has run out is no lease: the run that wrote it is gone or overran, and the
@@ -51,8 +54,13 @@ import { eachAtMost } from '../each-at-most';
 // whether it was held when the sweep first ran, came back owed from a landing, or was left by a
 // run that died.
 //
+// **a take-back is the one write that ends a live lease**: the feed restarting rows whatever a run
+// is doing with them, so the run's landing, `holds` and every write it guards match nothing, and
+// the answer that run's post gets is lost. the post may still have arrived, which at least once
+// already allows.
+//
 // **`leased_until` is the only column this module owns.** every other column is the feed's, written
-// through a claim's `set`, an outcome or a sweep's outcome. a column with an `$onUpdateFn` in
+// through a claim's `set`, an outcome, a sweep's or a take-back's. a column with an `$onUpdateFn` in
 // ../db/schema.ts (`updated_at`) is stamped with the wall clock by drizzle on any of these
 // statements that does not name it, so a feed that means to hold one names it as itself.
 //
@@ -139,6 +147,11 @@ export type Claim<T extends OutboxTable, K extends Key, Row> = {
 	 * landed, with nothing where it did not.
 	 */
 	landing(row: Row, outcome: Outcome<T>): KeyedWrite<K>;
+	/**
+	 * the condition that this run still holds `row` and it is still owed: a guard for a write the
+	 * feed batches in front of `row`'s landing that must take only where the landing will.
+	 */
+	holds(row: Row): SQL;
 	/** {@link Claim.landing} on its own, and whether it landed. */
 	land(row: Row, outcome: Outcome<T>): Promise<boolean>;
 	/**
@@ -222,6 +235,13 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 			rows,
 			lease,
 			landing,
+			holds: (row) =>
+				exists(
+					db
+						.select({ one: sql`1` })
+						.from(table as SQLiteTable)
+						.where(heldBy(row))
+				),
 			async land(row, outcome) {
 				const [landed] = await db.batch([landing(row, outcome)]);
 				return landed.length > 0;
@@ -261,5 +281,21 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 			.returning(spec.key as Key) as unknown as KeyedWrite<K>;
 	}
 
-	return { claim, sweep };
+	/**
+	 * `outcome` written on every row `where` admits, owed or not and held or not, and any lease on
+	 * one given back — so a run holding it lands nothing on it, and the row is the feed's to start
+	 * again. one statement for the feed's `batch()`, answering with the key of each row it wrote.
+	 */
+	function takeBack(
+		db: Db,
+		options: { readonly where: SQL; readonly outcome: Outcome<T> }
+	): KeyedWrite<K> {
+		return db
+			.update(table as SQLiteTable)
+			.set({ ...options.outcome, leasedUntil: null })
+			.where(options.where)
+			.returning(spec.key as Key) as unknown as KeyedWrite<K>;
+	}
+
+	return { claim, sweep, takeBack };
 }

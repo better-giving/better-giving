@@ -3015,7 +3015,10 @@ export const webhookDelivery = sqliteTable(
 		/** how many posts have been made. */
 		attempts: integer('attempts').notNull().default(0),
 
-		/** when the next post is due. */
+		/**
+		 * when the next post is due. a row owed to a paused destination holds `HELD_UNTIL`
+		 * (../webhooks/events.ts), due never until a resume lets it out.
+		 */
 		nextAttemptAt: at('next_attempt_at').notNull(),
 
 		/** while this is in the future, the row belongs to the delivery run that wrote it (../outbox/lease.ts). */
@@ -3069,6 +3072,10 @@ export const webhookDelivery = sqliteTable(
 		// a destination's latest deliveries in `listDeliveries`' order (../webhooks/deliver.ts), read
 		// on every load of its page from a history that is never cleared.
 		index('webhook_delivery_recent_idx').on(t.destinationId, t.createdAt, t.id),
+		// one destination's rows in one status: what a pause holds, a resume re-queues, a delete
+		// drops and a deleted destination's standing sweep reads (../webhooks/deliver.ts), each
+		// reading those rows alone rather than the destination's whole history or every owed row.
+		index('webhook_delivery_owed_idx').on(t.destinationId, t.status),
 		// `zapier_delivery_due_idx`'s shape, for the claim ../outbox/lease.ts makes.
 		index('webhook_delivery_due_idx').on(t.status, t.nextAttemptAt, t.id, t.leasedUntil)
 	]

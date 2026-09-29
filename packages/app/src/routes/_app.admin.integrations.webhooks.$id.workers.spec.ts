@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { createDestination } from '$lib/server/webhooks/destinations';
+import { destinationPagePath } from '$lib/server/webhooks/paused-mail';
 import type { WebhookEvent } from '$lib/webhooks/catalog';
 import {
 	deliverNow,
@@ -75,6 +76,13 @@ async function pause(id: string) {
 }
 
 const at = (id: string, search = '') => `${LIST}/${id}${search}`;
+
+it('is the page the pause mail links to', async () => {
+	const { id } = await made();
+
+	expect(destinationPagePath(id)).toBe(at(id));
+	expect((await destination.get(destinationPagePath(id), deployer)).status).toBe(200);
+});
 
 async function visit(id: string, search = '', cookie = deployer): Promise<Screen> {
 	const response = await destination.get(at(id, search), cookie);

@@ -254,3 +254,30 @@ describe('which run an expression reaches', () => {
 		for (const job of JOBS) expect(job).not.toHaveBeenCalled();
 	});
 });
+
+describe('a method react router routes nowhere', () => {
+	type Fetch = typeof worker.fetch;
+	const ctx = {
+		waitUntil: () => {},
+		passThroughOnException: () => {},
+		props: {}
+	} as unknown as Parameters<Fetch>[2];
+	const asked = (method: string, path: string) =>
+		worker.fetch(
+			new Request(`https://donate.example.org${path}`, { method }) as Parameters<Fetch>[0],
+			env,
+			ctx
+		);
+
+	it.each([
+		['PROPFIND', '/integrations/v1/gifts'],
+		['QUERY', '/integrations/v1'],
+		['propfind', '/integrations/v1/donors']
+	])('is refused on the read API as its own read-only 405: %s %s', async (method, path) => {
+		const response = await asked(method, path);
+
+		expect(response.status).toBe(405);
+		expect(response.headers.get('allow')).toBe('GET, HEAD');
+		expect(await response.json()).toMatchObject({ error: 'method_not_allowed' });
+	});
+});

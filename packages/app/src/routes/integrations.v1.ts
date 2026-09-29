@@ -58,9 +58,9 @@ import type { Route } from './+types/integrations.v1';
  * GET and HEAD, and nothing else. react router hands OPTIONS to a loader and POST, PUT, PATCH and
  * DELETE to an action, so without this a route with no action would answer a write with the
  * framework's own 405 and no `Allow`, and a keyed OPTIONS would read the loader. a method outside
- * those seven — PROPFIND, QUERY — never reaches this: react router's server runtime answers it
- * with its own 405, a `{ message }` body and no `Allow`, before any middleware runs
- * (`queryRoute` in react-router/dist/development/lib/router/router.js).
+ * those seven — PROPFIND, QUERY — never reaches this: react router's server runtime would answer
+ * it with its own 405 before any middleware runs, so ../worker.ts answers it with this same
+ * refusal before the request reaches react router at all.
  */
 const readOnly: Route.MiddlewareFunction = ({ request }, next) =>
 	request.method === 'GET' || request.method === 'HEAD' ? next() : readOnlyRefusal(request.method);

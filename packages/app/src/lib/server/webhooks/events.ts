@@ -22,7 +22,8 @@ import type { WebhookEvent } from '../../webhooks/catalog';
 //
 // **there is no gate read.** each statement is an INSERT…SELECT over the destinations taking its
 // event, evaluated inside the batch's own transaction, so no destination is zero rows. an archived
-// destination is owed nothing; a paused one is owed its rows, which wait until it is resumed.
+// destination is owed nothing; a paused one is owed its rows, which wait until it is resumed, held
+// out of the due set from the moment they are queued ({@link HELD_UNTIL}).
 //
 // **"once" is `webhook_delivery_event_idx`**, unique on destination, event and subject: a
 // settlement delivered twice meets its own key, and `on conflict do nothing` answers that refusal
@@ -31,6 +32,13 @@ import type { WebhookEvent } from '../../webhooks/catalog';
 // **every row's id is its `webhook-id`**, minted here in sql, one per destination, because the
 // statement does not know how many destinations it will write for: `msg_` and a version 4 uuid
 // from `randomblob`.
+
+/**
+ * the `next_attempt_at` of a row owed to a paused destination: the latest time a `Date` holds, so
+ * no claim finds it due or reads past it (../outbox/lease.ts) until a resume lets it out
+ * (`requeueHeldStatements` in ./deliver.ts).
+ */
+export const HELD_UNTIL = new Date(8_640_000_000_000_000);
 
 /** the gift a settlement just made `succeeded`, and the donor it is filed under. */
 export type MadeGift = { readonly paymentId: string; readonly contactId: string };
@@ -123,9 +131,9 @@ export function changedRecordOf(subject: string): string | null {
  * - a `donor.added` waiting out a failed post's retry can be overtaken by a `donor.updated` queued
  *   after it.
  *
- * outside the specs its one caller is `consentWrites` in ../donations/donor.ts, which splices it
- * **in front of** the update it reports: `changed` compares the row as it stands with what the
- * update will write, so a write that changes nothing owes nothing.
+ * outside the specs its one caller is `consentChangeStatements` in ../contacts/changes.ts, which
+ * splices it **in front of** the update it reports: `changed` compares the row as it stands with
+ * what the update will write, so a write that changes nothing owes nothing.
  */
 export function donorUpdatedWebhookStatements(
 	db: Db,
@@ -191,7 +199,11 @@ export function recurringGiftChangeWebhookStatements(
  */
 export const CHARGE_FAILED_DETAIL = z.strictObject({
 	attempt_count: z.int().positive(),
-	/** null on the last miss: the processor will not try again. */
+	/**
+	 * when the processor has scheduled its next try, as of this attempt; null where it scheduled
+	 * none, the last miss. a schedule and not a promise, as `FailedCollection.nextRetryAt` in
+	 * ../payments/provider.ts says.
+	 */
 	next_retry_at: z.iso.datetime().nullable(),
 	failed_at: z.iso.datetime(),
 	amount_minor: z.int().positive(),
@@ -234,8 +246,8 @@ export function recurringChargeFailedWebhookStatements(
 const UUID_V4 = sql`lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)))`;
 
 /**
- * one pending row, due at once, per un-archived destination taking `event`, where `extra` holds,
- * each carrying `detail` where the event keeps one.
+ * one pending row per un-archived destination taking `event`, where `extra` holds, each carrying
+ * `detail` where the event keeps one: due at once, or {@link HELD_UNTIL} for a paused destination.
  *
  * drizzle's `insert().select()` names every column of the table in declaration order and refuses a
  * select whose keys differ, so every column is selected here, the defaults included. the select
@@ -262,7 +274,10 @@ function fanOut(
 					subjectId: sql`${subjectId}`.as('subject_id'),
 					status: sql`'pending'`.as('status'),
 					attempts: sql`0`.as('attempts'),
-					nextAttemptAt: sql`${at}`.as('next_attempt_at'),
+					nextAttemptAt:
+						sql`case when ${webhookDestination.pausedAt} is null then ${at} else ${HELD_UNTIL.getTime()} end`.as(
+							'next_attempt_at'
+						),
 					leasedUntil: sql`null`.as('leased_until'),
 					lastStatus: sql`null`.as('last_status'),
 					lastError: sql`null`.as('last_error'),

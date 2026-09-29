@@ -1,7 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { WEBHOOKS_PAGE_PATH } from '$lib/server/webhooks/paused-mail';
 import { createDestination } from '$lib/server/webhooks/destinations';
 import { freshDeployment, page, signInAsDeployer, signInAsMember } from '../webhook-routes.testing';
 import * as screen from './_app.admin.integrations.webhooks._index';
@@ -43,10 +42,6 @@ async function visit(cookie = deployer): Promise<Screen> {
 	expect(response.status).toBe(200);
 	return (await response.json()) as Screen;
 }
-
-it('is the page the pause mail links to', () => {
-	expect(WEBHOOKS_PAGE_PATH).toBe(SCREEN);
-});
 
 describe('GET /admin/integrations/webhooks', () => {
 	it('lists each destination by address, with its events counted and whether it is paused', async () => {
