@@ -51,11 +51,15 @@ it('lists each destination by its address, linked to its page, with its events a
 		deleted: null
 	});
 
+	// the add link is under the rows and not one of them, so the rows are the two destinations the
+	// caption counts.
 	expect(rows(root)).toEqual([
 		['https://hooks.riverbanktrust.org/giving', '5 events', ''],
-		['https://crm.example.net/hooks', 'All events', 'Paused'],
-		['Add destination']
+		['https://crm.example.net/hooks', 'All events', 'Paused']
 	]);
+	expect(root.querySelector('a[href="/admin/integrations/webhooks/new"]')?.textContent).toBe(
+		'Add destination'
+	);
 	const link = root.querySelector<HTMLAnchorElement>(
 		'tbody a[href="/admin/integrations/webhooks/d2"]'
 	);
@@ -66,7 +70,7 @@ it('lists each destination by its address, linked to its page, with its events a
 it('says there are none yet, and still offers to add one', () => {
 	const root = screen({ destinations: [], deleted: null });
 
-	expect(rows(root)).toEqual([['No destinations yet'], ['Add destination']]);
+	expect(rows(root)).toEqual([['No destinations yet']]);
 	expect(root.querySelector('a[href="/admin/integrations/webhooks/new"]')?.textContent).toBe(
 		'Add destination'
 	);

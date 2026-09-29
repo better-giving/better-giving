@@ -1,4 +1,4 @@
-import type { ElementType, RefObject } from 'react';
+import type { ElementType, MouseEvent as ReactMouseEvent, RefObject } from 'react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 
@@ -28,6 +28,18 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 // reader is left on the body. so what is below is that pair, and the two answers: the one handed
 // back instead of letting Escape close the element, and the press outside the card that means the
 // same thing.
+//
+// **what the reader was on counts as the opener only when it is a control.** safari, and firefox on
+// macos, do not focus a button or a link a pointer presses: focus goes to the nearest focusable
+// thing around it instead, which under the shell is `main` — focusable as the skip link's landing
+// (../components/shell/AppShell.jsx). a press on Revoke would then record the whole page as what put the card up, and focus
+// would go back to it rather than to the target the screen named.
+//
+// **a press on the ground counts only when it went down there after the card was lifted.** a
+// question that arrived in the server's markup is drawn in the page until this runs, and then
+// stands somewhere else: a press aimed at where the card was, begun before the lift, would land on
+// the ground and dismiss a question the reader was answering. the same rule keeps a drag that
+// starts inside the card and ends outside it from reading as a press on the ground.
 
 type ModalProps<
 	C extends ElementType = 'button',
@@ -51,6 +63,25 @@ type ModalProps<
 	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
 };
 
+/** what a pointer press or a key can have put focus on, as opposed to a box that only holds it. */
+const CONTROL =
+	'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"]';
+
+/** whether a press at this point, targeting the element itself, is outside the card's box. */
+function onGround(node: HTMLDialogElement, event: MouseEvent | ReactMouseEvent): boolean {
+	if (event.target !== node) return false;
+	// a press on the card's own padding targets the element too — the card is one box and its
+	// padding is inside it — so the point is what separates the ground from the card. there is no
+	// second node to aim at: the ground is the element's own `::backdrop`.
+	const box = node.getBoundingClientRect();
+	return (
+		event.clientX < box.left ||
+		event.clientX > box.right ||
+		event.clientY < box.top ||
+		event.clientY > box.bottom
+	);
+}
+
 export function Modal<
 	C extends ElementType = 'button',
 	X extends ElementType = 'button',
@@ -64,15 +95,19 @@ export function Modal<
 	// the effect below runs once per card and reads this when the card comes down, so it takes the
 	// target the screen names at that moment rather than the one it named when the card went up.
 	const fallback = useEffectEvent(() => fallbackFocus?.current ?? null);
+	// set by a press that went down on the ground while the card was lifted, and spent by the click
+	// that press ends in.
+	const groundPress = useRef(false);
 
 	useEffect(() => {
 		const node = element.current;
 		if (node === null) return;
 		// what the reader was on when the card went up, held so the cleanup can put them back. it is
 		// read before the focus is moved and never after: `showModal()` and the call below are what
-		// take it away. a dialog that arrived in the server's markup was opened by nobody and this is
-		// the body, which is where focus already is and where it would go anyway.
-		const opener = document.activeElement;
+		// take it away. a dialog that arrived in the server's markup was opened by nobody and focus is
+		// on the body, which is no control; nor is a box that only holds focus, for the header's reason.
+		const focused = document.activeElement;
+		const opener = focused instanceof HTMLElement && focused.matches(CONTROL) ? focused : null;
 		// `showModal()` throws InvalidStateError on a dialog that is already open non-modally, which
 		// is exactly what arrives from the server, so the close is what makes the upgrade legal
 		// rather than a way out of anything.
@@ -87,7 +122,15 @@ export function Modal<
 		// land on at all.
 		node.focus();
 		setInPage(false);
+		// listened for from here on and not before, which is the whole of the rule: a press that went
+		// down while the card was still in the page is never recorded.
+		const pressDown = (event: PointerEvent) => {
+			groundPress.current = onGround(node, event);
+		};
+		node.addEventListener('pointerdown', pressDown);
 		return () => {
+			node.removeEventListener('pointerdown', pressDown);
+			groundPress.current = false;
 			setInPage(true);
 			// the close is what ends the top layer's hold on the page: while the element is a shown
 			// modal everything outside the card is inert, so a control out there cannot take the focus
@@ -99,7 +142,7 @@ export function Modal<
 			// `close()` of an element still on the page, but this one is being removed in the same
 			// commit, so the restoration is written here or it does not happen. with that control gone
 			// the reader goes where the screen said, and with nothing said they are left on the body.
-			if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
+			if (opener?.isConnected) {
 				opener.focus();
 				return;
 			}
@@ -119,19 +162,9 @@ export function Modal<
 			}}
 			onClick={(event) => {
 				const node = element.current;
-				if (node === null || event.target !== node) return;
-				// a press on the card's own padding targets the element too — the card is one box and
-				// its padding is inside it — so the point is what separates the ground from the card.
-				// there is no second node to aim at: the ground is the element's own `::backdrop`.
-				const box = node.getBoundingClientRect();
-				if (
-					event.clientX < box.left ||
-					event.clientX > box.right ||
-					event.clientY < box.top ||
-					event.clientY > box.bottom
-				) {
-					onDismiss();
-				}
+				const wentDown = groundPress.current;
+				groundPress.current = false;
+				if (node !== null && wentDown && onGround(node, event)) onDismiss();
 			}}
 		/>
 	);

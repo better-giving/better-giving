@@ -185,6 +185,21 @@ describe('a field mounted into a document', () => {
 		expect(reveal(root).getAttribute('aria-label')).toBe('Show signing secret');
 	});
 
+	it('cannot be handed one of the press’s two names without the other', () => {
+		// one name alone would leave the press named for one value and renamed for another. `pnpm run
+		// check` is what runs this case; the render asserts the default the other name falls back to.
+		// @ts-expect-error — `hideLabel` is required beside `revealLabel`.
+		const root = render(Field, {
+			id: 'webhook-secret',
+			label: 'Signing secret',
+			masked: true,
+			revealLabel: 'Show signing secret',
+			defaultValue: 'whsec_abc'
+		});
+
+		expect(reveal(root).getAttribute('aria-label')).toBe('Show signing secret');
+	});
+
 	it('does not submit the form it stands in', () => {
 		// it stands inside the form whose boxes it is about, and a press that submitted would post a
 		// credential the operator only wanted to look at.

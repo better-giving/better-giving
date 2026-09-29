@@ -586,3 +586,36 @@ describe('the line above a plane', () => {
 		]);
 	});
 });
+
+describe('the way to add one more record', () => {
+	it('stands under the rows and outside the table, so the table holds records alone', () => {
+		// a row in the body would be one more record to a reader moving by rows, and one more than the
+		// caption counts.
+		const root = render(DataTable, {
+			caption: '2 gifts.',
+			columns: COLUMNS,
+			rows: GIFTS,
+			add: 'Add destination',
+			addHref: '/admin/integrations/webhooks/new'
+		});
+		const add = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Add destination');
+
+		expect(add?.getAttribute('href')).toBe('/admin/integrations/webhooks/new');
+		expect(add?.closest('table')).toBeNull();
+		expect(add?.closest('.adm-plane')).not.toBeNull();
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(GIFTS.length);
+	});
+
+	it('stands under the sentence an empty list draws, and the body holds that sentence alone', () => {
+		const root = render(DataTable, {
+			caption: 'Webhooks',
+			columns: COLUMNS,
+			empty: 'No destinations yet',
+			add: 'Add destination'
+		});
+
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(1);
+		expect(root.querySelector('tbody')?.textContent).toBe('No destinations yet');
+		expect(root.querySelector('.adm-plane > table + a')?.textContent).toBe('Add destination');
+	});
+});

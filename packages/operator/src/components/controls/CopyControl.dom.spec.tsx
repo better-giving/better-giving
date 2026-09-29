@@ -38,6 +38,23 @@ function button(root: HTMLElement): HTMLButtonElement {
 	return found;
 }
 
+/** a worded control's resting face: its mark and its words. */
+function rest(root: HTMLElement): Element {
+	const found = root.querySelector('.adm-copyface__rest');
+	if (found === null) throw new Error('the control drew no resting face');
+	return found;
+}
+
+/** whether the resting face is held out of sight under an outcome. */
+function held(root: HTMLElement): boolean {
+	return rest(root).classList.contains('adm-copyface__rest--held');
+}
+
+/** the outcome a worded control draws over its resting face, if it is drawing one. */
+function outcome(root: HTMLElement): Element | null {
+	return root.querySelector('.adm-copyface__outcome');
+}
+
 function region(root: HTMLElement): Element {
 	const found = root.querySelector('[aria-live]');
 	if (found === null) throw new Error('the control drew no live region');
@@ -127,9 +144,10 @@ describe('a copy control mounted into a document', () => {
 		// control does not answer to (WCAG 2.5.3).
 		const root = render(CopyControl, {
 			text: 'You are integrating…',
-			wording: 'Copy agent prompt'
+			wording: 'Copy agent prompt',
+			onBlocked: () => {}
 		});
-		const [mark, words] = button(root).childNodes;
+		const [mark, words] = rest(root).childNodes;
 
 		expect(mark).toBeInstanceOf(SVGElement);
 		expect(words?.textContent).toBe('Copy agent prompt');
@@ -138,24 +156,62 @@ describe('a copy control mounted into a document', () => {
 	});
 
 	it('reports each outcome as an unworded control does, and draws its wording again once settled', async () => {
+		const onBlocked = vi.fn();
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			onBlocked
+		});
+
+		await press(root);
+		expect(outcome(root)?.querySelector('svg')).not.toBeNull();
+		expect(outcome(root)?.textContent).toBe('');
+		expect(button(root).getAttribute('aria-label')).toBe('Copied');
+
+		await elapse(2000);
+		expect(outcome(root)).toBeNull();
+		expect(held(root)).toBe(false);
+
+		writeText.mockRejectedValue(new Error('permission refused'));
+		await press(root);
+		expect(outcome(root)?.textContent).toBe('Copy blocked');
+		expect(button(root).getAttribute('aria-label')).toBe('Copy blocked');
+		expect(onBlocked).toHaveBeenCalledOnce();
+
+		await elapse(2000);
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it('keeps its resting words in the box under either outcome, so it keeps its width', async () => {
+		// the outcome is drawn over the resting words rather than in their place: a control that
+		// shrank to the tick would move everything after it on the row, and back two seconds later.
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			onBlocked: () => {}
+		});
+
+		await press(root);
+		expect(rest(root).textContent).toBe('Copy agent prompt');
+		expect(held(root)).toBe(true);
+
+		await elapse(2000);
+		writeText.mockRejectedValue(new Error('permission refused'));
+		await press(root);
+		expect(rest(root).textContent).toBe('Copy agent prompt');
+		expect(held(root)).toBe(true);
+	});
+
+	it('cannot be worded without being told of a refusal', () => {
+		// a worded control stands where nothing prints the text, so the refusal is survivable only
+		// through what its caller does. `pnpm run check` is what runs this case; the render is here
+		// so the case asserts something at run time as well.
+		// @ts-expect-error — `onBlocked` is required beside `wording`.
 		const root = render(CopyControl, {
 			text: 'You are integrating…',
 			wording: 'Copy agent prompt'
 		});
 
-		await press(root);
-		expect(button(root).textContent).toBe('');
-		expect(button(root).getAttribute('aria-label')).toBe('Copied');
-
-		await elapse(2000);
-		expect(button(root).textContent).toBe('Copy agent prompt');
-
-		writeText.mockRejectedValue(new Error('permission refused'));
-		await press(root);
-		expect(button(root).textContent).toBe('Copy blocked');
-		expect(button(root).getAttribute('aria-label')).toBe('Copy blocked');
-
-		await elapse(2000);
 		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
 	});
 

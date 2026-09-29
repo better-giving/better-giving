@@ -52,11 +52,15 @@ import { FieldMessage } from './FieldMessage.jsx';
  * `defaultValue` — or `value` with a handler beside it — and a row naming itself beats the group's
  * `name`. that file's header says why a starting value is never a prop of the component's own.
  *
- * three of a field's are not a row's. the label and the standing note belong to the group, and a
- * box that is a paragraph is not a row in a list of one-line values.
+ * five of a field's are not a row's. the label and the standing note belong to the group, a box
+ * that is a paragraph is not a row in a list of one-line values, and the masked press's pair of
+ * names says which credential a screen means — a row is told apart by its place in the list.
  *
  * @typedef {RepeatingRowOwnProps
- *   & Omit<FieldProps, keyof RepeatingRowOwnProps | 'label' | 'needed' | 'as'>} RepeatingRow
+ *   & Omit<
+ *     FieldProps,
+ *     keyof RepeatingRowOwnProps | 'label' | 'needed' | 'as' | 'revealLabel' | 'hideLabel'
+ *   >} RepeatingRow
  */
 
 /**

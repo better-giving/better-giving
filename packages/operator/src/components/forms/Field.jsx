@@ -38,12 +38,6 @@ import { FieldMessage } from './FieldMessage.jsx';
  *
  *   an input's alone: a textarea takes no type, so a masked one holds nothing back and draws no
  *   press at all.
- * @property {string | undefined} [revealLabel] the press's accessible name while the value is
- *   hidden, where a bare `Show the value` would not say which value — a screen holding a second
- *   credential beside this one names it: `Show signing secret`.
- * @property {string | undefined} [hideLabel] its name while the value is showing, which is the
- *   same noun turned round: `Hide signing secret`. handed in as a pair with {@link revealLabel}, or
- *   the press is named for one value and renamed for another.
  * @property {boolean | undefined} [copyable] a copy control inside the box, beside the masked
  *   box's press, taking the value the box was handed (`value`, else `defaultValue`). it is for a
  *   read-only box holding a credential somebody pastes elsewhere: copied from the box, the value
@@ -64,6 +58,23 @@ import { FieldMessage } from './FieldMessage.jsx';
  */
 
 /**
+ * the masked box's press is named for the value with both of its names or with neither, and a
+ * caller cannot hand one: a press named `Show signing secret` and then `Hide the value` is named
+ * for one value and renamed for another.
+ *
+ * @typedef {object} MaskNamesUnstated `Show the value` and `Hide the value`.
+ * @property {undefined} [revealLabel]
+ * @property {undefined} [hideLabel]
+ *
+ * @typedef {object} MaskNamesStated
+ * @property {string} revealLabel the press's accessible name while the value is hidden, where a
+ *   bare `Show the value` would not say which value — a screen holding a second credential beside
+ *   this one names it: `Show signing secret`.
+ * @property {string} hideLabel its name while the value is showing, which is the same noun turned
+ *   round: `Hide signing secret`.
+ */
+
+/**
  * the rest reaches whichever box `as` names.
  *
  * three of a caller's own arrive as the platform's attributes rather than as props of this field's,
@@ -73,6 +84,7 @@ import { FieldMessage } from './FieldMessage.jsx';
  * opinion about either way.
  *
  * @typedef {FieldOwnProps
+ *   & (MaskNamesUnstated | MaskNamesStated)
  *   & Omit<InputHTMLAttributes<HTMLInputElement>, keyof FieldOwnProps>
  *   & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, keyof FieldOwnProps>} FieldProps
  */

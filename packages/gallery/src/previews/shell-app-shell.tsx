@@ -1,3 +1,4 @@
+import zapierImage from '@better-giving/operator/brand/zapier.png';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Field } from '@better-giving/operator/components/forms/Field';
@@ -277,7 +278,10 @@ export default function ShellAppShellPreview() {
 
 			{/* the bar with a More tab, last so that its bar is the one drawn on top when the window is
 			    narrowed. the reader is in Webhooks, a sheet destination under a headed group, so More
-			    reads current on the closed bar and Webhooks is marked inside the open sheet. */}
+			    reads current on the closed bar and Webhooks is marked inside the open sheet. the groups
+			    are the dashboard's (packages/app/src/lib/admin/destinations.ts), so the sheet shows a
+			    picture mark in a row as well as the glyphs, and the bar has no Integrations group on
+			    it at all. */}
 			<AppShell
 				org="Riverside Shelter"
 				current={{ label: 'Webhooks', kind: 'page' }}
@@ -295,7 +299,7 @@ export default function ShellAppShellPreview() {
 					},
 					{
 						destinations: [
-							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'file-text', bar: true },
+							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'form', bar: true },
 							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
 							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users', bar: true },
 							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart', bar: true },
@@ -308,8 +312,9 @@ export default function ShellAppShellPreview() {
 					{
 						heading: 'Integrations',
 						destinations: [
+							{ label: 'Zapier', short: 'Zapier', href: '#', mark: { src: zapierImage } },
 							{ label: 'API', short: 'API', href: '#', mark: 'key-round' },
-							{ label: 'Webhooks', short: 'Webhooks', href: '#', mark: 'external-link' }
+							{ label: 'Webhooks', short: 'Webhooks', href: '#', mark: 'webhook' }
 						]
 					},
 					{ destinations: [{ label: 'Books', short: 'Books', href: '#', mark: 'book-open' }] }
@@ -321,7 +326,7 @@ export default function ShellAppShellPreview() {
 						title="Webhooks"
 						standfirst="Where this deployment posts a gift once it settles."
 					/>
-					<EmptyState>No endpoint has been added yet.</EmptyState>
+					<EmptyState>No destination has been added yet.</EmptyState>
 				</Column>
 			</AppShell>
 

@@ -125,13 +125,14 @@ describe('a code slab mounted into a document', () => {
 		expect(root.querySelector('.adm-slab')?.hasAttribute('tabindex')).toBe(false);
 	});
 
-	it('names nothing in the one-line form, which carries no caption', () => {
-		// no head means no caption, so the box is a `group` with no name and the control keeps the
-		// bare Copy. the wiring is untouched — it is the label that cannot be there.
+	it('names nothing in the one-line form, which carries no caption, and so is no group', () => {
+		// no head means no caption, and an unnamed `group` is announced as a bare "group" — inside the
+		// named one ../forms/StatedValue.jsx draws around it, a second grouping that says nothing. the
+		// control keeps the bare Copy.
 		const root = render(CodeSlab, { oneline: true, content: ADDRESS, copyable: true });
 		const slab = root.querySelector('.adm-slab');
 
-		expect(slab?.getAttribute('role')).toBe('group');
+		expect(slab?.hasAttribute('role')).toBe(false);
 		expect(slab?.hasAttribute('aria-labelledby')).toBe(false);
 		expect(names(root)).toEqual(['Copy']);
 	});
@@ -149,6 +150,7 @@ describe('a code slab mounted into a document', () => {
 		expect(root.querySelector('.adm-slab')?.getAttribute('aria-labelledby')).toBe(
 			'redirect-caption'
 		);
+		expect(root.querySelector('.adm-slab')?.getAttribute('role')).toBe('group');
 	});
 
 	it('names the one-line control where the page names it', () => {
