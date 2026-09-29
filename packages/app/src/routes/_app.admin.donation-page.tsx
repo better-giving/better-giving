@@ -37,7 +37,7 @@ import { loadFailed } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
 import type { Story } from '$lib/server/org/presentation';
 import { readOrgStory, type StoryWrite, updateOrgStory } from '$lib/server/org/queries';
-import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages/donation-page';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
@@ -120,13 +120,15 @@ export async function loader({ context }: Route.LoaderArgs) {
 	let settings: SettingsSeed;
 	let pageSettings: PageSettingsSeed;
 	let edited: boolean;
+	let illustrations: ReadonlySet<string>;
 	try {
 		row = await ensureDonationPage(db);
-		[story, settings, pageSettings, edited] = await Promise.all([
+		[story, settings, pageSettings, edited, illustrations] = await Promise.all([
 			readOrgStory(db),
 			readEditorSettings(db, row),
 			readPageSettings(db, row),
-			hasEditsToReset(db, row)
+			hasEditsToReset(db, row),
+			draftIllustrations(db, row)
 		]);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
@@ -134,7 +136,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 	}
 	return {
 		...editorPage(row, Date.now()),
-		...editorDraft(row, settings.currency),
+		...editorDraft(row, settings.currency, illustrations),
 		settings,
 		pageSettings,
 		hasEdits: edited,

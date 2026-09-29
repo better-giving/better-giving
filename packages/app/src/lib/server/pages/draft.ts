@@ -3,19 +3,24 @@ import { uuidv7 } from 'uuidv7';
 import { formatMinorBrief } from '../../donations/money';
 import { FORM_CURRENCY } from '../../forms/amounts';
 import {
+	type Accepted,
 	acceptReply,
 	type Change,
 	type ChatMessage as AcceptMessage,
-	type Dropped,
+	type IllustrationRequest,
+	illustrationRequests,
 	REPLY_JSON_SCHEMA,
+	readReply,
 	SAY_MAX
 } from '../../page/accept-reply';
-import { draftFromPage, pageCatalog } from '../../page/ai-catalog';
+import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog } from '../../page/ai-catalog';
 import { type Page, parsePage } from '../../page/catalog';
+import { placedImageIds } from '../../page/illustration';
 import { dayOf, dayWords, endDayOf } from '../../page/end-date';
 import type { ChatNote, PageType } from '../../page/keys';
 import { plainText } from '../../rich-text/document';
 import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
+import { illustrate } from '../ai/illustrate';
 import type { Db } from '../db/client';
 import { type ChatTurn, chatTurn, page } from '../db/schema';
 import { firstMissingImage } from '../images/queries';
@@ -34,10 +39,19 @@ import { type ProgramOption, readActivePrograms } from '../programs/queries';
 // the active programs, and what it said so far: each accepted exchange as the operator's message
 // and the reply's `say`, cut at `SAY_MAX`. which model is `generate`'s, never the chat's.
 //
+// an illustration the reply asks for in a photo's place (`illustrationRequests` in
+// ../../page/accept-reply.ts) is drawn only for a reply `acceptReply` would take: the reply is read
+// first with `STAND_IN` in each request's place, and one refused then is refused with nothing drawn.
+// at most `ILLUSTRATIONS_MAX` are drawn a turn, and nothing where none is asked. each drawn id joins
+// what this turn may place and stands in the request's place, and one not drawn stands there as
+// null, so its block is left out as one with no photo is. a picture drawn for a turn that then goes
+// stale stays stored and placed nowhere.
+//
 // three outcomes, each one assistant turn, its `note` the column's word for it:
 // - accepted: the draft is replaced. the assistant's words are the reply's `say` on one line, then
-//   a line naming each value `set` changed and each thing `acceptReply` dropped, so what the chat
-//   says it did is what it did. `fell-back` where the free model wrote it in place of the chosen.
+//   a line naming each value `set` changed, each illustration made or not, and each thing
+//   `acceptReply` dropped, so what the chat says it did is what it did. `fell-back` where the free
+//   model wrote it in place of the chosen.
 // - refused: the draft is untouched and the turn says why.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
 //   operator's fix where there is one. its `model` is the one `generate` asked.
@@ -57,6 +71,13 @@ export const TURN_IMAGES_MAX = 4;
 const HISTORY_TURNS = 20;
 
 const REFUSED_PREFIX = 'I couldn’t apply that: ';
+
+/**
+ * the id every illustration request stands as while the reply is first read, before any picture is
+ * drawn. a reply that stand-in cannot carry is refused with nothing drawn, and one it can carries
+ * the drawn ids or null alike.
+ */
+const STAND_IN = '00000000-0000-4000-8000-000000000000';
 
 export type TurnRequest = {
 	pageId: string;
@@ -137,27 +158,40 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 		return { ok: true, outcome: 'unanswered', turns: written };
 	}
 
-	const result = acceptReply({
-		type: row.type,
-		current,
-		name: row.name,
-		reply: answer.text,
-		attached: [...turns.flatMap(imageIdsOf), ...request.imageIds],
-		messages: [...turns.map(acceptMessage), { author: 'operator', text: request.message }],
-		activePrograms: programs,
-		timeZone: request.timeZone,
-		now: request.now
-	});
-
-	if (!result.ok) {
-		const text = `${REFUSED_PREFIX}${result.reason}`;
-		const assistant = assistantTurn(text, answer.model, 'refused');
+	const refusedFor = async (reason: string): Promise<TurnResult> => {
+		const assistant = assistantTurn(`${REFUSED_PREFIX}${reason}`, answer.model, 'refused');
 		const written = await writeTurns(db, row.id, [operator, assistant], onPage);
 		return { ok: true, outcome: 'refused', turns: written };
+	};
+
+	const read = readReply(answer.text);
+	const asked = read.ok ? illustrationRequests(read.json) : read;
+	if (!asked.ok) return refusedFor(asked.reason);
+	const placeable = [...turns.flatMap(imageIdsOf), ...request.imageIds];
+	const acceptWith = (placed: readonly (string | null)[]) =>
+		acceptReply({
+			type: row.type,
+			current,
+			name: row.name,
+			reply: asked.place(placed),
+			attached: [...placeable, ...placed.filter((id) => id !== null)],
+			illustrations: asked.requests,
+			messages: [...turns.map(acceptMessage), { author: 'operator', text: request.message }],
+			activePrograms: programs,
+			timeZone: request.timeZone,
+			now: request.now
+		});
+	let drawn: Drawn[] = [];
+	if (asked.requests.length > 0) {
+		const rehearsed = acceptWith(asked.requests.map(() => STAND_IN));
+		if (!rehearsed.ok) return refusedFor(rehearsed.reason);
+		drawn = await drawIllustrations(env, db, asked.requests);
 	}
+	const result = acceptWith(drawn.map(({ imageId }) => imageId));
+	if (!result.ok) return refusedFor(result.reason);
 
 	const draft = JSON.stringify(result.draft);
-	const summary = summarise(result.changes, result.dropped, programs);
+	const summary = summarise(result, drawn, programs);
 	const text = [oneLine(result.say), summary].filter((line) => line !== '').join('\n');
 	const assistant = assistantTurn(text, answer.model, answer.fellBack ? 'fell-back' : null);
 	const seen = sql`${onPage} and ${eq(page.draft, row.draft)}`;
@@ -344,19 +378,55 @@ function contextLines({
 	];
 }
 
-/** one line naming each value a reply changed and each thing it lost; empty where neither. */
+/**
+ * an illustration a reply asked for, and the id of the picture drawn for it, or null. `honoured` is
+ * false past `ILLUSTRATIONS_MAX`, where no picture was asked of the model.
+ */
+type Drawn = { description: string; imageId: string | null; honoured: boolean };
+
+/**
+ * the first `ILLUSTRATIONS_MAX` of `requests` drawn, each its own prompt and alt text; any past
+ * them is drawn no picture, and an empty list asks nothing of the model.
+ */
+function drawIllustrations(env: unknown, db: Db, requests: readonly IllustrationRequest[]) {
+	return Promise.all(
+		requests.map(async ({ description }, index): Promise<Drawn> => {
+			if (index >= ILLUSTRATIONS_MAX) return { description, imageId: null, honoured: false };
+			const made = await illustrate(env, db, { prompt: description, alt: description });
+			return { description, imageId: made.ok ? made.imageId : null, honoured: true };
+		})
+	);
+}
+
+/**
+ * one line naming each value a reply changed, each illustration it made or could not, and each
+ * thing it lost; empty where none. an illustration is named as made, never as a photo placed.
+ */
 function summarise(
-	changes: readonly Change[],
-	dropped: readonly Dropped[],
+	{ changes, dropped, draft }: Accepted,
+	drawn: readonly Drawn[],
 	programs: readonly ProgramOption[]
 ): string {
 	const said = changes.map((change) => changeWords(change, programs));
+	const placed = new Set(placedImageIds(draft));
+	const pictured = drawn.flatMap(({ description, imageId, honoured }) => {
+		if (imageId !== null) {
+			return placed.has(imageId)
+				? [`Made an illustration of “${description}”; a photo you attach can replace it.`]
+				: [];
+		}
+		return honoured
+			? [`Couldn’t make an illustration of “${description}”, so its block is left out.`]
+			: [
+					`Left out an illustration of “${description}”: a turn makes at most ${ILLUSTRATIONS_MAX}.`
+				];
+	});
 	const lost = dropped.map((item) =>
 		item.what === 'tier'
 			? `Left out the ${money(item.amountMinor)} tier: you haven’t given that figure.`
 			: `Took the link off “${item.text}”.`
 	);
-	return [...said, ...lost].join(' ');
+	return [...said, ...pictured, ...lost].join(' ');
 }
 
 function changeWords(change: Change, programs: readonly ProgramOption[]): string {

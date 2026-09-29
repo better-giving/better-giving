@@ -5,11 +5,13 @@ import {
 	acceptReply,
 	DEPTH_MAX,
 	DRAFT_BYTES_MAX,
+	illustrationRequests,
 	OPS_MAX,
 	REPLY_BYTES_MAX,
 	SAY_MAX
 } from './accept-reply';
-import type { Page } from './catalog';
+import { draftFromPage } from './ai-catalog';
+import { ALT_MAX, type Page } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
 // node pool, no database, no model: a reply is the text a model would answer with, and every case
@@ -41,6 +43,7 @@ function accept(reply: unknown, rest: Partial<Parameters<typeof acceptReply>[0]>
 		reply: typeof reply === 'string' ? reply : JSON.stringify(reply),
 		attached: [],
 		messages: [],
+		illustrations: [],
 		activePrograms: [],
 		timeZone: 'America/New_York',
 		now: Date.parse('2026-09-28T16:00:00Z'),
@@ -990,6 +993,169 @@ describe('an image', () => {
 		expect(accept(beside)).toMatchObject({
 			ok: false,
 			reason: expect.stringContaining('hero carries no "src"')
+		});
+	});
+});
+
+describe('an illustration a reply asks for', () => {
+	const drawn = '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f';
+	const image = (imageId: unknown) => ({
+		id: 'photo',
+		type: 'image',
+		variant: 'column',
+		background: 'none',
+		props: { imageId, alt: null }
+	});
+
+	it('is read wherever an imageId goes, in the order written, and the reply takes the drawn id or null in its place', () => {
+		const reply = JSON.stringify({
+			say: 'Two pictures.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'replace',
+						path: '/blocks/0/props/imageId',
+						value: { illustrate: '  a coat rack ' }
+					},
+					{ op: 'add', path: '/blocks/1', value: image({ illustrate: 'a van' }) }
+				]
+			}
+		});
+
+		const asked = illustrationRequests(JSON.parse(reply));
+
+		expect(asked.ok && asked.requests.map(({ description }) => description)).toEqual([
+			'a coat rack',
+			'a van'
+		]);
+		if (!asked.ok) return;
+		const result = accept(asked.place([drawn, null]), { attached: [drawn] });
+		expect(result.ok && result.draft.blocks.slice(0, 2)).toMatchObject([
+			{ type: 'hero', imageId: drawn },
+			{ type: 'image', imageId: null }
+		]);
+	});
+
+	it('is read inside a merged block too', () => {
+		const blocks = [...draftFromPage(campaign()).blocks, image({ illustrate: 'a van' })];
+		const reply = JSON.stringify({ say: 'A picture.', page: { kind: 'merge', doc: { blocks } } });
+
+		const asked = illustrationRequests(JSON.parse(reply));
+
+		expect(asked.ok && asked.requests.map(({ description }) => description)).toEqual(['a van']);
+		if (!asked.ok) return;
+		const result = accept(asked.place([drawn]), { attached: [drawn] });
+		expect(result.ok && result.draft.blocks.at(-1)).toMatchObject({
+			type: 'image',
+			imageId: drawn
+		});
+	});
+
+	it('past a photo description’s length refuses the reply, naming where it was asked', () => {
+		const reply = JSON.stringify({
+			say: 'A picture.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{ op: 'add', path: '/blocks/1', value: image({ illustrate: 'x'.repeat(ALT_MAX + 1) }) }
+				]
+			}
+		});
+
+		expect(illustrationRequests(JSON.parse(reply))).toEqual({
+			ok: false,
+			reason: `page.ops.0.value.props.imageId.illustrate: an illustration’s description holds at most ${ALT_MAX} characters`
+		});
+	});
+
+	it.each([
+		[
+			'blank',
+			{ illustrate: '  ' },
+			'page.ops.0.value.illustrate: an illustration request describes the picture wanted'
+		],
+		[
+			'beside an id',
+			{ illustrate: 'a van', id: '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f' },
+			'page.ops.0.value: '
+		]
+	])('refuses the reply when %s, naming where it was asked', (_, value, reason) => {
+		const reply = {
+			say: 'A picture.',
+			page: { kind: 'patch', ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value }] }
+		};
+
+		expect(illustrationRequests(reply)).toEqual({
+			ok: false,
+			reason: expect.stringContaining(reason)
+		});
+	});
+
+	it('whose description holds a figure the operator never wrote refuses the reply, naming where it was asked', () => {
+		const reply = {
+			say: 'A picture.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'replace',
+						path: '/blocks/0/props/imageId',
+						value: { illustrate: 'a banner reading $50,000 raised' }
+					}
+				]
+			}
+		};
+		const asked = illustrationRequests(reply);
+		if (!asked.ok) throw new Error(asked.reason);
+
+		expect(
+			accept(asked.place([drawn]), { attached: [drawn], illustrations: asked.requests })
+		).toMatchObject({
+			ok: false,
+			reason:
+				'page.ops.0.value.illustrate: "$50,000" is not a figure the operator wrote in the chat or one the page already shows'
+		});
+		const stated = [{ author: 'operator' as const, text: 'we raised $50,000 last year' }];
+		expect(
+			accept(asked.place([drawn]), {
+				attached: [drawn],
+				illustrations: asked.requests,
+				messages: stated
+			})
+		).toMatchObject({ ok: true });
+	});
+
+	it('anywhere but an imageId is no request, and the reply is refused as off the page’s shape', () => {
+		const reply = JSON.stringify({
+			say: 'A picture.',
+			page: {
+				kind: 'patch',
+				ops: [{ op: 'add', path: '/blocks/0/props/alt', value: { illustrate: 'a van' } }]
+			}
+		});
+
+		const asked = illustrationRequests(JSON.parse(reply));
+
+		expect(asked.ok && asked.requests.map(({ description }) => description)).toEqual([]);
+		expect(accept(asked.ok ? asked.place([]) : reply)).toMatchObject({
+			ok: false,
+			reason: expect.stringContaining('blocks.0.props.alt: ')
+		});
+	});
+
+	it('left standing is refused by the page rule, so no stored page carries one', () => {
+		const reply = {
+			say: 'A picture.',
+			page: {
+				kind: 'patch',
+				ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: { illustrate: 'a van' } }]
+			}
+		};
+
+		expect(accept(reply)).toMatchObject({
+			ok: false,
+			reason: expect.stringContaining('blocks.0.props.imageId: ')
 		});
 	});
 });

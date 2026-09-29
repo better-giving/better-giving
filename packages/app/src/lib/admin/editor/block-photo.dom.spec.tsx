@@ -50,7 +50,8 @@ const hero: EditorBlock = {
 		{ value: 'wide', label: 'Wide' },
 		{ value: 'framed', label: 'Framed' }
 	],
-	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' }
+	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' },
+	illustration: false
 };
 
 function editor({ illustration = false }: { readonly illustration?: boolean } = {}) {

@@ -5,7 +5,9 @@ import { type Page, parsePage } from '../../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
 import { createImage } from '../images/queries';
-import { chatTurn, page } from '../db/schema';
+import { jpegHeader } from '../images/headers.testing';
+import { chatTurn, image, page } from '../db/schema';
+import { draftIllustrations, editorDraft } from './blocks';
 import { draftTurn, readChat } from './draft';
 import { answering, insertPage, SETTINGS } from './page-row.testing';
 
@@ -509,5 +511,243 @@ describe('a photo sent with a turn', () => {
 		expect(result).toEqual({ ok: false, reason: 'unknown_image', imageId: 'img_nope' });
 		expect(AI.run).not.toHaveBeenCalled();
 		expect(await chat(pageId)).toEqual([]);
+	});
+});
+
+describe('an illustration the reply asks for', () => {
+	/** the model's picture, as the image model answers: base64 under `image`. */
+	function picture() {
+		let binary = '';
+		for (const byte of jpegHeader(1024, 768)) binary += String.fromCharCode(byte);
+		return { image: btoa(binary) };
+	}
+
+	/**
+	 * a binding answering the chat with `reply`, then each illustration with the next of `drawn`: a
+	 * picture where it is true, a throw where it is false.
+	 */
+	function drawing(reply: unknown, ...drawn: boolean[]) {
+		const AI = answering(reply);
+		for (const ok of drawn) {
+			AI.run.mockImplementationOnce(async () => {
+				if (!ok) throw new Error('the image model is down');
+				return picture();
+			});
+		}
+		return AI;
+	}
+
+	const inHero = (description: string) => ({
+		op: 'replace',
+		path: '/blocks/0/props/imageId',
+		value: { illustrate: description }
+	});
+
+	async function kindOf(imageId: string | null | undefined) {
+		if (imageId == null) return null;
+		const [row] = await db
+			.select({ kind: image.kind, alt: image.alt })
+			.from(image)
+			.where(eq(image.id, imageId));
+		return row ?? null;
+	}
+
+	function heroOf(page: Page) {
+		const [hero] = page.blocks;
+		if (hero?.type !== 'hero') throw new Error('the fixture opens on a hero');
+		return hero;
+	}
+
+	it('on the hero is drawn, stored as an illustration and placed, and the turn says a picture was made', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const AI = drawing(
+			{ say: 'Added a picture.', page: { kind: 'patch', ops: [inHero('children in warm coats')] } },
+			true
+		);
+
+		expect(await turn(pageId, 'we have no photo yet', AI)).toMatchObject({ outcome: 'accepted' });
+
+		const { imageId } = heroOf((await stored(pageId)).draft);
+		expect(await kindOf(imageId)).toEqual({ kind: 'illustration', alt: 'children in warm coats' });
+		expect(AI.run).toHaveBeenLastCalledWith(
+			'@cf/black-forest-labs/flux-1-schnell',
+			{ prompt: 'children in warm coats' },
+			expect.anything()
+		);
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe(
+			'Added a picture.\nMade an illustration of “children in warm coats”; a photo you attach can replace it.'
+		);
+	});
+
+	it('placed over by a photo attached in the chat is flagged as one no longer, on the editor’s next load', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await turn(
+			pageId,
+			'we have no photo yet',
+			drawing({ say: 'Added a picture.', page: { kind: 'patch', ops: [inHero('a van')] } }, true)
+		);
+		const hero = async () => {
+			const [row] = await db.select().from(page).where(eq(page.id, pageId));
+			if (!row) throw new Error('the page is gone');
+			const { blocks } = editorDraft(row, SETTINGS.currency, await draftIllustrations(db, row));
+			return blocks.find((block) => block.id === 'hero');
+		};
+		expect(await hero()).toMatchObject({ illustration: true });
+		const photoId = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+
+		await draftTurn(
+			db,
+			{
+				...env,
+				AI: answering({
+					say: 'Your photo is in the hero.',
+					page: {
+						kind: 'patch',
+						ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: photoId }]
+					}
+				})
+			},
+			{ pageId, message: 'use this one', imageIds: [photoId], timeZone: ZONE, now: NOW }
+		);
+
+		expect(await hero()).toMatchObject({ illustration: false });
+	});
+
+	it.each([
+		[
+			'refused on another ground',
+			[inHero('children in warm coats'), { op: 'replace', path: '/palette', value: 'neon' }],
+			'palette: '
+		],
+		['blank', [inHero('   ')], 'page.ops.0.value.illustrate: '],
+		[
+			'past a photo description’s length',
+			[inHero('x'.repeat(251))],
+			'page.ops.0.value.illustrate: '
+		],
+		['holding a figure nobody gave', [inHero('a banner reading $50,000 raised')], '"$50,000"']
+	])(
+		'in a reply %s draws nothing, stores no picture and refuses the turn',
+		async (_, ops, reason) => {
+			const pageId = await insertPage(db, 'campaign');
+			const before = await db.$count(image);
+			const AI = drawing({ say: 'A picture.', page: { kind: 'patch', ops } }, true);
+
+			expect(await turn(pageId, 'a picture please', AI)).toMatchObject({ outcome: 'refused' });
+
+			expect(AI.run).toHaveBeenCalledTimes(1);
+			expect(await db.$count(image)).toBe(before);
+			const [, answer] = await chat(pageId);
+			expect(answer?.text).toContain(reason);
+		}
+	);
+
+	it('that is not drawn leaves its block with no picture, and the rest of the reply lands', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const AI = drawing(
+			{
+				say: 'Two-tone, with a picture.',
+				page: {
+					kind: 'patch',
+					ops: [inHero('children in warm coats'), { op: 'replace', path: '/palette', value: 'duo' }]
+				}
+			},
+			false
+		);
+
+		expect(await turn(pageId, 'two-tone, and a picture', AI)).toMatchObject({
+			outcome: 'accepted'
+		});
+
+		const { draft } = await stored(pageId);
+		expect(draft.palette).toBe('duo');
+		expect(heroOf(draft).imageId).toBeNull();
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe(
+			'Two-tone, with a picture.\nCouldn’t make an illustration of “children in warm coats”, so its block is left out.'
+		);
+	});
+
+	it('past the second in one turn is left out, and no picture is drawn for it', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const photoBlock = (id: string, description: string) => ({
+			op: 'add',
+			path: '/blocks/1',
+			value: {
+				id,
+				type: 'image',
+				variant: 'column',
+				background: 'none',
+				props: { imageId: { illustrate: description }, alt: null }
+			}
+		});
+		const AI = drawing(
+			{
+				say: 'Three pictures.',
+				page: {
+					kind: 'patch',
+					ops: [
+						inHero('a coat rack'),
+						photoBlock('second', 'a van'),
+						photoBlock('third', 'a scarf')
+					]
+				}
+			},
+			true,
+			true
+		);
+
+		expect(await turn(pageId, 'pictures please', AI)).toMatchObject({ outcome: 'accepted' });
+
+		const { draft } = await stored(pageId);
+		const ids = Object.fromEntries(
+			draft.blocks.flatMap((block) => ('imageId' in block ? [[block.id, block.imageId]] : []))
+		);
+		expect(await kindOf(ids.hero)).toEqual({ kind: 'illustration', alt: 'a coat rack' });
+		expect(await kindOf(ids.second)).toEqual({ kind: 'illustration', alt: 'a van' });
+		expect(ids.third).toBeNull();
+		expect(AI.run).toHaveBeenCalledTimes(3);
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toContain(
+			'Left out an illustration of “a scarf”: a turn makes at most 2.'
+		);
+	});
+
+	it('beside a photo attached with the turn, where the reply places the photo too, leaves the photo in place', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const photoId = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+		const AI = drawing(
+			{
+				say: 'Your photo is in the hero.',
+				page: {
+					kind: 'patch',
+					ops: [
+						inHero('volunteers'),
+						{ op: 'replace', path: '/blocks/0/props/imageId', value: photoId }
+					]
+				}
+			},
+			true
+		);
+
+		const result = await draftTurn(
+			db,
+			{ ...env, AI },
+			{ pageId, message: 'our volunteers', imageIds: [photoId], timeZone: ZONE, now: NOW }
+		);
+
+		expect(result).toMatchObject({ outcome: 'accepted' });
+		expect(heroOf((await stored(pageId)).draft).imageId).toBe(photoId);
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe('Your photo is in the hero.');
 	});
 });

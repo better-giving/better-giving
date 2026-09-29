@@ -6,7 +6,7 @@ import { defaultCampaign, defaultDonationPage } from './defaults';
 
 describe('the block list', () => {
 	it('offers each block the catalog’s variants, and the donation box none', () => {
-		const blocks = editorBlocks(defaultDonationPage(), 'USD');
+		const blocks = editorBlocks(defaultDonationPage(), 'USD', new Set());
 
 		expect(
 			blocks.map(({ id, label, summary, variant }) => ({ id, label, summary, variant }))
@@ -40,7 +40,7 @@ describe('a photo block', () => {
 			imageId: photoId,
 			alt: null
 		};
-		const [hero] = editorBlocks(draft, 'USD');
+		const [hero] = editorBlocks(draft, 'USD', new Set());
 		expect(hero).toEqual({
 			id: 'hero',
 			type: 'hero',
@@ -51,12 +51,13 @@ describe('a photo block', () => {
 				{ value: 'wide', label: 'Wide' },
 				{ value: 'framed', label: 'Framed' }
 			],
-			text: { kind: 'photo', imageId: photoId, alt: '' }
+			text: { kind: 'photo', imageId: photoId, alt: '' },
+			illustration: false
 		});
 	});
 
 	it('with no photo yet says so, and has no photo to replace', () => {
-		const [hero] = editorBlocks(defaultCampaign(), 'USD');
+		const [hero] = editorBlocks(defaultCampaign(), 'USD', new Set());
 		expect([hero?.summary, hero?.text]).toEqual(['No photo yet', null]);
 	});
 });

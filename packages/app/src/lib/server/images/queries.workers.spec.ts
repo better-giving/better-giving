@@ -5,7 +5,7 @@ import { createDb, type Db } from '../db/client';
 import { rejectionCode } from '../db/rejection.testing';
 import { IMAGE_BYTES_MAX, image } from '../db/schema';
 import { d1BytesPort } from './bytes';
-import { createImage } from './queries';
+import { createImage, illustrationsAmong } from './queries';
 
 // a new image is its metadata row and its bytes, written together or not at all.
 
@@ -38,5 +38,24 @@ describe('createImage()', () => {
 			await rejectionCode(() => createImage(db, PHOTO, new Uint8Array(IMAGE_BYTES_MAX + 1)))
 		).toContain('SQLITE_CONSTRAINT_CHECK');
 		expect(await db.$count(image)).toBe(before);
+	});
+});
+
+describe('illustrationsAmong()', () => {
+	it('names the illustrations among more ids than one query may bind', async () => {
+		const drawn = await createImage(
+			db,
+			{ ...PHOTO, kind: 'illustration', alt: 'a van' },
+			new Uint8Array([1])
+		);
+		const photo = await createImage(db, PHOTO, new Uint8Array([2]));
+		const absent = Array.from(
+			{ length: 150 },
+			(_, index) => `01926f3e-0000-7b2e-9d4f-${String(index).padStart(12, '0')}`
+		);
+
+		const found = await illustrationsAmong(db, [drawn, photo, ...absent, drawn, drawn]);
+
+		expect([...found]).toEqual([drawn]);
 	});
 });

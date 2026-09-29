@@ -61,6 +61,15 @@ describe('the drafting prompt', () => {
 		);
 	});
 
+	it('asks for an illustration in a photo’s place only where no attached or placed photo fits', () => {
+		const prompt = pageCatalog('campaign').prompt();
+		expect(prompt).toContain(
+			'- where no photo attached in the chat or already on the page fits a hero or image block, its imageId may be {"illustrate": "a short description of the picture wanted"} and an illustration is drawn from it; a photo that fits always wins, and a reply asks for at most 2'
+		);
+		expect(prompt).toMatch(/^- hero: .*\n(?: {2}.*\n)*? {2}props: .*illustrate/m);
+		expect(prompt).toMatch(/^- image: .*\n(?: {2}.*\n)*? {2}props: .*illustrate/m);
+	});
+
 	it('says what each layout and each palette does', () => {
 		const prompt = pageCatalog('campaign').prompt();
 		for (const name of [...LAYOUTS, ...PALETTES]) {
