@@ -450,7 +450,7 @@ function summarise(
 		if (item.what === 'link') return `Took the link off “${item.text}”.`;
 		const amount = money(item.amountMinor);
 		return item.reworded
-			? `Left out the ${amount} tier I reworded: what ${amount} buys is yours to say, so tell me and I’ll use your words.`
+			? `Left out the ${amount} tier I reworded: what ${amount} does is yours to say, so tell me and I’ll use your words.`
 			: `Left out the ${amount} tier: you haven’t said what ${amount} does.`;
 	});
 	return [...said, ...pictured, ...lost].join(' ');

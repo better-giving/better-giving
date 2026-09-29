@@ -3,8 +3,8 @@ import type { BytesPort } from './bytes';
 // one image's bytes as the answer to a view, kept at the edge so a photo is read from D1 once per
 // data centre rather than once per view.
 //
-// the bytes sit in the database the books do, and D1 runs one query at a time (CLAUDE.md →
-// storage): a campaign shared widely is every new visitor's browser pulling its hero and photos,
+// the bytes sit in the database the books do (CLAUDE.md → Bans → Storage), and D1 runs one query
+// at a time: a campaign shared widely is every new visitor's browser pulling its hero and photos,
 // each up to `IMAGE_BYTES_MAX` in ../db/schema.ts, on the primary the gift writes land on. the
 // `cache-control` sent below does not stop that by itself: a Worker runs in front of Cloudflare's
 // cache, and this deployment turns on no cache of Worker responses (packages/app/wrangler.jsonc has
@@ -70,6 +70,8 @@ export async function servedImage(
 
 	// copied because a body must be ArrayBuffer-backed and the port promises only `Uint8Array`.
 	const response = new Response(new Uint8Array(stored.bytes), {
+		// a year and immutable because the bytes under an id never change. `nosniff` holds the
+		// browser to the stored type, one of `IMAGE_CONTENT_TYPES` in ../db/schema.ts.
 		headers: {
 			'content-type': stored.contentType,
 			'cache-control': 'public, max-age=31536000, immutable',

@@ -219,7 +219,7 @@ pnpm run db:export --output ./backup.sql          # the books: every table, phot
 pnpm run db:export:photos --output ./photos       # one file per photo, named by its id
 ```
 
-The photos are apart because D1 refuses any statement over 100 KB, and a photo written into SQL is twice its size. A backup holding them could not be restored. Both paths are relative to `packages/app`.
+The photos are kept apart because D1 refuses any statement over 100 KB, and a photo written into SQL is twice its size. A backup holding them could not be restored. Both paths are relative to `packages/app`.
 
 Restore into an empty database, books first: a photo is stored only under an image the books already hold. Don't apply migrations to it first: the books carry the schema and the record of which migrations ran.
 

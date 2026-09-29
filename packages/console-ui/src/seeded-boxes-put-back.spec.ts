@@ -115,10 +115,10 @@ const acrossTheFolds = (files: readonly string[]): string[] =>
 		return [...seededWithoutAPutBack(file, source), ...calledWithoutAPutBack(file, source)];
 	});
 
-/* the direct callers that left the put-back to the default before this sweep reached them, each
-   drawing a box seeded from a reading and so put back to the one its press was made against. an
-   entry here is an exemption and not a skip: the case below asserts the sweep finds exactly these,
-   so one put right fails this file until it is taken off. */
+/* the direct callers that still leave the put-back to the default, each drawing a box seeded from
+   a reading and so put back to the one its press was made against. an entry here is an exemption
+   and not a skip: the case below asserts the sweep finds exactly these, so one put right fails this
+   file until it is taken off. */
 const STANDING: readonly string[] = [
 	// the charity-rate switch, seeded `defaultChecked` from the held values.
 	'src/lib/paypal-section.tsx',
@@ -182,8 +182,8 @@ describe('a fold whose boxes a landed press puts back says when they go back', (
 	});
 
 	it('reports a fold that calls the hook itself and leaves the put-back to the default', () => {
-		// the model page's own shape before its radios waited for the reading: they went back to the
-		// choice the press was made against, and stood there for the whole of the re-read.
+		// a call stating no `spent`: its radios go back to the choice the press was made against, and
+		// stand there for the whole of the re-read.
 		const source = `
 			export function ModelSection({ written, busy, pending }) {
 				const saved = useSavedFormState({

@@ -571,7 +571,7 @@ describe('an impact tier the page held', () => {
 
 		const [, answer] = await chat(pageId);
 		expect(answer?.text).toBe(
-			'Warmer words.\nLeft out the $40 tier I reworded: what $40 buys is yours to say, so tell me and I’ll use your words.'
+			'Warmer words.\nLeft out the $40 tier I reworded: what $40 does is yours to say, so tell me and I’ll use your words.'
 		);
 	});
 });

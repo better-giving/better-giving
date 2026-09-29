@@ -8,10 +8,10 @@ import { InPlaceName } from './in-place-name';
 // the bar across the top of the editor: the way out, the page's name and where it stands, and the
 // presses that act on the whole page — Open, Reset to default, Discard changes, Publish.
 //
-// the editor's `h1` is here, naming the page being edited, and drawn to a reader only: the name the
-// bar shows is the heading's words already, and a campaign's is a box to rename it in, which a
-// heading cannot hold. the Donation page's drawn word is hidden from a reader for that reason, so
-// the name is not read twice.
+// the editor's `h1` is here, naming the page being edited, and read by a screen reader only: the
+// name the bar shows is the heading's words already, and a campaign's is a box to rename it in,
+// which a heading cannot hold. the Donation page's drawn word is hidden from a screen reader for
+// that reason, so the name is not read twice.
 //
 // **Publish reports at itself.** it is `SaveButton`, so a press in flight holds its focus and draws
 // its dots, and a republish reads "Published" with Undo beside it for as long as the caller says the
