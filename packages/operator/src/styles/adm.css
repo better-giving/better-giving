@@ -5393,6 +5393,20 @@
 		border: 0;
 	}
 
+	/* the frame is the preview's one tab stop, and it meets the viewport's edge on three sides, so
+	   the outside ring ./base.css gives every focused element is clipped wherever it would be seen.
+	   the shadow is taken back and the ring is drawn inside the frame instead, as
+	   `.adm-datebox__chunk` keeps its outline. it is the outline that carries the colour here rather
+	   than an inset shadow, because the frame's own document paints over any shadow inside its box
+	   and an outline paints above it — and a forced-colours scheme paints that outline in the
+	   reader's own colour, so the ring survives one. */
+	.adm-editor__frame:focus-visible,
+	.adm-editor__frame.is-focus {
+		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
+		outline-offset: calc(var(--admin-focus-width) * -1);
+		box-shadow: none;
+	}
+
 	/* the name at the start, where the page stands and its presses after it, and the report of the
 	   last press on a row of its own under them. on a phone Publish ends the state word's line and
 	   the quieter presses take a line of their own under it; where the name, the state word and
