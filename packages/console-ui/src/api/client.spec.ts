@@ -4,6 +4,7 @@ import {
 	consoleVersion,
 	levelWallets,
 	pressQuickbooks,
+	readAiModel,
 	readQuickbooks,
 	readZapier,
 	repairWebhook,
@@ -206,6 +207,39 @@ describe('the press that repairs where payment notices reach the deployment', ()
 		expect(path).toBe('/api/deployment/webhook-repair');
 		expect(init?.method).toBe('POST');
 		expect(init?.body).toBeUndefined();
+	});
+});
+
+describe('the reading of the model choice', () => {
+	it('asks the binary for it with a GET and no body, and hands the choice back as it came', async () => {
+		const choice = {
+			kind: 'read',
+			model: { name: 'AI_MODEL', kind: 'value', value: 'anthropic/claude-sonnet-4.6' },
+			credits: { kind: 'unknown', detail: 'Authentication error' }
+		};
+		const calls = recording(choice);
+
+		expect(await readAiModel()).toEqual(choice);
+		expect(calls).toHaveLength(1);
+		const [path, init] = calls[0] ?? [];
+		expect(path).toBe('/api/ai-model');
+		expect(init?.method).toBe('GET');
+		expect(init?.body).toBeUndefined();
+	});
+
+	it('carries a values read cloudflare turned down back as a value, for the page to gate on', async () => {
+		answering(200, { kind: 'refused', detail: 'Authentication error' });
+
+		await expect(readAiModel()).resolves.toEqual({
+			kind: 'refused',
+			detail: 'Authentication error'
+		});
+	});
+
+	it('throws where the binary itself answers an error, for the page’s boundary to draw', async () => {
+		answering(500, { error: 'the state directory could not be read' });
+
+		await expect(readAiModel()).rejects.toThrow();
 	});
 });
 

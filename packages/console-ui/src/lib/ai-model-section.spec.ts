@@ -30,6 +30,7 @@ async function drawn(over: Partial<ModelSectionProps> = {}): Promise<string> {
 		accountName: 'Riverbank Trust',
 		busy: false,
 		pending: null,
+		revalidating: false,
 		...over
 	};
 	// `Form` reads the router it is drawn in.
@@ -128,5 +129,45 @@ describe('the model section', () => {
 		const page = await drawn({ credits: { kind: 'unknown', detail: UNREAD } });
 		expect(stated(page, 'Cloudflare credits')).toBeNull();
 		expect(text(page)).toContain(UNREAD);
+	});
+
+	it('says what a read cloudflare turned down was about, rather than its bare words', async () => {
+		const page = await drawn({ credits: { kind: 'unknown', detail: 'Authentication error' } });
+		expect(text(page)).toContain('The credit balance could not be read: Authentication error.');
+	});
+
+	it('states a balance under half a cent as held', async () => {
+		const credits: ModelCredits = { kind: 'held', balance: 0.003 };
+		expect(stated(await drawn({ credits }), 'Cloudflare credits')).toBe('less than $0.01');
+	});
+
+	it('answers a save over a value held as a secret at the press, as a refusal', async () => {
+		const page = await drawn({ written: { kind: 'withheld', names: ['AI_MODEL'] } });
+		expect(text(page)).toContain(
+			'This deployment holds AI_MODEL in a form nothing can read back, so this console can’t change it.'
+		);
+	});
+
+	it('answers a save of the choice already stored at the press, in the status line', async () => {
+		const page = await drawn({ written: { kind: 'unchanged' } });
+		expect(page).toContain('<p role="status" class="adm-hint">That model was already saved.</p>');
+	});
+
+	it('holds the choices and the press closed while its own request is out', async () => {
+		const page = await drawn({ busy: true, pending: MODEL_INTENT });
+		expect(choices(page).every(({ attrs }) => 'disabled' in attrs)).toBe(true);
+		expect(/<button [^>]*>/.exec(page)?.[0]).toContain('aria-busy="true"');
+	});
+
+	it('reopens the choices and the press on a refused answer while the page is read again', async () => {
+		// the intent rides the re-read, which can change nothing a refusal left.
+		const page = await drawn({
+			busy: true,
+			pending: MODEL_INTENT,
+			revalidating: true,
+			written: { kind: 'failed', detail: 'Internal error' }
+		});
+		expect(choices(page).some(({ attrs }) => 'disabled' in attrs)).toBe(false);
+		expect(/<button [^>]*>/.exec(page)?.[0]).not.toContain('aria-busy');
 	});
 });

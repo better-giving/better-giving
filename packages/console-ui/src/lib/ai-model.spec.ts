@@ -1,7 +1,18 @@
+import { readFileSync } from 'node:fs';
 import { AI_MODELS, FREE_MODEL } from '@better-giving/operator/ai-models';
 import { describe, expect, it } from 'vitest';
 import type { DeployedVar } from '../api/types';
-import { MODEL_FIELD, chosenModel, creditsLine, modelEdit, modelOptions } from './ai-model';
+import {
+	CREDITS_UNREAD_ON_SIGN_IN,
+	MODEL_FIELD,
+	chosenModel,
+	creditsLine,
+	modelEdit,
+	modelOptions,
+	modelPhase,
+	pressSays,
+	settles
+} from './ai-model';
 
 // the model page as values: which choice the deployment holds, what one press stores, and what the
 // account's credits say beside it. this package has no DOM pool (../../vite.config.ts), so the page
@@ -58,6 +69,79 @@ describe('what one press stores', () => {
 	});
 });
 
+describe('what a press that stored nothing says at the press', () => {
+	it('says the choice was already stored where the deployment held it, as a status', () => {
+		expect(pressSays({ kind: 'unchanged' })).toEqual({
+			tone: 'status',
+			sentence: 'That model was already saved.'
+		});
+	});
+
+	it('refuses a value held as a secret, saying why and where the way out is', () => {
+		expect(pressSays({ kind: 'withheld', names: ['AI_MODEL'] })).toEqual({
+			tone: 'refused',
+			sentence:
+				'This deployment holds AI_MODEL in a form nothing can read back, so this console can’t change it. Remove it above, then save a model again.'
+		});
+	});
+
+	it('says nothing for a write that landed, which the button confirms, or one that failed, drawn as trouble', () => {
+		expect(pressSays(null)).toBeNull();
+		expect(pressSays({ kind: 'set' })).toBeNull();
+		expect(pressSays({ kind: 'failed', detail: 'Internal error' })).toBeNull();
+	});
+});
+
+describe('whether a save leaves the choice to be put back', () => {
+	it('does for a write that landed and for a choice the deployment already held', () => {
+		expect(settles({ kind: 'set' })).toBe(true);
+		expect(settles({ kind: 'unchanged' })).toBe(true);
+	});
+
+	it('does not for a press that stored nothing, or before any press', () => {
+		expect(settles(null)).toBe(false);
+		expect(settles({ kind: 'withheld', names: ['AI_MODEL'] })).toBe(false);
+		expect(settles({ kind: 'failed', detail: 'Internal error' })).toBe(false);
+	});
+});
+
+describe('where the save stands, and whether the choices are closed with it', () => {
+	const phase = (over: Partial<Parameters<typeof modelPhase>[0]>) =>
+		modelPhase({
+			own: true,
+			revalidating: false,
+			busy: true,
+			settled: false,
+			spent: false,
+			...over
+		});
+
+	it('is underway and closed while its own request is out', () => {
+		expect(phase({})).toEqual({ underway: true, closed: true });
+	});
+
+	it('reopens on the answer to a press that stored nothing, while the page is read again', () => {
+		// the intent rides the re-read too, and that re-read can change nothing a refusal left.
+		expect(phase({ revalidating: true })).toEqual({ underway: false, closed: false });
+	});
+
+	it('stays underway after a settled press until the reading it left behind puts the choice back', () => {
+		expect(phase({ revalidating: true, settled: true })).toEqual({ underway: true, closed: true });
+		expect(phase({ own: false, busy: false, settled: true })).toEqual({
+			underway: true,
+			closed: true
+		});
+		expect(phase({ own: false, busy: false, settled: true, spent: true })).toEqual({
+			underway: false,
+			closed: false
+		});
+	});
+
+	it('is closed and not underway while another press on the page writes', () => {
+		expect(phase({ own: false })).toEqual({ underway: false, closed: true });
+	});
+});
+
 describe('the choices offered', () => {
 	it('is the list in its order, the free model marked free and the rest marked as spending credits', () => {
 		expect(modelOptions()).toEqual([
@@ -84,14 +168,53 @@ describe('what the credits say beside the choice', () => {
 		});
 	});
 
+	it('states a balance under half a cent as held, rather than as a figure of none', () => {
+		// the binary reports anything above zero as held, and two decimals round it to $0.00.
+		expect(creditsLine({ kind: 'held', balance: 0.003 })).toEqual({
+			kind: 'held',
+			figure: 'less than $0.01'
+		});
+		expect(creditsLine({ kind: 'held', balance: 0.005 })).toEqual({
+			kind: 'held',
+			figure: '$0.01'
+		});
+	});
+
 	it('reports no credits at or under zero, with no figure, since a debt is not a balance to spend', () => {
 		expect(creditsLine({ kind: 'missing', balance: 0 })).toEqual({ kind: 'missing' });
 		expect(creditsLine({ kind: 'missing', balance: -3.2 })).toEqual({ kind: 'missing' });
 	});
 
-	it('carries the sentence the binary gave where the balance was not read, as given', () => {
+	it('carries the fixed sentence of a sign-in that never asks as given, since it already names the balance', () => {
 		const detail =
 			"This console's Cloudflare sign-in cannot read the account's credits. If they run out, the chat answers from the free model and says so.";
 		expect(creditsLine({ kind: 'unknown', detail })).toEqual({ kind: 'unknown', detail });
+	});
+
+	it('knows the sign-in sentence by the words the binary sends it in', () => {
+		// read off the go source by path, as ../never-deployed.spec.ts reads embed.go: a sentence that
+		// drifted on either side would be framed as a read cloudflare turned down.
+		const go = readFileSync('../console/internal/deployment/aimodel.go', 'utf8');
+		const declared = go.match(/const CreditsUnreadOnSignIn = ((?:"[^"]*"(?:\s*\+\s*)?)+)/)?.[1];
+		const sent = [...(declared ?? '').matchAll(/"([^"]*)"/g)].map((part) => part[1]).join('');
+		expect(sent).toBe(CREDITS_UNREAD_ON_SIGN_IN);
+	});
+
+	it("frames cloudflare's own words about a read it turned down as a sentence about the balance", () => {
+		// a token without AI Gateway Read is the common one, and cloudflare's answer names no subject:
+		// drawn bare beside the save it reads as the save failing.
+		expect(creditsLine({ kind: 'unknown', detail: 'Authentication error' })).toEqual({
+			kind: 'unknown',
+			detail: 'The credit balance could not be read: Authentication error.'
+		});
+	});
+
+	it('ends a framed sentence once where the words already end in one', () => {
+		expect(creditsLine({ kind: 'unknown', detail: 'Cloudflare took too long to answer.' })).toEqual(
+			{
+				kind: 'unknown',
+				detail: 'The credit balance could not be read: Cloudflare took too long to answer.'
+			}
+		);
 	});
 });
