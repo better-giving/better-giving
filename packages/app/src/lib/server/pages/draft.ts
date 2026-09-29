@@ -13,7 +13,7 @@ import {
 	readReply,
 	SAY_MAX
 } from '../../page/accept-reply';
-import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog } from '../../page/ai-catalog';
+import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog, switchRules } from '../../page/ai-catalog';
 import { type Page, parsePage } from '../../page/catalog';
 import { placedImageIds } from '../../page/illustration';
 import { dayOf, dayWords, endDayOf } from '../../page/end-date';
@@ -36,10 +36,10 @@ import { type ProgramOption, readActivePrograms } from '../programs/queries';
 // draft, so nothing a turn does reaches a donor before Publish.
 //
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
-// all), its type, name, goal, end date, donation settings and where its donation box opens, the
-// organisation's story and look, the active programs, and what it said so far: each accepted
-// exchange as the operator's message and the reply's `say`, cut at `SAY_MAX`. which model is
-// `generate`'s, never the chat's.
+// all), its type, name, goal, end date, donation settings and where its donation box opens, with
+// the wording each switch that is on asks for (`switchRules`), the organisation's story and look,
+// the active programs, and what it said so far: each accepted exchange as the operator's message
+// and the reply's `say`, cut at `SAY_MAX`. which model is `generate`'s, never the chat's.
 //
 // an illustration the reply asks for in a photo's place (`illustrationRequests` in
 // ../../page/accept-reply.ts) is drawn only for a reply `acceptReply` would take: the reply is read
@@ -316,7 +316,7 @@ type PromptContext = {
 
 function systemPrompt(context: PromptContext): string {
 	return [
-		pageCatalog(context.type).prompt(),
+		pageCatalog(context.type).prompt({ customRules: switchRules(context.current.switches) }),
 		'',
 		...replyFormat(context.type),
 		'',
