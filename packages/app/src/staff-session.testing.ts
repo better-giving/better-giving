@@ -1,22 +1,31 @@
 import { expect } from 'vitest';
-import { createAuth } from '$lib/server/auth';
+import { createAuth, readAuthEnv } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import type { Db } from '$lib/server/db/client';
 
 // a real staff session for a route spec, through the same `auth.api` calls the login's action
 // makes, shared by ./program-routes.testing.ts and ./webhook-routes.testing.ts. each states its own
-// origin and password, because the cookie's `__Secure-` prefix follows the origin.
+// bindings, origin and password: the key and the pin are read off the bindings the way
+// ./lib/server/auth/gate.ts reads them, and the cookie's `__Secure-` prefix follows the origin.
 
-/** the deployment a session is made on: its staff password and the origin requests arrive on. */
-export type StaffDeployment = { readonly password: string; readonly origin: string };
+/** the deployment a session is made on. */
+export type StaffDeployment = {
+	/** the bindings the requests under test arrive with. */
+	readonly env: unknown;
+	/** the staff password signed in with, whatever `env` holds. */
+	readonly password: string;
+	/** the origin requests arrive on. */
+	readonly origin: string;
+};
 
 /** the auth instance a request on `deployment` would be given. */
 export async function staffAuth(db: Db, deployment: StaffDeployment) {
-	const signingKey = await resolveAuthSecret(db, {});
+	const authEnv = readAuthEnv(deployment.env);
+	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) throw new Error(signingKey.message);
 	return createAuth(
 		db,
-		{ ADMIN_PASSWORD: deployment.password },
+		{ ...authEnv, ADMIN_PASSWORD: deployment.password },
 		{ secret: signingKey.secret, requestOrigin: deployment.origin }
 	);
 }
