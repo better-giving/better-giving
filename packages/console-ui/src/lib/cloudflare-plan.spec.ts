@@ -1,18 +1,10 @@
-import { DELIVERY_PACE } from '@better-giving/operator/delivery-pace';
 import { describe, expect, it } from 'vitest';
-import type { FeedsInUse } from './cloudflare-plan';
-import {
-	PAID_PLAN,
-	PLAN_FIELD,
-	PLAN_PAID,
-	freePlanPace,
-	planConcern,
-	planEdit
-} from './cloudflare-plan';
+import type { FeedsInUse } from '../api/types';
+import { PAID_PLAN, PLAN_FIELD, PLAN_PAID, planConcern, planEdit } from './cloudflare-plan';
 import { heldValues } from './held-values';
 
-// the two positions the paid-plan switch can be in, what each writes, and the pace the screen
-// states while the account is on the Free plan.
+// the two positions the paid-plan switch can be in, what each writes, and when the plan is worth
+// the operator's look.
 //
 // held here because this package has no DOM pool (../../vite.config.ts), and because a third
 // position is silent at every other gate: it reaches the console's door, is refused with a 400
@@ -30,38 +22,6 @@ const pressed = (on: boolean): FormData => {
 	return posted;
 };
 
-describe('the pace stated while the account is on the Free plan', () => {
-	it('is the Free plan’s where the deployment holds no answer', () => {
-		expect(freePlanPace(holding(null))).toEqual(DELIVERY_PACE.free);
-	});
-
-	it('is the Free plan’s for every answer the deployment does not read as paid', () => {
-		for (const said of ['false', 'no', '1', 'yes', 'paid']) {
-			expect(freePlanPace(holding(said))).toEqual(DELIVERY_PACE.free);
-		}
-	});
-
-	it('is gone once the account is on the paid plan, in any case the deployment reads', () => {
-		// the deployment lowercases before it compares (`planAnswered` in
-		// packages/operator/src/delivery-pace.ts), so a screen reading this exactly would state the
-		// Free pace over a deployment already delivering at the paid one.
-		expect(freePlanPace(holding('true'))).toBeNull();
-		expect(freePlanPace(holding('True'))).toBeNull();
-	});
-
-	it('is gone for the word carried with the whitespace a hand edit leaves round it', () => {
-		// the deployment trims every value before it reads one (`readConfigEnv` in
-		// packages/app/src/lib/server/config/env.ts), so a screen reading this untrimmed would state
-		// the Free pace over a deployment already delivering at the paid one.
-		expect(freePlanPace(holding(' true'))).toBeNull();
-		expect(freePlanPace(holding('TRUE\n'))).toBeNull();
-	});
-
-	it('is not stated where the answer is withheld, which the deployment may be reading as paid', () => {
-		expect(freePlanPace(heldValues([{ name: PAID_PLAN, kind: 'withheld' }]))).toBeNull();
-	});
-});
-
 /** every feed idle but the ones named, which are in use. */
 const using = (...feeds: (keyof FeedsInUse)[]): FeedsInUse => ({
 	zapier: feeds.includes('zapier'),
@@ -69,13 +29,18 @@ const using = (...feeds: (keyof FeedsInUse)[]): FeedsInUse => ({
 	books: feeds.includes('books')
 });
 
-const UNREAD: FeedsInUse = { zapier: null, webhooks: null, books: null };
+const ALL = using('zapier', 'webhooks', 'books');
 
 describe('whether the plan is a concern', () => {
 	it('is, where the plan reads as Free and any one feed is in use', () => {
 		for (const feed of ['zapier', 'webhooks', 'books'] as const) {
 			expect(planConcern(holding(null), using(feed))).toBe(true);
-			expect(planConcern(holding('false'), using(feed))).toBe(true);
+		}
+	});
+
+	it('is, for every answer the deployment does not read as paid', () => {
+		for (const said of ['false', 'no', '1', 'yes', 'paid']) {
+			expect(planConcern(holding(said), ALL)).toBe(true);
 		}
 	});
 
@@ -84,23 +49,22 @@ describe('whether the plan is a concern', () => {
 	});
 
 	it('is not where the plan reads as paid, in any case or with the whitespace round it', () => {
-		const all = using('zapier', 'webhooks', 'books');
-		expect(planConcern(holding('true'), all)).toBe(false);
-		expect(planConcern(holding(' TRUE\n'), all)).toBe(false);
+		// the deployment lowercases and trims before it compares (`planAnswered` in
+		// packages/operator/src/delivery-pace.ts, `readConfigEnv` in
+		// packages/app/src/lib/server/config/env.ts), so a reading of this exactly would mark a
+		// deployment already delivering at the paid pace.
+		for (const said of ['true', 'True', ' true', 'TRUE\n']) {
+			expect(planConcern(holding(said), ALL)).toBe(false);
+		}
 	});
 
 	it('is not where the answer is withheld, which the deployment may be reading as paid', () => {
 		const withheld = heldValues([{ name: PAID_PLAN, kind: 'withheld' }]);
-		expect(planConcern(withheld, using('zapier', 'webhooks', 'books'))).toBe(false);
+		expect(planConcern(withheld, ALL)).toBe(false);
 	});
 
-	it('is never raised by a feed this console could not read', () => {
-		expect(planConcern(holding(null), UNREAD)).toBe(false);
-		expect(planConcern(holding(null), { ...UNREAD, books: false })).toBe(false);
-	});
-
-	it('is raised by a feed read as in use beside one that could not be read', () => {
-		expect(planConcern(holding(null), { ...UNREAD, webhooks: true })).toBe(true);
+	it('is never raised where the deployment did not say which feeds are in use', () => {
+		expect(planConcern(holding(null), null)).toBe(false);
 	});
 });
 

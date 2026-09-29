@@ -1,13 +1,14 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { BareShell } from '@better-giving/operator/components/shell/BareShell';
-import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
+import { Brand } from '@better-giving/operator/components/status/Brand';
+import { Mark } from '@better-giving/operator/components/status/Mark';
 import { holdBar } from '@better-giving/operator/progress-bar';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
+import { Link, Outlet, useFetcher, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
@@ -15,13 +16,19 @@ import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
+import type { CloudflareAccountPanelProps } from '../lib/cloudflare-account';
+import { CloudflareAccount, CloudflareAccountPanel, PACED_WORD } from '../lib/cloudflare-account';
+import { PLAN_FETCHER, planConcern } from '../lib/cloudflare-plan';
 import { railGroups } from '../lib/console-pages';
 import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
-import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
+import { ACCOUNT_PARAM, CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
+import { heldValues } from '../lib/held-values';
+import { keysTrouble } from '../lib/processor-screen';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
+import type { clientAction as shellAction } from './_index';
 import { TITLE } from './_index';
 import type { Route } from './+types/_sections';
 
@@ -41,7 +48,9 @@ import type { Route } from './+types/_sections';
 //
 // **the account is the rail's foot, with the press that ends this console beside it.** it is the one
 // thing true on every page, and the record naming the account is written at the terminal and left
-// exactly as it is. the same press stands in the narrow band, where the foot is not drawn.
+// exactly as it is. its name opens the account panel, where the paid-plan answer is given, and is
+// marked only where that answer slows a feed in use (../lib/cloudflare-account.tsx). the account and
+// the close both stand in the narrow band too, where the foot is not drawn.
 //
 // **nothing on these pages deploys.** standing a deployment up and carrying newer code onto one are
 // `better-giving start` in a terminal, which is what opens the one-way door the remote migration is;
@@ -49,7 +58,8 @@ import type { Route } from './+types/_sections';
 // stands around it.
 //
 // **no press is answered here.** this route is pathless, so no address posts to it: each page answers
-// its own presses, and the close over every page is answered by `/` (../lib/close-confirm.tsx).
+// its own presses, and the presses over every page — the close and the account panel's — are
+// answered by `/` (../lib/close-confirm.tsx, ../lib/cloudflare-plan-block.tsx).
 //
 // **nothing on a page reaches cloudflare and nothing could**: cloudflare's API sends no cross-origin
 // headers, and the credential it is reached with is held by the binary on this machine. what a press
@@ -129,18 +139,41 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 		/>
 	);
 
+	// a ready deployment's values always read: an unread one stands behind the gate instead.
+	const held = reading.values.vars.kind === 'read' ? heldValues(reading.values.vars.vars) : null;
+	const concern = held !== null && planConcern(held, reading.feedsInUse);
+	const openAccount = `${pathname}?${ACCOUNT_PARAM}`;
+
+	/* the account at phone width, where the rail's foot is not drawn: the same panel, opened from
+	   the band beside the close, with the same mark and the same words read after the name. */
+	const accountControl = (
+		<Button
+			as={Link}
+			to={openAccount}
+			preventScrollReset
+			variant="quiet"
+			size="sm"
+			title={loaderData.accountId}
+			aria-label={
+				concern
+					? `Cloudflare account ${loaderData.account}, ${PACED_WORD}`
+					: `Cloudflare account ${loaderData.account}`
+			}
+		>
+			<Brand name="cloudflare" />
+			{concern ? <Mark name="triangle-alert" /> : null}
+		</Button>
+	);
+
 	const foot = (
 		<>
-			<div className="adm-footaccount">
-				<span className="adm-rail__lead">
-					<Brand name="cloudflare" label="Cloudflare" />
-				</span>
-				{/* the title is what cloudflare resolves that name by: the name is not unique and the id is. */}
-				<span className="adm-footaccount__name" title={loaderData.accountId}>
-					{loaderData.account}
-				</span>
-				<span className="adm-footaccount__out">{closeControl}</span>
-			</div>
+			<CloudflareAccount
+				name={loaderData.account}
+				accountId={loaderData.accountId}
+				concern={concern}
+				openHref={openAccount}
+				closeControl={closeControl}
+			/>
 			<div className="adm-footline">
 				<span className="adm-rail__lead">
 					{/* github's trademark, used to point at that repository and for nothing else. the
@@ -176,7 +209,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				groups={groups}
 				link={RouterLink}
 				current={here?.label}
-				wayOut={closeControl}
+				wayOut={
+					<>
+						{accountControl}
+						{closeControl}
+					</>
+				}
 				foot={foot}
 			>
 				{here === undefined ? null : (
@@ -201,8 +239,44 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 					<Outlet />
 				</Stack>
 				{params.has(CLOSE_PARAM) ? <CloseConfirm back={pathname} /> : null}
+				{held !== null && params.has(ACCOUNT_PARAM) ? (
+					<AccountPanel
+						name={loaderData.account}
+						values={held}
+						feedsInUse={reading.feedsInUse}
+						trouble={keysTrouble({
+							workerName: loaderData.workerName,
+							accountName: loaderData.account
+						})}
+						back={pathname}
+					/>
+				) : null}
 			</AppShell>
 		</RailLabelsProvider>
+	);
+}
+
+/**
+ * the account panel, over whatever page it was opened on, with its presses read off the fetcher
+ * they post through (`PLAN_FETCHER` in ../lib/cloudflare-plan.ts) — `/` answers them, the way it
+ * answers the close. mounted only while the panel is open, so a press answered and put away is not
+ * reported again the next time it opens.
+ */
+function AccountPanel(
+	props: Omit<CloudflareAccountPanelProps, 'written' | 'freed' | 'busy' | 'pending'>
+): ReactNode {
+	const press = useFetcher<typeof shellAction>({ key: PLAN_FETCHER });
+	const posted = press.formData?.get('intent');
+	const pending = typeof posted === 'string' ? posted : null;
+	const answer = press.data;
+	return (
+		<CloudflareAccountPanel
+			{...props}
+			written={answer && 'plan' in answer ? answer.plan : null}
+			freed={answer && 'freed' in answer ? answer.freed : null}
+			busy={pending !== null}
+			pending={pending}
+		/>
 	);
 }
 

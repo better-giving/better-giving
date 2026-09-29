@@ -5599,6 +5599,15 @@
 		display: none;
 	}
 
+	/* a mark after a logo inside a press in the band is that logo's status, drawn in the attention
+	   tone: the console's account at phone width, where the rail's foot and its
+	   `.adm-footaccount__status` are not drawn (packages/console-ui/src/routes/_sections.tsx). keyed
+	   on position, so the press carries no class for it; it stands outside the wide breakpoint
+	   because the band is only drawn below it. */
+	.adm-identity > .adm-btn > .adm-btn__label > .adm-brand ~ .adm-mark {
+		color: var(--admin-tone-attention-mark);
+	}
+
 	/* at zero rather than the default minimum, for the reason `.adm-identity` gives: the page is a
 	   grid item of the shell, and a line in it that will not break — a crumb cut to one line, a
 	   pasted address — would otherwise widen the page to its own length and run it past the

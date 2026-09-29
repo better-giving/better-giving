@@ -9,6 +9,7 @@ import type { AnswerSwitch } from './answer-switch';
 import type { HeldValues } from './held-values';
 import { withheldAmong } from './held-values';
 import { refusalIn } from './secret-trouble';
+import type { FetcherPost } from './withheld-values';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
 
 // one of ./answer-switch.ts's switches, drawn: one box, its own press and its own form, and the
@@ -43,6 +44,8 @@ export type AnswerSwitchBlockProps = {
 	busy: boolean;
 	/** which intent is in flight, or `null` where none is. */
 	pending: string | null;
+	/** where the switch and its free press post, where that is not the page's own route. */
+	post?: FetcherPost;
 };
 
 export function AnswerSwitchBlock({
@@ -56,7 +59,8 @@ export function AnswerSwitchBlock({
 	freed,
 	trouble,
 	busy,
-	pending
+	pending,
+	post
 }: AnswerSwitchBlockProps): ReactNode {
 	const box = `${useId()}-${answer.field}`;
 	const sending = pending === answer.intent;
@@ -84,6 +88,7 @@ export function AnswerSwitchBlock({
 			ref={form}
 			onInput={onInput}
 			onSubmit={onSubmit}
+			{...(post && { ...post, navigate: false })}
 		>
 			<CheckboxGroup
 				id={box}
@@ -112,6 +117,7 @@ export function AnswerSwitchBlock({
 				trouble={trouble}
 				busy={busy}
 				freeing={pending === FREE_INTENT}
+				post={post}
 			/>
 
 			<div className="adm-actions">

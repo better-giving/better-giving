@@ -2,7 +2,8 @@ import { DELIVERY_PACE, planAnswered } from '@better-giving/operator/delivery-pa
 import type { ReactNode } from 'react';
 import type { ValuesRefusal, VarsWritten } from '../api/types';
 import { AnswerSwitchBlock } from './answer-switch-block';
-import { PAID_PLAN, PLAN_SWITCH } from './cloudflare-plan';
+import { SHELL_ACTION } from './close-confirm';
+import { PAID_PLAN, PLAN_FETCHER, PLAN_SWITCH } from './cloudflare-plan';
 import type { HeldValues } from './held-values';
 
 // whether the Cloudflare account this deployment runs on is on the Workers Paid plan, as a switch
@@ -17,6 +18,12 @@ import type { HeldValues } from './held-values';
 //
 // **it draws no heading.** what mounts it is headed by the account it is about
 // (./cloudflare-account.tsx), and the box's own label names the plan.
+//
+// **both its presses post to `/` through the fetcher under `PLAN_FETCHER`**
+// (./cloudflare-plan.ts): the panel stands over every page, and the sections layout under it is
+// pathless, so `/` answers them the way it answers the close (./close-confirm.tsx), and the page
+// the operator opened the panel over stays where it is. what mounts the block reads the answer,
+// and what is in flight, off that fetcher.
 
 export type CloudflarePlanProps = {
 	/** what the deployment is holding, which is what the switch is drawn in (./held-values.ts). */
@@ -34,6 +41,8 @@ export type CloudflarePlanProps = {
 };
 
 const { free: FREE, paid: PAID } = DELIVERY_PACE;
+
+const PLAN_POST = { action: SHELL_ACTION, fetcherKey: PLAN_FETCHER };
 
 /** what ticking the box changes, and what ticking it wrongly costs. */
 const PLAN_NOTE = `On the Free plan this deployment makes ${FREE.zapier} deliveries a minute to Zapier, ${FREE.webhooks} to webhook destinations and ${FREE.books} to QuickBooks, to stay inside the plan’s limits. On the Workers Paid plan it makes ${PAID.zapier}, ${PAID.webhooks} and ${PAID.books}. Ticked on a Free account, what goes past those limits fails.`;
@@ -59,6 +68,7 @@ export function CloudflarePlan({
 			trouble={trouble}
 			busy={busy}
 			pending={pending}
+			post={PLAN_POST}
 		/>
 	);
 }

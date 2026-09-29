@@ -314,6 +314,55 @@ describe('the shell over the dialog', () => {
 		expect(document.activeElement).toBe(page);
 	});
 
+	/**
+	 * a confirm drawn inside another card — packages/console-ui/src/lib/withheld-values.tsx's inside
+	 * the console's account panel — and which of the two each answer reaches.
+	 */
+	function Nested({
+		onOuter,
+		onInner
+	}: {
+		readonly onOuter: () => void;
+		readonly onInner: () => void;
+	}) {
+		return (
+			<Modal title="Cloudflare account" onDismiss={onOuter}>
+				<Modal title="Remove these values?" onDismiss={onInner} />
+			</Modal>
+		);
+	}
+
+	/** the confirm, and the panel it is drawn inside. */
+	function nestedIn(root: HTMLElement): { outer: HTMLDialogElement; inner: HTMLDialogElement } {
+		const [outer, inner] = root.querySelectorAll('dialog');
+		if (outer === undefined || inner === undefined)
+			throw new Error('the shell drew no two dialogs');
+		return { outer, inner };
+	}
+
+	it('hands Escape on a confirm inside another card to the confirm alone', () => {
+		const onOuter = vi.fn();
+		const onInner = vi.fn();
+		const { inner } = nestedIn(render(Nested, { onOuter, onInner }));
+
+		// not bubbling at the platform, and react hands it up its own tree regardless.
+		act(() => inner.dispatchEvent(new Event('cancel', { cancelable: true })));
+
+		expect(onInner).toHaveBeenCalledTimes(1);
+		expect(onOuter).not.toHaveBeenCalled();
+	});
+
+	it('hands a press on the ground of a confirm inside another card to the confirm alone', () => {
+		const onOuter = vi.fn();
+		const onInner = vi.fn();
+		const { inner } = nestedIn(render(Nested, { onOuter, onInner }));
+
+		act(() => press(inner, [400, 400], [400, 400]));
+
+		expect(onInner).toHaveBeenCalledTimes(1);
+		expect(onOuter).not.toHaveBeenCalled();
+	});
+
 	it('leaves the focus on the body when the opener is gone and nothing was named', () => {
 		const root = render(Revoking, { named: false });
 		opened(root);

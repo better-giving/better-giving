@@ -74,9 +74,9 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
 }
 
 /**
- * the rail, in four groups: the two sections an operator opens on and the Cloudflare plan beside
- * them, the processors under their own heading, the three that carry a gift out to the world, and
- * the integrations under a heading of their own.
+ * the rail, in four groups: the two sections an operator opens on, the processors under their own
+ * heading, the three that carry a gift out to the world, and the integrations under a heading of
+ * their own.
  *
  * every label is the section's own row label, except the site list's: its row label is a sentence
  * (`FOLD_LABELS.sites`), which the page states under its name rather than a cell carrying it.
@@ -88,11 +88,6 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
  * somewhere else is not half set up (packages/app/src/routes/console.quickbooks.ts). its mark is the
  * brand's own, in the image form the processor cells above it carry, so the rail draws one kind of
  * thing one way.
- *
- * **the Cloudflare plan's cell is no section either, and is written out on the same terms.** it is
- * an answer about the account the deployment runs on, which is why it stands with the two account
- * pages, and it carries no status: no job waits on it, and a deployment left at the Free plan's
- * pace delivers everything, only slower (./cloudflare-plan.ts).
  *
  * **those marks arrive on their own and are never in `logos`.** {@link ProcessorLogos} is keyed by
  * `PaymentProcessor` and an integration is no processor — no money moves on it and it is on no
@@ -121,13 +116,7 @@ export function railGroups(
 		{
 			destinations: [
 				cell('password', 'Password', 'key-round'),
-				cell('organisation', 'Organisation', 'building-2'),
-				{
-					label: CLOUDFLARE_PLAN_TITLE,
-					short: CLOUDFLARE_PLAN_TITLE,
-					href: CLOUDFLARE_PLAN_PAGE,
-					mark: 'server'
-				}
+				cell('organisation', 'Organisation', 'building-2')
 			]
 		},
 		{
@@ -163,12 +152,6 @@ export function railGroups(
 
 /** what the site list's page and cell are called. */
 export const SITES_TITLE = 'Sites';
-
-/** what the Cloudflare plan's page and cell are called. */
-export const CLOUDFLARE_PLAN_TITLE = 'Cloudflare plan';
-
-/** where the Cloudflare plan's page is, which the books page's pace notice links to. */
-export const CLOUDFLARE_PLAN_PAGE = '/cloudflare-plan';
 
 /**
  * where `/` sends an operator on a ready deployment: the first page in rail order whose job is

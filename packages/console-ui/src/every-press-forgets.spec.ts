@@ -31,7 +31,8 @@ const READ_FIRST: Record<string, string> = {
 const actions = readdirSync(ROUTES)
 	.filter((name) => name.endsWith('.tsx'))
 	.map((name) => ({ name, source: readFileSync(join(ROUTES, name), 'utf8') }))
-	.filter(({ source }) => source.includes('clientAction'));
+	// a route exporting an action in any shape, and not one naming another route's for a type.
+	.filter(({ source }) => /^export\b.*\bclientAction\b/m.test(source));
 
 describe('every clientAction in routes/', () => {
 	it('finds the actions it is guarding', () => {

@@ -2,10 +2,11 @@
 // Cloudflare plan its account is on — and how the operator's answer about that plan is read.
 //
 // **it is here rather than beside the cron because both ends need it.** the minute cron claims at
-// this pace (`PACE` in packages/app/src/lib/server/outbox/budget.ts), and the console states it to
-// an operator deciding whether to say the account is on the paid plan — and the console reaches
-// no module of the app. one table, in the leaf the two already share, for the reason
-// ./deploy-split.ts is here.
+// this pace (`PACE` in packages/app/src/lib/server/outbox/budget.ts), and the console's Cloudflare
+// account panel states it to an operator deciding whether to say the account is on the paid plan
+// (packages/console-ui/src/lib/cloudflare-plan-block.tsx) — and the console reaches no module of
+// the app. that panel is the one place either surface states the pace. one table, in the leaf the
+// two already share, for the reason ./deploy-split.ts is here.
 //
 // **the numbers are what the cron's shares of one invocation pay for, and not a preference.** each
 // is the lesser of what the feed's share of the plan's published per-invocation limits pays for at
