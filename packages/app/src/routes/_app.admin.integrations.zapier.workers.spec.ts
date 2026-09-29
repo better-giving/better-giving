@@ -1,15 +1,16 @@
 import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { inviteMember, redeemInvitation } from '$lib/server/auth';
 import { createDb, type Db } from '$lib/server/db/client';
 import { contact, donation, payment } from '$lib/server/db/schema';
 import { ZAPIER_KEY_SHAPE } from '$lib/server/integrations/keys';
+import { PACE } from '$lib/server/outbox/budget';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import { zapierStatements } from '$lib/server/zapier/events';
 import { makeZapierKey } from '$lib/server/zapier/key';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { asCookieHeader, signInAsDeployer, staffAuth } from '../staff-session.testing';
 import * as layout from './_app';
 import * as screen from './_app.admin.integrations.zapier';
 import * as surface from './zapier';
@@ -76,34 +77,11 @@ beforeEach(async () => {
 		`insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
 		 values ('default', 'Riverbank Trust', '12-3456789', 'alerts@example.org', 0, 0)`
 	).run();
-	deployer = await signInAsDeployer();
+	deployer = await signInAsDeployer(db, DEPLOYMENT);
 	caller += 1;
 });
 
-async function authInstance() {
-	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
-	return createAuth(
-		db,
-		{ ADMIN_PASSWORD: PASSWORD },
-		{ secret: signingKey.secret, requestOrigin: ORIGIN }
-	);
-}
-
-function asCookieHeader(setCookies: readonly string[]): string {
-	const cookies = setCookies.map((value) => value.split(';', 1)[0]);
-	expect(cookies.length).toBeGreaterThan(0);
-	return cookies.join('; ');
-}
-
-async function signInAsDeployer(): Promise<string> {
-	const { headers } = await (await authInstance()).api.signInStaff({
-		body: { password: PASSWORD },
-		headers: new Headers({ origin: ORIGIN }),
-		returnHeaders: true
-	});
-	return asCookieHeader(headers.getSetCookie());
-}
+const DEPLOYMENT = { env: deployed(), password: PASSWORD, origin: ORIGIN };
 
 /** a colleague who accepted an invitation, through the real invite and redeem. */
 async function signInAsMember(): Promise<string> {
@@ -113,7 +91,7 @@ async function signInAsMember(): Promise<string> {
 		invitedBy: null
 	});
 	if (!invited.ok) throw new Error(`the fixture could not invite: ${invited.reason}`);
-	const redeemed = await redeemInvitation(db, await authInstance(), {
+	const redeemed = await redeemInvitation(db, await staffAuth(db, DEPLOYMENT), {
 		token: invited.token,
 		name: 'Nadia Hart',
 		password: MEMBER_PASSWORD,
@@ -133,6 +111,7 @@ type Screen = {
 	};
 	late: boolean;
 	replacing: boolean;
+	freePlanPace: number | null;
 };
 
 function get(cookie: string, search = ''): Promise<Response> {
@@ -156,6 +135,28 @@ describe('GET /admin/integrations/zapier — before a key', () => {
 		expect(read.report.listening).toEqual({ newGift: 0, newDonor: 0, giftRefunded: 0 });
 		expect(read.report.deliveries).toEqual({ waiting: 0, failed: 0, oldestWaitingAt: null });
 		expect(read.late).toBe(false);
+	});
+
+	it('states the pace deliveries go out at on the Free plan, and none once Paid is stated', async () => {
+		const paid = { ...deployed(), CLOUDFLARE_PAID_PLAN: 'true' } as Env;
+		const onPaid = await request(
+			new Request(`${ORIGIN}${SCREEN}`, { headers: { cookie: deployer } }),
+			{ env: paid }
+		);
+
+		expect((await visit(deployer)).freePlanPace).toBe(PACE.free.zapier);
+		expect(PACE.free.zapier).toBeGreaterThan(0);
+		expect(((await onPaid.json()) as Screen).freePlanPace).toBeNull();
+	});
+
+	it('hands Zapier an https address when the page is asked over plain http', async () => {
+		const plain = ORIGIN.replace('https:', 'http:');
+		const response = await request(
+			new Request(`${plain}${SCREEN}`, { headers: { cookie: deployer } }),
+			{ env: deployed() }
+		);
+
+		expect(((await response.json()) as Screen).address).toBe(ORIGIN);
 	});
 });
 

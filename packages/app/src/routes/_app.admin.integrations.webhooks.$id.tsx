@@ -24,6 +24,7 @@ import {
 import { z } from 'zod';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { useAfterPaint } from '$lib/admin/after-paint';
+import { FreePlanPace } from '$lib/admin/free-plan-pace';
 import { useAnswerRevision } from '$lib/admin/answer-revision';
 import { buttonState } from '$lib/admin/save-button-state';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -50,7 +51,8 @@ import {
 	updateDestination
 } from '$lib/server/webhooks/destinations';
 import { listDeliveries, sendTestWebhook } from '$lib/server/webhooks/deliver';
-import { database, staff } from '../context';
+import { deliveryPace } from '$lib/server/outbox/budget';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 
 // one webhook destination: its recent deliveries, a test sent to it, its signing secret, its
@@ -157,6 +159,7 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 
 	const headers = new Headers();
 	for (const clear of cleared) headers.append('Set-Cookie', clear);
+	const pace = deliveryPace(context.get(platform).env);
 	return data(
 		{
 			id: destination.id,
@@ -175,6 +178,7 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 						: null,
 			added: added?.marker === destination.id,
 			saved: saved?.marker === SAVED,
+			freePlanPace: pace.plan === 'paid' ? null : pace.webhooksPerMinute,
 			deliveries: deliveries.map((delivery) => ({
 				id: delivery.id,
 				event: delivery.event,
@@ -347,6 +351,19 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 				title={title}
 				pageAction={
 					<div className="adm-actions">
+						{/* mounted empty and written when a test or a resume answers or an add lands. it
+						    takes focus when a resume's dialog comes down after the resume took the Resume
+						    press off the page. it stands before the presses, so the words growing it move
+						    neither of them under a repeat press. */}
+						<p ref={said} role="status" tabIndex={-1}>
+							{report ? (
+								<StatusWord register="momentary" {...READINGS[report.reading]}>
+									{report.text}
+								</StatusWord>
+							) : arrived !== null && !testing ? (
+								<StatusWord register="momentary">{arrived}</StatusWord>
+							) : null}
+						</p>
 						{paused ? (
 							// a link dressed as a button, because it writes nothing: it asks.
 							<Button
@@ -372,18 +389,6 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 								Send a test
 							</Button>
 						</Form>
-						{/* mounted empty and written when a test or a resume answers or an add lands. it
-						    takes focus when a resume's dialog comes down after the resume took the Resume
-						    press off the page. */}
-						<p ref={said} role="status" tabIndex={-1}>
-							{report ? (
-								<StatusWord register="momentary" {...READINGS[report.reading]}>
-									{report.text}
-								</StatusWord>
-							) : arrived !== null && !testing ? (
-								<StatusWord register="momentary">{arrived}</StatusWord>
-							) : null}
-						</p>
 					</div>
 				}
 			/>
@@ -394,6 +399,11 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 						: `${held === 1 ? 'One event is' : `${held} events are`} held until you resume.`}
 				</Banner>
 			) : null}
+			<FreePlanPace
+				perMinute={loaderData.freePlanPace}
+				deliveries="webhook deliveries"
+				reach="every destination"
+			/>
 			<RecentDeliveries deliveries={loaderData.deliveries} />
 			<SigningSecret secret={loaderData.signingSecret} />
 			<Editor loaderData={loaderData} actionData={actionData} />

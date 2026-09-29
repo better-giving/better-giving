@@ -47,6 +47,7 @@ async function flow(
 		tested?: unknown;
 		deliveries?: unknown[];
 		reads?: string[];
+		freePlanPace?: number | null;
 	}
 ): Promise<HTMLElement> {
 	let paused = start.paused;
@@ -70,6 +71,7 @@ async function flow(
 						asked === 'delete' ? 'delete' : asked === 'resume' && paused ? 'resume' : null,
 					added: false,
 					saved: false,
+					freePlanPace: start.freePlanPace ?? null,
 					deliveries: start.deliveries ?? []
 				};
 			},
@@ -326,4 +328,25 @@ it('offers the test on a paused destination too', async () => {
 	const root = await flow(SCREEN, { paused: true });
 
 	expect(press(root, 'Send a test').getAttribute('type')).toBe('submit');
+});
+
+it('says the pace deliveries go out at on the Free plan, and nothing of it once Paid is stated', async () => {
+	const free = await flow(SCREEN, { paused: false, freePlanPace: 4 });
+	expect(free.textContent).toContain(
+		'On the Cloudflare Free plan, webhook deliveries go out 4 a minute, so a busy day can take hours to reach every destination. If this account is on the Workers Paid plan, say so on the console’s Cloudflare plan page.'
+	);
+	act(() => free.remove());
+
+	const paid = await flow(SCREEN, { paused: false, freePlanPace: null });
+	expect(paid.textContent).not.toContain('Free plan');
+});
+
+it('stands the status line before the presses, so an answer landing moves neither', async () => {
+	const root = await flow(SCREEN, { paused: true });
+	const said = root.querySelector('p[role="status"]');
+	const group = said?.parentElement;
+
+	expect(group?.contains(press(root, 'Resume'))).toBe(true);
+	expect(group?.contains(press(root, 'Send a test'))).toBe(true);
+	expect(group?.firstElementChild).toBe(said);
 });

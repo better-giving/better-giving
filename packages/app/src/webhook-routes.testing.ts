@@ -90,8 +90,8 @@ export function page(path: string, module: MountedRoute['module']) {
 		{ path, module }
 	]);
 	return {
-		get: (at: string, cookie: string) =>
-			request(new Request(`${ORIGIN}${at}`, { headers: { cookie } }), { env: deployed() }),
+		get: (at: string, cookie: string, bindings: Env = deployed()) =>
+			request(new Request(`${ORIGIN}${at}`, { headers: { cookie } }), { env: bindings }),
 		post: (at: string, cookie: string, body: FormData) =>
 			request(
 				new Request(`${ORIGIN}${at}`, {

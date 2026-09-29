@@ -39,6 +39,7 @@ type Reading = {
 	};
 	late: boolean;
 	replacing: boolean;
+	freePlanPace: number | null;
 };
 
 const NOBODY = { newGift: 0, newDonor: 0, giftRefunded: 0 };
@@ -55,6 +56,7 @@ function reading(over: Partial<Reading> = {}, report: Partial<Reading['report']>
 		address: ADDRESS,
 		late: false,
 		replacing: false,
+		freePlanPace: null,
 		...over,
 		report: { key: null, listening: NOBODY, deliveries: QUIET, ...report }
 	};
@@ -127,6 +129,8 @@ type Answer = 'made' | 'replaced' | 'key_exists' | 'conflict';
 type Round = {
 	readonly listening?: Reading['report']['listening'];
 	readonly pause?: { readonly paused: number; readonly notPaused: number };
+	/** what the read after a press waits on, so an answer can land before the page is read again. */
+	readonly reload?: Promise<void>;
 };
 
 /** every body the stand-in action was posted, in order. */
@@ -152,11 +156,13 @@ async function flow(
 			path: SCREEN,
 			Component: Zapier as never,
 			shouldRevalidate,
-			loader: ({ request }) =>
-				reading(
+			loader: async ({ request }) => {
+				if (posted.length > 0) await round.reload;
+				return reading(
 					{ replacing: key !== null && new URL(request.url).searchParams.has('confirm') },
 					{ key, listening }
-				),
+				);
+			},
 			action: async ({ request }) => {
 				const body = await request.formData();
 				posted.push(body);
@@ -282,6 +288,25 @@ it('says a refused make under the key, points the press at it and puts focus the
 	expect(document.activeElement).toBe(press);
 });
 
+it('puts focus on Replace key once the page is read again, when the refusal lands first', async () => {
+	let reloaded = () => {};
+	const reload = new Promise<void>((resolve) => {
+		reloaded = resolve;
+	});
+	const root = await flow(SCREEN, null, 'key_exists', { reload });
+
+	await act(async () => named(root, 'Make key').click());
+	await settle();
+	// the refusal is drawn while the page still shows the key it had: Make key stands.
+	expect(root.textContent).toContain('A key was already made.');
+	expect(named(root, 'Make key')).toBeTruthy();
+
+	await act(async () => reloaded());
+	await settle();
+
+	expect(document.activeElement).toBe(named(root, 'Replace key'));
+});
+
 it('takes the question down on a refused replace and says why at the key row', async () => {
 	const root = await flow(`${SCREEN}?confirm=replace`, HELD, 'conflict');
 
@@ -354,4 +379,14 @@ it('re-reads the page after its own refused press, and otherwise takes the defau
 	expect(shouldRevalidate(args('zapier-key-replace', 409))).toBe(true);
 	expect(shouldRevalidate(args('zapier-key-replace', 400))).toBe(false);
 	expect(shouldRevalidate(args('sign-out', 409))).toBe(false);
+});
+
+it('says the pace deliveries go out at on the Free plan, and nothing of it once Paid is stated', () => {
+	const free = screen(reading({ freePlanPace: 6 }));
+	expect(free.textContent).toContain(
+		'On the Cloudflare Free plan, deliveries to your Zaps go out 6 a minute, so a busy day can take hours to reach every Zap. If this account is on the Workers Paid plan, say so on the console’s Cloudflare plan page.'
+	);
+	act(() => free.remove());
+
+	expect(screen(reading()).textContent).not.toContain('Free plan');
 });
