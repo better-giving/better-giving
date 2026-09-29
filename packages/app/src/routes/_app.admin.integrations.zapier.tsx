@@ -1,6 +1,5 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { ShownOnce, useShownOnce } from '@better-giving/operator/behaviour/ShownOnce';
-import type { ZapierPressReport, ZapierReport } from '@better-giving/operator/console/zapier';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { TriggerList } from '@better-giving/operator/components/data/TriggerList';
@@ -17,16 +16,19 @@ import {
 	useNavigation
 } from 'react-router';
 import { z } from 'zod';
+import { FreePlanPace } from '$lib/admin/free-plan-pace';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, resultFor, whichForm } from '$lib/admin/use-admin-form';
+import type { ZapierPressReport, ZapierReport } from '$lib/zapier/report';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
-import { STAFF_USER_ID } from '$lib/server/auth';
+import { publishedOrigin, readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm, unread } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
+import { freePlanPace } from '$lib/server/outbox/budget';
 import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import { readZapierDeliveries } from '$lib/server/zapier/report';
 import { countListening } from '$lib/server/zapier/subscriptions';
-import { database, staff } from '../context';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.zapier';
 
 // the one key Zapier presents to this deployment: made and replaced here, shown once, and after
@@ -55,8 +57,10 @@ import type { Route } from './+types/_app.admin.integrations.zapier';
 // key box, and `shouldRevalidate` reads the page again after it, so the row the sentence sits in
 // shows the key that stands and the press it offers.
 //
-// the address is this request's own origin: the address Zapier's servers reach this deployment on
-// is the one the operator reached this page on.
+// the address is the origin the API page publishes (`publishedOrigin` in $lib/server/auth/env.ts):
+// the pinned one where `BETTER_AUTH_URL` names one, this request's own where not, and `https:`
+// whichever it is, so a page reached over plain http never hands Zapier an address it would send
+// the key over in the clear.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Zapier';
@@ -137,9 +141,11 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 	const late =
 		deliveries.oldestWaitingAt !== null &&
 		now.getTime() - deliveries.oldestWaitingAt.getTime() > LATE_MS;
+	const { env } = context.get(platform);
 
 	return {
-		address: url.origin,
+		address: publishedOrigin(url, readPin(readAuthEnv(env))),
+		freePlanPace: freePlanPace(env, 'zapier'),
 		report,
 		late,
 		replacing: key !== null && url.searchParams.get('confirm') === 'replace'
@@ -217,22 +223,29 @@ export function shouldRevalidate({
 type Listening = ZapierReport['listening'];
 
 export default function Zapier({ loaderData, actionData }: Route.ComponentProps) {
-	const { address, report, late, replacing } = loaderData;
+	const { address, report, late, replacing, freePlanPace } = loaderData;
 	const made = actionData && 'made' in actionData ? actionData.made : undefined;
 	const [shown, done] = useShownOnce(made?.key);
 
 	// the key row's press — Make key or Replace key, whichever stands — handed to both dialogs as
-	// `fallbackFocus` and focused when a refusal lands: every answer here swaps the one press for the
-	// other or takes its dialog down, so it is the control standing once the answer is drawn.
+	// `fallbackFocus` and focused when a refusal lands. a refusal commits before the read that follows
+	// it, and that read can swap Make key for Replace key under the focus, so the effect runs again
+	// once the key the page shows has changed and focuses whichever press stands then.
 	const press = useRef<HTMLElement>(null);
 	const refused = pressRefusal(actionData);
+	const shownKey = report.key?.id;
 	useEffect(() => {
 		if (refused !== undefined) press.current?.focus();
-	}, [refused]);
+	}, [refused, shownKey]);
 
 	return (
 		<Column>
 			<FeedStrips deliveries={report.deliveries} late={late} />
+			<FreePlanPace
+				perMinute={freePlanPace}
+				deliveries="deliveries to your Zaps"
+				reach="every Zap"
+			/>
 			<Groups>
 				<Grouped>
 					{/* the app has no public address in this repository to link: it is private, and reached

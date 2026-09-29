@@ -9,7 +9,7 @@ import {
 	type ZapierEndReason,
 	type ZapierTrigger
 } from '../db/schema';
-import type { ZapierReport } from '@better-giving/operator/console/zapier';
+import type { ZapierReport } from '../../zapier/report';
 import { eachAtMost } from '../each-at-most';
 
 // the Zaps listening: which hook is subscribed to which trigger, and every way one stops.

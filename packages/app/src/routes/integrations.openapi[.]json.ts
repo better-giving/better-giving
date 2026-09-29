@@ -1,5 +1,5 @@
-import { readAuthEnv, readPin } from '$lib/server/auth';
-import { DOCS_HEADERS, openApiDocument, publishedOrigin } from '$lib/server/integrations/openapi';
+import { publishedOrigin, readAuthEnv, readPin } from '$lib/server/auth';
+import { DOCS_HEADERS, openApiDocument } from '$lib/server/integrations/openapi';
 import { platform } from '../context';
 import type { Route } from './+types/integrations.openapi[.]json';
 

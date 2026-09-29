@@ -218,3 +218,11 @@ export function deliveryPace(source: unknown): DeliveryPace {
 		booksPerMinute: pace.books
 	};
 }
+
+/**
+ * `feed`'s deliveries a minute on the Free plan, the pace a screen's note names, or null once the
+ * platform env `source` states the account is on Paid and the note has nothing to say.
+ */
+export function freePlanPace(source: unknown, feed: Feed): number | null {
+	return planOf(readConfigEnv(source)) === 'paid' ? null : PACE.free[feed];
+}

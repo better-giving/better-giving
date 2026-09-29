@@ -4,13 +4,15 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { data, href, Link } from 'react-router';
 import { useAfterPaint } from '$lib/admin/after-paint';
+import { FreePlanPace } from '$lib/admin/free-plan-pace';
 import { screenTitle } from '$lib/admin/screen-title';
 import { WEBHOOK_EVENT_TYPES } from '$lib/webhooks/catalog';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { notFound } from '$lib/server/db/load-failure';
 import { SAVED_FLASH, takeFlash } from '$lib/server/flash';
+import { freePlanPace } from '$lib/server/outbox/budget';
 import { listDestinations } from '$lib/server/webhooks/destinations';
-import { database, staff } from '../context';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks._index';
 
 // every address this deployment posts signed events to, with how many events each takes and
@@ -61,7 +63,11 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	// nothing. the marker is the deleted destination's address.
 	const landed = await takeFlash(request, SAVED_FLASH);
 	return data(
-		{ destinations, deleted: landed?.marker ?? null },
+		{
+			destinations,
+			deleted: landed?.marker ?? null,
+			freePlanPace: freePlanPace(context.get(platform).env, 'webhooks')
+		},
 		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
 	);
 }
@@ -74,11 +80,16 @@ const COLUMNS = [
 ] as const;
 
 export default function Webhooks({ loaderData }: Route.ComponentProps) {
-	const { destinations, deleted } = loaderData;
+	const { destinations, deleted, freePlanPace } = loaderData;
 	const said = useAfterPaint(deleted === null ? null : `Deleted ${deleted}.`);
 
 	return (
 		<Column wide>
+			<FreePlanPace
+				perMinute={freePlanPace}
+				deliveries="webhook deliveries"
+				reach="every destination"
+			/>
 			<DataTable
 				// the count where there are rows, and the screen's own noun where there are none: an
 				// empty table draws no caption and is named from this string instead.

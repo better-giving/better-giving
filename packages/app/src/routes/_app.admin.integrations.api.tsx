@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
-import { readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
+import { publishedOrigin, readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
@@ -25,7 +25,7 @@ import {
 	revokeAndArchiveApiKey,
 	revokedApiKeyName
 } from '$lib/server/integrations/keys';
-import { AGENT_PROMPT_PATH, OPENAPI_PATH, publishedOrigin } from '$lib/server/integrations/openapi';
+import { AGENT_PROMPT_PATH, OPENAPI_PATH } from '$lib/server/integrations/openapi';
 import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.api';
 
@@ -53,10 +53,10 @@ import type { Route } from './+types/_app.admin.integrations.api';
 // ($lib/server/flash.ts), and the loader turns it back into the name a status region reads out.
 //
 // the API reference and the agent prompt are the read API's two documents, each built for the
-// origin this request publishes (`publishedOrigin` in $lib/server/integrations/openapi.ts): the
-// reference is a link to the document the deployment serves, and the prompt is copied whole from
-// the loader's answer. a copy the clipboard refuses puts a link to the served prompt beside the
-// press, since nothing on the page prints it, and the refusal's announcement names that link.
+// origin this request publishes (`publishedOrigin` in $lib/server/auth/env.ts): the reference is a
+// link to the document the deployment serves, and the prompt is copied whole from the loader's
+// answer. a copy the clipboard refuses puts a link to the served prompt beside the press, since
+// nothing on the page prints it, and the refusal's announcement names that link.
 //
 // both dialogs take their opener off the page as they answer — a made key remounts the form that
 // asked, a revoked row takes its Revoke with it — so each hands `fallbackFocus` the Name box, the
