@@ -177,14 +177,13 @@
 	// what stops two surfaces metered through one binding from eating each other's count.
 	//
 	// where each is spent is in the code, not here: the surface in `src/routes/api.v1.ts`, whose
-	// `middleware` meters every route beneath it (and at each other surface the `API_RATE_LIMITER`
-	// block below names), the quote in
-	// `src/routes/api.v1.forms.$id.donations.ts`, and the sign-in in `src/routes/login.tsx`'s own
-	// action, which is the one site that spends that bucket. what
-	// happens when one of these bindings is missing, and what happens when the edge attributes no
-	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
-	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all three to this file, and
-	// `test` runs ahead of the deploy.
+	// `middleware` meters every route beneath it, and at each other surface the `API_RATE_LIMITER`
+	// block below names; the quote in `src/routes/api.v1.forms.$id.donations.ts`; and the sign-in in
+	// each action that takes a credential, which `src/routes/login.tsx`'s action lists. what happens
+	// when one of these bindings is missing, and what happens when the edge attributes no address to
+	// a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the call sites.
+	// `src/lib/server/api/rate-limit.config.spec.ts` holds all three to this file, and `test` runs
+	// ahead of the deploy.
 	"ratelimits": [
 		{
 			"name": "API_RATE_LIMITER",

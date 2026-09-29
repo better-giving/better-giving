@@ -171,7 +171,7 @@ async function main(argv) {
 		console.error(`${restored.length} photos restored, ${present.length} already there.`);
 		if (refused.length === 0) return 0;
 		console.error(
-			`${refused.length} refused, because the database has no image with its id — restore the books backup first (DEPLOY.md → Backups):`
+			`${refused.length} refused, because the database has no image with its id; restore the books backup first (DEPLOY.md → Backups):`
 		);
 		for (const id of refused) console.error(`  ${id}`);
 		return 1;

@@ -665,14 +665,17 @@ function DraftEditor({
 			) : null}
 			{question?.kind === 'takeover' ? (
 				<Modal
-					title={`${question.to} shows ${question.holder}’s ended screen. Use it here?`}
+					title={`Use ${question.to} here?`}
 					commit="Use it here"
 					commitProps={held(saving, () => answerYes('takeover'))}
 					cancel="Cancel"
 					cancelProps={{ type: 'button', onClick: answerNo }}
 					onDismiss={answerNo}
 				>
-					<p>{question.holder} is left with no address.</p>
+					<p>
+						It shows the ended screen of {question.holder}. Taking it leaves that campaign with no
+						address.
+					</p>
 				</Modal>
 			) : null}
 		</EditorShell>

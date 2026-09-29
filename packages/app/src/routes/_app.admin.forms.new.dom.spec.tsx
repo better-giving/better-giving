@@ -29,10 +29,10 @@ import NewDonationForm from './_app.admin.forms.new';
 // the action never settles unless a case answers it, so a press that does reach it leaves the
 // screen mid-flight rather than re-rendering over the evidence — which is what the pending-state
 // cases read. the one that answers redirects to the list, and holds the screen in the `loading`
-// phase the list is read in. an intent submission
-// is not one of those presses: it is `formNoValidate` and conform stops it before react router sees
-// it, so an added row that reached the network would be a different defect from the one this file
-// is here for, and a case of its own holds that it does not.
+// phase the list is read in. an intent submission is not one of those presses: it is
+// `formNoValidate` and conform stops it before react router sees it, so an added row that reached
+// the network would be a different defect from the one this file is here for, and a case of its
+// own holds that it does not.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

@@ -48,12 +48,11 @@ import {
 //
 // the three, and the third is not a kind of public. a route is under the protected layout, or is
 // the preview that mounts the same gate itself, in which case the gate redirects an anonymous
-// caller to the login; or it is on PUBLIC_ROUTE_FILES
-// below, which is a decision somebody typed next to the reason; or it is on the console surface,
-// which is neither. `/console` is checked by a credential rather than by a session
-// ($lib/server/console/access.ts), so it may not sit under the layout, where the gate would answer
-// a wire caller with a 303 to an HTML login, and it may not be listed as public, which would be a
-// lie this file then blesses.
+// caller to the login; or it is on PUBLIC_ROUTE_FILES below, which is a decision somebody typed
+// next to the reason; or it is on the console surface, which is neither. `/console` is checked by
+// a credential rather than by a session ($lib/server/console/access.ts), so it may not sit under
+// the layout, where the gate would answer a wire caller with a 303 to an HTML login, and it may not
+// be listed as public, which would be a lie this file then blesses.
 //
 // and it holds two more mountings on the same principle, one category over each. being public is a
 // line somebody typed on the list below; being *metered* is not a decision and must not become
@@ -882,8 +881,8 @@ describe('the stylesheet a screen outside the layout carries', () => {
 	 * them: the donor's pages are excluded from it by name, and it passes the preview's `links`, the
 	 * donor sheets. so a line adding the operator sheet to one would pass everything else in this
 	 * file — and what that produces is not an exception on one screen: the operator reset zeroes
-	 * `border` on `*` and `background` on every control, from a layer the
-	 * form's own unlayered rules then outrank back. src/app.css argues both directions.
+	 * `border` on `*` and `background` on every control, from a layer the form's own unlayered
+	 * rules then outrank back. src/app.css argues both directions.
 	 *
 	 * the import rather than the name, because ./routes/donate.tsx's header names the helper to say
 	 * it does not use it.

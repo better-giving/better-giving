@@ -34,9 +34,9 @@ import type { Route } from './+types/$slug';
 // is read. the matcher ignores case and a slug is lowercase, so a capital is one of those: the
 // refusal, never a redirect to the other spelling.
 //
-// a `live` campaign draws its published page. the document passes the read rule in
-// $lib/server/pages/view.ts, which draws the plain page of its donation settings, logged, where the
-// rule refuses it.
+// a `live` campaign draws its published page, read through the rule $lib/server/pages/view.ts
+// applies; where that rule refuses the document, the plain page of its donation settings is drawn
+// instead and the refusal is logged.
 //
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:

@@ -21,10 +21,10 @@ beforeEach(() => {
 // a program's record, pressed through the redirect every write on it answers with.
 //
 // what it covers: the photo an upload lands or Remove clears is what Save program posts, and the
-// save and the archive stay held for the whole navigation a press started, and
-// not only its `submitting` half. both redirect back onto this record, and the router spends the
-// redirect's `loading` phase reading it again with the pressed control still on the screen. a save
-// that re-armed there sends a second body carrying the version the first one moved past, refused as
+// save and the archive stay held for the whole navigation a press started, and not only its
+// `submitting` half. both redirect back onto this record, and the router spends the redirect's
+// `loading` phase reading it again with the pressed control still on the screen. a save that
+// re-armed there sends a second body carrying the version the first one moved past, refused as
 // stale; an archive that re-armed archives a program already archived. neither is visible to the
 // workers spec beside this file, which drives the action and renders nothing.
 //

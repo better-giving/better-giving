@@ -41,7 +41,7 @@ import * as preview from './preview.$pageId';
 //
 // a workers spec because every answer here is decided from rows — the page, its owned settings row,
 // the organisation's profile and story, the programs — and standing in for D1 would only prove the
-// stand-in (CLAUDE.md). the loader runs through react router's own matcher, as
+// stand-in (CONTRIBUTING.md → Tests). the loader runs through react router's own matcher, as
 // ./login.workers.spec.ts argues, so the status a refusal carries is the framework's.
 
 /** this deployment's own origin, which every request in this file is made to. */

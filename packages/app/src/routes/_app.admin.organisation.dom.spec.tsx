@@ -23,8 +23,8 @@ vi.mock('$lib/images/resize', async (actual) => ({
 // what the logo, first in the Look, posts: the write the moment an upload lands, Remove, and Undo.
 //
 // in the dom pool because every case is a press, and a look's is a fetcher round trip — a press, an
-// action that has not settled, a revalidation — where a server render is one idle pass. the action here is a stand-in
-// that records what arrived: what the real one does with it is
+// action that has not settled, a revalidation — where a server render is one idle pass. the
+// action here is a stand-in that records what arrived: what the real one does with it is
 // ./_app.admin.organisation.workers.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
