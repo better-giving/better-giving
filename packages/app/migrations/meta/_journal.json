@@ -113,6 +113,13 @@
       "when": 1790623474633,
       "tag": "0015_chat_turn_note",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1790641914843,
+      "tag": "0016_org_logo_and_program_photo",
+      "breakpoints": true
     }
   ]
 }

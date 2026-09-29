@@ -61,7 +61,8 @@ const PROGRAM_COLUMNS = {
 	status: program.status,
 	createdAt: program.createdAt,
 	updatedAt: program.updatedAt,
-	archivedAt: program.archivedAt
+	archivedAt: program.archivedAt,
+	imageId: program.imageId
 } satisfies Record<keyof ProgramRecord, SQLiteColumn>;
 
 /** one active cause, as a donation form offers it. */
