@@ -157,8 +157,9 @@ export function zapierRateLimitKey(request: Request): string {
 }
 
 /**
- * what one view of a photo at `/image/:id` counts against, and `null` for a caller with no bucket
- * at all — charged against the surface binding in `src/routes/image.$id.ts`'s loader.
+ * what one view of a photo at `/image/:id` that the edge does not hold counts against, and `null`
+ * for a caller with no bucket at all — charged against the surface binding in
+ * `src/routes/image.$id.ts`'s loader.
  *
  * a prefix of its own, so a page's photos never spend the donation box's count on `/api/v1` and a
  * burst on `/api/v1` never blanks a page's photos. a caller the edge did not attribute is not

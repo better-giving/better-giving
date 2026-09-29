@@ -177,7 +177,8 @@
 	// what stops two surfaces metered through one binding from eating each other's count.
 	//
 	// where each is spent is in the code, not here: the surface in `src/routes/api.v1.ts`, whose
-	// `middleware` meters every route beneath it, the quote in
+	// `middleware` meters every route beneath it, and in the other surfaces its key prefixes name
+	// (the `API_RATE_LIMITER` block below lists them), the quote in
 	// `src/routes/api.v1.forms.$id.donations.ts`, and the sign-in in `src/routes/login.tsx`'s own
 	// action, which is the one site that spends that bucket. what
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
@@ -203,17 +204,19 @@
 			"namespace_id": "7412",
 
 			"simple": {
-				// per client IP per minute — see `apiRateLimitKey` in
-				// src/lib/server/api/rate-limit.ts for what the key is and why the form id is
-				// not in it.
+				// per client IP per minute, and per surface: four surfaces charge this binding and
+				// each key opens with a prefix of its own (src/lib/server/api/rate-limit.ts), so
+				// one surface never spends another's count. `/api/v1` is every route under the
+				// public api (`apiRateLimitKey`, which says why the form id is not in it),
+				// `/zapier` a request there that failed the key check, `image` a photo view at
+				// `/image/:id`, and `donor-page` a view of `/donate` or a campaign's address.
 				//
-				// the number is sized for the caller this endpoint actually has: one embedded
-				// donation form asks once per page load, so ten a second is far above any
-				// browser and still bounds a single address to ten D1 reads a second. it is
-				// deliberately generous because the failure modes are not symmetric — a
-				// mobile carrier puts thousands of real donors behind one address, and
-				// refusing a donor costs a gift while letting a scanner have ten reads a
-				// second costs a fraction of a cent.
+				// the number is sized for the embedded donation form: it asks once per page
+				// load, so ten a second is far above any browser and still bounds a single
+				// address to ten D1 reads a second on each surface. it is deliberately generous
+				// because the failure modes are not symmetric — a mobile carrier puts thousands
+				// of real donors behind one address, and refusing a donor costs a gift while
+				// letting a scanner have ten reads a second costs a fraction of a cent.
 				//
 				// two things this number is not, both documented at
 				// https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/.

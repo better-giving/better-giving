@@ -19,6 +19,7 @@ import {
 	signInRateLimitMessage
 } from '$lib/server/api/rate-limit';
 import { createAuth, readAuthEnv, requestPasswordReset, resolveAuthSecret } from '$lib/server/auth';
+import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { createEmailProvider } from '$lib/server/email/factory';
@@ -175,6 +176,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, signInRateLimitKey(request))) {
 		return invalid(429, unread(FORGOT_FORM, signInRateLimitMessage()));
 	}
+	// after the charge, so a post refused for its origin still spends from the bucket.
+	refuseWriteFromAnotherOrigin(request);
 
 	const submission = parseForm(await request.formData(), FORGOT_FORM);
 

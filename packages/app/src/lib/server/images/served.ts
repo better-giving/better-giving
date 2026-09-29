@@ -32,16 +32,28 @@ export interface ImageAddress {
 	readonly id: string;
 }
 
+/** what a caller may do around a view beyond answering it. */
+export interface ServeOptions {
+	/**
+	 * asked on a miss only, once, before the bytes are read: a `Response` is the answer, with nothing
+	 * read and nothing kept, and `null` lets the read go ahead. the place to charge a meter that
+	 * protects D1, since a hit never reaches D1 and never reaches this.
+	 */
+	readonly beforeRead?: () => Promise<Response | null>;
+}
+
 const CACHE_PATH = '/__image/';
 
 /**
  * the answer to a view of image `id`: its bytes under their stored type, or a bodiless 404 when no
- * image has that id. a 404 is never kept, so an id is served the moment its image exists.
+ * image has that id, or on a miss whatever `options.beforeRead` answered instead. a 404 is never
+ * kept, so an id is served the moment its image exists.
  */
 export async function servedImage(
 	port: BytesPort,
 	ctx: Pick<ExecutionContext, 'waitUntil'>,
-	address: ImageAddress
+	address: ImageAddress,
+	options: ServeOptions = {}
 ): Promise<Response> {
 	// the app is checked against the DOM lib, whose `CacheStorage` has no `default`; workerd's has.
 	const cache = (caches as CacheStorage & { readonly default: Cache }).default;
@@ -49,6 +61,9 @@ export async function servedImage(
 
 	const kept = await cache.match(key);
 	if (kept !== undefined) return kept;
+
+	const instead = await options.beforeRead?.();
+	if (instead) return instead;
 
 	const stored = await port.get(address.id);
 	if (stored === null) return new Response(null, { status: 404 });
