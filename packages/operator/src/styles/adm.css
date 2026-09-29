@@ -5781,12 +5781,18 @@
 	   one widened to cover both — a pull that is not the padding it cancels is a second
 	   misalignment.
 
-	   the row is spaced apart, so the pull shows only where it should. sharing the title's line
-	   the actions sit at the far end, and a negative margin comes off the group's max-content
-	   contribution, so the group narrows by what the button hangs out and every box stays where it
-	   was. on their own line the group starts at the column's edge and the pull is what puts the
-	   word there. */
-	.adm-pageheader__row .adm-actions > .adm-btn--quiet.adm-btn--sm:first-child {
+	   in a page header the row is spaced apart, so the pull shows only where it should. sharing the
+	   title's line the actions sit at the far end, and a negative margin comes off the group's
+	   max-content contribution, so the group narrows by what the button hangs out and every box
+	   stays where it was. on their own line the group starts at the column's edge and the pull is
+	   what puts the word there.
+
+	   a group's own row of presses (`Grouped` in
+	   packages/operator/src/components/shell/Layout.jsx) always starts at the column's edge, under
+	   the labels of the boxes above it — the API page's reference link and its agent prompt copy
+	   under the key form — so it takes the same pull with nothing to space apart. */
+	.adm-pageheader__row .adm-actions > .adm-btn--quiet.adm-btn--sm:first-child,
+	.adm-grouped > .adm-actions > .adm-btn--quiet.adm-btn--sm:first-child {
 		margin-inline-start: calc(-1 * (var(--admin-space-4) + var(--admin-border-width)));
 	}
 

@@ -122,6 +122,43 @@ describe('a copy control mounted into a document', () => {
 		expect(button(root).getAttribute('aria-label')).toBe('Copy the deploy command');
 	});
 
+	it('draws its wording after the mark, and is named by exactly the words it draws', () => {
+		// a name that differed from the drawn words would leave a voice user saying words the
+		// control does not answer to (WCAG 2.5.3).
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt'
+		});
+		const [mark, words] = button(root).childNodes;
+
+		expect(mark).toBeInstanceOf(SVGElement);
+		expect(words?.textContent).toBe('Copy agent prompt');
+		expect(button(root).textContent).toBe('Copy agent prompt');
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it('reports each outcome as an unworded control does, and draws its wording again once settled', async () => {
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt'
+		});
+
+		await press(root);
+		expect(button(root).textContent).toBe('');
+		expect(button(root).getAttribute('aria-label')).toBe('Copied');
+
+		await elapse(2000);
+		expect(button(root).textContent).toBe('Copy agent prompt');
+
+		writeText.mockRejectedValue(new Error('permission refused'));
+		await press(root);
+		expect(button(root).textContent).toBe('Copy blocked');
+		expect(button(root).getAttribute('aria-label')).toBe('Copy blocked');
+
+		await elapse(2000);
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
 	it('is still the same button, and still focused, once the copy has landed', async () => {
 		// the defect this closes: reporting by swapping the control for a span takes the control out
 		// from under the finger that pressed it, at the instant a reader wants to hear what happened.

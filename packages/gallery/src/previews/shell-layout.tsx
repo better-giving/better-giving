@@ -1,4 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { CopyControl } from '@better-giving/operator/components/controls/CopyControl';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import {
 	Column,
@@ -180,9 +181,10 @@ export default function ShellLayoutPreview() {
 						<Button variant="quiet" size="sm" markAfter="external-link">
 							API reference
 						</Button>
-						<Button variant="quiet" size="sm" mark="copy">
-							Copy agent prompt
-						</Button>
+						<CopyControl
+							wording="Copy agent prompt"
+							text="You are integrating with the Riverside Shelter donations API."
+						/>
 					</div>
 				</Grouped>
 				<p>
