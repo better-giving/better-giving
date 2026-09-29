@@ -23,10 +23,11 @@ import { FOOTER } from './admin-alert';
 // (`.adm-code` in packages/operator/src/styles/base.css). "destination" is the one word for it,
 // in this mail as on every screen.
 //
-// pure, the same as the alert: a model in, a subject and a body out. the address of the Webhooks
-// page is handed in as a path and the origin it sits on, because only the sender knows whether
-// this deployment's own address is known at all — a cron run has no request to read it off. with
-// no origin the page is named by its path, since a relative href is broken in every inbox.
+// pure, the same as the alert: a model in, a subject and a body out. the address of the
+// destination's own page, where it is resumed, is handed in as a path and the origin it sits on,
+// because only the sender knows whether this deployment's own address is known at all — a cron run
+// has no request to read it off. with no origin the page is named by its path, since a relative
+// href is broken in every inbox.
 
 export type PauseCause =
 	| { readonly reason: 'failing'; readonly days: number }
@@ -37,8 +38,8 @@ export interface DestinationPausedData {
 	readonly url: string;
 	/** why it was paused; `days` is how long every delivery to it failed first. */
 	readonly cause: PauseCause;
-	/** the dashboard's Webhooks page, as a path on this deployment. */
-	readonly webhooksPath: string;
+	/** the destination's own dashboard page, where it is resumed, as a path on this deployment. */
+	readonly destinationPath: string;
 	/** where this deployment answers, or null where nothing states it. */
 	readonly origin: string | null;
 }
@@ -57,16 +58,16 @@ export function template(data: DestinationPausedData): EmailTemplate {
 					While it is paused nothing is sent to it. New events for it are held, not lost.
 				</Paragraph>
 				<Paragraph>
-					Once it is working again, resume it from the Webhooks page on your dashboard. Resuming it
-					sends everything that was held, then carries on as before.
+					Once it is working again, resume it from the destination’s page on your dashboard.
+					Resuming it sends everything that was held, then carries on as before.
 				</Paragraph>
 				{data.origin === null ? (
 					<Paragraph>
-						The Webhooks page is under Integrations, at{' '}
-						<code style={CODE_STYLE}>{data.webhooksPath}</code> on your dashboard.
+						That page is under Integrations, then Webhooks, at{' '}
+						<code style={CODE_STYLE}>{data.destinationPath}</code> on your dashboard.
 					</Paragraph>
 				) : (
-					<WebhooksLink href={`${data.origin}${data.webhooksPath}`} />
+					<DestinationLink href={`${data.origin}${data.destinationPath}`} />
 				)}
 				<Divider />
 				<SmallPrint>{FOOTER}</SmallPrint>
@@ -87,7 +88,7 @@ function why(cause: PauseCause, destination: ReactNode): ReactNode {
 }
 
 /** the address as its own text, as ./invitation.tsx prints its link, for the same reasons. */
-function WebhooksLink({ href }: { readonly href: string }) {
+function DestinationLink({ href }: { readonly href: string }) {
 	return (
 		<p style={LINK_STYLE}>
 			<a href={href} style={ANCHOR_STYLE} target="_blank" rel="noopener">

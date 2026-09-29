@@ -37,7 +37,7 @@ export function mailPause(
 					destination.reason === 'failing'
 						? { reason: 'failing', days: DESTINATION_PAUSE_AFTER_MS / DAY_MS }
 						: { reason: 'gone' },
-				webhooksPath: destinationPagePath(destination.id),
+				destinationPath: destinationPagePath(destination.id),
 				origin: deps.origin
 			})
 		);
