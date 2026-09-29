@@ -16,9 +16,16 @@ import { readPublishedConfig, renderableConfig } from '../forms/published-config
 import { cachedRails } from '../forms/rail-cache';
 import { illustrationsAmong } from '../images/queries';
 import type { OrgSharing } from '../org/presentation';
-import { readOrgLook, readOrgProfile, readOrgSharing, readOrgStory } from '../org/queries';
+import {
+	readOrgLogo,
+	readOrgLook,
+	readOrgProfile,
+	readOrgSharing,
+	readOrgStory
+} from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
+import { readActiveProgramPhotos } from '../programs/queries';
 import { pageGoal } from './goal';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
@@ -42,11 +49,13 @@ import { pageGoal } from './goal';
 // now refuses, draws the plain page — the donation box alone — and is logged, so a page broken by a
 // narrowed rule still takes gifts while somebody repairs it.
 //
-// the organisation's story, look and sharing are read live on every draw, so a save on the
-// dashboard's organisation page reaches every page at once, and so is a campaign's raised figure
-// (./goal.ts), a sum over the books that is never cached. which of its pictures an AI drew is read
-// on every draw too, by their kinds (`illustrationsAmong` in ../images/queries.ts), so a photo put
-// in one's place clears the mark on the next.
+// the organisation's story, look, sharing and logo are read live on every draw, so a save on the
+// dashboard's organisation page reaches every page at once, the preview included. so are the
+// programs' photos, handed beside the served config for the programs its chooser offers and never
+// on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the books that
+// is never cached. which of its pictures an AI drew is read on every draw too, by their kinds
+// (`illustrationsAmong` in ../images/queries.ts), so a photo put in one's place clears the mark on
+// the next.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -94,27 +103,30 @@ export async function loadPageView(
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
 	const parsed = parsePage(source.type, storedDocument(source.document));
-	const [served, story, orgLook, orgSharing, profile, illustrations] = await Promise.all([
-		readPublishedConfig(
-			db,
-			source.formId,
-			env,
-			() => cachedCadences(processors, origin),
-			() => cachedRails(processors, origin),
-			() => cachedCoins(processors, origin),
-			preview
-				? {
-						now,
-						drafted: (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined)
-					}
-				: { now }
-		),
-		readOrgStory(db),
-		readOrgLook(db),
-		readOrgSharing(db),
-		readOrgProfile(db),
-		illustrationsAmong(db, parsed.ok ? placedImageIds(parsed.page) : [])
-	]);
+	const [served, story, orgLook, orgSharing, profile, illustrations, orgLogo, photos] =
+		await Promise.all([
+			readPublishedConfig(
+				db,
+				source.formId,
+				env,
+				() => cachedCadences(processors, origin),
+				() => cachedRails(processors, origin),
+				() => cachedCoins(processors, origin),
+				preview
+					? {
+							now,
+							drafted: (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined)
+						}
+					: { now }
+			),
+			readOrgStory(db),
+			readOrgLook(db),
+			readOrgSharing(db),
+			readOrgProfile(db),
+			illustrationsAmong(db, parsed.ok ? placedImageIds(parsed.page) : []),
+			readOrgLogo(db),
+			readActiveProgramPhotos(db)
+		]);
 	const result = renderableConfig(served);
 	// the served config alone reaches the page: `result.form` carries `allowed_origins`, the sites
 	// this organisation's forms may be used on, which a document served to anyone is no place for.
@@ -148,6 +160,8 @@ export async function loadPageView(
 				vision: story.story.vision,
 				info: orgInfo(config, profile, sharing)
 			},
+			logo: orgLogo.logo,
+			programPhotos: chooserPhotos(config, photos),
 			look: page.look ?? orgLook.look,
 			sharing: {
 				channels: sharing.channels ?? SHARE_CHANNELS_DEFAULT,
@@ -203,6 +217,20 @@ function asPublished(form: FormRecord, settings: Page['settings']): FormRecord {
 		programId,
 		suggestedAmounts
 	};
+}
+
+/** the photos of the programs the served config offers on its chooser, by program id. */
+function chooserPhotos(
+	config: FormConfig,
+	photos: ReadonlyMap<string, string>
+): Record<string, string> {
+	const offered = config.program?.mode === 'choice' ? config.program.options : [];
+	return Object.fromEntries(
+		offered.flatMap(({ id }) => {
+			const photo = photos.get(id);
+			return photo === undefined ? [] : [[id, photo]];
+		})
+	);
 }
 
 /** the stored text as the rule reads it: `null` and text that is not JSON are nothing to read. */

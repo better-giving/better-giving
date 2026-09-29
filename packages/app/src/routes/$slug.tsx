@@ -1,9 +1,14 @@
-import { part } from '@better-giving/form/parts';
 import { data } from 'react-router';
 import * as copy from '$lib/donate/copy';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard } from '$lib/donate/page-with-card';
-import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import {
+	donorPageLinks,
+	EndedCampaignPage,
+	FORM_LOOK,
+	PlainDonationPage,
+	PlainPage
+} from '$lib/donate/plain-page';
 import { shareImage } from '$lib/page/image-src';
 import { checkSlug } from '$lib/page/slug';
 import { readOrgLook, readOrgProfile } from '$lib/server/org/queries';
@@ -33,11 +38,11 @@ import type { Route } from './+types/$slug';
 //
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
-// its name, that it has ended, and the way on to /donate — in the organisation's look, with none of
-// its blocks and no donation box, since its owned settings row is out of service
-// (`endCampaign` in $lib/server/pages/queries.ts, and read so past the end date by
-// `readPublishedConfig`). `no-store`, because publishing it again puts it back live at the same
-// address.
+// the organisation's name atop it, the campaign's name, that it has ended, and the way on to
+// /donate — in the organisation's look, with none of its blocks and no donation box, since its
+// owned settings row is out of service (`endCampaign` in $lib/server/pages/queries.ts, and read so
+// past the end date by `readPublishedConfig`). `no-store`, because publishing it again puts it back
+// live at the same address.
 //
 // one never published, one deleted and a slug nobody holds are the same 404 with the same body, so
 // the answer says nothing about which it was.
@@ -121,15 +126,11 @@ export default function CampaignPage({ loaderData }: Route.ComponentProps) {
 			return <PlainDonationPage config={loaderData.config} look={loaderData.look} />;
 		case 'ended':
 			return (
-				<PlainPage look={loaderData.look}>
-					<div className="ended">
-						<h1>{copy.campaignEnded(loaderData.name)}</h1>
-						<p>{copy.CAMPAIGN_ENDED_THANKS}</p>
-						<a part={part('action')} href="/donate">
-							{copy.donateTo(loaderData.orgName)}
-						</a>
-					</div>
-				</PlainPage>
+				<EndedCampaignPage
+					name={loaderData.name}
+					orgName={loaderData.orgName}
+					look={loaderData.look}
+				/>
 			);
 		case 'refused':
 			return (

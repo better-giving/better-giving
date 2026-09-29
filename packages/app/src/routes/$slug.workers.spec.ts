@@ -13,12 +13,13 @@ import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert } from '$lib/server/forms/queries';
+import { createImage } from '$lib/server/images/queries';
 import { createCampaign } from '$lib/server/pages/campaign';
 import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.testing';
 import { endAsItStands } from '$lib/server/pages/page-row.testing';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { readOrgLook, updateOrgLook } from '$lib/server/org/queries';
+import { readOrgLogo, readOrgLook, updateOrgLogo, updateOrgLook } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes } from '../route-request.testing';
@@ -248,6 +249,39 @@ describe('the look a published campaign is drawn in', () => {
 	});
 });
 
+/** the masthead the page opens with. */
+function masthead(html: string): string {
+	return /<header class="page-mast"[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
+}
+
+describe('the organisation’s logo atop a published campaign', () => {
+	it('stands atop the page by its id, at its stored size, once one is set', async () => {
+		await campaign();
+		const id = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/png', width: 200, height: 200, alt: null },
+			new Uint8Array([1])
+		);
+		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, id)).toHaveProperty('version');
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.logo).toEqual({ imageId: id, width: 200, height: 200 });
+		const mast = masthead(markup(answered.data));
+		expect(mast).toContain(`src="/image/${id}"`);
+		expect(mast).toContain('width="200"');
+		expect(mast).toContain('Hope Foundation');
+	});
+
+	it('is not drawn where none is set', async () => {
+		await campaign();
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.logo).toBeNull();
+		expect(masthead(markup(answered.data))).not.toContain('<img');
+	});
+});
+
 describe('a published campaign with a goal', () => {
 	it('draws its goal bar with what has settled through it, against the goal, to the day chosen', async () => {
 		const owned = await campaign({
@@ -328,6 +362,12 @@ describe('an ended campaign at its address', () => {
 		expect(html).toMatch(/^<div[^>]*data-donate-root/);
 		expect(html).not.toContain('data-block=');
 		expect(html).not.toContain('$25');
+	});
+
+	it('names the organisation atop the screen, as /donate does', async () => {
+		await endedCampaign();
+		const answered = await visit();
+		expect(masthead(markup(answered.data))).toContain('Hope Foundation');
 	});
 
 	it('says in the tab that it has ended', async () => {

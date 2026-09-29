@@ -6,7 +6,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb } from '$lib/server/db/client';
-import { form, page as pageTable } from '$lib/server/db/schema';
+import { form, page as pageTable, program } from '$lib/server/db/schema';
 import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert, readForm } from '$lib/server/forms/queries';
 import { edgeCache } from '$lib/server/edge-cache.testing';
@@ -20,6 +20,7 @@ import { draftTurn } from '$lib/server/pages/draft';
 import { answering } from '$lib/server/pages/page-row.testing';
 import { readPage } from '$lib/server/pages/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { readOrgLogo, updateOrgLogo } from '$lib/server/org/queries';
 import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
 import { mountRoutes } from '../route-request.testing';
@@ -66,6 +67,8 @@ beforeEach(async () => {
 		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
+		env.DB.prepare('delete from program'),
+		env.DB.prepare('delete from org_presentation'),
 		env.DB.prepare('delete from org_profile')
 	]);
 	await writeOrgRow(env.DB, { tax_id: '12-3456789' });
@@ -286,6 +289,33 @@ describe('a picture the chat had drawn', () => {
 		await saveBlockForm(db, { type: 'campaign', id: campaign.id }, BLOCK_FORMS.photo, body, 'gone');
 
 		expect(await hero()).toMatchObject({ type: 'hero', imageId: photo, illustration: false });
+	});
+});
+
+describe('the organisation’s logo and the program photos in a preview', () => {
+	it('are the live ones /donate draws, by id', async () => {
+		const stored = (width: number, height: number) =>
+			createImage(
+				db,
+				{ kind: 'photo', contentType: 'image/webp', width, height, alt: null },
+				new Uint8Array([1])
+			);
+		const logo = await stored(640, 160);
+		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, logo)).toHaveProperty(
+			'version'
+		);
+		const photo = await stored(1600, 1067);
+		const [food] = await db
+			.insert(program)
+			.values({ name: 'Food bank', imageId: photo })
+			.returning({ id: program.id });
+		await db.insert(program).values({ name: 'Winter shelter' });
+		// made after the programs, so its settings row offers them on the chooser.
+		const page = await ensureDonationPage(db);
+
+		const view = await open(page.id);
+		expect(view.logo).toEqual({ imageId: logo, width: 640, height: 160 });
+		expect(view.programPhotos).toEqual({ [food?.id ?? '']: photo });
 	});
 });
 

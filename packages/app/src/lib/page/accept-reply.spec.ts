@@ -966,6 +966,16 @@ describe('an image', () => {
 		});
 	});
 
+	it('that is the organisation’s logo is refused, the whole reply with it', () => {
+		const logo = '01926f3e-1111-7b2e-9d4f-3a5b6c7d8e9f';
+		const current = campaign();
+		expect(accept(inHero(logo), { current, attached: [mine] })).toEqual({
+			ok: false,
+			reason: `blocks.0.props.imageId: image "${logo}" was not attached in this chat`,
+			current
+		});
+	});
+
 	it('already on the page stands through a reply that leaves it, and may move to another block', () => {
 		const current = withHero(mine);
 		const layout = accept(
