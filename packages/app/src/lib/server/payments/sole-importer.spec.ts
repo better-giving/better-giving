@@ -189,10 +189,23 @@ const EVENT_VOCABULARIES: {
 	}
 ];
 
-/** a string literal naming `name`, in either quote style. */
+/** a string literal naming `name`, in any quote style — a template literal's included. */
 function spells(source: string, name: string): boolean {
 	const escaped = name.replaceAll('.', '\\.');
-	return new RegExp(`['"]${escaped}['"]`).test(source);
+	if (new RegExp(`['"]${escaped}['"]`).test(source)) return true;
+	const template = new RegExp(`\`${escaped}\``);
+	return codeOf(source).some((line) => template.test(line));
+}
+
+/**
+ * the source's lines less its comments, which name a delivery in backticks as markdown does. a
+ * line opening with `//`, `/*` or `*` is dropped, and a `//` after code cuts the rest of its line.
+ */
+function codeOf(source: string): string[] {
+	return source
+		.split('\n')
+		.filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+		.map((line) => line.replace(/(^|\s)\/\/.*$/, ''));
 }
 
 /**
@@ -322,6 +335,23 @@ describe('a processor’s event names are spelled by its own adapter and nowhere
 			).toEqual([]);
 		}
 	);
+
+	it('matches an event name written as any string literal', () => {
+		// the list below spells its names in one quote style, so a style the pattern missed would
+		// pass there and let a module spelling a name in that style through the sweep above.
+		for (const literal of ["'invoice.paid'", '"invoice.paid"', '`invoice.paid`']) {
+			expect(spells(`if (type === ${literal}) {}`, 'invoice.paid'), literal).toBe(true);
+		}
+	});
+
+	it('does not read a comment naming an event in backticks as a spelling', () => {
+		const source = [
+			'// the `invoice.paid` that follows',
+			' * the `invoice.paid` that follows',
+			'settle(event); // the `invoice.paid` that follows'
+		].join('\n');
+		expect(spells(source, 'invoice.paid')).toBe(false);
+	});
 
 	it.each(EVENT_VOCABULARIES)(
 		'matches every $processor event name in the list that subscribes to it',
