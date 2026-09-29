@@ -69,27 +69,42 @@ export function readAuthEnv(source: unknown): AuthEnv {
 	return env;
 }
 
+/** what `BETTER_AUTH_URL` pins: an origin, null where it is unset, or why it names none. */
+export type PinReading =
+	| { readonly ok: true; readonly origin: string | null }
+	| { readonly ok: false; readonly message: string };
+
 /**
- * the origin `BETTER_AUTH_URL` pins, or null where it is unset — the one reading of the pin, which
- * better-auth's `baseURL` and loopback check (./index.ts), the QuickBooks address
- * (../accounting/connect-link.ts) and the paused-destination mail (src/worker.ts) all take.
+ * the one reading of the pin, which better-auth's `baseURL` and loopback check (./index.ts), the
+ * QuickBooks address (../accounting/connect-link.ts) and the paused-destination mail
+ * (src/worker.ts) all take.
  *
  * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
- * path on it is not part of it. a pin that names no http(s) origin throws, naming the value:
+ * path on it is not part of it. a pin that names no http(s) origin is refused, naming the value:
  * `localhost:8787` parses as a scheme called `localhost` whose `.origin` is the string "null", and
  * better-auth refuses such a `baseURL` itself — reading it off the Worker's `process.env` when it
- * is passed none — so no caller may read it as unset.
+ * is passed none — so no caller may read it as unset. the message marks names with backticks for
+ * the screens that draw it (src/root.tsx, the console's QuickBooks section).
  */
-export function pinnedOrigin(env: AuthEnv): string | null {
+export function readPin(env: AuthEnv): PinReading {
 	const pinned = env.BETTER_AUTH_URL?.trim();
-	if (!pinned) return null;
+	if (!pinned) return { ok: true, origin: null };
 	const url = URL.parse(pinned);
 	if (url?.protocol !== 'https:' && url?.protocol !== 'http:') {
-		throw new Error(
-			`BETTER_AUTH_URL is "${pinned}", which names no http(s) origin. Set it to the address ` +
-				'the deployment answers on, scheme included (https://donate.example.org), or unset it ' +
-				'so the origin is read off each request (DEPLOY.md, .dev.vars.example).'
-		);
+		return {
+			ok: false,
+			message:
+				`\`BETTER_AUTH_URL\` is \`${pinned}\`, which names no http(s) origin. Set it to the ` +
+				'address the deployment answers on, scheme included (`https://donate.example.org`), or ' +
+				'unset it so the origin is read off each request (DEPLOY.md, .dev.vars.example).'
+		};
 	}
-	return url.origin;
+	return { ok: true, origin: url.origin };
+}
+
+/** `readPin`'s origin, throwing its message where the pin names none. */
+export function pinnedOrigin(env: AuthEnv): string | null {
+	const pin = readPin(env);
+	if (!pin.ok) throw new Error(pin.message);
+	return pin.origin;
 }

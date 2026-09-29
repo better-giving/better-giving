@@ -312,6 +312,21 @@ describe('GET /console/quickbooks', () => {
 		expect(report.callbackAddress).toBe(`${PINNED}/quickbooks/callback`);
 	});
 
+	it('still says where the books stand where the pin names no address, and names the pin', async () => {
+		const answered = await read({ ...DEPLOYMENT, BETTER_AUTH_URL: 'localhost:8787' });
+
+		expect(answered.status).toBe(200);
+		expect(await answered.json<QuickbooksReport>()).toEqual({
+			connection: { state: 'disconnected' },
+			accounts: null,
+			backlog: { failed: 0, oldestWaitingAt: null, heldBehindFailed: [] },
+			callbackAddress: {
+				error: 'unusable_pin',
+				message: expect.stringContaining('`BETTER_AUTH_URL` is `localhost:8787`')
+			}
+		});
+	});
+
 	it('draws the connected company beside the chart its accounts are picked out of', async () => {
 		await connect();
 		await givenUp();
@@ -430,6 +445,19 @@ describe('the connect press', () => {
 		const report = await answered.json<QuickbooksPressReport>();
 		if (report.press !== 'connect') throw new Error(`answered ${report.press}`);
 		expect(new URL(report.url).origin).toBe(PINNED);
+	});
+
+	it('mints nothing where the pin names no address, and names the pin', async () => {
+		const answered = await press(
+			{ press: 'connect' },
+			{ ...DEPLOYMENT, BETTER_AUTH_URL: 'donate.example.org:443' }
+		);
+
+		expect(answered.status).toBe(500);
+		expect(await answered.json()).toEqual({
+			error: 'unusable_pin',
+			message: expect.stringContaining('`BETTER_AUTH_URL` is `donate.example.org:443`')
+		});
 	});
 });
 

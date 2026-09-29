@@ -25,7 +25,7 @@ describe('pinnedOrigin', () => {
 		'ftp://donate.example.org'
 	])('refuses %s, naming the variable and the value', (pin) => {
 		expect(() => pinnedOrigin({ BETTER_AUTH_URL: pin })).toThrow(
-			new RegExp(`BETTER_AUTH_URL is "${pin.replaceAll('.', '\\.')}"`)
+			`\`BETTER_AUTH_URL\` is \`${pin}\``
 		);
 	});
 });

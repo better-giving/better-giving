@@ -106,7 +106,7 @@ describe('createAuth configuration', () => {
 
 	it('refuses a pin that names no http(s) origin, before anything is built on it', () => {
 		expect(() => testAuth({ ...TEST_ENV, BETTER_AUTH_URL: 'localhost:8787' })).toThrow(
-			/BETTER_AUTH_URL is "localhost:8787"/
+			'`BETTER_AUTH_URL` is `localhost:8787`'
 		);
 	});
 

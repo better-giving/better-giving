@@ -133,6 +133,25 @@ describe('the gate on the protected layout', () => {
 		expect(redirect.headers.get('location')).toBe('/login?next=%2Fadmin%2Fforms%3Ftab%3Dlive');
 	});
 
+	it('names a pin that names no address, where the operator reads it', async () => {
+		const beneath = screen();
+		const pinnedNowhere = {
+			...args(`${ORIGIN}/admin/forms`),
+			context: requestContext(
+				{ ...env, BETTER_AUTH_URL: 'localhost:8787' } as unknown as Env,
+				createExecutionContext()
+			)
+		};
+
+		// the sentence as a 500's data, which is what src/root.tsx's boundary draws; a bare error is
+		// replaced by react router's own words outside development.
+		await expect(staffGate(pinnedNowhere, beneath.next)).rejects.toMatchObject({
+			data: expect.stringContaining('`BETTER_AUTH_URL` is `localhost:8787`'),
+			init: { status: 500 }
+		});
+		expect(beneath.state.ran).toBe(false);
+	});
+
 	it('hands the session it resolved to the loaders beneath it', async () => {
 		const cookie = await signIn();
 		const passed = args(`${ORIGIN}/admin/forms`, { headers: { cookie } });

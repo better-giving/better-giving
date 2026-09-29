@@ -1,6 +1,6 @@
 import { data, redirect, type MiddlewareFunction } from 'react-router';
 import { auth as authForRequest, database, platform, staff } from '../../../context';
-import { readAuthEnv } from './env';
+import { readAuthEnv, readPin } from './env';
 import { createAuth } from './index';
 import { LOGIN_PATH, NEXT_PARAM } from './next';
 import { resolveAuthSecret } from './signing-key';
@@ -60,6 +60,11 @@ export async function staffGate(
 		// names the table and the command that mints the row.
 		throw data(signingKey.message, { status: 500 });
 	}
+	// the same 500 for the same reason, and before `createAuth`, which throws a bare error on it:
+	// react router shows a thrown `data` to the operator and replaces an error's text outside
+	// development.
+	const pin = readPin(authEnv);
+	if (!pin.ok) throw data(pin.message, { status: 500 });
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list
 	// and the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and

@@ -10,7 +10,7 @@ import { type AuthEnv, pinnedOrigin } from './env';
 import { MEMBER_PASSWORD_MIN_LENGTH } from './invitations';
 import { staffCredentialPlugin } from './staff-plugin';
 
-export { readAuthEnv, type AuthEnv } from './env';
+export { readAuthEnv, readPin, type AuthEnv, type PinReading } from './env';
 export { readStaffCredential, type StaffCredential } from './credential';
 export {
 	INVITATION_LIFETIME_MS,
