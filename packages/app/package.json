@@ -21,7 +21,9 @@
 		"db:create": "wrangler d1 create better-giving --no-update-config",
 		"db:create:test": "wrangler d1 create better-giving-test --no-update-config",
 		"db:info": "wrangler d1 info better-giving",
-		"db:export": "wrangler d1 export better-giving --remote",
+		"db:export": "node scripts/db-export.js better-giving",
+		"db:export:photos": "node scripts/db-photos.js export better-giving",
+		"db:restore:photos": "node scripts/db-photos.js restore better-giving",
 		"prepare": "react-router typegen && wrangler types",
 		"check": "tsc -p scripts/tsconfig.json && react-router typegen && tsc --noEmit",
 		"test": "vitest --run"
