@@ -278,7 +278,7 @@ describe('New campaign', () => {
 
 		expect(response.status).toBe(400);
 		expect(await response.json()).toMatchObject({
-			form: { id: 'campaign-create', result: { error: { title: ['Give the campaign a title.'] } } }
+			form: { id: 'campaign-create', result: { error: { title: ['required'] } } }
 		});
 		expect(await db.select().from(page)).toEqual([]);
 	});

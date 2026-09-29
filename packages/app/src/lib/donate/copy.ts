@@ -545,7 +545,7 @@ export const NO_FORM = 'This page is not taking gifts right now.';
 
 /** an ended campaign's heading, at its address and in the tab. */
 export function campaignEnded(name: string): string {
-	return `${name} has ended`;
+	return `Ended: ${name}`;
 }
 
 /** the ended screen's one line, which says what neither the heading nor the way on says. */

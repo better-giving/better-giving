@@ -13,14 +13,14 @@ export const PURPOSE_MAX = 2000;
 
 export const NEW_CAMPAIGN_SCHEMA = z.object({
 	title: z
-		.string({ error: 'Give the campaign a title.' })
+		.string({ error: 'required' })
 		.trim()
-		.min(1, { error: 'Give the campaign a title.' })
-		.max(HEADING_MAX, { error: `A title holds at most ${HEADING_MAX} characters.` }),
+		.min(1, { error: 'required' })
+		.max(HEADING_MAX, { error: `at most ${HEADING_MAX} characters` }),
 	purpose: z
 		.string()
 		.trim()
-		.max(PURPOSE_MAX, { error: `This holds at most ${PURPOSE_MAX} characters.` })
+		.max(PURPOSE_MAX, { error: `at most ${PURPOSE_MAX} characters` })
 		.optional(),
 	// filled in once the page runs in a browser; a press before then sends it blank.
 	time_zone: z

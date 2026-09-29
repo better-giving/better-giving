@@ -91,13 +91,13 @@ describe('a campaign’s first Publish', () => {
 				onCancel={() => {}}
 			/>
 		);
-	const taken = /is taken, so this campaign takes the next free address/;
+	const taken = /is taken, so this campaign takes the next free one/;
 
 	it('states the next free address it takes, and that the one asked for is taken', () => {
 		const text = card(confirm('/winter-coat-drive')).textContent;
 		expect(text).toContain('/winter-coat-drive-2');
 		expect(text).toContain(
-			'/winter-coat-drive is taken, so this campaign takes the next free address.'
+			'The address /winter-coat-drive is taken, so this campaign takes the next free one.'
 		);
 	});
 

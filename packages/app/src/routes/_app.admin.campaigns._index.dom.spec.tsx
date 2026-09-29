@@ -352,7 +352,7 @@ describe('New campaign', () => {
 		const title = box(dialog, 'title');
 		expect(title.getAttribute('aria-invalid')).toBe('true');
 		const said = document.getElementById(title.getAttribute('aria-describedby') ?? '');
-		expect(said?.textContent).toContain('Give the campaign a title.');
+		expect(said?.textContent).toContain('required');
 	});
 });
 

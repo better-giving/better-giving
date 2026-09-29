@@ -155,7 +155,7 @@ export function FirstPublishConfirm({
 				<StatedValue label="Address" value={address} code />
 				{asked ? (
 					<p className="adm-hint">
-						{asked} is taken, so this campaign takes the next free address.
+						The address {asked} is taken, so this campaign takes the next free one.
 					</p>
 				) : null}
 			</div>

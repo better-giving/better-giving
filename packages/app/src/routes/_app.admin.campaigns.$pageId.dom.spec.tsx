@@ -172,7 +172,7 @@ describe('a first Publish', () => {
 		const text = card('Publish Winter coat drive?').textContent;
 		expect(text).toContain('/winter-coat-drive-2');
 		expect(text).toContain(
-			'/winter-coat-drive is taken, so this campaign takes the next free address.'
+			'The address /winter-coat-drive is taken, so this campaign takes the next free one.'
 		);
 	});
 });

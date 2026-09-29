@@ -360,7 +360,7 @@ describe('an ended campaign at its address', () => {
 		expect(answered.status).toBe(200);
 		expect(answered.headers.get('cache-control')).toBe('no-store');
 		const html = markup(answered.data);
-		expect(element(html, 'h1', '')).toContain('Winter coat drive has ended');
+		expect(element(html, 'h1', '')).toContain('Ended: Winter coat drive');
 		const link = element(html, 'a', 'href="/donate"');
 		expect(link).toContain('part="action"');
 		expect(link).toContain('Donate to Hope Foundation');
@@ -395,7 +395,7 @@ describe('an ended campaign at its address', () => {
 		await endedCampaign();
 		const answered = await visit();
 		expect(campaignPage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
-			{ title: 'Winter coat drive has ended' }
+			{ title: 'Ended: Winter coat drive' }
 		]);
 	});
 
