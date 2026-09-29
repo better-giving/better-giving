@@ -624,7 +624,7 @@ describe('an impact figure', () => {
 		expect(tiersOf(result)).toMatchObject({ tiers: [{ amountMinor: 2500 }] });
 		expect(result).toMatchObject({
 			ok: true,
-			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 7500 }]
+			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 7500, reworded: false }]
 		});
 	});
 
@@ -739,7 +739,7 @@ describe('an impact figure', () => {
 		};
 		expect(accept(rewrite, { current })).toMatchObject({
 			ok: true,
-			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 4000 }]
+			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 4000, reworded: true }]
 		});
 		const stated = accept(rewrite, { current, messages: [operator('$40 heats a home')] });
 		expect(tiersOf(stated)).toMatchObject({
@@ -846,10 +846,16 @@ describe('a figure in the words', () => {
 			background: 'none',
 			tiers: [{ amountMinor: 4000, buys: 'boots' }]
 		});
-		const result = accept(lede('$25 buys a coat, $40 buys boots; help us reach $5,000.'), {
+		const result = accept(lede('$25 for a coat, $40 for boots; help us reach $5,000.'), {
 			current
 		});
 		expect(result).toMatchObject({ ok: true });
+		const tierSaid = accept(lede('$40 buys boots.'), { current });
+		expect(tierSaid).toMatchObject({
+			ok: false,
+			reason:
+				'block 2 (id "title"): "$40 buys boots." says what "$40" does, and the operator never said what it does in one sentence in the chat or on the page'
+		});
 	});
 
 	it('the same reply sets as the goal lands only when the operator stated it', () => {
@@ -895,6 +901,27 @@ describe('a figure in the words', () => {
 	it('spelled out lands when the operator stated it in digits', () => {
 		const result = accept(lede('Fifty dollars keeps a child warm.'), {
 			messages: [operator('$50 buys a coat')]
+		});
+		expect(result).toMatchObject({ ok: true });
+	});
+
+	it('saying what it does refuses the reply, naming the sentence, when the operator only stated it bare', () => {
+		const current = campaign();
+		const result = accept(lede('Warm a child this winter. $50 buys a coat.'), {
+			current,
+			messages: [operator('set the suggested amounts to $25, $50 and $100')]
+		});
+		expect(result).toEqual({
+			ok: false,
+			reason:
+				'block 2 (id "title"): "$50 buys a coat." says what "$50" does, and the operator never said what it does in one sentence in the chat or on the page',
+			current
+		});
+	});
+
+	it('saying what it does lands when the operator said what it does in one sentence', () => {
+		const result = accept(lede('Warm a child this winter. $50 buys a coat.'), {
+			messages: [operator('$50 buys a coat for one child')]
 		});
 		expect(result).toMatchObject({ ok: true });
 	});

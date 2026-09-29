@@ -428,11 +428,13 @@ function summarise(
 					`Left out an illustration of “${description}”: a turn makes at most ${ILLUSTRATIONS_MAX}.`
 				];
 	});
-	const lost = dropped.map((item) =>
-		item.what === 'tier'
-			? `Left out the ${money(item.amountMinor)} tier: you haven’t said what ${money(item.amountMinor)} does.`
-			: `Took the link off “${item.text}”.`
-	);
+	const lost = dropped.map((item) => {
+		if (item.what === 'link') return `Took the link off “${item.text}”.`;
+		const amount = money(item.amountMinor);
+		return item.reworded
+			? `Left out the ${amount} tier I reworded: what ${amount} buys is yours to say, so tell me and I’ll use your words.`
+			: `Left out the ${amount} tier: you haven’t said what ${amount} does.`;
+	});
 	return [...said, ...pictured, ...lost].join(' ');
 }
 

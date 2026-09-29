@@ -34,14 +34,18 @@
 //   words the page already draws, or where the page already held the same tier, amount and words
 //   alike. the tier's words may paraphrase that sentence; an amount stated on its own (`set the
 //   suggested amounts to $25, $50 and $100`) grants no tier. a sentence ends at `.`, `!` or `?`
-//   before a space, or at a line break. any other tier — one whose words the reply rewrote
-//   included — is dropped and noted, and the rest of the reply lands.
+//   before a space, or at a line break. any other tier is dropped and noted, and the rest of the
+//   reply lands; one whose amount the page held as a tier is the reply rewording it, noted so.
 // - a figure in the words: a new campaign name and every string a block draws — a heading, a lede,
 //   what a tier buys, a question, each paragraph of a story or an answer — and each illustration's
 //   description may hold only figures the operator wrote in the chat or the page already draws, in
 //   its words, its tiers' amounts or its stored goal. a goal this same reply sets grants no figure
 //   the operator did not state. any other refuses the reply, naming the figure. a donor reads a
 //   figure as a promise the model cannot check.
+// - an impact in the words: a sentence of those words holding one of `IMPACT`'s words says what
+//   each figure in it does, and each needs the grant a tier needs — the operator's own sentence
+//   pairing that amount with an impact — or the reply is refused, naming the sentence. a figure
+//   in no such sentence answers to the rule above alone.
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat or
 //   one `current` already places, or the reply is refused. that it names a stored image is
 //   $lib/server/pages/draft.ts's to check, and that it is an id and never an address the catalog's.
@@ -183,7 +187,13 @@ export type Change =
 	| { field: 'amounts'; from: number[]; to: number[] };
 
 export type Dropped =
-	| { what: 'tier'; blockId: string; amountMinor: number }
+	| {
+			what: 'tier';
+			blockId: string;
+			amountMinor: number;
+			/** the page held a tier of this amount, and the reply changed what it buys. */
+			reworded: boolean;
+	  }
 	| { what: 'link'; href: string; text: string };
 
 export type Accepted = {
@@ -252,11 +262,18 @@ function accept(input: AcceptInput): Accepted | Refused {
 	const stated = new Set(said.flatMap(readFigures));
 	const impacts = new Set(impactFigures([...said, ...current.blocks.flatMap(textsIn)]));
 	const held = new Set(tiersOf(current).map(tierKey));
+	const heldAmounts = new Set(tiersOf(current).map(({ amountMinor }) => amountMinor));
 	const blocks = page.page.blocks.map((block) => {
 		if (block.type !== 'impact-tiers') return block;
 		const tiers = block.tiers.filter((tier) => {
 			if (impacts.has(tier.amountMinor) || held.has(tierKey(tier))) return true;
-			dropped.push({ what: 'tier', blockId: block.id, amountMinor: tier.amountMinor });
+			const { amountMinor } = tier;
+			dropped.push({
+				what: 'tier',
+				blockId: block.id,
+				amountMinor,
+				reworded: heldAmounts.has(amountMinor)
+			});
 			return false;
 		});
 		return { ...block, tiers };
@@ -277,10 +294,17 @@ function accept(input: AcceptInput): Accepted | Refused {
 	for (const { where, texts } of worded) {
 		for (const text of texts) {
 			const unshown = figuresIn(text).find(({ minor }) => minor === null || !shown.has(minor));
-			if (unshown === undefined) continue;
-			return refuse(
-				`${where}: "${unshown.written}" is not a figure the operator wrote in the chat or one the page already shows`
-			);
+			if (unshown !== undefined) {
+				return refuse(
+					`${where}: "${unshown.written}" is not a figure the operator wrote in the chat or one the page already shows`
+				);
+			}
+			const claim = impactClaims(text).find(({ minor }) => minor === null || !impacts.has(minor));
+			if (claim !== undefined) {
+				return refuse(
+					`${where}: "${claim.sentence}" says what "${claim.written}" does, and the operator never said what it does in one sentence in the chat or on the page`
+				);
+			}
 		}
 	}
 
@@ -473,12 +497,18 @@ function operatorTexts(messages: readonly ChatMessage[]): string[] {
 const IMPACT =
 	/\b(?:buys?|bought|pays?|paid|costs?|provides?|feeds?|funds?|covers?|supply|supplies|keeps?|sends?|sponsors?|shelters?|heats?|trains?|plants?|delivers?|gets?|puts?|fills?|stocks?|helps|means)\b/i;
 
+/** each figure `text` holds in a sentence saying what an amount does, with that sentence. */
+function impactClaims(text: string) {
+	return sentences(text)
+		.filter((sentence) => IMPACT.test(sentence))
+		.flatMap((sentence) =>
+			figuresIn(sentence).map((figure) => ({ ...figure, sentence: sentence.trim() }))
+		);
+}
+
 /** every amount `texts` state an impact for, in minor units. */
 function impactFigures(texts: readonly string[]): number[] {
-	return texts
-		.flatMap(sentences)
-		.filter((sentence) => IMPACT.test(sentence))
-		.flatMap(readFigures);
+	return texts.flatMap(impactClaims).flatMap(({ minor }) => (minor === null ? [] : [minor]));
 }
 
 /** `text` cut at each sentence end: `.`, `!` or `?` before a space, or a line break. */
