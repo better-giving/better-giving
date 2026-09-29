@@ -49,14 +49,14 @@ catalog:
   # than loosening what any other package may peer on react-router.
   #
   # `@json-render/core`, `@assistant-ui/react` and the `@tiptap/*` set earn their catalog entry on a
-  # different rule from the rest: packages/app is their only consumer today, but `@json-render/core`
-  # and `@assistant-ui/react` are both 0.x and release often, so the entry here is the upgrade gate —
+  # different rule from the rest: packages/app alone declares them, but `@json-render/core` and
+  # `@assistant-ui/react` are both 0.x and release often, so the entry here is the upgrade gate —
   # a bump is one reviewed line rather than a line buried in packages/app/package.json. the
-  # `@tiptap/*` set rides one entry as a block: `@tiptap/core`, `@tiptap/pm` and `@tiptap/react` peer
-  # on each other at this exact version, and every `@tiptap/extension-*` package here peers on
+  # `@tiptap/*` set is one block: `@tiptap/core`, `@tiptap/pm` and `@tiptap/react` peer on each
+  # other at this exact version, and every `@tiptap/extension-*` package here peers on
   # `@tiptap/core` at the same exact version, so the set moves together or not at all. it is the
-  # minimal set for bold, italic, bullet and numbered lists and links — `@tiptap/extension-list`
-  # carries `BulletList`, `OrderedList` and `ListItem` — and nothing past those five features.
+  # minimal set for bold, italic, bullet and numbered lists, and links — `@tiptap/extension-list`
+  # carries `BulletList`, `OrderedList` and `ListItem`.
   '@ark-ui/react': 5.39.2
   '@assistant-ui/react': 0.15.22
   '@conform-to/react': 1.21.1
