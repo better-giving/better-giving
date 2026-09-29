@@ -68,7 +68,8 @@ import type { Route } from './+types/_app.admin.organisation';
 //
 // each section is its own form with its own save; the story is the first. a save applies at once
 // with no confirm, because Undo stands at its button once it lands: Undo swaps the story with the
-// one the save replaced, and a second Undo swaps it back. the rule a story passes is
+// one the save replaced, and the same press, reading Redo once an Undo lands, swaps it back. every
+// section's press reads so, from its own undone marker. the rule a story passes is
 // `$lib/server/org/presentation.ts`'s, and the reads and writes, with the compare-and-set each
 // write is, are `$lib/server/org/queries.ts`'s.
 //
@@ -559,6 +560,7 @@ function StorySection({
 	// `!actionData`: a refusal is answered in place, so the marker the last landing published is
 	// still on the page under it.
 	const landed = saved !== null && !actionData;
+	const redo = saved === 'story-undone';
 	const save = useSaveState({ landed, changed, pending: pressed === STORY_EDIT.id });
 
 	const missionError = fields.mission.errors?.[0];
@@ -624,14 +626,14 @@ function StorySection({
 								form={STORY_UNDO.id}
 								variant="quiet"
 								size="sm"
-								mark="undo-2"
+								mark={redo ? 'redo-2' : 'undo-2'}
 								aria-busy={undoing}
 								aria-disabled={undoing || undefined}
 								onClick={(event) => {
 									if (undoing) event.preventDefault();
 								}}
 							>
-								Undo
+								{redo ? 'Redo' : 'Undo'}
 							</Button>
 						) : null}
 					</div>
@@ -769,7 +771,7 @@ function LookSection({
 						type="button"
 						variant="quiet"
 						size="sm"
-						mark="undo-2"
+						mark={redo ? 'redo-2' : 'undo-2'}
 						aria-busy={undoing}
 						aria-disabled={undoing || undefined}
 						onClick={() => {
@@ -1011,6 +1013,7 @@ function SharingSection({
 	const changed = sharingText(edit) !== sharingText(freshEdit(sharing, drawn));
 
 	const landed = saved !== null && !actionData;
+	const redo = saved === 'sharing-undone';
 	const save = useSaveState({ landed, changed, pending: pressed === SHARING_EDIT.id });
 
 	// the box or press a move, an Add or a Remove leaves the focus on, taken after the render that
@@ -1241,14 +1244,14 @@ function SharingSection({
 								form={SHARING_UNDO.id}
 								variant="quiet"
 								size="sm"
-								mark="undo-2"
+								mark={redo ? 'redo-2' : 'undo-2'}
 								aria-busy={undoing}
 								aria-disabled={undoing || undefined}
 								onClick={(event) => {
 									if (undoing) event.preventDefault();
 								}}
 							>
-								Undo
+								{redo ? 'Redo' : 'Undo'}
 							</Button>
 						) : null}
 					</div>

@@ -377,6 +377,8 @@ it('reads Redo at the press once an Undo has landed', async () => {
 
 	expect(said(root)).toContain('Undone on every page using the organisation’s look.');
 	expect(undo.textContent).toBe('Redo');
+	const marks = [...(undo.querySelector('svg')?.classList ?? [])];
+	expect(marks.filter((name) => /^lucide-(undo|redo)-2$/.test(name))).toEqual(['lucide-redo-2']);
 });
 
 it('reports a refused save beside the control under the alert mark, not the check', async () => {
@@ -477,6 +479,18 @@ describe('the story', () => {
 		expect(document.getElementById('story-vision')?.textContent).toBe('');
 		const save = card(root).querySelector('.adm-actions .adm-save');
 		expect(save?.getAttribute('aria-disabled')).toBe('true');
+	});
+
+	it('reads Redo at the press once an Undo has landed', async () => {
+		const root = await drawn();
+		await saveStory(root);
+		await pressOwned(button(card(root), 'Undo'));
+
+		const actions = card(root).querySelector('.adm-actions');
+		expect([...(actions?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toEqual([
+			'Undone',
+			'Redo'
+		]);
 	});
 
 	it('reports a refused save under the alert mark, in the card it was pressed in', async () => {
@@ -663,6 +677,23 @@ describe('the sharing channels', () => {
 		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');
 		const save = card?.parentElement?.querySelector('.adm-actions .adm-save');
 		expect(save?.getAttribute('aria-disabled')).toBe('true');
+	});
+
+	it('reads Redo at the press once an Undo has landed', async () => {
+		const root = await drawn();
+		act(() => root.querySelector<HTMLInputElement>('input[value="x"]')?.click());
+		await saveSharing(root);
+		await settle();
+		const undo = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
+		if (undo === undefined) throw new Error('no Undo after a landed save');
+		await pressOwned(undo);
+
+		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');
+		const actions = card?.parentElement?.querySelector('.adm-actions');
+		expect([...(actions?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toEqual([
+			'Undone',
+			'Redo'
+		]);
 	});
 });
 
