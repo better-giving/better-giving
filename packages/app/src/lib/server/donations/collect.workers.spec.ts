@@ -2985,7 +2985,13 @@ describe('settleDelivery() — what a failed attempt owes a destination listenin
 			id: 'evt_failed_stripe',
 			type: 'invoice.payment_failed',
 			providerNoticeId: 'in_collect_2',
-			occurredAt: new Date('2026-09-16T22:20:08.000Z')
+			occurredAt: new Date('2026-09-16T22:20:08.000Z'),
+			delivered: {
+				attemptCount: 2,
+				nextRetryAt: new Date('2026-09-21T22:20:08Z'),
+				amountMinor: 2500,
+				currency: 'USD'
+			}
 		});
 	}
 

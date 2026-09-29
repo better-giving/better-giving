@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { STRIPE_RAILS } from '@better-giving/form/embed/rails';
-import { isRetryable, type RecurringEvent, type ReversalEvent } from './provider';
+import {
+	isRetryable,
+	type DeliveredAttempt,
+	type RecurringEvent,
+	type ReversalEvent
+} from './provider';
 import {
 	API_VERSION,
 	RECURRING_EVENT_TYPES,
@@ -760,7 +765,14 @@ describe('verifyEvent', () => {
 	 */
 	it.each(RECURRING_EVENT_TYPES)('reads the object id out of %s', async (type) => {
 		const object = type.startsWith('invoice.')
-			? { id: 'in_1', object: 'invoice' }
+			? {
+					id: 'in_1',
+					object: 'invoice',
+					attempt_count: 1,
+					next_payment_attempt: null,
+					amount_remaining: 2500,
+					currency: 'usd'
+				}
 			: { id: 'sub_1', object: 'subscription' };
 		const body = eventBody(type, object);
 		const { httpClient } = recording([]);
@@ -774,6 +786,58 @@ describe('verifyEvent', () => {
 		expect(
 			result.ok === true && result.value.kind === 'recurring' && result.value.providerNoticeId
 		).toBe(object.id);
+	});
+
+	/**
+	 * a failed collection carries the attempt as its own body states it, which a read made later
+	 * cannot: by then the invoice holds the next attempt's count and schedule.
+	 *
+	 * the figure is what was still owed — `amount_remaining` — so an invoice paid in part reports the
+	 * part that failed rather than its whole.
+	 */
+	it('carries a failed collection’s attempt as its delivery states it', async () => {
+		const body = eventBody('invoice.payment_failed', {
+			id: 'in_1',
+			object: 'invoice',
+			attempt_count: 2,
+			next_payment_attempt: 1_770_432_000,
+			amount_due: 2500,
+			amount_paid: 1000,
+			amount_remaining: 1500,
+			currency: 'usd'
+		});
+		const { httpClient } = recording([]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
+			body,
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
+		});
+
+		expect(
+			result.ok === true && result.value.kind === 'recurring' && result.value.delivered
+		).toEqual({
+			attemptCount: 2,
+			nextRetryAt: new Date(1_770_432_000_000),
+			amountMinor: 1500,
+			currency: 'USD'
+		});
+	});
+
+	/**
+	 * a failed collection whose body states no attempt is a fault, not a failure with no attempt:
+	 * reported without one, and with no transaction behind it, it reads as a gift settled outside
+	 * Stripe (`RecurringGiftNotice.failedAttempt` in ./provider.ts).
+	 */
+	it('refuses a failed collection whose body states no attempt', async () => {
+		const body = eventBody('invoice.payment_failed', { id: 'in_1', object: 'invoice' });
+		const { httpClient } = recording([]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).verifyEvent({
+			body,
+			headers: { 'stripe-signature': await sign(body, CREDENTIALS.webhookSecret) }
+		});
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
 	});
 
 	/**
@@ -4589,6 +4653,23 @@ function notice(type: string, providerNoticeId: string): RecurringEvent {
 	};
 }
 
+/**
+ * a verified `invoice.payment_failed`, carrying the attempt its body stated: `failedInvoice`'s
+ * figures as they stood when the attempt failed.
+ */
+function failedNotice(delivered: Partial<DeliveredAttempt> = {}): RecurringEvent {
+	return {
+		...notice('invoice.payment_failed', 'in_1'),
+		delivered: {
+			attemptCount: 1,
+			nextRetryAt: new Date(1_770_259_200_000),
+			amountMinor: 2500,
+			currency: 'USD',
+			...delivered
+		}
+	};
+}
+
 describe('readRecurringGift', () => {
 	/**
 	 * a collection is resolved to the commitment behind it and to the transaction that paid it, in
@@ -4852,7 +4933,7 @@ describe('readRecurringGift', () => {
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
-			notice('invoice.payment_failed', 'in_1')
+			failedNotice()
 		);
 
 		expect(result.ok && result.value.providerTxnId).toBe('pi_latest');
@@ -4863,10 +4944,9 @@ describe('readRecurringGift', () => {
 
 	/**
 	 * a later collection that failed is reported as a failed attempt, with the retry the processor has
-	 * scheduled and the figure it asked for.
+	 * scheduled and the figure it asked for — each as the attempt's own delivery states it.
 	 *
-	 * the count and the retry are the invoice's own, read fresh: `attempt_count` climbs with each
-	 * automatic retry and `next_payment_attempt` is the one after it
+	 * `attempt_count` climbs with each automatic retry and `next_payment_attempt` is the one after it
 	 * (https://docs.stripe.com/billing/revenue-recovery/smart-retries), which is what lets a
 	 * destination tell a first miss from the last.
 	 */
@@ -4879,7 +4959,7 @@ describe('readRecurringGift', () => {
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
-			notice('invoice.payment_failed', 'in_1')
+			failedNotice({ attemptCount: 2, nextRetryAt: new Date(1_770_432_000_000) })
 		);
 
 		expect(result.ok && result.value.failedAttempt).toEqual({
@@ -4894,6 +4974,102 @@ describe('readRecurringGift', () => {
 	});
 
 	/**
+	 * a failure with no transaction behind it still reports its attempt. with neither, the
+	 * collection reads as money settled outside Stripe, and ../donations/collect.ts alerts an operator
+	 * to record a gift nobody gave (`RecurringGiftNotice.failedAttempt` in ./provider.ts).
+	 */
+	it('reports the attempt of a failure that lists no transaction', async () => {
+		const { httpClient } = recording([
+			{
+				status: 200,
+				json: failedInvoice({
+					payments: { object: 'list', url: '/v1/invoice_payments', has_more: false, data: [] }
+				})
+			}
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
+			failedNotice()
+		);
+
+		expect(result.ok && result.value.providerTxnId).toBeNull();
+		expect(result.ok && result.value.failedAttempt?.attemptKey).toBe('evt_1');
+	});
+
+	/**
+	 * a failure delivered after its invoice was voided or written off is still reported: nothing
+	 * cured it, and the attempt failed. what it states is the delivery's, so a retry scheduled then
+	 * is reported as scheduled then (`FailedCollection.nextRetryAt` in ./provider.ts).
+	 */
+	it.each(['void', 'uncollectible'])(
+		'reports a late failure against an invoice now %s',
+		async (status) => {
+			const { httpClient } = recording([
+				{ status: 200, json: failedInvoice({ status, next_payment_attempt: null }) }
+			]);
+
+			const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
+				failedNotice({ attemptCount: 2, nextRetryAt: new Date(1_770_432_000_000) })
+			);
+
+			expect(result.ok && result.value.failedAttempt).toMatchObject({
+				attemptCount: 2,
+				nextRetryAt: new Date(1_770_432_000_000)
+			});
+		}
+	);
+
+	/**
+	 * only a failure reports an attempt: a collection delivery of any other type about the same open
+	 * invoice carries none, whatever the invoice says about its retries.
+	 */
+	it('reports no failed attempt on a delivery that is not a failure', async () => {
+		const { httpClient } = recording([{ status: 200, json: failedInvoice() }]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
+			notice('invoice.paid', 'in_1')
+		);
+
+		expect(result.ok).toBe(true);
+		expect(result.ok && result.value.failedAttempt).toBeUndefined();
+	});
+
+	/**
+	 * a delivery held back past the next retry reports its own attempt. the invoice read after it
+	 * already holds the later attempt's count and schedule, and reported off that read the two
+	 * deliveries would each name the later attempt — the last miss told twice.
+	 */
+	it('reports the attempt its delivery states, not the one the invoice has moved on to', async () => {
+		const { httpClient } = recording([
+			{ status: 200, json: failedInvoice({ attempt_count: 3, next_payment_attempt: null }) }
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
+			failedNotice({ attemptCount: 2, nextRetryAt: new Date(1_770_432_000_000) })
+		);
+
+		expect(result.ok && result.value.failedAttempt).toMatchObject({
+			attemptCount: 2,
+			nextRetryAt: new Date(1_770_432_000_000)
+		});
+	});
+
+	/**
+	 * a failure handed over without the attempt its body stated is refused before anything is
+	 * fetched: what the fetch would answer cannot say which attempt failed.
+	 */
+	it('refuses a failure carrying no attempt without reading the invoice', async () => {
+		const { httpClient, calls } = recording([{ status: 200, json: failedInvoice() }]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
+			notice('invoice.payment_failed', 'in_1')
+		);
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
+		expect(calls).toEqual([]);
+	});
+
+	/**
 	 * the opening invoice failing is the donor's own first charge on the page, which no repeating gift
 	 * stands behind yet — so it reports no failed attempt, however late its delivery arrives.
 	 */
@@ -4903,7 +5079,7 @@ describe('readRecurringGift', () => {
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
-			notice('invoice.payment_failed', 'in_1')
+			failedNotice()
 		);
 
 		expect(result.ok).toBe(true);
@@ -4923,7 +5099,7 @@ describe('readRecurringGift', () => {
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
-			notice('invoice.payment_failed', 'in_1')
+			failedNotice()
 		);
 
 		expect(result.ok).toBe(true);
@@ -4932,10 +5108,10 @@ describe('readRecurringGift', () => {
 
 	/**
 	 * the key is the delivery's own id, which Stripe keeps across a redelivery and mints afresh for
-	 * each failed attempt. the fresh invoice cannot tell two attempts apart: a manual retry does not
-	 * move its count, and a delivery held back past the next retry reads that retry's count.
+	 * each failed attempt. the count cannot tell two attempts apart: an operator's manual retry does
+	 * not move it, so a second failure can state the count the first did.
 	 */
-	it('keys a failed attempt on its delivery, not on the invoice read after it', async () => {
+	it('keys a failed attempt on its delivery, not on the count it states', async () => {
 		const failing = failedInvoice({ attempt_count: 2 });
 		const { httpClient } = recording([
 			{ status: 200, json: failing },
@@ -4943,11 +5119,10 @@ describe('readRecurringGift', () => {
 			{ status: 200, json: failing }
 		]);
 		const provider = createStripeProvider(CREDENTIALS, { httpClient });
-		const failed = (id: string) => ({ ...notice('invoice.payment_failed', 'in_1'), id });
+		const failed = (id: string) => ({ ...failedNotice({ attemptCount: 2 }), id });
 
 		const once = await provider.readRecurringGift(failed('evt_retry_1'));
 		const again = await provider.readRecurringGift(failed('evt_retry_1'));
-		// a second failure the invoice reads identically — an operator's manual retry.
 		const manual = await provider.readRecurringGift(failed('evt_retry_2'));
 
 		const keyOf = (read: typeof once) => read.ok && read.value.failedAttempt?.attemptKey;
@@ -4963,7 +5138,7 @@ describe('readRecurringGift', () => {
 		]);
 
 		const result = await createStripeProvider(CREDENTIALS, { httpClient }).readRecurringGift(
-			notice('invoice.payment_failed', 'in_1')
+			failedNotice({ attemptCount: 4, nextRetryAt: null })
 		);
 
 		expect(result.ok && result.value.failedAttempt).toMatchObject({

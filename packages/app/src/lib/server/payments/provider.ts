@@ -831,12 +831,13 @@ export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
  * what every verified delivery carries, whatever it turns out to be about.
  *
  * it holds no metadata, no amount and no status, and that is a rule rather than an omission: a
- * delivery is serialised in the API version the account held when it happened, so a replayed one
- * can carry an older shape for any field. what is read here is the little that has never moved.
+ * delivery's body is in whatever version its processor rendered it in, which need not be the one
+ * a read pins — stripe's rule is `RENDERED_VERSION` in ./stripe.ts — so it can carry another shape
+ * for any field. what is read here is the little that has never moved.
  * everything a handler acts on comes from a read — `readSettlement`, `readRecurringGift` or
  * `readReversal` — which fetches the object fresh against one pinned version.
- * `SettlementEvent.delivered` and `ReversalEvent.delivered` are the exceptions, and the first says
- * why.
+ * `SettlementEvent.delivered`, `ReversalEvent.delivered` and `RecurringEvent.delivered` are the
+ * exceptions, and each says why.
  */
 type VerifiedDelivery = {
 	/**
@@ -880,7 +881,22 @@ export type SettlementEvent = VerifiedDelivery & {
 export type RecurringEvent = VerifiedDelivery & {
 	readonly kind: 'recurring';
 	readonly providerNoticeId: string;
+	/**
+	 * the failed attempt as the verified body itself states it — an exception to
+	 * `VerifiedDelivery`'s rule, and stripe's alone: the invoice a read fetches afterwards already
+	 * holds the next attempt's count and schedule when a delivery arrives late, and only the body
+	 * was stamped by the attempt it reports. ./stripe.ts sets it on every collection failure, and
+	 * its own `readRecurringGift` is its one reader and refuses a failure without it; absent on
+	 * every other delivery and processor.
+	 */
+	readonly delivered?: DeliveredAttempt;
 };
+
+/** what a failed attempt's own delivery states about it: `FailedCollection` less its key and time. */
+export type DeliveredAttempt = Pick<
+	FailedCollection,
+	'attemptCount' | 'nextRetryAt' | 'amountMinor' | 'currency'
+>;
 
 /**
  * a delivery about money leaving a settled transaction, or coming back to it.
@@ -1699,8 +1715,9 @@ export type RecurringGiftNotice = {
  * `recurring_gift.charge_failed` ../donations/collect.ts owes, keyed on `attemptKey`.
  *
  * per attempt rather than per collection: the processor retries on its own schedule, and what a
- * reader acts on is which attempt this was and whether another is coming. nothing here is posted —
- * no money moved — and the amount is what the attempt asked for, never a figure for the books.
+ * reader acts on is which attempt this was and whether another is scheduled. nothing here is
+ * posted — no money moved — and the amount is what the attempt asked for, never a figure for the
+ * books.
  */
 export type FailedCollection = {
 	/**
@@ -1711,9 +1728,18 @@ export type FailedCollection = {
 	 * compares it and reads nothing out of it.
 	 */
 	readonly attemptKey: string;
-	/** which attempt at this collection failed, counted from 1 along the processor's retry schedule. */
+	/**
+	 * where this attempt stands on the processor's retry schedule, counted from 1, as the processor
+	 * stated it when the attempt failed. an attempt made by hand off the schedule can state the
+	 * count the one before it did, and `attemptKey` is what tells the two apart.
+	 */
 	readonly attemptCount: number;
-	/** when the processor tries again, or null where it will not — the last miss. */
+	/**
+	 * when the processor has scheduled its next try at this collection, as of this failed attempt,
+	 * or null where it scheduled none — the last miss. a schedule and not a promise: after a
+	 * decline the processor treats as final, the try runs only if the donor gives a new payment
+	 * method, and a collection closed since runs none.
+	 */
 	readonly nextRetryAt: Date | null;
 	/**
 	 * business time: when the attempt failed — off the processor's read where it records the
@@ -1721,7 +1747,7 @@ export type FailedCollection = {
 	 * failed. which one each adapter uses is at its `failedAttemptOf`.
 	 */
 	readonly failedAt: Date;
-	/** minor units, positive: what the attempt asked for. */
+	/** minor units, positive: what the attempt asked for — what was still owed on the collection. */
 	readonly amountMinor: number;
 	/** ISO-4217, uppercase. */
 	readonly currency: string;
