@@ -16,7 +16,7 @@ import { sendDueWebhooks } from '../webhooks/deliver';
 import { createDestination } from '../webhooks/destinations';
 import { mailPause } from '../webhooks/paused-mail';
 import { sendDueZapierEvents } from '../zapier/deliver';
-import { MINUTE_RUN, PACE, type Plan, type Share, shareOn } from './budget';
+import { MINUTE_RUN, PACE, type Plan, type Share, shareOn, ZAPIER_RUN_COST } from './budget';
 
 // each outbox run at its costliest, counted against its share of the minute cron's invocation
 // (./budget.ts): every D1 query the run makes through a real D1, and every external subrequest
@@ -179,6 +179,9 @@ describe('the Zapier run', () => {
 			queries: counting.queries(),
 			external: receivers.requests()
 		});
+		expect(counting.queries() - PACE.free.zapier * ZAPIER_RUN_COST.queriesPerRow).toBe(
+			ZAPIER_RUN_COST.queries
+		);
 	});
 
 	it('claims the Paid pace on the Paid plan, and stays inside its Paid share doing it', async () => {

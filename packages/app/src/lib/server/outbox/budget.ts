@@ -114,12 +114,12 @@ export type RunCost = {
 };
 
 /**
- * `sendDueZapierEvents` in ../zapier/deliver.ts: the give-up sweep, the claim, the hooks, the gift
- * events, the refund events and their gifts, and the refunds still standing; per row, its outcome's
- * one batch, its post, and the pause sent to a Zap its failure ended.
+ * `sendDueZapierEvents` in ../zapier/deliver.ts: the give-up sweep and the claim in one batch, the
+ * hooks, the gift events, the refund events and their gifts, and the refunds still standing; per
+ * row, its outcome's one batch, its post, and the pause sent to a Zap its failure ended.
  */
 export const ZAPIER_RUN_COST: RunCost = {
-	queries: 7,
+	queries: 6,
 	external: 0,
 	queriesPerRow: 1,
 	externalPerRow: 2,

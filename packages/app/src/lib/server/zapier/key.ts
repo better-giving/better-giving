@@ -6,6 +6,7 @@ import {
 	findKeyByPresented,
 	mintApiKey,
 	newApiKeyRow,
+	parseBearer,
 	ZAPIER_KEY_SHAPE
 } from '../integrations/keys';
 import { endSubscriptionStatements, type PauseOutcome, pauseZaps } from './subscriptions';
@@ -155,11 +156,8 @@ export async function verifyZapierKey(
 	db: Db,
 	authorization: string | null
 ): Promise<string | null> {
-	const presented = authorization?.trim().match(BEARER_VALUE)?.[1];
-	if (presented === undefined || !ZAPIER_KEY_SHAPE.test(presented)) return null;
+	const presented = authorization === null ? null : parseBearer(authorization);
+	if (presented === null || !ZAPIER_KEY_SHAPE.test(presented)) return null;
 	const key = await findKeyByPresented(db, presented, 'zapier');
-	return key !== null && key.kind === 'zapier' && key.revokedAt === null ? key.keyHash : null;
+	return key !== null && key.revokedAt === null ? key.keyHash : null;
 }
-
-/** `i` for the scheme (case-insensitive, RFC 9110 §11.1); a key in the wrong case fails the hash. */
-const BEARER_VALUE = /^bearer +(\S+)$/i;
