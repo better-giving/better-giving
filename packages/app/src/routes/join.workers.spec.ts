@@ -83,13 +83,13 @@ function typed(name: string, password: string): FormData {
 	return body;
 }
 
-function submit(token: string | null, body: FormData) {
+function submit(token: string | null, body: FormData, headers: Record<string, string> = {}) {
 	const search = token === null ? '' : `?token=${encodeURIComponent(token)}`;
 	return action(
 		args(
 			new Request(`${ORIGIN}/join${search}`, {
 				method: 'POST',
-				headers: { origin: ORIGIN },
+				headers: { origin: ORIGIN, ...headers },
 				body
 			})
 		)
@@ -243,3 +243,54 @@ async function accounts(): Promise<number> {
 	const row = await env.DB.prepare('select count(*) as n from auth_account').first<{ n: number }>();
 	return row?.n ?? 0;
 }
+
+/** an empty post carrying `headers`, which the form refuses once it is reached. */
+function blank(headers: Record<string, string>) {
+	return submit(null, new FormData(), headers);
+}
+
+/** what a call answered with, or the `Response` it threw — a refused write is thrown. */
+async function thrownOrAnswered<T>(call: Promise<T>): Promise<T | Response> {
+	try {
+		return await call;
+	} catch (thrown) {
+		if (thrown instanceof Response) return thrown;
+		throw thrown;
+	}
+}
+
+/** the status a call answered or threw with. */
+async function statusOf(call: Promise<Response | { init: ResponseInit | null }>) {
+	const answer = await thrownOrAnswered(call);
+	return answer instanceof Response ? answer.status : answer.init?.status;
+}
+
+describe('POST /join from a page on another origin', () => {
+	// the browser writes `Sec-Fetch-Site` and a page's script cannot, so `same-site` is a page on the
+	// organisation's own domain posting here ($lib/server/auth/gate.ts, `refuseWriteFromAnotherOrigin`).
+	it('refuses a same-site post', async () => {
+		expect(
+			await statusOf(blank({ 'cf-connecting-ip': '203.0.113.60', 'sec-fetch-site': 'same-site' }))
+		).toBe(403);
+	});
+
+	it.each([
+		['from a page on this origin', { 'sec-fetch-site': 'same-origin' }],
+		['with no Sec-Fetch-Site at all', {}]
+	])('reaches the form %s', async (_, site) => {
+		expect(await statusOf(blank({ 'cf-connecting-ip': '203.0.113.61', ...site }))).toBe(400);
+	});
+
+	// a refusal that cost nothing would be a free probe; it is charged on the sign-in bucket first.
+	it('spends the sign-in bucket on every refused post', async () => {
+		const statuses: (number | undefined)[] = [];
+		for (let i = 0; i < 12 && statuses.at(-1) !== 429; i++) {
+			statuses.push(
+				await statusOf(blank({ 'cf-connecting-ip': '203.0.113.62', 'sec-fetch-site': 'same-site' }))
+			);
+		}
+
+		expect(statuses.at(-1)).toBe(429);
+		expect(new Set(statuses.slice(0, -1))).toEqual(new Set([403]));
+	});
+});

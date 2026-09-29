@@ -2,9 +2,11 @@ import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
 import { shareImage } from '$lib/page/image-src';
+import { meterDonorPage } from '$lib/server/api/meter';
+import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { loadPageView, refusedPage } from '$lib/server/pages/view';
-import { database, platform } from '../context';
+import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/donate';
 
@@ -28,8 +30,14 @@ import type { Route } from './+types/donate';
 // answers here before anyone has opened the editor. the gift goes through the card to
 // `/api/v1/forms/:id/donations` against the page's owned settings row, same-origin, and nothing here
 // initiates a payment; there is no action on this route.
+//
+// every view is charged per address before the loader reads anything (`meterDonorPage` in
+// $lib/server/api/meter.ts), and an address over it is drawn the same plain notice under a 429.
+
+export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
 
 export async function loader({ context, request }: Route.LoaderArgs) {
+	if (context.get(overDonorPageLimit)) return donorPageRateLimitRefusal();
 	const db = context.get(database);
 	// the deploy-time values arrive off the context rather than through anything a loader returns:
 	// a return value is serialized into the document, so an env handed onward puts the Stripe secret

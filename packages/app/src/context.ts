@@ -98,3 +98,13 @@ export const consoleSession = createContext<ConsoleSession>();
  * cannot be reached by a caller the check refused.
  */
 export const zapierKeyHash = createContext<string>();
+
+/**
+ * whether this view of a donor page is over its caller's limit, decided by `meterDonorPage` in
+ * $lib/server/api/meter.ts and answered by the page's own loader.
+ *
+ * the answer is the loader's because a refusal here is the donor page's plain notice, drawn like
+ * any other, and a middleware can only answer with a bare `Response`. no default, so a loader that
+ * reads this on a route the meter is not mounted on throws rather than serving unmetered.
+ */
+export const overDonorPageLimit = createContext<boolean>();

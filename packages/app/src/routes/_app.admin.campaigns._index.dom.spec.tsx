@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, redirect, useActionData, useLoaderData } from 'react-router';
+import { createRoutesStub, Outlet, redirect, useActionData, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import Campaigns from './_app.admin.campaigns._index';
@@ -55,7 +55,12 @@ const ENDED: Row = {
 /** what the action does with the next post: refuse it, redirect, or never settle. */
 type Answer =
 	| { readonly refuse: unknown; readonly status: number }
-	| { readonly redirect: string; readonly thenHoldLoads?: boolean }
+	| {
+			readonly redirect: string;
+			readonly thenHoldLoads?: boolean;
+			/** the press landed: the rows it leaves, and the flash the redirect carries. */
+			readonly landed?: { readonly rows: Row[]; readonly flash: NonNullable<Loaded['landed']> };
+	  }
 	| 'hang';
 
 let rows: Row[];
@@ -63,12 +68,15 @@ let posted: Record<string, string>[];
 let answers: Answer[];
 /** set once a redirect is to leave its load unsettled. */
 let holdLoads: boolean;
+/** the flash the next load takes, one-shot as the real one is. */
+let flash: Loaded['landed'];
 
 beforeEach(() => {
 	rows = [LIVE, UNPUBLISHED, ENDED];
 	posted = [];
 	answers = [];
 	holdLoads = false;
+	flash = null;
 });
 
 const never = () => new Promise<never>(() => {});
@@ -79,12 +87,15 @@ async function load({ request }: { request: Request }): Promise<Loaded> {
 	const url = new URL(request.url);
 	const asked = (param: string, state: Row['state']) =>
 		rows.find((row) => row.id === url.searchParams.get(param) && row.state === state) ?? null;
+	const landed = flash;
+	flash = null;
 	return {
 		campaigns: rows.filter((row) => row.state !== 'ended'),
 		ended: rows.filter((row) => row.state === 'ended'),
 		asking: url.searchParams.has('new'),
 		ending: asked('end', 'live'),
-		deleting: asked('delete', 'never_published')
+		deleting: asked('delete', 'never_published'),
+		landed
 	};
 }
 
@@ -95,6 +106,10 @@ async function answer({ request }: { request: Request }) {
 	if (next === 'hang') return never();
 	if ('redirect' in next) {
 		holdLoads = next.thenHoldLoads ?? false;
+		if (next.landed) {
+			rows = next.landed.rows;
+			flash = next.landed.flash;
+		}
 		return redirect(next.redirect);
 	}
 	return Response.json(next.refuse, { status: next.status });
@@ -124,11 +139,23 @@ function mount(tree: ReactNode) {
 async function screen(at = SCREEN): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
 		{
-			path: SCREEN,
-			loader: load,
-			action: answer,
-			HydrateFallback: () => null,
-			Component: List
+			// the protected layout's own name for the screen, which a press whose row is gone lands on.
+			Component: () =>
+				createElement(
+					'main',
+					null,
+					createElement('h1', { className: 'adm-vh', tabIndex: -1 }, 'Campaigns'),
+					createElement(Outlet)
+				),
+			children: [
+				{
+					path: SCREEN,
+					loader: load,
+					action: answer,
+					HydrateFallback: () => null,
+					Component: List
+				}
+			]
 		},
 		{
 			path: `${SCREEN}/:pageId`,
@@ -463,5 +490,88 @@ describe('a press in flight', () => {
 
 		expect(posted).toHaveLength(1);
 		expect(held.getAttribute('aria-disabled')).toBe('true');
+	});
+});
+
+describe('a press that lands', () => {
+	/** the list's status region, which is on the page before anything is said in it. */
+	function status(root: HTMLElement): HTMLElement {
+		const found = root.querySelector<HTMLElement>('[role="status"]');
+		if (found === null) throw new Error('no status region');
+		return found;
+	}
+
+	it('says nothing, in a region already on the list, before any press', async () => {
+		const root = await screen();
+
+		expect(status(root).textContent).toBe('');
+	});
+
+	it('puts focus on a published row’s title, in the list it moved to, and says Published', async () => {
+		const live = { ...ENDED, state: 'live' as const };
+		answers = [
+			{
+				redirect: SCREEN,
+				landed: {
+					rows: [LIVE, UNPUBLISHED, live],
+					flash: { outcome: 'published', pageId: ENDED.id }
+				}
+			}
+		];
+		const root = await screen();
+		const region = status(root);
+
+		await press(control('Publish Giving Tuesday', record(root, 'Giving Tuesday')));
+
+		const title = record(root, 'Giving Tuesday').querySelector('h2 a');
+		expect(root.querySelector('.adm-list')?.contains(title ?? null)).toBe(true);
+		expect(document.activeElement).toBe(title);
+		expect(status(root)).toBe(region);
+		expect(region.textContent).toBe('Published');
+	});
+
+	it('puts focus on the Ended group an ended row moved into, and says Ended', async () => {
+		answers = [
+			{
+				redirect: SCREEN,
+				landed: {
+					rows: [{ ...LIVE, state: 'ended' }, UNPUBLISHED, ENDED],
+					flash: { outcome: 'ended', pageId: LIVE.id }
+				}
+			}
+		];
+		const root = await screen(`${SCREEN}?end=pg_live`);
+		const region = status(root);
+
+		await press(control('End campaign', shown('End Winter coat drive?')));
+
+		const group = root.querySelector<HTMLDetailsElement>('details.adm-disclosure');
+		expect(group?.open).toBe(false);
+		expect(document.activeElement).toBe(group?.querySelector('summary'));
+		expect(region.textContent).toBe('Ended');
+	});
+
+	it('puts focus on the list’s heading when the deleted row is gone, and says Deleted', async () => {
+		answers = [
+			{
+				redirect: SCREEN,
+				landed: { rows: [LIVE, ENDED], flash: { outcome: 'deleted', pageId: null } }
+			}
+		];
+		const root = await screen(`${SCREEN}?delete=pg_draft`);
+		const region = status(root);
+
+		await press(control('Delete', shown('Delete Spring gala?')));
+
+		expect(document.activeElement?.tagName).toBe('H1');
+		expect(document.activeElement?.textContent).toBe('Campaigns');
+		expect(region.textContent).toBe('Deleted');
+	});
+
+	it('moves nobody when the list is opened with no press behind it', async () => {
+		flash = null;
+		await screen();
+
+		expect(document.activeElement).toBe(document.body);
 	});
 });

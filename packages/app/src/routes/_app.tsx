@@ -187,7 +187,13 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 					// a screen that is its destination's own page draws no title, and the tab title and the
 					// marked rail cell name it to the eye; this is the in-document name a screen reader
 					// jumps to. a screen under a section draws its own `h1`, so it gets none here.
-					at?.kind === 'page' ? <h1 className="adm-vh">{at.label}</h1> : null
+					// `tabIndex` -1 so a screen can land focus on it when a press removed the control
+					// that held it (./_app.admin.campaigns._index.tsx).
+					at?.kind === 'page' ? (
+						<h1 className="adm-vh" tabIndex={-1}>
+							{at.label}
+						</h1>
+					) : null
 				}
 				<Outlet />
 			</AppShell>

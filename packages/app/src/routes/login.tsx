@@ -25,6 +25,7 @@ import {
 	signInMember,
 	STAFF_USER_EMAIL
 } from '$lib/server/auth';
+import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, takeFlash } from '$lib/server/flash';
 import { SetupGate } from '$lib/admin/setup-gate';
@@ -263,7 +264,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// charged before the body is read and before anything is hashed.
 	//
 	// what it saves is the SHA-256 compare in `secretEquals` and, on a correct guess, the staff-row
-	// upsert. three actions pay on that bucket — this one, ./forgot.tsx and
+	// upsert. five actions pay on that bucket — this one, ./forgot.tsx, ./join.tsx, ./reset.tsx and
 	// ./_app.admin.members_.password.tsx — and each charges it once, before its own body is read.
 	// they share a key rather than holding one each because a guess at a credential is a guess
 	// whichever form carries it ($lib/server/api/rate-limit.ts); nothing else in a request's path
@@ -288,6 +289,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, signInRateLimitKey(request))) {
 		return invalid(429, unread(LOGIN_FORM, signInRateLimitMessage()));
 	}
+	// after the charge, so a post refused for its origin still spends a guess.
+	refuseWriteFromAnotherOrigin(request);
 
 	const submission = parseForm(await request.formData(), LOGIN_FORM);
 

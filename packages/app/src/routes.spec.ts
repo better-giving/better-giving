@@ -238,9 +238,10 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// alone. its loader writes nothing, and an address no campaign could hold is refused before the
 	// database is read, so a scanner walking top-level paths costs this deployment no query.
 	CAMPAIGN_PAGE,
-	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by an
-	// unguessable id and writes nothing, and a draft's image is as reachable by its id as a live one's
-	// — its own header states why that is the rule.
+	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by id
+	// and writes nothing, and a draft's image is as reachable by its id as a live one's: the id is a
+	// uuidv7 minted by `createImage` ($lib/server/images/queries.ts), whose random bits nobody outside
+	// this deployment can enumerate, so knowing the address is the permission.
 	'routes/image.$id.ts'
 ];
 
@@ -738,11 +739,12 @@ describe('reaching for middleware', () => {
 });
 
 describe('where middleware is mounted', () => {
-	// the surface layouts and nothing else, each covering one surface: the session gate over every
-	// screen behind the login, the meter over every route on the public api, the credential check
-	// over every route on the operator console, and the key check over every route Zapier calls.
-	// any other name here is a route that took a decision one of those makes for a whole surface,
-	// which is the shape they all exist to remove.
+	// the surface layouts, each covering one surface: the session gate over every screen behind the
+	// login, the meter over every route on the public api, the credential check over every route on
+	// the operator console, and the key check over every route Zapier calls. any other name here is
+	// a route that took a decision one of those makes for a whole surface, which is the shape they
+	// all exist to remove — but for the preview and the two donor pages, which sit under no layout
+	// that could carry what they owe, and are held to it by the cases below.
 	//
 	// the console's is not the session gate and must never be confused for one. it reads a bearer
 	// header against a value only an account holder could have written
@@ -755,7 +757,23 @@ describe('where middleware is mounted', () => {
 			.map((r) => r.file)
 			.sort();
 		expect(mounted).toEqual(
-			[API_LAYOUT, CONSOLE_LAYOUT, PROTECTED_LAYOUT, ZAPIER_LAYOUT, PREVIEW_PAGE].sort()
+			[
+				API_LAYOUT,
+				CONSOLE_LAYOUT,
+				PROTECTED_LAYOUT,
+				ZAPIER_LAYOUT,
+				PREVIEW_PAGE,
+				DONOR_PAGE,
+				CAMPAIGN_PAGE
+			].sort()
+		);
+	});
+
+	// a donor page reads what `/api/v1` bounds and more, so it is metered as that surface is, on a
+	// bucket of its own ($lib/server/api/meter.ts, `meterDonorPage`). the meter alone, and on both.
+	it.each([DONOR_PAGE, CAMPAIGN_PAGE])('is the donor page meter alone on %s', (file) => {
+		expect(readFromDisk(file) ?? '').toMatch(
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[meterDonorPage\];/
 		);
 	});
 

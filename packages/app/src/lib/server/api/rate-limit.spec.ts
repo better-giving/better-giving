@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	apiRateLimitKey,
+	donorPageRateLimitKey,
+	imageRateLimitKey,
 	isRateLimited,
 	quoteRateLimitKey,
 	quoteRateLimitRefusal,
@@ -307,7 +309,9 @@ describe('what the tighter buckets count against', () => {
 
 	const TIGHT = [
 		['a sign-in attempt', signInRateLimitKey],
-		['a quote submission', quoteRateLimitKey]
+		['a quote submission', quoteRateLimitKey],
+		['a photo view', imageRateLimitKey],
+		['a donor page view', donorPageRateLimitKey]
 	] as const;
 
 	it.each(TIGHT)('keys %s on the block one payer holds, not on one address', (_what, key) => {
@@ -346,6 +350,23 @@ describe('what the tighter buckets count against', () => {
 		expect(
 			new Set([apiRateLimitKey(asked), signInRateLimitKey(asked), quoteRateLimitKey(asked)]).size
 		).toBe(3);
+	});
+
+	/**
+	 * the surface binding counts four things, and a prefix each is what keeps one from spending
+	 * another's allowance: a donor page's photos cannot refuse the donation box its config, nor a
+	 * keyless Zapier loop a donor's view of the page.
+	 */
+	it('keys every surface the surface binding counts apart', () => {
+		const asked = from('203.0.113.7');
+		expect(
+			new Set([
+				apiRateLimitKey(asked),
+				zapierRateLimitKey(asked),
+				imageRateLimitKey(asked),
+				donorPageRateLimitKey(asked)
+			]).size
+		).toBe(4);
 	});
 
 	/**

@@ -1,3 +1,4 @@
+import { data } from 'react-router';
 import { ZAPIER_BASE_PATH } from '../zapier/surface';
 import { API_BASE_PATH } from './surface';
 
@@ -20,9 +21,10 @@ import { API_BASE_PATH } from './surface';
 //
 // tighter buckets are charged by the code that answers them and are also minted here: the
 // quote submission (`src/routes/api.v1.forms.$id.donations.ts`) and the sign-in credential, which
-// is charged at each of the three forms that spend a guess at it — the login's own form action,
-// the reset request at `src/routes/forgot.tsx`, and the password change at
-// `src/routes/_app.admin.members_.password.tsx`. each of the three calls the auth layer directly,
+// is charged at each of the five forms that spend a guess at it — the login's own form action,
+// the reset request at `src/routes/forgot.tsx`, the invitation and reset links at
+// `src/routes/join.tsx` and `src/routes/reset.tsx`, and the password change at
+// `src/routes/_app.admin.members_.password.tsx`. each of the five calls the auth layer directly,
 // so nothing else in a request's path can charge it. they are in this file rather than
 // beside those call sites because of `payer` below — which block of addresses counts as one caller
 // is the whole security property of a limit, and a second copy of it is a second place somebody
@@ -30,7 +32,8 @@ import { API_BASE_PATH } from './surface';
 // this surface and reaches across for exactly that: the key is the shared thing, not the surface.
 //
 // `/zapier` is a second surface charged through the same binding under its own key
-// (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware.
+// (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware, and so are a photo view at
+// `/image/:id` (`imageRateLimitKey`) and a view of a donor page (`donorPageRateLimitKey`).
 //
 // the buckets are not answered alike when the binding is missing, and not answered alike for a
 // caller the edge did not attribute. both differences are written down once, at the foot of this
@@ -120,12 +123,12 @@ export function quoteRateLimitKey(request: Request): string | null {
 /**
  * what one staff sign-in attempt counts against, and `null` for a caller with no bucket at all.
  *
- * named after the credential rather than after a path, and that is what makes three sites one
+ * named after the credential rather than after a path, and that is what makes five sites one
  * bucket. this bucket bounds guessing at a sign-in credential, so a key that moved with the path
  * would hand a guesser a fresh budget for every way in that is ever added — a wrong password at
- * `/login`, a reset asked for at `/forgot` and a wrong current password at
- * `/admin/members/password` are one guess at one deployment's credentials, whichever form carried
- * it, and they count together. `/forgot` is on the list for a second reason of its own: a press
+ * `/login`, a reset asked for at `/forgot`, a link tried at `/join` or `/reset` and a wrong current
+ * password at `/admin/members/password` are one guess at one deployment's credentials, whichever
+ * form carried it, and they count together. `/forgot` is on the list for a second reason of its own: a press
  * there mails whoever was named, so the bucket is also what bounds this deployment being used to
  * post somebody else's inbox.
  *
@@ -153,6 +156,32 @@ export function zapierRateLimitKey(request: Request): string {
 	return `${ZAPIER_BASE_PATH} ${caller(request)}`;
 }
 
+/**
+ * what one view of a photo at `/image/:id` counts against, and `null` for a caller with no bucket
+ * at all — charged against the surface binding in `src/routes/image.$id.ts`'s loader.
+ *
+ * a prefix of its own, so a page's photos never spend the donation box's count on `/api/v1` and a
+ * burst on `/api/v1` never blanks a page's photos. a caller the edge did not attribute is not
+ * counted, as on the tighter keys above and for their reason: under the header-stripping transform
+ * `attributedCaller` below describes, that is every donor at once, and one bucket for all of them
+ * is every photo on every page refused together.
+ */
+export function imageRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request);
+	return payer === null ? null : `image ${payer}`;
+}
+
+/**
+ * what one view of a donor page — `/donate` or a campaign's address — counts against, and `null`
+ * for a caller with no bucket at all: charged against the surface binding by
+ * `meterDonorPage` in ./meter.ts, under a prefix of its own for the reason `imageRateLimitKey`
+ * above has one, and unattributed callers uncounted for the same reason.
+ */
+export function donorPageRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request);
+	return payer === null ? null : `donor-page ${payer}`;
+}
+
 /** the caller half of every key here: one payer, however they spelled their address. */
 function caller(request: Request): string {
 	const address = request.headers.get('cf-connecting-ip');
@@ -162,11 +191,12 @@ function caller(request: Request): string {
 /**
  * the same caller, and `null` where this deployment has no bucket to put them in.
  *
- * the two tighter keys are built from this and the surface key is not, and the split is the
- * "Remove visitor IP headers" managed transform described on `apiRateLimitKey` above. with that
+ * the two tighter keys and the two view keys are built from this and the surface key is not, and
+ * the split is the "Remove visitor IP headers" managed transform described on `apiRateLimitKey`
+ * above. with that
  * transform on, every caller collapses into one bucket — which turns a tight per-address limit
  * into a deployment-wide tap: every donor there is sharing one address's worth of gifts a minute,
- * and one guesser able to hold the login closed on the operator. so these two buckets bound an
+ * and one guesser able to hold the login closed on the operator. so these buckets bound an
  * address or they bound nobody, and an operator who switches that transform on gets the behaviour
  * these limits were added to, rather than a dark donation form. the surface bucket keeps counting
  * them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where that
@@ -175,8 +205,8 @@ function caller(request: Request): string {
  * the decision is expressed in the return type rather than left to the call sites, for the reason
  * the keys themselves live in this file: which block counts as one caller is the whole security
  * property, and a second copy of it is a second place to get it wrong. `isRateLimited` below takes
- * `string | null` and answers the `null`, so neither call site can spend a bucket that is not
- * there and neither has to know that it cannot.
+ * `string | null` and answers the `null`, so no call site can spend a bucket that is not there
+ * and none has to know that it cannot.
  */
 function attributedCaller(request: Request): string | null {
 	const key = caller(request);
@@ -290,6 +320,28 @@ export function rateLimitRefusal(
 			}
 		}
 	);
+}
+
+/**
+ * the answer to a caller whose address has viewed too many photos: the surface refusal, with the
+ * limit it hit named in the fix.
+ */
+export function imageRateLimitRefusal(): Response {
+	return rateLimitRefusal(
+		`Photos are limited per address per minute. Wait ${PERIOD_SECONDS} seconds and load it again. A page asks for each of its photos once per view, so an address hitting this is loading them in a loop.`
+	);
+}
+
+/**
+ * a donor page's answer to a caller whose address has viewed too many: the page's own plain
+ * notice, the one it draws for any refusal (`refusedPage` in $lib/server/pages/view.ts), under a
+ * 429 that says when to come back. `no-store` for the reason the surface refusal carries it.
+ */
+export function donorPageRateLimitRefusal() {
+	return data({ kind: 'refused' } as const, {
+		status: 429,
+		headers: { 'retry-after': String(PERIOD_SECONDS), 'cache-control': 'no-store' }
+	});
 }
 
 /**
