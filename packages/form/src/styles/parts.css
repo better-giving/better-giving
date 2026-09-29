@@ -2317,17 +2317,28 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * nothing and paints the outline in the user's own colour, so removing the outline outright is
  * what would leave that user with no focus indicator at all. the two blocks below that have no
  * transparent outline are the two whose ring *is* an outline, and each says so where it stands.
+ *
+ * `[tabindex="-1"]` draws no ring, in any mode. a node carrying it is out of the tab order and takes
+ * the caret only from script, to be announced — a screen's heading, the payment box a refused press
+ * returns to — and chromium matches `:focus-visible` on a script's focus after any key and before
+ * any input at all, so a ring there is drawn around a heading on page load. the exclusion is
+ * inside `:where()` so this rule keeps the one-class weight every block below overrides it at, and
+ * the rule after it takes the engine's own outline back, which the exclusion alone would uncover.
  */
-:where(button, input, textarea, select, [tabindex]):focus-visible,
+:where(button, input, textarea, select, [tabindex]):where(:not([tabindex='-1'])):focus-visible,
 [part~='amount-option']:has(:focus-visible) {
 	outline: var(--_focus-width) solid transparent;
 	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
 }
 
+:where([tabindex='-1']):focus-visible {
+	outline: none;
+}
+
 /*
- * a list opened from the keys holds the focus itself (`tabindex="-1"`, zag's initial focus), and the
- * rule above would trade its lift for a ring. the open box already rings, and the highlighted row
- * says where the keys are, so the list keeps its lift.
+ * a list opened from the keys holds the focus itself (zag's initial focus, on the `tabindex="0"` it
+ * gives the list), and the rule above would trade its lift for a ring. the open box already rings,
+ * and the highlighted row says where the keys are, so the list keeps its lift.
  */
 [part~='select-list']:focus-visible {
 	box-shadow: var(--_lift);
