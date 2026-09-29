@@ -128,9 +128,9 @@ export function quoteRateLimitKey(request: Request): string | null {
  * would hand a guesser a fresh budget for every way in that is ever added — a wrong password at
  * `/login`, a reset asked for at `/forgot`, a link tried at `/join` or `/reset` and a wrong current
  * password at `/admin/members/password` are one guess at one deployment's credentials, whichever
- * form carried it, and they count together. `/forgot` is on the list for a second reason of its own: a press
- * there mails whoever was named, so the bucket is also what bounds this deployment being used to
- * post somebody else's inbox.
+ * form carried it, and they count together. `/forgot` is on the list for a second reason of its
+ * own: a press there mails whoever was named, so the bucket is also what bounds this deployment
+ * being used to post somebody else's inbox.
  *
  * the caller and nothing else. there is one account and one secret, so there is no identity in the
  * key to enumerate and nothing an attacker can write that moves the bucket — the submitted
@@ -194,14 +194,13 @@ function caller(request: Request): string {
  *
  * the two tighter keys and the two view keys are built from this and the surface key is not, and
  * the split is the "Remove visitor IP headers" managed transform described on `apiRateLimitKey`
- * above. with that
- * transform on, every caller collapses into one bucket — which turns a tight per-address limit
- * into a deployment-wide tap: every donor there is sharing one address's worth of gifts a minute,
- * and one guesser able to hold the login closed on the operator. so these buckets bound an
- * address or they bound nobody, and an operator who switches that transform on gets the behaviour
- * these limits were added to, rather than a dark donation form. the surface bucket keeps counting
- * them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where that
- * side is argued.
+ * above. with that transform on, every caller collapses into one bucket — which turns a tight
+ * per-address limit into a deployment-wide tap: every donor there is sharing one address's worth of
+ * gifts a minute, and one guesser able to hold the login closed on the operator. so these buckets
+ * bound an address or they bound nobody, and an operator who switches that transform on gets the
+ * behaviour these limits were added to, rather than a dark donation form. the surface bucket keeps
+ * counting them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where
+ * that side is argued.
  *
  * the decision is expressed in the return type rather than left to the call sites, for the reason
  * the keys themselves live in this file: which block counts as one caller is the whole security
@@ -329,7 +328,7 @@ export function rateLimitRefusal(
  */
 export function imageRateLimitRefusal(): Response {
 	return rateLimitRefusal(
-		`Photos are limited per address per minute. Wait ${PERIOD_SECONDS} seconds and load it again. A page asks for each of its photos once per view, so an address hitting this is loading them in a loop.`
+		`Photos are limited per address per minute. Wait ${PERIOD_SECONDS} seconds and load the photo again. A page asks for each of its photos once per view, so an address hitting this is loading them in a loop.`
 	);
 }
 

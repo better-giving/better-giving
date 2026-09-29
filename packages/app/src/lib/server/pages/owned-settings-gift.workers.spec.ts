@@ -11,7 +11,7 @@ import { expectRecordedAsAForm } from './owned-settings-gift.testing';
 // a gift against a page's owned donation-settings row records exactly as a gift through a form.
 //
 // the page owns a `form` row and nothing in `donation`, `line_item` or `payment` knows a page
-// exists, so the claim is that the existing quote-time write takes the owned row's id unchanged.
+// exists, so the claim is that the quote-time write takes the owned row's id unchanged.
 // ./owned-settings-gift.testing.ts holds the comparison.
 
 let db: Db;

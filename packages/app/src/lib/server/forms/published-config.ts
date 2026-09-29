@@ -57,8 +57,8 @@ import { readForm, readOwningPage, type OwningPage } from './queries';
  * a member per *screen*, not per check. each of the six carries exactly one `fix`, and two checks
  * whose fix is the same sentence are the same member — so the branches below outnumber the
  * vocabulary on purpose, with the message saying which value and the code saying where to go.
- * `form_not_published` alone has a second fix: a campaign's row is unpublished all the same, and
- * its fix names Campaigns where a form's names Forms.
+ * `form_not_published` alone has more than one: a campaign's row is unpublished all the same, and
+ * its fixes name Campaigns where a form's names Forms.
  */
 export const PUBLISHED_CONFIG_REFUSALS = [
 	'form_not_found',
@@ -325,12 +325,13 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	}
 
 	// only a live form serves. the two other statuses are refused separately because the way out
-	// of each is a different screen: a draft is published from the form's own edit page — or, where
-	// a campaign owns the row, from Campaigns, because the Forms screen 404s a page's row and
-	// `endCampaign` in ../pages/queries.ts is what put an ended one back to draft, or `asEnded`
-	// what reads it so — and a retired form cannot be published at all — the three `updateForm*`
-	// group writes and `archiveForm` in ./queries.ts all refuse a row with `archived_at` set and
-	// nothing here clears it, so the way forward is a new form and a new snippet.
+	// of each is a different screen. a draft is published from the form's own edit page, or, where
+	// a campaign owns the row, from Campaigns: the Forms screen 404s a page's row, and an ended
+	// campaign's row reads as a draft because `endCampaign` in ../pages/queries.ts put it back to
+	// one or `asEnded` reads it so. a retired form cannot be published at all: the three
+	// `updateForm*` group writes and `archiveForm` in ./queries.ts all refuse a row with
+	// `archived_at` set and nothing here clears it, so the way forward is a new form and a new
+	// snippet.
 	//
 	// `status` decides both, though `archived_at` is the column that records the retirement:
 	// `archiveForm` writes the pair in one statement precisely so they cannot come apart, and

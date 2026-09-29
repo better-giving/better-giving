@@ -342,10 +342,10 @@ export function parseForm<S extends z.ZodObject>(
 /**
  * a rejection for a submission there is nothing to reply from.
  *
- * two callers, and one of them is the reason this exists rather than a convenience: the sign-in
- * limiter is charged ahead of `request.formData()` so that a refusal spends neither the parse nor
- * the hash it exists to save (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`), and there is no
- * submission at that point.
+ * two kinds of caller, and one of them is the reason this exists rather than a convenience: the
+ * sign-in limiter is charged ahead of `request.formData()` so that a refusal spends neither the
+ * parse nor the hash it exists to save (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`), and there
+ * is no submission at that point.
  * the second is a form that states no box at all — the archive on
  * `src/routes/_app.admin.forms.$id.tsx`, whose body carries no value and whose refusal is a banner
  * with nowhere else to sit. what it carries is what both of them can carry: no values, no field
