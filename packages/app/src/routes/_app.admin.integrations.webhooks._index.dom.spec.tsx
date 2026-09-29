@@ -27,8 +27,7 @@ function screen(loaderData: object): HTMLElement {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/integrations/webhooks',
-			Component: () =>
-				createElement(Webhooks as never, { loaderData, params: {}, matches: [] })
+			Component: () => createElement(Webhooks as never, { loaderData, params: {}, matches: [] })
 		}
 	]);
 	return mount(createElement(Stub, { initialEntries: ['/admin/integrations/webhooks'] }));
