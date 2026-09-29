@@ -7,9 +7,11 @@ import { endOfDay } from '../../page/end-date';
 import { createDb, type Db } from '../db/client';
 import { chatTurn, form, page, program } from '../db/schema';
 import { readForm } from '../forms/queries';
+import { ensureDonationPage } from './donation-page';
 import { draftTurn } from './draft';
 import { answering, endAsItStands, insertPage, SETTINGS } from './page-row.testing';
 import { discardChanges, publishPage, undoPublish } from './publish';
+import { updateCampaignName } from './queries';
 
 // Publish, Undo and Discard changes against the real D1 the pool binds: each is one `batch()` over
 // the page and the settings row it owns, and what they leave is read back from both.
@@ -147,12 +149,54 @@ describe('the page a Publish replaces', () => {
 			now: NOW
 		});
 		const published = await readForm(db, (await stored(pageId)).formId);
-		await undoPublish(db, { type: 'donation_page' }, (await stored(pageId)).updatedAt);
+		await undoPublish(db, { type: 'donation_page' }, (await stored(pageId)).updatedAt, {
+			now: NOW
+		});
 		const undone = await readForm(db, (await stored(pageId)).formId);
 
 		expect(published).toMatchObject({ minMinor: CHANGED_SETTINGS.minMinor });
 		expect(untouched(published)).toEqual(untouched(kept));
 		expect(untouched(undone)).toEqual(untouched(kept));
+	});
+});
+
+describe('a campaign’s name', () => {
+	/** the name of the settings row `pageId` owns. */
+	async function ownedName(pageId: string) {
+		const owned = await readForm(db, (await stored(pageId)).formId);
+		return owned?.name;
+	}
+
+	it('goes from the draft into the row and its settings row at Publish, where they differ', async () => {
+		const pageId = await insertPage(db, 'campaign', CAMPAIGN, CAMPAIGN);
+		await draftAs(pageId, { ...CAMPAIGN, name: 'Coats for Kids' });
+
+		await publishPage(db, { type: 'campaign', id: pageId }, (await stored(pageId)).updatedAt, {
+			now: NOW
+		});
+
+		const after = await stored(pageId);
+		expect([after.name, await ownedName(pageId)]).toEqual(['Coats for Kids', 'Coats for Kids']);
+	});
+
+	it('goes back to the live page’s with Discard changes', async () => {
+		const live = { ...CAMPAIGN, name: 'Winter coat drive' };
+		const pageId = await insertPage(db, 'campaign', live, live);
+		const renamed = await updateCampaignName(
+			db,
+			pageId,
+			(await stored(pageId)).updatedAt,
+			'Coats for Kids'
+		);
+		expect(renamed).toBe('written');
+
+		await discardChanges(db, { type: 'campaign', id: pageId }, (await stored(pageId)).updatedAt);
+
+		const after = await stored(pageId);
+		expect([after.name, await ownedName(pageId)]).toEqual([
+			'Winter coat drive',
+			'Winter coat drive'
+		]);
 	});
 });
 
@@ -456,13 +500,37 @@ describe('Undo', () => {
 		});
 		const drawn = await stored(pageId);
 
-		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt);
+		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt, { now: NOW });
 
 		expect(outcome).toEqual({ kind: 'undone' });
 		const after = await stored(pageId);
 		expect(JSON.parse(after.published ?? 'null')).toEqual(LIVE_DONATION_PAGE);
 		expect(JSON.parse(after.lastPublished ?? 'null')).toEqual(republished);
 		expect(await ownedSettings(pageId)).toEqual(SETTINGS);
+	});
+
+	it('puts back the Donation page as it was before the operator chose, its program following the active ones', async () => {
+		const made = await ensureDonationPage(db);
+		const opening = await ownedSettings(made.id);
+		await draftAs(made.id, { ...defaultDonationPage(), settings: CHANGED_SETTINGS });
+		await publishPage(db, { type: 'donation_page' }, (await stored(made.id)).updatedAt, {
+			now: NOW
+		});
+		await aProgram('Food bank');
+		await aProgram('Winter coats');
+
+		const outcome = await undoPublish(
+			db,
+			{ type: 'donation_page' },
+			(await stored(made.id)).updatedAt,
+			{
+				now: NOW
+			}
+		);
+
+		expect(outcome).toEqual({ kind: 'undone' });
+		expect(JSON.parse((await stored(made.id)).published ?? 'null')).toEqual(defaultDonationPage());
+		expect(await ownedSettings(made.id)).toEqual({ ...opening, programMode: 'choice' });
 	});
 
 	it('is refused when the page has been written since the editor was drawn, and nothing moves', async () => {
@@ -476,7 +544,7 @@ describe('Undo', () => {
 		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
 		const written = await stored(pageId);
 
-		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt);
+		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt, { now: NOW });
 
 		expect(outcome).toEqual({ kind: 'stale' });
 		expect(await stored(pageId)).toEqual(written);
@@ -499,7 +567,7 @@ describe('Undo', () => {
 			.where(eq(program.id, coats));
 		const drawn = await stored(pageId);
 
-		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt);
+		const outcome = await undoPublish(db, { type: 'donation_page' }, drawn.updatedAt, { now: NOW });
 
 		expect(outcome).toEqual({
 			kind: 'refused',
@@ -507,6 +575,30 @@ describe('Undo', () => {
 		});
 		expect(await stored(pageId)).toEqual(drawn);
 		expect(await ownedSettings(pageId)).toEqual(SETTINGS);
+	});
+
+	it('is refused where the page it would put back has ended since, naming the date', async () => {
+		const endingFirst = {
+			...CAMPAIGN,
+			endsAt: endOf('2026-10-01'),
+			endsZone: 'America/New_York'
+		};
+		const pageId = await insertPage(db, 'campaign', endingFirst, endingFirst);
+		await draftAs(pageId, { ...endingFirst, endsAt: endOf('2026-12-31') });
+		await publishPage(db, { type: 'campaign', id: pageId }, (await stored(pageId)).updatedAt, {
+			now: NOW
+		});
+		const drawn = await stored(pageId);
+
+		const outcome = await undoPublish(db, { type: 'campaign', id: pageId }, drawn.updatedAt, {
+			now: Date.parse('2026-10-02T12:00:00Z')
+		});
+
+		expect(outcome).toEqual({
+			kind: 'refused',
+			text: 'Nothing was undone: the page before ended on Oct 1, 2026, which has passed.'
+		});
+		expect(await stored(pageId)).toEqual(drawn);
 	});
 
 	it('is refused where nothing was replaced, and nothing moves', async () => {
@@ -517,7 +609,9 @@ describe('Undo', () => {
 		});
 		const drawn = await stored(pageId);
 
-		const outcome = await undoPublish(db, { type: 'campaign', id: pageId }, drawn.updatedAt);
+		const outcome = await undoPublish(db, { type: 'campaign', id: pageId }, drawn.updatedAt, {
+			now: NOW
+		});
 
 		expect(outcome).toEqual({ kind: 'nothing' });
 		expect(await stored(pageId)).toEqual(drawn);

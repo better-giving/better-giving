@@ -5,9 +5,11 @@ import { freeSlug, slugFromTitle } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { chatTurn, form, type Page, page } from '../db/schema';
+import { MAX_FORM_NAME } from '../../forms/input-schema';
 import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
 import { readForm, type StoredForm } from '../forms/queries';
 import { readActivePrograms } from '../programs/queries';
+import { readableDraft } from './document';
 
 // one page read by its id, the one module that deletes a `page`, gated by ./sole-deleter.spec.ts,
 // where a live campaign ends, the editor's two writes that are not page content — a campaign's
@@ -248,10 +250,8 @@ export type NameWrite = 'written' | 'stale' | 'gone';
 export const SLUG_ATTEMPTS = 5;
 
 /**
- * renames a campaign — the row's `name`, which the dashboard shows, and its draft's, which donors
- * see from the next publish — while the page is still the version it was drawn at. until the first
- * publish the address follows the name, to the first `-2`, `-3` free, as a new campaign's does
- * (`freeSlug` in ../../page/slug.ts); once published it stays where it is.
+ * renames a campaign while the page is still the version it was drawn at: the draft's name, which
+ * donors see from the next publish, and everywhere `renaming` names.
  */
 export async function updateCampaignName(
 	db: Db,
@@ -261,26 +261,23 @@ export async function updateCampaignName(
 ): Promise<NameWrite> {
 	for (let attempt = 1; ; attempt += 1) {
 		const [row] = await db
-			.select({ state: page.state, slug: page.slug, draft: page.draft })
+			.select()
 			.from(page)
 			.where(and(eq(page.id, pageId), eq(page.type, 'campaign')));
 		if (!row) return 'gone';
 
 		const draft = JSON.stringify({ ...JSON.parse(row.draft), name });
-		let slug = row.slug;
-		if (row.state === 'never_published') {
-			const held = await db
-				.select({ slug: page.slug })
-				.from(page)
-				.where(and(isNotNull(page.slug), ne(page.id, pageId)));
-			slug = freeSlug(name, new Set(held.map((each) => each.slug)));
-		}
+		const drawn = and(eq(page.id, pageId), eq(page.updatedAt, version), eq(page.draft, row.draft));
+		const rename = await renaming(db, row, name, drawn);
 		try {
-			const renamed = await db
-				.update(page)
-				.set({ name, draft, slug })
-				.where(and(eq(page.id, pageId), eq(page.updatedAt, version), eq(page.draft, row.draft)))
-				.returning({ id: page.id });
+			const [, renamed] = await db.batch([
+				rename.owned,
+				db
+					.update(page)
+					.set({ ...rename.columns, draft })
+					.where(drawn)
+					.returning({ id: page.id })
+			]);
 			return renamed.length === 1 ? 'written' : 'stale';
 		} catch (error) {
 			if (attempt === SLUG_ATTEMPTS || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') {
@@ -288,6 +285,71 @@ export async function updateCampaignName(
 			}
 		}
 	}
+}
+
+/**
+ * what makes `name` a campaign's name everywhere but its draft, in the batch that writes the
+ * draft, each under `when` over the page row:
+ * - the row's `name`, which the dashboard shows — the Campaigns list and the editor's bar;
+ * - the owned settings row's `name`, which a gift's staff notice and Zapier's `form_name` carry
+ *   (`ownedName`). it runs first, since the page's update moves what `when` reads;
+ * - until the first publish, the address, where it still follows the name: the first `-2`, `-3`
+ *   free (`freeSlug` in ../../page/slug.ts), as a new campaign's is. one set by hand stays, and so
+ *   does a published campaign's, which donors may hold.
+ *
+ * a free address is read here, and `page_slug_idx` settles a race for it: the caller's batch fails
+ * whole on `SQLITE_CONSTRAINT_UNIQUE`, and it tries again.
+ */
+export async function renaming(
+	db: Db,
+	row: Pick<Page, 'id' | 'formId' | 'state' | 'slug' | 'name'>,
+	name: string,
+	when: SQL | undefined
+) {
+	let slug = row.slug;
+	if (row.state === 'never_published' && followsName(row.slug, row.name)) {
+		const held = await db
+			.select({ slug: page.slug })
+			.from(page)
+			.where(and(isNotNull(page.slug), ne(page.id, row.id)));
+		slug = freeSlug(name, new Set(held.map((each) => each.slug)));
+	}
+	return { columns: { name, slug }, owned: renamingOwned(db, row.formId, name, when) };
+}
+
+/** the name `document` holds where `row` is a campaign named otherwise; null where there is none. */
+export function nameToCarry(
+	row: Pick<Page, 'type' | 'name'>,
+	document: PageDocument
+): string | null {
+	const { name } = document;
+	return row.type === 'campaign' && name !== undefined && name !== row.name ? name : null;
+}
+
+/** a campaign's name as its settings row holds it, as long as a form's name may be. */
+export function ownedName(name: string): string {
+	return name.slice(0, MAX_FORM_NAME);
+}
+
+/** the owned settings row `formId` named `name`, under `when` over the page row. */
+export function renamingOwned(db: Db, formId: string, name: string, when: SQL | undefined) {
+	return db
+		.update(form)
+		.set({ name: ownedName(name) })
+		.where(and(eq(form.id, formId), exists(db.select({ id: page.id }).from(page).where(when))));
+}
+
+/** whether `slug` is an address `freeSlug` gives `name`: its own, or a `-2`, `-3` after it. */
+function followsName(slug: string | null, name: string | null): boolean {
+	if (slug === null || name === null) return false;
+	const suffix = /-(\d+)$/.exec(slug);
+	const given = new Set<string>();
+	for (let n = 1; n <= (suffix === null ? 1 : Number(suffix[1])); n += 1) {
+		const next = freeSlug(name, given);
+		if (next === slug) return true;
+		given.add(next);
+	}
+	return false;
 }
 
 /** a page's draft donation settings, as its draft holds them. */
@@ -298,9 +360,8 @@ export type DraftSettings = NonNullable<PageDocument['settings']>;
  * settings row's, which is what the draft publishes unchanged.
  */
 export async function draftSettingsOf(db: Db, row: Page): Promise<DraftSettings> {
-	const draft = parsePage(row.type, JSON.parse(row.draft));
-	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
-	if (draft.page.settings !== undefined) return draft.page.settings;
+	const { settings } = readableDraft(row);
+	if (settings !== undefined) return settings;
 	return settingsOfRow(await readOwnedRow(db, row));
 }
 

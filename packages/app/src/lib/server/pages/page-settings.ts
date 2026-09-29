@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { defineForm } from '../../forms/definition';
-import { parsePage, SHARE_MESSAGE_MAX } from '../../page/catalog';
+import { SHARE_MESSAGE_MAX } from '../../page/catalog';
 import { dayWords, endOfDay, isTimeZone } from '../../page/end-date';
 import {
 	PAGE_END_DATE_FORM_ID,
@@ -16,6 +16,7 @@ import type { Db } from '../db/client';
 import type { Page } from '../db/schema';
 import { lookInput } from '../org/presentation';
 import { readOrgLook, readOrgSharing } from '../org/queries';
+import { readableDraft } from './document';
 import { type DraftKeys, type SettingsTarget, updateDraftKeys } from './queries';
 
 // the Settings sheet's look, goal, end date and share message, for both editors: each press parsed
@@ -37,13 +38,12 @@ import { type DraftKeys, type SettingsTarget, updateDraftKeys } from './queries'
 
 /** the look and share message sheets' seed: the draft's own, beside the Organisation's. */
 export async function readPageSettings(db: Db, row: Page): Promise<PageSettingsSeed> {
-	const draft = parsePage(row.type, JSON.parse(row.draft));
-	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
+	const draft = readableDraft(row);
 	const [{ look: organisationLook }, { sharing }] = await Promise.all([
 		readOrgLook(db),
 		readOrgSharing(db)
 	]);
-	const own = draft.page.look;
+	const own = draft.look;
 	return {
 		look: own ? { source: 'custom', ...own } : { source: 'organisation' },
 		organisationLook,

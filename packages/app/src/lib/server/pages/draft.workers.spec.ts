@@ -6,8 +6,9 @@ import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
 import { createImage } from '../images/queries';
 import { jpegHeader } from '../images/headers.testing';
-import { chatTurn, image, page } from '../db/schema';
+import { chatTurn, form, image, page } from '../db/schema';
 import { draftIllustrations, editorDraft } from './blocks';
+import { readCampaigns } from './campaign';
 import { draftTurn, readChat } from './draft';
 import { answering, insertPage, SETTINGS } from './page-row.testing';
 
@@ -181,9 +182,30 @@ describe('a campaign’s name', () => {
 		);
 
 		const after = await stored(pageId);
-		expect([after.draft.name, after.name]).toEqual(['Coats for Kids', 'Winter coat drive']);
+		expect([after.draft.name, after.name]).toEqual(['Coats for Kids', 'Coats for Kids']);
 		const [, answer] = await chat(pageId);
 		expect(answer?.text).toBe('Done.\nRenamed to “Coats for Kids”.');
+	});
+
+	it('is the one the Campaigns list and a gift’s notices read, and the address follows it until published', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await db.update(page).set({ slug: 'winter-coat-drive' }).where(eq(page.id, pageId));
+
+		await turn(
+			pageId,
+			'call it Coats for Kids',
+			answering({ say: 'Done.', set: { name: 'Coats for Kids' } })
+		);
+
+		const after = await stored(pageId);
+		expect(after.slug).toBe('coats-for-kids');
+		const [owned] = await db
+			.select({ name: form.name })
+			.from(form)
+			.where(eq(form.id, after.formId));
+		expect(owned?.name).toBe('Coats for Kids');
+		const listed = await readCampaigns(db, NOW);
+		expect(listed.find((each) => each.id === pageId)?.name).toBe('Coats for Kids');
 	});
 });
 

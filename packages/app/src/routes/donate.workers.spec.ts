@@ -172,6 +172,16 @@ describe('GET /donate on a fresh deployment', () => {
 		expect(block(html, 'program-chooser')).toContain('Winter shelter');
 		expect(await donationPageRows()).toBe(1);
 	});
+
+	it('draws the chooser once two programs are active, on a page made before any was', async () => {
+		expect(block(markup((await visit()).data), 'program-chooser')).toBe('');
+
+		await activePrograms('Food bank', 'Winter shelter');
+
+		const chooser = block(markup((await visit()).data), 'program-chooser');
+		expect(chooser).toContain('Food bank');
+		expect(chooser).toContain('Winter shelter');
+	});
 });
 
 describe('the page /donate draws', () => {

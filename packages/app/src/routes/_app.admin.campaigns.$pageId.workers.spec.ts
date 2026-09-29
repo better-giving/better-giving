@@ -5,7 +5,8 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page, program } from '$lib/server/db/schema';
 import { createCampaign, readServedCampaign } from '$lib/server/pages/campaign';
-import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
+import { draftTurn } from '$lib/server/pages/draft';
+import { answering, insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
@@ -76,6 +77,21 @@ async function stored(pageId: string) {
 	if (!row) throw new Error(`no page ${pageId}`);
 	return row;
 }
+
+/** the name of the settings row `pageId` owns. */
+async function ownedName(pageId: string): Promise<string | undefined> {
+	const [owned] = await db
+		.select({ name: form.name })
+		.from(form)
+		.where(eq(form.id, (await stored(pageId)).formId));
+	return owned?.name;
+}
+
+/** the editor as a load draws it. */
+const open = (pageId: string) =>
+	request(new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }), {
+		env
+	});
 
 /** the version the editor was drawn with: the row's `updated_at` as it stands. */
 async function version(pageId: string): Promise<string> {
@@ -296,6 +312,53 @@ describe('the name', () => {
 		expect(row.published).toBe(live);
 	});
 
+	it('renames the settings row the campaign owns, which a gift’s notices name it by', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+
+		await rename(pageId, 'Warm hands winter');
+
+		expect(await ownedName(pageId)).toBe('Warm hands winter');
+	});
+
+	it('leaves an address set by hand where it is, before the first Publish too', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		await address(pageId, 'coats');
+
+		await rename(pageId, 'Winter coat drive 2026');
+
+		expect((await stored(pageId)).slug).toBe('coats');
+	});
+
+	it('keeps an address that took a `-2` following the name', async () => {
+		await campaign('Giving Tuesday', 'giving-tuesday', 'ended');
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
+		await rename(pageId, 'Giving Tuesday');
+
+		await rename(pageId, 'Warm hands winter');
+
+		expect((await stored(pageId)).slug).toBe('warm-hands-winter');
+	});
+
+	it('writes the name a chat turn gave back when the old one is typed again', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		await draftTurn(
+			db,
+			{ ...env, AI: answering({ say: 'Done.', set: { name: 'Coats for Kids' } }) },
+			{ pageId, message: 'call it Coats for Kids', imageIds: [], timeZone: 'UTC', now: Date.now() }
+		);
+		expect(await (await open(pageId)).json()).toMatchObject({ name: 'Coats for Kids' });
+
+		const response = await rename(pageId, 'Winter coat drive');
+
+		expect(response.status).toBe(200);
+		const row = await stored(pageId);
+		expect([row.name, JSON.parse(row.draft).name, await ownedName(pageId)]).toEqual([
+			'Winter coat drive',
+			'Winter coat drive',
+			'Winter coat drive'
+		]);
+	});
+
 	it('refuses a rename drawn from an older version, keeping what was typed', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'never_published');
 		const drawn = await version(pageId);
@@ -449,13 +512,6 @@ describe('the donation settings', () => {
 });
 
 describe('the editor', () => {
-	async function open(pageId: string) {
-		return request(
-			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }),
-			{ env }
-		);
-	}
-
 	it('draws a live campaign renamed since its publish as changed, framing its draft', async () => {
 		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
 		await post(pageId, 'campaign-name', { name: 'Warm hands winter' });
@@ -558,6 +614,57 @@ describe('the editor', () => {
 
 		expect((await open(donationPage)).status).toBe(404);
 		expect((await open('pg_nothing')).status).toBe(404);
+	});
+});
+
+describe('a draft the page rule refuses', () => {
+	/** `pageId`'s `column` holding its document with the donation box taken out, as a narrowed rule reads it. */
+	async function unreadable(pageId: string, column: 'draft' | 'published') {
+		const document = JSON.parse((await stored(pageId))[column] ?? '{}');
+		const blocks = document.blocks.filter(
+			(block: { type: string }) => block.type !== 'donation-box'
+		);
+		await db
+			.update(page)
+			.set({ [column]: JSON.stringify({ ...document, blocks }) })
+			.where(eq(page.id, pageId));
+	}
+
+	it('opens the editor saying so, offering Discard changes while the live page reads', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		await unreadable(pageId, 'draft');
+
+		const response = await open(pageId);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			unreadable: true,
+			discardable: true,
+			state: 'changed',
+			name: 'Winter coat drive',
+			address: '/winter-coat-drive'
+		});
+	});
+
+	it('is repaired by Discard changes, and the editor draws the live page again', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		await unreadable(pageId, 'draft');
+
+		const discarded = await post(pageId, 'page-discard', {});
+
+		expect(discarded.status).toBe(200);
+		expect(await (await open(pageId)).json()).toMatchObject({ unreadable: false, state: 'live' });
+	});
+
+	it('offers no Discard changes where the live page fails the rule too', async () => {
+		const pageId = await campaign('Winter coat drive', 'winter-coat-drive', 'live');
+		await unreadable(pageId, 'published');
+		await unreadable(pageId, 'draft');
+
+		expect(await (await open(pageId)).json()).toMatchObject({
+			unreadable: true,
+			discardable: false
+		});
 	});
 });
 

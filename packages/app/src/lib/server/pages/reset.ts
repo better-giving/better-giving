@@ -2,12 +2,13 @@ import { isDeepStrictEqual } from 'node:util';
 import { and, eq, exists } from 'drizzle-orm';
 import { z } from 'zod';
 import { defineForm, type RejectionStatus } from '../../forms/definition';
-import { type Page as PageDocument, parsePage } from '../../page/catalog';
+import type { Page as PageDocument } from '../../page/catalog';
 import { defaultDonationPage } from '../../page/defaults';
 import { RESET_FORM_ID } from '../../page/publish-form';
 import { invalid, parseForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { chatTurn, type Page, page } from '../db/schema';
+import { readDocument, type StoredDocument } from './document';
 import { STALE } from './publish';
 import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 
@@ -19,8 +20,11 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 // clears `last_published`, so Undo has nothing to put back; and empties the page's chat — in one
 // `batch()` guarded on the version the editor was drawn at, as ./publish.ts's presses are.
 // - the live donation settings stay: the owned settings row is not written, and the document
-//   carries that row's settings and the live page's two switches, so a settings or switch change
-//   not yet published goes with the draft.
+//   carries the live page's two switches and, where the live page carries settings of its own, that
+//   row's, so a settings or switch change not yet published goes with the draft. a live page with
+//   none keeps its program following the active programs (./donation-page.ts). a live page the read
+//   rule refuses (./document.ts) takes the default's switches and keeps the row's settings, since
+//   Reset is how that page is repaired and what the operator chose there cannot be read.
 // - the page's id and its owned row stay, so a gift already made on the page still names both.
 // - a page with no edits (`hasEditsToReset`) is refused: a Reset there would only move its version.
 
@@ -38,14 +42,14 @@ export async function resetDonationPage(db: Db, version: Date): Promise<ResetOut
 	if (row === null) return { kind: 'gone' };
 	// unreachable: the Donation page is live from the start, and only a Publish writes `published`.
 	if (row.published === null) throw new Error(`page ${row.id} has no live page`);
-	const live = parsePage(row.type, JSON.parse(row.published));
-	if (!live.ok) throw new Error(`page ${row.id}'s live page fails its rule: ${live.message}`);
 	if (!(await hasEditsToReset(db, row))) return { kind: 'nothing' };
-	const settings = settingsOfRow(await readOwnedRow(db, row));
+	const live = readDocument(row, 'published', row.published);
+	const fresh = defaultDonationPage();
+	const chosen = !live.ok || live.page.settings !== undefined;
 	const document = JSON.stringify({
-		...defaultDonationPage(),
-		switches: live.page.switches,
-		settings
+		...fresh,
+		switches: live.ok ? live.page.switches : fresh.switches,
+		...(chosen ? { settings: settingsOfRow(await readOwnedRow(db, row)) } : {})
 	});
 
 	const drawn = and(
@@ -83,18 +87,20 @@ function face(document: PageDocument) {
 
 const DEFAULT_FACE = face(defaultDonationPage());
 
-function isDefault(stored: string | null): boolean {
-	if (stored === null) return true;
-	const parsed = parsePage('donation_page', JSON.parse(stored));
-	return parsed.ok && isDeepStrictEqual(face(parsed.page), DEFAULT_FACE);
+function isDefault(stored: StoredDocument): boolean {
+	return stored.ok && isDeepStrictEqual(face(stored.page), DEFAULT_FACE);
 }
 
 /**
  * whether the Donation page has anything Reset would put back: a draft or a live page other than
- * the default, or a chat.
+ * the default, one the read rule refuses among them, or a chat.
  */
 export async function hasEditsToReset(db: Db, row: Page): Promise<boolean> {
-	if (!isDefault(row.draft) || !isDefault(row.published)) return true;
+	const draft = readDocument(row, 'draft', row.draft);
+	if (!isDefault(draft)) return true;
+	if (row.published !== null && !isDefault(readDocument(row, 'published', row.published))) {
+		return true;
+	}
 	const [turn] = await db
 		.select({ id: chatTurn.id })
 		.from(chatTurn)
@@ -116,11 +122,12 @@ const FAILED = 'Resetting failed and nothing was changed. Try again.';
 export async function answerResetPress(db: Db, body: FormData, gone: string) {
 	const submission = parseForm(body, RESET);
 	if (!submission.ok) return invalid(400, submission.reject());
+	const seen = submittedVersion(body);
 	const refuse = (status: RejectionStatus, text: string) =>
 		invalid(status, submission.reject({ formErrors: [text] }));
 	let outcome: ResetOutcome;
 	try {
-		outcome = await resetDonationPage(db, submittedVersion(body));
+		outcome = await resetDonationPage(db, seen);
 	} catch (e) {
 		console.error('resetting the Donation page failed:', e);
 		return refuse(500, FAILED);

@@ -1,3 +1,4 @@
+import { Banner } from '@better-giving/operator/components/status/Banner';
 import { useCallback, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
@@ -39,7 +40,12 @@ import type { Story } from '$lib/server/org/presentation';
 import { readOrgStory, type StoryWrite, updateOrgStory } from '$lib/server/org/queries';
 import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage, markDonationEditorVisited } from '$lib/server/pages/donation-page';
-import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
+import {
+	editorPage,
+	readEditorSettings,
+	saveDraftSettings,
+	unreadableEditor
+} from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import { answerResetPress, hasEditsToReset } from '$lib/server/pages/reset';
@@ -57,9 +63,14 @@ import type { Route } from './+types/_app.admin.donation-page';
 // than a 404, as /donate answers before anyone has opened it.
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
-// only at Publish, as a campaign's are ($lib/server/pages/editor.ts). so are the look and the share
+// only at Publish, as a campaign's are ($lib/server/pages/editor.ts); until the first such Publish
+// the program follows the active programs ($lib/server/pages/donation-page.ts). so are the look and the share
 // message ($lib/server/pages/page-settings.ts); a goal and an end date are a campaign's alone, and
 // this action refuses them.
+//
+// **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
+// in the preview's place, with Discard changes where the live page reads and Reset to default
+// always, which repairs a live page the rule refuses too.
 //
 // **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, and **Reset to default**
 // $lib/server/pages/reset.ts's, which also says when the page has edits to reset; the presses and
@@ -122,8 +133,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	let pageSettings: PageSettingsSeed;
 	let edited: boolean;
 	let illustrations: ReadonlySet<string>;
+	const now = Date.now();
 	try {
 		row = await ensureDonationPage(db);
+		const unreadable = unreadableEditor(row, now);
+		// a draft the rule refuses is itself an edit Reset puts back (`hasEditsToReset`).
+		if (unreadable !== null) return { ...unreadable, hasEdits: true };
 		[story, settings, pageSettings, edited, illustrations] = await Promise.all([
 			readOrgStory(db),
 			readEditorSettings(db, env, row, new URL(request.url).origin),
@@ -136,7 +151,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		loadFailed('The Donation page');
 	}
 	return {
-		...editorPage(row, Date.now()),
+		...editorPage(row, now),
 		...editorDraft(row, settings.currency, illustrations),
 		settings,
 		pageSettings,
@@ -214,7 +229,62 @@ function refusal(answer: Answer | undefined, form: { id: string }, box: string):
 	return resultFor(form, answer)?.error?.[box]?.[0] ?? null;
 }
 
+type Loaded = Route.ComponentProps['loaderData'];
+
 export default function DonationPageEditor({ loaderData }: Route.ComponentProps) {
+	return loaderData.unreadable ? (
+		<UnreadableDraftEditor loaderData={loaderData} />
+	) : (
+		<DraftEditor loaderData={loaderData} />
+	);
+}
+
+/** what the bar and the notice call a draft the read rule refuses. */
+const UNREADABLE_WORD = 'This draft can’t be read';
+
+/**
+ * the editor over a draft the read rule refuses: the bar, with Discard changes where the live page
+ * reads and Reset to default always, and a notice in the preview's place.
+ */
+function UnreadableDraftEditor({
+	loaderData
+}: {
+	readonly loaderData: Extract<Loaded, { unreadable: true }>;
+}) {
+	const { state, version, discardable, hasEdits } = loaderData;
+	const presses = usePublishPresses({ version, state, reset: { hasEdits } });
+	return (
+		<EditorShell
+			bar={
+				<PublishBar
+					closeHref="/admin"
+					page={{ kind: 'donation' }}
+					state={state}
+					livePath="/donate"
+					{...presses.bar}
+					onPublish={undefined}
+					publishHeld={UNREADABLE_WORD}
+					onDiscard={discardable ? presses.bar.onDiscard : undefined}
+				/>
+			}
+			preview={
+				<Banner tone="attention" word={UNREADABLE_WORD}>
+					{discardable
+						? 'The Donation page no longer holds what a page may hold. Discard changes to go back to the live page, or reset it to the default.'
+						: 'The Donation page no longer holds what a page may hold. Reset it to the default to repair it.'}
+				</Banner>
+			}
+		>
+			{presses.confirm}
+		</EditorShell>
+	);
+}
+
+function DraftEditor({
+	loaderData
+}: {
+	readonly loaderData: Extract<Loaded, { unreadable: false }>;
+}) {
 	const { state, version, preview, askMission, storyVersion, hasEdits } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);

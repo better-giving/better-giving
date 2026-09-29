@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { NEW_FORM } from '../../forms/new-form';
-import { type Page as PageDocument, parsePage } from '../../page/catalog';
+import type { Page as PageDocument } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import { endDayOf } from '../../page/end-date';
 import { stateAt } from '../../page/ended';
@@ -11,6 +11,7 @@ import { sqliteResultCode } from '../db/rejection';
 import { page, type Page } from '../db/schema';
 import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/form-input';
 import { ownedFormInsert, readForm } from '../forms/queries';
+import { readDocument } from './document';
 import { ensureDonationPage } from './donation-page';
 import { draftTurn } from './draft';
 import { SLUG_ATTEMPTS } from './queries';
@@ -89,18 +90,11 @@ export async function readCampaigns(db: Db, now: number): Promise<CampaignListin
 			state: stateAt({ ...stored, published }, now)
 		};
 		const endedOn =
-			stored.state === 'live' && row.state === 'ended' ? publishedEnd(published) : null;
+			stored.state === 'live' && row.state === 'ended' ? publishedEnd(row.id, published) : null;
 		// unreachable: `page_name_check` refuses a campaign without a name.
 		if (name === null) throw new Error(`campaign ${row.id} has no name`);
-		// `page_draft_object_check` holds the draft to a JSON object, so it always parses as JSON.
-		const parsed = parsePage('campaign', JSON.parse(draft));
-		if (!parsed.ok) {
-			console.error(
-				`page ${row.id}'s stored draft fails the read rule at \`${parsed.path.join('.')}\`, so it is listed without its goal and end:`,
-				parsed.message
-			);
-			return { ...row, name, goalMinor: null, end: endedOn };
-		}
+		const parsed = readDocument({ id: row.id, type: 'campaign' }, 'draft', draft);
+		if (!parsed.ok) return { ...row, name, goalMinor: null, end: endedOn };
 		return {
 			...row,
 			name,
@@ -117,9 +111,9 @@ function endOf(document: PageDocument): CampaignListing['end'] {
 }
 
 /** the published document's end, where the document passes the read rule; null otherwise. */
-function publishedEnd(published: string | null): CampaignListing['end'] {
+function publishedEnd(id: string, published: string | null): CampaignListing['end'] {
 	if (published === null) return null;
-	const parsed = parsePage('campaign', JSON.parse(published));
+	const parsed = readDocument({ id, type: 'campaign' }, 'published', published);
 	return parsed.ok ? endOf(parsed.page) : null;
 }
 

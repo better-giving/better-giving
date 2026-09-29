@@ -14,7 +14,7 @@ import {
 	SAY_MAX
 } from '../../page/accept-reply';
 import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog, switchRules } from '../../page/ai-catalog';
-import { type Page, parsePage } from '../../page/catalog';
+import type { Page } from '../../page/catalog';
 import { placedImageIds } from '../../page/illustration';
 import { dayOf, dayWords, endDayOf } from '../../page/end-date';
 import type { ChatNote, PageType } from '../../page/keys';
@@ -24,16 +24,19 @@ import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
 import { illustrate } from '../ai/illustrate';
 import type { Db } from '../db/client';
 import { type ChatTurn, chatTurn, page } from '../db/schema';
+import { sqliteResultCode } from '../db/rejection';
 import { firstMissingImage } from '../images/queries';
 import { readOrgLook, readOrgStory } from '../org/queries';
 import type { OrgLook, Story } from '../org/presentation';
 import { type ProgramOption, readActivePrograms } from '../programs/queries';
+import { readableDraft } from './document';
+import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 
 // one turn of a page's chat: the operator's message, the model's reply through `acceptReply`, and
 // what lands — the draft and the two turns — in one `batch()`. the Donation page and a campaign
-// alike. a turn writes the draft document and the chat and nothing else: `published` and the
-// row's own `name` are never written here, and a campaign renamed in the chat is renamed in its
-// draft, so nothing a turn does reaches a donor before Publish.
+// alike. a turn writes the draft document and the chat, and a campaign it renames is renamed
+// everywhere a hand rename renames one (`renaming` in ./queries.ts). `published` is never written
+// here, so nothing a turn does reaches a donor before Publish.
 //
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
 // all), its type, name, goal, end date, donation settings and where its donation box opens, with
@@ -114,11 +117,7 @@ export async function readChat(db: Db, pageId: string): Promise<ChatEntry[] | nu
 export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Promise<TurnResult> {
 	const [row] = await db.select().from(page).where(eq(page.id, request.pageId));
 	if (!row) return { ok: false, reason: 'not_found' };
-	const parsed = parsePage(row.type, JSON.parse(row.draft));
-	if (!parsed.ok) {
-		throw new Error(`page ${row.id}'s stored draft fails its rule: ${parsed.message}`);
-	}
-	const current = parsed.page;
+	const current = readableDraft(row);
 	const [missing, turns, { story }, { look }, programs] = await Promise.all([
 		firstMissingImage(db, request.imageIds),
 		turnsOf(db, row.id),
@@ -197,13 +196,32 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 	const text = [oneLine(result.say), summary].filter((line) => line !== '').join('\n');
 	const assistant = assistantTurn(text, answer.model, answer.fellBack ? 'fell-back' : null);
 	const seen = sql`${onPage} and ${eq(page.draft, row.draft)}`;
-	const [first, second, updated] = await db.batch([
-		turnStatement(db, row.id, operator, seen),
-		turnStatement(db, row.id, assistant, seen),
-		db.update(page).set({ draft }).where(seen).returning({ id: page.id })
-	]);
-	if (updated.length === 0) return { ok: false, reason: 'stale' };
-	return { ok: true, outcome: 'accepted', turns: [...first, ...second].map(chatEntry) };
+	const name = nameToCarry(row, result.draft);
+	for (let attempt = 1; ; attempt += 1) {
+		const rename = name === null ? null : await renaming(db, row, name, seen);
+		const statements = [
+			turnStatement(db, row.id, operator, seen),
+			turnStatement(db, row.id, assistant, seen),
+			db
+				.update(page)
+				.set({ draft, ...rename?.columns })
+				.where(seen)
+				.returning({ id: page.id })
+		] as const;
+		try {
+			// the settings row's rename runs first, since the page's update moves the draft `seen` reads.
+			const [first, second, updated] =
+				rename === null
+					? await db.batch(statements)
+					: await db.batch([rename.owned, ...statements]).then(([, ...rest]) => rest);
+			if (updated.length === 0) return { ok: false, reason: 'stale' };
+			return { ok: true, outcome: 'accepted', turns: [...first, ...second].map(chatEntry) };
+		} catch (error) {
+			if (attempt === SLUG_ATTEMPTS || sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') {
+				throw error;
+			}
+		}
+	}
 }
 
 type NewTurn = Pick<ChatTurn, 'author' | 'text' | 'model' | 'note'> & { imageIds: string[] };

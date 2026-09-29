@@ -3,7 +3,7 @@ import { data } from 'react-router';
 import type { OrgInfo } from '../../donate/blocks/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type PageLook, titleHeading } from '../../donate/page-view';
-import { type Page, parsePage } from '../../page/catalog';
+import type { Page } from '../../page/catalog';
 import { type MarkedPage, markIllustrations, placedImageIds } from '../../page/illustration';
 import type { PageType } from '../../page/keys';
 import { SHARE_CHANNELS_DEFAULT } from '../../page/share';
@@ -26,6 +26,7 @@ import {
 import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
+import { readDocument } from './document';
 import { pageGoal } from './goal';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
@@ -45,9 +46,9 @@ import { pageGoal } from './goal';
 // document. whether monthly is offered at all stays the served config's: "Open on monthly" on a
 // deployment offering none opens as today.
 //
-// the stored document passes the read rule (`parsePage`) here. one that is missing, or that the rule
-// now refuses, draws the plain page — the donation box alone — and is logged, so a page broken by a
-// narrowed rule still takes gifts while somebody repairs it.
+// the stored document is read under ./document.ts's policy. one that is missing, or that the rule
+// now refuses, draws the plain page — the donation box alone — so a page broken by a narrowed rule
+// still takes gifts while somebody repairs it.
 //
 // the organisation's story, look, sharing and logo are read live on every draw, so a save on the
 // dashboard's organisation page reaches every page at once, the preview included. so are the
@@ -102,7 +103,7 @@ export async function loadPageView(
 ): Promise<LoadedPage> {
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
-	const parsed = parsePage(source.type, storedDocument(source.document));
+	const parsed = readDocument(source, preview ? 'draft' : 'published', source.document);
 	const [served, story, orgLook, orgSharing, profile, illustrations, orgLogo, photos] =
 		await Promise.all([
 			readPublishedConfig(
@@ -133,13 +134,7 @@ export async function loadPageView(
 	if (!result.ok) return { kind: 'refused' };
 	const { config } = result;
 
-	if (!parsed.ok) {
-		console.error(
-			`page ${source.id} (${source.type}) fails the read rule at \`${parsed.path.join('.')}\`, so it draws its donation box alone:`,
-			parsed.message
-		);
-		return { kind: 'plain', config, look: orgLook.look };
-	}
+	if (!parsed.ok) return { kind: 'plain', config, look: orgLook.look };
 	const { page } = parsed;
 	// the name the document was drafted with, so a rename reaches donors at Publish.
 	const pageName = page.name ?? source.name;
@@ -231,16 +226,6 @@ function chooserPhotos(
 			return photo === undefined ? [] : [[id, photo]];
 		})
 	);
-}
-
-/** the stored text as the rule reads it: `null` and text that is not JSON are nothing to read. */
-function storedDocument(text: string | null): unknown {
-	if (text === null) return null;
-	try {
-		return JSON.parse(text);
-	} catch {
-		return null;
-	}
 }
 
 /**
