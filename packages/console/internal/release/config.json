@@ -18,12 +18,13 @@
 		"0012_payment_provider_reference.sql",
 		"0013_store_pages_organisation_and_chat.sql",
 		"0014_image_metadata_and_bytes.sql",
-		"0015_chat_turn_note.sql"
+		"0015_chat_turn_note.sql",
+		"0016_org_logo_and_program_photo.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "00d4c4fbdf27c55faa6fbc6a5416f5c03bfaa854"
+	"commit": "adda16b23bdd24c05ff1a2be38735b30b6fa9513"
 }
