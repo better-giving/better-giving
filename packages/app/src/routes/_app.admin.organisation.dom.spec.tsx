@@ -40,15 +40,25 @@ let posted: Record<string, string>[];
 let shared: FormData[];
 /** each story save and Undo as it arrived. */
 let told: FormData[];
-/** the story and sharing the loader reads, each with the version it moves through. */
-let story: { version: string };
-let sharing: {
+type Story = { version: string; mission: string | null; vision: string | null };
+type Sharing = {
 	version: string;
+	channels: string[];
 	message: string | null;
 	links: { label: string; href: string }[];
 };
+/**
+ * the story and sharing the loader reads, each with the version it moves through, and the one each
+ * last save replaced: an Undo swaps the two, as the real one does, so an Undo brings a version back.
+ */
+let story: Story;
+let storyBefore: Story | null;
+let sharing: Sharing;
+let sharingBefore: Sharing | null;
 /** the marker a story or sharing write redirects with, taken by the next load as a flash is. */
 let marker: string | null;
+/** how many markers the loader has taken, which names each landing it publishes. */
+let landings: number;
 /** the sentence the next story save is refused with, when a case sets one. */
 let refusingStory: string | null;
 /** each post waits here until the case lets it land. */
@@ -61,9 +71,17 @@ beforeEach(() => {
 	posted = [];
 	shared = [];
 	told = [];
-	story = { version: 'story-v0' };
-	sharing = { version: 'sharing-v0', message: null, links: [] };
+	story = { version: 'story-v0', mission: null, vision: null };
+	storyBefore = null;
+	sharing = {
+		version: 'sharing-v0',
+		channels: ['facebook', 'email', 'copy-link'],
+		message: null,
+		links: []
+	};
+	sharingBefore = null;
 	marker = null;
+	landings = 0;
 	refusingStory = null;
 	held = [];
 	refusing = null;
@@ -85,15 +103,17 @@ function screen(): HTMLElement {
 			loader: () => {
 				const taken = marker;
 				marker = null;
+				if (taken !== null) landings += 1;
 				return {
-					mission: null,
-					vision: null,
+					mission: story.mission === null ? null : JSON.parse(story.mission),
+					vision: story.vision === null ? null : JSON.parse(story.vision),
 					version: story.version,
 					saved: taken?.startsWith('story') ? taken : null,
+					landing: taken === null ? null : `landing-${landings}`,
 					look: stored.look,
 					lookVersion: stored.version,
 					sharing: {
-						channels: ['facebook', 'email', 'copy-link'],
+						channels: sharing.channels,
 						message: sharing.message,
 						links: sharing.links
 					},
@@ -106,8 +126,19 @@ function screen(): HTMLElement {
 				const which = form.get(WHICH_FORM);
 				if (which === 'org-sharing' || which === 'org-sharing-undo') {
 					shared.push(form);
-					sharing = { ...sharing, version: `sharing-v${shared.length}` };
-					return landed(which === 'org-sharing' ? 'sharing' : 'sharing-undone');
+					if (which === 'org-sharing-undo' && sharingBefore !== null) {
+						[sharing, sharingBefore] = [sharingBefore, sharing];
+						return landed('sharing-undone');
+					}
+					sharingBefore = sharing;
+					const message = String(form.get('message') ?? '');
+					sharing = {
+						...sharing,
+						version: `sharing-v${shared.length}`,
+						channels: form.getAll('channels').map(String),
+						message: message === '' ? null : message
+					};
+					return landed('sharing');
 				}
 				if (which === 'org-story' || which === 'org-story-undo') {
 					told.push(form);
@@ -125,8 +156,17 @@ function screen(): HTMLElement {
 							},
 							{ status: 409 }
 						);
-					story = { version: `story-v${told.length}` };
-					return landed(which === 'org-story' ? 'story' : 'story-undone');
+					if (which === 'org-story-undo' && storyBefore !== null) {
+						[story, storyBefore] = [storyBefore, story];
+						return landed('story-undone');
+					}
+					storyBefore = story;
+					story = {
+						version: `story-v${told.length}`,
+						mission: String(form.get('mission')),
+						vision: String(form.get('vision'))
+					};
+					return landed('story');
 				}
 				const body = fieldsOf(form);
 				posted.push(body);
@@ -347,6 +387,18 @@ describe('the story', () => {
 		});
 	});
 
+	it('draws the stored story after a landed Undo, with Save story off', async () => {
+		const root = await drawn();
+		await saveStory(root);
+		await pressOwned(button(card(root), 'Undo'));
+		expect(story.version).toBe('story-v0');
+
+		expect(document.getElementById('story-mission')?.textContent).toBe('');
+		expect(document.getElementById('story-vision')?.textContent).toBe('');
+		const save = card(root).querySelector('.adm-actions .adm-save');
+		expect(save?.getAttribute('aria-disabled')).toBe('true');
+	});
+
 	it('reports a refused save under the alert mark, in the card it was pressed in', async () => {
 		refusingStory = 'Nothing was changed: the story has been saved since this page was opened.';
 		const root = await drawn();
@@ -502,5 +554,34 @@ describe('the sharing channels', () => {
 			[WHICH_FORM]: 'org-sharing-undo',
 			[RECORD_VERSION]: 'sharing-v1'
 		});
+	});
+
+	it('draws the stored sharing after a landed Undo, with Save sharing off', async () => {
+		const root = await drawn();
+		act(() => root.querySelector<HTMLInputElement>('input[value="whatsapp"]')?.click());
+		act(() => press(root, 'Move WhatsApp up').click());
+		type(root, 'message', 'Ghost share message');
+		await saveSharing(root);
+		await settle();
+
+		const undo = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
+		if (undo === undefined) throw new Error('no Undo after a landed save');
+		await pressOwned(undo);
+		expect(sharing.version).toBe('sharing-v0');
+
+		expect(drawnOrder(root)).toEqual([
+			'facebook',
+			'email',
+			'copy-link',
+			'whatsapp',
+			'linkedin',
+			'x'
+		]);
+		const ticked = [...root.querySelectorAll<HTMLInputElement>('input[name="channels"]:checked')];
+		expect(ticked.map((box) => box.value)).toEqual(['facebook', 'email', 'copy-link']);
+		expect(root.querySelector<HTMLTextAreaElement>('[name="message"]')?.value).toBe('');
+		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');
+		const save = card?.parentElement?.querySelector('.adm-actions .adm-save');
+		expect(save?.getAttribute('aria-disabled')).toBe('true');
 	});
 });

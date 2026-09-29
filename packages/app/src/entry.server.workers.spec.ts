@@ -287,6 +287,18 @@ describe('a sign-in document', () => {
 		await expectStrictDocument(await send('/login'));
 	});
 
+	it('draws its links with no nonce, which the page could not hydrate to the same value', async () => {
+		const answer = await send('/login');
+		const nonce = policyNonce(directives(answer.headers.get('content-security-policy')));
+		// a modulepreload is `<Scripts>`'s, which keeps the nonce and is hydrated without a diff.
+		const links = ((await answer.text()).match(/<link\b[^>]*>/g) ?? []).filter(
+			(tag) => !tag.includes('rel="modulepreload"')
+		);
+
+		expect(links.some((tag) => /\brel="stylesheet"/.test(tag))).toBe(true);
+		for (const tag of links) expect(tag).not.toContain(nonce);
+	});
+
 	it('names no paypal origin whatever `PAYPAL_API_URL` is', async () => {
 		await expectStrictDocument(
 			await send('/login', undefined, { PAYPAL_API_URL: 'https://api-m.payments.example' })

@@ -46,7 +46,11 @@ export function Layout({ children }: { children: ReactNode }) {
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
 				<Meta />
-				<Links />
+				{/* an empty nonce, so `<Links>` does not take the document's from `ServerRouter`: the
+				    client router never holds it, and a browser blanks the attribute once a header
+				    policy applies, so any nonce drawn here fails hydration. no policy in
+				    ./document-policy.ts asks a link for one — only its `script-src` names a nonce. */}
+				<Links nonce="" />
 			</head>
 			<body>
 				{children}

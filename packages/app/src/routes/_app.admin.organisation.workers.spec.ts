@@ -46,6 +46,7 @@ type Loaded = {
 	vision: RichTextDocument | null;
 	version: string;
 	saved: 'story' | 'story-undone' | null;
+	landing: string | null;
 	look: { shade: string; corner: string; brandColour: string | null };
 	lookVersion: string;
 	sharing: {
@@ -210,6 +211,21 @@ describe('the story', () => {
 });
 
 describe('Undo of the story', () => {
+	it('lands under a name of its own, apart from the save it undid, where a plain load names none', async () => {
+		const saved = await save(words('First mission.'));
+		if (!saved.redirected) throw new Error('the save did not land');
+		const afterSave = await load(saved.flash);
+
+		const undone = await post(UNDO_FORM, afterSave.version);
+		if (!undone.redirected) throw new Error('the Undo did not land');
+		const afterUndo = await load(undone.flash);
+
+		expect(afterSave.landing).toEqual(expect.any(String));
+		expect(afterUndo.landing).toEqual(expect.any(String));
+		expect(afterUndo.landing).not.toBe(afterSave.landing);
+		expect((await load()).landing).toBeNull();
+	});
+
 	it('restores the previous mission and vision, and a second Undo puts the save back', async () => {
 		await save(words('First mission.'), words('First vision.'));
 		await save(words('Second mission.'));
