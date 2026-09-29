@@ -513,9 +513,10 @@ describe('POST /login — what the browser gets back', () => {
 	 * disambiguate.
 	 */
 	it('names a pin that names no address, where the operator reads it', async () => {
-		await expect(post(typed(PASSWORD), { deployed: PINNED_NOWHERE })).rejects.toMatchObject(
-			PIN_REFUSAL
-		);
+		const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
+
+		expect(answer.init?.status).toBe(500);
+		expect(banner(answer)).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
 		expect(await sessions()).toBe(0);
 	});
 
