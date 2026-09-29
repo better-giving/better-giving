@@ -8,7 +8,8 @@ import { type Look, LookControl, type PageLook, UNSEEDED_BRAND } from './look-co
 //
 // in the dom pool because every claim is a relationship in the tree — the label a radio stands in,
 // the group it is named by, the radios sharing its name — and a pick is a press on a real input.
-// nothing reads a class or how a face looks.
+// nothing reads a class, and the one look read is the Organisation chip's fill and ink, which
+// follow the brand colour the caller hands in.
 //
 // the arrow keys are the browser's: it walks the radios sharing a `name` inside one form owner and
 // no others, and happy-dom performs no such walk. so the case for them asserts what the walk runs

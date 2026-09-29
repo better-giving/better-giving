@@ -123,9 +123,9 @@ const RAIL_STORAGE_KEY = 'bg-operator-rail';
    many the bar holds is the share each is left with at the 375px floor rather than a number
    written anywhere. a destination the caller folds stands in no tab: the bar ends in a More tab
    instead, opening a sheet that lists every folded one with its mark, in the rail's order. the
-   bar is flat: groups, marks and headings are the column's. above it: a
-   left column with the identity and the collapse toggle at its head, the grouped destinations,
-   and the foot; the page is a panel filling the rest of the window beside it.
+   bar is flat: groups, marks and headings are the column's. above it: a left column with the
+   identity and the collapse toggle at its head, the grouped destinations, and the foot; the page
+   is a panel filling the rest of the window beside it.
    the identity slot renders the operating organisation's legal name — there is no logo. */
 /** @param {AppShellProps} props */
 export function AppShell({

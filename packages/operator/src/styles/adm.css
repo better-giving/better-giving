@@ -5163,10 +5163,10 @@
 	/* ---------- the chat --------------------------------------------------------------
 
 	   a page's chat, in its sheet: the turns in the body, and under them in the foot the
-	   suggestions, the photo on its way in, the box and why a send did not go. the operator's words sit in a sunken
-	   bubble at the end edge and a reply is plain text at the start, so whose turn is whose is
-	   read from where it stands rather than from a label. inside a turn is a step apart and
-	   between turns is several, so a reply and the note under it read as one turn.
+	   suggestions, the photo on its way in, the box and why a send did not go. the operator's
+	   words sit in a sunken bubble at the end edge and a reply is plain text at the start, so whose
+	   turn is whose is read from where it stands rather than from a label. inside a turn is a step
+	   apart and between turns is several, so a reply and the note under it read as one turn.
 	   packages/app/src/lib/admin/chat/ draws all of it. */
 	.adm-chat__log {
 		display: grid;

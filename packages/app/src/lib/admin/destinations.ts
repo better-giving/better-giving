@@ -37,9 +37,8 @@
  * dashboard alone, the one destination stating figures; the records of giving; the organisation and
  * Members, who can open the rest, neither of them recording a gift; and the books, which everything
  * above writes into. no group carries a heading: the rule is the whole of the separation. the
- * groups are the shape
- * `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries flat, which is what a match
- * against an address walks.
+ * groups are the shape `AppShell` takes as `groups`, and `DESTINATIONS` is the same entries flat,
+ * which is what a match against an address walks.
  *
  * `folded` is a destination the phone's bar holds under its More tab rather than as a tab of its
  * own: the bar keeps what an operator opens every week — the dashboard, the campaigns, the donors

@@ -17,10 +17,10 @@ vi.mock('$lib/images/resize', async (actual) => ({
 
 // what the editor's chat does over the network: what a send posts, what the composer does while
 // the turn runs, what the editor reads once it lands, and what a send nothing was stored from gives
-// back. the chat route here is a stand-in that
-// records what arrived and holds each post until the case lets it land; what the real one does with
-// it is src/routes/_app.admin.pages.$pageId.chat.workers.spec.ts's. the images route is a stand-in
-// the same way, and what the real one stores is src/routes/_app.admin.images.workers.spec.ts's.
+// back. the chat route here is a stand-in that records what arrived and holds each post until the
+// case lets it land; what the real one does with it is
+// src/routes/_app.admin.pages.$pageId.chat.workers.spec.ts's. the images route is a stand-in the
+// same way, and what the real one stores is src/routes/_app.admin.images.workers.spec.ts's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

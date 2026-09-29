@@ -27,9 +27,9 @@ import { DoneSheet } from './done-sheet';
 // fetcher rather than navigating.
 //
 // the third group is the page's two switches, as checkbox rows committed at Done with the rest of
-// the sheet; nothing in it applies the moment it is ticked. Open on monthly stays tickable
-// where the deployment offers no monthly gift, with the note saying why the box still opens
-// one-time; the setting is kept and takes effect once monthly is offered.
+// the sheet; nothing in it applies the moment it is ticked. Open on monthly stays tickable where
+// the deployment offers no monthly gift, with the note saying why the box still opens one-time; the
+// setting is kept and takes effect once monthly is offered.
 //
 // each group is its own `.adm-sheetpart`, so a heading sits nearer its own rows than the group
 // above it. the groups' headings are `h3`, parts of the sheet the `h2` title names.

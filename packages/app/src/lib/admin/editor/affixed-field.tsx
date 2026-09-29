@@ -2,10 +2,9 @@ import { FieldMessage } from '@better-giving/operator/components/forms/FieldMess
 import type { InputHTMLAttributes, Ref } from 'react';
 
 // a box whose unit or address prefix is stated on the box itself — the goal's currency, a campaign
-// address's host — rather than in a sentence under the label. the rows are
-// packages/operator/src/components/forms/Field.jsx's own (label, hint, box, refusal), and the box is
-// `.adm-affixed`, which draws the field's border, ring and refusal round the input and the affix
-// together.
+// address's host. the rows are packages/operator/src/components/forms/Field.jsx's own (label, hint,
+// box, refusal), and the box is `.adm-affixed`, which draws the field's border, ring and refusal
+// round the input and the affix together.
 //
 // the affix is read with the box: the input is described by it, so a screen reader hears "USD" or
 // the host along with the label.

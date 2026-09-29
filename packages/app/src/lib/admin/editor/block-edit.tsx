@@ -18,10 +18,10 @@ import {
 } from './replace-photo';
 
 // a block's sheet as both editors open it — from a click on the block in the preview and from its
-// row in Settings' block list alike, the donation box's being Donation settings — and the layout
-// pictures' pick, each posted through a fetcher
-// to the editor route's action (`saveBlockForm` in $lib/server/pages/blocks.ts), so the editor does
-// not navigate. a landed write moves the page's version, which reloads the preview.
+// row in Settings' block list alike, the donation box's being the Donation settings sheet — and the
+// layout pictures' pick, each posted through a fetcher to the editor route's action (`saveBlockForm`
+// in $lib/server/pages/blocks.ts), so the editor does not navigate. a landed write moves the page's
+// version, which reloads the preview.
 //
 // the words are the boxes' own, uncontrolled: a refused Done leaves them holding what was typed,
 // the refusal under the box the catalog's rule names, and the caret moved there. a picture applies

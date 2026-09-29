@@ -22,8 +22,8 @@ import { SettingsSheet } from './settings-sheet';
 // the name box carry and a drawing for every variant the catalog offers, where Reset to default and
 // Open are offered and which presses the bar draws without a handler, the address's save and its
 // refusal at Save, the goal's figure in and out, and which messages the preview frame listens to.
-// nothing here reads a class or a sentence's look — how the editor looks is left to a person
-// looking at it.
+// a class is read only to find a part, such as whether a picture holds a drawing, and never to ask
+// how anything looks — how the editor looks is left to a person looking at it.
 //
 // the tab ring kept inside a sheet and the page made inert behind it are the top layer's, which
 // happy-dom does not have; what is asserted is that the sheet is shown as a modal and takes the

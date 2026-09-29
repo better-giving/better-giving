@@ -15,9 +15,9 @@ import { DoneSheet } from './done-sheet';
 // the first submit button in tree order among the form's own elements. what the case holds is
 // which button that is.
 //
-// three cases read a class — the part each group's heading stands in, and whether the sheet stands
-// over another — and none asks how any of it looks, which is what keeps it clear of CLAUDE.md's ban
-// on a browser spec over a dashboard screen.
+// the cases that read a class ask which part each group's heading stands in, whether the sheet
+// stands over another and whether a note is drawn, and none asks how any of it looks, which is what
+// keeps it clear of CLAUDE.md's ban on a browser spec over a dashboard screen.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
