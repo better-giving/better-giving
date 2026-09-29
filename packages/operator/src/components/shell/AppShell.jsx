@@ -145,6 +145,8 @@ export function AppShell({
 	const [sheetOpen, setSheetOpen] = useState(false);
 	/** @type {import('react').RefObject<HTMLButtonElement | null>} */
 	const moreTab = useRef(null);
+	/** @type {import('react').RefObject<HTMLElement | null>} */
+	const railBox = useRef(null);
 	const mainId = useId();
 	/** @type {import('react').RefObject<HTMLElement | null>} */
 	const page = useRef(null);
@@ -161,6 +163,17 @@ export function AppShell({
 		});
 		watch.observe(tab);
 		return () => watch.disconnect();
+	}, [sheetOpen]);
+
+	/* and it closes on a step through the history — Back and Forward, a phone's Back included —
+	   because a sheet left open over a page it was not opened on holds the keyboard in front of the
+	   wrong screen. the step is heard as it happens rather than read off `current`, since a step
+	   between two addresses under one destination hands this shell the `current` it already had. */
+	useEffect(() => {
+		if (!sheetOpen) return;
+		const stepped = () => setSheetOpen(false);
+		window.addEventListener('popstate', stepped);
+		return () => window.removeEventListener('popstate', stepped);
 	}, [sheetOpen]);
 
 	useEffect(() => {
@@ -188,6 +201,16 @@ export function AppShell({
 	   tint off a bare `[aria-current]` and off `.is-current`, and neither reads the kind. */
 	/** @type {Whereabouts | undefined} */
 	const at = typeof current === 'string' ? { label: current, kind: 'page' } : current;
+
+	/* the destination the sheet was last drawn under. a surface handing a different one has moved
+	   the reader — a move the page itself made, with no press in the sheet — and the sheet comes
+	   down in the same render rather than a frame after it. */
+	const whereabouts = at === undefined ? '' : `${at.kind} ${at.label}`;
+	const [drawnAt, setDrawnAt] = useState(whereabouts);
+	if (drawnAt !== whereabouts) {
+		setDrawnAt(whereabouts);
+		setSheetOpen(false);
+	}
 
 	const barred = groups.some((group) => group.destinations.some((d) => d.bar));
 	const sheet = barred ? offBar(groups) : [];
@@ -243,7 +266,7 @@ export function AppShell({
 	);
 
 	const rail = (
-		<nav className="adm-rail" aria-label="Sections">
+		<nav className="adm-rail" aria-label="Sections" ref={railBox}>
 			<div className="adm-rail__identity">
 				{lead}
 				{name}
@@ -268,6 +291,7 @@ export function AppShell({
 						link={link}
 						collapsed={collapsed}
 						barred={barred}
+						onChoose={barred ? () => setSheetOpen(false) : undefined}
 					/>
 				))}
 				{barred ? (
@@ -314,11 +338,14 @@ export function AppShell({
 					aria-label="More"
 					lazyMount
 					unmountOnExit
+					persistentElements={[() => railBox.current]}
 				>
 					{/* before the bar in the markup and at its step (../../styles/adm.css, `.adm-rail`), so
-					    the bar draws over the scrim rather than under it. while it is open the machine
-					    hides everything but the sheet from the tree, and a press anywhere outside it —
-					    More included — closes it. */}
+					    the bar draws over the scrim rather than under it — undimmed, and live: the bar is
+					    the machine's persistent element, so a tab pressed while the sheet is open goes
+					    where it says and its cell closes the sheet on the way. while it is open the
+					    machine hides everything but the sheet from the tree, and a press anywhere else
+					    outside it closes it. */}
 					<Dialog.Backdrop className="adm-sheetscrim" />
 					<Dialog.Positioner>
 						<Dialog.Content className="adm-sheet">
@@ -336,8 +363,10 @@ export function AppShell({
 									/>
 								))}
 							</nav>
-							{/* last in the tab order and off the screen until it takes focus: the way out
-							    for a reader with no Escape to send, which a phone's screen reader is. */}
+							{/* last in the tab order and drawn under the last row: the way out for a reader
+							    with no Escape to send, which a phone's screen reader is — whose cursor
+							    reaches a control without focusing it, so one drawn only on focus would be a
+							    point a finger cannot find. */}
 							<Dialog.CloseTrigger className="adm-btn adm-btn--quiet adm-btn--sm adm-sheet__close">
 								Close
 							</Dialog.CloseTrigger>
@@ -400,7 +429,8 @@ function offBar(groups) {
  * @property {boolean} collapsed
  * @property {boolean} barred hide from the bar the cells it leaves to the More sheet: the rail's own
  *   run in a rail whose destinations state `bar`, and never the sheet's.
- * @property {(() => void) | undefined} [onChoose] a press on any cell — the sheet's close.
+ * @property {(() => void) | undefined} [onChoose] a press on any cell — the sheet's close, from a
+ *   cell in the sheet or a tab on the bar pressed while it is open.
  */
 
 /* one group's run of cells, flat inside `.adm-rail__cells` so the bar can stand every entry as a
@@ -411,7 +441,12 @@ function offBar(groups) {
    before them. the element is `.adm-rail__group`, which ../../styles/adm.css draws as
    `display: contents`: it is in the accessibility tree and out of the layout, so the bar still
    stands each entry as a tab and the column and the sheet still lay the entries out in their own
-   grid. an unheaded group has no name to be a group by and draws no element. */
+   grid. an unheaded group has no name to be a group by and draws no element.
+
+   a headed group none of whose cells is a tab is `--offbar` in the bar's run, and
+   ../../styles/adm.css hides it on the bar as it hides the cells: `display: contents` keeps a box
+   out of the layout and not out of the tree, so it would stand on the bar as a named group
+   holding nothing. */
 /** @param {RailGroupProps} props */
 function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 	const { heading, destinations } = group;
@@ -443,7 +478,15 @@ function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 				/* biome-ignore lint/a11y/useSemanticElements: a `<fieldset>` groups a form's own
 				   controls, and these are links to other pages — read as one, the rail would be a
 				   question with nothing to answer. */
-				<div className="adm-rail__group" role="group" aria-labelledby={headingId}>
+				<div
+					className={
+						barred && !destinations.some((d) => d.bar)
+							? 'adm-rail__group adm-rail__group--offbar'
+							: 'adm-rail__group'
+					}
+					role="group"
+					aria-labelledby={headingId}
+				>
 					<span className="adm-rail__heading" id={headingId}>
 						{heading}
 					</span>

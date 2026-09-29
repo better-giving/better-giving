@@ -653,6 +653,87 @@ describe('the bar at a phone width, and the sheet its More tab opens', () => {
 		expect(more(mounted.root).getAttribute('aria-current')).toBe('true');
 	});
 
+	it('closes when the history steps under it, Back included', async () => {
+		const root = render(AppShell, { groups: BARRED, current: 'API' });
+		await open(root);
+
+		// what the browser sends on Back or Forward; the router under the shell answers the same event.
+		await act(async () => window.dispatchEvent(new PopStateEvent('popstate')));
+
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('closes when the surface hands it a different destination than the one it opened under', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, {
+			groups: BARRED,
+			current: 'API'
+		});
+		await open(mounted.root);
+
+		// a move the page underneath made — a save that redirected, say — with no press in the sheet.
+		mounted.again({ groups: BARRED, current: 'Webhooks' });
+		// the machine takes a controlled close on its next turn rather than inside the render.
+		await act(async () => {});
+
+		expect(sheet(mounted.root)).toBeNull();
+	});
+
+	it('stays open while the surface hands it the destination it opened under', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, {
+			groups: BARRED,
+			current: 'API'
+		});
+		await open(mounted.root);
+
+		mounted.again({ groups: BARRED, current: 'API' });
+		// the same turn the case above waits for, so a close that was coming has come.
+		await act(async () => {});
+
+		expect(sheet(mounted.root)).not.toBeNull();
+	});
+
+	it('keeps the bar pressable over the open sheet, and a tab pressed there closes it', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		await open(root);
+		const bar = root.querySelector<HTMLElement>('nav.adm-rail');
+		const gifts = cell(root, 'Gifts') as HTMLAnchorElement;
+
+		// the machine takes pointer events off everything outside a modal sheet, and gives them back
+		// to what it is told persists.
+		await vi.waitFor(() => expect(bar?.style.pointerEvents).toBe('auto'));
+		const pressed = new MouseEvent('click', { bubbles: true, cancelable: true });
+		await act(async () => gifts.dispatchEvent(pressed));
+
+		expect(pressed.defaultPrevented).toBe(false);
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('leaves a headed group with no tab off the bar, and one holding a tab on it', () => {
+		const root = render(AppShell, {
+			groups: [
+				...BARRED,
+				{ heading: 'Reports', destinations: [{ label: 'Totals', href: '#totals', bar: true }] }
+			]
+		});
+		const offBar = (heading: string) => {
+			const group = [...root.querySelectorAll('.adm-rail__cells .adm-rail__group')].find(
+				(g) => g.querySelector('.adm-rail__heading')?.textContent === heading
+			);
+			return group?.classList.contains('adm-rail__group--offbar');
+		};
+
+		expect(offBar('Integrations')).toBe(true);
+		expect(offBar('Reports')).toBe(false);
+	});
+
+	it('draws no group off the bar in a rail with no bar at all', () => {
+		const root = render(AppShell, {
+			groups: [{ heading: 'Integrations', destinations: [{ label: 'API', href: '#api' }] }]
+		});
+
+		expect(root.querySelectorAll('.adm-rail__group--offbar')).toHaveLength(0);
+	});
+
 	it('reads More as current while the reader is under a sheet destination, and not otherwise', () => {
 		const inSheet = render(AppShell, {
 			groups: BARRED,

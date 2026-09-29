@@ -9,9 +9,6 @@ import { Mark } from '../status/Mark.jsx';
  * @property {boolean | undefined} [disabled] closed while a write is in flight on the page it
  *   stands in. held with `aria-disabled` and turned away in the press itself, never the native
  *   attribute: the control keeps its focus, so a reader standing on it is not dropped on `<body>`.
- * @property {(() => void) | undefined} [onBlocked] told when the clipboard refuses, for a caller
- *   holding the text out of sight: a refusal is only survivable where the text can be taken by
- *   hand, and ../forms/Field.jsx shows a masked box's value on it.
  * @property {Ref<HTMLButtonElement> | undefined} [ref] the button, for a caller moving focus onto it
  *   once the text it copies has arrived.
  *
@@ -20,6 +17,11 @@ import { Mark } from '../status/Mark.jsx';
  *   Copy would not say what of. never drawn: at rest the control is the mark, and this is the whole
  *   of what says which one it is to anyone not reading the line it sits on.
  * @property {undefined} [wording]
+ * @property {undefined} [wayOut]
+ * @property {(() => void) | undefined} [onBlocked] told when the clipboard refuses, for a caller
+ *   holding the text out of sight: a refusal is only survivable where the text can be taken by
+ *   hand, and ../forms/Field.jsx shows a masked box's value on it. a control beside the text it
+ *   copies needs none — the text is already on the line.
  *
  * @typedef {object} CopyControlWorded
  * @property {string} wording the words drawn after the mark at rest, for a control whose line has
@@ -27,6 +29,13 @@ import { Mark } from '../status/Mark.jsx';
  *   no `label` beside them: a name that differed from the drawn words would leave a voice user
  *   saying words the control does not answer to (WCAG 2.5.3).
  * @property {undefined} [label]
+ * @property {() => void} onBlocked told when the clipboard refuses, and required here: a worded
+ *   control stands where nothing on its line prints the text, so a refusal leaves the reader a way
+ *   to take it by hand only through what the caller does when told — the API page links the
+ *   document it would have copied.
+ * @property {string} wayOut what the reader is told after `Copy blocked`, naming what `onBlocked`
+ *   draws and where: the refusal leaves focus on this control, so whatever the caller drew arrives
+ *   unannounced unless the refusal says it. required beside `onBlocked` for the same reason.
  *
  * a control is named one way or the other, and a caller cannot pass both.
  *
@@ -44,7 +53,10 @@ const SETTLE_MS = 2000;
    where the word would repeat text already printed on the same line, and only where the control's
    accessible name still carries the full word. a control standing where nothing on its line says
    what it copies — a row of presses rather than a slab's label row — is given `wording`, and draws
-   those words after the mark. the two outcomes draw what they draw either way.
+   those words after the mark. the two outcomes draw what they draw either way, and a worded
+   control draws them over its resting words held invisible rather than in their place, so the
+   control keeps its resting width: shrunk to the tick under the pointer, it would move whatever
+   stands after it on the row twice in two seconds.
 
    the control stays the control through all three states and never gives way to a span: focus is
    on it at the instant a reader wants to hear what happened, and an element that has gone takes
@@ -53,7 +65,15 @@ const SETTLE_MS = 2000;
    the settle timer and the live region are here rather than at each caller, because two copies of
    either is how two surfaces come to report a press differently. */
 /** @param {CopyControlProps} props */
-export function CopyControl({ text, label = 'Copy', wording, disabled = false, onBlocked, ref }) {
+export function CopyControl({
+	text,
+	label = 'Copy',
+	wording,
+	wayOut,
+	disabled = false,
+	onBlocked,
+	ref
+}) {
 	// idle, and the two things that can come back from an attempt. `blocked` is the one worth
 	// drawing: `writeText` rejects on a refused permission and throws outright on an insecure
 	// origin, and a control that answers either by doing nothing visible is worse than no control at
@@ -79,8 +99,10 @@ export function CopyControl({ text, label = 'Copy', wording, disabled = false, o
 
 	// the name at every moment, and the drawn word at the one state where there is one. `blocked`
 	// says the clipboard refused rather than what to do about it, because what to do about it is on
-	// the screen by then: the text it would have copied is printed beside the control, or — held out
-	// of sight, as a masked box holds it — shown by the caller `onBlocked` tells.
+	// the screen by then: the text it would have copied is printed beside the control, or reached
+	// through what the caller `onBlocked` tells draws — a masked box shown, a link to the document.
+	// a worded control's region says that way out as well (`wayOut`), and its name does not: the name
+	// stays the words the button draws.
 	const spoken =
 		outcome === 'copied' ? 'Copied' : outcome === 'blocked' ? 'Copy blocked' : (wording ?? label);
 
@@ -103,7 +125,12 @@ export function CopyControl({ text, label = 'Copy', wording, disabled = false, o
 		// answered with silence.
 		setAnnounced('');
 		clearTimeout(unsay.current);
-		const words = landed === 'copied' ? 'Copied' : 'Copy blocked';
+		const words =
+			landed === 'copied'
+				? 'Copied'
+				: wayOut === undefined
+					? 'Copy blocked'
+					: `Copy blocked. ${wayOut}`;
 		unsay.current = setTimeout(() => setAnnounced(words), 0);
 
 		// both outcomes revert, so the control is offerable again either way, and the region empties
@@ -132,10 +159,33 @@ export function CopyControl({ text, label = 'Copy', wording, disabled = false, o
 				aria-label={spoken}
 				className="adm-btn adm-btn--quiet adm-btn--sm"
 			>
-				{outcome === 'copied' ? <Mark name="check" /> : null}
-				{outcome === 'blocked' ? spoken : null}
-				{outcome === 'idle' ? <Mark name="copy" /> : null}
-				{outcome === 'idle' ? wording : null}
+				{wording === undefined ? (
+					<>
+						{outcome === 'copied' ? <Mark name="check" /> : null}
+						{outcome === 'blocked' ? spoken : null}
+						{outcome === 'idle' ? <Mark name="copy" /> : null}
+					</>
+				) : (
+					/* one cell, both faces in it: the resting one sizes the box and the outcome stands
+					   over it. ../../styles/adm.css `.adm-copyface` draws the stack. */
+					<span className="adm-copyface">
+						<span
+							className={
+								outcome === 'idle'
+									? 'adm-copyface__rest'
+									: 'adm-copyface__rest adm-copyface__rest--held'
+							}
+						>
+							<Mark name="copy" />
+							{wording}
+						</span>
+						{outcome === 'idle' ? null : (
+							<span className="adm-copyface__outcome">
+								{outcome === 'copied' ? <Mark name="check" /> : spoken}
+							</span>
+						)}
+					</span>
+				)}
 			</button>
 			{/* the live region stands beside the button and is never the button itself: a region
 			    reports every change to its own contents, so a button that was one would report the

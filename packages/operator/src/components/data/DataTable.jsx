@@ -243,7 +243,7 @@ export function DataTable({
 						<tr>
 							{/* a head a press sorts by is a link and not a button: the screen is drawn from its
 							    loader, so a sort is another address rather than something that happens here — the
-							    same element the last row of this table already draws to add a record. the head
+							    same element the plane already draws under its rows to add a record. the head
 							    keeps its column's reading either way and the link sits inside it, so a money
 							    column's head is still end-aligned once it can be pressed.
 
@@ -345,18 +345,16 @@ export function DataTable({
 								</td>
 							</tr>
 						) : null}
-						{add ? (
-							<tr>
-								<td className="adm-table__add" colSpan={columns.length}>
-									<a href={addHref}>
-										<Mark name="plus" />
-										{add}
-									</a>
-								</td>
-							</tr>
-						) : null}
 					</tbody>
 				</table>
+				{/* under the rows and outside the table: a row in the body would be one more record to
+				    a reader moving by rows, and one more than the caption counts. */}
+				{add ? (
+					<a className="adm-table__add" href={addHref}>
+						<Mark name="plus" />
+						{add}
+					</a>
+				) : null}
 			</section>
 		</>
 	);

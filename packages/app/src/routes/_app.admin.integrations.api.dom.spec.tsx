@@ -29,6 +29,7 @@ const KEY = 'bgk_7Qm2Xc9Lr4Tz8Vh1Nw6Pd3Ks5Yb0EjRaQm2Xc9L';
 
 const API_REFERENCE = 'https://give.example/integrations/openapi.json';
 const AGENT_PROMPT = '# Connect a system to the donation deployment at https://give.example';
+const AGENT_PROMPT_HREF = 'https://give.example/integrations/agent-prompt.md';
 
 const LISTED = {
 	id: 'key-1',
@@ -50,7 +51,8 @@ function screen(over: { keys?: readonly object[]; actionData?: object } = {}): H
 						revoking: null,
 						revoked: null,
 						apiReference: API_REFERENCE,
-						agentPrompt: AGENT_PROMPT
+						agentPrompt: AGENT_PROMPT,
+						agentPromptHref: AGENT_PROMPT_HREF
 					},
 					actionData: over.actionData,
 					params: {},
@@ -104,6 +106,52 @@ it('links the API reference in a new tab, and copies the agent prompt', async ()
 	expect(copy?.textContent).toBe('Copy agent prompt');
 	await act(async () => copy?.click());
 	expect(writes).toEqual([AGENT_PROMPT]);
+});
+
+it('links the served agent prompt once the clipboard refuses it, and not before', async () => {
+	Object.defineProperty(navigator, 'clipboard', {
+		configurable: true,
+		value: { writeText: async () => Promise.reject(new Error('permission refused')) }
+	});
+	onTestFinished(() => {
+		Reflect.deleteProperty(navigator, 'clipboard');
+	});
+	const root = screen();
+	const prompt = () =>
+		[...root.querySelectorAll('a')].find((a) => a.textContent === 'Open agent prompt');
+	expect(prompt()).toBeUndefined();
+
+	const copy = root.querySelector<HTMLButtonElement>('button[aria-label="Copy agent prompt"]');
+	await act(async () => copy?.click());
+
+	expect(copy?.getAttribute('aria-label')).toBe('Copy blocked');
+	expect(prompt()?.getAttribute('href')).toBe(AGENT_PROMPT_HREF);
+	expect(prompt()?.getAttribute('target')).toBe('_blank');
+});
+
+it('says where the refused prompt can be taken instead, since focus stays on the copy press', async () => {
+	Object.defineProperty(navigator, 'clipboard', {
+		configurable: true,
+		value: { writeText: async () => Promise.reject(new Error('permission refused')) }
+	});
+	onTestFinished(() => {
+		Reflect.deleteProperty(navigator, 'clipboard');
+	});
+	const root = screen();
+	const copy = root.querySelector<HTMLButtonElement>('button[aria-label="Copy agent prompt"]');
+	await act(async () => copy?.click());
+	// the control writes its region a task after the press.
+	await act(() => new Promise((settled) => setTimeout(settled, 0)));
+
+	const said = [...root.querySelectorAll('[aria-live]')].map((region) => region.textContent);
+	expect(said).toContain(
+		'Copy blocked. Open agent prompt, after this button, opens it to copy by hand.'
+	);
+	const link = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Open agent prompt');
+	// "after this button" is the order a reader tabs through.
+	expect(
+		copy && link ? copy.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING : 0
+	).not.toBe(0);
 });
 
 it('draws no card and no key where no key was made', () => {

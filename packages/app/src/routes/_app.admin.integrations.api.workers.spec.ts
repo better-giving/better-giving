@@ -136,6 +136,7 @@ type Screen = {
 	revoked: string | null;
 	apiReference: string;
 	agentPrompt: string;
+	agentPromptHref: string;
 };
 
 function get(cookie: string, search = ''): Promise<Response> {
@@ -249,11 +250,13 @@ describe('GET /admin/integrations/api — the keys', () => {
 
 describe('GET /admin/integrations/api — the documents', () => {
 	it('links the API reference and hands over the agent prompt, both at this address', async () => {
-		const { apiReference, agentPrompt } = await visit(deployer);
+		const { apiReference, agentPrompt, agentPromptHref } = await visit(deployer);
 
 		expect(apiReference).toBe(`${ORIGIN}/integrations/openapi.json`);
 		expect(agentPrompt).toContain(`${ORIGIN}/integrations/v1/gifts`);
 		expect(agentPrompt).toContain(apiReference);
+		// where the page sends a reader whose clipboard refused the prompt.
+		expect(agentPromptHref).toBe(`${ORIGIN}/integrations/agent-prompt.md`);
 	});
 
 	it('publishes https for both when the page is asked over plain http', async () => {

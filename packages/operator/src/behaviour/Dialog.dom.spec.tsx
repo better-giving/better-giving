@@ -75,6 +75,13 @@ describe('the shell over the dialog', () => {
 		expect(dialog.open).toBe(true);
 	});
 
+	/** a whole press: down at one point, and the click it ends in at another. */
+	function press(dialog: HTMLDialogElement, down: [number, number], up: [number, number]) {
+		const at = ([clientX, clientY]: [number, number]) => ({ bubbles: true, clientX, clientY });
+		dialog.dispatchEvent(new PointerEvent('pointerdown', at(down)));
+		dialog.dispatchEvent(new MouseEvent('click', at(up)));
+	}
+
 	it('hands a press on the ground to the caller', () => {
 		const onDismiss = vi.fn();
 		const root = render(Modal, { title: 'Confirm', onDismiss });
@@ -82,9 +89,32 @@ describe('the shell over the dialog', () => {
 
 		// the ground is the element's own `::backdrop`, so a press on it arrives with the element
 		// itself as the target and a point outside the element's box.
-		dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 400, clientY: 400 }));
+		press(dialog, [400, 400], [400, 400]);
 
 		expect(onDismiss).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not read a press that went down before the card was lifted as one on the ground', () => {
+		// a question drawn in the server's markup stands in the page until the lift, and then
+		// somewhere else: the press aimed at it went down on the page, and only its click reaches the
+		// element once it is lifted.
+		const onDismiss = vi.fn();
+		const root = render(Modal, { title: 'Delete this destination?', onDismiss });
+
+		dialogIn(root).dispatchEvent(
+			new MouseEvent('click', { bubbles: true, clientX: 400, clientY: 400 })
+		);
+
+		expect(onDismiss).not.toHaveBeenCalled();
+	});
+
+	it('does not read a press that went down inside the card and ended outside it as one on the ground', () => {
+		const onDismiss = vi.fn();
+		const root = render(Modal, { title: 'Confirm', onDismiss });
+
+		press(dialogIn(root), [0, 0], [400, 400]);
+
+		expect(onDismiss).not.toHaveBeenCalled();
 	});
 
 	it('does not read a press inside the card as a press on the ground', () => {
@@ -107,9 +137,9 @@ describe('the shell over the dialog', () => {
 		const dialog = dialogIn(root);
 
 		// the padding is inside the card and targets the element exactly as the ground does, so the
-		// point is the whole of what separates them. a click at the element's own origin is inside
+		// point is the whole of what separates them. a press at the element's own origin is inside
 		// any box it has.
-		dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 0, clientY: 0 }));
+		press(dialog, [0, 0], [0, 0]);
 
 		expect(onDismiss).not.toHaveBeenCalled();
 	});
@@ -198,7 +228,9 @@ describe('the shell over the dialog', () => {
 		const [up, setUp] = useState(false);
 		const box = useRef<HTMLInputElement>(null);
 		return (
-			<>
+			// the shell's page, focusable for its skip link and so the box a pointer press lands focus
+			// on in safari (./Dialog.tsx's header).
+			<main tabIndex={-1}>
 				<input ref={box} aria-label="Name" />
 				{row ? (
 					<button type="button" onClick={() => setUp(true)}>
@@ -222,7 +254,7 @@ describe('the shell over the dialog', () => {
 						fallbackFocus={named ? box : undefined}
 					/>
 				) : null}
-			</>
+			</main>
 		);
 	}
 
@@ -244,13 +276,43 @@ describe('the shell over the dialog', () => {
 		expect(document.activeElement).toBe(root.querySelector('input'));
 	});
 
-	it('still goes back to the opener when it is on the page, whatever the screen named', () => {
+	it('still goes back to the control that opened it when it is on the page, whatever the screen named', () => {
 		const root = render(Revoking, { named: true });
 		const opener = opened(root);
 
 		pressed(root, 'Cancel');
 
 		expect(document.activeElement).toBe(opener);
+	});
+
+	it('reads a page that only held the focus as no opener, and lands where the screen named', () => {
+		// what safari does with a pointer press on Revoke: the button is not focused, the page around
+		// it is, and the press still puts the card up.
+		const root = render(Revoking, { named: true });
+		const page = root.querySelector('main');
+		const revoke = root.querySelector('button');
+		if (page === null || revoke === null) throw new Error('no page or no Revoke');
+		page.focus();
+		act(() => revoke.click());
+
+		pressed(root, 'Cancel');
+
+		expect(document.activeElement).toBe(root.querySelector('input'));
+	});
+
+	it('goes back to the page that held the focus when nothing was named', () => {
+		// the same safari press on a screen that names no target: the page is no opener, but it is
+		// where the reader was, and it is still standing.
+		const root = render(Revoking, { named: false });
+		const page = root.querySelector('main');
+		const revoke = root.querySelector('button');
+		if (page === null || revoke === null) throw new Error('no page or no Revoke');
+		page.focus();
+		act(() => revoke.click());
+
+		pressed(root, 'Yes, revoke');
+
+		expect(document.activeElement).toBe(page);
 	});
 
 	it('leaves the focus on the body when the opener is gone and nothing was named', () => {

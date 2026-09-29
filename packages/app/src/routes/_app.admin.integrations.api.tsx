@@ -8,7 +8,7 @@ import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, Grouped, Groups } from '@better-giving/operator/components/shell/Layout';
 import { getFormProps } from '@conform-to/react';
-import { type RefObject, useEffect, useRef } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { data, Form, Link, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -25,7 +25,7 @@ import {
 	revokeAndArchiveApiKey,
 	revokedApiKeyName
 } from '$lib/server/integrations/keys';
-import { OPENAPI_PATH, publishedOrigin } from '$lib/server/integrations/openapi';
+import { AGENT_PROMPT_PATH, OPENAPI_PATH, publishedOrigin } from '$lib/server/integrations/openapi';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.api';
 
@@ -55,7 +55,8 @@ import type { Route } from './+types/_app.admin.integrations.api';
 // the API reference and the agent prompt are the read API's two documents, each built for the
 // origin this request publishes (`publishedOrigin` in $lib/server/integrations/openapi.ts): the
 // reference is a link to the document the deployment serves, and the prompt is copied whole from
-// the loader's answer.
+// the loader's answer. a copy the clipboard refuses puts a link to the served prompt beside the
+// press, since nothing on the page prints it, and the refusal's announcement names that link.
 //
 // both dialogs take their opener off the page as they answer — a made key remounts the form that
 // asked, a revoked row takes its Revoke with it — so each hands `fallbackFocus` the Name box, the
@@ -148,7 +149,8 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 			revoking: keys.find((key) => key.id === asked) ?? null,
 			revoked,
 			apiReference: `${published}${OPENAPI_PATH}`,
-			agentPrompt: agentPromptFor(published)
+			agentPrompt: agentPromptFor(published),
+			agentPromptHref: `${published}${AGENT_PROMPT_PATH}`
 		},
 		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
 	);
@@ -207,6 +209,7 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 	const made = actionData && 'made' in actionData ? actionData.made : undefined;
 	const [shown, done] = useShownOnce(made?.key);
 	const nameBox = useRef<HTMLInputElement>(null);
+	const [promptRefused, setPromptRefused] = useState(false);
 
 	return (
 		<Column wide>
@@ -227,7 +230,25 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 						>
 							API reference
 						</Button>
-						<CopyControl text={loaderData.agentPrompt} wording="Copy agent prompt" />
+						<CopyControl
+							text={loaderData.agentPrompt}
+							wording="Copy agent prompt"
+							wayOut="Open agent prompt, after this button, opens it to copy by hand."
+							onBlocked={() => setPromptRefused(true)}
+						/>
+						{promptRefused ? (
+							<Button
+								as="a"
+								href={loaderData.agentPromptHref}
+								target="_blank"
+								rel="noreferrer"
+								variant="quiet"
+								size="sm"
+								markAfter="external-link"
+							>
+								Open agent prompt
+							</Button>
+						) : null}
 					</div>
 				</Grouped>
 				<KeyPlane keys={loaderData.keys} />

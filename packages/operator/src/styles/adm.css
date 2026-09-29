@@ -395,6 +395,28 @@
 		opacity: 0;
 	}
 
+	/* a worded copy control's two faces in one cell, so the box is the wider of the two and an
+	   outcome drawn over the resting words leaves the control the width it was pressed at —
+	   packages/operator/src/components/controls/CopyControl.jsx. each face spaces its own mark as
+	   `.adm-btn__label` does, and starts where the resting mark stands, so the tick takes its place. */
+	.adm-copyface {
+		display: inline-grid;
+	}
+
+	.adm-copyface__rest,
+	.adm-copyface__outcome {
+		grid-area: 1 / 1;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--admin-space-3);
+	}
+
+	/* held in the box and out of sight. the button's name is its `aria-label` in every state, so
+	   the words going unseen takes nothing from what a reader is told. */
+	.adm-copyface__rest--held {
+		visibility: hidden;
+	}
+
 	/* the cursor over a press that is already working. it is under the pointer only and never for a
 	   keyboard, which is why it says nothing on its own and the dots are what report the wait. */
 	.adm-btn[aria-busy='true'] {
@@ -4648,31 +4670,37 @@
 		color: var(--admin-ink-muted);
 	}
 
-	/* the last row of a table something can be added to, and it is a row rather than a control
-	   beside one: the place a reader is looking for one more record is the end of the list they
-	   have just read. the cell gives its padding away to the link inside it, so the whole row is
-	   what the pointer and the finger have to land on rather than the mark alone. */
-	.adm-table .adm-table__add {
-		padding: 0;
-	}
+	/* the foot of a plane something can be added to, drawn as the row after the last one rather
+	   than a control beside the list: the place a reader is looking for one more record is the end
+	   of the list they have just read. it stands after the table rather than in its body, so a
+	   reader moving by rows meets only records — the rule, the inset and the size are a row's,
+	   restated, and the whole row is what the pointer and the finger have to land on rather than
+	   the mark alone.
 
-	.adm-table__add > a {
+	   it is as wide as the plane's view and not as the table, which scrolls inside the plane, so it
+	   is held at the view's start edge: a table scrolled sideways would otherwise carry the row's
+	   rule and its band off with it, and leave the columns in view with no foot. */
+	.adm-table__add {
+		position: sticky;
+		inset-inline-start: 0;
 		display: grid;
 		grid-template-columns: auto 1fr;
 		align-items: center;
 		gap: var(--admin-space-4);
 		padding: var(--admin-space-4) var(--admin-space-5);
+		font-size: var(--admin-table-size);
 		color: var(--admin-ink-2);
 		text-decoration: none;
+		border-block-start: var(--admin-rule);
 	}
 
-	.adm-table__add > a:hover,
-	.adm-table__add > a.is-hover {
+	.adm-table__add:hover,
+	.adm-table__add.is-hover {
 		color: var(--admin-ink);
 		background: var(--admin-surface-sunken);
 	}
 
-	/* a column head a press sorts by, and it is a link for the reason the row above it is one: the
+	/* a column head a press sorts by, and it is a link for the reason the add row above is one: the
 	   screens drawing these tables are drawn from their loaders, so a sort is another address
 	   rather than something that happens here. packages/operator/src/components/data/DataTable.jsx
 	   argues the rest of it.
@@ -4684,7 +4712,7 @@
 
 	   no ring is written here and the omission is the rule rather than a gap: ./base.css gives a
 	   focused link the accent bled past its own box instead of a rectangle, and a run of words in a
-	   header is a link like the one at the foot of the same table.
+	   header is a link like the one at the foot of the same plane.
 
 	   the sorted head is the one at full ink, and it is drawn from the `aria-sort` the head already
 	   carries rather than from a class of its own — the direction is stated once and everything
@@ -5231,7 +5259,8 @@
 	   over all three without asking for a step at all. the bar's More sheet and its scrim are the
 	   one pair that stand at the bar's own step, 2, and it is the order that settles them:
 	   packages/operator/src/components/shell/AppShell.jsx writes both before the bar, so the bar
-	   draws over them and stays undimmed while the sheet is open.
+	   draws over them and stays undimmed while the sheet is open — and live, which that file's
+	   `persistentElements` is what keeps it.
 
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
 	   them, so a tab keeps the whole of its height wherever it is drawn. */
@@ -5321,6 +5350,12 @@
 		display: none;
 	}
 
+	/* a headed group whose every cell is the sheet's goes with them: left `display: contents`, it
+	   would stand on the bar as a named group holding nothing. */
+	.adm-rail__cells .adm-rail__group--offbar {
+		display: none;
+	}
+
 	/* the bar's More sheet: a modal card standing on the page's foot, where the bar's reserved
 	   strip begins, holding the rail's other destinations as the column draws them — the name, the
 	   mark, the rules and the headings — at the height a finger needs. it is only ever open below
@@ -5390,29 +5425,17 @@
 		display: none;
 	}
 
-	/* the sheet's Close: the last stop in its tab order, for a reader with no Escape to send. it is
-	   `.adm-vh` in ./base.css, restated, until it takes focus — that utility never comes back on
-	   focus — and then it is the quiet button it is, under the last row. */
+	/* the sheet's Close: the last stop in its tab order, for a reader with no Escape to send, and
+	   drawn at every moment rather than on focus — a phone screen reader's cursor lands on a control
+	   without focusing it, and a Close drawn only on focus is a pixel to double-tap. the quiet
+	   button it is, under the last row. */
 	.adm-sheet__close {
 		margin-block-start: var(--admin-space-4);
 	}
 
-	.adm-sheet__close:not(:focus) {
-		position: absolute;
-		inline-size: 1px; /* raw-length-ok: as `.adm-vh`. */
-		block-size: 1px; /* raw-length-ok: as `.adm-vh`. */
-		min-block-size: 0;
-		margin: -1px; /* raw-length-ok: as `.adm-vh`. */
-		padding: 0;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-		border: 0;
-	}
-
 	/* the shell's skip link: its first stop, off the screen until it takes focus, and then a button
 	   over the top corner of whatever is there, so arriving on it moves nothing under it. it is
-	   `.adm-vh` in ./base.css, restated, for the reason `.adm-sheet__close` above gives. it stands at
+	   `.adm-vh` in ./base.css, restated, because that utility never comes back on focus. it stands at
 	   step 3 of the ladder stated at `.adm-rail` below, over the bar and the band alike. */
 	.adm-skip {
 		position: fixed;
@@ -6759,6 +6782,10 @@
 		/* the column draws every destination, so the bar's split is undone and More is not drawn. */
 		.adm-rail__cells .adm-dest--offbar {
 			display: flex;
+		}
+
+		.adm-rail__cells .adm-rail__group--offbar {
+			display: contents;
 		}
 
 		.adm-rail__more {
