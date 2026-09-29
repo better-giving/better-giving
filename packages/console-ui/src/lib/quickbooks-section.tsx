@@ -5,6 +5,7 @@ import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Stack } from '@better-giving/operator/components/shell/Layout';
+import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import type {
@@ -24,6 +25,7 @@ import type {
 	VarsRead,
 	VarsWritten
 } from '../api/types';
+import { PAID_PLAN, freePlanPace } from './cloudflare-plan';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldInGroup } from './held-values';
 import { keysTrouble } from './processor-screen';
@@ -118,6 +120,12 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // **nothing here confirms that the books are keeping up.** a connected deployment says which
 // company, and the backlog speaks only under that company and only where a gift was given up on
 // (./quickbooks-standing.ts).
+//
+// **the pace is said while the deployment reads its account as on the Free plan, and only then.**
+// the books go over at that plan's pace (`DELIVERY_PACE` in packages/operator/src/delivery-pace.ts),
+// which is slow enough to be mistaken for a sync that has stopped, and the answer that lifts it is
+// on the Cloudflare plan page (./cloudflare-plan-block.tsx) — so the notice names the pace and that
+// page, and goes the moment the stored answer reads as paid (`freePlanPace` in ./cloudflare-plan.ts).
 //
 // **the address an operator registers arrives on the report, whole.** it is this deployment's own
 // address and the path Intuit sends a browser back to, and only the deployment can say either: no
@@ -310,6 +318,7 @@ export function QuickbooksSection({
 
 	// never drawn: the sections layout stands a gate in this page's place (../lib/cloudflare-gate.ts).
 	if (values.vars.kind !== 'read' || holding === null) return null;
+	const pace = freePlanPace(holding.seeds[PAID_PLAN] ?? '');
 	const presses: Presses = {
 		answer,
 		preview,
@@ -325,6 +334,15 @@ export function QuickbooksSection({
 
 	return (
 		<>
+			{pace === null ? null : (
+				<Banner
+					tone="note"
+					word={`The books reach QuickBooks ${pace.books} ${pace.books === 1 ? 'gift' : 'gifts'} a minute`}
+				>
+					That is the pace on the Cloudflare Free plan. If this account is on the Workers Paid plan,
+					say so on the Cloudflare plan page.
+				</Banner>
+			)}
 			<StatusLedger sections>
 				<Step name="setup" standing={steps.setup}>
 					<Stack>
