@@ -3316,6 +3316,54 @@ describe('the ring and the brand never touch', () => {
 	});
 });
 
+// a screen's heading takes the caret by script so the screen is announced, and chromium matches
+// `:focus-visible` on a script's focus whenever the last input was a key or there was none yet —
+// which is every page load. so the heading is read with that match live: without it, no ring is
+// what every rule draws and the case passes whatever the sheet says.
+describe('a node focused only to be announced', () => {
+	function stepHeading(shadow: ShadowRoot): HTMLElement {
+		return shadow.querySelector(
+			".step:not([hidden]) [part~='heading'][tabindex='-1']"
+		) as HTMLElement;
+	}
+
+	/** the caret on the step's heading by script, then carried onward by real Tab presses. */
+	async function tabFromHeading(shadow: ShadowRoot, until: string): Promise<HTMLElement> {
+		await caretOn(stepHeading(shadow));
+		for (let presses = 0; !shadow.activeElement?.matches(until); presses += 1) {
+			if (presses > 8) throw new Error(`Tab never reached ${until} from the heading`);
+			await userEvent.keyboard('{Tab}');
+		}
+		return shadow.activeElement as HTMLElement;
+	}
+
+	it('draws no ring around a heading the script focused', async () => {
+		const { shadow } = await mount();
+		const heading = stepHeading(shadow);
+		const drawn = await caretOn(heading);
+
+		expect(heading.matches(':focus-visible')).toBe(true);
+		expect(drawn.outlineStyle).toBe('none');
+		expect(drawn.boxShadow).toBe('none');
+	});
+
+	it('still rings a step mark whose button Tab reaches from that heading', async () => {
+		const { shadow } = await mount();
+		const button = await tabFromHeading(shadow, 'button.step-dot');
+		const mark = getComputedStyle(button.querySelector('.step-mark') as HTMLElement);
+
+		expect(mark.outlineStyle).toBe('solid');
+		expect(mark.outlineColor).toBe(used(shadow, '--_focus-ring'));
+	});
+
+	it('still rings the first choice Tab reaches from that heading', async () => {
+		const { shadow } = await mount();
+		const radio = await tabFromHeading(shadow, "[part~='frequency-option'] input");
+
+		expect(getComputedStyle(radio).boxShadow).toContain(used(shadow, '--_focus-ring'));
+	});
+});
+
 // the same ring, read off the pixels an engine painted rather than off the declaration that asked
 // for them — and this is the one question in this file no computed style can answer. a ring drawn
 // on the fill's own outermost band and a ring drawn a band in from it are the same string in
