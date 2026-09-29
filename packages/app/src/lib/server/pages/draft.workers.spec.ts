@@ -304,7 +304,7 @@ describe('what the model is told', () => {
 	});
 
 	const MONTHLY_WORDING =
-		'- the donation box opens on a monthly gift: impact tiers say what each amount does every month, and the story may invite a monthly gift';
+		'- the donation box opens on a monthly gift: the story may invite a monthly gift; say what an amount does only as the operator said it, never as what it does every month unless they said so';
 	const DEDICATION_WORDING =
 		'- the donation box opens with a dedication: the words may speak of giving in honour or in memory of someone';
 
@@ -418,7 +418,8 @@ describe('what the model is told', () => {
 			- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations, e.g. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...}]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.
 			- set: only what the operator asked for, of {"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...]}. Amounts are in minor units ($15,000 is 1500000); suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs.
 			- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.
-			- write an amount in the words, or an impact tier, only from a figure the operator stated in the chat; with none, leave the impact tiers out.
+			- write an amount in the words only from a figure the operator stated in the chat or one the page already shows.
+			- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.
 
 			CONTEXT:
 			- page: a campaign named "Winter coat drive"
@@ -520,7 +521,7 @@ describe('an impact tier', () => {
 		expect(impact).toMatchObject({ tiers: [{ amountMinor: 2500, buys: 'a warm coat' }] });
 		const [, answer] = await chat(pageId);
 		expect(answer?.text).toBe(
-			'Added what a gift buys.\nLeft out the $75 tier: you haven’t given that figure.'
+			'Added what a gift buys.\nLeft out the $75 tier: you haven’t said what $75 does.'
 		);
 	});
 });

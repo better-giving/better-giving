@@ -345,7 +345,8 @@ function replyFormat(type: PageType): string[] {
 					'- the Donation page has no name, goal or end date; when asked for one, change nothing and say why.'
 				]),
 		'- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.',
-		'- write an amount in the words, or an impact tier, only from a figure the operator stated in the chat; with none, leave the impact tiers out.'
+		'- write an amount in the words only from a figure the operator stated in the chat or one the page already shows.',
+		'- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.'
 	];
 }
 
@@ -429,7 +430,7 @@ function summarise(
 	});
 	const lost = dropped.map((item) =>
 		item.what === 'tier'
-			? `Left out the ${money(item.amountMinor)} tier: you haven’t given that figure.`
+			? `Left out the ${money(item.amountMinor)} tier: you haven’t said what ${money(item.amountMinor)} does.`
 			: `Took the link off “${item.text}”.`
 	);
 	return [...said, ...pictured, ...lost].join(' ');
