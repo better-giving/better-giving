@@ -6,7 +6,7 @@ import {
 	type FormInputField,
 	type FormInputFieldErrors
 } from '../../forms/fields';
-import { type Page as PageDocument, type PageRefusal, parsePage } from '../../page/catalog';
+import type { Page as PageDocument, PageRefusal } from '../../page/catalog';
 import { dayWords, endDayOf } from '../../page/end-date';
 import { stateAt } from '../../page/ended';
 import {
@@ -30,10 +30,15 @@ import {
 } from '../forms/form-input';
 import { encodeSuggestedAmounts } from '../forms/form-json';
 import type { StoredForm } from '../forms/queries';
+import { readDocument } from './document';
+import { unchosenSettings } from './donation-page';
 import {
 	type DraftSettings,
+	nameToCarry,
+	ownedName,
 	readOwnedRow,
 	readTarget,
+	renamingOwned,
 	SLUG_ATTEMPTS,
 	type SettingsTarget,
 	settingsOfRow
@@ -48,7 +53,9 @@ import {
 // and its donation settings to a form row's program and giving rules, then makes it live: `published`
 // is the draft, the draft is that same text, `last_published` keeps the page it replaced, and the
 // owned settings row takes the draft's settings and goes live, so what donors see and what a gift
-// is checked against move together (`page` in ../db/schema.ts). the chat is kept.
+// is checked against move together (`page` in ../db/schema.ts). the chat is kept. a draft holding
+// no settings of its own — the Donation page's until the operator saves Donation settings — goes
+// live holding none, and the row keeps what it has.
 // - where gifts go ("Gifts go to") is answered at a campaign's first Publish and nowhere else: a
 //   first Publish without that answer is refused, and so is an answer on a page already published,
 //   whose program is Donation settings'.
@@ -59,12 +66,16 @@ import {
 //   name, with nothing to undo: the page it replaced is the one it ended on.
 //
 // **Undo** swaps `published` and `last_published`. `last_published` carries the settings row as it
-// stood before the Publish, so the swap puts back both the page and what a gift is charged against.
+// stood before the Publish, so the swap puts back both the page and what a gift is charged against;
+// one carrying none puts back the Donation page's settings from before the operator chose
+// (`unchosenSettings` in ./donation-page.ts).
 // the page replaced is kept for Undo only where it still passes the page rule. an Undo that would
-// pin gifts to a program retired since, and not pinned now, is refused. the draft stays as it is,
+// pin gifts to a program retired since, and not pinned now, is refused, and so is one that would put
+// back a page whose end date has passed since, as Publish refuses it. the draft stays as it is,
 // and the editor reads it as changes not published.
 //
-// **Discard changes** puts the draft back to the live page and empties the page's chat.
+// **Discard changes** puts the draft back to the live page, a campaign's name with it, and empties
+// the page's chat.
 
 /** what a Publish did. */
 export type PublishOutcome =
@@ -87,6 +98,11 @@ function ruleRefusal(refusal: PageRefusal): string {
 	return root === undefined || root === 'blocks'
 		? refusal.message
 		: `${refusal.message} (at ${refusal.path.join('.')})`;
+}
+
+/** a document's end as its day in words, in the zone it was chosen in. */
+function endWords(document: PageDocument, endsAt: number): string {
+	return dayWords(endDayOf(document) ?? new Date(endsAt).toISOString().slice(0, 10));
 }
 
 /**
@@ -161,13 +177,12 @@ export async function publishPage(
 ): Promise<PublishOutcome> {
 	const row = await readTarget(db, target);
 	if (row === null) return { kind: 'gone' };
-	const draft = parsePage(row.type, JSON.parse(row.draft));
+	const draft = readDocument(row, 'draft', row.draft);
 	if (!draft.ok) return refused(ruleRefusal(draft));
 	const { endsAt } = draft.page;
 	if (endsAt !== undefined && endsAt <= at.now) {
-		const day = endDayOf(draft.page) ?? new Date(endsAt).toISOString().slice(0, 10);
 		return refused(
-			`the end date, ${dayWords(day)}, has passed. Change or clear it in Settings, then publish`
+			`the end date, ${endWords(draft.page, endsAt)}, has passed. Change or clear it in Settings, then publish`
 		);
 	}
 	const first = row.state === 'never_published';
@@ -196,9 +211,15 @@ export async function publishPage(
 	if ((await retiredPin(db, settings.programId, held)) !== null) {
 		return refused('the program chosen for gifts is no longer offered. Choose another');
 	}
-	const published: PageDocument = { ...draft.page, settings };
+	// a draft holding no settings of its own publishes none, and the row keeps what it holds: the
+	// Donation page's program goes on following the active programs (./donation-page.ts).
+	const carried = draft.page.settings !== undefined || typeof at.giftsGoTo === 'string';
+	const published: PageDocument = carried ? { ...draft.page, settings } : draft.page;
 	const replaced = stateAt(row, at.now) === 'live' ? kept(row, live) : null;
 	const document = JSON.stringify(published);
+	// a name the draft holds and the row does not is the campaign's from now on, as a rename makes it
+	// (`renaming` in ./queries.ts), the address aside: the first Publish's confirm named that.
+	const renamed = nameToCarry(row, draft.page);
 
 	const drawn = and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft));
 	for (let attempt = 1; ; attempt += 1) {
@@ -207,7 +228,11 @@ export async function publishPage(
 			const [, made] = await db.batch([
 				db
 					.update(form)
-					.set({ ...settingsColumns(settings), status: 'live' })
+					.set({
+						...(carried ? settingsColumns(settings) : {}),
+						...(renamed === null ? {} : { name: ownedName(renamed) }),
+						status: 'live'
+					})
 					.where(
 						and(eq(form.id, row.formId), exists(db.select({ id: page.id }).from(page).where(drawn)))
 					),
@@ -218,7 +243,8 @@ export async function publishPage(
 						published: document,
 						lastPublished: replaced,
 						state: 'live',
-						slug
+						slug,
+						...(renamed === null ? {} : { name: renamed })
 					})
 					.where(drawn)
 					.returning({ id: page.id })
@@ -235,13 +261,17 @@ export async function publishPage(
 }
 
 /**
- * the live page a Publish replaces, with the settings row as it stood inside it, for Undo; null
- * where that page no longer passes the page rule, which an Undo could not put back.
+ * the live page a Publish replaces, with the settings row as it stood inside it where that page
+ * carried settings, for Undo; null where that page no longer passes the page rule, which an Undo
+ * could not put back.
  */
 function kept(row: Page, live: DraftSettings): string | null {
 	if (row.published === null) return null;
-	const replaced = parsePage(row.type, JSON.parse(row.published));
-	return replaced.ok ? JSON.stringify({ ...replaced.page, settings: live }) : null;
+	const replaced = readDocument(row, 'published', row.published);
+	if (!replaced.ok) return null;
+	return JSON.stringify(
+		replaced.page.settings === undefined ? replaced.page : { ...replaced.page, settings: live }
+	);
 }
 
 /**
@@ -291,18 +321,26 @@ export type UndoOutcome =
 export async function undoPublish(
 	db: Db,
 	target: SettingsTarget,
-	version: Date
+	version: Date,
+	at: { readonly now: number }
 ): Promise<UndoOutcome> {
 	const row = await readTarget(db, target);
 	if (row === null) return { kind: 'gone' };
 	if (row.lastPublished === null || row.published === null) return { kind: 'nothing' };
-	const restored = parsePage(row.type, JSON.parse(row.lastPublished));
-	// a Publish keeps only a page that passes the rule, with the settings row as it stood inside it.
-	if (!restored.ok || restored.page.settings === undefined) {
-		throw new Error(`page ${row.id}'s last published page cannot be put back`);
+	const restored = readDocument(row, 'last_published', row.lastPublished);
+	// a Publish keeps only a page that passes the rule.
+	if (!restored.ok) throw new Error(`page ${row.id}'s last published page cannot be put back`);
+	const { endsAt } = restored.page;
+	if (endsAt !== undefined && endsAt <= at.now) {
+		return {
+			kind: 'refused',
+			text: `Nothing was undone: the page before ended on ${endWords(restored.page, endsAt)}, which has passed.`
+		};
 	}
-	const settings = restored.page.settings;
 	const owned = await readOwnedRow(db, row);
+	// only the Donation page publishes a page with no settings of its own (a campaign is made with
+	// them), and the row it stood on then held the Donation page's own until the operator chose.
+	const settings = restored.page.settings ?? (await unchosenSettings(db, owned));
 	const retired = await retiredPin(db, settings.programId, [owned.programId]);
 	if (retired !== null) {
 		return {
@@ -340,7 +378,11 @@ export type DiscardOutcome =
 	| { readonly kind: 'stale' }
 	| { readonly kind: 'gone' };
 
-/** the draft back to the live page and the page's chat emptied, in one `batch()`. */
+/**
+ * the draft back to the live page and the page's chat emptied, in one `batch()`. a campaign renamed
+ * since takes the live page's name back, everywhere a rename reaches (`renamingOwned` in
+ * ./queries.ts), since the draft's name and the row's are one.
+ */
 export async function discardChanges(
 	db: Db,
 	target: SettingsTarget,
@@ -357,14 +399,26 @@ export async function discardChanges(
 		eq(page.updatedAt, version),
 		eq(page.published, row.published)
 	);
-	const [, discarded] = await db.batch([
+	const live = readDocument(row, 'published', row.published);
+	const renamed = live.ok ? nameToCarry(row, live.page) : null;
+	const statements = [
 		db
 			.delete(chatTurn)
 			.where(
 				and(eq(chatTurn.pageId, row.id), exists(db.select({ id: page.id }).from(page).where(drawn)))
 			),
-		db.update(page).set({ draft: row.published }).where(drawn).returning({ id: page.id })
-	]);
+		db
+			.update(page)
+			.set({ draft: row.published, ...(renamed === null ? {} : { name: renamed }) })
+			.where(drawn)
+			.returning({ id: page.id })
+	] as const;
+	const [, discarded] =
+		renamed === null
+			? await db.batch(statements)
+			: await db
+					.batch([renamingOwned(db, row.formId, renamed, drawn), ...statements])
+					.then(([, ...rest]) => rest);
 	return discarded.length === 1 ? { kind: 'discarded' } : { kind: 'stale' };
 }
 
@@ -419,7 +473,9 @@ export async function answerPublishPress(
 				publishPage(db, target, seen, { now, giftsGoTo: giftsGoTo(value[GIFTS_GO_TO]) })
 			);
 		case UNDO_FORM_ID:
-			return answer(UNDO_FORM_ID, parseForm(body, UNDO), (seen) => undoPublish(db, target, seen));
+			return answer(UNDO_FORM_ID, parseForm(body, UNDO), (seen) =>
+				undoPublish(db, target, seen, { now })
+			);
 		case DISCARD_FORM_ID:
 			return answer(DISCARD_FORM_ID, parseForm(body, DISCARD), (seen) =>
 				discardChanges(db, target, seen)

@@ -1,12 +1,15 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RECORD_VERSION, WHICH_FORM } from '../../forms/definition';
 import { defaultDonationPage } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
 import { rejectionCode } from '../db/rejection.testing';
 import { form, page, program } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
 import { ensureDonationPage } from './donation-page';
+import { publishPage } from './publish';
+import { saveDraftSettings } from './editor';
 
 // the donation page made on first need: no migration seeds it, and whichever reader asks first makes
 // it, against the real D1 whose one-Donation-page index settles two asking at once.
@@ -33,6 +36,24 @@ async function activePrograms(...names: string[]) {
 
 async function donationPages() {
 	return db.select().from(page).where(eq(page.type, 'donation_page'));
+}
+
+async function ownedProgram(formId: string) {
+	const { programMode, programId } = await ownedForm(formId);
+	return { programMode, programId };
+}
+
+async function versionNow(): Promise<Date> {
+	const [row] = await donationPages();
+	if (!row) throw new Error('there is no Donation page');
+	return row.updatedAt;
+}
+
+async function publishAsItStands(): Promise<void> {
+	const outcome = await publishPage(db, { type: 'donation_page' }, await versionNow(), {
+		now: Date.now()
+	});
+	expect(outcome).toMatchObject({ kind: 'published' });
 }
 
 async function ownedForm(id: string) {
@@ -66,10 +87,65 @@ describe('the settings row the Donation page owns', () => {
 		expect((await ownedForm(made.formId)).programMode).toBe('choice');
 	});
 
-	it('asks about no program where only one is active', async () => {
+	it('pins the one program where only one is active', async () => {
 		await activePrograms('Food bank');
 		const made = await ensureDonationPage(db);
-		expect((await ownedForm(made.formId)).programMode).toBe('none');
+		const [food] = await db.select({ id: program.id }).from(program);
+		expect(await ownedProgram(made.formId)).toEqual({
+			programMode: 'pinned',
+			programId: food?.id
+		});
+	});
+});
+
+describe('the Donation page’s program, while the operator has chosen none', () => {
+	it('follows the active programs as they come and go, a Publish between them included', async () => {
+		const made = await ensureDonationPage(db);
+		expect(await ownedProgram(made.formId)).toEqual({ programMode: 'none', programId: null });
+		await publishAsItStands();
+
+		await activePrograms('Food bank', 'Shelter');
+		expect(await ownedProgram((await ensureDonationPage(db)).formId)).toEqual({
+			programMode: 'choice',
+			programId: null
+		});
+
+		await db
+			.update(program)
+			.set({ status: 'archived', archivedAt: new Date() })
+			.where(eq(program.name, 'Shelter'));
+		const [food] = await db
+			.select({ id: program.id })
+			.from(program)
+			.where(eq(program.name, 'Food bank'));
+		expect(await ownedProgram((await ensureDonationPage(db)).formId)).toEqual({
+			programMode: 'pinned',
+			programId: food?.id
+		});
+	});
+
+	it('stops following once the operator’s saved choice is published', async () => {
+		const made = await ensureDonationPage(db);
+		const body = new FormData();
+		body.set(WHICH_FORM, 'page-settings');
+		body.set(RECORD_VERSION, String((await versionNow()).getTime()));
+		body.set('program_mode', 'none');
+		body.set('program_id', '');
+		body.set('min_minor', '1');
+		body.set('max_minor', '10000');
+		body.set('suggested_amounts[0]', '25');
+		expect(await saveDraftSettings(db, { type: 'donation_page' }, body, 'gone')).toEqual({
+			saved: 'settings'
+		});
+		await publishAsItStands();
+
+		await activePrograms('Food bank', 'Shelter');
+
+		expect(await ownedProgram((await ensureDonationPage(db)).formId)).toEqual({
+			programMode: 'none',
+			programId: null
+		});
+		expect((await ownedForm(made.formId)).suggestedAmounts).toBe('[2500]');
 	});
 });
 

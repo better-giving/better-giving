@@ -21,13 +21,15 @@ import CampaignEditor from './_app.admin.campaigns.$pageId';
 
 const PAGE = '/admin/campaigns/p1';
 
-type Loaded = Parameters<typeof CampaignEditor>[0]['loaderData'];
+type Drawn = Parameters<typeof CampaignEditor>[0]['loaderData'];
+type Loaded = Extract<Drawn, { unreadable: false }>;
 
 const DRAFT = defaultCampaign();
 
 /** a never-published campaign whose name asked for an address another campaign holds. */
 function unpublished(): Loaded {
 	return {
+		unreadable: false,
 		state: 'unpublished',
 		version: 1,
 		// a frame on a path would be fetched from a server nothing here runs.
@@ -67,12 +69,15 @@ function unpublished(): Loaded {
 }
 
 let drawn: Loaded;
+/** what the loader draws in `drawn`'s place over a draft the read rule refuses. */
+let unreadable: Extract<Drawn, { unreadable: true }> | null;
 let posted: Record<string, string>[];
 /** what the action answers each post, in turn. */
 let answers: { body: unknown; status?: number }[];
 
 beforeEach(() => {
 	drawn = unpublished();
+	unreadable = null;
 	posted = [];
 	answers = [];
 });
@@ -90,7 +95,7 @@ function mount(tree: ReactNode) {
 
 function Editor() {
 	return createElement(CampaignEditor as never, {
-		loaderData: useLoaderData<Loaded>(),
+		loaderData: useLoaderData<Drawn>(),
 		params: { pageId: 'p1' },
 		matches: []
 	});
@@ -100,7 +105,7 @@ async function screen() {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
-			loader: () => drawn,
+			loader: () => unreadable ?? drawn,
 			action: async ({ request }) => {
 				posted.push(
 					Object.fromEntries([...(await request.formData())].map(([k, v]) => [k, String(v)]))
@@ -243,5 +248,40 @@ describe('an address save that comes back with a question', () => {
 			slug: 'coats',
 			move: 'on'
 		});
+	});
+});
+
+describe('a draft the page rule refuses', () => {
+	const refused = (discardable: boolean): Extract<Drawn, { unreadable: true }> => ({
+		unreadable: true,
+		discardable,
+		state: 'changed',
+		version: 3,
+		preview: 'about:blank',
+		chat: '/admin/pages/p1/chat',
+		name: 'Winter coat drive',
+		address: '/winter-coat-drive',
+		host: 'give.example.org/'
+	});
+
+	it('says so in the preview’s place, with Discard changes on the bar', async () => {
+		unreadable = refused(true);
+		await screen();
+
+		const notice = document.querySelector('.adm-editor__preview .adm-banner');
+		expect(notice?.textContent).toContain('This draft can’t be read');
+		expect(notice?.textContent).toContain('Discard changes to go back to the live page.');
+		expect(document.querySelector('iframe')).toBe(null);
+		expect(() => button('Discard changes')).not.toThrow();
+	});
+
+	it('offers no Discard changes where the live page cannot be read either', async () => {
+		unreadable = refused(false);
+		await screen();
+
+		expect(document.querySelector('.adm-banner')?.textContent).toContain(
+			'there is no live page to go back to'
+		);
+		expect(() => button('Discard changes')).toThrow();
 	});
 });

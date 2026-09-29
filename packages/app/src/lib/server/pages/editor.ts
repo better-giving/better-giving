@@ -3,7 +3,6 @@ import { formatMinorBrief } from '../../donations/money';
 import { majorEntry } from '../../forms/amounts';
 import { FORM_TEXT_FIELDS, type FormInputFieldErrors } from '../../forms/fields';
 import { PROGRAM_MODE_LABELS } from '../../forms/program-modes';
-import { parsePage } from '../../page/catalog';
 import { endDayOf } from '../../page/end-date';
 import { stateAt } from '../../page/ended';
 import { defineForm } from '../../forms/definition';
@@ -15,6 +14,7 @@ import { type Page, program } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
 import { formInputValues, parseFormGiving, parseFormProgram } from '../forms/form-input';
 import { createPaymentProviders } from '../payments/factory';
+import { readableDraft, readDocument } from './document';
 import { readActivePrograms } from '../programs/queries';
 import {
 	type DraftSettings,
@@ -47,12 +47,17 @@ import {
 /** where a page stands against what donors see. */
 export type EditorState = 'unpublished' | 'changed' | 'live' | 'ended';
 
-export type EditorPage = {
+/** what the editor draws whether or not its draft reads. */
+type EditorFrame = {
 	readonly state: EditorState;
 	/** the row's `updated_at` in unix ms. */
 	readonly version: number;
 	readonly preview: string;
 	readonly chat: string;
+};
+
+export type EditorPage = EditorFrame & {
+	readonly unreadable: false;
 	/** the draft's own share message, or null while it takes the Organisation's. */
 	readonly shareMessage: string | null;
 	readonly goalMinor: number | null;
@@ -60,18 +65,41 @@ export type EditorPage = {
 	readonly endDate: string | null;
 };
 
-/** the page as the editor draws it; its state as of `now`, a campaign past its end reading ended. */
-export function editorPage(row: Page, now: number): EditorPage {
-	const draft = parsePage(row.type, JSON.parse(row.draft));
-	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
+/** the editor over a draft the read rule refuses: a notice, and the presses that repair it. */
+export type UnreadableEditor = EditorFrame & {
+	readonly unreadable: true;
+	/** whether the live page reads, so Discard changes has a page to put the draft back to. */
+	readonly discardable: boolean;
+};
+
+function editorFrame(row: Page, now: number): EditorFrame {
 	return {
 		state: editorState(row, now),
 		version: row.updatedAt.getTime(),
 		preview: `/preview/${row.id}`,
-		chat: `/admin/pages/${row.id}/chat`,
-		shareMessage: draft.page.shareMessage ?? null,
-		goalMinor: draft.page.goalMinor ?? null,
-		endDate: endDayOf(draft.page)
+		chat: `/admin/pages/${row.id}/chat`
+	};
+}
+
+/** the page as the editor draws it; its state as of `now`, a campaign past its end reading ended. */
+export function editorPage(row: Page, now: number): EditorPage {
+	const draft = readableDraft(row);
+	return {
+		...editorFrame(row, now),
+		unreadable: false,
+		shareMessage: draft.shareMessage ?? null,
+		goalMinor: draft.goalMinor ?? null,
+		endDate: endDayOf(draft)
+	};
+}
+
+/** the editor over `row` where the read rule refuses its draft; null where the draft reads. */
+export function unreadableEditor(row: Page, now: number): UnreadableEditor | null {
+	if (readDocument(row, 'draft', row.draft).ok) return null;
+	return {
+		...editorFrame(row, now),
+		unreadable: true,
+		discardable: row.published !== null && readDocument(row, 'published', row.published).ok
 	};
 }
 
@@ -126,9 +154,7 @@ export async function readEditorSettings(
 }
 
 function draftSwitches(row: Page): SettingsSeed['switches'] {
-	const draft = parsePage(row.type, JSON.parse(row.draft));
-	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
-	const { openOnMonthly, dedicationOn } = draft.page.switches;
+	const { openOnMonthly, dedicationOn } = readableDraft(row).switches;
 	return { open_on_monthly: openOnMonthly, dedication_on: dedicationOn };
 }
 

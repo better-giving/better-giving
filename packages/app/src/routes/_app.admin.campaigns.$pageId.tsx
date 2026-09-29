@@ -1,4 +1,5 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
+import { Banner } from '@better-giving/operator/components/status/Banner';
 import { useCallback, useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
@@ -45,7 +46,12 @@ import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
 import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
-import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
+import {
+	editorPage,
+	readEditorSettings,
+	saveDraftSettings,
+	unreadableEditor
+} from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import {
@@ -66,9 +72,15 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // $lib/server/pages/queries.ts.
 //
 // **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
-// which the dashboard shows, and the draft's, which donors see from the next Publish. until the
-// first Publish the address follows it, to the next free one where another page holds the one the
-// name suggests, and the first Publish's confirm names the one it did not get (`addressAsked`).
+// which the dashboard shows, its settings row's, which a gift's notices carry, and the draft's,
+// which donors see from the next Publish — the same write a chat turn's rename makes
+// ($lib/server/pages/queries.ts, `renaming`). until the first Publish an address not set by hand
+// follows it, to the next free one where another page holds the one the name suggests, and the
+// first Publish's confirm names the one it did not get (`addressAsked`).
+//
+// **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
+// in the preview's place, with Discard changes where the live page reads: the one screen that can
+// repair the page opens whatever the rule now says.
 //
 // **the address** takes effect when it is saved, not at Publish. a save the address rule refuses is
 // answered naming the clash; one that would stop a published campaign's address working, or take
@@ -139,6 +151,9 @@ const STALE =
 const NAME_FAILED = 'Renaming this campaign failed and nothing was changed. Try again.';
 const ADDRESS_FAILED = 'Saving the address failed and nothing was changed. Try again.';
 
+/** what the bar and the notice call a draft the read rule refuses. */
+const UNREADABLE_WORD = 'This draft can’t be read';
+
 /** what a press on a page that is not a campaign, or no page at all, is told. */
 const gone = (pageId: string) =>
 	`no campaign has the id "${pageId}"; open it again from the Campaigns list.`;
@@ -161,6 +176,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		loadFailed('This campaign');
 	}
 	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
+	const now = Date.now();
+	const named = {
+		name: row.name,
+		address: row.slug === null ? null : `/${row.slug}`,
+		host: `${new URL(request.url).host}/`
+	};
+	const unreadable = unreadableEditor(row, now);
+	if (unreadable !== null) return { ...unreadable, ...named };
 	try {
 		[settings, pageSettings, asked, illustrations] = await Promise.all([
 			readEditorSettings(db, context.get(platform).env, row, new URL(request.url).origin),
@@ -173,14 +196,12 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		loadFailed('This campaign');
 	}
 	return {
-		...editorPage(row, Date.now()),
+		...editorPage(row, now),
 		...editorDraft(row, settings.currency, illustrations),
+		...named,
 		settings,
 		pageSettings,
-		name: row.name,
-		address: row.slug === null ? null : `/${row.slug}`,
-		asked: asked === null ? null : `/${asked}`,
-		host: `${new URL(request.url).host}/`
+		asked: asked === null ? null : `/${asked}`
 	};
 }
 
@@ -353,7 +374,91 @@ function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'pro
 	};
 }
 
+type Loaded = Route.ComponentProps['loaderData'];
+
 export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
+	return loaderData.unreadable ? (
+		<UnreadableDraftEditor loaderData={loaderData} />
+	) : (
+		<DraftEditor loaderData={loaderData} />
+	);
+}
+
+/** the name's in-place and Settings edits, on one fetcher, and where the last one was made. */
+function useRename(version: number) {
+	const fetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
+	/** where the last rename was made, so its refusal is said there. */
+	const [renamedIn, setRenamedIn] = useState<'bar' | 'sheet'>('bar');
+	const renaming = fetcher.state !== 'idle';
+	const answer = renaming ? undefined : fetcher.data;
+	const rename = (next: string, from: 'bar' | 'sheet') => {
+		setRenamedIn(from);
+		const body = new FormData();
+		body.set(WHICH_FORM, NAME_EDIT.id);
+		body.set(RECORD_VERSION, String(version));
+		body.set('name', next);
+		fetcher.submit(body, { method: 'post' });
+	};
+	const barError = renamedIn === 'bar' ? nameRefusal(answer) : null;
+	return {
+		rename,
+		renaming,
+		renamedIn,
+		answer,
+		renamed: answer != null && 'saved' in answer && answer.saved === 'name',
+		barReport: barError === null ? null : { press: 'name' as const, text: barError }
+	};
+}
+
+function nameRefusal(answer: Answer | undefined): string | null {
+	return refusal(answer, NAME_EDIT, 'name') ?? refusal(answer, NAME_EDIT, '');
+}
+
+/**
+ * the editor over a draft the read rule refuses: the bar, with Discard changes where the live page
+ * reads, and a notice in the preview's place. the name still renames.
+ */
+function UnreadableDraftEditor({
+	loaderData
+}: {
+	readonly loaderData: Extract<Loaded, { unreadable: true }>;
+}) {
+	const { name, address, state, version, discardable } = loaderData;
+	const presses = usePublishPresses({ version, state });
+	const naming = useRename(version);
+	return (
+		<EditorShell
+			bar={
+				<PublishBar
+					closeHref="/admin/campaigns"
+					page={{ kind: 'campaign', name, onRename: (next) => naming.rename(next, 'bar') }}
+					state={state}
+					livePath={address ?? undefined}
+					{...presses.bar}
+					onPublish={undefined}
+					publishHeld={UNREADABLE_WORD}
+					onDiscard={discardable ? presses.bar.onDiscard : undefined}
+					report={presses.bar.report ?? naming.barReport}
+				/>
+			}
+			preview={
+				<Banner tone="attention" word={UNREADABLE_WORD}>
+					{discardable
+						? 'This page no longer holds what a campaign may hold. Discard changes to go back to the live page.'
+						: 'This page no longer holds what a campaign may hold, and there is no live page to go back to.'}
+				</Banner>
+			}
+		>
+			{presses.confirm}
+		</EditorShell>
+	);
+}
+
+function DraftEditor({
+	loaderData
+}: {
+	readonly loaderData: Extract<Loaded, { unreadable: false }>;
+}) {
 	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
 	const presses = usePublishPresses({
@@ -369,14 +474,12 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					}
 				: undefined
 	});
-	const nameFetcher = useFetcher<Answer>({ key: NAME_EDIT.id });
+	const naming = useRename(version);
 	const chat = useEditorChat(loaderData.chat);
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
 
 	const [settings, setSettings] = useState(false);
 	const [opened, setOpened] = useState<SettingsRow | null>(null);
-	/** where the last rename was made, so its refusal is said there. */
-	const [renamedIn, setRenamedIn] = useState<'bar' | 'sheet'>('bar');
 	/** the address last saved, and the questions answered yes so far on the way to it. */
 	const [moving, setMoving] = useState<{ slug: string; confirmed: Confirmed } | null>(null);
 	/** the question up, held while the save answering it is in flight. */
@@ -388,10 +491,8 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 		isDonationBox(loaderData.blocks, id) ? setOpened('donation-settings') : setBlockId(id);
 	const layoutPick = useLayoutPick(loaderData.layout, version);
 
-	const renaming = nameFetcher.state !== 'idle';
-	const nameAnswer = renaming ? undefined : nameFetcher.data;
-	const renamed = nameAnswer != null && 'saved' in nameAnswer && nameAnswer.saved === 'name';
-	const nameError = refusal(nameAnswer, NAME_EDIT, 'name') ?? refusal(nameAnswer, NAME_EDIT, '');
+	const { renamed, renaming, renamedIn } = naming;
+	const nameAnswer = naming.answer;
 
 	const saving = addressFetcher.state !== 'idle';
 	const addressAnswer = saving ? undefined : addressFetcher.data;
@@ -409,14 +510,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 		setQuestion(addressAnswer != null && 'ask' in addressAnswer ? addressAnswer.ask : null);
 	}, [addressAnswer]);
 
-	const rename = (next: string, from: 'bar' | 'sheet') => {
-		setRenamedIn(from);
-		const body = new FormData();
-		body.set(WHICH_FORM, NAME_EDIT.id);
-		body.set(RECORD_VERSION, String(version));
-		body.set('name', next);
-		nameFetcher.submit(body, { method: 'post' });
-	};
+	const { rename } = naming;
 
 	const saveAddress = (slug: string, confirmed: Confirmed) => {
 		setMoving({ slug, confirmed });
@@ -443,10 +537,7 @@ export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 					state={state}
 					livePath={address ?? undefined}
 					{...presses.bar}
-					report={
-						presses.bar.report ??
-						(renamedIn === 'bar' && nameError !== null ? { press: 'name', text: nameError } : null)
-					}
+					report={presses.bar.report ?? naming.barReport}
 				/>
 			}
 			preview={

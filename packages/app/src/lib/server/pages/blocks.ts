@@ -22,6 +22,7 @@ import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../
 import type { Db } from '../db/client';
 import { type Page as PageRow, page } from '../db/schema';
 import { firstMissingImage, illustrationsAmong } from '../images/queries';
+import { readableDraft } from './document';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
@@ -47,13 +48,7 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 
 /** which of the draft's pictures an AI drew, read from their kinds. */
 export function draftIllustrations(db: Db, row: PageRow): Promise<ReadonlySet<string>> {
-	return illustrationsAmong(db, placedImageIds(storedDraft(row).page));
-}
-
-function storedDraft(row: PageRow) {
-	const draft = parsePage(row.type, JSON.parse(row.draft));
-	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
-	return draft;
+	return illustrationsAmong(db, placedImageIds(readableDraft(row)));
 }
 
 const BLOCK_TITLE = defineForm({ id: BLOCK_FORMS.title, schema: BLOCK_TITLE_INPUT });
@@ -93,10 +88,10 @@ type ReadWords = { ok: true; read: Words } | { ok: false; refusal: RejectionReas
  * `illustrations` `draftIllustrations`' answer.
  */
 export function editorDraft(row: PageRow, currency: string, illustrations: ReadonlySet<string>) {
-	const draft = storedDraft(row);
+	const draft = readableDraft(row);
 	return {
-		blocks: editorBlocks(draft.page, currency, illustrations),
-		layout: draft.page.layout,
+		blocks: editorBlocks(draft, currency, illustrations),
+		layout: draft.layout,
 		layouts: layoutPictures()
 	};
 }
@@ -433,11 +428,7 @@ async function editDraft(
 		);
 	if (!row) return { kind: 'gone' };
 	if (row.updatedAt.getTime() !== version.getTime()) return { kind: 'stale' };
-	const current = parsePage(row.type, JSON.parse(row.draft));
-	if (!current.ok) {
-		throw new Error(`page ${row.id}'s stored draft fails its rule: ${current.message}`);
-	}
-	const edited = await edit(current.page, row);
+	const edited = await edit(readableDraft(row), row);
 	if (!edited.ok) return { kind: 'refused', refusal: edited.refusal };
 	const checked = parsePage(row.type, edited.draft);
 	if (!checked.ok) {

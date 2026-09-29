@@ -421,6 +421,57 @@ describe('Publish, Undo and Discard changes', () => {
 	});
 });
 
+describe('a draft the page rule refuses', () => {
+	/** the Donation page's `column` with its donation box taken out, as a narrowed rule reads it. */
+	async function unreadable(column: 'draft' | 'published') {
+		const made = await donationPage();
+		if (made === null) throw new Error('the editor made no Donation page');
+		const document = JSON.parse(made[column] ?? '{}');
+		const blocks = document.blocks.filter(
+			(block: { type: string }) => block.type !== 'donation-box'
+		);
+		await db
+			.update(page)
+			.set({ [column]: JSON.stringify({ ...document, blocks }) })
+			.where(eq(page.id, made.id));
+	}
+
+	async function press(which: string, version: number) {
+		const body = new FormData();
+		body.set(WHICH_FORM, which);
+		body.set(RECORD_VERSION, String(version));
+		return request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+	}
+
+	it('opens the editor saying so, offering Discard changes and Reset to default', async () => {
+		await open();
+		await unreadable('draft');
+
+		expect(await open()).toMatchObject({
+			unreadable: true,
+			discardable: true,
+			hasEdits: true,
+			state: 'changed'
+		});
+	});
+
+	it('is repaired by Reset to default where the live page fails the rule too', async () => {
+		await open();
+		await unreadable('published');
+		await unreadable('draft');
+		const drawn = await open();
+		expect(drawn).toMatchObject({ unreadable: true, discardable: false });
+
+		const response = await press('page-reset', drawn.version);
+
+		expect(response.status).toBe(200);
+		expect(await open()).toMatchObject({ unreadable: false, state: 'live', hasEdits: false });
+	});
+});
+
 describe('a block’s sheet', () => {
 	it('writes a variant picked to the draft, drawn on the next load, and the live page stays', async () => {
 		const { version } = await open();
@@ -500,6 +551,23 @@ describe('Reset to default', () => {
 		expect(await refusal(response)).toEqual([
 			'Nothing was reset: the Donation page is already the default, with no chat.'
 		]);
+	});
+
+	it('answers a press carrying no version 400, naming the box, and nothing changes', async () => {
+		await open();
+		await editDraft();
+		const written = await donationPage();
+		const body = new FormData();
+		body.set(WHICH_FORM, 'page-reset');
+
+		const response = await request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.text()).toContain(`\`${RECORD_VERSION}\` carries no version`);
+		expect(await donationPage()).toEqual(written);
 	});
 
 	it('is refused when pressed on a page drawn before it last moved, and nothing changes', async () => {
