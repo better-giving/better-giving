@@ -1,6 +1,6 @@
 import type { MiddlewareFunction } from 'react-router';
-import { platform } from '../../../context';
-import { refuseIfRateLimited } from './rate-limit';
+import { overDonorPageLimit, platform } from '../../../context';
+import { donorPageRateLimitKey, isRateLimited, refuseIfRateLimited } from './rate-limit';
 
 /**
  * what react router hands a server `middleware`, taken off the framework's own type rather than
@@ -61,5 +61,30 @@ export async function meterPublicApi(
 	const refusal = await refuseIfRateLimited(env.API_RATE_LIMITER, request);
 	if (refusal) return refusal;
 
+	return next();
+}
+
+/**
+ * the bound on a donor page — `/donate` and each campaign's address — as a `middleware` on each
+ * of the two routes.
+ *
+ * the page is the same served-config ladder `/api/v1` bounds and more — the organisation's rows,
+ * and the ledger sum behind a goal — so an anonymous loop on it is the unbounded D1 read
+ * `meterPublicApi` above exists to prevent. charged before the loader runs, so a refused view reads
+ * nothing; the verdict goes down on `overDonorPageLimit` because the refusal is the page's own
+ * notice, which only its loader can draw. `src/routes.spec.ts` holds both routes to mounting this.
+ *
+ * `isRateLimited` rather than `refuseIfRateLimited`, so a deployment with no binding draws its
+ * donor pages: ./rate-limit.ts argues the polarity.
+ */
+export async function meterDonorPage(
+	{ context, request }: MeterArgs,
+	next: MeterNext
+): Promise<Response> {
+	const { env } = context.get(platform);
+	context.set(
+		overDonorPageLimit,
+		await isRateLimited(env.API_RATE_LIMITER, donorPageRateLimitKey(request))
+	);
 	return next();
 }

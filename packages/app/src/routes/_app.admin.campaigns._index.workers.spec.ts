@@ -375,7 +375,7 @@ describe('a live campaign at its published end date', () => {
 
 		const response = await press('campaign-publish', await listed('Winter coat drive'));
 
-		expect(response.status).toBe(302);
+		expect(response.status).toBe(303);
 		expect((await listed('Winter coat drive')).state).toBe('live');
 		expect(await visit('winter-coat-drive')).toMatchObject({ kind: 'page' });
 	});
@@ -392,7 +392,7 @@ describe('End', () => {
 			`${LIST}?end=${pageId}`
 		);
 
-		expect(response.status).toBe(302);
+		expect(response.status).toBe(303);
 		expect(response.headers.get('Location')).toBe(LIST);
 		const { campaigns: live, ended } = await load();
 		expect(live).toEqual([]);
@@ -412,7 +412,7 @@ describe('Publish from the Ended group', () => {
 
 		const response = await press('campaign-publish', await listed('Summer camp fund'));
 
-		expect(response.status).toBe(302);
+		expect(response.status).toBe(303);
 		expect(response.headers.get('Location')).toBe(LIST);
 		const { campaigns: live, ended } = await load();
 		expect(live.map((row) => [row.name, row.state])).toEqual([['Summer camp fund', 'live']]);
@@ -454,7 +454,7 @@ describe('Delete', () => {
 			`${LIST}?delete=${pageId}`
 		);
 
-		expect(response.status).toBe(302);
+		expect(response.status).toBe(303);
 		expect(response.headers.get('Location')).toBe(LIST);
 		expect(await load()).toMatchObject({ campaigns: [], ended: [] });
 		expect(
@@ -538,4 +538,44 @@ describe('a stale press', () => {
 			expect((await listed('Winter coat drive 2026')).state).toBe(state);
 		}
 	);
+});
+
+describe('what a landed press tells the list it lands on', () => {
+	/** the list drawn with the flash a press's redirect set, beside the session. */
+	async function landedOn(pressed: Response) {
+		const flash = pressed.headers.getSetCookie().map((cookie) => cookie.split(';', 1)[0]);
+		const response = await request(
+			new Request(`${ORIGIN}${LIST}`, { headers: { cookie: [session, ...flash].join('; ') } }),
+			{ env }
+		);
+		const body = (await response.json()) as { landed: unknown };
+		return { landed: body.landed, clears: response.headers.getSetCookie().join('\n') };
+	}
+
+	it.each([
+		['End', 'campaign-end', 'live', 'ended', true],
+		['Publish', 'campaign-publish', 'ended', 'published', true],
+		['Delete', 'campaign-delete', 'never_published', 'deleted', false]
+	] as const)(
+		'says %s landed, and on which row while it is still listed',
+		async (_, which, state, outcome, listedAfter) => {
+			const pageId = await campaign('Winter coat drive', state, NOW);
+
+			const pressed = await press(which, await listed('Winter coat drive'));
+			expect(pressed.status).toBe(303);
+			const { landed, clears } = await landedOn(pressed);
+
+			expect(landed).toEqual({ outcome, pageId: listedAfter ? pageId : null });
+			// one-shot: the answer that reports it is the one that burns it.
+			expect(clears).toMatch(/Max-Age=0/);
+		}
+	);
+
+	it('says nothing on a list drawn without a press behind it', async () => {
+		await campaign('Winter coat drive', 'live', NOW);
+
+		const { landed } = await landedOn(new Response());
+
+		expect(landed).toBeNull();
+	});
 });

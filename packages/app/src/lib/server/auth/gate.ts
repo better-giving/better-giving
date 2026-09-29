@@ -113,7 +113,10 @@ export async function staffGate(
 }
 
 /**
- * every write behind the login comes from a page on this origin, or it is refused.
+ * every write behind the login, and every write to the sign-in routes in front of it
+ * (`src/routes/login.tsx`, `join.tsx` and `reset.tsx`), comes from a page on this origin, or it is
+ * refused. those three sit outside this gate, so each action calls this itself, after it has
+ * charged the sign-in bucket.
  *
  * a write is any method but GET and HEAD, and it is refused when `Sec-Fetch-Site` is present and
  * is anything but `same-origin`. `same-site` is the case that matters: a deployment on the
@@ -133,12 +136,12 @@ export async function staffGate(
  * hold. GET and HEAD pass whatever the header says, because following a link into /admin from
  * anywhere is a GET.
  */
-function refuseWriteFromAnotherOrigin(request: Request): void {
+export function refuseWriteFromAnotherOrigin(request: Request): void {
 	if (request.method === 'GET' || request.method === 'HEAD') return;
 	const site = request.headers.get('sec-fetch-site');
 	if (site === null || site === 'same-origin') return;
 	throw new Response(
-		`\`Sec-Fetch-Site: ${site}\` on a ${request.method}: a write behind the login is accepted only from a page on this deployment's own origin (\`same-origin\`). submit it from the screen on this deployment that owns it.`,
+		`\`Sec-Fetch-Site: ${site}\` on a ${request.method}: a write to this deployment's sign-in or dashboard is accepted only from a page on its own origin (\`same-origin\`). submit it from the screen on this deployment that owns it.`,
 		{ status: 403 }
 	);
 }

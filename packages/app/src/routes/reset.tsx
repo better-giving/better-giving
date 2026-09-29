@@ -12,10 +12,16 @@ import { z } from 'zod';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
+import {
+	isRateLimited,
+	signInRateLimitKey,
+	signInRateLimitMessage
+} from '$lib/server/api/rate-limit';
 import { createAuth, readAuthEnv, resetMemberPassword } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { readSetupState } from '$lib/server/config/setup-state';
-import { invalid, parseForm } from '$lib/server/conform';
+import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
+import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, redirectWithFlash } from '$lib/server/flash';
 import { database, platform } from '../context';
 import type { Route } from './+types/reset';
@@ -158,7 +164,16 @@ export async function loader({ context, url }: Route.LoaderArgs) {
  */
 export async function action({ context, request, url }: Route.ActionArgs) {
 	const db = context.get(database);
-	const authEnv = readAuthEnv(context.get(platform).env);
+	const { env } = context.get(platform);
+	const authEnv = readAuthEnv(env);
+
+	// the link is a credential and the password box sets one, so a post here is a guess on the
+	// sign-in bucket `/login` charges ($lib/server/api/rate-limit.ts) — charged before the body is
+	// read, and before the origin is checked so a refused post still spends it.
+	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, signInRateLimitKey(request))) {
+		return invalid(429, unread(RESET_FORM, signInRateLimitMessage()));
+	}
+	refuseWriteFromAnotherOrigin(request);
 
 	const submission = parseForm(await request.formData(), RESET_FORM);
 

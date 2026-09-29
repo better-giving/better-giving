@@ -70,6 +70,12 @@ describe('a photo posted to the images route', () => {
 		}
 	);
 
+	it('stores a photo 4096 pixels on its longer side, the most it may be', async () => {
+		const response = await post(new Blob([pngHeader(4096, 4096)], { type: 'image/png' }));
+
+		expect(response.status).toBe(200);
+	});
+
 	it('files a photo under the type its bytes say, not the type it was labelled', async () => {
 		const response = await post(new Blob([pngHeader(40, 30)], { type: 'image/webp' }));
 
@@ -90,6 +96,24 @@ describe('a post the images route refuses', () => {
 		});
 		expect(await db.$count(image)).toBe(before);
 	});
+
+	it.each([
+		['wider', 4097, 3000],
+		['taller', 3000, 4097]
+	])(
+		'is a 400 naming the size and the cap when a photo is %s than 4096 pixels',
+		async (_, width, height) => {
+			const before = await db.$count(image);
+
+			const response = await post(new Blob([pngHeader(width, height)], { type: 'image/png' }));
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({
+				error: `file is ${width} × ${height} pixels; a photo is at most 4096 pixels on its longer side once resized`
+			});
+			expect(await db.$count(image)).toBe(before);
+		}
+	);
 
 	it('is a 413 naming the cap and the photo’s own size when the photo is over it', async () => {
 		const over = new Uint8Array(IMAGE_BYTES_MAX + 1);

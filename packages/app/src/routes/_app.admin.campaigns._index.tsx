@@ -9,8 +9,8 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
-import { type MouseEvent, type ReactNode, useSyncExternalStore } from 'react';
-import { Form, href, Link, redirect, useNavigate, useNavigation } from 'react-router';
+import { type MouseEvent, type ReactNode, useEffect, useSyncExternalStore } from 'react';
+import { data, Form, href, Link, redirect, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { CHAT_PARAM } from '$lib/admin/editor/chat-wiring';
 import {
@@ -36,6 +36,7 @@ import {
 	submittedVersion
 } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
+import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { type CampaignListing, createCampaign, readCampaigns } from '$lib/server/pages/campaign';
 import { publishPage } from '$lib/server/pages/publish';
 import { deleteNeverPublishedCampaign, endCampaign, readPage } from '$lib/server/pages/queries';
@@ -97,12 +98,20 @@ const CAMPAIGN_END = defineForm({ id: END_FORM_ID, schema: ROW_PRESS });
 const CAMPAIGN_DELETE = defineForm({ id: DELETE_FORM_ID, schema: ROW_PRESS });
 const CAMPAIGN_PUBLISH = defineForm({ id: PUBLISH_FORM_ID, schema: ROW_PRESS });
 
-/** what each press does, as a refusal says it did not. */
-const DONE: Record<RowPress, string> = {
+/** what each press does, as a refusal says it did not and as its flash says it did. */
+const DONE = {
 	[END_FORM_ID]: 'ended',
 	[DELETE_FORM_ID]: 'deleted',
 	[PUBLISH_FORM_ID]: 'published'
-};
+} as const satisfies Record<RowPress, string>;
+type Outcome = (typeof DONE)[RowPress];
+
+/** a landed press's flash, `<outcome> <page id>`, as the list reads it back; null for any other. */
+function landedPress(marker: string): { outcome: Outcome; pageId: string } | null {
+	const [outcome, pageId] = marker.split(' ');
+	const known = Object.values(DONE).find((one) => one === outcome);
+	return known === undefined || pageId === undefined ? null : { outcome: known, pageId };
+}
 
 /** the one state each press acts on. */
 const ACTS_ON: Record<RowPress, CampaignListing['state']> = {
@@ -142,7 +151,7 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context, url }: Route.LoaderArgs) {
+export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const now = Date.now();
 	let listed: CampaignListing[];
 	try {
@@ -168,13 +177,29 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 	// was copied — is not drawn.
 	const asked = (param: string, state: CampaignListing['state']) =>
 		rows.find((row) => row.id === url.searchParams.get(param) && row.state === state) ?? null;
-	return {
-		campaigns: rows.filter((row) => row.state !== 'ended'),
-		ended: rows.filter((row) => row.state === 'ended'),
-		asking: url.searchParams.has('new'),
-		ending: asked(END_PARAM, 'live'),
-		deleting: asked(DELETE_PARAM, 'never_published')
-	};
+	// the press that redirected here, if one did. taken after the read, so a list that could not
+	// load burns no marker; and the id is matched against the rows rather than handed on, so an id
+	// no row answers to — a deleted campaign's among them — reaches the page as nothing.
+	const flash = await takeFlash(request, SAVED_FLASH);
+	const pressed = flash === null ? null : landedPress(flash.marker);
+	const landed =
+		pressed === null
+			? null
+			: {
+					outcome: pressed.outcome,
+					pageId: rows.find((row) => row.id === pressed.pageId)?.id ?? null
+				};
+	return data(
+		{
+			campaigns: rows.filter((row) => row.state !== 'ended'),
+			ended: rows.filter((row) => row.state === 'ended'),
+			asking: url.searchParams.has('new'),
+			ending: asked(END_PARAM, 'live'),
+			deleting: asked(DELETE_PARAM, 'never_published'),
+			landed
+		},
+		flash === null ? {} : { headers: { 'Set-Cookie': flash.clear } }
+	);
 }
 
 export async function action({ context, request }: Route.ActionArgs) {
@@ -214,7 +239,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 	/**
 	 * End, Delete or Publish on one row. the row is read to say why a press is refused, and the
 	 * write carries the version itself, so a campaign changed between the read and the write is
-	 * refused too. the page id rides back beside a refusal, which is how the screen finds its row.
+	 * refused too. the page id rides back beside a refusal, which is how the screen finds its row,
+	 * and in the flash beside a press that landed, which is how the screen finds where focus goes.
 	 */
 	async function rowPress(press: RowPress, submission: ParsedForm<z.output<typeof ROW_PRESS>>) {
 		if (!submission.ok) return invalid(400, submission.reject());
@@ -222,6 +248,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 		const pageId = submission.value[PAGE_ID];
 		const refuse = (status: RejectionStatus, text: string) =>
 			invalid(status, submission.reject({ formErrors: [text] }), { pageId });
+		const landed = () =>
+			redirectWithFlash(request, SAVED_FLASH, SCREEN, `${DONE[press]} ${pageId}`);
 
 		try {
 			const now = Date.now();
@@ -232,10 +260,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 
 			switch (press) {
 				case END_FORM_ID:
-					return (await endCampaign(db, pageId, seen)) ? redirect(SCREEN) : refuse(409, STALE);
+					return (await endCampaign(db, pageId, seen)) ? landed() : refuse(409, STALE);
 				case DELETE_FORM_ID:
 					return (await deleteNeverPublishedCampaign(db, pageId, seen))
-						? redirect(SCREEN)
+						? landed()
 						: refuse(409, STALE);
 				case PUBLISH_FORM_ID: {
 					const published = await publishPage(db, { type: 'campaign', id: pageId }, seen, {
@@ -243,7 +271,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 					});
 					switch (published.kind) {
 						case 'published':
-							return redirect(SCREEN);
+							return landed();
 						case 'refused':
 							return refuse(422, published.text);
 						case 'stale':
@@ -267,6 +295,29 @@ const STATE_WORDS: Record<Row['state'], string> = {
 	never_published: 'Not published',
 	ended: 'Ended'
 };
+
+type Landed = NonNullable<Route.ComponentProps['loaderData']['landed']>;
+
+const LANDED_WORDS: Record<Landed['outcome'], string> = {
+	ended: 'Ended',
+	deleted: 'Deleted',
+	published: 'Published'
+};
+
+/** a row's title link, which a press that moved the row puts focus back on. */
+const titleId = (pageId: string) => `campaign-title-${pageId}`;
+
+/**
+ * focus after a press lands, which unmounted the control that held it: the row's title where it
+ * now stands; the Ended group's summary where the row went into it shut, since nothing inside a
+ * shut `<details>` takes focus; and the screen's own `h1`, drawn by ./_app.tsx, where the row is
+ * gone.
+ */
+function focusLanded({ pageId }: Landed): void {
+	const title = pageId === null ? null : document.getElementById(titleId(pageId));
+	const shut = title?.closest('details:not([open])')?.querySelector('summary');
+	(shut ?? title ?? document.querySelector<HTMLElement>('h1'))?.focus();
+}
 
 /** the browser's zone, and none while the page is drawn on the server or hydrating. */
 function useTimeZone(): string | null {
@@ -352,11 +403,24 @@ function RowPressBoxes({
 }
 
 export default function Campaigns({ loaderData, actionData }: Route.ComponentProps) {
-	const { campaigns, ended, asking, ending, deleting } = loaderData;
+	const { campaigns, ended, asking, ending, deleting, landed } = loaderData;
 	const zone = useTimeZone();
+	const navigation = useNavigation();
+
+	// keyed to the flash's own object, which is new on the load a press redirected to and null on
+	// every load after: a revalidation or a pasted address moves nobody.
+	useEffect(() => {
+		if (landed !== null) focusLanded(landed);
+	}, [landed]);
+	// emptied while a press is in flight, so a second landing of the same word is a change the
+	// region announces.
+	const said = landed !== null && navigation.state === 'idle' ? LANDED_WORDS[landed.outcome] : '';
 
 	return (
 		<Column>
+			<p role="status" className="adm-vh">
+				{said}
+			</p>
 			<List>
 				<CreateCard as={Link} to={ASKING} preventScrollReset ghost={SAMPLE}>
 					New campaign
@@ -430,7 +494,9 @@ function CampaignRecord({
 					<Mark name="megaphone" />
 				</span>
 				<h2 className="adm-record__title">
-					<Link to={editorOf(row.id)}>{row.name}</Link>
+					<Link id={titleId(row.id)} to={editorOf(row.id)}>
+						{row.name}
+					</Link>
 				</h2>
 				<StatusWord
 					tone={

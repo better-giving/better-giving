@@ -11,10 +11,12 @@ import {
 } from '$lib/donate/plain-page';
 import { shareImage } from '$lib/page/image-src';
 import { checkSlug } from '$lib/page/slug';
+import { meterDonorPage } from '$lib/server/api/meter';
+import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { readOrgLogo, readOrgLook, readOrgProfile } from '$lib/server/org/queries';
 import { readServedCampaign } from '$lib/server/pages/campaign';
 import { loadPageView, refusedPage } from '$lib/server/pages/view';
-import { database, platform } from '../context';
+import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/$slug';
 
@@ -46,8 +48,14 @@ import type { Route } from './+types/$slug';
 //
 // one never published, one deleted and a slug nobody holds are the same 404 with the same body, so
 // the answer says nothing about which it was.
+//
+// every view is charged per address before the loader reads anything (`meterDonorPage` in
+// $lib/server/api/meter.ts), and an address over it is drawn the same plain notice under a 429.
+
+export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
+	if (context.get(overDonorPageLimit)) return donorPageRateLimitRefusal();
 	const address = checkSlug(params.slug);
 	if (!address.ok) return refusedPage();
 	const db = context.get(database);

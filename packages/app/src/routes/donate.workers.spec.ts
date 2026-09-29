@@ -2,7 +2,7 @@ import { createExecutionContext, env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStaticHandler, type LoaderFunction } from 'react-router';
+import { createStaticHandler, type LoaderFunction, type MiddlewareFunction } from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_FORM } from '$lib/donate/copy';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
@@ -27,7 +27,7 @@ import {
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
-import { mountRoutes } from '../route-request.testing';
+import { mountRoutes, queryDocument } from '../route-request.testing';
 import * as layout from './_app';
 import * as editor from './_app.admin.donation-page';
 import * as surface from './api.v1';
@@ -97,20 +97,25 @@ function envWith(values: Record<string, string>): Env {
 
 const ROUTE_ID = 'donate';
 const handler = createStaticHandler([
-	{ id: ROUTE_ID, path: 'donate', loader: donatePage.loader as unknown as LoaderFunction }
+	{
+		id: ROUTE_ID,
+		path: 'donate',
+		middleware: donatePage.middleware as unknown as MiddlewareFunction[],
+		loader: donatePage.loader as unknown as LoaderFunction
+	}
 ]);
 
 type LoaderData = Route.ComponentProps['loaderData'];
 
 async function visit(
-	vars: Record<string, string> = STRIPE
+	vars: Record<string, string> = STRIPE,
+	headers: Record<string, string> = {}
 ): Promise<{ status: number; data: LoaderData; headers: Headers }> {
-	const answered = await handler.query(new Request(`${OWN}/donate`), {
-		requestContext: requestContext(envWith(vars), createExecutionContext())
-	});
-	if (answered instanceof Response) {
-		throw new Error(`the loader short-circuited with a ${answered.status}`);
-	}
+	const answered = await queryDocument(
+		handler,
+		new Request(`${OWN}/donate`, { headers }),
+		requestContext(envWith(vars), createExecutionContext())
+	);
 	return {
 		status: answered.statusCode,
 		data: answered.loaderData[ROUTE_ID] as LoaderData,
@@ -796,5 +801,36 @@ describe('/donate after the editor’s presses', () => {
 
 		expect(await giftOf(5_000)).toEqual(outside(5_000, '20000 to 2000000'));
 		expect(await giftOf(1_500_000)).toEqual(passedBounds);
+	});
+});
+
+describe('the limit on GET /donate', () => {
+	/** views the page from `ip` until refused, or fails loudly rather than asserting nothing. */
+	async function untilRefused(ip: string) {
+		for (let i = 0; i < 50; i++) {
+			const answered = await visit(STRIPE, { 'cf-connecting-ip': ip });
+			if (answered.status === 429) return answered;
+		}
+		throw new Error(`50 views from ${ip} and the limiter refused none of them`);
+	}
+
+	it('refuses a caller who has viewed too often with the plain notice', async () => {
+		const refused = await untilRefused('203.0.113.90');
+
+		expect(refused.data.kind).toBe('refused');
+		expect(markup(refused.data)).toContain(NO_FORM);
+		expect(refused.headers.get('retry-after')).toBe('60');
+		expect(refused.headers.get('cache-control')).toBe('no-store');
+	});
+
+	// the page is made on first need, so a refused view that reached the loader would write one.
+	it('refuses before the page is read or made', async () => {
+		await untilRefused('203.0.113.91');
+		await env.DB.prepare(`delete from page where type = 'donation_page'`).run();
+
+		const refused = await visit(STRIPE, { 'cf-connecting-ip': '203.0.113.91' });
+
+		expect(refused.status).toBe(429);
+		expect(await donationPageRows()).toBe(0);
 	});
 });

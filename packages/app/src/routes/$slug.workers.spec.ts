@@ -2,7 +2,7 @@ import { createExecutionContext, env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStaticHandler, type LoaderFunction } from 'react-router';
+import { createStaticHandler, type LoaderFunction, type MiddlewareFunction } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_FORM } from '$lib/donate/copy';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
@@ -22,7 +22,7 @@ import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { readOrgLogo, readOrgLook, updateOrgLogo, updateOrgLook } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
-import { mountRoutes } from '../route-request.testing';
+import { mountRoutes, queryDocument } from '../route-request.testing';
 import type { Route } from './+types/$slug';
 import * as campaignPage from './$slug';
 import * as layout from './_app';
@@ -117,21 +117,26 @@ async function campaign({
 
 const ROUTE_ID = 'campaign';
 const handler = createStaticHandler([
-	{ id: ROUTE_ID, path: ':slug', loader: campaignPage.loader as unknown as LoaderFunction }
+	{
+		id: ROUTE_ID,
+		path: ':slug',
+		middleware: campaignPage.middleware as unknown as MiddlewareFunction[],
+		loader: campaignPage.loader as unknown as LoaderFunction
+	}
 ]);
 
 type LoaderData = Route.ComponentProps['loaderData'];
 
 async function visit(
 	address = `/${SLUG}`,
-	on: Env = stripeEnv
+	on: Env = stripeEnv,
+	headers: Record<string, string> = {}
 ): Promise<{ status: number; data: LoaderData; headers: Headers }> {
-	const answered = await handler.query(new Request(`${OWN}${address}`), {
-		requestContext: requestContext(on, createExecutionContext())
-	});
-	if (answered instanceof Response) {
-		throw new Error(`the loader short-circuited with a ${answered.status}`);
-	}
+	const answered = await queryDocument(
+		handler,
+		new Request(`${OWN}${address}`, { headers }),
+		requestContext(on, createExecutionContext())
+	);
 	return {
 		status: answered.statusCode,
 		data: answered.loaderData[ROUTE_ID] as LoaderData,
@@ -717,5 +722,27 @@ describe('a campaign after its editor’s Publish', () => {
 		const held = await visit('/winter-coat-drive');
 		if (held.data.kind !== 'page') throw new Error(`drew ${held.data.kind}`);
 		expect(block(markup(held.data), 'title')).toContain('Coats for kids');
+	});
+});
+
+describe('the limit on GET /{slug}', () => {
+	/** views the campaign from `ip` until refused, or fails loudly rather than asserting nothing. */
+	async function untilRefused(ip: string) {
+		for (let i = 0; i < 50; i++) {
+			const answered = await visit(`/${SLUG}`, stripeEnv, { 'cf-connecting-ip': ip });
+			if (answered.status === 429) return answered;
+		}
+		throw new Error(`50 views from ${ip} and the limiter refused none of them`);
+	}
+
+	it('refuses a caller who has viewed a live campaign too often with the plain notice', async () => {
+		await campaign();
+
+		const refused = await untilRefused('203.0.113.95');
+
+		expect(refused.data.kind).toBe('refused');
+		expect(markup(refused.data)).toContain(NO_FORM);
+		expect(refused.headers.get('retry-after')).toBe('60');
+		expect(refused.headers.get('cache-control')).toBe('no-store');
 	});
 });

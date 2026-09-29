@@ -341,11 +341,13 @@ function post(
 	{
 		search = '',
 		ip,
+		site,
 		deployed = DEPLOYED
-	}: { search?: string; ip?: string; deployed?: typeof DEPLOYED } = {}
+	}: { search?: string; ip?: string; site?: string; deployed?: typeof DEPLOYED } = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
 	if (ip) headers.set('cf-connecting-ip', ip);
+	if (site) headers.set('sec-fetch-site', site);
 	return action(
 		args(new Request(`${ORIGIN}/login${search}`, { method: 'POST', headers, body }), deployed)
 	);
@@ -876,5 +878,54 @@ describe('the limit on POST /login — one bucket for both ways in', () => {
 
 		expect(asStaff instanceof Response ? 0 : asStaff.init?.status).toBe(429);
 		expect(await sessions()).toBe(0);
+	});
+});
+
+/** what a call answered with, or the `Response` it threw — a refused write is thrown. */
+async function thrownOrAnswered<T>(call: Promise<T>): Promise<T | Response> {
+	try {
+		return await call;
+	} catch (thrown) {
+		if (thrown instanceof Response) return thrown;
+		throw thrown;
+	}
+}
+
+describe('POST /login from a page on another origin', () => {
+	// the browser writes `Sec-Fetch-Site` and a page's script cannot, so `same-site` is a page on the
+	// organisation's own domain posting here with the operator's cookie riding along
+	// ($lib/server/auth/gate.ts, `refuseWriteFromAnotherOrigin`).
+	it('refuses a same-site post before the body is read', async () => {
+		const answer = await thrownOrAnswered(
+			post(typed(PASSWORD), { ip: '203.0.113.50', site: 'same-site' })
+		);
+
+		expect(answer instanceof Response ? answer.status : answer.init?.status).toBe(403);
+		expect(await sessions()).toBe(0);
+	});
+
+	it.each([
+		['from a page on this origin', 'same-origin'],
+		['with no Sec-Fetch-Site at all', undefined]
+	])('reaches the form %s', async (_, site) => {
+		const answer = await thrownOrAnswered(
+			post(new FormData(), { ip: '203.0.113.51', ...(site ? { site } : {}) })
+		);
+
+		expect(answer instanceof Response ? answer.status : answer.init?.status).toBe(400);
+	});
+
+	// a refusal that cost nothing would be a free probe; it is charged on the sign-in bucket first.
+	it('spends the sign-in bucket on every refused post', async () => {
+		const statuses: (number | undefined)[] = [];
+		for (let i = 0; i < 12 && statuses.at(-1) !== 429; i++) {
+			const answer = await thrownOrAnswered(
+				post(typed('a wrong guess'), { ip: '203.0.113.52', site: 'same-site' })
+			);
+			statuses.push(answer instanceof Response ? answer.status : answer.init?.status);
+		}
+
+		expect(statuses.at(-1)).toBe(429);
+		expect(new Set(statuses.slice(0, -1))).toEqual(new Set([403]));
 	});
 });
