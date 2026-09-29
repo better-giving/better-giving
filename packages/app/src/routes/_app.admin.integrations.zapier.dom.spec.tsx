@@ -307,6 +307,27 @@ it('puts focus on Replace key once the page is read again, when the refusal land
 	expect(document.activeElement).toBe(named(root, 'Replace key'));
 });
 
+it('keeps the refusal the same element when the read after it swaps Make key for Replace key', async () => {
+	// a refusal torn down and drawn again is two insertions into the page, and a screen reader says
+	// each of them.
+	let reloaded = () => {};
+	const reload = new Promise<void>((resolve) => {
+		reloaded = resolve;
+	});
+	const root = await flow(SCREEN, null, 'key_exists', { reload });
+
+	await act(async () => named(root, 'Make key').click());
+	await settle();
+	const said = root.querySelector('#zapier-key-err');
+	expect(said?.textContent).toContain('A key was already made.');
+
+	await act(async () => reloaded());
+	await settle();
+
+	expect(named(root, 'Replace key')).toBeTruthy();
+	expect(root.querySelector('#zapier-key-err')).toBe(said);
+});
+
 it('takes the question down on a refused replace and says why at the key row', async () => {
 	const root = await flow(`${SCREEN}?confirm=replace`, HELD, 'conflict');
 
