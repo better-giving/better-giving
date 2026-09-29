@@ -1,4 +1,4 @@
-import { inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
+import { inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { inPage } from '../db/id-set';
@@ -21,10 +21,13 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 //
 // **the lease is ../outbox/lease.ts's; the policy is this module's.** which rows a run takes, how
 // long they are its alone, when it may start a post, and the guarded write that lets each go are
-// the lease module's, and two runs over one backlog post each row once because of it; a claim takes
-// every Zap's longest-waiting row before any Zap's next, so one Zap's backlog never holds up
-// another's gifts. when a hook has been failing long enough to end is ../outbox/failing.ts's. what
-// each answer means, how long a failure waits, and when a row is given up on are decided here.
+// the lease module's, and two runs over one backlog post each row once because of it. a claim
+// takes every Zap's longest-waiting row before any Zap's next among the due rows that have waited
+// longest, `CANDIDATES_PER_CLAIMED_ROW` of them per row claimed (../outbox/lease.ts): a Zap's
+// backlog shares a claim with another's gifts while it is shorter than that window, and one that
+// fills it holds them up until it drains below it. when a hook has been failing long enough to end
+// is ../outbox/failing.ts's. what each answer means, how long a failure waits, and when a row is
+// given up on are decided here.
 // ../accounting/deliver.ts shares none of that policy on purpose: a gift owed to the books stays
 // owed, while a notification to a Zap that has been down for three days is given up on. one
 // backoff serving both would be one policy bent two ways — an argument against sharing a backoff,
@@ -55,11 +58,10 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 // with it says why in `last_error`. Zapier, unlike after a 410, does not know, so the Zap is then
 // paused the way a replaced key pauses every Zap (`pauseZaps` in ./subscriptions.ts).
 //
-// **a row no run may post again is written off in the claim's own batch, ahead of it** (the
-// standing sweeps ../outbox/lease.ts describes): a row still owed {@link GIVE_UP_AFTER_MS} after it
-// was queued is `failed`, without another post, and ./report.ts counts those and nothing re-queues
-// one; a row behind an ended subscription is `dropped`. one hook failing never stops the rest:
-// every row's outcome is its own write.
+// **a row still owed {@link GIVE_UP_AFTER_MS} after it was queued is `failed`**, without another
+// post, in the claim's own batch ahead of it (a standing sweep, ../outbox/lease.ts); ./report.ts
+// counts those and nothing re-queues one. one hook failing never stops the rest: every row's
+// outcome is its own write.
 //
 // **a `gift_refunded` row is sent only while its refund still stands**, read at send
 // (`readStandingRefunds` in ../integrations/refund.ts) as well as at queueing. a refund that
@@ -71,8 +73,9 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 /**
  * everything one run needs, per invocation. `fetch` is handed in so a spec can answer for Zapier.
  * `plan` is the Cloudflare plan the invocation runs on, Free where it is not said: a run claims
- * this feed's pace on it (../outbox/budget.ts), each Zap's longest-waiting row first, and a row no
- * lane reached stays leased, unposted, until the lease runs out and a later run takes it.
+ * this feed's pace on it (../outbox/budget.ts), each Zap's longest-waiting row first within the
+ * claim's window (../outbox/lease.ts), and a row no lane reached stays leased, unposted, until the
+ * lease runs out and a later run takes it.
  */
 export type ZapierDeliveryDeps = {
 	readonly db: Db;
@@ -243,49 +246,49 @@ function nextAttempt(row: Claimed, retryAt: Date | undefined, now: Date): Date {
 }
 
 /**
- * the rows no run may take again, written off in the claim's own batch ahead of it
- * (../outbox/lease.ts). a row behind an ended subscription is `dropped`: an event queued for a Zap
- * nothing posts to, which `endSubscriptionStatements` in ./subscriptions.ts drops as it ends one and
- * this drops wherever one was left. a row still owed {@link GIVE_UP_AFTER_MS} after it was queued
- * is `failed` without another post, so a row whose runs never reach the post still ends; the last
- * failure's words stay, and a row never tried gets its own.
+ * every row still owed {@link GIVE_UP_AFTER_MS} after it was queued, `failed` without another post
+ * — a standing sweep, committed in the claim's own batch ahead of it (../outbox/lease.ts), so a row
+ * whose runs never reach the post still ends. the last failure's words stay; a row never tried gets
+ * its own. `indexed by` holds it to `zapier_delivery_due_idx`, whose head is `status`, so it reads
+ * the rows still owed and none of the history whatever statistics sqlite plans by, and a statement
+ * naming an index that is gone fails to prepare.
  */
-function standingSweeps(db: Db, now: Date) {
-	return [
-		outbox.sweep(db, now, {
-			where: inArray(
-				zapierDelivery.subscriptionId,
-				db
-					.select({ id: zapierSubscription.id })
-					.from(zapierSubscription)
-					.where(isNotNull(zapierSubscription.endedAt))
-			),
-			outcome: { status: 'dropped', updatedAt: now }
-		}),
-		outbox.sweep(db, now, {
-			where: lte(zapierDelivery.createdAt, new Date(now.getTime() - GIVE_UP_AFTER_MS)),
-			outcome: {
-				status: 'failed',
-				lastError: sql`coalesce(${zapierDelivery.lastError}, ${NEVER_DELIVERED})`,
-				updatedAt: now
-			}
-		})
-	];
+function giveUpOnStale(db: Db, now: Date) {
+	const stale = lte(zapierDelivery.createdAt, new Date(now.getTime() - GIVE_UP_AFTER_MS));
+	return outbox.sweep(db, now, {
+		where: sql`"rowid" in (select "rowid" from ${zapierDelivery} indexed by "zapier_delivery_due_idx" where ${zapierDelivery.status} = 'pending' and ${stale})`,
+		outcome: {
+			status: 'failed',
+			lastError: sql`coalesce(${zapierDelivery.lastError}, ${NEVER_DELIVERED})`,
+			updatedAt: now
+		}
+	});
 }
 
 const NEVER_DELIVERED = 'Not delivered within 72 hours of being queued.';
 
-/** the due rows, leased to this run, once {@link standingSweeps} has written off what it covers. */
+/**
+ * the due rows, leased to this run, once {@link giveUpOnStale} has written off what it covers. the
+ * subscription filter keeps a Zap that has ended from being posted to even if a row of its was
+ * somehow left pending; it sits inside the claim's candidates, so it reads no more than they do.
+ */
 function claimDue(db: Db, now: Date, claims: number) {
 	return outbox.claim(db, now, {
 		claims,
-		before: standingSweeps(db, now),
+		before: [giveUpOnStale(db, now)],
 		set: { updatedAt: now },
 		returning: {
 			paymentId: zapierDelivery.paymentId,
 			attempts: zapierDelivery.attempts,
 			createdAt: zapierDelivery.createdAt
-		}
+		},
+		where: inArray(
+			zapierDelivery.subscriptionId,
+			db
+				.select({ id: zapierSubscription.id })
+				.from(zapierSubscription)
+				.where(isNull(zapierSubscription.endedAt))
+		)
 	});
 }
 

@@ -69,8 +69,8 @@ export type RenderedRefund<G> = {
 	readonly id: string;
 	/**
 	 * when the money left the organisation, ISO 8601 in UTC: for a refund, when it was made; for a
-	 * dispute, when it opened and withdrew the money, or where no opening was recorded, when it
-	 * closed.
+	 * dispute, when it opened and withdrew the money, which may be weeks before it was lost and this
+	 * event sent; where no opening was recorded, when it closed.
 	 */
 	readonly occurred_at: string;
 	/**

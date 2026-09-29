@@ -102,7 +102,7 @@ export type RunCost = {
 };
 
 /**
- * `sendDueZapierEvents` in ../zapier/deliver.ts: the standing sweeps and the claim in one batch, the
+ * `sendDueZapierEvents` in ../zapier/deliver.ts: the give-up sweep and the claim in one batch, the
  * hooks, the gift events, the refund events and their gifts, and the refunds still standing; per
  * row, its outcome's one batch, its post, and the pause sent to a Zap its failure ended.
  */

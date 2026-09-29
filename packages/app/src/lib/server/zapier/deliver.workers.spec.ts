@@ -182,6 +182,27 @@ async function failedOnceAlready(subscriptionId: string): Promise<void> {
 		.run();
 }
 
+/**
+ * a `Db` over the test database with the rows D1 reports reading for every `batch()` made through
+ * it summed: the figure the Free plan's five million rows read a day is counted in.
+ */
+function batchRowsRead() {
+	let total = 0;
+	const counting = new Proxy(env.DB, {
+		get(target, key) {
+			const value: unknown = Reflect.get(target, key, target);
+			if (typeof value !== 'function') return value;
+			if (key !== 'batch') return value.bind(target);
+			return async (statements: D1PreparedStatement[]) => {
+				const results = (await value.call(target, statements)) as D1Result[];
+				for (const result of results) total += result.meta.rows_read;
+				return results;
+			};
+		}
+	});
+	return { db: createDb(counting), total: () => total };
+}
+
 const HOOK_FAILED_FOR_THREE_DAYS =
 	'Not sent: every post to its hook had failed for three days, and its subscription was ended.';
 
@@ -749,7 +770,9 @@ describe('sendDueZapierEvents()', () => {
 		expect(new Set(zapier.posts.map((p) => p.url)).size).toBe(20);
 	});
 
-	it("posts a Zap's newest gift in the next run, however long another Zap's backlog", async () => {
+	// fair within the claim's window of due rows (`CANDIDATES_PER_CLAIMED_ROW` in ../outbox/lease.ts),
+	// which twenty rows do not fill.
+	it("posts a Zap's newest gift in the next run beside another Zap's backlog shorter than the claim's window", async () => {
 		const backlogged = await listen();
 		for (let gift = 0; gift < 20; gift++) await settle();
 		const quiet = await listen();
@@ -764,6 +787,52 @@ describe('sendDueZapierEvents()', () => {
 		expect(zapier.posts.filter((p) => p.url === backlogged.hookUrl)).toHaveLength(
 			PACE.free.zapier - 1
 		);
+	});
+
+	it('reads no more rows to claim beside a long history than beside a short one', async () => {
+		/**
+		 * the rows D1 read for a run's batches, beside `endedZaps` Zaps that have ended and `history`
+		 * rows no run takes again: every fifth one owed to a Zap that has ended, the rest sent to
+		 * the one still on.
+		 */
+		async function readToRun(endedZaps: number, history: number): Promise<number> {
+			await env.DB.prepare('delete from zapier_delivery').run();
+			await env.DB.prepare('delete from zapier_subscription').run();
+			const gift = await settle();
+			for (let zap = 0; zap < endedZaps; zap++) await listen();
+			await env.DB.prepare(
+				`update zapier_subscription set ended_at = 1, ended_reason = 'unsubscribed'`
+			).run();
+			const open = await listen();
+			await env.DB.prepare(
+				`with recursive n(i) as (select 0 union all select i + 1 from n where i < ? - 1),
+				   ended(id, k) as (select id, row_number() over (order by id) - 1
+				                    from zapier_subscription where ended_at is not null)
+				 insert into zapier_delivery (subscription_id, event_id, payment_id, status, attempts,
+				   next_attempt_at, created_at, updated_at)
+				 select coalesce(ended.id, ?), 'past-' || i, ?,
+				   case when ended.id is null then 'sent' when i % 2 = 0 then 'failed' else 'dropped' end,
+				   1, i, i, i
+				 from n left join ended on i % 5 = 0 and ended.k = (i / 5) % ?`
+			)
+				.bind(history, open.id, gift.paymentId, endedZaps)
+				.run();
+			await settle();
+			// the statistics a long-lived database plans by, without which sqlite plans every read
+			// the same way whatever the table holds.
+			await env.DB.prepare('analyze').run();
+			const read = batchRowsRead();
+			await sendDueZapierEvents(
+				{ db: read.db, fetch: hooksAnswering().fetch },
+				new Date(Date.now() + 1_000)
+			);
+			return read.total();
+		}
+
+		const short = await readToRun(5, 100);
+		const long = await readToRun(50, 5_000);
+
+		expect(long).toBeLessThanOrEqual(short);
 	});
 
 	it("drains a backlog of twenty refunds over the runs after it, a claim's worth each", async () => {
@@ -806,11 +875,11 @@ describe('sendDueZapierEvents()', () => {
 		);
 	});
 
-	it('drops, unposted, what is still owed to a subscription that has ended', async () => {
+	it('claims nothing owed to a subscription that has ended', async () => {
 		const hook = await listen();
 		await settle();
-		// ended without its rows dropped: the state `endSubscriptionStatements` never leaves, swept
-		// by the claim regardless.
+		// ended without its rows dropped: the state `endSubscriptionStatements` never leaves, held
+		// off by the claim regardless.
 		await env.DB.prepare(
 			`update zapier_subscription set ended_at = 1, ended_reason = 'unsubscribed' where id = ?`
 		)
@@ -822,7 +891,7 @@ describe('sendDueZapierEvents()', () => {
 
 		expect(zapier.posts).toEqual([]);
 		expect(await deliveryRows()).toEqual([
-			expect.objectContaining({ status: 'dropped', leased_until: null })
+			expect.objectContaining({ status: 'pending', leased_until: null })
 		]);
 	});
 
