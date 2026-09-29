@@ -202,3 +202,38 @@ func TestAnActsAnswerKeepsEveryRefusalTheReportTellsApart(t *testing.T) {
 		t.Errorf("read %+v", unreachable)
 	}
 }
+
+// which outbound feeds the deployment has in use, carried member for member: a feed that is off is
+// a `false` the page weighs, and a false dropped on the way would read as a deployment that never
+// said.
+func TestTheFeedsInUseAreWhatTheDeploymentSaid(t *testing.T) {
+	read := Report(context.Background(), deployment(t, http.StatusOK, envelopeBody(map[string]any{
+		"feedsInUse": map[string]any{"zapier": false, "webhooks": true, "books": false},
+	})))
+	if read.Kind != Reported || read.FeedsInUse == nil {
+		t.Fatalf("read %+v", read)
+	}
+	if *read.FeedsInUse != (FeedsInUse{Zapier: false, Webhooks: true, Books: false}) {
+		t.Fatalf("feeds %+v", *read.FeedsInUse)
+	}
+}
+
+// absent is a deployment older than this member, and it is unknown rather than no feed at all: a
+// console reading it as three `false`s would clear a warning it had nothing to clear it with. a
+// member in any other shape is the same unknown, and none of them is a refusal of the envelope.
+func TestFeedsInUseTheDeploymentDidNotStateAreUnknown(t *testing.T) {
+	for _, body := range []map[string]any{
+		envelopeBody(nil),
+		envelopeBody(map[string]any{"feedsInUse": nil}),
+		envelopeBody(map[string]any{"feedsInUse": true}),
+		envelopeBody(map[string]any{"feedsInUse": map[string]any{"zapier": true, "webhooks": false}}),
+		envelopeBody(map[string]any{
+			"feedsInUse": map[string]any{"zapier": "yes", "webhooks": false, "books": false},
+		}),
+	} {
+		read := Report(context.Background(), deployment(t, http.StatusOK, body))
+		if read.Kind != Reported || read.FeedsInUse != nil {
+			t.Fatalf("%v read %+v", body, read)
+		}
+	}
+}

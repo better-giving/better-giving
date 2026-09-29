@@ -24,7 +24,8 @@ vi.mock('../api/client', () => ({
 		sites: [],
 		donatePage: 'https://a.example',
 		org: null,
-		holdsStripeKey: false
+		holdsStripeKey: false,
+		feedsInUse: null
 	})
 }));
 
