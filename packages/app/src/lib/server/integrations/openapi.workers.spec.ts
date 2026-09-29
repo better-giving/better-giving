@@ -199,7 +199,7 @@ async function postedBodies(): Promise<{ type: string }[]> {
 		url: 'https://crm.example.org/hooks/openapi',
 		events: WEBHOOK_EVENT_TYPES
 	});
-	if (!created.ok) throw new Error(created.detail);
+	if (!created.ok) throw new Error(created.box);
 	await seedEverything();
 	const bodies: { type: string }[] = [];
 	const receiver = (async (_: RequestInfo | URL, init?: RequestInit) => {
