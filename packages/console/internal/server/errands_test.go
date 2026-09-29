@@ -441,6 +441,30 @@ func TestNoErrandCarriesTheSessionOnTheAddress(t *testing.T) {
 	}
 }
 
+// zapier is the dashboard's, and no errand here reads its key or presses it: both spellings fall to
+// the `/api/` catch-all even with a session a zapier errand could ride and a deployment that would
+// answer one.
+func TestNoErrandReachesZapier(t *testing.T) {
+	handler, asked := errands(t, map[string]any{
+		"GET /console/zapier":  map[string]any{"key": "zk_live"},
+		"POST /console/zapier": map[string]any{"key": "zk_live"},
+	}, "here")
+
+	getStatus, got := ask(t, handler, "/api/deployment/zapier")
+	postStatus, posted := press(t, handler, "/api/deployment/zapier", `{"press":"mint"}`)
+	for method, answered := range map[string]struct {
+		status int
+		body   map[string]any
+	}{http.MethodGet: {getStatus, got}, http.MethodPost: {postStatus, posted}} {
+		if answered.status != http.StatusNotFound || answered.body["error"] != "no such endpoint" {
+			t.Errorf("%s /api/deployment/zapier answered %d %v", method, answered.status, answered.body)
+		}
+	}
+	if len(asked()) != 0 {
+		t.Fatalf("the deployment was asked %v", asked())
+	}
+}
+
 // nothing about the deployment reaches this file's own answers, and a body naming something else is
 // refused rather than sent on.
 func TestABodyThisConsoleWillNotActOnIsRefused(t *testing.T) {
