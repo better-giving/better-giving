@@ -268,11 +268,13 @@ function UnreadableDraftEditor({
 				/>
 			}
 			preview={
-				<Banner tone="attention" word={UNREADABLE_WORD}>
-					{discardable
-						? 'The Donation page no longer holds what a page may hold. Discard changes to go back to the live page, or reset it to the default.'
-						: 'The Donation page no longer holds what a page may hold. Reset it to the default to repair it.'}
-				</Banner>
+				<div className="adm-main">
+					<Banner tone="attention" word={UNREADABLE_WORD}>
+						{discardable
+							? 'The Donation page no longer holds what a page may hold. Discard changes to go back to the live page, or reset it to the default.'
+							: 'The Donation page no longer holds what a page may hold. Reset it to the default to repair it.'}
+					</Banner>
+				</div>
 			}
 		>
 			{presses.confirm}
@@ -384,6 +386,7 @@ function DraftEditor({
 					version={version}
 					onDismiss={() => setDonationSettings(false)}
 					onSaved={() => setDonationSettings(false)}
+					stacked={settings}
 				/>
 			) : null}
 			{presses.confirm}

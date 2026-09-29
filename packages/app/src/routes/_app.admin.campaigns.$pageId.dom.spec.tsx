@@ -4,11 +4,14 @@ import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { editorBlocks, layoutPictures } from '$lib/page/block-edit';
+import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import { defaultCampaign } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
 
-// a campaign's editor as the route mounts it: what its first Publish says of the address, and the
-// questions an address save comes back with — asked, answered yes with the version, or declined.
+// a campaign's editor as the route mounts it: what its first Publish says of the address, the
+// questions an address save comes back with — asked, answered yes with the version, or declined —
+// whether the donation settings sheet stands over Settings or on its own ground, and the notice
+// over a draft the read rule refuses.
 // the loader and the action are stand-ins, one drawing the fixture below and the other recording
 // each body and answering what the case scripts; what the real ones do is
 // ./_app.admin.campaigns.$pageId.workers.spec.ts's.
@@ -143,6 +146,15 @@ function card(title: string | RegExp): HTMLDialogElement {
 	return found;
 }
 
+/** Settings' own row named `label`. */
+function settingsRow(label: string): HTMLButtonElement {
+	const row = [...card('Settings').querySelectorAll('button')].find(
+		(one) => one.querySelector('.adm-openrow__label')?.textContent === label
+	);
+	if (row === undefined) throw new Error(`Settings drew no ${label} row`);
+	return row;
+}
+
 async function press(target: HTMLElement) {
 	await act(async () => {
 		target.focus();
@@ -177,11 +189,7 @@ describe('an address save that comes back with a question', () => {
 	/** Settings, its Address row, `slug` typed and saved. */
 	async function saveAddress(slug: string) {
 		await press(button('Settings'));
-		const row = [...card('Settings').querySelectorAll('button')].find(
-			(one) => one.querySelector('.adm-openrow__label')?.textContent === 'Address'
-		);
-		if (row === undefined) throw new Error('Settings drew no Address row');
-		await press(row);
+		await press(settingsRow('Address'));
 		const sheet = card('Address');
 		const box = sheet.querySelector('input');
 		if (box === null) throw new Error('the Address sheet drew no box');
@@ -251,6 +259,38 @@ describe('an address save that comes back with a question', () => {
 	});
 });
 
+describe('the donation settings sheet', () => {
+	it('stacks over Settings when opened from its Donation settings row', async () => {
+		await screen();
+		await press(button('Settings'));
+
+		await press(settingsRow('Donation settings'));
+
+		expect(card('Donation settings').classList.contains('adm-sheet--stacked')).toBe(true);
+	});
+
+	it('lays its own ground when opened from the preview’s donation box', async () => {
+		await screen();
+		const box = drawn.blocks.find((block) => block.type === 'donation-box');
+		if (box === undefined) throw new Error('the fixture draws no donation box');
+		const frame = document.querySelector('iframe');
+
+		await act(async () => {
+			window.dispatchEvent(
+				new MessageEvent('message', {
+					data: { type: BLOCK_MESSAGE, id: box.id },
+					origin: window.location.origin,
+					source: frame?.contentWindow ?? null
+				})
+			);
+		});
+		await settle();
+
+		expect(() => card('Settings')).toThrow();
+		expect(card('Donation settings').classList.contains('adm-sheet--stacked')).toBe(false);
+	});
+});
+
 describe('a draft the page rule refuses', () => {
 	const refused = (discardable: boolean): Extract<Drawn, { unreadable: true }> => ({
 		unreadable: true,
@@ -264,11 +304,11 @@ describe('a draft the page rule refuses', () => {
 		host: 'give.example.org/'
 	});
 
-	it('says so in the preview’s place, with Discard changes on the bar', async () => {
+	it('says so in the preview’s place, padded from its edges, with Discard changes on the bar', async () => {
 		unreadable = refused(true);
 		await screen();
 
-		const notice = document.querySelector('.adm-editor__preview .adm-banner');
+		const notice = document.querySelector('.adm-editor__preview > .adm-main > .adm-banner');
 		expect(notice?.textContent).toContain('This draft can’t be read');
 		expect(notice?.textContent).toContain('Discard changes to go back to the live page.');
 		expect(document.querySelector('iframe')).toBe(null);

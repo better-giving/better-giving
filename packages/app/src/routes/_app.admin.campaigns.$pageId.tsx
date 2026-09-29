@@ -442,11 +442,13 @@ function UnreadableDraftEditor({
 				/>
 			}
 			preview={
-				<Banner tone="attention" word={UNREADABLE_WORD}>
-					{discardable
-						? 'This page no longer holds what a campaign may hold. Discard changes to go back to the live page.'
-						: 'This page no longer holds what a campaign may hold, and there is no live page to go back to.'}
-				</Banner>
+				<div className="adm-main">
+					<Banner tone="attention" word={UNREADABLE_WORD}>
+						{discardable
+							? 'This page no longer holds what a campaign may hold. Discard changes to go back to the live page.'
+							: 'This page no longer holds what a campaign may hold, and there is no live page to go back to.'}
+					</Banner>
+				</div>
 			}
 		>
 			{presses.confirm}
@@ -631,6 +633,7 @@ function DraftEditor({
 					version={version}
 					onDismiss={() => setOpened(null)}
 					onSaved={() => setOpened(null)}
+					stacked={settings}
 				/>
 			) : null}
 			{opened === 'address' ? (
