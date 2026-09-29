@@ -1,17 +1,6 @@
 import type { Frequency, TributeKind } from '@better-giving/form/v1';
-import {
-	and,
-	asc,
-	desc,
-	eq,
-	inArray,
-	isNull,
-	ne,
-	type SQL,
-	type SQLWrapper,
-	sql
-} from 'drizzle-orm';
-import { alias, union } from 'drizzle-orm/sqlite-core';
+import { and, asc, desc, eq, isNull, ne, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { alias, union, unionAll } from 'drizzle-orm/sqlite-core';
 import { projectTribute } from '../../donations/tributes';
 import { majorText } from '../../forms/amounts';
 import type { Db } from '../db/client';
@@ -67,8 +56,11 @@ import { inPage, type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } 
 // `updated_since`, every gift whose `updated_at` is at or after it, oldest change first, then id.
 // a system keeping a copy walks the second from any instant before the first gift, and resumes
 // from the `resume_updated_since` its last page answers (./paging.ts's header). the second is read
-// as a merge of one stream per kind of write above, each in order off an index of its own, so a
-// page reads as far as its last gift rather than every gift (`changedKeys`).
+// as a merge of one stream per kind of write above, each in order off an index of its own, inside
+// a window closed at a counted write. what a page reads is bounded by the writes from where it
+// starts through its last gift's change — fewer than four times as many, across every window it
+// tries — and not by the writes past it, except that a walk's last page reads to the last write
+// (`changedKeys`).
 
 /** one settled gift, as a `new_gift` Zap receives it. `id` is the payment's, stable across retries. */
 export type GiftEvent = {
@@ -215,15 +207,65 @@ async function newestKeys(db: Db, query: PageQuery): Promise<Keyset[]> {
  * the disputes name no `direction`, which would hand sqlite `payment_refund_created_at_idx` to
  * drive them by in place of their own. the `union` drops a position two writes at one instant both
  * name, so each gift is served once.
+ *
+ * the window closes at the time of the n-th write from where the page starts (`nthWriteAt`), n
+ * twice the rows the page reads to begin with, so a stream whose writes are rarely a gift's latest
+ * stops there rather than reading on to its index's end. every gift whose latest write falls inside the window is in it,
+ * and every gift past it comes after them in the order, so a window that yields more than a page
+ * holds the page. one that yields less is read again twice as wide, and one that reaches past the
+ * last write is not closed at all.
  */
 async function changedKeys(db: Db, query: PageQuery & { order: 'changed' }): Promise<Keyset[]> {
 	const from =
 		query.after === null ? query.since.getTime() : Math.max(query.since.getTime(), query.after.at);
+	for (let writes = 2 * (query.limit + 1); ; writes *= 2) {
+		const through = await nthWriteAt(db, from, writes);
+		const keys = await changedWithin(db, query, from, through);
+		if (through === null || keys.length > query.limit) return keys;
+	}
+}
+
+/**
+ * when the `n`-th write at or after `from` landed, of every write the streams in `changedWithin`
+ * read, or null where there are fewer. each posting is counted once however many streams read it.
+ * read off the same four indexes, and off nothing else, so it reads about `n` index entries and no
+ * table row.
+ */
+async function nthWriteAt(db: Db, from: number, n: number): Promise<number | null> {
+	const [nth] = await unionAll(
+		db
+			.select({ at: gift.createdAt })
+			.from(gift)
+			.where(and(isGift(gift), sql`${gift.createdAt} >= ${from}`)),
+		db
+			.select({ at: payment.createdAt })
+			.from(payment)
+			.where(and(eq(payment.direction, 'refund'), sql`${payment.createdAt} >= ${from}`)),
+		db
+			.select({ at: entryGroup.createdAt })
+			.from(entryGroup)
+			.where(sql`${entryGroup.createdAt} >= ${from}`),
+		db.select({ at: dispute.updatedAt }).from(dispute).where(sql`${dispute.updatedAt} >= ${from}`)
+	)
+		.orderBy(asc(gift.createdAt))
+		.limit(1)
+		.offset(n - 1);
+	return nth === undefined ? null : nth.at.getTime();
+}
+
+/** the page's gifts among those whose latest write lands from `from` through `through`. */
+async function changedWithin(
+	db: Db,
+	query: PageQuery & { order: 'changed' },
+	from: number,
+	through: number | null
+): Promise<Keyset[]> {
 	// the lower bound on its own, beside the row value: a stream whose id is on another row than its
 	// time reads its index by the time alone, and sqlite takes no range from a row value there.
 	const latestInPage = (at: SQLWrapper, giftId: SQLWrapper) =>
 		and(
 			sql`${at} >= ${from}`,
+			through === null ? undefined : sql`${at} <= ${through}`,
 			query.after === null ? undefined : pastKeyset('asc', at, giftId, query.after),
 			sql`${at} = ${changedAt(db)}`
 		);
@@ -332,10 +374,21 @@ function postedAt(db: Db, paymentId: SQLWrapper, name: string) {
 	return db
 		.select({ at: sql`max(${posted.createdAt})` })
 		.from(posted)
-		.where(and(inArray(posted.sourceType, PAYMENT_KEYED_SOURCES), eq(posted.sourceId, paymentId)));
+		.where(
+			and(sql`${posted.sourceType} in ${PAYMENT_KEYED_SOURCES}`, eq(posted.sourceId, paymentId))
+		);
 }
 
-const PAYMENT_KEYED_SOURCES = ENTRY_SOURCE_TYPES.filter((type) => type !== 'donation');
+/**
+ * written into the statement rather than bound: `changedAt` names them twice in each stream, and
+ * bound they would spend D1's 100 parameters a query on every source type the ledger gains
+ * (https://developers.cloudflare.com/d1/platform/limits/).
+ */
+const PAYMENT_KEYED_SOURCES = sql.raw(
+	`(${ENTRY_SOURCE_TYPES.filter((type) => type !== 'donation')
+		.map((type) => `'${type}'`)
+		.join(', ')})`
+);
 
 function statusOf(amountMinor: number, refundedMinor: number): GiftStatus {
 	if (refundedMinor === 0) return 'settled';

@@ -949,7 +949,8 @@ describe('when a key was last used', () => {
 
 /**
  * the pool's env with `write` run once, after the statement that reads a walk of changes' order
- * and before the next statement runs — the moment between the two reads of a page of gifts.
+ * and before the next statement runs — the moment between the two reads of a page of gifts. the
+ * `union all` that closes the walk's window before it is not the order.
  */
 function envWritingAfterTheOrder(write: () => Promise<void>): Env {
 	let ordered = false;
@@ -975,7 +976,7 @@ function envWritingAfterTheOrder(write: () => Promise<void>): Env {
 	const db = new Proxy(env.DB, {
 		get(target, property) {
 			if (property === 'prepare')
-				return (sql: string) => gated(target.prepare(sql), / union /.test(sql));
+				return (sql: string) => gated(target.prepare(sql), / union (?!all )/.test(sql));
 			const value: unknown = Reflect.get(target, property);
 			return typeof value === 'function' ? value.bind(target) : value;
 		}
