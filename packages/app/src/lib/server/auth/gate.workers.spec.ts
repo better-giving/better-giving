@@ -38,13 +38,16 @@ beforeEach(async () => {
  * the context is the deployment's own — `requestContext` is what src/worker.ts seeds — so the gate
  * reads the same D1 handle here that it reads in the worker.
  */
-function args(url: string, options: { headers?: HeadersInit; sentTo?: string } = {}) {
+function args(
+	url: string,
+	options: { headers?: HeadersInit; sentTo?: string; method?: string } = {}
+) {
 	const context = requestContext(env, createExecutionContext());
 	return {
-		request: new Request(
-			options.sentTo ?? url,
-			options.headers ? { headers: options.headers } : {}
-		),
+		request: new Request(options.sentTo ?? url, {
+			method: options.method ?? 'GET',
+			...(options.headers ? { headers: options.headers } : {})
+		}),
 		url: new URL(url),
 		pattern: '/*',
 		params: {},
@@ -166,5 +169,84 @@ describe('the gate on the protected layout', () => {
 		// like is an operator signed out seven days after signing in, however much they used the
 		// app in between.
 		expect(response.headers.getSetCookie().length).toBeGreaterThan(0);
+	});
+});
+
+describe('a write arriving from another origin', () => {
+	it('refuses a same-site POST from a signed-in browser, naming the header', async () => {
+		// the org's own website on a sibling subdomain: same-site, so the lax session cookie rides
+		// along, and a script there could invite a member.
+		const cookie = await signIn();
+		const beneath = screen();
+
+		const response = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/members`, {
+					method: 'POST',
+					headers: { cookie, 'sec-fetch-site': 'same-site' }
+				}),
+				beneath.next
+			)
+		);
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).toMatch(/Sec-Fetch-Site.*same-site/);
+		expect(beneath.state.ran).toBe(false);
+	});
+
+	it('refuses a cross-site POST', async () => {
+		const cookie = await signIn();
+		const beneath = screen();
+
+		const response = await refusal(
+			staffGate(
+				args(`${ORIGIN}/admin/images`, {
+					method: 'POST',
+					headers: { cookie, 'sec-fetch-site': 'cross-site' }
+				}),
+				beneath.next
+			)
+		);
+
+		expect(response.status).toBe(403);
+		expect(beneath.state.ran).toBe(false);
+	});
+
+	it('lets a same-origin POST through to the action', async () => {
+		const cookie = await signIn();
+		const beneath = screen();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/members`, {
+				method: 'POST',
+				headers: { cookie, 'sec-fetch-site': 'same-origin' }
+			}),
+			beneath.next
+		);
+
+		expect(await response.text()).toBe('the screen');
+	});
+
+	it('lets a POST with no Sec-Fetch-Site through to the checks it had before', async () => {
+		// an older browser, or a server-side client: nothing to read, so the session decides.
+		const cookie = await signIn();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/members`, { method: 'POST', headers: { cookie } }),
+			screen().next
+		);
+
+		expect(await response.text()).toBe('the screen');
+	});
+
+	it('lets a cross-site GET through, which is a link followed into /admin', async () => {
+		const cookie = await signIn();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/forms`, { headers: { cookie, 'sec-fetch-site': 'cross-site' } }),
+			screen().next
+		);
+
+		expect(await response.text()).toBe('the screen');
 	});
 });

@@ -46,6 +46,10 @@ export async function staffGate(
 	{ context, request, url }: GateArgs,
 	next: GateNext
 ): Promise<Response> {
+	// ahead of the key and session reads: a refused write costs no D1 read, and it is refused
+	// whoever is signed in, because the browser that sends it is the signed-in one.
+	refuseWriteFromAnotherOrigin(request);
+
 	const { env } = context.get(platform);
 	// the request's own handle, seeded above the router (src/request-context.ts) and taken off the
 	// context here like every other surface takes it. built from the binding here instead, this
@@ -106,4 +110,35 @@ export async function staffGate(
 	const response = await next();
 	for (const cookie of headers.getSetCookie()) response.headers.append('set-cookie', cookie);
 	return response;
+}
+
+/**
+ * every write behind the login comes from a page on this origin, or it is refused.
+ *
+ * a write is any method but GET and HEAD, and it is refused when `Sec-Fetch-Site` is present and
+ * is anything but `same-origin`. `same-site` is the case that matters: a deployment on the
+ * organisation's own domain shares a site with the organisation's website, the page the snippet
+ * is pasted into, and the session cookie's `sameSite: 'lax'` (./index.ts) rides along on a POST
+ * from any page on that site. a script there, stored in the website's own CMS, could otherwise
+ * invite itself a member while an operator is signed in.
+ *
+ * the browser sets the header and a page's script cannot (it is a forbidden request header,
+ * https://fetch.spec.whatwg.org/#forbidden-request-header), and the check only ever refuses.
+ * nothing here grants a request anything, so it is not an authorization control on `Origin`
+ * (CLAUDE.md → Bans → Boundaries).
+ *
+ * a request with no `Sec-Fetch-Site` goes on to the session check as before — an older browser,
+ * or a client that is not a browser at all and so holds no operator's cookie unless it was given
+ * one. against a same-site page in a browser that old, `lax` is the only line and it does not
+ * hold. GET and HEAD pass whatever the header says, because following a link into /admin from
+ * anywhere is a GET.
+ */
+function refuseWriteFromAnotherOrigin(request: Request): void {
+	if (request.method === 'GET' || request.method === 'HEAD') return;
+	const site = request.headers.get('sec-fetch-site');
+	if (site === null || site === 'same-origin') return;
+	throw new Response(
+		`\`Sec-Fetch-Site: ${site}\` on a ${request.method}: a write behind the login is accepted only from a page on this deployment's own origin (\`same-origin\`). submit it from the screen on this deployment that owns it.`,
+		{ status: 403 }
+	);
 }

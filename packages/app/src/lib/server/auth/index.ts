@@ -201,25 +201,23 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * the cross-site navigation login block does not consult the list at all — it keys on
 	 * `Sec-Fetch-Site`/`Sec-Fetch-Mode`.
 	 *
-	 * what it does not cover is the form POST at `/login`: better-auth's own origin
-	 * middleware runs on a request its router handled, and this deployment mounts no router
-	 * — a direct `auth.api.*` call carries no `ctx.request` for it to read. what stands
-	 * there instead is the session cookie's `sameSite: 'lax'` below, which a cross-site POST
-	 * does not carry, and the sign-in bucket `signInRateLimitKey` charges (CLAUDE.md).
+	 * none of that runs here. better-auth's origin middleware is mounted on its router, which this
+	 * deployment never serves, and the check its email sign-in and sign-up carry returns at once on a
+	 * direct `auth.api.*` call, because such a call has no `ctx.request` to read
+	 * (`better-auth/dist/api/middlewares/origin-check.mjs`, `better-auth/dist/api/index.mjs`).
 	 *
-	 * **that is the accepted answer and not an omission waiting to be closed.** what `lax`
-	 * leaves standing is login-CSRF, where the victim's browser is made to submit the
-	 * attacker's own credentials and the victim ends up signed into the attacker's account —
+	 * what stands in front of a write behind the login is `staffGate` (./gate.ts), which refuses any
+	 * method but GET and HEAD whose `Sec-Fetch-Site` is present and not `same-origin`. the session
+	 * cookie's `sameSite: 'lax'` below keeps a cross-site POST from carrying the session. it does not
+	 * stop a same-site one, and a deployment on the organisation's own domain is same-site with the
+	 * organisation's website. the gate's rule is what covers that case. both controls bound other
+	 * origins only: a script running on this origin, the donor pages included, is inside them.
+	 *
+	 * the routes that sign someone in (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`) sit outside
+	 * the gate, so its rule does not reach them. what stands there is `lax`, and for the login the
+	 * bucket `signInRateLimitKey` charges (CLAUDE.md). login-CSRF gets past both: the victim's browser
+	 * submits credentials the attacker holds, and the victim is signed into the attacker's account.
 	 * it needs no cookie from the victim, which is why the cookie attribute does not reach it.
-	 * this deployment has one staff account, so a forced login lands the victim in the account
-	 * whose password the attacker already holds; there is no second account to be confused
-	 * into, and the donation page this project deploys carries no session at all — it is a
-	 * static shell on an origin of its own, so nothing on it holds or reads this deployment's
-	 * cookie (CLAUDE.md → Product surface). the control
-	 * that would close it is a comparison of `Origin` against the request's own host, and
-	 * CLAUDE.md bans exactly that reading: `Origin` is an attribution signal and never an
-	 * authorization control. reopen this the day a deployment has a second account, which is
-	 * the fact the argument turns on.
 	 *
 	 * `x-forwarded-host` is not consulted: better-auth honours forwarded headers only
 	 * when `advanced.trustedProxyHeaders` is set, and it is not. that is also why
