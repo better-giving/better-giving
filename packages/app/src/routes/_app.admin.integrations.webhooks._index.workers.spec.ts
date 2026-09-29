@@ -2,7 +2,6 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { PACE } from '$lib/server/outbox/budget';
-import { WEBHOOKS_PAGE_PATH } from '$lib/server/webhooks/paused-mail';
 import { createDestination } from '$lib/server/webhooks/destinations';
 import {
 	deployed,
@@ -50,10 +49,6 @@ async function visit(cookie = deployer, bindings = deployed()): Promise<Screen> 
 	expect(response.status).toBe(200);
 	return (await response.json()) as Screen;
 }
-
-it('is the page the pause mail links to', () => {
-	expect(WEBHOOKS_PAGE_PATH).toBe(SCREEN);
-});
 
 describe('GET /admin/integrations/webhooks', () => {
 	it('states the pace deliveries go out at on the Free plan, where the plan is not stated', async () => {

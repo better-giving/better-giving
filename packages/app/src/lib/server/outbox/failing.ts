@@ -9,7 +9,9 @@ import type { Db } from '../db/client';
 //
 // **a receiver's run of failures starts at its `failing_since`**, set by the first failed post
 // after the last one it took and cleared by the next one it takes. the mark and the failed row's
-// outcome go in one batch, and so do the clear and a taken row's.
+// outcome go in one batch, and so do the clear and a taken row's, each ahead of the landing and
+// guarded on the run still holding the row (`holds` in ./lease.ts): a post the run had lost the
+// row for before it answered is no failure or success of the receiver's this run may record.
 //
 // **a mark counts only while the run it began can still be on.** a receiver's rows can all leave
 // the outbox without a post being taken — given up on, dropped, out of retries — and nothing then
@@ -62,9 +64,16 @@ export function defineFailing<T extends ReceiverTable>(spec: FailingSpec<T>) {
 
 	/**
 	 * a failed post to `receiverId` at `now`, of a row queued at `row.createdAt`: the start of the
-	 * receiver's run of failures, where none is on that the row could belong to.
+	 * receiver's run of failures, where none is on that the row could belong to. written only where
+	 * `guard` holds too.
 	 */
-	function failed(db: Db, receiverId: string, row: { readonly createdAt: Date }, now: Date) {
+	function failed(
+		db: Db,
+		receiverId: string,
+		row: { readonly createdAt: Date },
+		now: Date,
+		guard?: SQL
+	) {
 		const oldestStanding = row.createdAt.getTime() - spec.stopAfterMs;
 		const owed = spec.outbox.table;
 		const olderStillFailing = db
@@ -81,13 +90,17 @@ export function defineFailing<T extends ReceiverTable>(spec: FailingSpec<T>) {
 		return write(
 			db,
 			receiverId,
-			sql`case when ${table.failingSince} is not null and (${table.failingSince} >= ${oldestStanding} or exists ${olderStillFailing}) then ${table.failingSince} else ${now.getTime()} end`
+			sql`case when ${table.failingSince} is not null and (${table.failingSince} >= ${oldestStanding} or exists ${olderStillFailing}) then ${table.failingSince} else ${now.getTime()} end`,
+			guard
 		);
 	}
 
-	/** a post `receiverId` took: its run of failures, if it was on one, is over. */
-	function taken(db: Db, receiverId: string) {
-		return write(db, receiverId, null, isNotNull(table.failingSince));
+	/**
+	 * a post `receiverId` took: its run of failures, if it was on one, is over. written only where
+	 * `guard` holds too.
+	 */
+	function taken(db: Db, receiverId: string, guard?: SQL) {
+		return write(db, receiverId, null, and(isNotNull(table.failingSince), guard));
 	}
 
 	/**

@@ -13,8 +13,10 @@ import {
 // hook of each pause once, and a retry here would be the second mail that rule exists to prevent.
 // the destination's `paused_at` is the lasting record of the pause.
 
-/** the dashboard's Webhooks page, where a paused destination is resumed. */
-export const WEBHOOKS_PAGE_PATH = '/admin/integrations/webhooks';
+/** the dashboard page of the destination `id`, where it is resumed. */
+export function destinationPagePath(id: string): string {
+	return `/admin/integrations/webhooks/${encodeURIComponent(id)}`;
+}
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -35,7 +37,7 @@ export function mailPause(
 					destination.reason === 'failing'
 						? { reason: 'failing', days: DESTINATION_PAUSE_AFTER_MS / DAY_MS }
 						: { reason: 'gone' },
-				webhooksPath: WEBHOOKS_PAGE_PATH,
+				webhooksPath: destinationPagePath(destination.id),
 				origin: deps.origin
 			})
 		);

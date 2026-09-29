@@ -1,13 +1,8 @@
 import type { BatchItem } from 'drizzle-orm/batch';
-import {
-	contactConsentUpdate,
-	contactInsertStatement,
-	findContactByEmail,
-	newContactRow
-} from '../contacts/queries';
+import { consentChangeStatements } from '../contacts/changes';
+import { contactInsertStatement, findContactByEmail, newContactRow } from '../contacts/queries';
 import type { ParsedContact } from '../contacts/contact-input';
 import type { Db } from '../db/client';
-import { donorUpdatedWebhookStatements } from '../webhooks/events';
 
 // who a gift is filed under, for both paths that take one.
 //
@@ -25,7 +20,7 @@ import { donorUpdatedWebhookStatements } from '../webhooks/events';
 // the row they already have, is one implementation either way — the same rule applied twice would
 // be two donor files with one form between them. a matched donor's answer is the latest a form was
 // given for their address, which nothing verifies, and each change to it is announced to
-// destinations as `donor.updated` (../webhooks/events.ts).
+// destinations as `donor.updated` (../contacts/changes.ts).
 
 /** the donor a gift is filed under, and the write that has not happened yet. */
 export type ResolvedDonor = {
@@ -104,9 +99,9 @@ export async function resolveDonor(
 			return {
 				contactId: existing.id,
 				created: false,
-				// `contactConsentUpdate` takes a boolean and nothing else (../contacts/queries.ts), which
-				// is what makes this the only place the third case can be decided.
-				statements: consented === null ? [] : consentWrites(db, existing.id, consented)
+				// `consentChangeStatements` takes a boolean and nothing else (../contacts/changes.ts),
+				// which is what makes this the only place the third case can be decided.
+				statements: consented === null ? [] : consentChangeStatements(db, existing.id, consented)
 			};
 		}
 	}
@@ -115,19 +110,6 @@ export async function resolveDonor(
 	// the statement so the insert lands in the caller's one `batch()`.
 	const row = newContactRow(parsed, consented);
 	return { contactId: row.id, created: true, statements: [contactInsertStatement(db, row)] };
-}
-
-/**
- * a matched donor's new answer over their stored one, and the `donor.updated` rows it owes where it
- * changes that answer — in front of the update, whose gate reads the answer it replaces.
- */
-function consentWrites(
-	db: Db,
-	contactId: string,
-	consented: boolean
-): [BatchItem<'sqlite'>, BatchItem<'sqlite'>] {
-	const { changes, update } = contactConsentUpdate(db, contactId, consented);
-	return [donorUpdatedWebhookStatements(db, contactId, changes), update];
 }
 
 /**

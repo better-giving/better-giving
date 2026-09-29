@@ -10,8 +10,9 @@ import { type ApiRecurringGift, readRecurringGifts } from '../integrations/recur
 import {
 	REFUND_NO_LONGER_STANDS,
 	type RefundRow,
-	type RefundSource,
+	type RenderedRefund,
 	readStandingRefunds,
+	renderRefund,
 	selectRefunds
 } from '../integrations/refund';
 import type { WebhookEvent } from '../../webhooks/catalog';
@@ -47,28 +48,10 @@ import { CHARGE_FAILED_DETAIL, type ChargeFailedDetail, changedRecordOf } from '
 
 /**
  * one refund, or one dispute lost, as a `gift.refunded` destination receives it: what left, and
- * the gift it left — the keys a `gift_refunded` Zap receives (../zapier/payload.ts), with `gift`
- * as the read API answers it. `id` is the refund's own payment id, distinct from the gift's, so a
- * second refund of one gift is a second event.
+ * the gift it left — `renderRefund`'s rendering in ../integrations/refund.ts, the one a
+ * `gift_refunded` Zap receives too (../zapier/payload.ts), with `gift` as the read API answers it.
  */
-export type RefundedGift = {
-	readonly id: string;
-	/**
-	 * when the money left the organisation, ISO 8601 in UTC: for a refund, when it was made; for a
-	 * dispute, when it opened and withdrew the money, or where no opening was recorded, when it
-	 * closed.
-	 */
-	readonly occurred_at: string;
-	/**
-	 * what left, in `amount`'s notation on the gift: for a refund, what it gave back; for a dispute,
-	 * what the processor took as the close left it.
-	 */
-	readonly amount: string;
-	readonly amount_minor: number;
-	readonly currency: string;
-	readonly source: RefundSource;
-	readonly gift: ApiGift;
-};
+export type RefundedGift = RenderedRefund<ApiGift>;
 
 /**
  * one dispute, as a `gift.dispute_opened` destination receives it: the money its opening withdrew
@@ -174,7 +157,7 @@ export async function renderSubjects(
 				const found = withdrawalOf(subjectId);
 				if (found === undefined) return unreadable('refund', subjectId);
 				if (!standing.has(subjectId)) return { dropped: REFUND_NO_LONGER_STANDS };
-				return { data: refundedGift(found.row, found.gift) };
+				return { data: renderRefund(found.row, found.gift) };
 			}
 			case 'gift.dispute_opened': {
 				const found = withdrawalOf(subjectId);
@@ -255,18 +238,6 @@ async function readFirstGifts(db: Db, contactIds: readonly string[]): Promise<Ma
 	return new Map(rows.map((row) => [row.contactId, row.paymentId]));
 }
 
-function refundedGift(row: RefundRow, gift: ApiGift): RefundedGift {
-	return {
-		id: row.id,
-		occurred_at: row.occurredAt.toISOString(),
-		amount: majorText(row.amountMinor, row.currency),
-		amount_minor: row.amountMinor,
-		currency: row.currency,
-		source: row.source,
-		gift
-	};
-}
-
 function failedCharge(attempt: ChargeFailedDetail, plan: ApiRecurringGift): FailedCharge {
 	return {
 		...attempt,
@@ -275,13 +246,15 @@ function failedCharge(attempt: ChargeFailedDetail, plan: ApiRecurringGift): Fail
 	};
 }
 
+/** a dispute's withdrawal, its keys `renderRefund`'s under the names this event gives them. */
 function openedDispute(row: RefundRow, gift: ApiGift): OpenedDispute {
+	const withdrawn = renderRefund(row, gift);
 	return {
-		id: row.id,
-		opened_at: row.occurredAt.toISOString(),
-		amount: majorText(row.amountMinor, row.currency),
-		amount_minor: row.amountMinor,
-		currency: row.currency,
+		id: withdrawn.id,
+		opened_at: withdrawn.occurred_at,
+		amount: withdrawn.amount,
+		amount_minor: withdrawn.amount_minor,
+		currency: withdrawn.currency,
 		respond_by: row.respondBy?.toISOString() ?? null,
 		gift
 	};

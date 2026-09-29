@@ -1505,6 +1505,10 @@ describe('settleDelivery() — a failed attempt at a later collection', () => {
 
 		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
 		expect(result.ok && result.detail).toContain('attempt 2 at a collection under');
+		// a schedule, never a promise that the rail will try.
+		expect(result.ok && result.detail).toMatch(
+			/the rail has (its next try scheduled for|no next try scheduled)/
+		);
 		// the opening collection's rows, and nothing beside them.
 		expect(await db.select().from(donation)).toHaveLength(1);
 		expect(await db.select().from(payment)).toHaveLength(1);
@@ -1890,6 +1894,12 @@ describe('settleDelivery() — a repeating gift that could not be read', () => {
 			// collected, and answering 200 with nothing said loses it silently.
 			expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
 			expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+			// the delivery may as well have reported a failed payment, which moved nothing.
+			const said = mail.sent[0]?.text.replace(/\s+/g, ' ');
+			expect(said).toContain('If it was a collection, money moved and the books do not have it.');
+			expect(said).toContain(
+				'If it was a failed payment, no money moved and the books are complete: what is lost is the recurring charge failed notice for that attempt.'
+			);
 		}
 	);
 

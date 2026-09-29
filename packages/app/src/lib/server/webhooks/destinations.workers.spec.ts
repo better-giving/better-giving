@@ -157,7 +157,16 @@ describe('createDestination()', () => {
 		['https://[fec0::1]/hooks', '[fec0::1] is a site-local address'],
 		['https://intranet/hooks', 'intranet names no host on the internet: it has no domain'],
 		['https:/x', 'x names no host on the internet: it has no domain'],
-		['https://printer.home.arpa/hooks', 'printer.home.arpa names a host on a home network']
+		['https://printer.home.arpa/hooks', 'printer.home.arpa names a host on a home network'],
+		['https://192.0.0.9/hooks', '192.0.0.9 is a protocol assignment address'],
+		['https://192.0.2.1/hooks', '192.0.2.1 is a documentation address'],
+		['https://198.51.100.7/hooks', '198.51.100.7 is a documentation address'],
+		['https://203.0.113.7/hooks', '203.0.113.7 is a documentation address'],
+		['https://[2001::1]/hooks', '[2001::1] is a Teredo address'],
+		['https://[2001:0:4136:e378::1]/hooks', '[2001:0:4136:e378::1] is a Teredo address'],
+		['https://[2001:db8::1]/hooks', '[2001:db8::1] is a documentation address'],
+		['https://[64:ff9b:1::a00:1]/hooks', '[64:ff9b:1::a00:1] is a NAT64 address'],
+		['https://[100::1]/hooks', '[100::1] is a discard-only address']
 	])('refuses %s, a host the internet cannot reach, and writes nothing', async (url, why) => {
 		const made = await createDestination(db, { url, events: ['gift.made'] });
 
@@ -171,9 +180,14 @@ describe('createDestination()', () => {
 	});
 
 	it.each([
-		'https://203.0.113.7/hooks',
+		'https://203.0.114.7/hooks',
+		'https://192.0.3.1/hooks',
+		'https://198.51.101.7/hooks',
 		'https://172.32.0.1/hooks',
-		'https://[2001:db8::1]/hooks',
+		'https://[2001:4860::8888]/hooks',
+		'https://[2001:db9::1]/hooks',
+		'https://[64:ff9b:2::1]/hooks',
+		'https://[100:0:0:1::1]/hooks',
 		'https://local.example.org/hooks',
 		'https://internal.example.org/hooks',
 		'https://100.63.255.1/hooks',
@@ -184,6 +198,25 @@ describe('createDestination()', () => {
 		'https://[64:ff9c::1]/hooks'
 	])('takes %s, a public host', async (url) => {
 		expect((await createDestination(db, { url, events: ['gift.made'] })).ok).toBe(true);
+	});
+
+	it.each([
+		'https://user:secret@crm.example.org/hooks',
+		'https://token@crm.example.org/hooks',
+		'https://:secret@crm.example.org/hooks',
+		'user:secret@crm.example.org/hooks',
+		'https:\\\\user:secret@crm.example.org/hooks',
+		'https:/\\token@crm.example.org/hooks'
+	])('refuses %s, which carries a user name or password, and writes nothing', async (url) => {
+		const made = await createDestination(db, { url, events: ['gift.made'] });
+
+		expect(made).toEqual({
+			ok: false,
+			reason: 'has_credentials',
+			field: 'url',
+			box: 'can’t carry a user name or password: remove everything up to and including the @'
+		});
+		expect(await stored()).toEqual([]);
 	});
 
 	it('takes an address typed without a scheme as https', async () => {
@@ -267,7 +300,7 @@ describe('resumeDestination()', () => {
 	it('refuses a destination that does not exist, naming the id', async () => {
 		const id = '019fb300-0000-7000-8000-00000000dead';
 
-		expect(await resumeDestination(db, id, NOW)).toEqual({
+		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({
 			ok: false,
 			reason: 'not_found',
 			detail: `No destination has the id ${id}.`
@@ -289,7 +322,7 @@ describe('resumeDestination()', () => {
 			.bind(`msg_${crypto.randomUUID()}`, id)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW)).toEqual({
+		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({
 			ok: false,
 			reason: 'not_found',
 			detail: `No destination has the id ${id}.`
@@ -313,7 +346,10 @@ describe('resumeDestination()', () => {
 			.bind(`msg_${crypto.randomUUID()}`, id, NOW.getTime() + 60_000)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW)).toMatchObject({ ok: false, reason: 'not_paused' });
+		expect(await resumeDestination(db, id, NOW, 'free')).toMatchObject({
+			ok: false,
+			reason: 'not_paused'
+		});
 		expect(
 			await env.DB.prepare('select attempts, next_attempt_at from webhook_delivery').first()
 		).toEqual({ attempts: 3, next_attempt_at: NOW.getTime() + 60_000 });
@@ -327,11 +363,14 @@ describe('resumeDestination()', () => {
 			.bind(id)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW)).toEqual({ ok: true, requeued: 0 });
+		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({ ok: true, requeued: 0 });
 		expect(
 			await env.DB.prepare('select paused_at, failing_since from webhook_destination').first()
 		).toEqual({ paused_at: null, failing_since: null });
-		expect(await resumeDestination(db, id, NOW)).toMatchObject({ ok: false, reason: 'not_paused' });
+		expect(await resumeDestination(db, id, NOW, 'free')).toMatchObject({
+			ok: false,
+			reason: 'not_paused'
+		});
 	});
 });
 

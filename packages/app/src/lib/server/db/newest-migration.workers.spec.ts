@@ -3,6 +3,7 @@ import { applyD1Migrations, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { findKeyByPresented } from '../integrations/keys';
 import { post, postingStatements } from '../ledger/posting';
+import { HELD_UNTIL } from '../webhooks/events';
 import { donationRevenueAccount, POSTING_ACCOUNTS, postableId } from './accounts';
 import { createDb } from './client';
 
@@ -24,7 +25,8 @@ import { createDb } from './client';
 // which is the point to re-seed, and a table the stop moves past starts empty until a row is added
 // for it; a squash into one file leaves nothing to stop short of, and the first assertion says so.
 // `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it, and
-// `webhook_delivery` another, which `seedWebhookDeliveries` writes in front of 0019.
+// `webhook_delivery` another, which `seedWebhookDeliveries` writes in front of 0019 and
+// `seedPausedBacklog` in front of 0022.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -51,6 +53,9 @@ const WEBHOOK_DELIVERY_REBUILT_BY = '0019_webhook_delivery_dropped_and_detail.sq
 const WEBHOOK_DELIVERY_REBUILD = env.TEST_MIGRATIONS.findIndex(
 	(m) => m.name === WEBHOOK_DELIVERY_REBUILT_BY
 );
+
+const OWED_ROWS_PARKED_BY = '0022_webhook_delivery_owed_index.sql';
+const OWED_ROWS_PARKING = env.TEST_MIGRATIONS.findIndex((m) => m.name === OWED_ROWS_PARKED_BY);
 
 /**
  * tables a file from the stop on drops on purpose, each asserted gone in that file's own block
@@ -245,6 +250,37 @@ async function seedWebhookDeliveries() {
 	]);
 }
 
+const PAUSED_DESTINATIONS = ['dest-paused', 'dest-paused-archived'] as const;
+
+/**
+ * a backlog queued, due, for a destination paused in front of 0022, beside one of the same shape
+ * for a destination paused and then archived, and a row the paused one was already sent.
+ */
+async function seedPausedBacklog() {
+	const msg = (n: number) => `msg_00000000-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`;
+	await db().batch([
+		db()
+			.prepare(
+				`insert into webhook_destination
+				   (id, url, signing_secret, paused_at, failing_since, archived_at, created_at, updated_at)
+				 values ('dest-paused', 'https://crm.example.org/paused', ?, 30, 10, null, 1, 30),
+				        ('dest-paused-archived', 'https://crm.example.org/gone', ?, 30, 10, 40, 1, 40)`
+			)
+			.bind(`whsec_${'B'.repeat(43)}=`, `whsec_${'C'.repeat(43)}=`),
+		db()
+			.prepare(
+				`insert into webhook_delivery
+				   (id, destination_id, event, subject_id, status, attempts, next_attempt_at, leased_until,
+				    last_status, last_error, delivered_at, created_at, updated_at)
+				 values (?, 'dest-paused', 'gift.made', 'p-card', 'pending', 0, 31, null, null, null, null, 31, 31),
+				        (?, 'dest-paused', 'gift.refunded', 'p-refund', 'pending', 3, 32, 33, 503, '503 Service Unavailable', null, 20, 32),
+				        (?, 'dest-paused', 'gift.made', 'p-venmo', 'delivered', 1, 5, null, 200, null, 6, 1, 6),
+				        (?, 'dest-paused-archived', 'gift.made', 'p-card', 'pending', 0, 34, null, null, null, null, 34, 34)`
+			)
+			.bind(msg(1), msg(2), msg(3), msg(4))
+	]);
+}
+
 /**
  * a journal entry for a delivery row to hang off, posted through `post()`: ../ledger/sole-writer.spec.ts
  * refuses a direct write to the ledger tables anywhere outside the ledger module.
@@ -277,6 +313,7 @@ let migrated:
 			before: Map<string, Row[]>;
 			apiKeysBefore: Row[];
 			webhookDeliveriesBefore: Row[];
+			pausedBacklogBefore: Row[];
 			atApiKeyMove: Map<string, Row[]>;
 			recopy: { error: string | null; zapierRows: Row[] };
 			after: Map<string, Row[]>;
@@ -325,12 +362,21 @@ function migrateOverSeed() {
 		await applyD1Migrations(db(), chain.slice(0, API_KEY_REBUILD + 1));
 		const atApiKeyMove = await snapshot();
 		const recopy = await recopyKeyless();
+		await applyD1Migrations(db(), chain.slice(0, OWED_ROWS_PARKING));
+		await seedPausedBacklog();
+		const pausedBacklogBefore = (
+			await db()
+				.prepare(`select * from webhook_delivery where destination_id in (?, ?) order by rowid`)
+				.bind(...PAUSED_DESTINATIONS)
+				.all<Row>()
+		).results;
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
 		return {
 			before,
 			apiKeysBefore,
 			webhookDeliveriesBefore,
+			pausedBacklogBefore,
 			atApiKeyMove,
 			recopy,
 			after: await snapshot(),
@@ -654,7 +700,7 @@ describe('0019 lets a webhook delivery be dropped and keep a detail, keeping eve
 
 	it.skipIf(nowhereToStop)('keeps every row, column for column, with no detail', () => {
 		expect(webhookDeliveriesBefore).toHaveLength(3);
-		expect(after.get('webhook_delivery')).toEqual(
+		expect(after.get('webhook_delivery')?.filter((r) => r.destination_id === 'dest-probe')).toEqual(
 			webhookDeliveriesBefore.map((row) => ({ ...row, detail: null }))
 		);
 	});
@@ -716,4 +762,51 @@ describe('0011 names no company on a sent row while the connection is moved', ()
 	it.skipIf(nowhereToStop)('leaves every row naming none', () => {
 		expect(realms).toEqual([null, null, null]);
 	});
+});
+
+// what 0022's data step is for: a destination paused before its owed rows were held out of the due
+// set still holds a backlog due at the time it was queued, which the claim would post to it. every
+// row it is still owed is parked at `HELD_UNTIL`, as a pause now parks them; nothing else moves.
+describe('0022 holds the backlog of a destination already paused out of the due set', () => {
+	let pausedBacklogBefore: Row[];
+	let deliveries: Row[];
+	const byId = (rows: Row[], id: unknown) => rows.find((r) => r.id === id);
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		let after: Map<string, Row[]>;
+		({ pausedBacklogBefore, after } = await migrateOverSeed());
+		deliveries = after.get('webhook_delivery') ?? [];
+	});
+
+	it('runs after 0019 rebuilds the table', () => {
+		expect(OWED_ROWS_PARKING).toBeGreaterThan(WEBHOOK_DELIVERY_REBUILD);
+	});
+
+	it.skipIf(nowhereToStop)(
+		'parks every row still owed to the paused destination, a held one too, and nothing else about it',
+		() => {
+			const owed = pausedBacklogBefore.filter(
+				(r) => r.destination_id === 'dest-paused' && r.status === 'pending'
+			);
+			expect(owed).toHaveLength(2);
+			for (const row of owed) {
+				expect(byId(deliveries, row.id)).toEqual({ ...row, next_attempt_at: HELD_UNTIL.getTime() });
+			}
+		}
+	);
+
+	it.skipIf(nowhereToStop)(
+		'leaves a row already sent, an archived destination and one not paused as they were',
+		() => {
+			const untouched = pausedBacklogBefore.filter(
+				(r) => r.destination_id === 'dest-paused-archived' || r.status !== 'pending'
+			);
+			expect(untouched).toHaveLength(2);
+			for (const row of untouched) expect(byId(deliveries, row.id)).toEqual(row);
+			expect(
+				deliveries.filter((r) => r.destination_id === 'dest-probe').map((r) => r.next_attempt_at)
+			).toEqual([5, 3, 8]);
+		}
+	);
 });

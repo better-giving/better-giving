@@ -11,8 +11,8 @@ import { describe, expect, it } from 'vitest';
 // says what it hides.
 //
 // the builders that report no money are held the same way, each with its own composer:
-// `donorUpdatedWebhookStatements` goes into a batch only beside the consent write it reports, in
-// ../donations/donor.ts; `recurringGiftStartedWebhookStatements` only beside the insert that opens
+// `donorUpdatedWebhookStatements` goes into a batch only beside the contact change it reports, in
+// ../contacts/changes.ts; `recurringGiftStartedWebhookStatements` only beside the insert that opens
 // a commitment, and `recurringChargeFailedWebhookStatements` only for a failed attempt under one
 // with a row, both in ../donations/collect.ts; and `recurringGiftChangeWebhookStatements` only
 // beside a standing change to one, in ../recurring/changes.ts.
@@ -71,7 +71,7 @@ const IMPORTS_A_TEST_HELPER = /\b(?:from|import)\s*\(?\s*['"][^'"]*\.testing(?:\
 
 /** each builder of rows reporting no money, and the one module that may import it. */
 const EVENT_COMPOSERS = [
-	['donorUpdatedWebhookStatements', resolve(import.meta.dirname, '../donations/donor.ts')],
+	['donorUpdatedWebhookStatements', resolve(import.meta.dirname, '../contacts/changes.ts')],
 	[
 		'recurringGiftStartedWebhookStatements',
 		resolve(import.meta.dirname, '../donations/collect.ts')

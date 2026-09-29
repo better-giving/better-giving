@@ -7,6 +7,7 @@ import { readConfigEnv } from '$lib/server/config/env';
 import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { createEmailProvider } from '$lib/server/email/factory';
+import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { planOf } from '$lib/server/outbox/budget';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
@@ -102,6 +103,25 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 };
 
 /**
+ * the methods react router's server runtime routes: any other it answers with its own 405 before
+ * a middleware runs (`isValidMethod` in react-router/dist/development/lib/router/router.js, which
+ * upper-cases the method first).
+ */
+const ROUTED_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * whether `request` asks the read API with a method react router never routes, so that the
+ * surface's own 405 is answered in place of the framework's (src/routes/integrations.v1.ts).
+ */
+function unroutedOnReadApi(request: Request): boolean {
+	if (ROUTED_METHODS.has(request.method.toUpperCase())) return false;
+	const { pathname } = new URL(request.url);
+	if (!pathname.startsWith(INTEGRATIONS_BASE_PATH)) return false;
+	// the prefix itself, a path beneath it, or its `.data` address; not `/integrations/v10`.
+	return /^(?:$|[/.])/.test(pathname.slice(INTEGRATIONS_BASE_PATH.length));
+}
+
+/**
  * every job run to its end, a throw in one stopping none of the others, and then every throw
  * rethrown: one alone as itself, several as an `AggregateError` in the order the jobs were given.
  * the rethrow is what reaches `waitUntil`, and so the invocation's logs.
@@ -116,6 +136,7 @@ async function allRun(jobs: readonly Promise<void>[]): Promise<void> {
 
 export default {
 	fetch(request, env, ctx) {
+		if (unroutedOnReadApi(request)) return readOnlyRefusal(request.method);
 		return handleRequest(request, requestContext(env, ctx));
 	},
 
