@@ -555,6 +555,37 @@ describe('sendDueZapierEvents()', () => {
 		]);
 	});
 
+	it('keeps a hook whose only row was given up on days ago through two quick failures of a new gift', async () => {
+		const hook = await listen();
+		await settle();
+		const zapier = hooksAnswering(() => 503);
+		const day0 = Date.now() + 1_000;
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(day0));
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(day0 + 72 * HOUR + MINUTE));
+		expect(await failingSince(hook.id)).toBe(day0);
+
+		const day10 = day0 + 10 * 24 * HOUR;
+		const later = await settle();
+		await env.DB.prepare(
+			'update zapier_delivery set created_at = ?, next_attempt_at = ? where event_id = ?'
+		)
+			.bind(day10, day10, later.paymentId)
+			.run();
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(day10));
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(day10 + MINUTE));
+
+		expect(zapier.pauses).toEqual([]);
+		const ended = await env.DB.prepare('select ended_at from zapier_subscription where id = ?')
+			.bind(hook.id)
+			.first<{ ended_at: number | null }>();
+		expect(ended?.ended_at).toBe(null);
+		expect(await failingSince(hook.id)).toBe(day10);
+		expect((await deliveryRows()).map((r) => [r.status, r.attempts]).sort()).toEqual([
+			['failed', 1],
+			['pending', 2]
+		]);
+	});
+
 	it("writes neither a failure's mark nor its row's outcome when their batch faults", async () => {
 		const hook = await listen();
 		await settle();
@@ -718,6 +749,23 @@ describe('sendDueZapierEvents()', () => {
 		expect(new Set(zapier.posts.map((p) => p.url)).size).toBe(20);
 	});
 
+	it("posts a Zap's newest gift in the next run, however long another Zap's backlog", async () => {
+		const backlogged = await listen();
+		for (let gift = 0; gift < 20; gift++) await settle();
+		const quiet = await listen();
+		const newest = await settle();
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(zapier.posts.filter((p) => p.url === quiet.hookUrl).map((p) => p.body.id)).toEqual([
+			newest.paymentId
+		]);
+		expect(zapier.posts.filter((p) => p.url === backlogged.hookUrl)).toHaveLength(
+			PACE.free.zapier - 1
+		);
+	});
+
 	it("drains a backlog of twenty refunds over the runs after it, a claim's worth each", async () => {
 		await listen('gift_refunded');
 		for (let gift = 0; gift < 20; gift++) await refund(await settle());
@@ -758,11 +806,11 @@ describe('sendDueZapierEvents()', () => {
 		);
 	});
 
-	it('claims nothing owed to a subscription that has ended', async () => {
+	it('drops, unposted, what is still owed to a subscription that has ended', async () => {
 		const hook = await listen();
 		await settle();
-		// ended without its rows dropped: the state `endSubscriptionStatements` never leaves, held
-		// off by the claim regardless.
+		// ended without its rows dropped: the state `endSubscriptionStatements` never leaves, swept
+		// by the claim regardless.
 		await env.DB.prepare(
 			`update zapier_subscription set ended_at = 1, ended_reason = 'unsubscribed' where id = ?`
 		)
@@ -773,6 +821,9 @@ describe('sendDueZapierEvents()', () => {
 		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
 
 		expect(zapier.posts).toEqual([]);
+		expect(await deliveryRows()).toEqual([
+			expect.objectContaining({ status: 'dropped', leased_until: null })
+		]);
 	});
 
 	it("posts to at most the feed's lanes at once, and to every hook it claimed", async () => {
