@@ -3004,17 +3004,16 @@
 		cursor: not-allowed;
 	}
 
-	/* the calendar, over whatever follows the box. the step and the reason it is taken while the
-	   calendar is open rather than held are `.adm-coinwrap`'s above, and so is why it goes on this
-	   wrapper rather than on the machine's positioner. */
-	.adm-datefield:has(.adm-cal[data-state='open']) {
-		z-index: 1;
-	}
-
 	/* the panel. it states no `pointer-events` of its own: the machine's positioner withholds them
 	   until it has worked out where the panel goes, and a rule taking them back here would hand the
-	   panel a press while it was still standing at the corner of the page. */
+	   panel a press while it was still standing at the corner of the page.
+
+	   it is portalled out of the field (../components/forms/DateField.jsx), so it stands over the
+	   shell by its step, the anchored panel's 3 on the ladder stated at `.adm-rail`. the step is on
+	   the content part for `.adm-anchored`'s reason: the positioner copies the content's computed
+	   `z-index` onto itself inline, and that is the only way a sheet reaches it. */
 	.adm-cal {
+		z-index: 3;
 		padding: var(--admin-space-3);
 		background: var(--admin-surface);
 		border: var(--admin-hairline);
@@ -4974,7 +4973,6 @@
 	   rail's own tint — the same five states `.adm-dest` has. */
 	.adm-morelist {
 		display: grid;
-		border-block-start: var(--admin-rule);
 	}
 
 	.adm-morelist__item {
@@ -5175,11 +5173,14 @@
 		gap: var(--admin-space-8);
 	}
 
+	/* a line break in a turn's words is kept: a campaign's first turn is its title and its purpose
+	   on two lines, and an operator's message keeps the lines it was typed in. */
 	.adm-chat__turn {
 		display: grid;
 		gap: var(--admin-space-3);
 		font-size: var(--admin-body-size);
 		line-height: var(--admin-body-lh);
+		white-space: pre-line;
 	}
 
 	.adm-chat__mine {
@@ -5391,8 +5392,10 @@
 		border: 0;
 	}
 
-	/* the name and where the page stands at the start, its presses at the end, and the report of the
-	   last press on a row of its own under them. on a phone the presses wrap under the name. */
+	/* the name at the start, where the page stands and its presses after it, and the report of the
+	   last press on a row of its own under them. on a phone Publish ends the state word's line and
+	   the quieter presses take a line of their own under it; where the name, the state word and
+	   Publish do not fit one line, the name takes the first line alone. */
 	.adm-publishbar {
 		display: flex;
 		flex-wrap: wrap;
@@ -5404,13 +5407,30 @@
 		border-block-end: var(--admin-hairline);
 	}
 
+	/* the way out and the name. it grows to the whole name and no further, so where the page stands
+	   follows the name directly; and its basis is the way out and twelve of the name's characters,
+	   which is how far the name gives way on a shared line before the state word and the presses
+	   take the next one. the basis is a wrap point and never a width: a shorter name is drawn at its
+	   own. the font size is the name's, so a `ch` here is one of its characters. */
 	.adm-publishbar__who {
 		display: flex;
 		align-items: center;
 		gap: var(--admin-space-4);
-		/* raw-length-ok: the wrap point of a flex item, a track bound and not a measure */
-		flex: 1 1 12rem;
+		/* raw-length-ok: twelve of the name's characters, a count and not a measure */
+		flex: 1 1
+			calc(
+				var(--admin-mark-size) +
+				3 *
+				var(--admin-space-4) +
+				2 *
+				var(--admin-space-3) +
+				4 *
+				var(--admin-border-width) +
+				12ch
+			);
 		min-inline-size: 0;
+		max-inline-size: max-content;
+		font-size: var(--admin-subhead-size);
 	}
 
 	.adm-publishbar__name {
@@ -5423,33 +5443,46 @@
 		line-height: var(--admin-subhead-lh);
 	}
 
-	/* the state word never wraps; the name gives way first. it stands in a holder the focus is put
-	   on when the press that had it is taken off the bar. */
+	/* the state word never wraps and never shrinks; the name gives way first. it stands in a holder
+	   the focus is put on when the press that had it is taken off the bar. */
 	.adm-publishbar__state {
 		flex: none;
 		white-space: nowrap;
 	}
 
+	/* where the page stands, then the presses. on a phone Publish is pushed to the end of the state
+	   word's line and the quieter presses are moved under both, at the end edge; from the wide
+	   breakpoint they stand back between the two on one line. */
 	.adm-publishbar__acts {
 		display: flex;
+		flex: 1 1 auto;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--admin-space-4);
-		margin-inline-start: auto;
+		column-gap: var(--admin-space-4);
+		row-gap: var(--admin-space-3);
 	}
 
 	.adm-publishbar__quiet {
+		order: 1;
+		flex-basis: 100%;
 		display: flex;
 		flex-wrap: wrap;
+		justify-content: flex-end;
 		gap: var(--admin-space-2);
 	}
 
-	/* Published and the Undo beside it, one pair. */
+	/* no quieter press to draw is no line for them. */
+	.adm-publishbar__quiet:empty {
+		display: none;
+	}
+
+	/* Published and the Undo beside it, one pair, at the end of the line. */
 	.adm-publishbar__done {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--admin-space-2);
+		margin-inline-start: auto;
 	}
 
 	/* the refusal a press came back with, on its own row under the presses, and beside it why a held
@@ -6255,10 +6288,10 @@
 	   the order of the markup: a pinned table column takes `z-index: 1` in this sheet and stands
 	   later in the document, so a bar at the same step would pass under the first column of every
 	   table. the whole ladder is that column at 1, this bar and the console's `.adm-navigation-bar`
-	   at 2, and the anchored panel and note at 3 — each of those is opened over the bar and is
-	   portalled to the body, so they too are settled by their step and not by where they stand in
-	   the document. a modal is in the top layer and is over all three without asking for a step at
-	   all.
+	   at 2, and the anchored panel and note and a date field's calendar at 3 — each of those is
+	   opened over the bar and is portalled to the body, so they too are settled by their step and
+	   not by where they stand in the document. a modal is in the top layer and is over all three
+	   without asking for a step at all.
 
 	   the platform's own inset at the foot of the screen sits under the tabs rather than inside
 	   them, so a tab keeps the whole of its height wherever it is drawn. */
@@ -7272,6 +7305,17 @@
 	}
 
 	@media (min-width: 44rem) {
+		/* the publish bar's quieter presses back on Publish's line, and at its end with it. */
+		.adm-publishbar__quiet {
+			order: 0;
+			flex-basis: auto;
+			margin-inline-start: auto;
+		}
+
+		.adm-publishbar__quiet:not(:empty) + .adm-publishbar__done {
+			margin-inline-start: 0;
+		}
+
 		/* the rail is not here, and needs nothing here: cells as wide as their labels take one
 		   line as soon as there is room for one, and every width has to be a width they fit at
 		   rather than a width they are re-tracked for. */

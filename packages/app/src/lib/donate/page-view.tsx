@@ -239,7 +239,13 @@ function arranged(blocks: Block[], layout: Layout, draw: Draw) {
 	);
 }
 
-function Masthead({ name, logo }: { readonly name: string; readonly logo: PageLogo | null }) {
+export function Masthead({
+	name,
+	logo
+}: {
+	readonly name: string;
+	readonly logo: PageLogo | null;
+}) {
 	if (logo === null) {
 		return (
 			<header className="page-mast">

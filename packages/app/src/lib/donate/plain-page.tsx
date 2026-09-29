@@ -2,15 +2,18 @@ import formLayout from '@better-giving/form/styles/layout.css?url';
 import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
+import { part } from '@better-giving/form/parts';
 import type { FormConfig } from '@better-giving/form/v1';
 import type { ReactNode } from 'react';
 import { DonateCard } from './card';
+import * as copy from './copy';
 import pageChrome from './page.css?url';
 import { PageRoot } from './page-root';
-import type { PageLook } from './page-view';
+import { Masthead, type PageLook } from './page-view';
 
 // what every donor page route shares beyond the renderer: its stylesheets, and the plain page drawn
-// where the stored page cannot be — the donation box alone, and the notice where there is no box.
+// where the stored page cannot be — the donation box alone, the notice where there is no box, and
+// an ended campaign's screen.
 
 /**
  * the form's four sheets and the page's own chrome, in that order, for a donor page's `links`.
@@ -66,5 +69,40 @@ export function PlainDonationPage({
 		<PlainPage look={look}>
 			<DonateCard config={config} />
 		</PlainPage>
+	);
+}
+
+/**
+ * an ended campaign's address: the organisation's name over the page as /donate draws it, then the
+ * campaign's name, that it has ended, and the way on to /donate — at the page's reading measure,
+ * in the organisation's look, with no donation box. a deployment with no organisation name yet
+ * draws no masthead.
+ */
+export function EndedCampaignPage({
+	name,
+	orgName,
+	look
+}: {
+	readonly name: string;
+	readonly orgName: string | null;
+	readonly look: PageLook;
+}) {
+	return (
+		<PageRoot
+			brandColour={look.brandColour}
+			shade={look.shade}
+			corner={look.corner}
+			palette="plain"
+			layout="column"
+		>
+			{orgName === null ? null : <Masthead name={orgName} logo={null} />}
+			<main className="stage ended">
+				<h1>{copy.campaignEnded(name)}</h1>
+				<p>{copy.CAMPAIGN_ENDED_THANKS}</p>
+				<a part={part('action')} href="/donate">
+					{copy.donateTo(orgName)}
+				</a>
+			</main>
+		</PageRoot>
 	);
 }
