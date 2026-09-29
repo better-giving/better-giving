@@ -517,7 +517,7 @@ describe('POST /api/paypal/webhook — a failed repeat payment', () => {
 	};
 
 	/** the failure's delivery, under the event id a redelivery repeats. */
-	function failure(id: string) {
+	function failure(id: string, resource: object = FAILED_SUBSCRIPTION) {
 		return deliver(
 			JSON.stringify({
 				id,
@@ -526,7 +526,7 @@ describe('POST /api/paypal/webhook — a failed repeat payment', () => {
 				resource_type: 'subscription',
 				resource_version: '2.0',
 				create_time: '2026-09-16T22:20:10Z',
-				resource: FAILED_SUBSCRIPTION
+				resource
 			})
 		);
 	}
@@ -641,7 +641,31 @@ describe('POST /api/paypal/webhook — a failed repeat payment', () => {
 					detail: {
 						attempt_count: 1,
 						next_retry_at: '2026-09-21T22:20:08.000Z',
-						failed_at: '2026-09-16T22:20:10.000Z',
+						failed_at: '2026-09-16T22:20:08.000Z',
+						amount_minor: 2500,
+						currency: 'USD'
+					}
+				}
+			]);
+		});
+
+		/**
+		 * a delivery rendered without `last_failed_payment`, which the subscription schema leaves
+		 * optional, still owes its notice: the attempt is the subscription's own, read back fresh.
+		 */
+		it('owes the notice for a failure whose delivery does not state the attempt', async () => {
+			const { billing_info: _stated, ...unstated } = FAILED_SUBSCRIPTION;
+
+			const { response } = await failure('WH-F4', unstated);
+
+			expect(response.status).toBe(200);
+			expect(await chargesFailed()).toEqual([
+				{
+					subject_id: `${planId}:WH-F4`,
+					detail: {
+						attempt_count: 1,
+						next_retry_at: '2026-09-21T22:20:08.000Z',
+						failed_at: '2026-09-16T22:20:08.000Z',
 						amount_minor: 2500,
 						currency: 'USD'
 					}

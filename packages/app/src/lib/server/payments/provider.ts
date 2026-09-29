@@ -886,19 +886,28 @@ export type RecurringEvent = VerifiedDelivery & {
 	 * `VerifiedDelivery`'s rule, on the one delivery each of stripe and paypal sends per failed
 	 * attempt: the object a read fetches afterwards — stripe's invoice, paypal's subscription —
 	 * already holds the next attempt's count and schedule when a delivery arrives late, and only the
-	 * body was stamped by the attempt it reports. ./stripe.ts and ./paypal.ts set it on every
-	 * collection failure and refuse one whose body does not state it; each adapter's own
-	 * `readRecurringGift` is its one reader and refuses a failure without it. absent on every other
-	 * delivery and processor.
+	 * body was stamped by the attempt it reports. ./stripe.ts sets it on every collection failure
+	 * and refuses one whose body does not state it, and its `readRecurringGift` refuses a failure
+	 * without it. ./paypal.ts sets it where the body states it and otherwise reads the attempt off the
+	 * subscription, only while the read has not moved past the delivery (`readFailure`). each
+	 * adapter's own `readRecurringGift` is its one reader. absent on every other delivery and
+	 * processor.
 	 */
 	readonly delivered?: DeliveredAttempt;
 };
 
-/** what a failed attempt's own delivery states about it: `FailedCollection` less its key and time. */
+/** what a failed attempt's own delivery states about it: `FailedCollection` less its key. */
 export type DeliveredAttempt = Pick<
 	FailedCollection,
 	'attemptCount' | 'nextRetryAt' | 'amountMinor' | 'currency'
->;
+> & {
+	/**
+	 * when the attempt failed, where the body states it apart from the delivery's own time —
+	 * paypal's `last_failed_payment.time`. absent on stripe's, whose delivery is stamped when the
+	 * attempt failed, and `failedAt` is then the delivery's `occurredAt`.
+	 */
+	readonly failedAt?: Date;
+};
 
 /**
  * a delivery about money leaving a settled transaction, or coming back to it.
@@ -1744,9 +1753,9 @@ export type FailedCollection = {
 	 */
 	readonly nextRetryAt: Date | null;
 	/**
-	 * business time: when the attempt failed — the reporting delivery's own time, which is stamped
-	 * when the attempt failed and repeated on a redelivery (`failedAttemptOf` in ./stripe.ts,
-	 * `readFailure` in ./paypal.ts).
+	 * business time: when the attempt failed, as the processor recorded it and a redelivery repeats
+	 * it — the reporting delivery's own time on stripe (`failedAttemptOf` in ./stripe.ts), the
+	 * failed payment's own `time` on paypal (`readFailure` in ./paypal.ts).
 	 */
 	readonly failedAt: Date;
 	/** minor units, positive: what the attempt asked for — what was still owed on the collection. */

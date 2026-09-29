@@ -1623,7 +1623,7 @@ export function createStripeProvider(
 		if (fails && !event.delivered) {
 			return {
 				ok: false,
-				reason: 'provider_error',
+				reason: 'internal_error',
 				detail:
 					`The \`${event.type}\` delivery about invoice ${redactPublicId(event.providerNoticeId)} ` +
 					'reached this read without the attempt its body stated, so which attempt failed could ' +
