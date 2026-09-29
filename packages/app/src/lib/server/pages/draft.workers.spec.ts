@@ -303,6 +303,140 @@ describe('what the model is told', () => {
 		);
 	});
 
+	const MONTHLY_WORDING =
+		'- the donation box opens on a monthly gift: impact tiers say what each amount does every month, and the story may invite a monthly gift';
+	const DEDICATION_WORDING =
+		'- the donation box opens with a dedication: the words may speak of giving in honour or in memory of someone';
+
+	async function toldWith(switches: Page['switches']) {
+		const pageId = await insertPage(db, 'campaign', { ...handEdited(), switches });
+		const AI = answering({ say: 'Warmer.' });
+		await turn(pageId, 'warmer colours', AI);
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		const [system] = input.messages;
+		return system.content as string;
+	}
+
+	it('with Open on monthly on, asks for monthly wording and no dedication wording', async () => {
+		const told = await toldWith({ openOnMonthly: true, dedicationOn: false });
+
+		expect(told).toContain(`${MONTHLY_WORDING}\n`);
+		expect(told).not.toMatch(/honou?r|memory/);
+	});
+
+	it('with Dedication on by default on, asks for dedication wording and no monthly wording', async () => {
+		const told = await toldWith({ openOnMonthly: false, dedicationOn: true });
+
+		expect(told).toContain(`${DEDICATION_WORDING}\n`);
+		expect(told).not.toMatch(/each month|every month|monthly gift/);
+	});
+
+	it('with both donation box switches on, asks for the wording of each', async () => {
+		const told = await toldWith({ openOnMonthly: true, dedicationOn: true });
+
+		expect(told).toContain(`${MONTHLY_WORDING}\n${DEDICATION_WORDING}\n`);
+	});
+
+	it('with both donation box switches off, asks for no wording of either', async () => {
+		const told = await toldWith({ openOnMonthly: false, dedicationOn: false });
+
+		expect(told).toMatchInlineSnapshot(`
+			"You draft a fundraising campaign.
+
+			A page is one JSON object:
+			{"layout": ..., "palette": ..., "blocks": [{"id": ..., "type": ..., "variant": ..., "background": ..., "props": {...}}, {"id": ..., "type": "DonationFlow", "background": "none", "props": {}}]}
+
+			LAYOUTS:
+			- box-right: the donation box stands in its own column beside the other blocks
+			- banner: a band across the top holds the blocks up to the donation box, with the box beside them; the blocks after it run full width below
+			- column: one narrow column at every width, the donation box where it is listed
+			- cover: a cover photo with the title over it; without a hero photo it draws as box-right
+
+			PALETTES:
+			- plain: greys only; the brand colour stays on buttons
+			- tint: pale and full grounds of the brand colour
+			- duo: the brand colour, with tint grounds in a second, contrasting hue
+			- bright: livelier grounds in a hue beside the brand colour
+			- bold: grey soft grounds and the deepest brand colour for strong ones
+
+			BLOCKS:
+			- title: the page’s heading, with an optional lede under it
+			  variants: left | center | compact
+			  backgrounds: none | soft | tint | strong
+			  props: { heading: string, lede?: string }
+			- story: why this matters, in the organisation’s words; body is a rich-text document; a listItem's content is one paragraph, then any paragraphs, bulletLists and orderedLists, nested at most 3 lists deep
+			  variants: plain | lede | split
+			  backgrounds: none | soft | tint
+			  props: { body: { type: "doc", content: Array<{ type: "paragraph", content?: Array<{ type: "text", text: string, marks?: Array<{ type: "bold" } | { type: "italic" } | { type: "link", attrs: { href: string } }> }> } | { type: "bulletList", content: Array<{ type: "listItem", content: unknown }> } | { type: "orderedList", attrs?: { start?: number }, content: Array<{ type: "listItem", content: unknown }> }> } }
+			- impact-tiers: up to 6 amounts, each with what it buys; amountMinor is in minor units
+			  variants: cards | list
+			  backgrounds: none | soft | tint | strong
+			  props: { tiers: Array<{ amountMinor: number, buys: string }> }
+			- faq: up to 10 questions, each answer a rich-text document; a listItem's content is one paragraph, then any paragraphs, bulletLists and orderedLists, nested at most 3 lists deep
+			  variants: accordion | open
+			  backgrounds: none | soft | tint
+			  props: { items: Array<{ question: string, answer: { type: "doc", content: Array<{ type: "paragraph", content?: Array<{ type: "text", text: string, marks?: Array<{ type: "bold" } | { type: "italic" } | { type: "link", attrs: { href: string } }> }> } | { type: "bulletList", content: Array<{ type: "listItem", content: unknown }> } | { type: "orderedList", attrs?: { start?: number }, content: Array<{ type: "listItem", content: unknown }> }> } }> }
+			- about-us: what the organisation does, drawn from its own profile
+			  variants: stacked | side-by-side | statement
+			  backgrounds: none | soft | tint | strong
+			  props: {  }
+			- org-info: the organisation’s name, address and legal details
+			  variants: footer | card
+			  backgrounds: none
+			  props: {  }
+			- share: buttons that share the page
+			  variants: buttons | icons
+			  backgrounds: none | soft | tint
+			  props: {  }
+			- hero: the page’s opening photo; under the cover layout the title lies over it
+			  variants: wide | framed
+			  backgrounds: none
+			  props: { imageId: string | { illustrate: string }, alt?: string }
+			- image: a photo among the other blocks
+			  variants: column | wide
+			  backgrounds: none
+			  props: { imageId: string | { illustrate: string }, alt?: string }
+			- goal-bar: the campaign’s progress toward its goal
+			  variants: bar | figure
+			  backgrounds: none
+			  props: {  }
+			- DonationFlow: where the donor gives; takes no props and no variant
+			  backgrounds: none
+			  props: {  }
+
+			RULES:
+			- exactly one DonationFlow, with no variant and empty props
+			- every id is unique on the page, 1 to 32 letters, digits, "-" or "_"
+			- use only the names above; no colour, HTML or action anywhere
+			- add no link; keep a link already in the text exactly as it is
+			- a photo’s imageId is an id from "(attached photos: …)" in the chat or one the page already holds, never an address; null leaves the block out
+			- where no photo attached in the chat or already on the page fits a hero or image block, its imageId may be {"illustrate": "a short description of the picture wanted"} and an illustration is drawn from it; a photo that fits always wins, and a reply asks for at most 2
+
+			REPLY:
+			Answer with one JSON object and nothing else: {"say": ..., "page": ..., "set": ...}
+			- say: one or two sentences to the operator saying what you changed, naming each value you set.
+			- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations, e.g. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...}]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.
+			- set: only what the operator asked for, of {"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...]}. Amounts are in minor units ($15,000 is 1500000); suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs.
+			- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.
+			- write an amount in the words, or an impact tier, only from a figure the operator stated in the chat; with none, leave the impact tiers out.
+
+			CONTEXT:
+			- page: a campaign named "Winter coat drive"
+			- today: 2026-09-28, in the operator's time zone America/New_York
+			- mission: (not written)
+			- vision: (not written)
+			- look: light shade, soft corners, brand colour none
+			- goal: none
+			- end date: none
+			- donation settings: minimum $5, maximum $1,000, suggested amounts $25, $50, program none
+			- donation box: Open on monthly off, Dedication on by default off
+			- active programs: none
+
+			THE PAGE AS IT STANDS, hand edits included:
+			{"layout":"box-right","palette":"tint","blocks":[{"id":"hero","type":"hero","variant":"framed","background":"none","props":{"imageId":null,"alt":null}},{"id":"title","type":"title","variant":"left","background":"none","props":{"heading":"Coats for every kid"}},{"id":"goal","type":"goal-bar","variant":"bar","background":"none","props":{}},{"id":"story","type":"story","variant":"plain","background":"none","props":{"body":{"type":"doc","content":[{"type":"paragraph"}]}}},{"id":"donate","type":"DonationFlow","background":"none","props":{}},{"id":"share","type":"share","variant":"buttons","background":"none","props":{}},{"id":"footer","type":"org-info","variant":"footer","background":"none","props":{}}]}"
+		`);
+	});
+
 	it('states the end date as the day chosen, in the zone it was chosen in', async () => {
 		// the end of 31 December in los angeles, already 1 January in new york where it is read
 		const pageId = await insertPage(db, 'campaign', {

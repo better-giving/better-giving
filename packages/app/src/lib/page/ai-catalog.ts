@@ -158,6 +158,26 @@ export function pageCatalog(type: PageType) {
 	return defineCatalog(draftSchema, { page: PAGE_NAMES[type], components });
 }
 
+/**
+ * the wording each of the donation box's switches asks of the words while it is on, as rules for
+ * `pageCatalog(type).prompt({ customRules })`; none while both are off. each names no label and no
+ * figure, and ./accept-reply.ts still refuses a figure the operator never stated.
+ */
+export function switchRules({ openOnMonthly, dedicationOn }: Page['switches']): string[] {
+	return [
+		...(openOnMonthly
+			? [
+					'the donation box opens on a monthly gift: impact tiers say what each amount does every month, and the story may invite a monthly gift'
+				]
+			: []),
+		...(dedicationOn
+			? [
+					'the donation box opens with a dedication: the words may speak of giving in honour or in memory of someone'
+				]
+			: [])
+	];
+}
+
 function prompt({ catalog, options, formatZodType }: PromptContext<DraftCatalog>) {
 	const blocks = Object.entries(catalog.components).flatMap(([name, component]) => {
 		const { props, description, variants, backgrounds } = component;
