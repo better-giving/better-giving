@@ -108,6 +108,15 @@ export interface ConfigEnv {
 	 * address, and nothing in this app reads a stage, so it is typed the way `CHARIOT_API_URL` is.
 	 */
 	readonly QUICKBOOKS_API_URL?: string;
+	/**
+	 * whether the Cloudflare account this deployment runs on is on the Workers Paid plan.
+	 *
+	 * an answer about the account, for `PAYPAL_CHARITY_RATE_APPROVED`'s reason: nothing this
+	 * deployment calls reports the plan. what it picks between is two sets of published
+	 * per-invocation limits that stay constants in the tree (../outbox/budget.ts), which pace the
+	 * minute cron's deliveries, so nothing an operator types is ever a number.
+	 */
+	readonly CLOUDFLARE_PAID_PLAN?: string;
 	/** the mail host's submission hostname, e.g. `smtp.resend.com`. */
 	readonly SMTP_HOST?: string;
 	/**
@@ -214,7 +223,8 @@ export const CONFIG_VAR_NAMES = [
 	'NOWPAYMENTS_OUTCOME_CURRENCY',
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
-	'QUICKBOOKS_API_URL'
+	'QUICKBOOKS_API_URL',
+	'CLOUDFLARE_PAID_PLAN'
 ] as const satisfies readonly (keyof ConfigEnv)[];
 
 /**

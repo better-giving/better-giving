@@ -91,12 +91,11 @@
 	// invocation is terminated as `exceededCpu` mid-flight, so nothing the run was part way through
 	// is written and nothing is marked. a run that overspends leaves its rows exactly as it found
 	// them — no backoff, no failure, no notice — and shows up in nothing but the Worker's invocation
-	// statuses. each run is sized against that rather than against the clock: `RUN_DEADLINE_MS` and
-	// `SENDS_PER_RUN` in src/lib/server/accounting/deliver.ts, `RUN_DEADLINE_MS` and the claims from
-	// src/lib/server/outbox/budget.ts in src/lib/server/zapier/deliver.ts and
-	// src/lib/server/webhooks/deliver.ts, and `RUN_DEADLINE_MS` in
-	// src/lib/server/donations/pending-crypto-read.ts. so on Paid, lengthening an interval past an
-	// hour is what lifts the ceiling, and shortening one never touches it.
+	// statuses. each run is sized against that rather than against the clock: `RUN_DEADLINE_MS` in
+	// src/lib/server/accounting/deliver.ts and src/lib/server/donations/pending-crypto-read.ts, and
+	// each minute feed's pace on the plan `CLOUDFLARE_PAID_PLAN` names, from
+	// src/lib/server/outbox/budget.ts. so on Paid, lengthening an interval past an hour is what lifts
+	// the ceiling, and shortening one never touches it.
 	//
 	// `limits.cpu_ms` is not the lever it looks like: Cloudflare documents it against the HTTP
 	// request row, whose thirty seconds is a default to be raised. the cron row holds no default —

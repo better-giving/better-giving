@@ -4,7 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, dispute, donation, payment, type ZapierTrigger } from '../db/schema';
-import { MINUTE_RUN, ZAPIER_CLAIMS_PER_RUN } from '../outbox/budget';
+import { MINUTE_RUN, PACE } from '../outbox/budget';
 import { sendDueZapierEvents } from './deliver';
 import { giftRefundedStatements, zapierStatements } from './events';
 import { subscribe, type SubscribeRequest, type Subscribed } from './subscriptions';
@@ -345,7 +345,7 @@ describe('sendDueZapierEvents()', () => {
 
 	it("holds back the rest of a run's rows for a hook once it answers 429, until the time it asked", async () => {
 		await listen();
-		for (let gift = 0; gift < ZAPIER_CLAIMS_PER_RUN; gift++) await settle();
+		for (let gift = 0; gift < PACE.free.zapier; gift++) await settle();
 		const zapier = hooksAnswering(() => 200);
 		const throttled = (async (input: RequestInfo | URL, init?: RequestInit) => {
 			await zapier.fetch(input, init);
@@ -360,7 +360,7 @@ describe('sendDueZapierEvents()', () => {
 		const lanes = MINUTE_RUN.zapier.lanes;
 		expect(zapier.posts).toHaveLength(lanes);
 		const heldBack = (await deliveryRows()).filter((r) => r.attempts === 0);
-		expect(heldBack).toHaveLength(ZAPIER_CLAIMS_PER_RUN - lanes);
+		expect(heldBack).toHaveLength(PACE.free.zapier - lanes);
 		for (const row of heldBack) {
 			expect(row.status).toBe('pending');
 			expect(row.next_attempt_at).toBeGreaterThanOrEqual(before + 10 * MINUTE);
@@ -691,7 +691,7 @@ describe('sendDueZapierEvents()', () => {
 			const before = zapier.posts.length;
 			await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
 			const posted = zapier.posts.length - before;
-			expect(posted).toBeLessThanOrEqual(ZAPIER_CLAIMS_PER_RUN);
+			expect(posted).toBeLessThanOrEqual(PACE.free.zapier);
 			if (posted === 0) return;
 		}
 	}
@@ -751,10 +751,10 @@ describe('sendDueZapierEvents()', () => {
 		open();
 		await Promise.all([first, second]);
 
-		expect(posts).toHaveLength(2 * ZAPIER_CLAIMS_PER_RUN);
-		expect(new Set(posts).size).toBe(2 * ZAPIER_CLAIMS_PER_RUN);
+		expect(posts).toHaveLength(2 * PACE.free.zapier);
+		expect(new Set(posts).size).toBe(2 * PACE.free.zapier);
 		expect((await deliveryRows()).filter((r) => r.status === 'sent')).toHaveLength(
-			2 * ZAPIER_CLAIMS_PER_RUN
+			2 * PACE.free.zapier
 		);
 	});
 
@@ -776,7 +776,7 @@ describe('sendDueZapierEvents()', () => {
 	});
 
 	it("posts to at most the feed's lanes at once, and to every hook it claimed", async () => {
-		for (let zap = 0; zap < ZAPIER_CLAIMS_PER_RUN; zap++) await listen();
+		for (let zap = 0; zap < PACE.free.zapier; zap++) await listen();
 		await settle();
 		let inFlight = 0;
 		let most = 0;
@@ -793,7 +793,7 @@ describe('sendDueZapierEvents()', () => {
 		await sendDueZapierEvents({ db, fetch: busyHooks }, new Date(Date.now() + 1_000));
 
 		expect(most).toBe(MINUTE_RUN.zapier.lanes);
-		expect(new Set(posts).size).toBe(ZAPIER_CLAIMS_PER_RUN);
+		expect(new Set(posts).size).toBe(PACE.free.zapier);
 	});
 
 	it('leaves a row alone once a later run has taken it over, whatever its own post answers', async () => {

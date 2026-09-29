@@ -1,19 +1,28 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { sendDueEntries } from '../accounting/deliver';
+import { createAccountingProvider } from '../accounting/factory';
+import { connectQuickbooks, saveQuickbooksAccounts } from '../accounting/connection';
+import { INTUIT_TOKEN_URL, QUICKBOOKS_SANDBOX_URL } from '../accounting/quickbooks';
+import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
-import { contact, donation, payment } from '../db/schema';
+import { contact, donation, payment, quickbooksSync } from '../db/schema';
+import { chargeEntry, feeEntry } from '../donations/entries';
+import { postingStatements } from '../ledger/posting';
 import { sendDueWebhooks } from '../webhooks/deliver';
 import { createDestination } from '../webhooks/destinations';
 import { mailPause } from '../webhooks/paused-mail';
 import { sendDueZapierEvents } from '../zapier/deliver';
-import { MINUTE_RUN, type Share, WEBHOOK_CLAIMS_PER_RUN, ZAPIER_CLAIMS_PER_RUN } from './budget';
+import { MINUTE_RUN, PACE, type Plan, type Share, shareOn } from './budget';
 
 // each outbox run at its costliest, counted against its share of the minute cron's invocation
 // (./budget.ts): every D1 query the run makes through a real D1, and every external subrequest
-// through the `fetch` and the mail transport it is handed. what ./budget.spec.ts sums, this holds
-// each feed's run to.
+// through the `fetch` and the mail transport it is handed — the QuickBooks adapter's `fetch` is the
+// global one, stubbed here, and ../../../../vitest.workers.config.ts sets `unstubGlobals`. what
+// ./budget.spec.ts sums, this holds each feed's run to, on each plan.
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -157,7 +166,7 @@ describe('the Zapier run', () => {
 		const now = Date.now() + 1_000;
 		const paymentId = await gift();
 		await failingHook('gift_refunded', await refundOf(paymentId), now, 2 * DAY);
-		for (let hook = 0; hook < ZAPIER_CLAIMS_PER_RUN + 2; hook++) {
+		for (let hook = 0; hook < PACE.free.zapier + 2; hook++) {
 			await failingHook('new_gift', paymentId, now, DAY);
 		}
 		const counting = counted(env.DB);
@@ -165,8 +174,29 @@ describe('the Zapier run', () => {
 
 		await sendDueZapierEvents({ db: counting.db, fetch: receivers.fetch }, new Date(now));
 
-		expect(receivers.requests()).toBe(2 * ZAPIER_CLAIMS_PER_RUN);
+		expect(receivers.requests()).toBe(2 * PACE.free.zapier);
 		expectWithin(MINUTE_RUN.zapier, {
+			queries: counting.queries(),
+			external: receivers.requests()
+		});
+	});
+
+	it('claims the Paid pace on the Paid plan, and stays inside its Paid share doing it', async () => {
+		const now = Date.now() + 1_000;
+		const paymentId = await gift();
+		for (let hook = 0; hook < PACE.paid.zapier + 2; hook++) {
+			await failingHook('new_gift', paymentId, now, DAY);
+		}
+		const counting = counted(env.DB);
+		const receivers = failingReceivers();
+
+		await sendDueZapierEvents(
+			{ db: counting.db, fetch: receivers.fetch, plan: 'paid' },
+			new Date(now)
+		);
+
+		expect(receivers.requests()).toBe(2 * PACE.paid.zapier);
+		expectWithin(shareOn('paid', MINUTE_RUN.zapier), {
 			queries: counting.queries(),
 			external: receivers.requests()
 		});
@@ -210,7 +240,7 @@ describe('the webhook run', () => {
 	}
 
 	/** a run at `now`, its queries and its external subrequests — posts, and pause mails sent. */
-	async function run(now: number) {
+	async function run(now: number, plan: Plan = 'free') {
 		const counting = counted(env.DB);
 		const receivers = failingReceivers();
 		let mails = 0;
@@ -227,7 +257,8 @@ describe('the webhook run', () => {
 						}
 					},
 					origin: null
-				})
+				}),
+				plan
 			},
 			new Date(now)
 		);
@@ -237,13 +268,13 @@ describe('the webhook run', () => {
 	it('stays inside its share when every row it claims fails and pauses its destination', async () => {
 		const now = Date.now() + 1_000;
 		const paymentId = await gift();
-		for (let made = 0; made < WEBHOOK_CLAIMS_PER_RUN + 2; made++) {
+		for (let made = 0; made < PACE.free.webhooks + 2; made++) {
 			await failingDestination('gift.made', paymentId, now, DAY);
 		}
 
 		const spent = await run(now);
 
-		expect(spent.mails).toBe(WEBHOOK_CLAIMS_PER_RUN);
+		expect(spent.mails).toBe(PACE.free.webhooks);
 		expectWithin(MINUTE_RUN.webhooks, spent);
 	});
 
@@ -253,10 +284,225 @@ describe('the webhook run', () => {
 		await failingDestination('gift.refunded', uuidv7(), now, 4 * DAY);
 		await failingDestination('donor.added', uuidv7(), now, 4 * DAY);
 		await failingDestination('recurring_gift.started', uuidv7(), now, 4 * DAY);
-		for (let made = 0; made < WEBHOOK_CLAIMS_PER_RUN; made++) {
+		for (let made = 0; made < PACE.free.webhooks; made++) {
 			await failingDestination('gift.made', paymentId, now, DAY);
 		}
 
 		expectWithin(MINUTE_RUN.webhooks, await run(now));
 	});
+
+	it('claims the Paid pace on the Paid plan, and stays inside its Paid share doing it', async () => {
+		const now = Date.now() + 1_000;
+		const paymentId = await gift();
+		for (let made = 0; made < PACE.paid.webhooks + 2; made++) {
+			await failingDestination('gift.made', paymentId, now, DAY);
+		}
+
+		const spent = await run(now, 'paid');
+
+		expect(spent.mails).toBe(PACE.paid.webhooks);
+		expectWithin(shareOn('paid', MINUTE_RUN.webhooks), spent);
+	});
+});
+
+describe('the QuickBooks run', () => {
+	beforeEach(async () => {
+		for (const table of [
+			'zapier_delivery',
+			'webhook_delivery',
+			'quickbooks_sync',
+			'quickbooks_connection',
+			'ledger_entry',
+			'entry_group',
+			'payment',
+			'donation',
+			'contact',
+			'org_profile'
+		]) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+		await env.DB.prepare(
+			`insert into org_profile (id, legal_name, notification_email, created_at, updated_at)
+			 values ('default', 'Hope Foundation', 'ops@hope.example', 0, 0)`
+		).run();
+	});
+
+	const REALM = '4620816365';
+	const account = (id: string) => ({ id, name: `Account ${id}` });
+
+	/** a company connected on a credential that has lapsed, every account a card gift needs chosen. */
+	async function connected(): Promise<void> {
+		await connectQuickbooks(db, {
+			realmId: REALM,
+			tokens: {
+				accessToken: 'lapsed',
+				accessTokenExpiresAt: new Date(0),
+				refreshToken: 'refresh-one',
+				refreshTokenExpiresAt: null
+			},
+			startAt: new Date('2026-01-01T00:00:00.000Z')
+		});
+		await saveQuickbooksAccounts(db, {
+			income: account('1'),
+			fee: account('2'),
+			stripeBalance: account('3'),
+			paypalBalance: null,
+			chariotBalance: null,
+			nowpaymentsBalance: null,
+			undepositedFunds: null
+		});
+	}
+
+	/**
+	 * a settled card gift from a donor with an email, owed to the books, `status` after `attempts`
+	 * sends, the last of them long enough ago that its wait is over.
+	 */
+	async function owedGift(attempts: number, status: 'pending' | 'failed'): Promise<void> {
+		const contactId = uuidv7();
+		const donationId = uuidv7();
+		const paymentId = uuidv7();
+		const occurredAt = new Date('2026-09-10T12:00:00.000Z');
+		const settled = {
+			providerTxnId: `ch_${paymentId}`,
+			status: 'succeeded',
+			method: 'card',
+			amountMinor: 10_000,
+			currency: 'USD',
+			feeMinor: 320,
+			metadata: {},
+			occurredAt,
+			arrival: null
+		} as const;
+		const charged = {
+			paymentId,
+			donationId,
+			revenue: [{ accountId: postableId('donationsDeductible'), amountMinor: 10_000 }]
+		} as const;
+		const charge = chargeEntry(charged, settled);
+		const fee = feeEntry(charged, settled);
+		if (fee === null) throw new Error('the fixture settlement carried a fee and none was posted');
+		const entryGroupId = charge.group.id;
+		if (entryGroupId === undefined) throw new Error('the fixture posting carries no id');
+		const queuedAt = new Date(Date.now() - DAY);
+		const statements: BatchItem<'sqlite'>[] = [
+			db.insert(contact).values({
+				id: contactId,
+				kind: 'individual',
+				displayName: 'Ada Lovelace',
+				primaryEmail: 'ada@example.org'
+			}),
+			db.insert(donation).values({
+				id: donationId,
+				contactId,
+				totalMinor: 10_000,
+				currency: 'USD',
+				receivedAt: occurredAt
+			}),
+			db.insert(payment).values({
+				id: paymentId,
+				donationId,
+				amountMinor: 10_000,
+				currency: 'USD',
+				direction: 'inbound',
+				method: 'card',
+				status: 'succeeded',
+				provider: 'stripe',
+				providerTxnId: settled.providerTxnId,
+				occurredAt
+			}),
+			...postingStatements(db, charge),
+			...postingStatements(db, fee),
+			db.insert(quickbooksSync).values({
+				entryGroupId,
+				status,
+				attempts,
+				createdAt: queuedAt,
+				updatedAt: queuedAt
+			})
+		];
+		const [first, ...rest] = statements;
+		if (first === undefined) throw new Error('nothing to commit');
+		await db.batch([first, ...rest]);
+	}
+
+	/**
+	 * Intuit answering every call the costliest way it can and still take the gift: the credential
+	 * renewed, nothing found by any search, and every donor's own name already taken.
+	 */
+	function costliestIntuit() {
+		let requests = 0;
+		let customersMade = 0;
+		vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+			requests += 1;
+			const url = String(input instanceof Request ? input.url : input);
+			if (url === INTUIT_TOKEN_URL) {
+				return Response.json({
+					access_token: 'renewed',
+					refresh_token: 'refresh-two',
+					expires_in: 3600
+				});
+			}
+			const path = new URL(url).pathname;
+			if (path.endsWith('/query')) {
+				const statement = String(init?.body ?? '');
+				return Response.json({
+					QueryResponse: statement.startsWith('select * from Preferences')
+						? { Preferences: [{ CurrencyPrefs: { HomeCurrency: { value: 'USD' } } }] }
+						: {}
+				});
+			}
+			if (path.endsWith('/customer')) {
+				customersMade += 1;
+				return customersMade % 2 === 1
+					? Response.json({ Fault: { Error: [{ code: '6240' }] } }, { status: 400 })
+					: Response.json({ Customer: { Id: `c${customersMade}` } });
+			}
+			return Response.json({ JournalEntry: { Id: `j${requests}` } });
+		});
+		return { requests: () => requests };
+	}
+
+	it.each(['free', 'paid'] as const)(
+		'stays inside its %s share when every entry it sends costs its most and the run ends in a notice',
+		async (plan) => {
+			await connected();
+			await owedGift(3, 'failed');
+			for (let gift = 0; gift < PACE[plan].books + 2; gift++) await owedGift(1, 'pending');
+			const intuit = costliestIntuit();
+			const counting = counted(env.DB);
+			let mails = 0;
+
+			await sendDueEntries(
+				{
+					db: counting.db,
+					provider: createAccountingProvider(
+						{
+							QUICKBOOKS_CLIENT_ID: 'notarealclientid',
+							QUICKBOOKS_CLIENT_SECRET: 'notarealclientsecret',
+							QUICKBOOKS_API_URL: QUICKBOOKS_SANDBOX_URL
+						},
+						counting.db
+					),
+					email: {
+						async send() {
+							mails += 1;
+							return { ok: true };
+						}
+					},
+					plan
+				},
+				new Date()
+			);
+
+			const sent = await env.DB.prepare(
+				`select count(*) as n from quickbooks_sync where status = 'sent'`
+			).first<{ n: number }>();
+			expect(sent?.n).toBe(PACE[plan].books);
+			expect(mails).toBe(1);
+			expectWithin(shareOn(plan, MINUTE_RUN.books), {
+				queries: counting.queries(),
+				external: intuit.requests() + mails
+			});
+		}
+	);
 });

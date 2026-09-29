@@ -16,11 +16,12 @@ const HOUR = 60 * MINUTE;
 
 const TERMS: LeaseTerms = {
 	leaseMs: 2 * MINUTE,
-	deadlineMs: 90 * SECOND,
 	attemptMs: 10 * SECOND,
-	claimsPerRun: 5,
 	lanes: 3
 };
+
+/** rows a claim below takes, unless it says otherwise. */
+const CLAIMS = 5;
 
 const outboxOf = (terms: Partial<LeaseTerms> = {}, receiver?: SQLiteColumn) =>
 	defineOutbox({
@@ -122,6 +123,27 @@ const backlog = (count: number, dueAt: number): Owed[] =>
 
 const returning = { attempts: zapierDelivery.attempts };
 
+/**
+ * `d1` with the rows D1 reports reading for every `batch()` made through it summed: the figure the
+ * Free plan's five million rows read a day is counted in.
+ */
+function rowsRead(d1: D1Database) {
+	let total = 0;
+	const counting = new Proxy(d1, {
+		get(target, key) {
+			const value: unknown = Reflect.get(target, key, target);
+			if (typeof value !== 'function') return value;
+			if (key !== 'batch') return value.bind(target);
+			return async (statements: D1PreparedStatement[]) => {
+				const results = (await value.call(target, statements)) as D1Result[];
+				for (const result of results) total += result.meta.rows_read;
+				return results;
+			};
+		}
+	});
+	return { db: createDb(counting), total: () => total };
+}
+
 /** each row as the table holds it, by event id. */
 async function rowsNow() {
 	const { results } = await env.DB.prepare(
@@ -142,7 +164,7 @@ describe('claim()', () => {
 		const now = Date.now();
 		await owe(backlog(7, now));
 
-		const claim = await outboxOf().claim(db, new Date(now), { returning });
+		const claim = await outboxOf().claim(db, new Date(now), { claims: CLAIMS, returning });
 
 		expect(claim.rows.map((r) => r.eventId)).toEqual(['e0', 'e1', 'e2', 'e3', 'e4']);
 		expect(claim.lease).toEqual(new Date(now + 2 * MINUTE));
@@ -159,8 +181,8 @@ describe('claim()', () => {
 		const outbox = outboxOf();
 
 		const [first, second] = await Promise.all([
-			outbox.claim(db, new Date(now), { returning }),
-			outbox.claim(db, new Date(now), { returning })
+			outbox.claim(db, new Date(now), { claims: CLAIMS, returning }),
+			outbox.claim(db, new Date(now), { claims: CLAIMS, returning })
 		]);
 
 		const taken = [...first.rows, ...second.rows].map((r) => r.eventId).sort();
@@ -172,7 +194,9 @@ describe('claim()', () => {
 		await owe(backlog(2, now));
 		const outbox = outboxOf();
 		const claimAt = (at: number) =>
-			outbox.claim(db, new Date(at), { returning }).then((c) => c.rows.map((r) => r.eventId));
+			outbox
+				.claim(db, new Date(at), { claims: CLAIMS, returning })
+				.then((c) => c.rows.map((r) => r.eventId));
 
 		expect(await claimAt(now)).toEqual(['e0', 'e1']);
 		expect(await claimAt(now + MINUTE)).toEqual([]);
@@ -189,7 +213,7 @@ describe('claim()', () => {
 			{ eventId: 'failed', nextAttemptAt: now - MINUTE, status: 'failed' }
 		]);
 
-		const claim = await outboxOf().claim(db, new Date(now), { returning });
+		const claim = await outboxOf().claim(db, new Date(now), { claims: CLAIMS, returning });
 
 		expect(claim.rows.map((r) => r.eventId)).toEqual(['due']);
 	});
@@ -199,6 +223,7 @@ describe('claim()', () => {
 		await owe(backlog(3, now));
 
 		const claim = await outboxOf().claim(db, new Date(now), {
+			claims: CLAIMS,
 			returning,
 			where: sql`${zapierDelivery.eventId} <> 'e1'`
 		});
@@ -215,10 +240,32 @@ describe('claim()', () => {
 			{ eventId: 'b1', subscriptionId: other, nextAttemptAt: now - 1 }
 		]);
 
-		const fair = outboxOf({ claimsPerRun: 3 }, zapierDelivery.subscriptionId);
-		const claim = await fair.claim(db, new Date(now), { returning });
+		const fair = outboxOf({}, zapierDelivery.subscriptionId);
+		const claim = await fair.claim(db, new Date(now), { claims: 3, returning });
 
 		expect(claim.rows.map((r) => r.eventId).sort()).toEqual(['b0', 'e0', 'e1']);
+	});
+
+	it('reads as many rows to take a fair claim from a long backlog as from a short one', async () => {
+		const now = Date.now();
+		const other = await secondSubscription();
+		const fair = outboxOf({}, zapierDelivery.subscriptionId);
+
+		/** the rows D1 read to take one fair claim from `size` due rows. */
+		async function readToClaim(size: number): Promise<number> {
+			await env.DB.prepare('delete from zapier_delivery').run();
+			const rows = backlog(size, now - 10);
+			for (let cut = 0; cut < rows.length; cut += 50) await owe(rows.slice(cut, cut + 50));
+			await owe([{ eventId: 'b0', subscriptionId: other, nextAttemptAt: now - 5 }]);
+			const read = rowsRead(env.DB);
+			await fair.claim(read.db, new Date(now), { claims: CLAIMS, returning });
+			return read.total();
+		}
+
+		const short = await readToClaim(100);
+		const long = await readToClaim(600);
+
+		expect(long).toBe(short);
 	});
 
 	it('takes the oldest first, whoever they are owed to, where no receiver is named', async () => {
@@ -229,7 +276,7 @@ describe('claim()', () => {
 			{ eventId: 'b0', subscriptionId: other, nextAttemptAt: now - 2 }
 		]);
 
-		const claim = await outboxOf({ claimsPerRun: 3 }).claim(db, new Date(now), { returning });
+		const claim = await outboxOf().claim(db, new Date(now), { claims: 3, returning });
 
 		expect(claim.rows.map((r) => r.eventId).sort()).toEqual(['e0', 'e1', 'e2']);
 	});
@@ -239,6 +286,7 @@ describe('claim()', () => {
 		await owe(backlog(1, now));
 
 		const claim = await outboxOf().claim(db, new Date(now), {
+			claims: CLAIMS,
 			returning,
 			set: {
 				attempts: sql`${zapierDelivery.attempts} + 1`,
@@ -258,7 +306,7 @@ describe('land()', () => {
 	it("writes the caller's outcome and gives the lease back", async () => {
 		const now = Date.now();
 		await owe(backlog(2, now));
-		const claim = await outboxOf().claim(db, new Date(now), { returning });
+		const claim = await outboxOf().claim(db, new Date(now), { claims: CLAIMS, returning });
 		const [sent, waiting] = claim.rows;
 		if (sent === undefined || waiting === undefined) throw new Error('two rows were owed');
 
@@ -291,7 +339,7 @@ describe('land()', () => {
 	it("lands as a statement in the feed's own batch, answering with the key it landed on", async () => {
 		const now = Date.now();
 		await owe(backlog(1, now));
-		const claim = await outboxOf().claim(db, new Date(now), { returning });
+		const claim = await outboxOf().claim(db, new Date(now), { claims: CLAIMS, returning });
 		const [row] = claim.rows;
 		if (row === undefined) throw new Error('one row was owed');
 
@@ -315,8 +363,8 @@ describe('land()', () => {
 		const now = Date.now();
 		await owe(backlog(1, now));
 		const outbox = outboxOf();
-		const overrun = await outbox.claim(db, new Date(now), { returning });
-		await outbox.claim(db, new Date(now + 2 * MINUTE), { returning });
+		const overrun = await outbox.claim(db, new Date(now), { claims: CLAIMS, returning });
+		await outbox.claim(db, new Date(now + 2 * MINUTE), { claims: CLAIMS, returning });
 		const takenOver = await rowsNow();
 		const [row] = overrun.rows;
 		if (row === undefined) throw new Error('one row was owed');
@@ -330,7 +378,7 @@ describe('land()', () => {
 	it('writes nothing to a row no longer owed', async () => {
 		const now = Date.now();
 		await owe(backlog(1, now));
-		const claim = await outboxOf().claim(db, new Date(now), { returning });
+		const claim = await outboxOf().claim(db, new Date(now), { claims: CLAIMS, returning });
 		await env.DB.prepare(`update zapier_delivery set status = 'dropped'`).run();
 		const dropped = await rowsNow();
 		const [row] = claim.rows;
@@ -377,7 +425,7 @@ describe('sweep()', () => {
 				where: sql`${zapierDelivery.eventId} = 'e0'`,
 				outcome: { status: 'dropped' }
 			});
-		const holding = await outbox.claim(db, new Date(now), { returning });
+		const holding = await outbox.claim(db, new Date(now), { claims: CLAIMS, returning });
 		const [row] = holding.rows;
 		if (row === undefined) throw new Error('one row was owed');
 
@@ -385,7 +433,11 @@ describe('sweep()', () => {
 		expect(swept).toEqual([]);
 		expect(await holding.land(row, { attempts: 1, nextAttemptAt: new Date(now) })).toBe(true);
 
-		const next = await outbox.claim(db, new Date(now), { returning, before: [doomed()] });
+		const next = await outbox.claim(db, new Date(now), {
+			claims: CLAIMS,
+			returning,
+			before: [doomed()]
+		});
 
 		expect(next.rows).toEqual([]);
 		expect((await rowsNow()).map((r) => [r.event_id, r.status, r.leased_until])).toEqual([
@@ -395,23 +447,11 @@ describe('sweep()', () => {
 });
 
 describe("a run's last start", () => {
-	it('claims nothing once the run is past its deadline', async () => {
-		const scheduled = Date.now() - 90 * SECOND;
+	it('claims nothing once too little of the lease is left for an attempt and the work after it', async () => {
+		const scheduled = Date.now() - 100 * SECOND;
 		await owe(backlog(2, scheduled));
 
-		const claim = await outboxOf().claim(db, new Date(scheduled), { returning });
-
-		expect(claim.rows).toEqual([]);
-		expect((await rowsNow()).map((r) => r.leased_until)).toEqual([null, null]);
-	});
-
-	it('claims nothing when too little of the lease is left to finish an attempt in', async () => {
-		const scheduled = Date.now() - 2 * MINUTE + 5 * SECOND;
-		await owe(backlog(2, scheduled));
-
-		const claim = await outboxOf({ deadlineMs: 2 * MINUTE }).claim(db, new Date(scheduled), {
-			returning
-		});
+		const claim = await outboxOf().claim(db, new Date(scheduled), { claims: CLAIMS, returning });
 
 		expect(claim.rows).toEqual([]);
 		expect((await rowsNow()).map((r) => r.leased_until)).toEqual([null, null]);
@@ -421,18 +461,16 @@ describe("a run's last start", () => {
 		const scheduled = Date.now() - 2 * MINUTE + 15 * SECOND;
 		await owe(backlog(2, scheduled));
 
-		const claim = await outboxOf({ deadlineMs: 2 * MINUTE }).claim(db, new Date(scheduled), {
-			returning
-		});
+		const claim = await outboxOf().claim(db, new Date(scheduled), { claims: CLAIMS, returning });
 
 		expect(claim.rows).toEqual([]);
 	});
 
-	it('claims a run that is late but still inside both', async () => {
+	it('claims a run that is late but still inside it', async () => {
 		const scheduled = Date.now() - 80 * SECOND;
 		await owe(backlog(2, scheduled));
 
-		const claim = await outboxOf().claim(db, new Date(scheduled), { returning });
+		const claim = await outboxOf().claim(db, new Date(scheduled), { claims: CLAIMS, returning });
 
 		expect(claim.rows.map((r) => r.eventId)).toEqual(['e0', 'e1']);
 	});
@@ -440,10 +478,12 @@ describe("a run's last start", () => {
 	it('starts no row once the run is past its last start, and finishes the one under way', async () => {
 		const scheduled = Date.now();
 		await owe(backlog(3, scheduled));
-		const claim = await outboxOf({ lanes: 1, deadlineMs: 2 * SECOND }).claim(
+		// a last start two seconds after the scheduled time: the lease less the attempt and the
+		// ten seconds after an answer.
+		const claim = await outboxOf({ lanes: 1, leaseMs: 22 * SECOND }).claim(
 			db,
 			new Date(scheduled),
-			{ returning }
+			{ claims: CLAIMS, returning }
 		);
 		const started: string[] = [];
 		const finished: string[] = [];
@@ -468,7 +508,7 @@ describe('each()', () => {
 	it('works every claimed row, never more than the lanes at once', async () => {
 		const now = Date.now();
 		await owe(backlog(5, now));
-		const claim = await outboxOf().claim(db, new Date(now), { returning });
+		const claim = await outboxOf().claim(db, new Date(now), { claims: CLAIMS, returning });
 		let inFlight = 0;
 		let most = 0;
 		const worked: string[] = [];

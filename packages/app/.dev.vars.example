@@ -347,3 +347,15 @@ TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
 # QUICKBOOKS_CLIENT_ID=""
 # QUICKBOOKS_CLIENT_SECRET=""
 # QUICKBOOKS_API_URL="https://sandbox-quickbooks.api.intuit.com"
+
+# The Cloudflare plan — an answer about the account rather than a credential,
+# as PAYPAL_CHARITY_RATE_APPROVED is: `true` if the Cloudflare account this
+# deployment runs on is on the Workers Paid plan, and unset otherwise. No call
+# this deployment makes reports the plan, and the plan decides how much one run
+# of the minute schedule may spend, so it paces the deliveries to QuickBooks,
+# Zapier and webhook destinations. Unset is the Free plan's pace, which cannot
+# overrun on either plan; `true` on a Free account overruns it, and the
+# deliveries past its limits fail as though their receivers had. The limits are
+# constants in the tree (src/lib/server/outbox/budget.ts) — there is no number
+# to type.
+# CLOUDFLARE_PAID_PLAN=""

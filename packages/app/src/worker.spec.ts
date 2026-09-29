@@ -152,14 +152,30 @@ describe('which run an expression reaches', () => {
 
 		expect(sendDueEntries).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
 		expect(sendDueZapierEvents).toHaveBeenCalledWith(
-			{ db: expect.anything(), fetch: expect.any(Function) },
+			{ db: expect.anything(), fetch: expect.any(Function), plan: 'free' },
 			SCHEDULED_AT
 		);
 		expect(sendDueWebhooks).toHaveBeenCalledWith(
-			{ db: expect.anything(), fetch: expect.any(Function), onPaused: expect.any(Function) },
+			{
+				db: expect.anything(),
+				fetch: expect.any(Function),
+				plan: 'free',
+				onPaused: expect.any(Function)
+			},
 			SCHEDULED_AT
 		);
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['the Paid plan where its env answers `true`', { CLOUDFLARE_PAID_PLAN: 'true' }, 'paid'],
+		['the Free plan where its env answers nothing', {}, 'free']
+	] as const)('paces every minute job to %s', async (_, answer, plan) => {
+		await fires('* * * * *', { ...env, ...answer } as typeof env);
+
+		for (const job of [sendDueEntries, sendDueZapierEvents, sendDueWebhooks]) {
+			expect(vi.mocked(job).mock.calls[0]?.[0]).toMatchObject({ plan });
+		}
 	});
 
 	/** the `onPaused` the minute run handed the destinations' delivery, told of one pause. */

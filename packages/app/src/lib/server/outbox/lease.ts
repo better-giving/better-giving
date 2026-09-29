@@ -19,14 +19,21 @@ import { eachAtMost } from '../each-at-most';
 // **a run works only what it claimed.** the cron fires every minute and a run can outlast one, so
 // two runs over one backlog is ordinary. the claim is a single UPDATE whose own `where` takes rows
 // owed (`status = 'pending'`), due (`next_attempt_at` reached) and held by nobody, the
-// longest-waiting first, at most `claimsPerRun` of them; only what it *returns* is the run's, and a
-// second run's claim matches none of them. there is no read in front of that write
-// (../ledger/posting.ts: no invariant is enforced by an atomic read-then-write). the rows are
-// chosen by a row-value `in` over a limited select, because D1 has no `UPDATE … LIMIT`. where the
-// feed names the column a row's receiver is in, the select takes every receiver's longest-waiting
-// row before any receiver's next, so a receiver with a backlog shares a claim rather than filling
-// it. how many rows a claim may take is what the feed's share of the invocation pays for
-// (./budget.ts).
+// longest-waiting first, at most `claims` of them; only what it *returns* is the run's, and a second
+// run's claim matches none of them. there is no read in front of that write (../ledger/posting.ts:
+// no invariant is enforced by an atomic read-then-write). the rows are chosen by an `in` over a
+// limited select, because D1 has no `UPDATE … LIMIT`. how many rows a claim may take is the feed's
+// pace on the plan the invocation runs on (./budget.ts), handed to each claim.
+//
+// **where the feed names the column a row's receiver is in, a claim takes every receiver's
+// longest-waiting row before any receiver's next**, so a receiver with a backlog shares a claim
+// rather than filling it — among the {@link CANDIDATES_PER_CLAIMED_ROW} due rows per row claimed
+// that have waited longest, and no further. the order that shares is a window over a receiver's
+// rows, and a window over every due row reads the whole backlog on every run, which on the Free
+// plan's five million rows read a day (https://developers.cloudflare.com/d1/platform/pricing/) a
+// backlog of a few thousand spends in a day. so the window runs over the candidates alone, read off
+// the due index in order and stopping at the limit, and what a claim reads is the same however long
+// the backlog is. a receiver whose rows alone fill the candidates still fills the claim.
 //
 // **the lease runs from the run's scheduled time**, the `now` a claim is handed, to `leaseMs`
 // after it. a lease that has run out is no lease: the run that wrote it is gone or overran, and the
@@ -52,13 +59,12 @@ import { eachAtMost } from '../each-at-most';
 // **due-ness is stored, one way**: `next_attempt_at`. a waiting row's outcome is the feed's next
 // time for it; nothing here derives one.
 //
-// **a run's last start** is the earlier of `deadlineMs` after its scheduled time and `attemptMs`
-// plus the work after an answer (`AFTER_ANSWER_MS`) before its lease runs out. a claim made past it
-// takes nothing, and `each` starts no row past it, so no attempt is begun that could still be in
-// flight when the next run may take the row, and a run that started late leaves the backlog to the
-// run on time. it is read off the wall clock: the
-// run that takes the row over does so once its own scheduled time reaches the lease, and it starts
-// no earlier than that.
+// **a run's last start** is `attemptMs` plus the work after an answer (`AFTER_ANSWER_MS`) before its
+// lease runs out. a claim made past it takes nothing, and `each` starts no row past it, so no
+// attempt is begun that could still be in flight when the next run may take the row, and a run
+// that started late leaves the backlog to the run on time. it is read off the wall clock: the run
+// that takes the row over does so once its own scheduled time reaches the lease, and it starts no
+// earlier than that.
 //
 // **delivery is at least once.** a run that died mid-attempt writes nothing, and its rows come
 // back once the lease runs out, to be attempted again.
@@ -79,6 +85,9 @@ import { eachAtMost } from '../each-at-most';
  */
 const AFTER_ANSWER_MS = 10_000;
 
+/** due rows a claim naming a receiver chooses among, per row it may take. */
+const CANDIDATES_PER_CLAIMED_ROW = 10;
+
 /** an outbox table: a row per thing owed, and the three columns the lease reads. */
 export type OutboxTable = SQLiteTable & {
 	readonly status: SQLiteColumn;
@@ -90,15 +99,11 @@ export type OutboxTable = SQLiteTable & {
 export type LeaseTerms = {
 	/** how long a claimed row is the claiming run's alone, from the run's scheduled time. */
 	readonly leaseMs: number;
-	/** no row is claimed or started later than this after the run's scheduled time. */
-	readonly deadlineMs: number;
 	/**
 	 * the longest one row's post can wait on its answer. none is started closer than this, and the
 	 * work after an answer, to the lease's end.
 	 */
 	readonly attemptMs: number;
-	/** rows one claim takes: what the feed's share of the invocation pays for (./budget.ts). */
-	readonly claimsPerRun: number;
 	/** rows worked at once. */
 	readonly lanes: number;
 };
@@ -111,8 +116,8 @@ export type OutboxSpec<T extends OutboxTable, K extends Key> = LeaseTerms & {
 	readonly key: K;
 	/**
 	 * the column naming who a row is posted to. where it is named, a claim takes every receiver's
-	 * longest-waiting row before any receiver's next, so one receiver's backlog cannot fill a claim
-	 * while another's rows wait.
+	 * longest-waiting row before any receiver's next among the rows it chooses from, so one
+	 * receiver's backlog cannot fill a claim while another's rows wait beside it.
 	 */
 	readonly receiver?: SQLiteColumn;
 };
@@ -147,25 +152,48 @@ export type Claim<T extends OutboxTable, K extends Key, Row> = {
 export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxSpec<T, K>) {
 	const { table } = spec;
 
-	/** a due row's place in its receiver's queue, first to last, where the spec names a receiver. */
-	const turn =
-		spec.receiver === undefined
-			? []
-			: [sql`row_number() over (partition by ${spec.receiver} order by ${table.nextAttemptAt})`];
-
 	/** held by nobody at `now`: never leased, or leased by a run whose lease has run out. */
 	const unleased = (now: Date) => or(isNull(table.leasedUntil), lte(table.leasedUntil, now));
 
 	/**
-	 * the due rows, leased to the run scheduled at `now`: the key and `returning` of each, read after
-	 * `set` is written. `where` narrows what is taken, for a row the feed will not work whatever its
-	 * time says. `before` is committed in the claim's own batch, ahead of it: a feed's standing
-	 * sweeps go there, so a row one of them would give up on is never taken again.
+	 * the condition matching at most `claims` due rows `where` admits, the longest-waiting first —
+	 * each receiver's before any receiver's next, where the spec names one. that one matches by
+	 * `rowid`: a row-value `in` over a windowed select is answered by a scan of the whole table.
+	 */
+	function dueRows(db: Db, now: Date, claims: number, where: SQL | undefined): SQL {
+		const due = and(
+			eq(table.status, 'pending'),
+			lte(table.nextAttemptAt, now),
+			unleased(now),
+			where
+		);
+		if (spec.receiver === undefined) {
+			const oldest = db
+				.select(spec.key as Key)
+				.from(table as SQLiteTable)
+				.where(due)
+				.orderBy(asc(table.nextAttemptAt))
+				.limit(claims);
+			return sql`(${sql.join(Object.values(spec.key), sql`, `)}) in ${oldest}`;
+		}
+
+		const receiver = sql.identifier(spec.receiver.name);
+		const nextAttemptAt = sql.identifier(table.nextAttemptAt.name);
+		const candidates = sql`select "rowid", ${receiver}, ${nextAttemptAt} from ${table} where ${due} order by ${nextAttemptAt} limit ${claims * CANDIDATES_PER_CLAIMED_ROW}`;
+		return sql`"rowid" in (select "rowid" from (${candidates}) order by row_number() over (partition by ${receiver} order by ${nextAttemptAt}), ${nextAttemptAt} limit ${claims})`;
+	}
+
+	/**
+	 * at most `claims` due rows, leased to the run scheduled at `now`: the key and `returning` of
+	 * each, read after `set` is written. `where` narrows what is taken, for a row the feed will not
+	 * work whatever its time says. `before` is committed in the claim's own batch, ahead of it: a
+	 * feed's standing sweeps go there, so a row one of them would give up on is never taken again.
 	 */
 	async function claim<R extends SelectedFieldsFlat>(
 		db: Db,
 		now: Date,
 		options: {
+			readonly claims: number;
 			readonly returning: R;
 			readonly where?: SQL;
 			readonly set?: Outcome<T>;
@@ -174,10 +202,7 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 	): Promise<Claim<T, K, SelectResultFields<K & R>>> {
 		type Row = SelectResultFields<K & R>;
 		const lease = new Date(now.getTime() + spec.leaseMs);
-		const lastStart = Math.min(
-			now.getTime() + spec.deadlineMs,
-			lease.getTime() - spec.attemptMs - AFTER_ANSWER_MS
-		);
+		const lastStart = lease.getTime() - spec.attemptMs - AFTER_ANSWER_MS;
 
 		const heldBy = (row: Row) =>
 			and(
@@ -209,23 +234,10 @@ export function defineOutbox<T extends OutboxTable, K extends Key>(spec: OutboxS
 		});
 
 		if (Date.now() >= lastStart) return claimed([]);
-		const due = db
-			.select(spec.key as Key)
-			.from(table as SQLiteTable)
-			.where(
-				and(
-					eq(table.status, 'pending'),
-					lte(table.nextAttemptAt, now),
-					unleased(now),
-					options.where
-				)
-			)
-			.orderBy(...turn, asc(table.nextAttemptAt))
-			.limit(spec.claimsPerRun);
 		const taken = db
 			.update(table as SQLiteTable)
 			.set({ ...options.set, leasedUntil: lease })
-			.where(sql`(${sql.join(Object.values(spec.key), sql`, `)}) in ${due}`)
+			.where(dueRows(db, now, options.claims, options.where))
 			.returning({ ...spec.key, ...options.returning });
 		const statements: BatchItem<'sqlite'>[] = [...(options.before ?? []), taken];
 		const results = await db.batch(statements as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]);

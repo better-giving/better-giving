@@ -6,6 +6,7 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { post, postingStatements, type Posting } from '../ledger/posting';
+import { PACE } from '../outbox/budget';
 import { dueRows } from './deliver';
 import { moveQuickbooksStartAt, outboxStatements, previewQuickbooksStartAt } from './outbox';
 
@@ -347,7 +348,7 @@ describe('moving the date a connection starts from', () => {
 		const settledAfter = posting({ occurredAt: new Date('2026-05-15T00:00:00.000Z') });
 		await commit([settledAfter]);
 
-		const run = await dueRows(db, new Date(Date.now() + 60_000));
+		const run = await dueRows(db, new Date(Date.now() + 60_000), PACE.paid.books);
 
 		const byDate = [...history].sort(
 			(a, b) => a.group.occurredAt.getTime() - b.group.occurredAt.getTime()

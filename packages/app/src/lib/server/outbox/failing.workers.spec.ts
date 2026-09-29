@@ -3,7 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { zapierSubscription } from '../db/schema';
+import { contact, donation, payment, zapierDelivery, zapierSubscription } from '../db/schema';
 import { defineFailing } from './failing';
 
 // the failing policy against a real D1, over `zapier_subscription` rows written here by hand. the
@@ -16,12 +16,14 @@ const DAY = 24 * HOUR;
 
 const failing = defineFailing({
 	table: zapierSubscription,
+	outbox: { table: zapierDelivery, receiver: zapierDelivery.subscriptionId },
 	open: isNull(zapierSubscription.endedAt),
 	stopAfterMs: 72 * HOUR
 });
 
 let db: Db;
 let receiverId: string;
+let paymentId: string;
 
 beforeAll(() => {
 	db = createDb(env.DB);
@@ -37,6 +39,27 @@ beforeEach(async () => {
 	)
 		.bind(receiverId, `https://hooks.zapier.com/hooks/standard/1/${receiverId}/`)
 		.run();
+	const contactId = uuidv7();
+	const donationId = uuidv7();
+	paymentId = uuidv7();
+	const at = new Date('2026-09-10T12:00:00.000Z');
+	await db.batch([
+		db.insert(contact).values({ id: contactId, kind: 'individual', displayName: 'Ada Okafor' }),
+		db
+			.insert(donation)
+			.values({ id: donationId, contactId, totalMinor: 5_000, currency: 'USD', receivedAt: at }),
+		db.insert(payment).values({
+			id: paymentId,
+			donationId,
+			amountMinor: 5_000,
+			currency: 'USD',
+			direction: 'inbound',
+			method: 'check',
+			status: 'succeeded',
+			provider: 'manual',
+			occurredAt: at
+		})
+	]);
 });
 
 /** the receiver's mark as the table holds it. */
@@ -45,6 +68,26 @@ async function markNow(): Promise<number | null> {
 		.bind(receiverId)
 		.first<{ failing_since: number | null }>();
 	return row?.failing_since ?? null;
+}
+
+/** a row owed to the receiver, queued at `queuedAt`, posted `attempts` times. */
+async function owed(row: { queuedAt: number; attempts: number; status?: string }): Promise<void> {
+	await env.DB.prepare(
+		`insert into zapier_delivery
+		 (subscription_id, event_id, payment_id, status, attempts, next_attempt_at, created_at, updated_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?)`
+	)
+		.bind(
+			receiverId,
+			uuidv7(),
+			paymentId,
+			row.status ?? 'pending',
+			row.attempts,
+			row.queuedAt,
+			row.queuedAt,
+			row.queuedAt
+		)
+		.run();
 }
 
 async function setMark(at: number | null, endedAt: number | null = null): Promise<void> {
@@ -86,6 +129,33 @@ describe('failed()', () => {
 		]);
 
 		expect(await markNow()).toBe(queued - 72 * HOUR);
+	});
+
+	it('keeps the mark through a new row failing while an older row of the same run is still owed', async () => {
+		const mark = Date.UTC(2026, 8, 10, 12);
+		await setMark(mark);
+		await owed({ queuedAt: mark, attempts: 4 });
+		const queued = mark + 72 * HOUR + MINUTE;
+
+		await db.batch([
+			failing.failed(db, receiverId, { createdAt: new Date(queued) }, new Date(queued + MINUTE))
+		]);
+
+		expect(await markNow()).toBe(mark);
+	});
+
+	it('starts afresh past a quiet spell whatever the receiver was owed before it that is settled', async () => {
+		const mark = Date.UTC(2026, 8, 10, 12);
+		await setMark(mark);
+		await owed({ queuedAt: mark, attempts: 9, status: 'failed' });
+		await owed({ queuedAt: mark, attempts: 0 });
+		const queued = mark + 72 * HOUR + MINUTE;
+
+		await db.batch([
+			failing.failed(db, receiverId, { createdAt: new Date(queued) }, new Date(queued + MINUTE))
+		]);
+
+		expect(await markNow()).toBe(queued + MINUTE);
 	});
 
 	it('marks no receiver that is no longer open', async () => {

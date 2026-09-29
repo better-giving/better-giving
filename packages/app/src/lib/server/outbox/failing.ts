@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, lte, type SQL, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, lt, lte, type SQL, sql } from 'drizzle-orm';
 import type { SQLiteColumn, SQLiteTable, SQLiteUpdateSetSource } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 
@@ -11,12 +11,16 @@ import type { Db } from '../db/client';
 // after the last one it took and cleared by the next one it takes. the mark and the failed row's
 // outcome go in one batch, and so do the clear and a taken row's.
 //
-// **a mark counts only while it is no older than `stopAfterMs` before the failing row was
-// queued.** a receiver's rows can all leave the outbox without a post being taken — given up on,
-// dropped, out of retries — and nothing then clears the mark, so it can outlive a quiet spell with
-// nothing posted. a row queued more than `stopAfterMs` after the mark cannot have been failing
-// alongside it for the whole window, so its failure starts the run afresh at its own `now`, in the
-// same statement that would have kept the mark.
+// **a mark counts only while the run it began can still be on.** a receiver's rows can all leave
+// the outbox without a post being taken — given up on, dropped, out of retries — and nothing then
+// clears the mark, so it can outlive a quiet spell with nothing posted. a failure starts the run
+// afresh at its own `now`, in the same statement that would have kept the mark, where both hold:
+// the mark is more than `stopAfterMs` older than the failing row's queueing, so the row cannot have
+// been failing alongside it for the whole window; and no row queued before the failing one is still
+// owed after a failure of its own, whose retries would still be the run the mark began. the second
+// is what keeps an unbroken outage's mark where it is when a new row fails ahead of an older row's
+// next retry — the mark is what the stop is measured from, and what a resume reads as the start of
+// the window it re-sends.
 //
 // **a row's first failure never stops its receiver.** the stop is guarded on a failure of a row
 // that had failed before, where the receiver's mark is `stopAfterMs` or more behind — every post to
@@ -31,8 +35,17 @@ export type ReceiverTable = SQLiteTable & {
 	readonly failingSince: SQLiteColumn;
 };
 
+/** an outbox table, as the failing rule reads a receiver's rows in it. */
+export type OwedTable = SQLiteTable & {
+	readonly status: SQLiteColumn;
+	readonly attempts: SQLiteColumn;
+	readonly createdAt: SQLiteColumn;
+};
+
 export type FailingSpec<T extends ReceiverTable> = {
 	readonly table: T;
+	/** the outbox posted to these receivers, and its column naming a row's receiver. */
+	readonly outbox: { readonly table: OwedTable; readonly receiver: SQLiteColumn };
 	/** a receiver that can still be posted to, and so marked, cleared or stopped. */
 	readonly open: SQL;
 	/** how long every post to a receiver may fail before a retry's failure stops it. */
@@ -53,10 +66,22 @@ export function defineFailing<T extends ReceiverTable>(spec: FailingSpec<T>) {
 	 */
 	function failed(db: Db, receiverId: string, row: { readonly createdAt: Date }, now: Date) {
 		const oldestStanding = row.createdAt.getTime() - spec.stopAfterMs;
+		const owed = spec.outbox.table;
+		const olderStillFailing = db
+			.select({ one: sql`1` })
+			.from(owed as SQLiteTable)
+			.where(
+				and(
+					eq(spec.outbox.receiver, receiverId),
+					eq(owed.status, 'pending'),
+					gt(owed.attempts, 0),
+					lt(owed.createdAt, row.createdAt)
+				)
+			);
 		return write(
 			db,
 			receiverId,
-			sql`case when ${table.failingSince} >= ${oldestStanding} then ${table.failingSince} else ${now.getTime()} end`
+			sql`case when ${table.failingSince} is not null and (${table.failingSince} >= ${oldestStanding} or exists ${olderStillFailing}) then ${table.failingSince} else ${now.getTime()} end`
 		);
 	}
 
