@@ -2669,9 +2669,9 @@ function unstatedFailure(event: RecurringEvent): PaymentFailure {
 		reason: 'unsupported',
 		detail:
 			`PayPal reported a failed payment under ${redactPublicId(event.providerNoticeId)}, and neither ` +
-			'the delivery nor the subscription read back states the attempt — a ' +
+			'the delivery nor the subscription read back states the attempt (a ' +
 			'`billing_info.failed_payments_count` of at least one and a `billing_info.last_failed_payment` ' +
-			'with an amount and a time this app can read — so which attempt failed could not be told. ' +
+			'with an amount and a time this app can read), so which attempt failed could not be told. ' +
 			'No money moved: a failed payment collects nothing, so the books are complete. What is lost ' +
 			'is the `recurring_gift.charge_failed` notice for this attempt; a suspension after repeated ' +
 			'failures still arrives as its own `BILLING.SUBSCRIPTION.SUSPENDED` delivery.'

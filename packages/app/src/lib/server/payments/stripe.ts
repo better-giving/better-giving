@@ -2229,7 +2229,7 @@ export function createStripeProvider(
 					reason: 'provider_error',
 					detail:
 						`A verified \`${type}\` delivery about ${redactPublicId(id)} did not state the ` +
-						'attempt it reports — its count, next retry, amount or currency — so which attempt ' +
+						'attempt it reports (its count, next retry, amount or currency), so which attempt ' +
 						`failed could not be told and nothing was recorded. ${RENDERED_VERSION}`
 				};
 			}

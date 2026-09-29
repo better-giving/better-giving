@@ -227,9 +227,9 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * `baseURL: { allowedHosts }` is deliberately unused — on 1.6.25 that path defaults
 	 * `trustedProxyHeaders` to `true`, which would trust an attacker-supplied header.
 	 *
-	 * a pin is read by `pinnedOrigin` (./env.ts), the reading QuickBooks and the paused-destination
-	 * mail take too, so its origin and not the value as typed is `baseURL` and what the loopback
-	 * check below sees, and a pin that names no http(s) origin throws here.
+	 * a pin is read by `pinnedOrigin` (./env.ts), so its origin and not the value as typed is
+	 * `baseURL` and what the loopback check below sees, and a pin that names no http(s) origin
+	 * throws here.
 	 */
 	const configuredBaseURL = pinnedOrigin(env) ?? undefined;
 	const effectiveOrigin = configuredBaseURL ?? runtime.requestOrigin;

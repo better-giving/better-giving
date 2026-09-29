@@ -75,9 +75,8 @@ export type PinReading =
 	| { readonly ok: false; readonly message: string };
 
 /**
- * the one reading of the pin, which better-auth's `baseURL` and loopback check (./index.ts), the
- * QuickBooks address (../accounting/connect-link.ts), the paused-destination mail (src/worker.ts)
- * and `publishedOrigin` below all take.
+ * the one reading of the pin: every caller takes it, through `pinnedOrigin` or `publishedOrigin`
+ * below where not directly.
  *
  * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
  * path on it is not part of it. a pin that names no http(s) origin is refused, naming the value:

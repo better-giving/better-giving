@@ -5124,6 +5124,7 @@ describe('readRecurringGift', () => {
 
 		const once = await provider.readRecurringGift(failed('evt_retry_1'));
 		const again = await provider.readRecurringGift(failed('evt_retry_1'));
+		// a second failure stating the count the first did: an operator's manual retry.
 		const manual = await provider.readRecurringGift(failed('evt_retry_2'));
 
 		const keyOf = (read: typeof once) => read.ok && read.value.failedAttempt?.attemptKey;

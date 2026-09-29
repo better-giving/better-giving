@@ -96,7 +96,6 @@ describe('createAuth configuration', () => {
 		expect(ctx.options.baseURL).toBe(DEPLOYED_ORIGIN);
 	});
 
-	// the same reading QuickBooks and the paused-destination mail take (./env.ts `pinnedOrigin`).
 	// passed as typed, a path on the pin would stand in for better-auth's `/api/auth`.
 	it('pins baseURL to the pin’s origin, not the value as typed', async () => {
 		const ctx = await testAuth({ ...TEST_ENV, BETTER_AUTH_URL: `${DEPLOYED_ORIGIN}/admin/` })

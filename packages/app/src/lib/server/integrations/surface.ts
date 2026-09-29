@@ -183,7 +183,7 @@ export async function admitKey(db: Db, authorization: string | null): Promise<Ap
 		return keyRefusal(
 			'malformed_key',
 			presented === null
-				? 'The `Authorization` header is not `Bearer`, one space and the key, so it carries no API key.'
+				? 'The `Authorization` header is not `Bearer`, a space and the key, so it carries no API key.'
 				: 'The value after `Bearer` is not an API key: a key is `bgk_` followed by 43 letters and digits, 47 characters in all.',
 			'Send `Authorization: Bearer <key>` with the whole key and nothing else: a key cut short, or with a quote or a space inside it, is the usual cause.'
 		);

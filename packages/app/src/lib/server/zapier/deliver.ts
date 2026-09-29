@@ -211,7 +211,7 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 			await deps.db.batch(failed);
 			return;
 		}
-		// `ended` is the end's second statement: the subscription it ended, where the guard held
+		// `ended` is the end's second statement: the subscription it ended, where the guard held.
 		const [, , , ended] = await deps.db.batch([
 			...failed,
 			...endSubscriptionStatements(deps.db, { id: row.subscriptionId }, 'gone', now, {

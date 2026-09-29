@@ -753,7 +753,7 @@ describe('a request whose key does not check out', () => {
 		{
 			what: 'another scheme',
 			value: 'Basic dXNlcjpwYXNz',
-			says: '`Bearer`, one space and the key'
+			says: '`Bearer`, a space and the key'
 		},
 		{ what: 'a key cut short', value: 'Bearer bgk_x7Qp', says: '47 characters' },
 		{ what: 'a quoted key', value: `Bearer "bgk_${'Q'.repeat(43)}"`, says: '47 characters' }
@@ -776,7 +776,7 @@ describe('a request whose key does not check out', () => {
 		const body = await refusedWith(value);
 
 		expect(body.error).toBe('malformed_key');
-		expect(body.message).toContain('`Bearer`, one space and the key');
+		expect(body.message).toContain('`Bearer`, a space and the key');
 	});
 
 	it('is refused as unknown for a key this deployment never made', async () => {

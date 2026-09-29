@@ -223,7 +223,7 @@ const GIFT = record<ApiGift>(
 			description: 'A dispute on this gift is open, and its money is withdrawn until it closes.'
 		},
 		updated_at: instant(
-			'When this gift’s money last changed, in UTC: what `updated_since` compares. It moves when money on the gift is posted — its settling, a refund of it recorded or failing, a dispute on it opening, changing or closing — and on nothing else. A write that posts no money, such as its method, time or reference restated, does not move it, and neither does a change to what it names — the donor’s name or email, the form’s or the program’s name — which each page reads fresh: a copy keeps the names it last read until the gift next moves, so join on `donor_id` and `form_id` for the current ones.'
+			'When this gift’s money last changed, in UTC: what `updated_since` compares. It moves when money on the gift is posted, and on nothing else: its settling, a refund of it recorded or failing, or a dispute on it opening, changing or closing. A write that posts no money, such as its method, time or reference restated, does not move it. Neither does a change to a name it carries (the donor’s name or email, the form’s or the program’s name), which each page reads fresh: a copy keeps the names it last read until the gift next moves, so join on `donor_id` and `form_id` for the current ones.'
 		)
 	}
 );
@@ -319,7 +319,7 @@ const FAILED_CHARGE = record<FailedCharge>(
 			description: 'Which attempt at this charge failed, from 1.'
 		},
 		next_retry_at: nullableInstant(
-			'When the processor has scheduled its next try at this collection, as of this failed attempt, in UTC, or null where it scheduled none — the last miss. A schedule and not a promise: after a decline the processor treats as final, the try runs only if the donor gives a new payment method, and a collection closed since runs none.'
+			'When the processor has scheduled its next try at this collection, as of this failed attempt, in UTC, or null where it scheduled none (the last miss). A schedule and not a promise: after a decline the processor treats as final, the try runs only if the donor gives a new payment method, and a collection closed since runs none.'
 		),
 		failed_at: instant('When the attempt failed, in UTC.'),
 		amount: AMOUNT,

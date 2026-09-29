@@ -26,7 +26,7 @@ function isTest(name: string): boolean {
 	return /\.(?:spec|test|testing)\.[jt]sx?$/.test(name);
 }
 
-/** every non-spec source file under `dir`, minus this spec. */
+/** every source file under `dir` that is not a test (`isTest`), minus this spec. */
 function sourceFiles(dir: string, out: string[] = []): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		const path = join(dir, entry.name);
