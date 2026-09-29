@@ -114,9 +114,9 @@ export async function staffGate(
 
 /**
  * every write behind the login, and every write to the sign-in routes in front of it
- * (`src/routes/login.tsx`, `join.tsx` and `reset.tsx`), comes from a page on this origin, or it is
- * refused. those three sit outside this gate, so each action calls this itself, after it has
- * charged the sign-in bucket.
+ * (`src/routes/login.tsx`, `join.tsx`, `reset.tsx` and `forgot.tsx`), comes from a page on this
+ * origin, or it is refused. those four sit outside this gate, so each action calls this itself,
+ * after it has charged the sign-in bucket.
  *
  * a write is any method but GET and HEAD, and it is refused when `Sec-Fetch-Site` is present and
  * is anything but `same-origin`. `same-site` is the case that matters: a deployment on the

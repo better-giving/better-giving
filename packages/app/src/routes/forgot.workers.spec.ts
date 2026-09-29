@@ -166,10 +166,15 @@ function typed(email: string): FormData {
 
 async function post(
 	body: FormData,
-	{ ip, deployed = DEPLOYED }: { ip?: string; deployed?: typeof DEPLOYED } = {}
+	{
+		ip,
+		site,
+		deployed = DEPLOYED
+	}: { ip?: string; site?: string | undefined; deployed?: typeof DEPLOYED } = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
 	if (ip) headers.set('cf-connecting-ip', ip);
+	if (site) headers.set('sec-fetch-site', site);
 	const answer = await action(
 		args(new Request(`${ORIGIN}/forgot`, { method: 'POST', headers, body }), deployed)
 	);
@@ -243,6 +248,32 @@ describe('POST /forgot', () => {
 		expect(answer.init?.status).toBe(400);
 		expect(answer.data.form.result.error?.email?.[0]).toBe(MISSING);
 		expect(sent).toEqual([]);
+	});
+});
+
+/** the status a call answered or threw with — a refused write is thrown. */
+async function statusOf(call: ReturnType<typeof post>): Promise<number | undefined> {
+	try {
+		const answer = await call;
+		return 'data' in answer ? answer.init?.status : 200;
+	} catch (thrown) {
+		if (thrown instanceof Response) return thrown.status;
+		throw thrown;
+	}
+}
+
+describe('POST /forgot from a page on another origin', () => {
+	// the browser writes `Sec-Fetch-Site` and a page's script cannot, so `same-site` is a page on the
+	// organisation's own domain posting here ($lib/server/auth/gate.ts, `refuseWriteFromAnotherOrigin`).
+	it('refuses a same-site post', async () => {
+		expect(await statusOf(post(typed(''), { ip: '203.0.113.42', site: 'same-site' }))).toBe(403);
+	});
+
+	it.each([
+		['from a page on this origin', 'same-origin'],
+		['with no Sec-Fetch-Site at all', undefined]
+	])('reaches the form %s', async (_, site) => {
+		expect(await statusOf(post(typed(''), { ip: '203.0.113.43', site }))).toBe(400);
 	});
 });
 

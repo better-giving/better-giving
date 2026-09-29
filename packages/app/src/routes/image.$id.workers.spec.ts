@@ -116,16 +116,12 @@ describe('the limit on GET /image/{id}', () => {
 		throw new Error(`50 views from ${ip} and the limiter refused none of them`);
 	}
 
-	// one id throughout, so every view after the first is one the edge already holds: a hit is
-	// metered like a miss.
-	it('refuses a caller who has viewed too often, naming the limit and when to come back', async () => {
-		const id = await createImage(
-			db,
-			{ kind: 'photo', contentType: 'image/png', width: 1, height: 1, alt: null },
-			new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+	// an id nothing was stored under is never kept, so every view of it is a miss and is charged.
+	it('refuses a miss from a caller who has viewed too often, naming the limit and when to come back', async () => {
+		const refused = await untilRefused(
+			'https://edge-2.example/image/0192f3a4-5b6c-7d8e-9f01-23456789abcd',
+			'203.0.113.80'
 		);
-
-		const refused = await untilRefused(`https://edge-2.example/image/${id}`, '203.0.113.80');
 
 		expect(refused.headers.get('retry-after')).toBe('60');
 		expect(refused.headers.get('cache-control')).toBe('no-store');
@@ -134,7 +130,7 @@ describe('the limit on GET /image/{id}', () => {
 		expect(body.fix).toContain('60 seconds');
 	});
 
-	it('refuses before anything is read', async () => {
+	it('refuses a miss over the limit before anything is read', async () => {
 		const id = '0192f3a4-5b6c-7d8e-9f01-23456789abce';
 		await untilRefused(`https://edge-3.example/image/${id}`, '203.0.113.81');
 		const counted = countingEnv();
@@ -148,6 +144,29 @@ describe('the limit on GET /image/{id}', () => {
 
 		expect(refused.status).toBe(429);
 		expect(counted.prepared()).toBe(0);
+	});
+
+	it('answers a view the edge holds even when the caller is over the limit', async () => {
+		const id = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/png', width: 1, height: 1, alt: null },
+			new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+		);
+		const address = `https://edge-5.example/image/${id}`;
+		const first = createExecutionContext();
+		await request(new Request(address), { ctx: first });
+		await waitOnExecutionContext(first);
+		await untilRefused(
+			'https://edge-5.example/image/0192f3a4-5b6c-7d8e-9f01-23456789abd0',
+			'203.0.113.82'
+		);
+
+		const kept = await request(
+			new Request(address, { headers: { 'cf-connecting-ip': '203.0.113.82' } })
+		);
+
+		expect(kept.status).toBe(200);
+		expect([...new Uint8Array(await kept.arrayBuffer())]).toEqual([0x89, 0x50, 0x4e, 0x47]);
 	});
 
 	it('counts no view from a caller the edge did not attribute', async () => {
