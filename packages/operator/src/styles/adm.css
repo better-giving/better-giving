@@ -3008,10 +3008,11 @@
 	   until it has worked out where the panel goes, and a rule taking them back here would hand the
 	   panel a press while it was still standing at the corner of the page.
 
-	   it is portalled out of the field (../components/forms/DateField.jsx), so it stands over the
-	   shell by its step, the anchored panel's 3 on the ladder stated at `.adm-rail`. the step is on
-	   the content part for `.adm-anchored`'s reason: the positioner copies the content's computed
-	   `z-index` onto itself inline, and that is the only way a sheet reaches it. */
+	   it is portalled out of the field (../components/forms/DateField.jsx and DateRangeField.jsx),
+	   so it stands over the shell by its step, the anchored panel's 3 on the ladder stated at
+	   `.adm-rail`. the step is on the content part for `.adm-anchored`'s reason: the positioner
+	   copies the content's computed `z-index` onto itself inline, and that is the only way a sheet
+	   reaches it. */
 	.adm-cal {
 		z-index: 3;
 		padding: var(--admin-space-3);
@@ -5581,9 +5582,16 @@
 		line-height: var(--admin-subhead-lh);
 	}
 
-	/* a row that opens a sheet of its own: the name, what it holds, and the caret. */
+	/* a row that opens a sheet of its own: the name, what it holds, and the caret.
+
+	   a row never widens its sheet. what it holds is one line cut short with an ellipsis, and the
+	   whole of it is still the row's accessible name, since the words are the button's own. the
+	   track and the row both give up their content's width for that: an `auto` track and a grid
+	   item's automatic minimum each hand the value's unwrapped width up to the sheet's body, which
+	   grows to it and scrolls sideways. */
 	.adm-openrow-list {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		border-block-start: var(--admin-rule);
 	}
 
@@ -5592,6 +5600,7 @@
 		align-items: center;
 		gap: var(--admin-space-5);
 		inline-size: 100%;
+		min-inline-size: 0;
 		min-block-size: var(--admin-touch-min);
 		padding-block: var(--admin-space-4);
 		font-size: var(--admin-body-size);

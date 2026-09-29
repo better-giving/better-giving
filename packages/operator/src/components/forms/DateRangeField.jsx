@@ -1,6 +1,7 @@
 import { DateInput } from '@ark-ui/react/date-input';
 import { DatePicker, parseDate } from '@ark-ui/react/date-picker';
-import { useMemo, useRef, useState } from 'react';
+import { Portal } from '@ark-ui/react/portal';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Mark } from '../status/Mark.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
@@ -188,11 +189,13 @@ function CalendarHead() {
  * arriving from a machine. the scope wrapper the input's control is drawn as lays nothing out —
  * `.adm-datefield__scope` in ../../styles/adm.css.
  *
- * **`.adm-datefield` appears twice and both are load-bearing.** the outer one is the picker's root:
- * it is the positioned ancestor the calendar's positioner is placed against, and the wrapper the
- * sheet raises over what follows while the calendar is open. each inner one is a box's own row in
- * its field — `.adm-field > .adm-datefield` is what puts a date box on the third of the five rows
- * the two fields subgrid, which is what stands box beside box and message beside message.
+ * **the calendar opens under the box whose press opened it**, not under the control: the picker's
+ * control stands over both boxes, so anchored to it the far end's calendar would open under the
+ * near box. it is portalled and placed as ./DateField.jsx's is, for the reasons that header gives.
+ *
+ * **`.adm-datefield` appears twice.** the outer one is the picker's root. each inner one is a box's
+ * own row in its field — `.adm-field > .adm-datefield` is what puts a date box on the third of the
+ * five rows the two fields subgrid, which is what stands box beside box and message beside message.
  *
  * **the labels are plain `<label>` elements rather than the machine's label part.** ark's
  * `DateInput.Label` takes no index and names the first box whichever end it is drawn in, so the far
@@ -257,6 +260,15 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 	/* the press at the end of each box, held so that the one a calendar was opened from can be
 	   handed the caret back when it closes. */
 	const presses = useRef(/** @type {(HTMLButtonElement | null)[]} */ ([null, null]));
+	/* each end's box, which is what the calendar is placed under. */
+	const boxes = useRef(/** @type {(HTMLDivElement | null)[]} */ ([null, null]));
+
+	/* where the calendar is portalled to: ./DateField.jsx's `layer`, for its reason. */
+	const group = useRef(/** @type {HTMLFieldSetElement | null} */ (null));
+	const layer = useRef(/** @type {HTMLElement | null} */ (null));
+	useLayoutEffect(() => {
+		layer.current = group.current?.closest('dialog') ?? null;
+	}, []);
 
 	/* which end holds the caret, or neither. the float is drawn from it per box, so an empty box
 	   floats its label while it is being written in and lets it back down when the caret leaves
@@ -335,7 +347,7 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 	};
 
 	return (
-		<fieldset className="adm-fieldset">
+		<fieldset className="adm-fieldset" ref={group}>
 			{legend ? <legend className="adm-fieldset__legend">{legend}</legend> : null}
 			{hint ? (
 				<p className="adm-hint" id={`${id}-hint`}>
@@ -350,7 +362,13 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 				selectionMode="range"
 				disabled={disabled}
 				value={value}
-				positioning={{ placement: 'bottom-start' }}
+				/* fixed for ./DateField.jsx's reason. the machine reads the anchor when the calendar
+				   opens, and the press that opened it has set `opener` by then. */
+				positioning={{
+					placement: 'bottom-start',
+					strategy: 'fixed',
+					getAnchorElement: () => boxes.current[opener] ?? null
+				}}
 				open={open}
 				onOpenChange={(details) => (details.open ? setOpen(true) : dismiss())}
 				onValueChange={picked}
@@ -392,6 +410,9 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 										<div className="adm-datefield">
 											<div
 												className="adm-datebox"
+												ref={(element) => {
+													boxes.current[index] = element;
+												}}
 												data-floated={floated ? '' : undefined}
 												data-invalid={refused ? '' : undefined}
 												data-disabled={disabled ? '' : undefined}
@@ -510,112 +531,114 @@ export function DateRangeField({ id, legend, hint, needed, disabled, from, to })
 						</DatePicker.Control>
 					</DateInput.Control>
 				</DateInput.Root>
-				<DatePicker.Positioner>
-					<DatePicker.Content className="adm-cal">
-						<DatePicker.View view="day">
-							<DatePicker.Context>
-								{(cal) => (
-									<>
-										<CalendarHead />
-										<DatePicker.Table className="adm-cal__grid">
-											<DatePicker.TableHead>
-												<DatePicker.TableRow>
-													{cal.weekDays.map((weekday) => (
-														<DatePicker.TableHeader
-															className="adm-cal__weekday"
-															key={weekday.long}
-															aria-label={weekday.long}
-														>
-															{weekday.narrow}
-														</DatePicker.TableHeader>
+				<Portal container={layer}>
+					<DatePicker.Positioner>
+						<DatePicker.Content className="adm-cal">
+							<DatePicker.View view="day">
+								<DatePicker.Context>
+									{(cal) => (
+										<>
+											<CalendarHead />
+											<DatePicker.Table className="adm-cal__grid">
+												<DatePicker.TableHead>
+													<DatePicker.TableRow>
+														{cal.weekDays.map((weekday) => (
+															<DatePicker.TableHeader
+																className="adm-cal__weekday"
+																key={weekday.long}
+																aria-label={weekday.long}
+															>
+																{weekday.narrow}
+															</DatePicker.TableHeader>
+														))}
+													</DatePicker.TableRow>
+												</DatePicker.TableHead>
+												<DatePicker.TableBody>
+													{cal.weeks.map((week) => (
+														<DatePicker.TableRow key={week[0]?.toString()}>
+															{week.map((date) => (
+																<DatePicker.TableCell
+																	className="adm-cal__cell"
+																	key={date.toString()}
+																	value={date}
+																>
+																	<DatePicker.TableCellTrigger className="adm-cal__pick">
+																		{date.day}
+																	</DatePicker.TableCellTrigger>
+																</DatePicker.TableCell>
+															))}
+														</DatePicker.TableRow>
 													))}
-												</DatePicker.TableRow>
-											</DatePicker.TableHead>
-											<DatePicker.TableBody>
-												{cal.weeks.map((week) => (
-													<DatePicker.TableRow key={week[0]?.toString()}>
-														{week.map((date) => (
-															<DatePicker.TableCell
-																className="adm-cal__cell"
-																key={date.toString()}
-																value={date}
-															>
-																<DatePicker.TableCellTrigger className="adm-cal__pick">
-																	{date.day}
-																</DatePicker.TableCellTrigger>
-															</DatePicker.TableCell>
-														))}
-													</DatePicker.TableRow>
-												))}
-											</DatePicker.TableBody>
-										</DatePicker.Table>
-									</>
-								)}
-							</DatePicker.Context>
-						</DatePicker.View>
-						{/* the month and the year, reached by the press in the middle of the head above, for
-						    ./DateField.jsx's reason: they are what stops a day two years back being
-						    twenty-four presses of the step beside it. they are drawn whatever the range
-						    holds, the one end and the hole at the front included: every cell either grid
-						    marks reads the pair's two days for a day that is really there. */}
-						<DatePicker.View view="month">
-							<DatePicker.Context>
-								{(cal) => (
-									<>
-										<CalendarHead />
-										<DatePicker.Table className="adm-cal__grid" columns={4}>
-											<DatePicker.TableBody>
-												{cal.getMonthsGrid({ columns: 4, format: 'short' }).map((row) => (
-													<DatePicker.TableRow key={row[0]?.value}>
-														{row.map((month) => (
-															<DatePicker.TableCell
-																className="adm-cal__cell"
-																key={month.value}
-																value={month.value}
-															>
-																<DatePicker.TableCellTrigger className="adm-cal__pick">
-																	{month.label}
-																</DatePicker.TableCellTrigger>
-															</DatePicker.TableCell>
-														))}
-													</DatePicker.TableRow>
-												))}
-											</DatePicker.TableBody>
-										</DatePicker.Table>
-									</>
-								)}
-							</DatePicker.Context>
-						</DatePicker.View>
-						<DatePicker.View view="year">
-							<DatePicker.Context>
-								{(cal) => (
-									<>
-										<CalendarHead />
-										<DatePicker.Table className="adm-cal__grid" columns={4}>
-											<DatePicker.TableBody>
-												{cal.getYearsGrid({ columns: 4 }).map((row) => (
-													<DatePicker.TableRow key={row[0]?.value}>
-														{row.map((year) => (
-															<DatePicker.TableCell
-																className="adm-cal__cell"
-																key={year.value}
-																value={year.value}
-															>
-																<DatePicker.TableCellTrigger className="adm-cal__pick">
-																	{year.label}
-																</DatePicker.TableCellTrigger>
-															</DatePicker.TableCell>
-														))}
-													</DatePicker.TableRow>
-												))}
-											</DatePicker.TableBody>
-										</DatePicker.Table>
-									</>
-								)}
-							</DatePicker.Context>
-						</DatePicker.View>
-					</DatePicker.Content>
-				</DatePicker.Positioner>
+												</DatePicker.TableBody>
+											</DatePicker.Table>
+										</>
+									)}
+								</DatePicker.Context>
+							</DatePicker.View>
+							{/* the month and the year, reached by the press in the middle of the head above, for
+							    ./DateField.jsx's reason: they are what stops a day two years back being
+							    twenty-four presses of the step beside it. they are drawn whatever the range
+							    holds, the one end and the hole at the front included: every cell either grid
+							    marks reads the pair's two days for a day that is really there. */}
+							<DatePicker.View view="month">
+								<DatePicker.Context>
+									{(cal) => (
+										<>
+											<CalendarHead />
+											<DatePicker.Table className="adm-cal__grid" columns={4}>
+												<DatePicker.TableBody>
+													{cal.getMonthsGrid({ columns: 4, format: 'short' }).map((row) => (
+														<DatePicker.TableRow key={row[0]?.value}>
+															{row.map((month) => (
+																<DatePicker.TableCell
+																	className="adm-cal__cell"
+																	key={month.value}
+																	value={month.value}
+																>
+																	<DatePicker.TableCellTrigger className="adm-cal__pick">
+																		{month.label}
+																	</DatePicker.TableCellTrigger>
+																</DatePicker.TableCell>
+															))}
+														</DatePicker.TableRow>
+													))}
+												</DatePicker.TableBody>
+											</DatePicker.Table>
+										</>
+									)}
+								</DatePicker.Context>
+							</DatePicker.View>
+							<DatePicker.View view="year">
+								<DatePicker.Context>
+									{(cal) => (
+										<>
+											<CalendarHead />
+											<DatePicker.Table className="adm-cal__grid" columns={4}>
+												<DatePicker.TableBody>
+													{cal.getYearsGrid({ columns: 4 }).map((row) => (
+														<DatePicker.TableRow key={row[0]?.value}>
+															{row.map((year) => (
+																<DatePicker.TableCell
+																	className="adm-cal__cell"
+																	key={year.value}
+																	value={year.value}
+																>
+																	<DatePicker.TableCellTrigger className="adm-cal__pick">
+																		{year.label}
+																	</DatePicker.TableCellTrigger>
+																</DatePicker.TableCell>
+															))}
+														</DatePicker.TableRow>
+													))}
+												</DatePicker.TableBody>
+											</DatePicker.Table>
+										</>
+									)}
+								</DatePicker.Context>
+							</DatePicker.View>
+						</DatePicker.Content>
+					</DatePicker.Positioner>
+				</Portal>
 			</DatePicker.Root>
 			{needed ? (
 				<FieldMessage tone="needed" id={`${id}-need`}>

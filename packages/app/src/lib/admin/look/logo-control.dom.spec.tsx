@@ -145,4 +145,23 @@ describe('the report', () => {
 		act(() => redo?.click());
 		expect(onUndo).toHaveBeenCalledOnce();
 	});
+
+	it('draws Redo with the redo mark and Undo with the undo mark', () => {
+		const press = (host: HTMLElement, word: string) =>
+			[...host.querySelectorAll('button')].find((one) => one.textContent === word);
+		const drawn = (button: HTMLButtonElement | undefined) =>
+			[...(button?.querySelector('svg')?.classList ?? [])].filter((name) =>
+				/^lucide-(undo|redo)-2$/.test(name)
+			);
+
+		const { host, redraw } = mount(
+			<LogoControl {...props({ report: { landed: 'saved', onUndo: () => {} } })} />
+		);
+		expect(drawn(press(host, 'Undo'))).toEqual(['lucide-undo-2']);
+
+		redraw(
+			<LogoControl {...props({ report: { landed: 'saved', onUndo: () => {}, redo: true } })} />
+		);
+		expect(drawn(press(host, 'Redo'))).toEqual(['lucide-redo-2']);
+	});
 });
