@@ -264,7 +264,9 @@
 	   `.adm-slab--oneline`, where the ring lands on a box whose descendant is what the keyboard
 	   reached and no selector here can match it, and `.adm-datebox__chunk`, which takes this
 	   rule's shadow back and keeps the outline inset, so that a chunk whose own band a forced
-	   scheme has painted over still says it is the one holding the caret.
+	   scheme has painted over still says it is the one holding the caret, and
+	   `.adm-editor__frame`, whose framed document paints over any shadow inside its box and
+	   whose edges meet the viewport, so its ring is the outline itself, drawn inset.
 	   it goes on the focused state and on no other: forced colours paints a resting outline as
 	   willingly as a focused one, so a control declaring one at rest is ringed while nothing is
 	   on it.
