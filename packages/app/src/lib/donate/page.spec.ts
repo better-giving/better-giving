@@ -25,7 +25,8 @@ import {
 	declared,
 	overWhite,
 	resolve,
-	type Scope
+	type Scope,
+	substitute
 } from './page-colour.testing';
 import { PageRoot } from './page-root';
 
@@ -370,15 +371,196 @@ describe('the goal track', () => {
 	);
 });
 
+/** a length expression, its `var()`s substituted, in px: `rem`, `px`, `em`, `cqi` and `%` inside
+ * `calc()`, `clamp()`, `min()` and `max()`. anything else throws and names itself. */
+function px(text: string, units: { cqi: number; em: number; percent: number }): number {
+	const tokens = text.match(/-?[\d.]+[a-z%]*|[a-z-]+\(|[()+*/,-]/g) ?? [];
+	let at = 0;
+	const next = () => tokens[at++] ?? '';
+	const peek = () => tokens[at] ?? '';
+	const args = (): number[] => {
+		const found = [sum()];
+		while (peek() === ',') {
+			next();
+			found.push(sum());
+		}
+		if (next() !== ')') throw new Error(`unclosed call in ${text}`);
+		return found;
+	};
+	const unit = (token: string) => {
+		const m = /^(-?[\d.]+)([a-z%]*)$/.exec(token);
+		if (!m) throw new Error(`no length at ${token} in ${text}`);
+		const value = Number(m[1]);
+		const per: Record<string, number> = {
+			'': 1,
+			px: 1,
+			rem: 16,
+			em: units.em,
+			cqi: units.cqi,
+			'%': units.percent / 100
+		};
+		const scale = per[m[2] ?? ''];
+		if (scale === undefined) throw new Error(`no unit ${m[2]} in ${text}`);
+		return value * scale;
+	};
+	const atom = (): number => {
+		const token = next();
+		if (token === '(' || token === 'calc(') {
+			const value = sum();
+			if (next() !== ')') throw new Error(`unclosed ( in ${text}`);
+			return value;
+		}
+		if (token === 'clamp(') {
+			const [low = 0, value = 0, high = 0] = args();
+			return Math.max(low, Math.min(value, high));
+		}
+		if (token === 'min(') return Math.min(...args());
+		if (token === 'max(') return Math.max(...args());
+		return unit(token);
+	};
+	const product = (): number => {
+		let value = atom();
+		while (peek() === '*' || peek() === '/')
+			value = next() === '*' ? value * atom() : value / atom();
+		return value;
+	};
+	function sum(): number {
+		let value = product();
+		while (peek() === '+' || peek() === '-')
+			value = next() === '+' ? value + product() : value - product();
+		return value;
+	}
+	const value = sum();
+	if (at !== tokens.length)
+		throw new Error(`left over after ${tokens.slice(0, at).join(' ')} in ${text}`);
+	return value;
+}
+
+/** the top-level comma-separated parts of a function's arguments. */
+function parts(text: string) {
+	const found: string[] = [];
+	let depth = 0;
+	let from = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === '(') depth++;
+		else if (text[i] === ')') depth--;
+		else if (text[i] === ',' && depth === 0) {
+			found.push(text.slice(from, i).trim());
+			from = i + 1;
+		}
+	}
+	found.push(text.slice(from).trim());
+	return found;
+}
+
+/**
+ * the scrim's colour and alpha at `fromBottom` px up an element `height` px tall: a
+ * `linear-gradient(to top, …)` of one colour at several alphas, whose stops interpolate as a
+ * premultiplied colour does, so only the alpha moves.
+ */
+function scrimAt(gradient: string, height: number, fromBottom: number) {
+	const inner = /^linear-gradient\((.*)\)$/.exec(gradient)?.[1];
+	const [direction, ...stops] = parts(inner ?? '');
+	if (direction !== 'to top' || stops.length < 2) throw new Error(`not a scrim: ${gradient}`);
+	let last = 0;
+	const placed = stops.map((stop, i) => {
+		const m = /^(oklch\(([^/]+)\/\s*([\d.]+)\))\s*(.*)$/.exec(stop);
+		if (!m) throw new Error(`no translucent stop in ${stop}`);
+		const position = m[4]
+			? px(m[4], { cqi: Number.NaN, em: Number.NaN, percent: height })
+			: i === 0
+				? 0
+				: i === stops.length - 1
+					? height
+					: Number.NaN;
+		if (Number.isNaN(position)) throw new Error(`a middle stop with no position in ${gradient}`);
+		// a stop placed before the one ahead of it is moved up to it.
+		last = Math.max(last, position);
+		return { base: m[2] ?? '', alpha: Number(m[3]), at: last };
+	});
+	const first = placed[0];
+	const final = placed.at(-1);
+	if (!first || !final || placed.some((stop) => stop.base !== first.base))
+		throw new Error(`a scrim of more than one colour: ${gradient}`);
+	let alpha = fromBottom <= first.at ? first.alpha : final.alpha;
+	for (let i = 1; i < placed.length; i++) {
+		const [below, above] = [placed[i - 1], placed[i]];
+		if (below && above && fromBottom > below.at && fromBottom <= above.at) {
+			const run = above.at - below.at;
+			alpha =
+				run === 0
+					? above.alpha
+					: below.alpha + ((fromBottom - below.at) / run) * (above.alpha - below.alpha);
+		}
+	}
+	return { base: colour(`oklch(${first.base})`), alpha };
+}
+
 describe('the scrim under the cover title', () => {
+	const WIDE = '@container page (min-width: 60rem)';
+	const ink = resolve(scopeFor('plain', 'light', 'none', null), '--_n1');
+
 	it('holds the title ink at 4.5:1 over a white photo at its darkest stop', () => {
 		const scrim = declared(page, '.page > .page-ground')['--page-scrim'] ?? '';
 		const stop = /oklch\(([^/]+)\/\s*([\d.]+)\)/.exec(scrim);
 		if (!stop) throw new Error(`no translucent stop in ${scrim}`);
 		const ground = overWhite(colour(`oklch(${stop[1]})`), Number(stop[2]));
-		const ink = resolve(scopeFor('plain', 'light', 'none', null), '--_n1');
 		expect(contrast(ink, ground)).toBeGreaterThanOrEqual(4.5);
 	});
+
+	// the over-element is the cover's scrim run, the title and its lede, and the run under them;
+	// its height is theirs, and the first line's box starts where the run above it ends, since a
+	// block's headings carry no margin. white is the worst photo under a dark scrim.
+	it.each([
+		[375, 1, 'no lede', 0],
+		[375, 2, 'no lede', 0],
+		[375, 1, 'a three-line lede', 3],
+		[375, 2, 'a three-line lede', 3],
+		[1280, 1, 'no lede', 0],
+		[1280, 2, 'no lede', 0],
+		[1280, 1, 'a two-line lede', 2],
+		[1280, 2, 'a two-line lede', 2]
+	])(
+		'holds the title ink at 4.5:1 at the top of its first line, %ipx wide, a %i-line title and %s',
+		(width, titleLines, _lede, ledeLines) => {
+			// what a rule declares at the narrow widths, and what the widest breakpoint adds over it.
+			const cascade = (selector: string) => ({
+				...declared(page, selector),
+				...(width >= 60 * 16
+					? page.find(({ at }) => at.join(' » ') === `${WIDE} » ${selector}`)?.decls
+					: {})
+			});
+			const scope: Scope = {
+				...scopeFor('plain', 'light', 'none', null),
+				...cascade('.page > .page-ground')
+			};
+			const over = cascade('.page-hero-over');
+			const length = (text: string, em = Number.NaN) =>
+				px(substitute(scope, text), { cqi: width / 100, em, percent: Number.NaN });
+			const number = (name: string) => Number(substitute(scope, `var(${name})`));
+
+			const [start = '', end = start] = parts(
+				(over['padding-block'] ?? '').replace(/ (?![^(]*\))/g, ',')
+			);
+			const runAbove = length(start);
+			const runUnder = length(over['padding-block-end'] ?? end);
+			const display = length('var(--page-display)');
+			const lede = length('var(--page-lede)');
+			const title = titleLines * display * number('--page-lh-display');
+			const ledeBlock =
+				ledeLines === 0
+					? 0
+					: length('var(--_sp4)', lede) + ledeLines * lede * number('--page-lh-lede');
+			const height = runAbove + title + ledeBlock + runUnder;
+
+			const { base, alpha } = scrimAt(
+				substitute(scope, over.background ?? ''),
+				height,
+				height - runAbove
+			);
+			expect(contrast(ink, overWhite(base, alpha))).toBeGreaterThanOrEqual(4.5);
+		}
+	);
 });
 
 describe('the blocks ./page.css draws', () => {
