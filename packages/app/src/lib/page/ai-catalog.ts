@@ -33,6 +33,7 @@ import {
 	type Page,
 	TIERS_MAX
 } from './catalog';
+import { isPhotoType } from './illustration';
 import type { Layout, PageType, Palette } from './keys';
 import { LIST_DEPTH_MAX } from '../rich-text/document';
 
@@ -57,9 +58,6 @@ export const illustrationRequest = z.strictObject({
 			error: `an illustration’s description holds at most ${ALT_MAX} characters`
 		})
 });
-
-/** the blocks a photo sits in, whose `imageId` a reply may ask an illustration for. */
-const PHOTO_BLOCKS: readonly BlockType[] = ['hero', 'image'];
 
 // the prompt's type rendering cannot show a list item's content, a tuple.
 const RICH_TEXT = `a rich-text document; a listItem's content is one paragraph, then any paragraphs, bulletLists and orderedLists, nested at most ${LIST_DEPTH_MAX} lists deep`;
@@ -147,7 +145,7 @@ export function pageCatalog(type: PageType) {
 	for (const block of BLOCK_TYPES) {
 		const { variants, backgrounds, pages } = BLOCKS[block];
 		if (!(pages as readonly PageType[]).includes(type)) continue;
-		const data: z.ZodRawShape = PHOTO_BLOCKS.includes(block)
+		const data: z.ZodRawShape = isPhotoType(block)
 			? { ...BLOCK_DATA[block], imageId: BLOCK_DATA.hero.imageId.or(illustrationRequest) }
 			: BLOCK_DATA[block];
 		components[componentName(block)] = {

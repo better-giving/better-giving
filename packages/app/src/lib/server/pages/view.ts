@@ -40,8 +40,8 @@ import { pageGoal } from './goal';
 // the organisation's story, look and sharing are read live on every draw, so a save on the
 // dashboard's organisation page reaches every page at once, and so is a campaign's raised figure
 // (./goal.ts), a sum over the books that is never cached. which of its pictures an AI drew is read
-// on every draw too, one read of their kinds (../../page/illustration.ts), so a photo put in one's
-// place clears the mark on the next.
+// on every draw too, by their kinds (`illustrationsAmong` in ../images/queries.ts), so a photo put
+// in one's place clears the mark on the next.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {

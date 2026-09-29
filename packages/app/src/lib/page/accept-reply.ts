@@ -20,8 +20,9 @@
 // the mode it leaves — so the reply's own words can be held to what it did. a rename is from the
 // draft's own name where it holds one, and from the dashboard's otherwise.
 //
-// the model's answer is text nobody checked, so its size is bounded before anything reads it: the
-// text at `REPLY_BYTES_MAX`, its nesting before the schema walks it, a patch at `OPS_MAX`
+// the model's answer is text nobody checked, so its size is bounded before anything reads it
+// (`readReply`, which $lib/server/pages/draft.ts reads a reply through too): the text at
+// `REPLY_BYTES_MAX`, its nesting before the schema walks it, a patch at `OPS_MAX`
 // operations, and the page after every operation at `DRAFT_BYTES_MAX` as JSON and `DEPTH_MAX`
 // levels, so an edit that copies the page into itself is stopped as it grows.
 //
@@ -32,15 +33,16 @@
 //   page already held the same tier, amount and words alike. any other tier — one whose words the
 //   reply rewrote included — is dropped and noted, and the rest of the reply lands.
 // - a figure in the words: a new campaign name and every string a block draws — a heading, a lede,
-//   what a tier buys, a question, each paragraph of a story or an answer — may hold only figures the operator wrote in
-//   the chat or the page already draws, in its words, its tiers' amounts or its goal — the goal
-//   this same reply sets included. any other refuses the reply, naming the figure. a donor reads a
-//   figure as a promise the model cannot check.
+//   what a tier buys, a question, each paragraph of a story or an answer — and each illustration's
+//   description may hold only figures the operator wrote in the chat or the page already draws, in
+//   its words, its tiers' amounts or its goal — the goal this same reply sets included. any other
+//   refuses the reply, naming the figure. a donor reads a figure as a promise the model cannot
+//   check.
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat or
 //   one `current` already places, or the reply is refused. that it names a stored image is
 //   $lib/server/pages/draft.ts's to check, and that it is an id and never an address the catalog's.
 //   an illustration asked for in an `imageId`'s place is `illustrationRequests`' to read, and
-//   reaches this rule as the id drawn for it, attached in this chat, or as null.
+//   reaches this rule as the id drawn for it, placeable this turn, or as null.
 // - a block its page type does not take, and everything else about a page's shape, is
 //   `parsePage`'s, which the draft passes last.
 //
@@ -146,8 +148,13 @@ export type AcceptInput = {
 	name: string | null;
 	/** the model's answer as it arrived. */
 	reply: string;
-	/** the image ids attached in any turn of this page's chat. */
+	/** the image ids placeable this turn: attached in any turn of this page's chat, or drawn now. */
 	attached: readonly string[];
+	/**
+	 * what each illustration this reply asked for described (`illustrationRequests`), held to the
+	 * figure rule as a block's words are, since it is the picture's prompt and its alt text.
+	 */
+	illustrations: readonly IllustrationRequest[];
 	messages: readonly ChatMessage[];
 	activePrograms: readonly ActiveProgram[];
 	/** the IANA zone of the browser that posted the chat turn; an end date is a day there. */
@@ -193,19 +200,9 @@ function accept(input: AcceptInput): Accepted | Refused {
 	const { type, current } = input;
 	const refuse = (reason: string): Refused => ({ ok: false, reason, current });
 
-	if (new TextEncoder().encode(input.reply).byteLength > REPLY_BYTES_MAX) {
-		return refuse(`the reply is over ${REPLY_BYTES_MAX} bytes`);
-	}
-	let json: unknown;
-	try {
-		json = JSON.parse(input.reply);
-	} catch {
-		return refuse('the reply is not JSON');
-	}
-	if (deeperThan(json, REPLY_DEPTH_MAX)) {
-		return refuse(`the reply nests deeper than ${REPLY_DEPTH_MAX}`);
-	}
-	const parsed = replySchema.safeParse(json);
+	const read = readReply(input.reply);
+	if (!read.ok) return refuse(read.reason);
+	const parsed = replySchema.safeParse(read.json);
 	if (!parsed.success) return refuse(issueText(parsed.error.issues));
 	const reply = parsed.data;
 
@@ -262,6 +259,10 @@ function accept(input: AcceptInput): Accepted | Refused {
 		...blocks.map((block, index) => ({
 			where: `block ${index + 1} (id "${block.id}")`,
 			texts: textsIn(block)
+		})),
+		...input.illustrations.map(({ path, description }) => ({
+			where: path.join('.'),
+			texts: [description]
 		}))
 	];
 	for (const { where, texts } of worded) {
@@ -292,43 +293,58 @@ function accept(input: AcceptInput): Accepted | Refused {
 	};
 }
 
+/**
+ * the model's answer read as JSON, within the bounds that come before anything walks it: its text
+ * at `REPLY_BYTES_MAX` and its nesting at `REPLY_DEPTH_MAX`.
+ */
+export function readReply(
+	text: string
+): { ok: true; json: unknown } | { ok: false; reason: string } {
+	if (new TextEncoder().encode(text).byteLength > REPLY_BYTES_MAX) {
+		return { ok: false, reason: `the reply is over ${REPLY_BYTES_MAX} bytes` };
+	}
+	let json: unknown;
+	try {
+		json = JSON.parse(text);
+	} catch {
+		return { ok: false, reason: 'the reply is not JSON' };
+	}
+	if (deeperThan(json, REPLY_DEPTH_MAX)) {
+		return { ok: false, reason: `the reply nests deeper than ${REPLY_DEPTH_MAX}` };
+	}
+	return { ok: true, json };
+}
+
+/** an illustration a reply asked for: its description, trimmed, and where in the reply it was. */
+export type IllustrationRequest = { description: string; path: (string | number)[] };
+
 /** the illustrations a reply asks for, in the order it wrote them, and how the reply takes them. */
 export type IllustrationRequests =
 	| {
 			ok: true;
-			descriptions: string[];
+			requests: IllustrationRequest[];
 			/**
-			 * the reply's text with each request replaced by the image id at its index, null where the
-			 * picture was not drawn: a reply `acceptReply` reads like any other.
+			 * the reply as text with each request replaced by the image id at its index, null where no
+			 * picture stands for it: a reply `acceptReply` reads like any other. each call replaces
+			 * every request afresh.
 			 */
 			place: (imageIds: readonly (string | null)[]) => string;
 	  }
 	| { ok: false; reason: string };
 
 /**
- * each `{ "illustrate": … }` a reply writes where a photo's `imageId` goes — as that key's value
- * inside a page edit, or as the value of a patch operation whose path ends at it — with its
- * description trimmed. a request whose description breaks `illustrationRequest` refuses the reply,
- * as `say` past its length does; one anywhere else is left standing for `parsePage` to refuse. a
- * reply this door would refuse before reading it has no requests, and `place` hands it back as it
- * came.
+ * each `{ "illustrate": … }` a reply, as `readReply` read it, writes where a photo's `imageId`
+ * goes — as that key's value inside a page edit, or as the value of a patch operation whose path
+ * ends at it. a request off `illustrationRequest` — a blank description, one past its length, a
+ * key beside it — refuses the reply, as `say` past its length does; one anywhere else is left
+ * standing for `parsePage` to refuse. a reply with no page edit has none.
  */
-export function illustrationRequests(reply: string): IllustrationRequests {
-	const none = { ok: true as const, descriptions: [], place: () => reply };
-	if (new TextEncoder().encode(reply).byteLength > REPLY_BYTES_MAX) return none;
-	let json: unknown;
-	try {
-		json = JSON.parse(reply);
-	} catch {
-		return none;
-	}
-	if (deeperThan(json, REPLY_DEPTH_MAX) || !isRecord(json) || !isRecord(json.page)) return none;
-
+export function illustrationRequests(json: unknown): IllustrationRequests {
 	const found: RequestSite[] = [];
-	const { page } = json;
-	if (page.kind === 'patch' && Array.isArray(page.ops)) {
-		page.ops.forEach((op: unknown, index) => {
-			if (!isRecord(op) || !('value' in op)) return;
+	const page = isRecord(json) ? json.page : undefined;
+	if (isRecord(page) && page.kind === 'patch' && Array.isArray(page.ops)) {
+		for (const [index, op] of page.ops.entries()) {
+			if (!isRecord(op) || !('value' in op)) continue;
 			const at = ['page', 'ops', index, 'value'];
 			const target = typeof op.path === 'string' ? pointer(op.path) : null;
 			if (target?.at(-1) === 'imageId' && isRequest(op.value)) {
@@ -342,12 +358,12 @@ export function illustrationRequests(reply: string): IllustrationRequests {
 			} else {
 				found.push(...requestsIn(op.value, at));
 			}
-		});
-	} else if (page.kind === 'merge') {
+		}
+	} else if (isRecord(page) && page.kind === 'merge') {
 		found.push(...requestsIn(page.doc, ['page', 'doc']));
 	}
 
-	const descriptions: string[] = [];
+	const requests: IllustrationRequest[] = [];
 	for (const { value, path } of found) {
 		const read = illustrationRequest.safeParse(value);
 		if (!read.success) {
@@ -357,11 +373,11 @@ export function illustrationRequests(reply: string): IllustrationRequests {
 				reason: located([...path, ...(issue?.path ?? [])].filter(isKey), issue?.message ?? '')
 			};
 		}
-		descriptions.push(read.data.illustrate);
+		requests.push({ description: read.data.illustrate, path: [...path, 'illustrate'] });
 	}
 	return {
 		ok: true,
-		descriptions,
+		requests,
 		place: (imageIds) => {
 			for (const [index, { set }] of found.entries()) set(imageIds[index] ?? null);
 			return JSON.stringify(json);

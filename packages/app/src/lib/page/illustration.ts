@@ -4,9 +4,15 @@
 // `illustration` on what a donor page and the editor are drawn with, and no stored page carries it.
 //
 // pure and not under `$lib/server/**`: the donor page and the editor draw what these return.
-import type { Block, Page } from './catalog';
+import type { Block, BlockType, Page } from './catalog';
 
-type PhotoBlock = Extract<Block, { type: 'hero' | 'image' }>;
+type PhotoType = Extract<BlockType, 'hero' | 'image'>;
+type PhotoBlock = Extract<Block, { type: PhotoType }>;
+
+/** the blocks a picture sits in: a hero and an image block. */
+export function isPhotoType(type: BlockType): type is PhotoType {
+	return type === 'hero' || type === 'image';
+}
 
 /** a block as a donor page draws it: a hero or an image block marked where its picture was drawn. */
 export type MarkedBlock = Exclude<Block, PhotoBlock> | (PhotoBlock & { illustration: boolean });
@@ -35,5 +41,5 @@ export function isIllustrated(block: Block, illustrations: ReadonlySet<string>):
 }
 
 function isPhotoBlock(block: Block): block is PhotoBlock {
-	return block.type === 'hero' || block.type === 'image';
+	return isPhotoType(block.type);
 }

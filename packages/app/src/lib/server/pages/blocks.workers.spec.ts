@@ -7,7 +7,7 @@ import { defaultCampaign } from '../../page/defaults';
 import type { RichTextDocument } from '../../rich-text/document';
 import { createDb, type Db } from '../db/client';
 import { createImage } from '../images/queries';
-import { editorDraft, saveBlockForm } from './blocks';
+import { draftIllustrations, editorDraft, saveBlockForm } from './blocks';
 import { draftTurn } from './draft';
 import { answering, insertPage, SETTINGS } from './page-row.testing';
 import { readPage } from './queries';
@@ -361,7 +361,7 @@ describe('a photo', () => {
 		const pageId = await insertPage(db, 'campaign', draft);
 		const hero = async () => {
 			const { row } = await stored(pageId);
-			const { blocks } = await editorDraft(db, row, SETTINGS.currency);
+			const { blocks } = editorDraft(row, SETTINGS.currency, await draftIllustrations(db, row));
 			return blocks.find((block) => block.id === 'hero');
 		};
 		expect(await hero()).toMatchObject({ illustration: true });

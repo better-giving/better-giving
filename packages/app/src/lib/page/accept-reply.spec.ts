@@ -43,6 +43,7 @@ function accept(reply: unknown, rest: Partial<Parameters<typeof acceptReply>[0]>
 		reply: typeof reply === 'string' ? reply : JSON.stringify(reply),
 		attached: [],
 		messages: [],
+		illustrations: [],
 		activePrograms: [],
 		timeZone: 'America/New_York',
 		now: Date.parse('2026-09-28T16:00:00Z'),
@@ -1022,9 +1023,12 @@ describe('an illustration a reply asks for', () => {
 			}
 		});
 
-		const asked = illustrationRequests(reply);
+		const asked = illustrationRequests(JSON.parse(reply));
 
-		expect(asked.ok && asked.descriptions).toEqual(['a coat rack', 'a van']);
+		expect(asked.ok && asked.requests.map(({ description }) => description)).toEqual([
+			'a coat rack',
+			'a van'
+		]);
 		if (!asked.ok) return;
 		const result = accept(asked.place([drawn, null]), { attached: [drawn] });
 		expect(result.ok && result.draft.blocks.slice(0, 2)).toMatchObject([
@@ -1037,9 +1041,9 @@ describe('an illustration a reply asks for', () => {
 		const blocks = [...draftFromPage(campaign()).blocks, image({ illustrate: 'a van' })];
 		const reply = JSON.stringify({ say: 'A picture.', page: { kind: 'merge', doc: { blocks } } });
 
-		const asked = illustrationRequests(reply);
+		const asked = illustrationRequests(JSON.parse(reply));
 
-		expect(asked.ok && asked.descriptions).toEqual(['a van']);
+		expect(asked.ok && asked.requests.map(({ description }) => description)).toEqual(['a van']);
 		if (!asked.ok) return;
 		const result = accept(asked.place([drawn]), { attached: [drawn] });
 		expect(result.ok && result.draft.blocks.at(-1)).toMatchObject({
@@ -1059,10 +1063,67 @@ describe('an illustration a reply asks for', () => {
 			}
 		});
 
-		expect(illustrationRequests(reply)).toEqual({
+		expect(illustrationRequests(JSON.parse(reply))).toEqual({
 			ok: false,
 			reason: `page.ops.0.value.props.imageId.illustrate: an illustration’s description holds at most ${ALT_MAX} characters`
 		});
+	});
+
+	it.each([
+		[
+			'blank',
+			{ illustrate: '  ' },
+			'page.ops.0.value.illustrate: an illustration request describes the picture wanted'
+		],
+		[
+			'beside an id',
+			{ illustrate: 'a van', id: '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f' },
+			'page.ops.0.value: '
+		]
+	])('refuses the reply when %s, naming where it was asked', (_, value, reason) => {
+		const reply = {
+			say: 'A picture.',
+			page: { kind: 'patch', ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value }] }
+		};
+
+		expect(illustrationRequests(reply)).toEqual({
+			ok: false,
+			reason: expect.stringContaining(reason)
+		});
+	});
+
+	it('whose description holds a figure the operator never wrote refuses the reply, naming where it was asked', () => {
+		const reply = {
+			say: 'A picture.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'replace',
+						path: '/blocks/0/props/imageId',
+						value: { illustrate: 'a banner reading $50,000 raised' }
+					}
+				]
+			}
+		};
+		const asked = illustrationRequests(reply);
+		if (!asked.ok) throw new Error(asked.reason);
+
+		expect(
+			accept(asked.place([drawn]), { attached: [drawn], illustrations: asked.requests })
+		).toMatchObject({
+			ok: false,
+			reason:
+				'page.ops.0.value.illustrate: "$50,000" is not a figure the operator wrote in the chat or one the page already shows'
+		});
+		const stated = [{ author: 'operator' as const, text: 'we raised $50,000 last year' }];
+		expect(
+			accept(asked.place([drawn]), {
+				attached: [drawn],
+				illustrations: asked.requests,
+				messages: stated
+			})
+		).toMatchObject({ ok: true });
 	});
 
 	it('anywhere but an imageId is no request, and the reply is refused as off the page’s shape', () => {
@@ -1074,9 +1135,9 @@ describe('an illustration a reply asks for', () => {
 			}
 		});
 
-		const asked = illustrationRequests(reply);
+		const asked = illustrationRequests(JSON.parse(reply));
 
-		expect(asked.ok && asked.descriptions).toEqual([]);
+		expect(asked.ok && asked.requests.map(({ description }) => description)).toEqual([]);
 		expect(accept(asked.ok ? asked.place([]) : reply)).toMatchObject({
 			ok: false,
 			reason: expect.stringContaining('blocks.0.props.alt: ')

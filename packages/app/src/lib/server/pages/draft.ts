@@ -7,8 +7,10 @@ import {
 	acceptReply,
 	type Change,
 	type ChatMessage as AcceptMessage,
+	type IllustrationRequest,
 	illustrationRequests,
 	REPLY_JSON_SCHEMA,
+	readReply,
 	SAY_MAX
 } from '../../page/accept-reply';
 import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog } from '../../page/ai-catalog';
@@ -38,11 +40,12 @@ import { type ProgramOption, readActivePrograms } from '../programs/queries';
 // and the reply's `say`, cut at `SAY_MAX`. which model is `generate`'s, never the chat's.
 //
 // an illustration the reply asks for in a photo's place (`illustrationRequests` in
-// ../../page/accept-reply.ts) is drawn before `acceptReply` reads the reply, at most
-// `ILLUSTRATIONS_MAX` a turn and nothing where none is asked: each drawn id joins what this turn may
-// place and stands in the request's place, and one not drawn stands there as null, so its block is
-// left out as one with no photo is. a picture drawn for a reply then refused, or a turn gone stale,
-// stays stored and placed nowhere.
+// ../../page/accept-reply.ts) is drawn only for a reply `acceptReply` would take: the reply is read
+// first with `STAND_IN` in each request's place, and one refused then is refused with nothing drawn.
+// at most `ILLUSTRATIONS_MAX` are drawn a turn, and nothing where none is asked. each drawn id joins
+// what this turn may place and stands in the request's place, and one not drawn stands there as
+// null, so its block is left out as one with no photo is. a picture drawn for a turn that then goes
+// stale stays stored and placed nowhere.
 //
 // three outcomes, each one assistant turn, its `note` the column's word for it:
 // - accepted: the draft is replaced. the assistant's words are the reply's `say` on one line, then
@@ -68,6 +71,13 @@ export const TURN_IMAGES_MAX = 4;
 const HISTORY_TURNS = 20;
 
 const REFUSED_PREFIX = 'I couldn’t apply that: ';
+
+/**
+ * the id every illustration request stands as while the reply is first read, before any picture is
+ * drawn. a reply that stand-in cannot carry is refused with nothing drawn, and one it can carries
+ * the drawn ids or null alike.
+ */
+const STAND_IN = '00000000-0000-4000-8000-000000000000';
 
 export type TurnRequest = {
 	pageId: string;
@@ -148,29 +158,37 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 		return { ok: true, outcome: 'unanswered', turns: written };
 	}
 
-	const asked = illustrationRequests(answer.text);
-	const drawn = asked.ok ? await drawIllustrations(env, db, asked.descriptions) : [];
-	const madeIds = drawn.flatMap(({ imageId }) => (imageId === null ? [] : [imageId]));
-	const result = asked.ok
-		? acceptReply({
-				type: row.type,
-				current,
-				name: row.name,
-				reply: asked.place(drawn.map(({ imageId }) => imageId)),
-				attached: [...turns.flatMap(imageIdsOf), ...request.imageIds, ...madeIds],
-				messages: [...turns.map(acceptMessage), { author: 'operator', text: request.message }],
-				activePrograms: programs,
-				timeZone: request.timeZone,
-				now: request.now
-			})
-		: asked;
-
-	if (!result.ok) {
-		const text = `${REFUSED_PREFIX}${result.reason}`;
-		const assistant = assistantTurn(text, answer.model, 'refused');
+	const refusedFor = async (reason: string): Promise<TurnResult> => {
+		const assistant = assistantTurn(`${REFUSED_PREFIX}${reason}`, answer.model, 'refused');
 		const written = await writeTurns(db, row.id, [operator, assistant], onPage);
 		return { ok: true, outcome: 'refused', turns: written };
+	};
+
+	const read = readReply(answer.text);
+	const asked = read.ok ? illustrationRequests(read.json) : read;
+	if (!asked.ok) return refusedFor(asked.reason);
+	const placeable = [...turns.flatMap(imageIdsOf), ...request.imageIds];
+	const acceptWith = (placed: readonly (string | null)[]) =>
+		acceptReply({
+			type: row.type,
+			current,
+			name: row.name,
+			reply: asked.place(placed),
+			attached: [...placeable, ...placed.filter((id) => id !== null)],
+			illustrations: asked.requests,
+			messages: [...turns.map(acceptMessage), { author: 'operator', text: request.message }],
+			activePrograms: programs,
+			timeZone: request.timeZone,
+			now: request.now
+		});
+	let drawn: Drawn[] = [];
+	if (asked.requests.length > 0) {
+		const rehearsed = acceptWith(asked.requests.map(() => STAND_IN));
+		if (!rehearsed.ok) return refusedFor(rehearsed.reason);
+		drawn = await drawIllustrations(env, db, asked.requests);
 	}
+	const result = acceptWith(drawn.map(({ imageId }) => imageId));
+	if (!result.ok) return refusedFor(result.reason);
 
 	const draft = JSON.stringify(result.draft);
 	const summary = summarise(result, drawn, programs);
@@ -367,12 +385,12 @@ function contextLines({
 type Drawn = { description: string; imageId: string | null; honoured: boolean };
 
 /**
- * the first `ILLUSTRATIONS_MAX` of `descriptions` drawn, each its own prompt and alt text; any past
+ * the first `ILLUSTRATIONS_MAX` of `requests` drawn, each its own prompt and alt text; any past
  * them is drawn no picture, and an empty list asks nothing of the model.
  */
-function drawIllustrations(env: unknown, db: Db, descriptions: readonly string[]) {
+function drawIllustrations(env: unknown, db: Db, requests: readonly IllustrationRequest[]) {
 	return Promise.all(
-		descriptions.map(async (description, index): Promise<Drawn> => {
+		requests.map(async ({ description }, index): Promise<Drawn> => {
 			if (index >= ILLUSTRATIONS_MAX) return { description, imageId: null, honoured: false };
 			const made = await illustrate(env, db, { prompt: description, alt: description });
 			return { description, imageId: made.ok ? made.imageId : null, honoured: true };

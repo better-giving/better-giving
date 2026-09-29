@@ -7,7 +7,7 @@ import { createDb, type Db } from '../db/client';
 import { createImage } from '../images/queries';
 import { jpegHeader } from '../images/headers.testing';
 import { chatTurn, image, page } from '../db/schema';
-import { editorDraft } from './blocks';
+import { draftIllustrations, editorDraft } from './blocks';
 import { draftTurn, readChat } from './draft';
 import { answering, insertPage, SETTINGS } from './page-row.testing';
 
@@ -590,7 +590,7 @@ describe('an illustration the reply asks for', () => {
 		const hero = async () => {
 			const [row] = await db.select().from(page).where(eq(page.id, pageId));
 			if (!row) throw new Error('the page is gone');
-			const { blocks } = await editorDraft(db, row, SETTINGS.currency);
+			const { blocks } = editorDraft(row, SETTINGS.currency, await draftIllustrations(db, row));
 			return blocks.find((block) => block.id === 'hero');
 		};
 		expect(await hero()).toMatchObject({ illustration: true });
@@ -617,6 +617,35 @@ describe('an illustration the reply asks for', () => {
 
 		expect(await hero()).toMatchObject({ illustration: false });
 	});
+
+	it.each([
+		[
+			'refused on another ground',
+			[inHero('children in warm coats'), { op: 'replace', path: '/palette', value: 'neon' }],
+			'palette: '
+		],
+		['blank', [inHero('   ')], 'page.ops.0.value.illustrate: '],
+		[
+			'past a photo description’s length',
+			[inHero('x'.repeat(251))],
+			'page.ops.0.value.illustrate: '
+		],
+		['holding a figure nobody gave', [inHero('a banner reading $50,000 raised')], '"$50,000"']
+	])(
+		'in a reply %s draws nothing, stores no picture and refuses the turn',
+		async (_, ops, reason) => {
+			const pageId = await insertPage(db, 'campaign');
+			const before = await db.$count(image);
+			const AI = drawing({ say: 'A picture.', page: { kind: 'patch', ops } }, true);
+
+			expect(await turn(pageId, 'a picture please', AI)).toMatchObject({ outcome: 'refused' });
+
+			expect(AI.run).toHaveBeenCalledTimes(1);
+			expect(await db.$count(image)).toBe(before);
+			const [, answer] = await chat(pageId);
+			expect(answer?.text).toContain(reason);
+		}
+	);
 
 	it('that is not drawn leaves its block with no picture, and the rest of the reply lands', async () => {
 		const pageId = await insertPage(db, 'campaign');

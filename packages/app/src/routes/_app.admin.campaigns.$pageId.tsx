@@ -44,7 +44,7 @@ import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
@@ -153,7 +153,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	let settings: SettingsSeed;
 	let pageSettings: PageSettingsSeed;
 	let asked: string | null;
-	let drafted: Awaited<ReturnType<typeof editorDraft>>;
+	let illustrations: ReadonlySet<string>;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
@@ -162,19 +162,19 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	}
 	if (row === null || row.type !== 'campaign' || row.name === null) notFound(gone(params.pageId));
 	try {
-		[settings, pageSettings, asked] = await Promise.all([
+		[settings, pageSettings, asked, illustrations] = await Promise.all([
 			readEditorSettings(db, row),
 			readPageSettings(db, row),
-			addressAsked(db, row)
+			addressAsked(db, row),
+			draftIllustrations(db, row)
 		]);
-		drafted = await editorDraft(db, row, settings.currency);
 	} catch (e) {
-		console.error(`loading campaign ${params.pageId}'s settings failed:`, e);
+		console.error(`loading campaign ${params.pageId}'s settings and pictures failed:`, e);
 		loadFailed('This campaign');
 	}
 	return {
 		...editorPage(row, Date.now()),
-		...drafted,
+		...editorDraft(row, settings.currency, illustrations),
 		settings,
 		pageSettings,
 		name: row.name,

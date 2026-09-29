@@ -45,6 +45,17 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 // the block, its id and its variant; the photo it stood in for stays stored, since a published
 // page may still draw it.
 
+/** which of the draft's pictures an AI drew, read from their kinds. */
+export function draftIllustrations(db: Db, row: PageRow): Promise<ReadonlySet<string>> {
+	return illustrationsAmong(db, placedImageIds(storedDraft(row).page));
+}
+
+function storedDraft(row: PageRow) {
+	const draft = parsePage(row.type, JSON.parse(row.draft));
+	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
+	return draft;
+}
+
 const BLOCK_TITLE = defineForm({ id: BLOCK_FORMS.title, schema: BLOCK_TITLE_INPUT });
 const BLOCK_STORY = defineForm({ id: BLOCK_FORMS.story, schema: BLOCK_STORY_INPUT });
 const BLOCK_IMPACT_TIERS = defineForm({
@@ -78,13 +89,11 @@ type Words = {
 type ReadWords = { ok: true; read: Words } | { ok: false; refusal: RejectionReasons };
 
 /**
- * the draft's blocks and layout as the editor draws them; `currency` is the draft settings'. which
- * pictures an AI drew is one read of their kinds.
+ * the draft's blocks and layout as the editor draws them; `currency` is the draft settings', and
+ * `illustrations` `draftIllustrations`' answer.
  */
-export async function editorDraft(db: Db, row: PageRow, currency: string) {
-	const draft = parsePage(row.type, JSON.parse(row.draft));
-	if (!draft.ok) throw new Error(`page ${row.id}'s stored draft fails its rule: ${draft.message}`);
-	const illustrations = await illustrationsAmong(db, placedImageIds(draft.page));
+export function editorDraft(row: PageRow, currency: string, illustrations: ReadonlySet<string>) {
+	const draft = storedDraft(row);
 	return {
 		blocks: editorBlocks(draft.page, currency, illustrations),
 		layout: draft.page.layout,
