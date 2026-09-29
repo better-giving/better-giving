@@ -219,16 +219,18 @@ function newZapierKey(): string {
 }
 
 /**
- * the value after a `Bearer` scheme in an `Authorization` header, trimmed, or `null` for another
- * scheme: the one reading every key-authenticated surface takes. the scheme is case-insensitive,
- * as HTTP says every scheme is (https://www.rfc-editor.org/rfc/rfc9110#section-11.1), and must be
- * followed by whitespace, so `Bearerish x` is another scheme rather than this one. `Bearer` with
- * nothing after it is `''`, which no key's shape matches.
+ * the token an `Authorization` header carries as `Bearer <token>`, or `null` for any other header:
+ * the one parse of that header for every key-authenticated surface. the scheme is compared
+ * case-insensitively (https://www.rfc-editor.org/rfc/rfc9110#section-11.1) and followed by one or
+ * more spaces, never a tab, then the token alone, as RFC 6750 writes the header
+ * (https://www.rfc-editor.org/rfc/rfc6750#section-2.1). whether the token is a key of the surface's
+ * shape is the caller's check; the token itself is compared case-sensitively, by its hash.
  */
 export function parseBearer(authorization: string): string | null {
-	const match = /^bearer(?:\s+(.*))?$/i.exec(authorization.trim());
-	return match === null ? null : (match[1] ?? '').trim();
+	return BEARER_TOKEN.exec(authorization.trim())?.[1] ?? null;
 }
+
+const BEARER_TOKEN = /^bearer +(\S+)$/i;
 
 /** the lowercase hex SHA-256 of the whole key string, as `api_key.key_hash` holds it. */
 function hashOf(key: string): string {

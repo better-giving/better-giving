@@ -1,6 +1,6 @@
 import { and, asc, desc, gte, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
-import { INTEGRATIONS_BASE_PATH, integrationsJson, integrationsRefusal } from './surface';
+import { INTEGRATIONS_BASE_PATH, integrationsJson, integrationsRefusal, shown } from './surface';
 
 // how a list on the read API is walked a page at a time: the page size, the cursor, and the
 // keyset condition a list's own query splices in. every list under `/integrations/v1` takes these,
@@ -331,9 +331,4 @@ function decodeCursor(
 	if (ofChanges !== (since !== undefined) || (ofChanges && !Number.isSafeInteger(since)))
 		return null;
 	return { order, keyset: { at: at as number, id }, since: since as number | undefined };
-}
-
-/** a refused value as a refusal quotes it: cut short, so a pasted blob does not fill the body. */
-function shown(raw: string): string {
-	return raw.length > 64 ? `${raw.slice(0, 64)}…` : raw;
 }

@@ -54,11 +54,9 @@ import {
 //
 // **no value set is closed.** a set that may gain values — each `growingSet`, `dedication_kind`,
 // a refusal's `error` — is published as a plain string with its values today as `examples`, never
-// as an `enum`: a client generated from an `enum` throws on the first value added after it was
-// generated (openapi-generator's `fromValue`, a zod or ajv validator built from the document),
-// where `examples` is an annotation each of them reads and none validates. ./openapi.testing.ts
-// closes each set to its `examples` again, so a spec still fails on a value rendered and never
-// described.
+// as an `enum`, so a client generated from the document keeps working when a value is added.
+// ./openapi.testing.ts closes each set to its `examples` again, so a spec still fails on a value
+// rendered and never described.
 //
 // **each object schema names every key its type has**: `SchemaOf<T>` refuses a schema missing a
 // key of the type it describes, and every key is `required`, as the modules that render them
@@ -92,12 +90,12 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
  * `pin` (`readPin` in ../auth/env.ts) names one, so a document fetched at another host the
  * deployment answers on — its workers.dev one, or behind a proxy that rewrites `Host` — never
  * bakes that host into an integrator's config. where none is pinned, or the pin names no origin,
- * the request's own, as `https:` for every host but this machine, so a document fetched over
- * plain http never tells a reader to send a key over it.
+ * the request's own. either is published as `https:` for every host but this machine, so neither
+ * a document fetched over plain http nor an `http:` pin ever tells a reader to send a key over it.
  */
 export function publishedOrigin(url: URL, pin: PinReading): string {
-	if (pin.ok && pin.origin !== null) return pin.origin;
-	return LOCAL_HOSTS.has(url.hostname) ? url.origin : `https://${url.host}`;
+	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
+	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
 }
 
 /** a JSON Schema 2020-12 schema, as the document carries one. */

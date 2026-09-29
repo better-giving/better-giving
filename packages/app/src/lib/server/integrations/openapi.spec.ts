@@ -246,6 +246,18 @@ describe('publishedOrigin()', () => {
 		);
 	});
 
+	it('publishes a pinned origin as https for any host but this machine', () => {
+		const plain: PinReading = { ok: true, origin: 'http://donate.example.org:8080' };
+		const local: PinReading = { ok: true, origin: 'http://localhost:5321' };
+
+		expect(publishedOrigin(new URL('https://give.example.workers.dev/x'), plain)).toBe(
+			'https://donate.example.org:8080'
+		);
+		expect(publishedOrigin(new URL('http://127.0.0.1:5321/x'), local)).toBe(
+			'http://localhost:5321'
+		);
+	});
+
 	it('publishes the request’s own origin where the pin names none', () => {
 		const refused: PinReading = { ok: false, message: '`BETTER_AUTH_URL` is `localhost:8787`' };
 

@@ -267,20 +267,27 @@ describe('reading the key out of an `Authorization` header', () => {
 		['Bearer abc', 'abc'],
 		['bearer abc', 'abc'],
 		['BEARER   abc', 'abc'],
-		['Bearer\tabc', 'abc'],
 		['  Bearer abc  ', 'abc'],
-		['Bearer', ''],
-		['Bearer   ', '']
+		['Bearer "abc"', '"abc"']
 	])('reads %j as %j', (header, value) => {
 		expect(parseBearer(header)).toBe(value);
 	});
 
-	it.each(['Basic dXNlcjpwYXNz', 'Bearerish abc', 'abc', ''])(
-		'reads %j as another scheme',
-		(header) => {
-			expect(parseBearer(header)).toBeNull();
-		}
-	);
+	it.each([
+		'Basic dXNlcjpwYXNz',
+		'Bearerish abc',
+		'abc',
+		'',
+		'Bearer',
+		'Bearer   ',
+		'Bearer\tabc',
+		'Bearer \tabc',
+		'Bearer abc def',
+		'Bearer abc\tdef',
+		'Bearer\u00a0abc'
+	])('reads %j as carrying no bearer value', (header) => {
+		expect(parseBearer(header)).toBeNull();
+	});
 });
 
 describe("the key's shape", () => {

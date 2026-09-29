@@ -84,17 +84,21 @@ export function integrationsRefusal(
 	return integrationsJson({ error, message, fix }, status, headers);
 }
 
+/** a refused value as a refusal quotes it: cut short, so a pasted blob does not fill the body. */
+export function shown(raw: string): string {
+	return raw.length > 64 ? `${raw.slice(0, 64)}…` : raw;
+}
+
 /**
  * the 404 for `pathname`, an address under this surface that no list answers: the bare prefix, a
  * path beneath it no route serves, or react router's own `.data` address for a list.
  */
 export function notFoundRefusal(pathname: string): Response {
 	const lists = INTEGRATIONS_LISTS.map((list) => `GET ${INTEGRATIONS_BASE_PATH}${list}`);
-	const shownPath = pathname.length > 96 ? `${pathname.slice(0, 96)}…` : pathname;
 	return integrationsRefusal(
 		404,
 		'not_found',
-		`Nothing is served at \`${shownPath}\`. The read API at ${INTEGRATIONS_BASE_PATH} serves its lists and nothing else, at their own addresses.`,
+		`Nothing is served at \`${shown(pathname)}\`. The read API at ${INTEGRATIONS_BASE_PATH} serves its lists and nothing else, at their own addresses.`,
 		`Call ${lists.slice(0, -1).join(', ')} or ${lists.at(-1)}. None takes an id in its path: a single record is found on its list.`
 	);
 }
@@ -179,7 +183,7 @@ export async function admitKey(db: Db, authorization: string | null): Promise<Ap
 		return keyRefusal(
 			'malformed_key',
 			presented === null
-				? 'The `Authorization` header does not use the `Bearer` scheme, so it carries no API key.'
+				? 'The `Authorization` header is not `Bearer`, one space and the key, so it carries no API key.'
 				: 'The value after `Bearer` is not an API key: a key is `bgk_` followed by 43 letters and digits, 47 characters in all.',
 			'Send `Authorization: Bearer <key>` with the whole key and nothing else: a key cut short, or with a quote or a space inside it, is the usual cause.'
 		);

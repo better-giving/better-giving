@@ -750,7 +750,11 @@ describe('a request whose key does not check out', () => {
 	});
 
 	it.each([
-		{ what: 'another scheme', value: 'Basic dXNlcjpwYXNz', says: '`Bearer` scheme' },
+		{
+			what: 'another scheme',
+			value: 'Basic dXNlcjpwYXNz',
+			says: '`Bearer`, one space and the key'
+		},
 		{ what: 'a key cut short', value: 'Bearer bgk_x7Qp', says: '47 characters' },
 		{ what: 'a quoted key', value: `Bearer "bgk_${'Q'.repeat(43)}"`, says: '47 characters' }
 	])('is refused as malformed for $what, without echoing it', async ({ value, says }) => {
@@ -763,6 +767,16 @@ describe('a request whose key does not check out', () => {
 
 	it('is refused as malformed for the scheme with nothing after it', async () => {
 		expect((await refusedWith('Bearer')).error).toBe('malformed_key');
+	});
+
+	it.each([
+		{ what: 'a tab after the scheme', value: `Bearer\tbgk_${'A'.repeat(43)}` },
+		{ what: 'text after the key', value: `Bearer bgk_${'A'.repeat(43)} extra` }
+	])('is refused as malformed for $what, naming the form a header takes', async ({ value }) => {
+		const body = await refusedWith(value);
+
+		expect(body.error).toBe('malformed_key');
+		expect(body.message).toContain('`Bearer`, one space and the key');
 	});
 
 	it('is refused as unknown for a key this deployment never made', async () => {
