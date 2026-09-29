@@ -17,7 +17,7 @@ import { useSaveState } from '@better-giving/operator/save-state.react';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Form, useRevalidator } from 'react-router';
+import { Form, Link, useRevalidator } from 'react-router';
 import type {
 	DeployedValues,
 	QuickbooksRead,
@@ -26,6 +26,7 @@ import type {
 	VarsWritten
 } from '../api/types';
 import { PAID_PLAN, freePlanPace } from './cloudflare-plan';
+import { CLOUDFLARE_PLAN_PAGE, CLOUDFLARE_PLAN_TITLE } from './console-pages';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldInGroup } from './held-values';
 import { keysTrouble } from './processor-screen';
@@ -124,8 +125,8 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // **the pace is said while the deployment reads its account as on the Free plan, and only then.**
 // the books go over at that plan's pace (`DELIVERY_PACE` in packages/operator/src/delivery-pace.ts),
 // which is slow enough to be mistaken for a sync that has stopped, and the answer that lifts it is
-// on the Cloudflare plan page (./cloudflare-plan-block.tsx) — so the notice names the pace and that
-// page, and goes the moment the stored answer reads as paid (`freePlanPace` in ./cloudflare-plan.ts).
+// on the Cloudflare plan page (./cloudflare-plan-block.tsx) — so the notice names the pace and links
+// that page, and goes the moment the stored answer reads as paid (`freePlanPace` in ./cloudflare-plan.ts).
 //
 // **the address an operator registers arrives on the report, whole.** it is this deployment's own
 // address and the path Intuit sends a browser back to, and only the deployment can say either: no
@@ -340,7 +341,7 @@ export function QuickbooksSection({
 					word={`The books reach QuickBooks ${pace.books} ${pace.books === 1 ? 'gift' : 'gifts'} a minute`}
 				>
 					That is the pace on the Cloudflare Free plan. If this account is on the Workers Paid plan,
-					say so on the Cloudflare plan page.
+					say so on the <Link to={CLOUDFLARE_PLAN_PAGE}>{CLOUDFLARE_PLAN_TITLE}</Link> page.
 				</Banner>
 			)}
 			<StatusLedger sections>

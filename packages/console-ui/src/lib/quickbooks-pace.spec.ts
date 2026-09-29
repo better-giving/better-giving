@@ -58,7 +58,7 @@ describe('the Free plan’s pace', () => {
 	it('is said, with where to change it, where the deployment holds no answer', async () => {
 		const page = await section([]);
 		expect(page).toContain(NOTICE);
-		expect(page).toContain('Cloudflare plan page');
+		expect(page).toMatch(/<a\b[^>]*href="\/cloudflare-plan"[^>]*>Cloudflare plan<\/a> page/);
 	});
 
 	it('is said where the answer is one the deployment reads as Free', async () => {
