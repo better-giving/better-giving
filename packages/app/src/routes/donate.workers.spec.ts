@@ -12,11 +12,14 @@ import { readSetupState } from '$lib/server/config/setup-state';
 import { createDb } from '$lib/server/db/client';
 import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
+import { createImage } from '$lib/server/images/queries';
 import type { OrgLook } from '$lib/server/org/presentation';
 import {
+	readOrgLogo,
 	readOrgLook,
 	readOrgSharing,
 	readOrgStory,
+	updateOrgLogo,
 	updateOrgLook,
 	updateOrgSharing,
 	updateOrgStory
@@ -234,6 +237,83 @@ describe('the page /donate draws', () => {
 		await env.DB.prepare(`update form set allowed_origins = '["https://acme.org"]'`).run();
 		const answered = await visit();
 		expect(JSON.stringify(answered.data)).not.toContain('acme.org');
+	});
+});
+
+/** the masthead the page opens with. */
+function masthead(html: string): string {
+	return /<header class="page-mast"[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
+}
+
+describe('the organisation’s logo on /donate', () => {
+	it('stands atop the page by its id, at its stored size, once one is set', async () => {
+		const id = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/png', width: 640, height: 160, alt: null },
+			new Uint8Array([1])
+		);
+		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, id)).toHaveProperty('version');
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.logo).toEqual({ imageId: id, width: 640, height: 160 });
+		const mast = masthead(markup(answered.data));
+		expect(mast).toContain(`src="/image/${id}"`);
+		expect(mast).toContain('width="640"');
+		expect(mast).toContain('height="160"');
+	});
+
+	it('is not drawn where none is set, and the masthead names the organisation', async () => {
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.logo).toBeNull();
+		const mast = masthead(markup(answered.data));
+		expect(mast).not.toContain('<img');
+		expect(mast).toContain('Hope Foundation');
+	});
+});
+
+describe('program photos on the /donate chooser', () => {
+	it('are handed by program id for the programs that have one, and drawn by the photo’s id', async () => {
+		const photo = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 1600, height: 1067, alt: null },
+			new Uint8Array([1])
+		);
+		const [food] = await db
+			.insert(program)
+			.values({ name: 'Food bank', imageId: photo })
+			.returning({ id: program.id });
+		await activePrograms('Winter shelter');
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.programPhotos).toEqual({ [food?.id ?? '']: photo });
+		const chooser = block(markup(answered.data), 'program-chooser');
+		expect(chooser.match(/<img[^>]*src="\/image\/[^"]*"/g)).toEqual([
+			expect.stringContaining(`src="/image/${photo}"`)
+		]);
+	});
+
+	it('hand none for an archived program’s photo, beside a chooser that is drawn', async () => {
+		const photo = await createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 1600, height: 1067, alt: null },
+			new Uint8Array([1])
+		);
+		await db.insert(program).values({
+			name: 'Old roof fund',
+			imageId: photo,
+			status: 'archived',
+			archivedAt: new Date()
+		});
+		await activePrograms('Food bank', 'Winter shelter');
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(block(markup(answered.data), 'program-chooser')).toContain('Winter shelter');
+		expect(answered.data.view.programPhotos).toEqual({});
+		expect(markup(answered.data)).not.toContain(photo);
 	});
 });
 

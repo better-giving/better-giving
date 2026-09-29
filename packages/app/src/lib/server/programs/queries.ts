@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { image, program, type Program } from '../db/schema';
@@ -132,6 +132,18 @@ export async function readActivePrograms(db: Db): Promise<ProgramOption[]> {
 		.from(program)
 		.where(isNull(program.archivedAt))
 		.orderBy(asc(program.name));
+}
+
+/**
+ * each active cause's photo, as its stored image id, by the cause's id — the photos to
+ * `readActivePrograms`' list, under the same archived-row filter. a cause with no photo is absent.
+ */
+export async function readActiveProgramPhotos(db: Db): Promise<Map<string, string>> {
+	const rows = await db
+		.select({ id: program.id, imageId: program.imageId })
+		.from(program)
+		.where(and(isNull(program.archivedAt), isNotNull(program.imageId)));
+	return new Map(rows.flatMap(({ id, imageId }) => (imageId === null ? [] : [[id, imageId]])));
 }
 
 /**
