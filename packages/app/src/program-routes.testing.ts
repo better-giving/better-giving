@@ -19,7 +19,7 @@ const PASSWORD = 'a-long-enough-password';
 
 /** a real session, as the `Cookie` header a browser would send back. */
 export function signIn(db: Db): Promise<string> {
-	return signInAsDeployer(db, { password: PASSWORD, origin: ORIGIN });
+	return signInAsDeployer(db, { env, password: PASSWORD, origin: ORIGIN });
 }
 
 /**

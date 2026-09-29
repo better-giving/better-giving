@@ -20,6 +20,7 @@ import {
 	createAuth,
 	normaliseEmail,
 	readAuthEnv,
+	readPin,
 	resolveAuthSecret,
 	signInDestination,
 	signInMember,
@@ -173,6 +174,12 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const db = context.get(database);
 	const authEnv = readAuthEnv(env);
 
+	// a pin that names no address is the gate's 500 here too, because no page under the login
+	// signs anybody in until it is fixed; its sentence names the variable and the fix
+	// ($lib/server/auth/gate.ts).
+	const pin = readPin(authEnv);
+	if (!pin.ok) throw data(pin.message, { status: 500 });
+
 	// already signed in: there is nothing to do on this page. it honours the destination for the
 	// same reason the action does — a second tab that signed in first leaves this one holding a
 	// form whose `next` is still the page the operator asked for.
@@ -303,6 +310,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		console.error('staff sign-in has no signing key:', signingKey.message);
 		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
 	}
+	const pin = readPin(authEnv);
+	if (!pin.ok) throw data(pin.message, { status: 500 });
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
 	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a

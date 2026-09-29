@@ -96,6 +96,20 @@ describe('createAuth configuration', () => {
 		expect(ctx.options.baseURL).toBe(DEPLOYED_ORIGIN);
 	});
 
+	// the same reading QuickBooks and the paused-destination mail take (./env.ts `pinnedOrigin`).
+	// passed as typed, a path on the pin would stand in for better-auth's `/api/auth`.
+	it('pins baseURL to the pin’s origin, not the value as typed', async () => {
+		const ctx = await testAuth({ ...TEST_ENV, BETTER_AUTH_URL: `${DEPLOYED_ORIGIN}/admin/` })
+			.$context;
+		expect(ctx.baseURL).toBe(`${DEPLOYED_ORIGIN}/api/auth`);
+	});
+
+	it('refuses a pin that names no http(s) origin, before anything is built on it', () => {
+		expect(() => testAuth({ ...TEST_ENV, BETTER_AUTH_URL: 'localhost:8787' })).toThrow(
+			'`BETTER_AUTH_URL` is `localhost:8787`'
+		);
+	});
+
 	it('trusts the loopback dev origins only when the request origin is itself loopback', async () => {
 		const dev = await testAuth().$context;
 		expect(dev.options.trustedOrigins).toEqual(['http://localhost:5321', 'http://localhost:8787']);

@@ -207,8 +207,18 @@ export interface QuickbooksReport {
 	 * the whole address and never a path the console joins to a hostname: the path belongs to
 	 * `packages/app`, which the console may not import from (CLAUDE.md → The map), and no hostname
 	 * is committed to this repository — the deployment reads its own off the request that arrived.
+	 *
+	 * a refusal where the deployment's `BETTER_AUTH_URL` pin names no address, carrying the
+	 * deployment's own sentence, which names the value and the fix. the rest of the report stands.
 	 */
-	readonly callbackAddress: string;
+	readonly callbackAddress: string | QuickbooksCallbackRefusal;
+}
+
+/** why no callback address can be stated: the pin that decides it names no http(s) origin. */
+export interface QuickbooksCallbackRefusal {
+	readonly error: 'unusable_pin';
+	/** the deployment's sentence, with names marked in backticks. */
+	readonly message: string;
 }
 
 /**

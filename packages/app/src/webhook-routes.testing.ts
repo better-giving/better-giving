@@ -57,7 +57,7 @@ export async function freshDeployment(): Promise<void> {
 	).run();
 }
 
-const DEPLOYMENT = { password: PASSWORD, origin: ORIGIN };
+const DEPLOYMENT = { env: deployed(), password: PASSWORD, origin: ORIGIN };
 
 /** the deployer's session, as the `Cookie` header a browser would send back. */
 export function signInAsDeployer(db: Db): Promise<string> {

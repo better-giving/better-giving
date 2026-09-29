@@ -52,6 +52,15 @@ const DEPLOYED = {
 	MAIL_FROM: 'giving@example.org'
 };
 
+/** a deployment whose `BETTER_AUTH_URL` pin names no address. */
+const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
+
+/** what that deployment throws: the sentence as a 500's data, which the error boundary draws. */
+const PIN_REFUSAL = {
+	data: expect.stringContaining('`BETTER_AUTH_URL` is `localhost:8787`'),
+	init: { status: 500 }
+};
+
 /** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
 function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.LoaderArgs {
 	return {
@@ -174,6 +183,12 @@ describe('GET /login — a visitor who is already signed in', () => {
 		const answer = await visit('?next=%2Fadmin%2Fdonors');
 
 		expect(answer).not.toBeInstanceOf(Response);
+	});
+
+	it('names a pin that names no address, where the operator reads it', async () => {
+		await finished();
+
+		await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
 	});
 });
 
@@ -497,6 +512,13 @@ describe('POST /login — what the browser gets back', () => {
 	 * one about what they sent — and with one secret and one account there is nothing it could
 	 * disambiguate.
 	 */
+	it('names a pin that names no address, where the operator reads it', async () => {
+		await expect(post(typed(PASSWORD), { deployed: PINNED_NOWHERE })).rejects.toMatchObject(
+			PIN_REFUSAL
+		);
+		expect(await sessions()).toBe(0);
+	});
+
 	it('says a wrong password is a wrong password', async () => {
 		const answer = await refused(typed('not-the-staff-password'));
 

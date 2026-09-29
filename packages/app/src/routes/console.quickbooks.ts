@@ -47,7 +47,7 @@ import {
 	ROLE_TYPES,
 	UNDEPOSITED_FUNDS
 } from '$lib/server/accounting/quickbooks-accounts';
-import { readAuthEnv, resolveAuthSecret } from '$lib/server/auth';
+import { readAuthEnv, readPin, resolveAuthSecret } from '$lib/server/auth';
 import { consoleJson } from '$lib/server/console/surface';
 import type { Db } from '$lib/server/db/client';
 import { database, platform } from '../context';
@@ -121,6 +121,8 @@ export async function loader({ context, request }: Route.LoaderArgs): Promise<Re
 		readQuickbooksConnection(db),
 		readQuickbooksBacklog(db)
 	]);
+	const authEnv = readAuthEnv(env);
+	const pin = readPin(authEnv);
 
 	const report: QuickbooksReport = {
 		connection: connectionLine(connection),
@@ -131,8 +133,11 @@ export async function loader({ context, request }: Route.LoaderArgs): Promise<Re
 			heldBehindFailed: backlog.heldBehindFailed
 		},
 		// what an operator registers at Intuit, so it is the same address the round trip is made
-		// against and not whichever hostname the console reached this deployment on.
-		callbackAddress: `${connectFlowOrigin(readAuthEnv(env), new URL(request.url))}${QUICKBOOKS_CALLBACK_PATH}`
+		// against and not whichever hostname the console reached this deployment on. a pin naming no
+		// address refuses this field alone: the connection and the backlog do not read it.
+		callbackAddress: pin.ok
+			? `${connectFlowOrigin(authEnv, new URL(request.url))}${QUICKBOOKS_CALLBACK_PATH}`
+			: { error: 'unusable_pin', message: pin.message }
 	};
 
 	return consoleJson(report);
@@ -160,16 +165,19 @@ async function act(
 	const { env } = context.get(platform);
 
 	if (press === 'connect') {
-		const signingKey = await resolveAuthSecret(db, readAuthEnv(env));
-		// 500 for $lib/server/auth/gate.ts's reason: nothing the caller sent is wrong, and the
-		// message names the table and the command that mints the row.
+		const authEnv = readAuthEnv(env);
+		const signingKey = await resolveAuthSecret(db, authEnv);
+		// 500 for $lib/server/auth/gate.ts's reason: nothing the caller sent is wrong, and each
+		// message names what to fix.
 		if (!signingKey.ok)
 			return consoleJson({ error: 'no_signing_key', message: signingKey.message }, 500);
+		const pin = readPin(authEnv);
+		if (!pin.ok) return consoleJson({ error: 'unusable_pin', message: pin.message }, 500);
 		const report: QuickbooksPressReport = {
 			press,
 			url: await mintConnectLink({
 				secret: signingKey.secret,
-				origin: connectFlowOrigin(readAuthEnv(env), new URL(request.url)),
+				origin: connectFlowOrigin(authEnv, new URL(request.url)),
 				now: new Date()
 			})
 		};
