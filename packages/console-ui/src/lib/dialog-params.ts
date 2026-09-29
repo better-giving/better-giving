@@ -7,11 +7,12 @@ import { saidRefused } from './refused-answer';
 //
 // **the dialogs are parameters on the address rather than component state**, which is what makes
 // the way out of each a link and what makes Escape and the browser's own back button answer the
-// same way (./close-confirm.tsx draws the one there is), save the close over the cloudflare gate,
-// which opens from state (../routes/_sections.tsx's `ErrorBoundary` says why). the cost of that is
-// a link press being a navigation: without a word from `shouldRevalidate` the router re-reads
-// the page before the dialog can draw, and the whole of that read is loopback round trips — so the
-// press an operator made sits doing nothing for as long as the binary takes to answer.
+// same way (./close-confirm.tsx and ./cloudflare-account.tsx draw them), save the close over the
+// cloudflare gate, which opens from state (../routes/_sections.tsx's `ErrorBoundary` says why). the
+// cost of that is a link press being a navigation: without a word from `shouldRevalidate` the
+// router re-reads the page before the dialog can draw, and the whole of that read is loopback round
+// trips — so the press an operator made sits doing nothing for as long as the binary takes to
+// answer.
 //
 // **the set has one home because the reading below is over all of it at once.** what it asks is
 // whether an address differs from the one before it in nothing but these, so a parameter minted at
@@ -22,7 +23,10 @@ import { saidRefused } from './refused-answer';
 /** what the address carries while the head's close confirm is up, which is the whole of what draws it. */
 export const CLOSE_PARAM = 'close';
 
-const DIALOG_PARAMS = [CLOSE_PARAM];
+/** what the address carries while the account panel is up (./cloudflare-account.tsx). */
+export const ACCOUNT_PARAM = 'account';
+
+const DIALOG_PARAMS = [CLOSE_PARAM, ACCOUNT_PARAM];
 
 /** an address with every dialog parameter taken off it, which is what two of them are compared by. */
 function withoutDialogs(url: URL): string {

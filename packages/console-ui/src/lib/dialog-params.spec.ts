@@ -19,6 +19,11 @@ describe('a navigation that does nothing but open or drop a dialog', () => {
 	it('reads the close confirm being left', () => {
 		expect(opensOrDropsDialog(pressed('/?close', '/'))).toBe(true);
 	});
+
+	it('reads the account panel opening over a page, and being left', () => {
+		expect(opensOrDropsDialog(pressed('/sites', '/sites?account'))).toBe(true);
+		expect(opensOrDropsDialog(pressed('/sites?account', '/sites'))).toBe(true);
+	});
 });
 
 /**

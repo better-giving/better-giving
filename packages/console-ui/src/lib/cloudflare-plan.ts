@@ -1,4 +1,4 @@
-import type { Pace } from '@better-giving/operator/delivery-pace';
+import type { Feed, Pace } from '@better-giving/operator/delivery-pace';
 import {
 	DELIVERY_PACE,
 	PAID_PLAN_ANSWER,
@@ -19,6 +19,11 @@ import type { HeldValues } from './held-values';
 //
 // **the pace is the table the minute cron claims at**, read from packages/operator rather than
 // typed here, so a number a screen states is the number the deployment delivers at.
+//
+// **the plan is a concern only where it slows something down**: read as Free while a feed the
+// minute cron paces is in use ({@link planConcern}). no call reports the plan, so the operator is
+// the only one who can say the account is on the paid one, and a mark raised on every Free
+// deployment would ask that of every organisation that delivers nothing at all.
 
 /** the name whose value is an answer about the Cloudflare account rather than a credential. */
 export const PAID_PLAN: DeployValueName = 'CLOUDFLARE_PAID_PLAN';
@@ -54,6 +59,23 @@ export const freePlanPace = (values: HeldValues): Pace | null => {
 	if (values.withheld.includes(PAID_PLAN)) return null;
 	return planAnswered(values.seeds[PAID_PLAN]) === 'free' ? DELIVERY_PACE.free : null;
 };
+
+/**
+ * whether each feed the minute cron paces is in use on this deployment, and `null` for one this
+ * console could not read.
+ */
+export type FeedsInUse = Readonly<Record<Feed, boolean | null>>;
+
+/**
+ * whether the plan is worth the operator's look: the deployment reads it as Free, and at least one
+ * feed is in use, so something is being delivered at the Free plan's pace.
+ *
+ * a withheld answer is never a concern, for the reason {@link freePlanPace} states, and a feed that
+ * could not be read never raises one: a mark standing over a reading that did not land is a claim
+ * nothing on this console can back.
+ */
+export const planConcern = (values: HeldValues, feeds: FeedsInUse): boolean =>
+	freePlanPace(values) !== null && Object.values(feeds).some((inUse) => inUse === true);
 
 /** what one press of the switch puts on the deployment (`switchEdit` in ./answer-switch.ts). */
 export const planEdit = (posted: FormData): Record<string, string | null> =>

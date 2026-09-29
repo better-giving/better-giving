@@ -6855,7 +6855,9 @@
 
 		/* the console's rail foot, handed to AppShell's `foot` by packages/console-ui. two rows on
 		   the head's columns: the account's logo, its name cut to one line and the way out; then the
-		   source link and the release. */
+		   source link and the release. the name is the link that opens the account's panel, with the
+		   account's status mark beside it inside the link
+		   (packages/console-ui/src/lib/cloudflare-account.tsx). */
 		.adm-footaccount {
 			display: flex;
 			align-items: center;
@@ -6871,13 +6873,37 @@
 			margin-inline-start: auto;
 		}
 
+		/* the name and its mark share the link, so the name is what gives way and the mark never
+		   does. it is a target as tall as the small press at the row's end. the link keeps its colour
+		   and gives up its rule at rest, for the reason `.adm-record__title a` gives. */
+		.adm-footaccount__open {
+			display: flex;
+			align-items: center;
+			gap: var(--admin-space-2);
+			min-inline-size: 0;
+			min-block-size: var(--admin-control-height-sm);
+			text-decoration-line: none;
+		}
+
+		.adm-footaccount__open:hover,
+		.adm-footaccount__open.is-hover,
+		.adm-footaccount__open:focus-visible,
+		.adm-footaccount__open.is-focus {
+			text-decoration-line: underline;
+		}
+
 		.adm-footaccount__name {
 			min-inline-size: 0;
 			overflow: hidden;
 			white-space: nowrap;
 			text-overflow: ellipsis;
 			font-weight: var(--admin-value-weight);
-			color: var(--admin-ink);
+		}
+
+		.adm-footaccount__status {
+			display: flex;
+			flex: none;
+			color: var(--admin-tone-attention-mark);
 		}
 
 		.adm-footline {
@@ -6936,14 +6962,20 @@
 		.adm-shell--collapsed .adm-rail__lead,
 		.adm-shell--collapsed .adm-identity__name,
 		.adm-shell--collapsed .adm-rail__heading,
-		.adm-shell--collapsed .adm-rail__foot .adm-footline,
-		.adm-shell--collapsed .adm-footaccount__name {
+		.adm-shell--collapsed .adm-rail__foot .adm-footline {
+			display: none;
+		}
+
+		/* the account's link keeps only its status mark, and a link with none has nothing to draw
+		   and leaves the tab order with it. */
+		.adm-shell--collapsed .adm-footaccount__open:not(:has(.adm-footaccount__status)) {
 			display: none;
 		}
 
 		/* `.adm-vh` in ./base.css, restated: the name and the sign-out word leave the screen and
 		   stay the control's name. */
 		.adm-shell--collapsed .adm-rail__cells .adm-dest > .adm-dest__full,
+		.adm-shell--collapsed .adm-footaccount__name,
 		.adm-shell--collapsed .adm-rail__foot .adm-signout__word {
 			position: absolute;
 			inline-size: 1px; /* raw-length-ok: as `.adm-vh`. */

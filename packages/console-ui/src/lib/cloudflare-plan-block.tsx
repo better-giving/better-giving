@@ -15,8 +15,8 @@ import type { HeldValues } from './held-values';
 // (`DELIVERY_PACE` in packages/operator/src/delivery-pace.ts), so no number on this screen can
 // drift from the one the minute cron claims at.
 //
-// **it draws no heading.** the page that mounts it is named for it, and a heading here would say
-// that name a second time directly over the box.
+// **it draws no heading.** what mounts it is headed by the account it is about
+// (./cloudflare-account.tsx), and the box's own label names the plan.
 
 export type CloudflarePlanProps = {
 	/** what the deployment is holding, which is what the switch is drawn in (./held-values.ts). */
