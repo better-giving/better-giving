@@ -32,7 +32,10 @@ import { DoneSheet } from './done-sheet';
 // one-time; the setting is kept and takes effect once monthly is offered.
 //
 // each group is its own `.adm-sheetpart`, so a heading sits nearer its own rows than the group
-// above it.
+// above it. the groups' headings are `h3`, parts of the sheet the `h2` title names.
+//
+// the sheet opens from Settings' row, `stacked` over it, and from a click on the donation box in
+// the preview, where no sheet is under it and it lays its own ground.
 
 const PAGE_SETTINGS = defineForm({ id: PAGE_SETTINGS_FORM_ID, schema: PAGE_SETTINGS_INPUT });
 
@@ -44,6 +47,8 @@ type DonationSettingsSheetProps = {
 	readonly onDismiss: () => void;
 	/** a Done landed: the draft holds what was typed. */
 	readonly onSaved: () => void;
+	/** opened from Settings' Donation settings row, and standing over it. */
+	readonly stacked?: boolean | undefined;
 };
 
 const MONTHLY_UNOFFERED =
@@ -55,7 +60,8 @@ export function DonationSettingsSheet({
 	seed,
 	version,
 	onDismiss,
-	onSaved
+	onSaved,
+	stacked = false
 }: DonationSettingsSheetProps) {
 	// unkeyed, so an answer does not outlive the sheet: a reopened sheet starts with none.
 	const fetcher = useFetcher<Answer>();
@@ -87,7 +93,7 @@ export function DonationSettingsSheet({
 	return (
 		<DoneSheet
 			title="Donation settings"
-			stacked
+			stacked={stacked}
 			wide
 			tall
 			onDismiss={onDismiss}
@@ -102,6 +108,7 @@ export function DonationSettingsSheet({
 					boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
 					programs={seed.programs}
 					retired={seed.retired}
+					heading="h3"
 				/>
 			</div>
 			<div className="adm-sheetpart">
@@ -116,10 +123,11 @@ export function DonationSettingsSheet({
 							form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
 					}}
 					currency={seed.currency}
+					heading="h3"
 				/>
 			</div>
 			<div className="adm-sheetpart">
-				<h2>How the donation box opens</h2>
+				<h3>How the donation box opens</h3>
 				<CheckboxGroup
 					id={`${form.id}-opens`}
 					items={[

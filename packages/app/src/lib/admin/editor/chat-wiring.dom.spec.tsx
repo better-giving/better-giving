@@ -295,6 +295,18 @@ describe('the editor’s chat', () => {
 		expect(root.querySelector('samp')?.textContent).toBe('');
 	});
 
+	it('hands the focus to Chat when the sheet ?chat opened is closed', async () => {
+		screen(`${PAGE}?chat`);
+		await settle();
+		expect(document.activeElement?.closest('dialog')).not.toBeNull();
+
+		await press(button('Close'));
+		await settle();
+
+		expect(document.querySelector('dialog')).toBeNull();
+		expect(document.activeElement).toBe(button('Chat'));
+	});
+
 	it('gives a send back to the box when the page was saved while it was answered', async () => {
 		await opened();
 		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];

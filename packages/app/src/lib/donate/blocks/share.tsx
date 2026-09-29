@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SHARE_CHANNEL_LABELS, type ShareChannel, shareHref } from '../../page/share';
 import { Glyph } from './glyph';
 import type { BlockOf, PageSharing } from './types';
 
 // the organisation's share channels, in its order. every channel but Copy link opens that channel's
 // own share page in a tab of its own; Copy link writes the page's address to the clipboard and says
-// so on itself, with a status region beside it saying the same out loud. `icons` draws every
-// channel but Copy link as its mark alone, named for what it does.
+// so on itself, with a status region beside it saying the same out loud. `icons` draws every channel
+// but Copy link as its mark alone, named for what it does.
+//
+// the region is cleared and written a task apart, as packages/operator's CopyControl.jsx does: a
+// second press puts back the words the region already holds, and a region handed what it holds is
+// announced by nobody.
 //
 // the networks' marks are lettered stand-ins: no set in this repository carries brand marks.
 
@@ -43,15 +47,23 @@ export function ShareBlock({
 	readonly heading: string;
 }) {
 	const [copy, setCopy] = useState<Copy>('idle');
+	const [said, setSaid] = useState('');
+	const say = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	useEffect(() => () => clearTimeout(say.current), []);
 	const icons = block.variant === 'icons';
 
 	const copyLink = async () => {
+		let landed: Copy;
 		try {
 			await navigator.clipboard.writeText(sharing.url);
-			setCopy('copied');
+			landed = 'copied';
 		} catch {
-			setCopy('failed');
+			landed = 'failed';
 		}
+		setCopy(landed);
+		setSaid('');
+		clearTimeout(say.current);
+		say.current = setTimeout(() => setSaid(COPY_WORDS[landed]), 0);
 	};
 
 	return (
@@ -100,7 +112,7 @@ export function ShareBlock({
 				)}
 			</div>
 			<p className="vh" role="status">
-				{copy === 'idle' ? '' : COPY_WORDS[copy]}
+				{said}
 			</p>
 		</div>
 	);

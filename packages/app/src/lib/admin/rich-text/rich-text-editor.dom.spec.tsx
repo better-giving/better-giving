@@ -186,6 +186,21 @@ describe('making a link', () => {
 		expect(document.activeElement).toBe(content);
 	});
 
+	it('says Link opens its row, and toggles nothing', async () => {
+		const { host, editor } = await mount();
+		await write(editor, 'Read our annual report');
+		const link = pressNamed(host, 'Link');
+		expect(link.hasAttribute('aria-pressed')).toBe(false);
+		expect(link.getAttribute('aria-expanded')).toBe('false');
+
+		await press(link);
+
+		const row = one<HTMLElement>(host, '.adm-rte__link');
+		expect(link.getAttribute('aria-expanded')).toBe('true');
+		expect(link.getAttribute('aria-controls')).toBe(row.id);
+		expect(link.hasAttribute('aria-pressed')).toBe(false);
+	});
+
 	it('takes an address typed without its scheme as https', async () => {
 		const { host, editor } = await mount();
 		await write(editor, 'annual report');
@@ -232,7 +247,6 @@ describe('making a link', () => {
 		await act(async () => {
 			editor.chain().focus().setTextSelection(3).run();
 		});
-		expect(pressNamed(host, 'Link').getAttribute('aria-pressed')).toBe('true');
 		await press(pressNamed(host, 'Link'));
 		expect(one<HTMLInputElement>(host, '.adm-rte__link input').value).toBe(href);
 		const remove = [...host.querySelectorAll<HTMLButtonElement>('.adm-rte__link button')].find(

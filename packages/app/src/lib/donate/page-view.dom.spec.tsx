@@ -483,6 +483,9 @@ describe('the program chooser', () => {
 	});
 });
 
+/** a task later, when the share row's status region is written. */
+const nextTask = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
 describe('share', () => {
 	it('copies the page’s address and says so at the press and out loud', async () => {
 		const writeText = vi.fn(async () => {});
@@ -495,9 +498,32 @@ describe('share', () => {
 		expect(status?.textContent).toBe('');
 		const press = root.querySelector<HTMLButtonElement>('[data-block="share"] button');
 		await act(async () => press?.click());
+		await nextTask();
 		expect(writeText).toHaveBeenCalledWith('https://give.example.org/coats');
 		expect(status?.textContent).toBe('Link copied');
 		expect(press?.querySelector('[data-shown]')?.textContent).toBe('Link copied');
+	});
+
+	it('says a second Copy link again, clearing what it said before writing it', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		onTestFinished(() => {
+			vi.unstubAllGlobals();
+		});
+		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
+		const status = root.querySelector('[data-block="share"] [role="status"]');
+		const press = root.querySelector<HTMLButtonElement>('[data-block="share"] button');
+		if (status === null) throw new Error('no status region');
+		await act(async () => press?.click());
+		await nextTask();
+		const heard: (string | null)[] = [];
+		const listen = new MutationObserver(() => heard.push(status.textContent));
+		listen.observe(status, { childList: true, characterData: true, subtree: true });
+		onTestFinished(() => listen.disconnect());
+
+		await act(async () => press?.click());
+		await nextTask();
+
+		expect(heard).toEqual(['', 'Link copied']);
 	});
 
 	it('draws the channels in the organisation’s order, each opening its own share', () => {

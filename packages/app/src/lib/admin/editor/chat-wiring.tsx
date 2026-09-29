@@ -10,7 +10,7 @@ import {
 	ChatSheet,
 	type ChatUnsent
 } from '../chat/chat-sheet';
-import { ChatOpening } from './editor-shell';
+import { ChatClosed, ChatOpening } from './editor-shell';
 import { postPhoto, type UploadAnswer } from './photo-upload';
 
 // the Chat sheet as both editors mount it: `open` for the Chat entry, and the sheet while it is
@@ -45,7 +45,9 @@ import { postPhoto, type UploadAnswer } from './photo-upload';
 //
 // `?chat` opens it on arrival. the create action lands a campaign made with a "What's it for?"
 // line there, its first turn already answered (`createCampaign` in $lib/server/pages/campaign.ts
-// runs it before the redirect). closing drops the flag, so a reload opens the editor bare.
+// runs it before the redirect). closing drops the flag, so a reload opens the editor bare, and
+// hands the focus to the Chat entry (`ChatClosed`): no press opened that sheet, so it has no opener
+// of its own to hand it back to.
 
 const SUGGESTIONS = ['Tell donors what each amount buys', 'Add a FAQ', 'Shorten the story'];
 
@@ -111,6 +113,8 @@ function inFlight(
 export function useEditorChat(url: string): { open: () => void; sheet: ReactNode } {
 	const [params, setParams] = useSearchParams();
 	const [open, setOpen] = useState(() => params.has(CHAT_PARAM));
+	/** the sheet up, or last up, is the one `?chat` opened, rather than one a Chat press did. */
+	const [openedOnArrival, setOpenedOnArrival] = useState(open);
 	const history = useFetcher<History>();
 	const turn = useFetcher<TurnAnswer>();
 	/** the words of the last send, for the box to take back if nothing is stored from it. */
@@ -204,7 +208,11 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 	};
 
 	const running = turn.state !== 'idle';
-	const sheet = !open ? null : history.data === undefined ? (
+	const sheet = !open ? (
+		openedOnArrival ? (
+			<ChatClosed />
+		) : null
+	) : history.data === undefined ? (
 		<ChatOpening />
 	) : (
 		<ChatSheet
@@ -223,6 +231,7 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 	return {
 		open: () => {
 			setUnsent(undefined);
+			setOpenedOnArrival(false);
 			setOpen(true);
 		},
 		sheet

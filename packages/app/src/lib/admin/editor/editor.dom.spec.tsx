@@ -5,6 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { editorBlocks } from '$lib/page/block-edit';
 import { BLOCK_TYPES, type Block, type Page } from '$lib/page/catalog';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
+import { PageView } from '$lib/donate/page-view';
 import { ChatSheet } from '../chat/chat-sheet';
 import { AddressSheet } from './address-sheet';
 import { BlockSheet } from './block-sheet';
@@ -447,6 +448,26 @@ describe('the name in place', () => {
 		expect(onRename.mock.calls).toEqual([['Coats for kids']]);
 	});
 
+	it('sends the same words again after a rename was refused', () => {
+		const onRename = vi.fn();
+		const named = (invalid: boolean) => (
+			<InPlaceName value="Winter coat drive" onRename={onRename} invalid={invalid} />
+		);
+		const { root, redraw } = mountable(named(false));
+		const box = root.querySelector('input');
+		if (box === null) throw new Error('no box');
+		const enter = () =>
+			act(() => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+		typeInto(box, 'Coats for kids');
+		enter();
+
+		redraw(named(true));
+		enter();
+
+		expect(onRename.mock.calls).toEqual([['Coats for kids'], ['Coats for kids']]);
+		expect(box.value).toBe('Coats for kids');
+	});
+
 	it('puts the stored name back when it is emptied and left', () => {
 		const onRename = vi.fn();
 		const root = mount(<InPlaceName value="Winter coat drive" onRename={onRename} />);
@@ -512,6 +533,24 @@ describe('the publish bar', () => {
 			/>
 		);
 		expect(openLink(root)).toBeUndefined();
+	});
+
+	it('heads the editor with one h1 naming the page being edited', () => {
+		const campaign = routed(
+			<PublishBar
+				closeHref="/admin/campaigns"
+				page={{ kind: 'campaign', name: 'Winter coat drive', onRename: () => {} }}
+				state="unpublished"
+				publishing={false}
+				republished={false}
+				undoing={false}
+			/>
+		);
+		const donation = routed(bar(undefined));
+		const h1s = (root: HTMLElement) => [...root.querySelectorAll('h1')].map((h) => h.textContent);
+
+		expect(h1s(campaign)).toEqual(['Winter coat drive']);
+		expect(h1s(donation)).toEqual(['Donation page']);
 	});
 
 	it('has its report region on the page before there is a refusal', () => {
@@ -689,7 +728,11 @@ describe('the goal', () => {
 describe('the preview frame', () => {
 	function framed(onBlockClick: (id: string) => void) {
 		const root = mount(
-			<PreviewFrame src="about:blank" title="Preview" onBlockClick={onBlockClick} />
+			<PreviewFrame
+				src="about:blank"
+				title="Preview of Winter coat drive"
+				onBlockClick={onBlockClick}
+			/>
 		);
 		const frame = root.querySelector('iframe');
 		if (frame === null) throw new Error('no frame');
@@ -700,10 +743,49 @@ describe('the preview frame', () => {
 			window.dispatchEvent(new MessageEvent('message', { data, origin, source }));
 		});
 
-	it('is out of the tab order and named', () => {
+	it('is the preview’s one tab stop, named, and no block in the page it frames is one', () => {
+		// the page mounted first: its sweep takes every stop in the document it runs in out of the
+		// order, which in the editor is the frame's own document and never the host's.
+		const page = mount(
+			<PageView
+				type="campaign"
+				page={defaultCampaign()}
+				pageName="Winter coat drive"
+				org={{
+					name: 'Northside Neighbors',
+					mission: null,
+					vision: null,
+					info: {
+						legalName: 'Northside Neighbors',
+						ein: null,
+						addressLines: ['40 Elm Street', 'Easton, PA 18042'],
+						email: null,
+						links: []
+					}
+				}}
+				look={{ brandColour: '#1d6b4f', shade: 'warm', corner: 'round' }}
+				sharing={{
+					channels: ['facebook', 'copy-link'],
+					message: 'Help us get every kid a coat.',
+					url: 'https://give.example.org/coats'
+				}}
+				goal={{ raisedMinor: 984000, goalMinor: 1500000, endsAt: 'December 31' }}
+				money={{ locale: 'en-US', currency: 'usd' }}
+				programs={[]}
+				programMode="none"
+				donationBox={() => <button type="button">Donate</button>}
+				preview
+			/>
+		);
 		const frame = framed(() => {});
-		expect(frame.tabIndex).toBe(-1);
-		expect(frame.title).toBe('Preview');
+
+		expect(frame.tabIndex).toBe(0);
+		expect(frame.title).toBe('Preview of Winter coat drive');
+		const stops = [...page.querySelectorAll<HTMLElement>('a[href], button, input, summary')].filter(
+			(stop) => stop.closest('[inert]') === null
+		);
+		expect(stops.length).toBeGreaterThan(0);
+		expect(stops.filter((stop) => stop.tabIndex !== -1)).toEqual([]);
 	});
 
 	it('hands on a block id its own page posted, and nothing else on the channel', () => {
