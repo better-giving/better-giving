@@ -135,7 +135,7 @@ export type CheckoutInput = {
 	readonly config: FormConfig;
 	readonly ports: CheckoutPorts;
 	readonly resume?: { readonly paymentToken: string };
-	/** where a fresh card starts when the page hosting it asks: `openingDraft` below reads it. */
+	/** where the card starts when the page hosting it asks: `openingDraft` below reads it. */
 	readonly opening?: { readonly monthly?: boolean; readonly dedication?: boolean };
 };
 
@@ -186,12 +186,15 @@ function settledDraft(config: FormConfig): AmountDraft {
  * `OPENED_TRIBUTE` with nothing typed. either is a starting point the donor changes with the same
  * events as ever, and nothing past this step can tell it from their own choice.
  *
- * a resumed flow takes none of it: the donor decided before they left for their bank, and a
- * declined return that hands them the card again hands it back as `settledDraft` alone.
+ * a resumed flow takes it the same as a fresh one: the page load a bank returns to remembers
+ * neither the donor's choice nor the page's, so a declined return that hands them the card again
+ * starts where the page opens. what the resume itself carries sits beside the draft, not in it —
+ * the payment token, and the step and failure `resuming` reads back from it — so the opening
+ * overrides none of it.
  */
 function openingDraft(input: CheckoutInput): AmountDraft {
 	const settled = settledDraft(input.config);
-	const opening = input.resume === undefined ? input.opening : undefined;
+	const { opening } = input;
 	const monthly = opening?.monthly === true && input.config.frequencies.includes('monthly');
 	return {
 		...settled,

@@ -3851,13 +3851,25 @@ describe('the presets a host page picks', () => {
 		expect(corner(card.querySelector('.skeleton-mark'))).toBe('50%');
 	});
 
-	// a keyword off either list is refused by its registration, and what computes is the card a
-	// host who set nothing gets.
+	// a keyword off either list is invalid at computed-value time and takes what it inherits, which
+	// is the initial value where nothing above sets one: the card a host who set nothing gets.
 	it('draws today’s card for a preset off either list', async () => {
 		page('body { --donate-shade: dark; --donate-corner: pill; }');
 		const { card } = await mount();
 
 		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.001 264)'));
 		expect(corner(card)).toBe('8px');
+	});
+
+	// the fallback is the value above, not the default: a theme that set the presets on the page
+	// keeps them when the element itself carries a keyword off the list.
+	it('draws the presets the page above set for a preset off either list on the element', async () => {
+		page('body { --donate-shade: warm; --donate-corner: round; }');
+		const { host, card } = await mount();
+		host.style.setProperty('--donate-shade', 'dark');
+		host.style.setProperty('--donate-corner', 'rounded');
+
+		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 70)'));
+		expect(corner(card)).toBe('12px');
 	});
 });
