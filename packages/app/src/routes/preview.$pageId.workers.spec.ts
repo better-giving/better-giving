@@ -146,6 +146,19 @@ describe('the preview of a page whose draft is not what is published', () => {
 		expect(drawn?.type === 'title' ? drawn.heading : null).toBe('Coats before the first frost');
 		expect(view.preview).toBe(true);
 	});
+
+	it('opens the box as the draft’s switches say, where the published page’s are off', async () => {
+		const page = await ensureDonationPage(db);
+		const draft = {
+			...defaultDonationPage(),
+			switches: { openOnMonthly: true, dedicationOn: true }
+		};
+		await env.DB.prepare('update page set draft = ? where id = ?')
+			.bind(JSON.stringify(draft), page.id)
+			.run();
+
+		expect((await open(page.id)).opening).toEqual({ monthly: true, dedication: true });
+	});
 });
 
 /**

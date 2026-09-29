@@ -5,6 +5,7 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { plainText, textDocument } from '$lib/rich-text/document';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page } from '$lib/server/db/schema';
+import { edgeCache } from '$lib/server/edge-cache.testing';
 import { readOrgStory, updateOrgStory } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -46,7 +47,12 @@ type Drawn = {
 	version: number;
 	askMission: boolean;
 	storyVersion: string;
-	settings: { summary: string; boxes: Record<string, unknown> };
+	settings: {
+		summary: string;
+		boxes: Record<string, unknown>;
+		switches: Record<string, boolean>;
+		monthlyOffered: boolean;
+	};
 };
 
 async function open(): Promise<Drawn> {
@@ -147,6 +153,79 @@ describe('the donation settings', () => {
 			state: 'changed',
 			settings: { summary: 'No program · $20, $40' }
 		});
+	});
+});
+
+describe('the two switches in the donation settings', () => {
+	/** the cadences the deployment's processor offers, kept where the served config reads them. */
+	async function offering(cadences: string[]) {
+		await edgeCache().put(
+			new Request(`${ORIGIN}/__recurring-cadences`),
+			new Response(JSON.stringify(cadences), {
+				headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+			})
+		);
+	}
+
+	async function done(ticked: Record<string, string>, version: number) {
+		const body = new FormData();
+		body.set(WHICH_FORM, 'page-settings');
+		body.set(RECORD_VERSION, String(version));
+		body.set('program_mode', 'none');
+		body.set('program_id', '');
+		body.set('min_minor', '5');
+		body.set('max_minor', '500');
+		for (const [name, value] of Object.entries(ticked)) body.set(name, value);
+		return request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env }
+		);
+	}
+
+	it('seeds both unticked on a fresh page, and each as the draft holds it after a Done', async () => {
+		const drawn = await open();
+		expect(drawn.settings.switches).toEqual({ open_on_monthly: false, dedication_on: false });
+
+		expect((await done({ dedication_on: 'on' }, drawn.version)).status).toBe(200);
+
+		expect((await open()).settings.switches).toEqual({
+			open_on_monthly: false,
+			dedication_on: true
+		});
+	});
+
+	it('unticks a switch a Done no longer carries', async () => {
+		const drawn = await open();
+		await done({ open_on_monthly: 'on', dedication_on: 'on' }, drawn.version);
+
+		await done({ dedication_on: 'on' }, (await open()).version);
+
+		expect((await open()).settings.switches).toEqual({
+			open_on_monthly: false,
+			dedication_on: true
+		});
+	});
+
+	it('names each switch that is on in the Settings row’s line, by its own name', async () => {
+		const drawn = await open();
+		await done({ 'suggested_amounts[0]': '20', open_on_monthly: 'on' }, drawn.version);
+		expect((await open()).settings.summary).toBe('No program · $20 · Open on monthly');
+
+		await done(
+			{ 'suggested_amounts[0]': '20', open_on_monthly: 'on', dedication_on: 'on' },
+			(await open()).version
+		);
+		expect((await open()).settings.summary).toBe(
+			'No program · $20 · Open on monthly · Dedication on by default'
+		);
+	});
+
+	it('says whether this deployment offers monthly, which Open on monthly waits on', async () => {
+		await offering(['one_time', 'yearly']);
+		expect((await open()).settings.monthlyOffered).toBe(false);
+
+		await offering(['one_time', 'monthly', 'yearly']);
+		expect((await open()).settings.monthlyOffered).toBe(true);
 	});
 });
 

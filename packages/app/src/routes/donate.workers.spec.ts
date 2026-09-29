@@ -488,14 +488,21 @@ describe('/donate after the editor’s presses', () => {
 	}
 
 	/** the draft's donation settings saved from the editor's sheet: $200 to $20,000. */
-	const saveSettings = () =>
+	const saveSettings = (ticked: Record<string, string> = {}) =>
 		press('page-settings', {
 			program_mode: 'none',
 			program_id: '',
 			min_minor: '200',
 			max_minor: '20000',
-			'suggested_amounts[0]': '250'
+			'suggested_amounts[0]': '250',
+			...ticked
 		});
+
+	async function documents() {
+		const [row] = await db.select().from(page);
+		if (!row) throw new Error('there is no Donation page to read');
+		return { draft: JSON.parse(row.draft), published: JSON.parse(row.published ?? 'null') };
+	}
 
 	/** the draft's share message, as the chat or its sheet leaves it. */
 	async function draftMessage(message: string) {
@@ -659,6 +666,35 @@ describe('/donate after the editor’s presses', () => {
 		expect(view.look).toEqual(ORG_LOOK);
 		expect(view.sharing.message).toBe('Every meal counts this winter.');
 	});
+
+	it.each([
+		[
+			'Open on monthly',
+			'open_on_monthly',
+			{ openOnMonthly: true, dedicationOn: false },
+			{ monthly: true }
+		],
+		[
+			'Dedication on by default',
+			'dedication_on',
+			{ openOnMonthly: false, dedicationOn: true },
+			{ dedication: true }
+		]
+	])(
+		'opens the box with “%s” only once a Done ticking it is published',
+		async (_, box, switches, opening) => {
+			await visit();
+			await saveSettings({ [box]: 'on' });
+
+			const saved = await documents();
+			expect(saved.draft.switches).toEqual(switches);
+			expect(saved.published.switches).toEqual({ openOnMonthly: false, dedicationOn: false });
+			expect((await drawn()).opening).toBeUndefined();
+
+			await press('page-publish');
+			expect((await drawn()).opening).toEqual(opening);
+		}
+	);
 
 	it('checks a gift against the published donation settings, never the draft’s', async () => {
 		await visit();

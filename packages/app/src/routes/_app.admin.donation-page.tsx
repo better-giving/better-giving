@@ -43,7 +43,7 @@ import { editorPage, readEditorSettings, saveDraftSettings } from '$lib/server/p
 import { answerPublishPress } from '$lib/server/pages/publish';
 import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
 import { answerResetPress, hasEditsToReset } from '$lib/server/pages/reset';
-import { database } from '../context';
+import { database, platform } from '../context';
 import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
 
@@ -113,8 +113,9 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
 
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
 	const db = context.get(database);
+	const { env } = context.get(platform);
 	let row: Page;
 	let story: { story: Story; version: string };
 	let settings: SettingsSeed;
@@ -125,7 +126,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 		row = await ensureDonationPage(db);
 		[story, settings, pageSettings, edited, illustrations] = await Promise.all([
 			readOrgStory(db),
-			readEditorSettings(db, row),
+			readEditorSettings(db, env, row, new URL(request.url).origin),
 			readPageSettings(db, row),
 			hasEditsToReset(db, row),
 			draftIllustrations(db, row)

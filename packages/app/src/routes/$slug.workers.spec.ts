@@ -613,6 +613,35 @@ describe('a campaign after its editor’s Publish', () => {
 		expect(block(markup(answered.data), 'title')).toContain('Winter coat drive');
 	});
 
+	it.each([
+		['Open on monthly', 'open_on_monthly', { monthly: true }],
+		['Dedication on by default', 'dedication_on', { dedication: true }]
+	])(
+		'opens the box with “%s” only once a Done ticking it is published',
+		async (_, box, opening) => {
+			const { pageId } = await create('Winter coat drive');
+			await press(pageId, 'page-first-publish', { gifts_go_to: 'none' });
+			const opened = async () => {
+				const answered = await visit('/winter-coat-drive');
+				if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+				return answered.data.view.opening;
+			};
+
+			await press(pageId, 'page-settings', {
+				program_mode: 'none',
+				program_id: '',
+				min_minor: '5',
+				max_minor: '5000',
+				'suggested_amounts[0]': '25',
+				[box]: 'on'
+			});
+			expect(await opened()).toBeUndefined();
+
+			await press(pageId, 'page-publish');
+			expect(await opened()).toEqual(opening);
+		}
+	);
+
 	it('brings an ended campaign back at the next free address when its own was taken', async () => {
 		const { pageId: ended } = await create('Winter coat drive');
 		await press(ended, 'page-first-publish', { gifts_go_to: 'none' });

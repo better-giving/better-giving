@@ -45,7 +45,9 @@ function seed(amounts: string[]): SettingsSeed {
 		currency: 'USD',
 		programs: [],
 		retired: null,
-		summary: ''
+		summary: '',
+		switches: { open_on_monthly: false, dedication_on: false },
+		monthlyOffered: true
 	};
 }
 

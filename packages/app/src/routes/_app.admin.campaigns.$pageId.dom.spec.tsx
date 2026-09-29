@@ -50,7 +50,9 @@ function unpublished(): Loaded {
 			currency: 'USD',
 			programs: [],
 			retired: null,
-			summary: 'No program'
+			summary: 'No program',
+			switches: { open_on_monthly: false, dedication_on: false },
+			monthlyOffered: true
 		},
 		pageSettings: {
 			look: { source: 'organisation' },

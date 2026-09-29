@@ -574,13 +574,20 @@ export const FORM_GIVING_INPUT = z
 	.check(suggestedAmountsRule);
 export const FORM_ORIGINS_INPUT = z.object(FORM_ORIGINS_FIELDS);
 
+/** where a page's donation box opens, one checkbox each, absent when unticked. */
+const PAGE_SWITCH_FIELDS = {
+	open_on_monthly: z.boolean().default(false),
+	dedication_on: z.boolean().default(false)
+} as const;
+
 /**
  * a page's donation settings as its editor's one Done posts them: the program group and the giving
- * group together, under both groups' rules, so a page's settings obey exactly a form's. the name,
- * status and sites are not a page's to set — a page has its own name and is on no site.
+ * group together, under both groups' rules, so a page's settings obey exactly a form's, and the
+ * page's two switches beside them. the name, status and sites are not a page's to set — a page has
+ * its own name and is on no site.
  */
 export const PAGE_SETTINGS_INPUT = z
-	.object({ ...FORM_PROGRAM_FIELDS, ...FORM_GIVING_FIELDS })
+	.object({ ...FORM_PROGRAM_FIELDS, ...FORM_GIVING_FIELDS, ...PAGE_SWITCH_FIELDS })
 	.check(pinnedProgramRule)
 	.check(boundsRule)
 	.check(suggestedAmountsRule);

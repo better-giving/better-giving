@@ -284,6 +284,25 @@ describe('what the model is told', () => {
 		]);
 	});
 
+	it('states where the donation box opens, as the operator’s to set and never the reply’s', async () => {
+		const pageId = await insertPage(db, 'campaign', {
+			...handEdited(),
+			switches: { openOnMonthly: true, dedicationOn: false }
+		});
+		const AI = answering({ say: 'Warmer.' });
+
+		await turn(pageId, 'warmer colours', AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		const [system] = input.messages;
+		expect(system.content).toContain(
+			'- donation box: Open on monthly on, Dedication on by default off'
+		);
+		expect(system.content).toContain(
+			'- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.'
+		);
+	});
+
 	it('states the end date as the day chosen, in the zone it was chosen in', async () => {
 		// the end of 31 December in los angeles, already 1 January in new york where it is read
 		const pageId = await insertPage(db, 'campaign', {

@@ -259,8 +259,18 @@ describe('what a reply never changes', () => {
 		],
 		['a look by merge', { kind: 'merge', doc: { look } }, '"look"'],
 		[
-			'a switch',
+			'Open on monthly',
 			{ kind: 'patch', ops: [{ op: 'replace', path: '/switches/openOnMonthly', value: true }] },
+			'"switches"'
+		],
+		[
+			'Dedication on by default',
+			{ kind: 'patch', ops: [{ op: 'replace', path: '/switches/dedicationOn', value: true }] },
+			'"switches"'
+		],
+		[
+			'a switch by merge',
+			{ kind: 'merge', doc: { switches: { openOnMonthly: false, dedicationOn: true } } },
 			'"switches"'
 		],
 		[

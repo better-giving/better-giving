@@ -349,10 +349,10 @@ export async function readTarget(db: Db, target: SettingsTarget): Promise<Page |
 export type SettingsWrite = 'written' | 'stale' | 'gone' | 'unknown_program';
 
 /**
- * writes a page's draft donation settings — the program and what a donor may give — while the page
- * is still the version it was drawn at. the draft alone: the owned settings row, which /donate, a
- * campaign's address and every gift read, moves only at Publish. the fund, currency and sites stay
- * as the draft holds them.
+ * writes a page's draft donation settings — the program, what a donor may give and where the box
+ * opens — while the page is still the version it was drawn at. the draft alone: the owned settings
+ * row, which /donate, a campaign's address and every gift read, moves only at Publish. the fund,
+ * currency and sites stay as the draft holds them.
  *
  * a cause newly pinned must be one still offered; a pin the draft already holds is kept as it is,
  * as the form screen keeps a form's.
@@ -361,7 +361,11 @@ export async function updateDraftSettings(
 	db: Db,
 	target: SettingsTarget,
 	version: Date,
-	input: { readonly program: ParsedFormProgram; readonly giving: ParsedFormGiving }
+	input: {
+		readonly program: ParsedFormProgram;
+		readonly giving: ParsedFormGiving;
+		readonly switches: PageDocument['switches'];
+	}
 ): Promise<SettingsWrite> {
 	const row = await readTarget(db, target);
 	if (row === null) return 'gone';
@@ -380,7 +384,7 @@ export async function updateDraftSettings(
 		maxMinor: input.giving.maxMinor,
 		suggestedAmounts: [...input.giving.suggestedAmounts]
 	};
-	const draft = JSON.stringify({ ...JSON.parse(row.draft), settings });
+	const draft = JSON.stringify({ ...JSON.parse(row.draft), settings, switches: input.switches });
 	const written = await db
 		.update(page)
 		.set({ draft })

@@ -33,6 +33,11 @@ import { pageGoal } from './goal';
 // `acceptableHostnames` in ../donations/quote.ts) — a donor page is on no `site` row and on no
 // form's `allowed_origins`, so unticking a site never takes one down.
 //
+// the box opens where the drawn document's switches say — the published one for a donor, the draft
+// in the preview — so a switch saved in the editor reaches donors at Publish, with the rest of the
+// document. whether monthly is offered at all stays the served config's: "Open on monthly" on a
+// deployment offering none opens as today.
+//
 // the stored document passes the read rule (`parsePage`) here. one that is missing, or that the rule
 // now refuses, draws the plain page — the donation box alone — and is logged, so a page broken by a
 // narrowed rule still takes gifts while somebody repairs it.
@@ -159,7 +164,21 @@ export async function loadPageView(
 			goal,
 			money: { locale: config.locale, currency: config.currency },
 			config,
-			preview
+			preview,
+			...openingOf(page.switches)
+		}
+	};
+}
+
+/** where the page's switches open the box: only the flags that are on, and nothing when neither is. */
+function openingOf({ openOnMonthly, dedicationOn }: Page['switches']): {
+	opening?: NonNullable<PageViewData['opening']>;
+} {
+	if (!openOnMonthly && !dedicationOn) return {};
+	return {
+		opening: {
+			...(openOnMonthly ? { monthly: true } : {}),
+			...(dedicationOn ? { dedication: true } : {})
 		}
 	};
 }
