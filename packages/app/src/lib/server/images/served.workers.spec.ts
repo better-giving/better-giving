@@ -4,7 +4,7 @@ import { createDb, type Db } from '../db/client';
 import { type BytesPort, d1BytesPort } from './bytes';
 import { pngHeader } from './headers.testing';
 import { createImage } from './queries';
-import { servedImage } from './served';
+import { type ServeOptions, servedImage } from './served';
 
 // the edge cache in front of an image's bytes, against workerd's own `caches` and real D1.
 //
@@ -40,9 +40,14 @@ let origins = 0;
 const freshOrigin = () => `https://served-${++origins}.example`;
 
 /** one answer, with every task it handed to `waitUntil` finished before it is read. */
-async function serve(port: BytesPort, origin: string, id: string): Promise<Response> {
+async function serve(
+	port: BytesPort,
+	origin: string,
+	id: string,
+	options?: ServeOptions
+): Promise<Response> {
 	const ctx = createExecutionContext();
-	const response = await servedImage(port, ctx, { origin, id });
+	const response = await servedImage(port, ctx, { origin, id }, options);
 	await waitOnExecutionContext(ctx);
 	return response;
 }
@@ -97,5 +102,71 @@ describe('servedImage()', () => {
 		expect([first.status, second.status]).toEqual([404, 404]);
 		expect(await second.text()).toBe('');
 		expect(reads()).toBe(2);
+	});
+
+	describe('beforeRead', () => {
+		it('is asked once on a miss, before the bytes are read', async () => {
+			const id = await storedPng();
+			const { port, reads } = countingPort();
+			const readsWhenAsked: number[] = [];
+
+			await serve(port, freshOrigin(), id, {
+				beforeRead: async () => {
+					readsWhenAsked.push(reads());
+					return null;
+				}
+			});
+
+			expect(readsWhenAsked).toEqual([0]);
+			expect(reads()).toBe(1);
+		});
+
+		it('answers with the response it returns, reading nothing and keeping nothing', async () => {
+			const id = await storedPng();
+			const { port, reads } = countingPort();
+			const origin = freshOrigin();
+
+			const refused = await serve(port, origin, id, {
+				beforeRead: async () => new Response('slow down', { status: 429 })
+			});
+			const readsWhileRefused = reads();
+			await serve(port, origin, id);
+
+			expect(refused.status).toBe(429);
+			expect(await refused.text()).toBe('slow down');
+			expect(readsWhileRefused).toBe(0);
+			// the view after it is a miss: the refusal left no entry behind.
+			expect(reads()).toBe(1);
+		});
+
+		it('lets the view go ahead when it returns null: the bytes are answered and kept', async () => {
+			const id = await storedPng();
+			const { port, reads } = countingPort();
+			const origin = freshOrigin();
+
+			const answered = await serve(port, origin, id, { beforeRead: async () => null });
+			await serve(port, origin, id);
+
+			expect(answered.status).toBe(200);
+			expect(new Uint8Array(await answered.arrayBuffer())).toEqual(pngHeader(4, 3));
+			expect(reads()).toBe(1);
+		});
+
+		it('is never asked on a hit', async () => {
+			const id = await storedPng();
+			const { port } = countingPort();
+			const origin = freshOrigin();
+			let asked = 0;
+			const beforeRead = async () => {
+				asked += 1;
+				return null;
+			};
+
+			await serve(port, origin, id, { beforeRead });
+			const hit = await serve(port, origin, id, { beforeRead });
+
+			expect(asked).toBe(1);
+			expect(new Uint8Array(await hit.arrayBuffer())).toEqual(pngHeader(4, 3));
+		});
 	});
 });
