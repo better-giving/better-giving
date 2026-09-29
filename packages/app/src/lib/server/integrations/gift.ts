@@ -58,7 +58,7 @@ import { inPage, type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } 
 // from the `resume_updated_since` its last page answers (./paging.ts's header). the second is read
 // as a merge of one stream per kind of write above, each in order off an index of its own, inside
 // a window closed at a counted write. what a page reads is bounded by the writes from where it
-// starts through its last gift's change — fewer than four times as many, across every window it
+// starts through its last gift's change — a constant multiple of them, across every window it
 // tries — and not by the writes past it, except that a walk's last page reads to the last write
 // (`changedKeys`).
 
@@ -210,8 +210,9 @@ async function newestKeys(db: Db, query: PageQuery): Promise<Keyset[]> {
  *
  * the window closes at the time of the n-th write from where the page starts (`nthWriteAt`), n
  * twice the rows the page reads to begin with, so a stream whose writes are rarely a gift's latest
- * stops there rather than reading on to its index's end. every gift whose latest write falls inside the window is in it,
- * and every gift past it comes after them in the order, so a window that yields more than a page
+ * stops there rather than reading on to its index's end. every gift whose latest write falls
+ * inside the window is in it, and every gift past it comes after them in the order, so a window
+ * that yields more than a page
  * holds the page. one that yields less is read again twice as wide, and one that reaches past the
  * last write is not closed at all.
  */
