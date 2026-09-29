@@ -13,6 +13,9 @@ import { CopyControl } from './CopyControl.jsx';
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.
 
+/** what a worded control's caller says its refusal left the reader. */
+const WAY_OUT = 'Open agent prompt, after this button, opens it to copy by hand.';
+
 /** the clipboard the case is holding, so it can answer or refuse. */
 let writeText: ReturnType<typeof vi.fn>;
 
@@ -145,6 +148,7 @@ describe('a copy control mounted into a document', () => {
 		const root = render(CopyControl, {
 			text: 'You are integrating…',
 			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
 			onBlocked: () => {}
 		});
 		const [mark, words] = rest(root).childNodes;
@@ -160,6 +164,7 @@ describe('a copy control mounted into a document', () => {
 		const root = render(CopyControl, {
 			text: 'You are integrating…',
 			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
 			onBlocked
 		});
 
@@ -188,6 +193,7 @@ describe('a copy control mounted into a document', () => {
 		const root = render(CopyControl, {
 			text: 'You are integrating…',
 			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
 			onBlocked: () => {}
 		});
 
@@ -209,10 +215,40 @@ describe('a copy control mounted into a document', () => {
 		// @ts-expect-error — `onBlocked` is required beside `wording`.
 		const root = render(CopyControl, {
 			text: 'You are integrating…',
-			wording: 'Copy agent prompt'
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT
 		});
 
 		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it('cannot be worded without saying the way out of a refusal', () => {
+		// @ts-expect-error — `wayOut` is required beside `wording`.
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			onBlocked: () => {}
+		});
+
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it("says a worded control's way out with the refusal, and keeps its name to the drawn words", async () => {
+		// focus stays on the control, so what the caller drew for the refusal is next in the tab
+		// order and reported by nothing else.
+		writeText.mockRejectedValue(new Error('permission refused'));
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
+			onBlocked: () => {}
+		});
+
+		await press(root);
+		await elapse(0);
+
+		expect(region(root).textContent).toBe(`Copy blocked. ${WAY_OUT}`);
+		expect(button(root).getAttribute('aria-label')).toBe('Copy blocked');
 	});
 
 	it('is still the same button, and still focused, once the copy has landed', async () => {

@@ -184,6 +184,7 @@ export default function ShellLayoutPreview() {
 						<CopyControl
 							wording="Copy agent prompt"
 							text="You are integrating with the Riverside Shelter donations API."
+							wayOut="Open agent prompt, after this button, opens it to copy by hand."
 							onBlocked={() => {}}
 						/>
 					</div>

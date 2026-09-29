@@ -300,6 +300,21 @@ describe('the shell over the dialog', () => {
 		expect(document.activeElement).toBe(root.querySelector('input'));
 	});
 
+	it('goes back to the page that held the focus when nothing was named', () => {
+		// the same safari press on a screen that names no target: the page is no opener, but it is
+		// where the reader was, and it is still standing.
+		const root = render(Revoking, { named: false });
+		const page = root.querySelector('main');
+		const revoke = root.querySelector('button');
+		if (page === null || revoke === null) throw new Error('no page or no Revoke');
+		page.focus();
+		act(() => revoke.click());
+
+		pressed(root, 'Yes, revoke');
+
+		expect(document.activeElement).toBe(page);
+	});
+
 	it('leaves the focus on the body when the opener is gone and nothing was named', () => {
 		const root = render(Revoking, { named: false });
 		opened(root);

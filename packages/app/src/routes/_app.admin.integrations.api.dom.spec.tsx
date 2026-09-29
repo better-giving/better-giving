@@ -129,6 +129,31 @@ it('links the served agent prompt once the clipboard refuses it, and not before'
 	expect(prompt()?.getAttribute('target')).toBe('_blank');
 });
 
+it('says where the refused prompt can be taken instead, since focus stays on the copy press', async () => {
+	Object.defineProperty(navigator, 'clipboard', {
+		configurable: true,
+		value: { writeText: async () => Promise.reject(new Error('permission refused')) }
+	});
+	onTestFinished(() => {
+		Reflect.deleteProperty(navigator, 'clipboard');
+	});
+	const root = screen();
+	const copy = root.querySelector<HTMLButtonElement>('button[aria-label="Copy agent prompt"]');
+	await act(async () => copy?.click());
+	// the control writes its region a task after the press.
+	await act(() => new Promise((settled) => setTimeout(settled, 0)));
+
+	const said = [...root.querySelectorAll('[aria-live]')].map((region) => region.textContent);
+	expect(said).toContain(
+		'Copy blocked. Open agent prompt, after this button, opens it to copy by hand.'
+	);
+	const link = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Open agent prompt');
+	// "after this button" is the order a reader tabs through.
+	expect(
+		copy && link ? copy.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING : 0
+	).not.toBe(0);
+});
+
 it('draws no card and no key where no key was made', () => {
 	const root = screen();
 

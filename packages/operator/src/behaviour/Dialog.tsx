@@ -32,8 +32,10 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 // **what the reader was on counts as the opener only when it is a control.** safari, and firefox on
 // macos, do not focus a button or a link a pointer presses: focus goes to the nearest focusable
 // thing around it instead, which under the shell is `main` — focusable as the skip link's landing
-// (../components/shell/AppShell.jsx). a press on Revoke would then record the whole page as what put the card up, and focus
-// would go back to it rather than to the target the screen named.
+// (../components/shell/AppShell.jsx). a press on Revoke would then record the whole page as what
+// put the card up, and focus would go back to it rather than to the target the screen named. the
+// box is still where the reader was, so it is the last place focus goes back to: the opener
+// control, then the target the screen named, then that box while it is on the page, then the body.
 //
 // **a press on the ground counts only when it went down there after the card was lifted.** a
 // question that arrived in the server's markup is drawn in the page until this runs, and then
@@ -56,9 +58,10 @@ type ModalProps<
 	/**
 	 * where focus lands when there is no opener to go back to: the answer took it off the page — a
 	 * made key remounting the form that asked for it, a revoked row taking its Revoke with it — or
-	 * the card arrived in the server's markup and nobody opened it. the screen names it because only
-	 * the screen knows what is still standing once its answer is drawn. read when the card comes
-	 * down, so it is the element on the page then; it has to be one that takes focus.
+	 * the card arrived in the server's markup and nobody opened it, or what held the focus when it
+	 * went up was a box and not a control (the header's safari paragraph). the screen names it
+	 * because only the screen knows what is still standing once its answer is drawn. read when the
+	 * card comes down, so it is the element on the page then; it has to be one that takes focus.
 	 */
 	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
 };
@@ -105,9 +108,14 @@ export function Modal<
 		// what the reader was on when the card went up, held so the cleanup can put them back. it is
 		// read before the focus is moved and never after: `showModal()` and the call below are what
 		// take it away. a dialog that arrived in the server's markup was opened by nobody and focus is
-		// on the body, which is no control; nor is a box that only holds focus, for the header's reason.
-		const focused = document.activeElement;
-		const opener = focused instanceof HTMLElement && focused.matches(CONTROL) ? focused : null;
+		// on the body, which is no control; nor is a box that only holds focus, for the header's reason,
+		// and that box is kept apart as the last place to go back to.
+		const focused =
+			document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+				? document.activeElement
+				: null;
+		const opener = focused?.matches(CONTROL) ? focused : null;
+		const holder = opener === null ? focused : null;
 		// `showModal()` throws InvalidStateError on a dialog that is already open non-modally, which
 		// is exactly what arrives from the server, so the close is what makes the upgrade legal
 		// rather than a way out of anything.
@@ -141,13 +149,10 @@ export function Modal<
 			// and then back to the control that put the card up. the browser would do this itself on a
 			// `close()` of an element still on the page, but this one is being removed in the same
 			// commit, so the restoration is written here or it does not happen. with that control gone
-			// the reader goes where the screen said, and with nothing said they are left on the body.
-			if (opener?.isConnected) {
-				opener.focus();
-				return;
-			}
-			const landing = fallback();
-			if (landing?.isConnected) landing.focus();
+			// the reader goes where the screen said, with nothing said to the box that held the focus,
+			// and with neither they are left on the body.
+			const landing = [opener, fallback(), holder].find((target) => target?.isConnected);
+			landing?.focus();
 		};
 	}, []);
 

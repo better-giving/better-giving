@@ -17,6 +17,7 @@ import { Mark } from '../status/Mark.jsx';
  *   Copy would not say what of. never drawn: at rest the control is the mark, and this is the whole
  *   of what says which one it is to anyone not reading the line it sits on.
  * @property {undefined} [wording]
+ * @property {undefined} [wayOut]
  * @property {(() => void) | undefined} [onBlocked] told when the clipboard refuses, for a caller
  *   holding the text out of sight: a refusal is only survivable where the text can be taken by
  *   hand, and ../forms/Field.jsx shows a masked box's value on it. a control beside the text it
@@ -32,6 +33,9 @@ import { Mark } from '../status/Mark.jsx';
  *   control stands where nothing on its line prints the text, so a refusal leaves the reader a way
  *   to take it by hand only through what the caller does when told — the API page links the
  *   document it would have copied.
+ * @property {string} wayOut what the reader is told after `Copy blocked`, naming what `onBlocked`
+ *   draws and where: the refusal leaves focus on this control, so whatever the caller drew arrives
+ *   unannounced unless the refusal says it. required beside `onBlocked` for the same reason.
  *
  * a control is named one way or the other, and a caller cannot pass both.
  *
@@ -61,7 +65,15 @@ const SETTLE_MS = 2000;
    the settle timer and the live region are here rather than at each caller, because two copies of
    either is how two surfaces come to report a press differently. */
 /** @param {CopyControlProps} props */
-export function CopyControl({ text, label = 'Copy', wording, disabled = false, onBlocked, ref }) {
+export function CopyControl({
+	text,
+	label = 'Copy',
+	wording,
+	wayOut,
+	disabled = false,
+	onBlocked,
+	ref
+}) {
 	// idle, and the two things that can come back from an attempt. `blocked` is the one worth
 	// drawing: `writeText` rejects on a refused permission and throws outright on an insecure
 	// origin, and a control that answers either by doing nothing visible is worse than no control at
@@ -87,8 +99,10 @@ export function CopyControl({ text, label = 'Copy', wording, disabled = false, o
 
 	// the name at every moment, and the drawn word at the one state where there is one. `blocked`
 	// says the clipboard refused rather than what to do about it, because what to do about it is on
-	// the screen by then: the text it would have copied is printed beside the control, or — held out
-	// of sight, as a masked box holds it — shown by the caller `onBlocked` tells.
+	// the screen by then: the text it would have copied is printed beside the control, or reached
+	// through what the caller `onBlocked` tells draws — a masked box shown, a link to the document.
+	// a worded control's region says that way out as well (`wayOut`), and its name does not: the name
+	// stays the words the button draws.
 	const spoken =
 		outcome === 'copied' ? 'Copied' : outcome === 'blocked' ? 'Copy blocked' : (wording ?? label);
 
@@ -111,7 +125,12 @@ export function CopyControl({ text, label = 'Copy', wording, disabled = false, o
 		// answered with silence.
 		setAnnounced('');
 		clearTimeout(unsay.current);
-		const words = landed === 'copied' ? 'Copied' : 'Copy blocked';
+		const words =
+			landed === 'copied'
+				? 'Copied'
+				: wayOut === undefined
+					? 'Copy blocked'
+					: `Copy blocked. ${wayOut}`;
 		unsay.current = setTimeout(() => setAnnounced(words), 0);
 
 		// both outcomes revert, so the control is offerable again either way, and the region empties

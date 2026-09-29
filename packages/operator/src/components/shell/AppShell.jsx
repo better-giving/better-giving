@@ -444,8 +444,9 @@ function offBar(groups) {
    grid. an unheaded group has no name to be a group by and draws no element.
 
    a headed group none of whose cells is a tab is `--offbar` in the bar's run, and
-   ../../styles/adm.css hides it on the bar as it hides the cells: `display: contents` keeps a box out of the layout and not out of
-   the tree, so it would stand on the bar as a named group holding nothing. */
+   ../../styles/adm.css hides it on the bar as it hides the cells: `display: contents` keeps a box
+   out of the layout and not out of the tree, so it would stand on the bar as a named group
+   holding nothing. */
 /** @param {RailGroupProps} props */
 function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 	const { heading, destinations } = group;

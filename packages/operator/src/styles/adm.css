@@ -4675,8 +4675,14 @@
 	   of the list they have just read. it stands after the table rather than in its body, so a
 	   reader moving by rows meets only records — the rule, the inset and the size are a row's,
 	   restated, and the whole row is what the pointer and the finger have to land on rather than
-	   the mark alone. */
+	   the mark alone.
+
+	   it is as wide as the plane's view and not as the table, which scrolls inside the plane, so it
+	   is held at the view's start edge: a table scrolled sideways would otherwise carry the row's
+	   rule and its band off with it, and leave the columns in view with no foot. */
 	.adm-table__add {
+		position: sticky;
+		inset-inline-start: 0;
 		display: grid;
 		grid-template-columns: auto 1fr;
 		align-items: center;

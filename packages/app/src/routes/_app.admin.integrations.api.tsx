@@ -56,7 +56,7 @@ import type { Route } from './+types/_app.admin.integrations.api';
 // origin this request publishes (`publishedOrigin` in $lib/server/integrations/openapi.ts): the
 // reference is a link to the document the deployment serves, and the prompt is copied whole from
 // the loader's answer. a copy the clipboard refuses puts a link to the served prompt beside the
-// press, since nothing on the page prints it.
+// press, since nothing on the page prints it, and the refusal's announcement names that link.
 //
 // both dialogs take their opener off the page as they answer — a made key remounts the form that
 // asked, a revoked row takes its Revoke with it — so each hands `fallbackFocus` the Name box, the
@@ -233,6 +233,7 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 						<CopyControl
 							text={loaderData.agentPrompt}
 							wording="Copy agent prompt"
+							wayOut="Open agent prompt, after this button, opens it to copy by hand."
 							onBlocked={() => setPromptRefused(true)}
 						/>
 						{promptRefused ? (
