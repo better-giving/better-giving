@@ -3036,7 +3036,13 @@ describe('settleDelivery() — what a failed attempt owes a destination listenin
 			id: 'WH-FAILED-PAYPAL',
 			type: 'BILLING.SUBSCRIPTION.PAYMENT.FAILED',
 			providerNoticeId: GIFT_ID,
-			occurredAt: new Date('2026-09-16T22:20:10.000Z')
+			occurredAt: new Date('2026-09-16T22:20:08.000Z'),
+			delivered: {
+				attemptCount: 2,
+				nextRetryAt: new Date('2026-09-21T22:20:08Z'),
+				amountMinor: 2500,
+				currency: 'USD'
+			}
 		});
 	}
 

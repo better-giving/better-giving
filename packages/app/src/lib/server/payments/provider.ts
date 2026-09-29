@@ -883,11 +883,13 @@ export type RecurringEvent = VerifiedDelivery & {
 	readonly providerNoticeId: string;
 	/**
 	 * the failed attempt as the verified body itself states it — an exception to
-	 * `VerifiedDelivery`'s rule, and stripe's alone: the invoice a read fetches afterwards already
-	 * holds the next attempt's count and schedule when a delivery arrives late, and only the body
-	 * was stamped by the attempt it reports. ./stripe.ts sets it on every collection failure, and
-	 * its own `readRecurringGift` is its one reader and refuses a failure without it; absent on
-	 * every other delivery and processor.
+	 * `VerifiedDelivery`'s rule, on the one delivery each of stripe and paypal sends per failed
+	 * attempt: the object a read fetches afterwards — stripe's invoice, paypal's subscription —
+	 * already holds the next attempt's count and schedule when a delivery arrives late, and only the
+	 * body was stamped by the attempt it reports. ./stripe.ts and ./paypal.ts set it on every
+	 * collection failure and refuse one whose body does not state it; each adapter's own
+	 * `readRecurringGift` is its one reader and refuses a failure without it. absent on every other
+	 * delivery and processor.
 	 */
 	readonly delivered?: DeliveredAttempt;
 };
@@ -1698,14 +1700,14 @@ export type RecurringGiftNotice = {
 	/**
 	 * the attempt this delivery reports failing at a collection under the commitment. absent on
 	 * every other notice — a collection that paid, and the commitment's own standing.
-	 * ./stripe.ts and ./paypal.ts report it (`failedAttemptOf` in each). stripe's omits the opening
-	 * invoice, the donor's own first charge failing on the page; paypal's reports a subscription's
-	 * first payment too, which no commitment row stands behind yet, and ../donations/collect.ts
-	 * reports nothing for an attempt under none. a failure reported with no attempt reads as a
-	 * collection that did not collect only where it names the failed transaction in `providerTxnId`;
-	 * with no transaction either, it reads as money settled outside the processor, and
-	 * ../donations/collect.ts alerts an operator to record a gift nobody gave. so a failure with no
-	 * transaction behind it must carry its attempt.
+	 * ./stripe.ts and ./paypal.ts report it (`failedAttemptOf` in the one, `readFailure` in the
+	 * other). stripe's omits the opening invoice, the donor's own first charge failing on the page;
+	 * paypal's reports a subscription's first payment too, which no commitment row stands behind
+	 * yet, and ../donations/collect.ts reports nothing for an attempt under none. a failure reported
+	 * with no attempt reads as a collection that did not collect only where it names the failed
+	 * transaction in `providerTxnId`; with no transaction either, it reads as money settled outside
+	 * the processor, and ../donations/collect.ts alerts an operator to record a gift nobody gave. so
+	 * a failure with no transaction behind it must carry its attempt.
 	 */
 	readonly failedAttempt?: FailedCollection;
 };
@@ -1742,9 +1744,9 @@ export type FailedCollection = {
 	 */
 	readonly nextRetryAt: Date | null;
 	/**
-	 * business time: when the attempt failed — off the processor's read where it records the
-	 * attempt's time, else the reporting delivery's own time, which is stamped when the attempt
-	 * failed. which one each adapter uses is at its `failedAttemptOf`.
+	 * business time: when the attempt failed — the reporting delivery's own time, which is stamped
+	 * when the attempt failed and repeated on a redelivery (`failedAttemptOf` in ./stripe.ts,
+	 * `readFailure` in ./paypal.ts).
 	 */
 	readonly failedAt: Date;
 	/** minor units, positive: what the attempt asked for — what was still owed on the collection. */
