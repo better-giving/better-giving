@@ -1,7 +1,7 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
-import { program, type Program } from '../db/schema';
+import { image, program, type Program } from '../db/schema';
 import { sqliteResultCode } from '../db/rejection';
 import type { ParsedProgram } from './program-input';
 
@@ -184,16 +184,17 @@ export async function createProgram(db: Db, input: ParsedProgram): Promise<Progr
 }
 
 /**
- * what a save of a cause did, which is four answers rather than two.
+ * what a save of a cause did, which is more answers than saved or not.
  *
  * `duplicate_name` is its own word because it is its own sentence, keyed to the box the operator
  * has to retype: `gone` says this cause is not there to write to, and saying that to somebody who
  * picked a name a colleague used yesterday would send them looking for a cause that is fine.
  * `stale` is a cause written since the version the caller was drawn from, refused rather than
  * overwritten: a save replaces both columns, so a tab drawn before a colleague's rename would put
- * the old name back.
+ * the old name back. `no_image` and `not_photo` are a photo id the save cannot hold, each its own
+ * sentence at the photo's box, and nothing is written for either.
  */
-export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name';
+export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name' | 'no_image' | 'not_photo';
 
 /**
  * renames a cause and rewrites its description, and answers whether there was one to write at the
@@ -216,18 +217,33 @@ export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name';
  *
  * `updated_at` is in no `set`: the column carries `$onUpdateFn`, so drizzle adds it to every
  * update it emits.
+ *
+ * the photo must be an `image` of kind `photo`, which the column cannot check (`program.imageId` in
+ * ../db/schema.ts). read ahead of the write, and no race is opened by it: an image row is never
+ * deleted and its kind never changes after the insert.
  */
 export async function updateProgram(
 	db: Db,
 	id: string,
 	version: Date,
-	input: ParsedProgram
+	input: ParsedProgram,
+	imageId: string | null
 ): Promise<ProgramSave> {
+	if (imageId !== null) {
+		const [photo] = await db
+			.select({ kind: image.kind })
+			.from(image)
+			.where(eq(image.id, imageId))
+			.limit(1);
+		if (photo === undefined) return 'no_image';
+		if (photo.kind !== 'photo') return 'not_photo';
+	}
+
 	let updated: { id: string }[];
 	try {
 		updated = await db
 			.update(program)
-			.set({ name: input.name, description: input.description })
+			.set({ name: input.name, description: input.description, imageId })
 			.where(and(eq(program.id, id), isNull(program.archivedAt), eq(program.updatedAt, version)))
 			.returning({ id: program.id });
 	} catch (error) {

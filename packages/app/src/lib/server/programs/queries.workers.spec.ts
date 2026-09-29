@@ -187,9 +187,9 @@ describe('updateProgram', () => {
 		const created = await made('Clean Water');
 		await env.DB.prepare('update program set updated_at = 0 where id = ?').bind(created.id).run();
 
-		expect(await updateProgram(db, created.id, await at(created.id), input('Water', 'wells'))).toBe(
-			'saved'
-		);
+		expect(
+			await updateProgram(db, created.id, await at(created.id), input('Water', 'wells'), null)
+		).toBe('saved');
 
 		const after = await readProgram(db, created.id);
 		expect(after).toMatchObject({ name: 'Water', description: 'wells' });
@@ -202,7 +202,7 @@ describe('updateProgram', () => {
 		await made('Clean Water');
 		const gala = await made('Gala');
 
-		expect(await updateProgram(db, gala.id, await at(gala.id), input('Clean Water'))).toBe(
+		expect(await updateProgram(db, gala.id, await at(gala.id), input('Clean Water'), null)).toBe(
 			'duplicate_name'
 		);
 		expect(await readProgram(db, gala.id)).toMatchObject({ name: 'Gala' });
@@ -212,7 +212,7 @@ describe('updateProgram', () => {
 		await made('Clean water');
 		const gala = await made('Gala');
 
-		expect(await updateProgram(db, gala.id, await at(gala.id), input('Clean Water'))).toBe(
+		expect(await updateProgram(db, gala.id, await at(gala.id), input('Clean Water'), null)).toBe(
 			'duplicate_name'
 		);
 		expect(await readProgram(db, gala.id)).toMatchObject({ name: 'Gala' });
@@ -227,7 +227,8 @@ describe('updateProgram', () => {
 				db,
 				water.id,
 				await at(water.id),
-				input('Clean Water', 'wells in the east')
+				input('Clean Water', 'wells in the east'),
+				null
 			)
 		).toBe('saved');
 	});
@@ -239,14 +240,22 @@ describe('updateProgram', () => {
 		await env.DB.prepare('update program set updated_at = 0 where id = ?').bind(water.id).run();
 		const drawn = new Date(0);
 
-		expect(await updateProgram(db, water.id, drawn, input('Water', 'wells'))).toBe('saved');
-		expect(await updateProgram(db, water.id, drawn, input('Clean Water', 'wells'))).toBe('stale');
+		expect(await updateProgram(db, water.id, drawn, input('Water', 'wells'), null)).toBe('saved');
+		expect(await updateProgram(db, water.id, drawn, input('Clean Water', 'wells'), null)).toBe(
+			'stale'
+		);
 		expect(await readProgram(db, water.id)).toMatchObject({ name: 'Water' });
 	});
 
 	it('reports an unknown id instead of writing anything', async () => {
 		expect(
-			await updateProgram(db, '019fb100-0000-7000-8000-00000000dead', new Date(0), input('Water'))
+			await updateProgram(
+				db,
+				'019fb100-0000-7000-8000-00000000dead',
+				new Date(0),
+				input('Water'),
+				null
+			)
 		).toBe('gone');
 	});
 
@@ -257,9 +266,9 @@ describe('updateProgram', () => {
 		const created = await made('Gala');
 		await archiveProgram(db, created.id);
 
-		expect(await updateProgram(db, created.id, await at(created.id), input('Gala 2025'))).toBe(
-			'gone'
-		);
+		expect(
+			await updateProgram(db, created.id, await at(created.id), input('Gala 2025'), null)
+		).toBe('gone');
 		expect(await readProgram(db, created.id)).toMatchObject({ name: 'Gala' });
 	});
 });
