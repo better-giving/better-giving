@@ -2,15 +2,25 @@ import type { Editor } from '@tiptap/react';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, redirect, useActionData, useLoaderData } from 'react-router';
-import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
+import type { Resized } from '$lib/images/resize';
 import Organisation from './_app.admin.organisation';
+
+// happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
+// `resizes` until the case hands it a result.
+const resizes: ((result: Resized) => void)[] = [];
+vi.mock('$lib/images/resize', async (actual) => ({
+	...(await actual<typeof import('$lib/images/resize')>()),
+	resizeImage: () => new Promise<Resized>((resolve) => resizes.push(resolve))
+}));
 
 // what the Look section posts and says: a pick is the whole look against the version the page
 // holds, a pick made while one is in flight goes after it with the version its answer revalidated,
 // and the answer is reported beside the control with an Undo. what the Story section posts and
 // says around the same three: a save, its landing with an Undo, and a refusal. and what the Sharing
-// section's presses post: the order its channels go in, the message and links, and its Undo.
+// section's presses post: the order its channels go in, the message and links, and its Undo. and
+// what the logo, first in the Look, posts: the write the moment an upload lands, Remove, and Undo.
 //
 // in the dom pool because every case is a press, and a look's is a fetcher round trip — a press, an
 // action that has not settled, a revalidation — where a server render is one idle pass. the action here is a stand-in
@@ -65,6 +75,15 @@ let refusingStory: string | null;
 let held: (() => void)[];
 /** the sentence the next look post is refused with, when a case sets one. */
 let refusing: string | null;
+type Logo = { imageId: string; width: number; height: number } | null;
+/** the logo the loader reads, the one its last write replaced, and the version it moves through. */
+let logo: { now: Logo; before: Logo; version: string };
+/** each logo write and Undo as it arrived. */
+let logoPosts: Record<string, string>[];
+/** the sentence the next logo write is refused with at its id, when a case sets one. */
+let refusingLogo: string | null;
+/** each upload waits here until the case lets it land, answered with what it is handed. */
+let uploadsHeld: ((answer: unknown) => void)[];
 
 beforeEach(() => {
 	stored = { look: { shade: 'light', corner: 'soft', brandColour: null }, version: 'v0' };
@@ -85,6 +104,11 @@ beforeEach(() => {
 	refusingStory = null;
 	held = [];
 	refusing = null;
+	logo = { now: null, before: null, version: 'logo-v0' };
+	logoPosts = [];
+	refusingLogo = null;
+	uploadsHeld = [];
+	resizes.length = 0;
 });
 
 /** a body's own fields, as the stand-in action reads them. */
@@ -118,7 +142,10 @@ function screen(): HTMLElement {
 						links: sharing.links
 					},
 					sharingVersion: sharing.version,
-					sharingSaved: taken?.startsWith('sharing') ? taken : null
+					sharingSaved: taken?.startsWith('sharing') ? taken : null,
+					logo: logo.now,
+					logoVersion: logo.version,
+					logoUndoable: logo.now?.imageId !== logo.before?.imageId
 				};
 			},
 			action: async ({ request }) => {
@@ -168,6 +195,32 @@ function screen(): HTMLElement {
 					};
 					return landed('story');
 				}
+				if (which === 'org-logo' || which === 'org-logo-undo') {
+					const body = fieldsOf(form);
+					logoPosts.push(body);
+					if (refusingLogo !== null)
+						return data(
+							{
+								form: {
+									id: which,
+									result: {
+										status: 'error',
+										initialValue: body,
+										error: { imageId: [refusingLogo] }
+									}
+								}
+							},
+							{ status: 400 }
+						);
+					const next: Logo =
+						which === 'org-logo-undo'
+							? logo.before
+							: body.imageId
+								? { imageId: body.imageId, width: 640, height: 320 }
+								: null;
+					logo = { now: next, before: logo.now, version: `logo-v${logoPosts.length}` };
+					return { saved: 'logo', version: logo.version };
+				}
 				const body = fieldsOf(form);
 				posted.push(body);
 				await new Promise<void>((resolve) => held.push(resolve));
@@ -201,6 +254,10 @@ function screen(): HTMLElement {
 					params: {},
 					matches: []
 				})
+		},
+		{
+			path: '/admin/images',
+			action: async () => data(await new Promise((resolve) => uploadsHeld.push(resolve)))
 		}
 	]);
 	return mount(createElement(Stub, { initialEntries: ['/admin/organisation'] }));
@@ -297,6 +354,26 @@ it('reports the landed save beside the control, and its Undo posts against the v
 	await settle();
 	expect(posted[1]).toEqual({ [WHICH_FORM]: 'org-look-undo', [RECORD_VERSION]: 'v1' });
 	expect(undo.getAttribute('aria-disabled')).toBe('true');
+});
+
+it('reads Redo at the press once an Undo has landed', async () => {
+	const root = await drawn();
+	act(() => radio(root, 'warm').click());
+	await settle();
+	act(() => held.shift()?.());
+	await settle();
+	await settle();
+
+	const undo = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Undo');
+	if (undo === undefined) throw new Error('no Undo after a landed save');
+	act(() => undo.click());
+	await settle();
+	act(() => held.shift()?.());
+	await settle();
+	await settle();
+
+	expect(said(root)).toContain('Undone on every page using the organisation’s look.');
+	expect(undo.textContent).toBe('Redo');
 });
 
 it('reports a refused save beside the control under the alert mark, not the check', async () => {
@@ -583,5 +660,87 @@ describe('the sharing channels', () => {
 		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');
 		const save = card?.parentElement?.querySelector('.adm-actions .adm-save');
 		expect(save?.getAttribute('aria-disabled')).toBe('true');
+	});
+});
+
+describe('the logo', () => {
+	const STORED = '0192a4c1-0000-7000-8000-000000000002';
+
+	/** the Logo group, which is where its outcomes have to be read. */
+	function group(root: HTMLElement): HTMLElement {
+		const legend = [...root.querySelectorAll('legend')].find((l) => l.textContent === 'Logo');
+		const found = legend?.parentElement;
+		if (!found) throw new Error('no Logo group');
+		return found;
+	}
+
+	function button(root: HTMLElement, label: string): HTMLButtonElement {
+		const found = [...group(root).querySelectorAll('button')].find((b) => b.textContent === label);
+		if (found === undefined) throw new Error(`no button reading "${label}" in the Logo group`);
+		return found;
+	}
+
+	/** a logo picked, resized, and its upload answered with the photo stored as `STORED`. */
+	async function upload(root: HTMLElement): Promise<void> {
+		const input = group(root).querySelector<HTMLInputElement>('input[type="file"]');
+		if (input === null) throw new Error('no picker');
+		Object.defineProperty(input, 'files', {
+			configurable: true,
+			value: [new File(['logo bytes'], 'logo.png', { type: 'image/png' })]
+		});
+		await act(async () => {
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		const blob = new Blob([new Uint8Array(40_000)], { type: 'image/webp' });
+		await act(async () => resizes.shift()?.({ ok: true, blob, width: 640, height: 320 }));
+		await settle();
+		await act(async () => uploadsHeld.shift()?.({ id: STORED, width: 640, height: 320 }));
+		await settle();
+		await settle();
+	}
+
+	it('posts the logo the moment its upload lands, with the stored id and the logo’s version', async () => {
+		const root = await drawn();
+		await upload(root);
+
+		expect(logoPosts).toEqual([
+			{ [WHICH_FORM]: 'org-logo', [RECORD_VERSION]: 'logo-v0', imageId: STORED }
+		]);
+	});
+
+	it('reports the landed logo with Undo, which posts against the version the write left', async () => {
+		const root = await drawn();
+		await upload(root);
+
+		expect(said(group(root))).toContain('Saved to every page.');
+		act(() => button(root, 'Undo').click());
+		await settle();
+		expect(logoPosts[1]).toEqual({ [WHICH_FORM]: 'org-logo-undo', [RECORD_VERSION]: 'logo-v1' });
+	});
+
+	it('posts an empty id for Remove, and reports it removed', async () => {
+		logo = { now: { imageId: STORED, width: 640, height: 320 }, before: null, version: 'logo-v0' };
+		const root = await drawn();
+
+		act(() => button(root, 'Remove').click());
+		await settle();
+		await settle();
+
+		expect(logoPosts).toEqual([
+			{ [WHICH_FORM]: 'org-logo', [RECORD_VERSION]: 'logo-v0', imageId: '' }
+		]);
+		expect(said(group(root))).toContain('Removed from every page.');
+	});
+
+	it('shows a refused write at the control, with no Undo', async () => {
+		refusingLogo = `"${STORED}" is an illustration; a logo is a photo uploaded here`;
+		const root = await drawn();
+		await upload(root);
+
+		const refusal = group(root).querySelector('.adm-momentary--blocked');
+		expect(refusal?.textContent).toBe(refusingLogo);
+		expect([...group(root).querySelectorAll('button')].some((b) => b.textContent === 'Undo')).toBe(
+			false
+		);
 	});
 });
