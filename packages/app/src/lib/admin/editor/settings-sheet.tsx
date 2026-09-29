@@ -1,4 +1,5 @@
 import { Mark } from '@better-giving/operator/components/status/Mark';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { Sheet } from '@better-giving/operator/components/shell/Sheet';
 import type { ReactNode } from 'react';
 import { formatMinorBrief } from '$lib/donations/money';
@@ -31,7 +32,7 @@ export type SettingsRow =
 type OpenRowProps = {
 	readonly label: string;
 	/** what the row holds now, as a reader would say it. */
-	readonly value: string;
+	readonly value: ReactNode;
 	/** the value is a stand-in for nothing set here. */
 	readonly unset?: boolean;
 	readonly onOpen: () => void;
@@ -67,6 +68,9 @@ export type BlockRow = {
 	readonly label: string;
 	/** a line of what it holds, or `''` for a block that holds nothing typed. */
 	readonly summary: string;
+	/** its photo is an AI illustration: the row reads Illustration in place of the summary, until a
+	 *  photo replaces it. */
+	readonly illustration?: boolean | undefined;
 };
 
 type BlockListProps = {
@@ -82,7 +86,7 @@ export function BlockList({ blocks, onOpenBlock }: BlockListProps) {
 				<OpenRow
 					key={block.id}
 					label={block.label}
-					value={block.summary}
+					value={block.illustration ? <StatusWord>Illustration</StatusWord> : block.summary}
 					onOpen={() => onOpenBlock(block.id)}
 				/>
 			))}

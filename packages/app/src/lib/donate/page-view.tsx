@@ -43,6 +43,13 @@ import { PageRoot } from './page-root';
 // is `box-right` under it. a cover page without that pair draws as `box-right`, its hero in the
 // flow where it is listed. an org-info footer always closes the page, wherever it is listed. a hero
 // or image block with no photo leaves itself out.
+//
+// the masthead stands above every block and names the organisation. with a logo, a logo at least
+// twice as wide as it is tall stands in for the name and carries it as its alt, and a narrower one
+// stands beside the name and says nothing of its own; the stored image's width and height decide.
+// a hero or image block marked as an AI illustration is captioned so, and a program's photo stands
+// on its chooser option. every image arrives by stored image id, drawn from the deployment's own
+// image route and never from an address a page carries.
 
 export type PageLook = {
 	/** lowercase `#rrggbb`, or null for the form's own grey. */
@@ -51,12 +58,21 @@ export type PageLook = {
 	readonly corner: Corner;
 };
 
+/** the organisation's logo: its stored image, and that image's shape. */
+export type PageLogo = {
+	readonly imageId: string;
+	readonly width: number;
+	readonly height: number;
+};
+
 export type PageViewProps = {
 	readonly type: PageType;
 	readonly page: Page;
 	/** a campaign's name, which an empty title heading draws; null on the Donation page. */
 	readonly pageName: string | null;
 	readonly org: PageOrg;
+	/** the organisation's logo, atop the page; null or absent where it has none. */
+	readonly logo?: PageLogo | null | undefined;
 	/** the look the page is drawn in: its own, or the organisation's. */
 	readonly look: PageLook;
 	readonly sharing: PageSharing;
@@ -66,6 +82,8 @@ export type PageViewProps = {
 	/** the active programs the box would offer, in their order. */
 	readonly programs: readonly PageProgram[];
 	readonly programMode: ProgramMode;
+	/** a program's photo on the chooser, as its stored image id, by the program's id. */
+	readonly programPhotos?: Readonly<Record<string, string>> | undefined;
 	/** the donation box, built by the route; `hideProgramSelect` is set where the chooser is drawn. */
 	readonly donationBox: (options: { readonly hideProgramSelect: boolean }) => ReactNode;
 	/** a pick on the program chooser: a program's id, or null for where it's needed most. */
@@ -133,11 +151,7 @@ export function PageView(props: PageViewProps) {
 			layout={cover === null ? layout : 'cover'}
 			{...(className === undefined ? {} : { className })}
 		>
-			<header className="page-mast">
-				<div className="page-in">
-					<p className="page-mast-name">{org.name}</p>
-				</div>
-			</header>
+			<Masthead name={org.name} logo={props.logo ?? null} />
 			<main className="page-body">
 				{cover === null ? (
 					arranged(body, layout, draw)
@@ -222,6 +236,41 @@ function arranged(blocks: Block[], layout: Layout, draw: Draw) {
 			</div>
 			{rest.length === 0 ? null : flow(rest)}
 		</>
+	);
+}
+
+function Masthead({ name, logo }: { readonly name: string; readonly logo: PageLogo | null }) {
+	if (logo === null) {
+		return (
+			<header className="page-mast">
+				<div className="page-in">
+					<p className="page-mast-name">{name}</p>
+				</div>
+			</header>
+		);
+	}
+	const art = (alt: string) => (
+		<img
+			className="page-mast-logo"
+			src={imageSrc(logo.imageId)}
+			alt={alt}
+			width={logo.width}
+			height={logo.height}
+		/>
+	);
+	return (
+		<header className="page-mast">
+			<div className="page-in page-mast-in">
+				{logo.width >= 2 * logo.height ? (
+					<p className="page-mast-name">{art(name)}</p>
+				) : (
+					<>
+						{art('')}
+						<p className="page-mast-name">{name}</p>
+					</>
+				)}
+			</div>
+		</header>
 	);
 }
 
@@ -318,6 +367,7 @@ function content(
 					onPick={props.onProgramPick}
 					locked={props.chooserLocked ?? false}
 					domId={domId}
+					photos={props.programPhotos}
 				/>
 			);
 	}

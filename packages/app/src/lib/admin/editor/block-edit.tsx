@@ -35,7 +35,8 @@ import {
 // pictures stand off the rows. a tier's amount carries its currency on the box
 // (./affixed-field.tsx), as the goal's does.
 //
-// a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
+// a placed photo's sheet is the replace press and its description (./replace-photo.tsx), with
+// Illustration over the art while the photo is still the AI illustration it opened on. a new
 // photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
 // stored, and Done writes its id and the description to the block, as a text block's words are;
 // a sheet dismissed before Done leaves the block as it was. a refused description lands under its
@@ -70,7 +71,8 @@ const VARIANT_FORM = { id: BLOCK_FORMS.variant };
 const LAYOUT_FORM = { id: BLOCK_FORMS.layout };
 
 type BlockEditSheetProps = {
-	readonly block: EditorBlock;
+	/** the block as the editor reads it; `illustration` marks a photo that is an AI illustration. */
+	readonly block: EditorBlock & { readonly illustration?: boolean | undefined };
 	/** the page's version as the editor holds it now. */
 	readonly version: number;
 	/** X or Escape. */
@@ -136,6 +138,7 @@ export function BlockEditSheet({
 									id={block.id}
 									text={block.text}
 									error={(box) => refusal(textForm, wordsAnswer, box)}
+									illustration={block.illustration === true}
 								/>
 							),
 							onDone: (form) => {
@@ -158,18 +161,26 @@ type BlockFieldsProps = {
 	readonly text: BlockText;
 	/** the last Done's refusal under `box`. */
 	readonly error: (box: string) => string | null;
+	/** the photo it holds is an AI illustration. */
+	readonly illustration?: boolean | undefined;
 };
 
 /** the boxes a block's words are typed in, named as its form posts them. */
-function BlockFields({ id, text, error }: BlockFieldsProps) {
-	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} />;
+function BlockFields({ id, text, error, illustration }: BlockFieldsProps) {
+	if (text.kind === 'photo')
+		return <PhotoFields id={id} text={text} error={error} illustration={illustration} />;
 	return <WordFields id={id} text={text} error={error} />;
 }
 
 type PhotoText = Extract<BlockText, { kind: 'photo' }>;
 
 /** the photo Done writes, and what describes it, each posted from a hidden box. */
-function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: PhotoText }) {
+function PhotoFields({
+	id,
+	text,
+	error,
+	illustration = false
+}: BlockFieldsProps & { readonly text: PhotoText }) {
 	const upload = useFetcher<UploadAnswer>();
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
@@ -212,6 +223,7 @@ function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: Ph
 				state={state}
 				altId={altId}
 				altError={altError}
+				flag={illustration && imageId === text.imageId ? 'Illustration' : undefined}
 			/>
 			<input type="hidden" name="image_id" value={imageId} />
 			<input type="hidden" name="alt" value={alt} />

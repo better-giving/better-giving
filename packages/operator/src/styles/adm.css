@@ -5852,9 +5852,9 @@
 
 	/* ---------- a placed photo -----------------------------------------------------------
 
-	   a photo on the page, in its block's edit sheet: the picture, the press that replaces it, and
-	   what that press last reported. the picture is cropped to the one frame whatever its shape, and
-	   the fill stands there until it has loaded. */
+	   a photo on the page, in its block's edit sheet, the organisation's logo, a program's photo: the
+	   picture, the press that replaces it, and what that press last reported. the picture is cropped
+	   to the one frame whatever its shape, and the fill stands there until it has loaded. */
 	.adm-placed {
 		display: grid;
 		gap: var(--admin-space-4);
@@ -5866,6 +5866,20 @@
 		object-fit: cover;
 		background: var(--admin-surface-fill);
 		border-radius: var(--admin-radius);
+	}
+
+	/* a logo is never cropped: the frame keeps its ratio and fill, and the art sits inside it whole,
+	   off the frame's edge by the part's inner step. */
+	.adm-placed__art--whole {
+		max-inline-size: var(--admin-measure-panel);
+		object-fit: contain;
+		padding: var(--admin-space-5);
+	}
+
+	/* a program's photo, cropped square as the donation page's program chooser crops it. */
+	.adm-placed__art--square {
+		aspect-ratio: 1;
+		max-inline-size: var(--admin-measure-rail);
 	}
 
 	/* ---------- rich text -------------------------------------------------------------
