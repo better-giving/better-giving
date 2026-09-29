@@ -2,8 +2,8 @@ import { UrlText } from '@better-giving/operator/components/data/CodeSlab';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { useEffect, useState } from 'react';
 import { data, href, Link } from 'react-router';
+import { useAfterPaint } from '$lib/admin/after-paint';
 import { screenTitle } from '$lib/admin/screen-title';
 import { WEBHOOK_EVENT_TYPES } from '$lib/webhooks/catalog';
 import { STAFF_USER_ID } from '$lib/server/auth';
@@ -26,9 +26,9 @@ import type { Route } from './+types/_app.admin.integrations.webhooks._index';
 //
 // a delete reports by the state it leaves — the row gone from this list — and says so to a reader
 // who cannot see it go: the deleted address rides the redirect as a flash ($lib/server/flash.ts),
-// and is written into a status region after the region mounts. the delete was pressed on another
-// page, so this region arrives with the landing, and one arriving already holding the words is an
-// insertion nobody announces.
+// and is written into a status region once the region has been drawn empty
+// ($lib/admin/after-paint.ts). the delete was pressed on another page, so this region arrives with
+// the landing, and one arriving already holding the words is an insertion nobody announces.
 
 /** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
 const SCREEN_TITLE = 'Webhooks';
@@ -75,8 +75,7 @@ const COLUMNS = [
 
 export default function Webhooks({ loaderData }: Route.ComponentProps) {
 	const { destinations, deleted } = loaderData;
-	const [said, say] = useState<string | null>(null);
-	useEffect(() => say(deleted === null ? null : `Deleted ${deleted}.`), [deleted]);
+	const said = useAfterPaint(deleted === null ? null : `Deleted ${deleted}.`);
 
 	return (
 		<Column wide>

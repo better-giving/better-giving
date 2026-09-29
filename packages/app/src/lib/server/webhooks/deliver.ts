@@ -52,8 +52,12 @@ import { signedHeaders } from './sign';
 // in flight that is taken does not clear `failing_since`, which marks the window a resume re-sends.
 //
 // **a paused or archived destination's rows are not claimed.** a paused one's rows wait, owed,
-// until it is resumed (`resumeDestination` in ./destinations.ts); an archived one is sent nothing
-// more.
+// until it is resumed (`resumeDestination` in ./destinations.ts). a run reads each destination's
+// address and secret once, after its claim, so the rows it already holds when the destination is
+// edited or deleted are still posted, to the address it read, until its lease runs out
+// ({@link LEASE_MS} from its scheduled time), and each lands the answer it got. a delete drops only
+// the rows no run holds (`dropOwedStatement`); a failure on a deleted destination neither marks nor
+// pauses it, and its row stays owed with nothing left to claim it.
 //
 // the run's scheduled time decides what is due and when a failure is next due, so steps line up
 // with the cron; the wall clock stamps each attempt's `webhook-timestamp` and `delivered_at`, the
@@ -214,7 +218,9 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 			db
 				.update(webhookDestination)
 				.set({ failingSince: sql`coalesce(${webhookDestination.failingSince}, ${now.getTime()})` })
-				.where(eq(webhookDestination.id, row.destinationId)),
+				.where(
+					and(eq(webhookDestination.id, row.destinationId), isNull(webhookDestination.archivedAt))
+				),
 			claim.landing(row, {
 				...afterFailure(attempts, now),
 				attempts,
@@ -257,6 +263,7 @@ function pauseStatement(db: Db, destinationId: string, reason: PauseReason, now:
 			and(
 				eq(webhookDestination.id, destinationId),
 				isNull(webhookDestination.pausedAt),
+				isNull(webhookDestination.archivedAt),
 				reason === 'failing'
 					? lte(
 							webhookDestination.failingSince,
@@ -344,9 +351,11 @@ export async function countHeld(db: Db, destinationId: string): Promise<number> 
 }
 
 /**
- * every row the destination `destinationId` is still owed, `dropped` at `now` because it is being
- * deleted; what was delivered or failed is kept, for its record. it matches nothing once the
- * destination is archived, so it runs in front of the write that archives it.
+ * every row the destination `destinationId` is still owed and no run holds at `now`, `dropped`
+ * because it is being deleted; what was delivered or failed is kept, for its record. a row a run
+ * has already claimed is left to it: its post may be on its way, and it lands whatever answer
+ * that post gets. it matches nothing once the destination is archived, so it runs in front of the
+ * write that archives it.
  */
 export function dropOwedStatement(db: Db, destinationId: string, now: Date) {
 	return db
@@ -355,6 +364,7 @@ export function dropOwedStatement(db: Db, destinationId: string, now: Date) {
 		.where(
 			and(
 				eq(webhookDelivery.status, 'pending'),
+				or(isNull(webhookDelivery.leasedUntil), lte(webhookDelivery.leasedUntil, now)),
 				eq(
 					webhookDelivery.destinationId,
 					db

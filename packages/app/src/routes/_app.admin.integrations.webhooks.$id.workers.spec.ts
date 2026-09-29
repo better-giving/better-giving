@@ -62,7 +62,7 @@ beforeEach(async () => {
 
 async function made(events: readonly WebhookEvent[] = ['gift.made']) {
 	const created = await createDestination(db, { url: URL_, events });
-	if (!created.ok) throw new Error(created.detail);
+	if (!created.ok) throw new Error(created.box);
 	return created.destination;
 }
 
@@ -209,7 +209,7 @@ describe('GET /admin/integrations/webhooks/:id', () => {
 			url: 'https://b.example.org/',
 			events: ['gift.made']
 		});
-		if (!other.ok) throw new Error(other.detail);
+		if (!other.ok) throw new Error(other.box);
 		const minute = (n: number) => Date.UTC(2026, 8, 28, 10, n);
 		await delivery(other.destination.id, { status: 'delivered', at: minute(59), answer: 200 });
 		for (let n = 0; n < 47; n++) {
@@ -435,6 +435,15 @@ describe('POST /admin/integrations/webhooks/:id — send a test', () => {
 		const answer = await destination.post(at(id), deployer, testing());
 
 		expect(await answer.json()).toEqual({ tested: { outcome: 'unanswered' } });
+	});
+
+	it('is not found for a deleted destination, and posts nothing', async () => {
+		const { id } = await made(['gift.made']);
+		await destination.post(at(id), deployer, deleting());
+		const posts = receiving(() => new Response('ok'));
+
+		expect((await destination.post(at(id), deployer, testing())).status).toBe(404);
+		expect(posts).toEqual([]);
 	});
 
 	it('is sent to a paused destination, which stays paused and holding what it held', async () => {

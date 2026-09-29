@@ -2643,7 +2643,7 @@ describe('recordReversal() — what a reversal owes a webhook destination', () =
 				url: `https://crm.example.org/hooks/${crypto.randomUUID()}`,
 				events
 			});
-			if (!created.ok) throw new Error(created.detail);
+			if (!created.ok) throw new Error(created.box);
 			ids.push(created.destination.id);
 		}
 		return ids;

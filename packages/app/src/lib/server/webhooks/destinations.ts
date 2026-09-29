@@ -3,6 +3,7 @@ import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { webhookDestination, webhookDestinationEvent } from '../db/schema';
 import { WEBHOOK_EVENT_TYPES, type WebhookEvent } from '../../webhooks/catalog';
+import { NO_EVENTS } from '../../webhooks/destination-input';
 import { countHeld, dropOwedStatement, requeueHeldStatement } from './deliver';
 
 // a destination: an https address the organisation's own system listens on, the events it takes,
@@ -96,6 +97,21 @@ export async function readDestination(db: Db, id: string): Promise<ReadDestinati
 	};
 }
 
+/**
+ * what a post to the destination `id` needs, its address and its secret, or null where none has
+ * the id or it was deleted.
+ */
+export async function readPostTarget(
+	db: Db,
+	id: string
+): Promise<{ readonly url: string; readonly signingSecret: string } | null> {
+	const [target] = await db
+		.select({ url: webhookDestination.url, signingSecret: webhookDestination.signingSecret })
+		.from(webhookDestination)
+		.where(and(eq(webhookDestination.id, id), isNull(webhookDestination.archivedAt)));
+	return target ?? null;
+}
+
 /** a destination as it was made, with the secret its owner copies into the receiving system. */
 export type CreatedDestination = {
 	readonly id: string;
@@ -105,24 +121,24 @@ export type CreatedDestination = {
 };
 
 /**
- * why an address was refused: `box` is what the URL box says under it, `detail` the sentence for a
- * reader who never saw the box.
+ * why a destination was refused: `field` is the box the refusal belongs under, and `box` what that
+ * box says.
  */
-export type AddressRefusal = {
+export type DestinationRefusal = {
 	readonly ok: false;
-	readonly reason: 'not_https' | 'not_public';
+	readonly reason: 'not_an_address' | 'not_https' | 'not_public' | 'no_events';
+	readonly field: 'url' | 'events';
 	readonly box: string;
-	readonly detail: string;
 };
 
 export type CreateDestinationResult =
 	| { readonly ok: true; readonly destination: CreatedDestination }
-	| AddressRefusal;
+	| DestinationRefusal;
 
 /**
  * a destination posting `events` to `url`, stored as the parsed address. an address that is not
- * https, or names a host the internet cannot reach (`destinationAddress`), is refused and nothing
- * is written.
+ * https, or names a host the internet cannot reach (`destinationAddress`), or no events, is
+ * refused and nothing is written.
  */
 export async function createDestination(
 	db: Db,
@@ -130,6 +146,7 @@ export async function createDestination(
 ): Promise<CreateDestinationResult> {
 	const url = destinationAddress(input.url);
 	if (!url.ok) return url;
+	if (input.events.length === 0) return NO_EVENTS_REFUSAL;
 
 	const id = uuidv7();
 	const signingSecret = newSigningSecret();
@@ -145,17 +162,18 @@ export async function createDestination(
 
 export type UpdateDestinationResult =
 	| { readonly ok: true }
-	| AddressRefusal
+	| DestinationRefusal
 	| { readonly ok: false; readonly reason: 'not_found'; readonly detail: string };
 
 /**
  * the destination `id` moved to `url` and set to take `events`, its signing secret kept. refused as
- * `createDestination` refuses an address, and as not found where no destination has the id or it
- * was deleted; nothing is written either way.
+ * `createDestination` refuses an address or no events, and as not found where no destination has
+ * the id or it was deleted; nothing is written either way.
  *
  * **it reaches only events queued after it.** a row is queued for the destination when its event
  * happens (./events.ts), so rows already queued are sent whatever events it now takes, and each is
- * posted to the address the destination holds when that post is made (./deliver.ts).
+ * posted to the address the destination holds when a delivery run claims it: a run already
+ * holding rows posts them to the address it read (./deliver.ts's header).
  */
 export async function updateDestination(
 	db: Db,
@@ -164,6 +182,7 @@ export async function updateDestination(
 ): Promise<UpdateDestinationResult> {
 	const url = destinationAddress(input.url);
 	if (!url.ok) return url;
+	if (input.events.length === 0) return NO_EVENTS_REFUSAL;
 
 	const standing = and(eq(webhookDestination.id, id), isNull(webhookDestination.archivedAt));
 	const [moved] = await db.batch([
@@ -198,8 +217,9 @@ export type DeleteDestinationResult =
 
 /**
  * the destination `id` deleted at `now`, answered with the address it posted to: archived, owed
- * nothing new, and every row it was still owed dropped in the same batch (`dropOwedStatement` in
- * ./deliver.ts), so nothing waits on a destination nobody can resume. what it was sent is kept.
+ * nothing new, and every row it was still owed that no delivery run holds dropped in the same batch
+ * (`dropOwedStatement` in ./deliver.ts), so nothing waits on a destination nobody can resume. a
+ * run already holding rows finishes their posts. what it was sent is kept.
  */
 export async function deleteDestination(
 	db: Db,
@@ -217,6 +237,13 @@ export async function deleteDestination(
 	return archived === undefined ? notFound(id) : { ok: true, url: archived.url };
 }
 
+const NO_EVENTS_REFUSAL = {
+	ok: false,
+	reason: 'no_events',
+	field: 'events',
+	box: NO_EVENTS
+} as const satisfies DestinationRefusal;
+
 /** the refusal for an id no standing destination has. */
 function notFound(id: string) {
 	return { ok: false, reason: 'not_found', detail: `No destination has the id ${id}.` } as const;
@@ -224,35 +251,40 @@ function notFound(id: string) {
 
 /**
  * the address a destination is stored under, or why it may not be one. surrounding space is
- * dropped and an address typed with no scheme is taken as https.
+ * dropped, and an address typed with no scheme — nothing before a colon but a host, or a host and
+ * its port — is taken as https.
  *
  * https only: every post carries donors' names and addresses. and a host the internet reaches: a
- * post goes out from this deployment's own network, so `localhost`, an IP literal in a loopback,
- * private, link-local or unique-local range, and a name under `.localhost`, `.local` or `.internal`
- * name either the machine sending or a network only it may see. an IP literal is read as the URL
- * parser normalizes it, so `0x7f000001` is refused as the 127.0.0.1 it is. a public name that
- * resolves to a private address is not caught here.
+ * post goes out from this deployment's own network, so a name with no domain, `localhost`, a name
+ * under `.localhost`, `.local`, `.internal` or `.home.arpa`, and an IP literal in any range that
+ * is not a public unicast one (`ipv4Range`, `ipv6Range`) name either the machine sending or a
+ * network only it may see. an IP literal is read as the URL parser normalizes it, so `0x7f000001`
+ * is refused as the 127.0.0.1 it is. a public name that resolves to a private address is not caught
+ * here.
  */
 function destinationAddress(
 	typed: string
-): { readonly ok: true; readonly href: string } | AddressRefusal {
+): { readonly ok: true; readonly href: string } | DestinationRefusal {
 	const trimmed = typed.trim();
-	const url = URL.parse(/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-	if (url === null || url.protocol !== 'https:' || url.hostname === '') {
+	const url = URL.parse(/^[a-z][a-z\d+.-]*:(?!\d)/i.test(trimmed) ? trimmed : `https://${trimmed}`);
+	if (url === null || url.hostname === '') {
 		return {
 			ok: false,
-			reason: 'not_https',
-			box: 'must start with https://',
-			detail: `${typed} is not an https address. Give the full address the receiving system listens on, starting https://.`
+			reason: 'not_an_address',
+			field: 'url',
+			box: 'isn’t a web address: check it for a space or a stray character'
 		};
+	}
+	if (url.protocol !== 'https:') {
+		return { ok: false, reason: 'not_https', field: 'url', box: 'must start with https://' };
 	}
 	const why = unreachable(url.hostname);
 	if (why !== null) {
 		return {
 			ok: false,
 			reason: 'not_public',
-			box: `must be reachable from the internet: ${why}`,
-			detail: `${typed} is not an address this deployment may post to: ${why}. Give the address the receiving system answers on from the internet.`
+			field: 'url',
+			box: `must be reachable from the internet: ${why}`
 		};
 	}
 	return { ok: true, href: url.href };
@@ -266,45 +298,88 @@ function unreachable(host: string): string | null {
 	}
 	if (name.endsWith('.local')) return `${host} names a host on a local network`;
 	if (name.endsWith('.internal')) return `${host} names a host on an internal network`;
+	if (name.endsWith('.home.arpa')) return `${host} names a host on a home network`;
 
-	const range = host.startsWith('[') ? ipv6Range(host.slice(1, -1)) : ipv4Range(host);
-	return range === null ? null : `${host} is ${range}`;
+	if (host.startsWith('[')) {
+		const range = ipv6Range(host.slice(1, -1));
+		return range === null ? null : `${host} is ${range}`;
+	}
+	const range = ipv4Range(host);
+	if (range !== null) return `${host} is ${range}`;
+	if (!name.includes('.') && !isIpv4(host)) {
+		return `${host} names no host on the internet: it has no domain`;
+	}
+	return null;
 }
 
 type Range =
+	| 'an address on no network'
 	| 'a loopback address'
 	| 'a private network address'
+	| 'a carrier-grade NAT address'
 	| 'a link-local address'
-	| 'a unique local address';
+	| 'a benchmarking address'
+	| 'a multicast or reserved address'
+	| 'a unique local address'
+	| 'a site-local address'
+	| 'an IPv4-compatible address'
+	| 'an IPv4-translated address'
+	| 'a NAT64 address'
+	| 'a 6to4 address';
 
-/** the reserved range a dotted-quad host is in; a name that is not four octets is in none. */
-function ipv4Range(host: string): Range | null {
+/** the four octets of a dotted-quad host, or null for a name that is not one. */
+function octetsOf(host: string): number[] | null {
 	const octets = host.split('.').map(Number);
-	if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) {
-		return null;
-	}
+	return octets.length === 4 && octets.every((o) => Number.isInteger(o) && o >= 0 && o <= 255)
+		? octets
+		: null;
+}
+
+const isIpv4 = (host: string) => octetsOf(host) !== null;
+
+/** the range a dotted-quad host is in where it is no public unicast address; a name is in none. */
+function ipv4Range(host: string): Range | null {
+	const octets = octetsOf(host);
+	if (octets === null) return null;
 	const [a = 0, b = 0] = octets;
+	if (a === 0) return 'an address on no network';
 	if (a === 127) return 'a loopback address';
 	if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
 		return 'a private network address';
 	}
+	if (a === 100 && b >= 64 && b <= 127) return 'a carrier-grade NAT address';
 	if (a === 169 && b === 254) return 'a link-local address';
+	if (a === 198 && (b === 18 || b === 19)) return 'a benchmarking address';
+	if (a >= 224) return 'a multicast or reserved address';
 	return null;
 }
 
-/** the reserved range an IPv6 literal, as the URL parser compresses it, is in. */
+/**
+ * the range an IPv6 literal, as the URL parser compresses it, is in where it is no public unicast
+ * address. the forms that carry an IPv4 address are refused whole, whatever the address they carry,
+ * but for `::ffff:a.b.c.d`, which is read as the address it maps.
+ */
 function ipv6Range(literal: string): Range | null {
 	const hextets = expandIpv6(literal);
 	if (hextets === null) return null;
-	if (hextets.slice(0, 7).every((h) => h === 0) && hextets[7] === 1) return 'a loopback address';
-	// ::ffff:a.b.c.d, the IPv4 address it maps.
-	if (hextets.slice(0, 5).every((h) => h === 0) && hextets[5] === 0xffff) {
+	const [first = 0, second = 0] = hextets;
+	const zeroes = (from: number, to: number) => hextets.slice(from, to).every((h) => h === 0);
+	if (zeroes(0, 8)) return 'an address on no network';
+	if (zeroes(0, 7) && hextets[7] === 1) return 'a loopback address';
+	if (zeroes(0, 6)) return 'an IPv4-compatible address';
+	if (zeroes(0, 5) && hextets[5] === 0xffff) {
 		const [hi = 0, lo = 0] = hextets.slice(6);
 		return ipv4Range(`${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`);
 	}
-	const first = hextets[0] ?? 0;
+	if (zeroes(0, 4) && hextets[4] === 0xffff && hextets[5] === 0) {
+		return 'an IPv4-translated address';
+	}
+	if (first === 0x64 && second === 0xff9b && zeroes(2, 6)) return 'a NAT64 address';
+	if (first === 0x2002) return 'a 6to4 address';
 	if ((first & 0xffc0) === 0xfe80) return 'a link-local address';
+	if ((first & 0xffc0) === 0xfec0) return 'a site-local address';
 	if ((first & 0xfe00) === 0xfc00) return 'a unique local address';
+	if ((first & 0xff00) === 0xff00) return 'a multicast or reserved address';
 	return null;
 }
 

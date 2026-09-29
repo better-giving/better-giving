@@ -1,8 +1,6 @@
 import { env } from 'cloudflare:test';
-import { expect } from 'vitest';
-import { createAuth } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import type { Db } from '$lib/server/db/client';
+import { signInAsDeployer } from './staff-session.testing';
 
 // what the three program route specs share, and nothing else: a real staff session, and the two
 // writes that put a cause in the table past the queries under test.
@@ -20,24 +18,8 @@ export const ORIGIN = 'https://donations.example.workers.dev';
 const PASSWORD = 'a-long-enough-password';
 
 /** a real session, as the `Cookie` header a browser would send back. */
-export async function signIn(db: Db): Promise<string> {
-	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
-
-	const auth = createAuth(
-		db,
-		{ ADMIN_PASSWORD: PASSWORD },
-		{ secret: signingKey.secret, requestOrigin: ORIGIN }
-	);
-	const { headers } = await auth.api.signInStaff({
-		body: { password: PASSWORD },
-		headers: new Headers({ origin: ORIGIN }),
-		returnHeaders: true
-	});
-
-	const cookies = headers.getSetCookie().map((value) => value.split(';', 1)[0]);
-	expect(cookies.length).toBeGreaterThan(0);
-	return cookies.join('; ');
+export function signIn(db: Db): Promise<string> {
+	return signInAsDeployer(db, { password: PASSWORD, origin: ORIGIN });
 }
 
 /**

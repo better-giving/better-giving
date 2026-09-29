@@ -34,7 +34,7 @@ beforeEach(async () => {
 
 async function made(url: string, events: Parameters<typeof createDestination>[1]['events']) {
 	const created = await createDestination(db, { url, events });
-	if (!created.ok) throw new Error(created.detail);
+	if (!created.ok) throw new Error(created.box);
 	return created.destination.id;
 }
 

@@ -39,7 +39,7 @@ async function destination(events: readonly WebhookEvent[]): Promise<string> {
 		url: `https://crm.example.org/hooks/${made}`,
 		events
 	});
-	if (!created.ok) throw new Error(created.detail);
+	if (!created.ok) throw new Error(created.box);
 	return created.destination.id;
 }
 

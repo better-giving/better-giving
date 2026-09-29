@@ -1,13 +1,12 @@
 import { env } from 'cloudflare:test';
 import { uuidv7 } from 'uuidv7';
-import { expect } from 'vitest';
-import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { inviteMember, redeemInvitation } from '$lib/server/auth';
 import type { Db } from '$lib/server/db/client';
 import { contact, donation, payment } from '$lib/server/db/schema';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { webhookStatements } from '$lib/server/webhooks/events';
 import { type MountedRoute, mountRoutes, type RouteRequester } from './route-request.testing';
+import { asCookieHeader, signInAsDeployer as signIn, staffAuth } from './staff-session.testing';
 import * as layout from './routes/_app';
 
 // what the three Webhooks route specs share: a deployment set up far enough for the layout to serve
@@ -58,30 +57,11 @@ export async function freshDeployment(): Promise<void> {
 	).run();
 }
 
-async function authInstance(db: Db) {
-	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
-	return createAuth(
-		db,
-		{ ADMIN_PASSWORD: PASSWORD },
-		{ secret: signingKey.secret, requestOrigin: ORIGIN }
-	);
-}
-
-function asCookieHeader(setCookies: readonly string[]): string {
-	const cookies = setCookies.map((value) => value.split(';', 1)[0]);
-	expect(cookies.length).toBeGreaterThan(0);
-	return cookies.join('; ');
-}
+const DEPLOYMENT = { password: PASSWORD, origin: ORIGIN };
 
 /** the deployer's session, as the `Cookie` header a browser would send back. */
-export async function signInAsDeployer(db: Db): Promise<string> {
-	const { headers } = await (await authInstance(db)).api.signInStaff({
-		body: { password: PASSWORD },
-		headers: new Headers({ origin: ORIGIN }),
-		returnHeaders: true
-	});
-	return asCookieHeader(headers.getSetCookie());
+export function signInAsDeployer(db: Db): Promise<string> {
+	return signIn(db, DEPLOYMENT);
 }
 
 /** a colleague who accepted an invitation, through the real invite and redeem. */
@@ -92,7 +72,7 @@ export async function signInAsMember(db: Db): Promise<string> {
 		invitedBy: null
 	});
 	if (!invited.ok) throw new Error(`the fixture could not invite: ${invited.reason}`);
-	const redeemed = await redeemInvitation(db, await authInstance(db), {
+	const redeemed = await redeemInvitation(db, await staffAuth(db, DEPLOYMENT), {
 		token: invited.token,
 		name: 'Nadia Hart',
 		password: MEMBER_PASSWORD,

@@ -82,20 +82,48 @@ describe('createDestination()', () => {
 		expect(first.destination.signingSecret).not.toBe(second.destination.signingSecret);
 	});
 
-	it.each(['http://crm.example.org/hooks', 'ftp://crm.example.org/hooks', 'https://'])(
-		'refuses %s and writes nothing',
+	it.each([
+		'http://crm.example.org/hooks',
+		'ftp://crm.example.org/hooks',
+		'wss://crm.example.org/hooks'
+	])('refuses %s, not https, and writes nothing', async (url) => {
+		const made = await createDestination(db, { url, events: ['gift.made'] });
+
+		expect(made).toEqual({
+			ok: false,
+			reason: 'not_https',
+			field: 'url',
+			box: 'must start with https://'
+		});
+		expect(await stored()).toEqual([]);
+	});
+
+	it.each(['https://exa mple.org/hooks', 'https://', 'https://crm.example.org:99999/'])(
+		'refuses %s, which is no web address at all, and writes nothing',
 		async (url) => {
 			const made = await createDestination(db, { url, events: ['gift.made'] });
 
 			expect(made).toEqual({
 				ok: false,
-				reason: 'not_https',
-				box: 'must start with https://',
-				detail: expect.stringContaining(url)
+				reason: 'not_an_address',
+				field: 'url',
+				box: 'isn’t a web address: check it for a space or a stray character'
 			});
 			expect(await stored()).toEqual([]);
 		}
 	);
+
+	it('refuses a destination that takes no events, and writes nothing', async () => {
+		const made = await createDestination(db, { url: 'https://crm.example.org/', events: [] });
+
+		expect(made).toEqual({
+			ok: false,
+			reason: 'no_events',
+			field: 'events',
+			box: 'choose at least one'
+		});
+		expect(await stored()).toEqual([]);
+	});
 
 	it.each([
 		['https://localhost/hooks', 'localhost names the machine the post is sent from'],
@@ -112,15 +140,32 @@ describe('createDestination()', () => {
 		['https://[::ffff:10.0.0.1]/hooks', '[::ffff:a00:1] is a private network address'],
 		['https://crm.local/hooks', 'crm.local names a host on a local network'],
 		['https://crm.local./hooks', 'crm.local. names a host on a local network'],
-		['https://db.corp.internal/hooks', 'db.corp.internal names a host on an internal network']
+		['https://db.corp.internal/hooks', 'db.corp.internal names a host on an internal network'],
+		['https://0.0.0.0/hooks', '0.0.0.0 is an address on no network'],
+		['https://0/hooks', '0.0.0.0 is an address on no network'],
+		['https://100.64.0.7/hooks', '100.64.0.7 is a carrier-grade NAT address'],
+		['https://100.127.255.1/hooks', '100.127.255.1 is a carrier-grade NAT address'],
+		['https://198.18.0.1/hooks', '198.18.0.1 is a benchmarking address'],
+		['https://198.19.255.1/hooks', '198.19.255.1 is a benchmarking address'],
+		['https://224.0.0.1/hooks', '224.0.0.1 is a multicast or reserved address'],
+		['https://255.255.255.255/hooks', '255.255.255.255 is a multicast or reserved address'],
+		['https://[::]/hooks', '[::] is an address on no network'],
+		['https://[::127.0.0.1]/hooks', '[::7f00:1] is an IPv4-compatible address'],
+		['https://[64:ff9b::7f00:1]/hooks', '[64:ff9b::7f00:1] is a NAT64 address'],
+		['https://[2002:7f00:1::]/hooks', '[2002:7f00:1::] is a 6to4 address'],
+		['https://[::ffff:0:7f00:1]/hooks', '[::ffff:0:7f00:1] is an IPv4-translated address'],
+		['https://[fec0::1]/hooks', '[fec0::1] is a site-local address'],
+		['https://intranet/hooks', 'intranet names no host on the internet: it has no domain'],
+		['https:/x', 'x names no host on the internet: it has no domain'],
+		['https://printer.home.arpa/hooks', 'printer.home.arpa names a host on a home network']
 	])('refuses %s, a host the internet cannot reach, and writes nothing', async (url, why) => {
 		const made = await createDestination(db, { url, events: ['gift.made'] });
 
 		expect(made).toEqual({
 			ok: false,
 			reason: 'not_public',
-			box: `must be reachable from the internet: ${why}`,
-			detail: expect.stringContaining(why)
+			field: 'url',
+			box: `must be reachable from the internet: ${why}`
 		});
 		expect(await stored()).toEqual([]);
 	});
@@ -130,7 +175,13 @@ describe('createDestination()', () => {
 		'https://172.32.0.1/hooks',
 		'https://[2001:db8::1]/hooks',
 		'https://local.example.org/hooks',
-		'https://internal.example.org/hooks'
+		'https://internal.example.org/hooks',
+		'https://100.63.255.1/hooks',
+		'https://100.128.0.1/hooks',
+		'https://198.20.0.1/hooks',
+		'https://223.255.255.1/hooks',
+		'https://[2003::1]/hooks',
+		'https://[64:ff9c::1]/hooks'
 	])('takes %s, a public host', async (url) => {
 		expect((await createDestination(db, { url, events: ['gift.made'] })).ok).toBe(true);
 	});
@@ -138,6 +189,24 @@ describe('createDestination()', () => {
 	it('takes an address typed without a scheme as https', async () => {
 		const made = await createDestination(db, {
 			url: '  crm.example.org/hooks ',
+			events: ['gift.made']
+		});
+
+		expect(made.ok && made.destination.url).toBe('https://crm.example.org/hooks');
+	});
+
+	it('takes a host and port typed without a scheme as https', async () => {
+		const made = await createDestination(db, {
+			url: 'crm.example.org:8443/hooks',
+			events: ['gift.made']
+		});
+
+		expect(made.ok && made.destination.url).toBe('https://crm.example.org:8443/hooks');
+	});
+
+	it('reads https with one slash as the scheme it is, never as a host named https', async () => {
+		const made = await createDestination(db, {
+			url: 'https:/crm.example.org/hooks',
 			events: ['gift.made']
 		});
 
@@ -170,7 +239,7 @@ describe('createDestination()', () => {
 			url: 'https://a.example.org/',
 			events: ['gift.made']
 		});
-		if (!made.ok) throw new Error(made.detail);
+		if (!made.ok) throw new Error(made.box);
 
 		const code = await rejectionCode(() =>
 			env.DB.prepare(
@@ -191,7 +260,7 @@ describe('resumeDestination()', () => {
 			url: 'https://crm.example.org/hooks/giving',
 			events: ['gift.made']
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination.id;
 	}
 
@@ -272,7 +341,7 @@ describe('updateDestination()', () => {
 			url: 'https://crm.example.org/hooks/giving',
 			events
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination.id;
 	}
 
@@ -330,6 +399,16 @@ describe('updateDestination()', () => {
 		expect(await stored()).toEqual(before);
 	});
 
+	it('refuses to leave it taking no events, and changes nothing', async () => {
+		const id = await made(['gift.made']);
+		const before = await stored();
+
+		expect(
+			await updateDestination(db, id, { url: 'https://crm.example.net/hooks', events: [] })
+		).toEqual({ ok: false, reason: 'no_events', field: 'events', box: 'choose at least one' });
+		expect(await stored()).toEqual(before);
+	});
+
 	it('refuses a destination that was deleted, or never was, as not found', async () => {
 		const id = await made(['gift.made']);
 		await env.DB.prepare('update webhook_destination set archived_at = 1 where id = ?')
@@ -354,7 +433,7 @@ describe('deleteDestination()', () => {
 			url: 'https://crm.example.org/hooks/giving',
 			events: ['recurring_gift.started']
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination.id;
 	}
 

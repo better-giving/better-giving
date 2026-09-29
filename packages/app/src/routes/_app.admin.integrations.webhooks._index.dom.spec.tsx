@@ -72,10 +72,14 @@ it('says there are none yet, and still offers to add one', () => {
 	);
 });
 
-it('says which destination a delete took, in the status line', () => {
+it('says which destination a delete took, in the status line, once the line is drawn', async () => {
 	const root = screen({ destinations: [], deleted: 'https://crm.example.net/hooks' });
+	const said = root.querySelector('[role="status"]');
 
-	expect(root.querySelector('[role="status"]')?.textContent).toBe(
-		'Deleted https://crm.example.net/hooks.'
+	expect(said?.textContent).toBe('');
+	await act(
+		() => new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn)))
 	);
+
+	expect(said?.textContent).toBe('Deleted https://crm.example.net/hooks.');
 });

@@ -5,6 +5,7 @@ import { getFormProps } from '@conform-to/react';
 import type { MouseEvent } from 'react';
 import { Form, href, Link, useNavigation } from 'react-router';
 import type { CrumbHandle } from '$lib/admin/crumbs';
+import { useAnswerRevision } from '$lib/admin/answer-revision';
 import { screenTitle } from '$lib/admin/screen-title';
 import { useAdminForm } from '$lib/admin/use-admin-form';
 import { DestinationFields, eventsBox } from '$lib/admin/webhooks/destination-fields';
@@ -19,8 +20,8 @@ import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks.new';
 
 // adding a webhook destination: its address and the events it takes, one form and one action. the
-// address is judged by `createDestination` ($lib/server/webhooks/destinations.ts), and a refusal
-// is said under the URL box in the words the write answered with.
+// address and the events are judged by `createDestination` ($lib/server/webhooks/destinations.ts),
+// and a refusal is said under the box it names, in the words the write answered with.
 //
 // **only the deployer's session reaches this page**, as ./_app.admin.integrations.webhooks._index.tsx
 // argues; a member's GET and POST alike are answered with the dashboard's not-found.
@@ -65,7 +66,9 @@ export async function action({ context, request }: Route.ActionArgs) {
 	if (!submission.ok) return invalid(400, submission.reject());
 
 	const made = await createDestination(context.get(database), submission.value);
-	if (!made.ok) return invalid(400, submission.reject({ fieldErrors: { url: [made.box] } }));
+	if (!made.ok) {
+		return invalid(400, submission.reject({ fieldErrors: { [made.field]: [made.box] } }));
+	}
 
 	return redirectWithFlash(
 		request,
@@ -77,6 +80,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 
 export default function NewDestination({ actionData }: Route.ComponentProps) {
 	const [form, fields] = useAdminForm(ADD_FORM, actionData);
+	const formProps = getFormProps(form);
+	const answers = useAnswerRevision(actionData, formProps.onSubmit);
 	const navigation = useNavigation();
 	// the whole navigation this form started, through the `loading` the redirect begins: a press
 	// re-armed before the destination's page renders is a second destination for one intent.
@@ -85,9 +90,12 @@ export default function NewDestination({ actionData }: Route.ComponentProps) {
 	return (
 		<Column>
 			<PageHeader title={SCREEN_TITLE} />
-			<Form method="post" {...getFormProps(form)}>
+			<Form method="post" {...formProps} onSubmit={answers.onSubmit}>
 				<div className="adm-stack">
-					<DestinationFields boxes={{ url: fields.url, events: eventsBox(fields.events) }} />
+					<DestinationFields
+						boxes={{ url: fields.url, events: eventsBox(fields.events) }}
+						revision={answers.revision}
+					/>
 					<div className="adm-actions">
 						<Button
 							variant="primary"

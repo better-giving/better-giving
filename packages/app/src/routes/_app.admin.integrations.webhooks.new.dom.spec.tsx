@@ -83,10 +83,36 @@ it('refuses a destination listening to nothing on the question, and puts the car
 	act(() => press(root, 'Add destination').focus());
 	act(() => press(root, 'Add destination').click());
 
+	const first = root.querySelector<HTMLInputElement>('input[name="events"]');
+	const refusal = document.getElementById(first?.getAttribute('aria-describedby') ?? '');
+	expect(first?.getAttribute('aria-invalid')).toBe('true');
+	expect(refusal?.textContent).toBe('choose at least one');
+	expect(document.activeElement).toBe(first);
+});
+
+it('says the events refusal afresh when a second press is refused the same way', async () => {
+	const root = await flow(() => null);
+	type(urlBox(root), 'https://hooks.riverbanktrust.org/giving');
 	const question = root.querySelector('fieldset');
-	expect(question?.getAttribute('aria-invalid')).toBe('true');
-	expect(question?.textContent).toContain('choose at least one');
-	expect(document.activeElement).toBe(root.querySelector('input[name="events"]'));
+	if (question === null) throw new Error('the page drew no events question');
+	const written: string[] = [];
+	const watching = new MutationObserver((changes) => {
+		for (const change of changes) {
+			for (const node of change.addedNodes) {
+				if (node instanceof HTMLElement && node.getAttribute('role') === 'alert') {
+					written.push(node.textContent ?? '');
+				}
+			}
+		}
+	});
+	watching.observe(question, { childList: true, subtree: true });
+	onTestFinished(() => watching.disconnect());
+
+	act(() => press(root, 'Add destination').click());
+	act(() => press(root, 'Add destination').click());
+	await settle();
+
+	expect(written).toEqual(['choose at least one', 'choose at least one']);
 });
 
 it('says under the URL box why the address was refused, and puts the caret there', async () => {

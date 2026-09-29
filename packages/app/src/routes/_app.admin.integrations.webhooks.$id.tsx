@@ -11,7 +11,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useMemo, useRef } from 'react';
 import {
 	data,
 	Form,
@@ -23,6 +23,8 @@ import {
 } from 'react-router';
 import { z } from 'zod';
 import type { CrumbHandle } from '$lib/admin/crumbs';
+import { useAfterPaint } from '$lib/admin/after-paint';
+import { useAnswerRevision } from '$lib/admin/answer-revision';
 import { buttonState } from '$lib/admin/save-button-state';
 import { screenTitle } from '$lib/admin/screen-title';
 import {
@@ -43,6 +45,7 @@ import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/s
 import {
 	deleteDestination,
 	readDestination,
+	readPostTarget,
 	resumeDestination,
 	updateDestination
 } from '$lib/server/webhooks/destinations';
@@ -187,8 +190,8 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 }
 
 /**
- * the three presses this page takes. **the request body is read exactly once, here** — and not at
- * all for a member, who is answered before it.
+ * the four presses this page takes: the edit, the resume, the delete and the test. **the request
+ * body is read exactly once, here** — and not at all for a member, who is answered before it.
  */
 export async function action(args: Route.ActionArgs) {
 	if (args.context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
@@ -215,7 +218,7 @@ export async function action(args: Route.ActionArgs) {
 		const moved = await updateDestination(context.get(database), params.id, submission.value);
 		if (!moved.ok) {
 			if (moved.reason === 'not_found') notFound(noSuchDestination(params.id));
-			return invalid(400, submission.reject({ fieldErrors: { url: [moved.box] } }));
+			return invalid(400, submission.reject({ fieldErrors: { [moved.field]: [moved.box] } }));
 		}
 		return redirectWithFlash(request, SAVED_FLASH, screen(params.id), SAVED);
 	}
@@ -234,7 +237,7 @@ export async function action(args: Route.ActionArgs) {
 		const submission = parseForm(body, TEST_FORM);
 		if (!submission.ok) return invalid(400, submission.reject());
 
-		const target = await readDestination(context.get(database), params.id);
+		const target = await readPostTarget(context.get(database), params.id);
 		if (target === null) notFound(noSuchDestination(params.id));
 		return { tested: await sendTestWebhook(fetch, target, new Date()) };
 	}
@@ -274,7 +277,15 @@ type Loaded = Route.ComponentProps['loaderData'];
 
 const events = (n: number) => `${n} held ${n === 1 ? 'event' : 'events'}`;
 
-type Report = { readonly text: string; readonly refused: boolean };
+/** a line the header's status says: done, refused, or a press that changed nothing. */
+type Report = { readonly text: string; readonly reading: 'done' | 'blocked' | 'neutral' };
+
+/** how the status line's word is drawn for each reading. */
+const READINGS = {
+	done: {},
+	blocked: { blocked: true },
+	neutral: { neutral: true }
+} as const;
 
 /** what the header's status line says of the test that just answered, or nothing. */
 function testReport(actionData: Route.ComponentProps['actionData']): Report | null {
@@ -282,11 +293,11 @@ function testReport(actionData: Route.ComponentProps['actionData']): Report | nu
 	const { tested } = actionData;
 	switch (tested.outcome) {
 		case 'sent':
-			return { text: `Sent — ${tested.status}`, refused: false };
+			return { text: `Sent — ${tested.status}`, reading: 'done' };
 		case 'refused':
-			return { text: `Refused — ${tested.status}`, refused: true };
+			return { text: `Refused — ${tested.status}`, reading: 'blocked' };
 		case 'unanswered':
-			return { text: 'No answer', refused: true };
+			return { text: 'No answer', reading: 'blocked' };
 	}
 }
 
@@ -296,26 +307,39 @@ function resumeReport(actionData: AdminActionData): Report | null {
 		const n = actionData.resumed;
 		return {
 			text: n === 0 ? 'Resumed. Nothing was held.' : `Resumed. ${events(n)} sent again now.`,
-			refused: false
+			reading: 'done'
 		};
 	}
+	// the one refusal is that it was not paused: the press changed nothing.
 	const refusal = resultFor(RESUME_FORM, actionData)?.error?.['']?.at(-1);
-	return refusal === undefined ? null : { text: refusal, refused: true };
+	return refusal === undefined ? null : { text: refusal, reading: 'neutral' };
 }
 
 export default function Destination({ loaderData, actionData }: Route.ComponentProps) {
 	const { id, title, paused, held, confirming } = loaderData;
 	const said = useRef<HTMLParagraphElement>(null);
 	const deleteLink = useRef<HTMLAnchorElement>(null);
-	const report = testReport(actionData) ?? resumeReport(actionData);
+	const resumeLink = useRef<HTMLAnchorElement>(null);
+	// where a resume's question hands focus back when nothing opened it: the Resume press while it
+	// stands, and the status line once a resume has taken it off the page.
+	const resumeReturn = useMemo<RefObject<HTMLElement | null>>(
+		() => ({
+			get current() {
+				return resumeLink.current?.isConnected ? resumeLink.current : said.current;
+			}
+		}),
+		[]
+	);
 	const navigation = useNavigation();
 	// held from the press until its answer lands, and the dots only while the post is out.
 	const testing = navigation.formData?.get(WHICH_FORM) === TEST_FORM.id;
+	// the line is emptied while a test is out, so its answer is written in afresh even where it
+	// says what the last one said, and a live region only announces what changes in it.
+	const report = testing ? null : (testReport(actionData) ?? resumeReport(actionData));
 
-	// the add that just landed, written into the status line after it mounts: the add was pressed on
-	// another page, and a region arriving with its words already in it is announced by nobody.
-	const [arrived, sayArrived] = useState(false);
-	useEffect(() => sayArrived(loaderData.added), [loaderData.added]);
+	// the add that just landed, written into the status line once the line has been drawn: the add
+	// was pressed on another page ($lib/admin/after-paint.ts).
+	const arrived = useAfterPaint(loaderData.added ? 'Destination added.' : null);
 
 	return (
 		<Column wide>
@@ -326,6 +350,7 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 						{paused ? (
 							// a link dressed as a button, because it writes nothing: it asks.
 							<Button
+								ref={resumeLink}
 								as={Link}
 								variant="primary"
 								to={`${screen(id)}?confirm=resume`}
@@ -348,19 +373,15 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 							</Button>
 						</Form>
 						{/* mounted empty and written when a test or a resume answers or an add lands. it
-						    holds focus when the resume's dialog comes down, since the press that opened
-						    it is gone. */}
+						    takes focus when a resume's dialog comes down after the resume took the Resume
+						    press off the page. */}
 						<p ref={said} role="status" tabIndex={-1}>
 							{report ? (
-								<StatusWord
-									register="momentary"
-									blocked={report.refused}
-									mark={report.refused ? 'triangle-alert' : undefined}
-								>
+								<StatusWord register="momentary" {...READINGS[report.reading]}>
 									{report.text}
 								</StatusWord>
-							) : arrived ? (
-								<StatusWord register="momentary">Destination added.</StatusWord>
+							) : arrived !== null && !testing ? (
+								<StatusWord register="momentary">{arrived}</StatusWord>
 							) : null}
 						</p>
 					</div>
@@ -383,7 +404,9 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 					</Button>
 				</div>
 			</Section>
-			{confirming === 'resume' ? <ResumeCard id={id} held={held} fallbackFocus={said} /> : null}
+			{confirming === 'resume' ? (
+				<ResumeCard id={id} held={held} fallbackFocus={resumeReturn} />
+			) : null}
 			{confirming === 'delete' ? (
 				<DeleteCard id={id} title={title} fallbackFocus={deleteLink} />
 			) : null}
@@ -473,6 +496,8 @@ function Editor({
 	const [form, fields] = useAdminForm(EDIT_FORM, actionData, {
 		defaultValue: { url: loaderData.url, events: loaderData.events }
 	});
+	const formProps = getFormProps(form);
+	const answers = useAnswerRevision(actionData, formProps.onSubmit);
 	const navigation = useNavigation();
 	const save = useSaveState({
 		landed: loaderData.saved && !actionData,
@@ -483,10 +508,13 @@ function Editor({
 	return (
 		<Section>
 			<h2>URL and events</h2>
-			<Form method="post" preventScrollReset {...getFormProps(form)}>
+			<Form method="post" preventScrollReset {...formProps} onSubmit={answers.onSubmit}>
 				<input {...whichForm(EDIT_FORM.id)} />
 				<div className="adm-stack">
-					<DestinationFields boxes={{ url: fields.url, events: eventsBox(fields.events) }} />
+					<DestinationFields
+						boxes={{ url: fields.url, events: eventsBox(fields.events) }}
+						revision={answers.revision}
+					/>
 					<div className="adm-actions">
 						<SaveButton label="Save" state={buttonState(save)} />
 					</div>
@@ -547,7 +575,7 @@ function ResumeCard({
 	);
 }
 
-/** the delete, asked: the destination is sent nothing more, and what it was still owed is dropped. */
+/** the delete, asked: nothing more is queued for the destination, and what it was owed is dropped. */
 function DeleteCard({
 	id,
 	title,
@@ -583,8 +611,8 @@ function DeleteCard({
 				fallbackFocus={fallbackFocus}
 			>
 				<p className="adm-prose">
-					Nothing more is sent to <InlineCode>{title}</InlineCode>, and events waiting to be sent to
-					it are dropped.
+					Nothing more is queued for <InlineCode>{title}</InlineCode>, and events waiting to be sent
+					to it are dropped. A delivery already on its way may still arrive in the next two minutes.
 				</p>
 			</Modal>
 		</Form>

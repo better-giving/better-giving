@@ -15,7 +15,7 @@ import {
 	WEBHOOK_RETRY_SCHEDULE_MS
 } from './deliver';
 import type { EmailMessage, EmailProvider, SendResult } from '../email/provider';
-import { createDestination, resumeDestination } from './destinations';
+import { createDestination, deleteDestination, resumeDestination } from './destinations';
 import { mailPause } from './paused-mail';
 import { stopRecurringPlan } from '../recurring/queries';
 import {
@@ -108,7 +108,7 @@ async function destination() {
 		url: `https://crm.example.org/hooks/${made}`,
 		events: ['gift.made']
 	});
-	if (!created.ok) throw new Error(created.detail);
+	if (!created.ok) throw new Error(created.box);
 	return created.destination;
 }
 
@@ -879,6 +879,50 @@ describe('sendDueWebhooks() — what is not sent', () => {
 	});
 });
 
+describe('sendDueWebhooks() — a destination deleted while a run posts to it', () => {
+	/** a `fetch` that deletes the destination `id` while its post is out, then answers `status`. */
+	function deletedMidPost(id: string, status: number) {
+		const posts: string[] = [];
+		const fetch = (async (input: RequestInfo | URL) => {
+			posts.push(String(input));
+			await deleteDestination(db, id, START);
+			return new Response('answered', { status });
+		}) as typeof globalThis.fetch;
+		return { fetch, posts };
+	}
+
+	it('lands the post already out with the answer it got', async () => {
+		const target = await destination();
+		await settle();
+		const { fetch, posts } = deletedMidPost(target.id, 200);
+
+		await runAt(START, fetch);
+
+		expect(posts).toEqual([target.url]);
+		expect(await rows()).toEqual([
+			expect.objectContaining({ status: 'delivered', last_status: 200, leased_until: null })
+		]);
+	});
+
+	it('neither marks nor pauses it when that post fails, and tells of no pause', async () => {
+		const target = await destination();
+		await settle();
+		const paused: PausedDestination[] = [];
+		const { fetch } = deletedMidPost(target.id, 410);
+
+		await runAt(START, fetch, async (destination) => {
+			paused.push(destination);
+		});
+
+		expect(paused).toEqual([]);
+		expect(
+			await env.DB.prepare('select paused_at, failing_since from webhook_destination where id = ?')
+				.bind(target.id)
+				.first()
+		).toEqual({ paused_at: null, failing_since: null });
+	});
+});
+
 describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 	afterEach(async () => {
 		await env.DB.prepare('delete from dispute').run();
@@ -889,7 +933,7 @@ describe('sendDueWebhooks() — a gift refunded and a dispute opened', () => {
 			url: `https://crm.example.org/hooks/${uuidv7()}`,
 			events
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination;
 	}
 
@@ -1058,7 +1102,7 @@ describe('sendDueWebhooks() — a donor added and a donor updated', () => {
 			url: `https://crm.example.org/hooks/${uuidv7()}`,
 			events
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination;
 	}
 
@@ -1165,7 +1209,7 @@ describe('sendDueWebhooks() — a recurring gift started, ended, and its charge 
 			url: `https://crm.example.org/hooks/${uuidv7()}`,
 			events
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination;
 	}
 

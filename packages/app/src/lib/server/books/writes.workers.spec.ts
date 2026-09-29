@@ -573,7 +573,7 @@ describe('reversalWrites() — what webhook destinations are owed', () => {
 			url: `https://crm.example.org/hooks/${uuidv7()}`,
 			events
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination.id;
 	}
 
@@ -790,7 +790,7 @@ describe('settledGiftWrites() — what webhook destinations are owed', () => {
 			url: `https://crm.example.org/hooks/${uuidv7()}`,
 			events
 		});
-		if (!created.ok) throw new Error(created.detail);
+		if (!created.ok) throw new Error(created.box);
 		return created.destination.id;
 	}
 

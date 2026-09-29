@@ -80,6 +80,20 @@ describe('POST /admin/integrations/webhooks/new', () => {
 		expect(await destinations()).toBe(0);
 	});
 
+	it('refuses an address that does not parse as one, saying so rather than asking for https', async () => {
+		const answer = await add.post(
+			SCREEN,
+			deployer,
+			adding('https://exa mple.org/hook', ['gift.made'])
+		);
+
+		expect(answer.status).toBe(400);
+		expect(await refusals(answer)).toEqual({
+			url: ['isn’t a web address: check it for a space or a stray character']
+		});
+		expect(await destinations()).toBe(0);
+	});
+
 	it('refuses a private host at the box, naming why', async () => {
 		const answer = await add.post(
 			SCREEN,
