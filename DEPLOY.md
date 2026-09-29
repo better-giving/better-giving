@@ -3,7 +3,7 @@
 ## Requirements
 
 - **Node ≥ 22** and **pnpm** (`corepack enable`; version pinned in `package.json`)
-- **A Cloudflare account on a paid Workers plan** with its email verified. The Free plan runs it, but the rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in silently do not enforce. An unverified account works in the dashboard but refuses the first Worker deploy
+- **A Cloudflare account on a paid Workers plan** with its email verified. The Free plan runs it, but the rate limits on `/api/v1`, the read API at `/integrations/v1` and sign-in silently do not enforce, and deliveries are paced to fit what the Free plan allows one run of the minute schedule (50 outside requests and 50 database queries): at most 5 Zapier deliveries and 4 webhook deliveries a minute, so a burst of gifts, or the backlog a resumed webhook destination re-sends, reaches them over the minutes after it. An unverified account works in the dashboard but refuses the first Worker deploy
 - **A payment processor account: Stripe, PayPal, Chariot, NOWPayments, or any mix.** Any one on its own finishes set-up: Stripe takes cards, bank debits and the wallets; PayPal takes PayPal and Venmo; Chariot takes one-time gifts from a donor-advised fund; NOWPayments takes one-time crypto gifts. A deployment holding more than one offers each to the donor
 - **An SMTP account on port 465**, for receipts. [Email](#email) has a provider table
 
@@ -140,7 +140,7 @@ Back on the same page, three things finish it:
 
 ## Sending gifts to Zapier
 
-Optional, and not a set-up job. It starts a Zap on three events: a settled gift (each charge of a recurring gift included), a donor's first settled gift, and money from a gift going back to the donor, which is a refund or a dispute the organisation lost. A refund the processor reports as failed after its event was queued is dropped if that event has not gone out yet; one already sent has reached your Zaps, and no event follows to say the money came back. A gift refunded before its New Gift delivery went out is still delivered. Each reaches your Zaps within about a minute.
+Optional, and not a set-up job. It starts a Zap on three events: a settled gift (each charge of a recurring gift included), a donor's first settled gift, and money from a gift going back to the donor, which is a refund or a dispute the organisation lost. A refund the processor reports as failed after its event was queued is dropped if that event has not gone out yet; one already sent has reached your Zaps, and no event follows to say the money came back. A gift refunded before its New Gift delivery went out is still delivered. Each reaches your Zaps within about a minute; a burst goes over at five a minute.
 
 **On your dashboard, under Integrations → Zapier, press Make key.** The page then shows the two things Zapier asks for: this deployment's address and the key. Copy the key then: it is shown once, and afterwards the page shows only its first and last characters. A key that is lost is replaced, never shown again.
 

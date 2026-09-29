@@ -4,6 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, dispute, donation, payment } from '../db/schema';
+import { MINUTE_RUN, WEBHOOK_CLAIMS_PER_RUN } from '../outbox/budget';
 import { parseContact } from '../contacts/contact-input';
 import { commitDonor } from '../donations/donor';
 import { readGiftPage, readGifts } from '../integrations/gift';
@@ -822,8 +823,8 @@ describe('resumeDestination() — the held window, re-sent', () => {
 });
 
 describe('sendDueWebhooks() — lanes', () => {
-	it('posts to at most two destinations at once, and to every one of them', async () => {
-		for (let made = 0; made < 7; made++) await destination();
+	it("posts to at most the feed's lanes at once, and to every destination it claimed", async () => {
+		for (let made = 0; made < WEBHOOK_CLAIMS_PER_RUN; made++) await destination();
 		await settle();
 		let inFlight = 0;
 		let most = 0;
@@ -838,8 +839,8 @@ describe('sendDueWebhooks() — lanes', () => {
 
 		await runAt(START, slow);
 
-		expect(most).toBe(2);
-		expect(new Set(receiving.posts.map((post) => post.url)).size).toBe(7);
+		expect(most).toBe(MINUTE_RUN.webhooks.lanes);
+		expect(new Set(receiving.posts.map((post) => post.url)).size).toBe(WEBHOOK_CLAIMS_PER_RUN);
 	});
 });
 

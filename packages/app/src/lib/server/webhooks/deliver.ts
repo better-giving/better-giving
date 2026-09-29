@@ -3,6 +3,7 @@ import { WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { inPage } from '../integrations/paging';
+import { MINUTE_RUN, WEBHOOK_CLAIMS_PER_RUN } from '../outbox/budget';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import { renderSubjects } from './payload';
@@ -113,25 +114,18 @@ export const WEBHOOK_RETRY_SCHEDULE_MS: readonly number[] = [
  */
 export const WEBHOOK_POST_TIMEOUT_MS = 15_000;
 
-/**
- * posts in flight at once. an invocation may have six requests waiting on their response headers,
- * and a seventh queues with its timeout already running
- * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
- * the minute cron's three feeds share those six in one invocation: ../zapier/deliver.ts's three
- * lanes, these two, and ../accounting/deliver.ts's one request at a time.
- */
-const POSTS_AT_ONCE = 2;
+/** posts in flight at once: this feed's share of the minute cron's connections (../outbox/budget.ts). */
+const POSTS_AT_ONCE = MINUTE_RUN.webhooks.lanes;
 
 /** how long a claimed row is the claiming run's alone, from that run's scheduled time. */
 const LEASE_MS = 2 * 60_000;
 
 /**
- * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes post
- * inside {@link RUN_DEADLINE_MS} while each destination answers in three seconds. where they are
- * slower — every one timing out, at worst, leaves 14 posted — a row no lane reached stays leased,
+ * rows claimed per run, the longest-waiting first: what this feed's share of the minute cron's
+ * subrequests and D1 queries pays for (../outbox/budget.ts). a row no lane reached stays leased,
  * unposted, until the lease runs out and a later run takes it.
  */
-const CLAIMS_PER_RUN = 70;
+const CLAIMS_PER_RUN = WEBHOOK_CLAIMS_PER_RUN;
 
 /**
  * no post starts later than this after the run's scheduled time: the last moment a post can start

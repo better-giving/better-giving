@@ -3,6 +3,7 @@ import type { Db } from '../db/client';
 import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { inPage } from '../integrations/paging';
 import { REFUND_NO_LONGER_STANDS, readStandingRefunds } from '../integrations/refund';
+import { MINUTE_RUN, ZAPIER_CLAIMS_PER_RUN } from '../outbox/budget';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
 import {
@@ -66,21 +67,14 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 export type ZapierDeliveryDeps = { readonly db: Db; readonly fetch: typeof fetch };
 
 /**
- * rows claimed per run, the longest-waiting first: as many as {@link POSTS_AT_ONCE} lanes post
- * inside {@link RUN_DEADLINE_MS} while each hook answers in about three seconds. where hooks are
- * slower — every one timing out, at worst, leaves 33 posted — a row no lane reached stays leased,
+ * rows claimed per run, the longest-waiting first: what this feed's share of the minute cron's
+ * subrequests and D1 queries pays for (../outbox/budget.ts). a row no lane reached stays leased,
  * unposted, until the lease runs out and a later run takes it.
  */
-const CLAIMS_PER_RUN = 100;
+const CLAIMS_PER_RUN = ZAPIER_CLAIMS_PER_RUN;
 
-/**
- * posts in flight at once. an invocation may have six requests waiting on their response headers,
- * and a seventh queues with its timeout already running
- * (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
- * the minute cron's three feeds share those six in one invocation: these three lanes,
- * ../webhooks/deliver.ts's two, and ../accounting/deliver.ts's one request at a time.
- */
-const POSTS_AT_ONCE = 3;
+/** posts in flight at once: this feed's share of the minute cron's connections (../outbox/budget.ts). */
+const POSTS_AT_ONCE = MINUTE_RUN.zapier.lanes;
 
 /** how long a hook is given to answer before the post counts as failed. */
 const POST_TIMEOUT_MS = 10_000;

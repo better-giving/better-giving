@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, payment, zapierDelivery, zapierSubscription } from '../db/schema';
@@ -21,12 +22,13 @@ const TERMS: LeaseTerms = {
 	lanes: 3
 };
 
-const outboxOf = (terms: Partial<LeaseTerms> = {}) =>
+const outboxOf = (terms: Partial<LeaseTerms> = {}, receiver?: SQLiteColumn) =>
 	defineOutbox({
 		table: zapierDelivery,
 		key: { subscriptionId: zapierDelivery.subscriptionId, eventId: zapierDelivery.eventId },
 		...TERMS,
-		...terms
+		...terms,
+		...(receiver === undefined ? {} : { receiver })
 	});
 
 let db: Db;
@@ -76,6 +78,7 @@ beforeEach(async () => {
 
 type Owed = {
 	readonly eventId: string;
+	readonly subscriptionId?: string;
 	readonly nextAttemptAt: number;
 	readonly status?: string;
 	readonly leasedUntil?: number | null;
@@ -90,7 +93,7 @@ async function owe(rows: readonly Owed[]): Promise<void> {
 				 (subscription_id, event_id, payment_id, status, attempts, next_attempt_at, leased_until, created_at, updated_at)
 				 values (?, ?, ?, ?, 0, ?, ?, 0, 0)`
 			).bind(
-				subscriptionId,
+				row.subscriptionId ?? subscriptionId,
 				row.eventId,
 				paymentId,
 				row.status ?? 'pending',
@@ -99,6 +102,18 @@ async function owe(rows: readonly Owed[]): Promise<void> {
 			)
 		)
 	);
+}
+
+/** a second open subscription, beside the one every row is owed to by default. */
+async function secondSubscription(): Promise<string> {
+	const id = uuidv7();
+	await env.DB.prepare(
+		`insert into zapier_subscription (id, trigger, hook_url, created_at, updated_at)
+		 values (?, 'new_gift', ?, 0, 0)`
+	)
+		.bind(id, `https://hooks.zapier.com/hooks/standard/1/${id}/`)
+		.run();
+	return id;
 }
 
 /** `count` rows due at once, `e0` waiting longest. */
@@ -189,6 +204,34 @@ describe('claim()', () => {
 		});
 
 		expect(claim.rows.map((r) => r.eventId)).toEqual(['e0', 'e2']);
+	});
+
+	it("takes each receiver's longest-waiting row before any receiver's next", async () => {
+		const now = Date.now();
+		const other = await secondSubscription();
+		await owe([
+			...backlog(4, now - 10),
+			{ eventId: 'b0', subscriptionId: other, nextAttemptAt: now - 2 },
+			{ eventId: 'b1', subscriptionId: other, nextAttemptAt: now - 1 }
+		]);
+
+		const fair = outboxOf({ claimsPerRun: 3 }, zapierDelivery.subscriptionId);
+		const claim = await fair.claim(db, new Date(now), { returning });
+
+		expect(claim.rows.map((r) => r.eventId).sort()).toEqual(['b0', 'e0', 'e1']);
+	});
+
+	it('takes the oldest first, whoever they are owed to, where no receiver is named', async () => {
+		const now = Date.now();
+		const other = await secondSubscription();
+		await owe([
+			...backlog(4, now - 10),
+			{ eventId: 'b0', subscriptionId: other, nextAttemptAt: now - 2 }
+		]);
+
+		const claim = await outboxOf({ claimsPerRun: 3 }).claim(db, new Date(now), { returning });
+
+		expect(claim.rows.map((r) => r.eventId).sort()).toEqual(['e0', 'e1', 'e2']);
 	});
 
 	it("writes the feed's own columns as it claims, and of its own only the lease", async () => {
@@ -310,10 +353,12 @@ describe('sweep()', () => {
 			{ eventId: 'spared', nextAttemptAt: now - HOUR }
 		]);
 
-		await outboxOf().sweep(db, new Date(now), {
-			where: sql`${zapierDelivery.eventId} <> 'spared'`,
-			outcome: { status: 'failed' }
-		});
+		await db.batch([
+			outboxOf().sweep(db, new Date(now), {
+				where: sql`${zapierDelivery.eventId} <> 'spared'`,
+				outcome: { status: 'failed' }
+			})
+		]);
 
 		expect((await rowsNow()).map((r) => [r.event_id, r.status, r.leased_until])).toEqual([
 			['held', 'pending', now + 1],
@@ -321,6 +366,30 @@ describe('sweep()', () => {
 			['sent', 'sent', null],
 			['spared', 'pending', null],
 			['stale', 'failed', null]
+		]);
+	});
+	it('spares a held row, and a later claim sweeps it before it can be taken again', async () => {
+		const now = Date.now();
+		await owe(backlog(1, now));
+		const outbox = outboxOf();
+		const doomed = () =>
+			outbox.sweep(db, new Date(Date.now()), {
+				where: sql`${zapierDelivery.eventId} = 'e0'`,
+				outcome: { status: 'dropped' }
+			});
+		const holding = await outbox.claim(db, new Date(now), { returning });
+		const [row] = holding.rows;
+		if (row === undefined) throw new Error('one row was owed');
+
+		const [swept] = await db.batch([doomed()]);
+		expect(swept).toEqual([]);
+		expect(await holding.land(row, { attempts: 1, nextAttemptAt: new Date(now) })).toBe(true);
+
+		const next = await outbox.claim(db, new Date(now), { returning, before: [doomed()] });
+
+		expect(next.rows).toEqual([]);
+		expect((await rowsNow()).map((r) => [r.event_id, r.status, r.leased_until])).toEqual([
+			['e0', 'dropped', null]
 		]);
 	});
 });
@@ -346,6 +415,17 @@ describe("a run's last start", () => {
 
 		expect(claim.rows).toEqual([]);
 		expect((await rowsNow()).map((r) => r.leased_until)).toEqual([null, null]);
+	});
+
+	it('leaves the work after an answer room to land before the lease runs out', async () => {
+		const scheduled = Date.now() - 2 * MINUTE + 15 * SECOND;
+		await owe(backlog(2, scheduled));
+
+		const claim = await outboxOf({ deadlineMs: 2 * MINUTE }).claim(db, new Date(scheduled), {
+			returning
+		});
+
+		expect(claim.rows).toEqual([]);
 	});
 
 	it('claims a run that is late but still inside both', async () => {

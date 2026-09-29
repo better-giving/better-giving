@@ -59,6 +59,10 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 		),
 
 	'* * * * *': (env, now) => {
+		// the three jobs below run in one invocation and spend its connections, subrequests and D1
+		// queries together; ./lib/server/outbox/budget.ts is each one's share, and a job added here
+		// takes a share there.
+		//
 		// one handle, shared by every delivery and by the connection the accounting provider reads
 		// its tokens through: the store the factory builds is over this same database.
 		const db = requestDb(env);
