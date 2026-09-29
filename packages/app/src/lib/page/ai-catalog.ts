@@ -167,7 +167,7 @@ export function switchRules({ openOnMonthly, dedicationOn }: Page['switches']): 
 	return [
 		...(openOnMonthly
 			? [
-					'the donation box opens on a monthly gift: impact tiers say what each amount does every month, and the story may invite a monthly gift'
+					'the donation box opens on a monthly gift: the story may invite a monthly gift; say what an amount does only as the operator said it, never as what it does every month unless they said so'
 				]
 			: []),
 		...(dedicationOn

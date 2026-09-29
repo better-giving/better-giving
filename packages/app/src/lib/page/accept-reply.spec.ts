@@ -600,6 +600,19 @@ describe('an impact figure', () => {
 		say: 'Added impact tiers.',
 		page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/3', value: tiers(amounts) }] }
 	});
+	const addTier = (amountMinor: number, buys: string) => ({
+		say: 'Added what a gift buys.',
+		page: {
+			kind: 'patch',
+			ops: [
+				{
+					op: 'add',
+					path: '/blocks/3',
+					value: { ...tiers([]), props: { tiers: [{ amountMinor, buys }] } }
+				}
+			]
+		}
+	});
 	const operator = (text: string) => ({ author: 'operator' as const, text });
 	const tiersOf = (result: ReturnType<typeof accept>) =>
 		result.ok ? result.draft.blocks.find((block) => block.type === 'impact-tiers') : undefined;
@@ -613,6 +626,61 @@ describe('an impact figure', () => {
 			ok: true,
 			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 7500 }]
 		});
+	});
+
+	it('is dropped when the operator gave its amount but not what it does', () => {
+		const result = accept(addTier(5000, 'a winter coat and boots for one child'), {
+			messages: [operator('set the suggested amounts to $25, $50 and $100')]
+		});
+		expect(tiersOf(result)).toMatchObject({ tiers: [] });
+		expect(result).toMatchObject({
+			ok: true,
+			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 5000 }]
+		});
+	});
+
+	it('is dropped when what the amount does is in another sentence', () => {
+		const result = accept(addTier(5000, 'a winter coat'), {
+			messages: [operator('Suggest $25, $50 and $100. A coat keeps a child warm!\nBoots help too')]
+		});
+		expect(tiersOf(result)).toMatchObject({ tiers: [] });
+	});
+
+	it('is kept in its own words when the operator stated its amount and what it does', () => {
+		const result = accept(addTier(5000, 'a warm coat for one child this winter'), {
+			messages: [operator('Suggest $25 and $100. And $50 buys a winter coat')]
+		});
+		expect(tiersOf(result)).toMatchObject({
+			tiers: [{ amountMinor: 5000, buys: 'a warm coat for one child this winter' }]
+		});
+	});
+
+	it('is kept when the operator typed its amount and what it does on the page by hand', () => {
+		const current = campaign();
+		current.blocks[3] = {
+			id: 'story',
+			type: 'story',
+			variant: 'plain',
+			background: 'none',
+			body: {
+				type: 'doc',
+				content: [
+					{
+						type: 'paragraph',
+						content: [
+							{ type: 'text', text: 'We hand out coats every December. ' },
+							{ type: 'text', text: '$50 buys a winter coat for a child.' }
+						]
+					}
+				]
+			}
+		};
+		const result = accept(addTier(5000, 'a winter coat for a child'), {
+			current,
+			messages: [operator('turn the amount in my story into an impact tier')]
+		});
+		expect(tiersOf(result)).toMatchObject({ tiers: [{ amountMinor: 5000 }] });
+		expect(result).toMatchObject({ ok: true, dropped: [] });
 	});
 
 	it('is not the operator’s when only the assistant said it', () => {
@@ -697,10 +765,22 @@ describe('an impact figure', () => {
 		['$2 Million', 200_000_000],
 		['$15 k', 1_500_000],
 		['15 thousand dollars', 1_500_000],
-		['$1.2555k', 125_550]
+		['$1.2555k', 125_550],
+		['USD25', 2500],
+		['25$', 2500],
+		['25 $', 2500],
+		['$.50', 50],
+		['50 bucks', 5000],
+		['1 buck', 100],
+		['fifty dollars', 5000],
+		['Twenty-five dollars', 2500],
+		['one hundred and fifty dollars', 15_000],
+		['a hundred bucks', 10_000],
+		['two thousand five hundred dollars', 250_000],
+		['fifteen thousand USD', 1_500_000]
 	])('reads %j as a figure the operator stated', (text, amountMinor) => {
 		const result = accept(addTiers([amountMinor]), {
-			messages: [operator(`about ${text}, thanks`)]
+			messages: [operator(`about ${text} buys a coat, thanks`)]
 		});
 		expect(tiersOf(result)).toMatchObject({ tiers: [{ amountMinor }] });
 	});
@@ -712,7 +792,9 @@ describe('an impact figure', () => {
 		['$1,00', 100],
 		['$15kids', 1_500_000]
 	])('does not read %j as the figure %i', (text, amountMinor) => {
-		const result = accept(addTiers([amountMinor]), { messages: [operator(text)] });
+		const result = accept(addTiers([amountMinor]), {
+			messages: [operator(`${text} buys a coat`)]
+		});
 		expect(tiersOf(result)).toMatchObject({ tiers: [] });
 	});
 });
@@ -770,10 +852,51 @@ describe('a figure in the words', () => {
 		expect(result).toMatchObject({ ok: true });
 	});
 
-	it('the same reply sets as the goal lands', () => {
-		const words = lede('Help us raise $15,000 this winter.');
-		expect(accept(words)).toMatchObject({ ok: false });
-		expect(accept({ ...words, set: { goalMinor: 1_500_000 } })).toMatchObject({ ok: true });
+	it('the same reply sets as the goal lands only when the operator stated it', () => {
+		const words = { ...lede('Help us raise $15,000 this winter.'), set: { goalMinor: 1_500_000 } };
+		expect(accept(words)).toMatchObject({
+			ok: false,
+			reason:
+				'block 2 (id "title"): "$15,000" is not a figure the operator wrote in the chat or one the page already shows'
+		});
+		const asked = accept(words, { messages: [operator('set the goal to $15,000')] });
+		expect(asked).toMatchObject({ ok: true });
+	});
+
+	it('the reply sets as a goal nobody asked for refuses the reply', () => {
+		const result = accept(
+			{ ...lede('$50 buys a coat.'), set: { goalMinor: 5000 } },
+			{ messages: [operator('make it warmer')] }
+		);
+		expect(result).toMatchObject({
+			ok: false,
+			reason:
+				'block 2 (id "title"): "$50" is not a figure the operator wrote in the chat or one the page already shows'
+		});
+	});
+
+	it.each([
+		'Fifty dollars',
+		'twenty-five dollars',
+		'A hundred bucks',
+		'50 bucks',
+		'25$',
+		'USD25',
+		'USD 25',
+		'$.50'
+	])('spelled %j and never stated refuses the reply, naming it as written', (written) => {
+		const result = accept(lede(`${written} keeps a child warm.`));
+		expect(result).toMatchObject({
+			ok: false,
+			reason: `block 2 (id "title"): "${written}" is not a figure the operator wrote in the chat or one the page already shows`
+		});
+	});
+
+	it('spelled out lands when the operator stated it in digits', () => {
+		const result = accept(lede('Fifty dollars keeps a child warm.'), {
+			messages: [operator('$50 buys a coat')]
+		});
+		expect(result).toMatchObject({ ok: true });
 	});
 
 	it('scaled by a word is the scaled figure, not the digits', () => {

@@ -29,15 +29,19 @@
 // what the model is told and cannot be trusted to keep is enforced here, after the edit:
 // - a link: kept only where the page already held its address. any other has its link taken off
 //   and its text kept, noted in `dropped`.
-// - an impact tier: kept where its amount is a figure the operator wrote in the chat, or where the
-//   page already held the same tier, amount and words alike. any other tier — one whose words the
-//   reply rewrote included — is dropped and noted, and the rest of the reply lands.
+// - an impact tier: kept where the operator stated its amount and what that amount does in one
+//   sentence — the figure beside one of `IMPACT`'s words — in a chat message of theirs or in the
+//   words the page already draws, or where the page already held the same tier, amount and words
+//   alike. the tier's words may paraphrase that sentence; an amount stated on its own (`set the
+//   suggested amounts to $25, $50 and $100`) grants no tier. a sentence ends at `.`, `!` or `?`
+//   before a space, or at a line break. any other tier — one whose words the reply rewrote
+//   included — is dropped and noted, and the rest of the reply lands.
 // - a figure in the words: a new campaign name and every string a block draws — a heading, a lede,
 //   what a tier buys, a question, each paragraph of a story or an answer — and each illustration's
 //   description may hold only figures the operator wrote in the chat or the page already draws, in
-//   its words, its tiers' amounts or its goal — the goal this same reply sets included. any other
-//   refuses the reply, naming the figure. a donor reads a figure as a promise the model cannot
-//   check.
+//   its words, its tiers' amounts or its stored goal. a goal this same reply sets grants no figure
+//   the operator did not state. any other refuses the reply, naming the figure. a donor reads a
+//   figure as a promise the model cannot check.
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat or
 //   one `current` already places, or the reply is refused. that it names a stored image is
 //   $lib/server/pages/draft.ts's to check, and that it is an id and never an address the catalog's.
@@ -55,9 +59,13 @@
 //   (`$15k`, `$15 thousand`, `$1.2m`); a letter run on past them (`$15kids`) leaves the digits
 //   alone. a scaled figure finer than a cent (`$1.234567k`) is one nobody can check, and in the
 //   words it refuses the reply.
-// - it is a figure only beside the currency: after `$`, `US$` or `USD` (`$25`, `$ 25`, `USD 40`),
-//   or before `dollar`, `dollars` or `USD` (`25 dollars`, `40 usd`). a bare number — `25 children`
-//   — is not one.
+// - cents alone are a point and digits (`$.50`).
+// - it is a figure only beside the currency: after `$`, `US$` or `USD` (`$25`, `$ 25`, `USD 40`,
+//   `USD40`), or before `dollar`, `dollars`, `buck`, `bucks`, `USD` or a `$` no figure follows
+//   (`25 dollars`, `50 bucks`, `40 usd`, `25$`). a bare number — `25 children` — is not one.
+// - whole dollars spelled out in words are one before `dollar`, `dollars`, `buck`, `bucks` or
+//   `USD` (`fifty dollars`, `twenty-five bucks`, `a hundred dollars`, `two thousand five hundred
+//   USD`).
 // - dollars, since every page's settings are in `FORM_CURRENCY`.
 //
 // pure and not under `$lib/server/**`, beside the catalog it reads.
@@ -240,20 +248,21 @@ function accept(input: AcceptInput): Accepted | Refused {
 	const page = pageFromDraft(type, draft, set.onto);
 	if (!page.ok) return refuse(located(page.path, page.message));
 	const dropped: Dropped[] = [];
-	const stated = new Set(statedFigures(input.messages));
+	const said = operatorTexts(input.messages);
+	const stated = new Set(said.flatMap(readFigures));
+	const impacts = new Set(impactFigures([...said, ...current.blocks.flatMap(textsIn)]));
 	const held = new Set(tiersOf(current).map(tierKey));
 	const blocks = page.page.blocks.map((block) => {
 		if (block.type !== 'impact-tiers') return block;
 		const tiers = block.tiers.filter((tier) => {
-			if (stated.has(tier.amountMinor) || held.has(tierKey(tier))) return true;
+			if (impacts.has(tier.amountMinor) || held.has(tierKey(tier))) return true;
 			dropped.push({ what: 'tier', blockId: block.id, amountMinor: tier.amountMinor });
 			return false;
 		});
 		return { ...block, tiers };
 	});
 
-	const goal = set.onto.goalMinor === undefined ? [] : [set.onto.goalMinor];
-	const shown = new Set([...stated, ...figuresShown(current), ...goal]);
+	const shown = new Set([...stated, ...figuresShown(current)]);
 	const worded = [
 		...(set.renamed === undefined ? [] : [{ where: 'set.name', texts: [set.renamed] }]),
 		...blocks.map((block, index) => ({
@@ -419,19 +428,62 @@ function isKey(key: PropertyKey): key is string | number {
 	return typeof key !== 'symbol';
 }
 
-const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(k|m|thousand|million)\b)?(?![\d,.]?\d)`;
+const NUMBER = String.raw`(?:(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?|\.(\d+))(?:\s?(k|m|thousand|million)\b)?(?![\d,.]?\d)`;
 /** how many places each scale moves the point. */
 const SCALES: Record<string, number> = { k: 3, thousand: 3, m: 6, million: 6 };
 const FIGURES = [
-	new RegExp(String.raw`(?:\bUS\$|\$|\bUSD\b)\s?${NUMBER}`, 'gi'),
-	new RegExp(String.raw`(?<![\d.,$])${NUMBER}\s?(?:dollars?|USD)\b`, 'gi')
+	new RegExp(String.raw`(?:\bUS\$|\$|\bUSD)\s?${NUMBER}`, 'gi'),
+	new RegExp(String.raw`(?<![\d.,$])${NUMBER}\s?(?:(?:dollars?|bucks?|USD)\b|\$(?!\s?\d))`, 'gi')
 ];
 
-/** every amount an operator wrote in the chat, in minor units. */
-function statedFigures(messages: readonly ChatMessage[]): number[] {
-	return messages
-		.filter(({ author }) => author === 'operator')
-		.flatMap(({ text }) => readFigures(text));
+const NUMBER_WORDS: Record<string, number> = Object.fromEntries(
+	[
+		'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen',
+		'twenty thirty forty fifty sixty seventy eighty ninety'
+	].flatMap((row, tens) =>
+		row.split(' ').map((word, index) => [word, tens === 0 ? index + 1 : (index + 2) * 10])
+	)
+);
+const NUMBER_WORD = String.raw`(?:${Object.keys(NUMBER_WORDS).join('|')}|hundred|thousand|million)\b`;
+const SPELLED = new RegExp(
+	String.raw`\b(?:a\s+(?=hundred|thousand|million))?${NUMBER_WORD}(?:(?:\s+|-)(?:and\s+)?${NUMBER_WORD})*\s+(?:dollars?|bucks?|USD)\b`,
+	'gi'
+);
+
+/** a spelled amount in whole dollars, as minor units: `two thousand five hundred` is 250000. */
+function spelledMinor(written: string): number {
+	let total = 0;
+	let group = 0;
+	for (const word of written.toLowerCase().split(/[\s-]+/)) {
+		if (word === 'hundred') group = (group || 1) * 100;
+		else if (word === 'thousand' || word === 'million') {
+			total += (group || 1) * (word === 'thousand' ? 1_000 : 1_000_000);
+			group = 0;
+		} else group += NUMBER_WORDS[word] ?? 0;
+	}
+	return (total + group) * 100;
+}
+
+/** what the operator wrote in the chat, each message whole. */
+function operatorTexts(messages: readonly ChatMessage[]): string[] {
+	return messages.filter(({ author }) => author === 'operator').map(({ text }) => text);
+}
+
+/** a word saying what a gift does: a sentence holding one states an impact for each of its figures. */
+const IMPACT =
+	/\b(?:buys?|bought|pays?|paid|costs?|provides?|feeds?|funds?|covers?|supply|supplies|keeps?|sends?|sponsors?|shelters?|heats?|trains?|plants?|delivers?|gets?|puts?|fills?|stocks?|helps|means)\b/i;
+
+/** every amount `texts` state an impact for, in minor units. */
+function impactFigures(texts: readonly string[]): number[] {
+	return texts
+		.flatMap(sentences)
+		.filter((sentence) => IMPACT.test(sentence))
+		.flatMap(readFigures);
+}
+
+/** `text` cut at each sentence end: `.`, `!` or `?` before a space, or a line break. */
+function sentences(text: string): string[] {
+	return text.split(/(?<=[.!?])\s+|\n+/);
 }
 
 /**
@@ -439,10 +491,14 @@ function statedFigures(messages: readonly ChatMessage[]): number[] {
  * `null`, a figure nobody can check; unscaled, it is no figure at all.
  */
 function figuresIn(text: string): { written: string; minor: number | null }[] {
-	return FIGURES.flatMap((pattern) => [...text.matchAll(pattern)]).flatMap(
-		([written, whole = '', fraction = '', scale]) => {
+	const spelled = [...text.matchAll(SPELLED)].map(([written]) => ({
+		written,
+		minor: spelledMinor(written)
+	}));
+	const digits = FIGURES.flatMap((pattern) => [...text.matchAll(pattern)]).flatMap(
+		([written, whole = '0', fraction, bare = '', scale]) => {
 			const places = scale === undefined ? 0 : (SCALES[scale.toLowerCase()] ?? 0);
-			const shifted = fraction.padEnd(places, '0');
+			const shifted = (fraction ?? bare).padEnd(places, '0');
 			const units = `${whole.replaceAll(',', '')}${shifted.slice(0, places)}`;
 			const cents = shifted.slice(places);
 			const { minor } = readAmount(cents === '' ? units : `${units}.${cents}`, FORM_CURRENCY);
@@ -450,6 +506,7 @@ function figuresIn(text: string): { written: string; minor: number | null }[] {
 			return [{ written, minor }];
 		}
 	);
+	return [...digits, ...spelled];
 }
 
 /** every figure in `text` a check can read, in minor units. */
