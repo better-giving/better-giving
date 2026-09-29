@@ -15,8 +15,8 @@ import { DoneSheet } from './done-sheet';
 // the first submit button in tree order among the form's own elements. what the case holds is
 // which button that is.
 //
-// nothing here reads a class or asks how any of it looks, which is what keeps it clear of
-// CLAUDE.md's ban on a browser spec over a dashboard screen.
+// one case reads a class, the part each group's heading stands in, and none asks how any of it
+// looks, which is what keeps it clear of CLAUDE.md's ban on a browser spec over a dashboard screen.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,7 +33,7 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-function seed(amounts: string[]): SettingsSeed {
+function seed(amounts: string[], over: Partial<SettingsSeed>): SettingsSeed {
 	return {
 		boxes: {
 			program_mode: 'none',
@@ -47,12 +47,13 @@ function seed(amounts: string[]): SettingsSeed {
 		retired: null,
 		summary: '',
 		switches: { open_on_monthly: false, dedication_on: false },
-		monthlyOffered: true
+		monthlyOffered: true,
+		...over
 	};
 }
 
 /** the sheet under the editor's route, whose action records every body posted to it. */
-function sheet(amounts: string[]) {
+function sheet(amounts: string[], over: Partial<SettingsSeed> = {}) {
 	const posted: FormData[] = [];
 	const onSaved = vi.fn();
 	const Stub = createRoutesStub([
@@ -60,7 +61,7 @@ function sheet(amounts: string[]) {
 			path: '/admin/donation-page',
 			Component: () => (
 				<DonationSettingsSheet
-					seed={seed(amounts)}
+					seed={seed(amounts, over)}
 					version={3}
 					onDismiss={() => {}}
 					onSaved={onSaved}
@@ -90,6 +91,16 @@ function box(root: Element, label: string): HTMLInputElement {
 	);
 	const control = found?.htmlFor ? root.ownerDocument.getElementById(found.htmlFor) : null;
 	if (!(control instanceof HTMLInputElement)) throw new Error(`no box labelled ${label}`);
+	return control;
+}
+
+/** a checkbox row's box, found by the row's own words; a note under it is not part of them. */
+function check(root: Element, label: string): HTMLInputElement {
+	const found = [...root.querySelectorAll('label')].find(
+		(one) => one.querySelector('.adm-check__text')?.textContent === label
+	);
+	const control = found?.querySelector('input');
+	if (!(control instanceof HTMLInputElement)) throw new Error(`no row labelled ${label}`);
 	return control;
 }
 
@@ -176,6 +187,83 @@ describe('the Donation settings sheet', () => {
 		if (pressed) await press(pressed);
 		expect(rows(root)).toEqual(['25', '50']);
 		expect(posted).toHaveLength(1);
+	});
+});
+
+describe('how the donation box opens', () => {
+	it('seeds both rows from the draft’s switches, and Done posts them untouched', async () => {
+		const { root, posted } = sheet(['25'], {
+			switches: { open_on_monthly: true, dedication_on: false }
+		});
+
+		expect(check(root, 'Open on monthly').checked).toBe(true);
+		expect(check(root, 'Dedication on by default').checked).toBe(false);
+
+		await press(button(root, 'Done'));
+		expect(posted[0]?.get('open_on_monthly')).toBe('on');
+		expect(posted[0]?.has('dedication_on')).toBe(false);
+	});
+
+	it('posts open_on_monthly=on when it is ticked and Done is pressed', async () => {
+		const { root, posted } = sheet(['25']);
+
+		await press(check(root, 'Open on monthly'));
+		await press(button(root, 'Done'));
+
+		expect(posted).toHaveLength(1);
+		expect(posted[0]?.get('open_on_monthly')).toBe('on');
+		expect(posted[0]?.has('dedication_on')).toBe(false);
+	});
+
+	it('posts neither once both are unticked', async () => {
+		const { root, posted } = sheet(['25'], {
+			switches: { open_on_monthly: true, dedication_on: true }
+		});
+
+		await press(check(root, 'Open on monthly'));
+		await press(check(root, 'Dedication on by default'));
+		await press(button(root, 'Done'));
+
+		expect(posted).toHaveLength(1);
+		expect(posted[0]?.has('open_on_monthly')).toBe(false);
+		expect(posted[0]?.has('dedication_on')).toBe(false);
+	});
+
+	it('notes Open on monthly while monthly is not offered, and keeps it tickable', async () => {
+		const { root } = sheet(['25'], { monthlyOffered: false });
+		const monthly = check(root, 'Open on monthly');
+		const note = document.getElementById(monthly.getAttribute('aria-describedby') ?? '');
+
+		expect(note?.textContent).toBe(
+			'Monthly is not offered while no payment account here can collect repeating gifts.'
+		);
+		expect(monthly.disabled).toBe(false);
+		await press(monthly);
+		expect(monthly.checked).toBe(true);
+	});
+
+	it('draws no note while monthly is offered', () => {
+		const { root } = sheet(['25']);
+
+		expect(check(root, 'Open on monthly').hasAttribute('aria-describedby')).toBe(false);
+		expect(root.querySelector('.adm-check__note')).toBeNull();
+	});
+
+	it('stands each group’s heading in a part of its own', () => {
+		const { root } = sheet(['25']);
+		const form = check(root, 'Open on monthly').form;
+		const headings = [...(form?.querySelectorAll('h2') ?? [])];
+
+		expect(headings.map((one) => one.textContent)).toEqual([
+			'Program',
+			'What a donor may give',
+			'How the donation box opens'
+		]);
+		for (const heading of headings) {
+			const part = heading.parentElement;
+			expect(part?.className).toBe('adm-sheetpart');
+			expect(part?.querySelectorAll(':scope > h2')).toHaveLength(1);
+		}
 	});
 });
 

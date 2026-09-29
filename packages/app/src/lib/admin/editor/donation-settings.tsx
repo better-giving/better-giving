@@ -1,3 +1,4 @@
+import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
 import { getFormProps } from '@conform-to/react';
 import { type SubmitEvent, useEffect } from 'react';
 import { useFetcher } from 'react-router';
@@ -13,7 +14,7 @@ import {
 } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
 import { PAGE_SETTINGS_INPUT } from '$lib/forms/input-schema';
-import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-form';
+import { PAGE_SETTINGS_FORM_ID, type SettingsSeed, SWITCH_LABELS } from '$lib/page/settings-form';
 import { DoneSheet } from './done-sheet';
 
 // the Donation settings sheet both editors open from Settings: a form's program and giving groups
@@ -24,6 +25,14 @@ import { DoneSheet } from './done-sheet';
 // the sheet's form is conform's, handed over as `formProps`: its list intents (Add, Remove) and its
 // validation pass run in conform's `onSubmit`, and a submit that pass lets through goes to the
 // fetcher rather than navigating.
+//
+// the third group is the page's two switches, as checkbox rows committed at Done with the rest of
+// the sheet; nothing in it applies the moment it is ticked. Open on monthly stays tickable
+// where the deployment offers no monthly gift, with the note saying why the box still opens
+// one-time; the setting is kept and takes effect once monthly is offered.
+//
+// each group is its own `.adm-sheetpart`, so a heading sits nearer its own rows than the group
+// above it.
 
 const PAGE_SETTINGS = defineForm({ id: PAGE_SETTINGS_FORM_ID, schema: PAGE_SETTINGS_INPUT });
 
@@ -36,6 +45,9 @@ type DonationSettingsSheetProps = {
 	/** a Done landed: the draft holds what was typed. */
 	readonly onSaved: () => void;
 };
+
+const MONTHLY_UNOFFERED =
+	'Monthly is not offered while no payment account here can collect repeating gifts.';
 
 type Answer = AdminActionData & { readonly saved?: string };
 
@@ -52,7 +64,11 @@ export function DonationSettingsSheet({
 	const saved = answer?.saved === 'settings';
 
 	const [form, fields] = useAdminForm(PAGE_SETTINGS, answer, {
-		defaultValue: { ...seed.boxes, suggested_amounts: [...seed.boxes.suggested_amounts] }
+		defaultValue: {
+			...seed.boxes,
+			suggested_amounts: [...seed.boxes.suggested_amounts],
+			...seed.switches
+		}
 	});
 	const rows = fields.suggested_amounts.getFieldList();
 
@@ -81,23 +97,48 @@ export function DonationSettingsSheet({
 		>
 			<input {...whichForm(PAGE_SETTINGS.id)} />
 			<input {...recordVersion(version)} />
-			<FormProgramFields
-				boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
-				programs={seed.programs}
-				retired={seed.retired}
-			/>
-			<FormGivingFields
-				boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
-				amounts={{
-					id: fields.suggested_amounts.id,
-					errors: fields.suggested_amounts.errors,
-					rows,
-					add: insertWhenValid(form, PAGE_SETTINGS, fields.suggested_amounts.name),
-					remove: (index) =>
-						form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
-				}}
-				currency={seed.currency}
-			/>
+			<div className="adm-sheetpart">
+				<FormProgramFields
+					boxes={{ program_mode: fields.program_mode, program_id: fields.program_id }}
+					programs={seed.programs}
+					retired={seed.retired}
+				/>
+			</div>
+			<div className="adm-sheetpart">
+				<FormGivingFields
+					boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
+					amounts={{
+						id: fields.suggested_amounts.id,
+						errors: fields.suggested_amounts.errors,
+						rows,
+						add: insertWhenValid(form, PAGE_SETTINGS, fields.suggested_amounts.name),
+						remove: (index) =>
+							form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
+					}}
+					currency={seed.currency}
+				/>
+			</div>
+			<div className="adm-sheetpart">
+				<h2>How the donation box opens</h2>
+				<CheckboxGroup
+					id={`${form.id}-opens`}
+					items={[
+						{
+							id: fields.open_on_monthly.id,
+							name: fields.open_on_monthly.name,
+							label: SWITCH_LABELS.open_on_monthly,
+							defaultChecked: fields.open_on_monthly.defaultChecked,
+							note: seed.monthlyOffered ? undefined : MONTHLY_UNOFFERED
+						},
+						{
+							id: fields.dedication_on.id,
+							name: fields.dedication_on.name,
+							label: SWITCH_LABELS.dedication_on,
+							defaultChecked: fields.dedication_on.defaultChecked
+						}
+					]}
+				/>
+			</div>
 		</DoneSheet>
 	);
 }

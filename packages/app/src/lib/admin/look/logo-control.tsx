@@ -12,8 +12,8 @@ import { ReplacePhotoControl, type ReplacePhotoControlProps } from '../editor/re
 // a logo applies the moment it lands, as every Organisation save does, and reports at its own group
 // rather than on the Look's status line: that line speaks for every page wearing the organisation's
 // look, and the logo stands atop every page whatever look it wears. the report says what landed
-// and offers Undo beside it; its region is mounted empty in every state, so what arrives in it is
-// read out.
+// and offers Undo beside it, or Redo where what landed was an Undo; its region is mounted empty in
+// every state, so what arrives in it is read out.
 //
 // the logo is handed in by its stored id and drawn from the deployment's image route by that id.
 // the resize, the upload and the write are the route's, reported back through `state` and `report`.
@@ -35,6 +35,8 @@ export type LogoControlProps = {
 				readonly onUndo: () => void;
 				/** the Undo is in flight. */
 				readonly undoing?: boolean | undefined;
+				/** the write that landed was itself an Undo, so the press puts it back: it reads Redo. */
+				readonly redo?: boolean | undefined;
 		  }
 		| null
 		| undefined;
@@ -92,7 +94,7 @@ export function LogoControl({
 							if (!undoing) report.onUndo();
 						}}
 					>
-						Undo
+						{report.redo ? 'Redo' : 'Undo'}
 					</Button>
 				) : null}
 			</div>
