@@ -212,13 +212,23 @@ Or **Workers & Pages → your Worker → Settings → Domains & Routes**. Consid
 
 ## Backups
 
-D1 keeps a point-in-time restore window (Time Travel): 30 days paid, 7 free. The one backup that survives your Cloudflare account:
+D1 keeps a point-in-time restore window (Time Travel): 30 days paid, 7 free. The one backup that survives your Cloudflare account is two halves, the books and the photos:
 
 ```sh
-pnpm run db:export --output ./backup.sql
+pnpm run db:export --output ./backup.sql          # the books: every table, photos' bytes left out
+pnpm run db:export:photos --output ./photos       # one file per photo, named by its id
 ```
 
-Take one before an upgrade with migrations. A bookkeeping mistake is corrected by a compensating entry, never a rollback: the restore window repairs a damaged schema, not a wrong figure.
+The photos are apart because D1 refuses any statement over 100 KB, and a photo written into SQL is twice its size. A backup holding them could not be restored. Both paths are relative to `packages/app`.
+
+Restore into an empty database, books first: a photo is stored only under an image the books already hold. Don't apply migrations to it first: the books carry the schema and the record of which migrations ran.
+
+```sh
+pnpm wrangler d1 execute better-giving --remote --file ./backup.sql
+pnpm run db:restore:photos --input ./photos      # safe to re-run; names any photo it refused
+```
+
+Take both before an upgrade with migrations. A bookkeeping mistake is corrected by a compensating entry, never a rollback: the restore window repairs a damaged schema, not a wrong figure.
 
 ## A rehearsal deployment
 
