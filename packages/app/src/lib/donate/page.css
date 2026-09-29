@@ -350,6 +350,32 @@ body {
 	color: var(--_n11);
 }
 
+/* the organisation's logo, the masthead's one row. a logo at least twice as wide as it is tall
+   stands in for the name and carries it as its alt; a narrower one stands beside the name and says
+   nothing of its own (./page-view.tsx decides which, off the stored image's width and height). it
+   is one row tall, `--_row-min`, the height of the card's own rows, on every shade and at every
+   width, and it is drawn whole, never cropped. it keeps its own pixels, so a logo on a white ground
+   shows that ground on a warm or cool page: nothing here paints behind it. */
+.page-mast-in {
+	display: flex;
+	align-items: center;
+	gap: var(--_sp3);
+}
+
+.page-mast-logo {
+	display: block;
+	flex: none;
+	block-size: var(--_row-min);
+	inline-size: auto;
+	max-inline-size: 100%;
+	object-fit: contain;
+}
+
+.page-mast-name:has(> .page-mast-logo) {
+	display: flex;
+	min-inline-size: 0;
+}
+
 .page-body {
 	padding-block: var(--page-gap-lead) var(--page-gap-section);
 }
@@ -930,6 +956,29 @@ body {
 	position: relative;
 }
 
+/* the Illustration caption. an AI illustration is never drawn without it, on every hero and image
+   variant and on the cover: a solid chip at the image's top end corner, where it meets neither the
+   cover's title nor its scrim, in the card's own ground and quiet ink, so it reads the same over any
+   picture and is made with no alpha. an illustrated hero or image is a `figure` and the chip its
+   `figcaption`; on the cover the positioned hero itself is the figure. */
+figure:is(.page-hero, .page-image) {
+	position: relative;
+	margin: 0;
+}
+
+.page-illus {
+	position: absolute;
+	inset-block-start: var(--_sp3);
+	inset-inline-end: var(--_sp3);
+	padding: var(--_sp1) var(--_sp2);
+	background: var(--_n1);
+	color: var(--_n11);
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+	line-height: var(--_lh-tight);
+	border-radius: var(--_r-in);
+}
+
 .page-hero[data-variant='cover'] .page-photo {
 	aspect-ratio: 4 / 3;
 	min-block-size: 26rem; /* raw-length-ok: the cover's height, a shape */
@@ -1197,6 +1246,58 @@ body {
 
 .page-choose[data-variant='list'] .page-choose-option:has(:checked) .page-choose-mark::before {
 	border: calc(var(--_box) * 0.3125) solid var(--_p);
+}
+
+/* a program's photo: a square at the option's start, cropped to the option's own row height, with
+   the inner corner the card draws inside a box. it says nothing of its own, since the name beside it
+   is the option's name. an option with no photo draws as it does without one, so a chooser holding a
+   mix draws a mix, and where the gift is needed most is no program and never has one. the name's
+   first line centres on the photo, and the mark stands on that same first line however many lines
+   the name takes. */
+.page-choose-thumb {
+	display: block;
+	inline-size: var(--_row-min);
+	block-size: var(--_row-min);
+	object-fit: cover;
+	border-radius: var(--_r-in);
+}
+
+.page-choose[data-variant='cards'] .page-choose-option:has(> .page-choose-thumb) {
+	grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.page-choose[data-variant='cards'] .page-choose-option > .page-choose-thumb {
+	grid-column: 1;
+	grid-row: 1;
+}
+
+.page-choose[data-variant='cards']
+	.page-choose-option:has(> .page-choose-thumb)
+	:is(.page-choose-name, .page-choose-description) {
+	grid-column: 2;
+}
+
+.page-choose[data-variant='cards'] .page-choose-option:has(> .page-choose-thumb) .page-choose-mark {
+	grid-column: 3;
+}
+
+.page-choose[data-variant='list'] .page-choose-option:has(> .page-choose-thumb) {
+	grid-template-columns: auto auto minmax(0, 1fr);
+}
+
+.page-choose[data-variant='list'] .page-choose-option > .page-choose-thumb {
+	grid-column: 2;
+	grid-row: 1;
+}
+
+.page-choose[data-variant='list']
+	.page-choose-option:has(> .page-choose-thumb)
+	:is(.page-choose-name, .page-choose-description) {
+	grid-column: 3;
+}
+
+.page-choose-option:has(> .page-choose-thumb) :is(.page-choose-name, .page-choose-mark) {
+	padding-block-start: calc((var(--_row-min) - 1lh) / 2);
 }
 
 /* locked, from the press on Donate until the donor is back on a step they edit (./card.tsx). the
