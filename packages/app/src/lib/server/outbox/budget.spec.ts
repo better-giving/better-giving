@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { readConfigEnv } from '../config/env';
 import {
 	ACCOUNTING_RUN_COST,
 	CONNECTIONS_AT_ONCE,
 	CONNECTIONS_KEPT,
 	claimsWithin,
-	deliveryPace,
-	freePlanPace,
 	HEADROOM,
 	MINUTE_RUN,
 	PACE,
 	type Plan,
 	PLAN_LIMITS,
 	paceOf,
+	planOf,
 	type RunCost,
 	type Share,
 	shareOn,
@@ -79,14 +79,9 @@ describe.each([
 	);
 });
 
-describe('deliveryPace()', () => {
+describe('planOf()', () => {
 	it("reads the Paid plan off the operator's `true`, in any case", () => {
-		expect(deliveryPace({ CLOUDFLARE_PAID_PLAN: 'True' })).toEqual({
-			plan: 'paid',
-			zapierPerMinute: PACE.paid.zapier,
-			webhooksPerMinute: PACE.paid.webhooks,
-			booksPerMinute: PACE.paid.books
-		});
+		expect(planOf(readConfigEnv({ CLOUDFLARE_PAID_PLAN: 'True' }))).toBe('paid');
 	});
 
 	it.each([
@@ -95,23 +90,6 @@ describe('deliveryPace()', () => {
 		{ label: 'yes', env: { CLOUDFLARE_PAID_PLAN: 'yes' } },
 		{ label: '1', env: { CLOUDFLARE_PAID_PLAN: '1' } }
 	])('reads every other answer, $label included, as the Free plan', ({ env }) => {
-		expect(deliveryPace(env)).toEqual({
-			plan: 'free',
-			zapierPerMinute: PACE.free.zapier,
-			webhooksPerMinute: PACE.free.webhooks,
-			booksPerMinute: PACE.free.books
-		});
-	});
-});
-
-describe('freePlanPace()', () => {
-	it("names the feed's Free pace where the account is not stated as Paid", () => {
-		expect(freePlanPace({}, 'zapier')).toBe(PACE.free.zapier);
-		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'false' }, 'webhooks')).toBe(PACE.free.webhooks);
-	});
-
-	it('names none once the account is stated as Paid', () => {
-		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'true' }, 'zapier')).toBeNull();
-		expect(freePlanPace({ CLOUDFLARE_PAID_PLAN: 'TRUE' }, 'webhooks')).toBeNull();
+		expect(planOf(readConfigEnv(env))).toBe('free');
 	});
 });

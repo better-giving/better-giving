@@ -1,7 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { PACE } from '$lib/server/outbox/budget';
 import { createDestination } from '$lib/server/webhooks/destinations';
 import { destinationPagePath } from '$lib/server/webhooks/paused-mail';
 import type { WebhookEvent } from '$lib/webhooks/catalog';
@@ -38,7 +37,6 @@ type Screen = {
 	confirming: 'resume' | 'delete' | null;
 	added: boolean;
 	saved: boolean;
-	freePlanPace: number | null;
 	deliveries: {
 		id: string;
 		event: string;
@@ -87,13 +85,8 @@ it('is the page the pause mail links to', async () => {
 	expect((await destination.get(destinationPagePath(id), deployer)).status).toBe(200);
 });
 
-async function visit(
-	id: string,
-	search = '',
-	cookie = deployer,
-	bindings = deployed()
-): Promise<Screen> {
-	const response = await destination.get(at(id, search), cookie, bindings);
+async function visit(id: string, search = '', cookie = deployer): Promise<Screen> {
+	const response = await destination.get(at(id, search), cookie, deployed());
 	expect(response.status).toBe(200);
 	return (await response.json()) as Screen;
 }
@@ -201,14 +194,6 @@ async function deliveryRows(): Promise<number> {
 }
 
 describe('GET /admin/integrations/webhooks/:id', () => {
-	it('states the pace deliveries go out at on the Free plan, and none once Paid is stated', async () => {
-		const { id } = await made();
-		const paid = { ...deployed(), CLOUDFLARE_PAID_PLAN: 'true' } as Env;
-
-		expect((await visit(id)).freePlanPace).toBe(PACE.free.webhooks);
-		expect((await visit(id, '', deployer, paid)).freePlanPace).toBeNull();
-	});
-
 	it('shows the address, the events it takes and its signing secret', async () => {
 		const { id, signingSecret } = await made(['donor.added', 'gift.made']);
 
@@ -223,7 +208,6 @@ describe('GET /admin/integrations/webhooks/:id', () => {
 			confirming: null,
 			added: false,
 			saved: false,
-			freePlanPace: PACE.free.webhooks,
 			deliveries: []
 		});
 	});
@@ -411,11 +395,7 @@ describe('POST /admin/integrations/webhooks/:id — the delete', () => {
 		expect(answer.status).toBe(303);
 		expect(answer.headers.get('location')).toBe(LIST);
 		const landed = await listed.get(LIST, withFlash(deployer, answer));
-		expect(await landed.json()).toEqual({
-			destinations: [],
-			deleted: URL_,
-			freePlanPace: PACE.free.webhooks
-		});
+		expect(await landed.json()).toEqual({ destinations: [], deleted: URL_ });
 		const owed = await env.DB.prepare('select status, last_error from webhook_delivery').first();
 		expect(owed).toEqual({ status: 'dropped', last_error: 'Its destination was deleted.' });
 		expect((await destination.get(at(id), deployer)).status).toBe(404);

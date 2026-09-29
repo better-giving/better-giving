@@ -24,7 +24,6 @@ import {
 import { z } from 'zod';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { useAfterPaint } from '$lib/admin/after-paint';
-import { FreePlanPace } from '$lib/admin/free-plan-pace';
 import { useAnswerRevision } from '$lib/admin/answer-revision';
 import { buttonState } from '$lib/admin/save-button-state';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -52,7 +51,7 @@ import {
 } from '$lib/server/webhooks/destinations';
 import { listDeliveries, sendTestWebhook } from '$lib/server/webhooks/deliver';
 import { readConfigEnv } from '$lib/server/config/env';
-import { freePlanPace as paceOnFreePlan, planOf } from '$lib/server/outbox/budget';
+import { planOf } from '$lib/server/outbox/budget';
 import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 
@@ -178,7 +177,6 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 						: null,
 			added: added?.marker === destination.id,
 			saved: saved?.marker === SAVED,
-			freePlanPace: paceOnFreePlan(context.get(platform).env, 'webhooks'),
 			deliveries: deliveries.map((delivery) => ({
 				id: delivery.id,
 				event: delivery.event,
@@ -405,11 +403,6 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 						: `${held === 1 ? 'One event is' : `${held} events are`} held until you resume.`}
 				</Banner>
 			) : null}
-			<FreePlanPace
-				perMinute={loaderData.freePlanPace}
-				deliveries="webhook deliveries"
-				reach="every destination"
-			/>
 			<RecentDeliveries deliveries={loaderData.deliveries} />
 			<SigningSecret secret={loaderData.signingSecret} />
 			<Editor loaderData={loaderData} actionData={actionData} />

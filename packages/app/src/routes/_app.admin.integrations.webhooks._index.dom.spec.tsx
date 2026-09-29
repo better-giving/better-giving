@@ -22,14 +22,13 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** the page as the server drew it; the account stated as on the Paid plan unless `loaderData` says. */
+/** the page as the server drew it. */
 function screen(loaderData: object): HTMLElement {
-	const drawn = { freePlanPace: null, ...loaderData };
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/integrations/webhooks',
 			Component: () =>
-				createElement(Webhooks as never, { loaderData: drawn, params: {}, matches: [] })
+				createElement(Webhooks as never, { loaderData, params: {}, matches: [] })
 		}
 	]);
 	return mount(createElement(Stub, { initialEntries: ['/admin/integrations/webhooks'] }));
@@ -89,15 +88,4 @@ it('says which destination a delete took, in the status line, once the line is d
 	);
 
 	expect(said?.textContent).toBe('Deleted https://crm.example.net/hooks.');
-});
-
-it('says the pace deliveries go out at on the Free plan, and nothing of it once Paid is stated', () => {
-	const free = screen({ destinations: [], deleted: null, freePlanPace: 4 });
-	expect(free.textContent).toContain(
-		'On the Cloudflare Free plan, webhook deliveries go out 4 a minute, so a busy day can take hours to reach every destination. If this account is on the Workers Paid plan, say so on the console’s Cloudflare plan page.'
-	);
-	act(() => free.remove());
-
-	const paid = screen({ destinations: [], deleted: null });
-	expect(paid.textContent).not.toContain('Free plan');
 });

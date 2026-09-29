@@ -16,7 +16,6 @@ import {
 	useNavigation
 } from 'react-router';
 import { z } from 'zod';
-import { FreePlanPace } from '$lib/admin/free-plan-pace';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, resultFor, whichForm } from '$lib/admin/use-admin-form';
 import type { ZapierPressReport, ZapierReport } from '$lib/zapier/report';
@@ -24,7 +23,6 @@ import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { publishedOrigin, readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm, unread } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
-import { freePlanPace as paceOnFreePlan } from '$lib/server/outbox/budget';
 import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import { readZapierDeliveries } from '$lib/server/zapier/report';
 import { countListening } from '$lib/server/zapier/subscriptions';
@@ -141,11 +139,8 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 	const late =
 		deliveries.oldestWaitingAt !== null &&
 		now.getTime() - deliveries.oldestWaitingAt.getTime() > LATE_MS;
-	const { env } = context.get(platform);
-
 	return {
-		address: publishedOrigin(url, readPin(readAuthEnv(env))),
-		freePlanPace: paceOnFreePlan(env, 'zapier'),
+		address: publishedOrigin(url, readPin(readAuthEnv(context.get(platform).env))),
 		report,
 		late,
 		replacing: key !== null && url.searchParams.get('confirm') === 'replace'
@@ -223,7 +218,7 @@ export function shouldRevalidate({
 type Listening = ZapierReport['listening'];
 
 export default function Zapier({ loaderData, actionData }: Route.ComponentProps) {
-	const { address, report, late, replacing, freePlanPace } = loaderData;
+	const { address, report, late, replacing } = loaderData;
 	const made = actionData && 'made' in actionData ? actionData.made : undefined;
 	const [shown, done] = useShownOnce(made?.key);
 
@@ -241,11 +236,6 @@ export default function Zapier({ loaderData, actionData }: Route.ComponentProps)
 	return (
 		<Column>
 			<FeedStrips deliveries={report.deliveries} late={late} />
-			<FreePlanPace
-				perMinute={freePlanPace}
-				deliveries="deliveries to your Zaps"
-				reach="every Zap"
-			/>
 			<Groups>
 				<Grouped>
 					{/* the app has no public address in this repository to link: it is private, and reached

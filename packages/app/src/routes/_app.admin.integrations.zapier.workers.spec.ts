@@ -4,7 +4,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { contact, donation, payment } from '$lib/server/db/schema';
 import { ZAPIER_KEY_SHAPE } from '$lib/server/integrations/keys';
-import { PACE } from '$lib/server/outbox/budget';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import { zapierStatements } from '$lib/server/zapier/events';
 import { makeZapierKey } from '$lib/server/zapier/key';
@@ -81,7 +80,6 @@ type Screen = {
 	};
 	late: boolean;
 	replacing: boolean;
-	freePlanPace: number | null;
 };
 
 function get(cookie: string, search = ''): Promise<Response> {
@@ -105,18 +103,6 @@ describe('GET /admin/integrations/zapier — before a key', () => {
 		expect(read.report.listening).toEqual({ newGift: 0, newDonor: 0, giftRefunded: 0 });
 		expect(read.report.deliveries).toEqual({ waiting: 0, failed: 0, oldestWaitingAt: null });
 		expect(read.late).toBe(false);
-	});
-
-	it('states the pace deliveries go out at on the Free plan, and none once Paid is stated', async () => {
-		const paid = { ...deployed(), CLOUDFLARE_PAID_PLAN: 'true' } as Env;
-		const onPaid = await request(
-			new Request(`${ORIGIN}${SCREEN}`, { headers: { cookie: deployer } }),
-			{ env: paid }
-		);
-
-		expect((await visit(deployer)).freePlanPace).toBe(PACE.free.zapier);
-		expect(PACE.free.zapier).toBeGreaterThan(0);
-		expect(((await onPaid.json()) as Screen).freePlanPace).toBeNull();
 	});
 
 	it('hands Zapier an https address when the page is asked over plain http', async () => {
