@@ -1,7 +1,7 @@
 import type { Background } from '../../page/keys';
 
 // what the hero and image blocks share: a stored photo, drawn by its id alone and cropped to the
-// block's frame (./page.css sets each frame's ratio, so the photo's box holds its place before the
+// block's frame (../page.css sets each frame's ratio, so the photo's box holds its place before the
 // bytes arrive), and the caption an AI illustration is never drawn without.
 
 /** a photo block's stored values. */

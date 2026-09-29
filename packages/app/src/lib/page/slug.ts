@@ -7,9 +7,6 @@
 //
 // the rule names a clash and holds nothing. uniqueness between campaigns is the table's, and so is
 // an ended campaign's hold on its address.
-//
-// not under `$lib/server/**`: a form validates with the same schema in the browser
-// (`$lib/admin/use-admin-form.ts`), and a component cannot import from there.
 
 import { RUNTIME_PATH_PREFIX } from '@better-giving/form/embed/stamp';
 import routeFiles from 'virtual:route-files';
@@ -86,19 +83,17 @@ export function reservedSegments(routeFiles: readonly string[]): ReadonlySet<str
 	return reserved;
 }
 
-// `../../../vite/route-files.ts`'s plugin, read for the names alone: an `import.meta.glob` over
-// ./src/routes/ has no names-only mode, so every key it returns is a lazy `import()` nothing here
-// ever calls — a dynamic-import edge into every route module, and a build warning for each one.
-// the negative pattern is the same one src/routes.ts hands `flatRoutes`, shared from that plugin
-// module rather than restated: a spec is not an address, and one handed to the build would pull
-// `cloudflare:test` into it.
+// the route files' names alone, from `../../../vite/route-files.ts`'s plugin, so nothing here is an
+// import edge into a route module. the plugin leaves out the files src/routes.ts's
+// `ignoredRouteFiles` leaves out, by the one pattern the plugin module exports: a spec is not an
+// address, and one handed to the build would pull `cloudflare:test` into it.
 const ROUTE_FILES: readonly string[] = routeFiles;
 
 /**
  * every segment a campaign's address may not be. beside the route files: the two directories the
- * client build serves — `assets`, vite's `build.assetsDir`, which ./vite.config.ts
- * leaves at its default, and the embed runtime's. a file static/ serves at the top level carries a
- * `.`, which the character rule refuses before this set is read.
+ * client build serves — `assets`, vite's `build.assetsDir`, which ../../../vite.config.ts leaves at
+ * its default, and the embed runtime's. a file static/ serves at the top level carries a `.`, which
+ * the character rule refuses before this set is read.
  */
 export const RESERVED_SEGMENTS: ReadonlySet<string> = new Set([
 	...reservedSegments(ROUTE_FILES),
