@@ -52,7 +52,7 @@ import {
 } from '$lib/server/webhooks/destinations';
 import { listDeliveries, sendTestWebhook } from '$lib/server/webhooks/deliver';
 import { readConfigEnv } from '$lib/server/config/env';
-import { freePlanPace, planOf } from '$lib/server/outbox/budget';
+import { freePlanPace as paceOnFreePlan, planOf } from '$lib/server/outbox/budget';
 import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 
@@ -178,7 +178,7 @@ export async function loader({ context, params, request, url }: Route.LoaderArgs
 						: null,
 			added: added?.marker === destination.id,
 			saved: saved?.marker === SAVED,
-			freePlanPace: freePlanPace(context.get(platform).env, 'webhooks'),
+			freePlanPace: paceOnFreePlan(context.get(platform).env, 'webhooks'),
 			deliveries: deliveries.map((delivery) => ({
 				id: delivery.id,
 				event: delivery.event,

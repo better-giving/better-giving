@@ -24,7 +24,7 @@ import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { publishedOrigin, readAuthEnv, readPin, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm, unread } from '$lib/server/conform';
 import { notFound } from '$lib/server/db/load-failure';
-import { freePlanPace } from '$lib/server/outbox/budget';
+import { freePlanPace as paceOnFreePlan } from '$lib/server/outbox/budget';
 import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import { readZapierDeliveries } from '$lib/server/zapier/report';
 import { countListening } from '$lib/server/zapier/subscriptions';
@@ -145,7 +145,7 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 
 	return {
 		address: publishedOrigin(url, readPin(readAuthEnv(env))),
-		freePlanPace: freePlanPace(env, 'zapier'),
+		freePlanPace: paceOnFreePlan(env, 'zapier'),
 		report,
 		late,
 		replacing: key !== null && url.searchParams.get('confirm') === 'replace'

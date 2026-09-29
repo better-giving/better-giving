@@ -10,7 +10,7 @@ import { WEBHOOK_EVENT_TYPES } from '$lib/webhooks/catalog';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { notFound } from '$lib/server/db/load-failure';
 import { SAVED_FLASH, takeFlash } from '$lib/server/flash';
-import { freePlanPace } from '$lib/server/outbox/budget';
+import { freePlanPace as paceOnFreePlan } from '$lib/server/outbox/budget';
 import { listDestinations } from '$lib/server/webhooks/destinations';
 import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.integrations.webhooks._index';
@@ -66,7 +66,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		{
 			destinations,
 			deleted: landed?.marker ?? null,
-			freePlanPace: freePlanPace(context.get(platform).env, 'webhooks')
+			freePlanPace: paceOnFreePlan(context.get(platform).env, 'webhooks')
 		},
 		landed === null ? {} : { headers: { 'Set-Cookie': landed.clear } }
 	);
