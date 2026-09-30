@@ -60,6 +60,7 @@
 		"./components/forms/RepeatingRows": "./src/components/forms/RepeatingRows.jsx",
 		"./components/forms/SelectWithNote": "./src/components/forms/SelectWithNote.jsx",
 		"./components/forms/StatedValue": "./src/components/forms/StatedValue.jsx",
+		"./components/shell/AccountRow": "./src/components/shell/AccountRow.jsx",
 		"./components/shell/AppShell": "./src/components/shell/AppShell.jsx",
 		"./components/shell/BareShell": "./src/components/shell/BareShell.jsx",
 		"./components/shell/DestinationCell": "./src/components/shell/DestinationCell.jsx",

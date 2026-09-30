@@ -1,4 +1,9 @@
-import { PAID_PLAN_ANSWER, planAnswered } from '@better-giving/operator/delivery-pace';
+import type { Feed } from '@better-giving/operator/delivery-pace';
+import {
+	DELIVERY_PACE,
+	PAID_PLAN_ANSWER,
+	planAnswered
+} from '@better-giving/operator/delivery-pace';
 import type { DeployValueName } from '@better-giving/operator/deploy-split';
 import type { FeedsInUse } from '../api/types';
 import type { AnswerSwitch } from './answer-switch';
@@ -14,7 +19,7 @@ import type { HeldValues } from './held-values';
 // answer about the account the deployment runs on, and nothing else is saved with it.
 //
 // **the plan is a concern only where it slows something down**: read as Free while a feed the
-// minute cron paces is in use ({@link planConcern}). no call reports the plan, so the operator is
+// minute cron paces is in use ({@link pacedFeeds}). no call reports the plan, so the operator is
 // the only one who can say the account is on the paid one, and a mark raised on every Free
 // deployment would ask that of every organisation that delivers nothing at all.
 
@@ -41,23 +46,34 @@ export const PLAN_SWITCH: AnswerSwitch = {
 	field: PLAN_FIELD
 };
 
+/** every feed this console has a word for, in the order the plan's note lists them. */
+const FEEDS = Object.keys(DELIVERY_PACE.free) as Feed[];
+
 /**
- * whether the plan is worth the operator's look: the deployment reads it as Free, and at least one
- * feed is in use, so something is being delivered at the Free plan's pace.
+ * the feeds being delivered at the Free plan's pace: the deployment reads the plan as Free, and
+ * these are in use. the plan is worth the operator's look where this is not empty
+ * ({@link planConcern}), and the account panel names each one, so the mark and the sentence under
+ * it are one reading.
  *
  * read through `planAnswered`, the one reading both surfaces share, rather than against the word
  * this console writes, for the reason `charityApproved` in ./paypal-charity.ts states.
  *
- * **never where the answer is withheld** (./held-values.ts): the deployment reads a value this
- * console cannot, so it may be delivering at the paid pace. **never where `feeds` is `null`** — the
+ * **only the feeds {@link FEEDS} names are counted**: a deployment newer than this console can
+ * report one it has no word for, and a mark raised over it would open a panel saying nothing.
+ * **none where the answer is withheld** (./held-values.ts): the deployment reads a value this
+ * console cannot, so it may be delivering at the paid pace. **none where `feeds` is `null`** — the
  * deployment did not say which feeds are in use (`HomeReading.feedsInUse` in ../api/types.ts), and a
  * mark standing over a reading that did not land is a claim nothing on this console can back.
  */
+export function pacedFeeds(values: HeldValues, feeds: FeedsInUse | null): Feed[] {
+	if (feeds === null || values.withheld.includes(PAID_PLAN)) return [];
+	if (planAnswered(values.seeds[PAID_PLAN]) !== 'free') return [];
+	return FEEDS.filter((feed) => feeds[feed] === true);
+}
+
+/** whether the plan is worth the operator's look: some feed is delivered at the Free plan's pace. */
 export const planConcern = (values: HeldValues, feeds: FeedsInUse | null): boolean =>
-	feeds !== null &&
-	!values.withheld.includes(PAID_PLAN) &&
-	planAnswered(values.seeds[PAID_PLAN]) === 'free' &&
-	Object.values(feeds).some((inUse) => inUse);
+	pacedFeeds(values, feeds).length > 0;
 
 /** what one press of the switch puts on the deployment (`switchEdit` in ./answer-switch.ts). */
 export const planEdit = (posted: FormData): Record<string, string | null> =>

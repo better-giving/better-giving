@@ -2,8 +2,6 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { BareShell } from '@better-giving/operator/components/shell/BareShell';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
-import { Brand } from '@better-giving/operator/components/status/Brand';
-import { Mark } from '@better-giving/operator/components/status/Mark';
 import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -17,8 +15,8 @@ import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
 import type { CloudflareAccountPanelProps } from '../lib/cloudflare-account';
-import { CloudflareAccount, CloudflareAccountPanel, PACED_WORD } from '../lib/cloudflare-account';
-import { PLAN_FETCHER, planConcern } from '../lib/cloudflare-plan';
+import { CloudflareAccountPanel, cloudflareAccount } from '../lib/cloudflare-account';
+import { PLAN_FETCHER } from '../lib/cloudflare-plan';
 import { railGroups } from '../lib/console-pages';
 import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
@@ -141,39 +139,19 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 
 	// a ready deployment's values always read: an unread one stands behind the gate instead.
 	const held = reading.values.vars.kind === 'read' ? heldValues(reading.values.vars.vars) : null;
-	const concern = held !== null && planConcern(held, reading.feedsInUse);
-	const openAccount = `${pathname}?${ACCOUNT_PARAM}`;
-
-	/* the account at phone width, where the rail's foot is not drawn: the same panel, opened from
-	   the band beside the close, with the same mark and the same words read after the name. */
-	const accountControl = (
-		<Button
-			as={Link}
-			to={openAccount}
-			preventScrollReset
-			variant="quiet"
-			size="sm"
-			title={loaderData.accountId}
-			aria-label={
-				concern
-					? `Cloudflare account ${loaderData.account}, ${PACED_WORD}`
-					: `Cloudflare account ${loaderData.account}`
-			}
-		>
-			<Brand name="cloudflare" />
-			{concern ? <Mark name="triangle-alert" /> : null}
-		</Button>
-	);
+	/* the account at both widths: the row in the rail's foot, and at phone width, where the foot is
+	   not drawn, the same panel opened from the band beside the close, marked alike. */
+	const account = cloudflareAccount({
+		name: loaderData.account,
+		values: held,
+		feedsInUse: reading.feedsInUse,
+		openHref: `${pathname}?${ACCOUNT_PARAM}`,
+		closeControl
+	});
 
 	const foot = (
 		<>
-			<CloudflareAccount
-				name={loaderData.account}
-				accountId={loaderData.accountId}
-				concern={concern}
-				openHref={openAccount}
-				closeControl={closeControl}
-			/>
+			{account.row}
 			<div className="adm-footline">
 				<span className="adm-rail__lead">
 					{/* github's trademark, used to point at that repository and for nothing else. the
@@ -211,7 +189,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				current={here?.label}
 				wayOut={
 					<>
-						{accountControl}
+						{account.band}
 						{closeControl}
 					</>
 				}
@@ -242,6 +220,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				{held !== null && params.has(ACCOUNT_PARAM) ? (
 					<AccountPanel
 						name={loaderData.account}
+						accountId={loaderData.accountId}
 						values={held}
 						feedsInUse={reading.feedsInUse}
 						trouble={keysTrouble({

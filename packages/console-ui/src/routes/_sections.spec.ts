@@ -293,11 +293,11 @@ describe('the Cloudflare account', () => {
 		const row = footRow(await drawnReady('/quickbooks'));
 		expect(row).toContain('Riverbank Trust');
 		expect(row).toContain('href="/quickbooks?account"');
-		expect(row).toContain('adm-footaccount__status');
+		expect(row).toContain('adm-accountmark');
 	});
 
 	it('is not marked where the deployment did not say which feeds are in use', async () => {
-		expect(footRow(await drawnReady('/quickbooks'))).not.toContain('adm-footaccount__status');
+		expect(footRow(await drawnReady('/quickbooks'))).not.toContain('adm-accountmark');
 	});
 
 	it('stands in the narrow band beside the close, opening the same panel, marked alike', async () => {
