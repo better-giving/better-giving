@@ -3,12 +3,12 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import type { DestinationLinkProps } from '@better-giving/operator/components/shell/DestinationCell';
+import { AccountBand, AccountRow } from '@better-giving/operator/components/shell/AccountRow';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Column, Group, Section } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Brand } from '@better-giving/operator/components/status/Brand';
-import { Mark } from '@better-giving/operator/components/status/Mark';
 
 /*
  * the shell a surface with a rail takes, and the panel route that stands outside it.
@@ -17,7 +17,7 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
  * `.adm-shell` is `min-block-size: 100dvh` in packages/operator/src/styles/adm.css, because the page
  * is its `1fr` row and a short screen still has to fill the window. nothing in the system bounds it
  * to a smaller box and nothing should — so a gallery reader scrolls a window per specimen, and
- * there are five of them plus the panel for that reason rather than one of every combination.
+ * there is one per shape a surface draws, plus the panel, rather than one of every combination.
  *
  * **narrow the window past 64rem and every rail below becomes `position: fixed` at the foot of the
  * viewport**, one over another, because that is what a rail is at that width: a bar of tabs pinned
@@ -55,10 +55,11 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
  *
  * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
  * `foot` stands in the rail in its place, which is the console's shape: its account and close in
- * the band, and in the foot the account's name as the link opening its panel, marked here as a
- * deployment delivering at the Free plan's pace draws it
- * (packages/console-ui/src/lib/cloudflare-account.tsx). `null` for both drops the rail's foot
- * rather than standing an empty one.
+ * the band, and in the foot the account's logo and name as the link opening its panel — the real
+ * AccountRow and AccountBand (./shell-account-row.tsx has them out of the shell), drawn marked as a
+ * deployment delivering at the Free plan's pace draws them and unmarked in the specimen after, so
+ * the toggle shows both in the icon rail too (packages/console-ui/src/lib/cloudflare-account.tsx
+ * hands them). `null` for both drops the rail's foot rather than standing an empty one.
  *
  * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
  * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
@@ -95,6 +96,28 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
 function StandInLink({ children, ...rest }: DestinationLinkProps) {
 	return <a {...rest}>{children}</a>;
 }
+
+/* the console's account, as packages/console-ui/src/lib/cloudflare-account.tsx hands it to both
+   faces, and the close it stands beside. */
+const ACCOUNT = {
+	name: "Riverside Shelter's Account",
+	brand: 'cloudflare',
+	whose: 'Cloudflare account',
+	concern: null,
+	href: '#shell-app-shell-account'
+} as const;
+
+const PACED_ACCOUNT = { ...ACCOUNT, concern: 'Deliveries paced for the Free plan' };
+
+const CLOSE = (
+	<Button
+		variant="quiet"
+		size="sm"
+		mark="unplug"
+		className="adm-signout"
+		aria-label="Close console"
+	/>
+);
 
 export default function ShellAppShellPreview() {
 	return (
@@ -220,54 +243,41 @@ export default function ShellAppShellPreview() {
 				]}
 				wayOut={
 					<>
-						<Button
-							as="a"
-							href="#shell-app-shell-account"
-							variant="quiet"
-							size="sm"
-							title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4"
-							aria-label="Cloudflare account Riverside Shelter's Account, Deliveries paced for the Free plan"
-						>
-							<Brand name="cloudflare" />
-							<Mark name="triangle-alert" />
-						</Button>
-						<Button
-							variant="quiet"
-							size="sm"
-							mark="unplug"
-							className="adm-signout"
-							aria-label="Close console"
-						/>
+						<AccountBand {...PACED_ACCOUNT} />
+						{CLOSE}
 					</>
 				}
-				foot={
-					<div className="adm-footaccount">
-						<span className="adm-rail__lead">
-							<Brand name="cloudflare" label="Cloudflare" />
-						</span>
-						<a
-							className="adm-footaccount__open"
-							href="#shell-app-shell-account"
-							title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4"
-						>
-							<span className="adm-footaccount__name">Riverside Shelter's Account</span>
-							<span className="adm-footaccount__status">
-								<Mark name="triangle-alert" />
-							</span>
-							<span className="adm-vh">, Deliveries paced for the Free plan</span>
-						</a>
-						<span className="adm-footaccount__out">
-							<Button
-								variant="quiet"
-								size="sm"
-								mark="unplug"
-								className="adm-signout"
-								aria-label="Close console"
-							/>
-						</span>
-					</div>
-				}
+				foot={<AccountRow {...PACED_ACCOUNT} out={CLOSE} />}
 				head={<span className="adm-headstrip__title">Sites</span>}
+			>
+				<Column>
+					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
+					<EmptyState>No site has been added yet.</EmptyState>
+				</Column>
+			</AppShell>
+
+			{/* the console's rail again, its account unmarked: a deployment delivering nothing, or one
+			    already answered as on the paid plan. collapsed, the logo alone stands for the account,
+			    and it is still the press that opens the panel. */}
+			<AppShell
+				org="Riverside Shelter"
+				current="Sites"
+				site="https://better-giving.riverside.workers.dev/admin"
+				groups={[
+					{
+						destinations: [
+							{ label: 'Sites', short: 'Sites', href: '#', mark: 'globe' },
+							{ label: 'SMTP', short: 'SMTP', href: '#', mark: 'mail' }
+						]
+					}
+				]}
+				wayOut={
+					<>
+						<AccountBand {...ACCOUNT} />
+						{CLOSE}
+					</>
+				}
+				foot={<AccountRow {...ACCOUNT} out={CLOSE} />}
 			>
 				<Column>
 					<PageHeader title="Sites" standfirst="Which sites your forms go on" />

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedsInUse } from '../api/types';
-import { PAID_PLAN, PLAN_FIELD, PLAN_PAID, planConcern, planEdit } from './cloudflare-plan';
+import {
+	PAID_PLAN,
+	PLAN_FIELD,
+	PLAN_PAID,
+	pacedFeeds,
+	planConcern,
+	planEdit
+} from './cloudflare-plan';
 import { heldValues } from './held-values';
 
 // the two positions the paid-plan switch can be in, what each writes, and when the plan is worth
@@ -65,6 +72,19 @@ describe('whether the plan is a concern', () => {
 
 	it('is never raised where the deployment did not say which feeds are in use', () => {
 		expect(planConcern(holding(null), null)).toBe(false);
+	});
+
+	it('counts only the feeds this console names, so the mark never stands without its sentence', () => {
+		// a deployment newer than this console can report a feed it has no word for; the panel's
+		// sentence names none but these (`pacedFeeds`), so a mark raised over it says nothing.
+		const newer = { ...using(), outbound: true } as FeedsInUse;
+		expect(planConcern(holding(null), newer)).toBe(false);
+		expect(pacedFeeds(holding(null), newer)).toEqual([]);
+	});
+
+	it('names the feeds in use in the order the plan’s note lists them', () => {
+		expect(pacedFeeds(holding(null), using('books', 'zapier'))).toEqual(['zapier', 'books']);
+		expect(pacedFeeds(holding('true'), ALL)).toEqual([]);
 	});
 });
 

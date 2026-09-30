@@ -5599,12 +5599,13 @@
 		display: none;
 	}
 
-	/* a mark after a logo inside a press in the band is that logo's status, drawn in the attention
-	   tone: the console's account at phone width, where the rail's foot and its
-	   `.adm-footaccount__status` are not drawn (packages/console-ui/src/routes/_sections.tsx). keyed
-	   on position, so the press carries no class for it; it stands outside the wide breakpoint
-	   because the band is only drawn below it. */
-	.adm-identity > .adm-btn > .adm-btn__label > .adm-brand ~ .adm-mark {
+	/* an account's status mark, in the attention tone, at both of the places
+	   ../components/shell/AccountRow.jsx draws the account: the row in the rail's foot and the press
+	   in the band. it stands outside the wide breakpoint because the band is only drawn below it and
+	   the foot only above it. */
+	.adm-accountmark {
+		display: flex;
+		flex: none;
 		color: var(--admin-tone-attention-mark);
 	}
 
@@ -6864,9 +6865,9 @@
 
 		/* the console's rail foot, handed to AppShell's `foot` by packages/console-ui. two rows on
 		   the head's columns: the account's logo, its name cut to one line and the way out; then the
-		   source link and the release. the name is the link that opens the account's panel, with the
-		   account's status mark beside it inside the link
-		   (packages/console-ui/src/lib/cloudflare-account.tsx). */
+		   source link and the release. the logo and the name are one link opening the account's
+		   panel, with the account's status mark beside the name inside it
+		   (../components/shell/AccountRow.jsx). */
 		.adm-footaccount {
 			display: flex;
 			align-items: center;
@@ -6882,16 +6883,25 @@
 			margin-inline-start: auto;
 		}
 
-		/* the name and its mark share the link, so the name is what gives way and the mark never
-		   does. it is a target as tall as the small press at the row's end. the link keeps its colour
-		   and gives up its rule at rest, for the reason `.adm-record__title a` gives. */
+		/* the logo, the name and its mark share the link, so the name is what gives way and the mark
+		   never does. it is a target as tall as the small press at the row's end. it is drawn in the
+		   ink and not the link's: its address is the page it was opened over, so the link's visited
+		   ink would change the name's shade from page to page. it gives up its rule at rest, for the
+		   reason `.adm-record__title a` gives. */
 		.adm-footaccount__open {
 			display: flex;
 			align-items: center;
 			gap: var(--admin-space-2);
 			min-inline-size: 0;
 			min-block-size: var(--admin-control-height-sm);
+			color: var(--admin-ink);
 			text-decoration-line: none;
+		}
+
+		/* the logo stands off the name by the focus ring's width past its own box, as the head's
+		   lead does off the name beside it: the link's gap is taken back out of its end margin. */
+		.adm-footaccount__open > .adm-rail__lead {
+			margin-inline-end: calc(var(--admin-focus-width) - var(--admin-space-2));
 		}
 
 		.adm-footaccount__open:hover,
@@ -6907,12 +6917,6 @@
 			white-space: nowrap;
 			text-overflow: ellipsis;
 			font-weight: var(--admin-value-weight);
-		}
-
-		.adm-footaccount__status {
-			display: flex;
-			flex: none;
-			color: var(--admin-tone-attention-mark);
 		}
 
 		.adm-footline {
@@ -6975,10 +6979,32 @@
 			display: none;
 		}
 
-		/* the account's link keeps only its status mark, and a link with none has nothing to draw
-		   and leaves the tab order with it. */
-		.adm-shell--collapsed .adm-footaccount__open:not(:has(.adm-footaccount__status)) {
-			display: none;
+		/* the account's link keeps its logo, marked or not, so the panel stays one press away: a
+		   square one target wide like a cell's, the logo in the middle and the status mark a badge at
+		   its corner, as a cell's is below. the row stacks it over the way out, since the two do not
+		   fit abreast in one target's width. */
+		.adm-shell--collapsed .adm-footaccount__open {
+			position: relative;
+			justify-content: center;
+			inline-size: var(--admin-touch-min);
+			min-block-size: var(--admin-touch-min);
+		}
+
+		.adm-shell--collapsed .adm-footaccount__open > .adm-rail__lead {
+			display: flex;
+			justify-content: center;
+			inline-size: auto;
+			margin-inline: 0;
+		}
+
+		.adm-shell--collapsed .adm-footaccount__open .adm-brand {
+			margin-inline-start: 0;
+		}
+
+		.adm-shell--collapsed .adm-footaccount__open > .adm-accountmark {
+			position: absolute;
+			inset-block-start: var(--admin-space-1);
+			inset-inline-end: var(--admin-space-1);
 		}
 
 		/* `.adm-vh` in ./base.css, restated: the name and the sign-out word leave the screen and
@@ -7040,6 +7066,7 @@
 		}
 
 		.adm-shell--collapsed .adm-footaccount {
+			flex-direction: column;
 			justify-content: center;
 		}
 

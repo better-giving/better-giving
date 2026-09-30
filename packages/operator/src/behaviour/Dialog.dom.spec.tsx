@@ -363,6 +363,60 @@ describe('the shell over the dialog', () => {
 		expect(onOuter).not.toHaveBeenCalled();
 	});
 
+	/**
+	 * the account panel as the console draws it: the panel is up first, off the address, and the
+	 * confirm is put up by a Remove inside it — which a free that lands takes off the page with the
+	 * confirm, while the panel is still the modal holding the page.
+	 */
+	function Freeing() {
+		const [withheld, setWithheld] = useState(true);
+		const [asking, setAsking] = useState(false);
+		return (
+			<Modal title="Cloudflare account" onDismiss={() => {}}>
+				{withheld ? (
+					<button type="button" onClick={() => setAsking(true)}>
+						Remove CLOUDFLARE_PAID_PLAN
+					</button>
+				) : null}
+				{asking ? (
+					<Modal
+						title="Remove CLOUDFLARE_PAID_PLAN?"
+						danger="Remove"
+						dangerProps={{
+							type: 'button',
+							onClick: () => {
+								setWithheld(false);
+								setAsking(false);
+							}
+						}}
+						onDismiss={() => setAsking(false)}
+					/>
+				) : null}
+			</Modal>
+		);
+	}
+
+	it('lands inside the card it was drawn in when its opener is gone and nothing was named', () => {
+		const root = render(Freeing, {});
+		const outer = dialogIn(root);
+		// the panel went up in a commit of its own, before anything inside it was pressed.
+		expect(document.activeElement).toBe(outer);
+		const remove = outer.querySelector('button');
+		if (remove === null) throw new Error('the panel drew no Remove');
+		remove.focus();
+		act(() => remove.click());
+		const [, inner] = root.querySelectorAll('dialog');
+		if (inner === undefined) throw new Error('the Remove put no confirm up');
+		expect(document.activeElement).toBe(inner);
+
+		const confirm = [...inner.querySelectorAll('button')].find((c) => c.textContent === 'Remove');
+		if (confirm === undefined) throw new Error('the confirm drew no Remove');
+		act(() => confirm.click());
+
+		expect(root.querySelectorAll('dialog')).toHaveLength(1);
+		expect(outer.contains(document.activeElement)).toBe(true);
+	});
+
 	it('leaves the focus on the body when the opener is gone and nothing was named', () => {
 		const root = render(Revoking, { named: false });
 		opened(root);

@@ -1,19 +1,36 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { AccountBand, AccountRow } from '../components/shell/AccountRow.jsx';
 import { ruleOf, sheet } from './sheet-rule.testing';
 
 // the console's account at phone width is a press in the shell's band carrying the account's logo
-// and, where the plan slows a feed in use, a warning mark after it
-// (packages/console-ui/src/routes/_sections.tsx). the rail's foot draws the same mark in the
-// attention tone at `.adm-footaccount__status`, but that rule sits in ./adm.css's wide-breakpoint
-// block because the foot is only drawn there — so the band's mark needs a rule of its own, and one
-// that holds at every width, or it is drawn in the press's ink where it is the only account the
-// operator can see.
+// and, where the plan slows a feed in use, a warning mark after it; the rail's foot draws the same
+// mark at the wide width (../components/shell/AccountRow.jsx). the foot is drawn only past the
+// wide breakpoint and the band only short of it, so the rule toning the mark has to hold at every
+// width, or the band's is drawn in the press's ink where it is the only account the operator sees.
 //
-// the band's press carries no class of its own for it: the rule is keyed on position, a mark after
-// a logo inside a press in the band, which is what makes the mark the logo's status.
+// the tone is keyed on the class both faces put on the mark, and read here off the markup the
+// component draws: a mark that lost its class, or a rule keyed on where the mark happens to stand,
+// fails here rather than rendering in the wrong ink.
 
 const css = sheet('adm.css');
-const BAND_MARK = '.adm-identity > .adm-btn > .adm-btn__label > .adm-brand ~ .adm-mark';
+const MARK = '.adm-accountmark';
+
+const account = {
+	name: 'Riverside Shelter’s Account',
+	brand: 'cloudflare',
+	whose: 'Cloudflare account',
+	concern: 'Deliveries paced for the Free plan',
+	href: '/sites?account'
+} as const;
+
+/** the element wrapping the drawn warning mark, as its open tag. */
+function markHolder(markup: string): string {
+	const found = markup.match(/<span class="([^"]*)"><svg\b[^>]*\badm-mark\b/);
+	if (found === null) throw new Error('no mark drawn');
+	return found[1] as string;
+}
 
 /** the at-rule heads enclosing the first rule written with this selector, outermost first; null
  * where no rule is written with it. */
@@ -36,16 +53,20 @@ function enclosing(text: string, selector: string): string[] | null {
 	return heads;
 }
 
-describe("the band's account mark is drawn in the attention tone", () => {
-	it('colours the mark after the logo with the tone the foot uses', () => {
-		expect(ruleOf(css, BAND_MARK).get('color')).toBe(
-			ruleOf(css, '.adm-footaccount__status').get('color')
-		);
-		expect(ruleOf(css, BAND_MARK).get('color')).toBe('var(--admin-tone-attention-mark)');
+describe("the account's mark is drawn in the attention tone", () => {
+	it('is worn by the mark at both faces', () => {
+		const band = renderToStaticMarkup(createElement(AccountBand, account));
+		const row = renderToStaticMarkup(createElement(AccountRow, { ...account, out: null }));
+		expect(markHolder(band).split(' ')).toContain(MARK.slice(1));
+		expect(markHolder(row).split(' ')).toContain(MARK.slice(1));
+	});
+
+	it('colours the mark with the attention tone', () => {
+		expect(ruleOf(css, MARK).get('color')).toBe('var(--admin-tone-attention-mark)');
 	});
 
 	it('states it under no width condition', () => {
-		const heads = enclosing(css, BAND_MARK);
+		const heads = enclosing(css, MARK);
 		expect(heads).not.toBeNull();
 		expect(heads?.filter((head) => head.startsWith('@media'))).toEqual([]);
 	});

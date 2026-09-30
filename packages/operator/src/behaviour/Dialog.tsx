@@ -40,7 +40,8 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 // (../components/shell/AppShell.jsx). a press on Revoke would then record the whole page as what
 // put the card up, and focus would go back to it rather than to the target the screen named. the
 // box is still where the reader was, so it is the last place focus goes back to: the opener
-// control, then the target the screen named, then that box while it is on the page, then the body.
+// control, then the target the screen named, then that box while it is on the page, then the card
+// this one is drawn inside, then the body.
 //
 // **a press on the ground counts only when it went down there after the card was lifted.** a
 // question that arrived in the server's markup is pressable before this runs, and a press begun
@@ -123,6 +124,9 @@ export function Modal<
 				: null;
 		const opener = focused?.matches(CONTROL) ? focused : null;
 		const holder = opener === null ? focused : null;
+		// the card this one is drawn inside, read while the two are joined: by the cleanup this
+		// element is off the page, and its ancestors inside the removed subtree with it.
+		const enclosing = node.parentElement?.closest('dialog') ?? null;
 		// `showModal()` throws InvalidStateError on a dialog that is already open non-modally, which
 		// is exactly what arrives from the server, so the close is what makes the upgrade legal
 		// rather than a way out of anything.
@@ -157,8 +161,9 @@ export function Modal<
 			// `close()` of an element still on the page, but this one is being removed in the same
 			// commit, so the restoration is written here or it does not happen. with that control gone
 			// the reader goes where the screen said, with nothing said to the box that held the focus,
-			// and with neither they are left on the body.
-			const landing = [opener, fallback(), holder].find((target) => target?.isConnected);
+			// then to the card this one stood inside — still a shown modal, so nothing past it can take
+			// the focus — and with none of those they are left on the body.
+			const landing = [opener, fallback(), holder, enclosing].find((target) => target?.isConnected);
 			landing?.focus();
 		};
 	}, []);
