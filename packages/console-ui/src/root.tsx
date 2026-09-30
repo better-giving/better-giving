@@ -13,6 +13,7 @@ import {
 	useNavigation
 } from 'react-router';
 import type { Route } from './+types/root';
+import { watchPresses } from './lib/console-reading';
 import { ProductFoot } from './lib/product-foot';
 import { TITLE } from './routes/_index';
 // the one place the console's stylesheet enters the app, and it must stay singular: a route
@@ -39,6 +40,9 @@ import './app.css';
 export function links(): Route.LinkDescriptors {
 	return [{ rel: 'icon', href: '/favicon.ico', type: 'image/x-icon' }];
 }
+
+/** over every route, so a press dropped on any screen marks the reading (./lib/console-reading.ts). */
+export const clientMiddleware: Route.ClientMiddlewareFunction[] = [watchPresses];
 
 export function Layout({ children }: { children: ReactNode }) {
 	return (

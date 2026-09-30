@@ -15,6 +15,9 @@ import { saidClosing } from './close-answer';
 // is on — the `?index` is what names that route rather than the root above it
 // (https://reactrouter.com/explanation/index-query-param).
 //
+// **the confirm's way out replaces the entry it stood on**, so Back from the page it leaves goes on
+// to the page before and never opens the confirm again (./dialog-params.ts).
+//
 // **the close is one fetcher under one key**, so the screen that draws the confirm and the screen
 // that goes blank once it is answered read the same answer without handing it between them.
 
@@ -92,9 +95,10 @@ export function CloseConfirm({
 		</close.Form>
 	);
 	return typeof back === 'string'
-		? ask(() => navigate(back, { preventScrollReset: true }), {
+		? ask(() => navigate(back, { replace: true, preventScrollReset: true }), {
 				as: Link,
 				to: back,
+				replace: true,
 				preventScrollReset: true
 			})
 		: ask(back, { type: 'button', onClick: back });

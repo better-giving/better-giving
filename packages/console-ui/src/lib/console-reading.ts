@@ -1,5 +1,5 @@
 import { data, isRouteErrorResponse, redirect } from 'react-router';
-import { consoleVersion, homeReading, homeShape } from '../api/client';
+import { consoleVersion, homeReading, homeShape, writesAnswered } from '../api/client';
 import { type CloudflareGate, cloudflareGate } from './cloudflare-gate';
 import { heldNames, readSections } from './home-sections';
 import { orgBoxes } from './org-fields';
@@ -18,6 +18,17 @@ import { processorLinks } from './processor-links';
 // joined on: two loaders of one navigation share it, and a later navigation — the re-read after a
 // press — takes a fresh one, so nothing drawn after a write was read before it.
 //
+// **a reading is never taken across a write**: it waits until every write out has been answered
+// (`writesAnswered` in ../api/client.ts). a press is answered before its own re-read is asked, so
+// what this waits on is a write still out while something else reads: a fetcher's, or one whose
+// navigation another replaced, which the router has stopped waiting for while the binary goes on
+// writing.
+//
+// **a reading knows whether a press was dropped since it was taken** ({@link watchPresses}): the
+// router throws away the answer to a press whose navigation another replaced, and never says so to
+// the navigation that replaced it. that navigation is the one ./dialog-params.ts judges, and a
+// reading taken before a write that landed is the one it must not keep.
+//
 // **`/` hands its reading over to the navigation it redirects to.** that redirect is a navigation of
 // its own with a request of its own, and what it reads is exactly what `/` just read: nothing ran in
 // between. the reading handed over is taken by the next read and by nothing after it.
@@ -26,8 +37,36 @@ import { processorLinks } from './processor-links';
 // until the first of them lands is ../root.tsx's own waiting face, which is where a client-rendered
 // app is allowed to put one.
 
-/** every reading, off the binary. */
+let pressDropped = false;
+
+/**
+ * the `clientMiddleware` ../root.tsx states, over every navigation and fetcher call: marks a press
+ * whose request the router abandons before its answer is drawn, which it does when another
+ * navigation replaces the press's own, in its action or in the re-read after it.
+ */
+export async function watchPresses(
+	{ request }: { request: Request },
+	next: () => Promise<unknown>
+): Promise<void> {
+	if (request.method !== 'GET') {
+		request.signal.addEventListener(
+			'abort',
+			() => {
+				pressDropped = true;
+			},
+			{ once: true }
+		);
+	}
+	await next();
+}
+
+/** whether a press has been dropped since the last reading was taken ({@link watchPresses}). */
+export const droppedSinceRead = (): boolean => pressDropped;
+
+/** every reading, off the binary, once every write out has been answered. */
 async function takeReading() {
+	await writesAnswered();
+	pressDropped = false;
 	const [home, release, read] = await Promise.all([homeShape(), consoleVersion(), homeReading()]);
 
 	return {

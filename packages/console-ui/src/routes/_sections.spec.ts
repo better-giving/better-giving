@@ -1,18 +1,24 @@
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider, UNSAFE_withComponentProps } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FeedsInUse, HomeFace, HomeReading } from '../api/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DeployedVar, FeedsInUse, HomeFace, HomeReading } from '../api/types';
 
-// the sections layout's gate, through a router: which face a page stands behind when cloudflare
-// would not say what the deployment holds, and what its read again asks. the client is replaced so
-// every reading of the deployment is a count.
+// the sections layout through a router: which face a page stands behind when cloudflare would not
+// say what the deployment holds and what its read again asks, the account panel's plan switch posted
+// from over a section page, and a dialog opened over a press still in flight. the client's readings
+// are replaced so each is a count; its writes are its own, answered by a stand-in for the fetch the
+// binary answers.
 
 const binary = vi.hoisted(() => ({
 	homeReads: 0,
 	booksReads: 0,
+	booksPresses: 0,
 	ready: false,
-	feeds: null as FeedsInUse | null
+	feeds: null as FeedsInUse | null,
+	vars: [] as DeployedVar[],
+	/** each time the layout asked for its reading, each reading taken and each write answered. */
+	log: [] as string[]
 }));
 
 const READY: HomeFace = { kind: 'ready', address: 'https://a.example' };
@@ -33,9 +39,10 @@ vi.mock('../api/client', async (original) => ({
 	consoleVersion: async () => ({ version: '0.9.0' }),
 	homeReading: async (): Promise<HomeReading> => {
 		binary.homeReads += 1;
+		binary.log.push('read');
 		return {
 			face: binary.ready ? READY : UNANSWERED,
-			values: { vars: { kind: 'read', vars: [] } },
+			values: { vars: { kind: 'read', vars: binary.vars } },
 			sites: [],
 			donatePage: '',
 			org: null,
@@ -47,22 +54,32 @@ vi.mock('../api/client', async (original) => ({
 		binary.booksReads += 1;
 		return { kind: 'read' as const, report: { connection: { state: 'connected' } } };
 	},
-	pressQuickbooks: async (body: { press: string; startAt?: string }) => ({
-		kind: 'reported' as const,
-		report:
-			body.press === 'start-date-preview'
-				? { press: body.press, startAt: `${body.startAt}T00:00:00.000Z`, queues: {}, drops: {} }
-				: { press: body.press }
-	})
+	pressQuickbooks: async (body: { press: string; startAt?: string }) => {
+		binary.booksPresses += 1;
+		return {
+			kind: 'reported' as const,
+			report:
+				body.press === 'start-date-preview'
+					? { press: body.press, startAt: `${body.startAt}T00:00:00.000Z`, queues: {}, drops: {} }
+					: { press: body.press }
+		};
+	}
 }));
 
 const bar = await import('@better-giving/operator/progress-bar');
-const { PLAN_FIELD } = await import('../lib/cloudflare-plan');
+const { PAID_PLAN, PLAN_FETCHER, PLAN_FIELD, PLAN_INTENT, PLAN_PAID } = await import(
+	'../lib/cloudflare-plan'
+);
+const { ACCOUNT_PARAM } = await import('../lib/dialog-params');
+const { FREE_INTENT } = await import('../lib/withheld-values');
 const { gatedBy } = await import('../lib/console-reading');
 const { forgetReadings } = await import('../lib/processor-cache');
 const { quickbooksIntent } = await import('../lib/quickbooks-standing');
 const { cache } = await import('remix-client-cache');
+const root = await import('../root');
+const home = await import('./_index');
 const sections = await import('./_sections');
+const password = await import('./_sections.password');
 const quickbooks = await import('./_sections.quickbooks');
 
 const LAYOUT = 'sections';
@@ -77,18 +94,39 @@ async function open(at = '/quickbooks') {
 	const router = createMemoryRouter(
 		[
 			{
-				id: LAYOUT,
-				loader: sections.clientLoader as never,
-				shouldRevalidate: sections.shouldRevalidate,
-				Component: UNSAFE_withComponentProps(sections.default as never),
-				ErrorBoundary: sections.ErrorBoundary as never,
+				id: 'root',
+				middleware: root.clientMiddleware as never,
 				children: [
 					{
-						id: BOOKS,
-						path: '/quickbooks',
-						loader: quickbooks.clientLoader as never,
-						action: quickbooks.clientAction as never,
-						shouldRevalidate: quickbooks.shouldRevalidate
+						id: 'home',
+						index: true,
+						loader: home.clientLoader as never,
+						action: home.clientAction as never,
+						shouldRevalidate: home.shouldRevalidate
+					},
+					{
+						id: LAYOUT,
+						loader: ((args: never) => {
+							binary.log.push('asked');
+							return sections.clientLoader(args);
+						}) as never,
+						shouldRevalidate: sections.shouldRevalidate,
+						Component: UNSAFE_withComponentProps(sections.default as never),
+						ErrorBoundary: sections.ErrorBoundary as never,
+						children: [
+							{
+								id: BOOKS,
+								path: '/quickbooks',
+								loader: quickbooks.clientLoader as never,
+								action: quickbooks.clientAction as never,
+								shouldRevalidate: quickbooks.shouldRevalidate
+							},
+							{
+								path: '/password',
+								action: password.clientAction as never,
+								shouldRevalidate: password.shouldRevalidate
+							}
+						]
 					}
 				]
 			}
@@ -104,9 +142,16 @@ beforeEach(async () => {
 	await forgetReadings();
 	binary.homeReads = 0;
 	binary.booksReads = 0;
+	binary.booksPresses = 0;
 	binary.ready = false;
 	binary.feeds = null;
+	binary.vars = [];
+	binary.log = [];
 	bar.pageDrawn('/organisation');
+});
+
+afterEach(() => {
+	vi.unstubAllGlobals();
 });
 
 describe('a page cloudflare did not answer for', () => {
@@ -322,5 +367,157 @@ describe('the Cloudflare account', () => {
 		expect(page).toMatch(/<h2 id="[^"]+">Riverbank Trust<\/h2>/);
 		expect(page).toContain(`name="${PLAN_FIELD}"`);
 		expect(page).toMatch(/<a\b[^>]*href="\/quickbooks"[^>]*>/);
+	});
+});
+
+/**
+ * the binary's side of every write, in place of the fetch the client makes: `answer` is handed
+ * each write's path and says what it answers, whenever it likes.
+ */
+function writesAnswered(answer: (path: string) => Promise<unknown>): string[] {
+	const paths: string[] = [];
+	vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
+		if (init?.method !== 'POST')
+			throw new Error(`the binary was asked ${input} with no answer set`);
+		const path = input.replace(/^\/api/, '');
+		paths.push(path);
+		const body = await answer(path);
+		binary.log.push(`answered ${path}`);
+		return Response.json(body);
+	});
+	return paths;
+}
+
+describe('a dialog opened while a page’s press is in flight', () => {
+	it('reads the page again once the press has answered, and never across it', async () => {
+		binary.ready = true;
+		const { router, off } = await open('/password');
+		try {
+			let answer: (body: unknown) => void = () => {};
+			const out = new Promise((resolve) => {
+				answer = resolve;
+			});
+			const writes = writesAnswered(() => out);
+			const formData = new FormData();
+			formData.set('intent', FREE_INTENT);
+			binary.log = [];
+
+			void router.navigate('/password', { formMethod: 'post', formData });
+			await vi.waitFor(() => expect(writes).toEqual(['/values/vars/free']));
+			const opening = router.navigate(`/password?${ACCOUNT_PARAM}`, { preventScrollReset: true });
+			await vi.waitFor(() => expect(binary.log).toContain('asked'));
+			answer({ kind: 'set' });
+			await opening;
+
+			expect(binary.log).toEqual(['asked', 'answered /values/vars/free', 'read']);
+			expect(router.state.location.search).toBe(`?${ACCOUNT_PARAM}`);
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+});
+
+/** what `router` draws now, with react's text-node seams taken out. */
+const drawnNow = (router: Awaited<ReturnType<typeof open>>['router']): string =>
+	renderToString(createElement(RouterProvider, { router })).replaceAll('<!-- -->', '');
+
+/** the form holding the paid-plan box, as drawn: where it posts and the intent its press carries. */
+function planForm(page: string): { action: string | undefined; intent: string | undefined } {
+	const form = page
+		.split('<form')
+		.slice(1)
+		.map((rest) => `<form${rest.slice(0, rest.indexOf('</form>'))}`)
+		.filter((markup) => markup.includes(`name="${PLAN_FIELD}"`));
+	expect(form).toHaveLength(1);
+	return {
+		action: form[0]?.match(/^<form[^>]*\baction="([^"]*)"/)?.[1],
+		intent: form[0]?.match(/<button[^>]*type="submit"[^>]*value="([^"]*)"/)?.[1]
+	};
+}
+
+describe('the account panel’s plan switch, pressed over a section page', () => {
+	/** the panel open over the books page, its switch ticked and pressed, and what came back. */
+	async function pressed() {
+		binary.ready = true;
+		binary.feeds = ZAPIER_ONLY;
+		const { router, off } = await open(`/quickbooks?${ACCOUNT_PARAM}`);
+		const before = drawnNow(router);
+		const writes = writesAnswered(async () => {
+			binary.vars = [{ name: PAID_PLAN, kind: 'value', value: PLAN_PAID }];
+			return { kind: 'set' };
+		});
+		const { action, intent } = planForm(before);
+		const formData = new FormData();
+		formData.set(PLAN_FIELD, PLAN_PAID);
+		formData.set('intent', intent ?? '');
+		// the panel holds its fetcher for as long as it is drawn
+		router.getFetcher(PLAN_FETCHER);
+		let answer: unknown;
+		const unsubscribe = router.subscribe((state) => {
+			answer = state.fetchers.get(PLAN_FETCHER)?.data ?? answer;
+		});
+		const reads = binary.homeReads;
+		await router.fetch(PLAN_FETCHER, LAYOUT, action ?? '', { formMethod: 'post', formData });
+		// an idle fetcher leaves the router's state; asking `getFetcher` would hold it a second time
+		await vi.waitFor(() => expect(router.state.fetchers.has(PLAN_FETCHER)).toBe(false));
+		unsubscribe();
+		return { router, off, before, writes, intent, answer, reads };
+	}
+
+	it('posts to `/`, which writes the answer, and never to the page it was pressed over', async () => {
+		const { router, off, writes, intent, answer } = await pressed();
+		try {
+			expect(intent).toBe(PLAN_INTENT);
+			expect(writes).toEqual(['/values/vars']);
+			expect(answer).toEqual({ plan: { kind: 'set' } });
+			expect(binary.booksPresses).toBe(0);
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+
+	it('reads the layout again, and the account’s mark is gone once the plan reads paid', async () => {
+		const { router, off, before, reads } = await pressed();
+		try {
+			expect(footRow(before)).toContain('adm-accountmark');
+			expect(binary.homeReads).toBe(reads + 1);
+			expect(footRow(drawnNow(router))).not.toContain('adm-accountmark');
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+
+	it('leaves the panel open over the same page, its switch drawn from the re-read', async () => {
+		const { router, off } = await pressed();
+		try {
+			expect(router.state.location.pathname).toBe('/quickbooks');
+			expect(router.state.location.search).toBe(`?${ACCOUNT_PARAM}`);
+			expect(drawnNow(router)).toMatch(new RegExp(`<input[^>]*name="${PLAN_FIELD}"[^>]*checked`));
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+
+	it('lets go of the answer once the panel is put away, so reopening it reports nothing', async () => {
+		const { router, off } = await pressed();
+		try {
+			const deleted: string[] = [];
+			router.subscribe((_, { deletedFetchers }) => {
+				deleted.push(...deletedFetchers);
+			});
+			// the panel unmounting on its way out
+			router.deleteFetcher(PLAN_FETCHER);
+			await router.navigate('/quickbooks', { preventScrollReset: true });
+
+			expect(deleted).toContain(PLAN_FETCHER);
+			expect(drawnNow(router)).not.toContain(`name="${PLAN_FIELD}"`);
+		} finally {
+			off();
+			router.dispose();
+		}
 	});
 });

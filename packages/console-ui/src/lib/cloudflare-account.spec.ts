@@ -110,11 +110,7 @@ const panel = (vars: DeployedVar[], feedsInUse: FeedsInUse | null) => {
 		feedsInUse,
 		back: '/sites',
 		values: heldValues(vars),
-		written: null,
-		freed: null,
-		trouble: () => null,
-		busy: false,
-		pending: null
+		trouble: () => null
 	};
 	return drawn(() => createElement(CloudflareAccountPanel, props));
 };

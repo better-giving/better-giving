@@ -47,13 +47,35 @@ import type {
 // carrying whatever the handler named — every one of them is a state the page's own reading rules
 // out, so there is nothing here for an operator to act on. `consoleVersion` below is the one
 // exception and states its own reason.
+//
+// **a write is held among the writes out until the binary answers it** ({@link writesAnswered}),
+// whether or not the press that made it is still waiting: the router drops the answer to a press
+// whose navigation another replaced, and the write lands all the same. a reading waits on these
+// (../lib/console-reading.ts), so none is taken across a write.
+
+const writesOut = new Set<Promise<Response>>();
+
+/** one request to the local process, held among the writes out while a `POST` is unanswered. */
+function call(path: string, init: RequestInit): Promise<Response> {
+	const answer = fetch(`/api${path}`, init);
+	if (init.method !== 'POST') return answer;
+	writesOut.add(answer);
+	const answered = () => writesOut.delete(answer);
+	answer.then(answered, answered);
+	return answer;
+}
+
+/** settles once no write to the local process is waiting on its answer, however each one went. */
+export async function writesAnswered(): Promise<void> {
+	while (writesOut.size > 0) await Promise.allSettled(writesOut);
+}
 
 /**
  * one call to the local process, answered as json or thrown. `signal` is a loader's request's, so a
  * reading the router abandoned is not asked for.
  */
 async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<T> {
-	const answer = await fetch(`/api${path}`, {
+	const answer = await call(path, {
 		method,
 		headers: { accept: 'application/json' },
 		signal: signal ?? null
@@ -65,7 +87,7 @@ async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal
 
 /** one press carrying a json body, answered as json or thrown. */
 async function post<T>(path: string, body: unknown): Promise<T> {
-	const answer = await fetch(`/api${path}`, {
+	const answer = await call(path, {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(body)
@@ -314,7 +336,7 @@ export async function startStripeSetup(keys: {
 	secret: string;
 	publishable: string;
 }): Promise<StripeStarted> {
-	const answer = await fetch('/api/stripe/setup', {
+	const answer = await call('/stripe/setup', {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(keys)
@@ -371,7 +393,7 @@ export async function startPaypalSetup(pair: {
 	secret: string;
 	address: string;
 }): Promise<PaypalStarted> {
-	const answer = await fetch('/api/paypal/setup', {
+	const answer = await call('/paypal/setup', {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(pair)
@@ -405,7 +427,7 @@ export async function startChariotSetup(boxes: {
 	apiKey: string;
 	address: string;
 }): Promise<ChariotStarted> {
-	const answer = await fetch('/api/chariot/setup', {
+	const answer = await call('/chariot/setup', {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(boxes)

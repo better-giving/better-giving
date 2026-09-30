@@ -13,9 +13,10 @@ import { describe, expect, it } from 'vitest';
 // **first, and before the body is read**: a press that answers early — a refused box, a body naming
 // nothing — has still been made, and the call after the branch that returned is the one it skipped.
 //
-// **except one press that writes nothing, named below by the branch that answers it.** it reads the
-// body to know itself, answers from that branch alone, and the forget is the next thing after it —
-// a second way out ahead of the forget is a write answered from memory again.
+// **except a press that changes nothing a processor page is drawn from, named below by the branch
+// that answers it**: one that writes nothing, and one whose write is no processor's input. it reads
+// the body to know itself, answers from that branch alone, and the forget is the next thing after
+// it — a second way out ahead of the forget is a write answered from memory again.
 
 const ROUTES = join(import.meta.dirname, 'routes');
 
@@ -23,9 +24,12 @@ const ACTION = 'export async function clientAction({ request }: Route.ClientActi
 
 const FORGET = 'await forgetReadings();';
 
-/** each route whose action answers a press that writes nothing before it forgets. */
+/** each route whose action answers, before it forgets, a press that changes no processor page. */
 const READ_FIRST: Record<string, string> = {
-	'_sections.quickbooks.tsx': "if (intent === quickbooksIntent('start-date-preview')) {"
+	// the start-date preview, which writes nothing
+	'_sections.quickbooks.tsx': "if (intent === quickbooksIntent('start-date-preview')) {",
+	// the paid-plan switch, whose value is an answer about the cloudflare account
+	'_index.tsx': 'if (intent === PLAN_INTENT) return'
 };
 
 const actions = readdirSync(ROUTES)

@@ -3,13 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VarsWritten } from '../api/types';
 
 // the presses `/` answers for the account panel, which posts here from over any page
-// (../lib/close-confirm.tsx's `SHELL_ACTION`): which write each intent makes on the binary. the
-// client is replaced so every write is a record of what it was sent.
+// (../lib/close-confirm.tsx's `SHELL_ACTION`): which write each intent makes on the binary, and
+// which of them forgets the processor pages kept between visits. the client and that store are
+// replaced so every write is a record of what it was sent, and every forget a count.
 
 const binary = vi.hoisted(() => ({
 	written: [] as Record<string, string | null>[],
 	freed: 0,
-	closed: 0
+	closed: 0,
+	forgot: 0
 }));
 
 const SET: VarsWritten = { kind: 'set' };
@@ -27,6 +29,13 @@ vi.mock('../api/client', async (original) => ({
 	closeConsole: async () => {
 		binary.closed += 1;
 		return { closing: true };
+	}
+}));
+
+vi.mock('../lib/processor-cache', async (original) => ({
+	...(await original<Record<string, unknown>>()),
+	forgetReadings: async () => {
+		binary.forgot += 1;
 	}
 }));
 
@@ -51,6 +60,7 @@ beforeEach(() => {
 	binary.written = [];
 	binary.freed = 0;
 	binary.closed = 0;
+	binary.forgot = 0;
 });
 
 describe('the paid-plan switch', () => {
@@ -66,6 +76,12 @@ describe('the paid-plan switch', () => {
 
 		expect(binary.written).toEqual([{ CLOUDFLARE_PAID_PLAN: null }]);
 	});
+
+	it('keeps the processor pages read between visits, since the plan is no processor’s input', async () => {
+		await press(PLAN_INTENT, { [PLAN_FIELD]: 'true' });
+
+		expect(binary.forgot).toBe(0);
+	});
 });
 
 describe('the press that frees the withheld values', () => {
@@ -76,6 +92,12 @@ describe('the press that frees the withheld values', () => {
 		expect(binary.written).toEqual([]);
 		expect(answer).toEqual({ freed: SET });
 	});
+
+	it('forgets the processor pages read between visits, whose keys it can change', async () => {
+		await press(FREE_INTENT);
+
+		expect(binary.forgot).toBe(1);
+	});
 });
 
 describe('a press `/` does not answer', () => {
@@ -83,6 +105,6 @@ describe('a press `/` does not answer', () => {
 		const answer = await press('paypal:charity', { [PLAN_FIELD]: 'true' });
 
 		expect(answer).toEqual({ unknown: true });
-		expect(binary).toEqual({ written: [], freed: 0, closed: 0 });
+		expect(binary).toEqual({ written: [], freed: 0, closed: 0, forgot: 1 });
 	});
 });

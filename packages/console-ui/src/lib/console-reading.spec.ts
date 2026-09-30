@@ -26,7 +26,8 @@ vi.mock('../api/client', () => ({
 		org: null,
 		holdsStripeKey: false,
 		feedsInUse: null
-	})
+	}),
+	writesAnswered: async () => {}
 }));
 
 const { handOver, readConsole } = await import('./console-reading');

@@ -5,7 +5,7 @@ import {
 	planAnswered
 } from '@better-giving/operator/delivery-pace';
 import type { DeployValueName } from '@better-giving/operator/deploy-split';
-import type { FeedsInUse } from '../api/types';
+import type { FeedsInUse, VarsWritten } from '../api/types';
 import type { AnswerSwitch } from './answer-switch';
 import { switchEdit } from './answer-switch';
 import type { HeldValues } from './held-values';
@@ -19,9 +19,8 @@ import type { HeldValues } from './held-values';
 // answer about the account the deployment runs on, and nothing else is saved with it.
 //
 // **the plan is a concern only where it slows something down**: read as Free while a feed the
-// minute cron paces is in use ({@link pacedFeeds}). no call reports the plan, so the operator is
-// the only one who can say the account is on the paid one, and a mark raised on every Free
-// deployment would ask that of every organisation that delivers nothing at all.
+// minute cron paces is in use ({@link pacedFeeds}). a Free deployment delivering nothing is asked
+// nothing.
 
 /** the name whose value is an answer about the Cloudflare account rather than a credential. */
 export const PAID_PLAN: DeployValueName = 'CLOUDFLARE_PAID_PLAN';
@@ -34,6 +33,12 @@ export const PLAN_INTENT = 'cloudflare:paid-plan';
 
 /** the fetcher both of the plan block's presses post through, which is what their answer is read off. */
 export const PLAN_FETCHER = 'cloudflare-plan';
+
+/**
+ * what `/` answers each of the plan block's presses with (../routes/_index.tsx), and what the account
+ * panel reads off {@link PLAN_FETCHER} (./cloudflare-account.tsx): the switch's write, or the free.
+ */
+export type PlanAnswer = { plan: VarsWritten } | { freed: VarsWritten };
 
 /** the box the switch is drawn as, which is what the press reads its position off. */
 export const PLAN_FIELD = 'cloudflare-paid-plan';

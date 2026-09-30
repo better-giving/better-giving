@@ -3,10 +3,10 @@ import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/A
 import { BareShell } from '@better-giving/operator/components/shell/BareShell';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { holdBar } from '@better-giving/operator/progress-bar';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Link, Outlet, useFetcher, useLocation, useSearchParams } from 'react-router';
+import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
@@ -14,9 +14,7 @@ import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
-import type { CloudflareAccountPanelProps } from '../lib/cloudflare-account';
 import { CloudflareAccountPanel, cloudflareAccount } from '../lib/cloudflare-account';
-import { PLAN_FETCHER } from '../lib/cloudflare-plan';
 import { railGroups } from '../lib/console-pages';
 import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
@@ -26,7 +24,6 @@ import { heldValues } from '../lib/held-values';
 import { keysTrouble } from '../lib/processor-screen';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
-import type { clientAction as shellAction } from './_index';
 import { TITLE } from './_index';
 import type { Route } from './+types/_sections';
 
@@ -218,7 +215,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				</Stack>
 				{params.has(CLOSE_PARAM) ? <CloseConfirm back={pathname} /> : null}
 				{held !== null && params.has(ACCOUNT_PARAM) ? (
-					<AccountPanel
+					<CloudflareAccountPanel
 						name={loaderData.account}
 						accountId={loaderData.accountId}
 						values={held}
@@ -232,30 +229,6 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				) : null}
 			</AppShell>
 		</RailLabelsProvider>
-	);
-}
-
-/**
- * the account panel, over whatever page it was opened on, with its presses read off the fetcher
- * they post through (`PLAN_FETCHER` in ../lib/cloudflare-plan.ts) — `/` answers them, the way it
- * answers the close. mounted only while the panel is open, so a press answered and put away is not
- * reported again the next time it opens.
- */
-function AccountPanel(
-	props: Omit<CloudflareAccountPanelProps, 'written' | 'freed' | 'busy' | 'pending'>
-): ReactNode {
-	const press = useFetcher<typeof shellAction>({ key: PLAN_FETCHER });
-	const posted = press.formData?.get('intent');
-	const pending = typeof posted === 'string' ? posted : null;
-	const answer = press.data;
-	return (
-		<CloudflareAccountPanel
-			{...props}
-			written={answer && 'plan' in answer ? answer.plan : null}
-			freed={answer && 'freed' in answer ? answer.freed : null}
-			busy={pending !== null}
-			pending={pending}
-		/>
 	);
 }
 
