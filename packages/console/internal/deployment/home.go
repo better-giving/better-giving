@@ -139,7 +139,8 @@ type Reading struct {
 	//
 	// false on every face but the ready one, and false where the values read did not land.
 	HoldsStripeKey bool `json:"holdsStripeKey"`
-	// FeedsInUse is which outbound feeds the deployment says it has in use, carried as it said it.
+	// FeedsInUse is which outbound feeds the deployment says it has in use, restated as ./report.go
+	// reads it: exactly three booleans, any other member dropped, and nil where one is not a boolean.
 	// packages/console-ui's account row weighs cloudflare's free plan against it, and nothing here
 	// does.
 	//

@@ -220,8 +220,9 @@ export type HomeReading = {
 
 /**
  * each outbound feed the deployment sends and whether it is in use, every member stated. the
- * deployment's own report type, which the binary passes through whole (`FeedsInUse` in
- * `packages/console/internal/deployment/report.go`).
+ * deployment's own report type, which the binary restates as exactly three booleans — any other
+ * member dropped, and the whole `null` where one of the three is not a boolean (`FeedsInUse` in
+ * `packages/console/internal/deployment/report.go`, held to `Feed` by its `report_test.go`).
  */
 export type { FeedsInUse };
 

@@ -218,14 +218,18 @@ func TestADeploymentStatingNoFeedsIsUnknownOnTheWire(t *testing.T) {
 	}
 }
 
-// every face but the ready one carries no report, so it carries no feeds either.
+// every face but the ready one carries no feeds, the one whose report arrived stating them
+// included: a deployment whose values did not read is blocked, and the page weighs nothing on it.
 func TestAFaceBeforeTheReadyOneCarriesNoFeeds(t *testing.T) {
 	answers := whole()
-	answers[enablement] = envelope(map[string]any{"enabled": false})
+	answers[settings] = failed(10000, "Authentication error")
 	read := reportingWith(t, answers, envelopeBody(map[string]any{
 		"feedsInUse": map[string]any{"zapier": true, "webhooks": true, "books": true},
 	}))
-	if read.Face.Kind == FaceReady || read.FeedsInUse != nil {
-		t.Fatalf("face %q carried feeds %+v", read.Face.Kind, read.FeedsInUse)
+	if read.Face.Kind != FaceBlocked || read.Face.Why.Kind != NoValues {
+		t.Fatalf("read %+v", read.Face)
+	}
+	if read.FeedsInUse != nil {
+		t.Fatalf("a blocked face carried feeds %+v", *read.FeedsInUse)
 	}
 }
