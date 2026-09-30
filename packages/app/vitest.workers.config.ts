@@ -48,7 +48,7 @@ export default defineConfig({
 				// edits wrangler.jsonc the stale copy goes on declaring a binding the config no
 				// longer has.
 				ratelimits: {
-					// wider than the two tighter buckets below, in the order wrangler.jsonc sets
+					// wider than the quote and sign-in buckets below, in the order wrangler.jsonc sets
 					// and src/lib/server/api/rate-limit.config.spec.ts holds for it: the surface
 					// bucket bounds a caller against one read and the endpoint buckets bound what
 					// a submission costs, so a surface bucket no looser than theirs refuses first
@@ -57,12 +57,16 @@ export default defineConfig({
 					// green while the bucket is unreachable
 					// (src/routes/api.v1.forms.$id.donations.workers.spec.ts).
 					API_RATE_LIMITER: { namespace_id: '7412', simple: { limit: 20, period: 60 } },
-					// the two tighter buckets the deployment also declares, both small enough to
+					// the tighter buckets the deployment also declares, each small enough to
 					// exhaust in a handful of calls. the specs that charge these ask until they are
-					// refused and give each case an address of its own, so no case here depends on
-					// the number — only on it being small.
+					// refused and give each case an address or a key of its own, so no case here
+					// depends on the number — only on it being small.
 					QUOTE_RATE_LIMITER: { namespace_id: '7413', simple: { limit: 3, period: 60 } },
-					SIGN_IN_RATE_LIMITER: { namespace_id: '7414', simple: { limit: 3, period: 60 } }
+					SIGN_IN_RATE_LIMITER: { namespace_id: '7414', simple: { limit: 3, period: 60 } },
+					INTEGRATIONS_KEY_RATE_LIMITER: {
+						namespace_id: '7415',
+						simple: { limit: 3, period: 60 }
+					}
 				},
 				// the committed migration SQL, parsed into statements and handed to the
 				// runtime as a binding. `applyD1Migrations` in the setup file is what runs

@@ -7,6 +7,7 @@ import { Field } from '../components/forms/Field.jsx';
 import { render } from '../components/render.testing';
 import { Stack } from '../components/shell/Layout.jsx';
 import { stripComments } from './raw-values';
+import { ruleOf } from './sheet-rule.testing';
 
 // ./adm.css steps a labelled box standing on a tight stack, and the step is keyed on position:
 // nothing in the markup asks for it, no component writes a class for it and no screen passes a
@@ -30,19 +31,6 @@ import { stripComments } from './raw-values';
 const here = dirname(fileURLToPath(import.meta.url));
 const css = stripComments(readFileSync(join(here, 'adm.css'), 'utf8'));
 const tokens = stripComments(readFileSync(join(here, 'tokens.css'), 'utf8'));
-
-/** the declarations one rule states, by property, matched from the start of its own line. */
-function ruleOf(selector: string): Map<string, string> {
-	const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const found = css.match(new RegExp(`(?:^|\\n)[ \\t]*${escaped}\\s*\\{([^}]*)\\}`));
-	const stated = new Map<string, string>();
-	for (const declaration of (found?.[1] ?? '').split(';')) {
-		const colon = declaration.indexOf(':');
-		if (colon === -1) continue;
-		stated.set(declaration.slice(0, colon).trim(), declaration.slice(colon + 1).trim());
-	}
-	return stated;
-}
 
 /** a step of the scale as a number of rem, resolved in ./tokens.css where it is decided. */
 function lengthIn(value: string | undefined): number {
@@ -168,12 +156,12 @@ describe('a field standing on a tight stack', () => {
 	it('stands two boxes further apart than a label stands from its own box', () => {
 		// the whole of the defect, as the only arithmetic a pool that lays nothing out can do: the
 		// boundary between two fields against the widest step a field spends inside itself.
-		const boundary = lengthIn(ruleOf('.adm-stack--tight').get('gap')) + lengthIn(STEP);
-		const inside = lengthIn(ruleOf('.adm-field > * + *').get('margin-block-start'));
+		const boundary = lengthIn(ruleOf(css, '.adm-stack--tight').get('gap')) + lengthIn(STEP);
+		const inside = lengthIn(ruleOf(css, '.adm-field > * + *').get('margin-block-start'));
 
 		expect(boundary).toBeGreaterThan(inside);
 		// and it is the step a fieldset already puts between one of its children and the next, so
 		// two boxes stand the same distance apart whether or not a group is drawn around them.
-		expect(boundary).toBe(lengthIn(ruleOf('.adm-fieldset > * + *').get('margin-block-start')));
+		expect(boundary).toBe(lengthIn(ruleOf(css, '.adm-fieldset > * + *').get('margin-block-start')));
 	});
 });

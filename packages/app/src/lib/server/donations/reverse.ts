@@ -137,10 +137,13 @@ import { sendRefundNotice } from './refund-notice';
 // a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
 // one (../accounting/outbox.ts). the fee kept on a win whose opening never reached this deployment
 // is keyed on no refund row, so the outbox queues it by its date as it queues a hand correction. a
-// Zap on `gift_refunded` hears of a refund and of a dispute lost, keyed on the refund row, in the
-// batch that makes its money final (`ReversalEntry` in ../books/writes.ts); never of a dispute
-// opened or won, a refund that did not stand, or a gift the books never held. a refund of one
-// collection under a repeating gift leaves the commitment collecting: stopping it is its own act.
+// Zap on `gift_refunded` and a webhook destination on `gift.refunded` hear of a refund and of a
+// dispute lost, keyed on the refund row, in the batch that makes its money final (`ReversalEntry`
+// in ../books/writes.ts); never of a dispute opened or won, a refund that did not stand, or a gift
+// the books never held. a destination on `gift.dispute_opened` hears of a dispute's opening, keyed
+// on its withdrawal row, in the batch that withdraws the money, and of nothing else here. a refund
+// of one collection under a repeating gift leaves the commitment collecting: stopping it is its
+// own act.
 //
 // ---------------------------------------------------------------------------
 // nothing here throws, for the reason ./settle.ts's header gives: a throw is a 500, read by the
@@ -695,7 +698,8 @@ async function closeLost(
 						)
 					)
 			: null;
-	// an opening the books never held is a gift no Zap heard of, and its close is heard of by none.
+	// an opening the books never held is a gift no Zap or destination heard of, and its close is heard
+	// of by none.
 	const settled =
 		withdrawal === null
 			? []

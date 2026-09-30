@@ -4,9 +4,10 @@ import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
+import { mintApiKey } from '$lib/server/integrations/keys';
 import { contact, donation, orgProfile, payment } from '$lib/server/db/schema';
 import { post, postingStatements } from '$lib/server/ledger/posting';
-import { makeZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
+import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import {
 	donorEventOf,
 	readGiftEvents,
@@ -85,7 +86,7 @@ beforeEach(async () => {
 	for (const table of [
 		'zapier_delivery',
 		'zapier_subscription',
-		'zapier_key',
+		'api_key',
 		'org_profile',
 		'ledger_entry',
 		'entry_group',
@@ -157,8 +158,24 @@ describe('a request without this deployment\u2019s key', () => {
 		expect(await subscriptionTable()).toEqual(before);
 	});
 
+	it('is turned away with the same 401 for a key made for the read API', async () => {
+		const readApiKey = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+
+		const response = await meRoute(new Request(`${OWN}/zapier/me`, withKey(readApiKey.key)));
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual(await refusalBody());
+	});
+
 	it('is turned away once the key it carries has been replaced', async () => {
-		await replaceZapierKey(db, async () => new Response(null, { status: 200 }));
+		const shown = await readZapierKey(db);
+		if (shown === null) throw new Error('no key is shown');
+		const replaced = await replaceZapierKey(
+			db,
+			async () => new Response(null, { status: 200 }),
+			shown.id
+		);
+		if (!replaced.ok) throw new Error('the replace was refused');
 
 		const response = await meRoute(new Request(`${OWN}/zapier/me`, withKey(key)));
 

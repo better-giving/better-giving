@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from '../render.testing';
 import { type DestinationLinkProps, DestinationCell } from './DestinationCell.jsx';
 
@@ -136,5 +136,22 @@ describe('what a destination cell draws beside its name', () => {
 		const root = render(DestinationCell, { children: 'Stripe', title: 'Stripe', link: Handed });
 
 		expect(cell(root).getAttribute('title')).toBe('Stripe');
+	});
+
+	it('leaves the bar only where told to', () => {
+		const sheeted = render(DestinationCell, { children: 'Programs', offBar: true });
+		const tab = render(DestinationCell, { children: 'Donors' });
+
+		expect(cell(sheeted).classList.contains('adm-dest--offbar')).toBe(true);
+		expect(cell(tab).classList.contains('adm-dest--offbar')).toBe(false);
+	});
+
+	it('hands the press to the link, so the sheet a cell stands in can close on it', () => {
+		const onClick = vi.fn((event: { preventDefault(): void }) => event.preventDefault());
+		const root = render(DestinationCell, { children: 'Programs', onClick, link: Handed });
+
+		(cell(root) as HTMLAnchorElement).click();
+
+		expect(onClick).toHaveBeenCalledTimes(1);
 	});
 });

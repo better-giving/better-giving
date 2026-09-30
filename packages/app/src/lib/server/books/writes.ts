@@ -4,16 +4,22 @@ import type { Db } from '../db/client';
 import type { EntrySourceType } from '../db/schema';
 import { type Posting, postingStatements } from '../ledger/posting';
 import type { ReversalKind } from '../payments/provider';
+import {
+	disputeOpenedWebhookStatements,
+	giftRefundedWebhookStatements,
+	webhookStatements
+} from '../webhooks/events';
 import { giftRefundedStatements, zapierStatements } from '../zapier/events';
 
 // the one place a posting becomes everything its batch owes: the entry group and its lines, the
-// QuickBooks queue row (../accounting/outbox.ts), and the rows each listening Zap is owed
-// (../zapier/events.ts). a writer that puts money into the books takes its statements from here and
-// from nowhere else — ./sole-composer.spec.ts fails on an import of those modules' builders
+// QuickBooks queue row (../accounting/outbox.ts), the rows each listening Zap is owed
+// (../zapier/events.ts), and the rows each listening webhook destination is owed
+// (../webhooks/events.ts). a writer that puts money into the books takes its statements from here
+// and from nowhere else — ./sole-composer.spec.ts fails on an import of those modules' builders
 // outside this directory.
 //
 // what it hides from a writer: the foreign-key order, the null fee, which postings owe QuickBooks
-// and under which gate, and which Zap triggers a money event fires.
+// and under which gate, and which Zap triggers and webhook events a money event fires.
 //
 // the contract every function here keeps:
 //
@@ -23,8 +29,9 @@ import { giftRefundedStatements, zapierStatements } from '../zapier/events';
 //     the statements themselves, inside the batch.
 //   - **appended after the caller's statement that writes the payment row it names**, where there
 //     is one: `zapier_delivery.payment_id` points at it.
-//   - **in order: the groups and their lines, then the queue rows, then the Zap rows.**
-//     `quickbooks_sync.entry_group_id` points at a group, and D1 checks a foreign key per statement.
+//   - **in order: the groups and their lines, then the queue rows, then the Zap and destination
+//     rows.** `quickbooks_sync.entry_group_id` points at a group, and D1 checks a foreign key per
+//     statement.
 //   - **it never commits.** each caller keeps its own `batch()` and its own reading of a rejection,
 //     because they read `SQLITE_*` codes differently.
 //   - **it throws only on a posting in the wrong slot** — a source type the slot does not take, a
@@ -47,7 +54,10 @@ export type SettledGiftEntry = {
 
 const GIFT_BUILDERS = '$lib/server/donations/entries.ts';
 
-/** a settled gift's groups, the queue row its charge owes, and its `new_gift` and `new_donor` rows. */
+/**
+ * a settled gift's groups, the queue row its charge owes, its `new_gift` and `new_donor` rows, and
+ * its `gift.made` and `donor.added` rows.
+ */
 export function settledGiftWrites(db: Db, gift: SettledGiftEntry): Writes {
 	const { charge, fee } = gift;
 	const paymentId = charge.group.sourceId;
@@ -57,7 +67,8 @@ export function settledGiftWrites(db: Db, gift: SettledGiftEntry): Writes {
 		...postingStatements(db, charge),
 		...(fee === null ? [] : postingStatements(db, fee)),
 		...outboxStatements(db, [charge, fee]),
-		...zapierStatements(db, { paymentId, contactId: gift.contactId })
+		...zapierStatements(db, { paymentId, contactId: gift.contactId }),
+		...webhookStatements(db, { paymentId, contactId: gift.contactId })
 	];
 }
 
@@ -87,8 +98,9 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
  *
  * `finalRefundPaymentId` is the refund row whose money is now final — a refund, and a dispute
  * lost, whether it posts its withdrawal or closes one already posted — and a Zap on
- * `gift_refunded` hears of it. a dispute opened or won, its settle-up included, and a refund that
- * did not stand, name none.
+ * `gift_refunded` and a destination on `gift.refunded` hear of it. a dispute opened or won, its
+ * settle-up included, and a refund that did not stand, name none. a dispute opened is heard of by
+ * a destination on `gift.dispute_opened`, keyed on the withdrawal row its entry is keyed on.
  */
 export type ReversalEntry =
 	| {
@@ -118,12 +130,13 @@ const REVERSAL_SOURCE_TYPES = {
 } as const satisfies Record<ReversalKind | 'settle_up', ReversalSourceType>;
 
 /**
- * a reversal's group, the queue row it owes, and its `gift_refunded` rows. whether QuickBooks is
- * owed it is the group it answers holding a queue row (../accounting/outbox.ts), read off the
- * refund row the caller's batch writes or already holds, so it goes after that row.
+ * a reversal's group, the queue row it owes, its `gift_refunded` and `gift.refunded` rows, and a
+ * dispute opened's `gift.dispute_opened` rows. whether QuickBooks is owed it is the group it
+ * answers holding a queue row (../accounting/outbox.ts), read off the refund row the caller's
+ * batch writes or already holds, so it goes after that row.
  */
 export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
-	if (reversal.entry === null) return [giftRefundedStatements(db, reversal.finalRefundPaymentId)];
+	if (reversal.entry === null) return refundedWrites(db, reversal.finalRefundPaymentId);
 	const { kind, entry, finalRefundPaymentId } = reversal;
 	inSlot(
 		entry,
@@ -135,7 +148,16 @@ export function reversalWrites(db: Db, reversal: ReversalEntry): Writes {
 	return [
 		...postingStatements(db, entry),
 		...outboxStatements(db, [entry]),
-		...(finalRefundPaymentId === null ? [] : [giftRefundedStatements(db, finalRefundPaymentId)])
+		...(finalRefundPaymentId === null ? [] : refundedWrites(db, finalRefundPaymentId)),
+		...(kind === 'dispute_opened' ? [disputeOpenedWebhookStatements(db, entry.group.sourceId)] : [])
+	];
+}
+
+/** what a refund row whose money is now final owes each gift_refunded Zap and gift.refunded destination. */
+function refundedWrites(db: Db, refundPaymentId: string): Writes {
+	return [
+		giftRefundedStatements(db, refundPaymentId),
+		giftRefundedWebhookStatements(db, refundPaymentId)
 	];
 }
 

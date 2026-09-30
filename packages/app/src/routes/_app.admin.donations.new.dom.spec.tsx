@@ -195,7 +195,9 @@ it('says nobody matches where nobody does, and still offers to add one', async (
 	const { root } = screen();
 	await searchFor(root, 'zzz');
 
-	expect(root.textContent).toContain('Nobody matches “zzz”.');
+	// what was typed is a literal inside the sentence, so it stands in the code face.
+	expect(root.textContent).toContain('Nobody matches zzz.');
+	expect(root.querySelector('.adm-empty code')?.textContent).toBe('zzz');
 	expect(buttonReading(root, 'Add a new donor')).toBeTruthy();
 });
 

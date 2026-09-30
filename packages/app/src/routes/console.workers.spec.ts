@@ -121,6 +121,7 @@ interface Envelope {
 	org: Record<string, string> | null;
 	version: string | null;
 	session: { expiresAt: string };
+	feedsInUse: { zapier: boolean; webhooks: boolean; books: boolean } | null;
 }
 
 /**
@@ -514,6 +515,102 @@ describe('the report this deployment answers with', () => {
 		const response = await report();
 		expect(response.headers.get('access-control-allow-origin')).toBeNull();
 		expect(response.headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+describe('the outbound feeds the report says are in use', () => {
+	beforeEach(async () => {
+		await env.DB.prepare('delete from zapier_subscription').run();
+		await env.DB.prepare('delete from webhook_destination').run();
+		await env.DB.prepare('delete from quickbooks_connection').run();
+	});
+
+	it('names none on a deployment that feeds nothing', async () => {
+		const body = await envelopeOf(await report());
+		expect(body.feedsInUse).toEqual({ zapier: false, webhooks: false, books: false });
+	});
+
+	it('names Zapier while a Zap listens, and not once every Zap has ended', async () => {
+		await env.DB.prepare(
+			`insert into zapier_subscription (id, trigger, hook_url, ended_at, ended_reason,
+			                                  created_at, updated_at)
+			 values ('019fb6ff-0000-7000-8000-000000000001', 'new_gift',
+			         'https://hooks.zapier.com/hooks/standard/1/ended/', 0, 'unsubscribed', 0, 0)`
+		).run();
+		expect((await envelopeOf(await report())).feedsInUse?.zapier).toBe(false);
+
+		await env.DB.prepare(
+			`insert into zapier_subscription (id, trigger, hook_url, created_at, updated_at)
+			 values ('019fb6ff-0000-7000-8000-000000000002', 'new_gift',
+			         'https://hooks.zapier.com/hooks/standard/1/open/', 0, 0)`
+		).run();
+		expect((await envelopeOf(await report())).feedsInUse).toEqual({
+			zapier: true,
+			webhooks: false,
+			books: false
+		});
+	});
+
+	// a paused destination is still in use: what it misses is queued for it and sent on resume.
+	it('names webhooks while a destination stands, paused or not, and not once it is deleted', async () => {
+		const secret = `whsec_${btoa('x'.repeat(32))}`;
+		await env.DB.prepare(
+			`insert into webhook_destination (id, url, signing_secret, archived_at, created_at, updated_at)
+			 values ('dst_gone', 'https://crm.example.org/gone', ?, 0, 0, 0)`
+		)
+			.bind(secret)
+			.run();
+		expect((await envelopeOf(await report())).feedsInUse?.webhooks).toBe(false);
+
+		await env.DB.prepare(
+			`insert into webhook_destination (id, url, signing_secret, paused_at, created_at, updated_at)
+			 values ('dst_paused', 'https://crm.example.org/paused', ?, 0, 0, 0)`
+		)
+			.bind(secret)
+			.run();
+		expect((await envelopeOf(await report())).feedsInUse).toEqual({
+			zapier: false,
+			webhooks: true,
+			books: false
+		});
+	});
+
+	it('names the books while a QuickBooks company is connected', async () => {
+		await env.DB.prepare(
+			`insert into quickbooks_connection (id, realm_id, access_token, access_token_expires_at,
+			                                    refresh_token, start_at, created_at, updated_at)
+			 values ('quickbooks', '4620816365', 'access', 0, 'refresh', 0, 0, 0)`
+		).run();
+		expect((await envelopeOf(await report())).feedsInUse).toEqual({
+			zapier: false,
+			webhooks: false,
+			books: true
+		});
+	});
+
+	// the console reads `null` as not knowing and says nothing about pace; `false` would read as no
+	// feed in use on a deployment that may be feeding all three.
+	it('answers null for a read that did not land, and serves the rest of the report', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await listSite('ste_1', 'https://acme.org', 0);
+		await env.DB.prepare(
+			'alter table quickbooks_connection rename to quickbooks_connection_hidden'
+		).run();
+		try {
+			const response = await report();
+			expect(response.status).toBe(200);
+			const body = await envelopeOf(response);
+			expect(body.feedsInUse).toBeNull();
+			expect(body.sites).toEqual(['https://acme.org']);
+			expect(logged).toHaveBeenCalledWith(
+				'reading which outbound feeds are in use failed:',
+				expect.anything()
+			);
+		} finally {
+			await env.DB.prepare(
+				'alter table quickbooks_connection_hidden rename to quickbooks_connection'
+			).run();
+		}
 	});
 });
 

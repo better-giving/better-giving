@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { Mark } from '../status/Mark.jsx';
 
 /**
- * @import { ReactNode } from 'react'
+ * @import { FocusEvent, ReactNode } from 'react'
  */
 
 /**
@@ -226,6 +226,7 @@ export function DataTable({
 				tabIndex={0}
 				aria-labelledby={namedFrom}
 				aria-label={named}
+				onFocus={revealFocused}
 			>
 				<table className="adm-table" aria-labelledby={namedFrom} aria-label={named}>
 					{/* the shape the table keeps. without it every column is sized from whatever the
@@ -242,7 +243,7 @@ export function DataTable({
 						<tr>
 							{/* a head a press sorts by is a link and not a button: the screen is drawn from its
 							    loader, so a sort is another address rather than something that happens here — the
-							    same element the last row of this table already draws to add a record. the head
+							    same element the plane already draws under its rows to add a record. the head
 							    keeps its column's reading either way and the link sits inside it, so a money
 							    column's head is still end-aligned once it can be pressed.
 
@@ -344,19 +345,30 @@ export function DataTable({
 								</td>
 							</tr>
 						) : null}
-						{add ? (
-							<tr>
-								<td className="adm-table__add" colSpan={columns.length}>
-									<a href={addHref}>
-										<Mark name="plus" />
-										{add}
-									</a>
-								</td>
-							</tr>
-						) : null}
 					</tbody>
 				</table>
+				{/* under the rows and outside the table: a row in the body would be one more record to
+				    a reader moving by rows, and one more than the caption counts. */}
+				{add ? (
+					<a className="adm-table__add" href={addHref}>
+						<Mark name="plus" />
+						{add}
+					</a>
+				) : null}
 			</section>
 		</>
 	);
+}
+
+/* the browser scrolls a focused element into a scroll box only when none of it is showing, so a
+   control at a row's end with a sliver inside the plane's edge takes the keyboard and stays cut
+   off. `nearest` moves the plane exactly as far as the whole control needs, landing it the
+   `scroll-padding-inline` step in from the edge (`.adm-plane` in ../../styles/adm.css). a keyboard
+   arrival only: a pointer press focuses on the way down, and a plane moving under the pointer
+   before the release lands the release somewhere else. */
+/** @param {FocusEvent<HTMLElement>} event */
+function revealFocused(event) {
+	const { target, currentTarget } = event;
+	if (target === currentTarget || !target.matches(':focus-visible')) return;
+	target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }

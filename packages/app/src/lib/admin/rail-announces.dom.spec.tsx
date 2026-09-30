@@ -52,7 +52,7 @@ function railAt(pathname: string): HTMLElement {
 
 /** what the rail cell reading `label` claims, or null where it claims nothing. */
 function claim(root: HTMLElement, label: string): string | null {
-	const found = [...root.querySelectorAll('.adm-rail__cells > a')].find(
+	const found = [...root.querySelectorAll('.adm-rail__cells a')].find(
 		(a) => a.querySelector('.adm-dest__full')?.textContent === label
 	);
 	if (found === undefined) throw new Error(`the rail drew no cell reading ${label}`);
@@ -84,4 +84,16 @@ it('claims only containment on the cell a screen one level down sits under', () 
 	const root = railAt('/admin/forms/new');
 
 	expect(claim(root, 'Donation forms')).toBe('true');
+});
+
+it('claims containment on More while the reader is in a destination the bar leaves to it', () => {
+	// Programs is on the sheet More opens, and a bar with no tab marked under it would say the
+	// reader is nowhere.
+	const root = railAt('/admin/programs');
+	const more = root.querySelector('.adm-rail__more');
+
+	expect(more?.getAttribute('aria-current')).toBe('true');
+	expect(
+		railAt('/admin/donors').querySelector('.adm-rail__more')?.hasAttribute('aria-current')
+	).toBe(false);
 });

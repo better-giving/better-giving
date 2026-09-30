@@ -52,6 +52,15 @@ const DEPLOYED = {
 	MAIL_FROM: 'giving@example.org'
 };
 
+/** a deployment whose `BETTER_AUTH_URL` pin names no address. */
+const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
+
+/** what that deployment throws: the sentence as a 500's data, which the error boundary draws. */
+const PIN_REFUSAL = {
+	data: expect.stringContaining('`BETTER_AUTH_URL` is `localhost:8787`'),
+	init: { status: 500 }
+};
+
 /** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
 function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.LoaderArgs {
 	return {
@@ -174,6 +183,12 @@ describe('GET /login — a visitor who is already signed in', () => {
 		const answer = await visit('?next=%2Fadmin%2Fdonors');
 
 		expect(answer).not.toBeInstanceOf(Response);
+	});
+
+	it('names a pin that names no address, where the operator reads it', async () => {
+		await finished();
+
+		await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
 	});
 });
 
@@ -489,6 +504,14 @@ describe('POST /login — what the browser gets back', () => {
 
 		expect(answer.init?.status).toBe(400);
 		expect(underTheBox(answer)?.at(-1)).toBe('must be at most 256 characters');
+		expect(await sessions()).toBe(0);
+	});
+
+	it('names a pin that names no address, where the operator reads it', async () => {
+		const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
+
+		expect(answer.init?.status).toBe(500);
+		expect(banner(answer)).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
 		expect(await sessions()).toBe(0);
 	});
 

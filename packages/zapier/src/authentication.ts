@@ -1,8 +1,8 @@
 import type { Authentication, Bundle, ZObject } from 'zapier-platform-core';
 import { deploymentUrl } from './deployment.js';
 
-// the connection is two values: where the deployment answers and the key its console made. the
-// key rides every request as a bearer, set once by ./middleware.ts.
+// the connection is two values: where the deployment answers and the key made on its dashboard,
+// under Integrations → Zapier. the key rides every request as a bearer, set once by ./middleware.ts.
 
 /** who the key belongs to. `organisation` is the deployment's public field, `null` until it has a legal name. */
 type Me = { organisation: string | null };
@@ -44,7 +44,8 @@ export default {
 			label: 'Zapier key',
 			type: 'password',
 			required: true,
-			helpText: 'The key made under Zapier in the Better Giving console. It starts with `bgz_`.'
+			helpText:
+				'The key made on your Better Giving dashboard, under Integrations, then Zapier. It starts with `bgz_`.'
 		}
 	],
 	test,

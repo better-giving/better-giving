@@ -25,16 +25,12 @@ import type {
 	VarsWritten,
 	WalletsLevel,
 	WebhookRepaired,
-	WidgetLevel,
-	ZapierPressBody,
-	ZapierPressed,
-	ZapierRead
+	WidgetLevel
 } from './types';
 import type {
 	QuickbooksBacklogLine,
 	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
-import type { ZapierReport } from '@better-giving/operator/console/zapier';
 
 // the console's own process, reached from the page it serves.
 //
@@ -51,13 +47,37 @@ import type { ZapierReport } from '@better-giving/operator/console/zapier';
 // carrying whatever the handler named — every one of them is a state the page's own reading rules
 // out, so there is nothing here for an operator to act on. `consoleVersion` below is the one
 // exception and states its own reason.
+//
+// **a write is held among the writes out until the binary answers it** ({@link writesAnswered}),
+// whether or not the press that made it is still waiting: the router drops the answer to a press
+// whose navigation another replaced, and the write lands all the same. a reading waits on these
+// (../lib/console-reading.ts), so none is taken while a write this page made is unanswered. what
+// the binary goes on writing after it answered is outside that: a processor's setup press answers
+// once its chain is under way, and the chain's writes follow.
+
+const writesOut = new Set<Promise<Response>>();
+
+/** one request to the local process, held among the writes out while a `POST` is unanswered. */
+function call(path: string, init: RequestInit): Promise<Response> {
+	const answer = fetch(`/api${path}`, init);
+	if (init.method !== 'POST') return answer;
+	writesOut.add(answer);
+	const answered = () => writesOut.delete(answer);
+	answer.then(answered, answered);
+	return answer;
+}
+
+/** settles once no write to the local process is waiting on its answer, however each one went. */
+export async function writesAnswered(): Promise<void> {
+	while (writesOut.size > 0) await Promise.allSettled(writesOut);
+}
 
 /**
  * one call to the local process, answered as json or thrown. `signal` is a loader's request's, so a
  * reading the router abandoned is not asked for.
  */
 async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<T> {
-	const answer = await fetch(`/api${path}`, {
+	const answer = await call(path, {
 		method,
 		headers: { accept: 'application/json' },
 		signal: signal ?? null
@@ -69,7 +89,7 @@ async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal
 
 /** one press carrying a json body, answered as json or thrown. */
 async function post<T>(path: string, body: unknown): Promise<T> {
-	const answer = await fetch(`/api${path}`, {
+	const answer = await call(path, {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(body)
@@ -260,29 +280,6 @@ export async function pressQuickbooks(body: QuickbooksPressBody): Promise<Quickb
 const NO_REVERSALS: Pick<QuickbooksStartAtSide, 'reversals'> = { reversals: 0 };
 
 /**
- * where this deployment's Zapier key stands, how many Zaps are listening on it, and how its
- * deliveries are going. every reading carries the key, or null for a key made before the
- * deployment stored it.
- */
-export async function readZapier(): Promise<ZapierRead> {
-	const read = await ask<ZapierRead>('/deployment/zapier', 'GET');
-	if (read.kind !== 'read') return read;
-	// a deployment older than this console reports no count for a trigger it does not have yet, and
-	// the binary passes `listening` through as it came.
-	const { listening } = read.report;
-	return {
-		...read,
-		report: { ...read.report, listening: { ...NO_ZAPS_LISTENING, ...listening } }
-	};
-}
-
-const NO_ZAPS_LISTENING: ZapierReport['listening'] = { newGift: 0, newDonor: 0, giftRefunded: 0 };
-
-/** makes the key, or replaces it; the answer carries the new key. */
-export const pressZapier = (body: ZapierPressBody): Promise<ZapierPressed> =>
-	post('/deployment/zapier', body);
-
-/**
  * asks the deployment to register the hostnames a donor is drawn wallet buttons on.
  *
  * **it carries no hostname and none may ever be added.** the account is the operator's and a
@@ -341,7 +338,7 @@ export async function startStripeSetup(keys: {
 	secret: string;
 	publishable: string;
 }): Promise<StripeStarted> {
-	const answer = await fetch('/api/stripe/setup', {
+	const answer = await call('/stripe/setup', {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(keys)
@@ -398,7 +395,7 @@ export async function startPaypalSetup(pair: {
 	secret: string;
 	address: string;
 }): Promise<PaypalStarted> {
-	const answer = await fetch('/api/paypal/setup', {
+	const answer = await call('/paypal/setup', {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(pair)
@@ -432,7 +429,7 @@ export async function startChariotSetup(boxes: {
 	apiKey: string;
 	address: string;
 }): Promise<ChariotStarted> {
-	const answer = await fetch('/api/chariot/setup', {
+	const answer = await call('/chariot/setup', {
 		method: 'POST',
 		headers: { accept: 'application/json', 'content-type': 'application/json' },
 		body: JSON.stringify(boxes)

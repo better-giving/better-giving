@@ -46,7 +46,11 @@ export function Layout({ children }: { children: ReactNode }) {
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
 				<Meta />
-				<Links />
+				{/* an empty nonce in place of the one `ServerRouter` hands down: a browser hides a nonce's
+				    value from the page, and the client is never handed one, so a link drawn with it
+				    hydrates as a mismatch. a link needs none — `style-src` and `script-src` both take
+				    'self' (./document-policy.ts). */}
+				<Links nonce="" />
 			</head>
 			<body>
 				{children}

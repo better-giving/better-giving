@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	apiRateLimitKey,
+	integrationsCallerRateLimitKey,
+	integrationsKeyRateLimitKey,
 	isRateLimited,
 	quoteRateLimitKey,
 	quoteRateLimitRefusal,
@@ -399,6 +401,43 @@ describe('what a request from Zapier counts against', () => {
 		const response = rateLimitRefusal('Wait and retry the Zap step.');
 		expect(response.status).toBe(429);
 		expect(await response.json()).toMatchObject({ fix: 'Wait and retry the Zap step.' });
+	});
+});
+
+/**
+ * the bucket a request on `/integrations/v1` spends before its key is looked up, charged through
+ * the surface binding the way `/zapier`'s is — so its prefix is what keeps it off both other
+ * surfaces' counts.
+ */
+describe('what a request on the read API counts against before its key is looked up', () => {
+	it('is the /integrations/v1 surface and the payer', () => {
+		const from = request('/integrations/v1/gifts', FROM);
+		expect(integrationsCallerRateLimitKey(from)).toBe('/integrations/v1 203.0.113.7');
+		expect(integrationsCallerRateLimitKey(from)).not.toBe(apiRateLimitKey(from));
+		expect(integrationsCallerRateLimitKey(from)).not.toBe(zapierRateLimitKey(from));
+	});
+
+	it('has no bucket for a caller it cannot attribute', () => {
+		expect(integrationsCallerRateLimitKey(request('/integrations/v1/gifts'))).toBeNull();
+		expect(
+			integrationsCallerRateLimitKey(
+				request('/integrations/v1/gifts', { 'cf-connecting-ip': 'not-an-ip' })
+			)
+		).toBeNull();
+	});
+});
+
+/**
+ * the per-key bucket in front of `/integrations/v1`. the key row's id is the whole of it, so what
+ * one system spends is its own and never another's — whatever address either calls from.
+ */
+describe('what a request on the read API counts against once its key is admitted', () => {
+	it('gives two keys two buckets', () => {
+		expect(integrationsKeyRateLimitKey('key_a')).not.toBe(integrationsKeyRateLimitKey('key_b'));
+	});
+
+	it('gives one key one bucket, request after request', () => {
+		expect(integrationsKeyRateLimitKey('key_a')).toBe(integrationsKeyRateLimitKey('key_a'));
 	});
 });
 

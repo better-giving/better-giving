@@ -2,6 +2,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, saveNowpayments } from '../api/client';
 import type { VarsWritten } from '../api/types';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { NowpaymentsSection } from '../lib/nowpayments-section';
 import type { NowpaymentsAnswer } from '../lib/nowpayments-setup';
@@ -37,6 +38,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * account, the worker and the address it is spent on read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');

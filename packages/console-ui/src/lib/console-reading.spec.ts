@@ -24,8 +24,10 @@ vi.mock('../api/client', () => ({
 		sites: [],
 		donatePage: 'https://a.example',
 		org: null,
-		holdsStripeKey: false
-	})
+		holdsStripeKey: false,
+		feedsInUse: null
+	}),
+	writesAnswered: async () => {}
 }));
 
 const { handOver, readConsole } = await import('./console-reading');

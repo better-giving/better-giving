@@ -221,8 +221,18 @@ function scriptTags(html: string): string[] {
 }
 
 /**
+ * every `<link>` tag a document draws in its head from the routes' `links`, which the client
+ * hydrates: a module preload `<Scripts>` draws is a resource react hoists and does not compare.
+ */
+function linkTags(html: string): string[] {
+	return (html.match(/<link\b[^>]*>/g) ?? []).filter((tag) => !tag.includes('rel="modulepreload"'));
+}
+
+/**
  * what every document carries whichever policy it is drawn under: the directives no route widens,
- * the framing header, and the policy's nonce on every script the document draws.
+ * the framing header, and the policy's nonce on every script the document draws. no link the
+ * routes declare carries it: a browser hides a nonce's value from the page, and the client, which
+ * is never handed one, would hydrate every such link as a mismatch.
  */
 async function expectLocked(
 	response: Response,
@@ -235,9 +245,13 @@ async function expectLocked(
 	expect(policy.get('frame-ancestors')).toEqual(["'none'"]);
 	expect(response.headers.get('x-frame-options')).toBe('DENY');
 
-	const scripts = scriptTags(await response.text());
+	const html = await response.text();
+	const scripts = scriptTags(html);
 	expect(scripts.length).toBeGreaterThan(0);
 	for (const tag of scripts) expect(tag).toContain(` nonce="${nonce}"`);
+	const links = linkTags(html);
+	expect(links.length).toBeGreaterThan(0);
+	for (const tag of links) expect(tag).not.toContain(nonce);
 }
 
 /** a document answer's policy and framing headers, held to the dashboard's strict set. */

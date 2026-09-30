@@ -26,8 +26,9 @@ import {
 import type { ContactSort, ContactView, SortDir } from '../../contacts/sorts';
 import type { ParsedContact } from './contact-input';
 
-// every read and write of `contact`, so the two non-obvious query shapes below have one
-// place to be stated rather than being re-derived at each call site.
+// every read of `contact` and the insert that makes one, so the two non-obvious query shapes below
+// have one place to be stated rather than being re-derived at each call site. a change to a
+// contact once made is ./changes.ts's, beside the event it owes.
 //
 // `donation` and `payment` are named here too, in `listContacts` and `readDonorSummary` and
 // nowhere else — the two places either table is read outside ../donations/queries.ts, whose header
@@ -472,35 +473,6 @@ export function newContactRow(input: ParsedContact, consented: boolean | null): 
  */
 export function contactInsertStatement(db: Db, row: NewContactRow) {
 	const statement = db.insert(contact).values(row);
-	statement satisfies BatchItem<'sqlite'>;
-	return statement;
-}
-
-/**
- * the consent answer a donor just gave, over the one they gave before — unexecuted, for the same
- * `batch()` that writes the gift it arrived with.
- *
- * a returning donor is matched to the contact row they already have, so an answer written only on
- * insert would be the first one they ever gave and every later one would be discarded. true -> false
- * is a withdrawal and false -> true is a grant; a consent record that holds neither is worse than
- * one that was never kept, because it reads as an answer.
- *
- * it names the row by id, so it is not the read-then-write CLAUDE.md bans: the caller has already
- * resolved which contact this is, and no value read inside the write decides what is written.
- *
- * `updated_at` moves with it, from the column's own `$onUpdateFn` rather than from anything here.
- * this is a write to the row and system time is what that column records; holding it still would
- * mean writing the old value back over drizzle's, which is a claim that nothing changed.
- *
- * it takes a boolean and never null: absent is the state of a contact nobody asked, and no path
- * that reaches this function is one — the gift carries a required answer. a caller that would pass
- * null wants no statement at all.
- */
-export function contactConsentUpdateStatement(db: Db, id: string, consented: boolean) {
-	const statement = db
-		.update(contact)
-		.set({ consentedToContact: consented })
-		.where(eq(contact.id, id));
 	statement satisfies BatchItem<'sqlite'>;
 	return statement;
 }

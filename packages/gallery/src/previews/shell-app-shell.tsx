@@ -1,7 +1,9 @@
+import zapierImage from '@better-giving/operator/brand/zapier.png';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import type { DestinationLinkProps } from '@better-giving/operator/components/shell/DestinationCell';
+import { AccountBand, AccountRow } from '@better-giving/operator/components/shell/AccountRow';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Column, Group, Section } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
@@ -15,13 +17,21 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * `.adm-shell` is `min-block-size: 100dvh` in packages/operator/src/styles/adm.css, because the page
  * is its `1fr` row and a short screen still has to fill the window. nothing in the system bounds it
  * to a smaller box and nothing should — so a gallery reader scrolls a window per specimen, and
- * there are five of them plus the panel for that reason rather than one of every combination.
+ * there is one per shape a surface draws, plus the panel, rather than one of every combination.
  *
  * **narrow the window past 64rem and every rail below becomes `position: fixed` at the foot of the
  * viewport**, one over another, because that is what a rail is at that width: a bar of tabs pinned
- * to the bottom of the screen. one shell on a page is one bar; five shells on a page is five bars
- * in the same strip. it is the arrangement being correct rather than a defect in it, and it is the
- * one thing on this page a second specimen makes worse.
+ * to the bottom of the screen. one shell on a page is one bar; seven shells on a page is seven bars
+ * in the same strip, and the one drawn over the rest is the last shell's. it is the arrangement
+ * being correct rather than a defect in it, and it is the one thing on this page a second specimen
+ * makes worse.
+ *
+ * **the last shell is the bar with a More tab, which is why it is last**: narrowed, its bar is the
+ * one on top, and More is the press that opens the sheet. the sheet is a modal, so it cannot be a
+ * resting specimen for the reason ./behaviour-dialog.tsx gives — standing open it would cover every
+ * other preview and hold the keyboard — and open is one press on More. at the wide width there is
+ * no More and the column draws every destination, which is the closed state beside every other
+ * rail on this page.
  *
  * the screens inside are built out of the real components the surfaces use, never filler: the
  * shell's whole job is the space around a page and the step from the rail to the first heading, and
@@ -34,7 +44,8 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * marked, which is the only honest rail to draw there and is what the centred specimen has.
  *
  * `groups` is drawn as the component's own, as the dashboard's three groups with marks, as the
- * console's run with a headed group, logos and status marks, as one entry, and as none. the empty
+ * console's run with a headed group, logos and status marks, as one entry, as none, and as the
+ * dashboard's with four entries stating `bar` and a headed integrations group on the sheet. the empty
  * rail is a `nav` with no cells in it, which below the wide breakpoint is an empty strip across the
  * foot of the window. a tab is an equal share of the width whatever the count, and the bar is flat:
  * a headed group's entries stand as tabs of their own.
@@ -43,8 +54,16 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * so every specimen on this page follows it once the page is reloaded.
  *
  * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
- * `foot` stands in the rail in its place, which is the console's shape: its close in the band and
- * its account in the foot. `null` for both drops the rail's foot rather than standing an empty one.
+ * `foot` stands in the rail in its place, which is the console's shape: its account and close in
+ * the band, and in the foot the account's logo and name as the link opening its panel — the real
+ * AccountRow and AccountBand (./shell-account-row.tsx has them out of the shell), drawn marked as a
+ * deployment delivering at the Free plan's pace draws them and unmarked in the specimen after, so
+ * the toggle shows both in the icon rail too (packages/console-ui/src/lib/cloudflare-account.tsx
+ * hands them). `null` for both drops the rail's foot rather than standing an empty one.
+ *
+ * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
+ * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
+ * shell's page past the whole rail. the page draws no ring when it lands there.
  *
  * `head` is the strip across the top of the panel, and `site` is the globe leading the
  * organisation's name — the console's link to its deployment's dashboard.
@@ -77,6 +96,28 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
 function StandInLink({ children, ...rest }: DestinationLinkProps) {
 	return <a {...rest}>{children}</a>;
 }
+
+/* the console's account, as packages/console-ui/src/lib/cloudflare-account.tsx hands it to both
+   faces, and the close it stands beside. */
+const ACCOUNT = {
+	name: "Riverside Shelter's Account",
+	brand: 'cloudflare',
+	whose: 'Cloudflare account',
+	concern: null,
+	href: '#shell-app-shell-account'
+} as const;
+
+const PACED_ACCOUNT = { ...ACCOUNT, concern: 'Deliveries paced for the Free plan' };
+
+const CLOSE = (
+	<Button
+		variant="quiet"
+		size="sm"
+		mark="unplug"
+		className="adm-signout"
+		aria-label="Close console"
+	/>
+);
 
 export default function ShellAppShellPreview() {
 	return (
@@ -201,34 +242,42 @@ export default function ShellAppShellPreview() {
 					}
 				]}
 				wayOut={
-					<Button
-						variant="quiet"
-						size="sm"
-						mark="unplug"
-						className="adm-signout"
-						aria-label="Close console"
-					/>
+					<>
+						<AccountBand {...PACED_ACCOUNT} />
+						{CLOSE}
+					</>
 				}
-				foot={
-					<div className="adm-footaccount">
-						<span className="adm-rail__lead">
-							<Brand name="cloudflare" label="Cloudflare" />
-						</span>
-						<span className="adm-footaccount__name" title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4">
-							Riverside Shelter's Account
-						</span>
-						<span className="adm-footaccount__out">
-							<Button
-								variant="quiet"
-								size="sm"
-								mark="unplug"
-								className="adm-signout"
-								aria-label="Close console"
-							/>
-						</span>
-					</div>
-				}
+				foot={<AccountRow {...PACED_ACCOUNT} out={CLOSE} />}
 				head={<span className="adm-headstrip__title">Sites</span>}
+			>
+				<Column>
+					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
+					<EmptyState>No site has been added yet.</EmptyState>
+				</Column>
+			</AppShell>
+
+			{/* the console's rail again, its account unmarked: a deployment delivering nothing, or one
+			    already answered as on the paid plan. collapsed, the logo alone stands for the account,
+			    and it is still the press that opens the panel. */}
+			<AppShell
+				org="Riverside Shelter"
+				current="Sites"
+				site="https://better-giving.riverside.workers.dev/admin"
+				groups={[
+					{
+						destinations: [
+							{ label: 'Sites', short: 'Sites', href: '#', mark: 'globe' },
+							{ label: 'SMTP', short: 'SMTP', href: '#', mark: 'mail' }
+						]
+					}
+				]}
+				wayOut={
+					<>
+						<AccountBand {...ACCOUNT} />
+						{CLOSE}
+					</>
+				}
+				foot={<AccountRow {...ACCOUNT} out={CLOSE} />}
 			>
 				<Column>
 					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
@@ -259,6 +308,60 @@ export default function ShellAppShellPreview() {
 					<EmptyState>
 						The rail was handed an empty run, so the nav is drawn with no cells in it.
 					</EmptyState>
+				</Column>
+			</AppShell>
+
+			{/* the bar with a More tab, last so that its bar is the one drawn on top when the window is
+			    narrowed. the reader is in Webhooks, a sheet destination under a headed group, so More
+			    reads current on the closed bar and Webhooks is marked inside the open sheet. the groups
+			    are the dashboard's (packages/app/src/lib/admin/destinations.ts), so the sheet shows a
+			    picture mark in a row as well as the glyphs, and the bar has no Integrations group on
+			    it at all. */}
+			<AppShell
+				org="Riverside Shelter"
+				current={{ label: 'Webhooks', kind: 'page' }}
+				groups={[
+					{
+						destinations: [
+							{
+								label: 'Dashboard',
+								short: 'Dashboard',
+								href: '#',
+								mark: 'layout-dashboard',
+								bar: true
+							}
+						]
+					},
+					{
+						destinations: [
+							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'form', bar: true },
+							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
+							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users', bar: true },
+							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart', bar: true },
+							{ label: 'Recurring gifts', short: 'Recurring', href: '#', mark: 'repeat' }
+						]
+					},
+					{
+						destinations: [{ label: 'Members', short: 'Members', href: '#', mark: 'shield-check' }]
+					},
+					{
+						heading: 'Integrations',
+						destinations: [
+							{ label: 'Zapier', short: 'Zapier', href: '#', mark: { src: zapierImage } },
+							{ label: 'API', short: 'API', href: '#', mark: 'key-round' },
+							{ label: 'Webhooks', short: 'Webhooks', href: '#', mark: 'webhook' }
+						]
+					},
+					{ destinations: [{ label: 'Books', short: 'Books', href: '#', mark: 'book-open' }] }
+				]}
+				link={StandInLink}
+			>
+				<Column>
+					<PageHeader
+						title="Webhooks"
+						standfirst="Where this deployment posts a gift once it settles."
+					/>
+					<EmptyState>No destination has been added yet.</EmptyState>
 				</Column>
 			</AppShell>
 

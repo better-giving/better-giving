@@ -2,10 +2,16 @@ import type { ServerBuild } from 'react-router';
 import { createRequestHandler } from 'react-router';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
+import { pinnedOrigin, readAuthEnv } from '$lib/server/auth/env';
+import { readConfigEnv } from '$lib/server/config/env';
 import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { createEmailProvider } from '$lib/server/email/factory';
+import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
 import { createPaymentProviders } from '$lib/server/payments/factory';
+import { planOf } from '$lib/server/outbox/budget';
+import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
+import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import { requestContext } from './request-context';
 
@@ -56,18 +62,64 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 		),
 
 	'* * * * *': (env, now) => {
-		// one handle, shared by both deliveries and by the connection the accounting provider reads
+		// the three jobs below run in one invocation and spend its connections, subrequests and D1
+		// queries together; ./lib/server/outbox/budget.ts is each one's share, and a job added here
+		// takes a share there. each claims its pace on the plan this invocation's env names.
+		//
+		// one handle, shared by every delivery and by the connection the accounting provider reads
 		// its tokens through: the store the factory builds is over this same database.
 		const db = requestDb(env);
+		const plan = planOf(readConfigEnv(env));
 		return allRun([
 			sendDueEntries(
-				{ db, provider: createAccountingProvider(env, db), email: createEmailProvider(env) },
+				{
+					db,
+					provider: createAccountingProvider(env, db),
+					email: createEmailProvider(env),
+					plan
+				},
 				now
 			),
-			sendDueZapierEvents({ db, fetch }, now)
+			sendDueZapierEvents({ db, fetch, plan }, now),
+			sendDueWebhooks(
+				{
+					db,
+					fetch,
+					plan,
+					// the pin is read when a pause is mailed, so one that names no http(s) origin costs that
+					// mail and not the run: `pinnedOrigin` throws on it, and ./lib/server/webhooks/deliver.ts
+					// logs a throw from the hook.
+					onPaused: (destination) =>
+						mailPause({
+							db,
+							email: createEmailProvider(env),
+							origin: pinnedOrigin(readAuthEnv(env))
+						})(destination)
+				},
+				now
+			)
 		]);
 	}
 };
+
+/**
+ * the methods react router's server runtime routes: any other it answers with its own 405 before
+ * a middleware runs (`isValidMethod` in react-router/dist/development/lib/router/router.js, which
+ * upper-cases the method first).
+ */
+const ROUTED_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * whether `request` asks the read API with a method react router never routes, so that the
+ * surface's own 405 is answered in place of the framework's (src/routes/integrations.v1.ts).
+ */
+function unroutedOnReadApi(request: Request): boolean {
+	if (ROUTED_METHODS.has(request.method.toUpperCase())) return false;
+	const { pathname } = new URL(request.url);
+	if (!pathname.startsWith(INTEGRATIONS_BASE_PATH)) return false;
+	// the prefix itself, a path beneath it, or its `.data` address; not `/integrations/v10`.
+	return /^(?:$|[/.])/.test(pathname.slice(INTEGRATIONS_BASE_PATH.length));
+}
 
 /**
  * every job run to its end, a throw in one stopping none of the others, and then every throw
@@ -84,6 +136,7 @@ async function allRun(jobs: readonly Promise<void>[]): Promise<void> {
 
 export default {
 	fetch(request, env, ctx) {
+		if (unroutedOnReadApi(request)) return readOnlyRefusal(request.method);
 		return handleRequest(request, requestContext(env, ctx));
 	},
 

@@ -6,7 +6,7 @@ import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { useFetcher, useSubmit } from 'react-router';
 import { freeWithheldVars, pressQuickbooks, readQuickbooks } from '../api/client';
 import type { HoldingPick, QuickbooksPressBody } from '../api/types';
-import { notReady, readConsole } from '../lib/console-reading';
+import { notReady, readConsole, watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { forgetReadings, readKeptPage } from '../lib/processor-cache';
@@ -74,6 +74,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * (../lib/group-press.ts), so nothing about the three values is decided here.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 

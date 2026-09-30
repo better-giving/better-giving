@@ -680,10 +680,18 @@ describe('sending a reversal', () => {
 		return posted;
 	}
 
-	/** one delivery run, a minute from now so every row queued so far is due. */
+	/**
+	 * one delivery run, a minute from now so every row queued so far is due, at the Paid plan's pace
+	 * so one run sends every entry a case queues.
+	 */
 	async function run(): Promise<void> {
 		await sendDueEntries(
-			{ db, provider: createAccountingProvider(CONFIGURED, db), email: quietMail },
+			{
+				db,
+				provider: createAccountingProvider(CONFIGURED, db),
+				email: quietMail,
+				plan: 'paid'
+			},
 			new Date(Date.now() + 60_000)
 		);
 	}

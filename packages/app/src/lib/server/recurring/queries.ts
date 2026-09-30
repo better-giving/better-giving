@@ -1,7 +1,8 @@
-import { and, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { count, desc, eq, sql, type SQL } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { RECURRING_PLAN_STATUSES, type RecurringPlanStatus } from '$lib/recurring/statuses';
 import { readContactSummaries } from '../contacts/queries';
+import { applyPlanChange } from './changes';
 import type { Db } from '../db/client';
 import { recurringPlan, type RecurringPlan } from '../db/schema';
 
@@ -253,13 +254,14 @@ export async function readRecurringPlan(db: Db, id: string): Promise<RecurringPl
 
 /**
  * records that a commitment has stopped: the status, the date and the expectation, in one
- * statement.
+ * statement, with the event it owes a destination in front of it in the same `batch()`
+ * (./changes.ts): `recurring_gift.ended` for a live commitment, `recurring_gift.updated` for a
+ * lapsed one, which has ended already.
  *
- * they have to be one. `recurring_plan_ended_at_check` refuses a row whose status and `ended_at`
- * disagree, D1 has no interactive transaction to put two statements inside, and a `next_charge_at`
- * left behind would be this deployment saying a stopped commitment is due to charge. one `set` is
- * what makes all three unrepresentable apart rather than merely unlikely — no `batch()` is needed,
- * because this is one row.
+ * the three have to be one statement. `recurring_plan_ended_at_check` refuses a row whose status
+ * and `ended_at` disagree, and a `next_charge_at` left behind would be this deployment saying a
+ * stopped commitment is due to charge. one `set` is what makes all three unrepresentable apart
+ * rather than merely unlikely.
  *
  * `endedAt` is only written where there is none, which is what keeps a payment-failed commitment's
  * own date. that date means when collection really ended — the moment the rail gave up — and
@@ -274,31 +276,19 @@ export async function readRecurringPlan(db: Db, id: string): Promise<RecurringPl
  *
  * `false` means nothing was written, and the caller decides what that is. it is **not** on its own
  * a failure: the inbound `customer.subscription.deleted` for a cancel this app just made can reach
- * the row first (`recordStanding`, same file), and a screen that reported a failure there would be
- * reporting one over a completed act. ./stop.ts is where that reading is made.
+ * the row first (`recordStanding` in ../donations/collect.ts), and a screen that reported a failure
+ * there would be reporting one over a completed act. ./stop.ts is where that reading is made.
  *
- * the answer comes off the update's own `returning()` rather than a select in front of it, because
- * D1 has no transaction and a check-then-write would be two commits with a race between them.
- *
- * `updated_at` is not named — it carries `$onUpdateFn`, so drizzle adds it to every `set`.
+ * the statements and the answer are ./changes.ts's: the update's own `returning()`, with no select
+ * in front of it, because D1 has no transaction and a check-then-write would be two commits with a
+ * race between them.
  */
 export async function stopRecurringPlan(db: Db, id: string, endedAt: Date): Promise<boolean> {
-	const stopped = await db
-		.update(recurringPlan)
-		.set({
-			status: 'cancelled',
-			endedAt: sql`coalesce(${recurringPlan.endedAt}, ${endedAt.getTime()})`,
-			nextChargeAt: null
-		})
-		.where(
-			and(
-				eq(recurringPlan.id, id),
-				inArray(recurringPlan.status, ['active', 'lapsed'] satisfies RecurringPlanStatus[])
-			)
-		)
-		.returning({ id: recurringPlan.id });
-
-	return stopped.length > 0;
+	return applyPlanChange(db, id, ['active', 'lapsed'], {
+		status: 'cancelled',
+		endedAt: sql`coalesce(${recurringPlan.endedAt}, ${endedAt.getTime()})`,
+		nextChargeAt: null
+	});
 }
 
 /**

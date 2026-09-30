@@ -33,6 +33,7 @@ import {
 	PanelLeft,
 	Pencil,
 	Plus,
+	RefreshCw,
 	Repeat,
 	Search,
 	Server,
@@ -44,6 +45,7 @@ import {
 	Unplug,
 	UserPlus,
 	Users,
+	Webhook,
 	X
 } from 'lucide-react';
 
@@ -98,6 +100,7 @@ export const GLYPHS = {
 	'panel-left': PanelLeft,
 	pencil: Pencil,
 	plus: Plus,
+	'refresh-cw': RefreshCw,
 	repeat: Repeat,
 	search: Search,
 	server: Server,
@@ -109,5 +112,6 @@ export const GLYPHS = {
 	unplug: Unplug,
 	'user-plus': UserPlus,
 	users: Users,
+	webhook: Webhook,
 	x: X
 };

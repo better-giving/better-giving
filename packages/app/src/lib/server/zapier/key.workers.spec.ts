@@ -7,8 +7,8 @@ import { contact, donation, payment } from '../db/schema';
 import { makeZapierKey, readZapierKey, replaceZapierKey, verifyZapierKey } from './key';
 import { subscribe, unsubscribe } from './subscriptions';
 
-// the deployment's Zapier key, against a real D1: the singleton and hash checks are the
-// database's, so what is stored is read back from the table rather than from the module.
+// the deployment's Zapier key, against a real D1: one live key and the hash lookup are the
+// database's, so what is stored is read back from `api_key` rather than from the module.
 
 let db: Db;
 
@@ -19,27 +19,42 @@ beforeAll(() => {
 beforeEach(async () => {
 	await env.DB.prepare('delete from zapier_delivery').run();
 	await env.DB.prepare('delete from zapier_subscription').run();
-	await env.DB.prepare('delete from zapier_key').run();
+	await env.DB.prepare('delete from api_key').run();
 });
 
 async function storedKeys() {
-	const { results } = await env.DB.prepare('select key, key_hash from zapier_key').all<{
-		key: string;
-		key_hash: string;
-	}>();
+	const { results } = await env.DB.prepare(
+		`select kind, key_hash, prefix, last_four, revoked_at is not null as revoked
+		 from api_key order by revoked_at is null, created_at`
+	).all<Record<string, unknown>>();
 	return results;
+}
+
+/** every value `api_key` holds, as text, so a key in any column is caught. */
+async function everyStoredValue(): Promise<string[]> {
+	const { results } = await env.DB.prepare('select * from api_key').all();
+	return results.flatMap((row) => Object.values(row).map(String));
 }
 
 /** the digest worked out apart from ./key.ts, so a hash that drifts from its key is caught. */
 const sha256Hex = (key: string) => createHash('sha256').update(key).digest('hex');
 
 describe('making the key', () => {
-	it('stores the key it hands over beside the hash a request is checked against', async () => {
+	it('stores the hash of the key it hands over as a zapier key, and the key nowhere', async () => {
 		const made = await makeZapierKey(db);
 		if (!made.ok) throw new Error('a first make was refused');
 		expect(made.key).toMatch(/^bgz_[A-Za-z0-9_-]{43}$/);
 
-		expect(await storedKeys()).toEqual([{ key: made.key, key_hash: sha256Hex(made.key) }]);
+		expect(await storedKeys()).toEqual([
+			{
+				kind: 'zapier',
+				key_hash: sha256Hex(made.key),
+				prefix: made.key.slice(0, 8),
+				last_four: made.key.slice(-4),
+				revoked: 0
+			}
+		]);
+		expect((await everyStoredValue()).filter((v) => v.includes(made.key.slice(4)))).toEqual([]);
 	});
 
 	it('refuses a second make and keeps the first key working', async () => {
@@ -69,22 +84,30 @@ describe('checking a presented key', () => {
 		expect(await verifyZapierKey(db, bearer(`bgz_${'A'.repeat(43)}`))).toBeNull();
 	});
 
-	it('admits by the stored hash, never by the stored key', async () => {
-		const [shown, hashed] = [`bgz_${'A'.repeat(43)}`, `bgz_${'B'.repeat(43)}`];
+	it('admits a key made before 0017, by the hash that migration carried into api_key', async () => {
+		const madeBefore = `bgz_${'C'.repeat(43)}`;
 		await env.DB.prepare(
-			`insert into zapier_key (id, key, key_hash, created_at, updated_at) values ('zapier', ?, ?, 0, 0)`
+			`insert into api_key (id, name, kind, key_hash, prefix, last_four, created_at)
+			 values ('0192f0c4-7d2a-7000-8000-000000000000', 'Zapier', 'zapier', ?, 'bgz_CCCC', 'CCCC', 0)`
 		)
-			.bind(shown, sha256Hex(hashed))
+			.bind(sha256Hex(madeBefore))
 			.run();
 
-		expect(await verifyZapierKey(db, bearer(shown))).toBeNull();
-		expect(await verifyZapierKey(db, bearer(hashed))).toBe(sha256Hex(hashed));
+		expect(await verifyZapierKey(db, bearer(madeBefore))).toBe(sha256Hex(madeBefore));
 	});
 
 	it('reads the scheme in any case', async () => {
 		const made = await makeZapierKey(db);
 		if (!made.ok) throw new Error('a first make was refused');
 		expect(await verifyZapierKey(db, `bearer ${made.key}`)).not.toBeNull();
+	});
+
+	it('admits the key after any run of spaces, and never after a tab or with a word behind it', async () => {
+		const made = await makeZapierKey(db);
+		if (!made.ok) throw new Error('a first make was refused');
+		expect(await verifyZapierKey(db, `Bearer   ${made.key}`)).not.toBeNull();
+		expect(await verifyZapierKey(db, `Bearer\t${made.key}`)).toBeNull();
+		expect(await verifyZapierKey(db, `Bearer ${made.key} extra`)).toBeNull();
 	});
 });
 
@@ -123,11 +146,18 @@ async function owe(subscriptionId: string): Promise<void> {
 }
 
 describe('reading the key', () => {
-	it('gives the current key and when it was made, and nothing before one is', async () => {
+	it('gives the current key\u2019s head, tail and make date, and nothing before one is', async () => {
 		expect(await readZapierKey(db)).toBeNull();
 		const made = await makeZapierKey(db);
 		if (!made.ok) throw new Error('a first make was refused');
-		expect(await readZapierKey(db)).toEqual({ madeAt: made.madeAt, key: made.key });
+
+		const stored = await env.DB.prepare('select id from api_key').first<{ id: string }>();
+		expect(await readZapierKey(db)).toStrictEqual({
+			id: stored?.id,
+			prefix: made.key.slice(0, 8),
+			lastFour: made.key.slice(-4),
+			madeAt: made.madeAt
+		});
 	});
 });
 
@@ -136,7 +166,7 @@ describe('replacing the key', () => {
 		const old = await makeZapierKey(db);
 		if (!old.ok) throw new Error('a first make was refused');
 
-		const replaced = await replaceZapierKey(db, zapier);
+		const replaced = await replaceZapierKey(db, zapier, await shownId());
 		if (!replaced.ok) throw new Error('the replace was refused');
 
 		expect(replaced.key).not.toBe(old.key);
@@ -144,13 +174,22 @@ describe('replacing the key', () => {
 		expect(await verifyZapierKey(db, bearer(replaced.key))).not.toBeNull();
 	});
 
-	it('stores the new key and its hash in place of the old pair', async () => {
-		await makeZapierKey(db);
+	it('revokes the old key\u2019s row beside the new one\u2019s, and stores neither key', async () => {
+		const old = await makeZapierKey(db);
+		if (!old.ok) throw new Error('a first make was refused');
 
-		const replaced = await replaceZapierKey(db, zapier);
+		const replaced = await replaceZapierKey(db, zapier, await shownId());
 		if (!replaced.ok) throw new Error('the replace was refused');
 
-		expect(await storedKeys()).toEqual([{ key: replaced.key, key_hash: sha256Hex(replaced.key) }]);
+		expect(await storedKeys()).toEqual([
+			expect.objectContaining({ key_hash: sha256Hex(old.key), revoked: 1 }),
+			expect.objectContaining({ key_hash: sha256Hex(replaced.key), revoked: 0 })
+		]);
+		const secrets = [old.key, replaced.key].map((key) => key.slice(4));
+		expect((await everyStoredValue()).filter((v) => secrets.some((k) => v.includes(k)))).toEqual(
+			[]
+		);
+		expect(await readZapierKey(db)).toMatchObject({ lastFour: replaced.key.slice(-4) });
 	});
 
 	it('ends every open Zap as key_replaced and drops what they were still owed', async () => {
@@ -162,7 +201,7 @@ describe('replacing the key', () => {
 		await owe(gifts.id);
 		await owe(donors.id);
 
-		const replaced = await replaceZapierKey(db, zapier);
+		const replaced = await replaceZapierKey(db, zapier, await shownId());
 
 		expect(replaced).toMatchObject({ ok: true, disconnected: 2 });
 		const { results: ended } = await env.DB.prepare(
@@ -178,7 +217,7 @@ describe('replacing the key', () => {
 	it('opens no subscription for a request verified under the key it replaced', async () => {
 		const verifiedUnder = await currentKeyHash();
 
-		await replaceZapierKey(db, zapier);
+		await replaceZapierKey(db, zapier, await shownId());
 
 		expect(await subscribe(db, { trigger: 'new_gift', hookUrl: HOOK }, verifiedUnder)).toBeNull();
 		const open = await env.DB.prepare(
@@ -187,8 +226,9 @@ describe('replacing the key', () => {
 		expect(open?.open).toBe(0);
 	});
 
-	it('reports a conflict to the replace another replace overtook, and ends none of its Zaps', async () => {
+	it('answers conflict to the second of two replaces naming the same key, and ends none of the first\u2019s Zaps', async () => {
 		await makeZapierKey(db);
+		const keyId = await shownId();
 		let overtaken = false;
 		let madeOnWinner: string | undefined;
 		const racing = createDb(
@@ -198,7 +238,7 @@ describe('replacing the key', () => {
 						? async (statements: D1PreparedStatement[]) => {
 								if (!overtaken) {
 									overtaken = true;
-									const winner = await replaceZapierKey(db, zapier);
+									const winner = await replaceZapierKey(db, zapier, keyId);
 									if (!winner.ok) throw new Error('the overtaking replace was refused');
 									const keyHash = await verifyZapierKey(db, bearer(winner.key));
 									const zap = await subscribe(
@@ -214,7 +254,10 @@ describe('replacing the key', () => {
 			})
 		);
 
-		expect(await replaceZapierKey(racing, zapier)).toEqual({ ok: false, reason: 'conflict' });
+		expect(await replaceZapierKey(racing, zapier, keyId)).toEqual({
+			ok: false,
+			reason: 'conflict'
+		});
 		const open = await env.DB.prepare(
 			'select id from zapier_subscription where ended_at is null'
 		).all<{ id: string }>();
@@ -230,17 +273,22 @@ describe('replacing the key', () => {
 		await unsubscribe(db, left.id);
 		const asked: { url: string; method: string; stillOpen: number }[] = [];
 
-		const replaced = await replaceZapierKey(db, async (input, init) => {
-			const open = await env.DB.prepare(
-				'select count(*) as open from zapier_subscription where ended_at is null'
-			).first<{ open: number }>();
-			asked.push({
-				url: String(input),
-				method: init?.method ?? 'GET',
-				stillOpen: open?.open ?? -1
-			});
-			return new Response(null, { status: 200 });
-		});
+		const keyId = await shownId();
+		const replaced = await replaceZapierKey(
+			db,
+			async (input, init) => {
+				const open = await env.DB.prepare(
+					'select count(*) as open from zapier_subscription where ended_at is null'
+				).first<{ open: number }>();
+				asked.push({
+					url: String(input),
+					method: init?.method ?? 'GET',
+					stillOpen: open?.open ?? -1
+				});
+				return new Response(null, { status: 200 });
+			},
+			keyId
+		);
 
 		expect(replaced).toMatchObject({ ok: true, disconnected: 2, paused: 2, notPaused: 0 });
 		expect(asked.sort((a, b) => a.url.localeCompare(b.url))).toEqual([
@@ -254,12 +302,17 @@ describe('replacing the key', () => {
 		for (const hook of ['refuses', 'faults', 'hangs'])
 			await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}${hook}/` }, keyHash);
 
-		const replaced = await replaceZapierKey(db, async (input, init) => {
-			const url = String(input);
-			if (url.endsWith('refuses/')) return new Response('down', { status: 503 });
-			if (url.endsWith('faults/')) throw new TypeError('network connection lost');
-			return untilAborted(init?.signal);
-		});
+		const keyId = await shownId();
+		const replaced = await replaceZapierKey(
+			db,
+			async (input, init) => {
+				const url = String(input);
+				if (url.endsWith('refuses/')) return new Response('down', { status: 503 });
+				if (url.endsWith('faults/')) throw new TypeError('network connection lost');
+				return untilAborted(init?.signal);
+			},
+			keyId
+		);
 
 		if (!replaced.ok) throw new Error('the replace was refused');
 		expect(replaced).toMatchObject({ disconnected: 3, paused: 0, notPaused: 3 });
@@ -272,7 +325,12 @@ describe('replacing the key', () => {
 			const keyHash = await currentKeyHash();
 			await subscribe(db, { trigger: 'new_gift', hookUrl: HOOK }, keyHash);
 
-			const replaced = await replaceZapierKey(db, async () => new Response(null, { status }));
+			const keyId = await shownId();
+			const replaced = await replaceZapierKey(
+				db,
+				async () => new Response(null, { status }),
+				keyId
+			);
 
 			expect(replaced).toMatchObject({ ok: true, disconnected: 1, paused: 1, notPaused: 0 });
 		}
@@ -285,33 +343,62 @@ describe('replacing the key', () => {
 		let inFlight = 0;
 		let most = 0;
 
-		const replaced = await replaceZapierKey(db, async () => {
-			inFlight += 1;
-			most = Math.max(most, inFlight);
-			await new Promise((settle) => setTimeout(settle, 20));
-			inFlight -= 1;
-			return new Response(null, { status: 200 });
-		});
+		const keyId = await shownId();
+		const replaced = await replaceZapierKey(
+			db,
+			async () => {
+				inFlight += 1;
+				most = Math.max(most, inFlight);
+				await new Promise((settle) => setTimeout(settle, 20));
+				inFlight -= 1;
+				return new Response(null, { status: 200 });
+			},
+			keyId
+		);
 
 		expect(replaced).toMatchObject({ ok: true, paused: 10 });
 		expect(most).toBe(6);
 	});
 
-	it('answers inside the ten seconds the console waits on a press, however many hooks stay silent', async () => {
+	it('answers a replace press within the pause pass, however many hooks stay silent', async () => {
 		const keyHash = await currentKeyHash();
 		for (let hook = 0; hook < 40; hook += 1)
 			await subscribe(db, { trigger: 'new_gift', hookUrl: `${HOOK}${hook}/` }, keyHash);
 		const started = Date.now();
 
-		const replaced = await replaceZapierKey(db, async (_, init) => untilAborted(init?.signal));
+		const keyId = await shownId();
+		const replaced = await replaceZapierKey(
+			db,
+			async (_, init) => untilAborted(init?.signal),
+			keyId
+		);
 
-		// packages/console/internal/cf/client.go's `ReadTimeout`, which the press is sent under.
-		expect(Date.now() - started).toBeLessThan(10_000);
+		// the pass's four seconds (`PAUSE_PASS_MS` in ./subscriptions.ts), and room for the batch.
+		expect(Date.now() - started).toBeLessThan(6_000);
 		expect(replaced).toMatchObject({ ok: true, disconnected: 40, paused: 0, notPaused: 40 });
 	}, 30_000);
 
+	it('answers conflict to a replace naming a key already replaced, and changes nothing', async () => {
+		await makeZapierKey(db);
+		const keyId = await shownId();
+		const first = await replaceZapierKey(db, zapier, keyId);
+		if (!first.ok) throw new Error('the first replace was refused');
+		const keyHash = await verifyZapierKey(db, bearer(first.key));
+		if (keyHash === null) throw new Error('the replacing key did not verify');
+		await subscribe(db, { trigger: 'new_gift', hookUrl: HOOK }, keyHash);
+		const [keysBefore, zapsBefore] = [await storedKeys(), await openZaps()];
+
+		expect(await replaceZapierKey(db, zapier, keyId)).toEqual({ ok: false, reason: 'conflict' });
+		expect(await storedKeys()).toEqual(keysBefore);
+		expect(await openZaps()).toEqual(zapsBefore);
+		expect(await verifyZapierKey(db, bearer(first.key))).toBe(keyHash);
+	});
+
 	it('refuses while there is no key to replace', async () => {
-		expect(await replaceZapierKey(db, zapier)).toEqual({ ok: false, reason: 'no_key' });
+		expect(await replaceZapierKey(db, zapier, '0192f0c4-7d2a-7000-8000-000000000000')).toEqual({
+			ok: false,
+			reason: 'no_key'
+		});
 		expect(await storedKeys()).toEqual([]);
 	});
 });
@@ -323,6 +410,20 @@ function untilAborted(signal: AbortSignal | null | undefined): Promise<Response>
 	return new Promise((_, reject) => {
 		signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
 	});
+}
+
+/** the id of the key a page shows now, which a replace names. */
+async function shownId(): Promise<string> {
+	const shown = await readZapierKey(db);
+	if (shown === null) throw new Error('no key is shown');
+	return shown.id;
+}
+
+async function openZaps() {
+	const { results } = await env.DB.prepare(
+		'select id, hook_url from zapier_subscription where ended_at is null order by id'
+	).all();
+	return results;
 }
 
 /** Zapier taking every pause it is sent. */

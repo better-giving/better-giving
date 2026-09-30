@@ -68,18 +68,22 @@
 	// (https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/).
 	//
 	// every thirty minutes, the crypto gifts no IPN settled are read back
-	// (src/lib/server/donations/pending-crypto-read.ts). every minute, what this deployment owes the
-	// organisation's books is sent (src/lib/server/accounting/deliver.ts) — a minute because a gift
-	// is meant to reach the books while it is still the thing somebody is looking at, and a run on a
-	// deployment owing nothing is one indexed read of `quickbooks_sync` and no call to anybody. what
-	// a row that has already failed waits is the backoff on the row rather than this interval.
+	// (src/lib/server/donations/pending-crypto-read.ts). every minute, in one invocation, what this
+	// deployment owes is sent: the organisation's books (src/lib/server/accounting/deliver.ts), its
+	// Zaps (src/lib/server/zapier/deliver.ts) and its webhook destinations
+	// (src/lib/server/webhooks/deliver.ts) — a minute because a gift is meant to arrive while it is
+	// still the thing somebody is looking at, and a run on a deployment owing nothing is an indexed
+	// read of each outbox and no call to anybody. what a row that has already failed waits is the
+	// backoff on the row rather than this interval. the three share that invocation's connections,
+	// subrequests and D1 queries, split in src/lib/server/outbox/budget.ts.
 	//
 	// **the cadence chosen here is what picks the ceiling a run dies at, and the two candidates are
 	// far apart.** wall clock is capped at fifteen minutes for a cron invocation whatever its
-	// interval, but a run is not killed on wall clock, it is killed on CPU — and the CPU row is the
-	// one selected by the interval: thirty seconds under an hour, fifteen minutes at an hour or
-	// longer (https://developers.cloudflare.com/workers/platform/limits/, "CPU time"). both
-	// expressions above are under an hour, so both runs have thirty seconds of CPU. fifteen minutes
+	// interval, but a run is not killed on wall clock, it is killed on CPU — and on a Paid plan the
+	// CPU row is the one selected by the interval: thirty seconds under an hour, fifteen minutes at
+	// an hour or longer (https://developers.cloudflare.com/workers/platform/limits/, "CPU time").
+	// both expressions above are under an hour, so both runs have thirty seconds of CPU on Paid; on
+	// the Free plan every cron invocation has ten milliseconds, whatever its interval. fifteen minutes
 	// is the figure on the Duration table, which carries no interval condition and is therefore the
 	// easy one to reach for; it is not this schedule's bound.
 	//
@@ -87,10 +91,11 @@
 	// invocation is terminated as `exceededCpu` mid-flight, so nothing the run was part way through
 	// is written and nothing is marked. a run that overspends leaves its rows exactly as it found
 	// them — no backoff, no failure, no notice — and shows up in nothing but the Worker's invocation
-	// statuses. each run is sized against that rather than against the clock: `RUN_DEADLINE_MS` and
-	// `SENDS_PER_RUN` in src/lib/server/accounting/deliver.ts, and `RUN_DEADLINE_MS` in
-	// src/lib/server/donations/pending-crypto-read.ts. so lengthening an interval past an hour is
-	// what lifts the ceiling, and shortening one never touches it.
+	// statuses. each run is sized against that rather than against the clock: `RUN_DEADLINE_MS` in
+	// src/lib/server/accounting/deliver.ts and src/lib/server/donations/pending-crypto-read.ts, and
+	// each minute feed's pace on the plan `CLOUDFLARE_PAID_PLAN` names, from
+	// src/lib/server/outbox/budget.ts. so on Paid, lengthening an interval past an hour is what lifts
+	// the ceiling, and shortening one never touches it.
 	//
 	// `limits.cpu_ms` is not the lever it looks like: Cloudflare documents it against the HTTP
 	// request row, whose thirty seconds is a default to be raised. the cron row holds no default —
@@ -144,10 +149,11 @@
 		}
 	],
 
-	// the three buckets this app charges: the whole public surface, the one endpoint on it that
-	// takes money, and the staff sign-in. CLAUDE.md names rate limiting as one of the things an
-	// endpoint on `/api/v1` owes before it ships; the sign-in is not on that surface and is here
-	// because it compares a single deploy-time secret for anyone who asks.
+	// the four buckets this app charges: the whole public surface, the one endpoint on it that
+	// takes money, the staff sign-in, and each key on the read API. CLAUDE.md names rate limiting
+	// as one of the things an endpoint on `/api/v1` owes before it ships; the sign-in is not on that
+	// surface and is here because it compares a single deploy-time secret for anyone who asks, and
+	// the read API's is here because a key reads donor records as fast as it is answered.
 	//
 	// this deployment answers anonymous writes on three paths, not one: `POST /api/v1/forms/:id/
 	// donations`, the sign-in, and `POST /api/stripe/webhook`. the webhook is the one with no
@@ -159,18 +165,21 @@
 	// is account-wide, so two bindings naming one share a count for a given key — donors reading a
 	// form would spend the sign-in's bucket, and a scanner on the public api would lock the only
 	// admin out. account-wide is also across Workers, so two deployments of this app in one account
-	// share all three of these; the keys are named after what they bound
+	// share all four of these; the keys are named after what they bound
 	// (src/lib/server/api/rate-limit.ts) rather than left to the namespace to keep apart, which is
 	// what stops two surfaces metered through one binding from eating each other's count.
 	//
 	// where each is spent is in the code, not here: the surface in `src/routes/api.v1.ts`, whose
-	// `middleware` meters every route beneath it, the quote in
-	// `src/routes/api.v1.forms.$id.donations.ts`, and the sign-in in `src/routes/login.tsx`'s own
-	// action, which is the one site that spends that bucket. what
+	// `middleware` meters every route beneath it — and, on that same binding under keys of their
+	// own, a failed key check in `src/routes/zapier.ts` and every read-API request, ahead of its key
+	// lookup, in `src/routes/integrations.v1.ts`; the quote in
+	// `src/routes/api.v1.forms.$id.donations.ts`; the sign-in in `src/routes/login.tsx`'s own
+	// action, which is the one site that spends that bucket; and each read-API key, once admitted,
+	// in `src/routes/integrations.v1.ts`'s middleware. what
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
 	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
-	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all three to this file, and
-	// `test` runs ahead of the deploy.
+	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
+	// `test` runs in ci.yml on a push to `main` and every pull request.
 	"ratelimits": [
 		{
 			"name": "API_RATE_LIMITER",
@@ -280,6 +289,35 @@
 				"limit": 10,
 				"period": 60
 			}
+		},
+		{
+			"name": "INTEGRATIONS_KEY_RATE_LIMITER",
+
+			// a namespace of its own, for the reason given above this block.
+			"namespace_id": "7415",
+
+			"simple": {
+				// per API key per minute on `/integrations/v1`, keyed on the admitted key's row
+				// (`integrationsKeyRateLimitKey` in src/lib/server/api/rate-limit.ts) — so two
+				// systems calling from one host hold two budgets, and one busy or leaked key cannot
+				// starve another or read the database flat out.
+				//
+				// two a second, sized against the caller this surface has: a sync job paging
+				// through gifts, where every request is one page. that is well above a job reading
+				// a page at a time and waiting on its own writes, and a leaked key reads no faster
+				// than it however many addresses in one Cloudflare location it is presented from.
+				//
+				// charged behind the per-address bucket above and sized below it, so a key presented
+				// from one address is refused by its own limit first.
+				//
+				// the refusal names this number to the integrator
+				// (`keyRateLimitRefusal` in src/lib/server/integrations/surface.ts), and
+				// src/lib/server/api/rate-limit.config.spec.ts holds the two equal and this one below
+				// the per-address bucket. the same two caveats as the others: per Cloudflare
+				// location, and per account.
+				"limit": 120,
+				"period": 60
+			}
 		}
 	],
 
@@ -338,8 +376,7 @@
 				}
 			],
 
-			// the same four buckets, the same three limits and the same probe, under four namespaces
-			// of their own.
+			// the same four buckets and the same four limits, under four namespaces of their own.
 			//
 			// the numbers are copied so that a rehearsal refuses where the real deployment would.
 			// the namespace ids are not, and that is what this whole repetition is for: a namespace
@@ -382,6 +419,14 @@
 					"namespace_id": "3823",
 					"simple": {
 						"limit": 10,
+						"period": 60
+					}
+				},
+				{
+					"name": "INTEGRATIONS_KEY_RATE_LIMITER",
+					"namespace_id": "3824",
+					"simple": {
+						"limit": 120,
 						"period": 60
 					}
 				}

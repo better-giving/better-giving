@@ -5,15 +5,16 @@ import { holdBar, movesPage, openingLabel, pageDrawn } from '@better-giving/oper
 import { useEffect } from 'react';
 import { Form, Outlet, useLocation, useNavigation } from 'react-router';
 import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
-import { currentDestination, DESTINATION_GROUPS } from '$lib/admin/destinations';
+import { currentDestination, destinationGroupsFor } from '$lib/admin/destinations';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { RouterLink } from '$lib/admin/router-link';
 import { APP_NAME } from '$lib/admin/screen-title';
 import { SetupGate } from '$lib/admin/setup-gate';
+import { STAFF_USER_ID } from '$lib/server/auth';
 import { staffGate } from '$lib/server/auth/gate';
 import { setupOutstanding } from '$lib/server/config/readiness';
 import { readSetupState } from '$lib/server/config/setup-state';
-import { database, platform } from '../context';
+import { database, platform, staff } from '../context';
 import type { Route } from './+types/_app';
 
 // the layout every screen behind the login sits under, and the one place the session gate is
@@ -87,7 +88,14 @@ export async function loader({ context }: Route.LoaderArgs) {
 
 	// an explicit projection, because everything returned here is serialized into the page: a
 	// column a later better-auth or a wider org profile adds is not published by accident.
-	return { shape: 'ready' as const, orgName: state?.profile?.legalName ?? null };
+	//
+	// `deployer` is the predicate the pages in the rail's Integrations group read, read again here
+	// so a member is drawn no cell leading to their not-found ($lib/admin/destinations.ts).
+	return {
+		shape: 'ready' as const,
+		orgName: state?.profile?.legalName ?? null,
+		deployer: context.get(staff).id === STAFF_USER_ID
+	};
 }
 
 export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
@@ -124,7 +132,7 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 				// shared with every screen's tab title, which falls back to the same one
 				// ($lib/admin/screen-title.ts).
 				org={loaderData.orgName ?? APP_NAME}
-				groups={DESTINATION_GROUPS}
+				groups={destinationGroupsFor(loaderData.deployer)}
 				link={RouterLink}
 				current={at}
 				head={

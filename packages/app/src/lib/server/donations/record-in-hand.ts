@@ -14,7 +14,7 @@ import {
 	type NewLineItem,
 	type NewPayment
 } from '../db/schema';
-import { resolveDonor } from './donor';
+import { type ResolvedDonor, resolveDonor } from './donor';
 import { receivedInHandEntry } from './entries';
 
 // a gift an operator enters by hand — cash or a cheque that arrived in an envelope — written whole:
@@ -125,9 +125,9 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 	});
 
 	try {
-		const donor =
+		const donor: ResolvedDonor =
 			gift.donor.kind === 'existing'
-				? { contactId: gift.donor.contactId, created: false, statement: null }
+				? { contactId: gift.donor.contactId, created: false, statements: [] }
 				: await resolveDonor(db, gift.donor.contact, null);
 
 		const donationRow: NewDonation = {
@@ -164,14 +164,14 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 
 		// foreign-key order: the donor, the gift, what names the gift, then the books, then what the
 		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
-		// what the gift owes each listening Zap, keyed to the payment above.
+		// what the gift owes each listening Zap and destination, about the payment above.
 		const rows: Writes = [
 			db.insert(donation).values(donationRow),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
 			...settledGiftWrites(db, { charge: posting, fee: null, contactId: donor.contactId })
 		];
-		await db.batch(donor.statement === null ? rows : [donor.statement, ...rows]);
+		await db.batch([...donor.statements, ...rows]);
 
 		return { ok: true, contactId: donor.contactId, donorWasCreated: donor.created };
 	} catch (error) {

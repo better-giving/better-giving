@@ -1,10 +1,6 @@
 import type { BatchItem } from 'drizzle-orm/batch';
-import {
-	contactConsentUpdateStatement,
-	contactInsertStatement,
-	findContactByEmail,
-	newContactRow
-} from '../contacts/queries';
+import { consentChangeStatements } from '../contacts/changes';
+import { contactInsertStatement, findContactByEmail, newContactRow } from '../contacts/queries';
 import type { ParsedContact } from '../contacts/contact-input';
 import type { Db } from '../db/client';
 
@@ -13,28 +9,31 @@ import type { Db } from '../db/client';
 // it is its own module rather than ./record.ts's private function because the two paths need the
 // same answer at different moments. a single gift writes the donor inside the one `batch()` that
 // writes the donation, its lines and its payment — nothing about that donor is worth keeping if
-// the gift is not — so ./record.ts takes a statement and commits it with the rest. a repeating gift
-// cannot: the commitment is created at the processor in between, and a donor this deployment failed
-// to write has to refuse the gift before anything is committed to rather than after. so that path
-// commits the donor on their own, first, and a gift filed under a contact that is not here is the
-// failure it exists to make impossible.
+// the gift is not — so ./record.ts takes its statements and commits them with the rest. a
+// repeating gift cannot: the commitment is created at the processor in between, and a donor this
+// deployment failed to write has to refuse the gift before anything is committed to rather than
+// after. so that path commits the donor on their own, first, and a gift filed under a contact that
+// is not here is the failure it exists to make impossible.
 //
-// the two functions below are that split: `resolveDonor` decides and hands back a statement,
+// the two functions below are that split: `resolveDonor` decides and hands back statements,
 // `commitDonor` decides and writes. matching a returning donor, and what a consent answer does to
 // the row they already have, is one implementation either way — the same rule applied twice would
-// be two donor files with one form between them.
+// be two donor files with one form between them. a matched donor's answer is the latest a form was
+// given for their address, which nothing verifies, and each change to it is announced to
+// destinations as `donor.updated` (../contacts/changes.ts).
 
 /** the donor a gift is filed under, and the write that has not happened yet. */
 export type ResolvedDonor = {
 	readonly contactId: string;
 	readonly created: boolean;
-	/** the one statement this donor needs, for the caller's own `batch()` — or none. */
-	readonly statement: BatchItem<'sqlite'> | null;
+	/** the statements this donor needs, in order, for the caller's own `batch()` — or none. */
+	readonly statements: readonly [] | readonly [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]];
 };
 
 /**
- * the donor this gift is filed under, and the one statement that writes them: an insert for a
- * contact this deployment has not seen, an update of the consent answer for one it has.
+ * the donor this gift is filed under, and the statements that write them: an insert for a contact
+ * this deployment has not seen; for one it has, an update of the consent answer and the
+ * `donor.updated` rows it owes where the answer changed.
  *
  * ---------------------------------------------------------------------------
  * this is a read followed by a write, and it stays one.
@@ -82,8 +81,8 @@ export type ResolvedDonor = {
  * named by id, and no value read inside the write decides what is written. CLAUDE.md's ban is on
  * gating an invariant on such a read.
  *
- * `null` is where the exception stops, and it is the reason this hands back a statement that may be
- * absent. the donor said nothing, because the integrator never asked (`consentedToContact` in
+ * `null` is where the exception stops, and it is the reason this may hand back no statements at
+ * all. the donor said nothing, because the integrator never asked (`consentedToContact` in
  * packages/form/src/v1.ts) — so there is no recent statement to prefer, and writing the `null` through
  * would un-answer a donor who did answer, on their next gift through a form that stopped asking.
  * a new contact still stores it: `null` is the state that column starts in, and starting there is
@@ -100,10 +99,9 @@ export async function resolveDonor(
 			return {
 				contactId: existing.id,
 				created: false,
-				// `contactConsentUpdateStatement` takes a boolean and nothing else (../contacts/queries.ts),
+				// `consentChangeStatements` takes a boolean and nothing else (../contacts/changes.ts),
 				// which is what makes this the only place the third case can be decided.
-				statement:
-					consented === null ? null : contactConsentUpdateStatement(db, existing.id, consented)
+				statements: consented === null ? [] : consentChangeStatements(db, existing.id, consented)
 			};
 		}
 	}
@@ -111,7 +109,7 @@ export async function resolveDonor(
 	// the pair ../contacts/queries.ts documents: mint the row so its id is readable now, and take
 	// the statement so the insert lands in the caller's one `batch()`.
 	const row = newContactRow(parsed, consented);
-	return { contactId: row.id, created: true, statement: contactInsertStatement(db, row) };
+	return { contactId: row.id, created: true, statements: [contactInsertStatement(db, row)] };
 }
 
 /**
@@ -155,7 +153,8 @@ export async function commitDonor(
 		// `resolveDonor`. there is nothing else in this batch to keep it non-empty, so the write is
 		// skipped rather than made empty: the row this names already exists, which is the whole of
 		// what the caller needs to be true.
-		if (donor.statement !== null) await db.batch([donor.statement]);
+		const [first, ...rest] = donor.statements;
+		if (first !== undefined) await db.batch([first, ...rest]);
 		return { ok: true, value: { contactId: donor.contactId, created: donor.created } };
 	} catch (error) {
 		// logged here because the detail below cannot name a cause, and a deployment that refused a

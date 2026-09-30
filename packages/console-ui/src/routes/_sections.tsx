@@ -1,26 +1,27 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { BareShell } from '@better-giving/operator/components/shell/BareShell';
-import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
+import { Outlet, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
 import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
-import zapierLogo from '../assets/integrations/zapier.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
+import { CloudflareAccountPanel, cloudflareAccount } from '../lib/cloudflare-account';
 import { railGroups } from '../lib/console-pages';
-import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
+import { drawsReading, gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
-import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
+import { ACCOUNT_PARAM, CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
+import { heldValues } from '../lib/held-values';
+import { keysTrouble } from '../lib/processor-screen';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
 import { TITLE } from './_index';
@@ -42,7 +43,9 @@ import type { Route } from './+types/_sections';
 //
 // **the account is the rail's foot, with the press that ends this console beside it.** it is the one
 // thing true on every page, and the record naming the account is written at the terminal and left
-// exactly as it is. the same press stands in the narrow band, where the foot is not drawn.
+// exactly as it is. its name opens the account panel, where the paid-plan answer is given, and is
+// marked only where that answer slows a feed in use (../lib/cloudflare-account.tsx). the account and
+// the close both stand in the narrow band too, where the foot is not drawn.
 //
 // **nothing on these pages deploys.** standing a deployment up and carrying newer code onto one are
 // `better-giving start` in a terminal, which is what opens the one-way door the remote migration is;
@@ -50,7 +53,8 @@ import type { Route } from './+types/_sections';
 // stands around it.
 //
 // **no press is answered here.** this route is pathless, so no address posts to it: each page answers
-// its own presses, and the close over every page is answered by `/` (../lib/close-confirm.tsx).
+// its own presses, and the presses over every page — the close and the account panel's — are
+// answered by `/` (../lib/close-confirm.tsx, ../lib/cloudflare-plan-block.tsx).
 //
 // **nothing on a page reaches cloudflare and nothing could**: cloudflare's API sends no cross-origin
 // headers, and the credential it is reached with is held by the binary on this machine. what a press
@@ -74,6 +78,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 		notReady(read);
 	}
 	await bar.finish();
+	drawsReading(request, read);
 	return { ...read, address: read.reading.face.address };
 }
 
@@ -103,7 +108,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 			chariot: chariotLogo,
 			nowpayments: nowpaymentsLogo
 		},
-		{ quickbooks: quickbooksLogo, zapier: zapierLogo }
+		{ quickbooks: quickbooksLogo }
 	);
 	const here = groups
 		.flatMap((group) => group.destinations)
@@ -119,7 +124,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	   the mark is the plug being pulled, and its label is the whole of its name. */
 	const closeControl = (
 		<Button
-			as={Link}
+			as={DialogLink}
 			to={`${pathname}?${CLOSE_PARAM}`}
 			preventScrollReset
 			variant="quiet"
@@ -130,18 +135,21 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 		/>
 	);
 
+	// a ready deployment's values always read: an unread one stands behind the gate instead.
+	const held = reading.values.vars.kind === 'read' ? heldValues(reading.values.vars.vars) : null;
+	/* the account at both widths: the row in the rail's foot, and at phone width, where the foot is
+	   not drawn, the same panel opened from the band beside the close, marked alike. */
+	const account = cloudflareAccount({
+		name: loaderData.account,
+		values: held,
+		feedsInUse: reading.feedsInUse,
+		openHref: `${pathname}?${ACCOUNT_PARAM}`,
+		closeControl
+	});
+
 	const foot = (
 		<>
-			<div className="adm-footaccount">
-				<span className="adm-rail__lead">
-					<Brand name="cloudflare" label="Cloudflare" />
-				</span>
-				{/* the title is what cloudflare resolves that name by: the name is not unique and the id is. */}
-				<span className="adm-footaccount__name" title={loaderData.accountId}>
-					{loaderData.account}
-				</span>
-				<span className="adm-footaccount__out">{closeControl}</span>
-			</div>
+			{account.row}
 			<div className="adm-footline">
 				<span className="adm-rail__lead">
 					{/* github's trademark, used to point at that repository and for nothing else. the
@@ -177,7 +185,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				groups={groups}
 				link={RouterLink}
 				current={here?.label}
-				wayOut={closeControl}
+				wayOut={
+					<>
+						{account.band}
+						{closeControl}
+					</>
+				}
 				foot={foot}
 			>
 				{here === undefined ? null : (
@@ -202,6 +215,19 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 					<Outlet />
 				</Stack>
 				{params.has(CLOSE_PARAM) ? <CloseConfirm back={pathname} /> : null}
+				{held !== null && params.has(ACCOUNT_PARAM) ? (
+					<CloudflareAccountPanel
+						name={loaderData.account}
+						accountId={loaderData.accountId}
+						values={held}
+						feedsInUse={reading.feedsInUse}
+						trouble={keysTrouble({
+							workerName: loaderData.workerName,
+							accountName: loaderData.account
+						})}
+						back={pathname}
+					/>
+				) : null}
 			</AppShell>
 		</RailLabelsProvider>
 	);

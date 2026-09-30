@@ -31,7 +31,7 @@ import { readFileSync } from 'node:fs';
 // rawLengthViolations, and every caller hands screens — no sweep here reads a sheet for one. what
 // the sheets carry is lengths that are not steps of a scale at all: ./base.css's hairline rule and
 // the underline offsets that belong to the face, and the drawing geometry in ./adm.css — a caret's
-// triangle, a checkbox's own square, a track's bound — where a token per shape would be a scale
+// triangle, a coin's circle, a track's bound — where a token per shape would be a scale
 // nobody counts along. a length rule over them would be mostly allowlist, and an allowlist is the
 // thing that rots. a raw length in a sheet carries a `raw-length-ok:` note and is caught by review.
 //

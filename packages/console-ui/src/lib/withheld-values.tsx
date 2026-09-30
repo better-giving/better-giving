@@ -1,7 +1,7 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
-import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSubmit } from 'react-router';
 import type { DeployVarName, ValuesRefusal, VarsWritten } from '../api/types';
 import { refusalIn } from './secret-trouble';
@@ -40,9 +40,17 @@ import { refusalIn } from './secret-trouble';
  *
  * it carries the intent and nothing else — which names are freed is read on this machine from what
  * cloudflare answered, which `freeWithheldVars` in ../api/client.ts argues; each page that draws the
- * press answers it in its own `clientAction` (../routes/_sections.password.tsx and the others).
+ * press answers it in its own `clientAction` (../routes/_sections.password.tsx and the others), and
+ * `/` answers it for the account panel (../routes/_index.tsx).
  */
 export const FREE_INTENT = 'free';
+
+/**
+ * a press posted through a fetcher to another route's action, which is how a block standing over
+ * every page posts: the page under it stays where it is, and the answer is read under `fetcherKey`.
+ * absent, a press posts to its own page's route as a navigation.
+ */
+export type FetcherPost = { action: string; fetcherKey: string };
 
 /**
  * the sentence over the boxes that cannot be typed, and the press that frees them.
@@ -57,7 +65,8 @@ export function WithheldValues({
 	written,
 	trouble,
 	busy,
-	freeing
+	freeing,
+	post
 }: {
 	/** the names this page's own press writes that are in this state, in the enumeration's order. */
 	names: readonly DeployVarName[];
@@ -85,6 +94,8 @@ export function WithheldValues({
 	busy: boolean;
 	/** this press is the one in flight. */
 	freeing: boolean;
+	/** where the press posts, where that is not its own page ({@link FetcherPost}). */
+	post?: FetcherPost | undefined;
 }): ReactNode {
 	/* the press posts on its own rather than through a `<Form>`: this block stands among the boxes
 	   it is about, and those are inside a form of their own — a `<form>` inside a `<form>` is not a
@@ -95,6 +106,27 @@ export function WithheldValues({
 
 	/** whether the confirm is on the screen. */
 	const [asking, setAsking] = useState(false);
+
+	/* where the reader lands once a free that landed has taken this block, and the Remove that put
+	   the card up, off the page: the first control of the form the press stood in, which is the state
+	   the free leaves — the boxes it stood among, writable again. the form is kept at the press,
+	   because by the time the card comes down the Remove is gone; the control is found when the card
+	   comes down, because that is when the one to land on is standing (`fallbackFocus` in
+	   packages/operator/src/behaviour/Dialog.tsx). */
+	const pressedIn = useRef<HTMLFormElement | null>(null);
+	const landing = useMemo<RefObject<HTMLElement | null>>(
+		() => ({
+			get current() {
+				const form = pressedIn.current;
+				return form?.isConnected
+					? form.querySelector<HTMLElement>(
+							'input:not([type="hidden"]):enabled, select:enabled, textarea:enabled, button:enabled'
+						)
+					: null;
+			}
+		}),
+		[]
+	);
 
 	/* the question is left the moment its own press is answered, whatever the answer says: a free
 	   that landed takes this whole block off the screen and a refused one draws its sentence under
@@ -124,7 +156,10 @@ export function WithheldValues({
 					type="button"
 					variant="danger"
 					disabled={busy || freeing}
-					onClick={() => setAsking(true)}
+					onClick={(event) => {
+						pressedIn.current = event.currentTarget.form;
+						setAsking(true);
+					}}
 				>
 					Remove {said}
 				</Button>
@@ -134,13 +169,21 @@ export function WithheldValues({
 				<Modal
 					title={one ? `Remove ${all[0]}?` : 'Remove these values?'}
 					onDismiss={() => setAsking(false)}
+					fallbackFocus={landing}
 					danger="Remove"
 					dangerProps={{
 						type: 'button',
 						disabled: busy || freeing || undefined,
 						'aria-busy': freeing || undefined,
 						onClick: () =>
-							void submit({ intent: FREE_INTENT }, { method: 'post', preventScrollReset: true })
+							void submit(
+								{ intent: FREE_INTENT },
+								{
+									method: 'post',
+									preventScrollReset: true,
+									...(post && { ...post, navigate: false })
+								}
+							)
 					}}
 					cancel="Go back"
 					cancelProps={{ type: 'button', onClick: () => setAsking(false) }}

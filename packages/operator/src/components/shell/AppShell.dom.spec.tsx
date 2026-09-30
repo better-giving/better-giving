@@ -1,6 +1,6 @@
-import { act } from 'react';
+import { type ComponentProps, act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '../render.testing';
+import { mount, render } from '../render.testing';
 import { AppShell, PanelRoute } from './AppShell.jsx';
 import type { DestinationLinkProps } from './DestinationCell.jsx';
 
@@ -27,16 +27,26 @@ const GROUPS = [
 
 /** the rail cell reading `label`, by the word it draws at the wide width. */
 function cell(root: HTMLElement, label: string): Element {
-	const found = [...root.querySelectorAll('.adm-rail__cells > a')].find(
+	const found = [...root.querySelectorAll('.adm-rail__cells a')].find(
 		(a) => a.querySelector('.adm-dest__full')?.textContent === label
 	);
 	if (found === undefined) throw new Error(`the rail drew no cell reading ${label}`);
 	return found;
 }
 
+/**
+ * what a run of cells lays out, in order: a headed group's element is `display: contents` in
+ * ../../styles/adm.css, so it is its children that stand in the run.
+ */
+function laidOut(run: Element | null): Element[] {
+	return [...(run?.children ?? [])].flatMap((node) =>
+		node.matches('.adm-rail__group') ? [...node.children] : [node]
+	);
+}
+
 /** the rail's children in order, each as its first class and, for a cell, its full word. */
 function railRun(root: HTMLElement): string[] {
-	return [...(root.querySelector('.adm-rail__cells')?.children ?? [])].map((node) => {
+	return laidOut(root.querySelector('.adm-rail__cells')).map((node) => {
 		if (node.matches('a')) {
 			const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
 			return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
@@ -101,8 +111,8 @@ describe('a rail mounted into a document', () => {
 		// them or none, and a cell marked here would announce itself as the page the reader is on.
 		const root = render(AppShell, { groups: GROUPS, current: undefined });
 
-		expect(root.querySelectorAll('.adm-rail__cells > a[aria-current]')).toHaveLength(0);
-		expect(root.querySelectorAll('.adm-rail__cells > a.is-current')).toHaveLength(0);
+		expect(root.querySelectorAll('.adm-rail__cells a[aria-current]')).toHaveLength(0);
+		expect(root.querySelectorAll('.adm-rail__cells a.is-current')).toHaveLength(0);
 	});
 
 	it('claims nothing on the destinations the reader is not in', () => {
@@ -172,7 +182,28 @@ describe('the groups a rail is divided into', () => {
 
 		expect(heading?.closest('a')).toBeNull();
 		expect(heading?.querySelector('a')).toBeNull();
-		expect(root.querySelectorAll('.adm-rail__cells > a')).toHaveLength(2);
+		expect(root.querySelectorAll('.adm-rail__cells a')).toHaveLength(2);
+	});
+
+	it('names a headed group by its heading, around its own cells and no others', () => {
+		const root = render(AppShell, {
+			groups: [
+				{ destinations: [{ label: 'Members' }] },
+				{ heading: 'Integrations', destinations: [{ label: 'API' }, { label: 'Books' }] },
+				{ destinations: [{ label: 'Sites' }] }
+			]
+		});
+		const groups = [...root.querySelectorAll('.adm-rail__cells [role="group"]')];
+		const named = groups[0]?.getAttribute('aria-labelledby');
+
+		// one group: the unheaded runs have no name to be a group by.
+		expect(groups).toHaveLength(1);
+		expect(named ? document.getElementById(named)?.textContent : null).toBe('Integrations');
+		expect(
+			[...(groups[0]?.querySelectorAll('a') ?? [])].map(
+				(a) => a.querySelector('.adm-dest__full')?.textContent
+			)
+		).toEqual(['API', 'Books']);
 	});
 
 	it('draws a glyph mark as the glyph and a picture mark as an unnamed image', () => {
@@ -334,6 +365,31 @@ describe('the panel a shell draws the page in', () => {
 	});
 });
 
+describe('the way past the rail a shell draws', () => {
+	it('is the first stop in the shell and points at the page', () => {
+		// what a keyboard reader meets first, before the identity and every destination: anything
+		// focusable written ahead of it is a stop they pay on every page before they can skip.
+		const root = render(AppShell, { groups: GROUPS, children: <p>The page</p> });
+		const first = root.querySelector('a[href], button, input, [tabindex]:not([tabindex="-1"])');
+		const main = root.querySelector('main');
+
+		expect(first?.textContent).toBe('Skip to content');
+		expect(main?.id).not.toBe('');
+		expect(first?.getAttribute('href')).toBe(`#${main?.id}`);
+	});
+
+	it('puts focus on the page when pressed, and leaves the address as it was', () => {
+		const root = render(AppShell, { groups: GROUPS, children: <p>The page</p> });
+		const skip = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Skip to content');
+		const before = window.location.href;
+
+		act(() => skip?.click());
+
+		expect(document.activeElement).toBe(root.querySelector('main'));
+		expect(window.location.href).toBe(before);
+	});
+});
+
 describe('the collapse a shell keeps for itself', () => {
 	/** the shell's own element and its toggle. */
 	function parts(root: HTMLElement) {
@@ -403,7 +459,313 @@ describe('the link a rail draws its cells as', () => {
 		// that renders identically.
 		const root = render(AppShell, { groups: GROUPS, link: Handed });
 
-		expect(root.querySelectorAll('.adm-rail__cells > a[data-handed]')).toHaveLength(2);
+		expect(root.querySelectorAll('.adm-rail__cells a[data-handed]')).toHaveLength(2);
+	});
+});
+
+describe('the bar at a phone width, and the sheet its More tab opens', () => {
+	// the dashboard's rail with an integrations group added, so the sheet is read with a headed
+	// group in it. four entries carry `bar`, and everything else is the sheet's.
+	const BARRED = [
+		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', href: '#dashboard', bar: true }] },
+		{
+			destinations: [
+				{ label: 'Donation forms', short: 'Forms', href: '#forms', bar: true },
+				{ label: 'Programs', short: 'Programs', href: '#programs' },
+				{ label: 'Donors', short: 'Donors', href: '#donors', bar: true },
+				{ label: 'Gifts', short: 'Gifts', href: '#gifts', bar: true },
+				{ label: 'Recurring gifts', short: 'Recurring', href: '#recurring' }
+			]
+		},
+		{ destinations: [{ label: 'Members', short: 'Members', href: '#members' }] },
+		{
+			heading: 'Integrations',
+			destinations: [
+				{ label: 'Zapier', short: 'Zapier', href: '#zapier' },
+				{ label: 'API', short: 'API', href: '#api' },
+				{ label: 'Webhooks', short: 'Webhooks', href: '#webhooks' }
+			]
+		},
+		{ destinations: [{ label: 'Books', short: 'Books', href: '#books' }] }
+	];
+
+	function more(root: HTMLElement): HTMLButtonElement {
+		const found = root.querySelector<HTMLButtonElement>('.adm-rail__cells > button.adm-rail__more');
+		if (found === null) throw new Error('the bar drew no More tab');
+		return found;
+	}
+
+	/**
+	 * the open sheet, read off the document: it is the dialog the More tab controls. a closed one is
+	 * `data-state="closed"` for the moment before it is taken off the page, so the state is read
+	 * rather than the node's presence.
+	 */
+	function sheet(root: HTMLElement): HTMLElement | null {
+		const id = more(root).getAttribute('aria-controls');
+		const found = id === null ? null : document.getElementById(id);
+		return found?.getAttribute('data-state') === 'open' ? found : null;
+	}
+
+	/** the sheet's run of entries, spelled as `railRun` spells the rail's. */
+	function sheetRun(dialog: HTMLElement): string[] {
+		return laidOut(dialog.querySelector('.adm-sheet__cells')).map((node) => {
+			if (node.matches('a')) {
+				const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
+				return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
+			}
+			if (node.matches('hr')) return node.className;
+			return `${node.className}: ${node.textContent}`;
+		});
+	}
+
+	async function open(root: HTMLElement): Promise<HTMLElement> {
+		await act(async () => more(root).click());
+		const dialog = sheet(root);
+		if (dialog === null) throw new Error('More opened no sheet');
+		return dialog;
+	}
+
+	/** Escape, pressed until the machine's deferred listener has taken it. */
+	async function pressEscape(root: HTMLElement) {
+		await vi.waitFor(async () => {
+			await act(async () => {
+				(document.activeElement ?? document.body).dispatchEvent(
+					new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+				);
+			});
+			if (sheet(root) !== null) throw new Error('the sheet is still open');
+		});
+	}
+
+	it('stands the bar entries as tabs, leaves the rest to the sheet, and ends on More', () => {
+		const root = render(AppShell, { groups: BARRED });
+		const onBar = [...root.querySelectorAll('.adm-rail__cells a:not(.adm-dest--offbar)')];
+
+		expect(onBar.map((a) => a.querySelector('.adm-dest__short')?.textContent)).toEqual([
+			'Dashboard',
+			'Forms',
+			'Donors',
+			'Gifts'
+		]);
+		// the column at the wide width still draws every destination; the sheet's are the ones the
+		// bar hides.
+		expect(root.querySelectorAll('.adm-rail__cells a.adm-dest--offbar')).toHaveLength(7);
+		const tab = more(root);
+		expect(tab.textContent).toContain('More');
+		expect(root.querySelector('.adm-rail__cells')?.lastElementChild).toBe(tab);
+		expect(tab.getAttribute('aria-haspopup')).toBe('dialog');
+		expect(tab.getAttribute('aria-expanded')).toBe('false');
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('draws no More and hides nothing where no destination is on the bar', () => {
+		// the console's rail and every specimen that states no `bar`: one tab per destination.
+		const root = render(AppShell, { groups: GROUPS });
+
+		expect(root.querySelector('.adm-rail__more')).toBeNull();
+		expect(root.querySelectorAll('.adm-dest--offbar')).toHaveLength(0);
+	});
+
+	it('names the sheet’s headed group by its own heading, apart from the rail’s', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+		const group = dialog.querySelector('[role="group"]');
+		const named = group?.getAttribute('aria-labelledby');
+		const railGroup = root.querySelector('.adm-rail__cells [role="group"]');
+
+		expect(named ? document.getElementById(named)?.textContent : null).toBe('Integrations');
+		// the rail's column draws the same group, and each names its own heading rather than both
+		// pointing at whichever of the two ids came first.
+		expect(named).not.toBe(railGroup?.getAttribute('aria-labelledby'));
+		expect(group?.contains(named ? document.getElementById(named) : null)).toBe(true);
+	});
+
+	it('opens a sheet holding the rest, each a link, with the rail rules and headings', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+
+		expect(dialog.getAttribute('role')).toBe('dialog');
+		expect(dialog.getAttribute('aria-label')).toBe('More');
+		expect(more(root).getAttribute('aria-expanded')).toBe('true');
+		expect(sheetRun(dialog)).toEqual([
+			'Programs',
+			'Recurring gifts',
+			'adm-rail__rule',
+			'Members',
+			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__heading: Integrations',
+			'Zapier',
+			'API',
+			'Webhooks (end)',
+			'Books'
+		]);
+		expect(
+			[...dialog.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])
+		).toEqual([
+			['ProgramsPrograms', '#programs'],
+			['RecurringRecurring gifts', '#recurring'],
+			['MembersMembers', '#members'],
+			['ZapierZapier', '#zapier'],
+			['APIAPI', '#api'],
+			['WebhooksWebhooks', '#webhooks'],
+			['BooksBooks', '#books']
+		]);
+	});
+
+	it('moves focus into the sheet on open, and back to More on Escape', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+
+		await vi.waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+		await pressEscape(root);
+
+		await vi.waitFor(() => expect(document.activeElement).toBe(more(root)));
+		expect(more(root).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('ends on a Close a screen reader reaches, which closes it and hands focus back to More', async () => {
+		// the one way out that needs neither Escape nor a destination: a phone's screen reader has no
+		// Escape to send, and the machine hides everything outside the sheet from it.
+		const root = render(AppShell, { groups: BARRED });
+		const dialog = await open(root);
+		const close = dialog.querySelector('button:last-child');
+
+		expect(close?.textContent).toBe('Close');
+		expect(close?.closest('[aria-hidden="true"], [hidden]')).toBeNull();
+		expect(dialog.lastElementChild).toBe(close);
+
+		await act(async () => (close as HTMLButtonElement).click());
+
+		expect(sheet(root)).toBeNull();
+		await vi.waitFor(() => expect(document.activeElement).toBe(more(root)));
+	});
+
+	it('closes on a destination chosen inside it, and More then reads current', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, { groups: BARRED });
+		const dialog = await open(mounted.root);
+		const programs = [...dialog.querySelectorAll('a')].find((a) => a.href.endsWith('#programs'));
+
+		await act(async () => programs?.click());
+		// the surface resolves the new address and hands the shell where the reader now is.
+		mounted.again({ groups: BARRED, current: { label: 'Programs', kind: 'page' } });
+
+		expect(sheet(mounted.root)).toBeNull();
+		expect(more(mounted.root).getAttribute('aria-current')).toBe('true');
+	});
+
+	it('closes when the history steps under it, Back included', async () => {
+		const root = render(AppShell, { groups: BARRED, current: 'API' });
+		await open(root);
+
+		// what the browser sends on Back or Forward; the router under the shell answers the same event.
+		await act(async () => window.dispatchEvent(new PopStateEvent('popstate')));
+
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('closes when the surface hands it a different destination than the one it opened under', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, {
+			groups: BARRED,
+			current: 'API'
+		});
+		await open(mounted.root);
+
+		// a move the page underneath made — a save that redirected, say — with no press in the sheet.
+		mounted.again({ groups: BARRED, current: 'Webhooks' });
+		// the machine takes a controlled close on its next turn rather than inside the render.
+		await act(async () => {});
+
+		expect(sheet(mounted.root)).toBeNull();
+	});
+
+	it('stays open while the surface hands it the destination it opened under', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, {
+			groups: BARRED,
+			current: 'API'
+		});
+		await open(mounted.root);
+
+		mounted.again({ groups: BARRED, current: 'API' });
+		// the same turn the case above waits for, so a close that was coming has come.
+		await act(async () => {});
+
+		expect(sheet(mounted.root)).not.toBeNull();
+	});
+
+	it('keeps the bar pressable over the open sheet, and a tab pressed there closes it', async () => {
+		const root = render(AppShell, { groups: BARRED });
+		await open(root);
+		const bar = root.querySelector<HTMLElement>('nav.adm-rail');
+		const gifts = cell(root, 'Gifts') as HTMLAnchorElement;
+
+		// the machine takes pointer events off everything outside a modal sheet, and gives them back
+		// to what it is told persists.
+		await vi.waitFor(() => expect(bar?.style.pointerEvents).toBe('auto'));
+		const pressed = new MouseEvent('click', { bubbles: true, cancelable: true });
+		await act(async () => gifts.dispatchEvent(pressed));
+
+		expect(pressed.defaultPrevented).toBe(false);
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('leaves a headed group with no tab off the bar, and one holding a tab on it', () => {
+		const root = render(AppShell, {
+			groups: [
+				...BARRED,
+				{ heading: 'Reports', destinations: [{ label: 'Totals', href: '#totals', bar: true }] }
+			]
+		});
+		const offBar = (heading: string) => {
+			const group = [...root.querySelectorAll('.adm-rail__cells .adm-rail__group')].find(
+				(g) => g.querySelector('.adm-rail__heading')?.textContent === heading
+			);
+			return group?.classList.contains('adm-rail__group--offbar');
+		};
+
+		expect(offBar('Integrations')).toBe(true);
+		expect(offBar('Reports')).toBe(false);
+	});
+
+	it('draws no group off the bar in a rail with no bar at all', () => {
+		const root = render(AppShell, {
+			groups: [{ heading: 'Integrations', destinations: [{ label: 'API', href: '#api' }] }]
+		});
+
+		expect(root.querySelectorAll('.adm-rail__group--offbar')).toHaveLength(0);
+	});
+
+	it('reads More as current while the reader is under a sheet destination, and not otherwise', () => {
+		const inSheet = render(AppShell, {
+			groups: BARRED,
+			current: { label: 'Webhooks', kind: 'section' as const }
+		});
+		const onBar = render(AppShell, { groups: BARRED, current: 'Donors' });
+
+		expect(more(inSheet).getAttribute('aria-current')).toBe('true');
+		expect(more(onBar).hasAttribute('aria-current')).toBe(false);
+	});
+
+	it('marks the current destination inside the open sheet with its own kind', async () => {
+		const root = render(AppShell, {
+			groups: BARRED,
+			current: { label: 'API', kind: 'page' as const }
+		});
+		const dialog = await open(root);
+		const claims = [...dialog.querySelectorAll('a')].map((a) => a.getAttribute('aria-current'));
+
+		expect(claims).toEqual([null, null, null, null, 'page', null, null]);
+	});
+
+	it('draws the sheet cells as the handed link too', async () => {
+		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
+			<a {...rest} data-handed="yes">
+				{children}
+			</a>
+		);
+		const root = render(AppShell, { groups: BARRED, link: Handed });
+		const dialog = await open(root);
+
+		expect(dialog.querySelectorAll('a[data-handed]')).toHaveLength(7);
 	});
 });
 

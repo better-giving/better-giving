@@ -139,6 +139,14 @@ type Reading struct {
 	//
 	// false on every face but the ready one, and false where the values read did not land.
 	HoldsStripeKey bool `json:"holdsStripeKey"`
+	// FeedsInUse is which outbound feeds the deployment says it has in use, restated as ./report.go
+	// reads it: exactly three booleans, any other member dropped, and nil where one is not a boolean.
+	// packages/console-ui's account row weighs cloudflare's free plan against it, and nothing here
+	// does.
+	//
+	// nil on every face but the ready one, and nil where the deployment did not state it — which is
+	// unknown and never no feed in use.
+	FeedsInUse *FeedsInUse `json:"feedsInUse"`
 }
 
 // Inputs is everything one reading is made from.
@@ -282,5 +290,6 @@ func assemble(databases DatabaseList, address Address, values Values, report Rep
 	read.Sites = report.Sites
 	read.DonatePage = origin
 	read.Org = report.Org
+	read.FeedsInUse = report.FeedsInUse
 	return read
 }

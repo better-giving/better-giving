@@ -1,6 +1,12 @@
-import type { ShouldRevalidateFunctionArgs } from 'react-router';
+import type {
+	NavigateFunction,
+	NavigateOptions,
+	ShouldRevalidateFunctionArgs,
+	To
+} from 'react-router';
+import { createMemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import { consoleRereads, opensOrDropsDialog } from './dialog-params';
+import { consoleRereads, leaveDialog, OPENED_HERE, opensOrDropsDialog } from './dialog-params';
 
 /** a link press between two addresses on this one page, which is every navigation but a submission. */
 const pressed = (from: string, to: string): ShouldRevalidateFunctionArgs => ({
@@ -18,6 +24,11 @@ describe('a navigation that does nothing but open or drop a dialog', () => {
 
 	it('reads the close confirm being left', () => {
 		expect(opensOrDropsDialog(pressed('/?close', '/'))).toBe(true);
+	});
+
+	it('reads the account panel opening over a page, and being left', () => {
+		expect(opensOrDropsDialog(pressed('/sites', '/sites?account'))).toBe(true);
+		expect(opensOrDropsDialog(pressed('/sites?account', '/sites'))).toBe(true);
 	});
 });
 
@@ -101,5 +112,47 @@ describe('whether a console screen reads again', () => {
 		expect(consoleRereads({ ...pressed('/sites', '/smtp'), defaultShouldRevalidate: false })).toBe(
 			false
 		);
+	});
+});
+
+describe('the way out of a dialog', () => {
+	/** the history an operator is holding, standing on its last entry. */
+	const holding = (entries: string[]) =>
+		createMemoryRouter([{ path: '*', Component: () => null }], {
+			initialEntries: entries,
+			initialIndex: entries.length - 1
+		});
+
+	/** what the dialog's way out does, over the page at `/p`. */
+	const leave = (router: ReturnType<typeof holding>) =>
+		leaveDialog(
+			((to: To | number, options?: NavigateOptions) =>
+				typeof to === 'number'
+					? router.navigate(to)
+					: router.navigate(to, options)) as NavigateFunction,
+			router.state.location,
+			'/p'
+		);
+
+	const at = (router: ReturnType<typeof holding>) =>
+		`${router.state.location.pathname}${router.state.location.search}`;
+
+	it('steps back over the entry its opener pushed, so Back after it leaves the page', async () => {
+		const router = holding(['/a', '/p']);
+		await router.navigate('/p?account', { state: OPENED_HERE });
+
+		await leave(router);
+		expect(at(router)).toBe('/p');
+		await router.navigate(-1);
+		expect(at(router)).toBe('/a');
+	});
+
+	it('takes the place of an address that arrived carrying the dialog, so Back after it leaves too', async () => {
+		const router = holding(['/a', '/p?account']);
+
+		await leave(router);
+		expect(at(router)).toBe('/p');
+		await router.navigate(-1);
+		expect(at(router)).toBe('/a');
 	});
 });

@@ -1,7 +1,6 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
-import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Section } from '@better-giving/operator/components/shell/Layout';
@@ -9,9 +8,8 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
-import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Await, Form, useRevalidator } from 'react-router';
 import { paypalRun } from '../api/client';
 import type {
@@ -30,14 +28,9 @@ import type {
 } from '../api/types';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldAmong } from './held-values';
+import { AnswerSwitchBlock } from './answer-switch-block';
 import { useKeptPress } from './kept-press';
-import {
-	CHARITY_APPROVED,
-	CHARITY_FIELD,
-	CHARITY_INTENT,
-	CHARITY_RATE,
-	charityApproved
-} from './paypal-charity';
+import { CHARITY_RATE, CHARITY_SWITCH, charityApproved } from './paypal-charity';
 import type { PaypalBoxName, PaypalBoxes } from './paypal-setup';
 import {
 	LINES,
@@ -64,7 +57,6 @@ import { keepRereading, ledgerLines } from './awaiting-note';
 import { useKeyRereads } from './key-rereads';
 import { useReseeded } from './reseed';
 import { Said } from './said';
-import { refusalIn } from './secret-trouble';
 import { PAYPAL_GROUP, SECRET_GROUPS, isMasked } from './secret-groups';
 import { pollOutlived, runKind, standingRun } from './run-poll';
 import type { PressAnswer, PressPhase, PressRefusal } from './stripe-press';
@@ -1071,20 +1063,15 @@ function PaypalKeysForm({
 
 /**
  * whether PayPal has approved this organisation for its charity rate, as a switch with two
- * positions.
+ * positions (./answer-switch-block.tsx over ./paypal-charity.ts).
  *
  * **there is no third position and no rate is typed.** what the answer picks between is two tables
  * of published rates that stay constants in the tree (`paypalFeeRules` in
- * packages/app/src/lib/server/payments/fees.ts), and off is the value taken away rather than a
- * stored no — ./paypal-charity.ts argues both.
+ * packages/app/src/lib/server/payments/fees.ts).
  *
  * **it is a fact about the account and never a preference**, which is what the label says: PayPal
  * reports it on no call, so the operator is the only party that can answer, and the deployment
  * quotes a donor covering fees off whichever table they said.
- *
- * its own press and its own form, for the reason ./paypal-charity.ts states — and one `<form>`
- * inside another is not a tree the parser keeps, so it stands beside the credentials rather than
- * inside them.
  */
 function CharityRate({
 	values,
@@ -1102,80 +1089,26 @@ function CharityRate({
 	busy: boolean;
 	pending: string | null;
 }): ReactNode {
-	const box = `${useId()}-charity-rate`;
-	const approved = charityApproved(values.seeds[CHARITY_RATE] ?? '');
-	const sending = pending === CHARITY_INTENT;
-	const failure = written === null ? null : refusalIn(written);
-
-	const { form, state, onInput, onSubmit } = useSavedFormState({
-		report: written,
-		landed: written?.kind === 'set',
-		// the switch is read off the element at every press of it, which is the reading a block with
-		// no form layer takes (`SavedFormInputs.changed` in
-		// packages/operator/src/saved-form-state.react.ts).
-		changed: (element) => {
-			const control = element.elements.namedItem(CHARITY_FIELD);
-			return (control instanceof HTMLInputElement ? control.checked : false) !== approved;
-		},
-		busy,
-		pending: sending
-	});
-
 	return (
 		<div className="adm-named">
 			<h3>Charity rate</h3>
-			<Form
-				className="adm-stack"
-				method="post"
-				preventScrollReset
-				ref={form}
-				onInput={onInput}
-				onSubmit={onSubmit}
-			>
-				<CheckboxGroup
-					id={box}
-					items={[
-						{
-							id: box,
-							name: CHARITY_FIELD,
-							value: CHARITY_APPROVED,
-							label: 'PayPal has approved this organisation',
-							// the consequence of getting it wrong, which is the one thing the label cannot
-							// carry and the one direction that costs the organisation money: the two tables
-							// are asymmetric, and `paypalFeeRules` in
-							// packages/app/src/lib/server/payments/fees.ts is where that is argued. what the
-							// switch is for is the heading over it, so nothing here says it again.
-							note: 'Ticked without PayPal’s approval, a donor covering the fee is quoted less than PayPal takes and this organisation makes up the difference.',
-							defaultChecked: approved,
-							// closed while this press is in flight and while another press on the page
-							// writes: the position is read once, at the press.
-							disabled: busy || sending
-						}
-					]}
-				/>
-
-				{/* the name in this state has no box to be typed out of, and this press is the only one
-				    that writes it — so the block that frees it stands here or nowhere. */}
-				<WithheldValues
-					names={withheldAmong(values, [CHARITY_RATE])}
-					all={values.withheld}
-					consequence="Until this is saved again, every donor covering a PayPal fee is quoted the standard rate."
-					written={freed}
-					trouble={trouble}
-					busy={busy}
-					freeing={pending === FREE_INTENT}
-				/>
-
-				<div className="adm-actions">
-					<SaveButton name="intent" value={CHARITY_INTENT} state={state} />
-				</div>
-
-				{/* an outcome reports at the control that made it, and a press that landed is the
-				    button's own tick — so what is left is the ways it did not happen. a press refused
-				    over a name held as a credential is drawn at the block above, which is where the way
-				    out of that state is (`refusalIn` in ./secret-trouble.tsx). */}
-				{failure === null ? null : trouble(failure)}
-			</Form>
+			<AnswerSwitchBlock
+				answer={CHARITY_SWITCH}
+				values={values}
+				on={charityApproved(values.seeds[CHARITY_RATE] ?? '')}
+				label="PayPal has approved this organisation"
+				// the consequence of getting it wrong, which is the one thing the label cannot carry and
+				// the one direction that costs the organisation money: the two tables are asymmetric, and
+				// `paypalFeeRules` in packages/app/src/lib/server/payments/fees.ts is where that is
+				// argued. what the switch is for is the heading over it, so nothing here says it again.
+				note="Ticked without PayPal’s approval, a donor covering the fee is quoted less than PayPal takes and this organisation makes up the difference."
+				consequence="Until this is saved again, every donor covering a PayPal fee is quoted the standard rate."
+				written={written}
+				freed={freed}
+				trouble={trouble}
+				busy={busy}
+				pending={pending}
+			/>
 		</div>
 	);
 }

@@ -15,7 +15,7 @@ import {
 // the Zaps listening, against a real D1: the open-hook index and the ended pair are the
 // database's, so the rules here are asserted where they are enforced (CONTRIBUTING.md -> Tests).
 
-/** the hash of the key every subscribe here is verified under, standing in the `zapier_key` row. */
+/** the hash of the key every subscribe here is verified under, the live `zapier` api_key's. */
 const KEY_HASH = 'a'.repeat(64);
 
 /** a subscribe under the current key, which never comes back `null`. */
@@ -34,9 +34,10 @@ beforeAll(() => {
 beforeEach(async () => {
 	await env.DB.prepare('delete from zapier_delivery').run();
 	await env.DB.prepare('delete from zapier_subscription').run();
-	await env.DB.prepare('delete from zapier_key').run();
+	await env.DB.prepare('delete from api_key').run();
 	await env.DB.prepare(
-		`insert into zapier_key (id, key_hash, created_at, updated_at) values ('zapier', ?, 0, 0)`
+		`insert into api_key (id, name, kind, key_hash, prefix, last_four, created_at)
+		 values ('0192f0c4-7d2a-7000-8000-000000000000', 'Zapier', 'zapier', ?, 'bgz_AAAA', 'AAAA', 0)`
 	)
 		.bind(KEY_HASH)
 		.run();

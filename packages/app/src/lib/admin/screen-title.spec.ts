@@ -16,7 +16,7 @@ const layout = (orgName: string | null): LayoutMatch => ({
 	params: {},
 	pathname: '/admin',
 	meta: [],
-	loaderData: { shape: 'ready', orgName }
+	loaderData: { shape: 'ready', orgName, deployer: true }
 });
 
 describe('a screen title', () => {

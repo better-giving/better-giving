@@ -38,7 +38,13 @@
 
    a further brand is a decision made out loud: a name added to `BrandName`, a rule added to the
    sheet, and a member added to each of the two maps below. dropping a file into that folder does
-   nothing at all. */
+   nothing at all.
+
+   zapier.png in the same folder is not one of these and this part never draws it. it is the
+   dashboard's rail cell for the Zapier page, which ../shell/DestinationCell.jsx draws as an image
+   from a url (`{ src }`), so the file is imported rather than reached from a sheet: package.json's
+   exports publish it as `./brand/zapier.png`, the one entry on that map naming a binary. the
+   trademark sentence above holds for it as well — it names Zapier's own app. */
 /** @param {BrandProps} props */
 export function Brand({ name, label, className = '' }) {
 	/* one node per brand, chosen by name rather than assembled into a class. the class list has to

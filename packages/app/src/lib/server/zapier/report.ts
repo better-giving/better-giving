@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { zapierDelivery } from '../db/schema';
 
-// what the console says about the delivery queue: a screen's read, beside ./deliver.ts's run.
+// what the dashboard's Zapier page says about the delivery queue: a screen's read, beside
+// ./deliver.ts's run.
 //
 // there is no press over it: ./deliver.ts's header says when a row is given up on, and nothing
 // re-queues one — the count is the signal.
@@ -18,7 +19,7 @@ export interface ZapierDeliveries {
 }
 
 /**
- * how far back a given-up event is counted. the console's line over it has no press to clear it,
+ * how far back a given-up event is counted. the page's line over it has no press to clear it,
  * so it clears by ageing out; `updated_at` is when the row was given up on (./deliver.ts).
  */
 export const FAILED_WINDOW_MS = 7 * 24 * 60 * 60_000;

@@ -3,14 +3,14 @@ import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import {
+	apiKey,
 	zapierDelivery,
-	zapierKey,
 	zapierSubscription,
 	type ZapierEndReason,
 	type ZapierTrigger
 } from '../db/schema';
-import type { ZapierReport } from '@better-giving/operator/console/zapier';
-import { eachAtMost } from './each-at-most';
+import type { ZapierReport } from '../../zapier/report';
+import { eachAtMost } from '../each-at-most';
 
 // the Zaps listening: which hook is subscribed to which trigger, and every way one stops.
 //
@@ -18,8 +18,8 @@ import { eachAtMost } from './each-at-most';
 // **ending one drops what it was still owed in the same batch**. a pending row behind an ended
 // subscription is an event queued for nobody, and the delivery run would carry on posting it to a
 // hook Zapier has let go of. `endSubscriptionStatements` is the one place that pairs the two, and
-// every end — Zapier unsubscribing, a hook answering 410, the key being replaced, a hook moving
-// trigger — goes through it.
+// every end — Zapier unsubscribing, a hook answering 410 or failing for three days, the key being
+// replaced, a hook moving trigger — goes through it.
 
 /** a Zap asking for `trigger`'s events at `hookUrl`, already checked by the route. */
 export type SubscribeRequest = { readonly trigger: ZapierTrigger; readonly hookUrl: string };
@@ -64,10 +64,13 @@ export async function subscribe(
 					endedAt: sql`null`.as('ended_at'),
 					endedReason: sql`null`.as('ended_reason'),
 					createdAt: sql`${now.getTime()}`.as('created_at'),
-					updatedAt: sql`${now.getTime()}`.as('updated_at')
+					updatedAt: sql`${now.getTime()}`.as('updated_at'),
+					failingSince: sql`null`.as('failing_since')
 				})
-				.from(zapierKey)
-				.where(eq(zapierKey.keyHash, keyHash))
+				.from(apiKey)
+				.where(
+					and(eq(apiKey.keyHash, keyHash), eq(apiKey.kind, 'zapier'), isNull(apiKey.revokedAt))
+				)
 		)
 		.returning({ id: zapierSubscription.id });
 	try {
@@ -112,6 +115,15 @@ export async function countListening(db: Db): Promise<ZapierReport['listening']>
 	};
 }
 
+/** one open subscription, or none: a statement for a caller's `batch()` asking whether any Zap listens. */
+export function anyListeningStatement(db: Db) {
+	return db
+		.select({ id: zapierSubscription.id })
+		.from(zapierSubscription)
+		.where(isNull(zapierSubscription.endedAt))
+		.limit(1);
+}
+
 /**
  * Zapier letting go of subscription `id`. an unknown or already-ended id changes nothing and is no
  * error: Zapier reads a refused unsubscribe as a failure, and there is nothing left to stop.
@@ -123,7 +135,8 @@ export async function unsubscribe(db: Db, id: string): Promise<void> {
 /**
  * the statements that end the subscriptions in `scope` for `reason` at `now`, for one `batch()`.
  * `onlyIf` is a condition both statements also hold to: a replace ends nothing unless its own
- * key write landed.
+ * key write landed. `lastError`, where given, is written on every row dropped: why it was not sent,
+ * when the reason alone does not say.
  *
  * the pending rows are dropped first, while the subscriptions they belong to still read as open —
  * the other order would leave `every_open` naming nothing by the time the drop ran. a row already
@@ -138,7 +151,7 @@ export function endSubscriptionStatements(
 	scope: SubscriptionScope,
 	reason: ZapierEndReason,
 	now: Date,
-	onlyIf?: SQL
+	{ onlyIf, lastError }: { readonly onlyIf?: SQL; readonly lastError?: string } = {}
 ) {
 	const open = and(
 		scope === 'every_open' ? undefined : eq(zapierSubscription.id, scope.id),
@@ -148,7 +161,7 @@ export function endSubscriptionStatements(
 	return [
 		db
 			.update(zapierDelivery)
-			.set({ status: 'dropped', leasedUntil: null, updatedAt: now })
+			.set({ status: 'dropped', lastError, leasedUntil: null, updatedAt: now })
 			.where(
 				and(
 					eq(zapierDelivery.status, 'pending'),
@@ -194,16 +207,16 @@ export async function pauseZaps(
 	return { paused, notPaused: hookUrls.length - paused };
 }
 
-/** pauses in flight at once, as ./deliver.ts holds its posts to. */
+/** pauses in flight at once. */
 const PAUSES_AT_ONCE = 6;
 
 /** how long one hook is given to answer a pause. */
 const PAUSE_TIMEOUT_MS = 2_000;
 
 /**
- * how long the whole pass may take; a hook not reached by then is `notPaused`. the replace is
- * answered to a console that waits ten seconds (`ReadTimeout` in
- * packages/console/internal/cf/client.go), and the pass is most of that answer.
+ * how long the whole pass may take; a hook not reached by then is `notPaused`. a replace is the
+ * dashboard's form post, answered only once the pass is over, so this is how long an operator
+ * pressing replace watches it pending on hooks that never answer.
  */
 const PAUSE_PASS_MS = 4_000;
 

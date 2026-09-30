@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readWranglerConfig } from './lib/server/wrangler-config.testing';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
+import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
 import worker, { CRON_RUNS } from './worker';
 
@@ -22,8 +24,8 @@ import worker, { CRON_RUNS } from './worker';
 // the jobs are mocked, because what is under test is which ones an expression reaches and with
 // what time — their own behaviour is held by
 // $lib/server/donations/pending-crypto-read.workers.spec.ts,
-// $lib/server/accounting/deliver.workers.spec.ts and $lib/server/zapier/deliver.workers.spec.ts,
-// against a real database.
+// $lib/server/accounting/deliver.workers.spec.ts, $lib/server/zapier/deliver.workers.spec.ts and
+// $lib/server/webhooks/deliver.workers.spec.ts, against a real database.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})
@@ -33,6 +35,12 @@ vi.mock('$lib/server/accounting/deliver', () => ({
 }));
 vi.mock('$lib/server/zapier/deliver', () => ({
 	sendDueZapierEvents: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/webhooks/deliver', () => ({
+	sendDueWebhooks: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/webhooks/paused-mail', () => ({
+	mailPause: vi.fn(() => async () => {})
 }));
 
 /** the fields this file reads. everything else in the config is somebody else's concern. */
@@ -64,7 +72,7 @@ const env = { DB: {} } as unknown as Parameters<Scheduled>[1];
  * that run claimed sitting `pending` with `attempts` unincremented until the lease passes
  * ($lib/server/accounting/deliver.ts). a mock called is a mock called either way.
  */
-async function fires(cron: string): Promise<Promise<unknown>[]> {
+async function fires(cron: string, runEnv = env): Promise<Promise<unknown>[]> {
 	const waited: Promise<unknown>[] = [];
 	const ctx = {
 		waitUntil: (promise: Promise<unknown>) => waited.push(promise),
@@ -79,7 +87,7 @@ async function fires(cron: string): Promise<Promise<unknown>[]> {
 			type: 'scheduled',
 			noRetry: () => {}
 		} as unknown as Parameters<Scheduled>[0],
-		env,
+		runEnv,
 		ctx
 	);
 	await Promise.all(waited);
@@ -87,13 +95,19 @@ async function fires(cron: string): Promise<Promise<unknown>[]> {
 }
 
 /** every job a cron can reach, for the cases asserting on none of them or all. */
-const JOBS = [readPendingCryptoGifts, sendDueEntries, sendDueZapierEvents] as const;
+const JOBS = [
+	readPendingCryptoGifts,
+	sendDueEntries,
+	sendDueZapierEvents,
+	sendDueWebhooks
+] as const;
 
 // `restoreMocks` in ../vitest.config.ts restores a spy's implementation and leaves a module mock's
 // call history and a rejection a case set on it alone, so a case would be reading every case
 // before it.
 beforeEach(() => {
 	for (const job of JOBS) vi.mocked(job).mockReset().mockResolvedValue(undefined);
+	vi.mocked(mailPause).mockClear();
 });
 
 describe('the schedule this worker is deployed with', () => {
@@ -133,40 +147,102 @@ describe('which run an expression reaches', () => {
 		expect(sendDueEntries).not.toHaveBeenCalled();
 	});
 
-	it('sends what the books and the Zaps are owed every minute, from the run’s own time', async () => {
+	it('sends what the books, the Zaps and the destinations are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');
 
 		expect(sendDueEntries).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
 		expect(sendDueZapierEvents).toHaveBeenCalledWith(
-			{ db: expect.anything(), fetch: expect.any(Function) },
+			{ db: expect.anything(), fetch: expect.any(Function), plan: 'free' },
+			SCHEDULED_AT
+		);
+		expect(sendDueWebhooks).toHaveBeenCalledWith(
+			{
+				db: expect.anything(),
+				fetch: expect.any(Function),
+				plan: 'free',
+				onPaused: expect.any(Function)
+			},
 			SCHEDULED_AT
 		);
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
 	});
 
 	it.each([
-		['the books', sendDueEntries, sendDueZapierEvents],
-		['the Zaps', sendDueZapierEvents, sendDueEntries]
+		['the Paid plan where its env answers `true`', { CLOUDFLARE_PAID_PLAN: 'true' }, 'paid'],
+		['the Free plan where its env answers nothing', {}, 'free']
+	] as const)('paces every minute job to %s', async (_, answer, plan) => {
+		await fires('* * * * *', { ...env, ...answer } as typeof env);
+
+		for (const job of [sendDueEntries, sendDueZapierEvents, sendDueWebhooks]) {
+			expect(vi.mocked(job).mock.calls[0]?.[0]).toMatchObject({ plan });
+		}
+	});
+
+	/** the `onPaused` the minute run handed the destinations' delivery, told of one pause. */
+	async function pauseTold(runEnv = env) {
+		await fires('* * * * *', runEnv);
+		const onPaused = vi.mocked(sendDueWebhooks).mock.calls[0]?.[0].onPaused;
+		await onPaused?.({ id: 'd1', url: 'https://crm.example.org/hooks', reason: 'gone' });
+	}
+
+	it('mails a paused destination to the operator, linking the deployment’s pinned address', async () => {
+		await pauseTold({
+			DB: {},
+			BETTER_AUTH_URL: 'https://donate.example.org/'
+		} as unknown as typeof env);
+
+		expect(mailPause).toHaveBeenCalledExactlyOnceWith({
+			db: expect.anything(),
+			email: expect.anything(),
+			origin: 'https://donate.example.org'
+		});
+	});
+
+	it('mails a paused destination with no link where no address is pinned', async () => {
+		await pauseTold();
+
+		expect(mailPause).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ origin: null }));
+	});
+
+	it('runs every minute job where the pinned address does not parse', async () => {
+		await fires('* * * * *', {
+			DB: {},
+			BETTER_AUTH_URL: 'donate.example.org'
+		} as unknown as typeof env);
+
+		for (const job of [sendDueEntries, sendDueZapierEvents, sendDueWebhooks]) {
+			expect(job).toHaveBeenCalledOnce();
+		}
+	});
+
+	it.each([
+		['the books', sendDueEntries, [sendDueZapierEvents, sendDueWebhooks]],
+		['the Zaps', sendDueZapierEvents, [sendDueEntries, sendDueWebhooks]],
+		['the destinations', sendDueWebhooks, [sendDueEntries, sendDueZapierEvents]]
 	] as const)(
-		'still runs the other minute job when %s one throws, and reports the throw',
-		async (_, failing, other) => {
+		'still runs the other minute jobs when %s one throws, and reports the throw',
+		async (_, failing, others) => {
 			const fault = new Error('the database went away');
 			vi.mocked(failing).mockRejectedValue(fault);
 
 			await expect(fires('* * * * *')).rejects.toBe(fault);
-			expect(other).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+			for (const other of others) {
+				expect(other).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
+			}
 		}
 	);
 
-	it('reports both throws when both minute jobs throw', async () => {
+	it('reports every throw when more than one minute job throws', async () => {
 		const books = new Error('books');
 		const zaps = new Error('zaps');
+		const destinations = new Error('destinations');
 		vi.mocked(sendDueEntries).mockRejectedValue(books);
 		vi.mocked(sendDueZapierEvents).mockRejectedValue(zaps);
+		vi.mocked(sendDueWebhooks).mockRejectedValue(destinations);
 
 		const thrown = await fires('* * * * *').catch((error: unknown) => error);
 		expect(thrown).toBeInstanceOf(AggregateError);
-		expect((thrown as AggregateError).errors).toEqual([books, zaps]);
+		expect((thrown as AggregateError).errors).toEqual([books, zaps, destinations]);
 	});
 
 	it('runs nothing at all on an expression it does not answer', async () => {
@@ -176,5 +252,32 @@ describe('which run an expression reaches', () => {
 		await fires('0 3 * * *');
 
 		for (const job of JOBS) expect(job).not.toHaveBeenCalled();
+	});
+});
+
+describe('a method react router routes nowhere', () => {
+	type Fetch = typeof worker.fetch;
+	const ctx = {
+		waitUntil: () => {},
+		passThroughOnException: () => {},
+		props: {}
+	} as unknown as Parameters<Fetch>[2];
+	const asked = (method: string, path: string) =>
+		worker.fetch(
+			new Request(`https://donate.example.org${path}`, { method }) as Parameters<Fetch>[0],
+			env,
+			ctx
+		);
+
+	it.each([
+		['PROPFIND', '/integrations/v1/gifts'],
+		['QUERY', '/integrations/v1'],
+		['propfind', '/integrations/v1/donors']
+	])('is refused on the read API as its own read-only 405: %s %s', async (method, path) => {
+		const response = await asked(method, path);
+
+		expect(response.status).toBe(405);
+		expect(response.headers.get('allow')).toBe('GET, HEAD');
+		expect(await response.json()).toMatchObject({ error: 'method_not_allowed' });
 	});
 });

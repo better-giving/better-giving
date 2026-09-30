@@ -29,8 +29,8 @@ import (
 // four values, Chariot's four and NOWPayments' three, argued at ./paypalSetUpOnly,
 // ./chariotSetUpOnly and ./nowpaymentsSetUpOnly.
 // the third is a name carrying a blank, which is neither a value the deployment reads nor the
-// removal `null` is. the fourth is the charity-rate switch carrying anything but its one word,
-// argued at ./charityRate.
+// removal `null` is. the fourth is an answer switch carrying anything but its one word, argued at
+// ./answerSwitches.
 //
 // **every one of them answers 200 carrying how the write went.** each way a write did not happen is
 // a state the fold draws at the control that was pressed, with a sentence and a way out of its own,
@@ -42,23 +42,25 @@ import (
 // about the call, and the names of any vars held as credentials — internal/deployment is where the
 // values go, and they go into a request body and nowhere else.
 
-// the name whose value is an answer rather than a credential, and the one word the deployment reads
-// as yes.
+// the names whose value is an answer about an account rather than a credential, and the one word
+// the deployment reads as yes: whether PayPal approved the organisation for its charity rate, and
+// whether the Cloudflare account is on the Workers Paid plan. no call reports either, so the
+// operator is the only one who can say.
 //
-// **it is a switch with two positions, and the off one is the removal above rather than a stored
-// no.** the deployment prices a gift at the standard rate on every other value — `false` and `no`
-// alike — exactly as it does on an absent one (`paypalFeeRules` in
-// packages/app/src/lib/server/payments/fees.ts), so a word stored for off is a box this console
-// draws full over a deployment that is not on the charity rate, and a fold would have a third shape
-// to word and nothing true to say in it.
+// **each is a switch with two positions, and the off one is the removal above rather than a stored
+// no.** the deployment reads every other value — `false` and `no` alike — exactly as it does an
+// absent one: the standard PayPal rate (`paypalFeeRules` in
+// packages/app/src/lib/server/payments/fees.ts), the Free plan's pace (`planAnswered` in
+// packages/operator/src/delivery-pace.ts). so a word stored for off is a box this console draws
+// full over a deployment acting on no, and a fold would have a third shape to word and nothing
+// true to say in it.
 //
 // the word is exact rather than case-insensitive, though the deployment reads it either way: this
 // door is the only writer, so one spelling is what every deployment ends up holding and what the
 // row an operator reads back always says.
-const (
-	charityRate         = "PAYPAL_CHARITY_RATE_APPROVED"
-	charityRateApproved = "true"
-)
+var answerSwitches = []string{"PAYPAL_CHARITY_RATE_APPROVED", "CLOUDFLARE_PAID_PLAN"}
+
+const answeredYes = "true"
 
 // the names PayPal's set-up press writes (./paypal.go), and that press alone.
 //
@@ -143,11 +145,10 @@ func valuesRoutes(
 				})
 				return
 			}
-			if name == charityRate && *value != charityRateApproved {
+			if enumerated(answerSwitches, name) && *value != answeredYes {
 				answer(w, http.StatusBadRequest, map[string]string{
-					"error": "this console stores " + name + " as " + charityRateApproved +
-						", or takes the name off to say the rate was not approved; it does not store " +
-						*value,
+					"error": "this console stores " + name + " as " + answeredYes +
+						", or takes the name off to answer no; it does not store " + *value,
 				})
 				return
 			}

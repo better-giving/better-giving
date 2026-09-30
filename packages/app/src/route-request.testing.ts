@@ -67,10 +67,14 @@ export interface MountedRoute {
 	};
 }
 
-/** sends one request into a mounted chain. `env` swaps the deploy-time values for that request. */
+/**
+ * sends one request into a mounted chain. `env` swaps the deploy-time values for that request;
+ * `ctx` is the execution context it runs on, passed by a case that waits on what the route handed
+ * to `waitUntil` (`waitOnExecutionContext` from `cloudflare:test`).
+ */
 export type RouteRequester = (
 	request: Request,
-	options?: { readonly env?: Env }
+	options?: { readonly env?: Env; readonly ctx?: ExecutionContext }
 ) => Promise<Response>;
 
 /**
@@ -86,7 +90,7 @@ export function mountRoutes(chain: readonly MountedRoute[]): RouteRequester {
 
 	return async (request, options = {}) => {
 		const handler = createStaticHandler(routes);
-		const context = requestContext(options.env ?? poolEnv, createExecutionContext());
+		const context = requestContext(options.env ?? poolEnv, options.ctx ?? createExecutionContext());
 
 		try {
 			return asResponse(

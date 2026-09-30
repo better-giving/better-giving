@@ -18,6 +18,8 @@ import {
 } from '@better-giving/operator/stripe/webhook-endpoint';
 import type {
 	AccountChargeability,
+	DeliveredAttempt,
+	FailedCollection,
 	RailCapabilityState,
 	Intent,
 	IntentRequest,
@@ -83,6 +85,20 @@ import type {
 
 /** the one dispute delivery whose own time is the close's: a `Dispute` records no close time. */
 const DISPUTE_CLOSED_EVENT = 'charge.dispute.closed' satisfies (typeof DISPUTE_EVENT_TYPES)[number];
+
+/**
+ * the version a delivery's body is rendered in, as an operator reads it: the receiving endpoint's
+ * `api_version` (`WebhookEndpoint` in the installed SDK) — `API_VERSION` on the endpoint
+ * `createEndpoint` registers, the account's default on any other, a `stripe listen` session among
+ * them. every read below re-fetches at `API_VERSION` whatever the body's version was.
+ */
+const RENDERED_VERSION =
+	`A delivery is rendered in its endpoint's API version: ${API_VERSION} on the endpoint this app ` +
+	"registers, the account's default on any other, a `stripe listen` session included.";
+
+/** the one collection delivery that reports an attempt failing: one delivery per failed attempt. */
+const COLLECTION_FAILED_EVENT =
+	'invoice.payment_failed' satisfies (typeof RECURRING_COLLECTION_EVENT_TYPES)[number];
 
 /** what the adapter needs to talk to an account. */
 export type StripeCredentials = {
@@ -986,6 +1002,68 @@ function collectedOn(collected: Stripe.Invoice): string | null {
 }
 
 /**
+ * the attempt an `invoice.payment_failed` body states, or null where the body does not state it —
+ * any of the four fields missing or of the wrong type.
+ *
+ * read off the verified body rather than the invoice fetched afterwards, which by a late delivery
+ * holds the next attempt's count and schedule. the body is in its endpoint's version
+ * (`RENDERED_VERSION`), which need not be `API_VERSION`, so each field is checked rather than
+ * trusted and a body missing one is refused (`verifyEvent`). the figure is `amount_remaining`: an
+ * attempt charges what is still owed, and on an invoice paid in part `amount_due` is still the
+ * whole.
+ */
+function deliveredAttemptOf(object: unknown): DeliveredAttempt | null {
+	if (typeof object !== 'object' || object === null) return null;
+	const body = object as Partial<Record<keyof Stripe.Invoice, unknown>>;
+	const { attempt_count, next_payment_attempt, amount_remaining, currency } = body;
+	if (
+		typeof attempt_count !== 'number' ||
+		(next_payment_attempt !== null && typeof next_payment_attempt !== 'number') ||
+		typeof amount_remaining !== 'number' ||
+		typeof currency !== 'string'
+	) {
+		return null;
+	}
+	return {
+		attemptCount: attempt_count,
+		nextRetryAt: next_payment_attempt === null ? null : atMillis(next_payment_attempt),
+		amountMinor: amount_remaining,
+		currency: currency.toUpperCase()
+	};
+}
+
+/**
+ * the failed attempt an `invoice.payment_failed` reports, or null where it reports none a
+ * destination is owed.
+ *
+ * the invoice is the fresh read, and it decides only whether the attempt is reported. two cases
+ * report nothing:
+ *
+ *   - the opening invoice (`subscription_create`). that is the donor's own first charge, failing on
+ *     the page, under a commitment no charge has opened yet — the page tells them, and no repeating
+ *     gift exists to report against.
+ *   - an invoice paid since. the retry that paid overtook this delivery, and a failure reported
+ *     after the charge that cured it tells a destination the donor's card is failing now.
+ *
+ * a void or uncollectible invoice is still reported: nothing cured the attempt, it failed.
+ *
+ * everything reported is the delivery's. Stripe sends one `invoice.payment_failed` per failed
+ * attempt, keeps its id across a redelivery, and stamps it when the attempt failed, and its body is
+ * the invoice as that attempt left it (`deliveredAttemptOf`). the fresh invoice can say none of it:
+ * a delivery held back past the next retry would read that retry's count and schedule.
+ */
+function failedAttemptOf(
+	collected: Stripe.Invoice,
+	delivered: RecurringEvent,
+	attempt: DeliveredAttempt
+): FailedCollection | null {
+	if (collected.billing_reason === 'subscription_create' || collected.status === 'paid') {
+		return null;
+	}
+	return { ...attempt, attemptKey: delivered.id, failedAt: delivered.occurredAt };
+}
+
+/**
  * why a price found under this app's own lookup key may not be charged against, or nothing.
  *
  * a lookup key belongs to one price at a time and can be moved between them, so what comes back
@@ -1312,8 +1390,8 @@ export function createStripeProvider(
 				// subscribe only to what the integration handles — every other delivery is a request
 				// this deployment answers and discards.
 				enabled_events: [...SUBSCRIBED_EVENT_TYPES],
-				// pinned, so deliveries to this endpoint are serialised in the version this app reads
-				// them against rather than in whatever version the account happens to be set to.
+				// pinned, so deliveries to this endpoint are rendered in the version this app reads
+				// them against (`RENDERED_VERSION`).
 				api_version: API_VERSION,
 				description: ENDPOINT_DESCRIPTION
 			});
@@ -1538,16 +1616,32 @@ export function createStripeProvider(
 	 * on it at all, every collection reports no transaction, and that reads as a gift settled outside
 	 * Stripe rather than as a request missing a parameter.
 	 */
-	async function readCollection(invoiceId: string): Promise<PaymentResult<RecurringGiftNotice>> {
+	async function readCollection(
+		event: RecurringEvent
+	): Promise<PaymentResult<RecurringGiftNotice>> {
+		const fails = event.type === COLLECTION_FAILED_EVENT;
+		if (fails && !event.delivered) {
+			return {
+				ok: false,
+				reason: 'internal_error',
+				detail:
+					`The \`${event.type}\` delivery about invoice ${redactPublicId(event.providerNoticeId)} ` +
+					'reached this read without the attempt its body stated, so which attempt failed could ' +
+					'not be told and nothing was recorded. `verifyEvent` sets it on every such delivery; ' +
+					'one built any other way is a bug in this app rather than anything about the gift.'
+			};
+		}
+		const attempt = fails ? event.delivered : undefined;
+
 		try {
-			const collected = await stripe.invoices.retrieve(invoiceId, {
+			const collected = await stripe.invoices.retrieve(event.providerNoticeId, {
 				expand: ['parent.subscription_details.subscription', 'payments']
 			});
 
 			// where this API version keeps it. an invoice's own `subscription` field is not read
-			// anywhere here, and a delivery replayed from an account on an older version is answered
-			// by this read rather than by the shape that arrived — which is the whole reason nothing
-			// is taken off the event body.
+			// anywhere here, and a delivery rendered in another version (`RENDERED_VERSION`) is
+			// answered by this read rather than by the shape that arrived — which is why nothing but
+			// a failed attempt's own figures is taken off the event body (`deliveredAttemptOf`).
 			const commitment = expansionOf<Stripe.Subscription>(
 				collected.parent?.subscription_details?.subscription
 			);
@@ -1579,7 +1673,11 @@ export function createStripeProvider(
 				};
 			}
 
-			return { ok: true, value: noticeOf(commitment.value, 'collection', collectedOn(collected)) };
+			const notice = noticeOf(commitment.value, 'collection', collectedOn(collected));
+			if (!attempt) return { ok: true, value: notice };
+
+			const failed = failedAttemptOf(collected, event, attempt);
+			return { ok: true, value: failed ? { ...notice, failedAttempt: failed } : notice };
 		} catch (error) {
 			return classify(error);
 		}
@@ -2086,8 +2184,8 @@ export function createStripeProvider(
 					: null;
 
 			if (id === null) {
-				// verified, subscribed, and unreadable. an event is serialised in the API version the
-				// account held when it happened, so a replayed old delivery can carry a shape this
+				// verified, subscribed, and unreadable. a delivery to an endpoint this app did not
+				// register is in the account's version (`RENDERED_VERSION`), which can be a shape this
 				// app does not know. reported as `ignored` it would be a settlement dropped in
 				// silence under a 200, which is the failure that loses a gift.
 				return {
@@ -2095,27 +2193,56 @@ export function createStripeProvider(
 					reason: 'provider_error',
 					detail:
 						`A verified \`${redactPublicId(type)}\` delivery carried no readable object id, so ` +
-						'there is nothing to reconcile it against. Events are serialised in the API ' +
-						`version the account held when they happened; this app reads them against ${API_VERSION}.`
+						`there is nothing to reconcile it against. ${RENDERED_VERSION}`
 				};
 			}
 
-			// the id is all that is read off any kind of delivery, and the kind is decided by the
-			// type rather than by what the id looks like. what that id names — a transaction, a
-			// commitment, one collection, one refund, one dispute — is the read arm's business, which
-			// is where a shape this version does not recognise is a failure rather than a silent
-			// misreading.
+			// the id is all that is read off any kind of delivery but a failed collection, whose
+			// attempt is read below, and the kind is decided by the type rather than by what the id
+			// looks like. what that id names — a transaction, a commitment, one collection, one
+			// refund, one dispute — is the read arm's business, which is where a shape this version
+			// does not recognise is a failure rather than a silent misreading.
 			if (settles) {
 				return {
 					ok: true,
 					value: { id: event.id, kind: 'settlement', type, providerTxnId: id, occurredAt }
 				};
 			}
+			if (!repeats) {
+				return {
+					ok: true,
+					value: { id: event.id, kind: 'reversal', type, providerNoticeId: id, occurredAt }
+				};
+			}
+			if (type !== COLLECTION_FAILED_EVENT) {
+				return {
+					ok: true,
+					value: { id: event.id, kind: 'recurring', type, providerNoticeId: id, occurredAt }
+				};
+			}
+
+			// the one delivery whose body is read past its id, and `deliveredAttemptOf` says why.
+			const delivered = deliveredAttemptOf(object);
+			if (delivered === null) {
+				return {
+					ok: false,
+					reason: 'provider_error',
+					detail:
+						`A verified \`${type}\` delivery about ${redactPublicId(id)} did not state the ` +
+						'attempt it reports (its count, next retry, amount or currency), so which attempt ' +
+						`failed could not be told and nothing was recorded. ${RENDERED_VERSION}`
+				};
+			}
 			return {
 				ok: true,
-				value: repeats
-					? { id: event.id, kind: 'recurring', type, providerNoticeId: id, occurredAt }
-					: { id: event.id, kind: 'reversal', type, providerNoticeId: id, occurredAt }
+				value: {
+					id: event.id,
+					kind: 'recurring',
+					type,
+					providerNoticeId: id,
+					occurredAt,
+					delivered
+				}
 			};
 		},
 
@@ -2185,7 +2312,7 @@ export function createStripeProvider(
 		 */
 		async readRecurringGift(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>> {
 			return (RECURRING_COLLECTION_EVENT_TYPES as readonly string[]).includes(event.type)
-				? readCollection(event.providerNoticeId)
+				? readCollection(event)
 				: readCommitment(event.providerNoticeId);
 		},
 

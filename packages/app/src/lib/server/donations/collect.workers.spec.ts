@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSTING_ACCOUNTS } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -11,6 +11,7 @@ import {
 	FEE_COVERED_METADATA_KEY,
 	GIFT_MINOR_METADATA_KEY,
 	INTERVAL_METADATA_KEY,
+	type FailedCollection,
 	type PaymentEvent,
 	type PaymentProvider,
 	type PaymentResult,
@@ -19,11 +20,16 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
+import { createPaypalProvider, PAYPAL_DEFAULT_API_URL } from '../payments/paypal';
+import { createStripeProvider } from '../payments/stripe';
+import { recording } from '../payments/stripe.testing';
 import { stopRecurringPlan } from '../recurring/queries';
+import { renderSubjects } from '../webhooks/payload';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { recordAuthorizedGift, type AuthorizedGiftInput } from './record';
 import { settleDelivery } from './settle';
 import { soleProcessor } from '../payments/processors.testing';
+import { createDestination } from '../webhooks/destinations';
 
 // the books for a gift that repeats, against a real D1: what a collection under a commitment
 // writes, and what a second delivery about the same money does not.
@@ -1448,6 +1454,120 @@ describe('settleDelivery() — a collection that did not succeed', () => {
 	});
 });
 
+/** the processor's report of one failed attempt at a later collection. */
+const failedAttempt = (over: Partial<FailedCollection> = {}): FailedCollection => ({
+	attemptKey: 'in_collect_2:2',
+	attemptCount: 2,
+	nextRetryAt: new Date('2026-09-08T12:00:00.000Z'),
+	failedAt: new Date('2026-09-03T12:00:00.000Z'),
+	amountMinor: 2500,
+	currency: 'USD',
+	...over
+});
+
+/** a delivery reporting a failed attempt, under which no transaction may be read. */
+const failedDelivery = (attempt: FailedCollection, over: Partial<RecurringGiftNotice> = {}) =>
+	provider({
+		verify: {
+			ok: true,
+			value: collectionEvent({
+				id: 'evt_failed_1',
+				type: 'invoice.payment_failed',
+				providerNoticeId: 'in_collect_2'
+			})
+		},
+		gift: {
+			ok: true,
+			value: notice({
+				state: 'active',
+				providerTxnId: 'pi_collect_2',
+				failedAttempt: attempt,
+				...over
+			})
+		},
+		settled: { ok: false, reason: 'provider_error', detail: 'the attempt is not a figure to read' }
+	});
+
+describe('settleDelivery() — a failed attempt at a later collection', () => {
+	// the gift the donor authorized, which the commitment names and the first collection claims.
+	beforeEach(async () => {
+		await authorizeGift();
+	});
+
+	it('writes no gift, payment or ledger row, and reads no transaction', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const mail = mailer();
+
+		const result = await settleDelivery(
+			deps({ email: mail.port, provider: failedDelivery(failedAttempt()) }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+		expect(result.ok && result.detail).toContain('attempt 2 at a collection under');
+		// a schedule, never a promise that the rail will try.
+		expect(result.ok && result.detail).toMatch(
+			/the rail has (its next try scheduled for|no next try scheduled)/
+		);
+		// the opening collection's rows, and nothing beside them.
+		expect(await db.select().from(donation)).toHaveLength(1);
+		expect(await db.select().from(payment)).toHaveLength(1);
+		expect(await db.select().from(entryGroup)).toHaveLength(2);
+		// the transaction read is scripted to refuse, and a refusal there tells an operator: no mail
+		// means the attempt was answered off the notice alone.
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('reads an attempt with no transaction as a failure, not as money received', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const mail = mailer();
+
+		// refused for want of a payment method: no attempt reached a transaction at all.
+		const result = await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: failedDelivery(failedAttempt(), { providerTxnId: null })
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+		expect(mail.sent).toHaveLength(0);
+	});
+
+	it('writes the lapse the last miss carries', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		const result = await settleDelivery(
+			deps({
+				provider: failedDelivery(failedAttempt({ attemptCount: 4, nextRetryAt: null }), {
+					state: 'lapsed'
+				})
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'stopped' });
+		const [plan] = await db.select().from(recurringPlan);
+		expect(plan).toMatchObject({ status: 'lapsed', nextChargeAt: null });
+	});
+
+	it('writes nothing where no commitment has a row — the donor’s own first charge', async () => {
+		const result = await settleDelivery(
+			deps({
+				provider: failedDelivery(failedAttempt({ attemptKey: 'in_open:1', attemptCount: 1 }))
+			}),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+		expect(result.ok && result.detail).toContain('no repeating gift');
+		expect(await db.select().from(recurringPlan)).toHaveLength(0);
+		expect(await db.select().from(payment)).toHaveLength(0);
+		expect(await db.select().from(entryGroup)).toHaveLength(0);
+	});
+});
+
 /** a delivery about the commitment's own standing, which names no collection at all. */
 const standingEvent = (over: Partial<RecurringEvent> = {}): PaymentEvent => ({
 	id: 'evt_standing_1',
@@ -1774,6 +1894,12 @@ describe('settleDelivery() — a repeating gift that could not be read', () => {
 			// collected, and answering 200 with nothing said loses it silently.
 			expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
 			expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+			// the delivery may as well have reported a failed payment, which moved nothing.
+			const said = mail.sent[0]?.text.replace(/\s+/g, ' ');
+			expect(said).toContain('If it was a collection, money moved and the books do not have it.');
+			expect(said).toContain(
+				'If it was a failed payment, no money moved and the books are complete: what is lost is the "Recurring charge failed" event your webhook destinations are owed for that attempt.'
+			);
 		}
 	);
 
@@ -2369,5 +2495,640 @@ describe('settleDelivery() — what a collection owes a listening Zap', () => {
 			{ trigger: 'new_donor', payment_id: first },
 			...[first, second].sort().map((payment_id) => ({ trigger: 'new_gift', payment_id }))
 		]);
+	});
+});
+
+describe('settleDelivery() — what a collection owes a listening destination', () => {
+	beforeEach(async () => {
+		await authorizeGift();
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
+	});
+
+	// per-file storage: the destination is put up and taken down around these cases alone.
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function owedGifts() {
+		const { results } = await env.DB.prepare(
+			`select event, subject_id from webhook_delivery order by subject_id`
+		).all<{ event: string; subject_id: string }>();
+		return results;
+	}
+
+	it('owes the charge that opens a commitment as a gift made', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await owedGifts()).toEqual([
+			{ event: 'gift.made', subject_id: await paymentFor('pi_collect_1') }
+		]);
+	});
+
+	it('owes every later collection as a gift made of its own', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		await settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: secondCollection.event },
+					gift: { ok: true, value: secondCollection.notice },
+					settled: { ok: true, value: secondCollection.settlement }
+				})
+			}),
+			DELIVERY
+		);
+
+		const payments = [await paymentFor('pi_collect_1'), await paymentFor('pi_collect_2')];
+		expect(await owedGifts()).toEqual(
+			payments.sort().map((subject_id) => ({ event: 'gift.made', subject_id }))
+		);
+	});
+});
+
+describe('settleDelivery() — what a commitment owes a destination listening for recurring gifts', () => {
+	beforeEach(async () => {
+		await authorizeGift();
+		await createDestination(db, {
+			url: 'https://crm.example.org/recurring',
+			events: ['recurring_gift.started', 'recurring_gift.updated', 'recurring_gift.ended']
+		});
+	});
+
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function owed() {
+		const { results } = await env.DB.prepare(
+			`select event, subject_id from webhook_delivery order by created_at, event`
+		).all<{ event: string; subject_id: string }>();
+		return results;
+	}
+
+	async function planId(): Promise<string> {
+		const [plan] = await db.select().from(recurringPlan);
+		if (plan === undefined) throw new Error('no commitment was opened');
+		return plan.id;
+	}
+
+	it('owes the charge that opens a commitment as a recurring gift started, about the commitment', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await owed()).toEqual([{ event: 'recurring_gift.started', subject_id: await planId() }]);
+	});
+
+	it('owes a claimed opening charge delivered twice as one recurring gift started', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		const again = await settleDelivery(deps(), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		expect(await owed()).toEqual([{ event: 'recurring_gift.started', subject_id: await planId() }]);
+	});
+
+	// the processor's ending can reach this deployment before the first charge does, which then
+	// opens the commitment already stopped: a destination hears it start and end together.
+	it.each(['ended', 'lapsed'] as const)(
+		'owes a commitment whose first charge opens it %s a recurring gift started and one ended',
+		async (state) => {
+			await settleDelivery(
+				deps({
+					provider: provider({
+						gift: {
+							ok: true,
+							value: notice({
+								state,
+								endedAt: new Date('2026-08-03T12:00:00.000Z'),
+								nextChargeAt: null
+							})
+						}
+					})
+				}),
+				DELIVERY
+			);
+
+			const id = await planId();
+			const rows = await owed();
+			expect(rows.map((row) => row.event).sort()).toEqual([
+				'recurring_gift.ended',
+				'recurring_gift.started'
+			]);
+			expect(rows.find((row) => row.event === 'recurring_gift.started')?.subject_id).toBe(id);
+			expect(rows.find((row) => row.event === 'recurring_gift.ended')?.subject_id).toMatch(
+				new RegExp(`^${id}:\\d+$`)
+			);
+		}
+	);
+
+	/** a later collection under the commitment, telling of `nextChargeAt` as the next charge. */
+	const collectAgain = (nextChargeAt: Date | null) =>
+		settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: secondCollection.event },
+					gift: { ok: true, value: { ...secondCollection.notice, nextChargeAt } },
+					settled: { ok: true, value: secondCollection.settlement }
+				})
+			}),
+			DELIVERY
+		);
+
+	it('owes a later collection that moves the next charge as a recurring gift updated, about that change', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await collectAgain(new Date('2026-10-03T12:00:00.000Z'))).toMatchObject({
+			outcome: 'posted'
+		});
+
+		const id = await planId();
+		expect(await owed()).toEqual([
+			{ event: 'recurring_gift.started', subject_id: id },
+			{ event: 'recurring_gift.updated', subject_id: expect.stringMatching(`^${id}:\\d+$`) }
+		]);
+	});
+
+	it('owes nothing for a later collection that finds the next charge where it was', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await collectAgain(notice().nextChargeAt)).toMatchObject({ outcome: 'posted' });
+
+		expect(await owed()).toEqual([{ event: 'recurring_gift.started', subject_id: await planId() }]);
+	});
+
+	/** a delivery about the commitment's own standing, in `state`. */
+	const stand = (state: RecurringGiftNotice['state'], id = 'evt_standing_1') =>
+		settleDelivery(
+			deps({
+				provider: provider({
+					verify: { ok: true, value: standingEvent({ id, type: 'customer.subscription.updated' }) },
+					gift: {
+						ok: true,
+						value: standingNotice({
+							state,
+							nextChargeAt: state === 'active' ? new Date('2026-12-03T12:00:00.000Z') : null
+						})
+					}
+				})
+			}),
+			DELIVERY
+		);
+
+	/** the events owed after the one that opened the commitment, each about a change to it. */
+	async function changes() {
+		const id = await planId();
+		const rows = (await owed()).filter((row) => row.event !== 'recurring_gift.started');
+		for (const row of rows) expect(row.subject_id).toMatch(new RegExp(`^${id}:\\d+$`));
+		return rows.map((row) => row.event);
+	}
+
+	it('owes a lapse from the processor as a recurring gift ended, once however often it arrives', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		await stand('lapsed');
+		await stand('lapsed', 'evt_standing_2');
+
+		expect(await changes()).toEqual(['recurring_gift.ended']);
+	});
+
+	it('owes an ending from the processor as a recurring gift ended', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		expect(await stand('ended')).toMatchObject({ outcome: 'stopped' });
+
+		expect(await changes()).toEqual(['recurring_gift.ended']);
+	});
+
+	it('owes a lapsed commitment reviving as a recurring gift updated', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		await stand('lapsed');
+
+		expect(await stand('active', 'evt_standing_2')).toMatchObject({ outcome: 'updated' });
+
+		expect(await changes()).toEqual(['recurring_gift.ended', 'recurring_gift.updated']);
+	});
+
+	it('owes a revived commitment that lapses again a second recurring gift ended', async () => {
+		// each change is keyed on the millisecond it was written, so each is given its own.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(new Date('2026-11-03T12:00:00.000Z'));
+			await settleDelivery(deps(), DELIVERY);
+			vi.setSystemTime(new Date('2026-11-03T12:00:01.000Z'));
+			await stand('lapsed');
+			vi.setSystemTime(new Date('2026-11-03T12:00:02.000Z'));
+			await stand('active', 'evt_standing_2');
+			vi.setSystemTime(new Date('2026-11-03T12:00:03.000Z'));
+			await stand('lapsed', 'evt_standing_3');
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(await changes()).toEqual([
+			'recurring_gift.ended',
+			'recurring_gift.updated',
+			'recurring_gift.ended'
+		]);
+	});
+
+	it('owes a lapsed commitment revived by a collection as a recurring gift updated', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		await stand('lapsed');
+
+		expect(await collectAgain(notice().nextChargeAt)).toMatchObject({ outcome: 'posted' });
+
+		expect(await changes()).toEqual(['recurring_gift.ended', 'recurring_gift.updated']);
+	});
+});
+
+describe('settleDelivery() — what a failed attempt owes a destination listening for recurring charges failed', () => {
+	beforeEach(async () => {
+		await authorizeGift();
+		for (const url of ['https://crm.example.org/failed-a', 'https://crm.example.org/failed-b']) {
+			await createDestination(db, { url, events: ['recurring_gift.charge_failed'] });
+		}
+		await createDestination(db, {
+			url: 'https://crm.example.org/started',
+			events: ['recurring_gift.started']
+		});
+	});
+
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function failures() {
+		const { results } = await env.DB.prepare(
+			`select d.url, w.subject_id, w.detail
+			 from webhook_delivery w join webhook_destination d on d.id = w.destination_id
+			 where w.event = 'recurring_gift.charge_failed' order by d.url, w.subject_id`
+		).all<{ url: string; subject_id: string; detail: string | null }>();
+		return results.map((row) => ({
+			...row,
+			detail: row.detail === null ? null : JSON.parse(row.detail)
+		}));
+	}
+
+	async function planId(): Promise<string> {
+		const [plan] = await db.select().from(recurringPlan);
+		if (plan === undefined) throw new Error('no commitment was opened');
+		return plan.id;
+	}
+
+	it('owes each subscribed destination one recurring charge failed, with the attempt as it failed', async () => {
+		await settleDelivery(deps(), DELIVERY);
+
+		const result = await settleDelivery(
+			deps({ provider: failedDelivery(failedAttempt()) }),
+			DELIVERY
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+		const subject = `${await planId()}:in_collect_2:2`;
+		const detail = {
+			attempt_count: 2,
+			next_retry_at: '2026-09-08T12:00:00.000Z',
+			failed_at: '2026-09-03T12:00:00.000Z',
+			amount_minor: 2500,
+			currency: 'USD'
+		};
+		expect(await failures()).toEqual([
+			{ url: 'https://crm.example.org/failed-a', subject_id: subject, detail },
+			{ url: 'https://crm.example.org/failed-b', subject_id: subject, detail }
+		]);
+		// the attempt moved no money: the opening collection's rows, and nothing beside them.
+		expect(await db.select().from(payment)).toHaveLength(1);
+		expect(await db.select().from(entryGroup)).toHaveLength(2);
+	});
+
+	it('owes an attempt delivered twice once', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		await settleDelivery(deps({ provider: failedDelivery(failedAttempt()) }), DELIVERY);
+
+		const again = await settleDelivery(
+			deps({ provider: failedDelivery(failedAttempt()) }),
+			DELIVERY
+		);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'uncollected' });
+		expect((await failures()).map((row) => row.subject_id)).toEqual([
+			`${await planId()}:in_collect_2:2`,
+			`${await planId()}:in_collect_2:2`
+		]);
+	});
+
+	it('owes a later attempt at the same collection one of its own', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		await settleDelivery(deps({ provider: failedDelivery(failedAttempt()) }), DELIVERY);
+
+		await settleDelivery(
+			deps({
+				provider: failedDelivery(
+					failedAttempt({
+						attemptKey: 'in_collect_2:3',
+						attemptCount: 3,
+						nextRetryAt: null,
+						failedAt: new Date('2026-09-08T12:00:00.000Z')
+					})
+				)
+			}),
+			DELIVERY
+		);
+
+		const id = await planId();
+		const owed = (await failures()).filter((row) => row.url.endsWith('/failed-a'));
+		expect(owed).toEqual([
+			expect.objectContaining({ subject_id: `${id}:in_collect_2:2` }),
+			expect.objectContaining({
+				subject_id: `${id}:in_collect_2:3`,
+				detail: expect.objectContaining({
+					attempt_count: 3,
+					next_retry_at: null,
+					failed_at: '2026-09-08T12:00:00.000Z'
+				})
+			})
+		]);
+	});
+
+	it('asks for a failure again when its rows could not be written, and still writes the lapse it carries', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const lastMiss = () =>
+			failedDelivery(failedAttempt({ attemptCount: 4, nextRetryAt: null }), { state: 'lapsed' });
+		let faulted = false;
+		const faulting = new Proxy(db, {
+			get(target, property, receiver) {
+				if (property !== 'batch' || faulted) return Reflect.get(target, property, receiver);
+				return async () => {
+					faulted = true;
+					throw new Error('D1_ERROR: Network connection lost.');
+				};
+			}
+		});
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		const first = await settleDelivery(deps({ db: faulting, provider: lastMiss() }), DELIVERY);
+
+		expect(first).toMatchObject({ ok: false, reason: 'incomplete' });
+		expect(await failures()).toEqual([]);
+		const [plan] = await db.select().from(recurringPlan);
+		expect(plan).toMatchObject({ status: 'lapsed' });
+
+		const again = await settleDelivery(deps({ provider: lastMiss() }), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true });
+		expect((await failures()).map((row) => row.subject_id)).toEqual([
+			`${await planId()}:in_collect_2:2`,
+			`${await planId()}:in_collect_2:2`
+		]);
+	});
+
+	it('asks for a failure again when the lapse it carries could not be written, and owes its rows once', async () => {
+		await settleDelivery(deps(), DELIVERY);
+		const lastMiss = () =>
+			failedDelivery(failedAttempt({ attemptCount: 4, nextRetryAt: null }), { state: 'lapsed' });
+		// the attempt's rows are the first batch and the lapse the second.
+		let batches = 0;
+		const faulting = new Proxy(db, {
+			get(target, property, receiver) {
+				if (property !== 'batch') return Reflect.get(target, property, receiver);
+				return async (writes: Parameters<Db['batch']>[0]) => {
+					batches += 1;
+					if (batches === 2) throw new Error('D1_ERROR: Network connection lost.');
+					return target.batch(writes);
+				};
+			}
+		});
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		const first = await settleDelivery(deps({ db: faulting, provider: lastMiss() }), DELIVERY);
+
+		expect(first).toMatchObject({ ok: false, reason: 'incomplete' });
+		const [open] = await db.select().from(recurringPlan);
+		expect(open).toMatchObject({ status: 'active' });
+
+		const again = await settleDelivery(deps({ provider: lastMiss() }), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'stopped' });
+		const [lapsed] = await db.select().from(recurringPlan);
+		expect(lapsed).toMatchObject({ status: 'lapsed' });
+		expect(await failures()).toHaveLength(2);
+	});
+
+	/** the second failed attempt at the September collection, as Stripe reports it. */
+	function stripeReading(): PaymentProvider {
+		const at = (iso: string) => Date.parse(iso) / 1_000;
+		const { httpClient } = recording([
+			{
+				status: 200,
+				json: {
+					id: 'in_collect_2',
+					object: 'invoice',
+					status: 'open',
+					currency: 'usd',
+					created: at('2026-09-03T12:00:00Z'),
+					billing_reason: 'subscription_cycle',
+					amount_due: 2500,
+					attempt_count: 2,
+					next_payment_attempt: at('2026-09-21T22:20:08Z'),
+					parent: {
+						type: 'subscription_details',
+						subscription_details: {
+							metadata: {},
+							subscription: {
+								id: GIFT_ID,
+								object: 'subscription',
+								customer: CUSTOMER_ID,
+								status: 'past_due',
+								start_date: at('2026-08-03T12:00:00Z'),
+								created: at('2026-08-03T12:00:00Z'),
+								metadata: commitmentMetadata(),
+								items: {
+									object: 'list',
+									url: '/v1/subscription_items',
+									has_more: false,
+									data: [
+										{
+											id: 'si_collect_1',
+											object: 'subscription_item',
+											current_period_end: at('2026-10-03T12:00:00Z'),
+											price: {
+												id: 'price_collect_1',
+												object: 'price',
+												recurring: { interval: 'month', interval_count: 1 }
+											}
+										}
+									]
+								},
+								latest_invoice: 'in_collect_2'
+							}
+						}
+					},
+					payments: {
+						object: 'list',
+						url: '/v1/invoice_payments',
+						has_more: false,
+						data: [
+							{
+								id: 'inpay_collect_2',
+								object: 'invoice_payment',
+								invoice: 'in_collect_2',
+								is_default: true,
+								created: at('2026-09-03T12:00:00Z'),
+								status: 'open',
+								payment: { type: 'payment_intent', payment_intent: 'pi_collect_2' }
+							}
+						]
+					}
+				}
+			}
+		]);
+		const stripe = createStripeProvider(
+			{ secretKey: 'sk_test_notarealkey', webhookSecret: 'whsec_notarealsecret' },
+			{ httpClient }
+		);
+		return readingThrough(stripe, {
+			id: 'evt_failed_stripe',
+			type: 'invoice.payment_failed',
+			providerNoticeId: 'in_collect_2',
+			occurredAt: new Date('2026-09-16T22:20:08.000Z'),
+			delivered: {
+				attemptCount: 2,
+				nextRetryAt: new Date('2026-09-21T22:20:08Z'),
+				amountMinor: 2500,
+				currency: 'USD'
+			}
+		});
+	}
+
+	/** the same attempt, as PayPal reports it. */
+	function paypalReading(): PaymentProvider {
+		vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
+			const { pathname } = new URL(input instanceof Request ? input.url : String(input));
+			if (pathname === '/v1/oauth2/token') {
+				return Response.json({
+					access_token: 'A21AA-token',
+					token_type: 'Bearer',
+					expires_in: 32400
+				});
+			}
+			if (pathname === `/v1/billing/subscriptions/${GIFT_ID}`) {
+				return Response.json({
+					id: GIFT_ID,
+					status: 'ACTIVE',
+					subscriber: { payer_id: CUSTOMER_ID },
+					billing_info: {
+						outstanding_balance: { currency_code: 'USD', value: '0.00' },
+						failed_payments_count: 2,
+						next_billing_time: '2026-10-03T12:00:00Z',
+						last_failed_payment: {
+							amount: { currency_code: 'USD', value: '25.00' },
+							time: '2026-09-16T22:20:08Z',
+							reason_code: 'PAYMENT_DENIED',
+							next_payment_retry_time: '2026-09-21T22:20:08Z'
+						}
+					}
+				});
+			}
+			throw new Error(`unscripted request: ${init?.method ?? 'GET'} ${pathname}`);
+		});
+		const paypal = createPaypalProvider({
+			clientId: 'Aa-notarealclientid',
+			clientSecret: 'EL-notarealsecret',
+			apiUrl: PAYPAL_DEFAULT_API_URL,
+			webhookId: '7YN47048TX2895013'
+		});
+		return readingThrough(paypal, {
+			id: 'WH-FAILED-PAYPAL',
+			type: 'BILLING.SUBSCRIPTION.PAYMENT.FAILED',
+			providerNoticeId: GIFT_ID,
+			occurredAt: new Date('2026-09-16T22:20:10.000Z'),
+			delivered: {
+				attemptCount: 2,
+				nextRetryAt: new Date('2026-09-21T22:20:08Z'),
+				failedAt: new Date('2026-09-16T22:20:08Z'),
+				amountMinor: 2500,
+				currency: 'USD'
+			}
+		});
+	}
+
+	/** `adapter`'s own reading of the delivery, behind a verification that vouches for it. */
+	function readingThrough(
+		adapter: PaymentProvider,
+		delivered: Omit<RecurringEvent, 'kind'>
+	): PaymentProvider {
+		const verified = provider(
+			{ verify: { ok: true, value: { kind: 'recurring', ...delivered } } },
+			adapter.processor
+		);
+		return { ...verified, readRecurringGift: (event) => adapter.readRecurringGift(event) };
+	}
+
+	it.each([
+		['Stripe', 'stripe', stripeReading],
+		['PayPal', 'paypal', paypalReading]
+	] as const)(
+		'renders a failure %s reports as the same payload, field for field',
+		async (_name, processor, reading) => {
+			const OPENED = new Date('2026-08-03T12:00:05.000Z');
+			vi.useFakeTimers({ toFake: ['Date'] });
+			try {
+				vi.setSystemTime(OPENED);
+				await settleDelivery(deps({ provider: provider({}, processor) }), DELIVERY);
+				vi.setSystemTime(new Date('2026-09-16T22:20:12.000Z'));
+				const result = await settleDelivery(deps({ provider: reading() }), DELIVERY);
+				expect(result).toMatchObject({ ok: true, outcome: 'uncollected' });
+			} finally {
+				vi.useRealTimers();
+			}
+
+			const { results } = await env.DB.prepare(
+				`select event, subject_id as subjectId, detail from webhook_delivery
+				 where destination_id = (select id from webhook_destination where url like '%/failed-a')`
+			).all<{ event: 'recurring_gift.charge_failed'; subjectId: string; detail: string | null }>();
+			const [row] = results;
+			expect(results).toHaveLength(1);
+			if (row === undefined) return;
+			const render = await renderSubjects(db, results);
+
+			expect(render(row)).toEqual({
+				data: {
+					attempt_count: 2,
+					next_retry_at: '2026-09-21T22:20:08.000Z',
+					failed_at: '2026-09-16T22:20:08.000Z',
+					amount: '25.00',
+					amount_minor: 2500,
+					currency: 'USD',
+					recurring_gift: {
+						id: await planId(),
+						donor_id: CONTACT_ID,
+						amount: '25.00',
+						amount_minor: 2500,
+						currency: 'USD',
+						frequency: 'monthly',
+						status: 'active',
+						next_charge_at: '2026-09-03T12:00:00.000Z',
+						started_at: '2026-08-03T12:00:00.000Z',
+						updated_at: OPENED.toISOString()
+					}
+				}
+			});
+		}
+	);
+
+	it('owes nothing for a failure no commitment has a row for — the donor’s own first charge', async () => {
+		await settleDelivery(
+			deps({
+				provider: failedDelivery(failedAttempt({ attemptKey: 'in_open:1', attemptCount: 1 }))
+			}),
+			DELIVERY
+		);
+
+		expect(await env.DB.prepare('select count(*) as n from webhook_delivery').first('n')).toBe(0);
 	});
 });

@@ -13,6 +13,9 @@ import { CopyControl } from './CopyControl.jsx';
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.
 
+/** what a worded control's caller says its refusal left the reader. */
+const WAY_OUT = 'Open agent prompt, after this button, opens it to copy by hand.';
+
 /** the clipboard the case is holding, so it can answer or refuse. */
 let writeText: ReturnType<typeof vi.fn>;
 
@@ -36,6 +39,23 @@ function button(root: HTMLElement): HTMLButtonElement {
 	// a case that read `null` here would assert nothing about a control that is not there.
 	if (found === null) throw new Error('the control drew no button');
 	return found;
+}
+
+/** a worded control's resting face: its mark and its words. */
+function rest(root: HTMLElement): Element {
+	const found = root.querySelector('.adm-copyface__rest');
+	if (found === null) throw new Error('the control drew no resting face');
+	return found;
+}
+
+/** whether the resting face is held out of sight under an outcome. */
+function held(root: HTMLElement): boolean {
+	return rest(root).classList.contains('adm-copyface__rest--held');
+}
+
+/** the outcome a worded control draws over its resting face, if it is drawing one. */
+function outcome(root: HTMLElement): Element | null {
+	return root.querySelector('.adm-copyface__outcome');
 }
 
 function region(root: HTMLElement): Element {
@@ -120,6 +140,115 @@ describe('a copy control mounted into a document', () => {
 		});
 
 		expect(button(root).getAttribute('aria-label')).toBe('Copy the deploy command');
+	});
+
+	it('draws its wording after the mark, and is named by exactly the words it draws', () => {
+		// a name that differed from the drawn words would leave a voice user saying words the
+		// control does not answer to (WCAG 2.5.3).
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
+			onBlocked: () => {}
+		});
+		const [mark, words] = rest(root).childNodes;
+
+		expect(mark).toBeInstanceOf(SVGElement);
+		expect(words?.textContent).toBe('Copy agent prompt');
+		expect(button(root).textContent).toBe('Copy agent prompt');
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it('reports each outcome as an unworded control does, and draws its wording again once settled', async () => {
+		const onBlocked = vi.fn();
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
+			onBlocked
+		});
+
+		await press(root);
+		expect(outcome(root)?.querySelector('svg')).not.toBeNull();
+		expect(outcome(root)?.textContent).toBe('');
+		expect(button(root).getAttribute('aria-label')).toBe('Copied');
+
+		await elapse(2000);
+		expect(outcome(root)).toBeNull();
+		expect(held(root)).toBe(false);
+
+		writeText.mockRejectedValue(new Error('permission refused'));
+		await press(root);
+		expect(outcome(root)?.textContent).toBe('Copy blocked');
+		expect(button(root).getAttribute('aria-label')).toBe('Copy blocked');
+		expect(onBlocked).toHaveBeenCalledOnce();
+
+		await elapse(2000);
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it('keeps its resting words in the box under either outcome, so it keeps its width', async () => {
+		// the outcome is drawn over the resting words rather than in their place: a control that
+		// shrank to the tick would move everything after it on the row, and back two seconds later.
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
+			onBlocked: () => {}
+		});
+
+		await press(root);
+		expect(rest(root).textContent).toBe('Copy agent prompt');
+		expect(held(root)).toBe(true);
+
+		await elapse(2000);
+		writeText.mockRejectedValue(new Error('permission refused'));
+		await press(root);
+		expect(rest(root).textContent).toBe('Copy agent prompt');
+		expect(held(root)).toBe(true);
+	});
+
+	it('cannot be worded without being told of a refusal', () => {
+		// a worded control stands where nothing prints the text, so the refusal is survivable only
+		// through what its caller does. `pnpm run check` is what runs this case; the render is here
+		// so the case asserts something at run time as well.
+		// @ts-expect-error — `onBlocked` is required beside `wording`.
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT
+		});
+
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it('cannot be worded without saying the way out of a refusal', () => {
+		// @ts-expect-error — `wayOut` is required beside `wording`.
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			onBlocked: () => {}
+		});
+
+		expect(button(root).getAttribute('aria-label')).toBe('Copy agent prompt');
+	});
+
+	it("says a worded control's way out with the refusal, and keeps its name to the drawn words", async () => {
+		// focus stays on the control, so what the caller drew for the refusal is next in the tab
+		// order and reported by nothing else.
+		writeText.mockRejectedValue(new Error('permission refused'));
+		const root = render(CopyControl, {
+			text: 'You are integrating…',
+			wording: 'Copy agent prompt',
+			wayOut: WAY_OUT,
+			onBlocked: () => {}
+		});
+
+		await press(root);
+		await elapse(0);
+
+		expect(region(root).textContent).toBe(`Copy blocked. ${WAY_OUT}`);
+		expect(button(root).getAttribute('aria-label')).toBe('Copy blocked');
 	});
 
 	it('is still the same button, and still focused, once the copy has landed', async () => {

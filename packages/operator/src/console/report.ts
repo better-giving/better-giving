@@ -1,3 +1,5 @@
+import type { Feed } from '../delivery-pace';
+
 // the envelope a deployment's console surface answers in, stated once for both ends of the wire.
 //
 // it is here for the reason ./token.ts is here: the deployment writes this value and the operator
@@ -58,4 +60,20 @@ export interface ConsoleReport<Org> {
 	 * unit has to be known is one a reader gets wrong once.
 	 */
 	readonly session: { readonly expiresAt: string };
+	/**
+	 * which of the feeds the minute cron paces have anything to deliver to, or `null`.
+	 *
+	 * `zapier` is a Zap subscribed and not ended, `webhooks` a destination not deleted — paused
+	 * included, since what it misses is queued for it — and `books` a QuickBooks company connected.
+	 * each is read off this deployment's own rows, so a company Intuit has since cut off still reads
+	 * as connected.
+	 *
+	 * `null` is a read that did not land, and a deployment built before this member answers with no
+	 * member at all; a console treats the two alike, as not knowing, and says nothing about pace on
+	 * either rather than reading one as no feed in use.
+	 */
+	readonly feedsInUse: FeedsInUse | null;
 }
+
+/** each feed ../delivery-pace.ts paces, and whether it has anything to deliver to. */
+export type FeedsInUse = Readonly<Record<Feed, boolean>>;

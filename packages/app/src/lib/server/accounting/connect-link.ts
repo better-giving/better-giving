@@ -29,7 +29,7 @@
 // these. what reading that key out of D1 would let somebody do is this flow, and that module's
 // header states it.
 
-import type { AuthEnv } from '../auth/env';
+import { type AuthEnv, pinnedOrigin } from '../auth/env';
 import { secretEquals } from '../secret-compare';
 
 /** where a browser begins, and where Intuit sends it back. both are addresses on this deployment. */
@@ -53,12 +53,11 @@ export const QUICKBOOKS_CALLBACK_PATH = '/quickbooks/callback';
  * deployment that never had the problem. no hostname is committed to this repository (CLAUDE.md),
  * which is why there is no third answer.
  *
- * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
- * path on it would spell an address Intuit was never registered with.
+ * the pin is read by its origin alone (`pinnedOrigin`), since a trailing slash or a path on it would
+ * spell an address Intuit was never registered with.
  */
 export function connectFlowOrigin(env: AuthEnv, requestUrl: URL): string {
-	const pinned = env.BETTER_AUTH_URL?.trim();
-	return pinned ? new URL(pinned).origin : requestUrl.origin;
+	return pinnedOrigin(env) ?? requestUrl.origin;
 }
 
 /**

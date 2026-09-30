@@ -1,6 +1,20 @@
 import type { TributeKind } from '@better-giving/form/v1';
-import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
+import {
+	and,
+	count,
+	desc,
+	eq,
+	exists,
+	inArray,
+	isNull,
+	lt,
+	ne,
+	notExists,
+	or,
+	type SQL,
+	sql
+} from 'drizzle-orm';
+import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { dispute, donation, payment, program, type Donation, type Payment } from '../db/schema';
@@ -28,7 +42,9 @@ import { projectTribute } from '../../donations/tributes';
 // other attempt counts for nothing. the summary spends only the first of those, because a count of
 // donors is not money and a refund takes nothing off one. `disputed` is the one state they need
 // not mirror: it names no money, and what a dispute withdrew is already a succeeded refund row
-// that the sums take off. a change to the rule here is a change to the `case when` there, and a
+// that the sums take off. `refundStands` below is the one read that parts from them on purpose,
+// during an open dispute: it counts that withdrawal as nothing sent back yet, since a win returns
+// it. a change to the rule here is a change to the `case when` there, and a
 // screen calling a gift `pending` while the donor file counts it is the failure that costs.
 //
 // no writes. a gift is written by ./record.ts, which composes four tables in one `batch()` and is
@@ -132,6 +148,92 @@ export function projectStatus(attempts: readonly SettlementAttempt[]): DonationS
 	if (latest?.status === 'failed') return 'failed';
 	if (latest?.status === 'cancelled') return 'cancelled';
 	return 'pending';
+}
+
+/**
+ * `row` is a refund whose money is gone for good: a refund-direction row still `succeeded`, and no
+ * dispute on it that is open or was won. every read of what a gift has lost for good takes it from
+ * here — the Zapier feed, the read API's `amount_refunded_minor`, the refund notice.
+ *
+ * it parts from `projectStatus` above during an open dispute: there the withdrawal is a succeeded
+ * refund and the gift reads `disputed`; here it stands for nothing until the dispute is lost.
+ */
+export function refundStands(db: Db, row: typeof payment) {
+	const unsettled = db
+		.select({ one: sql`1` })
+		.from(dispute)
+		.where(
+			and(eq(dispute.paymentId, row.id), or(isNull(dispute.outcome), ne(dispute.outcome, 'lost')))
+		);
+	return and(eq(row.direction, 'refund'), eq(row.status, 'succeeded'), notExists(unsettled));
+}
+
+/**
+ * `gift` is its donor's first settled gift: no other succeeded inbound payment of theirs exists.
+ * the one rule both feeds read "new donor" by — `zapierStatements` in ../zapier/events.ts and
+ * `webhookStatements` in ../webhooks/events.ts — inside the statement that owes the event, never
+ * in a read before it; the first of those argues the race it settles.
+ */
+export function isFirstSettledGift(
+	db: Db,
+	gift: { readonly paymentId: string; readonly contactId: string }
+): SQL {
+	return notExists(settledGiftsOf(db, gift.contactId, gift.paymentId));
+}
+
+/**
+ * the contact `contactId` has a settled gift: the fact {@link isFirstSettledGift} reads, held the
+ * other way round — a `donor.updated` is queued only once a gift of theirs has settled
+ * (`donorUpdatedWebhookStatements` in ../webhooks/events.ts, which lists where that still lets a
+ * destination hear of a change before a `donor.added`).
+ */
+export function hasSettledGift(db: Db, contactId: string): SQL {
+	return exists(settledGiftsOf(db, contactId));
+}
+
+/** the contact's succeeded inbound payments, but for `exceptPaymentId`. */
+function settledGiftsOf(db: Db, contactId: string, exceptPaymentId?: string) {
+	const prior = alias(payment, 'prior');
+	const priorDonation = alias(donation, 'prior_donation');
+	return db
+		.select({ one: sql`1` })
+		.from(prior)
+		.innerJoin(priorDonation, eq(priorDonation.id, prior.donationId))
+		.where(
+			and(
+				eq(priorDonation.contactId, contactId),
+				eq(prior.status, 'succeeded'),
+				eq(prior.direction, 'inbound'),
+				exceptPaymentId === undefined ? undefined : ne(prior.id, exceptPaymentId)
+			)
+		);
+}
+
+/**
+ * a settled gift from the same donor as the outer row's, dated before it — so the outer row with
+ * none is that donor's first. a tie on the date falls to the lower id, so exactly one row per
+ * donor is first. the outer query reads `payment` joined to `donation`, both unaliased: a
+ * `new_donor` Zap's samples (../zapier/payload.ts) and a `donor.added` destination's
+ * `first_gift` (../webhooks/payload.ts) read the first gift by it.
+ */
+export function earlierSettledGiftOfDonor(db: Db) {
+	const earlier = alias(payment, 'earlier');
+	const earlierDonation = alias(donation, 'earlier_donation');
+	return db
+		.select({ one: sql`1` })
+		.from(earlier)
+		.innerJoin(earlierDonation, eq(earlierDonation.id, earlier.donationId))
+		.where(
+			and(
+				eq(earlierDonation.contactId, donation.contactId),
+				eq(earlier.status, 'succeeded'),
+				eq(earlier.direction, 'inbound'),
+				or(
+					lt(earlier.occurredAt, payment.occurredAt),
+					and(eq(earlier.occurredAt, payment.occurredAt), lt(earlier.id, payment.id))
+				)
+			)
+		);
 }
 
 /**

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, setUpRecurring, setVars, startPaypalSetup } from '../api/client';
 import type { RecurringSetup, VarsWritten } from '../api/types';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
 import type { PaypalPress } from '../lib/paypal-section';
@@ -37,6 +38,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * account, the worker and the address it is spent on read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');

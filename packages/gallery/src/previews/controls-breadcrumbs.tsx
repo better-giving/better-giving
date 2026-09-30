@@ -3,7 +3,8 @@ import { Breadcrumbs } from '@better-giving/operator/components/controls/Breadcr
 /*
  * every state Breadcrumbs offers: a trail of two and of four, the two pointer states pinned on the
  * link to the page directly above (PointerState in packages/operator/src/components/closed-sets.js),
- * and a trail whose labels are long enough to wrap the list and a label inside its own item.
+ * a trail whose labels are long enough to wrap the list, and a page named by an address too long
+ * for one line, which is cut to one with an ellipsis rather than wrapped inside its item.
  *
  * a trail of one draws nothing, which is not a specimen — there is nothing to look at.
  *
@@ -62,6 +63,18 @@ export default function ControlsBreadcrumbsPreview() {
 						},
 						{ href: '#collections', label: 'Collections that could not be made this month' },
 						{ href: '#attempt', label: 'Attempt on 1 December 2025' }
+					]}
+				/>
+			</div>
+			<div>
+				<Breadcrumbs
+					items={[
+						{ href: '#webhooks', label: 'Webhooks' },
+						{
+							href: '#destination',
+							label:
+								'https://hooks.riverbank-trust.org/incoming/better-giving/donations/settled-and-refunded'
+						}
 					]}
 				/>
 			</div>

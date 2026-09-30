@@ -99,6 +99,23 @@ export default function ShellPageHeaderPreview() {
 				}
 			/>
 
+			{/* a name that is one unbroken word: a webhook destination is named by its address, and
+			    an address has no space to break at. it wraps inside the column at every width rather
+			    than pushing the header past the window's edge. */}
+			<PageHeader
+				title="https://hooks.riverside-shelter.org/integrations/donations/incoming/gift-settled?source=better-giving&token=7f3a9c"
+				beside={<StatusWord unset>Paused</StatusWord>}
+				pageAction={<Button variant="primary">Resume</Button>}
+				crumbs={
+					<Breadcrumbs
+						items={[
+							{ href: '#webhooks', label: 'Webhooks' },
+							{ href: '#destination', label: 'hooks.riverside-shelter.org' }
+						]}
+					/>
+				}
+			/>
+
 			<PageHeader
 				title="Recurring gifts that could not be collected this month"
 				beside={

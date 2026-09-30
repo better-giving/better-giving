@@ -47,6 +47,9 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  *
  * @typedef {object} CodeChipProps
  * @property {ReactNode} [children]
+ *
+ * @typedef {object} UrlTextProps
+ * @property {ReactNode} [children]
  */
 
 /* a block of text a person copies rather than reads — an embed snippet — and the control that puts
@@ -97,18 +100,19 @@ export function CodeSlab({
 	) : null;
 
 	return (
-		// the role follows the label and the record. an unnamed `region` is exposed as nothing at
-		// all, so a slab with no caption is a `group`; a slab standing in a record is a `group` as
-		// well, whatever its caption says, because a `region` is a landmark and a landmark is a
-		// section of the page.
+		// the role follows the name and the record. a slab with a caption and no record is a
+		// `region`; a slab standing in a record is a `group` whatever its caption says, because a
+		// `region` is a landmark and a landmark is a section of the page; and a slab with no name
+		// at all takes no role — an unnamed `group` is read out as a bare "group", which inside a
+		// named one (../forms/StatedValue.jsx's block form) is a second grouping that says nothing.
 		//
 		/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the rule cannot evaluate a role written
 		   as an expression, so it reads this as a bare `div` — which supports no `aria-labelledby`.
-		   both roles it resolves to take a label, and the attribute is only drawn when there is one
-		   to point at. */
+		   both roles it resolves to take a label, and the attribute is only drawn with one of them,
+		   when there is a name to point at. */
 		<div
 			className={`adm-slab${oneline ? ' adm-slab--oneline' : ''}`}
-			role={label && !record ? 'region' : 'group'}
+			role={label && !record ? 'region' : label || labelledBy ? 'group' : undefined}
 			aria-labelledby={label ? labelId : labelledBy}
 		>
 			{/* the head is laid out with `space-between`, which lays a lone child at the leading edge
@@ -169,4 +173,13 @@ export function InlineCode({ children }) {
 /** @param {CodeChipProps} props */
 export function CodeChip({ children }) {
 	return <code className="adm-chip">{children}</code>;
+}
+
+/* an address standing as the name of a thing — a webhook destination, inside the link in the row
+   that opens it. the code face with no ground: `.adm-url` in ../../styles/base.css says why the
+   tint `InlineCode` wears would be a second box in a row the table already draws. it is a span so a
+   caller puts it inside whatever element carries the address — a router's link, a plain `a`. */
+/** @param {UrlTextProps} props */
+export function UrlText({ children }) {
+	return <span className="adm-url">{children}</span>;
 }

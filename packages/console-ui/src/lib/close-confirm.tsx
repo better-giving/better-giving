@@ -1,9 +1,9 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
-import type { ButtonProps } from '@better-giving/operator/components/controls/Button';
-import type { ElementType, ReactNode } from 'react';
-import { Link, useFetcher, useNavigate } from 'react-router';
+import type { ReactNode } from 'react';
+import { useFetcher } from 'react-router';
 import { saidClosing } from './close-answer';
+import { useLeaveDialog } from './dialog-params';
 
 // the press that stands over every screen rather than on one — ending this console — and the confirm
 // it asks through, beside the intent `/`'s check-again press posts.
@@ -15,10 +15,13 @@ import { saidClosing } from './close-answer';
 // is on — the `?index` is what names that route rather than the root above it
 // (https://reactrouter.com/explanation/index-query-param).
 //
+// **the confirm's way out steps back over the entry its opener pushed**, so the history holds no
+// entry for it once it is left (`leaveDialog` in ./dialog-params.ts).
+//
 // **the close is one fetcher under one key**, so the screen that draws the confirm and the screen
 // that goes blank once it is answered read the same answer without handing it between them.
 
-/** where the close posts. */
+/** where the presses over every page post: the close, and the account panel's (./cloudflare-plan-block.tsx). */
 export const SHELL_ACTION = '/?index';
 
 /** what the press that reads everything again posts. */
@@ -52,9 +55,8 @@ export function useClosed(): boolean {
  *
  * the `<form>` stands around the whole dialog rather than around the control that submits it, which
  * is the rule `Dialog` states: the actions row holds controls, and a submit belongs to the form
- * enclosing it whether or not the element has been lifted into the top layer. the way out is a link,
- * or a plain button where the confirm opened from state, so it posts nothing and the form around it
- * is inert for that press.
+ * enclosing it whether or not the element has been lifted into the top layer. the way out is a
+ * plain button, so it posts nothing and the form around it is inert for that press.
  *
  * it takes the `danger` slot rather than the exit one: that slot draws the confirm ahead of the way
  * out, and this is the consequential control on the card.
@@ -68,9 +70,10 @@ export function CloseConfirm({
 	 */
 	back: string | (() => void);
 }): ReactNode {
-	const navigate = useNavigate();
+	const leave = useLeaveDialog();
 	const close = useFetcher({ key: CLOSE_FETCHER });
-	const ask = <X extends ElementType>(dismiss: () => void, cancelProps: ButtonProps<X>) => (
+	const dismiss = typeof back === 'string' ? () => leave(back) : back;
+	return (
 		<close.Form method="post" action={SHELL_ACTION}>
 			<Modal
 				title="Close this console?"
@@ -83,7 +86,7 @@ export function CloseConfirm({
 					'aria-busy': close.state !== 'idle'
 				}}
 				cancel="Back"
-				cancelProps={cancelProps}
+				cancelProps={{ type: 'button', onClick: dismiss }}
 			>
 				<p className="adm-prose">
 					The console stops. Type <InlineCode>better-giving start</InlineCode> to open it again.
@@ -91,11 +94,4 @@ export function CloseConfirm({
 			</Modal>
 		</close.Form>
 	);
-	return typeof back === 'string'
-		? ask(() => navigate(back, { preventScrollReset: true }), {
-				as: Link,
-				to: back,
-				preventScrollReset: true
-			})
-		: ask(back, { type: 'button', onClick: back });
 }

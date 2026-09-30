@@ -1,0 +1,308 @@
+import { createHash } from 'node:crypto';
+import { env } from 'cloudflare:test';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createDb, type Db } from '../db/client';
+import {
+	API_KEY_SHAPE,
+	findKeyByPresented,
+	listApiKeys,
+	parseBearer,
+	mintApiKey,
+	revokeAndArchiveApiKey,
+	revokeApiKey,
+	revokedApiKeyName,
+	touchLastUsed,
+	ZAPIER_KEY_SHAPE
+} from './keys';
+
+// the integration keys against a real D1: what is stored is read back from the table rather than
+// from the module, so a key that reached a column is caught however it got there.
+
+let db: Db;
+
+beforeAll(() => {
+	db = createDb(env.DB);
+});
+
+beforeEach(async () => {
+	await env.DB.prepare('delete from api_key').run();
+});
+
+/** the digest worked out apart from ./keys.ts, so a hash that drifts from its key is caught. */
+const sha256Hex = (key: string) => createHash('sha256').update(key).digest('hex');
+
+async function storedRows() {
+	const { results } = await env.DB.prepare('select * from api_key').all<Record<string, unknown>>();
+	return results;
+}
+
+describe('minting a key', () => {
+	it('stores the hash of the key it hands over, and the key nowhere', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		expect(minted.key).toMatch(/^bgk_[0-9A-Za-z]{43}$/);
+
+		const rows = await storedRows();
+		expect(rows).toHaveLength(1);
+		const [row] = rows;
+		if (row === undefined) throw new Error('the mint stored no row');
+		expect(row).toMatchObject({
+			id: minted.id,
+			name: 'CRM sync',
+			kind: 'api',
+			key_hash: sha256Hex(minted.key),
+			prefix: minted.key.slice(0, 8),
+			last_four: minted.key.slice(-4),
+			created_at: minted.createdAt.getTime(),
+			last_used_at: null,
+			revoked_at: null
+		});
+		// the whole key, or its secret half, in any column is the leak this test exists for
+		const secret = minted.key.slice(4);
+		for (const value of Object.values(row)) {
+			expect(String(value)).not.toContain(secret);
+		}
+	});
+});
+
+describe("minting Zapier's key", () => {
+	it('mints the bgz_ and base64url shape Zapier has always presented, stored like any key', async () => {
+		const minted = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+		expect(minted.key).toMatch(ZAPIER_KEY_SHAPE);
+		expect(minted.key).not.toMatch(API_KEY_SHAPE);
+
+		const [row] = await storedRows();
+		expect(row).toMatchObject({
+			kind: 'zapier',
+			key_hash: sha256Hex(minted.key),
+			prefix: minted.key.slice(0, 8),
+			last_four: minted.key.slice(-4)
+		});
+		expect(await findKeyByPresented(db, minted.key, 'zapier')).toMatchObject({ id: minted.id });
+	});
+});
+
+describe('finding the key a request presents', () => {
+	it('finds the row a minted key was stored as', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		await mintApiKey(db, { name: 'warehouse', kind: 'api' });
+
+		const found = await findKeyByPresented(db, minted.key, 'api');
+		expect(found).toMatchObject({ id: minted.id, name: 'CRM sync', kind: 'api', revokedAt: null });
+	});
+
+	it('finds nothing for a key that was never minted', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const lastSwapped = `${minted.key.slice(0, -1)}${minted.key.endsWith('A') ? 'B' : 'A'}`;
+
+		expect(await findKeyByPresented(db, lastSwapped, 'api')).toBeNull();
+		expect(await findKeyByPresented(db, `bgk_${'A'.repeat(43)}`, 'api')).toBeNull();
+		expect(await findKeyByPresented(db, '', 'api')).toBeNull();
+	});
+
+	it('finds a key only as the kind asked for', async () => {
+		const api = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+
+		expect(await findKeyByPresented(db, zapier.key, 'api')).toBeNull();
+		expect(await findKeyByPresented(db, api.key, 'zapier')).toBeNull();
+		expect(await findKeyByPresented(db, zapier.key, 'zapier')).toMatchObject({ id: zapier.id });
+	});
+});
+
+describe('revoking a key', () => {
+	it('still finds a revoked key, with when it was revoked', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+
+		const revokedAt = await revokeApiKey(db, minted.id);
+		expect(revokedAt).toBeInstanceOf(Date);
+
+		expect(await findKeyByPresented(db, minted.key, 'api')).toMatchObject({
+			id: minted.id,
+			revokedAt
+		});
+	});
+
+	it('keeps the first revocation time when revoked again', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const first = await revokeApiKey(db, minted.id);
+
+		expect(await revokeApiKey(db, minted.id)).toBeNull();
+		expect((await findKeyByPresented(db, minted.key, 'api'))?.revokedAt).toEqual(first);
+	});
+
+	it('leaves Zapier\u2019s key admitting: only a replace revokes that one', async () => {
+		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+
+		expect(await revokeApiKey(db, zapier.id)).toBeNull();
+		expect((await findKeyByPresented(db, zapier.key, 'zapier'))?.revokedAt).toBeNull();
+	});
+
+	it('revokes no other key', async () => {
+		const revoked = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const kept = await mintApiKey(db, { name: 'warehouse', kind: 'api' });
+		await revokeApiKey(db, revoked.id);
+
+		expect((await findKeyByPresented(db, kept.key, 'api'))?.revokedAt).toBeNull();
+	});
+});
+
+describe('the keys an organisation lists', () => {
+	it('is every api key still on the list, newest first, and never Zapier’s', async () => {
+		const older = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+		const newer = await mintApiKey(db, { name: 'Donor wall', kind: 'api' });
+		// the mint stamps the row with the statement's own clock, so two mints in one millisecond
+		// are told apart by setting one back rather than by waiting.
+		await env.DB.prepare('update api_key set created_at = created_at - 1000 where id = ?')
+			.bind(older.id)
+			.run();
+
+		expect((await listApiKeys(db)).map((key) => key.id)).toEqual([newer.id, older.id]);
+	});
+
+	it('names each key, when it was made and when it was last used, and holds nothing secret', async () => {
+		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+
+		expect(await listApiKeys(db)).toStrictEqual([
+			{ id: minted.id, name: 'Reporting sheet', createdAt: minted.createdAt, lastUsedAt: null }
+		]);
+	});
+});
+
+describe('revoking a key from the dashboard', () => {
+	it('stops the key at once and takes it off the list, in one statement', async () => {
+		const revoked = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		const kept = await mintApiKey(db, { name: 'Donor wall', kind: 'api' });
+
+		expect(await revokeAndArchiveApiKey(db, revoked.id)).toBe(true);
+
+		expect((await findKeyByPresented(db, revoked.key, 'api'))?.revokedAt).toBeInstanceOf(Date);
+		expect((await listApiKeys(db)).map((key) => key.id)).toEqual([kept.id]);
+		expect((await findKeyByPresented(db, kept.key, 'api'))?.revokedAt).toBeNull();
+	});
+
+	it('keeps the first revocation time of a key already revoked', async () => {
+		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		const first = await revokeApiKey(db, minted.id);
+
+		expect(await revokeAndArchiveApiKey(db, minted.id)).toBe(true);
+		expect((await findKeyByPresented(db, minted.key, 'api'))?.revokedAt).toEqual(first);
+		expect(await listApiKeys(db)).toEqual([]);
+	});
+
+	it('answers false for a key already off the list, and for no key at all', async () => {
+		const minted = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		await revokeAndArchiveApiKey(db, minted.id);
+
+		expect(await revokeAndArchiveApiKey(db, minted.id)).toBe(false);
+		expect(await revokeAndArchiveApiKey(db, '0195-no-such-key')).toBe(false);
+	});
+
+	it('names a key it took off the list, and nothing for one still on it', async () => {
+		const revoked = await mintApiKey(db, { name: 'Reporting sheet', kind: 'api' });
+		const listed = await mintApiKey(db, { name: 'Donor wall', kind: 'api' });
+		await revokeAndArchiveApiKey(db, revoked.id);
+
+		expect(await revokedApiKeyName(db, revoked.id)).toBe('Reporting sheet');
+		expect(await revokedApiKeyName(db, listed.id)).toBeNull();
+		expect(await revokedApiKeyName(db, '0195-no-such-key')).toBeNull();
+	});
+
+	/** the dashboard's list never shows Zapier's key, so an id naming it is a body nobody pressed. */
+	it('leaves Zapier’s key working', async () => {
+		const zapier = await mintApiKey(db, { name: 'Zapier', kind: 'zapier' });
+
+		expect(await revokeAndArchiveApiKey(db, zapier.id)).toBe(false);
+		expect(await findKeyByPresented(db, zapier.key, 'zapier')).toMatchObject({
+			revokedAt: null,
+			archivedAt: null
+		});
+	});
+});
+
+describe('recording when a key was last used', () => {
+	/** the row as a request's own lookup read it, before any use was recorded. */
+	async function readRow(key: string) {
+		const row = await findKeyByPresented(db, key, 'api');
+		if (row === null) throw new Error('the minted key was not found');
+		return row;
+	}
+
+	it('lands one write between two requests that both read the key unused', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const read = await readRow(minted.key);
+		const first = new Date(Date.UTC(2026, 8, 28, 12));
+
+		await touchLastUsed(db, read, first);
+		await touchLastUsed(db, read, new Date(first.getTime() + 5_000));
+
+		expect((await readRow(minted.key)).lastUsedAt).toEqual(first);
+	});
+
+	it('logs a write that fails, by the key’s id, and does not reject', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		const read = await readRow(minted.key);
+		const failing = createDb(
+			new Proxy(env.DB, {
+				get: (target, property) =>
+					property === 'prepare'
+						? () => {
+								throw new Error('D1_ERROR: the database is unavailable');
+							}
+						: Reflect.get(target, property)
+			})
+		);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(touchLastUsed(failing, read)).resolves.toBeUndefined();
+
+		expect(logged.mock.calls.map(([line]) => line)).toEqual([
+			`recording when API key ${minted.id} was last used failed:`
+		]);
+	});
+});
+
+describe('reading the key out of an `Authorization` header', () => {
+	it.each([
+		['Bearer abc', 'abc'],
+		['bearer abc', 'abc'],
+		['BEARER   abc', 'abc'],
+		['  Bearer abc  ', 'abc'],
+		['Bearer "abc"', '"abc"']
+	])('reads %j as %j', (header, value) => {
+		expect(parseBearer(header)).toBe(value);
+	});
+
+	it.each([
+		'Basic dXNlcjpwYXNz',
+		'Bearerish abc',
+		'abc',
+		'',
+		'Bearer',
+		'Bearer   ',
+		'Bearer\tabc',
+		'Bearer \tabc',
+		'Bearer abc def',
+		'Bearer abc\tdef',
+		'Bearer\u00a0abc'
+	])('reads %j as carrying no bearer value', (header) => {
+		expect(parseBearer(header)).toBeNull();
+	});
+});
+
+describe("the key's shape", () => {
+	it('matches a minted key', async () => {
+		const minted = await mintApiKey(db, { name: 'CRM sync', kind: 'api' });
+		expect(minted.key).toMatch(API_KEY_SHAPE);
+	});
+
+	it.each([
+		['one character short', `bgk_${'A'.repeat(42)}`],
+		['one character long', `bgk_${'A'.repeat(44)}`],
+		['a base64url character in the secret', `bgk_${'A'.repeat(42)}-`],
+		['the prefix in capitals', `BGK_${'A'.repeat(43)}`],
+		['a key inside a longer value', ` bgk_${'A'.repeat(43)}`]
+	])('refuses %s', (_what, value) => {
+		expect(value).not.toMatch(API_KEY_SHAPE);
+	});
+});

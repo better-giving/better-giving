@@ -6,8 +6,16 @@ import { describe, expect, it } from 'vitest';
 // imports the statement builders a money event's batch is made of.
 //
 // another batch assembled by hand is the least-effort next writer — the builders are right
-// there, exported — and it gets the queue row, the Zap rows or their foreign-key order wrong in a
-// way no single call site's suite would notice. ./writes.ts's header says what it hides.
+// there, exported — and it gets the queue row, the Zap rows, the destination rows or their
+// foreign-key order wrong in a way no single call site's suite would notice. ./writes.ts's header
+// says what it hides.
+//
+// the builders that report no money are held the same way, each with its own composer:
+// `donorUpdatedWebhookStatements` goes into a batch only beside the contact change it reports, in
+// ../contacts/changes.ts; `recurringGiftStartedWebhookStatements` only beside the insert that opens
+// a commitment, and `recurringChargeFailedWebhookStatements` only for a failed attempt under one
+// with a row, both in ../donations/collect.ts; and `recurringGiftChangeWebhookStatements` only
+// beside a standing change to one, in ../recurring/changes.ts.
 //
 // a source scan rather than a runtime hook, written the way ../ledger/sole-writer.spec.ts is, so it
 // catches the writer nobody wrote a test for; it reads text, so a namespace import or a computed
@@ -18,9 +26,12 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(import.meta.dirname, '../../..');
 const BOOKS_DIR = resolve(import.meta.dirname);
-const DEFINERS = ['ledger/posting.ts', 'accounting/outbox.ts', 'zapier/events.ts'].map((path) =>
-	resolve(import.meta.dirname, '..', path)
-);
+const DEFINERS = [
+	'ledger/posting.ts',
+	'accounting/outbox.ts',
+	'zapier/events.ts',
+	'webhooks/events.ts'
+].map((path) => resolve(import.meta.dirname, '..', path));
 
 const EXTENSIONS = ['.ts', '.tsx', '.js'];
 
@@ -45,7 +56,8 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 /** an import or re-export's braces, across however many lines they take. */
 const IMPORT_BRACES = /\b(?:import|export)\s+(?:type\s+)?\{([^}]*)\}\s*from\b/g;
 
-const BUILDER = /\b(postingStatements|outboxStatements|zapierStatements|giftRefundedStatements)\b/g;
+const BUILDER =
+	/\b(postingStatements|outboxStatements|zapierStatements|giftRefundedStatements|webhookStatements|giftRefundedWebhookStatements|disputeOpenedWebhookStatements)\b/g;
 
 /** every builder an import or re-export names, several to one pair of braces included. */
 function buildersImportedBy(source: string): string[] {
@@ -56,6 +68,26 @@ function buildersImportedBy(source: string): string[] {
 
 /** a static or dynamic import of a `.testing` module, with or without its extension. */
 const IMPORTS_A_TEST_HELPER = /\b(?:from|import)\s*\(?\s*['"][^'"]*\.testing(?:\.[jt]sx?)?['"]/;
+
+/** each builder of rows reporting no money, and the one module that may import it. */
+const EVENT_COMPOSERS = [
+	['donorUpdatedWebhookStatements', resolve(import.meta.dirname, '../contacts/changes.ts')],
+	[
+		'recurringGiftStartedWebhookStatements',
+		resolve(import.meta.dirname, '../donations/collect.ts')
+	],
+	[
+		'recurringChargeFailedWebhookStatements',
+		resolve(import.meta.dirname, '../donations/collect.ts')
+	],
+	['recurringGiftChangeWebhookStatements', resolve(import.meta.dirname, '../recurring/changes.ts')]
+] as const;
+
+/** whether an import or re-export in `source` names `builder`. */
+function importsBuilder(source: string, builder: string): boolean {
+	const named = new RegExp(`\\b${builder}\\b`);
+	return [...source.matchAll(IMPORT_BRACES)].some(([, names = '']) => named.test(names));
+}
 
 describe('books/ is the only importer of the statement builders', () => {
 	const production = sourceFiles(SRC);
@@ -71,7 +103,7 @@ describe('books/ is the only importer of the statement builders', () => {
 		expect(names.some((n) => /\.(?:spec|test)\./.test(n))).toBe(false);
 	});
 
-	it('finds no import of postingStatements, outboxStatements, zapierStatements or giftRefundedStatements outside books/', () => {
+	it('finds no import of a statement builder outside books/', () => {
 		const offenders = files.flatMap((file) =>
 			buildersImportedBy(readFileSync(file, 'utf8')).map(
 				(builder) => `${relative(SRC, file)} (${builder})`
@@ -88,12 +120,36 @@ describe('books/ is the only importer of the statement builders', () => {
 		// every builder, so it is the one file that must match each.
 		const writes = readFileSync(join(BOOKS_DIR, 'writes.ts'), 'utf8');
 		expect(buildersImportedBy(writes).sort()).toEqual([
+			'disputeOpenedWebhookStatements',
 			'giftRefundedStatements',
+			'giftRefundedWebhookStatements',
 			'outboxStatements',
 			'postingStatements',
+			'webhookStatements',
 			'zapierStatements'
 		]);
 	});
+
+	it.each(EVENT_COMPOSERS)(
+		'finds no import of %s outside the module whose write it reports',
+		(builder, composer) => {
+			const offenders = production
+				.filter((file) => file !== composer && !DEFINERS.includes(file))
+				.filter((file) => importsBuilder(readFileSync(file, 'utf8'), builder))
+				.map((file) => relative(SRC, file));
+			expect(
+				offenders,
+				`these modules write ${builder} rows by hand: ${offenders.join(', ')}. these events are spliced beside the write they report, in ${relative(SRC, composer)}.`
+			).toEqual([]);
+		}
+	);
+
+	it.each(EVENT_COMPOSERS)(
+		'matches %s in its composer, so the pattern is known to work',
+		(builder, composer) => {
+			expect(importsBuilder(readFileSync(composer, 'utf8'), builder)).toBe(true);
+		}
+	);
 
 	it('finds no production module importing a .testing helper, which the scan above never reads', () => {
 		const offenders = production

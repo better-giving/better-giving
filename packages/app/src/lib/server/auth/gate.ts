@@ -3,6 +3,7 @@ import { auth as authForRequest, database, platform, staff } from '../../../cont
 import { readAuthEnv } from './env';
 import { createAuth } from './index';
 import { LOGIN_PATH, NEXT_PARAM } from './next';
+import { requirePin } from './pin';
 import { resolveAuthSecret } from './signing-key';
 
 /**
@@ -60,6 +61,8 @@ export async function staffGate(
 		// names the table and the command that mints the row.
 		throw data(signingKey.message, { status: 500 });
 	}
+	// the same 500 for the same reason, and before `createAuth`, which throws a bare error on it.
+	requirePin(authEnv);
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list
 	// and the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and

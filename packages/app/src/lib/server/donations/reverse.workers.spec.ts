@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { and, eq, sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact } from '../contacts/contact-input';
 import { listContacts } from '../contacts/queries';
 import { postableId } from '../db/accounts';
@@ -20,6 +20,8 @@ import { soleProcessor } from '../payments/processors.testing';
 import type { SettleDeps } from './delivery';
 import { listDonations } from './queries';
 import { recordDonation } from './record';
+import { createDestination } from '../webhooks/destinations';
+import type { WebhookEvent } from '../../webhooks/catalog';
 import { recordReversal } from './reverse';
 import { settleDelivery, settleTransaction } from './settle';
 
@@ -2622,4 +2624,162 @@ describe('recordReversal() — what the donor is told of a refund', () => {
 			expect(sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
 		}
 	);
+});
+
+describe('recordReversal() — what a reversal owes a webhook destination', () => {
+	async function clearDestinations() {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	}
+	beforeEach(clearDestinations);
+	afterEach(clearDestinations);
+
+	/** one destination per set of events, made after the gift settled so none hears of it made. */
+	async function listening(...sets: (readonly WebhookEvent[])[]): Promise<string[]> {
+		const ids: string[] = [];
+		for (const events of sets) {
+			const created = await createDestination(db, {
+				url: `https://crm.example.org/hooks/${crypto.randomUUID()}`,
+				events
+			});
+			if (!created.ok) throw new Error(created.box);
+			ids.push(created.destination.id);
+		}
+		return ids;
+	}
+
+	/** every row owed, by destination and event. */
+	async function owed() {
+		const { results } = await env.DB.prepare(
+			`select destination_id, event, subject_id from webhook_delivery
+			 order by destination_id, event, subject_id`
+		).all<{ destination_id: string; event: string; subject_id: string }>();
+		return results;
+	}
+
+	it('owes each gift.refunded destination one row about a full refund, keyed on the refund row, and nothing to one not taking it', async () => {
+		await settledGift();
+		const [refunded = '', both = ''] = await listening(
+			['gift.refunded'],
+			['gift.refunded', 'gift.dispute_opened'],
+			['gift.made', 'gift.dispute_opened']
+		);
+
+		await recordReversal(deps(), refund(), 'evt_r1');
+
+		const [row] = await refundRows();
+		expect(await owed()).toEqual(
+			[refunded, both].sort().map((destination_id) => ({
+				destination_id,
+				event: 'gift.refunded',
+				subject_id: row?.id
+			}))
+		);
+	});
+
+	it('owes one row per partial refund, each keyed on its own refund row', async () => {
+		await settledGift();
+		const [refunded] = await listening(['gift.refunded']);
+
+		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r1');
+		await recordReversal(
+			deps(),
+			refund({ providerReversalId: 're_2', amountMinor: 1_000 }),
+			'evt_r2'
+		);
+
+		const rows = await refundRows();
+		expect(rows).toHaveLength(2);
+		expect(await owed()).toEqual(
+			rows
+				.map((row) => ({ destination_id: refunded, event: 'gift.refunded', subject_id: row.id }))
+				.sort((a, b) => a.subject_id.localeCompare(b.subject_id))
+		);
+	});
+
+	it('owes each gift.dispute_opened destination one row about an opening, keyed on its withdrawal, and no gift.refunded', async () => {
+		await settledGift();
+		const [both] = await listening(['gift.refunded', 'gift.dispute_opened'], ['gift.refunded']);
+
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		const [withdrawn] = await refundRows();
+		expect(await owed()).toEqual([
+			{ destination_id: both, event: 'gift.dispute_opened', subject_id: withdrawn?.id }
+		]);
+	});
+
+	it('owes gift.refunded about the same withdrawal when an opened dispute is lost, and no second gift.dispute_opened', async () => {
+		await settledGift();
+		const [both] = await listening(['gift.refunded', 'gift.dispute_opened']);
+		await recordReversal(deps(), opened(), 'evt_d1');
+
+		await recordReversal(deps(), lost(), 'evt_d2');
+
+		const [withdrawn] = await refundRows();
+		expect(await owed()).toEqual([
+			{ destination_id: both, event: 'gift.dispute_opened', subject_id: withdrawn?.id },
+			{ destination_id: both, event: 'gift.refunded', subject_id: withdrawn?.id }
+		]);
+	});
+
+	it('owes gift.refunded alone for a dispute lost with no opening recorded', async () => {
+		await settledGift();
+		const [both] = await listening(['gift.refunded', 'gift.dispute_opened']);
+
+		await recordReversal(deps(), lost(), 'evt_d1');
+
+		const [withdrawn] = await refundRows();
+		expect(await owed()).toEqual([
+			{ destination_id: both, event: 'gift.refunded', subject_id: withdrawn?.id }
+		]);
+	});
+
+	it('owes nothing more when an opened dispute is won', async () => {
+		await settledGift();
+		await listening(['gift.refunded', 'gift.dispute_opened']);
+		await recordReversal(deps(), opened(), 'evt_d1');
+		const atOpening = await owed();
+
+		await recordReversal(deps(), won(), 'evt_d2');
+
+		expect(await owed()).toEqual(atOpening);
+	});
+
+	it('owes nothing more when a refund, an opening or a loss is delivered again', async () => {
+		await settledGift();
+		await listening(['gift.refunded', 'gift.dispute_opened']);
+		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r1');
+		await recordReversal(deps(), opened({ amountMinor: 5_000 }), 'evt_d1');
+		await recordReversal(deps(), lost({ amountMinor: 5_000 }), 'evt_d2');
+		const once = await owed();
+
+		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r2');
+		await recordReversal(deps(), opened({ amountMinor: 5_000 }), 'evt_d3');
+		await recordReversal(deps(), lost({ amountMinor: 5_000 }), 'evt_d4');
+
+		expect(once).toHaveLength(3);
+		expect(await owed()).toEqual(once);
+	});
+
+	it('owes nothing about a refund that did not stand', async () => {
+		await settledGift();
+		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r1');
+		await listening(['gift.refunded', 'gift.dispute_opened']);
+
+		await recordReversal(
+			deps(),
+			{
+				kind: 'refund_failed',
+				reversedTxnId: 'pi_1',
+				providerReversalId: 're_1',
+				occurredAt: new Date('2026-08-25T10:00:00.000Z'),
+				reversedMetadata: { donation_id: 'named-by-the-charge' }
+			},
+			'evt_r2'
+		);
+
+		expect(await owed()).toEqual([]);
+	});
 });

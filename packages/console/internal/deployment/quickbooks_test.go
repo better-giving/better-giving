@@ -98,6 +98,19 @@ func quickbooksChartUnreadable() map[string]any {
 	return report
 }
 
+// a deployment whose `BETTER_AUTH_URL` pin names no http(s) origin: the callback field alone is
+// refused, with the deployment's own sentence, and the rest of the report stands.
+func quickbooksCallbackRefused() map[string]any {
+	report := quickbooksDisconnected()
+	report["callbackAddress"] = map[string]any{
+		"error": "unusable_pin",
+		"message": "`BETTER_AUTH_URL` is `localhost:8787`, which names no http(s) origin. Set it to " +
+			"the address the deployment answers on, scheme included (`https://donate.example.org`), " +
+			"or unset it so the origin is read off each request (DEPLOY.md, .dev.vars.example).",
+	}
+	return report
+}
+
 // what each press answers with: four of them have something to say beyond having happened, and what
 // the rest change is read back off the report. a disconnect answers on both arms of the revoke,
 // because the one intuit did not confirm is the one carrying where to finish it.
@@ -136,7 +149,10 @@ func quickbooksPreviewed() map[string]any {
 // every report this wire carries, which is what the sweep below is taken over.
 func quickbooksFixtures() []map[string]any {
 	return append(
-		[]map[string]any{quickbooksReported(), quickbooksDisconnected(), quickbooksChartUnreadable()},
+		[]map[string]any{
+			quickbooksReported(), quickbooksDisconnected(), quickbooksChartUnreadable(),
+			quickbooksCallbackRefused(),
+		},
 		quickbooksPressReports()...,
 	)
 }
@@ -286,6 +302,7 @@ func TestAQuickbooksReadWithNoSessionMakesNoRequestAtAll(t *testing.T) {
 func TestAQuickbooksReadCarriesTheDeploymentsWholeReport(t *testing.T) {
 	for _, report := range []map[string]any{
 		quickbooksReported(), quickbooksDisconnected(), quickbooksChartUnreadable(),
+		quickbooksCallbackRefused(),
 	} {
 		get, asked := asking(cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: report})
 		read := ReadQuickbooks(context.Background(), get)

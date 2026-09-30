@@ -6,6 +6,7 @@ import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { levelWallets, levelWidget, saveSites } from '../api/client';
 import type { SitesPress, WidgetLevel } from '../api/types';
 import { SITES_TITLE } from '../lib/console-pages';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { forgetReadings } from '../lib/processor-cache';
 import { SITES_INTENT, siteEdits } from '../lib/sites';
@@ -76,6 +77,7 @@ const stored = (press: SitesPress) => ({ sites: press });
  * it has just stored (../lib/wallets-press.ts).
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	if (posted.get('intent') !== SITES_INTENT) return { unknown: true as const };
