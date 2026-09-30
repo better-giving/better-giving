@@ -51,7 +51,9 @@ import type {
 // **a write is held among the writes out until the binary answers it** ({@link writesAnswered}),
 // whether or not the press that made it is still waiting: the router drops the answer to a press
 // whose navigation another replaced, and the write lands all the same. a reading waits on these
-// (../lib/console-reading.ts), so none is taken across a write.
+// (../lib/console-reading.ts), so none is taken while a write this page made is unanswered. what
+// the binary goes on writing after it answered is outside that: a processor's setup press answers
+// once its chain is under way, and the chain's writes follow.
 
 const writesOut = new Set<Promise<Response>>();
 

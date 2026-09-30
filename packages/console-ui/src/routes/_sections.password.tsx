@@ -2,6 +2,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars } from '../api/client';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { PasswordFold } from '../lib/password-fold';
@@ -28,6 +29,7 @@ export function meta(): Route.MetaDescriptors {
  * the binary off cloudflare's own answer.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');

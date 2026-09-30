@@ -11,16 +11,16 @@ import { holdBar } from '@better-giving/operator/progress-bar';
 import type { ReactNode } from 'react';
 import { useCallback, useRef } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Form, Link, redirect, useNavigation, useSearchParams } from 'react-router';
+import { Form, redirect, useNavigation, useSearchParams } from 'react-router';
 import { closeConsole, connect, freeWithheldVars, setVars } from '../api/client';
 import type { Blocked, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
 import type { PlanAnswer } from '../lib/cloudflare-plan';
 import { PLAN_INTENT, planEdit } from '../lib/cloudflare-plan';
 import { firstUnfinishedPage } from '../lib/console-pages';
-import { gatedPage, handOver, readConsole } from '../lib/console-reading';
+import { drawsReading, gatedPage, handOver, readConsole, watchPress } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
-import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
+import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
 import { forgetReadings } from '../lib/processor-cache';
 import { ProductFoot } from '../lib/product-foot';
@@ -112,6 +112,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 		throw redirect(firstUnfinishedPage(read.reading.sections));
 	}
 	await bar.finish();
+	drawsReading(request, read);
 	return {
 		// a face of its own for a deployment not there yet, where the sections draw a gate
 		gate: face.kind === 'deploy' ? null : (gatedPage(read)?.gate ?? null),
@@ -136,6 +137,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
  * travelled through a page is a value written wherever that page said.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	const posted = await request.formData();
 	const intent = posted.get('intent');
 
@@ -233,7 +235,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	   anything down, so confirming over a save cuts nothing short. */
 	const closeControl = (
 		<Button
-			as={Link}
+			as={DialogLink}
 			to={`/?${CLOSE_PARAM}`}
 			variant="soft"
 			size="sm"

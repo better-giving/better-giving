@@ -122,11 +122,6 @@ describe('the account panel', () => {
 		expect(page).toContain(`name="${PLAN_FIELD}"`);
 	});
 
-	it('goes back to the page it was opened over, without the parameter', async () => {
-		const page = await panel([], IDLE);
-		expect(page).toMatch(/<a\b[^>]*href="\/sites"[^>]*>/);
-	});
-
 	it('names each feed delivered at the Free plan’s pace where that is why the row is marked', async () => {
 		expect(await panel([], { zapier: true, webhooks: true, books: true })).toContain(
 			'This deployment delivers to Zapier, webhook destinations and QuickBooks at the Free plan’s pace.'

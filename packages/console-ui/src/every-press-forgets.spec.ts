@@ -2,8 +2,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// every press on this console forgets every processor page kept between visits before it does
-// anything else (`forgetReadings` in ./lib/processor-cache.ts).
+// every press on this console is watched and then forgets every processor page kept between visits
+// before it does anything else (`watchPress` in ./lib/console-reading.ts, `forgetReadings` in
+// ./lib/processor-cache.ts).
+//
+// **watched first, on every press without exception**: a press the router drops is one the reading
+// on screen may predate, and the mark that says so is made off the press's own request. a route
+// whose action skips the call is a page that keeps drawing what it held before a write that landed.
 //
 // the re-read after a press is what draws the press's outcome, and a processor page answered from
 // memory would draw what the deployment held before the write. nothing on the page that pressed
@@ -21,6 +26,8 @@ import { describe, expect, it } from 'vitest';
 const ROUTES = join(import.meta.dirname, 'routes');
 
 const ACTION = 'export async function clientAction({ request }: Route.ClientActionArgs) {\n';
+
+const WATCH = 'watchPress(request);';
 
 const FORGET = 'await forgetReadings();';
 
@@ -43,10 +50,22 @@ describe('every clientAction in routes/', () => {
 		expect(actions.length).toBeGreaterThan(0);
 	});
 
-	it.each(actions)('forgets the kept processor pages first, in $name', ({ name, source }) => {
+	it.each(actions)('watches the press first, in $name', ({ source }) => {
 		const at = source.indexOf(ACTION);
 		expect(at).toBeGreaterThanOrEqual(0);
-		const body = source.slice(at + ACTION.length);
+		expect(
+			source
+				.slice(at + ACTION.length)
+				.split('\n')[0]
+				?.trim()
+		).toBe(WATCH);
+	});
+
+	it.each(actions)('forgets the kept processor pages next, in $name', ({ name, source }) => {
+		const at = source.indexOf(ACTION);
+		expect(at).toBeGreaterThanOrEqual(0);
+		const watched = source.slice(at + ACTION.length);
+		const body = watched.slice(watched.indexOf('\n') + 1);
 		const read = READ_FIRST[name];
 		if (read === undefined) {
 			expect(body.split('\n')[0]?.trim()).toBe(FORGET);

@@ -17,7 +17,14 @@ const binary = vi.hoisted(() => ({
 	ready: false,
 	feeds: null as FeedsInUse | null,
 	vars: [] as DeployedVar[],
-	/** each time the layout asked for its reading, each reading taken and each write answered. */
+	/** where set, every reading waits on it before it answers. */
+	held: null as Promise<void> | null,
+	/** where set, the books page's own reading waits on it. */
+	booksHeld: null as Promise<void> | null,
+	/**
+	 * each time the layout asked for its reading and handed one over, each reading taken and each
+	 * write answered.
+	 */
 	log: [] as string[]
 }));
 
@@ -40,6 +47,7 @@ vi.mock('../api/client', async (original) => ({
 	homeReading: async (): Promise<HomeReading> => {
 		binary.homeReads += 1;
 		binary.log.push('read');
+		await binary.held;
 		return {
 			face: binary.ready ? READY : UNANSWERED,
 			values: { vars: { kind: 'read', vars: binary.vars } },
@@ -52,6 +60,7 @@ vi.mock('../api/client', async (original) => ({
 	},
 	readQuickbooks: async () => {
 		binary.booksReads += 1;
+		await binary.booksHeld;
 		return { kind: 'read' as const, report: { connection: { state: 'connected' } } };
 	},
 	pressQuickbooks: async (body: { press: string; startAt?: string }) => {
@@ -76,7 +85,6 @@ const { gatedBy } = await import('../lib/console-reading');
 const { forgetReadings } = await import('../lib/processor-cache');
 const { quickbooksIntent } = await import('../lib/quickbooks-standing');
 const { cache } = await import('remix-client-cache');
-const root = await import('../root');
 const home = await import('./_index');
 const sections = await import('./_sections');
 const password = await import('./_sections.password');
@@ -95,7 +103,6 @@ async function open(at = '/quickbooks') {
 		[
 			{
 				id: 'root',
-				middleware: root.clientMiddleware as never,
 				children: [
 					{
 						id: 'home',
@@ -106,9 +113,11 @@ async function open(at = '/quickbooks') {
 					},
 					{
 						id: LAYOUT,
-						loader: ((args: never) => {
+						loader: (async (args: never) => {
 							binary.log.push('asked');
-							return sections.clientLoader(args);
+							const handed = await sections.clientLoader(args);
+							binary.log.push('handed');
+							return handed;
 						}) as never,
 						shouldRevalidate: sections.shouldRevalidate,
 						Component: UNSAFE_withComponentProps(sections.default as never),
@@ -146,6 +155,8 @@ beforeEach(async () => {
 	binary.ready = false;
 	binary.feeds = null;
 	binary.vars = [];
+	binary.held = null;
+	binary.booksHeld = null;
 	binary.log = [];
 	bar.pageDrawn('/organisation');
 });
@@ -366,7 +377,6 @@ describe('the Cloudflare account', () => {
 		const page = await drawnReady('/quickbooks?account');
 		expect(page).toMatch(/<h2 id="[^"]+">Riverbank Trust<\/h2>/);
 		expect(page).toContain(`name="${PLAN_FIELD}"`);
-		expect(page).toMatch(/<a\b[^>]*href="\/quickbooks"[^>]*>/);
 	});
 });
 
@@ -409,8 +419,49 @@ describe('a dialog opened while a page’s press is in flight', () => {
 			answer({ kind: 'set' });
 			await opening;
 
-			expect(binary.log).toEqual(['asked', 'answered /values/vars/free', 'read']);
+			expect(binary.log).toEqual(['asked', 'answered /values/vars/free', 'read', 'handed']);
 			expect(router.state.location.search).toBe(`?${ACCOUNT_PARAM}`);
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+
+	it('reads the page again where the move that dropped the press was itself left before it drew', async () => {
+		binary.ready = true;
+		const { router, off } = await open('/password');
+		try {
+			let answer: (body: unknown) => void = () => {};
+			const out = new Promise((resolve) => {
+				answer = resolve;
+			});
+			const writes = writesAnswered(() => out);
+			const formData = new FormData();
+			formData.set('intent', FREE_INTENT);
+			let release: () => void = () => {};
+			binary.booksHeld = new Promise((resolve) => {
+				release = resolve;
+			});
+			binary.log = [];
+
+			// the save, then a rail link, whose layout hands over a reading taken after the save
+			// lands while the page under it is still reading, so that reading is never drawn
+			void router.navigate('/password', { formMethod: 'post', formData });
+			await vi.waitFor(() => expect(writes).toEqual(['/values/vars/free']));
+			void router.navigate('/quickbooks');
+			answer({ kind: 'set' });
+			await vi.waitFor(() =>
+				expect(binary.log).toEqual(['asked', 'answered /values/vars/free', 'read', 'handed'])
+			);
+			binary.log = [];
+			// then the account, on the page still drawn
+			const opening = router.navigate(`/password?${ACCOUNT_PARAM}`, { preventScrollReset: true });
+			binary.booksHeld = null;
+			release();
+			await opening;
+
+			expect(router.state.location.pathname).toBe('/password');
+			expect(binary.log).toEqual(['asked', 'read', 'handed']);
 		} finally {
 			off();
 			router.dispose();
@@ -515,6 +566,49 @@ describe('the account panel’s plan switch, pressed over a section page', () =>
 
 			expect(deleted).toContain(PLAN_FETCHER);
 			expect(drawnNow(router)).not.toContain(`name="${PLAN_FIELD}"`);
+		} finally {
+			off();
+			router.dispose();
+		}
+	});
+});
+
+describe('the account panel put away while its press is being read again', () => {
+	it('keeps that re-read, so the account’s mark clears all the same', async () => {
+		binary.ready = true;
+		binary.feeds = ZAPIER_ONLY;
+		const { router, off } = await open(`/quickbooks?${ACCOUNT_PARAM}`);
+		try {
+			writesAnswered(async () => {
+				binary.vars = [{ name: PAID_PLAN, kind: 'value', value: PLAN_PAID }];
+				return { kind: 'set' };
+			});
+			const { action, intent } = planForm(drawnNow(router));
+			const formData = new FormData();
+			formData.set(PLAN_FIELD, PLAN_PAID);
+			formData.set('intent', intent ?? '');
+			let release: () => void = () => {};
+			binary.held = new Promise((resolve) => {
+				release = resolve;
+			});
+			router.getFetcher(PLAN_FETCHER);
+
+			const pressing = router.fetch(PLAN_FETCHER, LAYOUT, action ?? '', {
+				formMethod: 'post',
+				formData
+			});
+			await vi.waitFor(() =>
+				expect(router.state.fetchers.get(PLAN_FETCHER)?.state).toBe('loading')
+			);
+			// Escape, over an address that arrived carrying the panel
+			router.deleteFetcher(PLAN_FETCHER);
+			await router.navigate('/quickbooks', { replace: true, preventScrollReset: true });
+			binary.held = null;
+			release();
+			await pressing;
+			await vi.waitFor(() => expect(router.state.fetchers.has(PLAN_FETCHER)).toBe(false));
+
+			expect(footRow(drawnNow(router))).not.toContain('adm-accountmark');
 		} finally {
 			off();
 			router.dispose();

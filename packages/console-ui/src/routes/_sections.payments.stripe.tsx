@@ -12,6 +12,7 @@ import {
 	startStripeSetup
 } from '../api/client';
 import type { RecurringSetup, VarsWritten, WalletsLevel, WebhookRepaired } from '../api/types';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { heldValues } from '../lib/held-values';
 import { repairLanded, WEBHOOK_REPAIR_INTENT } from '../lib/notices-standing';
@@ -51,6 +52,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * worker and the address a press is spent on are read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');

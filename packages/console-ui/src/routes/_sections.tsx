@@ -6,7 +6,7 @@ import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
+import { Outlet, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
@@ -16,9 +16,9 @@ import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
 import { CloudflareAccountPanel, cloudflareAccount } from '../lib/cloudflare-account';
 import { railGroups } from '../lib/console-pages';
-import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
+import { drawsReading, gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
-import { ACCOUNT_PARAM, CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
+import { ACCOUNT_PARAM, CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
 import { heldValues } from '../lib/held-values';
 import { keysTrouble } from '../lib/processor-screen';
@@ -78,6 +78,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 		notReady(read);
 	}
 	await bar.finish();
+	drawsReading(request, read);
 	return { ...read, address: read.reading.face.address };
 }
 
@@ -123,7 +124,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	   the mark is the plug being pulled, and its label is the whole of its name. */
 	const closeControl = (
 		<Button
-			as={Link}
+			as={DialogLink}
 			to={`${pathname}?${CLOSE_PARAM}`}
 			preventScrollReset
 			variant="quiet"
