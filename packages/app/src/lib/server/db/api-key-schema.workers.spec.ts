@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 // ./donation-schema.workers.spec.ts opens with: each is a rebuild of the table to change.
 //
 // `STRICT` on the table is read off sqlite's catalogue by ./strict.workers.spec.ts, and the
-// `notBlank` body on `name` is the shared helper, pinned elsewhere; neither is repeated here.
+// `notBlank` body on `name` is the shared helper, pinned on `form.name` in
+// ./donation-schema.workers.spec.ts; neither is repeated here.
 
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 const SQLITE_CONSTRAINT_UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE';

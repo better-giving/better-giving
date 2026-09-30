@@ -10,10 +10,10 @@ import { describe, expect, it } from 'vitest';
 // the update's own condition, in one batch(). an update written anywhere else is a change no
 // destination hears of.
 //
-// written the way ../donations/sole-inserter.spec.ts is: a source scan rather than a runtime hook,
-// so it catches the writer nobody wrote a test for. it reads text, so a computed table name fools
-// it; the failure it defends against is a shortcut, not an adversary. specs are out of scope, since
-// a fixture row is not a change, and so are the `.testing.ts` modules specs import.
+// written the way ../donations/sole-inserter.spec.ts is: a source scan, so it catches the writer
+// nobody wrote a test for. it reads text, so a computed table name fools it; the failure it defends
+// against is a shortcut, not an adversary. specs are out of scope, since a fixture row is not a
+// change, and so are the `.testing.ts` modules specs import.
 
 const SRC = resolve(import.meta.dirname, '../../..');
 const UPDATER = resolve(import.meta.dirname, 'changes.ts');

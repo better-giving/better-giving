@@ -330,7 +330,7 @@ function unreachable(host: string): string | null {
 	const range = ipv4Range(host);
 	if (range !== null) return `${host} is ${range}`;
 	if (!name.includes('.') && !isIpv4(host)) {
-		return `${host} names no host on the internet: it has no domain`;
+		return `${host} has no domain`;
 	}
 	return null;
 }

@@ -68,7 +68,7 @@ export function ShownOnce({
 /**
  * the secret while it has not been dismissed, and the dismissal.
  *
- * what is held is the dismissed value rather than an open flag, so the card follows the answer:
+ * what is held is the dismissed value, so the card follows the answer:
  * a redraw carrying the same secret keeps it down, and a second make answering with a new one puts
  * it back up with nothing to reset.
  */

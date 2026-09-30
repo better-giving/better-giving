@@ -162,8 +162,9 @@ export async function readSamples<T extends ZapierTrigger>(
 
 /**
  * the latest refunds a live `gift_refunded` event would be sent for: standing (`refundStands` in
- * ../donations/queries.ts), of a gift whose settlement posted its `('payment', gift)` group — a refund or
- * dispute of a gift the books never held queues no event (`withdraw` in ../donations/reverse.ts).
+ * ../donations/queries.ts), of a gift whose settlement posted its `('payment', gift)` group — a
+ * refund or dispute of a gift the books never held queues no event (`withdraw` in
+ * ../donations/reverse.ts).
  */
 async function refundSamples(db: Db): Promise<RefundEvent[]> {
 	const giftPosted = db

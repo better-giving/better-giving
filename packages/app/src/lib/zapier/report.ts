@@ -14,8 +14,8 @@
  *   replace — a new key in place of the current one, refused where there is none. the old key
  *             stops working and every Zap subscribed on it is disconnected in the same write.
  *
- * two verbs rather than one "new key": two operators pressing at once cannot replace a key
- * by accident, because the second make is refused.
+ * two verbs, so that two operators pressing at once cannot replace a key by accident: the second
+ * make is refused.
  */
 export const ZAPIER_PRESSES = ['make', 'replace'] as const;
 

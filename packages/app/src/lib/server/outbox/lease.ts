@@ -81,11 +81,11 @@ import { eachAtMost } from '../each-at-most';
 // `leased_until` under those names. its claim wants one index over `status`, `next_attempt_at`, the
 // key and `leased_until`, in that order (`zapier_delivery_due_idx` in ../db/schema.ts).
 //
-// ../accounting/deliver.ts is not delivered on this module. moving it would still take: a stored
-// `next_attempt_at` on `quickbooks_sync`, whose due-ness is derived from `updated_at` and
-// `attempts` today; an order the feed supplies, since it sends settled gifts ahead of moved history
-// through a join; and a way for `each`'s work to stop the whole run, since a refusal the backlog is
-// behind ends it there, where a throw here stops one lane.
+// ../accounting/deliver.ts is not delivered on this module, for three things this module lacks:
+// `quickbooks_sync` stores no `next_attempt_at`, its due-ness derived from `updated_at` and
+// `attempts`; that feed sends settled gifts ahead of moved history through a join, an order a claim
+// here does not take from a feed; and a refusal its backlog is behind ends its whole run, where a
+// throw in `each`'s work here stops one lane.
 
 /**
  * what one row's work may still take once its answer is in, or its time to answer is up: the

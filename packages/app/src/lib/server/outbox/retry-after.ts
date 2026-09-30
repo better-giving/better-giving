@@ -5,7 +5,7 @@
 
 /**
  * the wait a `Retry-After` of `value` asks for, from an answer at `answeredAt`: delay-seconds, or
- * the time to an HTTP-date, none where that date has passed. anything else, or a wait past what a
+ * the time to an HTTP-date, zero where that date has passed. anything else, or a wait past what a
  * `Date` holds, is no ask.
  */
 export function askedWait(value: string | null, answeredAt: number): number | undefined {

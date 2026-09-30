@@ -766,7 +766,7 @@ describe('0011 names no company on a sent row while the connection is moved', ()
 
 // what 0022's data step is for: a destination paused before its owed rows were held out of the due
 // set still holds a backlog due at the time it was queued, which the claim would post to it. every
-// row it is still owed is parked at `HELD_UNTIL`, as a pause now parks them; nothing else moves.
+// row it is still owed is parked at `HELD_UNTIL`, as a pause parks them; nothing else moves.
 describe('0022 holds the backlog of a destination already paused out of the due set', () => {
 	let pausedBacklogBefore: Row[];
 	let deliveries: Row[];

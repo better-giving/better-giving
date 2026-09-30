@@ -321,7 +321,7 @@ function MakeKey({
 	);
 }
 
-/** the four columns as the Api board draws them; the shares sum to the whole of the table. */
+/** the four columns; the shares sum to the whole of the table. */
 const COLUMNS = [
 	{ key: 'name', label: 'Name', width: '40%' },
 	{ key: 'made', label: 'Made', kind: 'date', width: '22%' },

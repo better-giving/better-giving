@@ -31,8 +31,7 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 // given up on are decided here.
 // ../accounting/deliver.ts shares none of that policy on purpose: a gift owed to the books stays
 // owed, while a notification to a Zap that has been down for three days is given up on. one
-// backoff serving both would be one policy bent two ways — an argument against sharing a backoff,
-// not a lease.
+// backoff serving both would be one policy bent two ways.
 //
 // **delivery is at least once.** a post whose answer never came may have reached Zapier, and it is
 // posted again, and the Zap runs again on it: Zapier dedupes a polling trigger's items on `id`,

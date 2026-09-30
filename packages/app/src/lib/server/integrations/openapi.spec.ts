@@ -84,7 +84,10 @@ function servedPaths(): string[] {
 		.sort();
 }
 
-/** every block of limiters wrangler.jsonc declares, read the way rate-limit.config.spec.ts reads them. */
+/**
+ * every block of limiters wrangler.jsonc declares, read the way ../api/rate-limit.config.spec.ts
+ * reads them.
+ */
 type Limiter = { name?: unknown; simple?: { limit?: unknown; period?: unknown } };
 type Wrangler = {
 	ratelimits?: Limiter[];

@@ -47,7 +47,8 @@ export type PlanChange =
  * statement for each, split on it. the update is last and returns the id it wrote.
  *
  * `ended_at` is not compared: {@link PlanChange} writes it only beside a status, and a change the
- * status makes is already a difference.
+ * status makes is already a difference. `updated_at` is not named: it carries `$onUpdateFn`, so
+ * drizzle adds it to every `set`.
  */
 export function planChangeStatements(
 	db: Db,

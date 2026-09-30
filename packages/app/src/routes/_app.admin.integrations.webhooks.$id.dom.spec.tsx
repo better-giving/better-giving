@@ -265,8 +265,8 @@ it('says a destination sent nothing yet has no deliveries', async () => {
 });
 
 for (const [tested, word] of [
-	[{ outcome: 'sent', status: 200 }, 'Sent — 200'],
-	[{ outcome: 'refused', status: 500 }, 'Refused — 500'],
+	[{ outcome: 'sent', status: 200 }, 'Sent: 200'],
+	[{ outcome: 'refused', status: 500 }, 'Refused: 500'],
 	[{ outcome: 'unanswered' }, 'No answer']
 ] as const) {
 	it(`reports a test answered ${word} at the header, where its press stands`, async () => {
@@ -317,7 +317,7 @@ it('reads nothing again after a test, which changed nothing', async () => {
 	await act(async () => press(root, 'Send a test').click());
 	await settle();
 
-	expect(root.querySelector('p[role="status"]')?.textContent).toBe('Sent — 200');
+	expect(root.querySelector('p[role="status"]')?.textContent).toBe('Sent: 200');
 	expect(reads).toHaveLength(loads);
 	expect(press(root, 'Send a test').getAttribute('aria-disabled')).toBeNull();
 });

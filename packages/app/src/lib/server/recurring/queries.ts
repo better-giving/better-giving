@@ -280,7 +280,8 @@ export async function readRecurringPlan(db: Db, id: string): Promise<RecurringPl
  * there would be reporting one over a completed act. ./stop.ts is where that reading is made.
  *
  * the statements and the answer are ./changes.ts's: the update's own `returning()`, with no select
- * in front of it.
+ * in front of it, because D1 has no transaction and a check-then-write would be two commits with a
+ * race between them.
  */
 export async function stopRecurringPlan(db: Db, id: string, endedAt: Date): Promise<boolean> {
 	return applyPlanChange(db, id, ['active', 'lapsed'], {

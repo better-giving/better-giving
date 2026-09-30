@@ -103,8 +103,8 @@ const DATABASE = 'DB';
  * a third copy of these names, and the only one that is plain node: this file imports nothing, so
  * that the step in front of `pnpm run deploy`'s one irreversible command never depends on anything
  * failing to install. `src/lib/server/api/rate-limit.config.spec.ts` holds the same names — and
- * every number under them — against the config file, and runs in ci.yml on every push and pull
- * request.
+ * every number under them — against the config file, and runs in ci.yml on a push to `main` and
+ * every pull request.
  */
 const LIMITERS = [
 	'API_RATE_LIMITER',

@@ -23,13 +23,13 @@ import { type Keyset, type PageOf, type PageQuery, pageOf, pastKeyset } from './
 // one gift as a system outside this deployment is told of it: the `new_gift` event a Zap receives
 // (../zapier/payload.ts), each entry the read API's gifts list answers with
 // (src/routes/integrations.v1.gifts.ts), and the `data` of a `gift.made` webhook
-// (../webhooks/deliver.ts). one projection, so the three never disagree about a field.
+// (../webhooks/payload.ts). one projection, so the three never disagree about a field.
 //
 // a gift is one settled inbound payment — a `succeeded`, `direction = 'inbound'` row. an
 // authorization nothing has settled yet is not one, and neither is a refund row: that is a fact
 // about a gift, read here into the gift's own `status`.
 //
-// **the keys are permanent on both surfaces.** each is a field some Zap has mapped or some
+// **the keys are permanent on all three.** each is a field some Zap has mapped or some
 // integrator's code reads, so a rename breaks it silently: add a key, never rename or drop one.
 // every key is present on every gift, null where the gift has nothing to say.
 //

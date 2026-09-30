@@ -5474,7 +5474,7 @@
 	/* the shell's skip link: its first stop, off the screen until it takes focus, and then a button
 	   over the top corner of whatever is there, so arriving on it moves nothing under it. it is
 	   `.adm-vh` in ./base.css, restated, because that utility never comes back on focus. it stands at
-	   step 3 of the ladder stated at `.adm-rail` below, over the bar and the band alike. */
+	   step 3 of the ladder stated at `.adm-rail` above, over the bar and the band alike. */
 	.adm-skip {
 		position: fixed;
 		inset-block-start: var(--admin-space-4);

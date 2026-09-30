@@ -183,8 +183,7 @@ export function integrationsCallerRateLimitKey(request: Request): string | null 
  *
  * the key is the payer here: two systems calling from one host hold two keys and two budgets, and
  * one busy or leaked key spends only its own, from however many addresses in one Cloudflare
- * location it is presented. what
- * the limit bounds is how fast one key can read the database.
+ * location it is presented. what the limit bounds is how fast one key can read the database.
  */
 export function integrationsKeyRateLimitKey(keyId: string): string {
 	return `${INTEGRATIONS_BASE_PATH} key ${keyId}`;

@@ -6,8 +6,8 @@ import { donorUpdatedWebhookStatements } from '../webhooks/events';
 
 // every write to a contact after the insert that makes it (./queries.ts), and the event each one
 // owes a webhook destination: a change here is a change the read API's donors list shows
-// (../integrations/donor.ts), so each is announced as `donor.updated`. today that is the consent
-// answer a returning donor's gift carries (`resolveDonor` in ../donations/donor.ts).
+// (../integrations/donor.ts), so each is announced as `donor.updated`. the one such write is the
+// consent answer a returning donor's gift carries (`resolveDonor` in ../donations/donor.ts).
 // ./sole-updater.spec.ts holds that no other module updates the table.
 //
 // **the event lands exactly when the change does, with no read in front.** the event's INSERT…
@@ -34,7 +34,8 @@ import { donorUpdatedWebhookStatements } from '../webhooks/events';
  * nothing, and moves no `updated_at` a read API caller's `updated_since` would take for a change.
  *
  * `updated_at` moves with a change, from the column's own `$onUpdateFn` rather than from anything
- * here: this is a write to the row, and system time is what that column records.
+ * here: this is a write to the row, and system time is what that column records. holding it still
+ * would mean writing the old value back over drizzle's, which is a claim that nothing changed.
  *
  * it takes a boolean and never null: absent is the state of a contact nobody asked, and no path
  * that reaches this function is one — the gift carries a required answer. a caller that would pass

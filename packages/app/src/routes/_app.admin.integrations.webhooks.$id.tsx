@@ -77,7 +77,7 @@ import type { Route } from './+types/_app.admin.integrations.webhooks.$id';
 // so the header shows the destination as it stands.
 //
 // the test is sent at once and reports at that same status line, in the word its answer earns:
-// `Sent — 200`, `Refused — 500`, or `No answer` for a fault or a timeout. it is offered on a paused
+// `Sent: 200`, `Refused: 500`, or `No answer` for a fault or a timeout. it is offered on a paused
 // destination too, since it is how a fix is checked before the resume; what it posts, and why it
 // changes nothing, is `sendTestWebhook`'s doc in $lib/server/webhooks/deliver.ts.
 //
@@ -300,9 +300,9 @@ function testReport(actionData: Route.ComponentProps['actionData']): Report | nu
 	const { tested } = actionData;
 	switch (tested.outcome) {
 		case 'sent':
-			return { text: `Sent — ${tested.status}`, reading: 'done' };
+			return { text: `Sent: ${tested.status}`, reading: 'done' };
 		case 'refused':
-			return { text: `Refused — ${tested.status}`, reading: 'blocked' };
+			return { text: `Refused: ${tested.status}`, reading: 'blocked' };
 		case 'unanswered':
 			return { text: 'No answer', reading: 'blocked' };
 	}

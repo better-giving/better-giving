@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 // region announces what changes inside it; one whose words land in the same frame it mounts in can
 // be taken as born holding them, and announced by nobody.
 //
-// two frames rather than one: a callback of the first runs before the paint that first draws the
-// line, and the second runs after it.
+// two frames: a callback of the first runs before the paint that first draws the line, and the
+// second runs after it.
 
 /** `words`, withheld as null until the line they go in has been through one painted frame. */
 export function useAfterPaint(words: string | null): string | null {

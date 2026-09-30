@@ -507,11 +507,6 @@ describe('POST /login — what the browser gets back', () => {
 		expect(await sessions()).toBe(0);
 	});
 
-	/**
-	 * 401 is the only status whose message is repeated back to the caller, because it is the only
-	 * one about what they sent — and with one secret and one account there is nothing it could
-	 * disambiguate.
-	 */
 	it('names a pin that names no address, where the operator reads it', async () => {
 		const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
 
@@ -520,6 +515,11 @@ describe('POST /login — what the browser gets back', () => {
 		expect(await sessions()).toBe(0);
 	});
 
+	/**
+	 * 401 is the only status whose message is repeated back to the caller, because it is the only
+	 * one about what they sent — and with one secret and one account there is nothing it could
+	 * disambiguate.
+	 */
 	it('says a wrong password is a wrong password', async () => {
 		const answer = await refused(typed('not-the-staff-password'));
 

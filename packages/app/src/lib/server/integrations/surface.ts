@@ -12,10 +12,10 @@ import { API_KEY_SHAPE, findKeyByPresented, parseBearer, ZAPIER_KEY_SHAPE } from
 // key alone — because it is Zapier's credential for its own surface and a leak of it reads nothing
 // here.
 //
-// **read-only.** every route answers GET and HEAD, and the layout refuses any other method with a
-// 405 before the key is read — or react router does, for a method outside its own set (`readOnly`
-// in src/routes/integrations.v1.ts). writes through this surface would touch the books, and none
-// exists.
+// **read-only.** every route answers GET and HEAD, and any other method is refused with a 405
+// before the key is read: by the layout's `readOnly` (src/routes/integrations.v1.ts), or, for a
+// method react router does not route, by src/worker.ts before the request reaches it. writes
+// through this surface would touch the books, and none exists.
 //
 // **server to server, so no CORS.** no `Access-Control-*` header is sent and there is no preflight
 // branch: a key that runs in a browser has already leaked, and without CORS a page holding one

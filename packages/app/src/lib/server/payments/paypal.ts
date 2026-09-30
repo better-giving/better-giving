@@ -2494,8 +2494,9 @@ async function patchFailureThreshold(
  * is compared in minor units rather than as text, so a price PayPal wrote as `25.0` is the same plan
  * as one it wrote as `25.00`.
  *
- * the failure threshold is not a clause: it is the one thing about a plan PayPal lets an active
- * plan change, so {@link findOrCreateBillingPlan} patches it rather than passing the plan over.
+ * the failure threshold is not a clause: PayPal lets an active plan's threshold change
+ * (`patchFailureThreshold`), so {@link findOrCreateBillingPlan} patches it rather than passing the
+ * plan over.
  */
 function charges(plan: BillingPlan, key: RecurringPlanKey): boolean {
 	if (plan.status !== SubscriptionPlanStatus.Active) return false;

@@ -2988,7 +2988,7 @@ export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
  *                                  its own row and a redelivery meets it; read back the same way.
  *
  * no foreign key, since one column names rows of several tables and not always a bare id; the send
- * fails a row whose subject it cannot read.
+ * drops a row whose subject it cannot read.
  *
  * **`(destination_id, event, subject_id)` is unique**, and it is where "once" comes from: a
  * settlement delivered twice meets its own key.

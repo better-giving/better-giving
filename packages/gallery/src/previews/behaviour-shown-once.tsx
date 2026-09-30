@@ -11,7 +11,7 @@ import { useState } from 'react';
  * the presses are what the specimen is for. the first makes a key and the card comes up; Done takes
  * it down, and the page still holds the answer it came from — which is what a route holds after the
  * card is dismissed — yet the card stays down, because `useShownOnce` keys off the value that was
- * dismissed rather than off a flag. the second press answers with a different key and the card comes
+ * dismissed. the second press answers with a different key and the card comes
  * back up with nothing reset. the third is a key long enough to run under the copy control's fade.
  */
 

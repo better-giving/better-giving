@@ -339,8 +339,9 @@ describe('a processor’s event names are spelled by its own adapter and nowhere
 	);
 
 	it('matches an event name written as any string literal', () => {
-		// the list below spells its names in one quote style, so a style the pattern missed would
-		// pass there and let a module spelling a name in that style through the sweep above.
+		// each subscribed list spells its names in one quote style, so a style the pattern missed
+		// would pass the case below and let a module spelling a name in that style through the sweep
+		// above.
 		for (const literal of ["'invoice.paid'", '"invoice.paid"', '`invoice.paid`']) {
 			expect(spells(`if (type === ${literal}) {}`, 'invoice.paid'), literal).toBe(true);
 		}

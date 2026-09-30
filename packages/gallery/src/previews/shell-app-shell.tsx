@@ -21,7 +21,7 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  *
  * **narrow the window past 64rem and every rail below becomes `position: fixed` at the foot of the
  * viewport**, one over another, because that is what a rail is at that width: a bar of tabs pinned
- * to the bottom of the screen. one shell on a page is one bar; six shells on a page is six bars
+ * to the bottom of the screen. one shell on a page is one bar; seven shells on a page is seven bars
  * in the same strip, and the one drawn over the rest is the last shell's. it is the arrangement
  * being correct rather than a defect in it, and it is the one thing on this page a second specimen
  * makes worse.

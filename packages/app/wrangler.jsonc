@@ -179,7 +179,7 @@
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
 	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
 	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
-	// `test` runs in ci.yml on every push and pull request.
+	// `test` runs in ci.yml on a push to `main` and every pull request.
 	"ratelimits": [
 		{
 			"name": "API_RATE_LIMITER",

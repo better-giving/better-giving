@@ -26,7 +26,7 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * between two widths.
  *
  * the bar holds four destinations and a More tab, and `bar: true` marks the four. a tab for every
- * destination stops clearing `short` at the 375px floor once the integrations pages join the rail,
+ * destination stops clearing `short` at the 375px floor with the integrations pages in the rail,
  * so the bar takes the destinations an operator opens most — the figures, the forms, the donors and
  * the gifts, in the rail's own order — and More opens a sheet holding every other one in the
  * column's order, under its rules and headings. a destination added here is on the sheet until it

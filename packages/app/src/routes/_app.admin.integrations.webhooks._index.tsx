@@ -66,7 +66,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	);
 }
 
-/** the three columns as the Webhooks board draws them; the shares sum to the whole of the table. */
+/** the three columns; the shares sum to the whole of the table. */
 const COLUMNS = [
 	{ key: 'url', label: 'Destination', width: '60%' },
 	{ key: 'events', label: 'Events', width: '22%' },

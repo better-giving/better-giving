@@ -38,8 +38,8 @@ import type { ConsoleSession } from './access';
 // operator set — `packages/app/version-define.ts` is where it is defined and where the name is
 // typed, and a build whose environment named no version answers `null`.
 //
-// **the feeds in use are read off rows and never written over this wire, and on every answer this
-// surface gives, so each is one row found or none**, and the three go to D1 as one `batch()`. that
+// **the feeds in use are read off rows on every answer this surface gives, and never written over
+// this wire, so each read is one row found or none**, and the three go to D1 as one `batch()`. that
 // batch fails on its own: it answers `null`, which the console reads as not knowing, and the rest of
 // the report is served — a feed never reads as unused because the read of it did not land.
 

@@ -1898,7 +1898,7 @@ describe('settleDelivery() — a repeating gift that could not be read', () => {
 			const said = mail.sent[0]?.text.replace(/\s+/g, ' ');
 			expect(said).toContain('If it was a collection, money moved and the books do not have it.');
 			expect(said).toContain(
-				'If it was a failed payment, no money moved and the books are complete: what is lost is the recurring charge failed notice for that attempt.'
+				'If it was a failed payment, no money moved and the books are complete: what is lost is the "Recurring charge failed" event your webhook destinations are owed for that attempt.'
 			);
 		}
 	);

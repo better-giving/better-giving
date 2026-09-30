@@ -205,8 +205,8 @@ export async function collectRecurringGift(
 				'The delivery verified and the repeating gift behind it could not be read. Nothing was ' +
 				'written. If it was a collection, money moved and the books do not have it. If it was a ' +
 				'failed payment, no money moved and the books are complete: what is lost is the ' +
-				'recurring charge failed notice for that attempt. Repeating the call answers the same ' +
-				'way, so this needs a person.',
+				'"Recurring charge failed" event your webhook destinations are owed for that attempt. ' +
+				'Repeating the call answers the same way, so this needs a person.',
 			facts: [
 				{ label: 'Event', value: event.id },
 				{ label: 'Event type', value: event.type },
