@@ -26,8 +26,9 @@ import { readProcessorScreen } from './processor-reading';
 // - anything after a press, on any page: every `clientAction` forgets every entry before it writes
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
 //   flight when that happened is thrown away when it lands rather than kept, and so is one whose
-//   move the router abandoned, which no page draws. a press that writes nothing — the books page's
-//   start-date preview — forgets nothing.
+//   move the router abandoned, which no page draws. a press that changes nothing a processor page
+//   is drawn from forgets nothing: the books page's start-date preview, which writes nothing, and
+//   the paid-plan switch, whose value no processor reads (../every-press-forgets.spec.ts).
 //
 // an entry whose payments or recurring reading rejects is dropped, so the next visit asks again
 // rather than meeting the same error from memory.

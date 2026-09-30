@@ -110,11 +110,7 @@ const panel = (vars: DeployedVar[], feedsInUse: FeedsInUse | null) => {
 		feedsInUse,
 		back: '/sites',
 		values: heldValues(vars),
-		written: null,
-		freed: null,
-		trouble: () => null,
-		busy: false,
-		pending: null
+		trouble: () => null
 	};
 	return drawn(() => createElement(CloudflareAccountPanel, props));
 };
@@ -124,11 +120,6 @@ describe('the account panel', () => {
 		const page = await panel([], IDLE);
 		expect(page).toMatch(/<h2 id="[^"]+">Riverside Shelter’s Account<\/h2>/);
 		expect(page).toContain(`name="${PLAN_FIELD}"`);
-	});
-
-	it('goes back to the page it was opened over, without the parameter', async () => {
-		const page = await panel([], IDLE);
-		expect(page).toMatch(/<a\b[^>]*href="\/sites"[^>]*>/);
 	});
 
 	it('names each feed delivered at the Free plan’s pace where that is why the row is marked', async () => {

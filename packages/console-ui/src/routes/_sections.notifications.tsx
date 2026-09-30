@@ -2,6 +2,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { saveOrgProfile } from '../api/client';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { NotificationsFold } from '../lib/notifications-fold';
 import { NOTIFICATIONS_INTENT, orgEdits } from '../lib/org-fields';
@@ -26,6 +27,7 @@ export function meta(): Route.MetaDescriptors {
  * the reason stated over it: this form carries the identity boxes as hidden fields.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	if (posted.get('intent') === NOTIFICATIONS_INTENT) {

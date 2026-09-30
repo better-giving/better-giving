@@ -11,15 +11,16 @@ import { holdBar } from '@better-giving/operator/progress-bar';
 import type { ReactNode } from 'react';
 import { useCallback, useRef } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Form, Link, redirect, useNavigation, useSearchParams } from 'react-router';
+import { Form, redirect, useNavigation, useSearchParams } from 'react-router';
 import { closeConsole, connect, freeWithheldVars, setVars } from '../api/client';
 import type { Blocked, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
+import type { PlanAnswer } from '../lib/cloudflare-plan';
 import { PLAN_INTENT, planEdit } from '../lib/cloudflare-plan';
 import { firstUnfinishedPage } from '../lib/console-pages';
-import { gatedPage, handOver, readConsole } from '../lib/console-reading';
+import { drawsReading, gatedPage, handOver, readConsole, watchPress } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
-import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
+import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
 import { forgetReadings } from '../lib/processor-cache';
 import { ProductFoot } from '../lib/product-foot';
@@ -111,6 +112,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 		throw redirect(firstUnfinishedPage(read.reading.sections));
 	}
 	await bar.finish();
+	drawsReading(request, read);
 	return {
 		// a face of its own for a deployment not there yet, where the sections draw a gate
 		gate: face.kind === 'deploy' ? null : (gatedPage(read)?.gate ?? null),
@@ -135,9 +137,23 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
  * travelled through a page is a value written wherever that page said.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
-	await forgetReadings();
+	watchPress(request);
 	const posted = await request.formData();
 	const intent = posted.get('intent');
+
+	/**
+	 * stores that the account is on the Workers Paid plan, or takes the name off, from the account
+	 * panel over any page (../lib/cloudflare-account.tsx). one of the deploy-time values, through the
+	 * door every other one goes through, with the payload composed from the switch's two positions
+	 * rather than from what the body claimed (`planEdit` in ../lib/cloudflare-plan.ts).
+	 *
+	 * **the one press here that forgets no processor page kept between visits**: the plan is no
+	 * processor's input, so every kept page still reads what the binary would say
+	 * (../every-press-forgets.spec.ts names it).
+	 */
+	if (intent === PLAN_INTENT) return { plan: await setVars(planEdit(posted)) } satisfies PlanAnswer;
+
+	await forgetReadings();
 
 	/**
 	 * mints a session and writes it to the deployment, from the gate a dropped session leaves.
@@ -156,19 +172,12 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	if (intent === CHECK_INTENT) return { checked: true };
 
 	/**
-	 * stores that the account is on the Workers Paid plan, or takes the name off, from the account
-	 * panel over any page (../lib/cloudflare-account.tsx). one of the deploy-time values, through the
-	 * door every other one goes through, with the payload composed from the switch's two positions
-	 * rather than from what the body claimed (`planEdit` in ../lib/cloudflare-plan.ts).
-	 */
-	if (intent === PLAN_INTENT) return { plan: await setVars(planEdit(posted)) };
-
-	/**
 	 * takes every value this deployment is holding in a form nothing can read back off it, from the
 	 * same panel, where the paid-plan answer is one of them. which names are freed is read inside the
-	 * binary off cloudflare's own answer and never posted.
+	 * binary off cloudflare's own answer and never posted. it forgets what the plan press keeps: a
+	 * freed name can be a processor's key.
 	 */
-	if (intent === FREE_INTENT) return { freed: await freeWithheldVars() };
+	if (intent === FREE_INTENT) return { freed: await freeWithheldVars() } satisfies PlanAnswer;
 
 	/**
 	 * ends the run this console is inside, and asks the browser for the tab back.
@@ -190,8 +199,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 		return { closing: true as const };
 	}
 
-	// nothing posts anything else here. a body naming nothing, or naming a press drawn on a section
-	// page, is answered rather than run.
+	// nothing posts anything else here. a body naming none of the intents above — nothing at all, or
+	// a press a section page answers for itself — is answered rather than run.
 	return { unknown: true as const };
 }
 
@@ -226,7 +235,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	   anything down, so confirming over a save cuts nothing short. */
 	const closeControl = (
 		<Button
-			as={Link}
+			as={DialogLink}
 			to={`/?${CLOSE_PARAM}`}
 			variant="soft"
 			size="sm"

@@ -6,6 +6,7 @@ import type { VarsWritten } from '../api/types';
 import type { ChariotPress } from '../lib/chariot-section';
 import { ChariotSection } from '../lib/chariot-section';
 import { CHARIOT_SETUP_INTENT, chariotPosted } from '../lib/chariot-setup';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { forgetReadings, readProcessorPage, runDrawn } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
@@ -35,6 +36,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * account, the worker and the address it is spent on read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');

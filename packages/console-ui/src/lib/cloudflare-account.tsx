@@ -4,11 +4,13 @@ import { AccountBand, AccountRow } from '@better-giving/operator/components/shel
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import type { Feed } from '@better-giving/operator/delivery-pace';
 import type { ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useFetcher } from 'react-router';
 import type { FeedsInUse } from '../api/types';
-import { pacedFeeds } from './cloudflare-plan';
+import type { PlanAnswer } from './cloudflare-plan';
+import { PLAN_FETCHER, pacedFeeds } from './cloudflare-plan';
 import type { CloudflarePlanProps } from './cloudflare-plan-block';
 import { CloudflarePlan } from './cloudflare-plan-block';
+import { DialogLink, useLeaveDialog } from './dialog-params';
 import type { HeldValues } from './held-values';
 
 // the Cloudflare account this deployment runs on, as the rail's foot and the narrow band draw it,
@@ -26,8 +28,14 @@ import type { HeldValues } from './held-values';
 // are packages/operator/src/components/shell/AccountRow.jsx.
 //
 // **the panel opens off a parameter on the address** (`ACCOUNT_PARAM` in ./dialog-params.ts), the
-// way ./close-confirm.tsx's confirm does, so its way out is a link and Escape and the browser's
-// back button answer it alike.
+// way ./close-confirm.tsx's confirm does, so Escape, its way out and the browser's back button
+// answer it alike: the opener pushes an entry the way out steps back over (`leaveDialog` in
+// ./dialog-params.ts).
+//
+// **the panel reads its presses' answers itself**, off the fetcher the plan block posts them
+// through (`PLAN_FETCHER` in ./cloudflare-plan.ts), in the shape `/` answers them in
+// (`PlanAnswer` there): what mounts the panel hands it facts about the account and nothing about a
+// press.
 
 /** what the account's mark is read out as, after its name. */
 export const PACED_WORD = 'Deliveries paced for the Free plan';
@@ -47,7 +55,7 @@ export type CloudflareAccountProps = {
 
 /** the panel's opener, moving within the page it was opened over rather than to the top of it. */
 function PanelLink({ href, ...rest }: AccountLinkProps): ReactNode {
-	return <Link to={href} preventScrollReset {...rest} />;
+	return <DialogLink to={href} preventScrollReset {...rest} />;
 }
 
 /**
@@ -76,7 +84,10 @@ export function cloudflareAccount({
 	};
 }
 
-export type CloudflareAccountPanelProps = CloudflarePlanProps & {
+export type CloudflareAccountPanelProps = Omit<
+	CloudflarePlanProps,
+	'written' | 'freed' | 'busy' | 'pending'
+> & {
 	/** the account's name, which heads the panel. */
 	name: string;
 	/** the account's id, which is what cloudflare resolves the name by: the name is not unique. */
@@ -96,6 +107,15 @@ const FEED_NAMES: Readonly<Record<Feed, string>> = {
 
 const listed = new Intl.ListFormat('en-GB', { type: 'conjunction' });
 
+/**
+ * the account panel, over whatever page it was opened on.
+ *
+ * **mounted only while it is open**, which is what its fetcher's life is: an answer drawn and put
+ * away is not reported again the next time it opens. so a press still out when the panel is put
+ * away is answered to nothing: a refusal it would have drawn at the switch is not drawn, and a
+ * write that throws is dropped without a word, where with the panel open it meets the layout's
+ * boundary. a binary that has stopped is met by the next navigation's reading instead.
+ */
 export function CloudflareAccountPanel({
 	name,
 	accountId,
@@ -103,14 +123,18 @@ export function CloudflareAccountPanel({
 	back,
 	...plan
 }: CloudflareAccountPanelProps): ReactNode {
-	const navigate = useNavigate();
+	const leave = useLeaveDialog();
+	const press = useFetcher<PlanAnswer>({ key: PLAN_FETCHER });
+	const posted = press.formData?.get('intent');
+	const pending = typeof posted === 'string' ? posted : null;
+	const answer = press.data;
 	const paced = pacedFeeds(plan.values, feedsInUse);
 	return (
 		<Modal
 			title={name}
-			onDismiss={() => navigate(back, { preventScrollReset: true })}
+			onDismiss={() => leave(back)}
 			// the secondary rank: the switch's own save is the card's one primary press.
-			exitProps={{ as: Link, to: back, preventScrollReset: true, variant: 'default' }}
+			exitProps={{ type: 'button', onClick: () => leave(back), variant: 'default' }}
 		>
 			{/* the id is stated here and on neither opener, where a hint would be read out on every
 			    focus of the control. */}
@@ -121,7 +145,13 @@ export function CloudflareAccountPanel({
 					Free plan’s pace.
 				</p>
 			)}
-			<CloudflarePlan {...plan} />
+			<CloudflarePlan
+				{...plan}
+				written={answer !== undefined && 'plan' in answer ? answer.plan : null}
+				freed={answer !== undefined && 'freed' in answer ? answer.freed : null}
+				busy={pending !== null}
+				pending={pending}
+			/>
 		</Modal>
 	);
 }
