@@ -1,7 +1,7 @@
 // which setup run a processor page draws, out of the three places one can come from: the page's own
 // reading, the page's poll of the binary, and the last run either said anything about.
-// ./stripe-section.tsx and ./paypal-section.tsx both hold all three, and this is the reading they
-// share.
+// ./stripe-section.tsx, ./paypal-section.tsx and ./chariot-section.tsx each hold all three, and this
+// is the reading they share.
 //
 // a module beside the sections rather than expressions inside them, for ./stripe-press.ts's
 // reason: ../../vite.config.ts pins one node pool and no dom, so this is the part a suite here can
@@ -59,7 +59,7 @@ export function standingRun<R extends RunLike>(read: {
  * run is the binary's own memory, so a poll nobody answered is a console that has stopped — and
  * held on `Working` the screen would wait for ever with every control on it closed. the stop is the
  * arm the binary answers a run that died on its own goroutine with, which says nothing was observed
- * and to press again (../lib/press-stopped.ts): a press made against a run still going is answered
+ * and to press again (./press-stopped.ts): a press made against a run still going is answered
  * with that run rather than a second one, so the sentence is safe whichever it was.
  *
  * **an answer holding no run is no run**, and the page drops the one it remembers and reads itself
