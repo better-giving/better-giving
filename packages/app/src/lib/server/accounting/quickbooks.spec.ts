@@ -1083,6 +1083,31 @@ describe('what a refusal costs the queued entry', () => {
 		expect(detail).not.toContain('ada@example.org');
 	});
 
+	it('strikes the donor’s name alone out of a refused journal entry’s message', async () => {
+		servingCompany((statement, path) =>
+			statement.startsWith('select * from Customer')
+				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
+				: path.endsWith('/journalentry')
+					? {
+							status: 400,
+							json: {
+								Fault: {
+									type: 'ValidationFault',
+									Error: [{ Message: 'Line 1 names Ada Lovelace, who cannot be posted to' }]
+								}
+							}
+						}
+					: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('who cannot be posted to');
+		expect(detail).not.toContain('Lovelace');
+	});
+
 	it('strikes the values a refused lookup asked for out of its message', async () => {
 		servingCompany((statement) =>
 			statement.startsWith('select * from Customer')

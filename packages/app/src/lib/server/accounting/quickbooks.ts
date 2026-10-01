@@ -227,15 +227,15 @@ const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
  * bar the structural ones — ids, dates and Intuit's own enums — so a field added to a payload is
  * redacted until it is named here; a statement gives its quoted literals, unescaped as
  * {@link escaped} wrote them, and a multi-line note gives each line, since a memo is quoted alone.
+ * `donorValues` join them whole, for a body that carries the donor only inside a longer string.
  */
-function sentValues(body: Payload | undefined): string[] {
-	if (body === undefined) return [];
-	const found: string[] = [];
-	if ('text' in body) {
+function sentValues(body: Payload | undefined, donorValues: readonly string[]): string[] {
+	const found: string[] = [...donorValues];
+	if (body !== undefined && 'text' in body) {
 		for (const [, literal = ''] of body.text.matchAll(/'((?:\\.|[^'\\])*)'/g)) {
 			found.push(literal.replaceAll(/\\(.)/g, '$1'));
 		}
-	} else {
+	} else if (body !== undefined) {
 		const walk = (node: unknown, key: string | null): void => {
 			if (typeof node === 'string') {
 				if (key === null || !STRUCTURAL_KEYS.has(key)) found.push(node, ...node.split('\n'));
@@ -389,12 +389,16 @@ export function createQuickbooksProvider(
 	 *
 	 * always a POST: the two creates are posts by nature and the query endpoint is one by choice,
 	 * so that no donor is named in a url (see {@link ask}).
+	 *
+	 * `donorValues` are what the caller knows of the donor beyond what the body spells whole — a
+	 * journal line carries the name inside a sentence — and are struck from a refusal with the rest.
 	 */
 	async function send(
 		accessToken: string,
 		path: string,
 		params: Record<string, string>,
-		body?: Payload
+		body?: Payload,
+		donorValues: readonly string[] = []
 	): Promise<Answer | AccountingFailure> {
 		const query = new URLSearchParams({ ...params, minorversion: QUICKBOOKS_MINOR_VERSION });
 		let response: Response;
@@ -412,7 +416,11 @@ export function createQuickbooksProvider(
 		} catch (error) {
 			return unreachable(error);
 		}
-		return { status: response.status, body: await readJson(response), sent: sentValues(body) };
+		return {
+			status: response.status,
+			body: await readJson(response),
+			sent: sentValues(body, donorValues)
+		};
 	}
 
 	/**
@@ -427,14 +435,15 @@ export function createQuickbooksProvider(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		path: string,
 		params: Record<string, string> = {},
-		body?: Payload
+		body?: Payload,
+		donorValues: readonly string[] = []
 	): Promise<Answer | AccountingFailure> {
-		const answer = await send(auth.accessToken, path, params, body);
+		const answer = await send(auth.accessToken, path, params, body, donorValues);
 		if ('ok' in answer || answer.status !== 401) return answer;
 
 		const issued = await refresh(auth.connection.refreshToken);
 		if (!issued.ok) return issued;
-		return send(issued.value.accessToken, path, params, body);
+		return send(issued.value.accessToken, path, params, body, donorValues);
 	}
 
 	/** the same call, with Intuit's refusal already read as one of the port's reasons. */
@@ -459,13 +468,15 @@ export function createQuickbooksProvider(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		entity: 'customer' | 'journalentry' | 'account',
 		keyed: Keyed,
-		json: unknown
+		json: unknown,
+		donorValues: readonly string[] = []
 	): Promise<Answer | AccountingFailure> {
 		return answerFor(
 			auth,
 			`/v3/company/${auth.connection.companyId}/${entity}`,
 			{ requestid: await requestIdFor(keyed, json) },
-			{ json }
+			{ json },
+			donorValues
 		);
 	}
 
@@ -852,12 +863,18 @@ export function createQuickbooksProvider(
 
 		return createdRecord(
 			answered(
-				await create(auth, 'journalentry', keyed, {
-					TxnDate: txnDate,
-					CurrencyRef: { value: currency.value },
-					PrivateNote: privateNote(gift.key, gift.memo),
-					Line: lines
-				})
+				await create(
+					auth,
+					'journalentry',
+					keyed,
+					{
+						TxnDate: txnDate,
+						CurrencyRef: { value: currency.value },
+						PrivateNote: privateNote(gift.key, gift.memo),
+						Line: lines
+					},
+					donorValuesOf(gift.donor)
+				)
 			)
 		);
 	}
@@ -1101,6 +1118,20 @@ function journalLine(
 			...(entity === undefined ? {} : { Entity: entity })
 		}
 	};
+}
+
+/**
+ * every spelling of the donor a refusal may quote alone: the name as this app holds it and as
+ * QuickBooks takes it, their own "(donor)" name, and the email.
+ */
+function donorValuesOf(donor: Donor): string[] {
+	const displayName = quickbooksDisplayName(donor.displayName);
+	return [
+		donor.displayName,
+		displayName,
+		donorDisplayName(displayName),
+		...(donor.email === null ? [] : [donor.email])
+	];
 }
 
 /** the customer the first line naming one is posted against, or null where no line names one. */
