@@ -170,7 +170,10 @@ export function readReceipt(
 
 export type ReceiptProps = {
 	readonly reading: ReceiptReading;
-	/** whether the card's own region is saying this total on this commit. */
+	/**
+	 * whether the card's own region is saying this total on this commit: a fee decision whose
+	 * sentence the region took, and not one a refusal still standing on the region outranks.
+	 */
 	readonly spoken: boolean;
 	readonly onFee: () => void;
 	readonly feeRef: RefObject<HTMLInputElement | null>;
@@ -251,7 +254,9 @@ export function Receipt({ reading, spoken, onFee, feeRef }: ReceiptProps) {
 				 * it is off wherever the card's region already says the total, which would otherwise be
 				 * the new figure said twice: on the correction, where the announcer states both figures,
 				 * and on the commit a fee decision is drawn on, where the box reports its own new setting
-				 * and the announcer says the total beside it.
+				 * and the announcer says the total beside it. a fee decision made under a refusal the
+				 * region is still holding leaves the total to this figure, which is then the only place
+				 * it is said.
 				 */}
 				<output
 					className="figure"

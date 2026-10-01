@@ -620,7 +620,7 @@ it('moves the total and the control that spends it when the fee decision changes
 // the figure is an `<output>`, a polite region by its tag alone, so a selector reading `role` off the
 // attribute never finds it: what is asserted is the attribute that overrides the tag.
 it('says a fee decision once, on the card’s region and not on the figure’s own', async () => {
-	const { root } = await card();
+	const { root, payment } = await card();
 	walkToGive(root);
 	const total = one(root, 'output.figure');
 	expect(total.hasAttribute('aria-live')).toBe(false);
@@ -629,6 +629,27 @@ it('says a fee decision once, on the card’s region and not on the figure’s o
 
 	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
 	expect(total.getAttribute('aria-live')).toBe('off');
+
+	// a rail picked afterwards is a total nothing else says, so the figure speaks for it again.
+	act(() => {
+		payment.pick('card');
+	});
+	expect(total.hasAttribute('aria-live')).toBe(false);
+});
+
+// a refused press holds the region on its refusal for the rest of the step, and the region says
+// nothing new for words it already holds — so the figure is the one place left to say the total.
+it('leaves a fee decision made under a standing refusal to the figure’s own region', async () => {
+	const { root } = await card();
+	walkToGive(root);
+	press(one(root, 'button[part~="submit"]'));
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+	const total = one(root, 'output.figure');
+
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+	expect(total.hasAttribute('aria-live')).toBe(false);
 });
 
 it('refuses a press with no rail, and says so on the box and on the region', async () => {
