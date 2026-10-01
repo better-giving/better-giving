@@ -11,9 +11,9 @@ import type { AuthEnv } from './env';
  * `migrations/0000_initial_schema.sql` into `auth_signing_key`, so there is no second
  * value for a fork to generate, paste or lose.
  *
- * it is a row rather than a secret because there is nothing for anybody to set and no
- * moment to set it in: a deploy-time value is one an operator pastes, and the migration
- * that mints this one runs before a Worker exists to hold a secret. that is what makes
+ * it is a row rather than a deploy-time var because there is nothing for anybody to set
+ * and no moment to set it in: a deploy-time value is one an operator pastes, and the
+ * migration that mints this one runs before a Worker exists to hold a var. that is what makes
  * it the carve-out in CLAUDE.md's "secrets are deploy-time" rule — a key the app mints
  * for itself — rather than a breach of it. see the note above `authSigningKey` in
  * `db/auth-schema.ts`.
@@ -122,7 +122,7 @@ function notConfiguredMessage(reason: string): string {
 		`migrations to this database: the console (\`better-giving start\`) applies them to the ` +
 		`deployed D1 when it updates this deployment, and ` +
 		`\`pnpm wrangler d1 migrations apply DB --local\` applies them to a local one. ` +
-		`As an override you can instead set the \`BETTER_AUTH_SECRET\` secret, which takes precedence ` +
+		`As an override you can instead set the \`BETTER_AUTH_SECRET\` var, which takes precedence ` +
 		`over the row — see \`.dev.vars.example\`. ` +
 		`If EVERY route is failing this way, see "Every route 500s" in \`CONTRIBUTING.md\`: the usual ` +
 		`local cause is a changed \`database_id\` pointing \`--local\` at an empty database.`

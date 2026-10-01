@@ -33,16 +33,26 @@ describe('readStaffCredential', () => {
 		expect(result.message).toContain('.dev.vars');
 	});
 
-	// a secret takes effect on its own, which DEPLOY.md states under Secrets and scripts/doctor.js
-	// says in both of its own advice lines. telling an operator to redeploy here would send them
-	// through `pnpm run deploy`, which drags its one-way `d1 migrations apply --remote` along with
-	// it — a schema migration run for a password change.
-	it('tells the operator the secret applies immediately, and never to redeploy', () => {
+	// a value set from the console takes effect on its own, which scripts/doctor.js says in both of
+	// its own advice lines. telling an operator to redeploy here would send them through
+	// `pnpm run deploy`, which drags its one-way `d1 migrations apply --remote` along with it — a
+	// schema migration run for a password change.
+	it('tells the operator the value applies immediately, and never to redeploy', () => {
 		const result = readStaffCredential({});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.message).toContain('immediately');
 		expect(result.message).not.toContain('redeploy');
+	});
+
+	// a plain Worker var, as every value `packages/operator/src/deploy-split.ts` lists is (CLAUDE.md).
+	// an operator told it is a secret goes looking for a Worker secret the console never stores.
+	it('calls ADMIN_PASSWORD the var it is, never a secret', () => {
+		const result = readStaffCredential({});
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.message).toContain('ADMIN_PASSWORD is a deploy-time var, not a settings row');
+		expect(result.message).not.toMatch(/secret/i);
 	});
 
 	it('refuses an empty ADMIN_PASSWORD rather than matching an empty attempt', () => {

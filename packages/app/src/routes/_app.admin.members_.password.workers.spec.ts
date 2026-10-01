@@ -181,7 +181,7 @@ describe('GET /admin/members/password — who it is for', () => {
 	});
 
 	/**
-	 * the deployer's password is a deploy-time secret with no `auth_account` row behind it
+	 * the deployer's password is a deploy-time var with no `auth_account` row behind it
 	 * ($lib/server/auth/credential.ts), so there is nothing on this screen for them to press.
 	 */
 	it('is not the deployer, who is sent back to the list', async () => {

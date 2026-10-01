@@ -91,7 +91,7 @@ export function staffCredentialPlugin(deps: { readonly db: Db; readonly env: Aut
 						openapi: {
 							operationId: 'signInStaff',
 							description:
-								'Sign in the single staff account by comparing against the ADMIN_PASSWORD deploy-time secret'
+								'Sign in the single staff account by comparing against the ADMIN_PASSWORD deploy-time var'
 						}
 					}
 				},

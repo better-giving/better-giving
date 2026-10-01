@@ -308,7 +308,7 @@ export type PasswordChange =
 	 * `password` — the new one is shorter or longer than better-auth will accept
 	 *   (`MEMBER_PASSWORD_MIN_LENGTH`), which is `redeemInvitation`'s `password` by the same two
 	 *   codes.
-	 * `deployer` — the staff session reached this. their password is a deploy-time secret with no
+	 * `deployer` — the staff session reached this. their password is a deploy-time var with no
 	 *   `auth_account` row behind it (./credential.ts), so there is nothing here to change and the
 	 *   console is where it is changed.
 	 * `unavailable` — the auth layer refused for a reason about this deployment. already logged;

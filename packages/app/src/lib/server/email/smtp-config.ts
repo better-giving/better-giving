@@ -485,7 +485,7 @@ const FROM_FIX = 'Set it under SMTP on the console.';
  * say where to set it — and the console says the same two things to a person standing at a
  * labelled box.
  *
- * it is a deploy-time secret and not a settings row, even though it carries no credential.
+ * it is a deploy-time var and not a settings row, even though it carries no credential.
  * the address is authorised by the same third party that issued the SMTP password — the SPF
  * record and DKIM key are on the domain, registered with that provider — so an address the
  * operator can edit in /admin independently of the credential is an address that silently

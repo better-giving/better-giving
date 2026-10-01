@@ -3,7 +3,7 @@ import { secretEquals } from '../secret-compare';
 import type { AuthEnv } from './env';
 
 /**
- * the v0 staff credential: one deploy-time secret, compared in constant time.
+ * the v0 staff credential: one deploy-time var, compared in constant time.
  *
  * no password hash is ever written, no KDF ever runs, and no row stores a
  * credential. that is a constraint of the target, not a shortcut:
@@ -25,7 +25,7 @@ import type { AuthEnv } from './env';
  * refuses this identifier by name before the auth layer is asked. the absence here
  * rests on three reasons, none of which is the transport:
  *
- *   - there is nothing to reset against. the credential is a deploy-time secret, not a
+ *   - there is nothing to reset against. the credential is a deploy-time var, not a
  *     row. a reset flow writes a new value somewhere, and the only somewhere is D1 —
  *     which is the password hash the bullets above explain cannot exist here.
  *   - there is no account to identify. one credential, no username (see below), and the
@@ -45,7 +45,7 @@ import type { AuthEnv } from './env';
  * rotating `ADMIN_PASSWORD` alone revokes nothing, since no session row is derived
  * from it.
  *
- * there is no username, and adding one back is a regression. an `ADMIN_EMAIL` secret
+ * there is no username, and adding one back is a regression. an `ADMIN_EMAIL` var
  * compared alongside the password needs a careful both-sides-then-and compare to avoid
  * the username oracle that creates, and it is no secret anyway: an attacker aiming at a
  * named nonprofit's donation page guesses the org's contact address in a handful of
@@ -56,7 +56,7 @@ import type { AuthEnv } from './env';
  *
  * what a usable value looks like is not decided here. the length minimum and the sentence
  * about a value under it are `@better-giving/operator/admin-password`'s, because the console
- * writes this secret straight to the Cloudflare account and there is no save on this
+ * writes this value straight to the Cloudflare account and there is no save on this
  * deployment for a rule stated only here to be applied at — that file argues it. this module
  * stays what the sign-in path asks: it reads the value the worker was started with, through
  * that reader, and decides what matching means.
@@ -83,7 +83,8 @@ export type StaffCredentialConfig =
  * "empty means empty" match: `''` would otherwise authenticate anyone who posts an
  * empty password, which is exactly the state a fork lands in if it deploys without
  * ever setting it. which values are refused, and the sentence naming the offending
- * variable and its concrete measure (a length, a `typeof`), come from the shared reader;
+ * variable and what is wrong with it (its `typeof`, or the minimum a value falls short of —
+ * never the value's own length), come from the shared reader;
  * what this function adds is where it is set.
  *
  * the message is written for whoever is reading the 4xx/5xx body — increasingly an
@@ -101,14 +102,14 @@ export function readStaffCredential(env: AuthEnv): StaffCredentialConfig {
 	const reading = readAdminPassword(env.ADMIN_PASSWORD);
 
 	if (!reading.ok) {
-		// the advice never asks for a redeploy, the same way scripts/doctor.js's does not: a secret
-		// takes effect on its own, and a deploy would drag its one-way `d1 migrations apply --remote`
-		// along with it. DEPLOY.md says the same under Secrets.
+		// the advice never asks for a redeploy, the same way scripts/doctor.js's does not: a value set
+		// from the console takes effect on its own, and a deploy would drag its one-way
+		// `d1 migrations apply --remote` along with it.
 		return {
 			ok: false,
 			message:
 				`Staff sign-in is refused because this deployment is misconfigured: ${reading.problem} ` +
-				`ADMIN_PASSWORD is a deploy-time secret, not a settings row: open the console ` +
+				`ADMIN_PASSWORD is a deploy-time var, not a settings row: open the console ` +
 				`(\`better-giving start\`) and set it under Dashboard password, which takes effect ` +
 				`immediately on this deployment, or add it to \`.dev.vars\` ` +
 				`for local development (copy \`.dev.vars.example\`). There is no default credential, ` +
@@ -122,7 +123,7 @@ export function readStaffCredential(env: AuthEnv): StaffCredentialConfig {
 /**
  * does an attempt match the configured credential?
  *
- * one comparison, because there is one secret — so the short-circuit hazard two compares
+ * one comparison, because there is one credential — so the short-circuit hazard two compares
  * carry is unrepresentable here rather than merely avoided. it stays a named function
  * rather than an inline `secretEquals` at the call site so this file remains the only
  * place that decides what matching means.

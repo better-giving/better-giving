@@ -70,7 +70,7 @@ export { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 // through no router at all. CLAUDE.md records the decision so a fork does not go looking for an
 // API this app does not serve.
 //
-// the deployer's credential is outside all of it. it is a deploy-time secret with no hash and no
+// the deployer's credential is outside all of it. it is a deploy-time var with no hash and no
 // row (./credential.ts), so there is nothing for a reset to write and nothing for a link to
 // address — ./members.ts refuses that identifier by name before the auth layer is asked, and the
 // console is where the value is changed.
@@ -82,7 +82,7 @@ export { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 /**
  * the two values `createAuth` cannot read for itself, resolved per request.
  *
- * neither is a deploy-time secret, which is the whole point: a one-click deploy asks for
+ * neither is a value an operator sets, which is the whole point: a one-click deploy asks for
  * `ADMIN_PASSWORD` and nothing else.
  */
 export interface AuthRuntime {
@@ -312,7 +312,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * Workers plan.** ./credential.ts argues that a KDF cannot run inside 10 ms of CPU and
 		 * that a KDF tuned to fit is one an attacker brute-forces trivially; that is the **free**
 		 * plan's budget and it binds the staff credential, which is why that one is still a
-		 * deploy-time secret with no hash anywhere. paid is 30 s per invocation, which scrypt at
+		 * deploy-time var with no hash anywhere. paid is 30 s per invocation, which scrypt at
 		 * N=16384, r=16 fits with room to spare — so a member's password is hashed properly
 		 * rather than at a cost chosen to fit a limit. tuning it down here would be the failure
 		 * that argument describes, not a saving. DEPLOY.md is where a fork reads which plan a

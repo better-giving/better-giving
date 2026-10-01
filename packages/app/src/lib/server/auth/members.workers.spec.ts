@@ -270,7 +270,7 @@ describe('signInMember', () => {
 	});
 
 	/**
-	 * the deployer has no `auth_account` row — `ADMIN_PASSWORD` is a deploy-time secret and
+	 * the deployer has no `auth_account` row — `ADMIN_PASSWORD` is a deploy-time var and
 	 * nothing hashes it (./credential.ts) — so their identifier is refused here whatever is
 	 * typed, and `signInStaff` stays the only way that credential works.
 	 */
@@ -398,7 +398,7 @@ describe('changeMemberPassword', () => {
 
 	/**
 	 * the deployer holds a session like anybody's but no credential in the database, so this is the
-	 * screen's own refusal rather than a wrong password: their password is a deploy-time secret and
+	 * screen's own refusal rather than a wrong password: their password is a deploy-time var and
 	 * the console is where it is changed (./credential.ts).
 	 */
 	it('refuses the deployer, whose password is not a row', async () => {

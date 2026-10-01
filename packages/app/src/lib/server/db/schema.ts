@@ -2175,7 +2175,7 @@ export const orgProfile = sqliteTable(
 
 		/**
 		 * where operational mail goes — a failed webhook, a daily summary. not a donor-facing
-		 * address and not a credential: SMTP auth is a deploy-time secret and stays one.
+		 * address and not a credential: SMTP auth is a deploy-time var and stays one.
 		 */
 		notificationEmail: text('notification_email'),
 

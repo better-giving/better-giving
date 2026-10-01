@@ -35,7 +35,7 @@ import {
 // was already open.
 //
 // what is at stake is not only the record screens. `GET /console` enumerates by name the
-// deploy-time secrets a deployment has not set, in front of a public payment-initiating
+// deploy-time values a deployment has not set, in front of a public payment-initiating
 // `/api/v1` — so that surface answered without its credential is reconnaissance against this
 // deployment, which is why it is a category of its own below rather than a route somebody excused
 // as public.

@@ -64,7 +64,7 @@ const at = (name: string) => integer(name, { mode: 'timestamp_ms' });
  *
  * the deployer's row is the singleton at the fixed `STAFF_USER_ID` in
  * `src/lib/server/auth/staff-plugin.ts`, and it holds no credential in the
- * database at all — `ADMIN_PASSWORD` is a deploy-time secret compared in constant
+ * database at all — `ADMIN_PASSWORD` is a deploy-time var compared in constant
  * time, so that row has no `auth_account` beside it and nothing here or there
  * stores a hash of it.
  *
@@ -140,7 +140,7 @@ export const authSession = sqliteTable(
  * the two on every `pnpm test`, and a column left out is an insert that fails the day a version
  * starts writing it.
  *
- * the deployer has no row here. `ADMIN_PASSWORD` is a deploy-time secret and nothing hashes it —
+ * the deployer has no row here. `ADMIN_PASSWORD` is a deploy-time var and nothing hashes it —
  * see `src/lib/server/auth/credential.ts`, and the note at the top of this file for why a member's
  * password is hashed when the deployer's cannot be.
  *

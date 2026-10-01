@@ -33,7 +33,7 @@ import { STAFF_USER_EMAIL } from './staff-plugin';
 // through `changeMemberPassword` beside them. so `inviteMember` still refuses an address that
 // already signs in here, and the person behind that refusal has a way in of their own.
 //
-// the deployer has neither. their password is a deploy-time secret with no row and no hash, reset
+// the deployer has neither. their password is a deploy-time var with no row and no hash, reset
 // from the console rather than by mail (./credential.ts, DEPLOY.md), so that way in exists whatever
 // has happened to the members.
 // ---------------------------------------------------------------------------

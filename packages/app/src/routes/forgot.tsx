@@ -45,7 +45,7 @@ import type { Route } from './+types/forgot';
 // $lib/server/auth/members.ts is where that is decided and argued — telling them apart would turn
 // this form into a way to ask whether a given person works here, on a deployment whose donation
 // page names the organisation — and the deployer is refused inside it by name, because their
-// password is a deploy-time secret with no `auth_account` row behind it.
+// password is a deploy-time var with no `auth_account` row behind it.
 //
 // **the send runs in `waitUntil` rather than on the request.** better-auth defers it through
 // `passwordReset.background` ($lib/server/auth/index.ts), so an address this deployment has takes

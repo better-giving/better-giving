@@ -134,9 +134,9 @@ const WRONG_CREDENTIAL =
  * what every failure but the 401 says.
  *
  * the messages the auth layer produces are about the deployment — among them the 500 for an
- * unconfigured staff credential, whose message states the configured `ADMIN_PASSWORD`'s length.
- * that is written for an agent reading a status body and belongs on the surfaces an operator
- * controls: the console says whether that secret is set and is where it is set again, and the
+ * unconfigured staff credential, whose message says what is wrong with `ADMIN_PASSWORD` and where
+ * it is set. that is written for an agent reading a status body and belongs on the surfaces an
+ * operator controls: the console says whether that var is set and is where it is set again, and the
  * running deployment's logs carry the withheld detail. an anonymous POST to this form must not
  * read it back, so what it gets is the pointer rather than the answer.
  *
@@ -512,9 +512,9 @@ function SignInScreen({
 					    does not, because ./base.css states a link's own.
 
 					    it is not offered to the deployer and is not withheld from them either —
-					    their password is a deploy-time secret and `requestPasswordReset` refuses
+					    their password is a deploy-time var and `requestPasswordReset` refuses
 					    their identifier by name, so what they get from /forgot is the same sentence
-					    everybody gets. the console is where that secret is set. */}
+					    everybody gets. the console is where that var is set. */}
 					<p className="adm-caption">
 						<Link to="/forgot">Forgot your password?</Link>
 					</p>
