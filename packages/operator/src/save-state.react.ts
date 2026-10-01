@@ -37,10 +37,10 @@ export function useSaveState(facts: SaveFacts): SaveState {
 	const armed = armedAfter(seen.armed, seen.reporting, facts);
 	if (seen.reporting !== reporting || seen.armed !== armed) setSeen({ reporting, armed });
 
-	// the trio's own answer as the dependency, so the run that arms a timer is the run where the
-	// button started drawing the tick — a second save into the same group re-arms rather than
-	// inheriting the first one's four seconds, and a slow round trip does not spend the window
-	// while the button still says `Saving`.
+	// whether the tick is drawn as the dependency, so the run that arms a timer is the run where the
+	// button started drawing it — a second save into the same group re-arms rather than inheriting
+	// the first one's four seconds, and a slow round trip does not spend the window while the
+	// button still says `Saving`.
 	const shown = reporting && armed;
 	useEffect(() => expireAfter(shown, setExpired), [shown]);
 

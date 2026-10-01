@@ -46,8 +46,8 @@
 // counting from what is drawn is also what reports a second save into the same group. the marker
 // never moves across one: the operator edits, saves, and the form is rebound from the result, so a
 // timer armed on the marker would have run out during the first save and left the second drawing
-// no tick at all. `expireAfter` is where that is held, by taking the trio's own answer and nothing
-// else.
+// no tick at all. `expireAfter` is where that is held, by taking whether the tick is drawn — the
+// trio's answer while a confirmation is armed — and nothing else.
 //
 // but the trio alone cannot tell a second save from an undone edit: a box typed in and put back
 // the way it was swings `changed` back to false under a `landed` that never moved, which is the
@@ -138,17 +138,18 @@ export function drawn(facts: SaveFacts, armed: boolean, expired: boolean): SaveS
 /**
  * the four seconds, as the body of whatever effect the binding runs.
  *
- * called with the trio's own answer while armed, so the run that arms a timer is the run where the
- * button started drawing the tick — which is what makes a second save into the same group re-arm rather
- * than go unreported, and what keeps a slow round trip from spending the window behind `Saving`.
+ * called with whether the tick is drawn — the trio's answer while a confirmation is armed — so the
+ * run that arms a timer is the run where the button started drawing it, which is what makes a second
+ * save into the same group re-arm rather than go unreported, and what keeps a slow round trip from
+ * spending the window behind `Saving`.
  * `report` is written and never read in here, so writing it starts nothing.
  *
  * the returned teardown is the binding's to run before every re-run as well as on the way out, so
  * there is one timer at a time and none left behind by a screen that has gone.
  */
-export function expireAfter(reporting: boolean, report: (expired: boolean) => void): () => void {
+export function expireAfter(shown: boolean, report: (expired: boolean) => void): () => void {
 	report(false);
-	if (!reporting) return () => {};
+	if (!shown) return () => {};
 
 	const timer = setTimeout(() => report(true), CONFIRMATION_MS);
 	return () => clearTimeout(timer);
