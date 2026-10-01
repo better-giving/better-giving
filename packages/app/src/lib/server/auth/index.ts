@@ -3,12 +3,12 @@
 // to trust.
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { betterAuth } from 'better-auth/minimal';
-import { and, eq, like, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '$lib/server/db/client';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/auth-schema';
 import { type AuthEnv, pinnedOrigin } from './env';
 import { MEMBER_PASSWORD_MIN_LENGTH } from './invitations';
+import { deleteResetLinks } from './reset-links';
 import { staffCredentialPlugin } from './staff-plugin';
 
 export { publishedOrigin, readAuthEnv, readPin, type AuthEnv, type PinReading } from './env';
@@ -340,9 +340,9 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 *
 		 * a member holds one live link. `sendResetPassword` deletes every earlier one before the new
 		 * mail goes, and `onPasswordReset` deletes whatever is left once a reset lands, so an older
-		 * mail cannot overwrite the password just chosen (`deleteResetLinks` below). the first
-		 * delete runs inside the backgrounded send and so costs the request nothing: an address this
-		 * deployment has still answers in the time one it does not.
+		 * mail cannot overwrite the password just chosen (`deleteResetLinks` in ./reset-links.ts).
+		 * the first delete runs inside the backgrounded send and so costs the request nothing: an
+		 * address this deployment has still answers in the time one it does not.
 		 *
 		 * neither delete is guaranteed. one that throws before a send leaves the earlier links
 		 * working and sends no new one, and better-auth's background handler logs it. one that
@@ -542,39 +542,4 @@ function isLoopbackOrigin(url: string): boolean {
 	} catch {
 		return false;
 	}
-}
-
-/** the prefix better-auth writes before every reset token in `auth_verification.identifier`. */
-const RESET_IDENTIFIER_PREFIX = 'reset-password:';
-
-/**
- * end every reset link a member holds, or, given the link just minted, every one minted before it.
- *
- * better-auth 1.6.25 writes a row per request and consumes only the row it was handed
- * (`better-auth/dist/api/routes/password.mjs`), so without this each press adds a live link and a
- * completed reset leaves the others able to overwrite the password just chosen. an invitation keeps
- * the same one-live-token rule for an address (./invitations.ts).
- *
- * "before" is `(created_at, id)` against the new row's, rather than every row but the new one: two
- * requests whose deletes interleave would each delete the other's link and leave the member none,
- * where this keeps the newest. a new row a later request has already deleted matches nothing, so
- * nothing is deleted on its behalf.
- */
-async function deleteResetLinks(
-	db: Db,
-	userId: string,
-	{ olderThan }: { readonly olderThan?: string } = {}
-): Promise<void> {
-	await db.delete(authVerification).where(
-		and(
-			eq(authVerification.value, userId),
-			like(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}%`),
-			olderThan === undefined
-				? undefined
-				: sql`(${authVerification.createdAt}, ${authVerification.id}) < (
-							select minted.created_at, minted.id from auth_verification as minted
-							where minted.identifier = ${`${RESET_IDENTIFIER_PREFIX}${olderThan}`}
-						)`
-		)
-	);
 }
