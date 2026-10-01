@@ -1,3 +1,4 @@
+import { act, type FormEvent, useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { mount, render } from '../render.testing';
 import { type RepeatingRow, type RowControl, RepeatingRows } from './RepeatingRows.jsx';
@@ -310,5 +311,87 @@ describe('repeating rows mounted into a document', () => {
 				button.getAttribute('aria-label')
 			)
 		).toEqual(['Remove Allowed origins 1', 'Remove Allowed origins 2']);
+	});
+});
+
+/**
+ * the group under a form that applies its own list intents, the way a form layer does: the press
+ * submits, the form reads which control submitted, and the rows are drawn again from what that
+ * changed. nothing about focus is wired here, so whatever lands focus is the group's own.
+ */
+function Listing(props: { start: readonly string[] }) {
+	const [keys, setKeys] = useState(props.start);
+	const [minted, setMinted] = useState(0);
+	const apply = (event: FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		const intent = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ?? '';
+		if (intent === 'insert') {
+			setKeys((was) => [...was, `new-${minted}`]);
+			setMinted((n) => n + 1);
+		} else if (intent.startsWith('remove:')) {
+			const gone = intent.slice('remove:'.length);
+			setKeys((was) => was.filter((key) => key !== gone));
+		}
+	};
+	return (
+		<form onSubmit={apply}>
+			<RepeatingRows
+				id="origins"
+				name="allowed_origins"
+				legend="Site"
+				add={ADD}
+				rows={byPosition(keys)}
+			/>
+		</form>
+	);
+}
+
+/** presses the control a reader knows by `name`, the way a keyboard does. */
+function press(root: HTMLElement, name: string): void {
+	const control = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
+		(button) => (button.getAttribute('aria-label') ?? button.textContent) === name
+	);
+	if (control === undefined) throw new Error(`no control is called ${name}`);
+	act(() => {
+		control.focus();
+		control.click();
+	});
+}
+
+describe('where focus lands after a row is added or dropped', () => {
+	// the press that drops a row is inside the row, so it goes with it — and focus on a node that has
+	// gone is focus on the page itself, which sends a keyboard operator back to the top.
+	it('goes to the box above a row that was dropped', () => {
+		const { root } = mount(Listing, { start: ['a', 'b', 'c'] });
+
+		press(root, 'Remove Site 2');
+
+		expect(document.activeElement).toBe(inputs(root)[0]);
+	});
+
+	it('goes to the box that took the first row’s place when the first is dropped', () => {
+		const { root } = mount(Listing, { start: ['a', 'b'] });
+
+		press(root, 'Remove Site 1');
+
+		expect(document.activeElement).toBe(inputs(root)[0]);
+	});
+
+	it('goes to Add when the last row is dropped', () => {
+		const { root } = mount(Listing, { start: ['a'] });
+
+		press(root, 'Remove Site 1');
+
+		expect(inputs(root)).toHaveLength(0);
+		expect(document.activeElement?.textContent).toBe('Add another');
+	});
+
+	it('goes into the new box when a row is added', () => {
+		const { root } = mount(Listing, { start: ['a'] });
+
+		press(root, 'Add another');
+
+		expect(inputs(root)).toHaveLength(2);
+		expect(document.activeElement).toBe(inputs(root)[1]);
 	});
 });
