@@ -92,8 +92,8 @@ describe('classifySmtpFailure', () => {
 		'Failed to connect to SMTP server: proxy request failed, cannot connect to the specified address',
 		'Socket timeout!',
 		'Timeout while waiting for smtp server response',
-		'Failed to start TLS: connection reset',
-		'Failed to EHLO. 421 Service not available'
+		'Failed to start TLS: 454 4.7.0 TLS not available due to temporary reason\r\n',
+		'Failed to EHLO. 421 Service not available\r\n'
 	])('reads %j as connect_failed', (message) => {
 		expect(classifySmtpFailure(new Error(message)).reason).toBe('connect_failed');
 	});
@@ -342,6 +342,21 @@ describe('classifySmtpFailure — what may still have been delivered', () => {
 		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised'
 	])('reports %j as determinate', (message) => {
 		expect(classifySmtpFailure(new Error(message)).indeterminate).toBe(false);
+	});
+
+	/**
+	 * a host that refuses `EHLO`, `HELO` or `STARTTLS` ends the session before `MAIL FROM`, so no
+	 * message was offered — the same claim as a greeting that is not a 220.
+	 */
+	it.each([
+		'Failed to EHLO. 421 4.7.0 Too many connections, try again later\r\n',
+		'Failed to HELO. 501 5.5.4 Syntax: HELO hostname\r\n',
+		'Failed to start TLS: 454 4.7.0 TLS not available due to temporary reason\r\n'
+	])('reports %j as never connected', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('connect_failed');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain('nothing was delivered');
 	});
 
 	// the honest sentence for the case it can speak to.

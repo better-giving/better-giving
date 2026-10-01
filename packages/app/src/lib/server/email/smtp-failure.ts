@@ -132,10 +132,11 @@ const CONNECT_FAILED =
  * `failed to connect` belongs here even though the socket is open by then. `worker-mailer`
  * throws it out of `greet()`, when the server's opening line is not a 220 — no message has
  * been offered at that point, so "nothing was delivered" is still a claim about the session
- * rather than a guess.
+ * rather than a guess. a refused `EHLO`, `HELO` or `STARTTLS` is the same claim one command
+ * later: each comes before `MAIL FROM`.
  */
 const NEVER_CONNECTED =
-	/failed to connect|cannot connect|proxy request failed|getaddrinfo|\bdns\b/i;
+	/failed to connect|cannot connect|proxy request failed|getaddrinfo|\bdns\b|failed to (?:ehlo|helo)\.|failed to start tls:/i;
 
 /**
  * a timeout is not proof of non-delivery, which is the one thing this classifier must not
