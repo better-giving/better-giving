@@ -617,6 +617,20 @@ it('moves the total and the control that spends it when the fee decision changes
 	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
 });
 
+// the figure is an `<output>`, a polite region by its tag alone, so a selector reading `role` off the
+// attribute never finds it: what is asserted is the attribute that overrides the tag.
+it('says a fee decision once, on the card’s region and not on the figure’s own', async () => {
+	const { root } = await card();
+	walkToGive(root);
+	const total = one(root, 'output.figure');
+	expect(total.hasAttribute('aria-live')).toBe(false);
+
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+});
+
 it('refuses a press with no rail, and says so on the box and on the region', async () => {
 	const { root } = await card();
 	walkToGive(root);

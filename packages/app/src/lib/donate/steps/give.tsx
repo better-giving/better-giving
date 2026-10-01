@@ -170,11 +170,13 @@ export function readReceipt(
 
 export type ReceiptProps = {
 	readonly reading: ReceiptReading;
+	/** whether the card's own region is saying this total on this commit. */
+	readonly spoken: boolean;
 	readonly onFee: () => void;
 	readonly feeRef: RefObject<HTMLInputElement | null>;
 };
 
-export function Receipt({ reading, onFee, feeRef }: ReceiptProps) {
+export function Receipt({ reading, spoken, onFee, feeRef }: ReceiptProps) {
 	return (
 		<div part={part('summary')}>
 			<div className="row">
@@ -242,17 +244,19 @@ export function Receipt({ reading, onFee, feeRef }: ReceiptProps) {
 				<span className="row-label">{reading.totalLabel}</span>
 				{/*
 				 * an `<output>`, and the only element on the card that is one: it carries `role="status"`
-				 * implicitly, which is the whole reason. the fee decision rewrites this figure without
-				 * changing the screen and without moving the caret, and the box reports its own new
-				 * setting while the total beside it is the half nobody is told.
+				 * implicitly, which is the whole reason. a rail picked with the fee covered rewrites this
+				 * figure without changing the screen and without moving the caret, and nothing else says
+				 * so.
 				 *
-				 * one screen turns it off, and it is the correction: the announcer states both figures
-				 * there, so the region would say the new total a second time.
+				 * it is off wherever the card's region already says the total, which would otherwise be
+				 * the new figure said twice: on the correction, where the announcer states both figures,
+				 * and on the commit a fee decision is drawn on, where the box reports its own new setting
+				 * and the announcer says the total beside it.
 				 */}
 				<output
 					className="figure"
 					data-changed={reading.corrected ? '' : undefined}
-					aria-live={reading.corrected ? 'off' : undefined}
+					aria-live={reading.corrected || spoken ? 'off' : undefined}
 				>
 					{reading.totalFigure}
 				</output>

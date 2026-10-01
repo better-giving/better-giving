@@ -501,8 +501,12 @@ function CheckoutCard({
 	// states one and only once it has figures — an empty ledger block under "Thank you" states
 	// nothing, and two copies would be two nodes carrying one id.
 	const inTakeover = shown === 'takeover' && takeover.receipt !== 'none' && reading !== null;
+	/** the sentence a press asked for, while the snapshot it was asked on is the one drawn. */
+	const spent = shot !== null && shot.at === snapshot ? shot.kind : null;
 	const receipt =
-		reading === null ? null : <Receipt reading={reading} onFee={() => onFee()} feeRef={feeBox} />;
+		reading === null ? null : (
+			<Receipt reading={reading} spoken={spent === 'fee'} onFee={() => onFee()} feeRef={feeBox} />
+		);
 
 	// ── the presses ──────────────────────────────────────────────────────────────────────────────
 
@@ -711,7 +715,6 @@ function CheckoutCard({
 
 	// ── what is said out loud ────────────────────────────────────────────────────────────────────
 
-	const spent = shot !== null && shot.at === snapshot ? shot.kind : null;
 	// in the order the fields are asked in, which is the order they are laid out in and the order the
 	// caret walks them.
 	const detailsSaid =
