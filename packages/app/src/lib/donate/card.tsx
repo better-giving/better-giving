@@ -50,7 +50,8 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     which screen asked.
 //   - the caret. a screen change hides the control that held focus, so focus is put on the heading
 //     of the screen that arrived — never on the flow's first paint, and never before the section it
-//     lands in is out of `hidden`. one takeover replacing another is no screen change and can hide
+//     lands in is out of `hidden`. the one first paint that takes it is a second gift's: Back to
+//     start remounts the card under the caret, and the rebuilt card puts it on its first heading. one takeover replacing another is no screen change and can hide
 //     that control too, so it is taken back to the heading from inside the takeover.
 //   - what is said out loud, on one channel, decided in one place.
 //
@@ -118,12 +119,16 @@ export function DonateCard({ config, seams }: DonateCardProps) {
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
 	// challenge token is spent once. remounting is what builds both again, and it starts empty, which
 	// is what keeps one donor's name off the next donor's screen on a shared machine.
-	const [boot, setBoot] = useState(0);
+	//
+	// whether the card held the caret is carried across the remount, because the press that asked for
+	// it is unmounted with the old card and a caret left on it falls to the page body.
+	const [boot, setBoot] = useState({ at: 0, focused: false });
 	return (
 		<CheckoutCard
-			key={boot}
+			key={boot.at}
 			config={config}
-			restart={() => setBoot((at) => at + 1)}
+			takeFocus={boot.focused}
+			restart={(focused) => setBoot((last) => ({ at: last.at + 1, focused }))}
 			{...(seams === undefined ? {} : { seams })}
 		/>
 	);
@@ -131,11 +136,15 @@ export function DonateCard({ config, seams }: DonateCardProps) {
 
 function CheckoutCard({
 	config,
+	takeFocus,
 	restart,
 	seams
 }: {
 	config: FormConfig;
-	restart: () => void;
+	/** whether this card's first paint puts the caret on its heading, which only a restart asks. */
+	takeFocus: boolean;
+	/** a fresh card, told whether this one held the caret when it was asked for. */
+	restart: (focused: boolean) => void;
 	seams?: CheckoutMounts['seams'];
 }) {
 	const { locale, currency } = config;
@@ -386,6 +395,13 @@ function CheckoutCard({
 		takeover: useRef<HTMLHeadingElement | null>(null)
 	};
 	const takeoverSection = useRef<HTMLElement | null>(null);
+	const cardNode = useRef<HTMLDivElement | null>(null);
+
+	// a fresh boot's first screen is the amount step, so that is the heading a restart lands on.
+	const firstHeading = headings.amount;
+	useEffect(() => {
+		if (takeFocus) firstHeading.current?.focus();
+	}, [takeFocus, firstHeading]);
 
 	useEffect(() => {
 		deposit?.update(takeover.deposit);
@@ -681,11 +697,15 @@ function CheckoutCard({
 		else next.retryButton.onClick();
 	}
 
+	function holdsCaret(): boolean {
+		return cardNode.current?.contains(document.activeElement) === true;
+	}
+
 	function onSecondary(): void {
 		const next = now();
 		if (next.state.step === 'mandate') next.declineMandateButton.onClick();
 		// `success` is terminal and is given no way out, so a second gift is a new card.
-		else if (next.state.step === 'success') restart();
+		else if (next.state.step === 'success') restart(holdsCaret());
 		else next.backButton.onClick();
 	}
 
@@ -748,6 +768,7 @@ function CheckoutCard({
 		// --donate-primary` registers from the document tree, which is where this sheet now is.
 		<div data-donate-root="">
 			<div
+				ref={cardNode}
 				part={part('card')}
 				lang="en"
 				data-direction={
