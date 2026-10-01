@@ -140,6 +140,7 @@ func New(options Options) *Flow {
 	}
 	return &Flow{
 		store:  options.Store,
+		keep:   options.Store.Write,
 		send:   cf.FormSend(base, nil),
 		open:   options.Open,
 		waits:  waiting,
@@ -187,11 +188,18 @@ func (flow *Flow) Credential(ctx context.Context) cf.Credential {
 	if flow.now().Before(stored.Expires.Add(-skew)) || stored.Refresh == "" {
 		return cf.BearerCredential(stored.Access)
 	}
-	// a refresh that could not be written down is carried on with and said out loud: what came back
-	// is good for the call being made now, and the pair that was not written is the one the next run
-	// would have read — so this machine is signed in and is one launch away from not being.
-	refreshed, ok, err := flow.refresh(ctx, stored)
+	// a refresh that could not be written down is held and said out loud: the record still names the
+	// refresh token cloudflare has just rotated away, so this process carries on with the new pair and
+	// the next launch, reading the record, is signed out.
+	//
+	// the refresh outlives the request that asked for it: cloudflare rotates the refresh token as it
+	// answers, so a tab closed mid-call would leave the new pair with nobody and the stored token
+	// spent. what bounds it is cf.ReadTimeout inside the send.
+	refreshed, ok, err := flow.refresh(context.WithoutCancel(ctx), stored)
 	if ok {
+		if err != nil {
+			flow.unkept = &refreshed
+		}
 		flow.kept(err)
 	}
 	if !ok {
@@ -248,15 +256,20 @@ func (flow *Flow) Out(ctx context.Context) error {
 			})
 		}
 	}
+	flow.unkept = nil
 	return flow.store.Forget(Record)
 }
 
-// the credential written down on this machine, or that there is none to read.
+// the credential this machine holds — a refresh that could not be written down, else the one
+// written down — or that there is none to read.
 //
 // A machine with nothing remembered is the ordinary state of a first run, and so is one whose
 // record cannot be read at all: either way there is no sign-in, and the screen that says so is the
 // one with the way out on it.
 func (flow *Flow) stored() (record, bool) {
+	if flow.unkept != nil {
+		return *flow.unkept, true
+	}
 	read, err := flow.store.Read(Record)
 	if err != nil || len(read) == 0 {
 		return record{}, false
@@ -273,7 +286,12 @@ func (flow *Flow) write(held record) error {
 	if err != nil {
 		return err
 	}
-	return flow.store.Write(Record, written)
+	if err := flow.keep(Record, written); err != nil {
+		return err
+	}
+	// what is written down is newer than anything held: a fresh sign-in replaces it outright.
+	flow.unkept = nil
+	return nil
 }
 
 // exchanges the code cloudflare handed back for the pair this machine keeps.
@@ -302,8 +320,8 @@ func (flow *Flow) refresh(ctx context.Context, stored record) (record, bool, err
 // refresh that rotates nothing hands back.
 //
 // The second answer is whether cloudflare handed a pair back at all, and the error is the writing
-// of it — two different things to say, because every read of the credential goes through the record
-// and one that was not written is one this process cannot read either.
+// of it — two different things to say, because a sign-in that was not written is one this process
+// cannot read either, and a refresh that was not written is one only this process holds.
 func (flow *Flow) granted(ctx context.Context, form url.Values, carried string) (record, bool, error) {
 	answer := flow.send(ctx, tokenPath, form)
 	if answer.Kind != cf.Answered || answer.Status < 200 || answer.Status > 299 {

@@ -55,15 +55,21 @@ func (held *dash) serve(t *testing.T) string {
 		held.mutex.Lock()
 		held.forms = append(held.forms, form)
 		held.paths = append(held.paths, r.URL.Path)
-		refuses, access, expires := held.refuses, held.access, held.expires
+		refuses, access, expires, holds := held.refuses, held.access, held.expires, held.holds
 		held.mutex.Unlock()
 
 		if r.URL.Path == "/oauth2/revoke" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		if held.holds != nil {
-			<-held.holds
+		if holds != nil {
+			// a caller that gave up is a connection closed under this handler, and the answer it
+			// would have written lands nowhere.
+			select {
+			case <-holds:
+			case <-r.Context().Done():
+				return
+			}
 		}
 		if refuses {
 			w.WriteHeader(http.StatusBadRequest)
@@ -476,6 +482,44 @@ func TestAnExpiredAccessTokenIsRefreshedWithoutTheOperatorNoticing(t *testing.T)
 	}
 }
 
+func TestARequestThatGivesUpMidRefreshLeavesTheRefreshToFinish(t *testing.T) {
+	// cloudflare rotates the refresh token as it answers, so a refresh abandoned with the tab that
+	// asked for it is one whose new pair nobody keeps and whose old token is already spent.
+	held := &dash{expires: 1}
+	flow, _, store, ticking := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+
+	held.mutex.Lock()
+	held.access, held.expires, held.holds = "a-second-access-token", 3600, make(chan struct{})
+	held.mutex.Unlock()
+	ticking.skip(time.Hour)
+
+	asking, closed := context.WithCancel(context.Background())
+	answered := make(chan cf.Credential, 1)
+	go func() { answered <- flow.Credential(asking) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for len(held.sent("/oauth2/token")) < 2 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	closed()
+
+	select {
+	case <-answered:
+		t.Fatal("the refresh ended with the request that asked for it")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(held.holds)
+
+	if credential := <-answered; credential.Token != "a-second-access-token" {
+		t.Errorf("credential = %q, want the refreshed token", credential.Token)
+	}
+	read, _ := store.Read(Record)
+	if !strings.Contains(string(read), "a-second-access-token") {
+		t.Error("the refreshed pair was not written down")
+	}
+}
+
 func TestACredentialThatHasNotExpiredIsNotRefreshed(t *testing.T) {
 	held := &dash{}
 	flow, _, _, _ := flowing(t, held)
@@ -510,23 +554,25 @@ func TestARefreshCloudflareTurnsDownLeavesCloudflareToSayWhatIsWrong(t *testing.
 	}
 }
 
+// the state directory as it stands on a machine whose config home has gone read-only, which a
+// chmod cannot stage for a suite run as root.
+func unwritable(flow *running) {
+	flow.keep = func(string, []byte) error { return os.ErrPermission }
+}
+
 func TestARefreshThatCouldNotBeWrittenDownIsReportedRatherThanSwallowed(t *testing.T) {
 	// the token that came back is good for the call being made now and is used; what is gone is the
 	// pair the next run reads, so a console that said nothing here is one whose operator meets a
 	// sign-out at the next launch with nothing on screen naming the folder to repair.
 	held := &dash{expires: 1}
-	flow, _, store, ticking := flowing(t, held)
+	flow, _, _, ticking := flowing(t, held)
 	allow(t, flow, started(t, flow), nil)
 	settled(t, flow)
 
 	held.mutex.Lock()
 	held.access, held.expires = "a-second-access-token", 3600
 	held.mutex.Unlock()
-	// the state directory as it stands on a machine whose config home has gone read-only.
-	if err := os.Chmod(store.Dir(), 0o500); err != nil {
-		t.Fatalf("Chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(store.Dir(), 0o700) })
+	unwritable(flow)
 	ticking.skip(time.Hour)
 
 	credential := flow.Credential(context.Background())
@@ -539,8 +585,51 @@ func TestARefreshThatCouldNotBeWrittenDownIsReportedRatherThanSwallowed(t *testi
 	}
 }
 
+func TestARefreshThatCouldNotBeWrittenDownIsWhatTheNextCallUses(t *testing.T) {
+	// the record still holds the refresh token cloudflare has just rotated away, so a next call that
+	// read it would refresh again on a spent token and be refused.
+	held := &dash{expires: 1}
+	flow, _, _, ticking := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+
+	held.mutex.Lock()
+	held.access, held.expires = "a-second-access-token", 3600
+	held.mutex.Unlock()
+	unwritable(flow)
+	ticking.skip(time.Hour)
+
+	flow.Credential(context.Background())
+	credential := flow.Credential(context.Background())
+
+	if credential.Token != "a-second-access-token" {
+		t.Errorf("credential = %q, want the pair the refresh handed back", credential.Token)
+	}
+	if sent := held.sent("/oauth2/token"); len(sent) != 2 {
+		t.Errorf("the token endpoint was called %d times, want the sign-in and one refresh", len(sent))
+	}
+}
+
+func TestSigningOutForgetsARefreshThatCouldNotBeWrittenDown(t *testing.T) {
+	held := &dash{expires: 1}
+	flow, _, _, ticking := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+	unwritable(flow)
+	ticking.skip(time.Hour)
+	flow.Credential(context.Background())
+
+	if err := flow.Out(context.Background()); err != nil {
+		t.Fatalf("Out: %v", err)
+	}
+
+	if credential := flow.Credential(context.Background()); credential.Kind != cf.NoCredential {
+		t.Errorf("credential = %q, want a machine holding none", credential.Kind)
+	}
+}
+
 func TestASignInThatCouldNotBeWrittenDownIsNotASignIn(t *testing.T) {
-	// every read of the credential goes through the record, so a write that failed leaves this
+	// a sign-in is read back through the record, so a write that failed leaves this
 	// machine holding nothing — and a run that said "signed in" would be the only copy of a token
 	// nobody can ask for again.
 	held := &dash{}
