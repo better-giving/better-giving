@@ -250,14 +250,14 @@ describe('classifySmtpFailure', () => {
 	 * pattern going stale has to degrade into something useful rather than into a lie. the
 	 * unmatched case quotes the server verbatim, which is the part that gets it fixed.
 	 */
-	it.each([
-		'At least one of text or html must be provided',
-		'something nobody has ever seen'
-	])('falls back to rejected for %j, quoting the server', (message) => {
-		const failure = classifySmtpFailure(new Error(message));
-		expect(failure.reason).toBe('rejected');
-		expect(failure.detail).toContain(message);
-	});
+	it.each(['At least one of text or html must be provided', 'something nobody has ever seen'])(
+		'falls back to rejected for %j, quoting the server',
+		(message) => {
+			const failure = classifySmtpFailure(new Error(message));
+			expect(failure.reason).toBe('rejected');
+			expect(failure.detail).toContain(message);
+		}
+	);
 
 	/**
 	 * total over `unknown`, because that is what a `catch` binds. a transport can throw a
