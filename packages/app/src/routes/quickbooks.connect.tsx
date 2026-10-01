@@ -2,6 +2,7 @@ import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import {
 	connectFlowOrigin,
 	connectStateCookie,
@@ -66,9 +67,14 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const authEnv = readAuthEnv(env);
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
-		// 500 for $lib/server/auth/gate.ts's reason: nothing the caller sent is wrong, and the
-		// message names the table and the command that mints the row.
-		throw data(signingKey.message, { status: 500 });
+		// 500 for $lib/server/auth/gate.ts's reasons: nothing the caller sent is wrong, and whoever
+		// opened the address holds no session, so the message, which quotes the database's own
+		// error, goes to the logs and the browser is told where they are.
+		console.error(
+			'a QuickBooks connect address could not be checked — no signing key:',
+			signingKey.message
+		);
+		throw data(`QuickBooks cannot be connected right now. ${LOGS_SAY_WHY}`, { status: 500 });
 	}
 
 	if (!(await readConnectLink({ secret: signingKey.secret, url, now: new Date() }))) {

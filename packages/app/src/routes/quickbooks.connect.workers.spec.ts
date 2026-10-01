@@ -1,8 +1,8 @@
 import { createExecutionContext, env } from 'cloudflare:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStaticHandler, type LoaderFunction } from 'react-router';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { createStaticHandler, isRouteErrorResponse, type LoaderFunction } from 'react-router';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { CONNECT_LINK_LIFETIME_MS, mintConnectLink } from '$lib/server/accounting/connect-link';
 import { INTUIT_AUTHORIZE_URL, QUICKBOOKS_PRODUCTION_URL } from '$lib/server/accounting/quickbooks';
 import { requestContext } from '../request-context';
@@ -158,5 +158,35 @@ describe('GET /quickbooks/connect', () => {
 		const page = markup(answered.data);
 		expect(page).toContain('This deployment has no QuickBooks credentials');
 		expect(page).toContain('Put your Intuit app’s credentials in on the console, then try again.');
+	});
+
+	/**
+	 * whoever opens the address holds no session, so the database's own error text stays in the
+	 * logs and the browser is told a fixed sentence. the key is read off the row here, which is the
+	 * path that can fail with the driver's words in it.
+	 */
+	it('answers a signing key it cannot read with a fixed sentence, and logs the cause', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await env.DB.prepare('alter table auth_signing_key rename to auth_signing_key_away').run();
+		try {
+			const answered = await handler.query(new Request(link), {
+				requestContext: requestContext(
+					envWith({ ...INTUIT, BETTER_AUTH_SECRET: undefined }),
+					createExecutionContext()
+				)
+			});
+			if (answered instanceof Response) throw new Error('a deployment with no key redirected');
+
+			expect(answered.statusCode).toBe(500);
+			const error = answered.errors?.[ROUTE_ID];
+			expect(isRouteErrorResponse(error) && error.data).toBe(
+				'QuickBooks cannot be connected right now. This deployment’s logs say why: the ' +
+					'Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.'
+			);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		} finally {
+			await env.DB.prepare('alter table auth_signing_key_away rename to auth_signing_key').run();
+			logged.mockRestore();
+		}
 	});
 });
