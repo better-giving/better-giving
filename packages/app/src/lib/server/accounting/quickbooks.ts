@@ -232,7 +232,7 @@ function sentValues(body: Payload | undefined): string[] {
 	if (body === undefined) return [];
 	const found: string[] = [];
 	if ('text' in body) {
-		for (const [, literal] of body.text.matchAll(/'((?:\\.|[^'\\])*)'/g)) {
+		for (const [, literal = ''] of body.text.matchAll(/'((?:\\.|[^'\\])*)'/g)) {
 			found.push(literal.replaceAll(/\\(.)/g, '$1'));
 		}
 	} else {
