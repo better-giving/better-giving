@@ -1554,8 +1554,8 @@ export function createStripeProvider(
 		const interval = RECURRING_INTERVALS[request.interval];
 
 		try {
-			// active only: an archived price keeps its lookup key, and found here it would be refused
-			// rather than replaced by the create below, which takes the key over.
+			// active only: an archived price keeps its lookup key, and missing it here is what sends the
+			// gift to the create below, which moves the key onto a new price.
 			const page = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
 			const found = page.data[0];
 			if (found) {
