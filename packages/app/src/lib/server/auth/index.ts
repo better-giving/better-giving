@@ -344,10 +344,12 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * the first delete runs inside the backgrounded send and so costs the request nothing: an
 		 * address this deployment has still answers in the time one it does not.
 		 *
-		 * neither delete is guaranteed. one that throws before a send leaves the earlier links
-		 * working and sends no new one, and better-auth's background handler logs it. one that
-		 * throws after a reset leaves the other links working until they expire, and is caught and
-		 * logged so that the session revocation behind it still runs.
+		 * neither delete is guaranteed, and each one that throws is caught and logged. one before a
+		 * send leaves the earlier links working beside the new one, and the new mail still goes: a
+		 * member who asked for a link and got none is locked out, which is worse than two live links
+		 * for a moment, and `onPasswordReset` ends them all once either is used. one after a reset
+		 * leaves the other links working until they expire, so that the session revocation behind
+		 * it still runs.
 		 *
 		 * `revokeSessionsOnPasswordReset` is on, and it is the reason the reset mints no session:
 		 * somebody who has just proved they hold the mailbox ends every session the account had,
@@ -381,7 +383,16 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			...(passwordReset
 				? {
 						sendResetPassword: async ({ user, token }) => {
-							await deleteResetLinks(db, user.id, { olderThan: token });
+							// caught, not thrown: a member left with no mail is locked out, and the earlier
+							// links this leaves live end at the next reset that lands.
+							try {
+								await deleteResetLinks(db, user.id, { olderThan: token });
+							} catch (cause) {
+								console.error(
+									'a reset link was minted but the earlier ones could not be deleted:',
+									cause
+								);
+							}
 							await passwordReset.send({ email: user.email, token });
 						}
 					}

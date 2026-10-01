@@ -218,6 +218,31 @@ describe('requestPasswordReset', () => {
 	});
 
 	/**
+	 * a member locked out is worse than two live links for a moment, so a delete of the earlier
+	 * ones that throws costs the new mail nothing. the trigger refuses the delete of the earlier row
+	 * and nothing else.
+	 */
+	it('still sends the new link when deleting the earlier one fails', async () => {
+		await member('priya@example.org');
+		await tokenFor('priya@example.org');
+		const earlier = await env.DB.prepare('select id from auth_verification').first<{ id: string }>();
+		await env.DB.prepare(
+			`create trigger refuse_earlier_delete before delete on auth_verification when old.id = '${earlier?.id}' begin select raise(abort, 'refused'); end`
+		).run();
+
+		try {
+			backgrounded = [];
+			await requestPasswordReset(auth, { email: 'priya@example.org' });
+			await Promise.allSettled(backgrounded);
+
+			expect(sent).toHaveLength(2);
+			await expect(backgrounded[0]).resolves.toBeUndefined();
+		} finally {
+			await env.DB.prepare('drop trigger refuse_earlier_delete').run();
+		}
+	});
+
+	/**
 	 * an instance built without a way to send refuses with `RESET_PASSWORD_DISABLED`, which is a
 	 * route that asked for a reset without wiring one rather than anything the person at the form
 	 * did. it is the only arm that does not answer `ok`.
