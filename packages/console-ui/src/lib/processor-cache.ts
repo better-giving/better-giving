@@ -55,8 +55,8 @@ import { readProcessorScreen } from './processor-reading';
 // going joins nothing and reads again, finding the run already taken and held for that press.
 //
 // **and never for the page already on the screen**, whose cell is under the pointer as often as not.
-// that page asks after its own run (./stripe-section.tsx), and a reading ahead that got to the landed
-// run first would leave its poll holding a run that is going forever — the page frozen busy.
+// that page asks after its own run (`pollRun`, from ./stripe-section.tsx) and reads itself again
+// when the run stops, so a reading ahead of it would only race those two for the landed run.
 
 /**
  * each processor page's setup run, which is the one reading the pages differ by. NOWPayments' press
