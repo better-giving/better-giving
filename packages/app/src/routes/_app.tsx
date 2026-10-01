@@ -1,6 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell } from '@better-giving/operator/components/shell/AppShell';
-import { ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
+import { MoveStatus, ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
 import { holdBar, movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
 import { useEffect } from 'react';
 import { Form, Outlet, useLocation, useNavigation } from 'react-router';
@@ -125,7 +125,11 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 
 	return (
 		<>
-			{moving ? <ProgressBar label={openingLabel(navigation.location?.state)} overMove /> : null}
+			{/* the words stand for the whole life of the document and the line only for the move: a
+			    region that arrived with the move is one a reader has not registered by the time its
+			    words land (`MoveStatus` in packages/operator/src/components/status/ProgressBar.jsx). */}
+			<MoveStatus label={moving ? openingLabel(navigation.location?.state) : ''} />
+			{moving ? <ProgressBar overMove /> : null}
 			<AppShell
 				// before anyone has saved the organisation's details on the console there is no name to
 				// show, so it says what the software is rather than printing an empty band. the word is

@@ -5,11 +5,34 @@ import { progressBarFinishing, progressBarLanded, subscribeProgressBar } from '.
 
 /**
  * @typedef {object} ProgressBarProps
- * @property {string} label what is loading, and the status region's alone in both shapes: the line
- *   has no room for words, and the document's own bar has nothing on the screen to name.
+ * @property {string} [label] what the document's own cells are waiting on, and their status region's
+ *   alone: the bar has nothing on the screen to name. over a move the words are {@link MoveStatus}'s
+ *   and the line takes none.
  * @property {boolean} overMove the thin line over the page being left, rather than the braille
  *   cells a document draws as its own waiting face.
  */
+
+/**
+ * the status words over a move, as one region that stands for the whole life of the document and
+ * is empty while nothing is moving. `label` is what is opening, and `''` where nothing is.
+ *
+ * it is apart from the line because the line is mounted only while a move runs, and a live region
+ * that arrives with a move is one a reader commonly has not registered by the time its words land —
+ * ../controls/SaveButton.jsx keeps its region mounted for its whole life for the same reason. so
+ * both callers mount this beside the line, always (packages/console-ui/src/root.tsx,
+ * packages/app/src/routes/_app.tsx), and the line says nothing of its own.
+ *
+ * `.adm-vh` from ../../styles/base.css: drawn to a reader and not on the screen.
+ *
+ * @param {{ label: string }} props
+ */
+export function MoveStatus({ label }) {
+	return (
+		<div role="status" className="adm-vh">
+			{label}
+		</div>
+	);
+}
 
 /**
  * an operator screen's one progress bar, wherever it stands: filling while a reading is in flight,
@@ -38,13 +61,12 @@ export function ProgressBar({ label, overMove }) {
 	);
 	const bar = useRef(/** @type {HTMLSpanElement | null} */ (null));
 
-	// what the region below is holding, which it takes a task after the bar mounts: a live region
-	// reports a change to its contents and never its own arrival, and both callers mount the bar only
-	// while a move is under way — so one that arrived holding its words would be announced by nobody.
-	// ../controls/SaveButton.jsx writes its region the same way.
+	// what the cells' region is holding, which it takes a task after the bar mounts: a live region
+	// reports a change to its contents and never its own arrival, so one that arrived holding its
+	// words would be announced by nobody. ../controls/SaveButton.jsx writes its region the same way.
 	const [said, setSaid] = useState('');
 	useEffect(() => {
-		const say = setTimeout(() => setSaid(label), 0);
+		const say = setTimeout(() => setSaid(label ?? ''), 0);
 		return () => clearTimeout(say);
 	}, [label]);
 
@@ -77,19 +99,25 @@ export function ProgressBar({ label, overMove }) {
 		};
 	}, [finishing]);
 
+	const drawing = (
+		<span
+			ref={bar}
+			className={`${overMove ? 'adm-navigation-bar__line' : 'adm-braille-bar'}${finishing ? ' is-finishing' : ''}`}
+			aria-hidden="true"
+		/>
+	);
+
+	/* the bar itself is decorative — its cells or its line are drawn by the sheet and say nothing a
+	   reader could read — so it is hidden from the tree. what the rush reports is that the wait is
+	   over, which the screen it is replaced by states in its own words a moment later. */
+	if (overMove) return <div className="adm-navigation-bar">{drawing}</div>;
+
+	/* polite, and the label is the one thing a reader of the tree gets, as the region's contents: a
+	   region's name is never announced. */
 	return (
-		/* polite, and the label is the one thing a reader of the tree gets: what the bar's rush
-		   reports is that the wait is over, which the screen it is replaced by states in its own
-		   words a moment later. the bar itself is decorative — its cells or its line are drawn by the
-		   sheet and say nothing a reader could read — so it is hidden from the tree and the region's
-		   contents speak for it, in both shapes: a region's name is never announced. */
-		<div role="status" className={overMove ? 'adm-navigation-bar' : undefined}>
+		<div role="status">
 			<span className="adm-vh">{said}</span>
-			<span
-				ref={bar}
-				className={`${overMove ? 'adm-navigation-bar__line' : 'adm-braille-bar'}${finishing ? ' is-finishing' : ''}`}
-				aria-hidden="true"
-			/>
+			{drawing}
 		</div>
 	);
 }

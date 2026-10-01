@@ -1,6 +1,6 @@
 import { AskHost } from '@better-giving/operator/behaviour/Ask';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
-import { ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
+import { MoveStatus, ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
 import { movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
 import { type ReactNode, useEffect } from 'react';
 import {
@@ -129,7 +129,11 @@ export default function App() {
 
 	return (
 		<>
-			{moving ? <ProgressBar label={openingLabel(navigation.location?.state)} overMove /> : null}
+			{/* the words stand for the whole life of the document and the line only for the move: a
+			    region that arrived with the move is one a reader has not registered by the time its
+			    words land (`MoveStatus` in packages/operator/src/components/status/ProgressBar.jsx). */}
+			<MoveStatus label={moving ? openingLabel(navigation.location?.state) : ''} />
+			{moving ? <ProgressBar overMove /> : null}
 			<Outlet />
 			<AskHost />
 		</>
