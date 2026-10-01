@@ -199,6 +199,21 @@ export async function readProcessorPage<P extends PaymentProcessor>(
 	return { ...screen, run: (screen.run ?? undrawn.get(key) ?? null) as ProcessorScreen<P>['run'] };
 }
 
+/**
+ * a processor page's own poll of its run, read through the same reader its page's readings take, so
+ * a report the poll is handed is held until a draw receives it — the operator may have left the
+ * page while the request was in flight (`runDrawn`, from the section that draws it).
+ *
+ * answered nothing, it is the report a reading of the page took ahead of it where this console holds
+ * one: the binary hands a landed run out once, and a re-read of the page on the screen can be the
+ * read that observed it.
+ */
+export async function pollRun<P extends PaymentProcessor>(processor: P): Promise<RunOf<P>> {
+	const key = PROCESSORS[processor].href;
+	const run = await runReader(processor, key)();
+	return (run ?? undrawn.get(key) ?? null) as RunOf<P>;
+}
+
 /** a processor page's render, once it has drawn `run`: a report drawn is never drawn again. */
 export function runDrawn(run: Kept['run']): void {
 	for (const [key, held] of undrawn) if (held === run) undrawn.delete(key);

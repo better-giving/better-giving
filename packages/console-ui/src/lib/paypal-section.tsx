@@ -11,7 +11,6 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Await, Form, useRevalidator } from 'react-router';
-import { paypalRun } from '../api/client';
 import type {
 	AddressRead,
 	DeployedValues,
@@ -58,7 +57,8 @@ import { useKeyRereads } from './key-rereads';
 import { useReseeded } from './reseed';
 import { Said } from './said';
 import { PAYPAL_GROUP, SECRET_GROUPS, isMasked } from './secret-groups';
-import { pollOutlived, runKind, standingRun } from './run-poll';
+import { pollRun, runDrawn } from './processor-cache';
+import { polledRun, pollOutlived, runKind, standingRun } from './run-poll';
 import type { PressAnswer, PressPhase, PressRefusal } from './stripe-press';
 import {
 	answerLanded,
@@ -529,20 +529,41 @@ function PaypalKeysForm({
 	const elsewhere = writingElsewhere(phase, busy);
 
 	useEffect(() => {
-		if (!working) return;
+		const going = live;
+		if (going?.kind !== 'running') return;
 		let gone = false;
 		const timer = setTimeout(() => {
-			// a read that did not land is a console that has stopped, which the page's error boundary draws.
-			void paypalRun().then((read) => {
-				if (!gone) setPolled(read);
-			});
+			// read through the page's own reader, so a report this answer carries is held for the next
+			// visit where the operator has left (`pollRun` in ./processor-cache.ts). a read that did
+			// not land ends the run as the console's own stop, and an answer holding no run reads the
+			// page again (`polledRun` in ./run-poll.ts) — either way the screen is off `Working`.
+			void pollRun('paypal')
+				.then(
+					(run) => ({ run }),
+					() => null
+				)
+				.then((answer) => {
+					if (gone) return;
+					const next = polledRun(going, answer);
+					if (next === null) {
+						setRemembered(null);
+						void revalidate();
+					}
+					setPolled(next);
+				});
 		}, POLL_MS);
 		return () => {
 			gone = true;
 			clearTimeout(timer);
 		};
-		// `polled` schedules the next ask: each answer is a new value, so the poll goes on with the run.
-	}, [working, polled]);
+		// `live` schedules the next ask: each answer is a new value, so the poll goes on with the run.
+	}, [live]);
+
+	/* a report the poll was handed, let go of once it is drawn here (`runDrawn` in
+	   ./processor-cache.ts) — the page's own reading lets go of the ones it was handed the same way. */
+	useEffect(() => {
+		if (polled?.kind === 'ended') runDrawn(polled);
+	}, [polled]);
 
 	/* the page read again once, when the run stops, so the readings above are of the account this
 	   press just set up. a ref rather than a dependency: the revalidator is a fresh object each render. */

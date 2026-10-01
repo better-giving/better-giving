@@ -58,6 +58,7 @@ vi.mock('./console-reading', async (original) => ({
 // what it kept first.
 let bar: typeof import('@better-giving/operator/progress-bar');
 let forgetReadings: typeof import('./processor-cache').forgetReadings;
+let pollRun: typeof import('./processor-cache').pollRun;
 let readProcessorPage: typeof import('./processor-cache').readProcessorPage;
 let runDrawn: typeof import('./processor-cache').runDrawn;
 let warmProcessorPage: typeof import('./processor-cache').warmProcessorPage;
@@ -75,7 +76,7 @@ beforeEach(async () => {
 	await forgetReadings?.();
 	vi.resetModules();
 	bar = await import('@better-giving/operator/progress-bar');
-	({ forgetReadings, readProcessorPage, runDrawn, warmProcessorPage } = await import(
+	({ forgetReadings, pollRun, readProcessorPage, runDrawn, warmProcessorPage } = await import(
 		'./processor-cache'
 	));
 	binary.runs = 0;
@@ -233,6 +234,41 @@ describe('a processor page read between visits', () => {
 		const drawn = await visit('/payments/stripe');
 
 		expect(drawn.run).toBe(ended);
+	});
+
+	it('draws the run report on the next visit where the page’s own poll took it and was left', async () => {
+		// the poll's request is in flight as the run lands and the operator moves elsewhere, so the
+		// page that asked draws nothing of what came back.
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		await pollRun('stripe');
+		binary.run = null;
+		bar.pageDrawn('/organisation');
+		const drawn = await visit('/payments/stripe');
+
+		expect(drawn.run).toBe(ended);
+	});
+
+	it('answers a poll with the report a reading of the page took ahead of it', async () => {
+		// a re-read of the page on the screen got to the landed run first, and the binary hands a run
+		// out once: the poll asking after it is answered nothing, over a run this console holds.
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		await readForVisit('/payments/stripe');
+		binary.run = null;
+
+		expect(await pollRun('stripe')).toBe(ended);
+	});
+
+	it('lets go of a report the poll took once the page has drawn it', async () => {
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		runDrawn(await pollRun('stripe'));
+		binary.run = null;
+		bar.pageDrawn('/organisation');
+		const drawn = await visit('/payments/stripe');
+
+		expect(drawn.run).toBeNull();
 	});
 
 	it('asks the binary for no run where the router abandoned the reading before it got there', async () => {

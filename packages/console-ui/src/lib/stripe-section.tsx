@@ -25,14 +25,14 @@ import {
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Await, Form, useRevalidator } from 'react-router';
-import { stripeRun } from '../api/client';
 import { REACHED_STRIPE, pressStopped } from './press-stopped';
 import { Said } from './said';
 import { refusalIn } from './secret-trouble';
 import { heldValues, withheldAmong } from './held-values';
 import { keysTrouble, noAnswer } from './processor-screen';
 import { recurringBlock } from './recurring-block';
-import { pollOutlived, runKind, standingRun } from './run-poll';
+import { pollRun, runDrawn } from './processor-cache';
+import { polledRun, pollOutlived, runKind, standingRun } from './run-poll';
 import { configuredStanding, processorStanding, STANDING } from './processor-payments';
 import { accountsSaid, recurringReading } from './recurring-rows';
 import type { AwaitingNote } from './awaiting-note';
@@ -449,22 +449,41 @@ export function StripeSection({
 	const elsewhere = writingElsewhere(phase, busy);
 
 	useEffect(() => {
-		if (!working) return;
+		const going = live;
+		if (going?.kind !== 'running') return;
 		let gone = false;
 		const timer = setTimeout(() => {
-			// the run is the binary's own memory, so a read that did not land is a console that has
-			// stopped — which the page's own error boundary draws. nothing here has a state for it.
-			void stripeRun().then((read) => {
-				if (!gone) setPolled(read);
-			});
+			// read through the page's own reader, so a report this answer carries is held for the next
+			// visit where the operator has left (`pollRun` in ./processor-cache.ts). a read that did
+			// not land ends the run as the console's own stop, and an answer holding no run reads the
+			// page again (`polledRun` in ./run-poll.ts) — either way the screen is off `Working`.
+			void pollRun('stripe')
+				.then(
+					(run) => ({ run }),
+					() => null
+				)
+				.then((answer) => {
+					if (gone) return;
+					const next = polledRun(going, answer);
+					if (next === null) {
+						setRemembered(null);
+						void revalidator.revalidate();
+					}
+					setPolled(next);
+				});
 		}, POLL_MS);
 		return () => {
 			gone = true;
 			clearTimeout(timer);
 		};
-		// `polled` is what schedules the next ask: each answer is a new value, so the effect runs
-		// again and the poll goes on for as long as the run does.
-	}, [working, polled]);
+		// `live` schedules the next ask: each answer is a new value, so the poll goes on with the run.
+	}, [live]);
+
+	/* a report the poll was handed, let go of once it is drawn here (`runDrawn` in
+	   ./processor-cache.ts) — the page's own reading lets go of the ones it was handed the same way. */
+	useEffect(() => {
+		if (polled?.kind === 'ended') runDrawn(polled);
+	}, [polled]);
 
 	/* and dropped the moment another press is made, or the page's reading moves to a run the poll
 	   cannot speak for (`pollOutlived` in ./run-poll.ts). a poll's answer stands in front of the run

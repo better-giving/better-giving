@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PaypalRunRead, PaypalSetup, PaypalStage } from '../api/types';
-import { pollOutlived, runKind, standingRun } from './run-poll';
+import { polledRun, pollOutlived, runKind, standingRun } from './run-poll';
 
 const facts = { registration: null, elsewhere: [] };
 
@@ -66,5 +66,33 @@ describe('the run a page draws', () => {
 		expect(
 			standingRun({ run: running('authorizing'), polled: landed, remembered: null }).live
 		).toBe(landed);
+	});
+});
+
+describe('one poll of a run the page is drawing as going', () => {
+	it('is the run the binary answered with', () => {
+		const going = running('authorizing');
+		const next = running('registering');
+		expect(polledRun(going, { run: next })).toBe(next);
+		expect(polledRun(going, { run: landed })).toBe(landed);
+	});
+
+	it('ends the run at the stage it was last seen at, as the console’s own stop, when nothing answered', () => {
+		// a read that did not land is a console that has stopped, and the run was its memory: what
+		// the screen can say is the press the binary would have answered had it died on the run's
+		// own goroutine, which sends the operator to press again rather than to wait for ever.
+		const going = running('registering');
+		expect(polledRun(going, null)).toEqual({
+			kind: 'ended',
+			stage: 'registering',
+			facts,
+			outcome: { kind: 'console-stopped' }
+		});
+	});
+
+	it('is no run at all when the binary holds none, so the page reads itself again', () => {
+		// the run's report went to a read this window does not hold — another window on the same
+		// console — and the run is not going any more.
+		expect(polledRun(running('registering'), { run: null })).toBeNull();
 	});
 });
