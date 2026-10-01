@@ -4119,6 +4119,35 @@ describe('createRecurringGift', () => {
 	});
 
 	/**
+	 * a price archived in the dashboard still holds its lookup key, and the gift is charged on a new
+	 * price that takes the key over rather than refused.
+	 *
+	 * the lookup asks for active prices only, so the archived one is a miss, and the create transfers
+	 * the key off it (https://docs.stripe.com/api/prices/create — `transfer_lookup_key`). found and
+	 * refused instead, every later gift at that amount and cadence fails for as long as the archived
+	 * price exists.
+	 */
+	it('charges on a fresh price when the one holding the key was archived', async () => {
+		const { httpClient, calls } = recording([
+			{ status: 200, json: priceList() },
+			{ status: 200, json: product() },
+			{ status: 200, json: price({ id: 'price_2' }) },
+			{ status: 200, json: customer() },
+			{ status: 200, json: subscription() }
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).createRecurringGift(
+			GIFT
+		);
+
+		expect(decodeURIComponent(calls[0]?.path ?? '')).toContain('active=true');
+		expect(calls[2]?.path).toBe('/v1/prices');
+		expect(fields(calls[2]).get('transfer_lookup_key')).toBe('true');
+		expect(fields(calls[4]).get('items[0][price]')).toBe('price_2');
+		expect(result.ok).toBe(true);
+	});
+
+	/**
 	 * a yearly gift is charged yearly, and its key says so.
 	 *
 	 * the two cadences share every line of this arm, so the one place they can diverge is the pair of
@@ -4160,8 +4189,7 @@ describe('createRecurringGift', () => {
 		['a different amount', { unit_amount: 100 }],
 		['a different currency', { currency: 'eur' }],
 		['a different cadence', { recurring: { interval: 'year', interval_count: 1 } }],
-		['another product', { product: 'prod_somethingelse' }],
-		['an archived price', { active: false }]
+		['another product', { product: 'prod_somethingelse' }]
 	])('refuses a price answering to the key with %s', async (_label, overrides) => {
 		const { httpClient, calls } = recording([{ status: 200, json: priceList(price(overrides)) }]);
 

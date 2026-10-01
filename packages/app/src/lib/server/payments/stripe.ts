@@ -1083,7 +1083,6 @@ function mismatchedPrice(
 ): PaymentFailure | null {
 	const product = typeof found.product === 'string' ? found.product : found.product.id;
 	const agrees =
-		found.active &&
 		found.unit_amount === wanted.amountMinor &&
 		found.currency === wanted.currency &&
 		found.recurring?.interval === wanted.interval &&
@@ -1555,7 +1554,9 @@ export function createStripeProvider(
 		const interval = RECURRING_INTERVALS[request.interval];
 
 		try {
-			const page = await stripe.prices.list({ lookup_keys: [lookupKey], limit: 1 });
+			// active only: an archived price keeps its lookup key, and found here it would be refused
+			// rather than replaced by the create below, which takes the key over.
+			const page = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
 			const found = page.data[0];
 			if (found) {
 				const mismatch = mismatchedPrice(found, {
