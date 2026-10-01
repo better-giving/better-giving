@@ -129,7 +129,7 @@ describe('classifySmtpFailure', () => {
 		const failure = classifySmtpFailure(new Error(message));
 		expect(failure.reason).toBe('rejected');
 		expect(failure.indeterminate).toBe(false);
-		expect(failure.detail).toContain(message);
+		expect(failure.detail).toContain(message.trimEnd());
 		expect(failure.detail).toContain('nothing was delivered');
 		expect(failure.detail).not.toContain('MAIL_FROM');
 	});
@@ -196,7 +196,7 @@ describe('classifySmtpFailure', () => {
 		const failure = classifySmtpFailure(new Error(message));
 		expect(failure.reason).toBe('rejected');
 		expect(failure.indeterminate).toBe(false);
-		expect(failure.detail).toContain(message);
+		expect(failure.detail).toContain(message.trimEnd());
 		expect(failure.detail).toContain('`SMTP_USERNAME`');
 		expect(failure.detail).toContain('`MAIL_FROM`');
 		expect(failure.detail).not.toContain('Nothing in the mail settings needs changing');
@@ -210,7 +210,7 @@ describe('classifySmtpFailure', () => {
 		const failure = classifySmtpFailure(new Error(message));
 		expect(failure.reason).toBe('rejected');
 		expect(failure.detail).toContain(`The mail host refused the recipient donor@example.org`);
-		expect(failure.detail).toContain(message);
+		expect(failure.detail).toContain(message.trimEnd());
 		expect(failure.detail).not.toContain('spelled right');
 		expect(failure.detail).not.toContain('`SMTP_USERNAME`');
 	});
@@ -258,6 +258,15 @@ describe('classifySmtpFailure', () => {
 			expect(failure.detail).toContain(message);
 		}
 	);
+
+	// a host's reply arrives with its CRLF, which would sit between the quote and the full stop.
+	it('quotes a host reply without its trailing line break', () => {
+		const failure = classifySmtpFailure(
+			new Error('Failed send email body: 554 5.7.1 Message rejected\r\n')
+		);
+		expect(failure.detail).toContain('554 5.7.1 Message rejected. ');
+		expect(failure.detail).not.toContain('\r\n');
+	});
 
 	/**
 	 * total over `unknown`, because that is what a `catch` binds. a transport can throw a

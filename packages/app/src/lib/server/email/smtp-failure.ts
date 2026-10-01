@@ -300,10 +300,13 @@ function recipientRefusal(recipient: string, message: string): string {
  * unwrapped, the totality this function advertises is a claim rather than a fact. it is called
  * from inside `send`'s `catch`, so a throw here escapes the one method in this app that promises
  * it cannot throw, on the path where a `batch()` has already committed.
+ *
+ * trimmed at the end because `worker-mailer` quotes a host's reply with the CRLF that ended it,
+ * which would otherwise land between the quote and the sentence after it.
  */
 function messageOf(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === 'string') return error;
+	if (error instanceof Error) return error.message.trimEnd();
+	if (typeof error === 'string') return error.trimEnd();
 	try {
 		return String(error);
 	} catch {
