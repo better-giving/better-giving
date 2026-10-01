@@ -82,8 +82,8 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 			    is for. a deploy from the console restarts the worker, so what the operator needs on
 			    coming back to this tab is exactly one re-read.
 
-			    of the address they asked for, which the gate is drawn over in place of its screen
-			    (../../routes/_app.tsx). the action is named because the form is drawn from that
+			    the read is of the address they asked for, which the gate is drawn over in place of its
+			    screen (../../routes/_app.tsx). the action is named because the form is drawn from that
 			    pathless layout, which resolves a missing one to `/`; and the search is carried as
 			    fields because a GET form's own fields replace whatever search its action names. */}
 			<Form method="get" action={pathname} className="adm-actions">
