@@ -75,3 +75,18 @@ describe('the group a withheld name is named in', () => {
 		expect(signIn === undefined ? null : withheldInGroup(values, signIn)).toEqual([]);
 	});
 });
+
+describe('one derivation per reading', () => {
+	// a fold compares readings by identity (`useReseeded` in ./reseed.ts), and the derivation is what
+	// it is handed: rebuilt at every render, every render would read as a re-read.
+	const rows: DeployedVar[] = [{ name: 'ADMIN_PASSWORD', kind: 'value', value: 'twelve chars' }];
+
+	it('is the same object for the same reading', () => {
+		expect(heldValues(rows)).toBe(heldValues(rows));
+	});
+
+	it('is a new object for a new reading holding the same rows', () => {
+		expect(heldValues([...rows])).not.toBe(heldValues(rows));
+		expect(heldValues([...rows])).toEqual(heldValues(rows));
+	});
+});
