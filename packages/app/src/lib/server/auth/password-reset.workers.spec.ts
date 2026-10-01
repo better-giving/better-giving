@@ -120,6 +120,15 @@ async function signsIn(email: string, password: string): Promise<boolean> {
 	return result.ok;
 }
 
+/** a reset row written by hand, live for a minute, as better-auth would have written it. */
+async function insertResetRow(id: string, token: string, userId: string, createdAt: number) {
+	await env.DB.prepare(
+		'insert into auth_verification (id, identifier, value, expires_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+	)
+		.bind(id, `reset-password:${token}`, userId, Date.now() + 60_000, createdAt, createdAt)
+		.run();
+}
+
 /** the link a member was mailed, or a failure saying none was. */
 async function tokenFor(email: string): Promise<string> {
 	const asked = await requestPasswordReset(auth, { email });
@@ -261,6 +270,21 @@ describe('resetMemberPassword', () => {
 	});
 
 	/**
+	 * two requests whose deletes interleave keep the newest link rather than deleting each other's.
+	 * the hand-written row stands for the second request, minted after this one but deleting first.
+	 */
+	it('leaves a newer link working when an older request deletes last', async () => {
+		const userId = await member('priya@example.org');
+		await insertResetRow('newer', 'the-newest-link', userId, Date.now() + 10_000);
+
+		await tokenFor('priya@example.org');
+
+		expect(
+			await resetMemberPassword(auth, { token: 'the-newest-link', newPassword: NEW_PASSWORD })
+		).toEqual({ ok: true });
+	});
+
+	/**
 	 * a completed reset ends every other link the member holds. the stray row is written by hand
 	 * because a later request would have deleted it — it stands for what two requests landing
 	 * together, or a background delete that failed, leave behind.
@@ -268,18 +292,7 @@ describe('resetMemberPassword', () => {
 	it('leaves no other link working once a reset is done', async () => {
 		const userId = await member('priya@example.org');
 		const token = await tokenFor('priya@example.org');
-		await env.DB.prepare(
-			'insert into auth_verification (id, identifier, value, expires_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
-		)
-			.bind(
-				'stray',
-				'reset-password:a-link-still-in-a-mailbox',
-				userId,
-				Date.now() + 60_000,
-				Date.now(),
-				Date.now()
-			)
-			.run();
+		await insertResetRow('stray', 'a-link-still-in-a-mailbox', userId, Date.now());
 
 		await resetMemberPassword(auth, { token, newPassword: NEW_PASSWORD });
 
@@ -290,6 +303,31 @@ describe('resetMemberPassword', () => {
 			})
 		).toEqual({ ok: false, reason: 'link' });
 		expect(await signsIn('priya@example.org', NEW_PASSWORD)).toBe(true);
+	});
+
+	/**
+	 * better-auth runs `onPasswordReset` after the password is written and before it revokes the
+	 * sessions, so a delete that throws there must not cost the revocation. the trigger refuses
+	 * the delete of one stray row and nothing else, which leaves the consume of the real token
+	 * working.
+	 */
+	it('still ends every session when deleting the other links fails', async () => {
+		const userId = await member('priya@example.org');
+		const before = await sessionOf('priya@example.org', PASSWORD);
+		const token = await tokenFor('priya@example.org');
+		await insertResetRow('stray', 'a-link-still-in-a-mailbox', userId, Date.now());
+		await env.DB.prepare(
+			"create trigger refuse_stray_delete before delete on auth_verification when old.id = 'stray' begin select raise(abort, 'refused'); end"
+		).run();
+
+		try {
+			expect(await resetMemberPassword(auth, { token, newPassword: NEW_PASSWORD })).toEqual({
+				ok: true
+			});
+			expect(await auth.api.getSession({ headers: new Headers({ cookie: before }) })).toBeNull();
+		} finally {
+			await env.DB.prepare('drop trigger refuse_stray_delete').run();
+		}
 	});
 
 	// never minted is the same answer as expired and used, for `redeemInvitation`'s reason.

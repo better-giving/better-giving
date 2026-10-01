@@ -3,7 +3,7 @@
 // to trust.
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { betterAuth } from 'better-auth/minimal';
-import { and, eq, like, ne } from 'drizzle-orm';
+import { and, eq, like, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '$lib/server/db/client';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/auth-schema';
@@ -303,6 +303,9 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			// worth more.
 		},
 		account: { modelName: 'authAccount' },
+		// `storeIdentifier` stays unset, so identifiers are stored as written: `deleteResetLinks`
+		// finds a member's links by their `reset-password:` prefix, and a hashed identifier would
+		// match nothing.
 		verification: { modelName: 'authVerification' },
 
 		/**
@@ -339,8 +342,12 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * mail goes, and `onPasswordReset` deletes whatever is left once a reset lands, so an older
 		 * mail cannot overwrite the password just chosen (`deleteResetLinks` below). the first
 		 * delete runs inside the backgrounded send and so costs the request nothing: an address this
-		 * deployment has still answers in the time one it does not. a delete that throws sends no
-		 * mail, which leaves the member pressing again rather than holding two links.
+		 * deployment has still answers in the time one it does not.
+		 *
+		 * neither delete is guaranteed. one that throws before a send leaves the earlier links
+		 * working and sends no new one, and better-auth's background handler logs it. one that
+		 * throws after a reset leaves the other links working until they expire, and is caught and
+		 * logged so that the session revocation behind it still runs.
 		 *
 		 * `revokeSessionsOnPasswordReset` is on, and it is the reason the reset mints no session:
 		 * somebody who has just proved they hold the mailbox ends every session the account had,
@@ -362,13 +369,19 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			minPasswordLength: MEMBER_PASSWORD_MIN_LENGTH,
 			revokeSessionsOnPasswordReset: true,
 			onPasswordReset: async ({ user }) => {
-				await deleteResetLinks(db, user.id);
+				// caught, not thrown: better-auth revokes the sessions after this returns, and a throw
+				// would leave them live under the new password.
+				try {
+					await deleteResetLinks(db, user.id);
+				} catch (cause) {
+					console.error('a reset landed but its other links could not be deleted:', cause);
+				}
 			},
 			resetPasswordTokenExpiresIn: PASSWORD_RESET_LIFETIME_SECONDS,
 			...(passwordReset
 				? {
 						sendResetPassword: async ({ user, token }) => {
-							await deleteResetLinks(db, user.id, { except: token });
+							await deleteResetLinks(db, user.id, { olderThan: token });
 							await passwordReset.send({ email: user.email, token });
 						}
 					}
@@ -535,27 +548,33 @@ function isLoopbackOrigin(url: string): boolean {
 const RESET_IDENTIFIER_PREFIX = 'reset-password:';
 
 /**
- * end every reset link a member holds, or every one but the link just minted.
+ * end every reset link a member holds, or, given the link just minted, every one minted before it.
  *
  * better-auth 1.6.25 writes a row per request and consumes only the row it was handed
  * (`better-auth/dist/api/routes/password.mjs`), so without this each press adds a live link and a
  * completed reset leaves the others able to overwrite the password just chosen. an invitation keeps
  * the same one-live-token rule for an address (./invitations.ts).
+ *
+ * "before" is `(created_at, id)` against the new row's, rather than every row but the new one: two
+ * requests whose deletes interleave would each delete the other's link and leave the member none,
+ * where this keeps the newest. a new row a later request has already deleted matches nothing, so
+ * nothing is deleted on its behalf.
  */
 async function deleteResetLinks(
 	db: Db,
 	userId: string,
-	{ except }: { readonly except?: string } = {}
+	{ olderThan }: { readonly olderThan?: string } = {}
 ): Promise<void> {
-	await db
-		.delete(authVerification)
-		.where(
-			and(
-				eq(authVerification.value, userId),
-				like(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}%`),
-				except === undefined
-					? undefined
-					: ne(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}${except}`)
-			)
-		);
+	await db.delete(authVerification).where(
+		and(
+			eq(authVerification.value, userId),
+			like(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}%`),
+			olderThan === undefined
+				? undefined
+				: sql`(${authVerification.createdAt}, ${authVerification.id}) < (
+							select minted.created_at, minted.id from auth_verification as minted
+							where minted.identifier = ${`${RESET_IDENTIFIER_PREFIX}${olderThan}`}
+						)`
+		)
+	);
 }
