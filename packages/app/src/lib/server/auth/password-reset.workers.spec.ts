@@ -136,6 +136,7 @@ describe('requestPasswordReset', () => {
 		await member('priya@example.org');
 
 		expect(await requestPasswordReset(auth, { email: 'priya@example.org' })).toEqual({ ok: true });
+		await Promise.all(backgrounded);
 		expect(sent).toEqual([{ email: 'priya@example.org', token: expect.any(String) }]);
 	});
 
@@ -161,6 +162,7 @@ describe('requestPasswordReset', () => {
 		expect(await requestPasswordReset(auth, { email: '  Priya@Example.ORG ' })).toEqual({
 			ok: true
 		});
+		await Promise.all(backgrounded);
 		expect(sent.map((s) => s.email)).toEqual(['priya@example.org']);
 	});
 
@@ -177,6 +179,7 @@ describe('requestPasswordReset', () => {
 		await member('priya@example.org');
 
 		expect(await requestPasswordReset(auth, { email })).toEqual({ ok: true });
+		await Promise.all(backgrounded);
 		expect(sent).toEqual([]);
 	});
 
@@ -238,6 +241,53 @@ describe('resetMemberPassword', () => {
 
 		expect(
 			await resetMemberPassword(auth, { token, newPassword: 'another-long-enough-one' })
+		).toEqual({ ok: false, reason: 'link' });
+		expect(await signsIn('priya@example.org', NEW_PASSWORD)).toBe(true);
+	});
+
+	// a member who pressed "forgot" twice holds one live link, the one in the newest mail.
+	it('refuses an earlier link once a newer one has been requested', async () => {
+		await member('priya@example.org');
+		const earlier = await tokenFor('priya@example.org');
+		const newer = await tokenFor('priya@example.org');
+
+		expect(await resetMemberPassword(auth, { token: earlier, newPassword: NEW_PASSWORD })).toEqual({
+			ok: false,
+			reason: 'link'
+		});
+		expect(await resetMemberPassword(auth, { token: newer, newPassword: NEW_PASSWORD })).toEqual({
+			ok: true
+		});
+	});
+
+	/**
+	 * a completed reset ends every other link the member holds. the stray row is written by hand
+	 * because a later request would have deleted it — it stands for what two requests landing
+	 * together, or a background delete that failed, leave behind.
+	 */
+	it('leaves no other link working once a reset is done', async () => {
+		const userId = await member('priya@example.org');
+		const token = await tokenFor('priya@example.org');
+		await env.DB.prepare(
+			'insert into auth_verification (id, identifier, value, expires_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+		)
+			.bind(
+				'stray',
+				'reset-password:a-link-still-in-a-mailbox',
+				userId,
+				Date.now() + 60_000,
+				Date.now(),
+				Date.now()
+			)
+			.run();
+
+		await resetMemberPassword(auth, { token, newPassword: NEW_PASSWORD });
+
+		expect(
+			await resetMemberPassword(auth, {
+				token: 'a-link-still-in-a-mailbox',
+				newPassword: 'another-long-enough-one'
+			})
 		).toEqual({ ok: false, reason: 'link' });
 		expect(await signsIn('priya@example.org', NEW_PASSWORD)).toBe(true);
 	});

@@ -153,8 +153,8 @@ export async function loader({ context }: Route.LoaderArgs) {
  * what it returns and nothing above this route may.
  *
  * there is no redirect on the way out, which is what makes a re-submit cheap to be wrong about: it
- * costs a bucket charge and nothing else, and the token it would mint replaces one the member has
- * not used yet rather than anything that matters.
+ * costs a bucket charge and nothing else, and the token it mints replaces every link the member has
+ * not used yet, which stop working when it is minted ($lib/server/auth/index.ts).
  */
 export async function action({ context, request, url }: Route.ActionArgs) {
 	const { env, ctx } = context.get(platform);

@@ -3,6 +3,7 @@
 // to trust.
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { betterAuth } from 'better-auth/minimal';
+import { and, eq, like, ne } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '$lib/server/db/client';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/auth-schema';
@@ -334,6 +335,13 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * ./members.ts is the other half, and `changeMemberPassword` beside it is the way a member
 		 * who *can* sign in changes theirs.
 		 *
+		 * a member holds one live link. `sendResetPassword` deletes every earlier one before the new
+		 * mail goes, and `onPasswordReset` deletes whatever is left once a reset lands, so an older
+		 * mail cannot overwrite the password just chosen (`deleteResetLinks` below). the first
+		 * delete runs inside the backgrounded send and so costs the request nothing: an address this
+		 * deployment has still answers in the time one it does not. a delete that throws sends no
+		 * mail, which leaves the member pressing again rather than holding two links.
+		 *
 		 * `revokeSessionsOnPasswordReset` is on, and it is the reason the reset mints no session:
 		 * somebody who has just proved they hold the mailbox ends every session the account had,
 		 * then signs in with what they chose. the default is off, which would leave whoever the
@@ -353,10 +361,14 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			requireEmailVerification: false,
 			minPasswordLength: MEMBER_PASSWORD_MIN_LENGTH,
 			revokeSessionsOnPasswordReset: true,
+			onPasswordReset: async ({ user }) => {
+				await deleteResetLinks(db, user.id);
+			},
 			resetPasswordTokenExpiresIn: PASSWORD_RESET_LIFETIME_SECONDS,
 			...(passwordReset
 				? {
 						sendResetPassword: async ({ user, token }) => {
+							await deleteResetLinks(db, user.id, { except: token });
 							await passwordReset.send({ email: user.email, token });
 						}
 					}
@@ -517,4 +529,33 @@ function isLoopbackOrigin(url: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/** the prefix better-auth writes before every reset token in `auth_verification.identifier`. */
+const RESET_IDENTIFIER_PREFIX = 'reset-password:';
+
+/**
+ * end every reset link a member holds, or every one but the link just minted.
+ *
+ * better-auth 1.6.25 writes a row per request and consumes only the row it was handed
+ * (`better-auth/dist/api/routes/password.mjs`), so without this each press adds a live link and a
+ * completed reset leaves the others able to overwrite the password just chosen. an invitation keeps
+ * the same one-live-token rule for an address (./invitations.ts).
+ */
+async function deleteResetLinks(
+	db: Db,
+	userId: string,
+	{ except }: { readonly except?: string } = {}
+): Promise<void> {
+	await db
+		.delete(authVerification)
+		.where(
+			and(
+				eq(authVerification.value, userId),
+				like(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}%`),
+				except === undefined
+					? undefined
+					: ne(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}${except}`)
+			)
+		);
 }
