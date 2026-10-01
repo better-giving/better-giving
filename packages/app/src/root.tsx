@@ -117,8 +117,8 @@ export function ErrorBoundary() {
 	}
 
 	// the failures able to reach here are written where the failure is known and mark their
-	// commands and variable names with backticks — the gate's message names the table and the
-	// command that mints the signing key ($lib/server/auth/signing-key.ts). react router hides the
+	// commands and variable names with backticks — the gate's message for a pin that names no
+	// address names `BETTER_AUTH_URL` and its value ($lib/server/auth/pin.ts). react router hides the
 	// text of anything it did not expect, so the fallback is a state rather than a sentence
 	// somebody wrote for it.
 	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';

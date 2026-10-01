@@ -19,6 +19,11 @@ import { resolveAuthSecret } from './signing-key';
 type GateArgs = Parameters<MiddlewareFunction<Response>>[0];
 type GateNext = Parameters<MiddlewareFunction<Response>>[1];
 
+/** what any caller is told when the signing key cannot be read; the cause is logged. */
+const NO_SIGNING_KEY =
+	'This deployment cannot sign anyone in right now. The cause is in its logs: the ' +
+	'Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
+
 /**
  * the gate in front of every screen behind the login, as a route `middleware`.
  *
@@ -57,9 +62,11 @@ export async function staffGate(
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
 		// 500 rather than a redirect to the login: nothing the caller sent is wrong, and a
-		// deployment that cannot sign a cookie cannot sign one at the login either. the message
-		// names the table and the command that mints the row.
-		throw data(signingKey.message, { status: 500 });
+		// deployment that cannot sign a cookie cannot sign one at the login either. the key is read
+		// before any session, so the caller is as likely anonymous as staff: the message, which
+		// quotes the database's own error, goes to the logs, and the response is the pointer.
+		console.error('the dashboard has no signing key:', signingKey.message);
+		throw data(NO_SIGNING_KEY, { status: 500 });
 	}
 	// the same 500 for the same reason, and before `createAuth`, which throws a bare error on it.
 	requirePin(authEnv);
