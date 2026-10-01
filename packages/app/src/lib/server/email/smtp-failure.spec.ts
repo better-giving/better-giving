@@ -86,6 +86,70 @@ describe('classifySmtpFailure', () => {
 	});
 
 	/**
+	 * a host that answered and refused is not a connection that failed, whatever words its reply
+	 * uses. `worker-mailer` puts the host's own text after `Failed send email body:`,
+	 * `Invalid MAIL FROM` and `Invalid RCPT TO`, and that text is free to say `dns`, `network` or
+	 * `timeout` — matched there, a refusal reads as an outage, the operator is told to wait, and a
+	 * blocklist refusal is reported as possibly sent.
+	 */
+	it.each([
+		'Failed send email body: 550 5.7.1 Message rejected: no DNS records for SPF',
+		'Failed send email body: 554 5.7.1 Your IP is listed on a network blocklist',
+		'Failed send email body: 451 4.4.2 Timeout waiting for the content scanner'
+	])('reads %j as a refused message, delivered nowhere', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).not.toContain('Could not reach');
+	});
+
+	it.each([
+		'Invalid MAIL FROM: <gifts@dns-example.org> 550 5.7.1 Sender address not authorised',
+		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised'
+	])('blames MAIL_FROM for %j', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain('`MAIL_FROM`');
+	});
+
+	/**
+	 * a refused recipient is the address the message was going to, not the one it came from —
+	 * blaming `MAIL_FROM` sends the operator to a setting that works while the mistyped address
+	 * stays on the record. the address is named because a send can carry more than one.
+	 */
+	it.each([
+		{
+			message:
+				'Invalid RCPT TO: <donor@network.example> 550 5.1.1 The email account that you tried to reach does not exist',
+			recipient: 'donor@network.example'
+		},
+		{
+			message:
+				'Invalid RCPT TO: <jörg@example.org> NOTIFY=FAILURE 553 5.6.7 Non-ASCII address not permitted',
+			recipient: 'jörg@example.org'
+		}
+	])('names the refused recipient for $message', ({ message, recipient }) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(`The mail host refused the recipient ${recipient}`);
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).not.toContain('MAIL_FROM');
+	});
+
+	// the prefix is still worker-mailer's own, and a greeting that is not a 220 is still a
+	// connection that never got started, whatever the host put after the code.
+	it('reads a refused greeting as connect_failed even when the reply is about mail', () => {
+		const failure = classifySmtpFailure(
+			new Error('Failed to connect to SMTP server: 554 5.7.1 mail from this network refused')
+		);
+		expect(failure.reason).toBe('connect_failed');
+		expect(failure.detail).toContain('nothing was delivered');
+	});
+
+	/**
 	 * the default, and the one that carries the weight. there is no code, no class and no
 	 * reply code on anything thrown here — only prose, which an upgrade may reword — so a
 	 * pattern going stale has to degrade into something useful rather than into a lie. the

@@ -65,6 +65,24 @@ const AUTH_FAILED =
 	/failed to (?:plain|login) authentication|invalid login|no supported auth method|requires authentication|authentication (?:failed|unsuccessful|rejected)|username and password not accepted|\b5\.7\.8\b/i;
 
 /**
+ * the host answered a command after the greeting and refused it, which is proof both that the
+ * connection worked and that this message was not taken. `worker-mailer` throws these after
+ * writing `MAIL FROM`, `RCPT TO` or the message body and reading a reply that is not a 2xx, and
+ * appends that reply verbatim — the host's own prose, free to say `dns`, `network` or `timeout`.
+ * so these are read before any connect pattern, and never as one.
+ */
+const SENDER_REFUSED = /^Invalid MAIL FROM\b/i;
+const RECIPIENT_REFUSED = /^Invalid RCPT TO\b:?\s*<([^>]*)>/i;
+const BODY_REFUSED = /^Failed send email body:/i;
+
+/**
+ * `worker-mailer`'s own prefix on a message that goes on to quote the host's reply. the connect
+ * and timeout patterns read only the prefix of such a message — the words are evidence when the
+ * client or the socket wrote them, and are the host's prose after a reply code.
+ */
+const QUOTED_REPLY = /^(.*?[:.]) [2-5]\d\d[ -]/;
+
+/**
  * nothing to talk to, or the conversation never got started: DNS, the socket, the TLS
  * upgrade, the greeting, a timeout. all one answer to an operator — the host in SMTP_HOST did
  * not answer — and all transient, unlike the two above.
@@ -114,7 +132,8 @@ const INDETERMINATE = /timeout|timed out/i;
  */
 export function classifySmtpFailure(error: unknown): SmtpFailure {
 	const message = messageOf(error);
-	const indeterminate = INDETERMINATE.test(message);
+	const ownWords = QUOTED_REPLY.exec(message)?.[1] ?? message;
+	const indeterminate = INDETERMINATE.test(ownWords);
 
 	if (NOT_CONFIGURED.test(message)) {
 		return {
@@ -138,12 +157,46 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 		};
 	}
 
-	if (CONNECT_FAILED.test(message)) {
+	const recipient = RECIPIENT_REFUSED.exec(message)?.[1];
+	if (recipient !== undefined) {
+		return {
+			reason: 'rejected',
+			detail:
+				`The mail host refused the recipient ${recipient}: ${message}. ` +
+				'Check that the address is spelled right and still exists. Many hosts refuse an address ' +
+				'with accented or non-Latin letters before the @ when this deployment sends to it. ' +
+				'Nothing in the mail settings needs changing for this.',
+			indeterminate: false
+		};
+	}
+
+	if (SENDER_REFUSED.test(message)) {
+		return {
+			reason: 'rejected',
+			detail:
+				`The mail host refused the sender address: ${message}. ` +
+				'The most common cause is a `MAIL_FROM` address the host is not authorised to send as.',
+			indeterminate: false
+		};
+	}
+
+	if (BODY_REFUSED.test(message)) {
+		return {
+			reason: 'rejected',
+			detail:
+				`The mail host received the message and refused it, so nothing was delivered: ${message}. ` +
+				"The host's reply says why. A refusal over SPF, DKIM or DMARC is fixed in the DNS " +
+				'records of the domain in `MAIL_FROM`.',
+			indeterminate: false
+		};
+	}
+
+	if (CONNECT_FAILED.test(ownWords)) {
 		// non-delivery is claimed only where the text names the connection attempt itself, and
 		// everything else here is indeterminate whether it timed out or not. this function cannot
 		// know that a message was not sent: a socket that breaks mid-session says nothing about
 		// how far the session got, so "not a timeout" is not evidence that nothing was accepted.
-		const neverOpened = !indeterminate && NEVER_CONNECTED.test(message);
+		const neverOpened = !indeterminate && NEVER_CONNECTED.test(ownWords);
 		return {
 			reason: 'connect_failed',
 			detail:
