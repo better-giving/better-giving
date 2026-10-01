@@ -55,11 +55,16 @@ const NOT_CONFIGURED = /connections? to port 25|port 25 (?:is|are) prohibited/i;
  * `550 5.7.1 … DMARC authentication failure` is a message the host refused
  * over the sending domain's DNS records, with a working password on the connection that
  * carried it — so it too sends the operator to rotate the one secret that is fine. the
- * alternatives below are the phrases that mean a credential and nothing else: the four
+ * alternatives below are the phrases that mean a credential and nothing else: the five
  * `worker-mailer` throws itself, the enhanced status code RFC 4954 reserves for a bad
  * credential, and the wordings the large hosts put after the reply code. anything vaguer
  * belongs to `rejected`, whose sentence — a MAIL_FROM the host will not send as — is already
  * the right advice for a DMARC refusal.
+ *
+ * read off `ownWords`, never the host's quoted reply: a greeting or `HELO` refused with
+ * "authentication failed" in its prose is a session that never reached `AUTH`. so the enhanced
+ * code and the large hosts' wordings match only a message that is a bare reply, with no
+ * `worker-mailer` prefix in front of it.
  */
 const AUTH_FAILED =
 	/failed to (?:plain|login) authentication|invalid login|no supported auth method|requires authentication|authentication (?:failed|unsuccessful|rejected)|username and password not accepted|\b5\.7\.8\b/i;
@@ -201,7 +206,7 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 		};
 	}
 
-	if (AUTH_FAILED.test(message)) {
+	if (AUTH_FAILED.test(ownWords)) {
 		return {
 			reason: 'auth_failed',
 			detail:

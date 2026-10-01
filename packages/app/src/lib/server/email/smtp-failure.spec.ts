@@ -60,6 +60,19 @@ describe('classifySmtpFailure', () => {
 	});
 
 	/**
+	 * a credential is refused only in worker-mailer's own words. a host's reply quoted after
+	 * another prefix — a greeting, a `HELO` — is free to say "authentication failed" about
+	 * something else, and read as `auth_failed` it sends the operator to rotate a password the
+	 * session never got far enough to offer.
+	 */
+	it.each([
+		'Failed to connect to SMTP server: 554 5.7.1 authentication failed for this network\r\n',
+		'Failed to HELO. 554 5.7.1 Authentication rejected: host not permitted\r\n'
+	])('does not read the host reply in %j as a refused credential', (message) => {
+		expect(classifySmtpFailure(new Error(message)).reason).toBe('connect_failed');
+	});
+
+	/**
 	 * a rejected message is not a refused credential, even when the server says "authentication".
 	 * DMARC failures are about the sending domain's DNS records and arrive on a connection whose
 	 * password worked — a pattern as loose as a bare `/authentication/` reads these as
