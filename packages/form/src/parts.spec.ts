@@ -334,3 +334,33 @@ describe('the part builder', () => {
 		expect(partWhen('amount-option', { selected: false, invalid: false })).toBe('amount-option');
 	});
 });
+
+// the free amount entry is the box every keyboard donor choosing "Other" types in, and the caret
+// alone is not a focus indicator (WCAG 2.4.7). the ring is on the surface rather than the input:
+// the surface is the part a host restyles, and on a bare tray it carries the edge the ring stands
+// outside. a real engine painting it is ./styles/validity.browser.spec.ts's; this is the rule.
+describe('the free amount entry with the keyboard in it', () => {
+	const parts = readFileSync(new URL('./styles/parts.css', import.meta.url), 'utf8').replace(
+		/\/\*[\s\S]*?\*\//g,
+		''
+	);
+	/** every declaration block whose selector list names `selector` exactly. */
+	const rulesFor = (selector: string): string[] =>
+		[...parts.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+			.filter(([, selectors]) =>
+				(selectors ?? '').split(',').some((one) => squash(one) === selector)
+			)
+			.map(([, , body]) => squash(body ?? ''));
+
+	it('rings the entry from the focus-ring token', () => {
+		const drawn = rulesFor("[part~='amount-input']:has(:focus-visible)");
+
+		expect(drawn.some((body) => /box-shadow:[^;]*var\(--_focus-ring\)/.test(body))).toBe(true);
+	});
+
+	it('rings a refused entry in the danger colour, as every other refused control', () => {
+		const drawn = rulesFor("[part~='amount-input'][part~='invalid']:has(:focus-visible)");
+
+		expect(drawn.some((body) => /box-shadow:[^;]*var\(--_bad\)/.test(body))).toBe(true);
+	});
+});

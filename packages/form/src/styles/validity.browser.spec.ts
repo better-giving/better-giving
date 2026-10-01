@@ -381,12 +381,12 @@ describe('the browser’s own email rule against the flow’s', () => {
 	});
 });
 
-// the free entry is the one control on the card that draws no ring: the caret in it is what says
-// where the focus is (`[part~='amount-input'] input:focus-visible` in ../styles/parts.css). the
-// general rule every input falls under would ring it, so what is asserted is that the override
-// holds in a real engine, and that the transparent outline forced-colors paints from is kept.
+// the free entry is ringed on its surface rather than on its input (`[part~='amount-input']
+// :has(:focus-visible)` in ../styles/parts.css). the general rule every input falls under would
+// ring the input as well, so what is asserted is that the ring moved in a real engine, and that the
+// transparent outline forced-colors paints from is kept on the input.
 describe('the free entry the donor has already typed into', () => {
-	it('draws no ring on focus, and keeps the outline forced-colors paints', async () => {
+	it('rings its surface on focus, and keeps the outline forced-colors paints', async () => {
 		const card = await mount();
 		(card.find('.other input') as HTMLInputElement).click();
 		const entry = card.find('#amount-entry') as HTMLInputElement;
@@ -395,10 +395,14 @@ describe('the free entry the donor has already typed into', () => {
 		await painted(entry, card.find("[part~='amount-input']"));
 		expect(card.find("[part~='amount-input']").getAttribute('part')).toContain('selected');
 
+		const surface = card.find("[part~='amount-input']");
+		expect(getComputedStyle(surface).boxShadow).toBe('none');
+
 		entry.focus();
-		await painted(entry);
+		await painted(entry, surface);
 		const drawn = getComputedStyle(entry);
 
+		expect(getComputedStyle(surface).boxShadow).not.toBe('none');
 		expect(drawn.boxShadow).toBe('none');
 		expect(drawn.outlineStyle).toBe('solid');
 		expect(resolved(drawn.outlineColor)).toBe(resolved('transparent'));
