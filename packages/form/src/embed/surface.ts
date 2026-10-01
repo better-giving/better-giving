@@ -29,7 +29,7 @@
 
 import type { Failure } from '../checkout.machine';
 import type { CheckoutPorts, ConfirmOutcome, FundReports } from '../ports';
-import type { FormConfig, PaymentMethod } from '../v1';
+import type { FormConfig, Frequency, PaymentMethod } from '../v1';
 import { createPaymentSurface as createChariotSurface, type ChariotSeam } from './chariot';
 import { createPaymentSurface as createNowpaymentsSurface } from './nowpayments';
 import { createPaymentSurface as createPaypalSurface, type PaypalSeam } from './paypal';
@@ -66,6 +66,8 @@ type Part = {
 	readonly rows?: RowList;
 	/** whether this page load is a return from this processor's own window. */
 	claimsReturn(): Promise<boolean>;
+	/** a processor whose every rail is one-time, so a repeating gift cannot be paid through it. */
+	readonly oneTimeOnly?: true;
 };
 
 /**
@@ -133,21 +135,42 @@ export function createPaymentSurface(
 	const parts: Part[] = [];
 
 	/**
-	 * the first processor to say its surface never came up, held until every one of them has.
+	 * the first processor to say its surface never came up, held until there is nothing left to
+	 * give on.
 	 *
 	 * a form whose card box works and whose PayPal button did not is a form a donor can give on, so
-	 * the report is withheld until there is nothing left to give on. the first sentence rather than
-	 * the last is the one said, because the adapters are built in the order a donor reads them and
-	 * the first is the one they were looking at.
+	 * the report is withheld until every processor has either said so or cannot take the gift on the
+	 * cadence the donor committed to. the first sentence rather than the last is the one said,
+	 * because the adapters are built in the order a donor reads them and the first is the one they
+	 * were looking at. it is said once: the flow answers it by leaving the box for good.
+	 *
+	 * a processor is counted by the place it is built in rather than by its part, because the fund's
+	 * adapter can report before it returns, while its part is still being built.
 	 */
 	let unsaid: Failure | null = null;
-	let quiet = 0;
-	const held = (failure: Failure): void => {
-		if (unsaid === null) unsaid = failure;
-		quiet += 1;
-		// every adapter reports through a promise chain of its own, so the earliest this can be
-		// reached is a microtask after the two blocks below have finished pushing.
-		if (quiet === parts.length) onUnavailable(unsaid);
+	let said = false;
+	/** until every processor is built, which the fund's report can arrive before. */
+	let building = true;
+	const down = new Set<number>();
+	/** the cadence the donor committed to, which is nothing until the amount step is left. */
+	let committed: Frequency | undefined;
+	const repeating = (): boolean => committed !== undefined && committed !== 'one_time';
+	const takesTheGift = (part: Part, at: number): boolean =>
+		!down.has(at) && !(part.oneTimeOnly === true && repeating());
+	const sayIfNothingIsLeft = (): void => {
+		if (building || said || unsaid === null) return;
+		if (parts.some(takesTheGift)) return;
+		said = true;
+		onUnavailable(unsaid);
+	};
+	/** a reporter for the processor about to be built, which is the next place in `parts`. */
+	const heldAt = (): ((failure: Failure) => void) => {
+		const at = parts.length;
+		return (failure) => {
+			if (unsaid === null) unsaid = failure;
+			down.add(at);
+			sayIfNothingIsLeft();
+		};
 	};
 
 	/**
@@ -222,7 +245,7 @@ export function createPaymentSurface(
 				if (rail !== null) for (const row of drawnRows()) row.collapse();
 				reported(part, rail);
 			},
-			held,
+			heldAt(),
 			seams?.stripe
 		);
 		collapseInline = () => inline.collapse();
@@ -243,7 +266,7 @@ export function createPaymentSurface(
 			config,
 			open(),
 			(rail) => reported(part, rail),
-			held,
+			heldAt(),
 			seams?.paypal
 		);
 		const part: Part = {
@@ -259,11 +282,12 @@ export function createPaymentSurface(
 	// rail chosen and the window opened in one go, and that press reaches the flow through `fund`.
 	let offerFund: (offered: boolean) => void = () => {};
 	if (config.paymentMethods.some(isChariotRail)) {
-		const chariot = createChariotSurface(config, open(), held, fund, seams?.chariot);
+		const chariot = createChariotSurface(config, open(), heldAt(), fund, seams?.chariot);
 		parts.push({
 			owns: isChariotRail,
 			surface: chariot,
 			rows: chariot.rows,
+			oneTimeOnly: true,
 			// a grant id is nothing a browser can read back, and no window of the fund's returns here.
 			claimsReturn: () => Promise.resolve(false)
 		});
@@ -278,6 +302,7 @@ export function createPaymentSurface(
 			owns: isNowpaymentsRail,
 			surface: crypto,
 			rows: crypto.rows,
+			oneTimeOnly: true,
 			claimsReturn: () => Promise.resolve(false)
 		};
 		parts.push(part);
@@ -288,6 +313,8 @@ export function createPaymentSurface(
 	// recount rather than by a watcher reading a list still being assembled.
 	for (const part of parts) part.rows?.watch({ changed: recount, opened });
 	recount();
+	building = false;
+	sayIfNothingIsLeft();
 
 	/** whichever processor last took a confirmation, which is whose order a re-read is about. */
 	let confirmed: Part | null = null;
@@ -336,6 +363,8 @@ export function createPaymentSurface(
 		},
 		cadence(frequency) {
 			for (const part of parts) part.surface.cadence(frequency);
+			committed = frequency;
+			sayIfNothingIsLeft();
 		},
 		stop() {
 			// each adapter's own `stop` is safe in whatever order it is reached in and safe twice, so

@@ -262,6 +262,67 @@ describe('one payment surface over however many processors a config names', () =
 		expect(k.unavailable[0]?.message).toContain('nothing was charged');
 	});
 
+	// the fund's adapter says so before it returns where the config names no id to open it on, which
+	// is before the card's own adapter has had any chance to answer.
+	it('says nothing when a fund fails at once beside a card box still loading', async () => {
+		const k = kit();
+		await composed(k, { ...CONFIG, paymentMethods: ['card', 'daf'] });
+		expect(k.unavailable).toHaveLength(0);
+	});
+
+	// a fund and crypto are one-time rails (`fundIsOffered` and `cryptoIsOffered` in
+	// ../checkout.machine.ts), so on a repeating gift a rail that loaded is still no way to pay.
+	describe('a processor the committed cadence does not offer', () => {
+		const STRIPE = { name: 'stripe', publishableKey: 'pk_live_x' } as const;
+		const ONE_TIME_RAILS: FormConfig[] = [
+			{
+				...CONFIG,
+				providers: [STRIPE, { name: 'chariot', publishableKey: 'cid_x' }],
+				frequencies: ['one_time', 'monthly'],
+				paymentMethods: ['card', 'daf']
+			},
+			{
+				...CONFIG,
+				providers: [STRIPE],
+				frequencies: ['one_time', 'monthly'],
+				paymentMethods: ['card', 'crypto'],
+				coins: [
+					{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+				]
+			}
+		];
+
+		it('tells the donor once a repeating gift is committed with only those still up', async () => {
+			for (const config of ONE_TIME_RAILS) {
+				const k = kit({ stripe: () => Promise.resolve(null) });
+				const surface = await composed(k, config);
+				surface.cadence(undefined);
+				surface.cadence('one_time');
+				expect(k.unavailable, config.paymentMethods.join('+')).toHaveLength(0);
+
+				surface.cadence('monthly');
+				surface.cadence('monthly');
+				expect(k.unavailable, config.paymentMethods.join('+')).toHaveLength(1);
+				expect(k.unavailable[0]?.message).toContain('nothing was charged');
+				surface.stop();
+				document.body.replaceChildren();
+			}
+		});
+
+		it('tells the donor once the last processor up fails on a repeating gift', async () => {
+			let answer: (stripe: null) => void = () => {};
+			const k = kit({ stripe: () => new Promise((resolve) => (answer = resolve)) });
+			const surface = await composed(k, ONE_TIME_RAILS[0]);
+			surface.cadence('monthly');
+			expect(k.unavailable).toHaveLength(0);
+
+			answer(null);
+			for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+			expect(k.unavailable).toHaveLength(1);
+			surface.stop();
+		});
+	});
+
 	// a picker collapsing in one processor's box must not un-pick the rail a donor chose in the
 	// other's — the press that chose it happened somewhere this reading knows nothing about.
 	it('keeps a rail chosen in one processor’s box when the other reports nothing', async () => {
