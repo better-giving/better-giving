@@ -10,6 +10,7 @@ import {
 	resetMemberPassword,
 	signInMember
 } from './members';
+import { deleteResetLinks } from './reset-links';
 import { resolveAuthSecret } from './signing-key';
 import { STAFF_USER_EMAIL } from './staff-plugin';
 
@@ -225,7 +226,9 @@ describe('requestPasswordReset', () => {
 	it('still sends the new link when deleting the earlier one fails', async () => {
 		await member('priya@example.org');
 		await tokenFor('priya@example.org');
-		const earlier = await env.DB.prepare('select id from auth_verification').first<{ id: string }>();
+		const earlier = await env.DB.prepare('select id from auth_verification').first<{
+			id: string;
+		}>();
 		await env.DB.prepare(
 			`create trigger refuse_earlier_delete before delete on auth_verification when old.id = '${earlier?.id}' begin select raise(abort, 'refused'); end`
 		).run();
@@ -312,6 +315,29 @@ describe('resetMemberPassword', () => {
 		expect(
 			await resetMemberPassword(auth, { token: 'the-newest-link', newPassword: NEW_PASSWORD })
 		).toEqual({ ok: true });
+	});
+
+	/**
+	 * two links minted in the same millisecond are ordered by id, so the two requests' deletes agree
+	 * on which is newer whichever runs first, and exactly one link is left.
+	 */
+	it.each([
+		['the lower id deletes first', ['a-row', 'b-row']],
+		['the higher id deletes first', ['b-row', 'a-row']]
+	] as const)('keeps exactly one of two links minted together when %s', async (_label, order) => {
+		const userId = await member('priya@example.org');
+		const createdAt = Date.now();
+		await insertResetRow('a-row', 'the-a-link', userId, createdAt);
+		await insertResetRow('b-row', 'the-b-link', userId, createdAt);
+
+		for (const id of order) {
+			await deleteResetLinks(db, userId, {
+				olderThan: id === 'a-row' ? 'the-a-link' : 'the-b-link'
+			});
+		}
+
+		const left = await env.DB.prepare('select id from auth_verification').all<{ id: string }>();
+		expect(left.results).toEqual([{ id: 'b-row' }]);
 	});
 
 	/**
