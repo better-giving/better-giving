@@ -179,17 +179,31 @@ export function RepeatingRows({
 	const groupErrorId = error ? `${id}-err` : null;
 
 	const addRow = useRef(/** @type {HTMLDivElement | null} */ (null));
-	/** @type {import('react').RefObject<{ kind: 'add', had: readonly string[] } | { kind: 'remove', at: number } | null>} */
+	/** @type {import('react').RefObject<{ kind: 'add' | 'remove', at: number, had: readonly string[] } | null>} */
 	const owed = useRef(null);
 	const identities = rows.map((row) => row.key ?? row.id);
-	const listed = identities.join('\n');
-	/* keyed on the rows that are drawn, so the move is made once, on the render a press changed
-	   them. it is made only while focus is where the press left it — on the page itself or still on
+
+	/** records where focus is owed after a press, against the rows it was pressed over. */
+	const owe = (/** @type {'add' | 'remove'} */ kind, /** @type {number} */ at) => {
+		const press = { kind, at, had: identities };
+		owed.current = press;
+		/* a press the form turned down commits nothing, so nothing would clear it — and a row that
+		   arrived later by some other way would be taken for its answer. a press the form applies
+		   commits inside the event that made it, ahead of this. */
+		setTimeout(() => {
+			if (owed.current === press) owed.current = null;
+		}, 0);
+	};
+
+	/* run on every commit, and spent by the first one after the press whether or not it moves
+	   anything: the move is made only where that commit's rows differ from the ones the press was
+	   made over, and only while focus is where the press left it — on the page itself or still on
 	   Add — so an operator who has moved on is not pulled back. */
 	useEffect(() => {
 		const press = owed.current;
-		owed.current = null;
 		if (press === null) return;
+		owed.current = null;
+		if (press.had.join('\n') === identities.join('\n')) return;
 		const addPress = addRow.current?.querySelector('button') ?? null;
 		const at = document.activeElement;
 		if (at !== null && at !== document.body && at !== addPress) return;
@@ -204,7 +218,7 @@ export function RepeatingRows({
 			return;
 		}
 		(rows.length === 0 ? addPress : box(Math.max(press.at - 1, 0)))?.focus();
-	}, [listed]);
+	});
 
 	return (
 		<fieldset className="adm-fieldset">
@@ -282,7 +296,7 @@ export function RepeatingRows({
 								{...remove}
 								onClick={(event) => {
 									remove.onClick?.(event);
-									if (!event.defaultPrevented) owed.current = { kind: 'remove', at: i };
+									if (!event.defaultPrevented) owe('remove', i);
 								}}
 							>
 								Remove
@@ -299,7 +313,7 @@ export function RepeatingRows({
 						{...add}
 						onClick={(event) => {
 							add.onClick?.(event);
-							if (!event.defaultPrevented) owed.current = { kind: 'add', had: identities };
+							if (!event.defaultPrevented) owe('add', rows.length);
 						}}
 					>
 						{addLabel}

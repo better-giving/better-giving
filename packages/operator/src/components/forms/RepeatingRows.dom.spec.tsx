@@ -319,11 +319,18 @@ describe('repeating rows mounted into a document', () => {
  * submits, the form reads which control submitted, and the rows are drawn again from what that
  * changed. nothing about focus is wired here, so whatever lands focus is the group's own.
  */
-function Listing(props: { start: readonly string[] }) {
+function Listing(props: {
+	start: readonly string[];
+	/** whether the form turns every press down, applying no intent. */
+	refuse?: boolean;
+	/** rows the page adds by some other way than these presses. */
+	extra?: readonly string[];
+}) {
 	const [keys, setKeys] = useState(props.start);
 	const [minted, setMinted] = useState(0);
 	const apply = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
+		if (props.refuse) return;
 		const intent = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ?? '';
 		if (intent === 'insert') {
 			setKeys((was) => [...was, `new-${minted}`]);
@@ -340,7 +347,7 @@ function Listing(props: { start: readonly string[] }) {
 				name="allowed_origins"
 				legend="Site"
 				add={ADD}
-				rows={byPosition(keys)}
+				rows={byPosition([...keys, ...(props.extra ?? [])])}
 			/>
 		</form>
 	);
@@ -384,6 +391,20 @@ describe('where focus lands after a row is added or dropped', () => {
 
 		expect(inputs(root)).toHaveLength(0);
 		expect(document.activeElement?.textContent).toBe('Add another');
+	});
+
+	it('moves nothing later for a press the form turned down', async () => {
+		// the press changed no row, so it owes nothing — and a row arriving later by some other way,
+		// a task or more after it, is no answer to it.
+		const listing = mount(Listing, { start: ['a', 'b'], refuse: true, extra: [] as string[] });
+		press(listing.root, 'Remove Site 2');
+		expect(inputs(listing.root)).toHaveLength(2);
+
+		await act(() => new Promise((settle) => setTimeout(settle, 0)));
+		act(() => (document.activeElement as HTMLElement | null)?.blur());
+		listing.again({ start: ['a', 'b'], refuse: true, extra: ['c'] });
+
+		expect(document.activeElement).toBe(document.body);
 	});
 
 	it('goes into the new box when a row is added', () => {
