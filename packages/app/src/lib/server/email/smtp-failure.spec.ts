@@ -151,6 +151,38 @@ describe('classifySmtpFailure', () => {
 		expect(failure.detail).toContain(`The mail host refused the recipient ${recipient}`);
 		expect(failure.detail).toContain(message);
 		expect(failure.detail).not.toContain('MAIL_FROM');
+		expect(failure.detail).toContain('Nothing in the mail settings needs changing');
+	});
+
+	/**
+	 * a 5.7.x refusal at `RCPT TO` is the host declining to carry mail for this connection — relay
+	 * denied, authentication required — and the address is fine. telling the operator the settings
+	 * need no change sends them to correct a donor's address that was never wrong.
+	 */
+	it.each([
+		'Invalid RCPT TO: <donor@example.org> 554 5.7.1 <donor@example.org>: Relay access denied\r\n',
+		'Invalid RCPT TO: <donor@example.org> NOTIFY=FAILURE 530 5.7.0 Authentication required\r\n'
+	])('sends a policy refusal of the recipient %j to the settings', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).toContain('`SMTP_USERNAME`');
+		expect(failure.detail).toContain('`MAIL_FROM`');
+		expect(failure.detail).not.toContain('Nothing in the mail settings needs changing');
+		expect(failure.detail).not.toContain('spelled right');
+	});
+
+	// a refusal whose code is neither names the recipient and quotes the host, and blames nothing.
+	it('blames neither the address nor the settings for a recipient refusal it cannot place', () => {
+		const message =
+			'Invalid RCPT TO: <donor@example.org> NOTIFY=FAILURE 452 4.5.3 Too many recipients\r\n';
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.detail).toContain(`The mail host refused the recipient donor@example.org`);
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).not.toContain('spelled right');
+		expect(failure.detail).not.toContain('`SMTP_USERNAME`');
 	});
 
 	// the prefix is still worker-mailer's own, and a greeting that is not a 220 is still a

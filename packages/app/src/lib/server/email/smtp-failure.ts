@@ -83,6 +83,19 @@ const TLS_FAILED = /certificate|\b(?:tls|ssl) handshake/i;
  */
 const SENDER_REFUSED = /^Invalid MAIL FROM\b/i;
 const RECIPIENT_REFUSED = /^Invalid RCPT TO\b:?\s*<([^>]*)>/i;
+
+/**
+ * which recipient refusals are about the address. worker-mailer writes
+ * `Invalid RCPT TO: <addr>[ NOTIFY=…] <reply>`, and the reply's code is the only thing that tells a
+ * mailbox the host does not have (5.1.x, 553, and 5.6.7 for the non-ASCII local part this
+ * deployment sends as UTF-8) from a host declining to carry mail for this connection at all (5.7.x —
+ * relay denied, authentication required), whose fix is in the settings and never in the address.
+ * a 5.7.x code is read ahead of a 553 basic code, which some hosts put in front of a relay refusal.
+ */
+const RECIPIENT_REPLY =
+	/^Invalid RCPT TO\b:?\s*<[^>]*>(?:\s+NOTIFY=\S+)?\s+(\d{3})(?:[ -](\d\.\d{1,3}\.\d{1,3})\b)?/i;
+const MAILBOX_STATUS = /^(?:5\.1\.\d+|5\.6\.7)$/;
+const POLICY_STATUS = /^5\.7\.\d+$/;
 const BODY_REFUSED = /^Failed send email body:/i;
 
 /**
@@ -162,11 +175,7 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 	if (recipient !== undefined) {
 		return {
 			reason: 'rejected',
-			detail:
-				`The mail host refused the recipient ${recipient}: ${message}. ` +
-				'Check that the address is spelled right and still exists. Many hosts refuse an address ' +
-				'with accented or non-Latin letters before the @ when this deployment sends to it. ' +
-				'Nothing in the mail settings needs changing for this.',
+			detail: recipientRefusal(recipient, message),
 			indeterminate: false
 		};
 	}
@@ -242,6 +251,28 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 			'The most common cause is a `MAIL_FROM` address the host is not authorised to send as.',
 		indeterminate
 	};
+}
+
+function recipientRefusal(recipient: string, message: string): string {
+	const refused = `The mail host refused the recipient ${recipient}: ${message}. `;
+	const [, basic, enhanced] = RECIPIENT_REPLY.exec(message) ?? [];
+	if (enhanced !== undefined && POLICY_STATUS.test(enhanced)) {
+		return (
+			refused +
+			'The host will not carry mail to this address for this connection, so the address is ' +
+			'not what is wrong. Check that `SMTP_USERNAME` and `SMTP_PASSWORD` are set under SMTP on ' +
+			'the console, and that `MAIL_FROM` is an address that login may send as.'
+		);
+	}
+	if ((enhanced !== undefined && MAILBOX_STATUS.test(enhanced)) || basic === '553') {
+		return (
+			refused +
+			'Check that the address is spelled right and still exists. Many hosts refuse an address ' +
+			'with accented or non-Latin letters before the @ when this deployment sends to it. ' +
+			'Nothing in the mail settings needs changing for this.'
+		);
+	}
+	return `${refused}The host's reply says why.`;
 }
 
 /**
