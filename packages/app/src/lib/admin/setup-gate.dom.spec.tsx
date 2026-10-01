@@ -179,3 +179,30 @@ it('leaves a re-read that moved a line to the ledger, which says what moved', as
 	expect(gate.root.textContent).not.toContain('Incomplete');
 	expect(outcome(gate.press)).toBe('');
 });
+
+// the layout draws the gate from a pathless route, in place of whatever screen the address names,
+// so a form resolving its own address from the route it is drawn in would re-read `/`.
+it('re-reads the screen the operator was going to, search and all, from a deep link', async () => {
+	const read: string[] = [];
+	const Stub = createRoutesStub([
+		{
+			id: 'app',
+			loader: ({ request }: { request: Request }) => {
+				const url = new URL(request.url);
+				read.push(`${url.pathname}${url.search}`);
+				return { lines };
+			},
+			Component: () => createElement(SetupGate, { lines }),
+			children: [{ path: 'admin/donations', Component: () => null }]
+		}
+	]);
+	const root = mount(createElement(Stub, { initialEntries: ['/admin/donations?x=1'] }));
+	await settle();
+	const press = root.querySelector('button');
+	if (press === null) throw new Error('the gate drew no press');
+
+	await act(async () => press.click());
+	await settle();
+
+	expect(read).toEqual(['/admin/donations?x=1', '/admin/donations?x=1']);
+});

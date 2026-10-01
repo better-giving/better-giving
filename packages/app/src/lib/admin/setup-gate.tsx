@@ -4,7 +4,7 @@ import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { type MouseEvent, useEffect, useRef, useState } from 'react';
-import { Form, useNavigation } from 'react-router';
+import { Form, useLocation, useNavigation } from 'react-router';
 import type { SetupLine } from '$lib/server/config/readiness';
 
 /* the whole of what this deployment serves behind the login while any of the five is unfinished.
@@ -25,6 +25,7 @@ import type { SetupLine } from '$lib/server/config/readiness';
 export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 	const navigation = useNavigation();
 	const rereading = navigation.state !== 'idle';
+	const { pathname, search } = useLocation();
 
 	// a re-read that moved a line is said by the ledger, whose words change under it. one that moved
 	// nothing changes no words anywhere, so it is said beside the press: the usual answer while a job
@@ -71,10 +72,18 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 				</StatusLedger>
 			</div>
 
-			{/* a GET and no action: this re-runs the read and writes nothing, which is the whole of
-			    what the press is for. a deploy from the console restarts the worker, so what the
-			    operator needs on coming back to this tab is exactly one re-read. */}
-			<Form method="get" className="adm-actions">
+			{/* a GET: this re-runs the read and writes nothing, which is the whole of what the press
+			    is for. a deploy from the console restarts the worker, so what the operator needs on
+			    coming back to this tab is exactly one re-read.
+
+			    of the address they asked for, which the gate is drawn over in place of its screen
+			    (../../routes/_app.tsx). the action is named because the form is drawn from that
+			    pathless layout, which resolves a missing one to `/`; and the search is carried as
+			    fields because a GET form's own fields replace whatever search its action names. */}
+			<Form method="get" action={pathname} className="adm-actions">
+				{[...new URLSearchParams(search)].map(([name, value], at) => (
+					<input key={`${at}:${name}`} type="hidden" name={name} value={value} />
+				))}
 				{/* held with `aria-disabled` rather than `disabled` while the read is in flight: a
 				    disabled button gives up focus, which drops the operator on the page body at the
 				    moment the answer arrives beside it. the press is closed in the handler instead. */}
