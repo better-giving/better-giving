@@ -29,12 +29,18 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 
 	// a re-read that moved a line is said by the ledger, whose words change under it. one that moved
 	// nothing changes no words anywhere, so it is said beside the press: the usual answer while a job
-	// is still open on the console, and silence there reads as a press nobody heard.
+	// is still open on the console, and silence there reads as a press nobody heard. only this
+	// form's GET is a press; any other navigation says nothing here.
+	const pressed =
+		navigation.state === 'loading' &&
+		navigation.formMethod === 'GET' &&
+		navigation.formAction === pathname;
 	const setOutFrom = useRef<readonly SetupLine[] | null>(null);
 	const [unchanged, setUnchanged] = useState(false);
 	useEffect(() => {
 		if (rereading) {
-			setOutFrom.current ??= lines;
+			if (pressed) setOutFrom.current ??= lines;
+			else setOutFrom.current = null;
 			setUnchanged(false);
 			return;
 		}
@@ -42,7 +48,7 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 		if (from === null) return;
 		setOutFrom.current = null;
 		setUnchanged(sameLines(from, lines));
-	}, [rereading, lines]);
+	}, [rereading, pressed, lines]);
 
 	return (
 		<PanelRoute>

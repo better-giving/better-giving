@@ -1,6 +1,6 @@
-import { type ReactNode, act, createElement } from 'react';
+import { Fragment, type ReactNode, act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, useLoaderData } from 'react-router';
+import { createRoutesStub, Link, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import type { SetupLine } from '$lib/server/config/readiness';
 import { SetupGate } from './setup-gate';
@@ -95,6 +95,8 @@ async function settle(): Promise<void> {
 /**
  * the gate over a loader, the way the layout draws it, with every read after the first held until
  * the case lets it land on what `next` answers.
+ *
+ * a link to the same address stands beside it, for a navigation that is not the gate's own press.
  */
 async function reread(next: readonly SetupLine[]) {
 	let reads = 0;
@@ -111,16 +113,24 @@ async function reread(next: readonly SetupLine[]) {
 				return { lines: next };
 			},
 			Component: () =>
-				createElement(SetupGate, { lines: useLoaderData<{ lines: SetupLine[] }>().lines })
+				createElement(
+					Fragment,
+					null,
+					createElement(SetupGate, { lines: useLoaderData<{ lines: SetupLine[] }>().lines }),
+					createElement(Link, { to: '/admin' }, 'Dashboard')
+				)
 		}
 	]);
 	const root = mount(createElement(Stub, { initialEntries: ['/admin'] }));
 	await settle();
 	const press = root.querySelector('button');
 	if (press === null) throw new Error('the gate drew no press');
+	const link = root.querySelector('a');
+	if (link === null) throw new Error('the stub drew no link');
 	return {
 		root,
 		press,
+		link,
 		reads: () => reads,
 		land: async () => {
 			land();
@@ -161,6 +171,17 @@ it('says so at the press when the re-read comes back with nothing changed', asyn
 
 	expect(outcome(gate.press)).toBe('Nothing has changed yet.');
 	expect(gate.press.hasAttribute('aria-disabled')).toBe(false);
+});
+
+it('says nothing at the press after a navigation the press did not make', async () => {
+	const gate = await reread(lines);
+
+	await act(async () => gate.link.click());
+	await settle();
+	expect(gate.reads()).toBe(2);
+	await gate.land();
+
+	expect(outcome(gate.press)).toBe('');
 });
 
 it('leaves a re-read that moved a line to the ledger, which says what moved', async () => {
