@@ -56,6 +56,9 @@ const SEAM = 'useConsoleForm';
  */
 const UNDER = 'useSavedFormState';
 
+/** the seam's own file, whose call hands its mounts' options on whole and is answered for by them. */
+const SEAM_FILE = 'src/lib/use-console-form.ts';
+
 /** what conform seeds the boxes from, which is the seed that goes stale. */
 const SEED = 'defaultValue';
 
@@ -111,7 +114,7 @@ function seededWithoutAPutBack(file: string, source: string): string[] {
 		.filter((mount) => mount.stated.has(SEED) && !mount.stated.has(PUT_BACK))
 		.map((mount) => `${mount.where}: seeds \`${SEED}\` and states no \`${PUT_BACK}\``);
 	const under = direct(file, source)
-		.filter((call) => !call.stated.has(PUT_BACK) && !call.stated.has('...'))
+		.filter((call) => !call.stated.has(PUT_BACK) && !(file === SEAM_FILE && call.stated.has('...')))
 		.map((call) => `${call.where}: calls \`${UNDER}\` and states no \`${PUT_BACK}\``);
 	return [...seam, ...under];
 }
@@ -162,7 +165,20 @@ describe('a fold seeding its boxes through the form layer says when they go back
 				return useSavedFormState({ ...options, changed: true, press });
 			}
 		`;
-		expect(seededWithoutAPutBack('src/lib/use-console-form.ts', source)).toEqual([]);
+		expect(seededWithoutAPutBack(SEAM_FILE, source)).toEqual([]);
+	});
+
+	it('reports a block anywhere else that hands the hook options it was given', () => {
+		// a spread is a statement only where what it spreads is swept: the seam's mounts are, and a
+		// block's own props are not.
+		const source = `
+			export function SwitchBlock(options) {
+				return useSavedFormState({ ...options, changed: true });
+			}
+		`;
+		expect(seededWithoutAPutBack('src/lib/switch-block.tsx', source)).toEqual([
+			'src/lib/switch-block.tsx:3: calls `useSavedFormState` and states no `spent`'
+		]);
 	});
 
 	it('reports a fold that seeds from a reading and leaves the put-back to the default', () => {
