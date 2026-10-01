@@ -200,6 +200,26 @@ function shadowColour(shadow: string): string {
 	return resolved(at === -1 ? shadow : shadow.slice(0, at));
 }
 
+/** a colour token as the card resolves it, read off a probe inside the card's own root. */
+function tokenOf(card: Card, token: string): string {
+	const probe = document.createElement('div');
+	probe.style.cssText = `color: var(${token})`;
+	card.shadow.appendChild(probe);
+	const read = getComputedStyle(probe).color;
+	probe.remove();
+	return resolved(read);
+}
+
+/** the colour of the outermost of several shadows, which is the last one serialized. */
+function outerShadowColour(shadow: string): string {
+	return shadowColour(
+		shadow
+			.split(/,(?![^(]*\))/)
+			.at(-1)
+			?.trim() ?? ''
+	);
+}
+
 /** the danger colour, read off the one surface that is painted with nothing else. */
 function dangerOf(card: Card): string {
 	return resolved(getComputedStyle(card.find('#email-problem')).color);
@@ -407,10 +427,28 @@ describe('the free entry the donor has already typed into', () => {
 		await painted(entry, surface);
 		const drawn = getComputedStyle(entry);
 
-		expect(getComputedStyle(surface).boxShadow).not.toBe('none');
+		expect(outerShadowColour(getComputedStyle(surface).boxShadow)).toBe(
+			tokenOf(card, '--_focus-ring')
+		);
 		expect(drawn.boxShadow).toBe('none');
 		expect(drawn.outlineStyle).toBe('solid');
 		expect(resolved(drawn.outlineColor)).toBe(resolved('transparent'));
+	});
+
+	// a refused entry standing alone, which carries its own danger mark: the ring takes the mark's
+	// colour rather than the ordinary ring's, as every refused control's does.
+	it('rings a refused entry in the danger colour', async () => {
+		const card = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
+		proceed(card);
+		const surface = card.find("[part~='amount-input']");
+		const entry = card.find("[part~='amount-input'] input") as HTMLInputElement;
+		entry.blur();
+		entry.focus();
+		await painted(entry, surface);
+
+		expect(surface.getAttribute('part')).toContain('invalid');
+		expect(shadowColour(getComputedStyle(surface).boxShadow)).toBe(dangerOf(card));
+		expect(getComputedStyle(surface).boxShadow).not.toContain('inset');
 	});
 });
 

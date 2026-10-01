@@ -2291,8 +2291,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  *
  * on the free entry the ring is the surface's rather than the input's, through `:has()`: the
  * surface is the part a host restyles and the one carrying an edge on a bare tray, so a ring drawn
- * from it stands outside that edge rather than under it. the step marks are the other control
- * ringed somewhere the caret is not: the caret lands on a target `--_target-min` by `--_row-min`
+ * from it stands outside that edge rather than under it. the step marks are a control ringed
+ * somewhere the caret is not: the caret lands on a target `--_target-min` by `--_row-min`
  * around a mark a fraction of that, so the ring is drawn on the mark instead, in the block below.
  *
  * a ring says where the caret is, which is state rather than brand, so it is `--_focus-ring` — the
@@ -2347,10 +2347,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * controls the primary fills (`[part~='checkbox']` above), so a single-tone ring hugging its edge
  * would lay the ladder's darkest rung against a fill that can be as dark, along that edge.
  *
- * so it takes the free entry's two tones for the free entry's reason — a near-white band laid over
- * the box's own edge first and the ring outside it — and one ring serves both states, because the
- * band is what separates the two darks and the box is filled in only one of them. the fee decision
- * draws a switch rather than a box and rings itself below.
+ * so it takes the two tones of a control the primary marks, for the reason the focus header above
+ * gives — a near-white band laid over the box's own edge first and the ring outside it, so the two
+ * darks never meet — and one ring serves both states, because the band is what separates the two
+ * darks and the box is filled in only one of them. the fee decision draws a switch rather than a
+ * box and rings itself below.
  */
 [part~='checkbox']:focus-visible {
 	box-shadow:
@@ -2372,7 +2373,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * where the box's edge was, which is what every other marked control on the card shows.
  *
  * the invalid state is not drawn this way and does not need to be: its ring is one tone of danger
- * (the last block in this group), over a surface whose mark is already danger.
+ * (the last block in this group), over a refused box that is already marked in danger — the
+ * surface's own edge on a bare tray, and the tray around it on a tiled one.
  */
 [part~='amount-input'] input:focus-visible {
 	box-shadow: none;
@@ -2385,11 +2387,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the switch's ring, in the free entry's two tones and for the same reasons: on, the track *is* the
- * primary, and a ring hugging it is either the colour of the thing it is meant to bound or the
- * ladder's darkest rung against a fill that can be as dark — the control growing, either way. a
- * near-white band is laid on the track's edge first and the ring goes outside it, so what a keyboard
- * donor sees is a band appearing where a solid edge was.
+ * the switch's ring, in the two tones of a control the primary marks (the focus header above): on,
+ * the track *is* the primary, and a ring hugging it is either the colour of the thing it is meant
+ * to bound or the ladder's darkest rung against a fill that can be as dark — the control growing,
+ * either way. a near-white band is laid on the track's edge first and the ring goes outside it, so
+ * what a keyboard donor sees is a band appearing where a solid edge was.
  *
  * one ring in both states rather than one per state. the ring says where the caret is and the fill
  * says which way the decision is set, and a ring that changed with the fill would be saying the
