@@ -1218,19 +1218,22 @@ function classify(answer: Answer): AccountingFailure {
 }
 
 /**
- * Intuit's own sentence about a refusal, bounded.
+ * which refusal Intuit answered with: its type, its code and the message Intuit keys to that code.
  *
- * the fault's code and detail are what say which field was wrong, and they are the whole reason an
- * operator can act on `quickbooks_sync.last_error` without a log.
+ * the type, code and message are what let an operator act on `quickbooks_sync.last_error` without a
+ * log. the fault's `Detail` is never carried: it quotes the record that was sent, a duplicate-name
+ * refusal names the donor, and `last_error` reaches the console and the failure notice email.
  */
 function faultWords(body: unknown): string {
 	const first = firstFault(body);
 	const message = stringField(first, 'Message');
-	const detail = stringField(first, 'Detail');
-	const code = stringField(first, 'code');
-	const words = [message, detail].filter((part) => part !== null).join(' — ');
-	if (words === '') return '';
-	return `: ${words.slice(0, PROVIDER_QUOTE_MAX)}${code === null ? '' : ` (${code})`}`;
+	const named = [stringField(field(body, 'Fault'), 'type'), stringField(first, 'code')]
+		.filter((part) => part !== null)
+		.join(' ');
+	const words = [message?.slice(0, PROVIDER_QUOTE_MAX) ?? null, named === '' ? null : `(${named})`]
+		.filter((part) => part !== null)
+		.join(' ');
+	return words === '' ? '' : `: ${words}`;
 }
 
 /** the code on the fault Intuit answered with, which is the only part of one anything branches on. */

@@ -1038,7 +1038,7 @@ describe('what a refusal costs the queued entry', () => {
 		expect(result).not.toHaveProperty('companyId');
 	});
 
-	it('reports a fault Intuit named, so the console can show why', async () => {
+	it('reports a fault by its type, code and message, never the detail that can quote the donor', async () => {
 		servingCompany((statement) =>
 			statement.startsWith('select * from Customer')
 				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
@@ -1047,11 +1047,12 @@ describe('what a refusal costs the queued entry', () => {
 							status: 400,
 							json: {
 								Fault: {
+									type: 'ValidationFault',
 									Error: [
 										{
-											Message: 'Invalid Reference Id',
-											Detail: 'Account element id 79 not found',
-											code: '610'
+											Message: 'Duplicate Name Exists Error',
+											Detail: 'The name supplied already exists. : Ada Lovelace',
+											code: '6240'
 										}
 									]
 								}
@@ -1063,9 +1064,12 @@ describe('what a refusal costs the queued entry', () => {
 
 		const result = await provider.sendGift(GIFT, 'first', REVISION);
 
-		expect(result).toMatchObject({
-			detail: expect.stringContaining('Account element id 79 not found')
-		});
+		expect(result).toMatchObject({ ok: false, reason: 'invalid_record' });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('ValidationFault');
+		expect(detail).toContain('6240');
+		expect(detail).toContain('Duplicate Name Exists Error');
+		expect(detail).not.toContain('Ada Lovelace');
 	});
 
 	it('stops on a 403 with the permission it lacks, which connecting again as the same user does not give', async () => {
