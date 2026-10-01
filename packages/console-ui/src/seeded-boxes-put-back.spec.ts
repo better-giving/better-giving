@@ -34,6 +34,11 @@ import { describe, expect, it } from 'vitest';
 // packages/operator/src/saved-form-state.react.dom.spec.ts's: this package pins one node pool and
 // no dom (../vite.config.ts).
 //
+// **a block with no form layer calls the hook under the seam itself** and is held to the same
+// statement: its boxes are seeded by its own markup, so there is no `defaultValue` to read, and the
+// put-back is the same `form.reset()` with the same wrong default. the seam's own call hands its
+// mounts' options on whole and is answered for by them.
+//
 // the shape is ./forms-mounted-through-the-seam.spec.ts's and ./closed-while-writing.spec.ts's:
 // findings come back as a list so one failure names every offender at once, the source is parsed
 // rather than scanned — these calls run to thirty lines and carry comments and nested objects — and
@@ -43,27 +48,45 @@ import { describe, expect, it } from 'vitest';
 /** the one way a console fold mounts a form (./lib/use-console-form.ts). */
 const SEAM = 'useConsoleForm';
 
+/**
+ * the hook under the seam, which a block with no form layer calls itself
+ * (packages/operator/src/saved-form-state.react.ts). its boxes are seeded by the block's own
+ * markup rather than through a `defaultValue` this file can see, and the put-back is the same
+ * `form.reset()` — so every direct call says when, whatever it seeds from.
+ */
+const UNDER = 'useSavedFormState';
+
 /** what conform seeds the boxes from, which is the seed that goes stale. */
 const SEED = 'defaultValue';
 
 /** what says the boxes go back, which is the statement this file is over. */
 const PUT_BACK = 'spent';
 
-/** every mount of the seam in one source, as the options each states, placed. */
-function mounts(file: string, source: string): { where: string; stated: Set<string> }[] {
+/**
+ * every call of `hook` in one source, as the options each states, placed. `at` is which argument
+ * carries them, and a spread among them is recorded as `...`: options handed on whole are stated
+ * by whoever handed them.
+ */
+function calls(
+	hook: string,
+	at: number,
+	file: string,
+	source: string
+): { where: string; stated: Set<string> }[] {
 	const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 	const found: { where: string; stated: Set<string> }[] = [];
 	const visit = (node: ts.Node): void => {
 		if (
 			ts.isCallExpression(node) &&
 			ts.isIdentifier(node.expression) &&
-			node.expression.text === SEAM
+			node.expression.text === hook
 		) {
-			const options = node.arguments[1];
+			const options = node.arguments[at];
 			const line = parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1;
 			const stated = new Set<string>();
 			if (options !== undefined && ts.isObjectLiteralExpression(options)) {
 				for (const property of options.properties) {
+					if (ts.isSpreadAssignment(property)) stated.add('...');
 					const name = property.name;
 					if (name !== undefined) stated.add(name.getText(parsed));
 				}
@@ -76,11 +99,21 @@ function mounts(file: string, source: string): { where: string; stated: Set<stri
 	return found;
 }
 
+/** every mount of the seam in one source. */
+const mounts = (file: string, source: string) => calls(SEAM, 1, file, source);
+
+/** every direct call of the hook under the seam in one source. */
+const direct = (file: string, source: string) => calls(UNDER, 0, file, source);
+
 /** every mount that seeds through the form layer and leaves the put-back to a default. */
 function seededWithoutAPutBack(file: string, source: string): string[] {
-	return mounts(file, source)
+	const seam = mounts(file, source)
 		.filter((mount) => mount.stated.has(SEED) && !mount.stated.has(PUT_BACK))
 		.map((mount) => `${mount.where}: seeds \`${SEED}\` and states no \`${PUT_BACK}\``);
+	const under = direct(file, source)
+		.filter((call) => !call.stated.has(PUT_BACK) && !call.stated.has('...'))
+		.map((call) => `${call.where}: calls \`${UNDER}\` and states no \`${PUT_BACK}\``);
+	return [...seam, ...under];
 }
 
 /** the same over the tree. */
@@ -88,13 +121,48 @@ const acrossTheFolds = (files: readonly string[]): string[] =>
 	files.flatMap((file) => seededWithoutAPutBack(file, readFileSync(file, 'utf8')));
 
 describe('a fold seeding its boxes through the form layer says when they go back', () => {
-	const folds = globSync('src/**/*.tsx');
+	const folds = globSync('src/**/*.{ts,tsx}', { exclude: (file) => /\.spec\.tsx?$/.test(file) });
 
 	it('finds the folds it is meant to be guarding', () => {
 		const mounted = folds.filter((file) => mounts(file, readFileSync(file, 'utf8')).length > 0);
 		expect(mounted).toContain('src/lib/sites-fold.tsx');
 		expect(mounted).toContain('src/lib/stripe-section.tsx');
 		expect(mounted).toContain('src/lib/smtp-fold.tsx');
+
+		const calling = folds.filter((file) => direct(file, readFileSync(file, 'utf8')).length > 0);
+		expect(calling).toContain('src/lib/secret-group-form.tsx');
+		expect(calling).toContain('src/lib/answer-switch-block.tsx');
+		expect(calling).toContain('src/lib/quickbooks-accounts.tsx');
+		expect(calling).toContain('src/lib/use-console-form.ts');
+	});
+
+	it('reports a block calling the hook under the seam that leaves the put-back to the default', () => {
+		// the charity switch's own shape: the box is ticked from the reading, and the answer that
+		// arrives ahead of the re-read unticks it again under `Saved`.
+		const source = `
+			export function AnswerSwitchBlock({ written, on, busy, pending }) {
+				const { form } = useSavedFormState({
+					report: written,
+					landed: written?.kind === 'set',
+					changed: (element) => element.checked !== on,
+					busy,
+					pending
+				});
+				return form;
+			}
+		`;
+		expect(seededWithoutAPutBack('src/lib/answer-switch-block.tsx', source)).toEqual([
+			'src/lib/answer-switch-block.tsx:3: calls `useSavedFormState` and states no `spent`'
+		]);
+	});
+
+	it('leaves the seam itself alone, which hands on what its mounts state', () => {
+		const source = `
+			export function useConsoleForm(definition, options) {
+				return useSavedFormState({ ...options, changed: true, press });
+			}
+		`;
+		expect(seededWithoutAPutBack('src/lib/use-console-form.ts', source)).toEqual([]);
 	});
 
 	it('reports a fold that seeds from a reading and leaves the put-back to the default', () => {

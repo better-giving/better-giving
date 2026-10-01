@@ -8,6 +8,7 @@ import type { ValuesRefusal, VarsWritten } from '../api/types';
 import type { AnswerSwitch } from './answer-switch';
 import type { HeldValues } from './held-values';
 import { withheldAmong } from './held-values';
+import { useReseeded } from './reseed';
 import { refusalIn } from './secret-trouble';
 import type { FetcherPost } from './withheld-values';
 import { FREE_INTENT, WithheldValues } from './withheld-values';
@@ -66,9 +67,15 @@ export function AnswerSwitchBlock({
 	const sending = pending === answer.intent;
 	const failure = written === null ? null : refusalIn(written);
 
+	/* the switch goes back on the reading that lands after the write, and not on the answer that
+	   arrives ahead of it, which would untick what the press just stored (./reseed.ts). one
+	   derivation per reading is what lets `values` stand for it (./held-values.ts). */
+	const landed = written?.kind === 'set';
+	const spent = useReseeded({ landed, pending: sending, reading: values });
 	const { form, state, onInput, onSubmit } = useSavedFormState({
 		report: written,
-		landed: written?.kind === 'set',
+		landed,
+		spent,
 		// the switch is read off the element at every press of it, which is the reading a block with
 		// no form layer takes (`SavedFormInputs.changed` in
 		// packages/operator/src/saved-form-state.react.ts).
