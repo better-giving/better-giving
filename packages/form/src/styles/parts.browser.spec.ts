@@ -2252,7 +2252,7 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		const content = document.createElement('button');
 		content.textContent = 'PayPal';
 		const row = createRows(mount).draw('PayPal', mark, content);
-		const panel = mount.firstElementChild?.shadowRoot?.querySelector('[role="region"]');
+		const panel = mount.firstElementChild?.shadowRoot?.querySelector('#panel');
 		if (!(panel instanceof HTMLElement)) throw new Error('the row drew no panel');
 		return { mount, panel, content, row };
 	}
