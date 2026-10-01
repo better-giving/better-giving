@@ -395,7 +395,12 @@ describe('the free entry the donor has already typed into', () => {
 		await painted(entry, card.find("[part~='amount-input']"));
 		expect(card.find("[part~='amount-input']").getAttribute('part')).toContain('selected');
 
+		// opening Other puts the caret in the entry itself (`otherTile` in ../views.ts), so the
+		// resting surface is read with it taken out again.
 		const surface = card.find("[part~='amount-input']");
+		expect(card.shadow.activeElement).toBe(entry);
+		entry.blur();
+		await painted(entry, surface);
 		expect(getComputedStyle(surface).boxShadow).toBe('none');
 
 		entry.focus();
