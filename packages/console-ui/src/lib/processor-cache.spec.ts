@@ -260,6 +260,19 @@ describe('a processor page read between visits', () => {
 		expect(await pollRun('stripe')).toBe(ended);
 	});
 
+	it('lets go of a held report once a later read sees a newer run going', async () => {
+		// run A's report was taken and never drawn, and run B has started since — from another
+		// window on the same console. a poll of B answered nothing must not be handed A's outcome.
+		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
+		binary.run = ended;
+		await pollRun('stripe');
+		binary.run = { kind: 'running' } satisfies Partial<StripeRunRead>;
+		await pollRun('stripe');
+		binary.run = null;
+
+		expect(await pollRun('stripe')).toBeNull();
+	});
+
 	it('lets go of a report the poll took once the page has drawn it', async () => {
 		const ended = { kind: 'ended' } satisfies Partial<StripeRunRead>;
 		binary.run = ended;

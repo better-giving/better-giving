@@ -95,11 +95,18 @@ const warming = new Map<string, { under: number; screen: Promise<Kept | null> }>
  */
 const undrawn = new Map<string, NonNullable<Kept['run']>>();
 
-/** `processor`'s run read, holding an ended run under `key` until a draw of that page receives it. */
+/**
+ * `processor`'s run read, holding an ended run under `key` until a draw of that page receives it.
+ *
+ * a read that sees a run going lets go of the one held: a newer run has started since — from
+ * another window on the same console — and the held report is about a run that is over, so a page
+ * answered nothing about the new one would otherwise draw the old one's outcome as its own.
+ */
 function runReader(processor: PaymentProcessor, key: string): () => Promise<Kept['run']> {
 	return async () => {
 		const run = await RUNS[processor]();
 		if (run?.kind === 'ended') undrawn.set(key, run);
+		if (run?.kind === 'running') undrawn.delete(key);
 		return run;
 	};
 }
