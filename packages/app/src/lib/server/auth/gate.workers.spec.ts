@@ -169,8 +169,8 @@ describe('the gate on the protected layout', () => {
 
 			expect(thrown?.init.status).toBe(500);
 			expect(thrown?.data).toBe(
-				'This deployment cannot sign anyone in right now. The cause is in its logs: the ' +
-					'Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.'
+				'No one can be signed in right now. This deployment’s logs say why: the Cloudflare ' +
+					'dashboard has them, and `pnpm run logs` reads them from a checkout.'
 			);
 			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
 			expect(beneath.state.ran).toBe(false);

@@ -12,6 +12,7 @@ import {
 	useRouteError
 } from 'react-router';
 import type { Route } from './+types/root';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
 // below renders the donor's page at `/{form_id}` as well as every operator screen, and the donation
 // form's four sheets are unlayered while every operator declaration is layered (./app.css) — so a
@@ -127,12 +128,7 @@ export function ErrorBoundary() {
 		<>
 			{sheet}
 			<ErrorPanel code="500" title="This deployment could not answer">
-				<MarkedText
-					text={
-						message ||
-						'Nothing more is known here. This deployment’s logs say why: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.'
-					}
-				/>
+				<MarkedText text={message || `Nothing more is known here. ${LOGS_SAY_WHY}`} />
 			</ErrorPanel>
 		</>
 	);

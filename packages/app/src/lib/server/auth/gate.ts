@@ -1,5 +1,6 @@
 import { data, redirect, type MiddlewareFunction } from 'react-router';
 import { auth as authForRequest, database, platform, staff } from '../../../context';
+import { LOGS_SAY_WHY } from '../../deployment-logs';
 import { readAuthEnv } from './env';
 import { createAuth } from './index';
 import { LOGIN_PATH, NEXT_PARAM } from './next';
@@ -20,9 +21,7 @@ type GateArgs = Parameters<MiddlewareFunction<Response>>[0];
 type GateNext = Parameters<MiddlewareFunction<Response>>[1];
 
 /** what any caller is told when the signing key cannot be read; the cause is logged. */
-const NO_SIGNING_KEY =
-	'This deployment cannot sign anyone in right now. The cause is in its logs: the ' +
-	'Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
+const NO_SIGNING_KEY = `No one can be signed in right now. ${LOGS_SAY_WHY}`;
 
 /**
  * the gate in front of every screen behind the login, as a route `middleware`.
