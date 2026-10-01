@@ -65,6 +65,15 @@ const AUTH_FAILED =
 	/failed to (?:plain|login) authentication|invalid login|no supported auth method|requires authentication|authentication (?:failed|unsuccessful|rejected)|username and password not accepted|\b5\.7\.8\b/i;
 
 /**
+ * the TLS session never came up: the host's certificate was not trusted, or the handshake broke.
+ * a connect failure with its own sentence, because the fix is on the mail host rather than in
+ * the network, and a determinate one, because nothing is offered before the handshake finishes.
+ * read after the host-refusal arms, whose quoted reply may mention a certificate of its own.
+ * `TLS peer's certificate is not trusted; reason = …` is workerd's wording.
+ */
+const TLS_FAILED = /certificate|\b(?:tls|ssl) handshake/i;
+
+/**
  * the host answered a command after the greeting and refused it, which is proof both that the
  * connection worked and that this message was not taken. `worker-mailer` throws these after
  * writing `MAIL FROM`, `RCPT TO` or the message body and reading a reply that is not a 2xx, and
@@ -187,6 +196,18 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 				`The mail host received the message and refused it, so nothing was delivered: ${message}. ` +
 				"The host's reply says why. A refusal over SPF, DKIM or DMARC is fixed in the DNS " +
 				'records of the domain in `MAIL_FROM`.',
+			indeterminate: false
+		};
+	}
+
+	if (TLS_FAILED.test(ownWords)) {
+		return {
+			reason: 'connect_failed',
+			detail:
+				`Could not open a secure connection to the mail host in \`SMTP_HOST\`: ${message}. ` +
+				'The connection never opened, so nothing was delivered. The certificate the host ' +
+				'presents must be in date, issued for the name in `SMTP_HOST` and signed by a public ' +
+				'authority; a self-signed certificate is refused.',
 			indeterminate: false
 		};
 	}

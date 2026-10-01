@@ -150,6 +150,25 @@ describe('classifySmtpFailure', () => {
 	});
 
 	/**
+	 * a certificate the platform will not trust is a connection that never opened, not a message
+	 * the host refused — read as `rejected` it sends the operator to the From address while the
+	 * certificate on their own mail host is what is wrong. the first is workerd's own wording.
+	 */
+	it.each([
+		"TLS peer's certificate is not trusted; reason = self signed certificate",
+		"TLS peer's certificate is not trusted; reason = certificate has expired",
+		'TLS handshake failed'
+	])('reads %j as a connect failure about the certificate', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('connect_failed');
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).toContain('certificate');
+		expect(failure.detail).toContain('nothing was delivered');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).not.toContain('MAIL_FROM');
+	});
+
+	/**
 	 * the default, and the one that carries the weight. there is no code, no class and no
 	 * reply code on anything thrown here — only prose, which an upgrade may reword — so a
 	 * pattern going stale has to degrade into something useful rather than into a lie. the
