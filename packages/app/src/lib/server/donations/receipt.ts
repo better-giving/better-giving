@@ -162,8 +162,9 @@ const CORRECT_THE_GIFT =
  * the sentence an operator acts on, one per refusal reason. a gift whose figures contradict each
  * other is told which figures they are, because nothing on a settings screen is wrong.
  *
- * the goods are always recorded as `none` here (`sendReceipt` above), so a fair market value on
- * the gift is the whole of the contradiction `goods_or_services_inconsistent` can mean.
+ * the goods are always recorded as `none` here (`sendReceipt` above), so a non-deductible amount on
+ * the gift is the whole of the contradiction `goods_or_services_inconsistent` can mean — and
+ * nothing in the app writes one, so its sentence names no screen to correct it on.
  */
 function receiptRefusalAction(
 	reason: Extract<ReceiptResult, { ok: false }>['reason'],
@@ -180,8 +181,11 @@ function receiptRefusalAction(
 			);
 		case 'goods_or_services_inconsistent':
 			return (
-				`This gift is recorded with a fair market value of ${money(contribution.nonDeductibleMinor)} ` +
-				`for what the donor received, and as one where the donor received nothing. ${CORRECT_THE_GIFT}`
+				`This gift carries ${money(contribution.nonDeductibleMinor)} recorded as not deductible, ` +
+				'and this deployment records no goods or services against any gift, so its receipt cannot ' +
+				'say what that amount was for. Nothing in this deployment sets that amount and no screen ' +
+				'edits it, so the gift’s record has to be corrected where it was changed before its ' +
+				'receipt can be sent.'
 			);
 		case 'covered_fee_inconsistent':
 			return (

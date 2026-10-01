@@ -294,7 +294,7 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 		return sent[0]?.text ?? '';
 	};
 
-	it('names the fair market value on a gift recorded as one where nothing was received', async () => {
+	it('names the non-deductible amount a gift carries when this deployment records no goods', async () => {
 		const mail = mailer();
 		await sendReceipt(
 			deps(mail.port),
@@ -305,9 +305,11 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 
 		const text = alertText(mail.sent);
 		expect(text).toContain(
-			'This gift is recorded with a fair market value of $6.00 for what the donor received, ' +
-				'and as one where the donor received nothing.'
+			'This gift carries $6.00 recorded as not deductible, and this deployment records no goods ' +
+				'or services against any gift, so its receipt cannot say what that amount was for.'
 		);
+		// no screen edits the amount, so the operator is sent to none.
+		expect(text).toContain('no screen edits it');
 		expect(text).not.toContain('organisation’s details');
 		expect(await stampOf()).toBeNull();
 	});
