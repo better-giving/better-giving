@@ -279,3 +279,62 @@ describe('sendReceipt() — a deployment that cannot render one yet', () => {
 		expect(await stampOf()).toBeNull();
 	});
 });
+
+/**
+ * a refusal's action is the one sentence an operator acts on, so each says what fixes its own
+ * reason. the organisation's details fix only a missing detail: a gift whose own figures contradict
+ * each other is sent to no settings screen, and is told which figures they are.
+ */
+describe('sendReceipt() — what the operator is told to do about a refusal', () => {
+	beforeEach(orgProfile);
+
+	const alertText = (sent: readonly EmailMessage[]) => {
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.to).toBe('ops@hope.example');
+		return sent[0]?.text ?? '';
+	};
+
+	it('names the fair market value on a gift recorded as one where nothing was received', async () => {
+		const mail = mailer();
+		await sendReceipt(
+			deps(mail.port),
+			target({
+				contribution: { ...target().contribution, nonDeductibleMinor: 600 }
+			})
+		);
+
+		const text = alertText(mail.sent);
+		expect(text).toContain(
+			'This gift is recorded with a fair market value of $6.00 for what the donor received, ' +
+				'and as one where the donor received nothing.'
+		);
+		expect(text).not.toContain('organisation’s details');
+		expect(await stampOf()).toBeNull();
+	});
+
+	it('names the fee and the payment on a gift whose fee is larger than what was paid', async () => {
+		const mail = mailer();
+		await sendReceipt(
+			deps(mail.port),
+			target({
+				contribution: { ...target().contribution, coveredFeeMinor: 3000 }
+			})
+		);
+
+		const text = alertText(mail.sent);
+		expect(text).toContain(
+			'This gift is recorded with a processing fee of $30.00 against a payment of $25.00.'
+		);
+		expect(text).not.toContain('organisation’s details');
+	});
+
+	it('sends an organisation missing a receipt detail to the console', async () => {
+		await env.DB.prepare(`update org_profile set tax_id = null`).run();
+		const mail = mailer();
+		await sendReceipt(deps(mail.port), target());
+
+		expect(alertText(mail.sent)).toContain(
+			'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+		);
+	});
+});
