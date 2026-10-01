@@ -4,6 +4,7 @@ import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import {
+	carriesConnectLink,
 	connectFlowOrigin,
 	connectStateCookie,
 	mintConnectState,
@@ -63,6 +64,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	const db = context.get(database);
 	const url = new URL(request.url);
+	const linkRefused = () => data({ refusal: 'link' as Refusal }, { status: 403 });
+	// the same refusal as an altered link's, before the key is read: a probe of the bare path costs
+	// no database read.
+	if (!carriesConnectLink(url)) return linkRefused();
 
 	const authEnv = readAuthEnv(env);
 	const signingKey = await resolveAuthSecret(db, authEnv);
@@ -81,7 +86,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		// one answer for absent, altered and expired alike: they are the same thing to do next, and
 		// telling a forgery apart from a stale link in the answer would be this deployment reporting
 		// on the attempt to whoever made it.
-		return data({ refusal: 'link' as Refusal }, { status: 403 });
+		return linkRefused();
 	}
 
 	const state = mintConnectState();

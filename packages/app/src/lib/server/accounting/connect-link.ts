@@ -104,6 +104,15 @@ export async function mintConnectLink(input: {
 }
 
 /**
+ * whether an address carries any part of a link at all — what is checked before the signing key is
+ * read, so an address with none of it is refused without a database read. an answer of `true` says
+ * nothing about whether the link is good: {@link readConnectLink} is that check.
+ */
+export function carriesConnectLink(url: URL): boolean {
+	return url.searchParams.has(EXPIRES_PARAM) || url.searchParams.has(SIGNATURE_PARAM);
+}
+
+/**
  * whether an address is one this deployment minted and is still good for.
  *
  * one bit, deliberately. absent, altered and expired are the same answer to whoever is holding it —

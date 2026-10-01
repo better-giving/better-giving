@@ -149,6 +149,27 @@ describe('GET /quickbooks/connect', () => {
 		expect(answered.status).toBe(403);
 	});
 
+	// an address with nothing of the link on it is refused before the signing key is read, so a
+	// stranger probing the path costs no database read and cannot reach the 500 below.
+	it('refuses an address carrying none of the link without reading the signing key', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await env.DB.prepare('alter table auth_signing_key rename to auth_signing_key_away').run();
+		try {
+			const answered = await open(`${OWN}/quickbooks/connect`, {
+				...INTUIT,
+				BETTER_AUTH_SECRET: undefined
+			});
+			if ('redirect' in answered) throw new Error('a bare address was honoured');
+
+			expect(answered.status).toBe(403);
+			expect(answered.data.refusal).toBe('link');
+			expect(logged).not.toHaveBeenCalled();
+		} finally {
+			await env.DB.prepare('alter table auth_signing_key_away rename to auth_signing_key').run();
+			logged.mockRestore();
+		}
+	});
+
 	it('names the value to set where this deployment holds no Intuit client id', async () => {
 		const answered = await open(link, { ...INTUIT, QUICKBOOKS_CLIENT_ID: undefined });
 		if ('redirect' in answered) throw new Error('a deployment with no client id redirected');
@@ -183,7 +204,9 @@ describe('GET /quickbooks/connect', () => {
 				'QuickBooks cannot be connected right now. This deployment’s logs say why: the ' +
 					'Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.'
 			);
-			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+			const [prefix, cause] = logged.mock.calls[0] ?? [];
+			expect(prefix).toBe('a QuickBooks connect address could not be checked — no signing key:');
+			expect(String(cause ?? '').trim()).not.toBe('');
 		} finally {
 			await env.DB.prepare('alter table auth_signing_key_away rename to auth_signing_key').run();
 			logged.mockRestore();
