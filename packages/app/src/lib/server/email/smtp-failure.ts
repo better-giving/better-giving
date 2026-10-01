@@ -77,24 +77,26 @@ const TLS_FAILED = /certificate|\b(?:tls|ssl) handshake/i;
  * the host answered a command after the greeting and refused it, which is proof both that the
  * connection worked and that this message was not taken. `worker-mailer` throws these after
  * writing `MAIL FROM`, `RCPT TO` or the message body and reading a reply that is not a 2xx, and
- * appends that reply verbatim — the host's own prose, free to say `dns`, `network` or `timeout`.
- * so these are read before any connect pattern, and never as one.
+ * appends that reply verbatim — the host's own prose, free to say `authentication`, `dns`,
+ * `network` or `timeout`. so these are read before `AUTH_FAILED` and every connect pattern, and
+ * never as either.
  */
 const SENDER_REFUSED = /^Invalid MAIL FROM\b/i;
 const RECIPIENT_REFUSED = /^Invalid RCPT TO\b:?\s*<([^>]*)>/i;
 const BODY_REFUSED = /^Failed send email body:/i;
 
 /**
- * `worker-mailer`'s own prefix on a message that goes on to quote the host's reply. the connect
- * and timeout patterns read only the prefix of such a message — the words are evidence when the
- * client or the socket wrote them, and are the host's prose after a reply code.
+ * `worker-mailer`'s own prefix on a message that goes on to quote the host's reply. `TLS_FAILED`,
+ * the connect patterns and `INDETERMINATE` read only the prefix of such a message — the words are
+ * evidence when the client or the socket wrote them, and are the host's prose after a reply code.
  */
 const QUOTED_REPLY = /^(.*?[:.]) [2-5]\d\d[ -]/;
 
 /**
- * nothing to talk to, or the conversation never got started: DNS, the socket, the TLS
- * upgrade, the greeting, a timeout. all one answer to an operator — the host in SMTP_HOST did
- * not answer — and all transient, unlike the two above.
+ * nothing to talk to, or the conversation never got started: DNS, the socket, a STARTTLS the
+ * host would not begin, the greeting, a timeout. all one answer to an operator — the host in
+ * SMTP_HOST did not answer — and all transient, unlike `NOT_CONFIGURED` and `AUTH_FAILED`. a
+ * certificate or handshake failure is `TLS_FAILED`'s, read ahead of this one.
  */
 const CONNECT_FAILED =
 	/failed to connect|cannot connect|proxy request failed|timeout|timed out|socket|start tls|ehlo|helo|network|dns|shutting down/i;
@@ -125,9 +127,11 @@ const NEVER_CONNECTED =
  * socket break as well, so a failure there is indeterminate unless the text names the
  * connection attempt itself; see `NEVER_CONNECTED` for what that arm claims.
  *
- * matched across every arm rather than inside the connect arm, because which reason a timeout
- * lands under is a question about what to tell the operator, and whether the message might be
- * out there is a different question with a different consumer — `indeterminate` in
+ * read off `ownWords` alone, so a host's reply that mentions a timeout claims nothing, and carried
+ * by the platform, credential and connect arms. the host-refusal and TLS arms state
+ * `indeterminate: false` outright: a host that answered with a refusal took nothing, and nothing
+ * is offered before a handshake finishes. whether the message might be out there is a different
+ * question from which reason it lands under, with a different consumer — `indeterminate` in
  * ./provider.ts, read by whoever decides whether a resend would duplicate.
  */
 const INDETERMINATE = /timeout|timed out/i;
@@ -150,18 +154,6 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 			detail:
 				`The mail host refused the connection at the platform level: ${message}. ` +
 				'Cloudflare Workers prohibit outbound port 25. Leave `SMTP_PORT` unset, which is 465.',
-			indeterminate
-		};
-	}
-
-	if (AUTH_FAILED.test(message)) {
-		return {
-			reason: 'auth_failed',
-			detail:
-				`The mail host refused the credential: ${message}. ` +
-				'Check `SMTP_USERNAME` and `SMTP_PASSWORD` under SMTP on the console. For a provider ' +
-				'whose credential is an API key, the key goes in `SMTP_PASSWORD`, and it is offered to ' +
-				'the host exactly as you typed it, so nothing in it needs escaping.',
 			indeterminate
 		};
 	}
@@ -197,6 +189,18 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 				"The host's reply says why. A refusal over SPF, DKIM or DMARC is fixed in the DNS " +
 				'records of the domain in `MAIL_FROM`.',
 			indeterminate: false
+		};
+	}
+
+	if (AUTH_FAILED.test(message)) {
+		return {
+			reason: 'auth_failed',
+			detail:
+				`The mail host refused the credential: ${message}. ` +
+				'Check `SMTP_USERNAME` and `SMTP_PASSWORD` under SMTP on the console. For a provider ' +
+				'whose credential is an API key, the key goes in `SMTP_PASSWORD`, and it is offered to ' +
+				'the host exactly as you typed it, so nothing in it needs escaping.',
+			indeterminate
 		};
 	}
 

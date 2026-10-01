@@ -104,6 +104,20 @@ describe('classifySmtpFailure', () => {
 		expect(failure.detail).not.toContain('Could not reach');
 	});
 
+	/**
+	 * the credential arm's words are just as free to appear in a host's reply: a refusal over SPF or
+	 * DMARC says "authentication" after a working login, and read as `auth_failed` it sends the
+	 * operator to rotate a password that is fine.
+	 */
+	it.each([
+		'Failed send email body: 550 5.7.1 SPF authentication failed',
+		'Invalid RCPT TO: <donor@example.org> 550 5.7.1 recipient domain requires authentication'
+	])('reads %j as a refusal, not as a refused credential', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+	});
+
 	it.each([
 		'Invalid MAIL FROM: <gifts@dns-example.org> 550 5.7.1 Sender address not authorised',
 		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised'
