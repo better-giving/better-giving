@@ -1028,7 +1028,7 @@ describe('where the caret goes when one takeover replaces another', () => {
 		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
 	});
 
-	// Back to start remounts the card, which takes the pressed control with it; the new card's first
+	// back to start remounts the card, which takes the pressed control with it; the new card's first
 	// step is where the caret was, so it lands on that step's heading rather than on the page body.
 	it('lands on the first step’s heading when Back to start rebuilds the card under the caret', async () => {
 		const root = await donated(
@@ -1046,6 +1046,30 @@ describe('where the caret goes when one takeover replaces another', () => {
 		const heading = one(screen(root), 'h2');
 		expect(heading.textContent).toBe(copy.STEP_HEADINGS[0]);
 		expect(document.activeElement).toBe(heading);
+	});
+
+	// a click that leaves the caret on the host page — Safari on macOS focuses no button on a click —
+	// is a restart the caret was never in, so the rebuilt card leaves it where it is.
+	it('leaves the caret on the host page when Back to start is pressed from outside the card', async () => {
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{ confirm: async () => ({ paymentIntent: { status: 'succeeded' } }) }
+		);
+		const back = every(screen(root), 'button').find(
+			(button) => button.textContent === copy.BACK_TO_START
+		);
+		if (back === undefined) throw new Error('the ending drew no way back to the start');
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+
+		press(back);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(elsewhere);
 	});
 
 	// the card's own first paint is no screen change: a donor tabbing through the host page keeps
