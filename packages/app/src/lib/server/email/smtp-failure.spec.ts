@@ -149,8 +149,8 @@ describe('classifySmtpFailure', () => {
 	});
 
 	it.each([
-		'Invalid MAIL FROM: <gifts@dns-example.org> 550 5.7.1 Sender address not authorised',
-		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised'
+		'Invalid MAIL FROM: <gifts@dns-example.org> 550 5.7.1 Sender address not authorised\r\n',
+		'Invalid MAIL FROM: <gifts@example.org> RET=HDRS 553 5.7.1 Sender address rejected: not owned by user\r\n'
 	])('blames MAIL_FROM for %j', (message) => {
 		const failure = classifySmtpFailure(new Error(message));
 		expect(failure.reason).toBe('rejected');
@@ -251,7 +251,7 @@ describe('classifySmtpFailure', () => {
 	 * unmatched case quotes the server verbatim, which is the part that gets it fixed.
 	 */
 	it.each([
-		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised',
+		'At least one of text or html must be provided',
 		'something nobody has ever seen'
 	])('falls back to rejected for %j, quoting the server', (message) => {
 		const failure = classifySmtpFailure(new Error(message));
@@ -339,7 +339,7 @@ describe('classifySmtpFailure — what may still have been delivered', () => {
 	it.each([
 		'Failed to connect to SMTP server: proxy request failed, cannot connect to the specified address',
 		'Failed to plain authentication: 535 credentials invalid',
-		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised'
+		'Invalid MAIL FROM: <gifts@example.org> 550 5.7.1 Sender address not authorised\r\n'
 	])('reports %j as determinate', (message) => {
 		expect(classifySmtpFailure(new Error(message)).indeterminate).toBe(false);
 	});
