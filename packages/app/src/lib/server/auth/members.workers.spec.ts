@@ -310,7 +310,7 @@ describe('changeMemberPassword', () => {
 		await member('priya@example.org');
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
-		const changed = await changeMemberPassword(auth, {
+		const changed = await changeMemberPassword(db, auth, {
 			currentPassword: PASSWORD,
 			newPassword: NEW_PASSWORD,
 			headers: new Headers({ origin: ORIGIN, cookie })
@@ -338,7 +338,7 @@ describe('changeMemberPassword', () => {
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
 		expect(
-			await changeMemberPassword(auth, {
+			await changeMemberPassword(db, auth, {
 				currentPassword: 'not-the-right-password',
 				newPassword: NEW_PASSWORD,
 				headers: new Headers({ origin: ORIGIN, cookie })
@@ -363,7 +363,7 @@ describe('changeMemberPassword', () => {
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
 		expect(
-			await changeMemberPassword(auth, {
+			await changeMemberPassword(db, auth, {
 				currentPassword: PASSWORD,
 				newPassword: 'x'.repeat(MEMBER_PASSWORD_MIN_LENGTH - 1),
 				headers: new Headers({ origin: ORIGIN, cookie })
@@ -382,7 +382,7 @@ describe('changeMemberPassword', () => {
 		const other = await sessionOf('priya@example.org', PASSWORD);
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
-		const changed = await changeMemberPassword(auth, {
+		const changed = await changeMemberPassword(db, auth, {
 			currentPassword: PASSWORD,
 			newPassword: NEW_PASSWORD,
 			headers: new Headers({ origin: ORIGIN, cookie })
@@ -410,7 +410,7 @@ describe('changeMemberPassword', () => {
 		const cookie = cookieHeader(headers.getSetCookie());
 
 		expect(
-			await changeMemberPassword(auth, {
+			await changeMemberPassword(db, auth, {
 				currentPassword: STAFF_PASSWORD,
 				newPassword: NEW_PASSWORD,
 				headers: new Headers({ origin: ORIGIN, cookie })

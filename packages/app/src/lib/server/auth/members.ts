@@ -4,6 +4,7 @@ import type { Db } from '$lib/server/db/client';
 import { authMemberInvitation, authUser } from '$lib/server/db/auth-schema';
 import type { Auth } from './index';
 import { isAddress, liveInvitations, normaliseEmail, revokeInvitation } from './invitations';
+import { deleteResetLinks } from './reset-links';
 import { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 
 // who can sign in besides the deployer, and the two things /admin/members does to that list.
@@ -328,6 +329,12 @@ export type PasswordChange =
  * is why `cookies` comes back on the success arm and why dropping it is not a saving: a route that
  * did not append it would sign the member out of the browser they are looking at.
  *
+ * **every reset link the member holds stops working**, through `deleteResetLinks`
+ * (./reset-links.ts): a link asked for before they remembered the password would otherwise
+ * overwrite the one just chosen. a delete that throws is logged and the change still answers `ok`,
+ * because the password and the session are already written; the links then live until they
+ * expire.
+ *
  * **a wrong current password is bounded, and by the sign-in bucket rather than one of this
  * screen's own.** the charge is the route that owns the press —
  * `src/routes/_app.admin.members_.password.tsx`, before it reads the body — and it is that bucket
@@ -339,6 +346,7 @@ export type PasswordChange =
  * press.
  */
 export async function changeMemberPassword(
+	db: Db,
 	auth: Auth,
 	input: {
 		readonly currentPassword: string;
@@ -347,7 +355,7 @@ export async function changeMemberPassword(
 	}
 ): Promise<PasswordChange> {
 	try {
-		const { headers } = await auth.api.changePassword({
+		const { headers, response } = await auth.api.changePassword({
 			body: {
 				currentPassword: input.currentPassword,
 				newPassword: input.newPassword,
@@ -356,6 +364,13 @@ export async function changeMemberPassword(
 			headers: input.headers,
 			returnHeaders: true
 		});
+		// caught, not thrown: the password and the replacement session are already written, and a
+		// throw would drop the cookies that keep this browser signed in.
+		try {
+			await deleteResetLinks(db, response.user.id);
+		} catch (cause) {
+			console.error('a password changed but its reset links could not be deleted:', cause);
+		}
 		return { ok: true, cookies: headers.getSetCookie() };
 	} catch (e) {
 		if (e instanceof APIError) {

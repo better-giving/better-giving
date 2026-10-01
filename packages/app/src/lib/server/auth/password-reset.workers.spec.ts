@@ -4,7 +4,12 @@ import { createDb, type Db } from '$lib/server/db/client';
 import type { Auth } from './index';
 import { createAuth, PASSWORD_RESET_LIFETIME_SECONDS } from './index';
 import { inviteMember, MEMBER_PASSWORD_MIN_LENGTH, redeemInvitation } from './invitations';
-import { requestPasswordReset, resetMemberPassword, signInMember } from './members';
+import {
+	changeMemberPassword,
+	requestPasswordReset,
+	resetMemberPassword,
+	signInMember
+} from './members';
 import { resolveAuthSecret } from './signing-key';
 import { STAFF_USER_EMAIL } from './staff-plugin';
 
@@ -337,6 +342,29 @@ describe('resetMemberPassword', () => {
 		expect(
 			await resetMemberPassword(auth, { token: 'not-a-token', newPassword: NEW_PASSWORD })
 		).toEqual({ ok: false, reason: 'link' });
+	});
+
+	/**
+	 * a member who asked for a link and then remembered their password changes it signed in. the
+	 * link still in their mailbox would otherwise overwrite what they just chose.
+	 */
+	it('refuses a link once the member has changed their password signed in', async () => {
+		await member('priya@example.org');
+		const token = await tokenFor('priya@example.org');
+		const cookie = await sessionOf('priya@example.org', PASSWORD);
+
+		expect(
+			await changeMemberPassword(db, auth, {
+				currentPassword: PASSWORD,
+				newPassword: NEW_PASSWORD,
+				headers: new Headers({ origin: ORIGIN, cookie })
+			})
+		).toMatchObject({ ok: true });
+
+		expect(
+			await resetMemberPassword(auth, { token, newPassword: 'another-long-enough-one' })
+		).toEqual({ ok: false, reason: 'link' });
+		expect(await signsIn('priya@example.org', NEW_PASSWORD)).toBe(true);
 	});
 
 	/**

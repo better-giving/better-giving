@@ -5,8 +5,9 @@ import { authVerification } from '$lib/server/db/auth-schema';
 // the one module that deletes a member's mailed reset links.
 //
 // better-auth writes a row per request and consumes only the row it was handed, so ending the
-// others is this app's job, at the two moments a link stops being the member's way in: a newer
-// one is minted, or a reset lands. ./index.ts is the caller.
+// others is this app's job, at the three moments a link stops being the member's way in: a newer
+// one is minted, a reset lands, or the member changes the password while signed in. ./index.ts
+// calls it for the first two and ./members.ts for the third.
 
 /** the prefix better-auth writes before every reset token in `auth_verification.identifier`. */
 export const RESET_IDENTIFIER_PREFIX = 'reset-password:';

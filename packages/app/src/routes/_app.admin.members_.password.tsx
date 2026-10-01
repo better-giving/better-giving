@@ -22,7 +22,7 @@ import {
 import { changeMemberPassword, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
-import { auth, platform, staff } from '../context';
+import { auth, database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.members_.password';
 
 // a colleague changes their own password, and nobody changes anybody else's.
@@ -212,7 +212,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 	// refused before anything is hashed.
 	if (!submission.ok) return invalid(400, submission.reject());
 
-	const changed = await changeMemberPassword(context.get(auth), {
+	const changed = await changeMemberPassword(context.get(database), context.get(auth), {
 		currentPassword: submission.value.current_password,
 		newPassword: submission.value.new_password,
 		headers: request.headers
