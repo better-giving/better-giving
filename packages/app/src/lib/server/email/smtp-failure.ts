@@ -81,9 +81,9 @@ const TLS_FAILED = /certificate|\b(?:tls|ssl) handshake/i;
 /**
  * the host answered a command after the greeting and refused it, which is proof both that the
  * connection worked and that this message was not taken. `worker-mailer` throws these after
- * writing `MAIL FROM`, `RCPT TO` or the message body and reading a reply that is not a 2xx, and
- * appends that reply verbatim — the host's own prose, free to say `authentication`, `dns`,
- * `network` or `timeout`. so these are read before `AUTH_FAILED` and every connect pattern, and
+ * writing `MAIL FROM`, `RCPT TO`, `DATA` or the message body and reading a reply it does not
+ * accept, and appends that reply verbatim — the host's own prose, free to say `authentication`,
+ * `dns`, `network` or `timeout`. so these are read before `AUTH_FAILED` and every connect pattern, and
  * never as either.
  */
 const SENDER_REFUSED = /^Invalid MAIL FROM\b/i;
@@ -101,6 +101,7 @@ const RECIPIENT_REPLY =
 	/^Invalid RCPT TO\b:?\s*<[^>]*>(?:\s+NOTIFY=\S+)?\s+(\d{3})(?:[ -](\d\.\d{1,3}\.\d{1,3})\b)?/i;
 const MAILBOX_STATUS = /^(?:5\.1\.\d+|5\.6\.7)$/;
 const POLICY_STATUS = /^5\.7\.\d+$/;
+const DATA_REFUSED = /^Failed to send DATA:/i;
 const BODY_REFUSED = /^Failed send email body:/i;
 
 /**
@@ -191,6 +192,16 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 			detail:
 				`The mail host refused the sender address: ${message}. ` +
 				'The most common cause is a `MAIL_FROM` address the host is not authorised to send as.',
+			indeterminate: false
+		};
+	}
+
+	if (DATA_REFUSED.test(message)) {
+		return {
+			reason: 'rejected',
+			detail:
+				`The mail host refused to take the message before any of it was sent, so nothing was delivered: ${message}. ` +
+				"The host's reply says why.",
 			indeterminate: false
 		};
 	}

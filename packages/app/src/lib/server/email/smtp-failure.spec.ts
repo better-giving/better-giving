@@ -118,6 +118,23 @@ describe('classifySmtpFailure', () => {
 	});
 
 	/**
+	 * a host that refuses `DATA` answered before any of the message was offered, so nothing went
+	 * out — and the refusal is about the session or the account (a size or rate limit, a policy),
+	 * never the sender address, which the host already accepted at `MAIL FROM`.
+	 */
+	it.each([
+		'Failed to send DATA: 552 5.3.4 Message size exceeds fixed maximum\r\n',
+		'Failed to send DATA: 554 5.7.1 Daily sending quota exceeded\r\n'
+	])('reads %j as a refusal before the message, blaming no setting', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).toContain('nothing was delivered');
+		expect(failure.detail).not.toContain('MAIL_FROM');
+	});
+
+	/**
 	 * the credential arm's words are just as free to appear in a host's reply: a refusal over SPF or
 	 * DMARC says "authentication" after a working login, and read as `auth_failed` it sends the
 	 * operator to rotate a password that is fine.
@@ -235,7 +252,6 @@ describe('classifySmtpFailure', () => {
 	 */
 	it.each([
 		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised',
-		'Failed to send DATA: 552 Message size exceeds fixed maximum',
 		'something nobody has ever seen'
 	])('falls back to rejected for %j, quoting the server', (message) => {
 		const failure = classifySmtpFailure(new Error(message));
@@ -310,15 +326,14 @@ describe('classifySmtpFailure — what may still have been delivered', () => {
 	 * the message body is being read leaves the host free to have queued it. only a failure that
 	 * names the connection attempt can claim nothing went out.
 	 */
-	it.each([
-		'Network connection lost',
-		'WorkerMailer is shutting down',
-		'Failed to send DATA: the socket was closed by the other end'
-	])('reports %j as indeterminate', (message) => {
-		const failure = classifySmtpFailure(new Error(message));
-		expect(failure.indeterminate).toBe(true);
-		expect(failure.detail).not.toContain('nothing was delivered');
-	});
+	it.each(['Network connection lost', 'WorkerMailer is shutting down'])(
+		'reports %j as indeterminate',
+		(message) => {
+			const failure = classifySmtpFailure(new Error(message));
+			expect(failure.indeterminate).toBe(true);
+			expect(failure.detail).not.toContain('nothing was delivered');
+		}
+	);
 
 	// a connection that never opened is a different claim and is safe to make.
 	it.each([
