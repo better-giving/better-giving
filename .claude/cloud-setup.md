@@ -23,13 +23,14 @@ sandbox-quickbooks.api.intuit.com
 
 ```bash
 #!/bin/bash
+# kru v0.125.0
 set -uo pipefail
 log=/tmp/setup.log; exec > >(tee -a "$log") 2>&1
 try() { for i in 1 2 3; do "$@" && return 0; sleep $((i*3)); done; echo "SETUP FAIL: $*"; return 1; }
 
 # kru store
 try git clone -q https://github.com/ap-justin/kru-store ~/.kru
-[ -f ~/.kru/setup.sh ] && bash ~/.kru/setup.sh
+[ -f ~/.kru/setup.sh ] && try bash ~/.kru/setup.sh
 
 # plugins
 try claude plugin marketplace add ap-justin/kru
