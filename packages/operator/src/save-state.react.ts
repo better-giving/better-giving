@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { confirming, drawn, expireAfter, type SaveFacts, type SaveState } from './save-state';
+import {
+	armedAfter,
+	confirming,
+	drawn,
+	expireAfter,
+	type SaveFacts,
+	type SaveState
+} from './save-state';
 
 // the react binding of ./save-state.ts: a hook that keeps the one flag the four seconds write and
 // nothing else. every rule the button draws by is in that module and none of them is restated
@@ -22,12 +29,20 @@ export type { SaveFacts, SaveState };
 export function useSaveState(facts: SaveFacts): SaveState {
 	const [expired, setExpired] = useState(false);
 
+	// whether a confirmation is armed is a fact about the render before as well as this one, so it
+	// is adjusted while rendering rather than in an effect: an effect would draw one frame of the
+	// tick over an undone edit before taking it off, and that frame is what the region announces.
+	const reporting = confirming(facts);
+	const [seen, setSeen] = useState({ reporting, armed: true });
+	const armed = armedAfter(seen.armed, seen.reporting, facts);
+	if (seen.reporting !== reporting || seen.armed !== armed) setSeen({ reporting, armed });
+
 	// the trio's own answer as the dependency, so the run that arms a timer is the run where the
 	// button started drawing the tick — a second save into the same group re-arms rather than
 	// inheriting the first one's four seconds, and a slow round trip does not spend the window
 	// while the button still says `Saving`.
-	const reporting = confirming(facts);
-	useEffect(() => expireAfter(reporting, setExpired), [reporting]);
+	const shown = reporting && armed;
+	useEffect(() => expireAfter(shown, setExpired), [shown]);
 
-	return drawn(facts, expired);
+	return drawn(facts, armed, expired);
 }
