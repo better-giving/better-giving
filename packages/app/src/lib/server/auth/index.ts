@@ -82,7 +82,7 @@ export { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 /**
  * the two values `createAuth` cannot read for itself, resolved per request.
  *
- * neither is a value an operator sets, which is the whole point: a one-click deploy asks for
+ * neither is a value an operator has to set, which is the whole point: a one-click deploy asks for
  * `ADMIN_PASSWORD` and nothing else.
  */
 export interface AuthRuntime {

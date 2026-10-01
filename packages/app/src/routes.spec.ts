@@ -1054,8 +1054,9 @@ describe('the limit the layout charged', () => {
  * for: the credential is a bearer header, so a browser attaches it to nothing by itself and CSRF
  * is unrepresentable here rather than defended against — and that holds only while no route reads
  * a cookie. granting a preflight is the other half of the same decision: a page in a browser must
- * not be able to read an answer that names which of this deployment's secrets are set, and the way
- * to make sure of that is to hand it no header that would let it ($lib/server/console/surface.ts).
+ * not be able to read an answer that names which of this deployment's configuration values are
+ * set, and the way to make sure of that is to hand it no header that would let it
+ * ($lib/server/console/surface.ts).
  *
  * identifiers and header names rather than English, because a sweep over source cannot tell a
  * comment from code and both of these are things the headers on this surface talk about.
@@ -1084,7 +1085,7 @@ describe('what the console surface does not do', () => {
 			const source = readFromDisk(file) ?? '';
 			expect(
 				grantsAPreflight(source),
-				`${file} is on the console surface and hands a browser a CORS header, so a page on somebody's website could read which of this deployment's secrets are set ($lib/server/console/surface.ts).`
+				`${file} is on the console surface and hands a browser a CORS header, so a page on somebody's website could read which of this deployment's configuration values are set ($lib/server/console/surface.ts).`
 			).toBe(false);
 			expect(
 				readsACookie(source),
@@ -1289,7 +1290,7 @@ describe('the server tree and the browser bundle', () => {
 		for (const { file } of routes) {
 			expect(
 				reachesServerTree(file),
-				`${file} reaches $lib/server from an export react router ships to the browser, so D1, the stripe client and this deployment's secrets go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
+				`${file} reaches $lib/server from an export react router ships to the browser, so D1, the stripe client and this deployment's credentials go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
 			).toEqual([]);
 		}
 	});

@@ -172,7 +172,7 @@ export const readFromDisk: ReadModule = (file) => {
  * client build and tree-shakes what only they used, so a route module may import `$lib/server/**`
  * for its loader and ship nothing of it to the browser. what the build does *not* do is tell
  * anyone when that stops being true — a component that reaches for a server module compiles, and
- * on this app's server tree that means D1, the stripe client and the deploy-time secrets in the
+ * on this app's server tree that means D1, the stripe client and the deploy-time configuration values in the
  * bundle a browser downloads.
  *
  * how it decides. every top-level statement in the route module is a root except the exported
