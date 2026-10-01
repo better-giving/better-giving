@@ -196,11 +196,11 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 			ok: false,
 			reason: 'goods_or_services_inconsistent',
 			detail:
-				'No receipt was rendered: this gift carries a fair market value ' +
-				'(`donation.non_deductible_minor`) but is recorded as one where the donor received ' +
+				'No receipt was rendered: this gift carries an amount recorded as not deductible, but ' +
+				'is recorded as one where the donor received ' +
 				`${goods.kind === 'none' ? 'nothing' : 'only intangible religious benefits'} in ` +
 				'return. A receipt printed from that would state the opposite of what the books say ' +
-				'and would omit the §6115 disclosure. Correct the donation record.'
+				'and would omit the §6115 disclosure.'
 		};
 	}
 
@@ -215,10 +215,8 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 			ok: false,
 			reason: 'goods_or_services_inconsistent',
 			detail:
-				'No receipt was rendered: the fair market value recorded against this gift ' +
-				'(`donation.non_deductible_minor`) is larger than the payment itself ' +
-				'(`donation.total_minor`), so there is no contribution to acknowledge. Correct the ' +
-				'donation record.'
+				'No receipt was rendered: the fair market value recorded against this gift is larger ' +
+				'than the payment itself, so there is no contribution to acknowledge.'
 		};
 	}
 
