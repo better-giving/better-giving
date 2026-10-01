@@ -1,6 +1,6 @@
 import { type ReactNode, act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import type { SetupLine } from '$lib/server/config/readiness';
 import { SetupGate } from './setup-gate';
@@ -83,4 +83,99 @@ it('re-reads rather than writing, so the press is a GET', () => {
 	// `method` reflects the resolved value, so an unset one reads as `get` here either way — the
 	// assertion is that nothing has made it a post.
 	expect(form?.method).toBe('get');
+});
+
+/** lets the stub's loader run and the router commit what it answered. */
+async function settle(): Promise<void> {
+	for (let i = 0; i < 5; i++) {
+		await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+	}
+}
+
+/**
+ * the gate over a loader, the way the layout draws it, with every read after the first held until
+ * the case lets it land on what `next` answers.
+ */
+async function reread(next: readonly SetupLine[]) {
+	let reads = 0;
+	let land: () => void = () => {};
+	const Stub = createRoutesStub([
+		{
+			path: '/admin',
+			loader: async () => {
+				reads += 1;
+				if (reads === 1) return { lines };
+				await new Promise<void>((resolve) => {
+					land = resolve;
+				});
+				return { lines: next };
+			},
+			Component: () =>
+				createElement(SetupGate, { lines: useLoaderData<{ lines: SetupLine[] }>().lines })
+		}
+	]);
+	const root = mount(createElement(Stub, { initialEntries: ['/admin'] }));
+	await settle();
+	const press = root.querySelector('button');
+	if (press === null) throw new Error('the gate drew no press');
+	return {
+		root,
+		press,
+		reads: () => reads,
+		land: async () => {
+			land();
+			await settle();
+		}
+	};
+}
+
+/** what the gate says beside its press, which is where a press that moved nothing is reported. */
+function outcome(press: HTMLElement): string {
+	return press.parentElement?.querySelector('[role="status"]')?.textContent ?? '';
+}
+
+it('keeps the caret on Check again while the re-read is in flight, and takes the press once', async () => {
+	const gate = await reread(lines);
+	gate.press.focus();
+
+	await act(async () => gate.press.click());
+	await settle();
+
+	expect(document.activeElement).toBe(gate.press);
+	expect(gate.press.getAttribute('aria-disabled')).toBe('true');
+	expect((gate.press as HTMLButtonElement).disabled).toBe(false);
+
+	await act(async () => gate.press.click());
+	await settle();
+	expect(gate.reads()).toBe(2);
+});
+
+it('says so at the press when the re-read comes back with nothing changed', async () => {
+	const gate = await reread(lines);
+	expect(outcome(gate.press)).toBe('');
+
+	await act(async () => gate.press.click());
+	await settle();
+	expect(outcome(gate.press)).toBe('');
+	await gate.land();
+
+	expect(outcome(gate.press)).toBe('Nothing has changed yet.');
+	expect(gate.press.hasAttribute('aria-disabled')).toBe(false);
+});
+
+it('leaves a re-read that moved a line to the ledger, which says what moved', async () => {
+	const done = lines.map((line) => ({
+		...line,
+		state: 'ready' as const,
+		word: 'Configured',
+		note: null
+	}));
+	const gate = await reread(done);
+
+	await act(async () => gate.press.click());
+	await settle();
+	await gate.land();
+
+	expect(gate.root.textContent).not.toContain('Incomplete');
+	expect(outcome(gate.press)).toBe('');
 });

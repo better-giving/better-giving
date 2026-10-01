@@ -2,6 +2,8 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
 import { Form, useNavigation } from 'react-router';
 import type { SetupLine } from '$lib/server/config/readiness';
 
@@ -23,6 +25,23 @@ import type { SetupLine } from '$lib/server/config/readiness';
 export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 	const navigation = useNavigation();
 	const rereading = navigation.state !== 'idle';
+
+	// a re-read that moved a line is said by the ledger, whose words change under it. one that moved
+	// nothing changes no words anywhere, so it is said beside the press: the usual answer while a job
+	// is still open on the console, and silence there reads as a press nobody heard.
+	const setOutFrom = useRef<readonly SetupLine[] | null>(null);
+	const [unchanged, setUnchanged] = useState(false);
+	useEffect(() => {
+		if (rereading) {
+			setOutFrom.current ??= lines;
+			setUnchanged(false);
+			return;
+		}
+		const from = setOutFrom.current;
+		if (from === null) return;
+		setOutFrom.current = null;
+		setUnchanged(sameLines(from, lines));
+	}, [rereading, lines]);
 
 	return (
 		<PanelRoute>
@@ -56,10 +75,46 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 			    what the press is for. a deploy from the console restarts the worker, so what the
 			    operator needs on coming back to this tab is exactly one re-read. */}
 			<Form method="get" className="adm-actions">
-				<Button type="submit" variant="primary" disabled={rereading} aria-busy={rereading}>
+				{/* held with `aria-disabled` rather than `disabled` while the read is in flight: a
+				    disabled button gives up focus, which drops the operator on the page body at the
+				    moment the answer arrives beside it. the press is closed in the handler instead. */}
+				<Button
+					type="submit"
+					variant="primary"
+					aria-disabled={rereading || undefined}
+					aria-busy={rereading}
+					onClick={(event: MouseEvent<HTMLButtonElement>) => {
+						if (rereading) event.preventDefault();
+					}}
+				>
 					Check again
 				</Button>
+				{/* mounted empty, so the words arriving are announced. */}
+				<span role="status">
+					{unchanged ? (
+						<StatusWord register="momentary" neutral>
+							Nothing has changed yet.
+						</StatusWord>
+					) : null}
+				</span>
 			</Form>
 		</PanelRoute>
+	);
+}
+
+function sameLines(a: readonly SetupLine[], b: readonly SetupLine[]): boolean {
+	return (
+		a.length === b.length &&
+		a.every((line, at) => {
+			const other = b[at];
+			return (
+				other !== undefined &&
+				line.id === other.id &&
+				line.label === other.label &&
+				line.state === other.state &&
+				line.word === other.word &&
+				line.note === other.note
+			);
+		})
 	);
 }
