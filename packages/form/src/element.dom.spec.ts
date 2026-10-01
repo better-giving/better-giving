@@ -4924,6 +4924,26 @@ describe('the stylesheets', () => {
 		.map(([path, sheet]) => [path.slice('./styles/'.length), sheet] as const)
 		.sort(([left], [right]) => left.localeCompare(right));
 
+	// the card sits in a page it does not own, and every inherited property it leaves unstated is
+	// the host's: a centred hero centres the receipt, an uppercase theme shouts every label. the
+	// properties `[part~='card']` in ./styles/parts.css states are not repeated here.
+	it('takes none of the host page’s inherited text styles onto the card', () => {
+		const host = tokenSheet.match(/:host,\s*\[data-donate-root\]\s*\{([^}]*)\}/)?.[1] ?? '';
+		const stated = [...host.matchAll(/(?:^|;)\s*([a-z][a-z-]*):/g)].map(([, name]) => name);
+
+		expect(
+			[
+				'text-align',
+				'text-transform',
+				'text-indent',
+				'text-shadow',
+				'letter-spacing',
+				'word-spacing',
+				'font-style'
+			].filter((property) => !stated.includes(property))
+		).toEqual([]);
+	});
+
 	it('takes every length from a token, and says so at the ones it takes from nowhere', async () => {
 		// the directory is named here as well as swept, because the other cases in this block reach
 		// their sheets by a named import: a sixth file is swept for lengths the moment it lands and

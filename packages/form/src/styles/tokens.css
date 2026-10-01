@@ -162,6 +162,20 @@
 	font-size: var(--_root-size);
 	font-family: var(--_font);
 
+	/*
+	 * every other inherited property that sets how a line of text reads, back at its initial value.
+	 * left unstated each is the host page's, so a centred hero centres the receipt and an uppercase,
+	 * tracked theme shouts every label. colour, weight and leading are `[part~='card']`'s in
+	 * ./parts.css.
+	 */
+	text-align: start;
+	text-transform: none;
+	text-indent: 0;
+	text-shadow: none;
+	letter-spacing: normal;
+	word-spacing: normal;
+	font-style: normal;
+
 	--_root-size: clamp(15px, 1rem, 18px);
 
 	/*
