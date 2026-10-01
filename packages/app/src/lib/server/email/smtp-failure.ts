@@ -83,26 +83,26 @@ const TLS_FAILED = /certificate|\b(?:tls|ssl) handshake/i;
  * connection worked and that this message was not taken. `worker-mailer` throws these after
  * writing `MAIL FROM`, `RCPT TO`, `DATA` or the message body and reading a reply it does not
  * accept, and appends that reply verbatim — the host's own prose, free to say `authentication`,
- * `dns`, `network` or `timeout`. so these are read before `AUTH_FAILED` and every connect pattern, and
- * never as either.
+ * `dns`, `network` or `timeout`. so these are read before `AUTH_FAILED` and every connect pattern,
+ * and never as either.
  */
 const SENDER_REFUSED = /^Invalid MAIL FROM\b/i;
 const RECIPIENT_REFUSED = /^Invalid RCPT TO\b:?\s*<([^>]*)>/i;
+const DATA_REFUSED = /^Failed to send DATA:/i;
+const BODY_REFUSED = /^Failed send email body:/i;
 
 /**
- * which recipient refusals are about the address. worker-mailer writes
- * `Invalid RCPT TO: <addr>[ NOTIFY=…] <reply>`, and the reply's code is the only thing that tells a
- * mailbox the host does not have (5.1.x, 553, and 5.6.7 for the non-ASCII local part this
- * deployment sends as UTF-8) from a host declining to carry mail for this connection at all (5.7.x —
- * relay denied, authentication required), whose fix is in the settings and never in the address.
+ * which recipient refusals are about the address. `worker-mailer` writes
+ * `Invalid RCPT TO: <addr>[ NOTIFY=…] <reply>`, and the reply's code is the only thing that tells
+ * a mailbox the host does not have (5.1.x, 553, and 5.6.7 for a non-ASCII local part) from a host
+ * declining to carry mail for this connection at all (5.7.x — relay denied, authentication
+ * required), whose fix is in the settings and never in the address.
  * a 5.7.x code is read ahead of a 553 basic code, which some hosts put in front of a relay refusal.
  */
 const RECIPIENT_REPLY =
 	/^Invalid RCPT TO\b:?\s*<[^>]*>(?:\s+NOTIFY=\S+)?\s+(\d{3})(?:[ -](\d\.\d{1,3}\.\d{1,3})\b)?/i;
 const MAILBOX_STATUS = /^(?:5\.1\.\d+|5\.6\.7)$/;
 const POLICY_STATUS = /^5\.7\.\d+$/;
-const DATA_REFUSED = /^Failed to send DATA:/i;
-const BODY_REFUSED = /^Failed send email body:/i;
 
 /**
  * `worker-mailer`'s own prefix on a message that goes on to quote the host's reply. `TLS_FAILED`,
