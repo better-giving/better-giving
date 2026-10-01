@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { endsWithin } from '../../motion-end';
 import { progressBarFinishing, progressBarLanded, subscribeProgressBar } from '../../progress-bar';
@@ -38,6 +38,16 @@ export function ProgressBar({ label, overMove }) {
 	);
 	const bar = useRef(/** @type {HTMLSpanElement | null} */ (null));
 
+	// what the region below is holding, which it takes a task after the bar mounts: a live region
+	// reports a change to its contents and never its own arrival, and both callers mount the bar only
+	// while a move is under way — so one that arrived holding its words would be announced by nobody.
+	// ../controls/SaveButton.jsx writes its region the same way.
+	const [said, setSaid] = useState('');
+	useEffect(() => {
+		const say = setTimeout(() => setSaid(label), 0);
+		return () => clearTimeout(say);
+	}, [label]);
+
 	useEffect(() => {
 		const cells = bar.current;
 		if (!finishing || cells === null) return;
@@ -71,14 +81,10 @@ export function ProgressBar({ label, overMove }) {
 		/* polite, and the label is the one thing a reader of the tree gets: what the bar's rush
 		   reports is that the wait is over, which the screen it is replaced by states in its own
 		   words a moment later. the bar itself is decorative — its cells or its line are drawn by the
-		   sheet and say nothing a reader could read — so it is hidden from the tree and the wrapper speaks
-		   for it. */
-		<div
-			role="status"
-			aria-label={overMove ? undefined : label}
-			className={overMove ? 'adm-navigation-bar' : undefined}
-		>
-			{overMove ? <span className="adm-vh">{label}</span> : null}
+		   sheet and say nothing a reader could read — so it is hidden from the tree and the region's
+		   contents speak for it, in both shapes: a region's name is never announced. */
+		<div role="status" className={overMove ? 'adm-navigation-bar' : undefined}>
+			<span className="adm-vh">{said}</span>
 			<span
 				ref={bar}
 				className={`${overMove ? 'adm-navigation-bar__line' : 'adm-braille-bar'}${finishing ? ' is-finishing' : ''}`}
