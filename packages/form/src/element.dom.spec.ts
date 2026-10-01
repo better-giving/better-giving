@@ -4924,24 +4924,36 @@ describe('the stylesheets', () => {
 		.map(([path, sheet]) => [path.slice('./styles/'.length), sheet] as const)
 		.sort(([left], [right]) => left.localeCompare(right));
 
-	// the card sits in a page it does not own, and every inherited property it leaves unstated is
-	// the host's: a centred hero centres the receipt, an uppercase theme shouts every label. the
-	// properties `[part~='card']` in ./styles/parts.css states are not repeated here.
-	it('takes none of the host page’s inherited text styles onto the card', () => {
+	// the card sits in a page it does not own, and an inherited property it leaves unstated is the
+	// host's: a centred hero centres the receipt, an uppercase theme shouts every label. these seven
+	// are the ones it puts back; the properties `[part~='card']` in ./styles/parts.css states are
+	// not repeated here.
+	it('takes none of the host page’s alignment, case, indent, shadow, tracking, spacing or slant', () => {
 		const host = tokenSheet.match(/:host,\s*\[data-donate-root\]\s*\{([^}]*)\}/)?.[1] ?? '';
-		const stated = [...host.matchAll(/(?:^|;)\s*([a-z][a-z-]*):/g)].map(([, name]) => name);
+		const stated = Object.fromEntries(
+			host.split(';').map((declaration) => {
+				const [name = '', ...value] = declaration.split(':');
+				return [name.trim(), value.join(':').trim()];
+			})
+		);
 
-		expect(
-			[
-				'text-align',
-				'text-transform',
-				'text-indent',
-				'text-shadow',
-				'letter-spacing',
-				'word-spacing',
-				'font-style'
-			].filter((property) => !stated.includes(property))
-		).toEqual([]);
+		expect({
+			'text-align': stated['text-align'],
+			'text-transform': stated['text-transform'],
+			'text-indent': stated['text-indent'],
+			'text-shadow': stated['text-shadow'],
+			'letter-spacing': stated['letter-spacing'],
+			'word-spacing': stated['word-spacing'],
+			'font-style': stated['font-style']
+		}).toEqual({
+			'text-align': 'start',
+			'text-transform': 'none',
+			'text-indent': '0',
+			'text-shadow': 'none',
+			'letter-spacing': 'normal',
+			'word-spacing': 'normal',
+			'font-style': 'normal'
+		});
 	});
 
 	it('takes every length from a token, and says so at the ones it takes from nowhere', async () => {
