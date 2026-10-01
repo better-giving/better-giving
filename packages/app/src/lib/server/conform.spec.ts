@@ -61,15 +61,17 @@ describe('a submitted form', () => {
 		expect(form.ok).toBe(false);
 	});
 
-	it('reports the refusal against the form rather than against a box', () => {
+	it('reports the refusal against the form, naming the boxes that did not arrive', () => {
 		// an absent box is not something an operator can fix, so pinning it on a field would tell
-		// them to edit something that is fine. the sentence names the one action that helps.
+		// them to edit something that is fine. the sentence leads with the one action that helps,
+		// and names the boxes for a caller posting a body by hand, who has to add them.
 		const { result } = parseForm(new FormData(), FORM).reject();
 
 		expect(result.status).toBe('error');
 		expect(result.error?.['']).toEqual([
-			'Reload the page and try again. Part of the form did not submit.'
+			'Reload the page and try again. Part of the form did not submit; missing: `name`, `status`.'
 		]);
+		expect(result.error?.name).toBeUndefined();
 	});
 
 	it('accepts a list box that submitted no rows at all', () => {
@@ -106,10 +108,9 @@ describe('a submitted form', () => {
 		expect(form.ok && form.value.turnstile_added).toBe(false);
 	});
 
-	it('names the boxes that did not arrive where the operator cannot be told', () => {
-		// the sentence an operator reads names nothing, because nothing they can do about it depends
-		// on which box it was. the developer's half of that goes to the log, or a screen that fails
-		// this way reports a reload and nothing to look at.
+	it('names the boxes that did not arrive in the deployment’s logs as well', () => {
+		// the reply names them for whoever posted the body; the log is where an operator reading
+		// the deployment rather than the screen finds which form it was.
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const body = complete();
 		body.delete('status');
