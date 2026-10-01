@@ -174,7 +174,10 @@ function receiptRefusalAction(
 		case 'org_profile_incomplete':
 			return FILL_IN_ORG_DETAILS;
 		case 'goods_or_services_incomplete':
-			return 'Add a description of what the donor received, and its fair market value, to the gift.';
+			return (
+				'This gift is recorded as one where the donor received goods or services, without both a ' +
+				`description of them and their fair market value. ${CORRECT_THE_GIFT}`
+			);
 		case 'goods_or_services_inconsistent':
 			return (
 				`This gift is recorded with a fair market value of ${money(contribution.nonDeductibleMinor)} ` +
