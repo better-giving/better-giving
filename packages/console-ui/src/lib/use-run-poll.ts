@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
 import type { ChariotRunRead, PaypalRunRead, StripeRunRead } from '../api/types';
 import { pollRun, runDrawn } from './processor-cache';
-import { polledRun, pollOutlived, runKind, standingRun } from './run-poll';
+import type { HeldPoll } from './run-poll';
+import { heldPoll, pollOutlived, runKind, standingRun, stopUnmade } from './run-poll';
 
 // a processor page's poll of its own setup run: the one ask on a timer, what it is answered with,
 // the last run either reading said anything about, and the page read again once the run stops.
@@ -45,7 +46,14 @@ export function useRunPoll(
 	run: SetupRun | null,
 	pressing: boolean
 ): SetupRun | null {
-	const [polled, setPolled] = useState<SetupRun | null | undefined>(undefined);
+	const [held, setHeld] = useState<HeldPoll<SetupRun> | undefined>(undefined);
+	const polled = held === undefined ? undefined : held.run;
+
+	/* the reading as it stands when an answer arrives, which is later than the render that asked. */
+	const reading = useRef(run);
+	useEffect(() => {
+		reading.current = run;
+	}, [run]);
 
 	/* the last thing either reading said, kept here rather than read off whichever answered last.
 	   a run that landed is consumed by the reading that observed it, so the answer after that is
@@ -58,8 +66,6 @@ export function useRunPoll(
 		setRemembered(answered);
 	}, [answered]);
 
-	/* `revalidate` rather than the revalidator: the revalidator is a fresh object on every render,
-	   and read as a dependency below it would revalidate the page for as long as a report stayed up. */
 	const { revalidate } = useRevalidator();
 
 	useEffect(() => {
@@ -70,7 +76,8 @@ export function useRunPoll(
 			// read through the page's own reader, so a report this answer carries is held for the next
 			// visit where the operator has left (`pollRun` in ./processor-cache.ts). a read that did
 			// not land ends the run as the console's own stop, and an answer holding no run reads the
-			// page again (`polledRun` in ./run-poll.ts) — either way the screen is off `Working`.
+			// page again (`polledRun` in ./run-poll.ts) — either way the screen is off `Working` until a
+			// reading says the run is still going (`stopUnmade`, below).
 			void pollRun(processor)
 				.then(
 					(run) => ({ run }),
@@ -78,12 +85,12 @@ export function useRunPoll(
 				)
 				.then((answer) => {
 					if (gone) return;
-					const next = polledRun(going, answer);
-					if (next === null) {
+					const next = heldPoll(going, answer, reading.current);
+					if (next.run === null) {
 						setRemembered(null);
 						void revalidate();
 					}
-					setPolled(next);
+					setHeld(next);
 				});
 		}, POLL_MS);
 		return () => {
@@ -105,19 +112,27 @@ export function useRunPoll(
 	   anywhere else starts — and with nothing reading as running, nothing would ever ask after it
 	   again. */
 	useEffect(() => {
-		if (pressing) setPolled(undefined);
+		if (pressing) setHeld(undefined);
 	}, [pressing]);
 	const loaded = runKind(run);
 	const seen = useRef(loaded);
 	useEffect(() => {
 		if (!pollOutlived(seen.current, loaded)) return;
 		seen.current = loaded;
-		setPolled(undefined);
+		setHeld(undefined);
 	}, [loaded]);
+
+	/* and a stop made up for a read that did not land, the moment a reading finds the run still going
+	   (`stopUnmade` in ./run-poll.ts): the run is drawn going again, and the poll goes on with it. */
+	useEffect(() => {
+		if (stopUnmade(held, run)) setHeld(undefined);
+	}, [held, run]);
 
 	/* the page read again once, when the run stops: what the page heads with is a reading of the
 	   account this press just set up, and only the deployment can report on that — the answer on
-	   screen was taken before any of it existed. */
+	   screen was taken before any of it existed. the flag is a ref rather than a dependency because
+	   the revalidator is a fresh object on every render — read as one, this would revalidate the page
+	   for as long as the report stayed up. */
 	const settled = live?.kind === 'ended';
 	const asked = useRef(false);
 	useEffect(() => {

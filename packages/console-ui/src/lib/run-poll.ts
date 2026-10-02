@@ -60,7 +60,9 @@ export function standingRun<R extends RunLike>(read: {
  * held on `Working` the screen would wait for ever with every control on it closed. the stop is the
  * arm the binary answers a run that died on its own goroutine with, which says nothing was observed
  * and to press again (./press-stopped.ts): a press made against a run still going is answered
- * with that run rather than a second one, so the sentence is safe whichever it was.
+ * with that run rather than a second one, so the sentence is safe whichever it was. the stop is
+ * the page's own, and the re-read it sets off takes it back where the run is still going
+ * ({@link stopUnmade}).
  *
  * **an answer holding no run is no run**, and the page drops the one it remembers and reads itself
  * again: the report went to a read this window does not hold, which is another window on the same
@@ -74,3 +76,38 @@ export function polledRun<R extends StagedRun>(
 	if (answer !== null) return answer.run;
 	return { ...going, kind: 'ended', outcome: { kind: 'console-stopped' } };
 }
+
+/**
+ * a poll's answer as a page holds it. `stoppedOver` is the page's reading at the moment a read
+ * that did not land was drawn as the console's own stop, and `null` where the binary answered.
+ */
+export type HeldPoll<R> = {
+	readonly run: R | null;
+	readonly stoppedOver: { readonly reading: R | null } | null;
+};
+
+/** {@link polledRun}, held: `reading` is the page's own reading as the answer arrives. */
+export function heldPoll<R extends StagedRun>(
+	going: R,
+	answer: { readonly run: R | null } | null,
+	reading: R | null
+): HeldPoll<R> {
+	return { run: polledRun(going, answer), stoppedOver: answer === null ? { reading } : null };
+}
+
+/**
+ * whether a stop the page made up gives way to the page's reading.
+ *
+ * **a stop drawn for a read that did not land is taken back by a reading that finds the run still
+ * going.** one rejected read is as often a 5xx or a fetch dropped across a sleep and a wake as a
+ * console that has stopped, and the stop reads the page again as it is drawn (the re-read once a run
+ * stops, ./use-run-poll.ts). that reading is a fresh object, so it is told from the one the stop was
+ * drawn over by identity — {@link pollOutlived} keys on where the run stands and sees `running`
+ * either side of it. a reading that finds the run over or gone is {@link pollOutlived}'s, and a stop
+ * the binary answered is what it said, which no reading takes back.
+ */
+export const stopUnmade = <R extends RunLike>(
+	held: HeldPoll<R> | undefined,
+	reading: R | null
+): boolean =>
+	held?.stoppedOver != null && reading !== held.stoppedOver.reading && reading?.kind === 'running';
