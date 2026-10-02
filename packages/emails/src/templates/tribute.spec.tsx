@@ -40,6 +40,21 @@ describe('tribute.template — what the family is told', () => {
 	});
 
 	/**
+	 * a subject is one header line, and the honoree reaches it from a caller of /api/v1 that can
+	 * send any string — a line break there is a header of its own, and the SMTP transport refuses
+	 * the whole message for it. the run folds to one space, and the edges trim.
+	 */
+	it.each([
+		{ kind: 'CR LF', honoree: 'Ann\r\nBcc: x@y' },
+		{ kind: 'a bare LF and a tab', honoree: 'Ann\n\tBcc: x@y' },
+		{ kind: 'unicode line separators', honoree: 'Ann\u2028\u0085Bcc: x@y' },
+		{ kind: 'surrounding whitespace', honoree: '\r\n Ann Bcc: x@y \n' }
+	])('folds $kind in the honoree onto one subject line', async ({ honoree }) => {
+		const message = await rendered({ tribute: { label: 'In memory of', honoree } });
+		expect(message.subject).toBe('A gift was made in memory of Ann Bcc: x@y');
+	});
+
+	/**
 	 * the phrase arrives worded for the head of a receipt row and both of its uses here are inside a
 	 * sentence, so the capital comes down and the words stay the caller's. asserted against the
 	 * capitalised form as well: a template that stopped lowering it would still print a true

@@ -39,7 +39,7 @@ export function template(data: TributeData): EmailTemplate {
 	// one dedication, used by the subject and by the sentence, so the two cannot name the honoree
 	// differently on a message somebody reads once and keeps.
 	const dedication = `${midSentence(data.tribute.label)} ${data.tribute.honoree}`;
-	const subject = `A gift was made ${dedication}`;
+	const subject = oneLine(`A gift was made ${dedication}`);
 	const greeting = `Dear ${data.notifyName},`;
 	const said =
 		`A gift ${dedication} was made to ${data.legalName} by ${data.donorName ?? 'the donor'}, ` +
@@ -59,4 +59,15 @@ export function template(data: TributeData): EmailTemplate {
 			</Layout>
 		)
 	};
+}
+
+/**
+ * a subject is one header line, and the honoree in it is whatever a caller of /api/v1 sent: a line
+ * break there ends the header, and the SMTP transport refuses the message rather than send it
+ * (`parseHeaderValue` in packages/app/src/lib/server/email/smtp-config.ts). every run of whitespace
+ * folds to one space here, the line separators `\s` leaves out included. only the subject folds:
+ * the body's sentence is handed the dedication as the donor typed it, and the row keeps it so.
+ */
+function oneLine(value: string): string {
+	return value.replace(/[\s\u0085]+/g, ' ').trim();
 }
