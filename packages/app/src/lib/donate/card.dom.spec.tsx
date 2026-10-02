@@ -411,16 +411,149 @@ it('writes a pressed preset into the entry and lights that tile alone', async ()
 	expect(input(root, '#amount-entry').value).toBe('25');
 });
 
-it('opens the entry empty on the way past the presets and takes the caret', async () => {
-	const { root } = await card();
+/**
+ * a pointer press on a tile, the way a mouse or a finger makes one: `pointerdown` on the tile, then
+ * the click the browser sends. a bare `click()` is what Space on a focused radio sends, so it stands
+ * for the keyboard.
+ */
+function point(node: HTMLElement): void {
+	act(() => {
+		node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		node.click();
+	});
+}
 
-	press(one(root, '.tiles > label:nth-of-type(2)'));
-	press(one(root, '.tiles > label.other'));
+/**
+ * an arrow key moving the selection in a group of radios, as a browser moves it: the keydown on the
+ * radio holding the caret, then the caret and the check on the next radio, which reports the click.
+ * happy-dom moves neither, so the spec moves both.
+ */
+function arrow(from: HTMLInputElement, key: string, onto: HTMLInputElement): void {
+	act(() => {
+		from.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+		onto.focus();
+		onto.click();
+		onto.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+	});
+}
 
-	const entry = input(root, '#amount-entry');
-	expect(one(root, '.tile.entry').hidden).toBe(false);
-	expect(entry.value).toBe('');
-	expect(document.activeElement).toBe(entry);
+/** the tray's radios in order, Other last. */
+function amountRadios(root: HTMLElement): HTMLInputElement[] {
+	return every(root, '.tiles > label > input[type="radio"]').filter(
+		(node) => node instanceof HTMLInputElement
+	);
+}
+
+describe('the way past the presets', () => {
+	it('opens the entry empty and takes the caret on a pointer press', async () => {
+		const { root } = await card();
+
+		point(one(root, '.tiles > label:nth-of-type(2)'));
+		point(one(root, '.tiles > label.other'));
+
+		const entry = input(root, '#amount-entry');
+		expect(one(root, '.tile.entry').hidden).toBe(false);
+		expect(entry.value).toBe('');
+		expect(document.activeElement).toBe(entry);
+	});
+
+	it.each(['ArrowRight', 'ArrowDown'])(
+		'leaves the caret on Other when %s reaches it from the last preset',
+		async (key) => {
+			const { root } = await card();
+			const radios = amountRadios(root);
+			const last = radios.at(-2);
+			const other = radios.at(-1);
+			if (last === undefined || other === undefined) throw new Error('no tray');
+
+			act(() => last.focus());
+			press(last);
+			arrow(last, key, other);
+
+			expect(document.activeElement).toBe(other);
+			expect(other.checked).toBe(true);
+			expect(one(root, '.tile.entry').hidden).toBe(false);
+			expect(input(root, '#amount-entry').value).toBe('');
+		}
+	);
+
+	it.each(['ArrowLeft', 'ArrowUp'])(
+		'leaves the caret on Other when %s wraps onto it from the first preset',
+		async (key) => {
+			const { root } = await card();
+			const radios = amountRadios(root);
+			const first = radios[0];
+			const other = radios.at(-1);
+			if (first === undefined || other === undefined) throw new Error('no tray');
+
+			act(() => first.focus());
+			press(first);
+			arrow(first, key, other);
+
+			expect(document.activeElement).toBe(other);
+			expect(other.checked).toBe(true);
+			expect(one(root, '.tile.entry').hidden).toBe(false);
+			expect(input(root, '#amount-entry').value).toBe('');
+		}
+	);
+
+	it('leaves the caret on Other when Space selects it', async () => {
+		const { root } = await card();
+		const other = amountRadios(root).at(-1);
+		if (other === undefined) throw new Error('no tray');
+
+		act(() => other.focus());
+		act(() => {
+			other.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+			other.click();
+		});
+
+		expect(document.activeElement).toBe(other);
+		expect(one(root, '.tile.entry').hidden).toBe(false);
+	});
+
+	it('does not carry a pointer press that selected nothing onto a later arrow', async () => {
+		const { root } = await card();
+		const radios = amountRadios(root);
+		const last = radios.at(-2);
+		const other = radios.at(-1);
+		if (last === undefined || other === undefined) throw new Error('no tray');
+
+		// the press lands on the tile and is dragged off it, so no click and no selection follow.
+		act(() => {
+			one(root, '.tiles > label.other').dispatchEvent(
+				new PointerEvent('pointerdown', { bubbles: true })
+			);
+		});
+		act(() => last.focus());
+		press(last);
+		arrow(last, 'ArrowRight', other);
+
+		expect(document.activeElement).toBe(other);
+	});
+
+	it.each([
+		['a pointer press', (root: HTMLElement) => point(one(root, '.tiles > label.other'))],
+		[
+			'an arrow key',
+			(root: HTMLElement) => {
+				const radios = amountRadios(root);
+				const last = radios.at(-2);
+				const other = radios.at(-1);
+				if (last === undefined || other === undefined) throw new Error('no tray');
+				arrow(last, 'ArrowRight', other);
+			}
+		]
+	])('withdraws the preset amount on %s, so Continue is refused for it', async (_way, reach) => {
+		const { root } = await card();
+
+		press(one(root, '.tiles > label:nth-of-type(2)'));
+		reach(root);
+		press(one(root, CONTINUE));
+
+		expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
+		expect(document.activeElement).toBe(input(root, '#amount-entry'));
+	});
 });
 
 it('refuses a figure outside the bounds and states them where the caret cannot land', async () => {

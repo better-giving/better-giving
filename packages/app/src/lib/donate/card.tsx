@@ -651,13 +651,15 @@ function CheckoutCard({
 		setEntry(formatFigure(amountMinor, locale, currency));
 	}
 
-	function onOther(): void {
+	function onOther(via: 'pointer' | 'keyboard'): void {
 		setOtherChosen(true);
 		// whatever a preset wrote into the box is not what the donor is about to type, and a figure
 		// left standing there is a gift the next press would charge.
 		setEntry('');
 		api.amountGroup.onTyped?.(null);
-		focusOn(amountRefs.entry.current);
+		// arrow keys check a radio as they move, so taking the caret on a keyboard selection would pull
+		// a donor out of the group mid-move (WCAG 3.2.2).
+		if (via === 'pointer') focusOn(amountRefs.entry.current);
 	}
 
 	function onNoteToggle(): void {

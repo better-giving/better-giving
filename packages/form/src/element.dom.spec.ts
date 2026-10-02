@@ -1222,10 +1222,11 @@ describe('the amount step', () => {
 	});
 
 	// the other tile is a radio in the presets' own group, so it is one press or one arrow away
-	// from them, and what it chooses is the box under it: the box opens, takes the caret, and the
-	// preset that was lit goes out — the figure it wrote is cleared with it, because a figure left
-	// standing in a box the donor was told to type into is a gift the next press would charge.
-	it('opens the free entry on the other tile, with the caret in it and the preset put out', async () => {
+	// from them, and what it chooses is the box under it: the box opens and the preset that was lit
+	// goes out — the figure it wrote is cleared with it, because a figure left standing in a box the
+	// donor was told to type into is a gift the next press would charge. whether the caret follows
+	// turns on a pointer having pressed the tile, which is ./element.browser.spec.ts's question.
+	it('opens the free entry on the other tile, emptied, with the preset put out', async () => {
 		const card = await mount();
 		press(card.all('[part~="amount-option"] input')[1] as HTMLElement);
 		expect((card.find('#amount-entry') as HTMLInputElement).value).toBe('100');
@@ -1233,7 +1234,6 @@ describe('the amount step', () => {
 		press(card.all('[part~="amount-option"] input')[4] as HTMLElement);
 
 		expect(card.find('[part~="amount-input"]').hidden).toBe(false);
-		expect(card.shadow.activeElement).toBe(card.find('#amount-entry'));
 		expect((card.find('#amount-entry') as HTMLInputElement).value).toBe('');
 		// the tile stays on the tray while the box is open, chosen, so no preset reads as chosen over
 		// the box and a preset press is what closes it.

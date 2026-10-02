@@ -1313,9 +1313,10 @@ export function createCard(
 
 	// the way past the presets, drawn as one of them: a radio in the presets' own group, so the
 	// arrow keys reach it, carrying no figure. what it chooses is the entry under it, which is shown
-	// only while it is chosen and takes the caret on the press. built only where there are presets
-	// to be other than (`build` below) — on a form suggesting none, the entry is the whole amount
-	// block and stands alone, which is the shape `createSkeleton` draws.
+	// only while it is chosen and takes the caret on a pointer press (`reachedByPointer` below).
+	// built only where there are presets to be other than (`build` below) — on a form suggesting
+	// none, the entry is the whole amount block and stands alone, which is the shape
+	// `createSkeleton` draws.
 	//
 	// chosen is the view's to say and not the flow's. the flow carries one `amountMinor` and marks
 	// the preset that equals it, and a donor typing 25 into the entry would otherwise see the $25
@@ -1324,6 +1325,19 @@ export function createCard(
 	// the figure — the amount is still the flow's one number either way.
 	let otherChosen = false;
 	let otherTile: { label: HTMLElement; input: HTMLInputElement } | null = null;
+
+	// whether the next choosing of the other tile is a pointer press on it, which is the one way of
+	// choosing it that takes the caret into the entry. arrow keys check a radio as they move, so a
+	// keyboard donor passing through the group chooses the tile without reaching for the box, and a
+	// caret pulled out of the group there is a change of context on input (WCAG 3.2.2). set by a
+	// `pointerdown` on the tile and spent by its `change`; any key on the tray takes it back, so a
+	// press that chose nothing (the tile already chosen, a drag off it) cannot carry over onto a
+	// later arrow. a keyboard donor reaches the entry with Tab, the next stop after the group. not
+	// the click's `detail`: it is 0 for a keyboard's click and for some assistive technology's alike.
+	let reachedByPointer = false;
+	amountTiles.addEventListener('keydown', () => {
+		reachedByPointer = false;
+	});
 
 	// whether the donor has asked to tell someone about the gift, which is the view's and not the
 	// flow's: the tick and the note both go to the flow because each changes what the flow requires,
@@ -2480,12 +2494,16 @@ export function createCard(
 				// repainted here rather than left to the flow: a box already empty sends the flow
 				// nothing new, and the entry has to be shown before the caret can land in it.
 				update(now());
-				entryInput.focus();
+				if (reachedByPointer) entryInput.focus();
+				reachedByPointer = false;
 			});
 			const label = make(doc, 'label', { part: part('amount-option'), class: 'other' }, [
 				input,
 				make(doc, 'span', {}, ['Other'])
 			]);
+			label.addEventListener('pointerdown', () => {
+				reachedByPointer = true;
+			});
 			otherTile = { label, input };
 			put(doc, amountTiles, [label]);
 		}

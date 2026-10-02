@@ -44,7 +44,12 @@ export type AmountStepProps = {
 	readonly entry: string;
 	readonly onEntry: (text: string) => void;
 	readonly onPreset: (amountMinor: number) => void;
-	readonly onOther: () => void;
+	/**
+	 * the way past the presets taken. `pointer` is a press on the tile, which takes the caret into the
+	 * box; an arrow key or Space leaves it on the radio, where the donor is still moving through the
+	 * group, and Tab reaches the box next.
+	 */
+	readonly onOther: (via: 'pointer' | 'keyboard') => void;
 	/** whether the way past the presets is the one holding the amount. */
 	readonly otherChosen: boolean;
 	readonly onNoteToggle: () => void;
@@ -127,6 +132,8 @@ export function AmountStep({
 	const tileLabels = useRef<(HTMLLabelElement | null)[]>([]);
 	/** where the chip stood after the last pass, so a move along a row is told from a move across a wrap. */
 	const chipAt = useRef<{ x: number; y: number } | null>(null);
+	/** a pointer went down on Other and the change it brings has not arrived yet. */
+	const pointed = useRef(false);
 
 	useMeasure(() => {
 		/**
@@ -247,10 +254,17 @@ export function AmountStep({
 			 * beside its radios, which is not what that role describes. the invalid state is carried by
 			 * the box itself, where the role does support it, and the sentence reaches the group through
 			 * `aria-describedby`, which is global and works on the role a fieldset already has.
+			 *
+			 * a key pressed anywhere in the group spends a pointer press that selected nothing — one
+			 * dragged off the tile, or on Other already chosen — so a later arrow onto Other is not taken
+			 * for it.
 			 */}
 			<fieldset
 				className="group"
 				aria-describedby={amountWords === '' ? undefined : 'amount-problem'}
+				onKeyDown={() => {
+					pointed.current = false;
+				}}
 			>
 				<legend part={part('label')}>{copy.HOW_MUCH}</legend>
 				<div className={tiled ? 'tiles' : 'tiles bare'} ref={tiles}>
@@ -290,6 +304,9 @@ export function AmountStep({
 								tileLabels.current[api.amountGroup.options.length] = node;
 							}}
 							part={partWhen('amount-option', { selected: otherHolds, invalid: missingAmount })}
+							onPointerDown={() => {
+								pointed.current = true;
+							}}
 						>
 							<input
 								type="radio"
@@ -297,7 +314,11 @@ export function AmountStep({
 								value=""
 								checked={otherHolds}
 								aria-describedby={figureProblem}
-								onChange={onOther}
+								onChange={() => {
+									const via = pointed.current ? 'pointer' : 'keyboard';
+									pointed.current = false;
+									onOther(via);
+								}}
 							/>
 							<span>{copy.OTHER}</span>
 						</label>
