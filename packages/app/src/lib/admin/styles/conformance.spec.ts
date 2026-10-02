@@ -613,6 +613,18 @@ function motionDeclarationsIn(css: string, file: string) {
 
 const motionDeclarations = (file: string) => motionDeclarationsIn(read(file), file);
 
+// a composite transition token is a custom property, which `MOTION_PROPERTY` cannot match, and the
+// token file is out of the swept set because it is where durations are defined. its composites are
+// read here instead, so a pace spelled inline inside one is held to the same two rules as a pace
+// spelled at a rule.
+const TRANSITION_TOKEN = /^--admin-transition-/;
+
+function transitionTokensIn(css: string, file: string) {
+	return blocks(css)
+		.flatMap((b) => b.declarations.map((d) => ({ ...d, file })))
+		.filter((d) => TRANSITION_TOKEN.test(d.property));
+}
+
 // the declarations that spell their own pace, in the shape the cases below report. one spelling
 // for the sweep over the sheets and for the fixture that proves the sweep can go red.
 const literalPaces = (declarations: ReturnType<typeof motionDeclarations>, pace: RegExp) =>
@@ -952,6 +964,45 @@ describe('every motion in /admin collapses at source', () => {
 		// the ladder is what a reader retunes and what the reduced-motion block could collapse. a
 		// keyword at its own rule is neither, whichever of the two it is right about.
 		expect(literalCurves(swept)).toEqual([]);
+	});
+
+	// the composites in tokens.css, which the sweep above excludes. `--admin-transition-good` is the
+	// shape the real file takes and must pass; `--admin-transition-bad` spells both a time and a curve,
+	// and `--admin-other` is no composite and is not read.
+	const transitionFixture = `
+		:root {
+			--admin-transition-good:
+				color var(--admin-dur-state) var(--admin-ease-state),
+				opacity var(--admin-dur-state) var(--admin-ease-state);
+			--admin-transition-none: none;
+			--admin-transition-bad: color 120ms ease-out;
+			--admin-other: 120ms ease-out;
+		}
+	`;
+
+	it('finds the composite transition tokens it is meant to be reading', () => {
+		expect(transitionTokensIn(read(TOKENS_FILE), TOKENS_FILE).length).toBeGreaterThan(0);
+		expect(transitionTokensIn(transitionFixture, 'fixture.css').map((d) => d.property)).toEqual([
+			'--admin-transition-good',
+			'--admin-transition-none',
+			'--admin-transition-bad'
+		]);
+	});
+
+	it('catches a literal duration or keyword curve inside a composite transition token', () => {
+		const declared = transitionTokensIn(transitionFixture, 'fixture.css');
+		expect(literalTimes(declared)).toEqual([
+			'fixture.css:7 --admin-transition-bad: color 120ms ease-out'
+		]);
+		expect(literalCurves(declared)).toEqual([
+			'fixture.css:7 --admin-transition-bad: color 120ms ease-out'
+		]);
+	});
+
+	it('spells no literal duration or keyword curve in a composite transition token', () => {
+		const composites = transitionTokensIn(read(TOKENS_FILE), TOKENS_FILE);
+		expect(literalTimes(composites)).toEqual([]);
+		expect(literalCurves(composites)).toEqual([]);
 	});
 
 	it('re-points every --admin-dur-* inside the reduced-motion block', () => {
