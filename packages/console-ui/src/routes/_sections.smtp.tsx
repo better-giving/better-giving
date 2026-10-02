@@ -6,7 +6,7 @@ import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { forgetReadings } from '../lib/processor-cache';
-import { useKeptAnswers } from '../lib/smtp-answers';
+import { NO_ANSWERS, useKeptAnswers } from '../lib/smtp-answers';
 import { SmtpFold, TEST_EMAIL_INTENT } from '../lib/smtp-fold';
 import { TEST_TO_FIELD } from '../lib/smtp-fold-state';
 import { usePress } from '../lib/use-press';
@@ -63,7 +63,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function SmtpPage({ actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const { intent } = usePress();
-	const { secrets, freed, test } = useKeptAnswers(actionData);
+	const { secrets, freed, test } = useKeptAnswers(NO_ANSWERS, actionData);
 	return (
 		<Column>
 			<SmtpFold

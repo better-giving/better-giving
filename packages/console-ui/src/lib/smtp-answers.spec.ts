@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { TestSend } from '../api/types';
-import { MAIL_GROUP } from './secret-groups';
+import type { TestSend, VarsWritten } from '../api/types';
+import { MAIL_GROUP, SIGN_IN_GROUP } from './secret-groups';
 import type { GroupReport } from './secret-group-form';
-import { NO_ANSWERS, keepAnswers } from './smtp-answers';
+import { type AnswerTo, type MailAnswers, NO_ANSWERS, keepAnswers } from './smtp-answers';
 
-// the mail page's answers, one kept per block: a press in one block lands over the other's answer
-// and must leave it standing (../routes/_sections.smtp.tsx). this package has no DOM pool
-// (../../vite.config.ts), so what is held here is the reading the page keeps, not what it draws.
+// a page's answers, one kept per block: a press in one block lands over the other's answer and must
+// leave it standing (../routes/_sections.smtp.tsx, ../routes/_sections.password.tsx). this package
+// has no DOM pool (../../vite.config.ts), so what is held here is the reading the page keeps, not
+// what it draws.
 
 const REFUSED: GroupReport = { group: MAIL_GROUP, errors: { SMTP_HOST: 'required' } };
 const STORED: GroupReport = { group: MAIL_GROUP, written: { kind: 'set' } };
@@ -16,8 +17,8 @@ const SENT: TestSend = {
 };
 
 /** each answer in turn, as the page's action hands them over. */
-const after = (...answers: Parameters<typeof keepAnswers>[1][]) =>
-	answers.reduce(keepAnswers, NO_ANSWERS);
+const after = (...answers: AnswerTo<MailAnswers>[]) =>
+	answers.reduce((kept, answer) => keepAnswers(kept, answer), NO_ANSWERS);
 
 describe('the mail page, keeping one answer per block', () => {
 	it('still hands the fold a credentials refusal after a test send lands over it', () => {
@@ -35,5 +36,26 @@ describe('the mail page, keeping one answer per block', () => {
 
 	it('keeps the test send answer after a credentials answer lands over it', () => {
 		expect(after({ test: SENT }, { secrets: REFUSED }).test).toBe(SENT);
+	});
+});
+
+describe('the password page, keeping one answer per press', () => {
+	const NONE: { secrets: GroupReport | null; freed: VarsWritten | null } = {
+		secrets: null,
+		freed: null
+	};
+	const REFUSED_PASSWORD: GroupReport = {
+		group: SIGN_IN_GROUP,
+		errors: { ADMIN_PASSWORD: 'Use at least 12 characters.' }
+	};
+	const FREED: VarsWritten = { kind: 'nothing' };
+
+	it('still hands the fold a credentials refusal after a freed answer lands over it', () => {
+		const kept = [{ secrets: REFUSED_PASSWORD }, { freed: FREED }].reduce(
+			(held: typeof NONE, answer: AnswerTo<typeof NONE>) => keepAnswers(held, answer),
+			NONE
+		);
+
+		expect(kept).toEqual({ secrets: REFUSED_PASSWORD, freed: FREED });
 	});
 });
