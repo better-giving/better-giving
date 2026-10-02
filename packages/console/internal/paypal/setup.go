@@ -37,6 +37,12 @@ import (
 // app already full or an address that is not https is an outcome naming the fix, read before any
 // create is sent rather than off an issue code the create might answer with.
 //
+// **an app the deployment cannot read disputes on is refused before anything is registered.** every
+// refund the deployment records on PayPal lists the disputes first, and PayPal refuses that read to
+// an app without Disputes switched on (DEPLOY.md), so the same read is made here once, with the pair
+// that was pasted, and a 403 is a sentence naming the switch rather than a deployment that records
+// every PayPal refund as the organisation's own.
+//
 // **nothing is written until the listener is settled.** a pair written with no listener behind it is
 // a deployment whose approved orders are never captured (packages/app/src/routes/api.paypal.webhook.ts),
 // so every stop in front of the write leaves the deployment holding exactly what it held.
@@ -53,7 +59,8 @@ type Stage string
 const (
 	// Authorizing is minting a token with the pair that was pasted, at the address sent with it.
 	Authorizing Stage = "authorizing"
-	// Registering is deriving the address, reading the app's listeners, and settling the one here.
+	// Registering is deriving the address, reading the app's listeners and whether it may read its
+	// disputes, and settling the listener here.
 	Registering Stage = "registering"
 	// Storing is writing the pair, its address and the listener's id onto the deployment, as vars.
 	Storing Stage = "storing"
@@ -93,6 +100,10 @@ const (
 	Insecure OutcomeKind = "insecure"
 	// Unlisted is the app's listeners not being readable, so nothing was registered or stored.
 	Unlisted OutcomeKind = "unlisted"
+	// DisputesUnread is the app's disputes not being readable, so nothing was registered or stored.
+	// Every refund the deployment records on PayPal lists the disputes first, and on a refused
+	// permission Failure names the switch.
+	DisputesUnread OutcomeKind = "disputes-unread"
 	// Full is the app already holding PayPal's ten listeners, none of them here. Listeners is all ten,
 	// so the screen can name the one to delete in PayPal's dashboard.
 	Full OutcomeKind = "full"
@@ -119,7 +130,8 @@ const (
 // every answer and each is empty on the kinds that say nothing about it.
 type Outcome struct {
 	Kind OutcomeKind `json:"kind"`
-	// Failure is PayPal's own answer, on Unauthorized, Unlisted, Uncreated and Unresubscribed.
+	// Failure is PayPal's own answer, on Unauthorized, Unlisted, DisputesUnread, Uncreated and
+	// Unresubscribed.
 	Failure *Failure `json:"failure"`
 	// Address is why there was nowhere to register, on Nowhere alone.
 	Address *deployment.AddressRead `json:"address"`
@@ -174,6 +186,9 @@ type Effects struct {
 const listenerCap = 10
 
 const listenersPath = "/v1/notifications/webhooks"
+
+// one page of one dispute, which is the least read PayPal answers with the Disputes permission.
+const disputesProbePath = "/v1/customer/disputes?page_size=1"
 
 // Chain is the whole press, from the effects and what was asked.
 //
@@ -238,6 +253,16 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 			Kind:   Unreadable,
 			Detail: "PayPal listed this app’s listeners in a shape this console was not written against.",
 		}}
+	}
+
+	disputes := Read(call(ctx, Request{Method: http.MethodGet, Path: disputesProbePath}))
+	if disputes.Kind != Value {
+		failure := turned(disputes, "read its disputes")
+		if disputes.Kind == Forbidden {
+			failure.Detail += " Switch Disputes on for this app in PayPal’s developer dashboard, then press Save again:" +
+				" every refund is checked against its disputes."
+		}
+		return Outcome{Kind: DisputesUnread, Failure: failure}
 	}
 
 	var here *Listener

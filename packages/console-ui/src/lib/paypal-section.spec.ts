@@ -139,4 +139,17 @@ describe('a permission PayPal refused this app', () => {
 		expect(page).toContain('refused this app permission to add a webhook');
 		for (const wrong of WRONG_KEYS) expect(page).not.toContain(wrong);
 	});
+
+	it('quotes the fix the binary wrote and says nothing was set up when the disputes are unread', async () => {
+		const failure: PaypalFailure = {
+			kind: 'forbidden',
+			detail:
+				'NOT_AUTHORIZED. PayPal accepted the pair and refused this app permission to read its disputes. Switch Disputes on for this app in PayPal’s developer dashboard, then press Save again: every refund is checked against its disputes.'
+		};
+		const page = await stoppedAt('registering', { kind: 'disputes-unread', failure });
+		expect(page).toContain(PERMISSION);
+		expect(page).toContain('Switch Disputes on for this app');
+		expect(page).toContain('no webhook was added, and nothing was set up');
+		for (const wrong of WRONG_KEYS) expect(page).not.toContain(wrong);
+	});
 });

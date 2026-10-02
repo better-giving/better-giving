@@ -1022,6 +1022,8 @@ export type PaypalSetup =
 	| { kind: 'insecure'; origin: string }
 	/** the app's listeners could not be read. */
 	| { kind: 'unlisted'; failure: PaypalFailure }
+	/** the app's disputes could not be read, which every refund on PayPal reads first. */
+	| { kind: 'disputes-unread'; failure: PaypalFailure }
 	/** the app already holds PayPal's ten listeners, none of them here; `listeners` is all ten. */
 	| { kind: 'full'; listeners: PaypalListener[] }
 	/** PayPal refused the create, so nothing listens here. */

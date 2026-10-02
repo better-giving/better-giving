@@ -788,6 +788,11 @@ function PaypalKeysForm({
 					outcome.failure,
 					'the console couldn’t see which webhooks your PayPal app already has, and nothing was set up'
 				);
+			case 'disputes-unread':
+				return paypalTrouble(
+					outcome.failure,
+					'the console couldn’t read your PayPal app’s disputes, no webhook was added, and nothing was set up'
+				);
 			case 'full':
 				return (
 					<>
