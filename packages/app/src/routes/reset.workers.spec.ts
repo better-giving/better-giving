@@ -107,17 +107,20 @@ async function makeMember(): Promise<void> {
  */
 async function liveToken(): Promise<string> {
 	let minted: string | null = null;
+	const backgrounded: Promise<unknown>[] = [];
 	const auth = await authInstance({
 		send: async ({ token }) => {
 			minted = token;
 		},
-		// awaited rather than deferred, so the token exists by the time the request returns.
+		// kept, as `waitUntil` keeps it: the send runs after the request has answered, behind the
+		// delete of the earlier links, so the token exists only once the task has settled.
 		background: (task) => {
-			void task;
+			backgrounded.push(task);
 		}
 	});
 	const requested = await requestPasswordReset(auth, { email: MEMBER });
 	if (!requested.ok) throw new Error(`the fixture could not request a reset: ${requested.reason}`);
+	await Promise.all(backgrounded);
 	if (minted === null) throw new Error('the fixture was handed no token');
 	return minted;
 }
