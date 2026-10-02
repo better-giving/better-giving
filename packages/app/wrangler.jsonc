@@ -79,8 +79,8 @@
 	//
 	// **the cadence chosen here is what picks the ceiling a run dies at, and the two candidates are
 	// far apart.** wall clock is capped at fifteen minutes for a cron invocation whatever its
-	// interval, and CPU — which counts no time spent waiting on a call — is capped lower: on a Paid
-	// plan the CPU row is the one selected by the interval, thirty seconds under an hour and fifteen
+	// interval, and CPU — which counts no time spent waiting on a call — is capped lower: on Workers
+	// Paid the CPU row is the one selected by the interval, thirty seconds under an hour and fifteen
 	// minutes at an hour or longer (https://developers.cloudflare.com/workers/platform/limits/,
 	// "CPU time").
 	// both expressions above are under an hour, so both runs have thirty seconds of CPU. fifteen
@@ -92,10 +92,18 @@
 	// invocation is terminated as `exceededCpu` mid-flight, so nothing the run was part way through
 	// is written and nothing is marked. a run that overspends leaves its rows exactly as it found
 	// them — no backoff, no failure, no notice — and shows up in nothing but the Worker's invocation
-	// statuses. each run is sized against that rather than against the clock: `RUN_DEADLINE_MS` in
-	// src/lib/server/accounting/deliver.ts and src/lib/server/donations/pending-crypto-read.ts, and
-	// each minute feed's Paid pace, from src/lib/server/outbox/budget.ts. so lengthening an interval
-	// past an hour is what lifts the ceiling, and shortening one never touches it.
+	// statuses. no run is held to that ceiling by its sizing: `RUN_DEADLINE_MS` in
+	// src/lib/server/accounting/deliver.ts and src/lib/server/donations/pending-crypto-read.ts bounds
+	// a run's wall clock, and each minute feed's pace in src/lib/server/outbox/budget.ts is sized
+	// against subrequests, D1 queries and connections, with CPU unbudgeted there. what keeps a run
+	// under the thirty seconds is that its time goes to waiting, which CPU does not count. so
+	// lengthening an interval past an hour is what lifts the ceiling, and shortening one never
+	// touches it.
+	//
+	// a Workers Free account's cron invocation has ten milliseconds of CPU, fifty subrequests and
+	// fifty D1 queries (the same page, and https://developers.cloudflare.com/d1/platform/limits/),
+	// and none of these runs is sized for them: the deployment requires Workers Paid (DEPLOY.md →
+	// Requirements).
 	//
 	// `limits.cpu_ms` is not the lever it looks like: Cloudflare documents it against the HTTP
 	// request row, whose thirty seconds is a default to be raised. the cron row holds no default —

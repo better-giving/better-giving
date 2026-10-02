@@ -29,14 +29,15 @@ import { eachAtMost } from '../each-at-most';
 // longest-waiting row before any receiver's next**, so a receiver with a backlog shares a claim
 // rather than filling it — among the {@link CANDIDATES_PER_CLAIMED_ROW} due rows per row claimed
 // that have waited longest, and no further. the order that shares is a window over a receiver's
-// rows, and a window over every due row reads the whole backlog on every run, which on the Free
-// plan's five million rows read a day (https://developers.cloudflare.com/d1/platform/pricing/) a
-// backlog of a few thousand spends in a day. so the window runs over the candidates alone, read off
-// the due index in order and stopping at the limit, and what a claim reads is the same however long
-// the backlog of rows it may take. a due row the claim's `where` refuses is read past on every run
-// and counts toward none of that, so a feed keeps a row it will not take out of the due set, its
-// `next_attempt_at` ahead, rather than refusing it there. a receiver whose rows alone fill the
-// candidates still fills the claim, so a feed spaces out many rows it makes due at once.
+// rows, and a window over every due row reads the whole backlog on every run, and D1 bills every
+// row a query reads (https://developers.cloudflare.com/d1/platform/pricing/): a backlog of a few
+// thousand read by every minute's run is millions of rows a day. so the window runs over the
+// candidates alone, read off the due index in order and stopping at the limit, and what a claim
+// reads is the same however long the backlog of rows it may take. a due row the claim's `where`
+// refuses is read past on every run and counts toward none of that, so a feed keeps a row it will
+// not take out of the due set, its `next_attempt_at` ahead, rather than refusing it there. a
+// receiver whose rows alone fill the candidates still fills the claim, so a feed spaces out many
+// rows it makes due at once.
 //
 // **the lease runs from the run's scheduled time**, the `now` a claim is handed, to `leaseMs`
 // after it. a lease that has run out is no lease: the run that wrote it is gone or overran, and the

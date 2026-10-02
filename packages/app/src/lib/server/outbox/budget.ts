@@ -15,7 +15,12 @@
 //   CPU, a cron invocation — 30 seconds at an interval under an hour.
 //
 // a subrequest past the limit throws inside the feed's post, where it reads as the receiver
-// failing, so the shares are what keep a healthy receiver from being marked for this run's spend.
+// failing, so on Workers Paid the shares are what keep a healthy receiver from being marked for
+// this run's spend.
+//
+// **a Workers Free account is not what these runs are sized for**: its cron invocation has 50
+// subrequests, 50 D1 queries and 10 ms of CPU (the same two pages), and a run at {@link PACE}
+// overruns them. the deployment requires Workers Paid (DEPLOY.md → Requirements).
 //
 // **a `batch()` is counted as one D1 query**, and that is an assumption rather than a documented
 // fact. D1's docs call a batch "a single call to the database"
@@ -28,7 +33,7 @@
 //
 // **CPU is not budgeted.** posts, reads and mail are waits, which the CPU limit does not count;
 // what a row costs in CPU — rendering, signing, the query builder — is unmeasured, so no run sized
-// here is held to the CPU limit.
+// here is held to the CPU limit, Paid's thirty seconds or Free's ten milliseconds.
 //
 // **each feed's share is of the Paid invocation**, hand-set so the shares together leave
 // {@link HEADROOM} of each limit unspent. a feed claims what its share pays for at its worst —
@@ -50,7 +55,10 @@ export type Pace = Readonly<Record<Feed, number>>;
 
 /** one invocation's limits. */
 export type Limits = {
-	/** external subrequests. */
+	/**
+	 * external subrequests: Workers Paid's default, which a `limits.subrequests` block in
+	 * wrangler.jsonc could raise. that file declares no `limits` block.
+	 */
 	readonly external: number;
 	/** D1 queries. */
 	readonly queries: number;

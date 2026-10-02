@@ -229,7 +229,9 @@ describe('the Zapier run', () => {
 
 		await sendDueZapierEvents({ db: counting.db, fetch: receivers.fetch }, new Date(now));
 
-		expect(receivers.requests()).toBe(2 * PACE.zapier);
+		expect(receivers.requests()).toBe(
+			ZAPIER_RUN_COST.external + PACE.zapier * ZAPIER_RUN_COST.externalPerRow
+		);
 		expectWithin(MINUTE_RUN.zapier, {
 			queries: counting.queries(),
 			external: receivers.requests()
