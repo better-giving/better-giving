@@ -112,7 +112,12 @@ const RAW_COLOUR = new RegExp(
 // packages/app/src/lib/admin/styles/conformance.spec.ts. `fr` and `%` are absent for the same
 // reason a grid line number is: they describe a share of something the screen already owns, not a
 // size taken from the scale.
-const RAW_LENGTH = /(?<![\w.#-])\d*\.?\d+(?:px|rem|em|ch|vh|dvh|vw)(?![\w-])/g;
+//
+// a length never starts after a word character, a `.` or a `#`, so a run inside a class, an id or a
+// longer number is not one. it never starts after a `-` either, which keeps `--gap-1px` a name — but
+// a `-` that stands where a length may start is the length's own sign, so `-1px` is refused whole,
+// as packages/form/src/element.dom.spec.ts's sweep refuses it.
+const RAW_LENGTH = /(?<![\w.#-])-?\d*\.?\d+(?:px|rem|em|ch|vh|dvh|vw)(?![\w-])/g;
 
 // the two breakpoints, and they are permitted in a media condition only: a media condition cannot
 // read a custom property, so those two numbers are the one place this system is spelled as a
