@@ -446,7 +446,9 @@ describe('the free entry the donor has already typed into', () => {
 
 	/** every layer of a shadow, in the order the engine serialized them, as its colour alone. */
 	const layers = (shadow: string): string[] =>
-		shadow === 'none' ? [] : shadow.split(/,(?![^(]*\))/).map((layer) => shadowColour(layer.trim()));
+		shadow === 'none'
+			? []
+			: shadow.split(/,(?![^(]*\))/).map((layer) => shadowColour(layer.trim()));
 
 	/**
 	 * where the entry stands, whether the press was refused, and the colour of every shadow layer on
