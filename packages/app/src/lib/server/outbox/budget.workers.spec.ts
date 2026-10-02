@@ -16,7 +16,14 @@ import { sendDueWebhooks } from '../webhooks/deliver';
 import { createDestination } from '../webhooks/destinations';
 import { mailPause } from '../webhooks/paused-mail';
 import { sendDueZapierEvents } from '../zapier/deliver';
-import { ACCOUNTING_RUN_COST, MINUTE_RUN, PACE, type Share, ZAPIER_RUN_COST } from './budget';
+import {
+	ACCOUNTING_RUN_COST,
+	MINUTE_RUN,
+	PACE,
+	type Share,
+	WEBHOOK_RUN_COST,
+	ZAPIER_RUN_COST
+} from './budget';
 
 // each outbox run at its costliest, counted against its share of the minute cron's invocation
 // (./budget.ts): every D1 query the run makes through a real D1, and every external subrequest
@@ -138,6 +145,54 @@ async function refundOf(paymentId: string): Promise<string> {
 		parentPaymentId: paymentId
 	});
 	return refundId;
+}
+
+/** the donor who made the gift `paymentId`. */
+async function donorOf(paymentId: string): Promise<string> {
+	const [row] = await db
+		.select({ contactId: donation.contactId })
+		.from(payment)
+		.innerJoin(donation, eq(donation.id, payment.donationId))
+		.where(eq(payment.id, paymentId));
+	if (row === undefined) throw new Error(`no gift ${paymentId}`);
+	return row.contactId;
+}
+
+/** a $25 monthly commitment from a donor of its own, on a form of its own, and its id. */
+async function commitment(): Promise<string> {
+	const formId = `frm_${uuidv7()}`;
+	const contactId = uuidv7();
+	const planId = uuidv7();
+	const account = await env.DB.prepare(
+		`select id from account where is_postable = 1 and code = '4110'`
+	).first<{ id: string }>();
+	await env.DB.batch([
+		env.DB.prepare(
+			`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+			                   suggested_amounts, allowed_origins, created_at, updated_at)
+			 values (?, 'General Fund', 'live', ?, 'USD', 500, 1000000, '[]', '[]', 0, 0)`
+		).bind(formId, account?.id),
+		env.DB.prepare(
+			`insert into contact (id, kind, display_name, created_at, updated_at)
+			 values (?, 'individual', 'Grace Hopper', 0, 0)`
+		).bind(contactId),
+		env.DB.prepare(
+			`insert into recurring_plan (id, contact_id, form_id, amount_minor, currency, interval,
+			                             status, provider, provider_subscription_id,
+			                             provider_customer_id, started_at, next_charge_at, ended_at,
+			                             created_at, updated_at)
+			 values (?, ?, ?, 2500, 'USD', 'monthly', 'active', 'stripe', ?, ?, ?, ?, null, 0, 0)`
+		).bind(
+			planId,
+			contactId,
+			formId,
+			`sub_${planId}`,
+			`cus_${planId}`,
+			Date.parse('2026-09-03T12:00:00.000Z'),
+			Date.parse('2026-10-03T12:00:00.000Z')
+		)
+	]);
+	return planId;
 }
 
 describe('the Zapier run', () => {
@@ -262,14 +317,23 @@ describe('the webhook run', () => {
 	it('stays inside its share when its claim renders every kind of subject', async () => {
 		const now = Date.now() + 1_000;
 		const paymentId = await gift();
-		await failingDestination('gift.refunded', uuidv7(), now, 4 * DAY);
-		await failingDestination('donor.added', uuidv7(), now, 4 * DAY);
-		await failingDestination('recurring_gift.started', uuidv7(), now, 4 * DAY);
+		await failingDestination('gift.refunded', await refundOf(paymentId), now, 4 * DAY);
+		await failingDestination('donor.added', await donorOf(paymentId), now, 4 * DAY);
+		await failingDestination('recurring_gift.started', await commitment(), now, 4 * DAY);
 		for (let made = 0; made < PACE.webhooks; made++) {
 			await failingDestination('gift.made', paymentId, now, DAY);
 		}
 
-		expectWithin(MINUTE_RUN.webhooks, await run(now));
+		const spent = await run(now);
+
+		expect(spent.mails).toBe(PACE.webhooks);
+		expectWithin(MINUTE_RUN.webhooks, spent);
+		expect(spent.queries - PACE.webhooks * WEBHOOK_RUN_COST.queriesPerRow).toBe(
+			WEBHOOK_RUN_COST.queries
+		);
+		expect(spent.external - PACE.webhooks * WEBHOOK_RUN_COST.externalPerRow).toBe(
+			WEBHOOK_RUN_COST.external
+		);
 	});
 });
 
@@ -284,6 +348,7 @@ describe('the QuickBooks run', () => {
 			'entry_group',
 			'payment',
 			'donation',
+			'recurring_plan',
 			'contact',
 			'org_profile'
 		]) {

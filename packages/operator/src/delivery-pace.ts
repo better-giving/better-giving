@@ -7,8 +7,8 @@
 // is the lesser of what the feed's share of the Workers Paid per-invocation limits pays for at its
 // costliest and what its lanes answer in a minute (`claimsWithin` and `paceOf` in
 // packages/app/src/lib/server/outbox/budget.ts), and `budget.spec.ts` beside it holds this table
-// equal to them — so a feed whose run starts spending more per row fails there until the number
-// here comes down with it.
+// equal to them — so a number here comes down when a feed's restated cost leaves its share unable
+// to pay for it.
 
 /** a feed the minute cron delivers: Zapier's hooks, webhook destinations, and QuickBooks. */
 export type Feed = 'zapier' | 'webhooks' | 'books';
