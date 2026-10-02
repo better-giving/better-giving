@@ -114,7 +114,7 @@ describe('sendRefundNotice()', () => {
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
 		const [notice] = mail.sent;
 		expect(notice?.subject).toBe('Part of your gift to Hope Foundation has been refunded');
-		expect(notice?.text).toContain('Dear Ada Okafor,');
+		expect(notice?.text).toContain('Dear Ada,');
 		expect(notice?.text).toContain('USD 25.00');
 		expect(notice?.text).toContain('USD 75.00');
 	});
