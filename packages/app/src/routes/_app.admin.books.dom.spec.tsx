@@ -165,6 +165,26 @@ function face(root: HTMLElement, name: string): HTMLElement {
 	return pressed;
 }
 
+/** the rows of the list belonging to the picker named `name`, by the words each draws. */
+function listRows(root: HTMLElement, name: string): HTMLElement[] {
+	const wrap = box(root, name).closest('.adm-selectwrap');
+	return [...(wrap?.querySelectorAll<HTMLElement>('.adm-selectrow') ?? [])];
+}
+
+/** a key pressed wherever focus stands; async because the machine settles on a microtask. */
+async function pressKey(key: string): Promise<void> {
+	await act(async () => {
+		document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+	});
+}
+
+/** what the form would post under `name`. */
+function held(root: HTMLElement, name: string): FormDataEntryValue | null {
+	const form = root.querySelector('form');
+	if (form === null) throw new Error('no form');
+	return new FormData(form).get(name);
+}
+
 /** the visible words labelling the box named `name`, which is what an operator reads. */
 function labelOf(root: HTMLElement, name: string): string {
 	const control = face(root, name);
@@ -339,6 +359,39 @@ it('offers the chart it was handed on both sides, and opens on neither', () => {
 			'acc_5200'
 		]);
 	}
+});
+
+it('opens a picker by its visible box and takes the row pressed, as the hidden select does', async () => {
+	const { root } = screen();
+	expect(held(root, 'into')).toBe('');
+
+	await act(async () => face(root, 'into').click());
+	const row = listRows(root, 'into').find((r) => r.textContent === '5200 — Processor Fees');
+	if (row === undefined) throw new Error('the list drew no Processor Fees row');
+	await act(async () => {
+		row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+		row.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+		row.click();
+	});
+
+	expect(face(root, 'into').textContent).toBe('5200 — Processor Fees');
+	expect(held(root, 'into')).toBe('acc_5200');
+	// the picker beside it is its own box and held nothing.
+	expect(held(root, 'out_of')).toBe('');
+});
+
+it('opens a picker from the keyboard and takes the row it lands on', async () => {
+	const { root } = screen();
+	act(() => face(root, 'out_of').focus());
+
+	// the list opens on its blank line, so one more arrow lands on the first account.
+	await pressKey('ArrowDown');
+	await pressKey('ArrowDown');
+	await pressKey('Enter');
+
+	expect(face(root, 'out_of').textContent).toBe('1020 — Undeposited Funds');
+	expect(held(root, 'out_of')).toBe('acc_1020');
+	expect(held(root, 'into')).toBe('');
 });
 
 it('carries the id the loader minted, in a box nobody can edit', () => {
