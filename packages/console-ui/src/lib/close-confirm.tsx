@@ -21,7 +21,7 @@ import { useLeaveDialog } from './dialog-params';
 // **the close is one fetcher under one key**, so the screen that draws the confirm and the screen
 // that goes blank once it is answered read the same answer without handing it between them.
 
-/** where the presses over every page post: the close, and the account panel's (./cloudflare-plan-block.tsx). */
+/** where the close posts, over whichever page it is pressed on. */
 export const SHELL_ACTION = '/?index';
 
 /** what the press that reads everything again posts. */

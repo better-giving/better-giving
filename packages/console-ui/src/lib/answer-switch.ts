@@ -1,8 +1,8 @@
 import type { DeployValueName } from '@better-giving/operator/deploy-split';
 
-// a value that holds an operator's answer to a yes-or-no question about the organisation or the
-// account rather than a credential, drawn as a switch with two positions — and what one press of
-// that switch writes.
+// a value that holds an operator's answer to a yes-or-no question about the organisation rather
+// than a credential, drawn as a switch with two positions — and what one press of that switch
+// writes.
 //
 // **there is no third position.** no call reports the answer, so the stored value is the whole of
 // it, and the deployment reads every spelling but one word as no, exactly as it reads an absent
@@ -19,7 +19,7 @@ import type { DeployValueName } from '@better-giving/operator/deploy-split';
 // after, and apart from, the credentials beside it, and folding it into their press would make
 // changing it a re-commit of every one of them.
 //
-// the switches are ./paypal-charity.ts and ./cloudflare-plan.ts, drawn by ./answer-switch-block.tsx.
+// the one switch is ./paypal-charity.ts, drawn by ./answer-switch-block.tsx.
 
 /** what one switch is, apart from the words drawn beside it. */
 export type AnswerSwitch = {

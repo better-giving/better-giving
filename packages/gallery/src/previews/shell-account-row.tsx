@@ -9,9 +9,10 @@ import { AccountBand, AccountRow } from '@better-giving/operator/components/shel
  * out of the shell on purpose, as ./shell-destination-cell.tsx is: what the row does in the icon
  * rail — the name off the screen, the logo kept as the press, the mark a badge at its corner — is
  * written against `.adm-shell--collapsed`, which only the shell wears. ./shell-app-shell.tsx draws
- * both faces in place, marked and unmarked, and its rail's toggle is where the icon rail is seen.
+ * both faces in place, unmarked as the console hands them, and its rail's toggle is where the icon
+ * rail is seen.
  *
- * the concern's word is off the screen and read after the name; the band's press reads the whole
+ * a concern's word is off the screen and read after the name; the band's press reads the whole
  * name out, since it shows the logo alone.
  */
 
@@ -22,7 +23,7 @@ const ACCOUNT = {
 	href: '#shell-account-row'
 } as const;
 
-const PACED = 'Deliveries paced for the Free plan';
+const CONCERN = 'Needs attention';
 
 const CLOSE = (
 	<Button
@@ -38,10 +39,10 @@ export default function ShellAccountRowPreview() {
 	return (
 		<div className="adm-stack">
 			<AccountRow {...ACCOUNT} concern={null} out={CLOSE} />
-			<AccountRow {...ACCOUNT} concern={PACED} out={CLOSE} />
+			<AccountRow {...ACCOUNT} concern={CONCERN} out={CLOSE} />
 			<div className="adm-actions">
 				<AccountBand {...ACCOUNT} concern={null} />
-				<AccountBand {...ACCOUNT} concern={PACED} />
+				<AccountBand {...ACCOUNT} concern={CONCERN} />
 			</div>
 		</div>
 	);

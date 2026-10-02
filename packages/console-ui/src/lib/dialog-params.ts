@@ -21,8 +21,8 @@ import { saidRefused } from './refused-answer';
 // every opener on this console pushes its entry carrying {@link OPENED_HERE}, and the way out
 // steps back over an entry that carries it, so the history holds no entry for a dialog once it is
 // left and Back after it leaves the page; an address that arrived carrying the parameter — typed,
-// or `/cloudflare-plan`'s redirect — has no entry of the page before it to step back to, so its way
-// out takes that entry's place instead ({@link leaveDialog}). the cost of the address is a link
+// say — has no entry of the page before it to step back to, so its way out takes that entry's
+// place instead ({@link leaveDialog}). the cost of the address is a link
 // press being a navigation: without a word from `shouldRevalidate` the
 // router re-reads the page before the dialog can draw, and the whole of that read is loopback round
 // trips — so the press an operator made sits doing nothing for as long as the binary takes to

@@ -2,11 +2,11 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider, UNSAFE_withComponentProps } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DeployedVar, FeedsInUse, HomeFace, HomeReading } from '../api/types';
+import type { DeployedVar, HomeFace, HomeReading } from '../api/types';
 
 // the sections layout through a router: which face a page stands behind when cloudflare would not
-// say what the deployment holds and what its read again asks, the account panel's plan switch posted
-// from over a section page, and a dialog opened over a press still in flight. the client's readings
+// say what the deployment holds and what its read again asks, the account and its panel, and a
+// dialog opened over a press still in flight. the client's readings
 // are replaced so each is a count; its writes are its own, answered by a stand-in for the fetch the
 // binary answers.
 
@@ -15,7 +15,6 @@ const binary = vi.hoisted(() => ({
 	booksReads: 0,
 	booksPresses: 0,
 	ready: false,
-	feeds: null as FeedsInUse | null,
 	vars: [] as DeployedVar[],
 	/** where set, every reading waits on it before it answers. */
 	held: null as Promise<void> | null,
@@ -55,7 +54,7 @@ vi.mock('../api/client', async (original) => ({
 			donatePage: '',
 			org: null,
 			holdsStripeKey: false,
-			feedsInUse: binary.feeds
+			feedsInUse: null
 		};
 	},
 	readQuickbooks: async () => {
@@ -76,9 +75,6 @@ vi.mock('../api/client', async (original) => ({
 }));
 
 const bar = await import('@better-giving/operator/progress-bar');
-const { PAID_PLAN, PLAN_FETCHER, PLAN_FIELD, PLAN_INTENT, PLAN_PAID } = await import(
-	'../lib/cloudflare-plan'
-);
 const { ACCOUNT_PARAM } = await import('../lib/dialog-params');
 const { FREE_INTENT } = await import('../lib/withheld-values');
 const { gatedBy } = await import('../lib/console-reading');
@@ -153,7 +149,6 @@ beforeEach(async () => {
 	binary.booksReads = 0;
 	binary.booksPresses = 0;
 	binary.ready = false;
-	binary.feeds = null;
 	binary.vars = [];
 	binary.held = null;
 	binary.booksHeld = null;
@@ -318,8 +313,6 @@ async function drawnReady(at: string): Promise<string> {
 	}
 }
 
-const ZAPIER_ONLY: FeedsInUse = { zapier: true, webhooks: false, books: false };
-
 /** the rail foot's account row, open tag to its close control. */
 const footRow = (page: string): string => {
 	const found = page.match(/<div class="adm-footaccount">[\s\S]*?<\/a>/);
@@ -344,39 +337,30 @@ const opener = (markup: string): string => {
 };
 
 describe('the Cloudflare account', () => {
-	it('is the rail’s foot, marked where a feed is in use on a deployment reading the plan as Free', async () => {
-		binary.feeds = ZAPIER_ONLY;
+	it('is the rail’s foot, opening its panel, and carries no mark', async () => {
 		const row = footRow(await drawnReady('/quickbooks'));
 		expect(row).toContain('Riverbank Trust');
 		expect(row).toContain('href="/quickbooks?account"');
-		expect(row).toContain('adm-accountmark');
+		expect(row).not.toContain('adm-accountmark');
 	});
 
-	it('is not marked where the deployment did not say which feeds are in use', async () => {
-		expect(footRow(await drawnReady('/quickbooks'))).not.toContain('adm-accountmark');
+	it('stands in the narrow band beside the close, opening the same panel, unmarked', async () => {
+		const drawn = band(await drawnReady('/quickbooks'));
+		expect(opener(drawn)).toContain('aria-label="Cloudflare account Riverbank Trust"');
+		expect(drawn).not.toContain('adm-accountmark');
+		expect(drawn).toContain('aria-label="Close console"');
 	});
 
-	it('stands in the narrow band beside the close, opening the same panel, marked alike', async () => {
-		binary.feeds = ZAPIER_ONLY;
-		const marked = band(await drawnReady('/quickbooks'));
-		expect(opener(marked)).toContain(
-			'aria-label="Cloudflare account Riverbank Trust, Deliveries paced for the Free plan"'
-		);
-		expect(marked).toContain('aria-label="Close console"');
-
-		binary.feeds = null;
-		expect(opener(band(await drawnReady('/quickbooks')))).toContain(
-			'aria-label="Cloudflare account Riverbank Trust"'
-		);
-	});
-
-	it('opens its panel off the address, headed by the account and holding the paid-plan switch', async () => {
-		const closed = await drawnReady('/quickbooks');
-		expect(closed).not.toContain(`name="${PLAN_FIELD}"`);
+	it('opens its panel off the address, headed by the account and stating its id alone', async () => {
+		const heading = /<h2 id="[^"]+">Riverbank Trust<\/h2>/;
+		expect(await drawnReady('/quickbooks')).not.toMatch(heading);
 
 		const page = await drawnReady('/quickbooks?account');
-		expect(page).toMatch(/<h2 id="[^"]+">Riverbank Trust<\/h2>/);
-		expect(page).toContain(`name="${PLAN_FIELD}"`);
+		const panel = page.slice(page.search(heading), page.indexOf('</dialog>'));
+		expect(panel).toMatch(heading);
+		expect(panel).toContain('8f3c2a1b');
+		expect(panel).not.toContain('<form');
+		expect(panel).not.toMatch(/plan|pace/i);
 	});
 });
 
@@ -462,153 +446,6 @@ describe('a dialog opened while a page’s press is in flight', () => {
 
 			expect(router.state.location.pathname).toBe('/password');
 			expect(binary.log).toEqual(['asked', 'read', 'handed']);
-		} finally {
-			off();
-			router.dispose();
-		}
-	});
-});
-
-/** what `router` draws now, with react's text-node seams taken out. */
-const drawnNow = (router: Awaited<ReturnType<typeof open>>['router']): string =>
-	renderToString(createElement(RouterProvider, { router })).replaceAll('<!-- -->', '');
-
-/** the form holding the paid-plan box, as drawn: where it posts and the intent its press carries. */
-function planForm(page: string): { action: string | undefined; intent: string | undefined } {
-	const form = page
-		.split('<form')
-		.slice(1)
-		.map((rest) => `<form${rest.slice(0, rest.indexOf('</form>'))}`)
-		.filter((markup) => markup.includes(`name="${PLAN_FIELD}"`));
-	expect(form).toHaveLength(1);
-	return {
-		action: form[0]?.match(/^<form[^>]*\baction="([^"]*)"/)?.[1],
-		intent: form[0]?.match(/<button[^>]*type="submit"[^>]*value="([^"]*)"/)?.[1]
-	};
-}
-
-describe('the account panel’s plan switch, pressed over a section page', () => {
-	/** the panel open over the books page, its switch ticked and pressed, and what came back. */
-	async function pressed() {
-		binary.ready = true;
-		binary.feeds = ZAPIER_ONLY;
-		const { router, off } = await open(`/quickbooks?${ACCOUNT_PARAM}`);
-		const before = drawnNow(router);
-		const writes = writesAnswered(async () => {
-			binary.vars = [{ name: PAID_PLAN, kind: 'value', value: PLAN_PAID }];
-			return { kind: 'set' };
-		});
-		const { action, intent } = planForm(before);
-		const formData = new FormData();
-		formData.set(PLAN_FIELD, PLAN_PAID);
-		formData.set('intent', intent ?? '');
-		// the panel holds its fetcher for as long as it is drawn
-		router.getFetcher(PLAN_FETCHER);
-		let answer: unknown;
-		const unsubscribe = router.subscribe((state) => {
-			answer = state.fetchers.get(PLAN_FETCHER)?.data ?? answer;
-		});
-		const reads = binary.homeReads;
-		await router.fetch(PLAN_FETCHER, LAYOUT, action ?? '', { formMethod: 'post', formData });
-		// an idle fetcher leaves the router's state; asking `getFetcher` would hold it a second time
-		await vi.waitFor(() => expect(router.state.fetchers.has(PLAN_FETCHER)).toBe(false));
-		unsubscribe();
-		return { router, off, before, writes, intent, answer, reads };
-	}
-
-	it('posts to `/`, which writes the answer, and never to the page it was pressed over', async () => {
-		const { router, off, writes, intent, answer } = await pressed();
-		try {
-			expect(intent).toBe(PLAN_INTENT);
-			expect(writes).toEqual(['/values/vars']);
-			expect(answer).toEqual({ plan: { kind: 'set' } });
-			expect(binary.booksPresses).toBe(0);
-		} finally {
-			off();
-			router.dispose();
-		}
-	});
-
-	it('reads the layout again, and the account’s mark is gone once the plan reads paid', async () => {
-		const { router, off, before, reads } = await pressed();
-		try {
-			expect(footRow(before)).toContain('adm-accountmark');
-			expect(binary.homeReads).toBe(reads + 1);
-			expect(footRow(drawnNow(router))).not.toContain('adm-accountmark');
-		} finally {
-			off();
-			router.dispose();
-		}
-	});
-
-	it('leaves the panel open over the same page, its switch drawn from the re-read', async () => {
-		const { router, off } = await pressed();
-		try {
-			expect(router.state.location.pathname).toBe('/quickbooks');
-			expect(router.state.location.search).toBe(`?${ACCOUNT_PARAM}`);
-			expect(drawnNow(router)).toMatch(new RegExp(`<input[^>]*name="${PLAN_FIELD}"[^>]*checked`));
-		} finally {
-			off();
-			router.dispose();
-		}
-	});
-
-	it('lets go of the answer once the panel is put away, so reopening it reports nothing', async () => {
-		const { router, off } = await pressed();
-		try {
-			const deleted: string[] = [];
-			router.subscribe((_, { deletedFetchers }) => {
-				deleted.push(...deletedFetchers);
-			});
-			// the panel unmounting on its way out
-			router.deleteFetcher(PLAN_FETCHER);
-			await router.navigate('/quickbooks', { preventScrollReset: true });
-
-			expect(deleted).toContain(PLAN_FETCHER);
-			expect(drawnNow(router)).not.toContain(`name="${PLAN_FIELD}"`);
-		} finally {
-			off();
-			router.dispose();
-		}
-	});
-});
-
-describe('the account panel put away while its press is being read again', () => {
-	it('keeps that re-read, so the account’s mark clears all the same', async () => {
-		binary.ready = true;
-		binary.feeds = ZAPIER_ONLY;
-		const { router, off } = await open(`/quickbooks?${ACCOUNT_PARAM}`);
-		try {
-			writesAnswered(async () => {
-				binary.vars = [{ name: PAID_PLAN, kind: 'value', value: PLAN_PAID }];
-				return { kind: 'set' };
-			});
-			const { action, intent } = planForm(drawnNow(router));
-			const formData = new FormData();
-			formData.set(PLAN_FIELD, PLAN_PAID);
-			formData.set('intent', intent ?? '');
-			let release: () => void = () => {};
-			binary.held = new Promise((resolve) => {
-				release = resolve;
-			});
-			router.getFetcher(PLAN_FETCHER);
-
-			const pressing = router.fetch(PLAN_FETCHER, LAYOUT, action ?? '', {
-				formMethod: 'post',
-				formData
-			});
-			await vi.waitFor(() =>
-				expect(router.state.fetchers.get(PLAN_FETCHER)?.state).toBe('loading')
-			);
-			// Escape, over an address that arrived carrying the panel
-			router.deleteFetcher(PLAN_FETCHER);
-			await router.navigate('/quickbooks', { replace: true, preventScrollReset: true });
-			binary.held = null;
-			release();
-			await pressing;
-			await vi.waitFor(() => expect(router.state.fetchers.has(PLAN_FETCHER)).toBe(false));
-
-			expect(footRow(drawnNow(router))).not.toContain('adm-accountmark');
 		} finally {
 			off();
 			router.dispose();
