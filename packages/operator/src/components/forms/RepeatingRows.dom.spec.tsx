@@ -1,5 +1,5 @@
 import { act, type FormEvent, useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, render } from '../render.testing';
 import { type RepeatingRow, type RowControl, RepeatingRows } from './RepeatingRows.jsx';
 
@@ -325,6 +325,8 @@ function Listing(props: {
 	refuse?: boolean;
 	/** rows the page adds by some other way than these presses. */
 	extra?: readonly string[];
+	/** the box outside the group the form puts focus on as it applies a press, by id. */
+	focusTo?: string;
 }) {
 	const [keys, setKeys] = useState(props.start);
 	const [minted, setMinted] = useState(0);
@@ -339,9 +341,11 @@ function Listing(props: {
 			const gone = intent.slice('remove:'.length);
 			setKeys((was) => was.filter((key) => key !== gone));
 		}
+		if (props.focusTo !== undefined) document.getElementById(props.focusTo)?.focus();
 	};
 	return (
 		<form onSubmit={apply}>
+			<input id="elsewhere" aria-label="Elsewhere" />
 			<RepeatingRows
 				id="origins"
 				name="allowed_origins"
@@ -365,7 +369,37 @@ function press(root: HTMLElement, name: string): void {
 	});
 }
 
+/**
+ * the group under a caller that claims the Add press for itself: it turns the submit down and puts
+ * the row in on its own, in the same press.
+ */
+function Claimed() {
+	const [keys, setKeys] = useState<readonly string[]>(['a']);
+	const add: RowControl = {
+		...ADD,
+		onClick: (event) => {
+			event.preventDefault();
+			setKeys((was) => [...was, 'claimed']);
+		}
+	};
+	return (
+		<form>
+			<RepeatingRows
+				id="origins"
+				name="allowed_origins"
+				legend="Site"
+				add={add}
+				rows={byPosition(keys)}
+			/>
+		</form>
+	);
+}
+
 describe('where focus lands after a row is added or dropped', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	// the press that drops a row is inside the row, so it goes with it — and focus on a node that has
 	// gone is focus on the page itself, which sends a keyboard operator back to the top.
 	it('goes to the box above a row that was dropped', () => {
@@ -393,14 +427,15 @@ describe('where focus lands after a row is added or dropped', () => {
 		expect(document.activeElement?.textContent).toBe('Add another');
 	});
 
-	it('moves nothing later for a press the form turned down', async () => {
+	it('moves nothing later for a press the form turned down', () => {
 		// the press changed no row, so it owes nothing — and a row arriving later by some other way,
 		// a task or more after it, is no answer to it.
+		vi.useFakeTimers();
 		const listing = mount(Listing, { start: ['a', 'b'], refuse: true, extra: [] as string[] });
 		press(listing.root, 'Remove Site 2');
 		expect(inputs(listing.root)).toHaveLength(2);
 
-		await act(() => new Promise((settle) => setTimeout(settle, 0)));
+		act(() => vi.advanceTimersByTime(0));
 		act(() => (document.activeElement as HTMLElement | null)?.blur());
 		listing.again({ start: ['a', 'b'], refuse: true, extra: ['c'] });
 
@@ -414,5 +449,23 @@ describe('where focus lands after a row is added or dropped', () => {
 
 		expect(inputs(root)).toHaveLength(2);
 		expect(document.activeElement).toBe(inputs(root)[1]);
+	});
+
+	it('leaves focus where the form put it as it applied the press', () => {
+		const { root } = mount(Listing, { start: ['a', 'b'], focusTo: 'elsewhere' });
+
+		press(root, 'Remove Site 2');
+
+		expect(inputs(root)).toHaveLength(1);
+		expect(document.activeElement?.id).toBe('elsewhere');
+	});
+
+	it('moves nothing for a press the caller claimed, though the rows changed', () => {
+		const { root } = mount(Claimed, {});
+
+		press(root, 'Add another');
+
+		expect(inputs(root)).toHaveLength(2);
+		expect(document.activeElement?.textContent).toBe('Add another');
 	});
 });
