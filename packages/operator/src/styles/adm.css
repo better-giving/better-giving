@@ -2190,9 +2190,12 @@
 	   the thumb is a control and dressed as one — the control ground, the control border, the one
 	   corner — and square-cornered for the reason ./tokens.css keeps the round corner to the status
 	   word. it is drawn at the 24px that clears 2.5.8's minimum, and the target a finger lands on is
-	   `--admin-touch-min` square around it, drawn out of flow on `::before` as `.adm-markbtn` draws
-	   its own: the drawn thumb and the row it runs along keep their size, and a press on the target
-	   is a press on the thumb.
+	   grown from it in the block axis alone: `--admin-touch-min` tall and centred on it, the thumb's
+	   own width across, drawn out of flow on `::before` as `.adm-markbtn` draws its own. the drawn
+	   thumb and the row it runs along keep their size, and a press on the target is a press on the
+	   thumb. it is never wider than the thumb, because two thumbs a stop apart on a narrow panel stand
+	   closer than the floor, and a target reaching sideways would lie over its neighbour's drawn body
+	   and take the press meant for it — and would overhang the track's ends past the inset below.
 
 	   the track is a fill with no border, so under forced colours it would vanish with its ground;
 	   the transparent outline is what that scheme paints instead, as ./base.css's ring does. */
@@ -2236,14 +2239,14 @@
 	}
 
 	/* the target is placed off the thumb's own box, which the machine already positions
-	   absolutely with an inline style of its own, so nothing here re-states that. */
+	   absolutely with an inline style of its own, so nothing here re-states that. across, it spans
+	   the thumb's padding box, and the thumb's border around it is the thumb's own press. */
 	.adm-range__thumb::before {
 		content: '';
 		position: absolute;
-		inline-size: var(--admin-touch-min);
+		inset-inline: 0;
 		block-size: var(--admin-touch-min);
 		inset-block-start: calc((100% - var(--admin-touch-min)) / 2);
-		inset-inline-start: calc((100% - var(--admin-touch-min)) / 2);
 	}
 
 	.adm-range__thumb:hover,
@@ -2465,13 +2468,21 @@
 	   live; the list takes them back at its own rule below. */
 
 	/* the list is the select's as well as this one's: one surface, one height, one highlighted row.
-	   its height is four and a half rows, so the half row says there is more to scroll to. no token
-	   names a list's height; the row it counts is the token's. */
+	   its height is four and a half rows at the row's floor, `--admin-touch-min`, and the list's own
+	   padding and border at both ends, so a list of four rows stands whole and a longer one shows half
+	   of its fifth, which says there is more to scroll to. no token names a list's height; every term
+	   it adds up is a token's. a coin row stands taller than the floor, so the coin picker shows
+	   fewer rows in the same height. */
 	.adm-coinlist,
 	.adm-selectlist {
 		display: grid;
 		align-content: start;
-		max-block-size: calc(var(--admin-field-height) * 4.5);
+		max-block-size: calc(
+			4.5 *
+			var(--admin-touch-min) +
+			2 *
+			(var(--admin-space-2) + var(--admin-border-width))
+		);
 		padding: var(--admin-space-2);
 		background: var(--admin-surface);
 		border: var(--admin-hairline);
@@ -3393,10 +3404,12 @@
 	   rather than a gap, so the moat is added to the step in a sum.
 
 	   it is drawn on whatever starts the boundary, on both sides, and never under the outer
-	   group's legend: the inner group directly under the name of the one around it is bounded by
-	   that name, as a group opening a stack is by the panel. */
-	.adm-fieldset > :not(legend) + .adm-fieldset,
-	.adm-fieldset > .adm-fieldset + * {
+	   group's head: the inner group directly under the name of the one around it, or under an
+	   `.adm-hint` sentence — which in a group is the one set under its name — is bounded by the
+	   head, as a group opening a stack is by the panel. a hidden input after the inner group draws
+	   no box, so it takes none. */
+	.adm-fieldset > :not(legend):not(.adm-hint) + .adm-fieldset,
+	.adm-fieldset > .adm-fieldset + :not([type='hidden']) {
 		margin-block-start: calc(var(--admin-space-5) + var(--admin-space-4));
 	}
 

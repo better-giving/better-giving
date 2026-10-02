@@ -78,6 +78,35 @@ function NameUnderTheLegend() {
 	);
 }
 
+/** the same group with a sentence under its name, which stands with the legend as one head. */
+function NameUnderASentence() {
+	return (
+		<fieldset className="adm-fieldset">
+			<legend className="adm-fieldset__legend">Donor</legend>
+			<p className="adm-hint">Who the gift is from.</p>
+			<PairedFieldset id="donation-add-name" legend="Name">
+				<Field id="first_name" label="First name" />
+				<Field id="last_name" label="Last name" />
+			</PairedFieldset>
+		</fieldset>
+	);
+}
+
+/** the inner group followed by a hidden input, which draws no box for a moat to stand on. */
+function HiddenAfterTheGroup() {
+	return (
+		<fieldset className="adm-fieldset">
+			<legend className="adm-fieldset__legend">Donor</legend>
+			<Field id="kind" label="Kind" />
+			<PairedFieldset id="donation-add-name" legend="Name">
+				<Field id="first_name" label="First name" />
+				<Field id="last_name" label="Last name" />
+			</PairedFieldset>
+			<input type="hidden" name="intent" value="add" />
+		</fieldset>
+	);
+}
+
 /** the outer group's own items, in the order the screen writes them, named by the class each wears. */
 function moated(root: HTMLElement): string[] {
 	const group = root.firstElementChild;
@@ -94,6 +123,14 @@ describe('a group standing inside a group', () => {
 
 	it('takes no moat directly under the name of the group around it', () => {
 		expect(moated(render(NameUnderTheLegend, {}))).toEqual([]);
+	});
+
+	it('takes no moat under a sentence that stands with that name', () => {
+		expect(moated(render(NameUnderASentence, {}))).toEqual([]);
+	});
+
+	it('lays no moat on a hidden input, which draws nothing to stand off', () => {
+		expect(moated(render(HiddenAfterTheGroup, {}))).toEqual(['adm-fieldset']);
 	});
 
 	it('stands the box after it further off than a stacked pair stands its own two boxes', () => {
