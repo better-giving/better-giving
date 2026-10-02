@@ -516,10 +516,7 @@ func TestARequestThatGivesUpMidRefreshLeavesTheRefreshToFinish(t *testing.T) {
 	asking, closed := context.WithCancel(context.Background())
 	answered := make(chan cf.Credential, 1)
 	go func() { answered <- flow.Credential(asking) }()
-	deadline := time.Now().Add(3 * time.Second)
-	for len(held.sent("/oauth2/token")) < 2 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
+	until(t, func() bool { return len(held.sent("/oauth2/token")) == 2 }, "the refresh to reach cloudflare")
 	closed()
 
 	select {
