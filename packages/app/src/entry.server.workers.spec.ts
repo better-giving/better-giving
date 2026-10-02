@@ -1,4 +1,6 @@
 import { createExecutionContext, env } from 'cloudflare:test';
+import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
+import type { Config } from '@react-router/dev/config';
 import {
 	createRequestHandler,
 	type ServerBuild,
@@ -6,6 +8,7 @@ import {
 	UNSAFE_withErrorBoundaryProps
 } from 'react-router';
 import { beforeAll, describe, expect, it } from 'vitest';
+import routerConfig from '../react-router.config';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import type { ConfigEnv } from '$lib/server/config/env';
@@ -34,6 +37,9 @@ import { finishSetup } from './webhook-routes.testing';
 //
 // the route ids and paths below are what `@react-router/fs-routes` resolves those files to; which
 // file is served at which address is ./routes.spec.ts's, against the app's own route config.
+//
+// `allowedActionOrigins` is read off ../react-router.config.ts rather than left out, because the
+// vite plugin copies it into the build and the cross-origin cases below hold whatever it says.
 
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://give.example';
@@ -82,6 +88,7 @@ function compiled(module: object): RouteModule {
  * its file name spells.
  */
 function buildOf(mounted: readonly Mounted[]): ServerBuild {
+	const { allowedActionOrigins }: Config = routerConfig;
 	const routes: ServerBuild['routes'] = {};
 	const clientRoutes: ServerBuild['assets']['routes'] = {};
 	for (const route of mounted) {
@@ -120,6 +127,7 @@ function buildOf(mounted: readonly Mounted[]): ServerBuild {
 			url: '/assets/manifest.js',
 			version: 'spec'
 		},
+		...(allowedActionOrigins !== undefined && { allowedActionOrigins }),
 		publicPath: '/',
 		assetsBuildDirectory: 'build/client',
 		future: {},
@@ -458,5 +466,40 @@ describe('an answer that is not a document', () => {
 		expect(response.status).toBeGreaterThanOrEqual(400);
 		expect(response.headers.get('content-type') ?? '').not.toMatch(/html/);
 		for (const name of DOCUMENT_ONLY) expect(response.headers.has(name)).toBe(false);
+	});
+});
+
+/**
+ * the deployer's correct password, posted the way the form posts it with `origin` set to `from`.
+ * the body is one the action would sign in on, so a refusal is the framework's and not the form's.
+ */
+function postSignIn(from: string): Promise<Response> {
+	const body = new FormData();
+	body.set('identifier', ADMIN_USERNAME);
+	body.set('password', PASSWORD);
+	return send('/login', { method: 'POST', headers: { origin: from }, body });
+}
+
+describe('a sign-in posted from another origin', () => {
+	// react router's own check, ahead of every middleware and the action, is the only cross-origin
+	// refusal in front of `/login`: no better-auth request check runs on a direct `auth.api.*` call
+	// ($lib/server/auth/index.ts). these hold that it is still there — a route turned into a
+	// resource route, or an `allowedActionOrigins` naming the host, fails them.
+	it('is refused with a 400 and no session', async () => {
+		const answer = await postSignIn('https://evil.example');
+		expect(answer.status).toBe(400);
+		expect(answer.headers.getSetCookie()).toEqual([]);
+	});
+
+	it('is refused when the origin is opaque', async () => {
+		const answer = await postSignIn('null');
+		expect(answer.status).toBe(400);
+		expect(answer.headers.getSetCookie()).toEqual([]);
+	});
+
+	it("reaches the action when the origin is the deployment's own", async () => {
+		const answer = await postSignIn(ORIGIN);
+		expect(answer.status).toBe(303);
+		expect(answer.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
 	});
 });
