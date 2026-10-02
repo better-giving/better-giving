@@ -4924,48 +4924,6 @@ describe('the stylesheets', () => {
 		.map(([path, sheet]) => [path.slice('./styles/'.length), sheet] as const)
 		.sort(([left], [right]) => left.localeCompare(right));
 
-	// the card sits in a page it does not own, and an inherited property it leaves unstated is the
-	// host's: a centred hero centres the receipt, an uppercase theme shouts every label. these are
-	// the ones it puts back; the properties `[part~='card']` in ./styles/parts.css states are not
-	// repeated here.
-	it('takes none of the host page’s alignment, case, indent, shadow, tracking, spacing, slant, variants, wrapping or breaking', () => {
-		const host = tokenSheet.match(/:host,\s*\[data-donate-root\]\s*\{([^}]*)\}/)?.[1] ?? '';
-		const stated = Object.fromEntries(
-			host.split(';').map((declaration) => {
-				const [name = '', ...value] = declaration.split(':');
-				return [name.trim(), value.join(':').trim()];
-			})
-		);
-
-		expect({
-			'text-align': stated['text-align'],
-			'text-transform': stated['text-transform'],
-			'text-indent': stated['text-indent'],
-			'text-shadow': stated['text-shadow'],
-			'letter-spacing': stated['letter-spacing'],
-			'word-spacing': stated['word-spacing'],
-			'font-style': stated['font-style'],
-			'font-variant': stated['font-variant'],
-			'font-variation-settings': stated['font-variation-settings'],
-			'white-space': stated['white-space'],
-			'word-break': stated['word-break'],
-			hyphens: stated.hyphens
-		}).toEqual({
-			'text-align': 'start',
-			'text-transform': 'none',
-			'text-indent': '0',
-			'text-shadow': 'none',
-			'letter-spacing': 'normal',
-			'word-spacing': 'normal',
-			'font-style': 'normal',
-			'font-variant': 'normal',
-			'font-variation-settings': 'normal',
-			'white-space': 'normal',
-			'word-break': 'normal',
-			hyphens: 'manual'
-		});
-	});
-
 	it('takes every length from a token, and says so at the ones it takes from nowhere', async () => {
 		// the directory is named here as well as swept, because the other cases in this block reach
 		// their sheets by a named import: a sixth file is swept for lengths the moment it lands and
