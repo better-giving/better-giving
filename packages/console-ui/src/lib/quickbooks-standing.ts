@@ -815,6 +815,13 @@ export const STEPS = ['setup', 'connect', 'accounts'] as const;
 
 export type StepName = (typeof STEPS)[number];
 
+/**
+ * what holds a step open, one word a reason: it is the step a reader is on, the connection could
+ * not be read, the step's press went unanswered, the chart could not be read and this step is
+ * what mends it, Intuit has not named the company, or its button is drawing the save finishing it.
+ */
+export type OpenReason = 'current' | 'unread' | 'unanswered' | 'chart' | 'unnamed' | 'finishing';
+
 /** where one step stands. */
 export type StepStanding = {
 	readonly done: boolean;
@@ -823,6 +830,12 @@ export type StepStanding = {
 	/** it cannot be taken until the one before it is done, so it is drawn shut and refuses to open. */
 	readonly locked: boolean;
 	readonly open: boolean;
+	/**
+	 * every reason it is open, and none where it is not. a reader's shut holds until a reason
+	 * arrives that was not one a moment ago (`openFor` on
+	 * packages/operator/src/components/status/StatusLine.jsx).
+	 */
+	readonly openFor: readonly OpenReason[];
 };
 
 /**
@@ -899,36 +912,45 @@ export function stepsStand(facts: {
 			!company.awaitingAccounts &&
 			REQUIRED_PICKS.every((pick) => company[pick] !== null)
 	};
-	const trouble: Record<StepName, boolean> = {
-		setup: false,
-		connect:
-			books.kind === 'unread' ||
-			unanswered(answer, 'connect') !== null ||
-			chart?.step === 'connect',
-		accounts: chart?.step === 'accounts'
+	const troubledBy: Record<StepName, readonly OpenReason[]> = {
+		setup: [],
+		connect: reasons({
+			unread: books.kind === 'unread',
+			unanswered: unanswered(answer, 'connect') !== null,
+			chart: chart?.step === 'connect'
+		}),
+		accounts: reasons({ chart: chart?.step === 'accounts' })
 	};
 	const locked: Record<StepName, boolean> = {
 		setup: false,
 		connect: !done.setup,
 		accounts: !done.connect
 	};
-	const asked: Record<StepName, boolean> = {
-		setup: false,
-		connect: company !== null && company.companyName === null,
-		accounts: unanswered(answer, 'accounts') !== null
+	const askedBy: Record<StepName, readonly OpenReason[]> = {
+		setup: [],
+		connect: reasons({ unnamed: company !== null && company.companyName === null }),
+		accounts: reasons({ unanswered: unanswered(answer, 'accounts') !== null })
 	};
 	const current = STEPS.find((name) => !done[name]);
-	const step = (name: StepName): StepStanding => ({
-		done: done[name],
-		trouble: trouble[name],
-		locked: locked[name],
-		open:
-			!locked[name] &&
-			(name === current ||
-				trouble[name] ||
-				asked[name] ||
-				(confirming?.step === name && confirming.finishing))
-	});
+	const step = (name: StepName): StepStanding => {
+		const openFor = locked[name]
+			? []
+			: [
+					...reasons({
+						current: name === current,
+						finishing: confirming?.step === name && confirming.finishing
+					}),
+					...troubledBy[name],
+					...askedBy[name]
+				];
+		return {
+			done: done[name],
+			trouble: troubledBy[name].length > 0,
+			locked: locked[name],
+			open: openFor.length > 0,
+			openFor
+		};
+	};
 	return {
 		setup: step('setup'),
 		connect: step('connect'),
@@ -936,6 +958,10 @@ export function stepsStand(facts: {
 		sync: STEPS.every((name) => done[name])
 	};
 }
+
+/** the reasons that hold, out of those named. */
+const reasons = (named: Partial<Record<OpenReason, boolean>>): OpenReason[] =>
+	(Object.keys(named) as OpenReason[]).filter((reason) => named[reason]);
 
 /** what a step's mark is called for a reader who cannot see its shape. */
 export const stepWord = (step: StepStanding): string =>

@@ -446,6 +446,56 @@ describe('a section whose step cannot be taken yet', () => {
 	});
 });
 
+describe('a section the reader shut while it was asked open', () => {
+	// react writes `open` only when the prop changes, and a reader's press never changes it — so a
+	// step held open for one reason and shut by hand would stay shut through every reason after it.
+	const step = (openFor: readonly string[]) => ({
+		sections: true,
+		children: (
+			<StatusLine
+				labelAs="h2"
+				label="Connect"
+				word="To do"
+				tone="note"
+				beneath={<p>Connect your QuickBooks company.</p>}
+				open
+				openFor={openFor}
+			/>
+		)
+	});
+	function details(root: HTMLElement): HTMLDetailsElement {
+		return drawn(root) as HTMLDetailsElement;
+	}
+
+	it('stays shut while it is asked open for the same reason', async () => {
+		const { root, again } = mount(StatusLedger, step(['current']));
+		await press(root);
+
+		again(step(['current']));
+
+		expect(details(root).open).toBe(false);
+	});
+
+	it('stays shut when a reason it was open for goes away', async () => {
+		const { root, again } = mount(StatusLedger, step(['current', 'unread']));
+		await press(root);
+
+		again(step(['current']));
+
+		expect(details(root).open).toBe(false);
+	});
+
+	it('opens again when something new asks for it', async () => {
+		const { root, again } = mount(StatusLedger, step(['current']));
+		await press(root);
+		again(step(['current']));
+
+		again(step(['current', 'unanswered']));
+
+		expect(details(root).open).toBe(true);
+	});
+});
+
 describe('the way on from a line', () => {
 	/** the link a line drew, wherever it drew it. */
 	function fix(root: HTMLElement): Element | null {

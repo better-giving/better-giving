@@ -442,6 +442,7 @@ function Step({
 			mark={standing.trouble || standing.done ? undefined : 'circle-dashed'}
 			locked={standing.locked}
 			open={standing.open}
+			openFor={standing.openFor}
 			beneath={children}
 		/>
 	);
