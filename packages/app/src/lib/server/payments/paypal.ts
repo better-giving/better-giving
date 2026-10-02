@@ -791,7 +791,8 @@ function addressedTo(origin: string): typeof fetch {
 }
 
 /**
- * the controller {@link findOrCreateBillingPlan} makes its calls through, over one account.
+ * the controller {@link findOrCreateBillingPlan} makes its calls through, over one account —
+ * exported as a test seam: ./paypal.spec.ts is its only importer outside this module.
  *
  * built from {@link paypalClient} exactly as the provider builds its own, so what a plan is resolved
  * through and what a gift is charged through cannot be configured differently — the two workerd
@@ -2957,7 +2958,7 @@ function disputeStateOf(
 	const transactionId = transaction?.seller_transaction_id;
 	if (typeof transactionId !== 'string' || transactionId === '') {
 		return unsupported(
-			`PayPal's dispute ${redactPublicId(disputeId)} names ${transactions.length} transactions, ` +
+			`PayPal's dispute ${redactPublicId(disputeId)} names ${transactions.length} ${transactions.length === 1 ? 'transaction' : 'transactions'}, ` +
 				'and this app reads a dispute over exactly one it can name, so which gift it is about ' +
 				'cannot be read and nothing was written. Find the case in PayPal’s Resolution Center ' +
 				'and correct the gifts in /admin/books by hand.'

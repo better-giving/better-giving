@@ -588,22 +588,15 @@ describe('verifyEvent', () => {
 	});
 
 	/**
-	 * the same delivery twice answers the same way, which is what makes a redelivery cost nothing.
-	 *
-	 * PayPal redelivers a non-2xx for days and a duplicate is ordinary rather than exceptional. the
-	 * handler no-ops on `PaymentEvent.id`, so what this holds is that the id and the order a second
-	 * delivery resolves to are the ones the first resolved to — a verification that read anything off
-	 * the attempt rather than off the delivery would break that and nothing downstream would see it.
-	 */
-	/**
 	 * every delivery about a repeating gift is one kind, naming the object PayPal sent it about.
 	 *
 	 * the id is a sale's on the charge event and a subscription's on the five lifecycle ones, and
 	 * which of the two it is stays inside the adapter — `RecurringEvent` in ./provider.ts says why a
 	 * caller reading PayPal's own id prefixes is the thing this port exists to prevent.
 	 *
-	 * the table is the list this deployment subscribes to, and DEPLOY.md names the same six for the
-	 * operator who registers the listener. a member missing here is a charge that reaches no books.
+	 * the table is the list this deployment subscribes to, and `PaypalEventTypes` in
+	 * packages/console/internal/release/config.go registers each of them on the listener. a member
+	 * missing here is a charge that reaches no books.
 	 */
 	it.each([
 		['PAYMENT.SALE.COMPLETED', '1KE4800513426762K'],
@@ -846,6 +839,14 @@ describe('verifyEvent', () => {
 		expect(result.ok === false && result.detail).toContain('resource_version');
 	});
 
+	/**
+	 * the same delivery twice answers the same way, which is what makes a redelivery cost nothing.
+	 *
+	 * PayPal redelivers a non-2xx for days and a duplicate is ordinary rather than exceptional. the
+	 * handler no-ops on `PaymentEvent.id`, so what this holds is that the id and the order a second
+	 * delivery resolves to are the ones the first resolved to — a verification that read anything off
+	 * the attempt rather than off the delivery would break that and nothing downstream would see it.
+	 */
 	it('answers a redelivered event exactly as it answered the first', async () => {
 		recording([
 			{ status: 200, json: { verification_status: 'SUCCESS' } },
@@ -1092,6 +1093,22 @@ describe('readReversal on a dispute', () => {
 			providerReversalId: 'PP-D-27803'
 		});
 		expect(apiCall(calls, 1)).toBeUndefined();
+	});
+
+	/**
+	 * a dispute whose one transaction carries no seller id names no gift, and the refusal counts
+	 * what it read in the singular.
+	 */
+	it('refuses a dispute over one transaction it cannot name, counting it as one', async () => {
+		const { seller_transaction_id: _, ...unnamed } = DISPUTE.disputed_transactions[0];
+		recording([{ status: 200, json: { ...DISPUTE, disputed_transactions: [unnamed] } }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).readReversal(
+			reversal('CUSTOMER.DISPUTE.CREATED', 'PP-D-27803')
+		);
+
+		expect(result.ok === false && result.reason).toBe('unsupported');
+		expect(result.ok === false && result.detail).toContain('names 1 transaction,');
 	});
 
 	/**
