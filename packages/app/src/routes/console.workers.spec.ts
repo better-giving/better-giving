@@ -995,7 +995,8 @@ describe('setting up repeating gifts', () => {
 
 		expect(response.status).toBe(400);
 		expect(refusal.error).toBe('bad_processor');
-		expect(refusal.message).toContain('`processor`');
+		expect(refusal.message).toContain('`processor` is "square"');
+		expect(refusal.message).toContain('not a payment processor');
 		expect(refusal.fix).toContain('stripe');
 	});
 
@@ -1043,10 +1044,15 @@ describe('setting up repeating gifts', () => {
 	/** and a press naming it is refused, rather than asking an account that has no such arm. */
 	it('refuses a body naming Chariot', async () => {
 		const response = await setUpRecurringOn('chariot', { CHARIOT_API_KEY: 'notarealchariotkey' });
-		const refusal = (await response.json()) as { error: string; fix: string };
+		const refusal = (await response.json()) as { error: string; message: string; fix: string };
 
 		expect(response.status).toBe(400);
 		expect(refusal.error).toBe('bad_processor');
+		// the deployment does charge on Chariot, so the refusal is about the cadence and never says
+		// otherwise.
+		expect(refusal.message).toContain('`processor` is "chariot"');
+		expect(refusal.message).toContain('takes no repeating gifts');
+		expect(refusal.message).not.toContain('charge on');
 		expect(refusal.fix).not.toContain('chariot');
 	});
 

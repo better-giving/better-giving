@@ -41,7 +41,8 @@ import type { Route } from './+types/console.recurring';
 // `Processors.configured` in $lib/server/payments/factory.ts, read through the same entry point the
 // port's own refusal is decided by, so the two can never mean different deployments. Chariot takes
 // no repeating gifts (`takesRepeatingGifts` in $lib/server/payments/provider.ts), so it has no line
-// on the read and a press naming it is refused like any other name.
+// on the read and a press naming it is refused — as a processor that takes no repeating gifts, never
+// as one this deployment cannot charge on, because it does charge on it.
 //
 // **the press is one press, and the body it takes is the one account it is about.** a press naming
 // nothing sets up every configured processor that needs it, because a donor is offered a repeating
@@ -182,12 +183,18 @@ async function namedProcessor(request: Request): Promise<NamedProcessor> {
 	const named = (body as Record<string, unknown>).processor;
 	if (named === undefined || named === null) return { ok: true, processor: null };
 
-	const processor = CONSOLE_PROCESSORS.filter(takesRepeatingGifts).find((name) => name === named);
+	const processor = CONSOLE_PROCESSORS.find((name) => name === named);
 	if (processor === undefined)
 		return {
 			ok: false,
 			error: 'bad_processor',
-			message: '`processor` is not a processor this deployment can charge on.'
+			message: `\`processor\` is ${JSON.stringify(named)}, which is not a payment processor.`
+		};
+	if (!takesRepeatingGifts(processor))
+		return {
+			ok: false,
+			error: 'bad_processor',
+			message: `\`processor\` is ${JSON.stringify(named)}, and ${PROCESSOR_LABELS[processor]} takes no repeating gifts, so there is no account to set them up on.`
 		};
 	return { ok: true, processor };
 }
