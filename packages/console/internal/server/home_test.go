@@ -185,7 +185,10 @@ func TestTheReadingIsOneAnswerCarryingEveryReadThePageDraws(t *testing.T) {
 	}))
 	t.Cleanup(deployed.Close)
 
-	token := "bg1.99999999999.0123456789012345678901234567890123456789012"
+	token, _, err := session.Mint(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
 	record, _ := json.Marshal(map[string]string{
 		"workerName": release.Baked.Name, "origin": deployed.URL, "token": token,
 	})

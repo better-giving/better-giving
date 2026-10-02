@@ -53,9 +53,17 @@ func TestParseRefusesAnythingElse(t *testing.T) {
 	}
 }
 
+// the furthest expiry a deployment accepts is still one here, so the ceiling is no stricter.
+func TestHeldIsTheRecordAtTheFurthestExpiryADeploymentAccepts(t *testing.T) {
+	store := recorded(t, `{"workerName":"better-giving","origin":"https://x.workers.dev","token":"bg1.1800000000.`+random+`"}`)
+	if Held(store, "better-giving", time.Unix(1_800_000_000-sessionSeconds-clockSkewSeconds, 0)) == nil {
+		t.Error("a session ending at the furthest expiry a deployment accepts was read as none")
+	}
+}
+
 func TestHeldIsTheRecordWhereItIsThisDeploymentsAndStillOne(t *testing.T) {
 	store := recorded(t, `{"workerName":"better-giving","origin":"https://x.workers.dev","token":"bg1.1800000000.`+random+`"}`)
-	held := Held(store, "better-giving", time.Unix(1_700_000_000, 0))
+	held := Held(store, "better-giving", time.Unix(1_800_000_000-60*60, 0))
 	if held == nil {
 		t.Fatal("a live session on this deployment was read as none")
 	}
@@ -65,7 +73,7 @@ func TestHeldIsTheRecordWhereItIsThisDeploymentsAndStillOne(t *testing.T) {
 }
 
 func TestHeldIsNothingWhereTheRecordIsAnotherDeploymentsOrGone(t *testing.T) {
-	now := time.Unix(1_700_000_000, 0)
+	now := time.Unix(1_800_000_000-60*60, 0)
 	live := `{"workerName":"better-giving","origin":"https://x.workers.dev","token":"bg1.1800000000.` + random + `"}`
 
 	if Held(recorded(t, ""), "better-giving", now) != nil {
@@ -79,6 +87,9 @@ func TestHeldIsNothingWhereTheRecordIsAnotherDeploymentsOrGone(t *testing.T) {
 	}
 	if Held(recorded(t, live), "better-giving", time.Unix(1_800_000_001, 0)) != nil {
 		t.Error("a session past its expiry answered as one")
+	}
+	if Held(recorded(t, live), "better-giving", time.Unix(1_800_000_000-sessionSeconds-clockSkewSeconds-1, 0)) != nil {
+		t.Error("a session ending further out than a deployment accepts answered as one")
 	}
 	if Held(recorded(t, `{"workerName":"better-giving","origin":"","token":"bg1.1800000000.`+random+`"}`), "better-giving", now) != nil {
 		t.Error("a record naming no origin answered with a session")
@@ -101,6 +112,8 @@ func TestParseRefusesEveryValueTheDeploymentRefuses(t *testing.T) {
 		"an empty expiry":                  "bg1.." + random,
 		"an expiry that is not a number":   "bg1.soon." + random,
 		"a signed expiry":                  "bg1.-1755600000." + random,
+		"an expiry signed positive":        "bg1.+1755600000." + random,
+		"an expiry of negative zero":       "bg1.-0." + random,
 		"a hexadecimal expiry":             "bg1.0x68a4c180." + random,
 		"an expiry padded with a space":    "bg1. 1755600000." + random,
 		"an expiry past what a date holds": "bg1.999999999999999999." + random,
@@ -108,6 +121,14 @@ func TestParseRefusesEveryValueTheDeploymentRefuses(t *testing.T) {
 		if _, ok := Parse(value); ok {
 			t.Errorf("a token %s was read as one", what)
 		}
+	}
+}
+
+// `/^\d+$/` takes leading zeros, so a deployment reads them as the same second.
+func TestParseReadsAnExpiryWithLeadingZeros(t *testing.T) {
+	held, ok := Parse("bg1.01800000000." + random)
+	if !ok || !held.Equal(time.Unix(1_800_000_000, 0)) {
+		t.Fatalf("an expiry with a leading zero read as %v, %v", held, ok)
 	}
 }
 
@@ -128,30 +149,47 @@ func TestParseHoldsTheExpiryToTheLastSecondADateHolds(t *testing.T) {
 // a few minutes for skew, as `console_clock_ahead` — so a sessionSeconds longer than that constant
 // spends the skew allowance on every connect, and past it is refused on every one.
 func TestTheSessionIsNoLongerThanTheDeploymentAccepts(t *testing.T) {
+	ceiling := statedProduct(t, filepath.Join("packages", "operator", "src", "console", "token.ts"),
+		`export const CONSOLE_SESSION_SECONDS`)
+	if sessionSeconds > ceiling {
+		t.Errorf("this binary mints %d-second sessions and a deployment accepts %d", sessionSeconds, ceiling)
+	}
+}
+
+// Held's ceiling is the deployment's to the second: looser holds a session the deployment refuses
+// as `console_clock_ahead`, stricter drops one it still accepts.
+func TestTheSkewIsTheOneTheDeploymentAllows(t *testing.T) {
+	skew := statedProduct(t, filepath.Join("packages", "app", "src", "lib", "server", "console", "access.ts"),
+		`const CONSOLE_CLOCK_SKEW_SECONDS`)
+	if clockSkewSeconds != skew {
+		t.Errorf("this binary allows %d seconds of skew and a deployment allows %d", clockSkewSeconds, skew)
+	}
+}
+
+// statedProduct is the value `declaration = a * b * …;` states in a file under the repo root.
+func statedProduct(t *testing.T, path, declaration string) int {
+	t.Helper()
 	root, err := release.RepoRoot(".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := os.ReadFile(filepath.Join(root, "packages", "operator", "src", "console", "token.ts"))
+	source, err := os.ReadFile(filepath.Join(root, path))
 	if err != nil {
 		t.Fatal(err)
 	}
-	match := regexp.MustCompile(`export const CONSOLE_SESSION_SECONDS\s*=\s*([\d_ *]+);`).
-		FindSubmatch(source)
+	match := regexp.MustCompile(regexp.QuoteMeta(declaration) + `\s*=\s*([\d_ *]+);`).FindSubmatch(source)
 	if match == nil {
-		t.Fatal("no CONSOLE_SESSION_SECONDS is stated as a product of numbers")
+		t.Fatalf("%s states no %s as a product of numbers", path, declaration)
 	}
-	ceiling := 1
+	product := 1
 	for _, factor := range strings.Split(string(match[1]), "*") {
 		value, err := strconv.Atoi(strings.ReplaceAll(strings.TrimSpace(factor), "_", ""))
 		if err != nil {
-			t.Fatalf("CONSOLE_SESSION_SECONDS is %q, which is not a product of numbers", match[1])
+			t.Fatalf("%s states %s as %q, which is not a product of numbers", path, declaration, match[1])
 		}
-		ceiling *= value
+		product *= value
 	}
-	if sessionSeconds > ceiling {
-		t.Errorf("this binary mints %d-second sessions and a deployment accepts %d", sessionSeconds, ceiling)
-	}
+	return product
 }
 
 func TestMintEndsTheSessionTwelveHoursOut(t *testing.T) {
