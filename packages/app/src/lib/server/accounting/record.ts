@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { POSTING_ACCOUNTS, type PostingAccountKey } from '../db/accounts';
 import type { Db } from '../db/client';
 import { entryGroup, type PaymentProviderName } from '../db/schema';
-import { findPaymentDonor } from '../donations/queries';
+import { findPaymentDonor } from '../contacts/queries';
 import {
 	findEntryGroup,
 	findEntryGroupById,

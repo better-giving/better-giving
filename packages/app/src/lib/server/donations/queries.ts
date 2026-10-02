@@ -30,12 +30,12 @@ import { projectTribute } from '../../donations/tributes';
 // page, at no second round trip. ../programs/queries.ts owns every write of that table and every
 // read that has a rule in it.
 //
-// the exceptions are `listContacts` and `readDonorSummary` in ../contacts/queries.ts, which name
-// `donation` and `payment` to answer two questions about donors rather than about gifts: what each
-// donor has given, and which month each donor's money first moved. both are one statement whose
-// driving table is `contact` — the file is sorted by that total across the whole of it, and
-// whether a donor is counted at all turns on `contact.archived_at`; that file's own header argues
-// both at length.
+// the exceptions are `listContacts`, `readDonorSummary` and `findPaymentDonor` in
+// ../contacts/queries.ts. the first two name `donation` and `payment` to answer two questions about
+// donors rather than about gifts: what each donor has given, and which month each donor's money
+// first moved. both are one statement whose driving table is `contact` — the file is sorted by
+// that total across the whole of it, and whether a donor is counted at all turns on
+// `contact.archived_at`; that file's own header argues both at length, and why the third is there.
 //
 // **those reads say in SQL what `projectStatus` below says in TypeScript, and the three have to
 // keep agreeing** — a succeeded inbound attempt collects, a succeeded refund takes back, every
@@ -632,40 +632,6 @@ export type RecordedGift = Pick<
 	/** how the money arrived, off the gift's first payment row, or `null` where it has none. */
 	readonly method: Payment['method'] | null;
 };
-
-/**
- * the donor behind one settlement attempt, as an outside ledger names a payer, and the rail holding
- * the money.
- */
-export type PaymentDonor = {
-	readonly displayName: string;
-	readonly email: string | null;
-	/** the rail that settled it — `payment.provider`, null on a row recorded before the rail was known. */
-	readonly provider: Payment['provider'];
-};
-
-/**
- * who gave the gift one payment settled and which rail settled it, or `null` where no payment
- * carries the id.
- *
- * `payment.donation_id` and `donation.contact_id` are both NOT NULL, so the join cannot lose a
- * donor a payment has; `null` is a payment row that is not there at all. the contact itself is read
- * through `readContactSummaries` rather than joined, for the reason this file's header states:
- * `contact` belongs to ../contacts/queries.ts.
- */
-export async function findPaymentDonor(db: Db, paymentId: string): Promise<PaymentDonor | null> {
-	const [row] = await db
-		.select({ contactId: donation.contactId, provider: payment.provider })
-		.from(payment)
-		.innerJoin(donation, eq(donation.id, payment.donationId))
-		.where(eq(payment.id, paymentId));
-	if (row === undefined) return null;
-
-	const summary = (await readContactSummaries(db, [row.contactId])).get(row.contactId);
-	return summary === undefined
-		? null
-		: { displayName: summary.displayName, email: summary.primaryEmail, provider: row.provider };
-}
 
 /**
  * one gift's figure, day, donor, cause, source and method, or `null` where no gift has the id.

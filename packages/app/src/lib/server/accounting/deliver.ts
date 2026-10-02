@@ -14,7 +14,7 @@ import {
 } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { entryGroup, quickbooksSync } from '../db/schema';
-import { alert } from '../donations/delivery';
+import { alert } from '../email/alert';
 import type { EmailProvider } from '../email/provider';
 import { PACE, type Plan } from '../outbox/budget';
 import type {

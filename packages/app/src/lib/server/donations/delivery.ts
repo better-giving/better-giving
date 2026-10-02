@@ -1,16 +1,14 @@
-import { adminAlert, type EmailTemplate, formatMoney } from '@better-giving/emails';
-import { renderEmail } from '@better-giving/emails/render';
+import { formatMoney } from '@better-giving/emails';
 import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import type { EmailProvider, SendResult } from '../email/provider';
+import type { EmailProvider } from '../email/provider';
 import type { Processors } from '../payments/factory';
 import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
-import { readOrgProfile } from '../org/queries';
 
 // what one verified delivery may answer with, the one way this app tells an operator about a
-// delivery it could not finish, and the one way a delivery's batch is committed and a refusal read
-// (`commit`).
+// delivery it could not finish (`alert`, stated in ../email/alert.ts and re-exported here), and
+// the one way a delivery's batch is committed and a refusal read (`commit`).
 //
 // it is a module of its own because the answer is shared by the three writers that produce it:
 // ./settle.ts settles one transaction against the payment row a quote minted, ./collect.ts keeps
@@ -106,9 +104,9 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
  * everything the webhook's modules need that they may not build for themselves, all per request.
  *
  * ./settle.ts, ./collect.ts and ./reverse.ts produce the answers above and read `db`, `provider` and
- * `email`, and ./reverse.ts `processors` as well. what they end at —
- * ./receipt.ts and `alert` below — reads the database and sends mail and asks the processor nothing,
- * so it takes `MailDeps`, which a bag of these satisfies as it is.
+ * `email`, and ./reverse.ts `processors` as well. what they end at — ./receipt.ts and `alert`
+ * (../email/alert.ts) — reads the database and sends mail and asks the processor nothing, so it
+ * takes `MailDeps`, which a bag of these satisfies as it is.
  */
 export type SettleDeps = {
 	readonly db: Db;
@@ -128,11 +126,7 @@ export type SettleDeps = {
 	readonly payableCoins?: () => Promise<readonly PayableCoin[] | null>;
 };
 
-/**
- * the part of `SettleDeps` that reads the database and sends mail — all a receipt or an alert needs,
- * so a gift no processor took (./record-in-hand.ts) can be receipted without a `PaymentProvider`.
- */
-export type MailDeps = Pick<SettleDeps, 'db' | 'email'>;
+export { alert, type MailDeps, mailOperator } from '../email/alert';
 
 /**
  * what an operator-facing sentence calls the processor that delivered this.
@@ -157,38 +151,6 @@ export function alertMoney(minorUnits: number, currency: string): string {
 	return Number.isSafeInteger(minorUnits)
 		? formatMoney(minorUnits, currency)
 		: `${minorUnits} ${currency} (not a whole number of minor units)`;
-}
-
-/**
- * one operational alert, to the address the console names.
- *
- * silent where no address is saved, because there is nowhere to send it — `notification_email` is
- * nullable and a fresh deployment has none. the sentence still reaches the logs either way, which
- * is the floor: an alert nobody configured must not become an exception on the money path.
- */
-export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): Promise<void> {
-	try {
-		console.error(`${input.headline}:`, JSON.stringify(input.facts));
-	} catch {
-		// nothing to report it to, and nothing on this path may throw.
-	}
-
-	await mailOperator(deps, adminAlert.template(input));
-}
-
-/**
- * one message to the address the console names for operational mail, which every alert goes to.
- * `no_address` where none is saved — `notification_email` is nullable and a fresh deployment has
- * none. what to do about a message that did not go is the caller's.
- */
-export async function mailOperator(
-	deps: MailDeps,
-	message: EmailTemplate
-): Promise<SendResult | 'no_address'> {
-	const profile = await readOrgProfile(deps.db);
-	const to = profile?.notificationEmail ?? null;
-	if (to === null) return 'no_address';
-	return deps.email.send({ to, ...(await renderEmail(message)) });
 }
 
 /**

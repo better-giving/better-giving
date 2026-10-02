@@ -1,11 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
+import { findPaymentDonor } from '../contacts/queries';
 import { donation, payment } from '../db/schema';
 import { renderRefundNotice, type RefundNoticeInput } from '../email/refund-notice';
 import { readOrgProfile } from '../org/queries';
 import { refundStands } from './queries';
 import { alert, type MailDeps } from './delivery';
-import { findPaymentDonor } from './queries';
 
 // the donor's notice of a refund, sent once the batch that recorded the refund commits —
 // ./crypto-pending.ts's shape, for the same reasons.

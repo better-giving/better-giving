@@ -21,7 +21,8 @@ import {
 	payment,
 	recurringPlan,
 	type Contact,
-	type NewContact
+	type NewContact,
+	type Payment
 } from '../db/schema';
 import type { ContactSort, ContactView, SortDir } from '../../contacts/sorts';
 import type { ParsedContact } from './contact-input';
@@ -30,10 +31,12 @@ import type { ParsedContact } from './contact-input';
 // have one place to be stated rather than being re-derived at each call site. a change to a
 // contact once made is ./changes.ts's, beside the event it owes.
 //
-// `donation` and `payment` are named here too, in `listContacts` and `readDonorSummary` and
-// nowhere else — the two places either table is read outside ../donations/queries.ts, whose header
-// claims otherwise for every other read and points here for these two. `recurring_plan` is the
-// third such crossing, in `activeCommitment` below and the two reads that spend it, and
+// `donation` and `payment` are named here too, in `listContacts`, `readDonorSummary` and
+// `findPaymentDonor` and nowhere else — the places either table is read outside
+// ../donations/queries.ts, whose header claims otherwise for every other read and points here for
+// these. `findPaymentDonor` is here because ../accounting/ reads it, and that directory may import
+// nothing under ../donations/ (../accounting/no-donations-imports.spec.ts). `recurring_plan` is
+// crossed too, in `activeCommitment` below and the two reads that spend it, and
 // ../recurring/queries.ts names it from the other end.
 //
 // the crossing is forced in both by the question being about donors rather than about gifts.
@@ -653,6 +656,39 @@ export async function readContactSummaries(
 		.where(inArray(contact.id, [...ids]));
 
 	return new Map(rows.map(({ id, ...summary }) => [id, summary]));
+}
+
+/**
+ * the donor behind one settlement attempt, as an outside ledger names a payer, and the rail holding
+ * the money.
+ */
+export type PaymentDonor = {
+	readonly displayName: string;
+	readonly email: string | null;
+	/** the rail that settled it — `payment.provider`, null on a row recorded before the rail was known. */
+	readonly provider: Payment['provider'];
+};
+
+/**
+ * who gave the gift one payment settled and which rail settled it, or `null` where no payment
+ * carries the id.
+ *
+ * `payment.donation_id` and `donation.contact_id` are both NOT NULL, so the join cannot lose a
+ * donor a payment has; `null` is a payment row that is not there at all. the contact itself is read
+ * through `readContactSummaries` above.
+ */
+export async function findPaymentDonor(db: Db, paymentId: string): Promise<PaymentDonor | null> {
+	const [row] = await db
+		.select({ contactId: donation.contactId, provider: payment.provider })
+		.from(payment)
+		.innerJoin(donation, eq(donation.id, payment.donationId))
+		.where(eq(payment.id, paymentId));
+	if (row === undefined) return null;
+
+	const summary = (await readContactSummaries(db, [row.contactId])).get(row.contactId);
+	return summary === undefined
+		? null
+		: { displayName: summary.displayName, email: summary.primaryEmail, provider: row.provider };
 }
 
 /** one contact by id, or `null` — the donor-profile lookup. archived rows included. */
