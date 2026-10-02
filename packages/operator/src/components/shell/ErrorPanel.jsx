@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Button } from '../controls/Button.jsx';
 import { PanelRoute } from './AppShell.jsx';
 
@@ -44,10 +45,23 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * @param {ErrorPanelProps<W>} props
  */
 export function ErrorPanel({ code = '404', title, children, wayOut, wayOutProps }) {
+	/** @type {import('react').RefObject<HTMLHeadingElement | null>} */
+	const heading = useRef(null);
+
+	/* a client navigation that ends here leaves focus on a press that is no longer drawn, so the
+	   reader is put on the heading, which a screen reader then reads out. on arrival only: a redraw
+	   of the same panel finds the reader wherever they have since gone, and leaves them there. the
+	   heading is a place to land and no stop in the tab order, hence `-1`. */
+	useEffect(() => {
+		heading.current?.focus();
+	}, []);
+
 	return (
 		<PanelRoute>
 			<p className="adm-caption adm-num">{code}</p>
-			<h1>{title}</h1>
+			<h1 ref={heading} tabIndex={-1}>
+				{title}
+			</h1>
 			<p className="adm-prose">{children}</p>
 			{wayOut ? (
 				<Control variant="primary" {...(wayOutProps ?? {})}>

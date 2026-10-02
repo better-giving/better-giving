@@ -135,6 +135,25 @@ it('says nothing more is known when a refusal carries no sentence', async () => 
 	expect(root.querySelector('a')?.getAttribute('href')).toBe('/admin/forms');
 });
 
+/** the tab names the failure the panel draws, in the shape every other screen's tab title takes. */
+it.each([
+	['a missing address', data(null, { status: 404 }), 'No such page · Better Giving'],
+	[
+		'a refused request',
+		data('`amount` is not a number.', { status: 400 }),
+		'This request was refused · Better Giving'
+	],
+	[
+		'a failure',
+		new Error('the database is not answering'),
+		'This deployment could not answer · Better Giving'
+	]
+])('titles the document after %s', async (_face, thrown, title) => {
+	await boundaryOver(thrown);
+
+	expect(document.title).toBe(title);
+});
+
 /** a 5xx response is the deployment failing whatever it carries, and has no way out. */
 it('draws a 5xx response as the deployment failing, with its sentence', async () => {
 	const root = await boundaryOver(data('`BETTER_AUTH_URL` is not set.', { status: 503 }));

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
-import { render } from '../render.testing';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { mount, render } from '../render.testing';
 import { PanelRoute } from './AppShell.jsx';
 import { ErrorPanel } from './ErrorPanel.jsx';
 
@@ -71,6 +71,36 @@ describe('an error panel mounted into a document', () => {
 
 		expect([...(panel?.children ?? [])].map((child) => child.tagName)).toEqual(['P', 'H1', 'P']);
 		expect(panel?.querySelector('.adm-num')?.textContent).toBe('404');
+	});
+});
+
+// a client navigation that ends on this panel leaves focus on whatever was pressed to get here,
+// which is no longer drawn, so a screen reader hears nothing of the failure. the heading is where
+// the reader is put, and it is a place to stand rather than a stop on the way through the page.
+describe('an error panel arriving in front of a reader', () => {
+	it('puts the reader on its heading', () => {
+		const root = render(ErrorPanel, { code: '500', title: 'This deployment could not answer' });
+
+		expect(document.activeElement).toBe(root.querySelector('h1'));
+	});
+
+	it('keeps the heading out of the tab order', () => {
+		const root = render(ErrorPanel, { code: '404', title: 'No such page' });
+
+		expect(root.querySelector('h1')?.getAttribute('tabindex')).toBe('-1');
+	});
+
+	it('moves the reader once, when it arrives, and not again when it is drawn again', () => {
+		const { root, again } = mount(ErrorPanel, { code: '404', title: 'No such page' });
+		const elsewhere = document.createElement('button');
+		document.body.append(elsewhere);
+		onTestFinished(() => elsewhere.remove());
+		elsewhere.focus();
+
+		again({ code: '404', title: 'No such page', children: 'It may have moved.' });
+
+		expect(document.activeElement).toBe(elsewhere);
+		expect(root.querySelector('h1')?.getAttribute('tabindex')).toBe('-1');
 	});
 });
 

@@ -12,6 +12,7 @@ import {
 	useRouteError
 } from 'react-router';
 import type { Route } from './+types/root';
+import { APP_NAME } from '$lib/admin/screen-title';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
 // below renders the donor's page at `/{form_id}` as well as every operator screen, and the donation
@@ -94,6 +95,13 @@ export function ErrorBoundary() {
 	// sheets — there are none here.
 	const sheet = <link rel="stylesheet" precedence="operator" href={operatorSheet} />;
 
+	// the tab names the face the panel draws, in $lib/admin/screen-title.ts's shape, and react
+	// hoists the tag into the head as it does the sheet. it reads the project's name rather than the
+	// organisation's off the layout's match, because the layout's own read may be what failed and
+	// this page depends on no data. `<Meta />` draws no title over it: it reads no route beneath a
+	// boundary, and neither this route nor ./routes/_app.tsx exports `meta`.
+	const tab = (face: string) => <title>{`${face} · ${APP_NAME}`}</title>;
+
 	// the panel has three faces, and the 404 and the 4xx have a way out: an address that is not
 	// there, or a request the app refused, leaves a working deployment with somewhere to send
 	// anybody, while a deployment that would serve the next screen is the thing that failed.
@@ -105,10 +113,12 @@ export function ErrorBoundary() {
 	// ($lib/admin/button-navigates.dom.spec.tsx).
 	const toForms = { wayOut: 'Go to forms', wayOutProps: { as: Link, to: '/admin/forms' } } as const;
 	if (status === 404) {
+		const title = 'No such page';
 		return (
 			<>
 				{sheet}
-				<ErrorPanel code="404" title="No such page" {...toForms}>
+				{tab(title)}
+				<ErrorPanel code="404" title={title} {...toForms}>
 					It may have been deleted, or the address may be wrong.
 				</ErrorPanel>
 			</>
@@ -127,10 +137,12 @@ export function ErrorBoundary() {
 	// is drawn as page copy on every page this boundary replaces, the donor's page included, so a
 	// 4xx thrown anywhere under it is a sentence its reader will see.
 	if (status >= 400 && status < 500) {
+		const title = 'This request was refused';
 		return (
 			<>
 				{sheet}
-				<ErrorPanel code={`${status}`} title="This request was refused" {...toForms}>
+				{tab(title)}
+				<ErrorPanel code={`${status}`} title={title} {...toForms}>
 					<MarkedText
 						text={
 							message || 'Nothing more is known about why. Go back and try again, or go to forms.'
@@ -141,10 +153,12 @@ export function ErrorBoundary() {
 		);
 	}
 
+	const title = 'This deployment could not answer';
 	return (
 		<>
 			{sheet}
-			<ErrorPanel code="500" title="This deployment could not answer">
+			{tab(title)}
+			<ErrorPanel code="500" title={title}>
 				<MarkedText text={message || `Nothing more is known here. ${LOGS_SAY_WHY}`} />
 			</ErrorPanel>
 		</>
