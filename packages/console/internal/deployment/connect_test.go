@@ -261,10 +261,11 @@ func TestNoSignInAsksCloudflareNothing(t *testing.T) {
 	}
 }
 
-// every call a connect makes to cloudflare is bound to cf.ReadTimeout and made in turn, so the
-// longest path's count of them, with the wait after, is the least ConnectBound may say.
+// every call a connect makes to cloudflare is bound to cf.ReadTimeout and made in turn, and every
+// write waits its turn at the binding list for up to TurnBound first, so the longest path's count of
+// them, with the wait after, is the least ConnectBound may say.
 func TestConnectBoundCoversEveryCallTheLongestConnectMakesInTurn(t *testing.T) {
-	calls := 0
+	calls, writes := 0, 0
 	get := fake(t, answering())
 	Connect(context.Background(), ConnectInputs{
 		Door: Door{
@@ -276,6 +277,7 @@ func TestConnectBoundCoversEveryCallTheLongestConnectMakesInTurn(t *testing.T) {
 			},
 			Patch: func(ctx context.Context, method, path string, body any) cf.Answer {
 				calls++
+				writes++
 				return stored(http.StatusOK)(ctx, method, path, body)
 			},
 		},
@@ -286,7 +288,9 @@ func TestConnectBoundCoversEveryCallTheLongestConnectMakesInTurn(t *testing.T) {
 		Every:      time.Millisecond,
 		Now:        time.Unix(1_700_000_000, 0),
 	})
-	if least := time.Duration(calls)*cf.ReadTimeout + SessionBound; ConnectBound < least {
-		t.Fatalf("ConnectBound is %s and %d calls in turn with the wait after take %s", ConnectBound, calls, least)
+	least := time.Duration(calls)*cf.ReadTimeout + time.Duration(writes)*TurnBound + SessionBound
+	if ConnectBound < least {
+		t.Fatalf("ConnectBound is %s and %d calls in turn, %d turns waited and the wait after take %s",
+			ConnectBound, calls, writes, least)
 	}
 }

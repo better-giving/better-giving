@@ -88,7 +88,9 @@ type connectPress struct {
 //
 // The press outlives the request that started it, because a tab closed mid-write would otherwise
 // tear a call that is already storing a credential on the deployment — leaving a session live there
-// that nothing recorded. The call has a deadline of its own, so nothing here waits without bound.
+// that nothing recorded. Every wait the call makes, its turn at the worker's binding list included,
+// is bound by deadlines of its own that deployment.ConnectBound sums, so nothing here waits without
+// bound.
 func (presses *connectPresses) joined(
 	ctx context.Context,
 	press func(context.Context) deployment.Connection,

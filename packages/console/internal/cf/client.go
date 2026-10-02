@@ -51,12 +51,15 @@ import (
 // one — ../deployment's PatientCalls binds the errands a third party is behind.
 const ReadTimeout = 10 * time.Second
 
-// how long one upload may take before it counts as unreachable.
+// UploadTimeout is how long one upload may take before it counts as unreachable.
 //
 // far past the ten seconds a read is bounded by, because what travels here is the worker's own
 // javascript and a bucket of the deployment's static files — megabytes over whatever connection the
 // operator is on. the caller's own context bounds it further wherever it has a shorter deadline.
-const uploadTimeout = 5 * time.Minute
+//
+// it is exported because the settings patch a var goes up in is sent through MultipartSend too, so
+// ../deployment's TurnBound counts it among the calls a write holds its turn for.
+const UploadTimeout = 5 * time.Minute
 
 // how long one schema change may take before it counts as unreachable.
 //
@@ -318,7 +321,7 @@ func MultipartSend(base string, headers map[string]string) MultipartUpload {
 			return Answer{Kind: Unreachable, Detail: err.Error()}
 		}
 
-		bound, stop := context.WithTimeout(ctx, uploadTimeout)
+		bound, stop := context.WithTimeout(ctx, UploadTimeout)
 		defer stop()
 
 		length := int64(body.Len())

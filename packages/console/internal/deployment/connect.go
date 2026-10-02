@@ -102,12 +102,13 @@ const (
 )
 
 // ConnectBound is the longest a connect takes by its own deadlines: the address's reads and the
-// session's one write, made in turn and each bound to cf.ReadTimeout, then SessionBound's wait.
+// session's one write, made in turn and each bound to cf.ReadTimeout, the write's wait for its turn
+// at the binding list, bound to TurnBound, then SessionBound's wait.
 //
 // the page's connect press is answered under a write deadline ../server/server.go's Listen derives
 // from this, so a press that ran its whole course on the deployment still reaches the page that
 // pressed it. TestConnectBoundCoversEveryCallTheLongestConnectMakesInTurn counts the calls.
-const ConnectBound = (addressReads+1)*cf.ReadTimeout + SessionBound
+const ConnectBound = (addressReads+1)*cf.ReadTimeout + TurnBound + SessionBound
 
 // Connect mints a session, writes it to the deployment, and records it — or says why it did not.
 func Connect(ctx context.Context, inputs ConnectInputs) Connection {

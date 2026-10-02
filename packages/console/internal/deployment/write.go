@@ -41,7 +41,8 @@ import (
 // alike, with both writes reporting set. the setup runs keep writing after their request ends while
 // an operator presses folds, so two writes at one worker are the ordinary case. SetVars and
 // SetSecrets take the turn themselves and no caller does, which is what leaves no way round it; a
-// caller whose context ends while it waits writes nothing and is answered unreachable.
+// caller whose context ends while it waits, or who has waited TurnBound, writes nothing and is
+// answered unreachable.
 //
 // **no value reaches a path, an argument list or a sentence.** every value travels in a request
 // body over https, the credential travels in a header (internal/cf), and what a screen draws about
@@ -248,16 +249,30 @@ func SetVars(ctx context.Context, door Door, wanted map[string]*string) Written 
 // one-write-at-a-time rule.
 var bindingLists sync.Map
 
+// TurnBound is the longest a write waits its turn at a worker's binding list before it gives up
+// unreachable, whatever its caller's own deadline. the connect press runs past the request that made
+// it, so without this a turn held by another write would hold that press without bound.
+//
+// it is the longest one holder may keep the turn by its own calls' bounds — SetVars' read, its
+// settings patch and its secrets patch — so a write behind a holder that is slow and healthy still
+// lands. TestTurnBoundCoversEveryCallTheLongestHolderMakesUnderTheTurn counts the calls.
+const TurnBound = 2*cf.ReadTimeout + cf.UploadTimeout
+
+// TurnBound, as holdBindingList reads it, so that a test can wait it out.
+var turnWithin = TurnBound
+
 // the turn at the door's worker, and the function that gives it back — or, where the caller's
-// context ended while it waited, the write that never happened.
+// context ended or turnWithin passed while it waited, the write that never happened.
 func holdBindingList(ctx context.Context, door Door) (func(), *Written) {
 	held, _ := bindingLists.LoadOrStore(door.AccountID+"/"+door.WorkerName, make(chan struct{}, 1))
 	turn := held.(chan struct{})
+	waiting, stop := context.WithTimeout(ctx, turnWithin)
+	defer stop()
 	select {
 	case turn <- struct{}{}:
 		return func() { <-turn }, nil
-	case <-ctx.Done():
-		return nil, &Written{Kind: WriteUnreachable, Detail: ctx.Err().Error()}
+	case <-waiting.Done():
+		return nil, &Written{Kind: WriteUnreachable, Detail: waiting.Err().Error()}
 	}
 }
 
