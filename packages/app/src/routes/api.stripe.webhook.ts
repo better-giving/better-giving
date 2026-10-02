@@ -24,8 +24,8 @@ import type { Route } from './+types/api.stripe.webhook';
 // what stands in for all of it is one signature over the raw body, which is a stronger claim than
 // any of them — see `verifyEvent` in $lib/server/payments/provider.ts.
 //
-// **so this file is named to nest under no layout, and that is a control rather than filing
-// either.** the body is read exactly once, here, as text (CLAUDE.md): the signature is computed
+// so this file is named to nest under no layout, and that is a control rather than filing
+// either. the body is read exactly once, here, as text (CLAUDE.md): the signature is computed
 // over the bytes that were sent, so a body parsed and re-serialised verifies against nothing, and
 // anything that touched this request ahead of the handler would break every delivery in production
 // with nothing anywhere reporting it. a `middleware` above this route is the way that happens, and

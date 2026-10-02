@@ -296,11 +296,11 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	// what comes back narrows what this path *offers* and never what it *accepts*, and two things
 	// hold that. `parseQuoteRequest` below reads both vocabularies whole rather than the served
 	// lists — `FREQUENCIES` in packages/form/src/v1.ts for the cadence and `OFFERED_PAYMENT_METHODS`
-	// for the rail; and `readPublishedConfig` mints no refusal over an empty rail list at all — the one that exists is `renderableConfig` in
-	// ../forms/published-config.ts, which only the config route composes. so a donor on a cached page
-	// holding a rail this deployment has since stopped offering is charged rather than turned away
-	// (CLAUDE.md), and so is every donor mid-checkout on an account whose last capability just went
-	// to `pending`.
+	// for the rail; and `readPublishedConfig` mints no refusal over an empty rail list at all — the
+	// one that exists is `renderableConfig` in ../forms/published-config.ts, which only the config
+	// route composes. so a donor on a cached page holding a rail this deployment has since stopped
+	// offering is charged rather than turned away (CLAUDE.md), and so is every donor mid-checkout on
+	// an account whose last capability just went to `pending`.
 	const origin = new URL(attempt.request.url).origin;
 	const served = await readPublishedConfig(
 		deps.db,
