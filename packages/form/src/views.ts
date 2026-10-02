@@ -1172,6 +1172,17 @@ export function createCard(
 	 * the patch it asks for, which says so on the region — see `oneTimeButton` below.
 	 */
 	let madeOneTime = false;
+	/**
+	 * the sentence the region is holding for the takeover heading it was said under, or nothing.
+	 *
+	 * a live-region sentence stays until the heading it announces changes or another sentence
+	 * replaces it; a new snapshot alone never clears it. the address screen's reading loop is a new
+	 * snapshot every few seconds with nothing to say, and one landing in the same instant the address
+	 * closes would otherwise empty the sentence as it is written. the retitled heading and a Copy's
+	 * outcome are the two kept this way, each set where it is said; every other sentence lasts the
+	 * patch that chose it. `say` in `update` below is where it is spent.
+	 */
+	let held: { words: string; on: string } | null = null;
 	/** whether the last patch drew the offer of a one-time gift, which is what tells it arriving. */
 	let offerDrawn = false;
 	/** the screen on the card, which is what a busy flow stays on and what motion reports against. */
@@ -2370,7 +2381,12 @@ export function createCard(
 	// here as well is the same decline read out twice.
 	const failureMessage = make(doc, 'p', { class: 'message', hidden: true });
 	// a Copy's outcome is said on the card's region, again on every press: the words do not change.
-	const depositBlock = createDepositBlock(doc, (words) => say(words, true));
+	// it is `held` under the heading it was pressed under, because the reading loop patches the
+	// card every few seconds.
+	const depositBlock = createDepositBlock(doc, (words) => {
+		held = { words, on: drawnHeading };
+		say(words, true);
+	});
 
 	const primaryLabel = make(doc, 'span', { class: 'action-label' });
 	const primaryButton = make(
@@ -3000,8 +3016,8 @@ export function createCard(
 		// least likely to see the figure that moved.
 		//
 		// the retitled heading last: a screen's own sentence and the wait's both say more than its
-		// heading does.
-		say(
+		// heading does. it and a Copy's outcome are `held` past the patch that said them.
+		const spoken =
 			screen.announce !== ''
 				? screen.announce
 				: askedFor !== ''
@@ -3016,11 +3032,11 @@ export function createCard(
 									? totalWords
 									: busy
 										? workingWords(api.state)
-										: retitled
-											? `${screen.heading}.`
-											: '',
-			repeated
-		);
+										: '';
+		if (spoken !== '') held = null;
+		else if (retitled) held = { words: `${screen.heading}.`, on: screen.heading };
+		else if (held?.on !== screen.heading) held = null;
+		say(spoken !== '' ? spoken : (held?.words ?? ''), repeated);
 		repeated = false;
 		unmoved = false;
 		flipped = false;

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
 	CONFIG_DEADLINE_MS,
 	defineDonateForm,
@@ -6412,6 +6412,90 @@ describe('a crypto gift', () => {
 		expect(heading(card)).toBe('This gift needs to be started again');
 		expect(region(card)).toBe('This gift needs to be started again.');
 		expect(document.activeElement).toBe(outside);
+	});
+
+	// the reading loop's next snapshot carries nothing to say, and a sentence stays on the region
+	// until the heading it announces changes or another sentence replaces it.
+	it('says the address closing when a reading lands at the send-by, and keeps saying it', async () => {
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS
+		});
+		let reads = 0;
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: {
+				now: () => Date.now(),
+				status: async () => {
+					reads += 1;
+					return { state: 'waiting' };
+				}
+			}
+		});
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(1);
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(2);
+		expect(region(card)).toBe('Checking for your gift.');
+	});
+
+	it('keeps a Copy’s sentence through a reading, until a different one replaces it', async () => {
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		let reads = 0;
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: {
+				status: async () => {
+					reads += 1;
+					return { state: 'waiting' };
+				}
+			}
+		});
+		const copyAddress = async () => {
+			card.find('.deposit [aria-label="Copy address"]').click();
+			await settle();
+			await settle();
+		};
+
+		await copyAddress();
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(1);
+		expect(region(card)).toBe('Address copied.');
+
+		writeText.mockRejectedValueOnce(new Error('denied'));
+		await copyAddress();
+
+		expect(region(card)).toBe('Address not copied. It is selected so you can copy it.');
+	});
+
+	it('replaces a Copy’s sentence with the heading the address closes to', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS * 2
+		});
+		const { card } = await atAddress(USDT, 'USDT', { ports: { now: () => Date.now() } });
+		card.find('.deposit [aria-label="Copy address"]').click();
+		await settle();
+		await settle();
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		onTestFinished(() => outside.remove());
+		outside.focus();
+		expect(region(card)).toBe('Address copied.');
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS * 2);
+
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
 	});
 
 	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {
