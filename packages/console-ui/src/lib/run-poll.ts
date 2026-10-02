@@ -1,9 +1,9 @@
 // which setup run a processor page draws, out of the three places one can come from: the page's own
 // reading, the page's poll of the binary, and the last run either said anything about.
-// ./stripe-section.tsx, ./paypal-section.tsx and ./chariot-section.tsx each hold all three, and this
-// is the reading they share.
+// ./use-run-poll.ts holds all three for ./stripe-section.tsx, ./paypal-section.tsx and
+// ./chariot-section.tsx, and this is the reading it takes.
 //
-// a module beside the sections rather than expressions inside them, for ./stripe-press.ts's
+// a module beside the hook rather than expressions inside it, for ./stripe-press.ts's
 // reason: ../../vite.config.ts pins one node pool and no dom, so this is the part a suite here can
 // hold.
 
