@@ -280,3 +280,70 @@ func TestAConnectPressIsRefusedForAMachineThatHasChosenNoAccount(t *testing.T) {
 		t.Fatal("a session was written for a machine that has chosen no account")
 	}
 }
+
+// a stop waits out a connect press as it waits out the payments setup: torn mid-write, the press
+// leaves a session live on the deployment that this machine never recorded.
+func TestAStopWaitsForTheConnectPressInFlightToRecordItsSession(t *testing.T) {
+	writing, holding := make(chan struct{}), make(chan struct{})
+	var released sync.Once
+	letGo := func() { released.Do(func() { close(holding) }) }
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		result := map[string]any{}
+		base := "/accounts/an-account/workers"
+		switch r.URL.Path {
+		case base + "/scripts/" + release.Baked.Name + "/subdomain":
+			result = map[string]any{"enabled": true}
+		case base + "/subdomain":
+			result = map[string]any{"subdomain": "hound-haven"}
+		case base + "/scripts/" + release.Baked.Name + "/secrets-bulk":
+			close(writing)
+			<-holding
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"success": true, "errors": []any{}, "result": result,
+		})
+	}))
+	t.Cleanup(api.Close)
+	// registered after api.Close so it runs first: a failure before the release would otherwise
+	// leave the fake's handler held and the close waiting on it.
+	t.Cleanup(letGo)
+
+	records, flow, accounts := machine(t, "an-account")
+	presses := &Presses{}
+	handler := New(Options{
+		UI: http.NotFoundHandler(), Flow: flow, Accounts: accounts, Records: records,
+		Reads:   func(cf.Credential) cf.Get { return cf.JSONGet(api.URL, nil) },
+		Patches: func(cf.Credential) cf.Send { return cf.JSONSend(api.URL, nil) },
+		Surface: func(string, string) cf.Send { return cf.JSONSend(api.URL, nil) },
+		Presses: presses,
+	})
+
+	answered := make(chan struct{})
+	go func() {
+		defer close(answered)
+		press(t, handler, "/api/session", `{}`)
+	}()
+	<-writing
+	presses.Stop()
+
+	said, going := presses.Going()
+	if !going || said == "" {
+		t.Fatal("the stop reads no press going while a connect press is inside its write")
+	}
+
+	letGo()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, going := presses.Going(); !going {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the connect press still reads as going after its write was answered")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if session.Held(records, release.Baked.Name, time.Now()) == nil {
+		t.Fatal("the stop read the press as ended before it recorded the session it wrote")
+	}
+	<-answered
+}

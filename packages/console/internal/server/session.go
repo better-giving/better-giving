@@ -40,8 +40,10 @@ func sessionRoutes(
 	store *account.Store,
 	records state.Store,
 	surface func(origin, token string) cf.Send,
+	stops *Presses,
 ) {
 	presses := &connectPresses{}
+	stops.watch(presses.going)
 
 	routes.HandleFunc("POST /api/session", func(w http.ResponseWriter, r *http.Request) {
 		chosen := store.Chosen()
@@ -79,6 +81,18 @@ type connectPresses struct {
 	// joining is called by a request that found a press running, before it waits on that press; nil
 	// outside a test, which is how a case knows the request is waiting rather than guessing it.
 	joining func()
+}
+
+// going is the reading a stop makes of the press, which ../../cmd/better-giving/main.go's
+// waitForPress waits out: the listener's shutdown after it gives a handler seconds, and a press runs
+// for as long as deployment.ConnectBound.
+func (presses *connectPresses) going() (string, bool) {
+	presses.guard.Lock()
+	defer presses.guard.Unlock()
+	if presses.running == nil {
+		return "", false
+	}
+	return "this console is still connecting to your deployment", true
 }
 
 // one press, and the outcome every request that joined it is answered with.
