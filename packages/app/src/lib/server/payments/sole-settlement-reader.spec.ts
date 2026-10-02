@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
 //
 // why this test exists. `readSettlement` on `PaymentProvider` (./provider.ts) is not a pure read: on
 // PayPal it may capture an approved order, so calling it from a page's loader moves money on a GET.
-// the port documents that and nothing kept a read path from calling it anyway. the callers are the
-// modules that reconcile a delivery or a collection into the books, and the set is held here rather
-// than named in the port's doc, where a list of callers drifts the day a fourth appears.
+// the callers are the modules that reconcile a delivery or a collection into the books, and the set
+// is held here rather than named in the port's doc, where a list of callers drifts the day a fourth
+// appears.
 //
 // a new caller is a decision: add it to `CALLERS` in the same change that argues why it may capture.
 //

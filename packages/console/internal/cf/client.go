@@ -15,9 +15,9 @@
 //
 // **a multipart write is the same call with another body on it.** three of cloudflare's endpoints
 // take no json at all — the script upload, whose modules are one part each, the assets upload,
-// whose parts are the files, and a worker's settings patch — and MultipartSend is those three rather
-// than a client of their own: the same credential in the same header, the same failure as a value,
-// and the deadline stated by whoever binds it.
+// whose parts are the files, and a worker's settings patch — and MultipartSendWithin is those three
+// rather than a client of their own: the same credential in the same header, the same failure as a
+// value, and the deadline stated by whoever binds it.
 //
 // **a write answers in the same three ways a read does** — a status with a body, a body that is not
 // json, nothing at all — so a write is this same call with a method and a body on it rather than a

@@ -44,9 +44,8 @@ const SELECTORS = moat.selector.split(',').map((one) => one.trim());
 const MOATED = moat.stated.get('margin-block-start');
 
 /**
- * the add-a-gift screen's donor group, which is the one that was reported
- * (packages/app/src/routes/_app.admin.donations.new.tsx): a box, the name as a pair of its own,
- * then the email and phone pair the group draws without one.
+ * the add-a-gift screen's donor group (packages/app/src/routes/_app.admin.donations.new.tsx): a
+ * box, the name as a pair of its own, then the email and phone pair the group draws without one.
  */
 function DonorGroup() {
 	return (
@@ -134,7 +133,7 @@ describe('a group standing inside a group', () => {
 	});
 
 	it('stands the box after it further off than a stacked pair stands its own two boxes', () => {
-		// the whole of the defect, as the arithmetic a pool that lays nothing out can do: the step
+		// what the moat is for, as the arithmetic a pool that lays nothing out can do: the step
 		// across the inner group's edge against the step between the two boxes of a pair inside it.
 		const inside = lengthIn(ruleOf(css, '.adm-pair').get('gap'));
 		const step = lengthIn(ruleOf(css, '.adm-fieldset > * + *').get('margin-block-start'));

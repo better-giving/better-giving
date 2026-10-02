@@ -111,8 +111,8 @@ func (presses *connectPresses) joined(
 	presses.running = mine
 	presses.guard.Unlock()
 
-	// deferred so that a press that panics clears it too, or every later press would wait on a done
-	// that never closes.
+	// deferred so that the press is cleared however it ends, or every later press would wait on a
+	// done that never closes.
 	defer func() {
 		presses.guard.Lock()
 		presses.running = nil

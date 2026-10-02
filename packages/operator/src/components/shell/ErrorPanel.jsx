@@ -35,7 +35,8 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
 
    three faces. a 404 on a working deployment has somewhere to send anybody. a 500 has no way out at
    all — deliberately: the deployment that would serve the next screen is the thing that failed, so
-   a link would be a lie. a refused request prints its own 4xx and, like the 500, has no way out.
+   a link would be a lie. a refused request prints its own 4xx and, like the 404, has somewhere to
+   send anybody, because the deployment refusing it is still answering.
    which face gets one is the caller's, because it is the caller that knows the address;
    packages/app/src/root.tsx is where they are chosen between. */
 /**
