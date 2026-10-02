@@ -20,10 +20,7 @@ import type { Processors } from '../payments/factory';
 /** how long an answer is kept, in seconds — ./rail-cache.ts's window. */
 const TTL_SECONDS = 300;
 
-/**
- * the address an answer is kept under, which no route reads — only `/{form_id}`'s not-found refusal
- * answers it (`CACHE_PATH` in ./rail-cache.ts).
- */
+/** the address an answer is kept under, read only by the `cache.match` below (./rail-cache.ts). */
 const CACHE_PATH = '/__payable-coins';
 
 /**

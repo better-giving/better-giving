@@ -52,12 +52,12 @@ import { offeredRails } from './offered-rails';
 const TTL_SECONDS = 300;
 
 /**
- * the address an answer is kept under, which no route reads.
+ * the address an answer is kept under, on the request's own origin.
  *
- * `caches.default` is the zone's own store, keyed by URL — so an entry written under a path this app
- * answers on could be handed to a visitor asking for that path. this one is a single segment, so the
- * only route that matches it is `/{form_id}` in ../../../routes/$formId.tsx, which answers it with its
- * not-found refusal and never reads this store.
+ * `caches.default` is keyed by URL, and a visitor's request runs this worker before any cache
+ * (https://developers.cloudflare.com/workers/reference/how-the-cache-works/), so an entry is read
+ * only by a `cache.match` this app makes — and the one that reads this key is below. a path of its
+ * own is what keeps that read from meeting an entry another module wrote.
  */
 const CACHE_PATH = '/__offered-rails';
 
