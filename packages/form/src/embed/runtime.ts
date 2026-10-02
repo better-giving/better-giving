@@ -25,9 +25,8 @@
 // on the way in would be this runtime overruling the account that was actually asked.
 
 import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
-import type { CheckoutPorts } from '../ports';
 import { apiWords, createQuote, createStatusRead, EmbedFailure, readJson } from './api';
-import { createPaymentSurface } from './surface';
+import { createPaymentSurface, quoteThrough } from './surface';
 import { takeResumeToken } from './resume';
 import { createChallenge } from './turnstile';
 import {
@@ -162,14 +161,9 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 			// nothing came up is written there too, next to what it knows about why.
 			// ../element.ts is what turns each report into an event the flow accepts.
 			const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund, coins);
-			// the quote port, wrapped so the provider's own fields learn what the server just
-			// decided. nothing is decided here: the total is the server's and the payer is the one
-			// the request was made for, and both are handed on exactly as they came back.
-			const quote: CheckoutPorts['quote'] = async (request) => {
-				const minted = await post(request);
-				surface.quoted(request, minted);
-				return minted;
-			};
+			// the quote port, wrapped so the payment surface hears of the quote on the press and
+			// again once it lands — `quoteThrough` in ./surface.ts says why both.
+			const quote = quoteThrough(surface, post);
 			return {
 				input: {
 					config,

@@ -9,8 +9,8 @@ import type {
 	PaypalSdkLike,
 	SessionOptionsLike
 } from './paypal';
-import type { ElementsLike, PaymentElementLike, StripeLike } from './stripe';
-import { createPaymentSurface } from './surface';
+import type { ElementsLike, PaymentElementLike, PaymentSurface, StripeLike } from './stripe';
+import { createPaymentSurface, quoteThrough } from './surface';
 
 // the composer, driven through both real adapters with a plain object standing in for each
 // processor's SDK. what is worth asserting here is the composition itself — which adapter a reading
@@ -227,6 +227,9 @@ describe('one payment surface over however many processors a config names', () =
 	it('sends a confirmation to the processor that settles the rail it was quoted on', async () => {
 		const k = kit();
 		const surface = await composed(k);
+		const minted = Promise.resolve({ ...QUOTE, paymentToken: 'o1' });
+		surface.quoting({ ...REQUEST, method: 'paypal' }, minted);
+		expect(k.paypalStarts).toHaveLength(1);
 		void surface.confirm({ paymentToken: 'o1', method: 'paypal', mandateAccepted: false });
 		await Promise.resolve();
 		expect(k.paypalStarts).toHaveLength(1);
@@ -558,5 +561,24 @@ describe('one payment surface over however many processors a config names', () =
 			expect(counts).toEqual([3, 4, 3]);
 			surface.stop();
 		});
+	});
+});
+
+describe('the quote port the surface is told through', () => {
+	// opening a window is the surface's business and never the quote's: a surface that throws while
+	// being told cannot turn a minted quote into a failed one.
+	it('answers with the quote even when a surface throws on being told of it', async () => {
+		const told: Quote[] = [];
+		const surface = {
+			quoting() {
+				throw new Error('no window today');
+			},
+			quoted(_request: QuoteRequest, quote: Quote) {
+				told.push(quote);
+			}
+		} as unknown as PaymentSurface;
+		const quote = quoteThrough(surface, () => Promise.resolve(QUOTE));
+		await expect(quote(REQUEST)).resolves.toEqual(QUOTE);
+		expect(told).toEqual([QUOTE]);
 	});
 });

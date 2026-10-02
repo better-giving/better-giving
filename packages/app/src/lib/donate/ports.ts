@@ -1,5 +1,6 @@
 import { createQuote, createStatusRead } from '@better-giving/form/embed/api';
 import type { PaymentSurface } from '@better-giving/form/embed/stripe';
+import { quoteThrough } from '@better-giving/form/embed/surface';
 import type { CheckoutPorts } from '@better-giving/form/ports';
 
 // the outside world, for the deployment's own donation page.
@@ -37,14 +38,9 @@ const SAME_DEPLOYMENT = '';
 export function deploymentPorts(surface: PaymentSurface): CheckoutPorts {
 	const post = createQuote(SAME_DEPLOYMENT);
 	return {
-		// the write, wrapped so the provider's own fields learn what the server just decided. the
-		// order matters and is the runtime's: the surface is told before the quote is returned to the
-		// flow, so the figures on the card and the fields beside them are never a frame apart.
-		quote: async (request) => {
-			const minted = await post(request);
-			surface.quoted(request, minted);
-			return minted;
-		},
+		// the write, wrapped the way the embed's runtime wraps it, so the surface hears of the quote
+		// on the press and again once it lands.
+		quote: quoteThrough(surface, post),
 		confirm: surface.confirm,
 		resume: surface.resume,
 		status: createStatusRead(SAME_DEPLOYMENT),

@@ -6,8 +6,9 @@
 // move any of that: this module is where the adapters become one surface, and everything above it
 // keeps taking one.
 //
-// what it owns is therefore four decisions and no more. **which adapters exist at all**, off the
-// rails the config offers rather than off the processors it names — `STRIPE_RAILS`, `PAYPAL_RAILS`,
+// what it owns is therefore five decisions and no more. **when the surface is told of a quote** —
+// on the press and again once it lands, which `quoteThrough` below is the one copy of. **which
+// adapters exist at all**, off the rails the config offers rather than off the processors it names — `STRIPE_RAILS`, `PAYPAL_RAILS`,
 // `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` in ./rails.ts cover the vocabulary exactly once, so a config
 // offering a rail is a config needing that rail's adapter, and an adapter whose own processor the
 // config does not name reports that for itself. **which adapter a reading belongs to** — a confirmation by the rail its
@@ -88,6 +89,35 @@ export type ComposedPaymentSurface = PaymentSurface & {
 	offerCrypto(offered: boolean): void;
 	rows(listener: (count: number) => void): void;
 };
+
+/**
+ * the quote port, wrapped so the payment surface hears of the quote at both ends of its flight.
+ *
+ * the deployment's own donation page and ./runtime.ts both build their quote port through this,
+ * so the order below is one rule rather than two copies of it. nothing is decided here: the total
+ * is the server's and the payer is the one the request was made for, and both are handed on
+ * exactly as they came back. the surface is told before the quote is returned to the flow, so the
+ * figures on the card and the provider's fields beside them are never a frame apart.
+ */
+export function quoteThrough(
+	surface: PaymentSurface,
+	post: CheckoutPorts['quote']
+): CheckoutPorts['quote'] {
+	return async (request) => {
+		// told before anything is awaited: this runs inside the donor's press, and a provider
+		// opening a window on it has only this task's transient activation to open it with.
+		const minting = post(request);
+		try {
+			surface.quoting(request, minting);
+		} catch {
+			// opening a window never decides the quote's outcome. a surface that opened nothing is
+			// refused at its confirmation, which says so in the host page's console.
+		}
+		const minted = await minting;
+		surface.quoted(request, minted);
+		return minted;
+	};
+}
 
 /**
  * the geometry a node in this document has to be pinned to, because a host page's own stylesheet
@@ -330,6 +360,9 @@ export function createPaymentSurface(
 		rows(next) {
 			listener = next;
 			if (counted !== null) next(counted);
+		},
+		quoting(request, minted) {
+			for (const part of parts) part.surface.quoting(request, minted);
 		},
 		quoted(request, quote) {
 			for (const part of parts) part.surface.quoted(request, quote);
