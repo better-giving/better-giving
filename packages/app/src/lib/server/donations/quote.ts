@@ -487,9 +487,10 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 
 	if (!written.ok) {
 		// a duplicate is a success, and it is the one refusal from the writer that is. it means the
-		// intent this call was handed already had a payment recorded against it, which is only
-		// reachable when an earlier call minted that same intent — so the gift exists, written by
-		// that call, and the token above is the token for it. `Quote` carries no donation id, so this
+		// intent this call was handed already had a payment recorded against it — no processor does
+		// that on this path today, because `idempotencyKey` above is a fresh `donationId` per call,
+		// but one that did would be handing back a gift an earlier call wrote, and the token above is
+		// the token for it. `Quote` carries no donation id, so this
 		// answer is complete and true. refusing instead would fail a donation that succeeded.
 		if (written.reason === 'duplicate_intent') return { ok: true, quote, form };
 
