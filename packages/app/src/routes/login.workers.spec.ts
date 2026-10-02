@@ -1,8 +1,9 @@
 import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
 import { createExecutionContext, env } from 'cloudflare:test';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
 import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
+import { PIN_UNUSABLE } from '$lib/server/auth/pin';
 import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { createDb } from '$lib/server/db/client';
@@ -56,11 +57,11 @@ const DEPLOYED = {
 /** a deployment whose `BETTER_AUTH_URL` pin names no address. */
 const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
 
-/** what that deployment throws: the sentence as a 500's data, which the error boundary draws. */
-const PIN_REFUSAL = {
-	data: expect.stringContaining('`BETTER_AUTH_URL` is `localhost:8787`'),
-	init: { status: 500 }
-};
+/**
+ * what that deployment throws: the sentence as a 500's data, which the error boundary draws. the
+ * caller is anonymous, so it names the variable and the fix and never the value.
+ */
+const PIN_REFUSAL = { data: PIN_UNUSABLE, init: { status: 500 } };
 
 /** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
 function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.LoaderArgs {
@@ -186,10 +187,15 @@ describe('GET /login — a visitor who is already signed in', () => {
 		expect(answer).not.toBeInstanceOf(Response);
 	});
 
-	it('names a pin that names no address, where the operator reads it', async () => {
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
 		await finished();
-
-		await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
 	});
 });
 
@@ -508,11 +514,18 @@ describe('POST /login — what the browser gets back', () => {
 		expect(await sessions()).toBe(0);
 	});
 
-	it('names a pin that names no address, where the operator reads it', async () => {
-		const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
 
-		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(PIN_UNUSABLE);
+			expect(JSON.stringify(answer.data)).not.toContain('localhost:8787');
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
 		expect(await sessions()).toBe(0);
 	});
 

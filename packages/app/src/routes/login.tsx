@@ -27,6 +27,7 @@ import {
 	signInMember,
 	STAFF_USER_EMAIL
 } from '$lib/server/auth';
+import { PIN_UNUSABLE } from '$lib/server/auth/pin';
 import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, takeFlash } from '$lib/server/flash';
@@ -299,8 +300,12 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		console.error('staff sign-in has no signing key:', signingKey.cause);
 		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
+	// the pin's own message quotes its value, and this caller is anonymous ($lib/server/auth/pin.ts).
 	const pin = readPin(authEnv);
-	if (!pin.ok) return invalid(500, submission.reject({ formErrors: [pin.message] }));
+	if (!pin.ok) {
+		console.error('staff sign-in has no usable pin:', pin.message);
+		return invalid(500, submission.reject({ formErrors: [PIN_UNUSABLE] }));
+	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
 	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
