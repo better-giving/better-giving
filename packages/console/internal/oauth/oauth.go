@@ -195,11 +195,14 @@ func (flow *Flow) Credential(ctx context.Context) cf.Credential {
 	// answers, so a tab closed mid-call would leave the new pair with nobody and the stored token
 	// spent. what bounds it is cf.ReadTimeout inside the send.
 	refreshed, ok, err := flow.refresh(context.WithoutCancel(ctx), stored)
-	if ok {
-		if err != nil {
-			flow.unkept = &refreshed
-		}
-		flow.kept(err)
+	if !ok && errors.Is(err, errRefused) && flow.unkept != nil {
+		// a held pair cloudflare refuses is a grant no folder can save, and the record under it names
+		// a refresh token that pair rotated away: nothing is left to sign in with, and the screen
+		// stops naming the folder.
+		flow.unkept = nil
+		flow.forgotten = true
+		flow.kept(nil)
+		return cf.Credential{Kind: cf.NoCredential}
 	}
 	if !ok {
 		// the stored token is carried on rather than dropped: cloudflare's own refusal is what
@@ -207,6 +210,10 @@ func (flow *Flow) Credential(ctx context.Context) cf.Credential {
 		// second as the first.
 		return cf.BearerCredential(stored.Access)
 	}
+	if err != nil {
+		flow.unkept = &refreshed
+	}
+	flow.kept(err)
 	return cf.BearerCredential(refreshed.Access)
 }
 
@@ -345,9 +352,13 @@ func (flow *Flow) refresh(ctx context.Context, stored record) (record, bool, err
 //
 // The second answer is whether cloudflare handed a pair back at all, and the error is the writing
 // of it — two different things to say, because a sign-in that was not written is one this process
-// cannot read either, and a refresh that was not written is one only this process holds.
+// cannot read either, and a refresh that was not written is one only this process holds. Where no
+// pair came back, the error is errRefused when cloudflare answered with a 4xx, and nil otherwise.
 func (flow *Flow) granted(ctx context.Context, form url.Values, carried string) (record, bool, error) {
 	answer := flow.send(ctx, tokenPath, form)
+	if answer.Kind == cf.Answered && answer.Status >= 400 && answer.Status < 500 {
+		return record{}, false, errRefused
+	}
 	if answer.Kind != cf.Answered || answer.Status < 200 || answer.Status > 299 {
 		return record{}, false, nil
 	}
@@ -372,6 +383,9 @@ func (flow *Flow) granted(ctx context.Context, form url.Values, carried string) 
 	}
 	return held, true, flow.write(held)
 }
+
+// cloudflare turning a token call down by name, which says the grant is gone rather than the network.
+var errRefused = errors.New("cloudflare refused the grant")
 
 // a value nobody else can guess, which is what both the verifier and the state have to be.
 func secret() (string, error) {

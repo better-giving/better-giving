@@ -614,6 +614,57 @@ func TestARefreshThatCouldNotBeWrittenDownIsWhatTheNextCallUses(t *testing.T) {
 	}
 }
 
+// a flow holding a refreshed pair the directory would not take, with that pair now expired too.
+func holdingAnExpiredPair(t *testing.T) (*running, *dash) {
+	t.Helper()
+	held := &dash{expires: 1}
+	flow, _, _, ticking := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+	held.mutex.Lock()
+	held.access, held.expires = "a-second-access-token", 1
+	held.mutex.Unlock()
+	unwritable(flow)
+	ticking.skip(time.Hour)
+	flow.Credential(context.Background())
+	ticking.skip(2 * time.Hour)
+	return flow, held
+}
+
+func TestAHeldPairCloudflareNoLongerHonoursSendsTheOperatorToSignIn(t *testing.T) {
+	// a grant revoked at cloudflare cannot be saved by repairing a folder, so a screen still naming
+	// the folder sends the operator to fix the wrong thing.
+	flow, held := holdingAnExpiredPair(t)
+	held.mutex.Lock()
+	held.refuses = true
+	held.mutex.Unlock()
+
+	credential := flow.Credential(context.Background())
+
+	if credential.Kind != cf.NoCredential {
+		t.Errorf("credential = %q (%q), want a machine holding none", credential.Kind, credential.Token)
+	}
+	if phase := flow.Phase(); phase.Why == NotKept {
+		t.Errorf("phase = %+v, want nothing said about a folder", phase)
+	}
+}
+
+func TestAHeldPairIsKeptWhileCloudflareCannotBeReached(t *testing.T) {
+	// a network that is down says nothing about the grant, so the pair and the folder it is waiting
+	// on both stay.
+	flow, _ := holdingAnExpiredPair(t)
+	flow.send = func(context.Context, string, url.Values) cf.Answer { return cf.Answer{Kind: cf.Unreachable} }
+
+	credential := flow.Credential(context.Background())
+
+	if credential.Token != "a-second-access-token" {
+		t.Errorf("credential = %q (%q), want the held pair carried on", credential.Kind, credential.Token)
+	}
+	if phase := flow.Phase(); phase.Why != NotKept {
+		t.Errorf("phase = %+v, want the sign-in still saying it could not be kept", phase)
+	}
+}
+
 func TestSigningOutForgetsARefreshThatCouldNotBeWrittenDown(t *testing.T) {
 	held := &dash{expires: 1}
 	flow, _, _, ticking := flowing(t, held)
