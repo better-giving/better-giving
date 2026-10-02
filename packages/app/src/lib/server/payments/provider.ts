@@ -1882,7 +1882,13 @@ export interface PaymentProvider {
 	verifyEvent(delivery: WebhookDelivery): Promise<PaymentResult<PaymentEvent>>;
 
 	/**
-	 * reads what a transaction currently is. the reconciliation read, safe to repeat.
+	 * reads what a transaction currently is, and may complete an authorisation the donor already
+	 * gave: ./paypal.ts captures an `APPROVED` order here, because PayPal has no auto-capture (its
+	 * header argues it). the reconciliation, safe to repeat — an order captured once reads as
+	 * captured the next time — and never a read for a page that only shows a transaction, which
+	 * handed a PayPal id would move the donor's money. ../donations/settle.ts and
+	 * ../donations/collect.ts call it to reconcile; ../donations/tracking-ids.ts calls it on Chariot
+	 * transactions alone.
 	 *
 	 * it can take seconds rather than one round trip, and that is the arm's contract rather than an
 	 * implementation detail a caller may ignore: a charge whose fee the processor has not computed yet
