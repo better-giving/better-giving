@@ -12,7 +12,7 @@ import type { GroupReport } from '../lib/secret-group-form';
 import { useKeptAnswers } from '../lib/smtp-answers';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.password';
 
 // /password — the password that opens the dashboard for the operator who set the deployment up,
@@ -76,6 +76,16 @@ export default function PasswordPage({ actionData, matches }: Route.ComponentPro
 				pending={intent}
 				revalidating={revalidating}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

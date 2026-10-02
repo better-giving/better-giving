@@ -9,7 +9,7 @@ import { NOTIFICATIONS_INTENT, orgEdits } from '../lib/org-fields';
 import { storedOrg } from '../lib/org-form';
 import { forgetReadings } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.notifications';
 
 // /notifications — where the mail this deployment sends the organisation lands, drawn by
@@ -52,6 +52,16 @@ export default function NotificationsPage({ actionData, matches }: Route.Compone
 				busy={busy}
 				pending={intent === NOTIFICATIONS_INTENT}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	ConsoleRefused,
+	ConsoleUnreachable,
 	chariotRun,
 	consoleVersion,
 	levelWallets,
@@ -8,6 +10,7 @@ import {
 	repairWebhook,
 	saveNowpayments,
 	startChariotSetup,
+	readPayments,
 	startStripeSetup
 } from './client';
 
@@ -284,5 +287,30 @@ describe('the reading of where the books stand', () => {
 		const read = await readQuickbooks();
 
 		expect(read.kind === 'read' && read.report.backlog.heldBehindFailed).toEqual(held);
+	});
+});
+
+describe('a call that did not land', () => {
+	it('is thrown as unreachable where the local process could not be reached', async () => {
+		vi.stubGlobal('fetch', () => Promise.reject(new TypeError('Failed to fetch')));
+
+		await expect(readPayments()).rejects.toBeInstanceOf(ConsoleUnreachable);
+	});
+
+	it('is thrown as it came where the reading was abandoned', async () => {
+		const abandoned = new AbortController();
+		abandoned.abort();
+		vi.stubGlobal('fetch', () => Promise.reject(new DOMException('aborted', 'AbortError')));
+
+		await expect(readPayments(abandoned.signal)).rejects.toMatchObject({ name: 'AbortError' });
+	});
+
+	it("is thrown as refused, in the handler's words, where the local process turned it down", async () => {
+		answering(409, { error: 'no account is recorded' });
+
+		const thrown = await readPayments().catch((error: unknown) => error);
+
+		expect(thrown).toBeInstanceOf(ConsoleRefused);
+		expect(thrown).toMatchObject({ message: 'no account is recorded', status: 409 });
 	});
 });

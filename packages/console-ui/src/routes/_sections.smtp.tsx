@@ -11,7 +11,7 @@ import { SmtpFold, TEST_EMAIL_INTENT } from '../lib/smtp-fold';
 import { TEST_TO_FIELD } from '../lib/smtp-fold-state';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.smtp';
 
 // /smtp — what carries this deployment's mail out, receipts included, drawn by
@@ -78,6 +78,16 @@ export default function SmtpPage({ actionData, matches }: Route.ComponentProps) 
 				test={test}
 				pending={intent}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }
