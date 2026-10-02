@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 // published component. the two lists are compared rather than counted: a count passes while a
 // preview is written for the wrong module.
 //
-// this is the gate under the rule in CLAUDE.md that a component's preview lands in the same change
-// as the component. src/main.tsx globs ./previews/*.tsx, so registration is the file existing and
-// there is no list to forget — but nothing about globbing makes a file get written, and a component
+// this is the gate that makes a component's preview land in the same change as the component.
+// src/main.tsx globs ./previews/*.tsx, so registration is the file existing and there is no list
+// to forget — but nothing about globbing makes a file get written, and a component
 // that ships without one is absent from the single page somebody opens to find out the system has
 // it. the sheets do not say what exists and neither does the exports map on its own; this page does.
 //

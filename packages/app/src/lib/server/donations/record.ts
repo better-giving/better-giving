@@ -370,9 +370,10 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
  *
  * the statements go in one `batch()` in foreign-key order — contact, donation, lines, payment —
  * one statement per row and never a multi-row `INSERT`, because D1 caps a query at 100 bound
- * parameters (CLAUDE.md). `Db` has no `transaction` and D1 has none, so this batch is the only
- * atomic unit available and everything the gift is made of has to be inside it: a donation with no
- * payment, or a contact with no gift, is a state nothing in the schema detects.
+ * parameters (https://developers.cloudflare.com/d1/platform/limits/). `Db` has no `transaction`
+ * and D1 has none, so this batch is the only atomic unit available and everything the gift is made
+ * of has to be inside it: a donation with no payment, or a contact with no gift, is a state nothing
+ * in the schema detects.
  *
  * it never throws — every outcome is a `RecordResult`, including a rejection out of `batch()` and
  * a fault from anywhere else in the call. see `RECORD_FAILURE_REASONS` for what a caller may find

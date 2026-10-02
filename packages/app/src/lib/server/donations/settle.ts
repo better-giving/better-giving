@@ -85,8 +85,9 @@ import { sendTributeNotice } from './tribute-notice';
 // charge can both read `succeeded`, and under distinct event ids both would post; the gift would be
 // in the books twice, with every row reading clean.
 //
-// a redelivery therefore surfaces as a UNIQUE violation on insert, which CLAUDE.md names as the
-// correct and only reliable answer, and `alreadyPosted` below is what turns it back into a 200.
+// a redelivery therefore surfaces as a UNIQUE violation on insert, which ../ledger/posting.ts's
+// header names as the correct and only reliable answer, and `alreadyPosted` below is what turns it
+// back into a 200.
 // the whole batch rolls back with it, the update included — which costs nothing, because the update
 // writes what the previous delivery already wrote.
 //
@@ -862,8 +863,9 @@ async function recognitionOf(
  * destination, in one `batch()`.
  *
  * one statement per row and never a multi-row `INSERT` — D1 caps a query at 100 bound parameters
- * (CLAUDE.md) — and one commit, because a payment corrected without its posting, or a posting
- * without its correction, is a state nothing in the schema detects.
+ * (https://developers.cloudflare.com/d1/platform/limits/) — and one commit, because a payment
+ * corrected without its posting, or a posting without its correction, is a state nothing in the
+ * schema detects.
  *
  * `credits` is null where nothing is posted at all: a transaction that did not succeed, a settled
  * one carrying figures the ledger will not take, and a settled one whose lines cannot account for
