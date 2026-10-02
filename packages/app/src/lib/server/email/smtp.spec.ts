@@ -335,15 +335,24 @@ describe('createSmtpProvider — the subject the client is handed', () => {
 		expect(decoded).toBe(subject);
 	});
 
-	// RFC 5322 §2.1.1 caps a line at 998 characters, `Subject: ` included.
+	// RFC 5322 §2.1.1 caps a line at 998 characters, `Subject: ` included. 400 CJK characters are
+	// 1,200 bytes and 1,600 characters of base64, so this subject left as one word would pass 998.
 	it('folds a long non-ASCII subject so no line passes 998 and no word passes 75', async () => {
-		const subject = `A gift was made in memory of ${'山田太郎の思い出に'.repeat(23).slice(0, 200)}`;
+		const subject = `A gift was made in memory of ${'山田太郎の思い出に'.repeat(45).slice(0, 400)}`;
 		const header = `Subject: ${await subjectFor(subject)}`;
 		for (const line of header.split('\r\n')) expect(line.length).toBeLessThanOrEqual(998);
 		const { words, decoded } = decodeWords(header.slice('Subject: '.length));
 		expect(words.length).toBeGreaterThan(1);
 		for (const word of words) expect(word.length).toBeLessThanOrEqual(75);
 		expect(decoded).toBe(subject);
+	});
+
+	// RFC 2047 §2 caps a line holding an encoded-word at 76 characters, and the first line is
+	// `Subject: ` and a word.
+	it('keeps every line of a folded subject within 76, `Subject: ` included', async () => {
+		const subject = `A gift was made in memory of ${'山田太郎の思い出に'.repeat(45).slice(0, 400)}`;
+		const header = `Subject: ${await subjectFor(subject)}`;
+		for (const line of header.split('\r\n')) expect(line.length).toBeLessThanOrEqual(76);
 	});
 
 	// four-byte characters: a split inside one is what the fatal decoder exists to catch.

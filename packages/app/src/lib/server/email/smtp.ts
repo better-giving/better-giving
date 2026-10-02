@@ -280,13 +280,15 @@ function connectionOptions(endpoint: SmtpEndpoint, logLevel: LogLevel) {
 }
 
 /**
- * a subject as RFC 2047 says it may travel, folded so no header line passes RFC 5322's 998.
+ * a subject as RFC 2047 says it may travel: no line holding an encoded-word past 76 characters,
+ * which also keeps every line inside RFC 5322's 998.
  *
- * an ASCII subject is returned as it is. anything else becomes base64 encoded-words of at most
- * 75 characters each — `=?UTF-8?B?` and `?=` are 12 of them, so a word carries at most 45 bytes —
- * cut between characters, since each word must decode on its own, and joined by CRLF + space,
- * which a decoder drops between two encoded-words. the value is already free of CR and LF:
- * `parseHeaderValue` refused it otherwise.
+ * an ASCII subject is returned as it is. anything else becomes base64 encoded-words cut between
+ * characters, since each word must decode on its own, and joined by CRLF + space, which a decoder
+ * drops between two encoded-words. `=?UTF-8?B?` and `?=` are 12 characters of every word: a
+ * folded line is a space and a word, so a word is at most 75 characters and carries 45 bytes, and
+ * the first line is `Subject: ` and a word, so that word is at most 67 and carries 39. the value
+ * is already free of CR and LF: `parseHeaderValue` refused it otherwise.
  */
 function encodeSubject(subject: string): string {
 	if (!NON_ASCII.test(subject)) return subject;
@@ -294,7 +296,8 @@ function encodeSubject(subject: string): string {
 	let chunk: number[] = [];
 	for (const character of subject) {
 		const bytes = utf8.encode(character);
-		if (chunk.length + bytes.length > MAX_ENCODED_WORD_BYTES) {
+		const budget = words.length === 0 ? FIRST_WORD_BYTES : FOLDED_WORD_BYTES;
+		if (chunk.length + bytes.length > budget) {
 			words.push(encodedWord(chunk));
 			chunk = [];
 		}
@@ -306,7 +309,8 @@ function encodeSubject(subject: string): string {
 
 // no `u` flag: an astral character is two surrogates, and both fall inside the range.
 const NON_ASCII = /[\u0080-\uffff]/;
-const MAX_ENCODED_WORD_BYTES = 45;
+const FIRST_WORD_BYTES = 39;
+const FOLDED_WORD_BYTES = 45;
 const utf8 = new TextEncoder();
 
 function encodedWord(bytes: readonly number[]): string {
