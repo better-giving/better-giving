@@ -1040,6 +1040,42 @@ describe('resumeDestination() — the held window, re-sent', () => {
 	});
 });
 
+describe("sendDueWebhooks() — a resumed backlog's run", () => {
+	it('takes about half the claim of resumed rows a run, one more on the first, and posts the destination beside it its row', async () => {
+		const held = await destination();
+		await settle();
+		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch);
+		for (let gift = 0; gift < 99; gift++) await settle();
+		const resumedAt = later(HOUR);
+		vi.setSystemTime(resumedAt);
+		expect(await resumeDestination(db, held.id, resumedAt)).toEqual({ ok: true, requeued: 100 });
+		const { results: backlog } = await env.DB.prepare('select id from webhook_delivery').all<{
+			id: string;
+		}>();
+		const backlogIds = new Set(backlog.map((row) => row.id));
+		// the gift settled for `beside` fans out to the resumed destination too, so the backlog is
+		// told apart by its rows' ids and not by its address.
+		const beside = await destination();
+		vi.setSystemTime(new Date(resumedAt.getTime() + 1_000));
+		await settle();
+		const backlogPosts = (receiving: ReturnType<typeof receivers>) =>
+			receiving.posts.filter((post) => backlogIds.has(post.headers.get('webhook-id') ?? '')).length;
+		const postsTo = (receiving: ReturnType<typeof receivers>, url: string) =>
+			receiving.posts.filter((post) => post.url === url).length;
+
+		// rows 0..20 of the backlog are due a minute on, the first of them at the resume itself.
+		const first = receivers();
+		await runAt(new Date(resumedAt.getTime() + MINUTE), first.fetch);
+		expect(backlogPosts(first)).toBe(21);
+		expect(postsTo(first, beside.url)).toBe(1);
+
+		// the next minute lets out rows 21..40: exactly half the feed's pace, with the claim not full.
+		const second = receivers();
+		await runAt(new Date(resumedAt.getTime() + 2 * MINUTE), second.fetch);
+		expect(backlogPosts(second)).toBe(20);
+	});
+});
+
 describe('sendDueWebhooks() — lanes', () => {
 	it("posts to at most the feed's lanes at once, and to every destination it claimed", async () => {
 		for (let made = 0; made < PACE.webhooks; made++) await destination();

@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -209,6 +211,16 @@ func TestTheReadingIsOneAnswerCarryingEveryReadThePageDraws(t *testing.T) {
 	}
 	if body["sites"] == nil || body["org"] == nil || body["values"] == nil {
 		t.Fatalf("read %v", body)
+	}
+	// the members console-ui's HomeReading names and no other: a field added to the reading reaches
+	// every screen's wire, so adding one is a decision this list is edited for.
+	members := []string{}
+	for member := range body {
+		members = append(members, member)
+	}
+	sort.Strings(members)
+	if want := []string{"donatePage", "face", "holdsStripeKey", "org", "sites", "values"}; !slices.Equal(members, want) {
+		t.Fatalf("the reading carries %v, not %v", members, want)
 	}
 	// the donor-facing page is a route on this deployment's own worker (CLAUDE.md → Product
 	// surface), so where it answers is where the deployment answers.

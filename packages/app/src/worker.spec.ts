@@ -166,6 +166,25 @@ describe('which run an expression reaches', () => {
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
 	});
 
+	it('hands every feed the same deps on a deployment holding an unlisted var set to true', async () => {
+		await fires('* * * * *', {
+			DB: {},
+			SOME_OLD_VAR: 'true'
+		} as unknown as typeof env);
+
+		// no pace rides in the deps, so each feed claims the one it declares (outbox/budget.ts).
+		expect(sendDueZapierEvents).toHaveBeenCalledWith(
+			{ db: expect.anything(), fetch: expect.any(Function) },
+			SCHEDULED_AT
+		);
+		expect(sendDueWebhooks).toHaveBeenCalledWith(
+			{ db: expect.anything(), fetch: expect.any(Function), onPaused: expect.any(Function) },
+			SCHEDULED_AT
+		);
+		const booksDeps = vi.mocked(sendDueEntries).mock.calls[0]?.[0] ?? {};
+		expect(Object.keys(booksDeps).sort()).toEqual(['db', 'email', 'provider']);
+	});
+
 	/** the `onPaused` the minute run handed the destinations' delivery, told of one pause. */
 	async function pauseTold(runEnv = env) {
 		await fires('* * * * *', runEnv);
