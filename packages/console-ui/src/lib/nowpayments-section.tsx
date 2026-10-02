@@ -284,7 +284,7 @@ function NowpaymentsKeysForm({
 		const timer = setTimeout(() => {
 			/* a read that could not be made at all leaves the box exactly as it was, and says nothing:
 			   it means the binary has stopped, which every press on this page then reports at itself
-			   and the route draws as the whole screen (../routes/_index.tsx). */
+			   and the sections' `ErrorBoundary` draws as the whole screen (../routes/_sections.tsx). */
 			nowpaymentsCurrencies(asked).then(
 				(listing) => setCoins((read) => coinsLanded(read, asked, listing)),
 				() => {}

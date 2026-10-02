@@ -67,8 +67,8 @@ import type { Route } from './+types/_index';
 // of this repository either way; pinning one is the escape hatch DEPLOY.md documents.
 //
 // reads are the binary's and this `clientLoader`'s, writes are the presses below, and every
-// failure is a value: nothing here throws, because a rejected promise in a loader is a 500 in place
-// of the state that explains it.
+// failure the binary answers is a value drawn as the state that explains it. the one throw is
+// `readConsole` finding no binary at all, which this file's `ErrorBoundary` draws.
 
 /** what the re-connect press on the unreachable face posts. */
 const CONNECT_INTENT = 'connect';

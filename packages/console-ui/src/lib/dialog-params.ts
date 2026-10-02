@@ -131,6 +131,9 @@ export function opensOrDropsDialog({
  * the blank page closing it leaves. the answer carries the reading that stops it
  * (./close-answer.ts), which is what the router hands `actionResult` over for — a fetcher's answer
  * included, which is how the close is posted (./close-confirm.tsx).
+ *
+ * only the layout's own call counts: the router asks `shouldRevalidate` of a route with a loader,
+ * so on a section route with no `clientLoader` of its own the export is read by nothing.
  */
 export function consoleRereads(args: ShouldRevalidateFunctionArgs): boolean {
 	if (saidClosing(args.actionResult)) return false;
