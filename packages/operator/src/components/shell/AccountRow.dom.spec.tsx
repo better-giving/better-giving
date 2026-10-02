@@ -16,7 +16,7 @@ const ACCOUNT = {
 	href: '/sites?account'
 } as const;
 
-const PACED = 'Deliveries paced for the Free plan';
+const PACED = 'Needs attention';
 
 /** a surface's own link, standing in for the router link the console hands in. */
 const Handed = ({ children, ...rest }: AccountLinkProps) => (

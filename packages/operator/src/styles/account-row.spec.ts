@@ -10,8 +10,7 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // link in `layout` holds over `base`'s visited ink whatever that rule's specificity.
 //
 // **the icon rail keeps a way in.** it takes the name off the screen and hides every other lead, and
-// a row hidden with them leaves the panel, and the paid-plan switch in it, with no press at all until
-// the rail is expanded.
+// a row hidden with them leaves the panel with no press at all until the rail is expanded.
 
 const css = sheet('adm.css');
 

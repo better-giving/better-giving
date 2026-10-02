@@ -21,7 +21,7 @@ const account = {
 	name: 'Riverside Shelter’s Account',
 	brand: 'cloudflare',
 	whose: 'Cloudflare account',
-	concern: 'Deliveries paced for the Free plan',
+	concern: 'Needs attention',
 	href: '/sites?account'
 } as const;
 
