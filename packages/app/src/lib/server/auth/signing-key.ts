@@ -52,7 +52,7 @@ export type AuthSecretResolution =
 
 /**
  * what any caller is told when the key cannot be read, wherever it is read. the refusal's `cause`
- * quotes the database's own error and is logged, never sent: the key is read before anybody is
+ * can quote the database's own error and is logged, never sent: the key is read before anybody is
  * signed in, so whoever reads this may be anonymous.
  *
  * it is written to be true of every arm that sends it, a database that throws before the key is

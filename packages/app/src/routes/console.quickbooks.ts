@@ -169,7 +169,7 @@ async function act(
 		const authEnv = readAuthEnv(env);
 		const signingKey = await resolveAuthSecret(db, authEnv);
 		// 500 for $lib/server/auth/gate.ts's reason: nothing the caller sent is wrong, and each
-		// message names what to fix. the key's cause quotes the database and is logged, as it is on
+		// message names what to fix. the key's cause can quote the database and is logged, as it is on
 		// every surface that reads the key.
 		if (!signingKey.ok) {
 			console.error(
