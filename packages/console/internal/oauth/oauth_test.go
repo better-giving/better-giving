@@ -799,6 +799,25 @@ func TestSigningOutRevokesTheSignInAndForgetsIt(t *testing.T) {
 	}
 }
 
+func TestATabClosedMidSignOutStillRevokesTheSignIn(t *testing.T) {
+	// the forgetting happens whatever the request does, so a revoke that died with it would leave a
+	// pair cloudflare still accepts and nothing on this machine that could hand it back.
+	held := &dash{}
+	flow, _, _, _ := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+	gone, closed := context.WithCancel(context.Background())
+	closed()
+
+	if err := flow.Out(gone); err != nil {
+		t.Fatalf("Out: %v", err)
+	}
+
+	if revoked := held.sent("/oauth2/revoke"); len(revoked) != 2 {
+		t.Errorf("revoked = %v, want both halves handed back after the tab closed", revoked)
+	}
+}
+
 func TestAFailureAtCloudflareIsNotTheOperatorTurningTheSignInDown(t *testing.T) {
 	// ../terminal's Refused sentence tells the operator they turned the sign-in down and the
 	// command it reaches ends cleanly on it, so a failure at cloudflare's end reported as a cancel

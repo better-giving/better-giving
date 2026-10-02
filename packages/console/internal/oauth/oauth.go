@@ -245,11 +245,16 @@ func (flow *Flow) Out(ctx context.Context) error {
 		// both halves are handed back. revoking the refresh token is what stops another access
 		// token being taken on it, and the access token already in hand outlives that by up to its
 		// own hour.
+		//
+		// the revoke outlives the request that asked for it: the forgetting below happens either way,
+		// so a revoke cut off with a closed tab is a pair cloudflare still takes and nothing here can
+		// hand back. what bounds it is cf.ReadTimeout inside the send.
+		revoking := context.WithoutCancel(ctx)
 		for _, token := range []string{stored.Refresh, stored.Access} {
 			if token == "" {
 				continue
 			}
-			flow.send(ctx, revokePath, url.Values{
+			flow.send(revoking, revokePath, url.Values{
 				"token":     {token},
 				"client_id": {ClientID},
 			})
