@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, dispute, donation, payment, type ZapierTrigger } from '../db/schema';
 import { MINUTE_RUN, PACE } from '../outbox/budget';
-import { sendDueZapierEvents } from './deliver';
+import { POST_TIMEOUT_MS, sendDueZapierEvents } from './deliver';
 import { giftRefundedStatements, zapierStatements } from './events';
 import { subscribe, type SubscribeRequest, type Subscribed } from './subscriptions';
 
@@ -184,7 +184,7 @@ async function failedOnceAlready(subscriptionId: string): Promise<void> {
 
 /**
  * a `Db` over the test database with the rows D1 reports reading for every `batch()` made through
- * it summed: the figure the Free plan's five million rows read a day is counted in.
+ * it summed: the figure D1 bills a query by (https://developers.cloudflare.com/d1/platform/pricing/).
  */
 function batchRowsRead() {
 	let total = 0;
@@ -386,6 +386,40 @@ describe('sendDueZapierEvents()', () => {
 			expect(row.status).toBe('pending');
 			expect(row.next_attempt_at).toBeGreaterThanOrEqual(before + 10 * MINUTE);
 			expect(row.next_attempt_at).toBeLessThanOrEqual(after + 10 * MINUTE);
+		}
+	});
+
+	it('posts a hook nothing more in a run once a post to it fails, and the hook beside it all it is owed', async () => {
+		const timingOut = await listen();
+		for (let gift = 0; gift < 10; gift++) await settle();
+		const beside = await listen();
+		for (let gift = 0; gift < 5; gift++) await settle();
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			// each post to it answers at the timeout, so without the hold its rows outlast the run.
+			const zapier = hooksAnswering((url) => {
+				if (url !== timingOut.hookUrl) return 200;
+				vi.setSystemTime(Date.now() + POST_TIMEOUT_MS);
+				return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+			});
+			const now = new Date(Date.now() + 1_000);
+
+			await sendDueZapierEvents({ db, fetch: zapier.fetch }, now);
+
+			const toTimingOut = zapier.posts.filter((p) => p.url === timingOut.hookUrl);
+			expect(toTimingOut.length).toBeGreaterThan(0);
+			expect(toTimingOut.length).toBeLessThanOrEqual(MINUTE_RUN.zapier.lanes);
+			expect(zapier.posts.filter((p) => p.url === beside.hookUrl)).toHaveLength(5);
+			const givenBack = (await deliveryRows()).filter(
+				(r) => r.subscription_id === timingOut.id && r.attempts === 0
+			);
+			expect(givenBack).toHaveLength(15 - toTimingOut.length);
+			for (const row of givenBack) {
+				expect(row).toMatchObject({ status: 'pending', leased_until: null, last_error: null });
+				expect(row.next_attempt_at).toBeLessThanOrEqual(now.getTime());
+			}
+		} finally {
+			vi.useRealTimers();
 		}
 	});
 
@@ -844,8 +878,9 @@ describe('sendDueZapierEvents()', () => {
 	});
 
 	it('posts each row of a backlog once when two runs work it together', async () => {
+		// three Zaps owed every gift: three claims' rows, more than the two runs between them take.
 		for (let zap = 0; zap < 3; zap++) await listen();
-		for (let gift = 0; gift < 50; gift++) await settle();
+		for (let gift = 0; gift < PACE.zapier; gift++) await settle();
 		const posts: string[] = [];
 		let open!: () => void;
 		const gate = new Promise<void>((resolve) => {

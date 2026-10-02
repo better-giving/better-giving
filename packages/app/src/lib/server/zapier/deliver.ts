@@ -51,6 +51,12 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 //              row waits out {@link backoffMs}, and the hook's `failing_since` marks the start of
 //              its run of failures — the mark and the row's outcome in one batch. a hook that
 //              never answers is as dead as one that refuses.
+// **a hook that fails a post is posted nothing more in that run.** the rows it is owed that the run
+// holds and has not yet started are given back unposted, due as they were and their attempts as
+// they stand, so a hook answering at {@link POST_TIMEOUT_MS} costs the run a post per lane rather
+// than the run's time, and the hooks beside it in the claim are still posted. a row given back is
+// no failed post: it neither marks the hook nor counts toward ending it, and it is posted by the
+// next run that claims it.
 // a hook ends the way a 410 ends it once every post to it has failed for {@link GIVE_UP_AFTER_MS}
 // and none was taken, on the failure of a row that had failed before. when a mark counts toward
 // that, and when a failure starts a run of its own instead, is ../outbox/failing.ts's: a mark left
@@ -86,7 +92,7 @@ export type ZapierDeliveryDeps = {
 const POSTS_AT_ONCE = MINUTE_RUN.zapier.lanes;
 
 /** how long a hook is given to answer before the post counts as failed. */
-const POST_TIMEOUT_MS = 10_000;
+export const POST_TIMEOUT_MS = 10_000;
 
 /** how long a claimed row is the claiming run's alone, from that run's scheduled time. */
 const LEASE_MS = 2 * 60_000;
@@ -153,6 +159,7 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 	const gone = new Set<string>();
 	// each hook that answered 429 with a time, and when its rows this run holds are next due.
 	const throttled = new Map<string, Date>();
+	const failedThisRun = new Set<string>();
 	const landing = (row: Claimed, outcome: Outcome<typeof zapierDelivery>) =>
 		claim.landing(row, { ...outcome, attempts: row.attempts + 1, updatedAt: now });
 	const land = (row: Claimed, outcome: Outcome<typeof zapierDelivery>) =>
@@ -163,6 +170,10 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 		const heldUntil = throttled.get(row.subscriptionId);
 		if (heldUntil !== undefined) {
 			await claim.land(row, { nextAttemptAt: heldUntil, updatedAt: now });
+			return;
+		}
+		if (failedThisRun.has(row.subscriptionId)) {
+			await claim.land(row, { updatedAt: now });
 			return;
 		}
 		const hook = hooks.get(row.subscriptionId);
@@ -199,6 +210,7 @@ export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): 
 		}
 		const nextAttemptAt = nextAttempt(row, answer.retryAt, now);
 		if (answer.retryAt !== undefined) throttled.set(row.subscriptionId, nextAttemptAt);
+		else failedThisRun.add(row.subscriptionId);
 		const failed = [
 			failing.failed(deps.db, row.subscriptionId, row, now),
 			landing(row, { nextAttemptAt, lastError: answer.error })
