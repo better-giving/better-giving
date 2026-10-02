@@ -1,4 +1,5 @@
 import { and, eq, like, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '$lib/server/db/client';
 import { authVerification } from '$lib/server/db/auth-schema';
 
@@ -11,6 +12,9 @@ import { authVerification } from '$lib/server/db/auth-schema';
 
 /** the prefix better-auth writes before every reset token in `auth_verification.identifier`. */
 export const RESET_IDENTIFIER_PREFIX = 'reset-password:';
+
+/** the row just minted, read beside the rows being deleted from the same table. */
+const minted = alias(authVerification, 'minted');
 
 /**
  * end every reset link a member holds, or, given the link just minted, every one minted before it.
@@ -36,10 +40,10 @@ export async function deleteResetLinks(
 			like(authVerification.identifier, `${RESET_IDENTIFIER_PREFIX}%`),
 			olderThan === undefined
 				? undefined
-				: sql`(${authVerification.createdAt}, ${authVerification.id}) < (
-							select minted.created_at, minted.id from auth_verification as minted
-							where minted.identifier = ${`${RESET_IDENTIFIER_PREFIX}${olderThan}`}
-						)`
+				: sql`(${authVerification.createdAt}, ${authVerification.id}) < ${db
+						.select({ createdAt: minted.createdAt, id: minted.id })
+						.from(minted)
+						.where(eq(minted.identifier, `${RESET_IDENTIFIER_PREFIX}${olderThan}`))}`
 		)
 	);
 }
