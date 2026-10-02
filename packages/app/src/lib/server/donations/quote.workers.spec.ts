@@ -1553,43 +1553,43 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(result.ok || result.message).not.toContain('expired');
 	});
 
-	it('carries the fund’s reason when it will not grant the amount', async () => {
+	it('carries Chariot’s reason when the fund will not grant the amount', async () => {
 		const port = chariotProvider([
 			{
 				ok: false,
 				reason: 'invalid_request',
 				detail:
-					'Chariot did not create the grant. Chariot said: Bad Request: amount exceeds the fund balance',
-				providerSaid: 'Bad Request: amount exceeds the fund balance'
+					'Chariot did not create the grant. Chariot said: API Error: amount exceeds the fund balance',
+				providerSaid: 'amount exceeds the fund balance'
 			}
 		]);
 
 		const result = await mint(chariotDeps(port.port), fundGift());
 
 		expect(result.ok || result.reason).toBe('daf_grant_declined');
-		// the fund's words verbatim, in a fundraiser's sentence: the adapter's own wording names the
+		// Chariot's words verbatim, in a fundraiser's sentence: the adapter's own wording names the
 		// processor and is written for the log.
 		expect(result.ok || result.message).toBe(
-			'Your fund didn’t approve this gift: Bad Request: amount exceeds the fund balance'
+			'Your fund didn’t approve this gift: amount exceeds the fund balance'
 		);
 		expect(result.ok || result.fix).not.toContain('Chariot');
 	});
 
-	// the adapter's log sentence is free to be reworded; the fund's words reach the donor regardless.
-	it('carries the fund’s reason whatever the adapter’s own sentence says', async () => {
+	// the adapter's log sentence is free to be reworded; Chariot's words reach the donor regardless.
+	it('carries Chariot’s reason whatever the adapter’s own sentence says', async () => {
 		const port = chariotProvider([
 			{
 				ok: false,
 				reason: 'invalid_request',
-				detail: 'The grant was refused: Bad Request: amount is below the fund minimum',
-				providerSaid: 'Bad Request: amount is below the fund minimum'
+				detail: 'The grant was refused: API Error: amount is below the fund minimum',
+				providerSaid: 'amount is below the fund minimum'
 			}
 		]);
 
 		const result = await mint(chariotDeps(port.port), fundGift());
 
 		expect(result.ok || result.message).toBe(
-			'Your fund didn’t approve this gift: Bad Request: amount is below the fund minimum'
+			'Your fund didn’t approve this gift: amount is below the fund minimum'
 		);
 	});
 

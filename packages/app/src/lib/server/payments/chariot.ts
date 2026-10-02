@@ -105,6 +105,16 @@ const TIMEOUT_MS = 12_000;
 const PROVIDER_QUOTE_MAX = 200;
 
 /**
+ * anything shaped like a credential inside a sentence Chariot wrote, for the reason
+ * `CREDENTIAL_SHAPED` in ./stripe.ts exists. Chariot's key is an opaque bearer token with no
+ * documented prefix to match, so this takes a bearer phrase whole and any unbroken alphanumeric
+ * run of 32 or more — the minted signing secret is 64 hex — while Chariot's ids stay readable: a
+ * UUID breaks at its hyphens, and a `program_`-style prefix at its underscore ahead of a 26-character
+ * ULID.
+ */
+const CREDENTIAL_SHAPED = /\bBearer\s+\S+|[A-Za-z0-9*]{32,}/gi;
+
+/**
  * the waits between asking again while Chariot answers 409 — still processing an earlier Create
  * Grant for the same session.
  *
@@ -268,8 +278,7 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 						'Chariot is still processing the grant for this session and did not finish while ' +
 						'this call waited, so whether a grant exists is unknown. The identical call made ' +
 						'again answers the grant once it exists, ' +
-						`and no second grant can be created for one session. Chariot said: ${quoteProblem(answer.body)}`,
-					...processorWords(answer.body)
+						`and no second grant can be created for one session. Chariot said: ${quoteProblem(answer.body)}`
 				};
 			}
 			// a 404 is a session Chariot never issued, and falls through to `classifyStatus` as
@@ -281,8 +290,7 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 					detail:
 						'The donor authorized this grant in Chariot’s window more than 15 minutes ago, so ' +
 						'Chariot no longer holds the authorization and no grant was created. The donor has ' +
-						`to give through the fund’s window again. Chariot said: ${quoteProblem(answer.body)}`,
-					...processorWords(answer.body)
+						`to give through the fund’s window again. Chariot said: ${quoteProblem(answer.body)}`
 				};
 			}
 			if (answer.status !== 200 && answer.status !== 201) {
@@ -657,30 +665,23 @@ function occurredAtOf(grant: unknown, status: PaymentStatus): Date | null {
  */
 function classifyStatus(status: number, body: unknown, context: string): PaymentFailure {
 	const said = `${context}. Chariot said: ${quoteProblem(body)}`;
-	const words = processorWords(body);
 	if (status === 401 || status === 403) {
 		return {
 			ok: false,
 			reason: 'not_configured',
 			detail:
 				'Chariot rejected this deployment’s key: `CHARIOT_API_KEY` is not one the account at ' +
-				`\`CHARIOT_API_URL\` accepts — a sandbox key against the live address is the usual cause. ${said}`,
-			...words
+				`\`CHARIOT_API_URL\` accepts — a sandbox key against the live address is the usual cause. ${said}`
 		};
 	}
-	if (status === 404) return { ok: false, reason: 'not_found', detail: said, ...words };
+	if (status === 404) return { ok: false, reason: 'not_found', detail: said };
 	if (status === 429) {
-		return {
-			ok: false,
-			reason: 'rate_limited',
-			detail: `Chariot is rate limiting. ${said}`,
-			...words
-		};
+		return { ok: false, reason: 'rate_limited', detail: `Chariot is rate limiting. ${said}` };
 	}
 	if (status >= 400 && status < 500) {
-		return { ok: false, reason: 'invalid_request', detail: said, ...words };
+		return { ok: false, reason: 'invalid_request', detail: said, ...processorWords(body) };
 	}
-	return { ok: false, reason: 'provider_error', detail: said, ...words };
+	return { ok: false, reason: 'provider_error', detail: said };
 }
 
 /**
@@ -690,13 +691,11 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
  * name, email and address.
  */
 function readProblem(body: unknown): string | null {
-	const said = [stringField(body, 'title'), stringField(body, 'detail')]
-		.filter((part) => part !== null)
-		.join(': ')
-		.replace(/\s+/g, ' ')
-		.trim();
-	if (said === '') return null;
-	return said.length <= PROVIDER_QUOTE_MAX ? said : `${said.slice(0, PROVIDER_QUOTE_MAX)}…`;
+	return quoteChariot(
+		[stringField(body, 'title'), stringField(body, 'detail')]
+			.filter((part) => part !== null)
+			.join(': ')
+	);
 }
 
 /** `readProblem` for the log sentence, which says so where there was nothing to quote. */
@@ -705,12 +704,31 @@ function quoteProblem(body: unknown): string {
 }
 
 /**
- * `PaymentFailure.providerSaid`, absent where the body had nothing to quote, so a donor is never
- * shown `quoteProblem`'s placeholder.
+ * `PaymentFailure.providerSaid`: the problem's `detail` alone, since every error the 2026-04-01
+ * spec documents has the fixed `title` "API Error", and absent where there is no detail, so a
+ * donor is never shown that label or `quoteProblem`'s placeholder.
  */
 function processorWords(body: unknown): Pick<PaymentFailure, 'providerSaid'> {
-	const said = readProblem(body);
+	const said = quoteChariot(stringField(body, 'detail') ?? '');
 	return said === null ? {} : { providerSaid: said };
+}
+
+/**
+ * a sentence of Chariot's, stripped of anything key-shaped, bounded and on one line; `null` where
+ * nothing is left of it.
+ */
+function quoteChariot(text: string): string | null {
+	const said = text.replace(CREDENTIAL_SHAPED, '[redacted credential]').replace(/\s+/g, ' ').trim();
+	if (said === '') return null;
+	return said.length <= PROVIDER_QUOTE_MAX ? said : `${capped(said)}…`;
+}
+
+/** the first `PROVIDER_QUOTE_MAX` UTF-16 units, one fewer where the cut would halve a surrogate pair. */
+function capped(text: string): string {
+	const end = /[\uD800-\uDBFF]/.test(text.charAt(PROVIDER_QUOTE_MAX - 1))
+		? PROVIDER_QUOTE_MAX - 1
+		: PROVIDER_QUOTE_MAX;
+	return text.slice(0, end);
 }
 
 function unreachable(error: unknown): PaymentFailure {
@@ -739,7 +757,7 @@ function unsupported(detail: string): PaymentFailure {
 function messageOf(error: unknown): string {
 	try {
 		const said = error instanceof Error ? error.message : String(error);
-		return said.replace(/\s+/g, ' ').trim().slice(0, PROVIDER_QUOTE_MAX);
+		return capped(said.replace(/\s+/g, ' ').trim());
 	} catch {
 		return 'an error that could not be described';
 	}

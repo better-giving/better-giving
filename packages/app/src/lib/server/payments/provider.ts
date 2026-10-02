@@ -452,10 +452,11 @@ export type PaymentFailure = {
 	 */
 	readonly minimumMinor?: number;
 	/**
-	 * the processor's own sentence about the refusal, bounded and on one line — what a donor may be
-	 * shown, while `detail` around it is written for the log and is free to be reworded. set by
-	 * ./chariot.ts on a refusal whose problem body had a title or detail to quote — the fund's reason
-	 * (`readProblem` there); absent on every other refusal.
+	 * `invalid_request` only, and only where the processor gave a reason about this gift: the
+	 * processor's own words for it, which a donor may be shown, while `detail` around it is written
+	 * for the log and is free to be reworded. one line of at most 200 UTF-16 units and an ellipsis,
+	 * carrying no credential — anything key-shaped is replaced — and no field of the transaction.
+	 * absent on every other refusal.
 	 */
 	readonly providerSaid?: string;
 };
@@ -1886,9 +1887,8 @@ export interface PaymentProvider {
 	 * gave: ./paypal.ts captures an `APPROVED` order here, because PayPal has no auto-capture (its
 	 * header argues it). the reconciliation, safe to repeat — an order captured once reads as
 	 * captured the next time — and never a read for a page that only shows a transaction, which
-	 * handed a PayPal id would move the donor's money. ../donations/settle.ts and
-	 * ../donations/collect.ts call it to reconcile; ../donations/tracking-ids.ts calls it on Chariot
-	 * transactions alone.
+	 * handed a PayPal id would move the donor's money. which modules may call it is held by
+	 * ./sole-settlement-reader.spec.ts.
 	 *
 	 * it can take seconds rather than one round trip, and that is the arm's contract rather than an
 	 * implementation detail a caller may ignore: a charge whose fee the processor has not computed yet

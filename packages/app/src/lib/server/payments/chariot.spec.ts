@@ -228,7 +228,7 @@ describe('createIntent — Create Grant', () => {
 				status: 400,
 				json: {
 					type: 'about:blank',
-					title: 'Bad Request',
+					title: 'API Error',
 					status: 400,
 					detail: 'amount exceeds the fund balance'
 				}
@@ -241,15 +241,15 @@ describe('createIntent — Create Grant', () => {
 		expect(result.ok === false ? result.detail : '').toContain('amount exceeds the fund balance');
 	});
 
-	// the donor is shown the fund's words from this field, so it holds Chariot's sentence alone,
-	// whatever the adapter's own `detail` around it says.
+	// a donor may be shown this field, so it holds Chariot's `detail` alone: every documented error
+	// in the 2026-04-01 spec has the fixed title `API Error`, which says nothing about this gift.
 	it('hands Chariot’s refusal back as the processor’s own words, apart from the log sentence', async () => {
 		recording([
 			{
 				status: 400,
 				json: {
 					type: 'about:blank',
-					title: 'Bad Request',
+					title: 'API Error',
 					status: 400,
 					detail: 'amount is below the fund minimum'
 				}
@@ -258,8 +258,9 @@ describe('createIntent — Create Grant', () => {
 
 		const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
 
-		expect(result.ok === false && result.providerSaid).toBe(
-			'Bad Request: amount is below the fund minimum'
+		expect(result.ok === false && result.providerSaid).toBe('amount is below the fund minimum');
+		expect(result.ok === false ? result.detail : '').toContain(
+			'API Error: amount is below the fund minimum'
 		);
 	});
 
@@ -274,6 +275,92 @@ describe('createIntent — Create Grant', () => {
 		expect(result.ok === false && 'providerSaid' in result).toBe(false);
 		expect(result.ok === false ? result.detail : '').toContain('nothing this app could read');
 	});
+
+	// the label alone says nothing about this gift, so there is nothing for a donor to read.
+	it('carries no processor words when Chariot’s refusal had a title and no detail', async () => {
+		recording([{ status: 400, json: { type: 'about:blank', title: 'API Error', status: 400 } }]);
+
+		const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
+
+		expect(result.ok === false && result.reason).toBe('invalid_request');
+		expect(result.ok === false && 'providerSaid' in result).toBe(false);
+		expect(result.ok === false ? result.detail : '').toContain('API Error');
+	});
+
+	// Chariot's sentence is somebody else's text, and the echo policy in packages/app/src/lib/redact.ts
+	// has no exception for it: a key quoted back reaches a donor's screen and the log alike.
+	it('strips a key-shaped value out of Chariot’s words before repeating them', async () => {
+		const key = 'a3f9c2e81b7d4f60a3f9c2e81b7d4f60a3f9c2e81b7d4f60a3f9c2e81b7d4f60';
+		const bearer = 'Bearer ck_live_9fQ2xR7tLm';
+		recording([
+			{
+				status: 400,
+				json: {
+					type: 'about:blank',
+					title: 'API Error',
+					status: 400,
+					detail: `amount is below the fund minimum for ${key} sent as ${bearer} on ${GRANT_ID} under program_01j8rs605a4gctmbm58d87mvsj`
+				}
+			}
+		]);
+
+		const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
+		const said = result.ok === false ? `${result.providerSaid} ${result.detail}` : '';
+
+		expect(said).toContain('amount is below the fund minimum');
+		expect(said).not.toContain(key.slice(0, 16));
+		expect(said).not.toContain('9fQ2xR7tLm');
+		expect(said).toContain(GRANT_ID);
+		expect(said).toContain('program_01j8rs605a4gctmbm58d87mvsj');
+		expect(result.ok === false && result.providerSaid).toContain('[redacted credential]');
+	});
+
+	// the cap falls in the middle of an emoji here; a cut between its two UTF-16 halves would leave
+	// a lone surrogate on the donor's screen.
+	it('bounds Chariot’s words without splitting a character in two', async () => {
+		const before = `${'ab '.repeat(66)}a`;
+		recording([
+			{
+				status: 400,
+				json: {
+					type: 'about:blank',
+					title: 'API Error',
+					status: 400,
+					detail: `${before}\u{1F49A} and the rest of a long sentence`
+				}
+			}
+		]);
+
+		const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
+		const said = result.ok === false ? (result.providerSaid ?? '') : '';
+
+		expect(said).toBe(`${before}…`);
+	});
+
+	// only a refusal of the donor's own gift carries words a donor may be shown: a 401 is about this
+	// deployment's key, a 410 has its own sentence, and a 5xx is Chariot's operations.
+	it.each([401, 403, 404, 410, 429, 500])(
+		'carries no processor words on a %i, whose body is not the donor’s to read',
+		async (status) => {
+			recording([
+				{
+					status,
+					json: {
+						type: 'about:blank',
+						title: 'API Error',
+						status,
+						detail: 'something Chariot said'
+					}
+				}
+			]);
+
+			const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
+
+			expect(result.ok).toBe(false);
+			expect(result.ok === false && 'providerSaid' in result).toBe(false);
+			expect(result.ok === false ? result.detail : '').toContain('something Chariot said');
+		}
+	);
 
 	// a 409 is Chariot still working through the first request for the session. the donor is waiting
 	// on the answer, so it is asked again inside the call rather than handed back to them.
@@ -310,6 +397,7 @@ describe('createIntent — Create Grant', () => {
 
 		expect(result.ok === false && result.reason).toBe('unreachable');
 		expect(result.ok === false && isRetryable(result.reason)).toBe(true);
+		expect(result.ok === false && 'providerSaid' in result).toBe(false);
 		expect(calls.length).toBeLessThan(10);
 	});
 

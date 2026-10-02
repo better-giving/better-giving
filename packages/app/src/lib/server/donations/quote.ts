@@ -936,7 +936,9 @@ function splitGrant(
  * from Chariot's 410), an approval Chariot holds nothing for (`not_found`, its 404 — a body naming
  * the wrong session, so `invalid_request` and never a claim that it expired), and an amount the fund
  * will not grant (`invalid_request`, carrying Chariot's reason — the adapter's own local refusals
- * cannot reach it, because the parser and the checks above refuse those figures first). a call whose
+ * cannot reach it, because the parser and the checks above refuse those figures first). every other
+ * Chariot 4xx lands on `invalid_request` too, a 400 caused by this app's own parameters included, and
+ * the copy on that arm reads to the donor as the fund's refusal in every one of them. a call whose
  * outcome is unknown (`unreachable`) is retryable, and never says nothing was given. everything else
  * is what any single gift's processor failure answers.
  */
