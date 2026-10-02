@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 /**
  * @typedef {object} LedgerSkeletonProps
  * @property {string} label what is being waited on, and the only thing a reader of the tree gets:
@@ -25,9 +27,19 @@
    label, visually hidden, beside a drawing hidden from the tree. */
 /** @param {LedgerSkeletonProps} props */
 export function LedgerSkeleton({ label, blocks }) {
+	// the region mounts empty and takes its label a task later, for ./ProgressBar.jsx's reason: a
+	// live region reports a change to its contents and never its own arrival, so one that arrived
+	// holding its words would be announced by nobody. ../controls/SaveButton.jsx writes its region
+	// the same way.
+	const [said, setSaid] = useState('');
+	useEffect(() => {
+		const say = setTimeout(() => setSaid(label), 0);
+		return () => clearTimeout(say);
+	}, [label]);
+
 	return (
 		<div role="status">
-			<span className="adm-vh">{label}</span>
+			<span className="adm-vh">{said}</span>
 			<div className="adm-stack" aria-hidden="true">
 				{blocks.map((lines, block) => (
 					<div className="adm-named" key={block}>
