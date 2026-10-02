@@ -27,6 +27,7 @@ import {
 	signInMember,
 	STAFF_USER_EMAIL
 } from '$lib/server/auth';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, takeFlash } from '$lib/server/flash';
 import { SetupGate } from '$lib/admin/setup-gate';
@@ -131,7 +132,9 @@ const WRONG_CREDENTIAL =
 	'That username or email address and password do not match a member of this organisation.';
 
 /**
- * what every failure but the 401 says.
+ * what a failure the auth layer answered says, every one but the 401. a signing key that cannot be
+ * read, or a database that throws before the auth layer answers, says `SIGNING_KEY_UNREADABLE`
+ * ($lib/server/auth/signing-key.ts) instead.
  *
  * the messages the auth layer produces are about the deployment — among them the 500 for an
  * unconfigured staff credential, whose message says what is wrong with `ADMIN_PASSWORD` and where
@@ -149,20 +152,6 @@ const UNAVAILABLE =
 	'Sign-in is unavailable. The console (`better-giving start`) says whether this deployment’s ' +
 	'sign-in password is set. The exact cause is in the deployment’s logs, which the console does ' +
 	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
-
-/**
- * what a deployment whose schema is not there says.
- *
- * two failures reach it and both are the same fix: no `auth_signing_key` row to sign a cookie
- * with, and a throw out of the staff upsert on a database with no `auth_user` table — the one a
- * fresh fork actually hits.
- */
-const NOT_MIGRATED =
-	'Sign-in is unavailable. If this deployment is new, check that migrations have been ' +
-	'applied to its database: the console (`better-giving start`) applies them to the deployed D1 ' +
-	'when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies ' +
-	'them to a local one. Then read this deployment’s logs (the Cloudflare dashboard, or ' +
-	'`pnpm run logs` from a checkout).';
 
 export const links = operatorLinks;
 
@@ -307,8 +296,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// has — so both arms say it rather than naming a row an operator would then go looking for.
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
-		console.error('staff sign-in has no signing key:', signingKey.message);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		console.error('staff sign-in has no signing key:', signingKey.cause);
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
 	const pin = readPin(authEnv);
 	if (!pin.ok) return invalid(500, submission.reject({ formErrors: [pin.message] }));
@@ -380,7 +369,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		// fork hits is `no such table: auth_user` from the staff upsert — same cause and same fix
 		// as the message in $lib/server/auth/staff-plugin.ts, which is otherwise unreachable.
 		console.error('staff sign-in failed before the auth layer could respond:', e);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
 
 	return signedInAt(url, cookies);

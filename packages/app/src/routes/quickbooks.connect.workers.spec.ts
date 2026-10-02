@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createStaticHandler, isRouteErrorResponse, type LoaderFunction } from 'react-router';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { CONNECT_LINK_LIFETIME_MS, mintConnectLink } from '$lib/server/accounting/connect-link';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { INTUIT_AUTHORIZE_URL, QUICKBOOKS_PRODUCTION_URL } from '$lib/server/accounting/quickbooks';
 import { requestContext } from '../request-context';
 import * as connect from './quickbooks.connect';
@@ -200,10 +201,7 @@ describe('GET /quickbooks/connect', () => {
 
 			expect(answered.statusCode).toBe(500);
 			const error = answered.errors?.[ROUTE_ID];
-			expect(isRouteErrorResponse(error) && error.data).toBe(
-				'QuickBooks cannot be connected right now. This deployment’s logs say why: the ' +
-					'Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.'
-			);
+			expect(isRouteErrorResponse(error) && error.data).toBe(SIGNING_KEY_UNREADABLE);
 			const [prefix, cause] = logged.mock.calls[0] ?? [];
 			expect(prefix).toBe('a QuickBooks connect address could not be checked — no signing key:');
 			expect(String(cause ?? '').trim()).not.toBe('');

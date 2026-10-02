@@ -171,7 +171,7 @@ function send(path: string, init?: RequestInit, vars: ConfigEnv = {}): Promise<R
 async function signIn(): Promise<string> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	const auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: PASSWORD },

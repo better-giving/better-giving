@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import type { Db } from '$lib/server/db/client';
 import { authSigningKey } from '$lib/server/db/auth-schema';
 import type { AuthEnv } from './env';
@@ -47,10 +48,26 @@ const SIGNING_KEY_ID = 'default';
 
 export type AuthSecretResolution =
 	| { readonly ok: true; readonly secret: string; readonly source: 'env' | 'database' }
-	| { readonly ok: false; readonly message: string };
+	| { readonly ok: false; readonly cause: string };
 
 /**
- * `BETTER_AUTH_SECRET` if set, else the `auth_signing_key` row, else a refusal that
+ * what any caller is told when the key cannot be read, wherever it is read. the refusal's `cause`
+ * quotes the database's own error and is logged, never sent: the key is read before anybody is
+ * signed in, so whoever reads this may be anonymous.
+ *
+ * it is written to be true of every arm that sends it, a database that throws before the key is
+ * read included (src/routes/login.tsx), so it names what to do rather than what failed — and for
+ * the reason `notConfiguredMessage` gives, the ways migrations are applied and no filename.
+ */
+export const SIGNING_KEY_UNREADABLE =
+	'This deployment’s database is not ready, so no one can be signed in and no signed link can ' +
+	'be checked. If the deployment is new, apply its migrations: the console ' +
+	'(`better-giving start`) applies them to the deployed D1 when it updates this deployment, and ' +
+	'`pnpm wrangler d1 migrations apply DB --local` applies them to a local one. ' +
+	LOGS_SAY_WHY;
+
+/**
+ * `BETTER_AUTH_SECRET` if set, else the `auth_signing_key` row, else a refusal whose cause
  * names the fix.
  *
  * one D1 read, and only when the env override is absent. it is a read per request
@@ -74,7 +91,7 @@ export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecre
 		// because migrations have not been applied. anything else the driver can throw
 		// leads to the same first thing to check, so both get the same message rather than
 		// a raw drizzle error the operator has to interpret.
-		return { ok: false, message: notConfiguredMessage(`the query failed (${describe(cause)})`) };
+		return { ok: false, cause: notConfiguredMessage(`the query failed (${describe(cause)})`) };
 	}
 
 	// `typeof` rather than trusting the declared type: the value crosses D1's serialization
@@ -90,7 +107,7 @@ export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecre
 	if (!secret) {
 		return {
 			ok: false,
-			message: notConfiguredMessage(
+			cause: notConfiguredMessage(
 				rows.length === 0
 					? `no \`${SIGNING_KEY_ID}\` row exists`
 					: `the \`${SIGNING_KEY_ID}\` row is empty`
@@ -102,9 +119,9 @@ export async function resolveAuthSecret(db: Db, env: AuthEnv): Promise<AuthSecre
 }
 
 /**
- * written for whoever reads the 5xx body — increasingly an agent, not a human at a
+ * written for whoever reads the deployment's logs — increasingly an agent, not a human at a
  * terminal — so it names the table, the reason, and the command that fixes it
- * (CLAUDE.md).
+ * (CLAUDE.md). no caller sends it: `SIGNING_KEY_UNREADABLE` is what they answer with.
  *
  * it names no migration filename, and that is the one editing rule here. a filename is
  * squash-mutable — the chain under `migrations/` has been squashed before — and a stale

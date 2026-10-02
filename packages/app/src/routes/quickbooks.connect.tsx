@@ -2,7 +2,6 @@ import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
-import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import {
 	carriesConnectLink,
 	connectFlowOrigin,
@@ -13,6 +12,7 @@ import {
 } from '$lib/server/accounting/connect-link';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { readAuthEnv, resolveAuthSecret } from '$lib/server/auth';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { database, platform } from '../context';
 import type { Route } from './+types/quickbooks.connect';
 
@@ -73,13 +73,13 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
 		// 500 for $lib/server/auth/gate.ts's reasons: nothing the caller sent is wrong, and whoever
-		// opened the address holds no session, so the message, which quotes the database's own
-		// error, goes to the logs and the browser is told where they are.
+		// opened the address holds no session, so the cause, which quotes the database's own error,
+		// goes to the logs and the browser is told the shared reply.
 		console.error(
 			'a QuickBooks connect address could not be checked — no signing key:',
-			signingKey.message
+			signingKey.cause
 		);
-		throw data(`QuickBooks cannot be connected right now. ${LOGS_SAY_WHY}`, { status: 500 });
+		throw data(SIGNING_KEY_UNREADABLE, { status: 500 });
 	}
 
 	if (!(await readConnectLink({ secret: signingKey.secret, url, now: new Date() }))) {

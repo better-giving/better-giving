@@ -1,11 +1,10 @@
 import { data, redirect, type MiddlewareFunction } from 'react-router';
 import { auth as authForRequest, database, platform, staff } from '../../../context';
-import { LOGS_SAY_WHY } from '../../deployment-logs';
 import { readAuthEnv } from './env';
 import { createAuth } from './index';
 import { LOGIN_PATH, NEXT_PARAM } from './next';
 import { requirePin } from './pin';
-import { resolveAuthSecret } from './signing-key';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
 
 /**
  * what react router hands a server `middleware`, taken off the framework's own type rather than
@@ -19,9 +18,6 @@ import { resolveAuthSecret } from './signing-key';
  */
 type GateArgs = Parameters<MiddlewareFunction<Response>>[0];
 type GateNext = Parameters<MiddlewareFunction<Response>>[1];
-
-/** what any caller is told when the signing key cannot be read; the cause is logged. */
-const NO_SIGNING_KEY = `No one can be signed in right now. ${LOGS_SAY_WHY}`;
 
 /**
  * the gate in front of every screen behind the login, as a route `middleware`.
@@ -62,10 +58,10 @@ export async function staffGate(
 	if (!signingKey.ok) {
 		// 500 rather than a redirect to the login: nothing the caller sent is wrong, and a
 		// deployment that cannot sign a cookie cannot sign one at the login either. the key is read
-		// before any session, so the caller is as likely anonymous as staff: the message, which
-		// quotes the database's own error, goes to the logs, and the response is the pointer.
-		console.error('the dashboard has no signing key:', signingKey.message);
-		throw data(NO_SIGNING_KEY, { status: 500 });
+		// before any session, so the caller is as likely anonymous as staff: the cause, which
+		// quotes the database's own error, goes to the logs, and the response is the shared reply.
+		console.error('the dashboard has no signing key:', signingKey.cause);
+		throw data(SIGNING_KEY_UNREADABLE, { status: 500 });
 	}
 	// the same 500 for the same reason, and before `createAuth`, which throws a bare error on it.
 	requirePin(authEnv);

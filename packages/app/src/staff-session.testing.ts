@@ -37,7 +37,7 @@ export function deployedBindings(password: string): Env {
 export async function staffAuth(db: Db, deployment: StaffDeployment) {
 	const authEnv = readAuthEnv(deployment.env);
 	const signingKey = await resolveAuthSecret(db, authEnv);
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	return createAuth(
 		db,
 		{ ...authEnv, ADMIN_PASSWORD: deployment.password },

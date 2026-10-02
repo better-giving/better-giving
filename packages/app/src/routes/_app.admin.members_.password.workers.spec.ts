@@ -131,7 +131,7 @@ async function signInAsMember(email: string = MEMBER): Promise<string> {
 
 async function authInstance() {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	return createAuth(
 		db,
 		{ ADMIN_PASSWORD: PASSWORD },

@@ -48,6 +48,7 @@ import {
 	UNDEPOSITED_FUNDS
 } from '$lib/server/accounting/quickbooks-accounts';
 import { readAuthEnv, readPin, resolveAuthSecret } from '$lib/server/auth';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { consoleJson } from '$lib/server/console/surface';
 import type { Db } from '$lib/server/db/client';
 import { database, platform } from '../context';
@@ -168,9 +169,15 @@ async function act(
 		const authEnv = readAuthEnv(env);
 		const signingKey = await resolveAuthSecret(db, authEnv);
 		// 500 for $lib/server/auth/gate.ts's reason: nothing the caller sent is wrong, and each
-		// message names what to fix.
-		if (!signingKey.ok)
-			return consoleJson({ error: 'no_signing_key', message: signingKey.message }, 500);
+		// message names what to fix. the key's cause quotes the database and is logged, as it is on
+		// every surface that reads the key.
+		if (!signingKey.ok) {
+			console.error(
+				'a QuickBooks connect address could not be minted — no signing key:',
+				signingKey.cause
+			);
+			return consoleJson({ error: 'no_signing_key', message: SIGNING_KEY_UNREADABLE }, 500);
+		}
 		const pin = readPin(authEnv);
 		if (!pin.ok) return consoleJson({ error: 'unusable_pin', message: pin.message }, 500);
 		const report: QuickbooksPressReport = {

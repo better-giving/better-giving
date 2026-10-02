@@ -69,7 +69,7 @@ async function createAuthWith(passwordReset?: {
 	background(task: Promise<unknown>): void;
 }): Promise<Auth> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	return createAuth(
 		db,
 		{ ADMIN_PASSWORD: STAFF_PASSWORD },

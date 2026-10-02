@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Db } from '$lib/server/db/client';
-import { resolveAuthSecret } from './signing-key';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
 
 /**
  * the row `migrations/0000_initial_schema.sql` mints: 64 lowercase hex characters.
@@ -74,18 +75,18 @@ describe('resolveAuthSecret', () => {
 		const result = await resolveAuthSecret(stubDb({ rows: [] }), {});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('auth_signing_key');
-		expect(result.message).toContain('no `default` row exists');
-		expect(result.message).toContain('pnpm wrangler d1 migrations apply DB --local');
-		expect(result.message).toContain('better-giving start');
-		expect(result.message).toContain('BETTER_AUTH_SECRET');
+		expect(result.cause).toContain('auth_signing_key');
+		expect(result.cause).toContain('no `default` row exists');
+		expect(result.cause).toContain('pnpm wrangler d1 migrations apply DB --local');
+		expect(result.cause).toContain('better-giving start');
+		expect(result.cause).toContain('BETTER_AUTH_SECRET');
 	});
 
 	it('refuses when the row exists but is empty, saying so distinctly', async () => {
 		const result = await resolveAuthSecret(rowsWith('   '), {});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('the `default` row is empty');
+		expect(result.cause).toContain('the `default` row is empty');
 	});
 
 	// the value crosses D1's serialization boundary, so a row whose column is null is
@@ -94,7 +95,7 @@ describe('resolveAuthSecret', () => {
 		const result = await resolveAuthSecret(stubDb({ rows: [{ value: null }] }), {});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('the `default` row is empty');
+		expect(result.cause).toContain('the `default` row is empty');
 	});
 
 	/**
@@ -109,14 +110,28 @@ describe('resolveAuthSecret', () => {
 		);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('no such table: auth_signing_key');
-		expect(result.message).toContain('pnpm wrangler d1 migrations apply DB --local');
+		expect(result.cause).toContain('no such table: auth_signing_key');
+		expect(result.cause).toContain('pnpm wrangler d1 migrations apply DB --local');
 	});
 
 	it('describes a non-Error rejection without throwing', async () => {
 		const result = await resolveAuthSecret(stubDb({ rejects: 'nope' }), {});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('nope');
+		expect(result.cause).toContain('nope');
+	});
+});
+
+/**
+ * what a caller is told when the key cannot be read. the cause above quotes the driver and is
+ * for the logs; whoever reads this one may be anonymous, so it carries the fix and the pointer
+ * and nothing the database said.
+ */
+describe('the public reply for a key that cannot be read', () => {
+	it('names the fix and points at the logs', () => {
+		expect(SIGNING_KEY_UNREADABLE).toContain('migrations');
+		expect(SIGNING_KEY_UNREADABLE).toContain('better-giving start');
+		expect(SIGNING_KEY_UNREADABLE).toContain('pnpm wrangler d1 migrations apply DB --local');
+		expect(SIGNING_KEY_UNREADABLE.endsWith(LOGS_SAY_WHY)).toBe(true);
 	});
 });

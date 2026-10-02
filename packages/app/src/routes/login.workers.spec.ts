@@ -3,7 +3,8 @@ import { createExecutionContext, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
 import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { createDb } from '$lib/server/db/client';
 import { PASSWORD_RESET_FLASH, redirectWithFlash } from '$lib/server/flash';
 import { requestContext } from '../request-context';
@@ -79,7 +80,7 @@ function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.Loa
 async function signIn(): Promise<string> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,
@@ -547,16 +548,17 @@ describe('POST /login — what the browser gets back', () => {
 
 	/**
 	 * and the deployment whose schema is not there, which is what a fresh fork hits: no
-	 * `auth_signing_key` row to sign a cookie with. the answer names the commands that apply
-	 * migrations rather than the row, because that is the fix either way.
+	 * `auth_signing_key` table to sign a cookie with. the caller is anonymous, so the database's
+	 * own words go to the logs and the banner is the one reply every surface gives.
 	 */
-	it('tells a deployment with no schema to apply its migrations', async () => {
-		const unreachable = { ...DEPLOYED, DB: undefined } as unknown as typeof DEPLOYED;
+	it('tells a deployment with no schema to apply its migrations, and logs the cause', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answer = await refused(typed(PASSWORD));
 
-		const answer = await refused(typed(PASSWORD), { deployed: unreachable });
-
-		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('migrations');
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
 	});
 
 	/**
@@ -733,7 +735,7 @@ const MEMBER_PASSWORD = 'a-colleagues-own-password';
 async function makeMember(email: string): Promise<void> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	const auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: PASSWORD },

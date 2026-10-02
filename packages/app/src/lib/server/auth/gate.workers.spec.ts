@@ -5,7 +5,7 @@ import { staff } from '../../../context';
 import { requestContext } from '../../../request-context';
 import { staffGate } from './gate';
 import { createAuth, STAFF_USER_EMAIL } from './index';
-import { resolveAuthSecret } from './signing-key';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
 
 // a workers spec because the gate reads D1 twice on every request it lets through: the signing key
 // row and the session row. CLAUDE.md refuses a stand-in for either — what is worth asserting here
@@ -75,7 +75,7 @@ function screen() {
  */
 async function signIn(): Promise<string> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,
@@ -168,10 +168,7 @@ describe('the gate on the protected layout', () => {
 			);
 
 			expect(thrown?.init.status).toBe(500);
-			expect(thrown?.data).toBe(
-				'No one can be signed in right now. This deployment’s logs say why: the Cloudflare ' +
-					'dashboard has them, and `pnpm run logs` reads them from a checkout.'
-			);
+			expect(thrown?.data).toBe(SIGNING_KEY_UNREADABLE);
 			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
 			expect(beneath.state.ran).toBe(false);
 		} finally {
