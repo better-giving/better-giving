@@ -667,7 +667,7 @@ export function ConsoleFailure({ error }: { error: unknown }): ReactNode {
 				</Button>
 			}
 		>
-			Reload to read it again.
+			Reload this page.
 		</Banner>
 	);
 }

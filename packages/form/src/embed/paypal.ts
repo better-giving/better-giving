@@ -801,9 +801,9 @@ export function createPaymentSurface(
 	/**
 	 * everything PayPal built for this card, once it is built at all.
 	 *
-	 * `sessions` is one per drawn rail, made at mount: it is what says a rail is drawn, and what a
-	 * return from PayPal's window is claimed and resumed on. every window a press opens is a session
-	 * of its own, off `sdk`.
+	 * `sessions` is one per rail the SDK could draw, made at mount: it is what says a rail can open a
+	 * window at all, and what a return from PayPal's window is claimed and resumed on. every window a
+	 * press opens is a session of its own, off `sdk`.
 	 */
 	type Live = {
 		readonly sdk: PaypalSdkLike;
@@ -1070,8 +1070,8 @@ export function createPaymentSurface(
 	 * every way the flow can leave a press without confirming it reaches here — a quote that failed,
 	 * one that landed and was not confirmed in its own task (a corrected total, a 2xx the flow refuses,
 	 * one that answered after the flow stopped waiting on it, Back from the correction screen behind
-	 * that), a second press on any rail, and the card letting go. its attempt is answered too, so nothing it says
-	 * afterwards is read.
+	 * that), a second press on any rail, and the card letting go. its attempt is answered too, so
+	 * nothing it says afterwards is read.
 	 */
 	function abandon(reason: unknown): void {
 		const press = opened;

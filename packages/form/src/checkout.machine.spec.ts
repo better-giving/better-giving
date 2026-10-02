@@ -1711,7 +1711,7 @@ describe('a repeating gift no processor still up can take', () => {
 	}
 
 	// the card down and a fund up is a gift the donor can still make, once: the dead end is for a
-	// form with no way to pay at all, which `PAYMENT_UNAVAILABLE` still is.
+	// form with no way to pay at all, which `PAYMENT_UNAVAILABLE` reports.
 	it('keeps the donor on the review step and offers the gift as one-time instead', () => {
 		const { actor } = monthlyAtGive();
 		actor.send({ type: 'REPEATING_UNAVAILABLE' });

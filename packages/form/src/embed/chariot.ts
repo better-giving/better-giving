@@ -300,8 +300,8 @@ export function createPaymentSurface(
 	}
 
 	if (cid === null) {
-		// a microtask on, never inside this call: ./surface.ts counts a report against the processors
-		// it has built, and this one is not among them until this call returns.
+		// a microtask on, never inside this call, as the doc above promises: a caller counting reports
+		// against the surfaces it has built has not counted this one until this call returns.
 		queueMicrotask(() =>
 			unavailable(`the served config names no ${PROVIDER_NAME} processor to open it on`)
 		);

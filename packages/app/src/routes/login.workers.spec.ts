@@ -737,7 +737,8 @@ describe('the limit on POST /login', () => {
 	 * "Remove visitor IP headers" managed transform is every caller of the deployment at once. the
 	 * binding is bound here and refusing this address is exactly what it must not do — otherwise
 	 * one guesser holds the only login closed on the operator, which is worse than the guessing.
-	 * a member's way in is refused instead, further down.
+	 * a member in the same position is refused instead: 'a member the edge did not attribute',
+	 * below.
 	 */
 	it('signs staff in when the edge attributed no address at all', async () => {
 		for (let i = 0; i < 8; i++) {

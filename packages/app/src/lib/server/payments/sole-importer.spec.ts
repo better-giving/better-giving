@@ -45,8 +45,8 @@ import { describe, expect, it } from 'vitest';
 // hostnames are swept too, as ../accounting/sole-importer.spec.ts does for Intuit's.
 //
 // what is exempt: each processor's own adapter, and this file, which necessarily contains the
-// patterns it searches for. from the hostname sweep, also each host's named vocabulary homes and
-// every `*.spec.ts(x)` — `GUARDED_HOSTS` says which.
+// patterns it searches for. the hostname sweep also exempts every `*.spec.ts(x)` and the files
+// `GUARDED_HOSTS` lists as each host's vocabulary.
 //
 // the same sweep holds a second rule for the same reason: a processor's webhook event names are
 // spelled by its own adapter and nowhere else in code, since switching on one is the SDK's vocabulary

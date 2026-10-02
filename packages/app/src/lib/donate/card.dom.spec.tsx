@@ -1068,9 +1068,9 @@ it('stays on the review step, unbusied, with the fund’s button standing while 
 	expect(root.querySelector(CHARIOT_TAG)).toBe(button);
 });
 
-// the card's fields down and a fund up is a gift the donor can still make, once: the review step
-// offers it in place of a box with nothing in it, with the element's words (`oneTimeOfferWords` in
-// packages/form/src/views.ts).
+// with the card's fields down and only a fund up, a repeating gift has no rail left but can still be
+// made one-time: the review step offers that in place of a box with nothing in it, in the element's
+// words (`oneTimeOfferWords` in packages/form/src/views.ts).
 describe('a repeating gift no processor still up can take', () => {
 	const OFFER =
 		'This gift cannot be made monthly right now. You can make it a one-time gift instead.';

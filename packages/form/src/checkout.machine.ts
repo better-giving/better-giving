@@ -813,7 +813,7 @@ export function venmoIsOffered(snapshot: { readonly context: CheckoutContext }):
  * no processor that takes a repeating gift is up (`repeatingUnavailable` on the context) and one
  * taking a one-time gift is.
  *
- * the dead end is for a form with no way to pay at all, which `PAYMENT_UNAVAILABLE` still is. this
+ * the dead end is for a form with no way to pay at all, which `PAYMENT_UNAVAILABLE` reports. this
  * is a gift the donor can still make, once, and `MAKE_ONE_TIME` is the press that makes it so.
  * exported for both surfaces that run this flow, which draw the offer off it.
  */

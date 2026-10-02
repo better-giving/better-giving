@@ -704,8 +704,8 @@ function PaypalKeysForm({
 			<FieldMessage>
 				{failure.kind === 'forbidden' ? (
 					<>
-						PayPal wouldn’t let this app do this, so {what}. Turn on what it needs in the app’s
-						settings in your PayPal developer dashboard, then press Save again.
+						PayPal wouldn’t give this app a permission it needs, so {what}. Turn that permission on
+						in the app’s settings in your PayPal developer dashboard, then press Save again.
 					</>
 				) : failure.kind === 'refused' ? (
 					<>PayPal wouldn’t accept these keys, so {what}. Check them, then press Save again.</>

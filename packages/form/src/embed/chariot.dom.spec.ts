@@ -281,8 +281,8 @@ describe('a donor-advised fund’s window, behind the payment surface', () => {
 		expect(k.unavailable).toHaveLength(1);
 	});
 
-	// ./surface.ts counts a report against the processors it has built, and this one is not among
-	// them until its constructor returns.
+	// a caller counting reports against the surfaces it has built has not counted this one until its
+	// constructor returns.
 	it('says so only once it has returned', () => {
 		const k = kit();
 		createPaymentSurface(

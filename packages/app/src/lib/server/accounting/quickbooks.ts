@@ -143,11 +143,11 @@ const DUPLICATE_NAME_FAULT = '6240';
 
 /**
  * what Intuit calls a company whose trial or subscription ended, was cancelled, or hit a billing
- * problem: a `ValidationFault`, "Invalid Company Status", that refuses every write to the books
- * alike (the fixture in
- * https://github.com/intuit/QuickBooks-V3-Java-SDK/blob/develop/ipp-v3-java-devkit/src/test/java/com/intuit/ipp/serialization/JSONSerializerTest.java),
- * and a fault body Intuit sends with a 400
- * (https://github.com/intuit/QuickBooks-V3-DotNET-SDK/blob/master/IPPDotNetDevKitCSV3/Code/Intuit.Ipp.Core/RestCalls/FaultHandler.cs).
+ * problem: a `ValidationFault`, "Invalid Company Status", sent as a fault body with a 400, that
+ * refuses every write to the books alike. the code is the fixture in
+ * https://github.com/intuit/QuickBooks-V3-Java-SDK/blob/develop/ipp-v3-java-devkit/src/test/java/com/intuit/ipp/serialization/JSONSerializerTest.java,
+ * and the 400 is
+ * https://github.com/intuit/QuickBooks-V3-DotNET-SDK/blob/master/IPPDotNetDevKitCSV3/Code/Intuit.Ipp.Core/RestCalls/FaultHandler.cs.
  */
 const COMPANY_STATUS_FAULT = '6190';
 

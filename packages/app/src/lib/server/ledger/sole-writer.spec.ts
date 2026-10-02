@@ -26,9 +26,10 @@ import { describe, expect, it } from 'vitest';
 // taken in a hurry, not an adversary.
 //
 // what is exempt: `./posting.ts`, every `*.spec.ts(x)` (they seed and tear down rows in a test
-// database — `delete from ledger_entry` between cases), and this file, which necessarily contains the patterns it
-// searches for. the rest of the ledger directory — `./queries.ts`, `./journal-file.ts` — is swept
-// like any other module, because a read-side module is exactly where a "quick" correction lands.
+// database — `delete from ledger_entry` between cases), and this file, which necessarily contains
+// the patterns it searches for. the rest of the ledger directory — `./queries.ts`,
+// `./journal-file.ts` — is swept like any other module, because a read-side module is exactly where
+// a "quick" correction lands.
 //
 // the ledger's rows are `entry_group` and `ledger_entry` (../db/schema.ts). an UPDATE or DELETE of
 // either is swept as well as an INSERT: the ledger is append-only (./posting.ts's header), a

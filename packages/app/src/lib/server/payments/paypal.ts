@@ -792,7 +792,7 @@ function addressedTo(origin: string): typeof fetch {
 
 /**
  * the controller {@link findOrCreateBillingPlan} makes its calls through, over one account —
- * exported as a test seam: ./paypal.spec.ts is its only importer outside this module.
+ * exported only as a test seam for ./paypal.spec.ts.
  *
  * built from {@link paypalClient} exactly as the provider builds its own, so what a plan is resolved
  * through and what a gift is charged through cannot be configured differently — the two workerd
@@ -3339,9 +3339,10 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
 			ok: false,
 			reason: 'not_configured',
 			detail:
-				'PayPal refused this deployment’s credentials at the token: `PAYPAL_CLIENT_ID` and ' +
-				'`PAYPAL_CLIENT_SECRET` are not a pair the account at `PAYPAL_API_URL` accepts. The usual ' +
-				`cause is keys from an app at another of PayPal’s addresses. ${said}`
+				'PayPal refused this deployment’s credentials at its token endpoint: ' +
+				'`PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` are not a pair the account at ' +
+				'`PAYPAL_API_URL` accepts. The usual cause is keys from an app at another of PayPal’s ' +
+				`addresses. ${said}`
 		};
 	}
 
@@ -3351,8 +3352,8 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
 			reason: 'not_configured',
 			detail:
 				'PayPal refused the access token it issued for `PAYPAL_CLIENT_ID` and ' +
-				'`PAYPAL_CLIENT_SECRET`: the pair was accepted at the token and the token was not ' +
-				`accepted on this call. ${said}`
+				'`PAYPAL_CLIENT_SECRET`: the pair was accepted, and the token it was exchanged for was ' +
+				`refused on this call. ${said}`
 		};
 	}
 
@@ -3361,10 +3362,10 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
 			ok: false,
 			reason: 'not_configured',
 			detail:
-				'PayPal accepted `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` and refused this call. ' +
-				'Usually that is a feature not turned on for the app those keys belong to, on PayPal’s ' +
-				'developer dashboard, or a record made under another account’s keys, which these keys ' +
-				`cannot reach. ${said}`
+				'PayPal accepted `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` but refused this call. ' +
+				'Usually either a feature is not turned on for the app those keys belong to (on ' +
+				'PayPal’s developer dashboard), or the record was made under another account’s keys, ' +
+				`which these keys cannot reach. ${said}`
 		};
 	}
 

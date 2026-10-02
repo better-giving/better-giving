@@ -475,7 +475,7 @@ describe('every press is closed while its own press is in flight', () => {
 	});
 
 	it('reads the Button presses drawn outside the shared button', () => {
-		// the three files a `Button` press was first swept in, each named, because a press that stops
+		// the three files known to hold a `Button` press, each named, because a press that stops
 		// stating `aria-busy` leaves this sweep without failing it — and then a native `disabled` put
 		// back on it is read by nothing.
 		const at = (file: string) =>

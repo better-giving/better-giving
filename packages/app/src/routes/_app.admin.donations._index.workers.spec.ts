@@ -85,8 +85,8 @@ afterEach(() => {
 });
 
 /**
- * the finished deployment's bindings with a case's deploy-time values. a proxy, for the reason `envWith` in
- * ./api.paypal.webhook.workers.spec.ts gives.
+ * the finished deployment's bindings with a case's deploy-time values. a proxy, for the reason
+ * `envWith` in ./api.paypal.webhook.workers.spec.ts gives.
  */
 function envWith(values: Record<string, string>): Env {
 	return new Proxy(bindings, {

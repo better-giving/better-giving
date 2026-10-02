@@ -265,8 +265,8 @@ describe('one payment surface over however many processors a config names', () =
 		expect(k.unavailable[0]?.message).toContain('nothing was charged');
 	});
 
-	// the fund's adapter answers at once where the config names no Connect id, which is before the
-	// card's own adapter has had any chance to answer.
+	// the fund's adapter answers a microtask after it is built where the config names no Connect id,
+	// which is before the card's own adapter has had any chance to answer.
 	it('says nothing when a fund fails at once beside a card box still loading', async () => {
 		const k = kit({ stripe: () => new Promise<StripeLike | null>(() => {}) });
 		await composed(k, { ...CONFIG, paymentMethods: ['card', 'daf'] });

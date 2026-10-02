@@ -329,7 +329,7 @@ it('says the opening label on one region over a move, and empties it when the mo
 
 // the set-up gate is answered by the layout's middleware before any loader runs, so there is no
 // loader data to draw a frame from: the layout's boundary draws the gate from the answer itself,
-// and anything else thrown beneath the layout is the root's page, as it was before the boundary.
+// and anything else thrown beneath the layout is drawn as the root's page.
 
 /** the five as an unfinished deployment reads them, two still open. */
 const OPEN_LINES = [

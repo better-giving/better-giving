@@ -41,8 +41,8 @@ import type { Route } from './+types/console.recurring';
 // `Processors.configured` in $lib/server/payments/factory.ts, read through the same entry point the
 // port's own refusal is decided by, so the two can never mean different deployments. Chariot takes
 // no repeating gifts (`takesRepeatingGifts` in $lib/server/payments/provider.ts), so it has no line
-// on the read and a press naming it is refused — as a processor that takes no repeating gifts, never
-// as one this deployment cannot charge on, because it does charge on it.
+// on the read, and a press naming it is refused for taking no repeating gifts — never as a processor
+// this deployment cannot charge on, because it does charge on it.
 //
 // **the press is one press, and the body it takes is the one account it is about.** a press naming
 // nothing sets up every configured processor that needs it, because a donor is offered a repeating

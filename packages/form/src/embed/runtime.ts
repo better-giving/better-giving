@@ -187,7 +187,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				offerVenmo: surface.offerVenmo,
 				// the count the card heads the payment box from, passed straight through.
 				rows: surface.rows,
-				// what the processors still up can take, passed straight through for the count's reason.
+				// what the processors still up can take, passed straight through as the count is.
 				repeatingUnavailable: surface.repeatingUnavailable,
 				// the card letting go of the surface built for this configuration, and it is this
 				// surface's own: a second gift is a second call here, so a door shared between them

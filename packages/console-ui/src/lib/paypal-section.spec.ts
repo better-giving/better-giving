@@ -114,7 +114,7 @@ describe('a permission PayPal refused this app', () => {
 		});
 
 	const PERMISSION =
-		'Turn on what it needs in the app’s settings in your PayPal developer dashboard';
+		'Turn that permission on in the app’s settings in your PayPal developer dashboard';
 	const WRONG_KEYS = ['These keys don’t work', 'wouldn’t let these keys', 'Check all three'];
 
 	it('says the permission and quotes the binary when the token mint is refused one', async () => {
