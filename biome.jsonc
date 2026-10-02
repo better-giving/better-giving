@@ -108,6 +108,21 @@
 										"message": "packages/form may not reach the app by relative path either, into src/ or scripts/ — a relative path carries no alias to be absent, so this is what makes that escape a lint error instead of a silent resolve."
 									},
 									{
+										"group": [
+											"**/packages/console-ui/src/**",
+											"**/console-ui/src/**",
+											"**/packages/operator/src/**",
+											"**/operator/src/**",
+											"**/packages/gallery/src/**",
+											"**/gallery/src/**",
+											"**/packages/emails/src/**",
+											"**/emails/src/**",
+											"**/packages/emails-preview/**",
+											"**/emails-preview/**"
+										],
+										"message": "packages/form is a leaf and reaches no other package — it ships into a page we do not own, so a relative path into packages/console-ui, packages/operator, packages/gallery, packages/emails or packages/emails-preview is the one escape the graph does not catch."
+									},
+									{
 										"group": ["**/packages/zapier/src/**", "**/zapier/src/**"],
 										"message": "packages/zapier is a leaf with no consumer — packages/form has no reason to reach it and a relative path is the one escape the graph does not catch."
 									}
@@ -271,10 +286,16 @@
 											"**/console-ui/src/**",
 											"**/packages/gallery/src/**",
 											"**/gallery/src/**",
+											"**/packages/form/src/**",
+											"**/form/src/**",
+											"**/packages/emails/src/**",
+											"**/emails/src/**",
+											"**/packages/emails-preview/**",
+											"**/emails-preview/**",
 											"**/packages/zapier/src/**",
 											"**/zapier/src/**"
 										],
-										"message": "packages/operator is a leaf and may not reach into packages/app, packages/console-ui, packages/gallery or packages/zapier by relative path either — a leaf that names one consumer is not a leaf, and packages/zapier is a leaf with no consumer at all."
+										"message": "packages/operator is a leaf and may not reach into packages/app, packages/console-ui, packages/gallery, packages/form, packages/emails, packages/emails-preview or packages/zapier by relative path either — a leaf that names one consumer is not a leaf, and packages/zapier is a leaf with no consumer at all."
 									}
 								]
 							}
