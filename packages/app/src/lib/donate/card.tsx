@@ -50,9 +50,12 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     which screen asked.
 //   - the caret. a screen change hides the control that held focus, so focus is put on the heading
 //     of the screen that arrived — never on the flow's first paint, and never before the section it
-//     lands in is out of `hidden`. the one first paint that takes it is a second gift's, because
-//     Back to start remounts the card under the caret: the rebuilt card puts it on its first heading. one takeover replacing another is no screen change and can hide
-//     that control too, so it is taken back to the heading from inside the takeover.
+//     lands in is out of `hidden`. the one first paint that takes it is a second gift's, and only
+//     where the caret was inside the card when Back to start was pressed: that press remounts the
+//     card under the caret, so the rebuilt card puts it on its first heading — and a caret the
+//     donor had already taken elsewhere on the page is left there. one takeover replacing another
+//     is no screen change and can hide that control too, so it is taken back to the heading from
+//     inside the takeover.
 //   - what is said out loud, on one channel, decided in one place.
 //
 // the two mount nodes are the card's and the checkout's between them: this file renders them and
