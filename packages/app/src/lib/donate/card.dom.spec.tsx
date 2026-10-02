@@ -19,9 +19,9 @@ import { act, createRef, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DonateCard } from './card';
-import { Choice } from './choice';
+import { Choice, type ChoiceProps } from './choice';
 import * as copy from './copy';
-import { createReactPropTypes, reactPropTypes } from './normalize';
+import { createReactPropTypes } from './normalize';
 import { PaymentBox } from './payment';
 
 // the card a donor uses, driven the way a donor drives it.
@@ -35,6 +35,21 @@ import { PaymentBox } from './payment';
 // control an `aria-describedby` names, where the caret landed. it is not the browser spec CLAUDE.md
 // keeps for the form package — nothing here reads a computed style, and this page's dress is free to
 // change.
+
+// every collection each mounted choice was drawn with, by the choice's id, in render order — read
+// by the card-level case below, which is the only one that asks what a choice was handed rather than
+// what it drew. the choice itself is drawn as it is.
+const drawnWith = vi.hoisted(() => new Map<string, unknown[]>());
+vi.mock('./choice', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./choice')>();
+	function Recorded(props: ChoiceProps) {
+		const seen = drawnWith.get(props.id) ?? [];
+		seen.push(props.choice.root.collection);
+		drawnWith.set(props.id, seen);
+		return <actual.Choice {...props} />;
+	}
+	return { ...actual, Choice: Recorded };
+});
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -385,19 +400,32 @@ it('hands ark one collection for as long as the options say the same thing', () 
 
 // the page is server-rendered in a worker isolate that outlives a request, so a collection held at
 // module scope would be handed from one donor's card to the next.
-it('shares no collection between two cards, or between two readings taken once', () => {
-	const read = () => reactPropTypes.select(TRIBUTE_KINDS('In memory of')).root.collection;
-	expect(read()).not.toBe(read());
-
+it('shares no collection between two cards', () => {
 	const mounted = () =>
 		createReactPropTypes().select(TRIBUTE_KINDS('In memory of')).root.collection;
 	expect(mounted()).not.toBe(mounted());
 });
 
+// the same at the card: a press that re-renders it projects the program choice's options afresh,
+// and the card's own table is what hands ark the collection it already holds.
+it('hands a mounted choice the same collection across a re-render that left its options alone', async () => {
+	drawnWith.clear();
+	const { root } = await card();
+	const drawn = drawnWith.get('program') ?? [];
+	const renders = drawn.length;
+	const held = drawn.at(-1);
+	expect(held).toBeDefined();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+
+	expect(drawn.length).toBeGreaterThan(renders);
+	expect(drawn.at(-1)).toBe(held);
+});
+
 // the flow is told once per pick, and not at all for a pick of what it already holds.
 it('reports a pick to the flow once, with the value picked', async () => {
 	const onChange = vi.fn();
-	const choice = reactPropTypes.select({
+	const choice = createReactPropTypes().select({
 		name: 'programId',
 		value: '',
 		options: [

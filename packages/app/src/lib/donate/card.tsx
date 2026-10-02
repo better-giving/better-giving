@@ -20,7 +20,7 @@ import {
 import { DonateAnnouncer } from './announce';
 import * as copy from './copy';
 import { initialSnapshot, startCheckout, type Checkout, type CheckoutMounts } from './machine';
-import { createReactPropTypes, reactPropTypes, type ReactApi } from './normalize';
+import { createReactPropTypes, type ReactApi } from './normalize';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
@@ -237,7 +237,7 @@ function CheckoutCard({
 	const [pressed, setPressed] = useState(false);
 	/** the free entry's own text: the tiles and the box are two views of one number. */
 	const [entry, setEntry] = useState(() => {
-		const sole = connect(initial, () => {}, reactPropTypes).amountGroup.options;
+		const sole = connect(initial, () => {}, propTypes).amountGroup.options;
 		const only = sole.length === 1 ? sole[0] : undefined;
 		return only === undefined ? '' : formatFigure(Number(only.value), locale, currency);
 	});

@@ -165,12 +165,6 @@ function propTypesWith(collectionOf: CollectionOf): PropTypes<Shapes> {
 const freshCollection: CollectionOf = (_name, options) =>
 	createListCollection({ items: [...options] });
 
-/**
- * the prop types for a reading taken once and thrown away: every projection builds its own
- * collections, so nothing outlives the call.
- */
-export const reactPropTypes: PropTypes<Shapes> = propTypesWith(freshCollection);
-
 /** whether two option lists say the same thing, field for field; every field is a primitive. */
 function sameOptions(held: readonly SelectOption[], next: readonly SelectOption[]): boolean {
 	return (

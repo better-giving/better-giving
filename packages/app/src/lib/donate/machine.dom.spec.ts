@@ -18,7 +18,7 @@ import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest';
 import { initialSnapshot, startCheckout } from './machine';
-import { reactPropTypes } from './normalize';
+import { createReactPropTypes } from './normalize';
 
 // the actor's life, and the surfaces that live exactly as long as it does.
 //
@@ -227,7 +227,7 @@ async function settle(): Promise<void> {
 
 it('reads a snapshot off the configuration alone, so the served html holds the amounts', () => {
 	const snapshot = initialSnapshot(CONFIG);
-	const api = connect(snapshot, () => {}, reactPropTypes);
+	const api = connect(snapshot, () => {}, createReactPropTypes());
 
 	expect(api.state.step).toBe('amount');
 	expect(api.amountGroup.options.map((option) => option.value)).toEqual([2500]);
@@ -444,7 +444,8 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 
 	// the figure the donor was shown, answered back as the server's own: a quote that moved would
 	// put the flow on the correction screen, which is a different thing than this test is about.
-	const shown = connect(actor.getSnapshot(), () => {}, reactPropTypes).submitButton.totalMinor;
+	const shown = connect(actor.getSnapshot(), () => {}, createReactPropTypes()).submitButton
+		.totalMinor;
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(
