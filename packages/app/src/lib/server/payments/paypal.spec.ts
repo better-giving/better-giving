@@ -2440,21 +2440,40 @@ describe('what an order is minted with', () => {
 
 describe('how PayPal’s refusals are read', () => {
 	/**
-	 * rejected credentials are a deployment an operator fixes, never a fault of the call.
+	 * a token PayPal issued and then refused is not a wrong pair, so the pair is not what is named.
+	 *
+	 * the token request in `recording` succeeds, so this 401 comes from the call after it — PayPal
+	 * accepted the id and secret and refused what it minted from them.
 	 *
 	 * `not_configured` is also retryable (`RETRYABLE_FAILURE_REASONS` in ./provider.ts), which is what
-	 * holds a delivery open across the minutes an operator spends correcting the pair.
+	 * holds a delivery open across the minutes an operator spends correcting it.
 	 */
-	it.each([401, 403])('reads a %s as not_configured', async (status) => {
-		recording([
-			{ status, json: { name: 'NOT_AUTHORIZED', details: [{ issue: 'PERMISSION_DENIED' }] } }
-		]);
+	it('reads a 401 after a good token as a refused access token, not a wrong pair', async () => {
+		recording([{ status: 401, json: { name: 'AUTHENTICATION_FAILURE' } }]);
 
 		const result = await createPaypalProvider(CREDENTIALS).createIntent(REQUEST);
 
 		expect(result.ok === false && result.reason).toBe('not_configured');
-		expect(result.ok === false && result.detail).toContain('PAYPAL_CLIENT_SECRET');
-		expect(result.ok === false && result.detail).toContain('PAYPAL_API_URL');
+		expect(result.ok === false && result.detail).toContain('access token');
+		expect(result.ok === false && result.detail).not.toContain('are not a pair');
+	});
+
+	/**
+	 * a 403 is the pair accepted and the call refused, and PayPal's answer does not say which refusal.
+	 *
+	 * Orders and Payments answer every 403 as `NOT_AUTHORIZED` with no issue code, and the catalog's
+	 * and subscriptions' `PERMISSION_DENIED` fits either cause (`classifyStatus` in ./paypal.ts), so
+	 * the detail names both rather than picking one.
+	 */
+	it('reads a 403 as a hedged refusal naming a missing feature or another account’s record', async () => {
+		recording([{ status: 403, json: { name: 'NOT_AUTHORIZED' } }]);
+
+		const result = await createPaypalProvider(CREDENTIALS).createIntent(REQUEST);
+
+		expect(result.ok === false && result.reason).toBe('not_configured');
+		expect(result.ok === false && result.detail).toContain('feature');
+		expect(result.ok === false && result.detail).toContain('another account');
+		expect(result.ok === false && result.detail).not.toContain('are not a pair');
 	});
 
 	/**
@@ -2474,7 +2493,9 @@ describe('how PayPal’s refusals are read', () => {
 		const result = await createPaypalProvider(CREDENTIALS).createIntent(REQUEST);
 
 		expect(result.ok === false && result.reason).toBe('not_configured');
+		expect(result.ok === false && result.detail).toContain('are not a pair');
 		expect(result.ok === false && result.detail).toContain('PAYPAL_API_URL');
+		expect(result.ok === false && result.detail).toContain('invalid_client');
 	});
 
 	/** shedding load is the one 4xx worth making the same call again for. */

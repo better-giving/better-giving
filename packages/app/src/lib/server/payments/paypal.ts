@@ -3268,21 +3268,25 @@ function at(time: string | undefined): Date {
  */
 const PROVIDER_QUOTE_MAX = 200;
 
+/** the OAuth `error` the token endpoint answers a client id and secret it does not hold as a pair. */
+const INVALID_CLIENT = 'invalid_client';
+
 /**
  * what PayPal said, as a message of ours may repeat it.
  *
  * the error name and its `issue` codes rather than the prose, because the issue is the part that
  * distinguishes a payer's problem from ours and it is a closed vocabulary
- * (https://developer.paypal.com/api/rest/responses/). `debug_id` is deliberately not carried: it is
- * PayPal's own correlation handle and belongs in a support ticket rather than in a 4xx body an agent
- * reads.
+ * (https://developer.paypal.com/api/rest/responses/). the token endpoint answers in OAuth's shape
+ * instead, whose `error` is the same kind of code (https://www.rfc-editor.org/rfc/rfc6749#section-5.2).
+ * `debug_id` is deliberately not carried: it is PayPal's own correlation handle and belongs in a
+ * support ticket rather than in a 4xx body an agent reads.
  *
  * bounded and flattened to one line, for the reason `quoteProvider` in ./stripe.ts is: the ceiling
  * stops a body becoming a message, and the flattening keeps a multi-line value out of a single-line
  * log.
  */
 function quoteProvider(body: unknown): string {
-	const said = [json(body)?.name, ...issuesOf(body)]
+	const said = [json(body)?.name, json(body)?.error, ...issuesOf(body)]
 		.filter((part) => typeof part === 'string')
 		.join(', ');
 	const sanitised = said.replace(/\s+/g, ' ').trim();
@@ -3313,6 +3317,15 @@ function issuesOf(body: unknown): readonly string[] {
  * rejected or an app without the permission this call needs is a deployment an operator fixes, and
  * reporting it as a provider fault would send them to look at a status page.
  *
+ * the status alone does not say which of those it is, so the detail does not read it alone. a wrong
+ * pair is refused at the token endpoint, as a 401 carrying OAuth's `invalid_client`, and only that
+ * answer names the pair. a 401 on any other call comes after PayPal issued a token for the pair, so
+ * it is the token that was refused. a 403 is hedged between its two documented causes, because no
+ * issue code tells them apart: Orders and Payments answer every 403 as `NOT_AUTHORIZED` with none,
+ * and the catalog and subscriptions answer `PERMISSION_DENIED`, described as no permission on "this
+ * resource", which fits either (the `403` and `error_403` schemas in each spec under
+ * https://github.com/paypal/paypal-rest-api-specifications/tree/main/openapi).
+ *
  * everything in the 4xx range that is not one of those is `invalid_request` — this app built the
  * request, so repeating it answers the same way — except 404, which is a `not_found` a caller
  * already has a reading for, and 429, which is the one 4xx worth repeating.
@@ -3320,15 +3333,37 @@ function issuesOf(body: unknown): readonly string[] {
 function classifyStatus(status: number, body: unknown, context: string): PaymentFailure {
 	const said = `${context}. PayPal said: ${quoteProvider(body)}`;
 
-	if (status === 401 || status === 403) {
+	if (status === 401 && json(body)?.error === INVALID_CLIENT) {
 		return {
 			ok: false,
 			reason: 'not_configured',
 			detail:
-				'PayPal rejected this deployment’s credentials: `PAYPAL_CLIENT_ID` and ' +
-				'`PAYPAL_CLIENT_SECRET` are not a pair the account at `PAYPAL_API_URL` accepts, or the ' +
-				'app they belong to does not carry the permission this call needs. The usual cause is ' +
-				`keys from an app at another of PayPal’s addresses. ${said}`
+				'PayPal refused this deployment’s credentials at the token: `PAYPAL_CLIENT_ID` and ' +
+				'`PAYPAL_CLIENT_SECRET` are not a pair the account at `PAYPAL_API_URL` accepts. The usual ' +
+				`cause is keys from an app at another of PayPal’s addresses. ${said}`
+		};
+	}
+
+	if (status === 401) {
+		return {
+			ok: false,
+			reason: 'not_configured',
+			detail:
+				'PayPal refused the access token it issued for `PAYPAL_CLIENT_ID` and ' +
+				'`PAYPAL_CLIENT_SECRET`: the pair was accepted at the token and the token was not ' +
+				`accepted on this call. ${said}`
+		};
+	}
+
+	if (status === 403) {
+		return {
+			ok: false,
+			reason: 'not_configured',
+			detail:
+				'PayPal accepted `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` and refused this call. ' +
+				'Usually that is a feature not turned on for the app those keys belong to, on PayPal’s ' +
+				'developer dashboard, or a record made under another account’s keys, which these keys ' +
+				`cannot reach. ${said}`
 		};
 	}
 
