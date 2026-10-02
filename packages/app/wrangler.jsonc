@@ -79,13 +79,13 @@
 	//
 	// **the cadence chosen here is what picks the ceiling a run dies at, and the two candidates are
 	// far apart.** wall clock is capped at fifteen minutes for a cron invocation whatever its
-	// interval, but a run is not killed on wall clock, it is killed on CPU — and on a Paid plan the
-	// CPU row is the one selected by the interval: thirty seconds under an hour, fifteen minutes at
+	// interval, but a run on this schedule reaches its CPU ceiling long before that — and on a Paid
+	// plan the CPU row is the one selected by the interval: thirty seconds under an hour, fifteen minutes at
 	// an hour or longer (https://developers.cloudflare.com/workers/platform/limits/, "CPU time").
 	// both expressions above are under an hour, so both runs have thirty seconds of CPU on Paid; on
 	// the Free plan every cron invocation has ten milliseconds, whatever its interval. fifteen minutes
 	// is the figure on the Duration table, which carries no interval condition and is therefore the
-	// easy one to reach for; it is not this schedule's bound.
+	// easy one to reach for; it binds every run, but it is not the bound this schedule meets first.
 	//
 	// what makes that worth stating here rather than beside a run is how the ceiling is enforced: the
 	// invocation is terminated as `exceededCpu` mid-flight, so nothing the run was part way through

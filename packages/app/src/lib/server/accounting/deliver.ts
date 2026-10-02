@@ -158,10 +158,10 @@ export type AccountingDeliveryDeps = {
  * no send starts this long after the run's scheduled time.
  *
  * the schedule is every minute, and a cron invocation at a cadence under an hour is killed at
- * thirty seconds of CPU — the fifteen-minute figure is the wall-clock row, for an hourly or longer
- * trigger, and does not apply here. the margin left is for the send already under way. what is not
- * reached is read on the next run, because nothing here is finished by a run ending — the row is
- * still `pending` and still owed.
+ * thirty seconds of CPU on a Paid plan — fifteen minutes of CPU is for an hourly or longer trigger,
+ * and the fifteen-minute wall-clock cap binds every cron invocation but is reached long after
+ * this. the margin left is for the send already under way. what is not reached is read on the next
+ * run, because nothing here is finished by a run ending — the row is still `pending` and still owed.
  */
 const RUN_DEADLINE_MS = 20_000;
 
