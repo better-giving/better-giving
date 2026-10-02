@@ -16,7 +16,7 @@ import { sendDueWebhooks } from '../webhooks/deliver';
 import { createDestination } from '../webhooks/destinations';
 import { mailPause } from '../webhooks/paused-mail';
 import { sendDueZapierEvents } from '../zapier/deliver';
-import { MINUTE_RUN, PACE, type Share, ZAPIER_RUN_COST } from './budget';
+import { ACCOUNTING_RUN_COST, MINUTE_RUN, PACE, type Share, ZAPIER_RUN_COST } from './budget';
 
 // each outbox run at its costliest, counted against its share of the minute cron's invocation
 // (./budget.ts): every D1 query the run makes through a real D1, and every external subrequest
@@ -464,9 +464,13 @@ describe('the QuickBooks run', () => {
 		).first<{ n: number }>();
 		expect(sent?.n).toBe(PACE.books);
 		expect(mails).toBe(1);
-		expectWithin(MINUTE_RUN.books, {
-			queries: counting.queries(),
-			external: intuit.requests() + mails
-		});
+		const spent = { queries: counting.queries(), external: intuit.requests() + mails };
+		expectWithin(MINUTE_RUN.books, spent);
+		expect(spent.queries - PACE.books * ACCOUNTING_RUN_COST.queriesPerRow).toBe(
+			ACCOUNTING_RUN_COST.queries
+		);
+		expect(spent.external - PACE.books * ACCOUNTING_RUN_COST.externalPerRow).toBe(
+			ACCOUNTING_RUN_COST.external
+		);
 	});
 });

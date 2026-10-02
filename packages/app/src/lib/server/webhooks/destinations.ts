@@ -431,10 +431,11 @@ export type ResumeDestinationResult =
 
 /**
  * the destination `id` resumed at `now`, its held window re-queued and let out a few at a time
- * from `now` (`requeueHeldStatements` in ./deliver.ts says which rows and how fast), and
- * answered with how many rows that re-queued. the pause and the failing mark are cleared in the same batch, and only while the destination is paused, so of two
- * resumes one re-queues and the other is refused. a deleted destination is not found: it is sent
- * nothing, so a row re-queued for it would wait forever.
+ * from `now` (`requeueHeldStatements` in ./deliver.ts says which rows and how fast), and answered
+ * with how many rows that re-queued. the pause and the failing mark are cleared in the same batch,
+ * and only while the destination is paused, so of two resumes one re-queues and the other is
+ * refused. a deleted destination is not found: it is sent nothing, so a row re-queued for it would
+ * wait forever.
  */
 export async function resumeDestination(
 	db: Db,

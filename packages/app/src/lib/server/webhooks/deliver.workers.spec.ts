@@ -1009,7 +1009,7 @@ describe('resumeDestination() — the held window, re-sent', () => {
 		]);
 	});
 
-	it('lets a resumed backlog out a few a minute, in the order it was queued, and a destination beside it keeps flowing', async () => {
+	it("lets a resumed backlog out at half the feed's pace a minute, in the order it was queued, and a destination beside it keeps flowing", async () => {
 		const held = await destination();
 		await settle();
 		await runAt(START, receivers(() => new Response('', { status: 410 })).fetch);

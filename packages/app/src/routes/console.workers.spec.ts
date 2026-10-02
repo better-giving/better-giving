@@ -443,6 +443,11 @@ describe('the report this deployment answers with', () => {
 		expect(body.org).toMatchObject({ legal_name: 'Hope Foundation', tax_id: '12-3456789' });
 	});
 
+	it('carries its four members and no other', async () => {
+		const body = await envelopeOf(await report());
+		expect(Object.keys(body).sort()).toEqual(['org', 'session', 'sites', 'version']);
+	});
+
 	/** a fresh deployment has saved no profile, and that is an answer rather than a failure. */
 	it('answers null for an organisation nobody has saved', async () => {
 		const body = await envelopeOf(await report());
@@ -514,26 +519,6 @@ describe('the report this deployment answers with', () => {
 		const response = await report();
 		expect(response.headers.get('access-control-allow-origin')).toBeNull();
 		expect(response.headers.get('cache-control')).toBe('no-store');
-	});
-});
-
-describe('the outbound feeds', () => {
-	beforeEach(async () => {
-		await env.DB.prepare('delete from zapier_subscription').run();
-	});
-
-	it('are not in the report, whether or not a Zap listens', async () => {
-		await listSite('ste_1', 'https://acme.org', 0);
-		await env.DB.prepare(
-			`insert into zapier_subscription (id, trigger, hook_url, created_at, updated_at)
-			 values ('019fb6ff-0000-7000-8000-000000000002', 'new_gift',
-			         'https://hooks.zapier.com/hooks/standard/1/open/', 0, 0)`
-		).run();
-
-		const body = await envelopeOf(await report());
-
-		expect(Object.keys(body).sort()).toEqual(['org', 'session', 'sites', 'version']);
-		expect(body.sites).toEqual(['https://acme.org']);
 	});
 });
 

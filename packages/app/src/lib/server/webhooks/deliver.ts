@@ -396,7 +396,8 @@ function heldWindow(db: Db, destinationId: string): SQL {
 
 /**
  * how far apart a resume lets its rows out: half this feed's pace a minute, so a resumed backlog
- * takes at most half of each run's claim and the destinations beside it the rest.
+ * takes about half of each run's claim and the destinations beside it the rest. the first row is
+ * due at `now`, so the first run after a resume can take one row more than half.
  */
 const RESUMED_ROWS_EVERY_MS = Math.ceil((2 * 60_000) / PACE.webhooks);
 
