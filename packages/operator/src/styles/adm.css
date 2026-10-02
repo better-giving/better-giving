@@ -3599,10 +3599,12 @@
 
 	   the steps are the four tiers from the inside out: a group's name sits on its options with no
 	   step of its own, because each option's touch row already stands its label off the name; the
-	   gap between options on a line is the stack's step; groups stand off each other at the break
-	   step; and the question's legend stands a stack step above its first group, wider than the
-	   close step `.adm-fieldset__legend + *` gives a single box, so the first group's name is not
-	   read as the legend's second line. the refusal takes no step: the last group's touch row is
+	   gap between options on a line is the break step, three times the gap a box keeps from its own
+	   label, so a label is plainly nearer its own box than the next one; groups stand off each other
+	   at the same break step, down the page rather than along a line; and the question's legend
+	   stands a stack step above its first group, wider than the close step
+	   `.adm-fieldset__legend + *` gives a single box, so the first group's name is not read as the
+	   legend's second line. the refusal takes no step: the last group's touch row is
 	   already the space it stands off by, and under it the group's buttons are further away. */
 	.adm-checkgroups {
 		display: grid;
@@ -3617,7 +3619,7 @@
 	.adm-checkgroups > .adm-fieldset > .adm-checkgroup {
 		display: flex;
 		flex-wrap: wrap;
-		column-gap: var(--admin-space-6);
+		column-gap: var(--admin-space-8);
 		margin-block-start: 0;
 	}
 
