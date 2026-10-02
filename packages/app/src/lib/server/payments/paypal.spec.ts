@@ -1100,7 +1100,7 @@ describe('readReversal on a dispute', () => {
 	 * what it read in the singular.
 	 */
 	it('refuses a dispute over one transaction it cannot name, counting it as one', async () => {
-		const { seller_transaction_id: _, ...unnamed } = DISPUTE.disputed_transactions[0];
+		const { seller_transaction_id: _, ...unnamed } = { ...DISPUTE.disputed_transactions[0] };
 		recording([{ status: 200, json: { ...DISPUTE, disputed_transactions: [unnamed] } }]);
 
 		const result = await createPaypalProvider(CREDENTIALS).readReversal(
