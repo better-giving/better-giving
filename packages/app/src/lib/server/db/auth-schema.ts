@@ -192,7 +192,9 @@ export const authAccount = sqliteTable(
  * route mounts better-auth's router (`src/lib/server/auth/index.ts`, `src/routes.spec.ts`). one
  * row is one outstanding reset link — `identifier` is `reset-password:<token>` carrying the token
  * exactly as it was mailed, `value` is the member's `auth_user.id`, and the row is deleted when
- * the link is used. the token is stored as sent rather than hashed like
+ * the link is used, when a newer link is requested, when any of the member's resets lands, and when
+ * the member changes the password signed in (`src/lib/server/auth/reset-links.ts`). the token is
+ * stored as sent rather than hashed like
  * `auth_member_invitation.token_hash` below, because better-auth looks the row up by the
  * identifier it was handed and this table is its shape, not ours.
  *
