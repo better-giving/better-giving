@@ -1064,7 +1064,8 @@ function failedAttemptOf(
 }
 
 /**
- * why a price found under this app's own lookup key may not be charged against, or nothing.
+ * why an active price found under this app's own lookup key may not be charged against, or
+ * nothing. an archived one is never asked about: it is replaced rather than charged against.
  *
  * a lookup key belongs to one price at a time and can be moved between them, so what comes back
  * under a key is the processor's answer rather than this app's own object. every field the key
@@ -1547,18 +1548,26 @@ export function createStripeProvider(
 	 * the parameters are the same for every donor giving this amount at this cadence, so two of them
 	 * arriving together resolve to one price instead of racing to make two — a caller's own key would
 	 * make each of them a first attempt.
+	 *
+	 * a price archived from the dashboard keeps its lookup key, and it is replaced rather than
+	 * charged against or refused. the lookup asks for archived prices too, because the one it finds
+	 * names the create that replaces it: Stripe replays a key's first answer for 24 hours
+	 * (https://docs.stripe.com/api/idempotent_requests), so a replacement keyed like the create that
+	 * made the archived price would be handed that price's id back. donors arriving together after
+	 * an archive find the same archived id, so they still resolve to one price.
 	 */
 	async function findOrCreatePrice(request: RecurringGiftRequest): Promise<PaymentResult<string>> {
 		const lookupKey = priceLookupKey(request.interval, request.currency, request.amountMinor);
 		const currency = request.currency.toLowerCase();
 		const interval = RECURRING_INTERVALS[request.interval];
 
+		let archived: Stripe.Price | undefined;
 		try {
-			// active only: an archived price keeps its lookup key, and missing it here is what sends the
-			// gift to the create below, which moves the key onto a new price.
-			const page = await stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 });
+			// no `active` filter: an archived price under the key comes back too, and its id is what
+			// keys the create below apart from the create that made it.
+			const page = await stripe.prices.list({ lookup_keys: [lookupKey], limit: 1 });
 			const found = page.data[0];
-			if (found) {
+			if (found?.active) {
 				const mismatch = mismatchedPrice(found, {
 					lookupKey,
 					currency,
@@ -1567,6 +1576,7 @@ export function createStripeProvider(
 				});
 				return mismatch ?? { ok: true, value: found.id };
 			}
+			archived = found;
 		} catch (error) {
 			return classify(error);
 		}
@@ -1585,14 +1595,18 @@ export function createStripeProvider(
 					unit_amount: request.amountMinor,
 					recurring: { interval, interval_count: 1 },
 					lookup_key: lookupKey,
-					// the key belongs to one price at a time, and a price this app made can be archived
-					// from the dashboard — after which the lookup no longer finds it and the create is
-					// refused for a key that is taken. transferring it makes that state self-repairing:
-					// the new price answers to the key and every commitment already charged against the
-					// old one is untouched, because a price's amount cannot change.
+					// the key belongs to one price at a time, and an archived price still holds it, so
+					// without the transfer the create is refused for a key that is taken. transferring it
+					// makes that state self-repairing: the new price answers to the key and every
+					// commitment already charged against the old one is untouched, because a price's
+					// amount cannot change.
 					transfer_lookup_key: true
 				},
-				{ idempotencyKey: `${DERIVED_KEY}:price:${lookupKey}` }
+				{
+					idempotencyKey: archived
+						? `${DERIVED_KEY}:price:${lookupKey}:replacing:${archived.id}`
+						: `${DERIVED_KEY}:price:${lookupKey}`
+				}
 			);
 			return { ok: true, value: created.id };
 		} catch (error) {
