@@ -578,3 +578,46 @@ func TestTheDeploymentsOwnStepNamesThePaypalAccount(t *testing.T) {
 		t.Errorf("the deployment was pressed about %v, want %v", held.repeatings, want)
 	}
 }
+
+// a 403 past the mint is the pair accepted and the app short of a permission, so the sentence names
+// the step and never sends the operator back to the boxes the pair was typed in.
+func TestAPermissionPayPalRefusesNamesTheStepAndThatThePairWasAccepted(t *testing.T) {
+	forbidden := answered(403, map[string]any{"name": "NOT_AUTHORIZED"})
+	for _, one := range []struct {
+		name string
+		set  func(held *effects)
+		want OutcomeKind
+		step string
+	}{
+		{"the list", func(held *effects) {
+			held.app.answers["GET /v1/notifications/webhooks"] = forbidden
+		}, Unlisted, "list this app’s webhook listeners"},
+		{"the create", func(held *effects) {
+			held.app.answers["POST /v1/notifications/webhooks"] = forbidden
+		}, Uncreated, "register a webhook listener"},
+		{"the resubscribe", func(held *effects) {
+			held.app.answers["GET /v1/notifications/webhooks"] = listed(listener("WH-HERE", listenerURL))
+			held.app.answers["PATCH /v1/notifications/webhooks/WH-HERE"] = forbidden
+		}, Unresubscribed, "change what a webhook listener is subscribed to"},
+	} {
+		held := working()
+		one.set(held)
+
+		outcome := Chain(context.Background(), pressed(), held.bound())
+
+		if outcome.Kind != one.want || outcome.Failure == nil || outcome.Failure.Kind != Forbidden {
+			t.Fatalf("%s: outcome = %+v, want %s and forbidden", one.name, outcome, one.want)
+		}
+		detail := outcome.Failure.Detail
+		if !strings.HasPrefix(detail, "PayPal said: NOT_AUTHORIZED") {
+			t.Errorf("%s: detail = %q, want it to carry what PayPal said", one.name, detail)
+		}
+		if !strings.Contains(detail, "accepted the pair") || !strings.Contains(detail, one.step) {
+			t.Errorf("%s: detail = %q, want the pair accepted and %q named", one.name, detail, one.step)
+		}
+		if strings.Contains(detail, "refused the pair") {
+			t.Errorf("%s: detail = %q reads as wrong keys", one.name, detail)
+		}
+		assertNothingStored(t, held)
+	}
+}

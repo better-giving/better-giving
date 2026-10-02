@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { prerenderToNodeStream } from 'react-dom/static';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import type { DeployedValues, DeployedVar } from '../api/types';
+import type { DeployedValues, DeployedVar, PaypalFailure, PaypalSetup } from '../api/types';
 import type { PaypalSectionProps } from './paypal-section';
 import { PaypalSection, typedBoxes } from './paypal-section';
 import { PAYPAL_FIELD, PAYPAL_DEFAULT_API_URL } from './paypal-setup';
@@ -33,9 +33,12 @@ const SECTION: Omit<PaypalSectionProps, 'values'> = {
 const holding = (vars: DeployedVar[]): DeployedValues => ({ vars: { kind: 'read', vars } });
 
 /** the whole screen, awaited. */
-async function screen(values: DeployedValues): Promise<string> {
+async function screen(
+	values: DeployedValues,
+	paypal: PaypalSectionProps['paypal'] = SECTION.paypal
+): Promise<string> {
 	const router = createMemoryRouter([
-		{ path: '/', Component: () => createElement(PaypalSection, { ...SECTION, values }) }
+		{ path: '/', Component: () => createElement(PaypalSection, { ...SECTION, values, paypal }) }
 	]);
 	const { prelude } = await prerenderToNodeStream(createElement(RouterProvider, { router }));
 	let page = '';
@@ -99,5 +102,41 @@ describe('what the boxes are read as when the press is kept', () => {
 
 	it('falls back to the default address where its box was left blank', () => {
 		expect(typedBoxes(() => '  ').PAYPAL_API_URL).toBe(PAYPAL_DEFAULT_API_URL);
+	});
+});
+
+describe('a permission PayPal refused this app', () => {
+	/** the screen after a reload, holding a run that stopped at `stage` with `outcome`. */
+	const stoppedAt = (stage: 'authorizing' | 'registering', outcome: PaypalSetup) =>
+		screen(holding(PAIR), {
+			...SECTION.paypal,
+			run: { kind: 'ended', stage, facts: { registration: null, elsewhere: [] }, outcome }
+		});
+
+	const PERMISSION =
+		'Turn on what it needs in the app’s settings in your PayPal developer dashboard';
+	const WRONG_KEYS = ['These keys don’t work', 'wouldn’t let these keys', 'Check all three'];
+
+	it('says the permission and quotes the binary when the token mint is refused one', async () => {
+		const failure: PaypalFailure = {
+			kind: 'forbidden',
+			detail: 'NOT_AUTHORIZED: insufficient scope'
+		};
+		const page = await stoppedAt('authorizing', { kind: 'unauthorized', failure });
+		expect(page).toContain(PERMISSION);
+		expect(page).toContain(failure.detail);
+		for (const wrong of WRONG_KEYS) expect(page).not.toContain(wrong);
+	});
+
+	it('says the permission and quotes the step the binary named when a later call is refused one', async () => {
+		const failure: PaypalFailure = {
+			kind: 'forbidden',
+			detail:
+				'NOT_AUTHORIZED. PayPal accepted the pair and refused this app permission to add a webhook.'
+		};
+		const page = await stoppedAt('registering', { kind: 'uncreated', failure });
+		expect(page).toContain(PERMISSION);
+		expect(page).toContain('refused this app permission to add a webhook');
+		for (const wrong of WRONG_KEYS) expect(page).not.toContain(wrong);
 	});
 });

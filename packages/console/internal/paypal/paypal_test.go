@@ -48,7 +48,7 @@ func TestAnAnswerIsSortedByItsStatus(t *testing.T) {
 		status int
 		want   ResultKind
 	}{
-		{200, Value}, {401, Refused}, {403, Refused}, {422, Rejected}, {500, Unreachable},
+		{200, Value}, {401, Refused}, {403, Forbidden}, {422, Rejected}, {500, Unreachable},
 	} {
 		got := Read(cf.Answer{Kind: cf.Answered, Status: one.status, Body: map[string]any{}})
 		if got.Kind != one.want {

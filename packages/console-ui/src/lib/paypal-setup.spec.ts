@@ -116,10 +116,32 @@ describe('where a stopped run reports', () => {
 		failure: { kind: 'unreachable', detail: 'timeout' }
 	});
 	const full = ended('registering', { kind: 'full', listeners: [] });
+	const forbiddenAtMint = ended('authorizing', {
+		kind: 'unauthorized',
+		failure: { kind: 'forbidden', detail: 'NOT_AUTHORIZED' }
+	});
+	const forbiddenAtCreate = ended('registering', {
+		kind: 'uncreated',
+		failure: {
+			kind: 'forbidden',
+			detail:
+				'NOT_AUTHORIZED. PayPal accepted the pair and refused this app permission to add a webhook.'
+		}
+	});
 
 	it('says a turned-down pair at the boxes and nowhere else', () => {
 		expect(pairTurnedDown(refused)).toBe(true);
 		expect(reportStands(refused, false)).toBe(false);
+	});
+
+	it('keeps a permission refused at the token mint off the boxes, though it stopped the key check', () => {
+		expect(pairTurnedDown(forbiddenAtMint)).toBe(false);
+		expect(reportStands(forbiddenAtMint, false)).toBe(true);
+	});
+
+	it('keeps a permission refused past the mint off the boxes', () => {
+		expect(pairTurnedDown(forbiddenAtCreate)).toBe(false);
+		expect(reportStands(forbiddenAtCreate, false)).toBe(true);
 	});
 
 	it('keeps a ledger for PayPal not answering at the key check, which is not the pair', () => {

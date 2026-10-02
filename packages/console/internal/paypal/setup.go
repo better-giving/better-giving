@@ -230,7 +230,7 @@ func Chain(ctx context.Context, asked Asked, effects Effects) Outcome {
 
 	listed := Read(call(ctx, Request{Method: http.MethodGet, Path: listenersPath}))
 	if listed.Kind != Value {
-		return Outcome{Kind: Unlisted, Failure: listed.Turned()}
+		return Outcome{Kind: Unlisted, Failure: turned(listed, "list this app’s webhook listeners")}
 	}
 	rows, read := ReadListeners(listed.Value)
 	if !read {
@@ -313,7 +313,10 @@ func settle(
 			},
 		}))
 		if patched.Kind != Value {
-			return nil, &Outcome{Kind: Unresubscribed, ListenerID: here.ID, Failure: patched.Turned()}
+			return nil, &Outcome{
+				Kind: Unresubscribed, ListenerID: here.ID,
+				Failure: turned(patched, "change what a webhook listener is subscribed to"),
+			}
 		}
 		return &Registration{Kind: "resubscribed", ID: here.ID}, nil
 	}
@@ -327,7 +330,7 @@ func settle(
 		Body:   map[string]any{"url": endpoint, "event_types": eventTypes()},
 	}))
 	if made.Kind != Value {
-		return nil, &Outcome{Kind: Uncreated, Failure: made.Turned()}
+		return nil, &Outcome{Kind: Uncreated, Failure: turned(made, "register a webhook listener")}
 	}
 	created := ReadListener(made.Value)
 	if created == nil {
@@ -337,6 +340,19 @@ func settle(
 		}}
 	}
 	return &Registration{Kind: "created", ID: created.ID}, nil
+}
+
+// a call past the mint that did not land, as the failure a screen draws. step is what the call was
+// for, in the words that finish "permission to".
+//
+// a refused permission is worded here because a token was minted for this pair a step earlier, so
+// what PayPal turned down is the app and never the keys.
+func turned(result Result, step string) *Failure {
+	failure := result.Turned()
+	if result.Kind == Forbidden {
+		failure.Detail += ". PayPal accepted the pair and refused this app permission to " + step + "."
+	}
+	return failure
 }
 
 // whether a listener is subscribed to every event the deployment reads and to nothing else, in any

@@ -702,11 +702,13 @@ function PaypalKeysForm({
 	const paypalTrouble = (failure: PaypalFailure, what: ReactNode): ReactNode => (
 		<>
 			<FieldMessage>
-				{failure.kind === 'refused' ? (
+				{failure.kind === 'forbidden' ? (
 					<>
-						PayPal wouldn’t let these keys do this, so {what}. Check the app’s permissions, then
-						press Save again.
+						PayPal wouldn’t let this app do this, so {what}. Turn on what it needs in the app’s
+						settings in your PayPal developer dashboard, then press Save again.
 					</>
+				) : failure.kind === 'refused' ? (
+					<>PayPal wouldn’t accept these keys, so {what}. Check them, then press Save again.</>
 				) : failure.kind === 'unreachable' ? (
 					<>
 						The console couldn’t get an answer out of PayPal, so {what}. Check this machine’s
