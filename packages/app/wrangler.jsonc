@@ -83,10 +83,10 @@
 	// plan the CPU row is the one selected by the interval, thirty seconds under an hour and fifteen
 	// minutes at an hour or longer (https://developers.cloudflare.com/workers/platform/limits/,
 	// "CPU time").
-	// both expressions above are under an hour, so both runs have thirty seconds of CPU on Paid; on
-	// the Free plan every cron invocation has ten milliseconds, whatever its interval. fifteen minutes
-	// is the figure on the Duration table, which carries no interval condition and is therefore the
-	// easy one to reach for; it binds every run, and it is the higher of this schedule's two limits.
+	// both expressions above are under an hour, so both runs have thirty seconds of CPU. fifteen
+	// minutes is the figure on the Duration table, which carries no interval condition and is
+	// therefore the easy one to reach for; it binds every run, and it is the higher of this
+	// schedule's two limits.
 	//
 	// what makes that worth stating here rather than beside a run is how the ceiling is enforced: the
 	// invocation is terminated as `exceededCpu` mid-flight, so nothing the run was part way through
@@ -94,9 +94,8 @@
 	// them — no backoff, no failure, no notice — and shows up in nothing but the Worker's invocation
 	// statuses. each run is sized against that rather than against the clock: `RUN_DEADLINE_MS` in
 	// src/lib/server/accounting/deliver.ts and src/lib/server/donations/pending-crypto-read.ts, and
-	// each minute feed's pace on the plan `CLOUDFLARE_PAID_PLAN` names, from
-	// src/lib/server/outbox/budget.ts. so on Paid, lengthening an interval past an hour is what lifts
-	// the ceiling, and shortening one never touches it.
+	// each minute feed's Paid pace, from src/lib/server/outbox/budget.ts. so lengthening an interval
+	// past an hour is what lifts the ceiling, and shortening one never touches it.
 	//
 	// `limits.cpu_ms` is not the lever it looks like: Cloudflare documents it against the HTTP
 	// request row, whose thirty seconds is a default to be raised. the cron row holds no default —

@@ -23,7 +23,7 @@ import { eachAtMost } from '../each-at-most';
 // run's claim matches none of them. there is no read in front of that write (../ledger/posting.ts:
 // no invariant is enforced by an atomic read-then-write). the rows are chosen by an `in` over a
 // limited select, because D1 has no `UPDATE … LIMIT`. how many rows a claim may take is the feed's
-// pace on the plan the invocation runs on (./budget.ts), handed to each claim.
+// pace (./budget.ts), handed to each claim.
 //
 // **where the feed names the column a row's receiver is in, a claim takes every receiver's
 // longest-waiting row before any receiver's next**, so a receiver with a backlog shares a claim

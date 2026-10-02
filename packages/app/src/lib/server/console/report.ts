@@ -1,13 +1,9 @@
-import type { FeedsInUse } from '@better-giving/operator/console/report';
-import { connectedStatement } from '../accounting/connection';
 import type { Db } from '../db/client';
 import { toFormValues } from '../org/form-values';
 import type { OrgProfileField, OrgProfileFormValues } from '../org/org-input';
 import type { OrgProfileField as WireOrgField } from '@better-giving/operator/console/org';
 import { readOrgProfile } from '../org/queries';
 import { readSites } from '../sites/queries';
-import { anyDestinationStatement } from '../webhooks/destinations';
-import { anyListeningStatement } from '../zapier/subscriptions';
 import type { ConsoleReport as Wire } from '@better-giving/operator/console/report';
 import type { ConsoleSession } from './access';
 
@@ -37,11 +33,6 @@ import type { ConsoleSession } from './access';
 // wrote into the bundle, so it says which release this worker was cut from rather than what an
 // operator set — `packages/app/version-define.ts` is where it is defined and where the name is
 // typed, and a build whose environment named no version answers `null`.
-//
-// **the feeds in use are read off rows on every answer this surface gives, and never written over
-// this wire, so each read is one row found or none**, and the three go to D1 as one `batch()`. that
-// batch fails on its own: it answers `null`, which the console reads as not knowing, and the rest of
-// the report is served — a feed never reads as unused because the read of it did not land.
 
 /** the whole of what this surface answers, whether the request read or wrote. */
 export type ConsoleReport = Wire<OrgProfileFormValues>;
@@ -76,7 +67,6 @@ export type OrgWireFields = Agreed<SameNames<OrgProfileField, WireOrgField>>;
  * in scope here is the Stripe secret one spread away from being one of the fields.
  */
 export async function consoleReport(db: Db, session: ConsoleSession): Promise<ConsoleReport> {
-	const feeds = readFeedsInUse(db);
 	const [sites, profile] = await Promise.all([readSites(db), readOrgProfile(db)]);
 
 	return {
@@ -89,29 +79,6 @@ export async function consoleReport(db: Db, session: ConsoleSession): Promise<Co
 		// ISO 8601 rather than the epoch seconds the token carries: the envelope is read by a
 		// console deciding when to warn, and a string that says what it is beats a number whose
 		// unit has to be known.
-		session: { expiresAt: session.expiresAt.toISOString() },
-		feedsInUse: await feeds
+		session: { expiresAt: session.expiresAt.toISOString() }
 	};
-}
-
-/**
- * which feeds have anything to deliver to, or `null` where the read threw.
- *
- * the handler is attached as the read starts, so its rejection is never an unhandled one while
- * the reads beside it are still being awaited.
- */
-function readFeedsInUse(db: Db): Promise<FeedsInUse | null> {
-	return db
-		.batch([anyListeningStatement(db), anyDestinationStatement(db), connectedStatement(db)])
-		.then(
-			([zapier, webhooks, books]) => ({
-				zapier: zapier.length > 0,
-				webhooks: webhooks.length > 0,
-				books: books.length > 0
-			}),
-			(e) => {
-				console.error('reading which outbound feeds are in use failed:', e);
-				return null;
-			}
-		);
 }

@@ -9,7 +9,6 @@ import {
 	NO_EVENTS,
 	parseAddress
 } from '../../webhooks/destination-input';
-import type { Plan } from '../outbox/budget';
 import { countHeld, dropOwedStatement, requeueHeldStatements } from './deliver';
 
 // a destination: an https address the organisation's own system listens on, the events it takes,
@@ -23,18 +22,6 @@ import { countHeld, dropOwedStatement, requeueHeldStatements } from './deliver';
 // **a paused destination is resumed with what it missed** (`resumeDestination`): every row it is
 // still owed, and every row that failed while it was failing, sent again under the `webhook-id` it
 // was queued with, so a receiver that did take one dedupes it.
-
-/**
- * one destination not deleted, paused or not, or none: a statement for a caller's `batch()` asking
- * whether anything is posted to.
- */
-export function anyDestinationStatement(db: Db) {
-	return db
-		.select({ id: webhookDestination.id })
-		.from(webhookDestination)
-		.where(isNull(webhookDestination.archivedAt))
-		.limit(1);
-}
 
 /** a destination as a list shows it: never its secret. */
 export type ListedDestination = {
@@ -444,20 +431,18 @@ export type ResumeDestinationResult =
 
 /**
  * the destination `id` resumed at `now`, its held window re-queued and let out a few at a time
- * from `now` at the pace `plan` allows (`requeueHeldStatements` in ./deliver.ts says which rows
- * and how fast), and answered with how many rows that re-queued. the pause and the
- * failing mark are cleared in the same batch, and only while the destination is paused, so of two
+ * from `now` (`requeueHeldStatements` in ./deliver.ts says which rows and how fast), and
+ * answered with how many rows that re-queued. the pause and the failing mark are cleared in the same batch, and only while the destination is paused, so of two
  * resumes one re-queues and the other is refused. a deleted destination is not found: it is sent
  * nothing, so a row re-queued for it would wait forever.
  */
 export async function resumeDestination(
 	db: Db,
 	id: string,
-	now: Date,
-	plan: Plan
+	now: Date
 ): Promise<ResumeDestinationResult> {
 	const [requeued, , resumed] = await db.batch([
-		...requeueHeldStatements(db, id, now, plan),
+		...requeueHeldStatements(db, id, now),
 		db
 			.update(webhookDestination)
 			.set({ pausedAt: null, failingSince: null })

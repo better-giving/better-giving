@@ -1,33 +1,20 @@
-import {
-	DELIVERY_PACE,
-	type Feed,
-	type Pace,
-	type Plan,
-	planAnswered
-} from '@better-giving/operator/delivery-pace';
-import type { ConfigEnv } from '../config/env';
+import { DELIVERY_PACE, type Feed, type Pace } from '@better-giving/operator/delivery-pace';
 
 // what the minute cron's one invocation may spend, each feed's share of it, and the pace each feed
-// claims at on the plan the deployment runs on. src/worker.ts runs ../accounting/deliver.ts,
-// ../zapier/deliver.ts and ../webhooks/deliver.ts side by side in that invocation, so every limit
-// below is theirs together, and a feed sized alone is sized wrong.
+// claims at. src/worker.ts runs ../accounting/deliver.ts, ../zapier/deliver.ts and
+// ../webhooks/deliver.ts side by side in that invocation, so every limit below is theirs together,
+// and a feed sized alone is sized wrong.
 //
-// **the plan is the operator's answer, `CLOUDFLARE_PAID_PLAN`**: whether the Cloudflare account
-// is on Workers Paid, a fact about the account that no call this deployment makes reports. unset,
-// and any value but `true`, is Free — the plan that cannot be overrun by reading it wrong (see
-// `planAnswered` in packages/operator/src/delivery-pace.ts). src/worker.ts reads it off each
-// invocation's env, never once at module scope.
-//
-// **the per-invocation limits** (https://developers.cloudflare.com/workers/platform/limits/ and
+// **the per-invocation limits are Workers Paid's**
+// (https://developers.cloudflare.com/workers/platform/limits/ and
 // https://developers.cloudflare.com/d1/platform/limits/):
 //
-//   subrequests            — 50 on Free, 10,000 on Paid. a D1 query is a subrequest to an internal
-//                            service too, and those are 1,000 on Free, so the tighter bound on
-//                            queries is D1's own row below.
-//   D1 queries             — 50 on Free, 1,000 on Paid.
-//   connections at once    — six waiting on their response headers on either plan, a seventh
-//                            queueing with its timeout already running.
-//   CPU, a cron invocation — 10 ms on Free; 30 seconds on Paid at an interval under an hour.
+//   subrequests            — 10,000. a D1 query is a subrequest to an internal service too, so
+//                            the tighter bound on queries is D1's own row below.
+//   D1 queries             — 1,000.
+//   connections at once    — six waiting on their response headers, a seventh queueing with its
+//                            timeout already running.
+//   CPU, a cron invocation — 30 seconds at an interval under an hour.
 //
 // a subrequest past the limit throws inside the feed's post, where it reads as the receiver
 // failing, so the shares are what keep a healthy receiver from being marked for this run's spend.
@@ -43,25 +30,20 @@ import type { ConfigEnv } from '../config/env';
 //
 // **CPU is not budgeted.** posts, reads and mail are waits, which the CPU limit does not count;
 // what a row costs in CPU — rendering, signing, the query builder — is unmeasured, so no run sized
-// here is held to either plan's CPU limit, and Free's ten milliseconds are the one a Free run is
-// likeliest to meet first.
+// here is held to the CPU limit.
 //
-// **each feed's share is of the Free invocation**, hand-set so the shares together leave
-// {@link HEADROOM} of each limit unspent; on Paid each share is the same part of Paid's larger
-// limits. a feed claims what its share pays for at its worst — {@link RunCost}, every row claimed
-// taking the path that costs most — and never more than its {@link paceOf}: what its lanes answer
-// in the minute before the next run, at {@link ANSWER_MS} an answer. on Free the share is what
-// binds; on Paid the pace is.
+// **each feed's share is of the Paid invocation**, hand-set so the shares together leave
+// {@link HEADROOM} of each limit unspent. a feed claims what its share pays for at its worst —
+// {@link RunCost}, every row claimed taking the path that costs most — and never more than its
+// {@link paceOf}: what its lanes answer in the minute before the next run, at {@link ANSWER_MS} an
+// answer. the pace is what binds.
 //
 // **the claims are {@link PACE}, a table in packages/operator** (`DELIVERY_PACE` in
-// packages/operator/src/delivery-pace.ts), because the console states the same numbers and reaches
-// no module here. ./budget.spec.ts holds that table equal to the lesser of {@link claimsWithin} and
-// {@link paceOf} on each plan, so a feed whose run starts spending more per row changes its cost
-// here and its number there in the same change, or the spec fails.
+// packages/operator/src/delivery-pace.ts). ./budget.spec.ts holds that table equal to the lesser of
+// {@link claimsWithin} and {@link paceOf}, so a feed whose run starts spending more per row changes
+// its cost here and its number there in the same change, or the spec fails.
 
-export type { Plan };
-
-/** one invocation's limits on one plan. */
+/** one invocation's limits. */
 export type Limits = {
 	/** external subrequests. */
 	readonly external: number;
@@ -69,19 +51,16 @@ export type Limits = {
 	readonly queries: number;
 };
 
-export const PLAN_LIMITS: Readonly<Record<Plan, Limits>> = {
-	free: { external: 50, queries: 50 },
-	paid: { external: 10_000, queries: 1_000 }
-};
+export const LIMITS: Limits = { external: 10_000, queries: 1_000 };
 
-/** requests an invocation may have waiting on their response headers at once, on either plan. */
+/** requests an invocation may have waiting on their response headers at once. */
 export const CONNECTIONS_AT_ONCE = 6;
 
 /** of {@link CONNECTIONS_AT_ONCE}, kept for D1 and SMTP, so a query or a mail never queues behind posts. */
 export const CONNECTIONS_KEPT = 1;
 
-/** of each Free limit, left unspent by every share together. */
-export const HEADROOM = 5;
+/** the part of each limit left unspent by every share together. */
+export const HEADROOM = 0.1;
 
 /** how long an answer a pace is sized for takes. */
 export const ANSWER_MS = 3_000;
@@ -89,7 +68,7 @@ export const ANSWER_MS = 3_000;
 /** how often the cron runs, and so how long a run's claim has before the next run claims. */
 const RUN_EVERY_MS = 60_000;
 
-/** one feed's share of the minute cron's invocation on the Free plan. */
+/** one feed's share of the minute cron's invocation. */
 export type Share = {
 	/** requests in flight at once. */
 	readonly lanes: number;
@@ -162,21 +141,10 @@ export const ACCOUNTING_RUN_COST: RunCost = {
 
 /** every feed the minute cron runs: its share, and what its run costs. */
 export const MINUTE_RUN = {
-	zapier: { lanes: 2, external: 10, queries: 12 },
-	webhooks: { lanes: 2, external: 8, queries: 17 },
-	books: { lanes: 1, external: 11, queries: 16 }
+	zapier: { lanes: 2, external: 2_000, queries: 240 },
+	webhooks: { lanes: 2, external: 1_600, queries: 340 },
+	books: { lanes: 1, external: 2_200, queries: 320 }
 } as const satisfies Readonly<Record<Feed, Share>>;
-
-/** `share` of the Free invocation, as the same part of `plan`'s. */
-export function shareOn(plan: Plan, share: Share): Share {
-	const on = PLAN_LIMITS[plan];
-	const free = PLAN_LIMITS.free;
-	return {
-		lanes: share.lanes,
-		external: Math.floor((share.external * on.external) / free.external),
-		queries: Math.floor((share.queries * on.queries) / free.queries)
-	};
-}
 
 /** rows one run may take and still keep inside `share` at `cost`'s worst. */
 export function claimsWithin(share: Share, cost: RunCost): number {
@@ -191,10 +159,5 @@ export function paceOf(share: Share, cost: RunCost): number {
 	return Math.floor((share.lanes * RUN_EVERY_MS) / (ANSWER_MS * cost.answersPerRow));
 }
 
-/** each feed's claim in one run on each plan, which the minute schedule makes its rate a minute. */
-export const PACE: Readonly<Record<Plan, Pace>> = DELIVERY_PACE;
-
-/** the plan `env` says the account is on (`planAnswered` in packages/operator/src/delivery-pace.ts). */
-export function planOf(env: ConfigEnv): Plan {
-	return planAnswered(env.CLOUDFLARE_PAID_PLAN);
-}
+/** each feed's claim in one run, which the minute schedule makes its rate a minute. */
+export const PACE: Pace = DELIVERY_PACE;

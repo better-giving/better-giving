@@ -3,7 +3,7 @@ import type { Db } from '../db/client';
 import { zapierDelivery, zapierSubscription, type ZapierTrigger } from '../db/schema';
 import { inPage } from '../db/id-set';
 import { REFUND_NO_LONGER_STANDS, readStandingRefunds } from '../integrations/refund';
-import { MINUTE_RUN, PACE, type Plan } from '../outbox/budget';
+import { MINUTE_RUN, PACE } from '../outbox/budget';
 import { defineFailing } from '../outbox/failing';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
@@ -73,15 +73,13 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 
 /**
  * everything one run needs, per invocation. `fetch` is handed in so a spec can answer for Zapier.
- * `plan` is the Cloudflare plan the invocation runs on, Free where it is not said: a run claims
- * this feed's pace on it (../outbox/budget.ts), each Zap's longest-waiting row first within the
- * claim's window (../outbox/lease.ts), and a row no lane reached stays leased, unposted, until the
- * lease runs out and a later run takes it.
+ * a run claims this feed's pace (../outbox/budget.ts), each Zap's longest-waiting row first
+ * within the claim's window (../outbox/lease.ts), and a row no lane reached stays leased,
+ * unposted, until the lease runs out and a later run takes it.
  */
 export type ZapierDeliveryDeps = {
 	readonly db: Db;
 	readonly fetch: typeof fetch;
-	readonly plan?: Plan;
 };
 
 /** posts in flight at once: this feed's share of the minute cron's connections (../outbox/budget.ts). */
@@ -134,7 +132,7 @@ export function backoffMs(attempts: number): number {
  * held come back when their lease does.
  */
 export async function sendDueZapierEvents(deps: ZapierDeliveryDeps, now: Date): Promise<void> {
-	const claim = await claimDue(deps.db, now, PACE[deps.plan ?? 'free'].zapier);
+	const claim = await claimDue(deps.db, now, PACE.zapier);
 	const claimed = claim.rows;
 	if (claimed.length === 0) return;
 

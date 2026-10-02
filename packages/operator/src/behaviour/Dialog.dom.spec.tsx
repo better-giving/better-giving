@@ -375,12 +375,12 @@ describe('the shell over the dialog', () => {
 			<Modal title="Cloudflare account" onDismiss={() => {}}>
 				{withheld ? (
 					<button type="button" onClick={() => setAsking(true)}>
-						Remove CLOUDFLARE_PAID_PLAN
+						Remove SMTP_PORT
 					</button>
 				) : null}
 				{asking ? (
 					<Modal
-						title="Remove CLOUDFLARE_PAID_PLAN?"
+						title="Remove SMTP_PORT?"
 						danger="Remove"
 						dangerProps={{
 							type: 'button',

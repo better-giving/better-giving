@@ -348,7 +348,7 @@ describe('moving the date a connection starts from', () => {
 		const settledAfter = posting({ occurredAt: new Date('2026-05-15T00:00:00.000Z') });
 		await commit([settledAfter]);
 
-		const run = await dueRows(db, new Date(Date.now() + 60_000), PACE.paid.books);
+		const run = await dueRows(db, new Date(Date.now() + 60_000), PACE.books);
 
 		const byDate = [...history].sort(
 			(a, b) => a.group.occurredAt.getTime() - b.group.occurredAt.getTime()

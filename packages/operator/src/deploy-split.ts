@@ -61,12 +61,6 @@
  * takes no exception from the rule this header states; what it picks between is two tables of
  * published rates that stay constants in the tree, so no rate is ever typed
  * (`packages/app/src/lib/server/payments/fees.ts`).
- *
- * `CLOUDFLARE_PAID_PLAN` is the second such answer, on the same terms: whether the Cloudflare
- * account this deployment runs on is on the Workers Paid plan, which no call it makes reports. what
- * it picks between is two sets of published per-invocation limits that stay constants in the tree,
- * so the minute cron's deliveries are paced to the plan
- * (`packages/app/src/lib/server/outbox/budget.ts`).
  */
 export const DEPLOY_VARS = [
 	'SMTP_HOST',
@@ -94,7 +88,6 @@ export const DEPLOY_VARS = [
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL',
-	'CLOUDFLARE_PAID_PLAN',
 	'BETTER_AUTH_SECRET',
 	'BETTER_AUTH_URL',
 	'ADMIN_PASSWORD'

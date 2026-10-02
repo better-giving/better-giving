@@ -115,15 +115,6 @@ export async function countListening(db: Db): Promise<ZapierReport['listening']>
 	};
 }
 
-/** one open subscription, or none: a statement for a caller's `batch()` asking whether any Zap listens. */
-export function anyListeningStatement(db: Db) {
-	return db
-		.select({ id: zapierSubscription.id })
-		.from(zapierSubscription)
-		.where(isNull(zapierSubscription.endedAt))
-		.limit(1);
-}
-
 /**
  * Zapier letting go of subscription `id`. an unknown or already-ended id changes nothing and is no
  * error: Zapier reads a refused unsubscribe as a failure, and there is nothing left to stop.

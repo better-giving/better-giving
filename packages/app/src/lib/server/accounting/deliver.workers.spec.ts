@@ -149,9 +149,9 @@ async function connected(realmId = REALM): Promise<void> {
 		.run();
 }
 
-/** a run's needs, at the Paid plan's pace, so one run sends every row a case queues. */
+/** a run's needs. its pace sends every row a case queues in one run. */
 function deps(port: AccountingProvider, email: EmailProvider = mailer().port) {
-	return { db, provider: port, email, plan: 'paid' } as const;
+	return { db, provider: port, email } as const;
 }
 
 /** the postings committed the way every poster commits them, with a queue row for each of `owed`. */
@@ -524,7 +524,7 @@ describe('the due backlog', () => {
 	);
 
 	it('narrows the backlog through the index, and reaches each entry group by its key', async () => {
-		const { sql: statement, params } = dueRows(db, NOW, PACE.paid.books).toSQL();
+		const { sql: statement, params } = dueRows(db, NOW, PACE.books).toSQL();
 
 		const plan = await env.DB.prepare(`explain query plan ${statement}`)
 			.bind(...params)
@@ -715,20 +715,16 @@ describe('the due backlog', () => {
 		}
 	});
 
-	it.each([
-		['the Paid plan', 'paid', PACE.paid.books],
-		['the Free plan, where no plan is said', undefined, PACE.free.books]
-	] as const)('sends a run’s pace on %s and leaves the rest queued', async (_, plan, pace) => {
-		const postings = Array.from({ length: pace + 1 }, () => correction('donationsDeductible'));
+	it('sends a run’s pace and leaves the rest queued', async () => {
+		const postings = Array.from({ length: PACE.books + 1 }, () =>
+			correction('donationsDeductible')
+		);
 		await commit(postings, postings);
 		const qb = provider();
 
-		await sendDueEntries(
-			{ db, provider: qb.port, email: mailer().port, ...(plan === undefined ? {} : { plan }) },
-			NOW
-		);
+		await sendDueEntries(deps(qb.port), NOW);
 
-		expect(qb.asked).toHaveLength(pace);
+		expect(qb.asked).toHaveLength(PACE.books);
 		const statuses = await Promise.all(postings.map(async (p) => (await row(idOf(p))).status));
 		expect(statuses.filter((status) => status === 'pending')).toHaveLength(1);
 	});

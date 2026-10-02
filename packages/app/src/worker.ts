@@ -3,13 +3,11 @@ import { createRequestHandler } from 'react-router';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { pinnedOrigin, readAuthEnv } from '$lib/server/auth/env';
-import { readConfigEnv } from '$lib/server/config/env';
 import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
 import { createPaymentProviders } from '$lib/server/payments/factory';
-import { planOf } from '$lib/server/outbox/budget';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
@@ -64,28 +62,25 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 	'* * * * *': (env, now) => {
 		// the three jobs below run in one invocation and spend its connections, subrequests and D1
 		// queries together; ./lib/server/outbox/budget.ts is each one's share, and a job added here
-		// takes a share there. each claims its pace on the plan this invocation's env names.
+		// takes a share there.
 		//
 		// one handle, shared by every delivery and by the connection the accounting provider reads
 		// its tokens through: the store the factory builds is over this same database.
 		const db = requestDb(env);
-		const plan = planOf(readConfigEnv(env));
 		return allRun([
 			sendDueEntries(
 				{
 					db,
 					provider: createAccountingProvider(env, db),
-					email: createEmailProvider(env),
-					plan
+					email: createEmailProvider(env)
 				},
 				now
 			),
-			sendDueZapierEvents({ db, fetch, plan }, now),
+			sendDueZapierEvents({ db, fetch }, now),
 			sendDueWebhooks(
 				{
 					db,
 					fetch,
-					plan,
 					// the pin is read when a pause is mailed, so one that names no http(s) origin costs that
 					// mail and not the run: `pinnedOrigin` throws on it, and ./lib/server/webhooks/deliver.ts
 					// logs a throw from the hook.

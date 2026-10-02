@@ -580,7 +580,7 @@ describe('sendDueWebhooks() — a destination failing for three days', () => {
 			url: target.url,
 			reason: 'failing'
 		});
-		expect(await resumeDestination(db, target.id, later(11 * 24 * HOUR), 'free')).toEqual({
+		expect(await resumeDestination(db, target.id, later(11 * 24 * HOUR))).toEqual({
 			ok: true,
 			requeued: 1
 		});
@@ -954,7 +954,7 @@ describe('resumeDestination() — the held window, re-sent', () => {
 
 		const resumedAt = later(180 * HOUR);
 		vi.setSystemTime(resumedAt);
-		const resumed = await resumeDestination(db, target.id, resumedAt, 'free');
+		const resumed = await resumeDestination(db, target.id, resumedAt);
 		expect(resumed).toEqual({ ok: true, requeued: 3 });
 
 		answering = 200;
@@ -992,7 +992,7 @@ describe('resumeDestination() — the held window, re-sent', () => {
 			)
 				.bind(START.getTime(), START.getTime(), target.id)
 				.run();
-			await resumeDestination(db, target.id, START, 'free');
+			await resumeDestination(db, target.id, START);
 			return new Response('', { status: 503 });
 		}) as typeof fetch;
 
@@ -1017,16 +1017,16 @@ describe('resumeDestination() — the held window, re-sent', () => {
 
 		const resumedAt = later(HOUR);
 		vi.setSystemTime(resumedAt);
-		expect(await resumeDestination(db, held.id, resumedAt, 'free')).toEqual({
+		expect(await resumeDestination(db, held.id, resumedAt)).toEqual({
 			ok: true,
 			requeued: 45
 		});
 		const { results } = await env.DB.prepare(
 			'select next_attempt_at from webhook_delivery order by created_at, id'
 		).all<{ next_attempt_at: number }>();
-		// half the Free pace of four a minute: one every thirty seconds.
+		// half the pace of forty a minute: one every three seconds.
 		expect(results.map((row) => row.next_attempt_at - resumedAt.getTime())).toEqual(
-			results.map((_, k) => k * 30_000)
+			results.map((_, k) => k * 3_000)
 		);
 
 		const beside = await destination();
@@ -1041,7 +1041,7 @@ describe('resumeDestination() — the held window, re-sent', () => {
 
 describe('sendDueWebhooks() — lanes', () => {
 	it("posts to at most the feed's lanes at once, and to every destination it claimed", async () => {
-		for (let made = 0; made < PACE.free.webhooks; made++) await destination();
+		for (let made = 0; made < PACE.webhooks; made++) await destination();
 		await settle();
 		let inFlight = 0;
 		let most = 0;
@@ -1057,7 +1057,7 @@ describe('sendDueWebhooks() — lanes', () => {
 		await runAt(START, slow);
 
 		expect(most).toBe(MINUTE_RUN.webhooks.lanes);
-		expect(new Set(receiving.posts.map((post) => post.url)).size).toBe(PACE.free.webhooks);
+		expect(new Set(receiving.posts.map((post) => post.url)).size).toBe(PACE.webhooks);
 	});
 });
 

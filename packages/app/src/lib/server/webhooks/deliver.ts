@@ -16,7 +16,7 @@ import { WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { inPage } from '../db/id-set';
-import { MINUTE_RUN, PACE, type Plan } from '../outbox/budget';
+import { MINUTE_RUN, PACE } from '../outbox/budget';
 import { defineFailing } from '../outbox/failing';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
@@ -109,15 +109,13 @@ export type PausedDestination = {
 /**
  * everything one run needs, per invocation. `fetch` is handed in so a spec can answer for
  * receivers. `onPaused` is told of each pause once, after the batch that made it has committed.
- * `plan` is the Cloudflare plan the invocation runs on, Free where it is not said: a run claims
- * this feed's pace on it, the longest-waiting first (../outbox/budget.ts), and a row no lane
- * reached stays leased, unposted, until the lease runs out and a later run takes it.
+ * a run claims this feed's pace, the longest-waiting first (../outbox/budget.ts), and a row no
+ * lane reached stays leased, unposted, until the lease runs out and a later run takes it.
  */
 export type WebhookDeliveryDeps = {
 	readonly db: Db;
 	readonly fetch: typeof fetch;
 	readonly onPaused: (destination: PausedDestination) => Promise<void>;
-	readonly plan?: Plan;
 };
 
 /**
@@ -206,7 +204,7 @@ function pausedDestination(db: Db, destinationId: string) {
  */
 export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Promise<void> {
 	const { db } = deps;
-	const claim = await claimDue(db, now, PACE[deps.plan ?? 'free'].webhooks);
+	const claim = await claimDue(db, now, PACE.webhooks);
 	if (claim.rows.length === 0) return;
 
 	const destinations = await readDestinations(
@@ -397,21 +395,19 @@ function heldWindow(db: Db, destinationId: string): SQL {
 }
 
 /**
- * how far apart a resume on `plan` lets its rows out: half this feed's pace a minute, so a
- * resumed backlog takes at most half of each run's claim and the destinations beside it the rest.
+ * how far apart a resume lets its rows out: half this feed's pace a minute, so a resumed backlog
+ * takes at most half of each run's claim and the destinations beside it the rest.
  */
-function resumedRowsEveryMs(plan: Plan): number {
-	return Math.ceil((2 * 60_000) / PACE[plan].webhooks);
-}
+const RESUMED_ROWS_EVERY_MS = Math.ceil((2 * 60_000) / PACE.webhooks);
 
 /**
  * the held window of `destinationId` ({@link heldWindow}) re-queued at `now`, each row starting the
  * schedule afresh under its own id: taken back from any run posting it, so that run's answer lands
- * nothing over the restart, then let out {@link resumedRowsEveryMs} apart in the order the rows
+ * nothing over the restart, then let out {@link RESUMED_ROWS_EVERY_MS} apart in the order the rows
  * were queued, the first at `now`. the first statement answers with the ids it re-queued. they
  * match nothing once the destination is resumed, so they run in front of the write that resumes it.
  */
-export function requeueHeldStatements(db: Db, destinationId: string, now: Date, plan: Plan) {
+export function requeueHeldStatements(db: Db, destinationId: string, now: Date) {
 	const gathered = outbox.takeBack(db, {
 		where: heldWindow(db, destinationId),
 		outcome: { status: 'pending', attempts: 0, nextAttemptAt: HELD_UNTIL, updatedAt: now }
@@ -435,7 +431,7 @@ export function requeueHeldStatements(db: Db, destinationId: string, now: Date, 
 	const letOut = db
 		.update(webhookDelivery)
 		.set({
-			nextAttemptAt: sql`${now.getTime()} + ${resumedRowsEveryMs(plan)} * ${ranked.rank}`,
+			nextAttemptAt: sql`${now.getTime()} + ${RESUMED_ROWS_EVERY_MS} * ${ranked.rank}`,
 			updatedAt: now
 		})
 		.from(ranked)

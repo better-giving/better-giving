@@ -300,7 +300,7 @@ describe('resumeDestination()', () => {
 	it('refuses a destination that does not exist, naming the id', async () => {
 		const id = '019fb300-0000-7000-8000-00000000dead';
 
-		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({
+		expect(await resumeDestination(db, id, NOW)).toEqual({
 			ok: false,
 			reason: 'not_found',
 			detail: `No destination has the id ${id}.`
@@ -322,7 +322,7 @@ describe('resumeDestination()', () => {
 			.bind(`msg_${crypto.randomUUID()}`, id)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({
+		expect(await resumeDestination(db, id, NOW)).toEqual({
 			ok: false,
 			reason: 'not_found',
 			detail: `No destination has the id ${id}.`
@@ -346,7 +346,7 @@ describe('resumeDestination()', () => {
 			.bind(`msg_${crypto.randomUUID()}`, id, NOW.getTime() + 60_000)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW, 'free')).toMatchObject({
+		expect(await resumeDestination(db, id, NOW)).toMatchObject({
 			ok: false,
 			reason: 'not_paused'
 		});
@@ -363,11 +363,11 @@ describe('resumeDestination()', () => {
 			.bind(id)
 			.run();
 
-		expect(await resumeDestination(db, id, NOW, 'free')).toEqual({ ok: true, requeued: 0 });
+		expect(await resumeDestination(db, id, NOW)).toEqual({ ok: true, requeued: 0 });
 		expect(
 			await env.DB.prepare('select paused_at, failing_since from webhook_destination').first()
 		).toEqual({ paused_at: null, failing_since: null });
-		expect(await resumeDestination(db, id, NOW, 'free')).toMatchObject({
+		expect(await resumeDestination(db, id, NOW)).toMatchObject({
 			ok: false,
 			reason: 'not_paused'
 		});

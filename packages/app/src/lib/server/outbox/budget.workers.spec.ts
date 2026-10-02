@@ -16,13 +16,13 @@ import { sendDueWebhooks } from '../webhooks/deliver';
 import { createDestination } from '../webhooks/destinations';
 import { mailPause } from '../webhooks/paused-mail';
 import { sendDueZapierEvents } from '../zapier/deliver';
-import { MINUTE_RUN, PACE, type Plan, type Share, shareOn, ZAPIER_RUN_COST } from './budget';
+import { MINUTE_RUN, PACE, type Share, ZAPIER_RUN_COST } from './budget';
 
 // each outbox run at its costliest, counted against its share of the minute cron's invocation
 // (./budget.ts): every D1 query the run makes through a real D1, and every external subrequest
 // through the `fetch` and the mail transport it is handed — the QuickBooks adapter's `fetch` is the
 // global one, stubbed here, and ../../../../vitest.workers.config.ts sets `unstubGlobals`. what
-// ./budget.spec.ts sums, this holds each feed's run to, on each plan.
+// ./budget.spec.ts sums, this holds each feed's run to.
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
@@ -166,7 +166,7 @@ describe('the Zapier run', () => {
 		const now = Date.now() + 1_000;
 		const paymentId = await gift();
 		await failingHook('gift_refunded', await refundOf(paymentId), now, 2 * DAY);
-		for (let hook = 0; hook < PACE.free.zapier + 2; hook++) {
+		for (let hook = 0; hook < PACE.zapier + 2; hook++) {
 			await failingHook('new_gift', paymentId, now, DAY);
 		}
 		const counting = counted(env.DB);
@@ -174,35 +174,14 @@ describe('the Zapier run', () => {
 
 		await sendDueZapierEvents({ db: counting.db, fetch: receivers.fetch }, new Date(now));
 
-		expect(receivers.requests()).toBe(2 * PACE.free.zapier);
+		expect(receivers.requests()).toBe(2 * PACE.zapier);
 		expectWithin(MINUTE_RUN.zapier, {
 			queries: counting.queries(),
 			external: receivers.requests()
 		});
-		expect(counting.queries() - PACE.free.zapier * ZAPIER_RUN_COST.queriesPerRow).toBe(
+		expect(counting.queries() - PACE.zapier * ZAPIER_RUN_COST.queriesPerRow).toBe(
 			ZAPIER_RUN_COST.queries
 		);
-	});
-
-	it('claims the Paid pace on the Paid plan, and stays inside its Paid share doing it', async () => {
-		const now = Date.now() + 1_000;
-		const paymentId = await gift();
-		for (let hook = 0; hook < PACE.paid.zapier + 2; hook++) {
-			await failingHook('new_gift', paymentId, now, DAY);
-		}
-		const counting = counted(env.DB);
-		const receivers = failingReceivers();
-
-		await sendDueZapierEvents(
-			{ db: counting.db, fetch: receivers.fetch, plan: 'paid' },
-			new Date(now)
-		);
-
-		expect(receivers.requests()).toBe(2 * PACE.paid.zapier);
-		expectWithin(shareOn('paid', MINUTE_RUN.zapier), {
-			queries: counting.queries(),
-			external: receivers.requests()
-		});
 	});
 });
 
@@ -243,7 +222,7 @@ describe('the webhook run', () => {
 	}
 
 	/** a run at `now`, its queries and its external subrequests — posts, and pause mails sent. */
-	async function run(now: number, plan: Plan = 'free') {
+	async function run(now: number) {
 		const counting = counted(env.DB);
 		const receivers = failingReceivers();
 		let mails = 0;
@@ -260,8 +239,7 @@ describe('the webhook run', () => {
 						}
 					},
 					origin: null
-				}),
-				plan
+				})
 			},
 			new Date(now)
 		);
@@ -271,13 +249,13 @@ describe('the webhook run', () => {
 	it('stays inside its share when every row it claims fails and pauses its destination', async () => {
 		const now = Date.now() + 1_000;
 		const paymentId = await gift();
-		for (let made = 0; made < PACE.free.webhooks + 2; made++) {
+		for (let made = 0; made < PACE.webhooks + 2; made++) {
 			await failingDestination('gift.made', paymentId, now, DAY);
 		}
 
 		const spent = await run(now);
 
-		expect(spent.mails).toBe(PACE.free.webhooks);
+		expect(spent.mails).toBe(PACE.webhooks);
 		expectWithin(MINUTE_RUN.webhooks, spent);
 	});
 
@@ -287,24 +265,11 @@ describe('the webhook run', () => {
 		await failingDestination('gift.refunded', uuidv7(), now, 4 * DAY);
 		await failingDestination('donor.added', uuidv7(), now, 4 * DAY);
 		await failingDestination('recurring_gift.started', uuidv7(), now, 4 * DAY);
-		for (let made = 0; made < PACE.free.webhooks; made++) {
+		for (let made = 0; made < PACE.webhooks; made++) {
 			await failingDestination('gift.made', paymentId, now, DAY);
 		}
 
 		expectWithin(MINUTE_RUN.webhooks, await run(now));
-	});
-
-	it('claims the Paid pace on the Paid plan, and stays inside its Paid share doing it', async () => {
-		const now = Date.now() + 1_000;
-		const paymentId = await gift();
-		for (let made = 0; made < PACE.paid.webhooks + 2; made++) {
-			await failingDestination('gift.made', paymentId, now, DAY);
-		}
-
-		const spent = await run(now, 'paid');
-
-		expect(spent.mails).toBe(PACE.paid.webhooks);
-		expectWithin(shareOn('paid', MINUTE_RUN.webhooks), spent);
 	});
 });
 
@@ -465,47 +430,43 @@ describe('the QuickBooks run', () => {
 		return { requests: () => requests };
 	}
 
-	it.each(['free', 'paid'] as const)(
-		'stays inside its %s share when every entry it sends costs its most and the run ends in a notice',
-		async (plan) => {
-			await connected();
-			await owedGift(3, 'failed');
-			for (let gift = 0; gift < PACE[plan].books + 2; gift++) await owedGift(1, 'pending');
-			const intuit = costliestIntuit();
-			const counting = counted(env.DB);
-			let mails = 0;
+	it('stays inside its share when every entry it sends costs its most and the run ends in a notice', async () => {
+		await connected();
+		await owedGift(3, 'failed');
+		for (let gift = 0; gift < PACE.books + 2; gift++) await owedGift(1, 'pending');
+		const intuit = costliestIntuit();
+		const counting = counted(env.DB);
+		let mails = 0;
 
-			await sendDueEntries(
-				{
-					db: counting.db,
-					provider: createAccountingProvider(
-						{
-							QUICKBOOKS_CLIENT_ID: 'notarealclientid',
-							QUICKBOOKS_CLIENT_SECRET: 'notarealclientsecret',
-							QUICKBOOKS_API_URL: QUICKBOOKS_SANDBOX_URL
-						},
-						counting.db
-					),
-					email: {
-						async send() {
-							mails += 1;
-							return { ok: true };
-						}
+		await sendDueEntries(
+			{
+				db: counting.db,
+				provider: createAccountingProvider(
+					{
+						QUICKBOOKS_CLIENT_ID: 'notarealclientid',
+						QUICKBOOKS_CLIENT_SECRET: 'notarealclientsecret',
+						QUICKBOOKS_API_URL: QUICKBOOKS_SANDBOX_URL
 					},
-					plan
-				},
-				new Date()
-			);
+					counting.db
+				),
+				email: {
+					async send() {
+						mails += 1;
+						return { ok: true };
+					}
+				}
+			},
+			new Date()
+		);
 
-			const sent = await env.DB.prepare(
-				`select count(*) as n from quickbooks_sync where status = 'sent'`
-			).first<{ n: number }>();
-			expect(sent?.n).toBe(PACE[plan].books);
-			expect(mails).toBe(1);
-			expectWithin(shareOn(plan, MINUTE_RUN.books), {
-				queries: counting.queries(),
-				external: intuit.requests() + mails
-			});
-		}
-	);
+		const sent = await env.DB.prepare(
+			`select count(*) as n from quickbooks_sync where status = 'sent'`
+		).first<{ n: number }>();
+		expect(sent?.n).toBe(PACE.books);
+		expect(mails).toBe(1);
+		expectWithin(MINUTE_RUN.books, {
+			queries: counting.queries(),
+			external: intuit.requests() + mails
+		});
+	});
 });
