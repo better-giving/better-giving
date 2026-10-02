@@ -325,7 +325,7 @@ describe('the shell over the dialog', () => {
 		readonly onInner: () => void;
 	}) {
 		return (
-			<Modal title="Cloudflare account" onDismiss={onOuter}>
+			<Modal title="Saved values" onDismiss={onOuter}>
 				<Modal title="Remove these values?" onDismiss={onInner} />
 			</Modal>
 		);
@@ -363,15 +363,14 @@ describe('the shell over the dialog', () => {
 	});
 
 	/**
-	 * a panel that is up first, off the address, with a confirm put up by a Remove inside it — which
-	 * a press that lands takes off the page with the confirm, while the panel is still the modal
-	 * holding the page.
+	 * a panel that is up first, with a confirm put up by a Remove inside it — which a press that
+	 * lands takes off the page with the confirm, while the panel is still the modal holding the page.
 	 */
 	function Freeing() {
 		const [withheld, setWithheld] = useState(true);
 		const [asking, setAsking] = useState(false);
 		return (
-			<Modal title="Cloudflare account" onDismiss={() => {}}>
+			<Modal title="Saved values" onDismiss={() => {}}>
 				{withheld ? (
 					<button type="button" onClick={() => setAsking(true)}>
 						Remove SMTP_PORT

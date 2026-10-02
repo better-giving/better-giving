@@ -81,10 +81,11 @@ describe('the account in the band', () => {
 		expect(controls(band)).toEqual([]);
 	});
 
-	it('keeps its size beside the close, carrying no hint', () => {
+	it('is not counted among the band’s ways out, and carries no hint', () => {
 		const logo = render(AccountBand, ACCOUNT).querySelector('[role="img"]');
 
-		expect(logo?.classList).toContain('adm-signout');
+		// `.adm-identity > .adm-signout` is how the shell finds a way out (./AppShell.dom.spec.tsx).
+		expect(logo?.classList).not.toContain('adm-signout');
 		expect(logo?.hasAttribute('title')).toBe(false);
 	});
 });

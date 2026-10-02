@@ -20,6 +20,25 @@ describe('the account row', () => {
 		expect(hiding).toEqual([]);
 	});
 
+	it('is not hidden whole in the icon rail, row or label', () => {
+		const hidden = (stated: Map<string, string>) =>
+			stated.get('display') === 'none' ||
+			stated.get('visibility') === 'hidden' ||
+			stated.get('visibility') === 'collapse';
+		const hiding = rulesIn(css).filter(
+			({ selector, stated }) =>
+				hidden(stated) &&
+				selector
+					.split(',')
+					.map((one) => one.trim())
+					.some(
+						(one) =>
+							one.includes('.adm-shell--collapsed') && /\.adm-footaccount(__label)?$/.test(one)
+					)
+		);
+		expect(hiding).toEqual([]);
+	});
+
 	it('keeps its logo in the icon rail, where every other lead is hidden', () => {
 		expect(
 			ruleOf(css, '.adm-shell--collapsed .adm-footaccount__label > .adm-rail__lead').get('display')

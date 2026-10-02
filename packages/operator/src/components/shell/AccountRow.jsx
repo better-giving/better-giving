@@ -45,9 +45,10 @@ export function AccountRow({ name, brand, whose, out }) {
 	);
 }
 
-/* `.adm-signout` for what it does in the band: the logo keeps its size beside a name that takes the
-   squeeze, as the close beside it does. */
+/* no `.adm-signout`: that class names the band's way out, and the logo is not one. it keeps its
+   size beside a name that takes the squeeze by `.adm-brand`'s own `flex: none` in
+   ../../styles/base.css. */
 /** @param {AccountProps} props */
 export function AccountBand({ name, brand, whose }) {
-	return <Brand name={brand} label={`${whose} ${name}`} className="adm-signout" />;
+	return <Brand name={brand} label={`${whose} ${name}`} />;
 }

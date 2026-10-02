@@ -55,10 +55,10 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  *
  * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
  * `foot` stands in the rail in its place, which is the console's shape: its account and close in
- * the band, and in the foot the account's logo and name as the link opening its panel — the real
+ * the band, and in the foot the account's logo and name as a label that opens nothing — the real
  * AccountRow and AccountBand as packages/console-ui/src/lib/cloudflare-account.tsx hands them
- * (./shell-account-row.tsx has them out of the shell, marked and unmarked). `null` for both drops
- * the rail's foot rather than standing an empty one.
+ * (./shell-account-row.tsx has them out of the shell). `null` for both drops the rail's foot rather
+ * than standing an empty one.
  *
  * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
  * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
@@ -186,8 +186,8 @@ export default function ShellAppShellPreview() {
 
 			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
 			    every entry, the site's globe before the name, the close in the band and an account in
-			    the foot. collapsed, the logo alone stands for the account, and it is still the press
-			    that opens the panel. */}
+			    the foot. collapsed, the logo alone stands for the account, a label still and nothing
+			    to press. */}
 			<AppShell
 				org="Riverside Shelter"
 				current="Sites"
