@@ -117,19 +117,24 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 	);
 }
 
+/**
+ * whether a re-read answered with the very lines it set out from.
+ *
+ * every key of a line is compared, so a field `SetupLine` grows later is counted without this
+ * changing with it. strict equality on each value, which is exact for the strings and `null`s a
+ * line holds today; a value that is not one would read as moved on every re-read, which says
+ * nothing beside the press rather than a "nothing has changed" that is wrong.
+ */
 function sameLines(a: readonly SetupLine[], b: readonly SetupLine[]): boolean {
 	return (
 		a.length === b.length &&
 		a.every((line, at) => {
 			const other = b[at];
-			return (
-				other !== undefined &&
-				line.id === other.id &&
-				line.label === other.label &&
-				line.state === other.state &&
-				line.word === other.word &&
-				line.note === other.note
-			);
+			if (other === undefined) return false;
+			const mine: Readonly<Record<string, unknown>> = line;
+			const theirs: Readonly<Record<string, unknown>> = other;
+			const keys = new Set([...Object.keys(mine), ...Object.keys(theirs)]);
+			return [...keys].every((key) => Object.is(mine[key], theirs[key]));
 		})
 	);
 }

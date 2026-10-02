@@ -112,7 +112,7 @@ const idle = (press: HTMLElement) => () => !press.hasAttribute('aria-disabled');
  *
  * a link to the same address stands beside it, for a navigation that is not the gate's own press.
  */
-async function reread(next: readonly SetupLine[]) {
+async function reread(next: readonly SetupLine[], first: readonly SetupLine[] = lines) {
 	let reads = 0;
 	let land: () => void = () => {};
 	const Stub = createRoutesStub([
@@ -120,7 +120,7 @@ async function reread(next: readonly SetupLine[]) {
 			path: '/admin',
 			loader: async () => {
 				reads += 1;
-				if (reads === 1) return { lines };
+				if (reads === 1) return { lines: first };
 				await new Promise<void>((resolve) => {
 					land = resolve;
 				});
@@ -214,6 +214,19 @@ it('leaves a re-read that moved a line to the ledger, which says what moved', as
 	await gate.land();
 
 	expect(gate.root.textContent).not.toContain('Incomplete');
+	expect(outcome(gate.press)).toBe('');
+});
+
+// a field a later reading adds to a line is part of what moved, and the gate has no list of the
+// fields to keep up to date with it.
+it('counts a field it does not know of as a line that moved', async () => {
+	const since = (at: string) => lines.map((line) => ({ ...line, since: at }) as SetupLine);
+	const gate = await reread(since('tuesday'), since('monday'));
+
+	await act(async () => gate.press.click());
+	await until(busy(gate.press), 'the re-read was in flight');
+	await gate.land();
+
 	expect(outcome(gate.press)).toBe('');
 });
 
