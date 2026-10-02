@@ -3363,6 +3363,20 @@
 		margin-block-end: var(--admin-space-4);
 	}
 
+	/* a group inside a group is moated the same way and by the same token, for the same reason: a
+	   `.adm-pair` stacked inside it gaps its two boxes by the group's own step, so without a moat
+	   the box that follows the inner group stands as close to its last box as that box stands to
+	   the one above it, and reads as a third box of the inner group. the steps here are margins
+	   rather than a gap, so the moat is added to the step in a sum.
+
+	   it is drawn on whatever starts the boundary, on both sides, and never under the outer
+	   group's legend: the inner group directly under the name of the one around it is bounded by
+	   that name, as a group opening a stack is by the panel. */
+	.adm-fieldset > :not(legend) + .adm-fieldset,
+	.adm-fieldset > .adm-fieldset + * {
+		margin-block-start: calc(var(--admin-space-5) + var(--admin-space-4));
+	}
+
 	/* the name of a group of boxes, and it is set a rank above the boxes' own names: at the label's
 	   size and weight it is a label, and nothing on the screen then says which of the two contains
 	   the other. a step up the ramp and the weight the document's own headings carry — not one of
