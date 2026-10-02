@@ -4540,6 +4540,21 @@
 		justify-content: end;
 	}
 
+	/* a screen stands the heading over a list, this line and the plane side by side in one
+	   container, so the container's gap is on both sides of the line and `.adm-tablelead`'s own
+	   step adds to the gap under it — the sentence then stands further from its own table than from
+	   the heading, and reads as the heading's. inside a gapped container the line takes the gap
+	   back, and what stands between it and the plane is the line's own `--admin-space-4` alone:
+	   under the heading's gap, so the sentence reads with the table it counts.
+	   ./table-lead.spec.ts holds the pairing. */
+	.adm-stack > .adm-tablelead {
+		margin-block-end: calc(var(--admin-space-4) - var(--admin-space-6));
+	}
+
+	.adm-section > .adm-tablelead {
+		margin-block-end: calc(var(--admin-space-4) - var(--admin-space-5));
+	}
+
 	/* the sentence naming a table stands outside the scroll box — never in a `<caption>`,
 	   which is part of the table and therefore scrolls away at exactly the widths the scroll
 	   box exists for. the table is named by `aria-labelledby` pointing at this element, so
