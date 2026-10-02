@@ -1,6 +1,6 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, data } from 'react-router';
+import { createRoutesStub, data, Form } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { ErrorBoundary } from './root';
 
@@ -42,6 +42,38 @@ async function boundaryOver(thrown: unknown): Promise<HTMLElement> {
 	return root;
 }
 
+/**
+ * the root's boundary over a screen whose action throws `thrown`, after its one button is pressed —
+ * the path a refusal from the form layer takes ($lib/server/conform.ts throws from an action).
+ */
+async function boundaryOverAction(thrown: unknown): Promise<HTMLElement> {
+	const Stub = createRoutesStub([
+		{
+			id: 'root',
+			path: '/admin/forms',
+			Component: () => (
+				<Form method="post">
+					<button type="submit">Save</button>
+				</Form>
+			),
+			ErrorBoundary: ErrorBoundary as never,
+			action: () => {
+				throw thrown;
+			}
+		}
+	]);
+	const root = document.createElement('div');
+	document.body.appendChild(root);
+	const mounted = createRoot(root);
+	await act(async () => mounted.render(<Stub initialEntries={['/admin/forms']} />));
+	onTestFinished(() => {
+		act(() => mounted.unmount());
+		root.remove();
+	});
+	await act(async () => root.querySelector('button')?.click());
+	return root;
+}
+
 function code(root: HTMLElement): string | null | undefined {
 	return root.querySelector('.adm-num')?.textContent;
 }
@@ -52,7 +84,27 @@ it('draws a refused request with its own status and the reason it was refused', 
 	expect(code(root)).toBe('400');
 	expect(root.querySelector('h1')?.textContent).toBe('This request was refused');
 	expect(root.textContent).toContain('amount is not a number.');
-	expect(root.querySelectorAll('a, button')).toHaveLength(0);
+});
+
+/** the deployment is answering, so a refusal has the same way out a missing address has. */
+it('offers a refused request the way out to forms', async () => {
+	const root = await boundaryOver(data('`amount` is not a number.', { status: 400 }));
+
+	const ways = root.querySelectorAll('a, button');
+	expect(ways).toHaveLength(1);
+	expect(ways[0]?.textContent).toBe('Go to forms');
+	expect(ways[0]?.getAttribute('href')).toBe('/admin/forms');
+});
+
+/** an action's thrown `Response` is read as text, which is how the form layer's sentence arrives. */
+it('draws the sentence a refused submission was thrown with', async () => {
+	const sentence = '`__form` names no form on this screen.';
+	const root = await boundaryOverAction(new Response(sentence, { status: 400 }));
+
+	expect(code(root)).toBe('400');
+	expect(root.querySelector('h1')?.textContent).toBe('This request was refused');
+	expect(root.textContent).toContain('__form names no form on this screen.');
+	expect(root.querySelector('a')?.getAttribute('href')).toBe('/admin/forms');
 });
 
 it('draws a missing address as before, with its way out', async () => {
@@ -77,5 +129,17 @@ it('says nothing more is known when a refusal carries no sentence', async () => 
 
 	expect(code(root)).toBe('403');
 	expect(root.querySelector('h1')?.textContent).toBe('This request was refused');
-	expect(root.textContent).toContain('Nothing more is known about why.');
+	expect(root.textContent).toContain(
+		'Nothing more is known about why. Go back and try again, or go to forms.'
+	);
+	expect(root.querySelector('a')?.getAttribute('href')).toBe('/admin/forms');
+});
+
+/** a 5xx response is the deployment failing whatever it carries, and has no way out. */
+it('draws a 5xx response as the deployment failing, with its sentence', async () => {
+	const root = await boundaryOver(data('`BETTER_AUTH_URL` is not set.', { status: 503 }));
+
+	expect(root.querySelector('h1')?.textContent).toBe('This deployment could not answer');
+	expect(root.textContent).toContain('BETTER_AUTH_URL is not set.');
+	expect(root.querySelectorAll('a, button')).toHaveLength(0);
 });

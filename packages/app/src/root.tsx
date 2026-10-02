@@ -94,25 +94,21 @@ export function ErrorBoundary() {
 	// sheets — there are none here.
 	const sheet = <link rel="stylesheet" precedence="operator" href={operatorSheet} />;
 
-	// the panel has three faces and the 404 is the one with a way out: an address that is not there
-	// on a working deployment has somewhere to send anybody, while a deployment that would serve
-	// the next screen is the thing that failed. `ErrorPanel` draws the panel; the address is this
-	// app's and is stated here, because the part is a leaf shared with another surface whose route
-	// table is not this one's.
+	// the panel has three faces, and the 404 and the 4xx have a way out: an address that is not
+	// there, or a request the app refused, leaves a working deployment with somewhere to send
+	// anybody, while a deployment that would serve the next screen is the thing that failed.
+	// `ErrorPanel` draws the panel; the address is this app's and is stated here, because the part is
+	// a leaf shared with another surface whose route table is not this one's.
 	//
 	// `Link` and never a bare anchor: /admin is one document and a way out that reloads it throws
 	// away the whole client for a destination the router already has
 	// ($lib/admin/button-navigates.dom.spec.tsx).
+	const toForms = { wayOut: 'Go to forms', wayOutProps: { as: Link, to: '/admin/forms' } } as const;
 	if (status === 404) {
 		return (
 			<>
 				{sheet}
-				<ErrorPanel
-					code="404"
-					title="No such page"
-					wayOut="Go to forms"
-					wayOutProps={{ as: Link, to: '/admin/forms' }}
-				>
+				<ErrorPanel code="404" title="No such page" {...toForms}>
 					It may have been deleted, or the address may be wrong.
 				</ErrorPanel>
 			</>
@@ -127,14 +123,19 @@ export function ErrorBoundary() {
 	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';
 
 	// a 4xx is the app answering, not failing: the form layer refuses a hand-built body with a 400
-	// ($lib/server/conform.ts), and the page says what the status says. like the 500 face it offers
-	// no way out.
+	// ($lib/server/conform.ts), and the page says what the status says. a string thrown with a 4xx
+	// is drawn as page copy on every page this boundary replaces, the donor's page included, so a
+	// 4xx thrown anywhere under it is a sentence its reader will see.
 	if (status >= 400 && status < 500) {
 		return (
 			<>
 				{sheet}
-				<ErrorPanel code={`${status}`} title="This request was refused">
-					<MarkedText text={message || 'Nothing more is known about why.'} />
+				<ErrorPanel code={`${status}`} title="This request was refused" {...toForms}>
+					<MarkedText
+						text={
+							message || 'Nothing more is known about why. Go back and try again, or go to forms.'
+						}
+					/>
 				</ErrorPanel>
 			</>
 		);
