@@ -15,7 +15,7 @@ import { signInAsDeployer } from './staff-session.testing';
 export const ORIGIN = 'https://donations.example.workers.dev';
 
 /** the deployment's staff password, long enough for `readStaffCredential` to accept it. */
-const PASSWORD = 'a-long-enough-password';
+export const PASSWORD = 'a-long-enough-password';
 
 /** a real session, as the `Cookie` header a browser would send back. */
 export function signIn(db: Db): Promise<string> {

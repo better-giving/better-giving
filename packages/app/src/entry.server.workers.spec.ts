@@ -20,6 +20,7 @@ import * as stripeWebhook from './routes/api.stripe.webhook';
 import * as publicApi from './routes/api.v1';
 import * as servedConfig from './routes/api.v1.forms.$id.config';
 import * as login from './routes/login';
+import { finishSetup } from './webhook-routes.testing';
 
 // the headers every answer this deployment draws a document for carries, and the ones it does not.
 //
@@ -159,11 +160,19 @@ const handle = createRequestHandler(
 	'production'
 );
 
-/** a request sent to the deployment, whose vars are the pool's with `vars` laid over them. */
-function send(path: string, init?: RequestInit, vars: ConfigEnv = {}): Promise<Response> {
+/**
+ * a request sent to the deployment, whose vars are `bindings` — the pool's with the staff
+ * credential, unless a case brings a deployment of its own — with `vars` laid over them.
+ */
+function send(
+	path: string,
+	init?: RequestInit,
+	vars: ConfigEnv = {},
+	bindings: Env = DEPLOYED as unknown as Env
+): Promise<Response> {
 	return handle(
 		new Request(`${ORIGIN}${path}`, init),
-		requestContext({ ...DEPLOYED, ...vars }, createExecutionContext())
+		requestContext({ ...bindings, ...vars }, createExecutionContext())
 	);
 }
 
@@ -271,7 +280,12 @@ async function expectStrictDocument(response: Response): Promise<void> {
 
 describe('a dashboard document', () => {
 	it('carries the strict policy, and its nonce is the one on every script it draws', async () => {
-		await expectStrictDocument(await send('/admin', { headers: { cookie: session } }));
+		// the dashboard is served only once set-up is finished (./routes/_app.tsx), and the gate's
+		// own document is not the one this case is about.
+		const finished = await finishSetup(PASSWORD);
+		await expectStrictDocument(
+			await send('/admin', { headers: { cookie: session } }, {}, finished)
+		);
 	});
 });
 

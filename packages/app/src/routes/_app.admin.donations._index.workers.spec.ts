@@ -5,6 +5,7 @@ import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
 import { TRACKING_ID_BUDGET_MS } from '$lib/server/donations/tracking-ids';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as donations from './_app.admin.donations._index';
 
@@ -33,6 +34,7 @@ const PASSWORD = 'a-long-enough-password';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let cookie: string;
 let donorId: string;
 let revenueAccountId: string;
@@ -41,10 +43,12 @@ beforeAll(async () => {
 	db = createDb(env.DB);
 	// the pathless layout carries no path of its own, which is what makes the gate cover a screen
 	// without adding a segment to its address.
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/donations', module: donations }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	cookie = await signIn();
 
 	const row = await env.DB.prepare(
@@ -81,11 +85,11 @@ afterEach(() => {
 });
 
 /**
- * the pool's env with a case's deploy-time values. a proxy, for the reason `envWith` in
+ * the finished deployment's bindings with a case's deploy-time values. a proxy, for the reason `envWith` in
  * ./api.paypal.webhook.workers.spec.ts gives.
  */
 function envWith(values: Record<string, string>): Env {
-	return new Proxy(env, {
+	return new Proxy(bindings, {
 		get(target, property) {
 			if (typeof property === 'string' && property in values) return values[property];
 			return Reflect.get(target, property);

@@ -3,8 +3,9 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { readProgram } from '$lib/server/programs/queries';
-import { insertProgram, ORIGIN, signIn } from '../program-routes.testing';
+import { insertProgram, ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as editor from './_app.admin.programs.$id';
 
@@ -22,14 +23,17 @@ const ARCHIVE_FORM = 'program-archive';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 beforeAll(async () => {
 	db = createDb(env.DB);
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/programs/:id', module: editor }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn(db);
 });
 
@@ -56,7 +60,7 @@ function visit(options: { id?: string; query?: string; flash?: string } = {}): P
 	const { id = PROGRAM_ID, query = '', flash = '' } = options;
 	const cookie = [session, flash].filter((value) => value !== '').join('; ');
 	return request(new Request(`${ORIGIN}/admin/programs/${id}${query}`, { headers: { cookie } }), {
-		env
+		env: bindings
 	});
 }
 
@@ -89,7 +93,7 @@ async function post(
 			headers: { cookie: session },
 			body
 		}),
-		{ env }
+		{ env: bindings }
 	);
 
 	if (response.status === 303) {
@@ -260,7 +264,7 @@ describe('/admin/programs/[id] archive', () => {
 				headers: { cookie: session },
 				body
 			}),
-			{ env }
+			{ env: bindings }
 		);
 		expect(response.status).toBe(400);
 		expect(await response.text()).toContain(WHICH_FORM);

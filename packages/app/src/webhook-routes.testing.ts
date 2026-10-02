@@ -12,7 +12,7 @@ import {
 } from './staff-session.testing';
 import * as layout from './routes/_app';
 
-// what the three Webhooks route specs share: a deployment set up far enough for the layout to serve
+// what the dashboard route specs share: a deployment set up far enough for the layout to serve
 // its children, the deployer's session and a member's, and each page mounted under the protected
 // layout, whose middleware is the session gate (./route-request.testing.ts).
 //
@@ -48,6 +48,27 @@ export async function freshDeployment(): Promise<void> {
 		`insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
 		 values ('default', 'Riverbank Trust', '12-3456789', 'alerts@example.org', 0, 0)`
 	).run();
+}
+
+/**
+ * a deployment whose five set-up jobs are done, for a spec that mounts a screen under the layout
+ * and asserts on the screen rather than on the set-up gate (../routes/_app.tsx).
+ *
+ * answers the bindings to send each request with, `password` being the staff password the spec
+ * signs in with, and writes the one row the jobs are read off: the registered name and EIN and the
+ * notifications address, each filled only where the spec's own profile left it blank. a profile the
+ * spec wrote first keeps every column it set, so a case about what a screen shows of the identity
+ * still reads its own values. call it after the spec has emptied and refilled `org_profile`.
+ */
+export async function finishSetup(password: string): Promise<Env> {
+	await env.DB.prepare(
+		`insert into org_profile (id, legal_name, tax_id, notification_email, created_at, updated_at)
+		 values ('default', 'Riverbank Trust', '12-3456789', 'alerts@example.org', 0, 0)
+		 on conflict (id) do update set
+		   tax_id = coalesce(tax_id, excluded.tax_id),
+		   notification_email = coalesce(notification_email, excluded.notification_email)`
+	).run();
+	return deployedBindings(password);
 }
 
 const DEPLOYMENT = { env: deployed(), password: PASSWORD, origin: ORIGIN };

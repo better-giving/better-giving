@@ -4,8 +4,9 @@ import { WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { CREATED_FLASH, takeFlash } from '$lib/server/flash';
 import { readPrograms } from '$lib/server/programs/queries';
-import { insertProgram, ORIGIN, signIn } from '../program-routes.testing';
+import { insertProgram, ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as create from './_app.admin.programs.new';
 
@@ -18,14 +19,17 @@ const LIST = '/admin/programs';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 beforeAll(async () => {
 	db = createDb(env.DB);
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/programs/new', module: create }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn(db);
 });
 
@@ -55,7 +59,7 @@ async function save(
 
 	const response = await request(
 		new Request(`${ORIGIN}${NEW}`, { method: 'POST', headers: { cookie: session }, body }),
-		{ env }
+		{ env: bindings }
 	);
 
 	if (response.status === 303) {

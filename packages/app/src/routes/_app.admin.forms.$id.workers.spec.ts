@@ -10,6 +10,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH } from '$lib/server/flash';
 import { readForm } from '$lib/server/forms/queries';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as editor from './_app.admin.forms.$id';
 
@@ -20,6 +21,8 @@ import * as editor from './_app.admin.forms.$id';
 // the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
 // pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
 // context, so a loader called on its own is a loader with the gate above it never run.
+// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`),
+// since the layout's set-up gate would answer them before the screen did.
 //
 // the deploy-time values ride in a per-request `env`, and they are here for one property: nothing
 // this route does turns on them. the ledger and the Live gate are built out of rows, and what a
@@ -54,6 +57,17 @@ const ARCHIVE_FORM = 'form-archive';
 
 let db: Db;
 let request: RouteRequester;
+/**
+ * the editor with no layout above it, for the cases about a deployment whose set-up is unfinished.
+ *
+ * the layout's middleware refuses every screen under it on such a deployment (./_app.tsx), so a
+ * screen's own answer to a blank identity or an unset key is reached only by calling its loader
+ * and action on their own. nothing here reads the session or the set-up state off the context, so
+ * what it is handed is the database and the bindings, as it is through the layout.
+ */
+let direct: RouteRequester;
+/** the bindings of a deployment whose five set-up jobs are done: what `request` is sent with. */
+let bindings: Env;
 let session: string;
 
 /**
@@ -73,6 +87,7 @@ beforeAll(async () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/forms/:id', module: editor }
 	]);
+	direct = mountRoutes([{ path: 'admin/forms/:id', module: editor }]);
 	session = await signIn();
 
 	const row = await env.DB.prepare(
@@ -104,6 +119,8 @@ beforeEach(async () => {
 	// the sites this deployment has listed. the fixture form is ticked against the first of them, so
 	// a case that says nothing about the list is one where every stored site is still listed.
 	await listSites('https://acme.org', 'https://give.acme.org', 'https://events.acme.org');
+	// last, so the set-up jobs are read off the identity this case starts from.
+	bindings = await finishSetup(PASSWORD);
 });
 
 /** a real session, as the `Cookie` header a browser would send back. */
@@ -195,7 +212,7 @@ const NOTHING_SET: Record<string, string> = Object.fromEntries(
 );
 
 function envOf(vars: Record<string, string>): Env {
-	return { ...env, ...vars } as Env;
+	return { ...bindings, ...vars } as Env;
 }
 
 /** the boxes one group is seeded with, as the screen is handed them. */
@@ -230,13 +247,22 @@ type Loaded = {
 
 /** one visit to this screen, carrying the session and whatever the browser holds beside it. */
 function visit(
-	options: { id?: string; query?: string; vars?: Record<string, string>; flash?: string } = {}
+	options: {
+		id?: string;
+		query?: string;
+		vars?: Record<string, string>;
+		flash?: string;
+		ungated?: boolean;
+	} = {}
 ): Promise<Response> {
-	const { id = FORM_ID, query = '', vars = READY, flash = '' } = options;
+	const { id = FORM_ID, query = '', vars = READY, flash = '', ungated = false } = options;
 	const cookie = [session, flash].filter((value) => value !== '').join('; ');
-	return request(new Request(`${ORIGIN}/admin/forms/${id}${query}`, { headers: { cookie } }), {
-		env: envOf(vars)
-	});
+	return (ungated ? direct : request)(
+		new Request(`${ORIGIN}/admin/forms/${id}${query}`, { headers: { cookie } }),
+		{
+			env: envOf(vars)
+		}
+	);
 }
 
 async function runLoad(options: Parameters<typeof visit>[0] = {}): Promise<Loaded> {
@@ -346,9 +372,10 @@ async function post(
 	form: string,
 	id: string,
 	fields: Record<string, string | string[]>,
-	vars: Record<string, string> = READY
+	vars: Record<string, string> = READY,
+	ungated = false
 ): Promise<{ redirect?: Redirected; failure?: Failure }> {
-	const response = await request(
+	const response = await (ungated ? direct : request)(
 		new Request(`${ORIGIN}/admin/forms/${id}`, {
 			method: 'POST',
 			headers: { cookie: session },
@@ -512,7 +539,7 @@ describe('/admin/forms/[id] load', () => {
 		// both fields are named rather than the first, so filling them in is one trip rather than
 		// two.
 		await clearOrgProfile();
-		const identity = identityLine(await runLoad());
+		const identity = identityLine(await runLoad({ ungated: true }));
 		expect(identity.severity).toBe('blocker');
 		expect(identity.detail).toContain('Registered name');
 		expect(identity.detail).toContain('EIN');
@@ -523,7 +550,7 @@ describe('/admin/forms/[id] load', () => {
 		// one box short — and a block that listed both over a row holding one of them would send them
 		// back to re-type what is already saved.
 		await saveIdentity({ taxId: null });
-		const identity = identityLine(await runLoad());
+		const identity = identityLine(await runLoad({ ungated: true }));
 		expect(identity.detail).toContain('EIN');
 		expect(identity.detail).not.toContain('Registered name');
 	});
@@ -541,7 +568,7 @@ describe('/admin/forms/[id] load', () => {
 		// that has no status box at all.
 		await clearOrgProfile();
 		await archiveInPlace();
-		const { archived, readiness } = await runLoad();
+		const { archived, readiness } = await runLoad({ ungated: true });
 		expect(archived).toBe(true);
 		expect(readiness).toBe(null);
 	});
@@ -559,7 +586,7 @@ describe('/admin/forms/[id] load', () => {
 		['a deployment set up in full', READY],
 		['a deployment set up with nothing', NOTHING_SET]
 	] as const)('hands the snippet over on %s', async (_case, vars) => {
-		const loaded = await runLoad({ vars });
+		const loaded = await runLoad({ vars, ungated: vars === NOTHING_SET });
 		expect(loaded.snippet).toContain(`form="${FORM_ID}"`);
 		// and the editor is drawn in full beside it: configuring a form was never gated on the keys.
 		expect(loaded.values.name).toBe('General Fund');
@@ -804,7 +831,7 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// every config without those three columns — so publishing here would produce a form that
 		// renders nothing on the org's own site.
 		await clearOrgProfile();
-		expect((await runLoad()).liveOffered).toBe(false);
+		expect((await runLoad({ ungated: true })).liveOffered).toBe(false);
 	});
 
 	it('offers Live once nothing stands', async () => {
@@ -815,7 +842,7 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// the deletion this control turns on. what a key can charge is settled on the console when it
 		// is pasted (`packages/console-ui/src/lib/stripe-edits.ts`), and a form set live over a
 		// key that cannot charge is a deployment to fix there rather than a form to withhold here.
-		const loaded = await runLoad({ vars: NOTHING_SET });
+		const loaded = await runLoad({ vars: NOTHING_SET, ungated: true });
 		expect(loaded.liveOffered).toBe(true);
 		expect(loaded.snippet).toContain(`form="${FORM_ID}"`);
 	});
@@ -825,7 +852,13 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		// the button being pressed. the check is read in the action rather than carried from the
 		// loader, so what it answers is the deployment as it stands at the moment of the write.
 		await clearOrgProfile();
-		const { failure, redirect } = await post(NAME_FORM, FORM_ID, submission(NAME_FORM));
+		const { failure, redirect } = await post(
+			NAME_FORM,
+			FORM_ID,
+			submission(NAME_FORM),
+			READY,
+			true
+		);
 		expect(redirect).toBeUndefined();
 		expect(failure?.status).toBe(400);
 		// keyed to the status box, because that is the one an operator can change — and the sentence
@@ -855,7 +888,9 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 		const { redirect } = await post(
 			NAME_FORM,
 			FORM_ID,
-			submission(NAME_FORM, { status: 'draft', name: 'Renamed while blocked' })
+			submission(NAME_FORM, { status: 'draft', name: 'Renamed while blocked' }),
+			READY,
+			true
 		);
 		expect(redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.name).toBe('Renamed while blocked');
@@ -868,7 +903,8 @@ describe('/admin/forms/[id] — Live while a blocker stands', () => {
 			NAME_FORM,
 			FORM_ID,
 			submission(NAME_FORM, { status: 'live' }),
-			NOTHING_SET
+			NOTHING_SET,
+			true
 		);
 		expect(redirect?.status).toBe(303);
 		expect((await readForm(db, FORM_ID))?.status).toBe('live');

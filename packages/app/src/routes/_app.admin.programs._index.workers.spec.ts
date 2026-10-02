@@ -2,8 +2,9 @@ import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { CREATED_FLASH, redirectWithFlash } from '$lib/server/flash';
-import { insertProgram, ORIGIN, signIn } from '../program-routes.testing';
+import { insertProgram, ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as list from './_app.admin.programs._index';
 
@@ -15,14 +16,17 @@ const LIST = '/admin/programs';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 beforeAll(async () => {
 	db = createDb(env.DB);
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/programs', module: list }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn(db);
 });
 
@@ -39,7 +43,9 @@ type Loaded = {
 
 async function load(flash = ''): Promise<Loaded> {
 	const cookie = [session, flash].filter((value) => value !== '').join('; ');
-	const response = await request(new Request(`${ORIGIN}${LIST}`, { headers: { cookie } }), { env });
+	const response = await request(new Request(`${ORIGIN}${LIST}`, { headers: { cookie } }), {
+		env: bindings
+	});
 	expect(response.status).toBe(200);
 	return (await response.json()) as Loaded;
 }

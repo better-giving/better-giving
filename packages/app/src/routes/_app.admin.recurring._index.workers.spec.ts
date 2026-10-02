@@ -5,6 +5,7 @@ import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as recurring from './_app.admin.recurring._index';
 
@@ -30,6 +31,7 @@ const DONOR_ID = '019fb600-0000-7000-8000-000000000001';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let cookie: string;
 let revenueAccountId: string;
 
@@ -37,10 +39,12 @@ beforeAll(async () => {
 	db = createDb(env.DB);
 	// the pathless layout carries no path of its own, which is what makes the gate cover a screen
 	// without adding a segment to its address.
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/recurring', module: recurring }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	cookie = await signIn();
 
 	const row = await env.DB.prepare(
