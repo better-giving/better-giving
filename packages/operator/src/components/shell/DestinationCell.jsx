@@ -61,8 +61,8 @@ import { Mark } from '../status/Mark.jsx';
    current and hovered must be unmistakably different: current changes ground and ink, hover only
    fills. the current cell is marked by that tint alone — no edge, at either width.
    `short` is the word the rail reads across the top of a narrow window, where the full one does
-   not fit. both are in the markup and the sheet chooses — a cell that swapped its own text would
-   be a name changing under a reader between two widths.
+   not fit. both are in the markup and the sheet chooses, hiding the other with `display: none`,
+   so the link's accessible name is the word drawn at that width and the swap needs no script.
 
    the status word is `.adm-vh` and outside `.adm-dest__status`, because the sheet hides the glyph
    in the bar and a status hidden with it would stop being read out there. its comma is what
