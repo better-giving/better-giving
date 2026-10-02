@@ -13,10 +13,11 @@ import { createSmtpProvider, type MailerModule } from './smtp';
 //
 // it is deliberately not seeded onto the request context. what belongs there is what every surface
 // may need and nothing that costs a read (src/request-context.ts); a provider is built only by
-// the call sites that send — the scheduled run in src/worker.ts, `/forgot`, the four processor
-// webhook routes, the console's test send (src/routes/console.test-email.ts), `/api/v1`'s
-// donations endpoint and the dashboard routes that record a gift or invite a member. putting it on every request would construct something for
-// thousands of page views that never send anything.
+// the call sites that send — the scheduled run in src/worker.ts, `/forgot`, each processor's
+// webhook route, the console's test send (src/routes/console.test-email.ts), `/api/v1`'s
+// donations endpoint and the dashboard routes that record a gift or invite a member. putting it
+// on every request would construct something for thousands of page views that never send
+// anything.
 //
 // it imports ./smtp.ts, which is safe only because that module defers its `worker-mailer`
 // import into `send`. hoisting that import would make this file — and every route that

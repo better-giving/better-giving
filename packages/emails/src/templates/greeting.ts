@@ -18,8 +18,8 @@ export function greetingFor(donorName: string | null): string {
  * unstructured name is wrong: a name written family-name-first is greeted by the family name, and
  * one carrying a particle is greeted by the particle.
  *
- * that is a greeting and not the record. the full name is on the receipt's `Donor` row, which is
- * the line the document is read from.
+ * that is a greeting and not the record: no mail is read for the donor's name, and the receipt
+ * carries the full one on its `Donor` row.
  */
 function firstName(donorName: string): string {
 	const trimmed = donorName.trim();
