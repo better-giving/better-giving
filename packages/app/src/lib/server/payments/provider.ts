@@ -451,6 +451,13 @@ export type PaymentFailure = {
 	 * is inside it, as it is inside `amountMinor`. absent on every other refusal.
 	 */
 	readonly minimumMinor?: number;
+	/**
+	 * the processor's own sentence about the refusal, bounded and on one line — what a donor may be
+	 * shown, while `detail` around it is written for the log and is free to be reworded. set by
+	 * ./chariot.ts on a refusal whose problem body had a title or detail to quote — the fund's reason
+	 * (`readProblem` there); absent on every other refusal.
+	 */
+	readonly providerSaid?: string;
 };
 
 /**

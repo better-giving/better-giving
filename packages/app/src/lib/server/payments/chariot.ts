@@ -268,7 +268,8 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 						'Chariot is still processing the grant for this session and did not finish while ' +
 						'this call waited, so whether a grant exists is unknown. The identical call made ' +
 						'again answers the grant once it exists, ' +
-						`and no second grant can be created for one session. Chariot said: ${quoteProblem(answer.body)}`
+						`and no second grant can be created for one session. Chariot said: ${quoteProblem(answer.body)}`,
+					...processorWords(answer.body)
 				};
 			}
 			// a 404 is a session Chariot never issued, and falls through to `classifyStatus` as
@@ -280,7 +281,8 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 					detail:
 						'The donor authorized this grant in Chariot’s window more than 15 minutes ago, so ' +
 						'Chariot no longer holds the authorization and no grant was created. The donor has ' +
-						`to give through the fund’s window again. Chariot said: ${quoteProblem(answer.body)}`
+						`to give through the fund’s window again. Chariot said: ${quoteProblem(answer.body)}`,
+					...processorWords(answer.body)
 				};
 			}
 			if (answer.status !== 200 && answer.status !== 201) {
@@ -655,21 +657,30 @@ function occurredAtOf(grant: unknown, status: PaymentStatus): Date | null {
  */
 function classifyStatus(status: number, body: unknown, context: string): PaymentFailure {
 	const said = `${context}. Chariot said: ${quoteProblem(body)}`;
+	const words = processorWords(body);
 	if (status === 401 || status === 403) {
 		return {
 			ok: false,
 			reason: 'not_configured',
 			detail:
 				'Chariot rejected this deployment’s key: `CHARIOT_API_KEY` is not one the account at ' +
-				`\`CHARIOT_API_URL\` accepts — a sandbox key against the live address is the usual cause. ${said}`
+				`\`CHARIOT_API_URL\` accepts — a sandbox key against the live address is the usual cause. ${said}`,
+			...words
 		};
 	}
-	if (status === 404) return { ok: false, reason: 'not_found', detail: said };
+	if (status === 404) return { ok: false, reason: 'not_found', detail: said, ...words };
 	if (status === 429) {
-		return { ok: false, reason: 'rate_limited', detail: `Chariot is rate limiting. ${said}` };
+		return {
+			ok: false,
+			reason: 'rate_limited',
+			detail: `Chariot is rate limiting. ${said}`,
+			...words
+		};
 	}
-	if (status >= 400 && status < 500) return { ok: false, reason: 'invalid_request', detail: said };
-	return { ok: false, reason: 'provider_error', detail: said };
+	if (status >= 400 && status < 500) {
+		return { ok: false, reason: 'invalid_request', detail: said, ...words };
+	}
+	return { ok: false, reason: 'provider_error', detail: said, ...words };
 }
 
 /**
@@ -678,14 +689,28 @@ function classifyStatus(status: number, body: unknown, context: string): Payment
  * nothing else off it: a problem about a grant can quote the grant, and a grant carries a donor's
  * name, email and address.
  */
-function quoteProblem(body: unknown): string {
+function readProblem(body: unknown): string | null {
 	const said = [stringField(body, 'title'), stringField(body, 'detail')]
 		.filter((part) => part !== null)
 		.join(': ')
 		.replace(/\s+/g, ' ')
 		.trim();
-	if (said === '') return 'nothing this app could read';
+	if (said === '') return null;
 	return said.length <= PROVIDER_QUOTE_MAX ? said : `${said.slice(0, PROVIDER_QUOTE_MAX)}…`;
+}
+
+/** `readProblem` for the log sentence, which says so where there was nothing to quote. */
+function quoteProblem(body: unknown): string {
+	return readProblem(body) ?? 'nothing this app could read';
+}
+
+/**
+ * `PaymentFailure.providerSaid`, absent where the body had nothing to quote, so a donor is never
+ * shown `quoteProblem`'s placeholder.
+ */
+function processorWords(body: unknown): Pick<PaymentFailure, 'providerSaid'> {
+	const said = readProblem(body);
+	return said === null ? {} : { providerSaid: said };
 }
 
 function unreachable(error: unknown): PaymentFailure {

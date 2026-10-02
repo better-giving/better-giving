@@ -18,6 +18,7 @@ import {
 	commitmentMetadata,
 	type DepositInstructions,
 	type Intent,
+	type PaymentFailure,
 	type ProcessorName,
 	DONATION_METADATA_KEY,
 	FEE_COVERED_METADATA_KEY,
@@ -772,7 +773,7 @@ async function mintGrant(
 				})
 			);
 		}
-		return grantRefusal(form, created.reason, created.detail);
+		return grantRefusal(form, created);
 	}
 
 	const quote: Quote = {
@@ -938,7 +939,8 @@ function splitGrant(
  * outcome is unknown (`unreachable`) is retryable, and never says nothing was given. everything else
  * is what any single gift's processor failure answers.
  */
-function grantRefusal(form: FormRecord, reason: string, detail: string): QuoteResult {
+function grantRefusal(form: FormRecord, failure: PaymentFailure): QuoteResult {
+	const { reason, detail } = failure;
 	if (reason === 'authorization_expired') {
 		return refuse(
 			form,
@@ -966,29 +968,17 @@ function grantRefusal(form: FormRecord, reason: string, detail: string): QuoteRe
 		);
 	}
 	if (reason === 'invalid_request') {
-		const said = fundsReason(detail);
 		return refuse(
 			form,
 			'daf_grant_declined',
-			said === null
+			failure.providerSaid === undefined
 				? 'Your fund didn’t approve this gift, so nothing was given.'
-				: `Your fund didn’t approve this gift: ${said}`,
+				: `Your fund didn’t approve this gift: ${failure.providerSaid}`,
 			'Give an amount the fund allows — at least its minimum and no more than the balance ' +
 				'available — through the fund’s window.'
 		);
 	}
 	return paymentRefusal(form, 'daf', 'one_time', reason, detail);
-}
-
-/**
- * the fund's own words out of the adapter's sentence, which names the processor and is written for
- * the deployment's log. `classifyStatus` in ../payments/chariot.ts ends every failure it sorts with
- * this marker and the quoted problem body.
- */
-function fundsReason(detail: string): string | null {
-	const marker = 'Chariot said: ';
-	const at = detail.lastIndexOf(marker);
-	return at === -1 ? null : detail.slice(at + marker.length);
 }
 
 /**

@@ -1559,7 +1559,8 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 				ok: false,
 				reason: 'invalid_request',
 				detail:
-					'Chariot did not create the grant. Chariot said: Bad Request: amount exceeds the fund balance'
+					'Chariot did not create the grant. Chariot said: Bad Request: amount exceeds the fund balance',
+				providerSaid: 'Bad Request: amount exceeds the fund balance'
 			}
 		]);
 
@@ -1572,6 +1573,41 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 			'Your fund didn’t approve this gift: Bad Request: amount exceeds the fund balance'
 		);
 		expect(result.ok || result.fix).not.toContain('Chariot');
+	});
+
+	// the adapter's log sentence is free to be reworded; the fund's words reach the donor regardless.
+	it('carries the fund’s reason whatever the adapter’s own sentence says', async () => {
+		const port = chariotProvider([
+			{
+				ok: false,
+				reason: 'invalid_request',
+				detail: 'The grant was refused: Bad Request: amount is below the fund minimum',
+				providerSaid: 'Bad Request: amount is below the fund minimum'
+			}
+		]);
+
+		const result = await mint(chariotDeps(port.port), fundGift());
+
+		expect(result.ok || result.message).toBe(
+			'Your fund didn’t approve this gift: Bad Request: amount is below the fund minimum'
+		);
+	});
+
+	it('tells the donor the fund declined, in plain words, where Chariot gave no reason', async () => {
+		const port = chariotProvider([
+			{
+				ok: false,
+				reason: 'invalid_request',
+				detail: 'Chariot did not create the grant. Chariot said: nothing this app could read'
+			}
+		]);
+
+		const result = await mint(chariotDeps(port.port), fundGift());
+
+		expect(result.ok || result.reason).toBe('daf_grant_declined');
+		expect(result.ok || result.message).toBe(
+			'Your fund didn’t approve this gift, so nothing was given.'
+		);
 	});
 
 	it('reports a Chariot that did not answer as an outage the donor may retry', async () => {

@@ -241,6 +241,40 @@ describe('createIntent — Create Grant', () => {
 		expect(result.ok === false ? result.detail : '').toContain('amount exceeds the fund balance');
 	});
 
+	// the donor is shown the fund's words from this field, so it holds Chariot's sentence alone,
+	// whatever the adapter's own `detail` around it says.
+	it('hands Chariot’s refusal back as the processor’s own words, apart from the log sentence', async () => {
+		recording([
+			{
+				status: 400,
+				json: {
+					type: 'about:blank',
+					title: 'Bad Request',
+					status: 400,
+					detail: 'amount is below the fund minimum'
+				}
+			}
+		]);
+
+		const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
+
+		expect(result.ok === false && result.providerSaid).toBe(
+			'Bad Request: amount is below the fund minimum'
+		);
+	});
+
+	// with nothing of Chariot's to quote, the donor is told the plain refusal rather than this app's
+	// placeholder; the log sentence still says nothing was readable.
+	it('carries no processor words when Chariot’s refusal had none to read', async () => {
+		recording([{ status: 400, json: {} }]);
+
+		const result = await createChariotProvider(CREDENTIALS).createIntent(GRANT_REQUEST);
+
+		expect(result.ok === false && result.reason).toBe('invalid_request');
+		expect(result.ok === false && 'providerSaid' in result).toBe(false);
+		expect(result.ok === false ? result.detail : '').toContain('nothing this app could read');
+	});
+
 	// a 409 is Chariot still working through the first request for the session. the donor is waiting
 	// on the answer, so it is asked again inside the call rather than handed back to them.
 	it('asks again while Chariot is still processing the session, then answers the grant', async () => {
