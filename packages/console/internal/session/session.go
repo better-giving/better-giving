@@ -45,7 +45,11 @@ const (
 	parts     = 3
 	// how long a session lasts. it exists for the one case nothing else closes: a console that
 	// died without disconnecting leaves a live bearer on a public hostname held by nobody, and a
-	// laptop lid is that case.
+	// laptop lid is that case. it may not exceed CONSOLE_SESSION_SECONDS in
+	// packages/operator/src/console/token.ts: a deployment refuses an expiry further out than that
+	// from its own clock, past the skew packages/app/src/lib/server/console/access.ts allows
+	// (CONSOLE_CLOCK_SKEW_SECONDS), as `console_clock_ahead`.
+	// TestTheSessionIsNoLongerThanTheDeploymentAccepts reads it.
 	sessionSeconds = 12 * 60 * 60
 	// the largest expiry a deployment will read, which is the last whole second a javascript `Date`
 	// can hold (8.64e15 ms). a value past it is refused here rather than sent, because a deployment

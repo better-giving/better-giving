@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/state"
 )
 
@@ -105,6 +108,49 @@ func TestParseRefusesEveryValueTheDeploymentRefuses(t *testing.T) {
 		if _, ok := Parse(value); ok {
 			t.Errorf("a token %s was read as one", what)
 		}
+	}
+}
+
+// the last whole second a javascript `Date` holds is the edge on both ends: a deployment reads the
+// expiry into one, and a second past it is an Invalid Date it reads as no token at all.
+func TestParseHoldsTheExpiryToTheLastSecondADateHolds(t *testing.T) {
+	if _, ok := Parse("bg1.8640000000000." + random); !ok {
+		t.Error("an expiry at the last second a date holds was refused")
+	}
+	if _, ok := Parse("bg1.8640000000001." + random); ok {
+		t.Error("an expiry a second past what a date holds was read as one")
+	}
+}
+
+// the session this binary mints, against the ceiling the deployment refuses past.
+//
+// a deployment refuses an expiry further out than CONSOLE_SESSION_SECONDS from its own clock, past
+// a few minutes for skew, as `console_clock_ahead` — so a sessionSeconds longer than that constant
+// spends the skew allowance on every connect, and past it is refused on every one.
+func TestTheSessionIsNoLongerThanTheDeploymentAccepts(t *testing.T) {
+	root, err := release.RepoRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(filepath.Join(root, "packages", "operator", "src", "console", "token.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`export const CONSOLE_SESSION_SECONDS\s*=\s*([\d_ *]+);`).
+		FindSubmatch(source)
+	if match == nil {
+		t.Fatal("no CONSOLE_SESSION_SECONDS is stated as a product of numbers")
+	}
+	ceiling := 1
+	for _, factor := range strings.Split(string(match[1]), "*") {
+		value, err := strconv.Atoi(strings.ReplaceAll(strings.TrimSpace(factor), "_", ""))
+		if err != nil {
+			t.Fatalf("CONSOLE_SESSION_SECONDS is %q, which is not a product of numbers", match[1])
+		}
+		ceiling *= value
+	}
+	if sessionSeconds > ceiling {
+		t.Errorf("this binary mints %d-second sessions and a deployment accepts %d", sessionSeconds, ceiling)
 	}
 }
 
