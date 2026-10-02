@@ -207,7 +207,7 @@ export function consoleAccess(env: unknown, headers: Headers, now: Date): Consol
 				`its clock reads ${now.toISOString()}, and a console session never runs longer than ` +
 				`${CONSOLE_SESSION_SECONDS / 3600} hours. The clock on the machine running the console is ahead ` +
 				`of this deployment's by more than ${CONSOLE_CLOCK_SKEW_SECONDS / 60} minutes.`,
-			'Set the clock on the machine running the console right, then connect again: a connect from a ' +
+			'Correct the clock on the machine running the console, then connect again: a connect from a ' +
 				'clock that is still ahead mints the same expiry and is refused the same way.'
 		);
 

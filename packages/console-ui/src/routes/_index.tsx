@@ -667,7 +667,7 @@ export function ConnectOutcome({
 					refusal={{
 						message:
 							connected.message ??
-							"This deployment refused the session because this machine's clock is ahead of its own. Set this machine's clock right, then connect again.",
+							"This deployment refused the session because this machine's clock is ahead of its own. Correct this machine's clock, then connect again.",
 						fix: connected.fix
 					}}
 				/>
