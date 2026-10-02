@@ -3260,7 +3260,10 @@ describe('where focus goes when the screen changes', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
+		expect(card.text('.takeover .prose')).toBe(
+			'We are confirming your payment. Please do not close this page.'
+		);
 		expect(primary(card).hidden).toBe(true);
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
@@ -3278,7 +3281,7 @@ describe('where focus goes when the screen changes', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
 
@@ -3396,7 +3399,7 @@ describe('where focus goes when the screen changes', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
 		expect(card.text('[role="status"]')).toBe('Confirming your gift with your card issuer.');
 	});
 
@@ -4219,7 +4222,10 @@ describe('the mandate', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
+		expect(card.text('.takeover .prose')).toBe(
+			'We are confirming your payment. Please do not close this page.'
+		);
 		expect(primary(card).hidden).toBe(true);
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
@@ -4689,6 +4695,9 @@ describe('the resume', () => {
 
 		expect(card.all('.step').map((step) => step.hidden)).toEqual([true, true, true, false]);
 		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover .prose')).toBe(
+			'We are checking what happened with your payment. This takes a moment.'
+		);
 	});
 });
 

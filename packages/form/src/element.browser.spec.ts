@@ -727,7 +727,7 @@ describe('the caret when one takeover replaces another', () => {
 
 		await userEvent.click(press);
 
-		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(heading(root).textContent).toBe('Confirming your gift…');
 		expect(press.hidden).toBe(true);
 		expect(focused).toEqual([press, heading(root)]);
 		expect(root.activeElement).toBe(heading(root));
@@ -751,7 +751,7 @@ describe('the caret when one takeover replaces another', () => {
 			}
 		});
 
-		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(heading(root).textContent).toBe('Confirming your gift…');
 		expect(focused).toEqual([press, heading(root)]);
 		expect(root.activeElement).toBe(heading(root));
 		expect(document.activeElement).toBe(outer);

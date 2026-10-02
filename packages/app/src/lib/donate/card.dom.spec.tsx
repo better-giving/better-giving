@@ -1121,7 +1121,8 @@ describe('where the caret goes when one takeover replaces another', () => {
 
 		await pressHeld(takeoverPrimary(root));
 
-		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.CONFIRMING_HEADING);
+		expect(one(screen(root), '.prose').textContent).toBe(copy.CONFIRMING_BODY);
 		expect(takeoverPrimary(root).hidden).toBe(true);
 		expect(document.activeElement).toBe(takeoverHeading(root));
 	});
@@ -1132,7 +1133,8 @@ describe('where the caret goes when one takeover replaces another', () => {
 
 		await pressHeld(takeoverPrimary(root));
 
-		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.CONFIRMING_HEADING);
+		expect(one(screen(root), '.prose').textContent).toBe(copy.CONFIRMING_BODY);
 		expect(takeoverPrimary(root).hidden).toBe(true);
 		expect(document.activeElement).toBe(takeoverHeading(root));
 	});

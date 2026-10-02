@@ -503,10 +503,14 @@ export const BACK_TO_START = 'Back to start';
 export const FAILED_HEADING = 'This gift was not completed';
 export const TRY_AGAIN = 'Try again';
 
-/** the resume, which is the only busy flow that reaches a takeover. */
+/** the resume: a donor back from wherever they authorized, on a page that does not yet know the outcome. */
 export const RESUMING_HEADING = 'Finishing your gift';
 export const RESUMING_BODY =
 	'We are checking what happened with your payment. This takes a moment.';
+
+/** the wait after Give on the correction or Authorize on the mandate, which the caret lands on. */
+export const CONFIRMING_HEADING = 'Confirming your gift…';
+export const CONFIRMING_BODY = 'We are confirming your payment. Please do not close this page.';
 
 /**
  * what a busy flow says out loud, and it is not one sentence.

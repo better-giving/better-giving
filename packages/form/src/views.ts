@@ -851,15 +851,26 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				primary: { label: 'Try again', submit: false }
 			};
 
-		// a resume, which is the only `working` that reaches a takeover: a donor is back from wherever
-		// they authorized, and the flow has not yet found out what happened. its two sentences name no
-		// rail, which is what makes them right on the page load that has none.
+		// two waits reach a takeover, and `phase` tells them apart: `resuming` is entered from `boot`
+		// alone (./checkout.machine.ts), so every other phase follows a press made on this page load.
+		//
+		// a resume is a donor back from wherever they authorized, and the flow has not yet found out
+		// what happened. the other is the wait after the correction screen's Give or the mandate's
+		// Authorize, whose donor has just pressed and is about to have the heading read to them —
+		// "finishing" and "what happened" would tell them the page lost track of their press. neither
+		// pair names a rail, which is what makes the resume's right on a page load that has none.
 		case 'working':
-			return {
-				...BLANK,
-				heading: 'Finishing your gift',
-				body: 'We are checking what happened with your payment. This takes a moment.'
-			};
+			return state.phase === 'resuming'
+				? {
+						...BLANK,
+						heading: 'Finishing your gift',
+						body: 'We are checking what happened with your payment. This takes a moment.'
+					}
+				: {
+						...BLANK,
+						heading: 'Confirming your gift…',
+						body: 'We are confirming your payment. Please do not close this page.'
+					};
 
 		// the three the card renders as a numbered step rather than as a takeover.
 		case 'amount':
