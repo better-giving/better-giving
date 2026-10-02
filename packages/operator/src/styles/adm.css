@@ -5839,8 +5839,12 @@
 	/* a row may carry only what acts on the page, where the page's name is the strip's title
 	   (`.adm-headstrip__title` above) rather than a heading of its own. with no name at its start
 	   the spread would stand the actions at the start instead, so they go to the far end, where
-	   they sit on every row that has one. */
-	.adm-pageheader__row:not(:has(h1)) {
+	   they sit on every row that has one.
+
+	   a standfirst with no heading is not that row: the sentence opens the page as a heading would,
+	   and pushed to the far end it sits off to one side of the content it introduces. so the row
+	   keeps its spread wherever it holds either line, and only a row holding neither is turned. */
+	.adm-pageheader__row:not(:has(h1, .adm-standfirst)) {
 		justify-content: end;
 	}
 

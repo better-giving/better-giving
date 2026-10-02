@@ -191,7 +191,9 @@ export default function ShellAppShellPreview() {
 
 			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
 			    every entry, the site's globe before the name, the close in the band and an account in
-			    the foot. */}
+			    the foot. the strip names the page, so its header states no title and the standfirst
+			    opens the page alone, at the column's start — the shape the console's sites screen
+			    draws; the specimen after it carries the title. */}
 			<AppShell
 				org="Riverside Shelter"
 				current="Sites"
@@ -251,7 +253,7 @@ export default function ShellAppShellPreview() {
 				head={<span className="adm-headstrip__title">Sites</span>}
 			>
 				<Column>
-					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
+					<PageHeader standfirst="Which sites your forms go on" />
 					<EmptyState>No site has been added yet.</EmptyState>
 				</Column>
 			</AppShell>

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { PageHeader } from './PageHeader.jsx';
 
@@ -122,6 +123,39 @@ describe('a page header mounted into a document', () => {
 		]);
 		expect(root.querySelector('h1')).toBeNull();
 		expect(root.querySelector('.adm-pageheader__name')).toBeNull();
+	});
+
+	it('starts a standfirst stated with no title at the row’s leading edge', () => {
+		// the sentence opens the page the way a heading would, so it stands where one would stand:
+		// at the column's start, over the content it introduces. the row stands what it holds at the
+		// far end only where it holds what acts on the page and nothing else — a sentence pushed
+		// there sits off to one side of the list it is about. the dom pool computes no style, so
+		// what is asked is which rule in ../../styles/adm.css stating the row's spread matches it.
+		const spreads = rulesIn(sheet('adm.css')).filter(
+			({ selector, stated }) =>
+				selector.includes('.adm-pageheader__row') && stated.has('justify-content')
+		);
+		const spreadOf = (row: Element | null) =>
+			spreads
+				.filter(({ selector }) => row?.matches(selector))
+				.at(-1)
+				?.stated.get('justify-content');
+
+		const titleless = render(PageHeader, { standfirst: 'Which sites your forms go on' });
+		expect(spreadOf(titleless.querySelector('.adm-pageheader__row'))).toBe('space-between');
+		expect(titleBlock(titleless).firstElementChild?.className).toBe('adm-standfirst');
+
+		const withAction = render(PageHeader, {
+			standfirst: 'Which sites your forms go on',
+			pageAction: <button type="button">Add a site</button>
+		});
+		expect(spreadOf(withAction.querySelector('.adm-pageheader__row'))).toBe('space-between');
+
+		// the shape the far end is for: a row holding what acts on the page, named by the strip.
+		const actionsOnly = render(PageHeader, {
+			pageAction: <button type="button">New form</button>
+		});
+		expect(spreadOf(actionsOnly.querySelector('.adm-pageheader__row'))).toBe('end');
 	});
 
 	it('drops the word beside a title where no title was stated', () => {

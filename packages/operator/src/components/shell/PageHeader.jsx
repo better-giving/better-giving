@@ -31,9 +31,10 @@
    drawn only where one was handed in, so a screen whose name is already read directly above it —
    the trail's last crumb — says it once rather than twice. an empty heading would be a name-shaped
    gap and an empty step above the standfirst, so the whole name row goes rather than its contents.
-   `.adm-pageheader__row:not(:has(h1))` in ../../styles/adm.css is what stands the page's action at
-   the far end of a row that starts with nothing. `beside` qualifies the title and goes with it — a
-   word beside a name that is not there qualifies nothing.
+   `.adm-pageheader__row:not(:has(h1, .adm-standfirst))` in ../../styles/adm.css is what stands the
+   page's action at the far end of a row that starts with nothing; a standfirst with no heading is
+   still the row's start, and stays at the column's leading edge. `beside` qualifies the title and
+   goes with it — a word beside a name that is not there qualifies nothing.
 
    no slot here carries the name of a route-module export react router strips — `loader`,
    `action`, `middleware`, `headers` — which is why the trailing one is `pageAction`.
