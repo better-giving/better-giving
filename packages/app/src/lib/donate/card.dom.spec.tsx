@@ -618,28 +618,52 @@ it('moves the total and the control that spends it when the fee decision changes
 });
 
 // the figure is an `<output>`, a polite region by its tag alone, so a selector reading `role` off the
-// attribute never finds it: what is asserted is the attribute that overrides the tag.
-it('says a fee decision once, on the card’s region and not on the figure’s own', async () => {
-	const { root, payment } = await card();
+// attribute never finds it: what is asserted is the attribute that overrides the tag. it is off on
+// every commit, and the card's one region is where a total that moved is said.
+it('says a fee decision once, on the card’s region and never on the figure’s own', async () => {
+	const { root } = await card();
 	walkToGive(root);
 	const total = one(root, 'output.figure');
-	expect(total.hasAttribute('aria-live')).toBe(false);
+	expect(total.getAttribute('aria-live')).toBe('off');
 
 	press(input(root, '.fee-decision input[type="checkbox"]'));
 
 	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
 	expect(total.getAttribute('aria-live')).toBe('off');
-
-	// a rail picked afterwards is a total nothing else says, so the figure speaks for it again.
-	act(() => {
-		payment.pick('card');
-	});
-	expect(total.hasAttribute('aria-live')).toBe(false);
 });
 
-// a refused press holds the region on its refusal for the rest of the step, and the region says
-// nothing new for words it already holds — so the figure is the one place left to say the total.
-it('leaves a fee decision made under a standing refusal to the figure’s own region', async () => {
+/** the same deployment offering a bank debit beside the card, which the fee rules price apart. */
+const WITH_BANK: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ach'] };
+
+it('says a total a rail pick moved once, on the card’s region', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	const total = one(root, 'output.figure');
+	const onCard = total.textContent;
+
+	payment.pick('us_bank_account');
+
+	expect(total.textContent).not.toBe(onCard);
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+});
+
+it('says nothing about the total when a rail pick leaves it where it was', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	const total = one(root, 'output.figure').textContent;
+
+	payment.pick('card');
+
+	expect(one(root, 'output.figure').textContent).toBe(total);
+	expect(said(root)).toBe('');
+});
+
+// a refused press has been heard, and the box keeps the refusal as its description; a total that
+// moved after it is news the region would otherwise never carry, now that the figure is silent.
+it('says a total moved under a standing refusal on the card’s region', async () => {
 	const { root } = await card();
 	walkToGive(root);
 	press(one(root, 'button[part~="submit"]'));
@@ -648,8 +672,9 @@ it('leaves a fee decision made under a standing refusal to the figure’s own re
 
 	press(input(root, '.fee-decision input[type="checkbox"]'));
 
-	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
-	expect(total.hasAttribute('aria-live')).toBe(false);
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+	expect(one(root, '#payment-problem').hidden).toBe(false);
 });
 
 it('refuses a press with no rail, and says so on the box and on the region', async () => {

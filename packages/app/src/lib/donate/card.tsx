@@ -237,7 +237,7 @@ function CheckoutCard({
 	/** a sentence one press asked for, spent by the snapshot it was asked on. */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
-		kind: 'details' | 'fee' | 'copy';
+		kind: 'details' | 'copy';
 		words?: string;
 	} | null>(null);
 	/** a commit, so a press that changed nothing else still gets its caret moved. */
@@ -483,6 +483,33 @@ function CheckoutCard({
 		if (reading !== null) lastReading.current = reading;
 	});
 
+	/**
+	 * whether the total moved on the review step, between the snapshot before this one and this one.
+	 *
+	 * a fee decision and a rail pick both rewrite the figure without changing the screen or moving the
+	 * caret, and the figure's own `<output>` is silent, so this is the one place either is heard from.
+	 * read off the figure rather than off the press, because a rail is picked inside the provider's own
+	 * fields and no handler of ours sees it. a move that left the figure where it was is not news: the
+	 * fee box reports its own new setting either way. cached against the snapshot it was read for, as
+	 * `retitle` is.
+	 */
+	const total = useRef<{
+		at: CheckoutSnapshot | null;
+		step: string;
+		figure: string;
+		moved: boolean;
+	}>({ at: null, step: '', figure: '', moved: false });
+	if (total.current.at !== snapshot) {
+		const before = total.current;
+		const figure = reading?.totalFigure ?? '';
+		total.current = {
+			at: snapshot,
+			step: api.state.step,
+			figure,
+			moved: before.step === 'give' && api.state.step === 'give' && figure !== before.figure
+		};
+	}
+
 	const feeBox = useRef<HTMLInputElement | null>(null);
 	const amountRefs: AmountRefs = {
 		entry: useRef<HTMLInputElement | null>(null),
@@ -592,21 +619,9 @@ function CheckoutCard({
 		focusOn(state.method === 'crypto' ? (live?.coins ?? null) : paymentMount.current);
 	}
 
-	/**
-	 * the fee decision, and the one press on this card that changes the money without moving the caret
-	 * or the screen.
-	 *
-	 * what is said is the figure that moved, so a decision that moved none is not news: the box reports
-	 * its own new setting either way, and the total beside it is the half nothing else would tell them.
-	 */
+	/** the fee decision; what it does to the total is said with every other move of it, below. */
 	function onFee(): void {
-		const before = api.state.step;
-		const total = api.submitButton.totalMinor;
 		api.feeToggle.onClick();
-		const next = now();
-		if (before !== 'give' || next.state.step !== 'give') return;
-		if (next.submitButton.totalMinor === total) return;
-		setShot({ at: read(), kind: 'fee' });
 	}
 
 	function onEntry(text: string): void {
@@ -736,22 +751,19 @@ function CheckoutCard({
 
 	const busy = api.continueButton['aria-busy'];
 	// the takeover's own words first: a screen that has taken the whole card is not one a numbered step
-	// is still asking anything on. the review step's refusal stands ahead of the fee decision because
-	// it is a thing the donor has been asked for and has not done. the retitled heading last: a
+	// is still asking anything on. a total that moved on the review step stands ahead of that step's
+	// refusal on the commit it moved on: the refusal was said on the press and stays on the payment
+	// box's description, and the figure that moved is said nowhere else. the retitled heading last: a
 	// screen's own sentence and the wait's both say more than its heading does.
-	//
-	// the fee decision's sentence is the one the receipt's own figure stands down for, so whether the
-	// ladder lands on it is answered once, here, for both.
-	const feeSaid = takeover.announce === '' && askedFor === '' && !refusedPayment && spent === 'fee';
 	const words =
 		takeover.announce !== ''
 			? takeover.announce
 			: askedFor !== ''
 				? askedFor
-				: refusedPayment
-					? copy.PAYMENT_PROBLEM
-					: feeSaid
-						? (reading?.words ?? '')
+				: total.current.moved
+					? (reading?.words ?? '')
+					: refusedPayment
+						? copy.PAYMENT_PROBLEM
 						: spent === 'copy' && takeover.deposit !== null
 							? (shot?.words ?? '')
 							: busy
@@ -759,9 +771,7 @@ function CheckoutCard({
 								: retitle.current.words;
 
 	const receipt =
-		reading === null ? null : (
-			<Receipt reading={reading} spoken={feeSaid} onFee={() => onFee()} feeRef={feeBox} />
-		);
+		reading === null ? null : <Receipt reading={reading} onFee={() => onFee()} feeRef={feeBox} />;
 
 	// ── the card ─────────────────────────────────────────────────────────────────────────────────
 
