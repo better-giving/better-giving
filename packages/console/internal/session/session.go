@@ -47,10 +47,10 @@ const (
 	// died without disconnecting leaves a live bearer on a public hostname held by nobody, and a
 	// laptop lid is that case.
 	sessionSeconds = 12 * 60 * 60
-	// the largest expiry a deployment will read, which is the largest whole second its own clock
-	// can hold to the millisecond. a value past it is refused here rather than sent, because a
-	// deployment that cannot read the expiry reads the whole value as no token.
-	maxSeconds = 9_007_199_254_740
+	// the largest expiry a deployment will read, which is the last whole second a javascript `Date`
+	// can hold (8.64e15 ms). a value past it is refused here rather than sent, because a deployment
+	// that cannot read the expiry reads the whole value as no token.
+	maxSeconds = 8_640_000_000_000
 	// the secret half is 32 bytes, which is the 43 characters minRandom is the floor for.
 	randomBytes = 32
 )

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { consoleAccess } from './access';
 import {
+	CONSOLE_SESSION_SECONDS,
 	CONSOLE_TOKEN_MIN_RANDOM,
 	CONSOLE_TOKEN_VERSION,
 	formatConsoleToken,
@@ -208,6 +209,34 @@ describe('a session that has run out', () => {
 		const expired = formatConsoleToken(AN_HOUR_AGO, RANDOM);
 		const access = consoleAccess({ CONSOLE_TOKEN: expired }, bearer(LIVE_TOKEN), NOW);
 		expect(access).toMatchObject({ ok: false, refusal: { error: 'session_expired' } });
+	});
+});
+
+describe('a session longer than a console ever mints', () => {
+	/** `NOW` plus a duration, as the expiry a console whose clock reads `NOW` would write. */
+	function expiringIn(seconds: number): string {
+		return formatConsoleToken(new Date(NOW.getTime() + seconds * 1000), RANDOM);
+	}
+
+	/** a minted session is twelve hours, so an hour past that is a clock running fast or no mint. */
+	it('is refused when it ends thirteen hours from now', () => {
+		const token = expiringIn(13 * 60 * 60);
+		const access = consoleAccess({ CONSOLE_TOKEN: token }, bearer(token), NOW);
+		expect(access).toMatchObject({ ok: false, refusal: { status: 401, error: 'session_expired' } });
+	});
+
+	/** a console whose clock runs a minute ahead of this deployment's still connects. */
+	it('is let through when it ends a minute past twelve hours from now', () => {
+		const token = expiringIn(CONSOLE_SESSION_SECONDS + 60);
+		const access = consoleAccess({ CONSOLE_TOKEN: token }, bearer(token), NOW);
+		expect(access.ok).toBe(true);
+	});
+
+	/** the last instant a `Date` holds, which would otherwise be a session that never ends. */
+	it('is refused when it ends at the far end of time', () => {
+		const token = `${CONSOLE_TOKEN_VERSION}.8640000000000.${RANDOM}`;
+		const access = consoleAccess({ CONSOLE_TOKEN: token }, bearer(token), NOW);
+		expect(access).toMatchObject({ ok: false, refusal: { status: 401, error: 'session_expired' } });
 	});
 });
 

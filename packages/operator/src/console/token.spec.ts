@@ -88,12 +88,21 @@ describe('a value that is not a token', () => {
 		{ what: 'signed', expiry: '-1755600000' },
 		{ what: 'hexadecimal', expiry: '0x68a4c180' },
 		{ what: 'padded with a space', expiry: ' 1755600000' },
-		{ what: 'past what a date can hold', expiry: '999999999999999999' }
+		{ what: 'past what a date can hold', expiry: '999999999999999999' },
+		// a safe integer of milliseconds still, and one second past the last instant a `Date` holds.
+		{ what: 'one second past the last date', expiry: '8640000000001' }
 	])('is refused when its expiry is $what', ({ expiry }) => {
 		expect(parseConsoleToken(`${CONSOLE_TOKEN_VERSION}.${expiry}.${RANDOM}`)).toStrictEqual({
 			ok: false,
 			reason: 'expiry-unreadable'
 		});
+	});
+});
+
+describe('the latest expiry there is', () => {
+	it('is read as the last instant a date can hold', () => {
+		const parsed = parseConsoleToken(`${CONSOLE_TOKEN_VERSION}.8640000000000.${RANDOM}`);
+		expect(parsed.ok && parsed.token.expiresAt.toISOString()).toBe('+275760-09-13T00:00:00.000Z');
 	});
 });
 

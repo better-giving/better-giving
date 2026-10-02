@@ -1,5 +1,9 @@
 import { secretEquals } from '../secret-compare';
-import { CONSOLE_TOKEN_MIN_RANDOM, parseConsoleToken } from '@better-giving/operator/console/token';
+import {
+	CONSOLE_SESSION_SECONDS,
+	CONSOLE_TOKEN_MIN_RANDOM,
+	parseConsoleToken
+} from '@better-giving/operator/console/token';
 
 // the whole of the check that stands in front of the console surface: env narrowing, the format,
 // the expiry, the compare, and the sentence each refusal answers with.
@@ -96,6 +100,16 @@ export type ConsoleAccess =
 	| { readonly ok: true; readonly session: ConsoleSession }
 	| { readonly ok: false; readonly refusal: ConsoleRefusal };
 
+/**
+ * how far past `now + CONSOLE_SESSION_SECONDS` an expiry may sit and still be a session.
+ *
+ * the expiry is written by the console's clock and read against this deployment's, so a console
+ * running a little fast mints a twelve-hour session that reads here as slightly longer. five
+ * minutes absorbs that; an expiry beyond it is a session the console never mints, and it is
+ * refused rather than honoured for however long it claims.
+ */
+const CONSOLE_CLOCK_SKEW_SECONDS = 5 * 60;
+
 /** the one command that connects a console, named in every refusal that has a repair. */
 const CONNECT = 'Run `better-giving start` to connect a session to this deployment.';
 
@@ -180,8 +194,24 @@ export function consoleAccess(env: unknown, headers: Headers, now: Date): Consol
 		);
 	}
 
+	const expiresAtMs = parsed.token.expiresAt.getTime();
+	const latestExpiryMs =
+		now.getTime() + (CONSOLE_SESSION_SECONDS + CONSOLE_CLOCK_SKEW_SECONDS) * 1000;
+	// a non-finite expiry compares false against everything, so it is caught by name rather than
+	// left to read as a session that never ends; `toISOString` would throw on it besides.
+	if (!Number.isFinite(expiresAtMs) || expiresAtMs > latestExpiryMs)
+		return refuse(
+			'session_expired',
+			'The console session on this deployment claims to run past ' +
+				`${new Date(latestExpiryMs).toISOString()}, which is longer than a console session ever ` +
+				`lasts, and this deployment's clock reads ${now.toISOString()}.`,
+			`${CONNECT} If it was just connected, the clock on the machine that minted the token runs ` +
+				`ahead of this deployment by more than ${CONSOLE_CLOCK_SKEW_SECONDS / 60} minutes, and ` +
+				'that clock is what to correct.'
+		);
+
 	// `<` and not `<=`: the last instant of a session is still inside it.
-	if (parsed.token.expiresAt.getTime() < now.getTime())
+	if (expiresAtMs < now.getTime())
 		return refuse(
 			'session_expired',
 			`The console session on this deployment ended at ${parsed.token.expiresAt.toISOString()}, ` +
