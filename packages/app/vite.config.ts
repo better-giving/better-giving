@@ -12,7 +12,7 @@ import { versionDefine } from './version-define';
 // database is shared and survives a restart. it must come before `reactRouter()`, which builds the
 // server bundle the worker entry loads.
 //
-// the build writes into dist/ and, beside it, a deploy configuration redirection at
+// the build writes into build/ and, beside it, a deploy configuration redirection at
 // .wrangler/deploy/config.json naming the generated config `wrangler deploy` then uploads.
 // scripts/preflight-deploy.js reads both, and its header is where that chain is argued.
 //
