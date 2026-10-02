@@ -1,5 +1,3 @@
-import { DELIVERY_PACE, type Feed, type Pace } from '@better-giving/operator/delivery-pace';
-
 // what the minute cron's one invocation may spend, each feed's share of it, and the pace each feed
 // claims at. src/worker.ts runs ../accounting/deliver.ts, ../zapier/deliver.ts and
 // ../webhooks/deliver.ts side by side in that invocation, so every limit below is theirs together,
@@ -38,12 +36,17 @@ import { DELIVERY_PACE, type Feed, type Pace } from '@better-giving/operator/del
 // {@link paceOf}: what its lanes answer in the minute before the next run, at {@link ANSWER_MS} an
 // answer. the pace is what binds.
 //
-// **the claims are {@link PACE}, a table in packages/operator** (`DELIVERY_PACE` in
-// packages/operator/src/delivery-pace.ts). ./budget.workers.spec.ts holds each feed's costliest run
-// to exactly its {@link RunCost} at that pace, and ./budget.spec.ts holds the table equal to the
-// lesser of {@link claimsWithin} and {@link paceOf}, so a feed whose run starts spending more per
-// row fails until its cost here is restated, and its number there with it where its share no
-// longer pays for its pace.
+// **the claims are {@link PACE}, numbers the shares pay for and not a preference.**
+// ./budget.workers.spec.ts holds each feed's costliest run to exactly its {@link RunCost} at that
+// pace, and ./budget.spec.ts holds the table equal to the lesser of {@link claimsWithin} and
+// {@link paceOf}, so a feed whose run starts spending more per row fails until its cost here is
+// restated, and its number in the table with it where its share no longer pays for its pace.
+
+/** a feed the minute cron delivers: Zapier's hooks, webhook destinations, and QuickBooks. */
+export type Feed = 'zapier' | 'webhooks' | 'books';
+
+/** rows each feed claims in one run, which the minute schedule makes its rate a minute. */
+export type Pace = Readonly<Record<Feed, number>>;
 
 /** one invocation's limits. */
 export type Limits = {
@@ -162,4 +165,4 @@ export function paceOf(share: Share, cost: RunCost): number {
 }
 
 /** each feed's claim in one run, which the minute schedule makes its rate a minute. */
-export const PACE: Pace = DELIVERY_PACE;
+export const PACE: Pace = { zapier: 40, webhooks: 40, books: 10 };
