@@ -105,12 +105,19 @@ func (presses *connectPresses) joined(
 
 	// deferred so that a press that panics clears it too: net/http recovers the panic and the
 	// process lives on, and every later press would otherwise wait on a done that never closes.
+	// such a press said nothing about the write, so what every request that joined it is answered
+	// is that nothing was found out either way — an empty kind is a state no screen draws.
+	returned := false
 	defer func() {
+		if !returned {
+			mine.outcome = deployment.Connection{Kind: deployment.ConnectUnreachable}
+		}
 		presses.guard.Lock()
 		presses.running = nil
 		presses.guard.Unlock()
 		close(mine.done)
 	}()
 	mine.outcome = press(context.WithoutCancel(ctx))
+	returned = true
 	return mine.outcome
 }

@@ -214,6 +214,43 @@ func TestAConnectPressThatPanickedLeavesTheNextPressFreeToRun(t *testing.T) {
 	}
 }
 
+// a request that joined a press that panicked was never told how it went, and an empty kind is a
+// state no screen draws.
+func TestARequestThatJoinedAPressThatPanickedIsAnsweredUnreachable(t *testing.T) {
+	presses := &connectPresses{}
+	started, release := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer func() { _ = recover() }()
+		presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			close(started)
+			<-release
+			panic("the press broke")
+		})
+	}()
+	<-started
+
+	answered := make(chan deployment.Connection, 1)
+	go func() {
+		answered <- presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			t.Error("the request ran a press of its own rather than joining the one running")
+			return deployment.Connection{Kind: deployment.Connected}
+		})
+	}()
+	// the joiner has to be waiting on the press before it breaks, and nothing it does is visible
+	// until then.
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+
+	select {
+	case got := <-answered:
+		if got.Kind != deployment.ConnectUnreachable {
+			t.Fatalf("kind = %q, want %q", got.Kind, deployment.ConnectUnreachable)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the request that joined is still waiting on the press that panicked")
+	}
+}
+
 // the write is scoped to an account, so there is nowhere to write rather than a write that failed.
 func TestAConnectPressIsRefusedForAMachineThatHasChosenNoAccount(t *testing.T) {
 	var writes atomic.Int64
