@@ -57,6 +57,13 @@ import type { Route } from './+types/$formId';
 const SEGMENT = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
+ * what both answers carry, each for its own reason stated where it is returned. the edge cache in
+ * front of the served config is an entry per form behind an endpoint, not a document anybody is
+ * holding a link to, and it is no precedent for keeping this one.
+ */
+const UNKEPT = { 'cache-control': 'no-store' };
+
+/**
  * the answer for every address this route will not draw a form for, and there is only the one.
  *
  * a donor cannot act on which of the six refusals `readPublishedConfig` reached — a draft, a
@@ -64,15 +71,10 @@ const SEGMENT = /^[A-Za-z0-9_-]{1,64}$/;
  * them. the statuses those refusals carry belong to the endpoint an integrator reads
  * (./api.v1.forms.$id.config.ts) and stay there.
  *
- * `no-store` because the amounts are in this document: what is cached is a form as it was, and the
- * refusal is cached beside it. the edge cache in front of the served config is an entry per form
- * behind an endpoint, not a document anybody is holding a link to.
+ * `no-store` so that a form published after the refusal is not hidden behind a kept "no form here".
  */
 function noForm() {
-	return data({ ok: false } as const, {
-		status: 404,
-		headers: { 'cache-control': 'no-store' }
-	});
+	return data({ ok: false } as const, { status: 404, headers: UNKEPT });
 }
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
@@ -104,7 +106,10 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	// the served config alone. `result.form` is the row it was read from and carries
 	// `allowed_origins` — the list of sites this organisation's forms may be used on, which a
 	// document served to anyone is no place for.
-	return { ok: true, config: result.config } as const;
+	//
+	// `no-store` because the amounts and settings are in this document: a kept copy would show a donor
+	// figures the operator has since changed.
+	return data({ ok: true, config: result.config } as const, { headers: UNKEPT });
 }
 
 /**
@@ -120,12 +125,11 @@ export function shouldRevalidate({ currentParams, nextParams }: ShouldRevalidate
 }
 
 /**
- * the refusal's `cache-control`, carried out of the loader.
+ * the loader's `cache-control`, carried out of it onto the document.
  *
  * a `data()`'s headers reach a *document* response only through this export: react router merges a
  * loader's headers into the document's own by asking each matched route for one, and a route with
- * no `headers` contributes cookies and nothing else (`getDocumentHeaders` in react-router). the
- * successful answer sets none and takes the framework's default.
+ * no `headers` contributes cookies and nothing else (`getDocumentHeaders` in react-router).
  */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;

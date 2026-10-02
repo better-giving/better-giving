@@ -170,6 +170,13 @@ describe('GET /{form_id}', () => {
 		expect(markup(answered.data)).toContain('<h1 class="org-name">Hope Foundation</h1>');
 	});
 
+	// the amounts and settings drawn here are the form as it is now, and a kept copy would show a
+	// donor figures the operator has since changed.
+	it('lets nothing keep the page', async () => {
+		const answered = await visit(`/${FORM_ID}`);
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+	});
+
 	it('names the organisation in the tab', async () => {
 		const answered = await visit(`/${FORM_ID}`);
 		expect(title(answered.data)).toEqual([{ title: 'Donate to Hope Foundation' }]);
@@ -225,8 +232,8 @@ describe('an address that opens no form', () => {
 		expect(markup(answered.data)).toContain(NO_FORM);
 	});
 
-	// the amounts are in the html, so a cached document is a stale form. the edge cache in front of
-	// the served config covers that endpoint alone.
+	// a kept refusal would hide a form published after it. the edge cache in front of the served
+	// config covers that endpoint alone.
 	it('lets nothing keep the refusal', async () => {
 		const answered = await visit('/frm_nosuchform00001');
 		expect(answered.headers.get('cache-control')).toBe('no-store');
