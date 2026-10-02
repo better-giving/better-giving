@@ -43,6 +43,8 @@ type dash struct {
 	refuses bool
 	// access is what the next exchange or refresh hands back.
 	access string
+	// refresh is the refresh token it hands back with it.
+	refresh string
 	// expires is how long that one lasts.
 	expires int
 }
@@ -55,7 +57,8 @@ func (held *dash) serve(t *testing.T) string {
 		held.mutex.Lock()
 		held.forms = append(held.forms, form)
 		held.paths = append(held.paths, r.URL.Path)
-		refuses, access, expires, holds := held.refuses, held.access, held.expires, held.holds
+		refuses, access, refresh := held.refuses, held.access, held.refresh
+		expires, holds := held.expires, held.holds
 		held.mutex.Unlock()
 
 		if r.URL.Path == "/oauth2/revoke" {
@@ -79,12 +82,15 @@ func (held *dash) serve(t *testing.T) string {
 		if access == "" {
 			access = "an-access-token"
 		}
+		if refresh == "" {
+			refresh = "a-refresh-token"
+		}
 		if expires == 0 {
 			expires = 3600
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  access,
-			"refresh_token": "a-refresh-token",
+			"refresh_token": refresh,
 			"expires_in":    expires,
 			"token_type":    "bearer",
 			"scope":         strings.Join(Scopes, " "),
@@ -682,6 +688,9 @@ func TestSigningOutForgetsARefreshThatCouldNotBeWrittenDown(t *testing.T) {
 	flow, _, _, ticking := flowing(t, held)
 	allow(t, flow, started(t, flow), nil)
 	settled(t, flow)
+	held.mutex.Lock()
+	held.refresh = "a-rotated-refresh-token"
+	held.mutex.Unlock()
 	unwritable(flow)
 	ticking.skip(time.Hour)
 	flow.Credential(context.Background())
@@ -689,6 +698,11 @@ func TestSigningOutForgetsARefreshThatCouldNotBeWrittenDown(t *testing.T) {
 	// the record is still on disk, which the operator is told: the next launch reads it.
 	if err := flow.Out(context.Background()); err == nil {
 		t.Error("Out reported a record forgotten that the directory would not let go of")
+	}
+	// the record's refresh token was spent by the refresh; the live one is what it rotated to.
+	revoked := held.sent("/oauth2/revoke")
+	if len(revoked) == 0 || revoked[0].Get("token") != "a-rotated-refresh-token" {
+		t.Errorf("revoked = %v, want the rotated refresh token handed back", revoked)
 	}
 
 	if credential := flow.Credential(context.Background()); credential.Kind != cf.NoCredential {
