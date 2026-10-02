@@ -125,8 +125,8 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 }
 
 /**
- * the presses answered here: the re-connect on this page's gate, and those that stand over every
- * screen of this console, which post here wherever they are pressed — the check again and the close
+ * the presses answered here: the re-connect and the check again on this page's gate, and the close,
+ * which stands over every screen of this console and posts here wherever it is pressed
  * (../lib/close-confirm.tsx).
  *
  * **the binary owns all of them**: each is one call on the loopback address, and what a press

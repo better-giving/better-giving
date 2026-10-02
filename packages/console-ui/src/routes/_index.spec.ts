@@ -4,10 +4,10 @@ import type { ClientActionFunctionArgs } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Connection, VarsWritten } from '../api/types';
 
-// the presses `/` answers, posted here from over any page (../lib/close-confirm.tsx's
-// `SHELL_ACTION`): that none of them writes a value on the binary, and that each forgets the
-// processor pages kept between visits. the client and that store are replaced so every write is a
-// record of what it was sent, and every forget a count.
+// the presses `/` answers, its gate's own and the close posted here from over any page
+// (../lib/close-confirm.tsx's `SHELL_ACTION`): that none of them writes a value on the binary, and
+// that each forgets the processor pages kept between visits. the client and that store are replaced
+// so every write is a record of what it was sent, and every forget a count.
 
 const binary = vi.hoisted(() => ({
 	written: [] as Record<string, string | null>[],

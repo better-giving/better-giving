@@ -49,7 +49,7 @@ describe('a navigation that does nothing but open or drop a dialog', () => {
 		expect(opensOrDropsDialog(pressed('/sites?close', '/sites'))).toBe(true);
 	});
 
-	it('reads no other parameter as a dialog, the account’s old one included', () => {
+	it('reads `?account` as no dialog', () => {
 		expect(opensOrDropsDialog(pressed('/sites', '/sites?account'))).toBe(false);
 	});
 });
@@ -161,7 +161,7 @@ describe('the way out of a dialog', () => {
 
 	it('steps back over the entry its opener pushed, so Back after it leaves the page', async () => {
 		const router = holding(['/a', '/p']);
-		await router.navigate('/p?account', { state: OPENED_HERE });
+		await router.navigate(`/p?${CLOSE_PARAM}`, { state: OPENED_HERE });
 
 		await leave(router);
 		expect(at(router)).toBe('/p');
@@ -170,7 +170,7 @@ describe('the way out of a dialog', () => {
 	});
 
 	it('takes the place of an address that arrived carrying the dialog, so Back after it leaves too', async () => {
-		const router = holding(['/a', '/p?account']);
+		const router = holding(['/a', `/p?${CLOSE_PARAM}`]);
 
 		await leave(router);
 		expect(at(router)).toBe('/p');

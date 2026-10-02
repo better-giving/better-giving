@@ -2,20 +2,18 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider, UNSAFE_withComponentProps } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DeployedVar, HomeFace, HomeReading } from '../api/types';
+import type { HomeFace, HomeReading } from '../api/types';
 
 // the sections layout through a router: which face a page stands behind when cloudflare would not
-// say what the deployment holds and what its read again asks, the account and its panel, and a
-// dialog opened over a press still in flight. the client's readings
+// say what the deployment holds and what its read again asks, the account, which opens nothing, and
+// a dialog opened over a press still in flight. the client's readings
 // are replaced so each is a count; its writes are its own, answered by a stand-in for the fetch the
 // binary answers.
 
 const binary = vi.hoisted(() => ({
 	homeReads: 0,
 	booksReads: 0,
-	booksPresses: 0,
 	ready: false,
-	vars: [] as DeployedVar[],
 	/** where set, every reading waits on it before it answers. */
 	held: null as Promise<void> | null,
 	/** where set, the books page's own reading waits on it. */
@@ -49,7 +47,7 @@ vi.mock('../api/client', async (original) => ({
 		await binary.held;
 		return {
 			face: binary.ready ? READY : UNANSWERED,
-			values: { vars: { kind: 'read', vars: binary.vars } },
+			values: { vars: { kind: 'read', vars: [] } },
 			sites: [],
 			donatePage: '',
 			org: null,
@@ -62,7 +60,6 @@ vi.mock('../api/client', async (original) => ({
 		return { kind: 'read' as const, report: { connection: { state: 'connected' } } };
 	},
 	pressQuickbooks: async (body: { press: string; startAt?: string }) => {
-		binary.booksPresses += 1;
 		return {
 			kind: 'reported' as const,
 			report:
@@ -146,9 +143,7 @@ beforeEach(async () => {
 	await forgetReadings();
 	binary.homeReads = 0;
 	binary.booksReads = 0;
-	binary.booksPresses = 0;
 	binary.ready = false;
-	binary.vars = [];
 	binary.held = null;
 	binary.booksHeld = null;
 	binary.log = [];
@@ -346,15 +341,15 @@ describe('the Cloudflare account', () => {
 		const account = drawn.match(/<span class="adm-brand[^>]*>/)?.[0] ?? '';
 		expect(account).toContain('aria-label="Cloudflare account Riverbank Trust"');
 		expect(account).not.toMatch(/href|tabindex/);
-		expect(controls(drawn).filter((tag) => tag.includes('Cloudflare'))).toEqual([]);
-		expect(drawn).toContain('aria-label="Close console"');
+		expect(controls(drawn)).toEqual([
+			expect.stringContaining('aria-label="Open dashboard"'),
+			expect.stringContaining('aria-label="Close console"')
+		]);
 	});
 
 	it('opens nothing off `?account` on the address', async () => {
 		const plain = await drawnReady('/quickbooks');
 		const asked = await drawnReady('/quickbooks?account');
-		expect(asked).not.toContain('<dialog');
-		expect(asked).not.toContain('8f3c2a1b');
 		expect(asked.replaceAll('?account', '')).toBe(plain);
 	});
 });

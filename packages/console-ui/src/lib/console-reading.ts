@@ -98,8 +98,9 @@ async function takeReading() {
 		// the release, printed at the foot of every screen.
 		version: release.version,
 		account: home.account.name,
-		// what cloudflare resolves that name by. the foot states it beside the name because the name
-		// is not unique and this is.
+		// what cloudflare resolves that name by. the head strip over `/` and every gate face states it
+		// beside the name (`ConsoleHead` in ./head-strip.tsx), because the name is not unique and
+		// this is; no screen of a ready deployment draws it.
 		accountId: home.account.id,
 		remembered: home.remembered,
 		notKept: home.notKept,
