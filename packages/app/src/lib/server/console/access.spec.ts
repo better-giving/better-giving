@@ -218,11 +218,38 @@ describe('a session longer than a console ever mints', () => {
 		return formatConsoleToken(new Date(NOW.getTime() + seconds * 1000), RANDOM);
 	}
 
-	/** a minted session is twelve hours, so an hour past that is a clock running fast or no mint. */
-	it('is refused when it ends thirteen hours from now', () => {
-		const token = expiringIn(13 * 60 * 60);
+	/**
+	 * a minted session is twelve hours, so an hour past that is a console whose clock runs fast.
+	 * it is its own code because reconnecting mints the same too-far token: what an agent reading
+	 * `session_expired` would do next is the one thing that cannot repair it.
+	 */
+	it('is refused as a clock running ahead when it ends thirteen hours from now', () => {
+		const expiresAt = new Date(NOW.getTime() + 13 * 60 * 60 * 1000);
+		const token = formatConsoleToken(expiresAt, RANDOM);
 		const access = consoleAccess({ CONSOLE_TOKEN: token }, bearer(token), NOW);
-		expect(access).toMatchObject({ ok: false, refusal: { status: 401, error: 'session_expired' } });
+		expect(access).toMatchObject({
+			ok: false,
+			refusal: { status: 401, error: 'console_clock_ahead' }
+		});
+		const latest = new Date(NOW.getTime() + (CONSOLE_SESSION_SECONDS + 5 * 60) * 1000);
+		const message = access.ok === false ? access.refusal.message : '';
+		expect(message).toContain(expiresAt.toISOString());
+		expect(message).toContain(latest.toISOString());
+		expect(message).toContain(NOW.toISOString());
+		expect(access.ok === false && access.refusal.fix).toMatch(/clock/);
+	});
+
+	/** five minutes of skew is the allowance, to the second. */
+	it('is let through when it ends twelve hours and five minutes from now', () => {
+		const token = expiringIn(CONSOLE_SESSION_SECONDS + 5 * 60);
+		const access = consoleAccess({ CONSOLE_TOKEN: token }, bearer(token), NOW);
+		expect(access.ok).toBe(true);
+	});
+
+	it('is refused when it ends one second past twelve hours and five minutes from now', () => {
+		const token = expiringIn(CONSOLE_SESSION_SECONDS + 5 * 60 + 1);
+		const access = consoleAccess({ CONSOLE_TOKEN: token }, bearer(token), NOW);
+		expect(access).toMatchObject({ ok: false, refusal: { error: 'console_clock_ahead' } });
 	});
 
 	/** a console whose clock runs a minute ahead of this deployment's still connects. */
@@ -236,7 +263,10 @@ describe('a session longer than a console ever mints', () => {
 	it('is refused when it ends at the far end of time', () => {
 		const token = `${CONSOLE_TOKEN_VERSION}.8640000000000.${RANDOM}`;
 		const access = consoleAccess({ CONSOLE_TOKEN: token }, bearer(token), NOW);
-		expect(access).toMatchObject({ ok: false, refusal: { status: 401, error: 'session_expired' } });
+		expect(access).toMatchObject({
+			ok: false,
+			refusal: { status: 401, error: 'console_clock_ahead' }
+		});
 	});
 });
 

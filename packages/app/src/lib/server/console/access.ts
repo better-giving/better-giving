@@ -85,7 +85,8 @@ export const CONSOLE_REFUSALS = [
 	'session_too_weak',
 	'session_expiry_unreadable',
 	'session_expired',
-	'session_mismatch'
+	'session_mismatch',
+	'console_clock_ahead'
 ] as const;
 export type ConsoleRefusalCode = (typeof CONSOLE_REFUSALS)[number];
 
@@ -194,20 +195,20 @@ export function consoleAccess(env: unknown, headers: Headers, now: Date): Consol
 		);
 	}
 
+	// `parseConsoleToken` refuses an expiry no `Date` can hold, so both values here are finite.
 	const expiresAtMs = parsed.token.expiresAt.getTime();
 	const latestExpiryMs =
 		now.getTime() + (CONSOLE_SESSION_SECONDS + CONSOLE_CLOCK_SKEW_SECONDS) * 1000;
-	// a non-finite expiry compares false against everything, so it is caught by name rather than
-	// left to read as a session that never ends; `toISOString` would throw on it besides.
-	if (!Number.isFinite(expiresAtMs) || expiresAtMs > latestExpiryMs)
+	if (expiresAtMs > latestExpiryMs)
 		return refuse(
-			'session_expired',
-			'The console session on this deployment claims to run past ' +
-				`${new Date(latestExpiryMs).toISOString()}, which is longer than a console session ever ` +
-				`lasts, and this deployment's clock reads ${now.toISOString()}.`,
-			`${CONNECT} If it was just connected, the clock on the machine that minted the token runs ` +
-				`ahead of this deployment by more than ${CONSOLE_CLOCK_SKEW_SECONDS / 60} minutes, and ` +
-				'that clock is what to correct.'
+			'console_clock_ahead',
+			`The console session on this deployment ends at ${parsed.token.expiresAt.toISOString()}, ` +
+				`and the latest expiry this deployment accepts is ${new Date(latestExpiryMs).toISOString()}: ` +
+				`its clock reads ${now.toISOString()}, and a console session never runs longer than ` +
+				`${CONSOLE_SESSION_SECONDS / 3600} hours. The clock on the machine running the console is ahead ` +
+				`of this deployment's by more than ${CONSOLE_CLOCK_SKEW_SECONDS / 60} minutes.`,
+			'Set the clock on the machine running the console right, then connect again: a connect from a ' +
+				'clock that is still ahead mints the same expiry and is refused the same way.'
 		);
 
 	// `<` and not `<=`: the last instant of a session is still inside it.

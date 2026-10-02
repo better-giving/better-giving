@@ -49,11 +49,12 @@ export const CONSOLE_TOKEN_MIN_RANDOM = 43;
  * disconnecting leaves a live bearer credential set on a public hostname and held by nobody. a
  * laptop lid is that case, and the expiry is what ends it.
  *
- * spent by `mintConsoleToken` below and read back out of the value by the deployment, so both
- * halves agree the unit is seconds without either of them stating it twice. the deployment also
- * refuses an expiry further out than this from its own clock, past a small allowance for skew
- * (`CONSOLE_CLOCK_SKEW_SECONDS` in `packages/app/src/lib/server/console/access.ts`), so shortening
- * it takes effect on sessions already minted and lengthening it needs both halves redeployed.
+ * the token a deployment reads is minted by the console binary from its own `sessionSeconds` in
+ * `packages/console/internal/session/session.go`; `mintConsoleToken` below is this side's statement
+ * of the same format. this constant is the deployment's ceiling: it refuses an expiry further out
+ * than this from its own clock, past a small allowance for skew (`CONSOLE_CLOCK_SKEW_SECONDS` in
+ * `packages/app/src/lib/server/console/access.ts`), so the console's `sessionSeconds` must not
+ * exceed it — a longer one is refused as `console_clock_ahead` on every connect.
  */
 export const CONSOLE_SESSION_SECONDS = 12 * 60 * 60;
 
