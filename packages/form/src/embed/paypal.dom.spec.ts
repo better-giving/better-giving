@@ -557,6 +557,54 @@ describe('the buttons this adapter draws', () => {
 		k.mount.querySelector('venmo-button')?.dispatchEvent(new Event('click'));
 		expect(k.rails).toEqual(['venmo']);
 	});
+
+	// told off `venmoIsOffered` in ../checkout.machine.ts: a repeating cadence takes the Venmo row off
+	// the box and one-time puts it back, with PayPal's row standing through both.
+	it('draws the Venmo row only while the flow offers Venmo, leaving PayPal’s standing', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+
+		surface.offerVenmo(false);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.mount.querySelector('venmo-button')).toBeNull();
+		expect(k.mount.querySelector('paypal-button')).not.toBeNull();
+
+		surface.offerVenmo(true);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal', 'Venmo']);
+		k.mount.querySelector('venmo-button')?.dispatchEvent(new Event('click'));
+		expect(k.rails).toEqual(['venmo']);
+	});
+
+	it('holds the Venmo row back when the flow withdrew it before the buttons came up', async () => {
+		const k = kit();
+		const surface = createPaymentSurface(
+			CONFIG,
+			k.mount,
+			(rail) => k.rails.push(rail),
+			(failure) => k.unavailable.push(failure),
+			k.seam
+		);
+		surface.offerVenmo(false);
+		await nextTask();
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.unavailable).toEqual([]);
+	});
+
+	// a donor who pressed Venmo and then went back and picked Monthly is holding a rail nothing can
+	// approve, so it is taken back with the row; a PayPal press is not.
+	it('takes back a Venmo press when the row leaves, and leaves a PayPal press chosen', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+
+		k.mount.querySelector('venmo-button')?.dispatchEvent(new Event('click'));
+		surface.offerVenmo(false);
+		expect(k.rails).toEqual(['venmo', null]);
+
+		surface.offerVenmo(true);
+		k.mount.querySelector('paypal-button')?.dispatchEvent(new Event('click'));
+		surface.offerVenmo(false);
+		expect(k.rails).toEqual(['venmo', null, 'paypal']);
+	});
 });
 
 describe('a donor’s gift through PayPal’s window', () => {

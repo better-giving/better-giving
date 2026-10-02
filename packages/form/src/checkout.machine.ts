@@ -786,6 +786,20 @@ export function cryptoIsOffered(snapshot: { readonly context: CheckoutContext })
 	return draft.frequency === 'one_time' && config.paymentMethods.includes('crypto');
 }
 
+/**
+ * whether the payment box lists the Venmo option: a form offering the rail, on a gift the donor has
+ * made one-time.
+ *
+ * Venmo has a one-time session and no subscription session (`venmo-payments` in `@paypal/paypal-js`),
+ * so a repeating gift on it is a subscription nobody can approve. read off the cadence as it is being
+ * picked, for the reason `cryptoIsOffered` above gives. PayPal's own rail is not narrowed here.
+ * exported for both surfaces that run this flow, which tell their payment surface on every reading.
+ */
+export function venmoIsOffered(snapshot: { readonly context: CheckoutContext }): boolean {
+	const { config, draft } = snapshot.context;
+	return draft.frequency === 'one_time' && config.paymentMethods.includes('venmo');
+}
+
 /** everything the amount step exists to decide has been decided. */
 function amountIsDecided(context: CheckoutContext): boolean {
 	return completeAmount(context.draft, context.config) !== null;

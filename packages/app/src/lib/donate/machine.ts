@@ -3,7 +3,8 @@ import {
 	checkoutMachine,
 	cryptoIsOffered,
 	fundIsOffered,
-	openFund
+	openFund,
+	venmoIsOffered
 } from '@better-giving/form/machine';
 import type { CheckoutEvent, Failure } from '@better-giving/form/machine';
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
@@ -183,6 +184,7 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 		surface.cadence('fv' in state ? state.fv?.frequency : undefined);
 		surface.offerFund(fundIsOffered(snapshot));
 		surface.offerCrypto(cryptoIsOffered(snapshot));
+		surface.offerVenmo(venmoIsOffered(snapshot));
 
 		if (state.step === 'details' && challenge === null) {
 			challenge = createChallenge(

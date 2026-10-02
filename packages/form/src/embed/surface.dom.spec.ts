@@ -479,6 +479,22 @@ describe('one payment surface over however many processors a config names', () =
 			surface.stop();
 		});
 
+		// told off `venmoIsOffered` in ../checkout.machine.ts, as the crypto option is off its own.
+		it('lists Venmo only while it is offered, and counts the box without it', async () => {
+			const k = kit();
+			const surface = await composed(k, { ...CONFIG, paymentMethods: ['card', 'paypal', 'venmo'] });
+			const counts: number[] = [];
+			surface.rows((count) => counts.push(count));
+
+			surface.offerVenmo(false);
+			expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
+
+			surface.offerVenmo(true);
+			expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Venmo']);
+			expect(counts).toEqual([3, 2, 3]);
+			surface.stop();
+		});
+
 		describe('the crypto option', () => {
 			const CRYPTO: FormConfig = {
 				...CONFIG,

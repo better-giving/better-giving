@@ -157,6 +157,8 @@ type Options = {
 	readonly offers?: (offered: boolean) => void;
 	/** every reading of whether crypto is offered, in the order the card told the payment surface. */
 	readonly cryptoOffers?: (offered: boolean) => void;
+	/** every reading of whether Venmo is offered, in the order the card told the payment surface. */
+	readonly venmoOffers?: (offered: boolean) => void;
 	/** how many options the payment box lists when the card first asks; one where unsaid. */
 	readonly rowCount?: number;
 	readonly attributes?: Readonly<Record<string, string>>;
@@ -221,6 +223,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					cadence: (frequency) => options.cadences?.(frequency),
 					offerFund: (offered) => options.offers?.(offered),
 					offerCrypto: (offered) => options.cryptoOffers?.(offered),
+					offerVenmo: (offered) => options.venmoOffers?.(offered),
 					rows: (listener) => {
 						counted = listener;
 						listener(options.rowCount ?? 1);
@@ -316,6 +319,7 @@ function placed(attributes: Readonly<Record<string, string>> = { form: 'frm_a8x2
 							cadence: () => {},
 							offerFund: () => {},
 							offerCrypto: () => {},
+							offerVenmo: () => {},
 							rows: () => {},
 							stop: () => {}
 						};
@@ -1008,6 +1012,7 @@ describe('the live region', () => {
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
 					stop: () => {}
 				}),
@@ -6182,5 +6187,32 @@ describe('a crypto gift', () => {
 		expect(coins(card).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
 			'USDT'
 		);
+	});
+});
+
+describe('the Venmo option', () => {
+	const WALLETS: FormConfig = {
+		...CONFIG,
+		providers: [
+			{ name: 'stripe', publishableKey: 'pk_live_x' },
+			{ name: 'paypal', publishableKey: 'live_client_id' }
+		],
+		paymentMethods: ['card', 'paypal', 'venmo']
+	};
+
+	it('tells the card which way Venmo is offered as the cadence moves', async () => {
+		const offers: boolean[] = [];
+		const card = await atReviewBeforeRail({
+			config: WALLETS,
+			venmoOffers: (offered) => offers.push(offered)
+		});
+		expect(offers.at(-1)).toBe(true);
+
+		dot(card, 1).click();
+		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+		expect(offers.at(-1)).toBe(false);
+
+		press(card.all('[part~="frequency-option"] input')[0] as HTMLElement);
+		expect(offers.at(-1)).toBe(true);
 	});
 });

@@ -26,6 +26,7 @@ import {
 	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
+	venmoIsOffered,
 	type CheckoutEvent,
 	type CheckoutInput,
 	type Failure
@@ -109,6 +110,12 @@ export type FormCheckout = {
 	 * card built (`coins` on `CardView` in ./views.ts) in a row of its own.
 	 */
 	readonly offerCrypto: (offered: boolean) => void;
+	/**
+	 * whether the payment box lists the Venmo option, told on every reading.
+	 *
+	 * `venmoIsOffered` in ./checkout.machine.ts is the answer; PayPal's own option is not narrowed.
+	 */
+	readonly offerVenmo: (offered: boolean) => void;
 	/**
 	 * how many options the payment box lists, handed to `listener` now and on every change.
 	 *
@@ -1097,6 +1104,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				checkout.cadence(committedFrequency(api.state));
 				checkout.offerFund(fundIsOffered(snapshot));
 				checkout.offerCrypto(cryptoIsOffered(snapshot));
+				checkout.offerVenmo(venmoIsOffered(snapshot));
 				view.update(api);
 				const { step } = api.state;
 

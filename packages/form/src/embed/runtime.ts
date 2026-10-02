@@ -182,8 +182,9 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				cadence: surface.cadence,
 				// the fund's reading, passed straight through for the reason the cadence is.
 				offerFund: surface.offerFund,
-				// the crypto option's reading, passed straight through for the fund's reason.
+				// the crypto and Venmo options' readings, passed straight through for the fund's reason.
 				offerCrypto: surface.offerCrypto,
+				offerVenmo: surface.offerVenmo,
 				// the count the card heads the payment box from, passed straight through.
 				rows: surface.rows,
 				// the card letting go of the surface built for this configuration, and it is this

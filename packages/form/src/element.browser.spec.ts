@@ -93,6 +93,7 @@ async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promi
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
 					stop: () => {}
 				};
@@ -234,6 +235,7 @@ describe('the box a host page holds before the element upgrades', () => {
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
 					stop: () => {}
 				}),

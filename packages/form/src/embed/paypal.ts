@@ -47,7 +47,7 @@ import {
 import { INJECTING_NONCE } from './nonce';
 import { UNCONFIRMABLE, UNSTATED_DECLINE } from './outcome';
 import { isPaypalRail, type PaypalRail } from './rails';
-import { createRows, type RowList } from './rows';
+import { createRows, type Row, type RowList } from './rows';
 import type { PaymentSurface } from './stripe';
 
 /**
@@ -534,6 +534,8 @@ export type PaypalSeam = {
  */
 export type PaypalPaymentSurface = PaymentSurface & {
 	claimsReturn(): Promise<boolean>;
+	/** `venmoIsOffered` in ../checkout.machine.ts, told on every reading; PayPal's row ignores it. */
+	offerVenmo(offered: boolean): void;
 	/** the row each drawn rail's button stands in, which ./surface.ts opens and closes. */
 	readonly rows: RowList;
 };
@@ -666,6 +668,40 @@ export function createPaymentSurface(
 	 * the other adapter's rows are sent through the appearance object it hands its provider.
 	 */
 	const rowList = createRows(mount);
+
+	/** each drawn rail's button, made once and moved in and out of its row. */
+	const buttons = new Map<PaypalRail, HTMLElement>();
+	/** the row each rail's button stands in, while it stands. */
+	const standing = new Map<PaypalRail, Row>();
+	/** whether the flow offers Venmo, which it does until a reading says otherwise. */
+	let venmoOffered = true;
+	/** the rail this adapter last reported a press on, which is the only one it may take back. */
+	let pressed: PaypalRail | null = null;
+
+	/**
+	 * every button in its row or out of it, as the offer stands.
+	 *
+	 * appended on its way back in, which keeps the served order because Venmo is the only rail that
+	 * comes and goes and it is listed last (`PAYPAL_RAILS` in ./rails.ts). a Venmo press is taken back
+	 * with its row, so a donor who pressed Venmo and then picked a repeating cadence is not left
+	 * holding a rail no window can approve.
+	 */
+	function place(): void {
+		for (const [rail, button] of buttons) {
+			const wanted = !stopped && (rail !== 'venmo' || venmoOffered);
+			const row = standing.get(rail);
+			if (wanted && row === undefined) {
+				standing.set(rail, rowList.draw(ROW_NAMES[rail], rail, button));
+			} else if (!wanted && row !== undefined) {
+				rowList.erase(row);
+				standing.delete(rail);
+				if (pressed === rail) {
+					pressed = null;
+					onRail(null);
+				}
+			}
+		}
+	}
 
 	/** the one report that the button is not coming up, said once. */
 	let announced = false;
@@ -880,9 +916,17 @@ export function createPaymentSurface(
 		// payment, at the footer's amount.
 		for (const rail of sessions.keys()) {
 			const button = doc.createElement(BUTTON_TAGS[rail]);
-			button.addEventListener('click', () => onRail(rail), { signal: letGo.signal });
-			rowList.draw(ROW_NAMES[rail], rail, button);
+			button.addEventListener(
+				'click',
+				() => {
+					pressed = rail;
+					onRail(rail);
+				},
+				{ signal: letGo.signal }
+			);
+			buttons.set(rail, button);
 		}
+		place();
 
 		// one claim over all of them and never one each: every mount session answers the one return
 		// attempt, so two sessions each claiming would leave the first waiting on a signal the second
@@ -1149,10 +1193,14 @@ export function createPaymentSurface(
 		// own window states the figure off the order the server minted, and this button carries no
 		// figure of its own to correct.
 		quoted() {},
-		// the button is the same button on either cadence, and which rails a repeat may be collected
-		// on is decided before a config is served — `offered-rails.ts` in the app. a shape asked of
-		// the SDK here would be a second place that decision is made.
+		// which of these rails a repeat may be collected on is the flow's answer, carried by
+		// `offerVenmo` below — the served config lists rails without regard to cadence. a shape asked
+		// of the SDK here would be a second place that decision is made.
 		cadence() {},
+		offerVenmo(offered) {
+			venmoOffered = offered;
+			place();
+		},
 		stop() {
 			if (stopped) return;
 			stopped = true;
@@ -1167,6 +1215,7 @@ export function createPaymentSurface(
 			abandon(new Error('the card let go of this PayPal window'));
 			for (const session of [...pressSessions]) retire(session);
 			for (const row of [...rowList.current()]) rowList.erase(row);
+			standing.clear();
 			void building.then((held) => {
 				for (const session of held?.sessions.values() ?? []) {
 					// each separately: two elements on one page hold sessions of their own off one shared

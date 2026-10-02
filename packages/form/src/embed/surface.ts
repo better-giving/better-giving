@@ -87,6 +87,8 @@ export type ComposedPaymentSurface = PaymentSurface & {
 	offerFund(offered: boolean): void;
 	/** `cryptoIsOffered` in ../checkout.machine.ts, told on every reading, as `offerFund` is. */
 	offerCrypto(offered: boolean): void;
+	/** `venmoIsOffered` in ../checkout.machine.ts, told on every reading, as `offerFund` is. */
+	offerVenmo(offered: boolean): void;
 	rows(listener: (count: number) => void): void;
 };
 
@@ -268,6 +270,7 @@ export function createPaymentSurface(
 		inlinePart = part;
 	}
 
+	let offerVenmo: (offered: boolean) => void = () => {};
 	if (config.paymentMethods.some(isPaypalRail)) {
 		const paypal = createPaypalSurface(
 			config,
@@ -283,6 +286,7 @@ export function createPaymentSurface(
 			claimsReturn: () => paypal.claimsReturn()
 		};
 		parts.push(part);
+		offerVenmo = (offered) => paypal.offerVenmo(offered);
 	}
 
 	// last, because a fund's rail is listed last. it reports no rail: its own button's press is the
@@ -357,6 +361,7 @@ export function createPaymentSurface(
 		resume,
 		offerFund: (offered) => offerFund(offered),
 		offerCrypto: (offered) => offerCrypto(offered),
+		offerVenmo: (offered) => offerVenmo(offered),
 		rows(next) {
 			listener = next;
 			if (counted !== null) next(counted);

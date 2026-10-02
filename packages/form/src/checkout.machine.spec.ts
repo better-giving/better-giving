@@ -6,6 +6,7 @@ import {
 	fundIsOffered,
 	openFund,
 	stepIsReachable,
+	venmoIsOffered,
 	DEPOSIT_POLL_MS,
 	MICRODEPOSIT_WINDOW_MS,
 	PORT_TIMEOUT_MS
@@ -2453,5 +2454,36 @@ describe('a crypto gift', () => {
 			expect(actor.getSnapshot().value).toBe('failed');
 			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
 		});
+	});
+});
+
+describe('a gift through PayPal or Venmo', () => {
+	const WALLET_CONFIG: FormConfig = {
+		...CONFIG,
+		providers: [{ name: 'paypal', publishableKey: 'live_client_id' }],
+		frequencies: ['one_time', 'monthly', 'yearly'],
+		paymentMethods: ['paypal', 'venmo']
+	};
+
+	// no Venmo session can approve a subscription, so the option leaves the box the moment a
+	// repeating cadence is picked and comes back with one-time, as crypto's does.
+	it('offers Venmo on a one-time gift only, following the cadence as the donor picks it', () => {
+		const { actor } = readyToSubmit({ config: WALLET_CONFIG });
+		expect(venmoIsOffered(actor.getSnapshot())).toBe(true);
+
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		expect(venmoIsOffered(actor.getSnapshot())).toBe(false);
+
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'yearly' });
+		expect(venmoIsOffered(actor.getSnapshot())).toBe(false);
+
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
+		expect(venmoIsOffered(actor.getSnapshot())).toBe(true);
+	});
+
+	it('offers no Venmo on a form that does not offer the rail', () => {
+		const { actor } = readyToSubmit({ config: { ...WALLET_CONFIG, paymentMethods: ['paypal'] } });
+		expect(venmoIsOffered(actor.getSnapshot())).toBe(false);
 	});
 });
