@@ -177,7 +177,8 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 // page has to step past: a role written out or an element that carries one implicitly.
 describe('a payment row as a reader meets it', () => {
 	// a role written on one of these is the role it has, and the list above reads that.
-	const LANDMARK_ELEMENTS = ':is(header, footer, aside, form, main, nav, section, search):not([role])';
+	const LANDMARK_ELEMENTS =
+		':is(header, footer, aside, form, main, nav, section, search):not([role])';
 	const LANDMARKS = [
 		'banner',
 		'complementary',
