@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Connection, VarsWritten } from '../api/types';
 
 // the presses `/` answers, posted here from over any page (../lib/close-confirm.tsx's
-// `SHELL_ACTION`): which write each intent makes on the binary, and that each forgets the
+// `SHELL_ACTION`): that none of them writes a value on the binary, and that each forgets the
 // processor pages kept between visits. the client and that store are replaced so every write is a
 // record of what it was sent, and every forget a count.
 
@@ -47,11 +47,10 @@ const home = await import('./_index');
 
 const ORIGIN = 'http://localhost';
 
-/** a post to `/` carrying `intent` and whatever else the case names. */
-const press = (intent: string, fields: Record<string, string> = {}) => {
+/** a post to `/` carrying `intent`. */
+const press = (intent: string) => {
 	const posted = new FormData();
 	posted.set('intent', intent);
-	for (const [name, value] of Object.entries(fields)) posted.set(name, value);
 	return home.clientAction({
 		request: new Request(new URL(SHELL_ACTION, ORIGIN), { method: 'POST', body: posted })
 	} as unknown as ClientActionFunctionArgs);

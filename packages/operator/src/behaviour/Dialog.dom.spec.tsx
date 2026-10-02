@@ -315,8 +315,7 @@ describe('the shell over the dialog', () => {
 	});
 
 	/**
-	 * a confirm drawn inside another card — packages/console-ui/src/lib/withheld-values.tsx's inside
-	 * the console's account panel — and which of the two each answer reaches.
+	 * a confirm drawn inside another card, and which of the two each answer reaches.
 	 */
 	function Nested({
 		onOuter,
@@ -364,9 +363,9 @@ describe('the shell over the dialog', () => {
 	});
 
 	/**
-	 * the account panel as the console draws it: the panel is up first, off the address, and the
-	 * confirm is put up by a Remove inside it — which a free that lands takes off the page with the
-	 * confirm, while the panel is still the modal holding the page.
+	 * a panel that is up first, off the address, with a confirm put up by a Remove inside it — which
+	 * a press that lands takes off the page with the confirm, while the panel is still the modal
+	 * holding the page.
 	 */
 	function Freeing() {
 		const [withheld, setWithheld] = useState(true);
