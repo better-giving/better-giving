@@ -2,7 +2,7 @@ import type { CoinOption } from '@better-giving/form/coin-picker';
 import { connect, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import { createDepositBlock, type DepositView } from '@better-giving/form/deposit';
 import { takeResumeToken } from '@better-giving/form/embed/resume';
-import type { CheckoutEvent } from '@better-giving/form/machine';
+import { checkoutMachine, type CheckoutEvent } from '@better-giving/form/machine';
 import { formatFigure, formatMinor, formatOffer, parseMinor } from '@better-giving/form/money';
 import { part } from '@better-giving/form/parts';
 import type { AmountDecision, PayerField } from '@better-giving/form/value';
@@ -17,6 +17,7 @@ import {
 	type ReactNode,
 	type RefObject
 } from 'react';
+import { getInitialSnapshot } from 'xstate';
 import { DonateAnnouncer } from './announce';
 import * as copy from './copy';
 import { initialSnapshot, startCheckout, type Checkout, type CheckoutMounts } from './machine';
@@ -42,9 +43,10 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     the query container every breakpoint in the form's layout sheet resolves against.
 //   - the server render. `initialSnapshot` is a pure function of the configuration, so the amounts,
 //     the cadences and the tiles are in the HTML and the client's first render produces the same
-//     tree. the live actor is created in an effect after that first commit — the payment provider
-//     reads computed style off a mounted node, and taking the resume token rewrites the URL, which
-//     is not a thing a render may do.
+//     tree; a page the route says is a resume draws the resume's takeover there instead
+//     (`servedSnapshot`). the live actor is created in an effect after that first commit — the
+//     payment provider reads computed style off a mounted node, and taking the resume token
+//     rewrites the URL, which is not a thing a render may do.
 //   - which screen the card is on. a busy flow stays on the last screen shown, because the flow
 //     collapses five machine states into one thing a donor is told and the projection cannot say
 //     which screen asked.
@@ -69,6 +71,25 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 // in the takeover. neither is react's to render — one carries its own shadow root and the other its
 // own Copy controls — so what is here is the words each is handed and when the caret goes into the
 // coin list.
+
+/**
+ * the snapshot the first paint draws, server and hydration alike.
+ *
+ * a resume boots into `resuming`, and what that state draws first names no rail and no figure, so
+ * the stamp alone chooses it and the token is not needed: the token is claimed in the effect that
+ * starts the live flow, and nothing reads it off this snapshot. `getInitialSnapshot` starts nothing
+ * — the read `resuming` invokes is never run and its timeout never armed — so this stays a value
+ * the way `initialSnapshot` is, on that snapshot's own inert ports.
+ */
+function servedSnapshot(config: FormConfig, resuming: boolean): CheckoutSnapshot {
+	const booted = initialSnapshot(config);
+	if (!resuming) return booted;
+	return getInitialSnapshot(checkoutMachine, {
+		config,
+		ports: booted.context.ports,
+		resume: { paymentToken: 'unclaimed' }
+	});
+}
 
 const SCREENS = ['amount', 'details', 'give', 'takeover'] as const;
 type Screen = (typeof SCREENS)[number];
@@ -115,9 +136,19 @@ export type DonateCardProps = {
 	 * boot into.
 	 */
 	readonly seams?: CheckoutMounts['seams'];
+	/**
+	 * whether the page's url carries this form's resume stamp (`RESUME_FORM_PARAM` in
+	 * @better-giving/form/embed/resume), which is what the route can see of a return from a payment
+	 * provider.
+	 *
+	 * true draws the resume's takeover from the first paint, server and hydration alike, and the live
+	 * flow carries on from it once it has claimed the token. it says nothing about the token itself:
+	 * a stamp that arrived without one hands the donor the amount step as soon as the flow starts.
+	 */
+	readonly resuming?: boolean;
 };
 
-export function DonateCard({ config, seams }: DonateCardProps) {
+export function DonateCard({ config, seams, resuming = false }: DonateCardProps) {
 	// a second gift is a fresh boot rather than a state on the flow: what the last gift left behind is
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
 	// challenge token is spent once. remounting is what builds both again, and it starts empty, which
@@ -131,6 +162,8 @@ export function DonateCard({ config, seams }: DonateCardProps) {
 			key={boot.at}
 			config={config}
 			takeFocus={boot.focused}
+			// a second gift is never a resume: the first card already claimed the return.
+			resuming={resuming && boot.at === 0}
 			restart={(focused) => setBoot((last) => ({ at: last.at + 1, focused }))}
 			{...(seams === undefined ? {} : { seams })}
 		/>
@@ -141,7 +174,8 @@ function CheckoutCard({
 	config,
 	takeFocus,
 	restart,
-	seams
+	seams,
+	resuming
 }: {
 	config: FormConfig;
 	/** whether this card's first paint puts the caret on its heading, which only a restart asks. */
@@ -149,12 +183,13 @@ function CheckoutCard({
 	/** a fresh card, told whether this one held the caret when it was asked for. */
 	restart: (focused: boolean) => void;
 	seams?: CheckoutMounts['seams'];
+	resuming: boolean;
 }) {
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
 	const offer = (minor: number) => formatOffer(minor, locale, currency);
 
-	const initial = useMemo(() => initialSnapshot(config), [config]);
+	const initial = useMemo(() => servedSnapshot(config, resuming), [config, resuming]);
 	const [live, setLive] = useState<Checkout | null>(null);
 	const [deposit, setDeposit] = useState<DepositView | null>(null);
 	const [paymentRows, setPaymentRows] = useState(0);
@@ -424,7 +459,8 @@ function CheckoutCard({
 		heading: string;
 		primary: string | null;
 	}>({
-		shown: 'amount',
+		// the screen the first paint draws, so a resume's takeover is not counted as a move onto it.
+		shown: visibleStep(api.state, 'amount'),
 		moved: false,
 		painted: false,
 		step: null,
@@ -495,7 +531,7 @@ function CheckoutCard({
 			shown,
 			moved: before.moved || shown !== before.shown,
 			// the server's render and the live flow's first snapshot are one paint: the actor is built
-			// after the first commit, so a resume's takeover arrives on the second.
+			// after the first commit, so a resume the route did not see arrives on the second.
 			painted: before.painted || live !== null,
 			step: state.step,
 			heading: takeover.heading,
