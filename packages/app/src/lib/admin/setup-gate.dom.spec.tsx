@@ -85,12 +85,26 @@ it('re-reads rather than writing, so the press is a GET', () => {
 	expect(form?.method).toBe('get');
 });
 
-/** lets the stub's loader run and the router commit what it answered. */
-async function settle(): Promise<void> {
-	for (let i = 0; i < 5; i++) {
+/**
+ * lets the stub's loaders run and the router commit until `done` holds, a task at a time.
+ *
+ * a loop of its own rather than `vi.waitFor`: the router's commits have to land inside `act`, and
+ * an `act` scope holds back every render until it closes, so a poll inside one never sees a change.
+ * the cap is a hang's bound and nothing a case waits on comes near it.
+ */
+async function until(done: () => boolean, what: string): Promise<void> {
+	for (let task = 0; task < 50; task += 1) {
+		if (done()) return;
 		await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 	}
+	throw new Error(`waited fifty tasks and ${what} never held`);
 }
+
+/** whether the gate's press is held for a read in flight. */
+const busy = (press: HTMLElement) => () => press.getAttribute('aria-disabled') === 'true';
+
+/** whether the gate's press is open again, every read landed. */
+const idle = (press: HTMLElement) => () => !press.hasAttribute('aria-disabled');
 
 /**
  * the gate over a loader, the way the layout draws it, with every read after the first held until
@@ -122,7 +136,7 @@ async function reread(next: readonly SetupLine[]) {
 		}
 	]);
 	const root = mount(createElement(Stub, { initialEntries: ['/admin'] }));
-	await settle();
+	await until(() => root.querySelector('button') !== null, 'the gate was drawn');
 	const press = root.querySelector('button');
 	if (press === null) throw new Error('the gate drew no press');
 	const link = root.querySelector('a');
@@ -134,7 +148,7 @@ async function reread(next: readonly SetupLine[]) {
 		reads: () => reads,
 		land: async () => {
 			land();
-			await settle();
+			await until(idle(press), 'the re-read landed');
 		}
 	};
 }
@@ -149,14 +163,17 @@ it('keeps the caret on Check again while the re-read is in flight, and takes the
 	gate.press.focus();
 
 	await act(async () => gate.press.click());
-	await settle();
+	await until(() => gate.reads() === 2 && busy(gate.press)(), 'the re-read was in flight');
 
 	expect(document.activeElement).toBe(gate.press);
-	expect(gate.press.getAttribute('aria-disabled')).toBe('true');
 	expect((gate.press as HTMLButtonElement).disabled).toBe(false);
 
-	await act(async () => gate.press.click());
-	await settle();
+	// a press the handler turned down submits nothing, so there is no later read to wait out.
+	let taken = true;
+	await act(async () => {
+		taken = gate.press.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	});
+	expect(taken).toBe(false);
 	expect(gate.reads()).toBe(2);
 });
 
@@ -165,7 +182,7 @@ it('says so at the press when the re-read comes back with nothing changed', asyn
 	expect(outcome(gate.press)).toBe('');
 
 	await act(async () => gate.press.click());
-	await settle();
+	await until(busy(gate.press), 'the re-read was in flight');
 	expect(outcome(gate.press)).toBe('');
 	await gate.land();
 
@@ -177,8 +194,7 @@ it('says nothing at the press after a navigation the press did not make', async 
 	const gate = await reread(lines);
 
 	await act(async () => gate.link.click());
-	await settle();
-	expect(gate.reads()).toBe(2);
+	await until(() => gate.reads() === 2, 'the link’s read started');
 	await gate.land();
 
 	expect(outcome(gate.press)).toBe('');
@@ -194,7 +210,7 @@ it('leaves a re-read that moved a line to the ledger, which says what moved', as
 	const gate = await reread(done);
 
 	await act(async () => gate.press.click());
-	await settle();
+	await until(busy(gate.press), 'the re-read was in flight');
 	await gate.land();
 
 	expect(gate.root.textContent).not.toContain('Incomplete');
@@ -218,12 +234,12 @@ it('re-reads the screen the operator was going to, search and all, from a deep l
 		}
 	]);
 	const root = mount(createElement(Stub, { initialEntries: ['/admin/donations?x=1'] }));
-	await settle();
+	await until(() => root.querySelector('button') !== null, 'the gate was drawn');
 	const press = root.querySelector('button');
 	if (press === null) throw new Error('the gate drew no press');
 
 	await act(async () => press.click());
-	await settle();
+	await until(() => read.length === 2 && idle(press)(), 'the re-read landed');
 
 	expect(read).toEqual(['/admin/donations?x=1', '/admin/donations?x=1']);
 });
