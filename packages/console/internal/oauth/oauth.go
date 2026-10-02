@@ -256,7 +256,13 @@ func (flow *Flow) Out(ctx context.Context) error {
 		}
 	}
 	flow.unkept = nil
-	return flow.store.Forget(Record)
+	if err := flow.store.Forget(Record); err != nil {
+		// the record the directory would not let go of names the pair just revoked, so this process
+		// stops reading it; the error is for the operator, because the next launch will.
+		flow.forgotten = true
+		return err
+	}
+	return nil
 }
 
 // the credential this machine holds — a refresh that could not be written down, else the one
@@ -264,10 +270,14 @@ func (flow *Flow) Out(ctx context.Context) error {
 //
 // A machine with nothing remembered is the ordinary state of a first run, and so is one whose
 // record cannot be read at all: either way there is no sign-in, and the screen that says so is the
-// one with the way out on it.
+// one with the way out on it. So is a record this process has stopped reading (./Flow's
+// `forgotten`), until a write lands over it.
 func (flow *Flow) stored() (record, bool) {
 	if flow.unkept != nil {
 		return *flow.unkept, true
+	}
+	if flow.forgotten {
+		return record{}, false
 	}
 	read, err := flow.store.Read(Record)
 	if err != nil || len(read) == 0 {
@@ -290,6 +300,7 @@ func (flow *Flow) write(held record) error {
 	}
 	// what is written down is newer than anything held: a fresh sign-in replaces it outright.
 	flow.unkept = nil
+	flow.forgotten = false
 	return nil
 }
 

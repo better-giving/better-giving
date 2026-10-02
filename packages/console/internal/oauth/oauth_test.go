@@ -560,6 +560,8 @@ type readOnly struct{ records }
 
 func (readOnly) Write(string, []byte) error { return os.ErrPermission }
 
+func (readOnly) Forget(string) error { return os.ErrPermission }
+
 func unwritable(flow *running) { flow.store = readOnly{flow.store} }
 
 func TestARefreshThatCouldNotBeWrittenDownIsReportedRatherThanSwallowed(t *testing.T) {
@@ -621,12 +623,29 @@ func TestSigningOutForgetsARefreshThatCouldNotBeWrittenDown(t *testing.T) {
 	ticking.skip(time.Hour)
 	flow.Credential(context.Background())
 
-	if err := flow.Out(context.Background()); err != nil {
-		t.Fatalf("Out: %v", err)
+	// the record is still on disk, which the operator is told: the next launch reads it.
+	if err := flow.Out(context.Background()); err == nil {
+		t.Error("Out reported a record forgotten that the directory would not let go of")
 	}
 
 	if credential := flow.Credential(context.Background()); credential.Kind != cf.NoCredential {
 		t.Errorf("credential = %q, want a machine holding none", credential.Kind)
+	}
+}
+
+func TestSigningOutWhereTheRecordCannotBeForgottenStillSignsThisConsoleOut(t *testing.T) {
+	// the record the directory would not let go of names a pair cloudflare has just revoked, and a
+	// console that read it back would draw itself signed in on a token that no longer works.
+	held := &dash{}
+	flow, _, _, _ := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+	unwritable(flow)
+
+	_ = flow.Out(context.Background())
+
+	if credential := flow.Credential(context.Background()); credential.Kind != cf.NoCredential {
+		t.Errorf("credential = %q, want a console signed out", credential.Kind)
 	}
 }
 

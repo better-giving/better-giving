@@ -63,8 +63,9 @@ type Phase struct {
 // pressing the control twice does not open a second browser.
 //
 // Handlers run concurrently, so both halves are guarded: `waiting` is the flow in flight and `held`
-// covers the stored credential, which the refresh reads and writes, and `unkept`, a refreshed pair
-// the record would not take.
+// covers the stored credential, which the refresh reads and writes, `unkept`, a refreshed pair
+// the record would not take, and `forgotten`, a record still on disk that this process no longer
+// reads as a sign-in.
 type Flow struct {
 	store  records
 	send   cf.FormPost
@@ -77,8 +78,9 @@ type Flow struct {
 	waiting *attempt
 	why     Why
 
-	held   sync.Mutex
-	unkept *record
+	held      sync.Mutex
+	unkept    *record
+	forgotten bool
 }
 
 // where the credential is kept between runs: ../state's Store on a console, and a store a case
