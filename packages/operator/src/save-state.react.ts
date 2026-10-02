@@ -8,9 +8,10 @@ import {
 	type SaveState
 } from './save-state';
 
-// the react binding of ./save-state.ts: a hook that keeps the one flag the four seconds write and
-// nothing else. every rule the button draws by is in that module and none of them is restated
-// here.
+// the react binding of ./save-state.ts: a hook that keeps two pieces of state and nothing else —
+// the flag the four seconds write, and what the render before this one was reporting and whether a
+// confirmation was armed on it, which `armedAfter` reads to decide the next. every rule the button
+// draws by is in that module and none of them is restated here.
 //
 // both facts arrive from the caller, `changed` included — this file is the only binding and names
 // no form layer of its own. what the second rule in ./save-state.ts costs is stated there: a group
