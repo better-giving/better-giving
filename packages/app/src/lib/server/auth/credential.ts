@@ -82,10 +82,10 @@ export type StaffCredentialConfig =
  * missing and empty are both hard failures. there is no fallback value and no
  * "empty means empty" match: `''` would otherwise authenticate anyone who posts an
  * empty password, which is exactly the state a fork lands in if it deploys without
- * ever setting it. which values are refused, and the sentence naming the offending
- * variable and what is wrong with it (its `typeof`, or the minimum a value falls short of —
- * never the value's own length), come from the shared reader;
- * what this function adds is where it is set.
+ * ever setting it. which values are refused, and the sentence saying what is wrong with it
+ * (its `typeof`, or the minimum a value falls short of — never the value's own length), come
+ * from the shared reader; what this function adds is the variable's name and where it is set,
+ * after a period the reader's sentence does not always end with.
  *
  * the message is written for whoever is reading the 4xx/5xx body — increasingly an
  * agent, not a human at a terminal — per CLAUDE.md.
@@ -102,13 +102,14 @@ export function readStaffCredential(env: AuthEnv): StaffCredentialConfig {
 	const reading = readAdminPassword(env.ADMIN_PASSWORD);
 
 	if (!reading.ok) {
+		const problem = reading.problem.endsWith('.') ? reading.problem : `${reading.problem}.`;
 		// the advice never asks for a redeploy, the same way scripts/doctor.js's does not: a value set
 		// from the console takes effect on its own, and a deploy would drag its one-way
 		// `d1 migrations apply --remote` along with it.
 		return {
 			ok: false,
 			message:
-				`Staff sign-in is refused because this deployment is misconfigured: ${reading.problem} ` +
+				`Staff sign-in is refused because this deployment is misconfigured: ${problem} ` +
 				`ADMIN_PASSWORD is a deploy-time var, not a settings row: open the console ` +
 				`(\`better-giving start\`) and set it under Dashboard password, which takes effect ` +
 				`immediately on this deployment, or add it to \`.dev.vars\` ` +

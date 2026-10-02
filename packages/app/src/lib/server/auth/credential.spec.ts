@@ -68,7 +68,9 @@ describe('readStaffCredential', () => {
 		});
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain(`at least ${MIN_ADMIN_PASSWORD_LENGTH} characters`);
+		expect(result.message).toContain(
+			`at least ${MIN_ADMIN_PASSWORD_LENGTH} characters. ADMIN_PASSWORD is a deploy-time var`
+		);
 		// the shared sentence is the operator's words; which variable and where to set it is this
 		// wrapper's own half, and it is the half an agent reading a 5xx body needs.
 		expect(result.message).toContain('ADMIN_PASSWORD');
@@ -79,7 +81,9 @@ describe('readStaffCredential', () => {
 		const result = readStaffCredential({ ADMIN_PASSWORD: ' '.repeat(MIN_ADMIN_PASSWORD_LENGTH) });
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
-		expect(result.message).toContain('something other than spaces');
+		expect(result.message).toContain(
+			'something other than spaces. ADMIN_PASSWORD is a deploy-time var'
+		);
 	});
 
 	/**
