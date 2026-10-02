@@ -210,6 +210,16 @@ function tokenOf(card: Card, token: string): string {
 	return resolved(read);
 }
 
+/** a length token as the card resolves it, in pixels. */
+function lengthOf(card: Card, token: string): number {
+	const probe = document.createElement('div');
+	probe.style.cssText = `inline-size: var(${token})`;
+	card.shadow.appendChild(probe);
+	const read = parseFloat(getComputedStyle(probe).inlineSize);
+	probe.remove();
+	return read;
+}
+
 /** the colour of the outermost of several shadows, which is the last one serialized. */
 function outerShadowColour(shadow: string): string {
 	return shadowColour(
@@ -401,12 +411,11 @@ describe('the browser’s own email rule against the flow’s', () => {
 	});
 });
 
-// the free entry is ringed on its surface rather than on its input (`[part~='amount-input']
-// :has(:focus-visible)` in ../styles/parts.css). the general rule every input falls under would
-// ring the input as well, so what is asserted is that the ring moved in a real engine, and that the
-// transparent outline forced-colors paints from is kept on the input.
+// the free entry is ringed on its input rather than on its surface (`[part~='amount-input']
+// input:focus-visible` in ../styles/parts.css): the surface is the part a host restyles, and the
+// input covers it edge to edge, so a ring laid outside the input is laid outside the surface.
 describe('the free entry the donor has already typed into', () => {
-	it('rings its surface on focus, and keeps the outline forced-colors paints', async () => {
+	it('rings its input on focus, and keeps the outline forced-colors paints', async () => {
 		const card = await mount();
 		(card.find('.other input') as HTMLInputElement).click();
 		const entry = card.find('#amount-entry') as HTMLInputElement;
@@ -416,21 +425,19 @@ describe('the free entry the donor has already typed into', () => {
 		expect(card.find("[part~='amount-input']").getAttribute('part')).toContain('selected');
 
 		// opening Other puts the caret in the entry itself (`otherTile` in ../views.ts), so the
-		// resting surface is read with it taken out again.
+		// resting input is read with it taken out again.
 		const surface = card.find("[part~='amount-input']");
 		expect(card.shadow.activeElement).toBe(entry);
 		entry.blur();
 		await painted(entry, surface);
-		expect(getComputedStyle(surface).boxShadow).toBe('none');
+		expect(getComputedStyle(entry).boxShadow).toBe('none');
 
 		entry.focus();
 		await painted(entry, surface);
 		const drawn = getComputedStyle(entry);
 
-		expect(outerShadowColour(getComputedStyle(surface).boxShadow)).toBe(
-			tokenOf(card, '--_focus-ring')
-		);
-		expect(drawn.boxShadow).toBe('none');
+		expect(outerShadowColour(drawn.boxShadow)).toBe(tokenOf(card, '--_focus-ring'));
+		expect(getComputedStyle(surface).boxShadow).toBe('none');
 		expect(drawn.outlineStyle).toBe('solid');
 		expect(resolved(drawn.outlineColor)).toBe(resolved('transparent'));
 	});
@@ -447,8 +454,52 @@ describe('the free entry the donor has already typed into', () => {
 		await painted(entry, surface);
 
 		expect(surface.getAttribute('part')).toContain('invalid');
-		expect(shadowColour(getComputedStyle(surface).boxShadow)).toBe(dangerOf(card));
-		expect(getComputedStyle(surface).boxShadow).not.toContain('inset');
+		expect(shadowColour(getComputedStyle(entry).boxShadow)).toBe(dangerOf(card));
+		expect(getComputedStyle(entry).boxShadow).not.toContain('inset');
+	});
+
+	// a host page's normal `::part()` rule outranks every rule the element's own sheets write on that
+	// part (./parts.browser.spec.ts measures the cascade), so a page resetting shadows on the part it
+	// restyles would take the keyboard donor's only indicator with it.
+	it('keeps its ring under a host page that clears the part’s shadow', async () => {
+		const card = await mount();
+		const style = document.createElement('style');
+		style.textContent = `${card.shadow.host.localName}::part(amount-input) { box-shadow: none; }`;
+		document.body.appendChild(style);
+		(card.find('.other input') as HTMLInputElement).click();
+		const surface = card.find("[part~='amount-input']");
+		const entry = card.find('#amount-entry') as HTMLInputElement;
+		entry.blur();
+		entry.focus();
+		await painted(entry, surface);
+		const ring = tokenOf(card, '--_focus-ring');
+
+		const ringed = [surface, entry].filter(
+			(node) => outerShadowColour(getComputedStyle(node).boxShadow) === ring
+		);
+		expect(ringed).not.toEqual([]);
+	});
+
+	// standing alone the entry is a field like any other, and a field's ring is its edge recoloured
+	// with the ring flush outside it (`[part~='field']:focus-visible` in ../styles/parts.css). the
+	// input stands inside the surface's edge, so its one shadow is that edge's width wider than the
+	// field's ring.
+	it('rings as a field does where it stands alone', async () => {
+		const card = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
+		const surface = card.find("[part~='amount-input']");
+		const entry = card.find("[part~='amount-input'] input") as HTMLInputElement;
+		entry.blur();
+		entry.focus();
+		await painted(entry, surface);
+		const drawn = getComputedStyle(entry).boxShadow;
+		const spread = /0px 0px 0px ([\d.]+)px/.exec(drawn)?.[1];
+
+		expect(card.find('.tiles').classList.contains('bare')).toBe(true);
+		expect(drawn.split(/,(?![^(]*\))/)).toHaveLength(1);
+		expect(shadowColour(drawn)).toBe(tokenOf(card, '--_focus-ring'));
+		expect(Number(spread)).toBe(
+			parseFloat(getComputedStyle(surface).borderTopWidth) + lengthOf(card, '--_focus-width')
+		);
 	});
 });
 

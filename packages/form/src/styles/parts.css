@@ -2360,30 +2360,32 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the free entry's ring, in two tones, drawn on the surface the input fills.
+ * the free entry's ring, drawn on the input rather than on the surface it fills. the surface is the
+ * part a host restyles, and a host page's `::part(amount-input)` rule outranks every rule here on
+ * it, so a ring drawn there is one a page clearing its shadows takes away from a keyboard donor.
+ * nothing outside reaches the input, and the input covers the surface edge to edge
+ * (`[part~='amount-input'] input` above), so a shadow laid outside it is laid outside the surface.
  *
- * the input's own ring from the first rule above is taken back: on a bare tray it would stand
- * inside the surface's border and spend its first pixel underneath it. its transparent outline is
- * kept, so forced-colors still paints one on the input.
+ * on a tray of tiles it takes the marked controls' construction — a band of `--_n1` laid against the
+ * box's edge first and the ring outside it — so the ring meets the card on its outside and the
+ * near-white on its inside, and never shares a boundary with the tray's own fill.
  *
- * the surface rings itself instead, with the marked controls' construction — a band of `--_n1`
- * laid against its edge first and the ring outside it — so the ring meets the card on its outside
- * and the near-white on its inside, and never shares a boundary with the edge a bare tray draws or
- * with the tray's own fill a tiled one stands on. what a keyboard donor sees is a band appearing
- * where the box's edge was, which is what every other marked control on the card shows.
+ * on a bare tray the surface is a field like any other and rings as one: the field's ring is its
+ * edge recoloured and the ring flush outside it (`[part~='field']:focus-visible` above). the input
+ * stands inside that edge, so one shadow spread across the edge's width and the ring's paints both,
+ * over the surface's border rather than beside it.
  *
- * the invalid state is not drawn this way and does not need to be: its ring is one tone of danger
- * (the last block in this group), over a refused box that is already marked in danger — the
- * surface's own edge on a bare tray, and the tray around it on a tiled one.
+ * the transparent outline from the first rule in this group stays on the input, so forced-colors,
+ * which drops both shadows, still paints one there.
  */
 [part~='amount-input'] input:focus-visible {
-	box-shadow: none;
-}
-
-[part~='amount-input']:has(:focus-visible) {
 	box-shadow:
 		0 0 0 var(--_border) var(--_n1),
 		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
+}
+
+.bare > [part~='amount-input'] input:focus-visible {
+	box-shadow: 0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
 }
 
 /*
@@ -2497,14 +2499,20 @@ button.step-dot:focus-visible .step-mark {
 }
 
 /*
- * on an invalid control the ring itself carries the state rather than sitting beside it. the free
- * entry and a tile are named through `:has()`, for the reason the free entry's block above gives:
- * the token is on the surface, and the input inside it is what takes the focus.
+ * on an invalid control the ring itself carries the state rather than sitting beside it. a tile is
+ * named through `:has()` and the free entry through its input, because the token is on the part and
+ * the input inside it is what takes the focus — and the free entry's ring is on that input for the
+ * reason its block above gives. on a bare tray the entry's ring spans its edge as well, as the
+ * ordinary one does there; the edge is already the danger, so the two read as one mark.
  */
 [part~='invalid']:focus-visible,
 [part~='amount-option'][part~='invalid']:has(:focus-visible),
-[part~='amount-input'][part~='invalid']:has(:focus-visible) {
+[part~='amount-input'][part~='invalid'] input:focus-visible {
 	box-shadow: 0 0 0 var(--_focus-width) var(--_bad);
+}
+
+.bare > [part~='amount-input'][part~='invalid'] input:focus-visible {
+	box-shadow: 0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_bad);
 }
 
 /*
