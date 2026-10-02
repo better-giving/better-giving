@@ -183,45 +183,43 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	/**
 	 * the origin, and why it is not a secret.
 	 *
-	 * `BETTER_AUTH_URL` is an optional override that a one-click deploy never sets, because
-	 * better-auth already derives the origin from the request when `baseURL` is absent: its
-	 * handler resolves `getOrigin(request.url)` and then recomputes `trustedOrigins` from
-	 * that, per request (`better-auth/dist/auth/base.mjs`). that costs nothing here — this
-	 * factory is already per-request — and it avoids the asymmetry a fixed value carries,
-	 * where a deployment reachable on both workers.dev and a custom domain serves
-	 * cookie-bearing mutations on only one of them.
+	 * `BETTER_AUTH_URL` is an optional pin that a one-click deploy never sets. better-auth
+	 * derives an origin from a request only inside `auth.handler`
+	 * (`better-auth/dist/auth/base.mjs`), which nothing mounts. on a direct `auth.api.*` call
+	 * with no pin, its context carries an empty base URL and a `trustedOrigins` holding the
+	 * list below and nothing else (`better-auth/dist/context/create-context.mjs`). no call
+	 * here reads that base URL, because the reset mail and the invitation have their links
+	 * composed by the route. so the origin only decides this module's own settings:
+	 * `requestOrigin`, or the pin when one is set, is what the loopback check below sees, and
+	 * that check sets the cookie's `Secure` policy and the development `trustedOrigins`.
 	 *
-	 * the origin check still has teeth. it is not circular, because the two sides are
-	 * independent facts: better-auth compares the request's `Origin`/`Referer` header
-	 * (what page initiated the request) against the trusted list derived from
-	 * `request.url` (which host the browser addressed). a cross-site POST from evil.com
-	 * carries `Origin: https://evil.com` while `request.url` is still this deployment's
-	 * host, so it is refused. defeating that needs `Origin == Host` and the victim's
-	 * cookies, which browsers make mutually exclusive: the cookie jar and the Host come
-	 * from the same hostname, so `Origin == Host` means the request came from this app.
-	 * a spoofed `Host` from a script carries no session cookie and has nothing to hijack.
-	 * the cross-site navigation login block does not consult the list at all — it keys on
-	 * `Sec-Fetch-Site`/`Sec-Fetch-Mode`.
+	 * none of better-auth's request checks runs on this deployment. its origin middleware —
+	 * the `Origin`/`Referer` comparison against `trustedOrigins` and the `Sec-Fetch-*`
+	 * navigation-login block — runs only on a request `auth.handler` routed, and nothing
+	 * mounts it (CLAUDE.md → Product surface). the endpoint-level ones, `formCsrfMiddleware`
+	 * on the email sign-in and sign-up and the `originCheck` on a reset's `redirectTo`, return
+	 * early on a call that carries no `request`, and every call here passes `headers` alone.
+	 * passing `request:` to one switches them on, against the `trustedOrigins` set below,
+	 * which names nothing on a non-loopback host.
 	 *
-	 * what it does not cover is the form POST at `/login`: better-auth's own origin
-	 * middleware runs on a request its router handled, and this deployment mounts no router
-	 * — a direct `auth.api.*` call carries no `ctx.request` for it to read. what stands
-	 * there instead is the session cookie's `sameSite: 'lax'` below, which a cross-site POST
-	 * does not carry, and the sign-in bucket `signInRateLimitKey` charges (CLAUDE.md).
+	 * what refuses a cross-origin form post is react-router: on a document or `.data` POST it
+	 * answers 400, ahead of every middleware and the action, when the `Origin` host differs
+	 * from the request's (`throwIfPotentialCSRFAttack` in its server runtime;
+	 * react-router.config.ts sets no `allowedActionOrigins`). `Origin: null` is refused too. a
+	 * request with no `Origin` passes, and `Referer` is not read. it covers `/login`, `/join`,
+	 * `/forgot` and `/reset`, and not `/admin/sign-out`, a resource route the check never runs
+	 * on (../../../routes/_app.admin.sign-out.ts). it only ever refuses: a matching `Origin`
+	 * grants nothing, and the session is what authorizes (CLAUDE.md → Bans). the cases under
+	 * "a sign-in posted from another origin" in ../../../entry.server.workers.spec.ts hold it.
 	 *
-	 * **that is the accepted answer and not an omission waiting to be closed.** what `lax`
-	 * leaves standing is login-CSRF, where the victim's browser is made to submit the
-	 * attacker's own credentials and the victim ends up signed into the attacker's account —
-	 * it needs no cookie from the victim, which is why the cookie attribute does not reach it.
-	 * this deployment has one staff account, so a forced login lands the victim in the account
-	 * whose password the attacker already holds; there is no second account to be confused
-	 * into, and the donation page this project deploys carries no session at all — it is a
-	 * static shell on an origin of its own, so nothing on it holds or reads this deployment's
-	 * cookie (CLAUDE.md → Product surface). the control
-	 * that would close it is a comparison of `Origin` against the request's own host, and
-	 * CLAUDE.md bans exactly that reading: `Origin` is an attribution signal and never an
-	 * authorization control. reopen this the day a deployment has a second account, which is
-	 * the fact the argument turns on.
+	 * behind it stand the session cookie's `sameSite: 'lax'` below, which a cross-site POST
+	 * does not carry and which is all that stands in front of the sign-out, and the sign-in
+	 * bucket `signInRateLimitKey` charges (CLAUDE.md). login-CSRF from a browser that omits
+	 * `Origin` is accepted: neither of those reaches it.
+	 *
+	 * none of it bounds a script on this origin, and `/{form_id}` is served on it (CLAUDE.md →
+	 * Product surface) and runs vendor scripts. what bounds that is argued in
+	 * ../../../document-policy.ts's header.
 	 *
 	 * `x-forwarded-host` is not consulted: better-auth honours forwarded headers only
 	 * when `advanced.trustedProxyHeaders` is set, and it is not. that is also why
@@ -483,19 +481,12 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		},
 
 		/**
-		 * the effective origin is trusted by better-auth automatically — per request when
-		 * `baseURL` is unset. this list is only what makes local development work without
-		 * weakening the deployed app.
-		 *
-		 * `pnpm dev` serves on 5321 and `pnpm preview`/`wrangler dev` on 8787 off the same
-		 * `.dev.vars`, so a request arriving on either loopback port trusts both. 5321 is pinned
-		 * in `packages/app/vite.config.ts`, and this list is a reason it is pinned: a dev server
-		 * that drifted to another port would be an origin better-auth refuses the sign-in POST
-		 * from.
-		 *
-		 * a deployed origin is never loopback, so a real deployment trusts exactly the origin
-		 * it was reached on — no localhost entry that a page on a developer's machine could
-		 * POST from.
+		 * read by none of better-auth's checks on this deployment: they run only inside
+		 * `auth.handler`, which nothing mounts, or on a call passed a `request:`, which nothing
+		 * passes (the note above `configuredBaseURL`). it is stated for the day either changes,
+		 * and then it is what lets local development post from both loopback ports — `pnpm dev`
+		 * on 5321 (pinned in `packages/app/vite.config.ts`) and `pnpm preview`/`wrangler dev` on
+		 * 8787 — without a localhost entry on a deployed origin, which is never loopback.
 		 */
 		trustedOrigins: isLoopback ? ['http://localhost:5321', 'http://localhost:8787'] : [],
 

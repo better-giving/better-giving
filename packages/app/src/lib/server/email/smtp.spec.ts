@@ -283,3 +283,81 @@ describe('createSmtpProvider — the options the client is actually handed', () 
 		expect((await optionsFor()).socketTimeoutMs).toBeLessThanOrEqual(10_000);
 	});
 });
+
+describe('createSmtpProvider — the subject the client is handed', () => {
+	/**
+	 * `worker-mailer@1.2.1` encodes a non-ASCII subject as one encoded-word and never folds it,
+	 * and passes an all-ASCII value through untouched. so what reaches it decides the header: these
+	 * read the subject off the object `WorkerMailer.send` is handed, as the block above reads the
+	 * options.
+	 */
+	async function subjectFor(subject: string): Promise<string> {
+		let captured: unknown;
+		const result = await createSmtpProvider(CONFIG, async () =>
+			stubMailer(async (_options, message) => {
+				captured = (message as { subject: unknown }).subject;
+			})
+		).send({ ...MESSAGE, subject });
+		if (!result.ok) throw new Error(`the send never reached the client: ${result.detail}`);
+		return captured as string;
+	}
+
+	const ENCODED_WORD = /^=\?UTF-8\?B\?([A-Za-z0-9+/]+={0,2})\?=$/;
+
+	/**
+	 * the words of a folded header, each decoded on its own with a fatal decoder — so a word that
+	 * ends inside a multi-byte sequence throws rather than decoding to a replacement character.
+	 */
+	function decodeWords(header: string): { words: string[]; decoded: string } {
+		const words = header.split('\r\n ');
+		const decoded = words
+			.map((word) => {
+				const base64 = ENCODED_WORD.exec(word)?.[1];
+				if (base64 === undefined) throw new Error(`not an encoded-word: ${JSON.stringify(word)}`);
+				const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+				return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+			})
+			.join('');
+		return { words, decoded };
+	}
+
+	it('hands an ASCII subject over unchanged', async () => {
+		expect(await subjectFor('Your donation receipt from Hope Fund')).toBe(
+			'Your donation receipt from Hope Fund'
+		);
+	});
+
+	// RFC 2047 §2 caps an encoded-word at 75 characters.
+	it('encodes a non-ASCII subject as encoded-words of at most 75 characters that decode back', async () => {
+		const subject = 'Your donation receipt from Fundación Niños del Perú';
+		const { words, decoded } = decodeWords(await subjectFor(subject));
+		for (const word of words) expect(word.length).toBeLessThanOrEqual(75);
+		expect(decoded).toBe(subject);
+	});
+
+	// RFC 5322 §2.1.1 caps a line at 998 characters, `Subject: ` included. 400 CJK characters are
+	// 1,200 bytes and 1,600 characters of base64, so this subject left as one word would pass 998.
+	it('folds a long non-ASCII subject so no line passes 998 and no word passes 75', async () => {
+		const subject = `A gift was made in memory of ${'山田太郎の思い出に'.repeat(45).slice(0, 400)}`;
+		const header = `Subject: ${await subjectFor(subject)}`;
+		for (const line of header.split('\r\n')) expect(line.length).toBeLessThanOrEqual(998);
+		const { words, decoded } = decodeWords(header.slice('Subject: '.length));
+		expect(words.length).toBeGreaterThan(1);
+		for (const word of words) expect(word.length).toBeLessThanOrEqual(75);
+		expect(decoded).toBe(subject);
+	});
+
+	// RFC 2047 §2 caps a line holding an encoded-word at 76 characters, and the first line is
+	// `Subject: ` and a word.
+	it('keeps every line of a folded subject within 76, `Subject: ` included', async () => {
+		const subject = `A gift was made in memory of ${'山田太郎の思い出に'.repeat(45).slice(0, 400)}`;
+		const header = `Subject: ${await subjectFor(subject)}`;
+		for (const line of header.split('\r\n')) expect(line.length).toBeLessThanOrEqual(76);
+	});
+
+	// four-byte characters: a split inside one is what the fatal decoder exists to catch.
+	it('splits only between characters, never inside one', async () => {
+		const subject = '🎁'.repeat(40);
+		expect(decodeWords(await subjectFor(subject)).decoded).toBe(subject);
+	});
+});

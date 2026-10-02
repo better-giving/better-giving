@@ -654,7 +654,7 @@ function unusableMoney(request: {
  * why a repeating gift may not be committed to, or nothing.
  *
  * the same three money checks an intent gets, plus the two facts a commitment has: the cadence it
- * collects at and the rail it collects on. it refuses before the network for the reason `unusable`
+ * collects at and the rail it collects on. it refuses before the network for the reason `unusableMoney`
  * above does, and one reason more: this arm makes several writes, so a malformed request caught at
  * the second of them leaves the account holding the first — a donor record with no commitment
  * behind it.
@@ -687,9 +687,9 @@ function unusableGift(request: RecurringGiftRequest): PaymentFailure | null {
 /**
  * why an endpoint may not be registered for this URL, or nothing.
  *
- * checked here rather than left to the API for the reason `unusable` above is: the message names the
- * value and where it came from, instead of quoting a processor's error at an operator who is looking
- * at a button.
+ * checked here rather than left to the API for the reason `unusableMoney` above is: the message
+ * names the value and where it came from, instead of quoting a processor's error at an operator who
+ * is looking at a button.
  *
  * `https` is the whole of the rule, and it is the processor's rather than this app's — a live
  * endpoint must be a publicly reachable HTTPS URL
@@ -1109,34 +1109,6 @@ function mismatchedPrice(
 }
 
 /**
- * what the processor took, in the currency the gift was charged in.
- *
- * the balance transaction is denominated in the account's settlement currency, which need not be
- * the currency the donor was charged in, and an entry group holds exactly one currency
- * (../ledger/posting.ts) — so a fee that settled in another one arrives in the gift's currency or
- * not at all. it is converted rather than dropped because that is the case most likely to have been
- * mispriced: a foreign card is exactly where the processor's real fee exceeds the rule ./fees.ts
- * quotes from, and a fee that never posts leaves `1020 Undeposited Funds` overstated by it with no
- * error anywhere (../donations/entries.ts).
- *
- * the rate runs from the charged currency to the settlement currency: the `amount` in the charged
- * currency multiplied by `exchange_rate` is the `amount` in the settlement currency
- * (https://docs.stripe.com/api/balance_transactions/object). so a fee stated in the settlement
- * currency is divided by it and never multiplied. worked: a gift charged 10.00 EUR settles to 12.34
- * USD, `exchange_rate` is 1.234, and a fee of 66 USD cents is 66 / 1.234 = 53 EUR cents. multiplied
- * instead it reads 81, which is a plausible figure no total downstream disagrees with — which is
- * why ./stripe.spec.ts asserts the arithmetic and not merely that something came back.
- *
- * no usable rate is no figure. `exchange_rate` is null on a transaction that converted nothing, so
- * a cross-currency fee without one is a conversion this app cannot do — null, which
- * ../donations/settle.ts already answers by telling an operator the gift posted with no processor
- * fee. never the unconverted figure, which would balance arithmetically and be wrong by the rate,
- * and never a zero, which claims the processor took nothing.
- *
- * rounded to whole minor units, because that is what the ledger takes. the residual is at most half
- * a minor unit against the processor's own statement.
- */
-/**
  * one transaction as the port carries it, off the three objects one retrieve brings back.
  *
  * a function rather than the body of the read arm, because that arm reads the transaction more than
@@ -1169,6 +1141,34 @@ function settlementOf(
 	};
 }
 
+/**
+ * what the processor took, in the currency the gift was charged in.
+ *
+ * the balance transaction is denominated in the account's settlement currency, which need not be
+ * the currency the donor was charged in, and an entry group holds exactly one currency
+ * (../ledger/posting.ts) — so a fee that settled in another one arrives in the gift's currency or
+ * not at all. it is converted rather than dropped because that is the case most likely to have been
+ * mispriced: a foreign card is exactly where the processor's real fee exceeds the rule ./fees.ts
+ * quotes from, and a fee that never posts leaves `1020 Undeposited Funds` overstated by it with no
+ * error anywhere (../donations/entries.ts).
+ *
+ * the rate runs from the charged currency to the settlement currency: the `amount` in the charged
+ * currency multiplied by `exchange_rate` is the `amount` in the settlement currency
+ * (https://docs.stripe.com/api/balance_transactions/object). so a fee stated in the settlement
+ * currency is divided by it and never multiplied. worked: a gift charged 10.00 EUR settles to 12.34
+ * USD, `exchange_rate` is 1.234, and a fee of 66 USD cents is 66 / 1.234 = 53 EUR cents. multiplied
+ * instead it reads 81, which is a plausible figure no total downstream disagrees with — which is
+ * why ./stripe.spec.ts asserts the arithmetic and not merely that something came back.
+ *
+ * no usable rate is no figure. `exchange_rate` is null on a transaction that converted nothing, so
+ * a cross-currency fee without one is a conversion this app cannot do — null, which
+ * ../donations/settle.ts already answers by telling an operator the gift posted with no processor
+ * fee. never the unconverted figure, which would balance arithmetically and be wrong by the rate,
+ * and never a zero, which claims the processor took nothing.
+ *
+ * rounded to whole minor units, because that is what the ledger takes. the residual is at most half
+ * a minor unit against the processor's own statement.
+ */
 function feeOf(balance: Stripe.BalanceTransaction | null, currency: string): number | null {
 	if (!balance) return null;
 	if (balance.currency.toUpperCase() === currency) return balance.fee;

@@ -284,16 +284,23 @@ export type VarsUnwritten = Exclude<
  *
  * `connected` is the only one that left anything anywhere. `unkept` is the deployment holding a
  * session this machine could not write down — its own state and not a failure of the write, because
- * the value is live there and the way out is the folder rather than the press.
+ * the value is live there and the way out is the folder rather than the press. `clock-ahead` is the
+ * deployment refusing the session as ending further out than it ever lets one run, which is this
+ * machine's clock reading ahead of its own: the write landed and is recorded, every session this
+ * clock mints is refused the same way, and so the way out is the clock rather than the press.
  */
 export type Connection = {
-	kind: 'connected' | 'nowhere' | 'refused' | 'unreachable' | 'failed' | 'unkept';
+	kind: 'connected' | 'nowhere' | 'refused' | 'unreachable' | 'failed' | 'unkept' | 'clock-ahead';
 	/** when the session ends, and empty on every other kind. */
 	expiresAt: string;
 	/** where it was written, which is the deployment the operator is looking at. */
 	origin: string;
 	/** cloudflare's own words about the call, or this machine's about a record it could not write. */
 	detail: string;
+	/** the deployment's own sentence on `clock-ahead`, and null on every other kind or where it wrote none. */
+	message: string | null;
+	/** the deployment's own way out on `clock-ahead`, and null on every other kind or where it wrote none. */
+	fix: string | null;
 };
 
 /**
@@ -1022,6 +1029,8 @@ export type PaypalSetup =
 	| { kind: 'insecure'; origin: string }
 	/** the app's listeners could not be read. */
 	| { kind: 'unlisted'; failure: PaypalFailure }
+	/** the app's disputes could not be read, which every refund on PayPal reads first. */
+	| { kind: 'disputes-unread'; failure: PaypalFailure }
 	/** the app already holds PayPal's ten listeners, none of them here; `listeners` is all ten. */
 	| { kind: 'full'; listeners: PaypalListener[] }
 	/** PayPal refused the create, so nothing listens here. */

@@ -28,9 +28,64 @@ describe("a row a finger aims at takes the row's floor", () => {
 		// the More sheet's way out: the sheet is open on a phone alone, under rows at the floor.
 		['.adm-sheet__close'],
 		// the foot of a plane something can be added to, as wide as the plane.
-		['.adm-table__add']
+		['.adm-table__add'],
+		// an option in a select's list and in the coin picker's: padding and a line or two of type.
+		['.adm-selectrow'],
+		['.adm-coinrow']
 	])('%s', (selector) => {
 		expect(ruleOf(css, selector).get('min-block-size')).toBe('var(--admin-touch-min)');
+	});
+});
+
+describe("the range slider's thumb is drawn small and aimed at at the floor", () => {
+	const thumb = ruleOf(css, '.adm-range__thumb');
+	const target = ruleOf(css, '.adm-range__thumb::before');
+
+	/** a length ./tokens.css states in rem, as css pixels. */
+	const px = (token: string) => {
+		const stated = tokens.match(new RegExp(`${token}:\\s*([\\d.]+)rem\\s*;`))?.[1];
+		if (stated === undefined) throw new Error(`${token} is not a rem length in ./tokens.css`);
+		return Number.parseFloat(stated) * 16;
+	};
+
+	it("keeps the thumb drawn at its own size, which clears 2.5.8's 24px across", () => {
+		expect(thumb.get('inline-size')).toBe('var(--admin-space-8)');
+		expect(thumb.get('block-size')).toBe('var(--admin-space-8)');
+		expect(px('--admin-space-8')).toBeGreaterThanOrEqual(24);
+	});
+
+	it('lays a target over it out of flow, at the floor in the block axis and centred there', () => {
+		expect(target.get('content')).toBe("''");
+		expect(target.get('position')).toBe('absolute');
+		expect(terms(target.get('block-size'))).toEqual(['--admin-touch-min']);
+		expect(terms(target.get('inset-block-start'))).toEqual(['--admin-touch-min']);
+	});
+
+	// two thumbs a stop apart on a narrow panel stand closer than the floor, and a target wider
+	// than its thumb would cover the neighbour's drawn body and take its press.
+	it("keeps the target at the thumb's drawn size in the inline axis, so it never reaches a neighbour", () => {
+		expect(target.get('inline-size')).toBeUndefined();
+		expect(target.get('inset-inline-start')).toBeUndefined();
+		expect(target.get('inset-inline')).toBe('0');
+	});
+});
+
+describe("a select's list counts the row's floor", () => {
+	// the rule the coin picker's list shares, which is the first to name the select's on a line of
+	// its own.
+	const list = ruleOf(css, '.adm-selectlist');
+
+	// four and a half rows of the floor, and the list's own padding and border at both ends on top,
+	// so a list of four rows stands whole and a fifth shows half of itself.
+	it('is four and a half rows of the floor tall, plus its padding and border', () => {
+		expect(list.get('padding')).toBe('var(--admin-space-2)');
+		expect(list.get('border')).toBe('var(--admin-hairline)');
+		expect(terms(tokens.match(/--admin-hairline:\s*([^;]+);/)?.[1])[0]).toBe(
+			'--admin-border-width'
+		);
+		const height = list.get('max-block-size');
+		expect(height).toMatch(/4\.5 \* var\(--admin-touch-min\)/);
+		expect(terms(height)).toEqual(['--admin-touch-min', '--admin-space-2', '--admin-border-width']);
 	});
 });
 

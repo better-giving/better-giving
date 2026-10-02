@@ -13,7 +13,7 @@ import type { Route } from './+types/api.chariot.webhook';
 // gives: the processor callbacks make one decision and differ only in which adapter the port hands
 // back. those headers argue every choice below; what is written here is the part that is Chariot's.
 //
-// **it is named to nest under no layout, which is a control rather than filing.** the body is read
+// it is named to nest under no layout, which is a control rather than filing. the body is read
 // exactly once, here, as text (CLAUDE.md): `verifyEvent` in $lib/server/payments/chariot.ts checks
 // `chariot-webhook-signature` as an HMAC over the bytes exactly as sent. ../routes.spec.ts holds that
 // this route has no layout above it, and pins its path to `CHARIOT_WEBHOOK_PATH` in

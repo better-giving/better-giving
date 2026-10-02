@@ -194,7 +194,7 @@ async function readJsonBody(request: Request): Promise<unknown> {
 /**
  * the status each refusal answers with.
  *
- * the six inherited from the config ladder answer exactly what that route answers, and that is a
+ * the ones inherited from the config ladder answer exactly what that route answers, and that is a
  * requirement rather than a convenience: the same form in the same state has to look the same to a
  * caller whichever endpoint it asked. the rest are this path's, and they group the same way — a
  * caller reading `error` learns which screen fixes it, a caller reading only the status learns

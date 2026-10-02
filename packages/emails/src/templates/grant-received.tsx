@@ -3,6 +3,7 @@ import { formatMoney } from '../format';
 import type { EmailTemplate } from '../template';
 import { dedicationSentence, NOT_A_TAX_RECEIPT } from './grant';
 import type { Dedication } from './receipt';
+import { greetingFor } from './greeting';
 
 // the donor's thank-you once the organisation has the money their fund granted.
 //
@@ -33,7 +34,7 @@ export interface GrantReceivedData {
 export function template(data: GrantReceivedData): EmailTemplate {
 	const amount = formatMoney(data.amountMinor, data.currency);
 	const subject = `${data.legalName} received your gift`;
-	const greeting = data.donorName === null ? 'Hello,' : `Dear ${data.donorName},`;
+	const greeting = greetingFor(data.donorName);
 	const said = [
 		`Thank you for your gift. The ${amount} from your donor-advised fund has arrived at ` +
 			`${data.legalName}.`,

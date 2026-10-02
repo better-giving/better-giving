@@ -76,6 +76,9 @@ func sessionRoutes(
 type connectPresses struct {
 	guard   sync.Mutex
 	running *connectPress
+	// joining is called by a request that found a press running, before it waits on that press; nil
+	// outside a test, which is how a case knows the request is waiting rather than guessing it.
+	joining func()
 }
 
 // one press, and the outcome every request that joined it is answered with.
@@ -88,7 +91,9 @@ type connectPress struct {
 //
 // The press outlives the request that started it, because a tab closed mid-write would otherwise
 // tear a call that is already storing a credential on the deployment — leaving a session live there
-// that nothing recorded. The call has a deadline of its own, so nothing here waits without bound.
+// that nothing recorded. Every wait the call makes, its turn at the worker's binding list included,
+// is bound by deadlines of its own that deployment.ConnectBound sums, so nothing here waits without
+// bound.
 func (presses *connectPresses) joined(
 	ctx context.Context,
 	press func(context.Context) deployment.Connection,
@@ -96,6 +101,9 @@ func (presses *connectPresses) joined(
 	presses.guard.Lock()
 	if held := presses.running; held != nil {
 		presses.guard.Unlock()
+		if presses.joining != nil {
+			presses.joining()
+		}
 		<-held.done
 		return held.outcome
 	}
@@ -103,14 +111,31 @@ func (presses *connectPresses) joined(
 	presses.running = mine
 	presses.guard.Unlock()
 
-	// deferred so that a press that panics clears it too: net/http recovers the panic and the
-	// process lives on, and every later press would otherwise wait on a done that never closes.
+	// deferred so that the press is cleared however it ends, or every later press would wait on a
+	// done that never closes.
 	defer func() {
 		presses.guard.Lock()
 		presses.running = nil
 		presses.guard.Unlock()
 		close(mine.done)
 	}()
-	mine.outcome = press(context.WithoutCancel(ctx))
+	mine.outcome = outcomeOf(ctx, press)
 	return mine.outcome
+}
+
+// the press's outcome, or — where it panicked — that nothing was found out either way.
+//
+// the panic is recovered here rather than left to net/http, which would drop the pressing request's
+// connection while every request that joined it is answered: one press, two screens. such a press
+// said nothing about the write, and an empty kind is a state no screen draws.
+func outcomeOf(
+	ctx context.Context,
+	press func(context.Context) deployment.Connection,
+) (outcome deployment.Connection) {
+	defer func() {
+		if recover() != nil {
+			outcome = deployment.Connection{Kind: deployment.ConnectUnreachable}
+		}
+	}()
+	return press(context.WithoutCancel(ctx))
 }

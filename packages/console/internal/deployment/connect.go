@@ -31,6 +31,8 @@ import (
 // off the write is refused by the deployment it just connected to — and its gate's one press writes
 // a fresh value that is refused the same way. the wait is bounded and ends connected either way:
 // the write landed and is recorded, and what the deployment says after the bound is the reading's.
+// the one refusal that ends it early is the deployment saying this machine's clock is ahead, which
+// no wait changes.
 //
 // **the token reaches no answer.** what crosses back is when the session ends and where it was
 // written; the credential goes into one request body and into the record on this machine.
@@ -59,7 +61,18 @@ const (
 	// Its own kind and not a failure of the write: the value is live on the deployment and this
 	// console cannot use it, so the way out is the folder rather than the press.
 	ConnectUnkept ConnectionKind = "unkept"
+	// ConnectClockAhead is the deployment refusing the session as ending further out than it ever
+	// lets one run, which is this machine's clock reading ahead of the deployment's.
+	//
+	// Its own kind and not a refusal by cloudflare: the write landed and was recorded, and every
+	// session this clock mints is refused the same way, so the way out is the clock rather than the
+	// press. Message and Fix are the deployment's own words about it.
+	ConnectClockAhead ConnectionKind = "clock-ahead"
 )
+
+// the code a deployment refuses a session under when its expiry is past the deployment's ceiling —
+// packages/app/src/lib/server/console/access.ts's CONSOLE_REFUSALS.
+const clockAhead = "console_clock_ahead"
 
 // Connection is how one press went.
 //
@@ -75,6 +88,10 @@ type Connection struct {
 	// Detail is cloudflare's own words about the call, this machine's about a record it could not
 	// write, or empty where neither wrote any.
 	Detail string `json:"detail"`
+	// Message and Fix are the deployment's own two sentences on ConnectClockAhead, and nil on every
+	// other kind or where it wrote none.
+	Message *string `json:"message"`
+	Fix     *string `json:"fix"`
 }
 
 // ConnectInputs is everything one press is made from.
@@ -102,12 +119,13 @@ const (
 )
 
 // ConnectBound is the longest a connect takes by its own deadlines: the address's reads and the
-// session's one write, made in turn and each bound to cf.ReadTimeout, then SessionBound's wait.
+// session's one write, made in turn and each bound to cf.ReadTimeout, the write's wait for its turn
+// at the binding list, bound to TurnBound, then SessionBound's wait.
 //
 // the page's connect press is answered under a write deadline ../server/server.go's Listen derives
 // from this, so a press that ran its whole course on the deployment still reaches the page that
 // pressed it. TestConnectBoundCoversEveryCallTheLongestConnectMakesInTurn counts the calls.
-const ConnectBound = (addressReads+1)*cf.ReadTimeout + SessionBound
+const ConnectBound = (addressReads+1)*cf.ReadTimeout + TurnBound + SessionBound
 
 // Connect mints a session, writes it to the deployment, and records it — or says why it did not.
 func Connect(ctx context.Context, inputs ConnectInputs) Connection {
@@ -143,7 +161,14 @@ func Connect(ctx context.Context, inputs ConnectInputs) Connection {
 	}); err != nil {
 		return Connection{Kind: ConnectUnkept, Origin: origin, Detail: err.Error()}
 	}
-	takes(ctx, inputs, inputs.Surface(origin, token))
+	if refused := takes(ctx, inputs, inputs.Surface(origin, token)); refused != nil {
+		return Connection{
+			Kind:    ConnectClockAhead,
+			Origin:  origin,
+			Message: refused.Message,
+			Fix:     refused.Fix,
+		}
+	}
 
 	return Connection{
 		Kind:      Connected,
@@ -173,21 +198,28 @@ func unconnected(written Written) Connection {
 	return Connection{Kind: ConnectFailed, Detail: written.Detail}
 }
 
-// waits until the deployment takes the session it was just written, or the bound elapses.
+// waits until the deployment takes the session it was just written, or the bound elapses — or hands
+// back the refusal that says it never will.
 //
-// only a refusal is not yet: any other answer — the report, a deployment older than the surface, one
-// nothing reached — is a state the reading draws, and waiting longer would change none of them.
-func takes(ctx context.Context, inputs ConnectInputs, get cf.Get) {
+// a refusal is not yet, but for one: a deployment refusing the expiry as past its ceiling refuses
+// every session this clock mints, so a wait for it is a wait out the bound for nothing. any other
+// answer — the report, a deployment older than the surface, one nothing reached — is a state the
+// reading draws, and waiting longer would change none of them.
+func takes(ctx context.Context, inputs ConnectInputs, get cf.Get) *NoReport {
 	bound, stop := context.WithTimeout(ctx, inputs.Within)
 	defer stop()
 
 	for {
-		if Report(bound, get).Kind != NoReportRefused {
-			return
+		read := Report(bound, get)
+		if read.Kind != NoReportRefused {
+			return nil
+		}
+		if read.Error != nil && *read.Error == clockAhead {
+			return &read.NoReport
 		}
 		select {
 		case <-bound.Done():
-			return
+			return nil
 		case <-time.After(inputs.Every):
 		}
 	}

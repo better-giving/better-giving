@@ -44,7 +44,7 @@ import {
 //     validation — the same trick `PostableAccountId` plays on the account id, and the
 //     reason there is no `assertBalanced()` for callers to forget to call.
 //
-// sign convention, settled project-wide: **`+` is a debit, `−` is a credit.** there is no
+// sign convention, settled project-wide: `+` is a debit, `−` is a credit. there is no
 // `direction` column and no per-account-type sign flipping. a $100 cash gift is
 // `+10_000` to 1010 Bank and `−10_000` to 4110 Donations.
 //

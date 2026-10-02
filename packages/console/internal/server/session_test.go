@@ -187,16 +187,12 @@ func TestTwoConnectPressesInFlightProduceOneSession(t *testing.T) {
 	}
 }
 
-// net/http recovers a handler's panic and the process lives on, so a press that panicked must not
-// leave the next one waiting on it.
+// a press that panicked must not leave the next one waiting on it.
 func TestAConnectPressThatPanickedLeavesTheNextPressFreeToRun(t *testing.T) {
 	presses := &connectPresses{}
-	func() {
-		defer func() { _ = recover() }()
-		presses.joined(context.Background(), func(context.Context) deployment.Connection {
-			panic("the press broke")
-		})
-	}()
+	presses.joined(context.Background(), func(context.Context) deployment.Connection {
+		panic("the press broke")
+	})
 
 	answered := make(chan deployment.Connection, 1)
 	go func() {
@@ -211,6 +207,63 @@ func TestAConnectPressThatPanickedLeavesTheNextPressFreeToRun(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the next press is still waiting on the one that panicked")
+	}
+}
+
+// a request that joined a press that panicked was never told how it went, and an empty kind is a
+// state no screen draws.
+func TestARequestThatJoinedAPressThatPanickedIsAnsweredUnreachable(t *testing.T) {
+	waiting := make(chan struct{})
+	presses := &connectPresses{joining: func() { close(waiting) }}
+	started, release := make(chan struct{}), make(chan struct{})
+	go func() {
+		presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			close(started)
+			<-release
+			panic("the press broke")
+		})
+	}()
+	<-started
+
+	answered := make(chan deployment.Connection, 1)
+	go func() {
+		answered <- presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			t.Error("the request ran a press of its own rather than joining the one running")
+			return deployment.Connection{Kind: deployment.Connected}
+		})
+	}()
+	// the joiner has to be waiting on the press before it breaks.
+	<-waiting
+	close(release)
+
+	select {
+	case got := <-answered:
+		if got.Kind != deployment.ConnectUnreachable {
+			t.Fatalf("kind = %q, want %q", got.Kind, deployment.ConnectUnreachable)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the request that joined is still waiting on the press that panicked")
+	}
+}
+
+// the request that started a press that panicked is told what every request that joined it is,
+// rather than having its connection dropped mid-answer.
+func TestTheRequestWhosePressPanickedIsAnsweredUnreachable(t *testing.T) {
+	presses := &connectPresses{}
+	answered := make(chan deployment.Connection, 1)
+	go func() {
+		defer func() {
+			if broke := recover(); broke != nil {
+				t.Errorf("the panic reached the request that pressed: %v", broke)
+				close(answered)
+			}
+		}()
+		answered <- presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			panic("the press broke")
+		})
+	}()
+	if got := <-answered; got.Kind != deployment.ConnectUnreachable {
+		t.Fatalf("kind = %q, want %q", got.Kind, deployment.ConnectUnreachable)
 	}
 }
 

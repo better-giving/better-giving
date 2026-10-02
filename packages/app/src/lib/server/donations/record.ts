@@ -239,12 +239,12 @@ export type RecordedDonation = {
  * in ../payments/provider.ts and `SEND_FAILURE_REASONS` in ../email/provider.ts do it.
  *
  * the reason this module returns a result at all, where ../ledger/posting.ts throws, is the shape
- * of its most likely failure. a repeated attempt is ordinary here — `IntentRequest.idempotencyKey`
- * is designed to make one resolve to the intent that already exists — so the call arrives with a
- * transaction id the database already holds, and it comes back as drizzle's `Failed query: …` with
- * sqlite's code demoted to `.cause`. presented as a throw, that is indistinguishable at the call
- * site from a bug, and a public payment route would have to grow its own cause-walker to tell the
- * two apart or answer 500 to a donation that succeeded.
+ * of its most likely failure. a donor-advised fund's session sent twice is ordinary here — Chariot
+ * answers the second with the grant the first created (`mintGrant` in ./quote.ts) — so the call
+ * arrives with a transaction id the database already holds, and it comes back as drizzle's
+ * `Failed query: …` with sqlite's code demoted to `.cause`. presented as a throw, that is
+ * indistinguishable at the call site from a bug, and a public payment route would have to grow its
+ * own cause-walker to tell the two apart or answer 500 to a donation that succeeded.
  *
  *   malformed_gift    — the gift does not add up, and nothing was written. this app built it, so
  *                       repeating the identical call changes nothing. see `problemWith`.
@@ -370,9 +370,10 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
  *
  * the statements go in one `batch()` in foreign-key order — contact, donation, lines, payment —
  * one statement per row and never a multi-row `INSERT`, because D1 caps a query at 100 bound
- * parameters (CLAUDE.md). `Db` has no `transaction` and D1 has none, so this batch is the only
- * atomic unit available and everything the gift is made of has to be inside it: a donation with no
- * payment, or a contact with no gift, is a state nothing in the schema detects.
+ * parameters (https://developers.cloudflare.com/d1/platform/limits/). `Db` has no `transaction`
+ * and D1 has none, so this batch is the only atomic unit available and everything the gift is made
+ * of has to be inside it: a donation with no payment, or a contact with no gift, is a state nothing
+ * in the schema detects.
  *
  * it never throws — every outcome is a `RecordResult`, including a rejection out of `batch()` and
  * a fault from anywhere else in the call. see `RECORD_FAILURE_REASONS` for what a caller may find
@@ -674,11 +675,11 @@ function depositProblem(input: RecordDonationInput): string | null {
  *
  *   - a key collision, whose code and meaning are the caller's (`collision`). for `recordDonation`
  *     it is `SQLITE_CONSTRAINT_UNIQUE` on `payment_provider_txn_idx` (../db/schema.ts), and it is
- *     the ordinary outcome of a retry rather than a fault. `IntentRequest.idempotencyKey` in
- *     ../payments/provider.ts exists so that an attempt made twice resolves to the intent that
- *     already exists, which means the second call arrives here with a transaction id already in
- *     the table. the gift was recorded the first time; answering that with a fault would fail a
- *     donation that succeeded.
+ *     a fund's session sent twice rather than a fault: Chariot answers the second call with the
+ *     grant the first created, so it arrives here with a transaction id already in the table. a
+ *     retried single-gift POST never does — its `idempotencyKey` is a fresh `donationId` per call,
+ *     so it mints a second gift. the gift was recorded the first time; answering that with a fault
+ *     would fail a donation that succeeded.
  *   - `SQLITE_CONSTRAINT_FOREIGNKEY` is one of the gift's outward references: the form, the cause
  *     it is credited to, or the fund a line names. the reason is not called `unknown_form` because
  *     the constraint cannot say which — the code is the same for all three — and a name that picked

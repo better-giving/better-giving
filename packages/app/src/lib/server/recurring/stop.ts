@@ -17,8 +17,8 @@ import { readRecurringPlan, stopRecurringPlan } from './queries';
 // which is where the dashboard's copy lives and where it stays reviewable in one place.
 
 /**
- * what stopping a gift turned out to be, in the five readings a screen has to tell apart plus the
- * one that is not a state of this deployment at all.
+ * what stopping a gift turned out to be: the readings a screen has to tell apart, plus one that is
+ * not a state of this deployment at all.
  *
  *   gone            no commitment has that id. a 404, not a failure to report on a page.
  *   already-stopped it is already stopped. a double press or a stale tab, and refusing it is what

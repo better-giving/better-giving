@@ -20,7 +20,7 @@ import {
 import { DonateAnnouncer } from './announce';
 import * as copy from './copy';
 import { initialSnapshot, startCheckout, type Checkout, type CheckoutMounts } from './machine';
-import { reactPropTypes, type ReactApi } from './normalize';
+import { createReactPropTypes, type ReactApi } from './normalize';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
@@ -161,6 +161,12 @@ function CheckoutCard({
 
 	const paymentMount = useRef<HTMLDivElement | null>(null);
 	const challengeMount = useRef<HTMLDivElement | null>(null);
+	/**
+	 * the return this card claimed, by the form it was claimed for. the claim scrubs the token off
+	 * the url, and strict mode runs the effect below twice on one mount, so a second run reuses the
+	 * claim rather than finding nothing.
+	 */
+	const claimed = useRef<{ readonly formId: string; readonly token: string | null } | null>(null);
 
 	useEffect(() => {
 		const payment = paymentMount.current;
@@ -168,10 +174,13 @@ function CheckoutCard({
 		if (payment === null || challenge === null) return () => {};
 		// the token rewrites the URL and is claimed once, so it is taken here rather than in a render:
 		// a page holding two cards for one form would otherwise both claim it.
+		if (claimed.current?.formId !== config.formId) {
+			claimed.current = { formId: config.formId, token: takeResumeToken(document, config.formId) };
+		}
 		const started = startCheckout(config, {
 			paymentMount: payment,
 			challengeMount: challenge,
-			resumeToken: takeResumeToken(document, config.formId),
+			resumeToken: claimed.current.token,
 			...(seams === undefined ? {} : { seams })
 		});
 		started.rows(setPaymentRows);
@@ -212,10 +221,11 @@ function CheckoutCard({
 		},
 		[live]
 	);
-	const api = connect(snapshot, send, reactPropTypes);
+	const [propTypes] = useState(createReactPropTypes);
+	const api = connect(snapshot, send, propTypes);
 	/** the projection as it stands after a press, which is how a refusal is told from a move. */
 	const now = (): ReactApi =>
-		live === null ? api : connect(live.actor.getSnapshot(), send, reactPropTypes);
+		live === null ? api : connect(live.actor.getSnapshot(), send, propTypes);
 
 	// ── the view's own state ─────────────────────────────────────────────────────────────────────
 
@@ -227,7 +237,7 @@ function CheckoutCard({
 	const [pressed, setPressed] = useState(false);
 	/** the free entry's own text: the tiles and the box are two views of one number. */
 	const [entry, setEntry] = useState(() => {
-		const sole = connect(initial, () => {}, reactPropTypes).amountGroup.options;
+		const sole = connect(initial, () => {}, propTypes).amountGroup.options;
 		const only = sole.length === 1 ? sole[0] : undefined;
 		return only === undefined ? '' : formatFigure(Number(only.value), locale, currency);
 	});

@@ -49,8 +49,12 @@ export const CONSOLE_TOKEN_MIN_RANDOM = 43;
  * disconnecting leaves a live bearer credential set on a public hostname and held by nobody. a
  * laptop lid is that case, and the expiry is what ends it.
  *
- * spent by `mintConsoleToken` below and read back out of the value by the deployment, so both
- * halves agree the unit is seconds without either of them stating it twice.
+ * the token a deployment reads is minted by the console binary from its own `sessionSeconds` in
+ * `packages/console/internal/session/session.go`; `mintConsoleToken` below is this side's statement
+ * of the same format. this constant is the deployment's ceiling: it refuses an expiry further out
+ * than this from its own clock, past a small allowance for skew (`CONSOLE_CLOCK_SKEW_SECONDS` in
+ * `packages/app/src/lib/server/console/access.ts`), so the console's `sessionSeconds` must not
+ * exceed it — a longer one is refused as `console_clock_ahead` on every connect.
  */
 export const CONSOLE_SESSION_SECONDS = 12 * 60 * 60;
 
@@ -104,9 +108,9 @@ export function formatConsoleToken(expiresAt: Date, random: string): string {
  *
  * the expiry is digits only. `Number(' 1755600000')` and `Number('0x68a4c180')` are both finite
  * numbers, so a shape check that leaned on `Number` alone would read a padded paste and a hex
- * literal as valid times; `Number.isSafeInteger` on top of that is what keeps a value too large
- * for a `Date` out of one, since `new Date(1e21)` is `Invalid Date` and every comparison against
- * it is false — which would read as a session that never expires.
+ * literal as valid times. a `Date` that is not finite is refused on top of that, since
+ * `new Date(8_640_000_000_001_000)` is `Invalid Date` though its milliseconds are a safe integer,
+ * and every comparison against it is false — which would read as a session that never expires.
  */
 export function parseConsoleToken(value: string): ConsoleTokenParse {
 	const parts = value.split('.');
@@ -118,10 +122,10 @@ export function parseConsoleToken(value: string): ConsoleTokenParse {
 		return { ok: false, reason: 'random-too-short' };
 
 	if (!/^\d+$/.test(expiry)) return { ok: false, reason: 'expiry-unreadable' };
-	const seconds = Number(expiry);
-	if (!Number.isSafeInteger(seconds * 1000)) return { ok: false, reason: 'expiry-unreadable' };
+	const expiresAt = new Date(Number(expiry) * 1000);
+	if (!Number.isFinite(expiresAt.getTime())) return { ok: false, reason: 'expiry-unreadable' };
 
-	return { ok: true, token: { expiresAt: new Date(seconds * 1000), random } };
+	return { ok: true, token: { expiresAt, random } };
 }
 
 /** a minted session: the value to write to the deployment, and the two halves it was made of. */

@@ -21,7 +21,7 @@ import './app.css';
  * decoration — with no gutter a full-width specimen sits flush against the viewport edge, which is
  * a width no screen puts it at and a state the specimen is then wrong about. `.adm-section` on each
  * preview is the rule between one component's specimens and the next's, without which a page of
- * thirty-three runs together and a reader cannot tell whose state they are looking at.
+ * dozens runs together and a reader cannot tell whose state they are looking at.
  */
 
 const previews = import.meta.glob<{ default: () => ReactNode }>('./previews/*.tsx', {

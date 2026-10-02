@@ -79,8 +79,9 @@ describe('uncollected.template — what the donor is told', () => {
 		for (const arm of await arms()) expect(arm).toContain('There is nothing you need to do');
 	});
 
-	it('addresses the donor by name, and greets neutrally without one', async () => {
-		expect((await arms())[0]).toContain('Dear Ada Lovelace,');
+	it('greets the donor as the receipt does, by the first token of an untrimmed name, and neutrally without one', async () => {
+		for (const arm of await arms({ donorName: '  Ada Lovelace ' }))
+			expect(arm).toContain('Dear Ada,');
 		for (const arm of await arms({ donorName: null })) {
 			expect(arm).toContain('Hello,');
 			expect(arm).not.toContain('null');

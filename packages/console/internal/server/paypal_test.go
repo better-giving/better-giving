@@ -147,12 +147,13 @@ func TestThePaypalPressRegistersTheListenerAndWritesThePairAndItsIdAsVars(t *tes
 	}
 
 	calls := asked()
-	if len(calls) != 3 || !strings.HasPrefix(calls[2], "POST /v1/notifications/webhooks ") {
+	if len(calls) != 4 || !strings.HasPrefix(calls[2], "GET /v1/customer/disputes ") ||
+		!strings.HasPrefix(calls[3], "POST /v1/notifications/webhooks ") {
 		t.Fatalf("PayPal was asked %v", calls)
 	}
 	listenerAt := "https://" + release.Baked.Name + ".hound.workers.dev" + release.PaypalWebhookPath
-	if !strings.Contains(calls[2], `"url":"`+listenerAt+`"`) {
-		t.Errorf("the listener was registered as %s, want at %s", calls[2], listenerAt)
+	if !strings.Contains(calls[3], `"url":"`+listenerAt+`"`) {
+		t.Errorf("the listener was registered as %s, want at %s", calls[3], listenerAt)
 	}
 
 	held := strings.Join(*cloudflare, ",")

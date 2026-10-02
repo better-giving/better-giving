@@ -12,7 +12,7 @@ import type { Route } from './+types/api.nowpayments.webhook';
 // gives: the processor callbacks make one decision and differ only in which adapter the port hands
 // back. those headers argue every choice below; what is written here is the part that is NOWPayments'.
 //
-// **it is named to nest under no layout, which is a control rather than filing.** the body is read
+// it is named to nest under no layout, which is a control rather than filing. the body is read
 // exactly once, here, as text (CLAUDE.md): `verifyEvent` in $lib/server/payments/nowpayments.ts checks
 // `x-nowpayments-sig` before a byte of it is believed. ../routes.spec.ts holds that this route has no
 // layout above it, and pins its path to `NOWPAYMENTS_IPN_PATH` in

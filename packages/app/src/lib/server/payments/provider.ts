@@ -451,6 +451,14 @@ export type PaymentFailure = {
 	 * is inside it, as it is inside `amountMinor`. absent on every other refusal.
 	 */
 	readonly minimumMinor?: number;
+	/**
+	 * `invalid_request` only, and only where the processor gave a reason about this gift: the
+	 * processor's own words for it, which a donor may be shown, while `detail` around it is written
+	 * for the log and is free to be reworded. one line of at most 200 UTF-16 units and an ellipsis,
+	 * carrying no credential — anything key-shaped is replaced — and no field of the transaction.
+	 * absent on every other refusal.
+	 */
+	readonly providerSaid?: string;
 };
 
 /**
@@ -1875,7 +1883,12 @@ export interface PaymentProvider {
 	verifyEvent(delivery: WebhookDelivery): Promise<PaymentResult<PaymentEvent>>;
 
 	/**
-	 * reads what a transaction currently is. the reconciliation read, safe to repeat.
+	 * reads what a transaction currently is, and may complete an authorisation the donor already
+	 * gave: ./paypal.ts captures an `APPROVED` order here, because PayPal has no auto-capture (its
+	 * header argues it). the reconciliation, safe to repeat — an order captured once reads as
+	 * captured the next time — and never a read for a page that only shows a transaction, which
+	 * handed a PayPal id would move the donor's money. which modules may call it is held by
+	 * ./sole-settlement-reader.spec.ts.
 	 *
 	 * it can take seconds rather than one round trip, and that is the arm's contract rather than an
 	 * implementation detail a caller may ignore: a charge whose fee the processor has not computed yet

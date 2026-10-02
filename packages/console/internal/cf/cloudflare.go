@@ -156,12 +156,16 @@ func APIMergePatch(credential Credential) Send {
 	return JSONSend(API, MergePatchHeaders(credential))
 }
 
-// APIMultipart is a multipart call to cloudflare's api, bound to the credential once.
-//
-// The two writes this console makes that carry no json: the script upload, and the settings patch a
-// var goes up in — which cloudflare refuses a json body for outright.
+// APIMultipart is a multipart call to cloudflare's api, bound to the credential once, and to the
+// time an upload takes: what goes up through it is the worker's script.
 func APIMultipart(credential Credential) MultipartUpload {
 	return MultipartSend(API, apiHeaders(credential))
+}
+
+// APISettings is the same call bound to the time a read takes, which is the settings patch a var
+// goes up in: multipart because cloudflare refuses a json body for it outright, and one small part.
+func APISettings(credential Credential) MultipartUpload {
+	return MultipartSendWithin(API, apiHeaders(credential), ReadTimeout)
 }
 
 // APIGet is the same call bound to the one method a read is made with.

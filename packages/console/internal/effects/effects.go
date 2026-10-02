@@ -50,6 +50,7 @@ func Chain(
 	credential cf.Credential,
 	sends func(cf.Credential) cf.Send,
 	schema func(cf.Credential) cf.Send,
+	upload func(cf.Credential) cf.MultipartUpload,
 	assets func(token string) cf.MultipartUpload,
 	bundle release.Source,
 	version string,
@@ -65,7 +66,7 @@ func Chain(
 		return deploy.Options{
 			Send:       sends(credential),
 			Migrate:    schema(credential),
-			Upload:     door.Settings,
+			Upload:     upload(credential),
 			Assets:     assets,
 			Releases:   bundle.Client,
 			BundleURL:  bundle.URL,

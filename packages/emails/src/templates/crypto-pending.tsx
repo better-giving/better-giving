@@ -3,6 +3,7 @@ import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/l
 import { formatDateTime } from '../format';
 import type { EmailTemplate } from '../template';
 import { box, FONT_MONO, PANEL_BG, SPACE_2, SPACE_4, SPACE_6, SPACE_8 } from '../tokens';
+import { greetingFor } from './greeting';
 
 // the donor's "here is where to send your crypto gift", sent when they are shown an address.
 //
@@ -58,7 +59,7 @@ const LEAD = 'Where to send it:';
 /** the notice, as a subject and two arms. */
 export function template(data: CryptoPendingData): EmailTemplate {
 	const subject = `Send your ${data.coinName} gift to ${data.legalName}`;
-	const greeting = data.donorName === null ? 'Hello,' : `Dear ${data.donorName},`;
+	const greeting = greetingFor(data.donorName);
 	const said = `Thank you for giving to ${data.legalName}. Your gift is made when the coins below arrive.`;
 	const rows: readonly Row[] = [
 		{ label: LABELS.coin, value: `${data.coinName} (${data.network} network)` },

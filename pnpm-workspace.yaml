@@ -4,11 +4,11 @@ catalog:
   # a catalog entry earns its place by having a second package.json to drift against. `@types/node`,
   # `typescript`, `vite` and `vitest` are each declared by three or more of the packages, and
   # `happy-dom` by packages/app, packages/form and packages/operator. `@ark-ui/react` is declared by
-  # packages/app and packages/operator, and the drift it would carry is sharper than a version
-  # number: the two would be two copies of one state machine, and a screen that renders a part from
-  # each is a trigger and a card that do not know about each other. the react family —
-  # `react`, `react-dom`, `@types/react`, `@types/react-dom` — is here on the same rule: every
-  # package that renders react declares it.
+  # every package that renders an operator screen or previews one, and the drift it would carry is
+  # sharper than a version number: two of them would be two copies of one state machine, and a
+  # screen that renders a part from each is a trigger and a card that do not know about each
+  # other. the react family — `react`, `react-dom`, `@types/react`, `@types/react-dom` — is here
+  # on the same rule: every package that renders react declares it.
   #
   # `react` carries a second reason on top of that one: a second copy in one tree is a second
   # runtime — a component resolved against its own react dispatcher — so the pin is what keeps

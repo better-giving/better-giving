@@ -808,6 +808,108 @@ func TestAPressWhoseCallerGivesUpWhileWaitingWritesNothing(t *testing.T) {
 	}
 }
 
+// **a press with no deadline of its own still waits its turn for no longer than TurnBound.** the
+// connect press runs past the request that made it, so a turn held by a stalled setup run would
+// otherwise hold the connect, and the answer the page is waiting on, for as long as that run takes.
+func TestAPressQueuedBehindAHeldTurnGivesUpAtTheTurnsBound(t *testing.T) {
+	reading, release := make(chan struct{}), make(chan struct{})
+	letGo := sync.OnceFunc(func() { close(release) })
+	defer letGo()
+	var calls atomic.Int32
+	open := heldOpen(reading, release, &calls)
+
+	waited := turnWithin
+	turnWithin = 50 * time.Millisecond
+	t.Cleanup(func() { turnWithin = waited })
+
+	first := make(chan Written, 1)
+	go func() { first <- SetVars(context.Background(), open, map[string]*string{"SMTP_HOST": value("v")}) }()
+	<-reading
+
+	answered := make(chan Written, 1)
+	go func() { answered <- WriteConsoleToken(context.Background(), open, "bg1.1.secret") }()
+	select {
+	case written := <-answered:
+		if written.Kind != WriteUnreachable || written.Detail != turnHeld {
+			t.Fatalf("wrote %+v", written)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the press was still waiting its turn past the bound")
+	}
+	if made := calls.Load(); made != 1 {
+		t.Fatalf("%d calls reached cloudflare while the first press held the list", made)
+	}
+
+	letGo()
+	if written := <-first; written.Kind != WriteSet {
+		t.Fatalf("the first press wrote %+v", written)
+	}
+}
+
+// a caller whose own deadline ends first is told that, and not that the turn was held past its
+// bound: the two have different ways out, and only the second is this console's own other write.
+func TestAPressWhoseOwnDeadlineEndsWhileItWaitsIsToldItsOwnDeadline(t *testing.T) {
+	reading, release := make(chan struct{}), make(chan struct{})
+	letGo := sync.OnceFunc(func() { close(release) })
+	defer letGo()
+	var calls atomic.Int32
+	open := heldOpen(reading, release, &calls)
+
+	first := make(chan Written, 1)
+	go func() { first <- SetVars(context.Background(), open, map[string]*string{"SMTP_HOST": value("v")}) }()
+	<-reading
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	written := WriteConsoleToken(ctx, open, "bg1.1.secret")
+	if written.Kind != WriteUnreachable || written.Detail != context.DeadlineExceeded.Error() {
+		t.Fatalf("wrote %+v", written)
+	}
+
+	letGo()
+	if written := <-first; written.Kind != WriteSet {
+		t.Fatalf("the first press wrote %+v", written)
+	}
+}
+
+// a waiter behind one healthy holder still writes: TurnBound is at least every call the longest
+// holder makes under the turn, each at cf.ReadTimeout — the read, the secrets patch, and the settings
+// patch, which the doors ../server and cmd/better-giving build send through cf.APISettings.
+func TestTurnBoundCoversEveryCallTheLongestHolderMakesUnderTheTurn(t *testing.T) {
+	calls := 0
+	open := Door{
+		AccountID:  account,
+		WorkerName: worker + "-longest",
+		Get: func(context.Context, string) cf.Answer {
+			calls++
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: varsHeld(
+				map[string]any{"name": "ADMIN_PASSWORD", "type": "secret_text"},
+				map[string]any{"name": "TURNSTILE_SITE_KEY", "type": "plain_text", "text": "0x4"},
+			)}
+		},
+		Settings: func(context.Context, string, string, []cf.Part, cf.Sending) cf.Answer {
+			calls++
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(map[string]any{})}
+		},
+		Patch: func(context.Context, string, string, any) cf.Answer {
+			calls++
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(map[string]any{})}
+		},
+	}
+	// a var set and a credential freed in one press is the most a holder asks of cloudflare.
+	written := SetVars(context.Background(), open, map[string]*string{
+		"ADMIN_PASSWORD":     nil,
+		"TURNSTILE_SITE_KEY": value("0x9"),
+	})
+	if written.Kind != WriteSet {
+		t.Fatalf("wrote %+v", written)
+	}
+	least := time.Duration(calls) * cf.ReadTimeout
+	if TurnBound < least {
+		t.Fatalf("TurnBound is %s and a holder's %d calls take %s", TurnBound, calls, least)
+	}
+}
+
 // **a press cloudflare refused gives the list back.** the next press is the operator trying again,
 // and it must not wait forever behind the one that failed.
 func TestAPressAfterOneThatFailedGoesAhead(t *testing.T) {

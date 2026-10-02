@@ -20,7 +20,7 @@ import {
 	freeWithheldVars,
 	setVars
 } from '../api/client';
-import type { Blocked, NoReport } from '../api/types';
+import type { Blocked, Connection, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
 import type { PlanAnswer } from '../lib/cloudflare-plan';
 import { PLAN_INTENT, planEdit } from '../lib/cloudflare-plan';
@@ -31,7 +31,7 @@ import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
 import { forgetReadings } from '../lib/processor-cache';
 import { ProductFoot } from '../lib/product-foot';
-import { Said } from '../lib/said';
+import { Refusal, Said } from '../lib/said';
 import { UNREAD_ANSWER_TITLE } from '../lib/unread-answer';
 import { FREE_INTENT } from '../lib/withheld-values';
 import type { Route } from './+types/_index';
@@ -592,50 +592,98 @@ function UnreachableFace({
 				>
 					Connect
 				</Button>
-				{connected === null || connected.kind === 'connected' ? null : (
-					// reported at the control that was pressed. the row stands on its own rather than
-					// under a box: what this is about is a press, and `Field` draws its rows under the
-					// box it labels — there is no box here to hang one off.
-					<FieldMessage>
-						{connected.kind === 'nowhere' ? (
-							// the same words ../lib/smtp-fold.tsx says this in, because it is the same
-							// fact: the deployment answers nowhere, and the way out is over at cloudflare.
-							<>
-								This deployment answers on no address, so there's nowhere to connect to. Turn its{' '}
-								<InlineCode>workers.dev</InlineCode> address back on, or attach a domain, at{' '}
-								<a href={DASHBOARD} target="_blank" rel="noreferrer">
-									dash.cloudflare.com
-								</a>{' '}
-								&rarr; Compute (Workers), then try again.
-							</>
-						) : connected.kind === 'refused' ? (
-							<>
-								Cloudflare won't let this sign-in change <InlineCode>{workerName}</InlineCode> in{' '}
-								{accountName}. Nothing was connected. Ask an administrator of that account for
-								administrator access, or switch account.
-							</>
-						) : connected.kind === 'unreachable' ? (
-							// this machine's own call failing, so it is kept off cloudflare's name: what
-							// the slab under it carries is a fetch that never landed and no sentence
-							// cloudflare sent (../lib/secret-trouble.tsx).
-							<>
-								This console couldn't reach Cloudflare, so nothing was connected. Check this
-								machine's connection, then try again.
-							</>
-						) : (
-							'Nothing was connected. This is what Cloudflare said:'
-						)}
-					</FieldMessage>
-				)}
-				{connected?.kind === 'refused' ||
-				connected?.kind === 'unreachable' ||
-				connected?.kind === 'failed' ? (
-					<Said answer={connected} />
-				) : null}
+				<ConnectOutcome connected={connected} workerName={workerName} accountName={accountName} />
 			</Form>
 			<p className="adm-hint">A connection lasts twelve hours.</p>
 		</div>
 	);
+}
+
+/**
+ * how the connect press went — nothing where it connected or was not pressed.
+ *
+ * exported for ./_index.spec.ts, which draws it without the router the gate's form needs.
+ */
+export function ConnectOutcome({
+	connected,
+	workerName,
+	accountName
+}: {
+	connected: Connection | null;
+	workerName: string;
+	accountName: string;
+}): ReactNode {
+	if (connected === null) return null;
+	// reported at the control that was pressed. the row stands on its own rather than under a box:
+	// what this is about is a press, and `Field` draws its rows under the box it labels — there is no
+	// box here to hang one off.
+	switch (connected.kind) {
+		case 'connected':
+			return null;
+		case 'nowhere':
+			// the same words ../lib/smtp-fold.tsx says this in, because it is the same fact: the
+			// deployment answers nowhere, and the way out is over at cloudflare.
+			return (
+				<FieldMessage>
+					This deployment answers on no address, so there's nowhere to connect to. Turn its{' '}
+					<InlineCode>workers.dev</InlineCode> address back on, or attach a domain, at{' '}
+					<a href={DASHBOARD} target="_blank" rel="noreferrer">
+						dash.cloudflare.com
+					</a>{' '}
+					&rarr; Compute (Workers), then try again.
+				</FieldMessage>
+			);
+		case 'refused':
+			return (
+				<>
+					<FieldMessage>
+						Cloudflare won't let this sign-in change <InlineCode>{workerName}</InlineCode> in{' '}
+						{accountName}. Nothing was connected. Ask an administrator of that account for
+						administrator access, or switch account.
+					</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
+		case 'unreachable':
+			// this machine's own call failing, so it is kept off cloudflare's name: what the slab under
+			// it carries is a fetch that never landed and no sentence cloudflare sent
+			// (../lib/secret-trouble.tsx).
+			return (
+				<>
+					<FieldMessage>
+						This console couldn't reach Cloudflare, so nothing was connected. Check this machine's
+						connection, then try again.
+					</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
+		case 'clock-ahead':
+			// the deployment's own sentences with none of this console's over them: the session was
+			// written and the deployment refused it for this machine's clock, so cloudflare said nothing
+			// about it and another press is refused the same way
+			// (packages/console/internal/deployment/connect.go).
+			return (
+				<Refusal
+					refusal={{
+						message:
+							connected.message ??
+							"This deployment refused the session because this machine's clock is ahead of its own. Correct this machine's clock, then connect again.",
+						fix: connected.fix
+					}}
+				/>
+			);
+		case 'failed':
+			return (
+				<>
+					<FieldMessage>Nothing was connected. This is what Cloudflare said:</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
+		case 'unkept':
+			return <FieldMessage>Nothing was connected. This is what Cloudflare said:</FieldMessage>;
+		default:
+			return connected.kind satisfies never;
+	}
 }
 
 /**
