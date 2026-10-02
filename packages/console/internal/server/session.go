@@ -76,6 +76,9 @@ func sessionRoutes(
 type connectPresses struct {
 	guard   sync.Mutex
 	running *connectPress
+	// joining is called by a request that found a press running, before it waits on that press; nil
+	// outside a test, which is how a case knows the request is waiting rather than guessing it.
+	joining func()
 }
 
 // one press, and the outcome every request that joined it is answered with.
@@ -98,6 +101,9 @@ func (presses *connectPresses) joined(
 	presses.guard.Lock()
 	if held := presses.running; held != nil {
 		presses.guard.Unlock()
+		if presses.joining != nil {
+			presses.joining()
+		}
 		<-held.done
 		return held.outcome
 	}
@@ -105,21 +111,31 @@ func (presses *connectPresses) joined(
 	presses.running = mine
 	presses.guard.Unlock()
 
-	// deferred so that a press that panics clears it too: net/http recovers the panic and the
-	// process lives on, and every later press would otherwise wait on a done that never closes.
-	// such a press said nothing about the write, so what every request that joined it is answered
-	// is that nothing was found out either way — an empty kind is a state no screen draws.
-	returned := false
+	// deferred so that a press that panics clears it too, or every later press would wait on a done
+	// that never closes.
 	defer func() {
-		if !returned {
-			mine.outcome = deployment.Connection{Kind: deployment.ConnectUnreachable}
-		}
 		presses.guard.Lock()
 		presses.running = nil
 		presses.guard.Unlock()
 		close(mine.done)
 	}()
-	mine.outcome = press(context.WithoutCancel(ctx))
-	returned = true
+	mine.outcome = outcomeOf(ctx, press)
 	return mine.outcome
+}
+
+// the press's outcome, or — where it panicked — that nothing was found out either way.
+//
+// the panic is recovered here rather than left to net/http, which would drop the pressing request's
+// connection while every request that joined it is answered: one press, two screens. such a press
+// said nothing about the write, and an empty kind is a state no screen draws.
+func outcomeOf(
+	ctx context.Context,
+	press func(context.Context) deployment.Connection,
+) (outcome deployment.Connection) {
+	defer func() {
+		if recover() != nil {
+			outcome = deployment.Connection{Kind: deployment.ConnectUnreachable}
+		}
+	}()
+	return press(context.WithoutCancel(ctx))
 }

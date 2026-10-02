@@ -830,7 +830,7 @@ func TestAPressQueuedBehindAHeldTurnGivesUpAtTheTurnsBound(t *testing.T) {
 	go func() { answered <- WriteConsoleToken(context.Background(), open, "bg1.1.secret") }()
 	select {
 	case written := <-answered:
-		if written.Kind != WriteUnreachable || written.Detail != context.DeadlineExceeded.Error() {
+		if written.Kind != WriteUnreachable || written.Detail != turnHeld {
 			t.Fatalf("wrote %+v", written)
 		}
 	case <-time.After(2 * time.Second):
@@ -846,28 +846,53 @@ func TestAPressQueuedBehindAHeldTurnGivesUpAtTheTurnsBound(t *testing.T) {
 	}
 }
 
+// a caller whose own deadline ends first is told that, and not that the turn was held past its
+// bound: the two have different ways out, and only the second is this console's own other write.
+func TestAPressWhoseOwnDeadlineEndsWhileItWaitsIsToldItsOwnDeadline(t *testing.T) {
+	reading, release := make(chan struct{}), make(chan struct{})
+	letGo := sync.OnceFunc(func() { close(release) })
+	defer letGo()
+	var calls atomic.Int32
+	open := heldOpen(reading, release, &calls)
+
+	first := make(chan Written, 1)
+	go func() { first <- SetVars(context.Background(), open, map[string]*string{"SMTP_HOST": value("v")}) }()
+	<-reading
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	written := WriteConsoleToken(ctx, open, "bg1.1.secret")
+	if written.Kind != WriteUnreachable || written.Detail != context.DeadlineExceeded.Error() {
+		t.Fatalf("wrote %+v", written)
+	}
+
+	letGo()
+	if written := <-first; written.Kind != WriteSet {
+		t.Fatalf("the first press wrote %+v", written)
+	}
+}
+
 // a waiter behind one healthy holder still writes: TurnBound is at least every call the longest
-// holder makes under the turn, each at its own bound — the read and the secrets patch at
-// cf.ReadTimeout, the settings patch at cf.UploadTimeout (the door ../server builds sends it through
-// cf.MultipartSend).
+// holder makes under the turn, each at cf.ReadTimeout — the read, the secrets patch, and the settings
+// patch, which the doors ../server and cmd/better-giving build send through cf.APISettings.
 func TestTurnBoundCoversEveryCallTheLongestHolderMakesUnderTheTurn(t *testing.T) {
-	reads, uploads := 0, 0
+	calls := 0
 	open := Door{
 		AccountID:  account,
 		WorkerName: worker + "-longest",
 		Get: func(context.Context, string) cf.Answer {
-			reads++
+			calls++
 			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: varsHeld(
 				map[string]any{"name": "ADMIN_PASSWORD", "type": "secret_text"},
 				map[string]any{"name": "TURNSTILE_SITE_KEY", "type": "plain_text", "text": "0x4"},
 			)}
 		},
 		Settings: func(context.Context, string, string, []cf.Part, cf.Sending) cf.Answer {
-			uploads++
+			calls++
 			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(map[string]any{})}
 		},
 		Patch: func(context.Context, string, string, any) cf.Answer {
-			reads++
+			calls++
 			return cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: envelope(map[string]any{})}
 		},
 	}
@@ -879,9 +904,9 @@ func TestTurnBoundCoversEveryCallTheLongestHolderMakesUnderTheTurn(t *testing.T)
 	if written.Kind != WriteSet {
 		t.Fatalf("wrote %+v", written)
 	}
-	least := time.Duration(reads)*cf.ReadTimeout + time.Duration(uploads)*cf.UploadTimeout
+	least := time.Duration(calls) * cf.ReadTimeout
 	if TurnBound < least {
-		t.Fatalf("TurnBound is %s and a holder's %d reads and %d uploads take %s", TurnBound, reads, uploads, least)
+		t.Fatalf("TurnBound is %s and a holder's %d calls take %s", TurnBound, calls, least)
 	}
 }
 

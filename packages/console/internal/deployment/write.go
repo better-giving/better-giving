@@ -68,7 +68,8 @@ type Door struct {
 	Get cf.Get
 	// Patch is the merge patch a group of credentials goes up as (internal/cf's APIMergePatch).
 	Patch cf.Send
-	// Settings is the multipart patch a var goes up as.
+	// Settings is the multipart patch a var goes up as, held to a read's bound (internal/cf's
+	// APISettings) — TurnBound counts it at that.
 	Settings cf.MultipartUpload
 }
 
@@ -233,8 +234,8 @@ func SetVars(ctx context.Context, door Door, wanted map[string]*string) Written 
 		if err != nil {
 			return Written{Kind: WriteFailed, Detail: err.Error()}
 		}
-		// counted by nobody: what goes up is one json part of binding names, over in the time a read
-		// takes.
+		// what goes up is one json part of binding names, so the door holds it to a read's bound
+		// (internal/cf's APISettings) and TurnBound counts it at cf.ReadTimeout.
 		patched := wrote(door.Settings(ctx, http.MethodPatch,
 			settingsPath(door.AccountID, door.WorkerName),
 			[]cf.Part{{Name: "settings", Body: settings}}, nil))
@@ -254,12 +255,27 @@ var bindingLists sync.Map
 // it, so without this a turn held by another write would hold that press without bound.
 //
 // it is the longest one holder may keep the turn by its own calls' bounds — SetVars' read, its
-// settings patch and its secrets patch — so a write behind a holder that is slow and healthy still
-// lands. TestTurnBoundCoversEveryCallTheLongestHolderMakesUnderTheTurn counts the calls.
-const TurnBound = 2*cf.ReadTimeout + cf.UploadTimeout
+// settings patch and its secrets patch, each at cf.ReadTimeout — so a write behind one holder that
+// is slow and healthy still lands. the bound is per holder ahead and not per queue: a write behind
+// two such holders may give up while both of them land.
+// TestTurnBoundCoversEveryCallTheLongestHolderMakesUnderTheTurn counts the calls.
+const TurnBound = 3 * cf.ReadTimeout
+
+// WriteBound is the longest SetVars, FreeWithheldVars or WriteConsoleToken takes by its own
+// deadlines: its wait for the turn, then the calls it makes holding it, which TurnBound covers.
+//
+// a page's values press is answered under a write deadline ../server/server.go's Listen derives from
+// this, so a write that landed still reaches the page that pressed it.
+const WriteBound = 2 * TurnBound
 
 // TurnBound, as holdBindingList reads it, so that a test can wait it out.
 var turnWithin = TurnBound
+
+// what a write that waited out turnWithin says. it is its own sentence rather than the deadline's,
+// because the caller's own deadline ending says the same words and has a different way out: nothing
+// reached the deployment, and what held the turn was this console's own other write.
+const turnHeld = "Another write from this console was still changing this deployment's settings, " +
+	"so nothing was sent to it. Wait for that one to finish, then try again."
 
 // the turn at the door's worker, and the function that gives it back — or, where the caller's
 // context ended or turnWithin passed while it waited, the write that never happened.
@@ -272,7 +288,10 @@ func holdBindingList(ctx context.Context, door Door) (func(), *Written) {
 	case turn <- struct{}{}:
 		return func() { <-turn }, nil
 	case <-waiting.Done():
-		return nil, &Written{Kind: WriteUnreachable, Detail: waiting.Err().Error()}
+		if ended := ctx.Err(); ended != nil {
+			return nil, &Written{Kind: WriteUnreachable, Detail: ended.Error()}
+		}
+		return nil, &Written{Kind: WriteUnreachable, Detail: turnHeld}
 	}
 }
 

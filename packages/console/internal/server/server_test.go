@@ -257,6 +257,7 @@ func TestTheConnectPressIsAnsweredWithinTheDeadlineItsAnswerIsWrittenUnder(t *te
 	for press, bound := range map[string]time.Duration{
 		"connect": deployment.ConnectBound,
 		"patient": deployment.PatientTimeout,
+		"values":  deployment.WriteBound,
 	} {
 		if written <= bound {
 			t.Errorf("an answer is cut off at %s and the %s press is bound to %s", written, press, bound)

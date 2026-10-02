@@ -115,6 +115,36 @@ func TestAConnectStopsWaitingOnADeploymentThatNeverTakesTheSession(t *testing.T)
 	}
 }
 
+// a deployment refusing the expiry as past its own ceiling refuses every session this clock mints,
+// so waiting for it to take one is waiting out the bound for nothing: the press stops at the first
+// such answer and carries the deployment's own two sentences.
+func TestADeploymentRefusingThisConsolesClockEndsTheConnectAtOnce(t *testing.T) {
+	asked := 0
+	held, kept := connectingOver(t, answering(), stored(http.StatusOK), func(string, string) cf.Get {
+		return func(context.Context, string) cf.Answer {
+			asked++
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusUnauthorized, Body: map[string]any{
+				"error":   "console_clock_ahead",
+				"message": "The clock on the machine running the console is ahead.",
+				"fix":     "Set the clock right, then connect again.",
+			}}
+		}
+	})
+	if held.Kind != ConnectClockAhead {
+		t.Fatalf("connection %+v, want %q", held, ConnectClockAhead)
+	}
+	if asked != 1 {
+		t.Fatalf("asked the deployment %d times, want once", asked)
+	}
+	if held.Message == nil || *held.Message != "The clock on the machine running the console is ahead." ||
+		held.Fix == nil || *held.Fix != "Set the clock right, then connect again." {
+		t.Fatalf("carried %v and %v rather than the deployment's own words", held.Message, held.Fix)
+	}
+	if held.ExpiresAt != "" || held.Origin == "" || kept == nil {
+		t.Fatalf("connection %+v, kept %v", held, kept)
+	}
+}
+
 // a machine with nowhere to keep what it remembers.
 var errNotKept = errors.New("the folder could not be written")
 

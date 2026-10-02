@@ -13,11 +13,11 @@
 // every request carries it in a header and every url carries none, which is what makes a failure's
 // own sentence safe to draw.
 //
-// **a multipart write is the same call with another body on it.** two of cloudflare's endpoints
-// take no json at all — the script upload, whose modules are one part each, and the assets upload,
-// whose parts are the files — and MultipartSend is those two rather than a client of their own: the
-// same credential in the same header, the same failure as a value, and one more timeout nobody has
-// to decide twice.
+// **a multipart write is the same call with another body on it.** three of cloudflare's endpoints
+// take no json at all — the script upload, whose modules are one part each, the assets upload,
+// whose parts are the files, and a worker's settings patch — and MultipartSend is those three rather
+// than a client of their own: the same credential in the same header, the same failure as a value,
+// and the deadline stated by whoever binds it.
 //
 // **a write answers in the same three ways a read does** — a status with a body, a body that is not
 // json, nothing at all — so a write is this same call with a method and a body on it rather than a
@@ -51,15 +51,12 @@ import (
 // one — ../deployment's PatientCalls binds the errands a third party is behind.
 const ReadTimeout = 10 * time.Second
 
-// UploadTimeout is how long one upload may take before it counts as unreachable.
+// how long one upload may take before it counts as unreachable.
 //
 // far past the ten seconds a read is bounded by, because what travels here is the worker's own
 // javascript and a bucket of the deployment's static files — megabytes over whatever connection the
 // operator is on. the caller's own context bounds it further wherever it has a shorter deadline.
-//
-// it is exported because the settings patch a var goes up in is sent through MultipartSend too, so
-// ../deployment's TurnBound counts it among the calls a write holds its turn for.
-const UploadTimeout = 5 * time.Minute
+const uploadTimeout = 5 * time.Minute
 
 // how long one schema change may take before it counts as unreachable.
 //
@@ -291,11 +288,21 @@ type MultipartUpload func(ctx context.Context, method, path string, parts []Part
 
 // MultipartSend is a multipart call to one host, bound to its headers once.
 //
-// The two writes this console makes that carry no json: the script upload, whose metadata and
-// modules are one part each, and the assets upload, whose parts are the files. The bound headers
-// are the credential, and they are the caller's — the assets upload is made on a token the upload
-// session hands back rather than on the account's own.
+// The two uploads this console makes: the script upload, whose metadata and modules are one part
+// each, and the assets upload, whose parts are the files. The bound headers are the credential, and
+// they are the caller's — the assets upload is made on a token the upload session hands back rather
+// than on the account's own.
 func MultipartSend(base string, headers map[string]string) MultipartUpload {
+	return MultipartSendWithin(base, headers, uploadTimeout)
+}
+
+// MultipartSendWithin is that same call bound to a deadline the caller states rather than to the one
+// an upload is made with.
+//
+// **the bound belongs to the call and not to the body's encoding**, which is JSONSendWithin's
+// arrangement turned round: a worker's settings patch is multipart only because cloudflare refuses
+// json for it, and what goes up is one small part that is over in the time a read takes.
+func MultipartSendWithin(base string, headers map[string]string, within time.Duration) MultipartUpload {
 	return func(ctx context.Context, method, path string, parts []Part, watching Sending) Answer {
 		var body bytes.Buffer
 		form := multipart.NewWriter(&body)
@@ -321,7 +328,7 @@ func MultipartSend(base string, headers map[string]string) MultipartUpload {
 			return Answer{Kind: Unreachable, Detail: err.Error()}
 		}
 
-		bound, stop := context.WithTimeout(ctx, UploadTimeout)
+		bound, stop := context.WithTimeout(ctx, within)
 		defer stop()
 
 		length := int64(body.Len())

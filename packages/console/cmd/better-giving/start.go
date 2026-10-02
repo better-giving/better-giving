@@ -168,7 +168,7 @@ func start(args []string, to, wrong io.Writer) error {
 				WorkerName: release.Baked.Name,
 				Get:        cf.APIGet(credential),
 				Patch:      cf.APIMergePatch(credential),
-				Settings:   cf.APIMultipart(credential),
+				Settings:   cf.APISettings(credential),
 			}
 
 			// **one wait over every read this pass makes, drawn before the first of them and given
@@ -938,8 +938,8 @@ func chainAt(
 			ended <- ran
 		}()
 		ran = first.Chain(ctx, asked, effects.Chain(drawn.At, door, credential,
-			cf.APISend, cf.APISchemaSend, cf.AssetsUpload, release.BundleSource(version),
-			version, records))
+			cf.APISend, cf.APISchemaSend, cf.APIMultipart, cf.AssetsUpload,
+			release.BundleSource(version), version, records))
 	}()
 
 	shown := drawn.Show()
@@ -1336,8 +1336,8 @@ func finishAt(
 			silence := terminal.WaitingOn(os.Stdout, terminal.RegisteringSpamProtection())
 			defer silence.Done()
 			return first.Registering(ctx, effects.Chain(nil, door, credential,
-				cf.APISend, cf.APISchemaSend, cf.AssetsUpload, release.BundleSource(version),
-				version, records))
+				cf.APISend, cf.APISchemaSend, cf.APIMultipart, cf.AssetsUpload,
+				release.BundleSource(version), version, records))
 		},
 		func() string { return workingAt(ctx, effects.OwnAddress(ctx, door).Origin()) })
 }

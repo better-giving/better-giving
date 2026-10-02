@@ -1,6 +1,8 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import type { ClientActionFunctionArgs } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VarsWritten } from '../api/types';
+import type { Connection, VarsWritten } from '../api/types';
 
 // the presses `/` answers for the account panel, which posts here from over any page
 // (../lib/close-confirm.tsx's `SHELL_ACTION`): which write each intent makes on the binary, and
@@ -106,5 +108,36 @@ describe('a press `/` does not answer', () => {
 
 		expect(answer).toEqual({ unknown: true });
 		expect(binary).toEqual({ written: [], freed: 0, closed: 0, forgot: 1 });
+	});
+});
+
+describe('a connect press the deployment refused for this machine’s clock', () => {
+	const connection: Connection = {
+		kind: 'clock-ahead',
+		expiresAt: '',
+		origin: 'https://example.workers.dev',
+		detail: '',
+		message: 'This console’s clock reads ahead of this deployment’s.',
+		fix: 'Set the clock on `this machine` right, then connect again.'
+	};
+	const drawn = renderToStaticMarkup(
+		createElement(home.ConnectOutcome, {
+			connected: connection,
+			workerName: 'better-giving',
+			accountName: 'Example'
+		})
+	);
+
+	const read = drawn.replace(/<[^>]+>/g, '');
+
+	it('says it in the deployment’s own two sentences, the way out marked', () => {
+		expect(read).toContain('This console’s clock reads ahead of this deployment’s.');
+		expect(read).toContain('Set the clock on this machine right, then connect again.');
+		expect(drawn).toContain('this machine</code>');
+	});
+
+	it('puts no cloudflare quotation over them', () => {
+		expect(drawn).not.toContain('Cloudflare');
+		expect(drawn).not.toContain('adm-cmd');
 	});
 });
