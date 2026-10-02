@@ -90,6 +90,10 @@ func (address Address) Origin() string {
 	return ""
 }
 
+// how many reads PublicAddress makes at most, one after another: the worker's own setting, its
+// custom domains, and the account's workers.dev name.
+const addressReads = 3
+
 // PublicAddress is where `workerName` in `accountID` answers, read out of the account.
 func PublicAddress(ctx context.Context, get cf.Get, accountID, workerName string) Address {
 	named := url.PathEscape(workerName)

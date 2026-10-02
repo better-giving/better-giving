@@ -209,12 +209,21 @@ func Listen(handler http.Handler, port int) *http.Server {
 		MaxHeaderBytes:    headerBytes,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		// no answer here is held open: every one is a read or a write to cloudflare or to the
-		// deployment, each carrying a deadline of its own (internal/cf), and this bounds them all.
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       120 * time.Second,
 	}
 }
+
+// how long an answer may take once its request has arrived: the longest any press here is bound to
+// by its own deadlines, and slack past that for the answer itself to be written.
+//
+// **derived, never typed.** an answer cut off by this deadline is a press that finished on the
+// deployment and reads as a failure on the page, and a connect pressed again on that reading mints
+// a second session — so the deadline follows the bounds it must cover rather than restating them.
+const writeTimeout = max(deployment.ConnectBound, deployment.PatientTimeout) + answerSlack
+
+// what writing an answer may take past the press it carries: a local record and a json body.
+const answerSlack = 10 * time.Second
 
 // Guard refuses any request that another page could have caused.
 //

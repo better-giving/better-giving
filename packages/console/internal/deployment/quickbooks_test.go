@@ -284,8 +284,8 @@ func keysInto(value any, into map[string]bool) {
 // whole of what makes it a second door: ../server/errands.go names the three errands it is for and
 // argues what a cut on the disconnect would leave behind.
 func TestTheDoorAThirdPartyIsBehindOutlastsAReadsOwn(t *testing.T) {
-	if patientTimeout <= cf.ReadTimeout {
-		t.Fatalf("a patient call is bound to %s and a read to %s", patientTimeout, cf.ReadTimeout)
+	if PatientTimeout <= cf.ReadTimeout {
+		t.Fatalf("a patient call is bound to %s and a read to %s", PatientTimeout, cf.ReadTimeout)
 	}
 }
 
