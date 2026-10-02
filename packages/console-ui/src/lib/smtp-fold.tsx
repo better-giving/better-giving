@@ -919,14 +919,18 @@ function MailSettings({
 
 				{/* the names of this group the deployment holds in a form nothing can read back — the
 				    boxes drawn empty over a value that is there, and the port, which has no box. no
-				    save can set one of them until it comes off (./withheld-values.tsx). */}
+				    save can set one of them until it comes off (./withheld-values.tsx).
+
+				    its press is held for exactly as long as the boxes beside it ({@link underway}): it
+				    takes off values in the same group the credentials press writes, and the test send
+				    writes nowhere either of them does (./smtp-fold-state.ts). */}
 				<WithheldValues
 					names={withheldInGroup(held, group)}
 					all={held.withheld}
 					consequence="This deployment sends no email at all until these are saved again: no receipt to a donor, and no notice to you."
 					written={freed}
 					trouble={wrote}
-					busy={pending !== null && pending !== FREE_INTENT}
+					busy={underway}
 					freeing={pending === FREE_INTENT}
 				/>
 
