@@ -174,8 +174,10 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 });
 
 // the card is inside a page it does not own, and every landmark it adds is one a reader of that
-// page has to step past — `group` rather than `region`, by the rule at `mandateWell` in ../views.ts.
+// page has to step past: a role written out or an element that carries one implicitly.
 describe('a payment row as a reader meets it', () => {
+	// a role written on one of these is the role it has, and the list above reads that.
+	const LANDMARK_ELEMENTS = ':is(header, footer, aside, form, main, nav, section, search):not([role])';
 	const LANDMARKS = [
 		'banner',
 		'complementary',
@@ -191,12 +193,16 @@ describe('a payment row as a reader meets it', () => {
 		const mount = document.createElement('div');
 		const row = createRows(mount).draw('PayPal', 'paypal', document.createElement('div'));
 		const root = mount.firstElementChild?.shadowRoot;
-		const roles = () =>
-			[...(root?.querySelectorAll('[role]') ?? [])].map((node) => node.getAttribute('role'));
+		const landmarks = () => [
+			...[...(root?.querySelectorAll('[role]') ?? [])]
+				.map((node) => node.getAttribute('role'))
+				.filter((role) => LANDMARKS.includes(role ?? '')),
+			...[...(root?.querySelectorAll(LANDMARK_ELEMENTS) ?? [])].map((node) => node.localName)
+		];
 
-		expect(roles().filter((role) => LANDMARKS.includes(role ?? ''))).toEqual([]);
+		expect(landmarks()).toEqual([]);
 		row.expand();
-		expect(roles().filter((role) => LANDMARKS.includes(role ?? ''))).toEqual([]);
+		expect(landmarks()).toEqual([]);
 
 		const panel = root?.getElementById('panel');
 		expect(panel?.getAttribute('role')).toBe('group');
