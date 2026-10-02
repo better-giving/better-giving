@@ -15,6 +15,7 @@ import {
 } from '../db/schema';
 import { parseContact, type ParsedContact } from '../contacts/contact-input';
 import { createDestination } from '../webhooks/destinations';
+import { rejectionCode } from '../db/rejection.testing';
 import { commitDonor } from './donor';
 import {
 	RECORD_FAILURE_REASONS,
@@ -676,6 +677,35 @@ describe('recordAuthorizedGift() — the gift a repeating commitment was authori
 		const result = await recordAuthorizedGift(db, input);
 
 		expect(result.ok || result.reason).toBe('missing_reference');
+	});
+
+	it('names a gift id already in the database as that, not as an unexplained fault', async () => {
+		const first = await authorized();
+		await recordAuthorizedGift(db, first);
+		const again = await authorized({ donationId: first.donationId });
+
+		// the clash is on `donation`'s primary key, and D1 reports that under its own code rather
+		// than the one a unique index raises — which is the code the refusal has to be keyed on.
+		expect(
+			await rejectionCode(() =>
+				db.insert(donation).values({
+					id: first.donationId,
+					contactId: again.contactId,
+					totalMinor: again.totalMinor,
+					currency: again.currency,
+					feeMinor: again.feeMinor,
+					receivedAt: again.occurredAt,
+					formId,
+					origin: again.origin
+				})
+			)
+		).toContain('SQLITE_CONSTRAINT_PRIMARYKEY');
+		const result = await recordAuthorizedGift(db, again);
+
+		expect(result.ok).toBe(false);
+		expect(result.ok || result.detail).toContain(
+			`its id (${first.donationId}) is already in the database`
+		);
 	});
 
 	it('leaves no gift behind when the write is refused', async () => {
