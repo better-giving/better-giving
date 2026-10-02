@@ -39,8 +39,14 @@ import { describe, expect, it } from 'vitest';
 // it reads text and can be fooled by a computed specifier — accepted, because what it defends
 // against is a shortcut taken in a hurry, not an adversary.
 //
+// **an address is guarded like an import.** Chariot's and NOWPayments' adapters import no package —
+// they speak over bare `fetch` — so a route that wanted one field in a hurry would reach either
+// processor with a `fetch` and import nothing, invisible to a sweep of import statements. the API
+// hostnames are swept too, as ../accounting/sole-importer.spec.ts does for Intuit's.
+//
 // what is exempt: each processor's own adapter, and this file, which necessarily contains the
-// patterns it searches for.
+// patterns it searches for. the hostname sweep also exempts every `*.spec.ts(x)` and the files
+// `GUARDED_HOSTS` lists as each host's vocabulary.
 //
 // the same sweep holds a second rule for the same reason: a processor's webhook event names are
 // spelled by its own adapter and nowhere else in code, since switching on one is the SDK's vocabulary
@@ -81,6 +87,33 @@ const GUARDED: { specifier: string; adapter: string; imported: boolean }[] = [
 		specifier: '@nowpaymentsio/nowpayments-api-js',
 		adapter: resolve(import.meta.dirname, 'nowpayments.ts'),
 		imported: false
+	}
+];
+
+/**
+ * the API hosts of the processors that speak over `fetch`, each with the files that may state it.
+ *
+ * `home` is the adapter, the module that calls the host. `vocabulary` is every other file that
+ * states the address without calling it, which is not speaking: a comment documenting the
+ * `CHARIOT_API_URL` default (config/env.ts) and the console's placeholder for the address box
+ * (packages/console-ui/src/lib/chariot-setup.ts, which makes no call of its own). any other file
+ * naming a host is a second speaker. the sandbox hosts and the marketing, documentation and CDN
+ * hosts (`cdn.givechariot.com`, `nowpayments.io`) are deliberately absent: the adapters call only
+ * these two, and a rule that flagged a logo url or a doc link would be a rule people delete.
+ */
+const GUARDED_HOSTS: { host: string; home: string; vocabulary: string[] }[] = [
+	{
+		host: 'api.givechariot.com',
+		home: resolve(import.meta.dirname, 'chariot.ts'),
+		vocabulary: [
+			resolve(import.meta.dirname, '../config/env.ts'),
+			resolve(ROOT, 'packages/console-ui/src/lib/chariot-setup.ts')
+		]
+	},
+	{
+		host: 'api.nowpayments.io',
+		home: resolve(import.meta.dirname, 'nowpayments.ts'),
+		vocabulary: []
 	}
 ];
 
@@ -135,6 +168,16 @@ function sourceFiles(
 		}
 	}
 	return out;
+}
+
+/**
+ * the hostname anywhere in a file, dots escaped. text and not a URL parse: a hostname built into a
+ * template literal or a constant is how a second speaker is written. it begins at a hostname
+ * boundary so `sandboxapi.givechariot.com` is not read as `api.givechariot.com`, and ends nowhere so
+ * a host inside a longer url is still caught.
+ */
+function mentions(host: string): RegExp {
+	return new RegExp(`(?<![\\w.-])${host.replaceAll('.', '\\.')}`);
 }
 
 /**
@@ -316,6 +359,44 @@ describe('one module per processor SDK is the only importer of it', () => {
 			expect(importers(specifier).some(({ re }) => re.test(source))).toBe(true);
 		}
 	);
+});
+
+describe('one module per processor speaks to its API host and nothing else does', () => {
+	const files = sourceFiles(ROOT);
+
+	it.each(GUARDED_HOSTS)(
+		'finds no mention of $host outside its adapter and vocabulary homes',
+		({ host, home, vocabulary }) => {
+			const offenders = files
+				// a spec's fixture is a string being asserted on and never a second speaker.
+				.filter(
+					(file) => file !== home && !vocabulary.includes(file) && !/\.spec\.tsx?$/.test(file)
+				)
+				.filter((file) => mentions(host).test(readFileSync(file, 'utf8')))
+				.map((file) => relative(ROOT, file));
+			expect(
+				offenders,
+				`these modules name \`${host}\` themselves: ${offenders.join(', ')}. only ${relative(ROOT, home)} may call it — take \`PaymentProvider\` from src/lib/server/payments/provider.ts and build one with \`createPaymentProviders(platform.env).for(…)\`. an address written a second time is a second client with no auth header, no error classification and no idempotency of its own.`
+			).toEqual([]);
+		}
+	);
+
+	it.each(GUARDED_HOSTS)(
+		'matches $host where it is stated, so the pattern works on real source',
+		({ host, home, vocabulary }) => {
+			// the case above is written from the same idea as the pattern; this one reads files nobody
+			// wrote for it, which is also what holds each home and vocabulary file to still stating it.
+			for (const file of [home, ...vocabulary]) {
+				expect(mentions(host).test(readFileSync(file, 'utf8')), relative(ROOT, file)).toBe(true);
+			}
+		}
+	);
+
+	it('does not read a sandbox host as the live one, and catches a host inside a longer url', () => {
+		const live = mentions('api.givechariot.com');
+		expect(live.test('https://sandboxapi.givechariot.com')).toBe(false);
+		expect(live.test('fetch("https://api.givechariot.com/v1/grants/1")')).toBe(true);
+	});
 });
 
 describe('a processor’s event names are spelled by its own adapter and nowhere else', () => {

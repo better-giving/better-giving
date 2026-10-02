@@ -304,3 +304,97 @@ it('ignores a second press while the write is in flight', () => {
 	// operator intent that reached the action twice is two donation forms made.
 	expect(posted).toEqual(['post']);
 });
+
+// where focus lands after a row is added or dropped. a Remove stands inside the row it drops, so a
+// keyboard operator who pressed it is standing on a node that is gone — focus on the page itself,
+// which sends them back to the top. the rule is the shared row editor's
+// (`@better-giving/operator/components/forms/RepeatingRows`), and these cases hold that this screen
+// is drawn through it with the form's real intents.
+
+/** presses a control the way a keyboard does: standing on it first. */
+function pressFocused(button: HTMLButtonElement): void {
+	act(() => {
+		button.focus();
+		button.click();
+	});
+}
+
+/** three rows holding three figures, which is what every focus case starts from. */
+function threeRows(): HTMLElement {
+	const { root } = screen();
+	press(addControl(root));
+	press(addControl(root));
+	type(amountBox(root, 0), '10');
+	type(amountBox(root, 1), '25');
+	type(amountBox(root, 2), '50');
+	return root;
+}
+
+it('puts focus on the box above a middle row that was removed', () => {
+	const root = threeRows();
+
+	pressFocused(removeControl(root, 1));
+
+	expect(document.activeElement).toBe(amountBox(root, 0));
+	expect(amountBox(root, 0).value).toBe('10');
+});
+
+it('puts focus on the box that took the first row’s place when the first is removed', () => {
+	const root = threeRows();
+
+	pressFocused(removeControl(root, 0));
+
+	expect(document.activeElement).toBe(amountBox(root, 0));
+	expect(amountBox(root, 0).value).toBe('25');
+});
+
+it('puts focus on the box above when the last row is removed', () => {
+	const root = threeRows();
+
+	pressFocused(removeControl(root, 2));
+
+	expect(document.activeElement).toBe(amountBox(root, 1));
+	expect(amountBox(root, 1).value).toBe('25');
+});
+
+it('leaves focus on the one box left, which offers no Remove, when the second is removed', () => {
+	// a lone row draws no Remove, so the press that would empty the group — and owe focus to Add —
+	// is not one this screen offers. the last Remove there is lands on the box that stays.
+	const { root } = screen();
+	press(addControl(root));
+
+	pressFocused(removeControl(root, 1));
+
+	expect(amountBoxes(root)).toHaveLength(1);
+	expect(document.activeElement).toBe(amountBox(root, 0));
+	expect(root.querySelector('button[aria-label^="Remove suggested amount"]')).toBeNull();
+});
+
+it('puts focus in the new box when an amount is added', () => {
+	const { root } = screen();
+
+	pressFocused(addControl(root));
+
+	expect(amountBoxes(root)).toHaveLength(2);
+	expect(document.activeElement).toBe(amountBox(root, 1));
+});
+
+it('submits the amounts under their indexed names, in the order and with the figures shown', () => {
+	const root = threeRows();
+	press(addControl(root));
+	type(amountBox(root, 3), '100');
+	pressFocused(removeControl(root, 1));
+
+	const form = amountBox(root, 0).form;
+	if (form === null) throw new Error('the amount boxes stand in no form');
+	// the body the action reads, which is built from the boxes' names and values alone: the row
+	// editor drawing them is invisible to it, so this is what a remount may not change.
+	const body = [...new FormData(form).entries()].filter(([name]) =>
+		name.startsWith('suggested_amounts')
+	);
+	expect(body).toEqual([
+		['suggested_amounts[0]', '10'],
+		['suggested_amounts[1]', '50'],
+		['suggested_amounts[2]', '100']
+	]);
+});

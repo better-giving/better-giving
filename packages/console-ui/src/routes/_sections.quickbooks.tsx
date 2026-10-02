@@ -16,7 +16,7 @@ import type { QuickbooksStartAtPreview } from '../lib/quickbooks-standing';
 import { quickbooksIntent } from '../lib/quickbooks-standing';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE as CONSOLE_TITLE } from './_index';
+import { ConsoleFailure, TITLE as CONSOLE_TITLE } from './_index';
 import type { Route } from './+types/_sections.quickbooks';
 
 // /quickbooks — where this deployment's books go, drawn by ../lib/quickbooks-section.tsx whole.
@@ -195,6 +195,16 @@ export default function QuickbooksPage({ loaderData, actionData, matches }: Rout
 				onRetry={() => make('retry')}
 				onDisconnect={() => make('disconnect')}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

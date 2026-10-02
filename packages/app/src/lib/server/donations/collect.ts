@@ -37,7 +37,7 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
-import { alert, processorLabel, type SettleDeps, type SettleResult } from './delivery';
+import { alert, alertMoney, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entries';
 import { sendReceipt, type ReceiptOutcome } from './receipt';
 import { sendSettledNotice, type Repeating } from './settled-notice';
@@ -649,7 +649,7 @@ async function openCommitment(
 				{ label: 'Transaction', value: settlement.providerTxnId },
 				{
 					label: 'Amount',
-					value: `${settlement.amountMinor} ${settlement.currency} (minor units)`
+					value: alertMoney(settlement.amountMinor, settlement.currency)
 				},
 				{ label: 'Problem', value: named }
 			],
@@ -682,7 +682,7 @@ async function openCommitment(
 				{ label: 'Transaction', value: settlement.providerTxnId },
 				{
 					label: 'Amount',
-					value: `${settlement.amountMinor} ${settlement.currency} (minor units)`
+					value: alertMoney(settlement.amountMinor, settlement.currency)
 				}
 			],
 			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
@@ -994,7 +994,7 @@ async function answerTo(
 				{ label: 'Transaction', value: about.settlement.providerTxnId },
 				{
 					label: 'Amount',
-					value: `${about.settlement.amountMinor} ${about.settlement.currency} (minor units)`
+					value: alertMoney(about.settlement.amountMinor, about.settlement.currency)
 				}
 			],
 			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`

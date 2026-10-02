@@ -345,13 +345,15 @@ export type PaymentSeam = {
 const unanswered = new WeakSet<NonNullable<PaymentSeam['load']>>();
 
 /**
- * the three ports a payment provider owns, plus the two things the flow tells it out of band and
- * the one thing the card does.
+ * the three ports a payment provider owns, plus the three things it is told out of band — `quoting`
+ * and `quoted` by the quote port's wrapper (`quoteThrough` in ./surface.ts), `cadence` by the card —
+ * and the one thing the card does.
  *
- * neither `quoted` nor `cadence` is a port and neither must become one. both carry a decision that
- * has already been made elsewhere — the server decided the total and who is paying it, the donor
- * decided how often the gift repeats — and the flow waits on neither; they are the card handing
- * the provider's own surface what it needs to draw itself, in the one place both are in scope.
+ * none of `quoting`, `quoted` and `cadence` is a port and none must become one. each carries a
+ * decision that has already been made elsewhere — the donor pressed Donate, the server decided the
+ * total and who is paying it, the donor decided how often the gift repeats — and the flow waits on
+ * none of them; they are the card handing the provider's own surface what it needs, in the one
+ * place each is in scope.
  *
  * `stop` is not a port either, and it is the flow's opposite: the flow never learns this exists,
  * because the thing that ends a surface is the card going away rather than anything a donor did.
@@ -359,6 +361,14 @@ const unanswered = new WeakSet<NonNullable<PaymentSeam['load']>>();
 export type PaymentSurface = {
 	readonly confirm: CheckoutPorts['confirm'];
 	readonly resume: CheckoutPorts['resume'];
+	/**
+	 * the quote a press just asked for, while it is still in flight.
+	 *
+	 * called in the task the quote port was called in, and that is the whole of its use: the quote
+	 * port is called inside the donor's press, so this is the last moment a provider can open a
+	 * window on that press's transient activation. a surface that opens nothing ignores it.
+	 */
+	quoting(request: QuoteRequest, minted: Promise<Quote>): void;
 	quoted(request: QuoteRequest, quote: Quote): void;
 	/**
 	 * how often the gift the donor has committed to repeats, or nothing while they are still
@@ -924,6 +934,8 @@ export function createPaymentSurface(
 				if (live !== null && !stopped) live.element.collapse();
 			});
 		},
+		// the inline fields open no window of their own; `confirm` is where their gift is taken.
+		quoting() {},
 		quoted(request, quote) {
 			billing = {
 				name: `${request.firstName} ${request.lastName}`.trim(),

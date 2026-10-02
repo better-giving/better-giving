@@ -969,12 +969,14 @@ export type PaypalListener = { id: string; url: string; eventTypes: string[] };
 /**
  * the ways a call to PayPal did not answer.
  *
- * `refused` is a pair PayPal would not accept or an app it would not let do this, and the way out
- * is the boxes the pair was typed in; `rejected` is a request it understood and would not carry
- * out; `unreachable` is nothing found out either way, a 5xx included.
+ * `refused` is a pair PayPal would not accept, and the way out is the boxes the pair was typed in;
+ * `forbidden` is an app it would not let do this, and the way out is that app's settings on
+ * PayPal — on the token mint under the `unauthorized` stop as well, so the stop alone never says
+ * the pair is wrong; `rejected` is a request it understood and would not carry out; `unreachable`
+ * is nothing found out either way, a 5xx included.
  */
 export type PaypalFailure = {
-	kind: 'refused' | 'rejected' | 'unreachable' | 'unreadable';
+	kind: 'refused' | 'forbidden' | 'rejected' | 'unreachable' | 'unreadable';
 	detail: string;
 };
 

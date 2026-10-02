@@ -37,11 +37,17 @@
 
 import type { Failure } from '../checkout.machine';
 import type { CheckoutPorts, ConfirmOutcome } from '../ports';
-import { PAYPAL_SDK_PATH, type FormConfig, type PaymentMethod } from '../v1';
+import {
+	PAYPAL_SDK_PATH,
+	type FormConfig,
+	type PaymentMethod,
+	type Quote,
+	type QuoteRequest
+} from '../v1';
 import { INJECTING_NONCE } from './nonce';
 import { UNCONFIRMABLE, UNSTATED_DECLINE } from './outcome';
 import { isPaypalRail, type PaypalRail } from './rails';
-import { createRows, type RowList } from './rows';
+import { createRows, type Row, type RowList } from './rows';
 import type { PaymentSurface } from './stripe';
 
 /**
@@ -528,6 +534,8 @@ export type PaypalSeam = {
  */
 export type PaypalPaymentSurface = PaymentSurface & {
 	claimsReturn(): Promise<boolean>;
+	/** `venmoIsOffered` in ../checkout.machine.ts, told on every reading; PayPal's row ignores it. */
+	offerVenmo(offered: boolean): void;
 	/** the row each drawn rail's button stands in, which ./surface.ts opens and closes. */
 	readonly rows: RowList;
 };
@@ -615,12 +623,13 @@ function sharedInstance(
 /**
  * PayPal's own approval window, behind the three ports a payment provider owns.
  *
- * the buttons are the rail picker and nothing more: a press reports which rail the donor chose, and
- * the approval window itself is opened by `confirm` below — one press later, on the review screen,
- * which is where this flow's own quote has already been minted. that ordering is what makes the
- * order handed to `start()` an already-settled promise, and PayPal's own guidance is emphatic that
- * nothing may be awaited between the donor's press and `start()` or the popup is blocked for want
- * of a transient activation.
+ * the buttons are the rail picker and nothing more: a press reports which rail the donor chose. the
+ * approval window is opened by the Donate press that follows, in that press's own task, by
+ * `quoting` below — the quote port is called inside the press, and `quoteThrough` in ./surface.ts
+ * tells this surface before anything is awaited. the order handed to `start()` is still being
+ * minted at that moment, which is PayPal's documented shape: nothing may be awaited between the
+ * press and `start()`, or the popup is blocked for want of a transient activation. `confirm` hands
+ * that window its order once the flow reaches a confirmation.
  *
  * `onUnavailable` is called at most once and says the button is not coming up. the four routes to
  * it are the ones `NO_BUTTON` names.
@@ -660,6 +669,40 @@ export function createPaymentSurface(
 	 */
 	const rowList = createRows(mount);
 
+	/** each drawn rail's button, made once and moved in and out of its row. */
+	const buttons = new Map<PaypalRail, HTMLElement>();
+	/** the row each rail's button stands in, while it stands. */
+	const standing = new Map<PaypalRail, Row>();
+	/** whether the flow offers Venmo, which it does until a reading says otherwise. */
+	let venmoOffered = true;
+	/** the rail this adapter last reported a press on, which is the only one it may take back. */
+	let pressed: PaypalRail | null = null;
+
+	/**
+	 * every button in its row or out of it, as the offer stands.
+	 *
+	 * appended on its way back in, which keeps the served order because Venmo is the only rail that
+	 * comes and goes and it is listed last (`PAYPAL_RAILS` in ./rails.ts). a Venmo press is taken back
+	 * with its row, so a donor who pressed Venmo and then picked a repeating cadence is not left
+	 * holding a rail no window can approve.
+	 */
+	function place(): void {
+		for (const [rail, button] of buttons) {
+			const wanted = !stopped && (rail !== 'venmo' || venmoOffered);
+			const row = standing.get(rail);
+			if (wanted && row === undefined) {
+				standing.set(rail, rowList.draw(ROW_NAMES[rail], rail, button));
+			} else if (!wanted && row !== undefined) {
+				rowList.erase(row);
+				standing.delete(rail);
+				if (pressed === rail) {
+					pressed = null;
+					onRail(null);
+				}
+			}
+		}
+	}
+
 	/** the one report that the button is not coming up, said once. */
 	let announced = false;
 	/** cancels the mount deadline, where one is standing. */
@@ -677,20 +720,23 @@ export function createPaymentSurface(
 	/** whether an earlier boot on this page already gave this loader the deadline and got nothing. */
 	const abandoned = unanswered.has(load);
 
-	/** whichever attempt is waiting on PayPal's own callbacks, answered exactly once. */
-	let attempt: ((termination: Termination) => void) | null = null;
 	/** how the last attempt ended, which is the whole of what a re-read on this page can learn. */
 	let last: ConfirmOutcome | null = null;
 
-	/** an attempt, armed and waiting on whichever of PayPal's signals arrives first. */
-	function begin(): Promise<Termination> {
-		return new Promise<Termination>((resolve) => {
-			attempt = resolve;
-		});
-	}
+	/**
+	 * one opening of PayPal's window, waiting on whichever of its own signals arrives first.
+	 *
+	 * each window's session is built with callbacks that answer that window's attempt and no other,
+	 * so a window the flow walked away from can never answer the one opened after it.
+	 */
+	type Attempt = {
+		readonly waiting: Promise<Termination>;
+		readonly answered: () => boolean;
+		answer(signal: Termination): void;
+	};
 
 	/**
-	 * one signal from PayPal, answering the attempt waiting on it — the first one only.
+	 * an attempt, armed. its `answer` takes one signal from PayPal — the first one only.
 	 *
 	 * **first past the post is how an approval comes to dominate everything after it.** everything
 	 * once the payer has pressed Pay Now is ambiguous by construction: PayPal has marked the order
@@ -702,11 +748,48 @@ export function createPaymentSurface(
 	 * PayPal fires its completion callback behind its own cancel, and an attempt already answered
 	 * `unfinished` must not be reopened as an answer nobody has.
 	 */
-	function record(signal: Termination): void {
-		const answer = attempt;
-		if (answer === null) return;
-		attempt = null;
-		answer(signal);
+	function begin(): Attempt {
+		let settle: (termination: Termination) => void = () => {};
+		const waiting = new Promise<Termination>((resolve) => {
+			settle = resolve;
+		});
+		let answered = false;
+		return {
+			waiting,
+			answered: () => answered,
+			answer(signal) {
+				if (answered) return;
+				answered = true;
+				settle(signal);
+			}
+		};
+	}
+
+	/** a session's callbacks, each answering whichever attempt `target` names when it fires. */
+	function signalsTo(target: () => Attempt | null): SessionOptionsLike {
+		return {
+			onApprove: async () => target()?.answer({ kind: 'approved' }),
+			onCancel: () => target()?.answer({ kind: 'cancelled' }),
+			onError: (data) =>
+				target()?.answer({
+					kind: 'error',
+					code: typeof data.code === 'string' ? data.code : '',
+					message: typeof data.message === 'string' ? data.message : ''
+				})
+		};
+	}
+
+	/** a rail's session off the started SDK, or nothing where the SDK carries no creator for it. */
+	function createSession(
+		sdk: PaypalSdkLike,
+		rail: PaypalRail,
+		signals: SessionOptionsLike
+	): PaypalSessionLike | undefined {
+		const create =
+			rail === 'venmo'
+				? sdk.createVenmoOneTimePaymentSession
+				: sdk.createPayPalOneTimePaymentSession;
+		return create?.call(sdk, signals);
 	}
 
 	/** a `start()` or `resume()` rejection, as much of it as the mapping reads. */
@@ -715,14 +798,23 @@ export function createPaymentSurface(
 		return { kind: 'error', code: typeof code === 'string' ? code : '', message: named(thrown) };
 	}
 
-	/** everything PayPal built for this card, once it is built at all. */
-	type Live = { readonly sessions: ReadonlyMap<PaypalRail, PaypalSessionLike> };
+	/**
+	 * everything PayPal built for this card, once it is built at all.
+	 *
+	 * `sessions` is one per rail the SDK could draw, made at mount: it is what says a rail can open a
+	 * window at all, and what a return from PayPal's window is claimed and resumed on. every window a
+	 * press opens is a session of its own, off `sdk`.
+	 */
+	type Live = {
+		readonly sdk: PaypalSdkLike;
+		readonly sessions: ReadonlyMap<PaypalRail, PaypalSessionLike>;
+	};
 	/**
 	 * that, read without awaiting — which is what keeps the donor's press spendable.
 	 *
 	 * a popup is opened on the transient activation of the press that asked for it, and an `await`
-	 * of anything that is not already settled spends it. by the time a confirmation is made this is
-	 * long since assigned, so `confirm` below reads it rather than the promise.
+	 * of anything that is not already settled spends it, so `quoting` below reads this rather than
+	 * the promise.
 	 */
 	let live: Live | null = null;
 	/** whether this page load is a return from PayPal's own window, as PayPal itself answers it. */
@@ -735,6 +827,8 @@ export function createPaymentSurface(
 	 * anything is awaited, so ./surface.ts routes a card gift's own return without waiting on this.
 	 */
 	let claimed: Promise<void> = Promise.resolve();
+	/** the attempt a return from PayPal's window is answered on, while one is being picked up. */
+	let returning: Attempt | null = null;
 
 	/** every listener this surface took out, dropped in one call whatever order `stop` is reached in. */
 	const letGo = new AbortController();
@@ -802,28 +896,14 @@ export function createPaymentSurface(
 
 		const sessions = new Map<PaypalRail, PaypalSessionLike>();
 		for (const rail of drawn) {
-			// created once, at mount, and reused for every attempt: the order is not bound to a
-			// session, it is handed to `start()` per attempt. a session per press would leave two of
-			// them holding live callbacks, which is how a late cancel from one attempt lands on the
-			// next one's flow.
-			const create =
-				rail === 'venmo'
-					? sdk.createVenmoOneTimePaymentSession
-					: sdk.createPayPalOneTimePaymentSession;
-			if (create === undefined) continue;
-			sessions.set(
+			// these answer the return claim alone; a press opens its window on a session of its own,
+			// so no signal from one window can land on another's attempt.
+			const session = createSession(
+				sdk,
 				rail,
-				create.call(sdk, {
-					onApprove: async () => record({ kind: 'approved' }),
-					onCancel: () => record({ kind: 'cancelled' }),
-					onError: (data) =>
-						record({
-							kind: 'error',
-							code: typeof data.code === 'string' ? data.code : '',
-							message: typeof data.message === 'string' ? data.message : ''
-						})
-				})
+				signalsTo(() => returning)
 			);
+			if (session !== undefined) sessions.set(rail, session);
 		}
 		if (sessions.size === 0) {
 			unavailable(noButtonFix('the started SDK carried no session for any rail this form offers'));
@@ -836,16 +916,25 @@ export function createPaymentSurface(
 		// payment, at the footer's amount.
 		for (const rail of sessions.keys()) {
 			const button = doc.createElement(BUTTON_TAGS[rail]);
-			button.addEventListener('click', () => onRail(rail), { signal: letGo.signal });
-			rowList.draw(ROW_NAMES[rail], rail, button);
+			button.addEventListener(
+				'click',
+				() => {
+					pressed = rail;
+					onRail(rail);
+				},
+				{ signal: letGo.signal }
+			);
+			buttons.set(rail, button);
 		}
+		place();
 
-		// one claim over all of them and never one each: the attempt below is a single latch, so two
-		// sessions each claiming would leave the first waiting on a signal the second took.
-		const returning = [...sessions.values()].find((session) => session.hasReturned?.() === true);
-		if (returning !== undefined) claimed = claimReturn(returning);
+		// one claim over all of them and never one each: every mount session answers the one return
+		// attempt, so two sessions each claiming would leave the first waiting on a signal the second
+		// took.
+		const back = [...sessions.values()].find((session) => session.hasReturned?.() === true);
+		if (back !== undefined) claimed = claimReturn(back);
 
-		live = { sessions };
+		live = { sdk, sessions };
 		return live;
 	}
 
@@ -903,46 +992,179 @@ export function createPaymentSurface(
 	async function claimReturn(session: PaypalSessionLike): Promise<void> {
 		if (session.hasReturned?.() !== true || session.resume === undefined) return;
 		returned = true;
-		const waiting = begin();
+		const attempt = begin();
+		returning = attempt;
 		try {
 			await session.resume();
 		} catch (thrown) {
-			record(thrownTermination(thrown));
+			attempt.answer(thrownTermination(thrown));
 		}
-		record({ kind: 'silent' });
-		last = outcomeOfTermination(await waiting);
+		attempt.answer({ kind: 'silent' });
+		last = outcomeOfTermination(await attempt.waiting);
+	}
+
+	/** every session a press opened that is not yet destroyed, which `stop` lets go of. */
+	const pressSessions = new Set<PaypalSessionLike>();
+
+	/** a window opened on a press, with the session it runs in and the attempt it answers. */
+	type PressWindow = { readonly session: PaypalSessionLike; readonly attempt: Attempt };
+
+	/**
+	 * PayPal's window on a session of its own, handed `order` — or nothing where the rail is not drawn.
+	 *
+	 * the session's callbacks and `start()`'s own settling answer this window's attempt alone. it is
+	 * synchronous from end to end, and reads `live` rather than awaiting it, because it runs inside a
+	 * press and an `await` of anything unsettled spends that press's transient activation.
+	 */
+	function openWindow(rail: PaypalRail, order: Promise<{ orderId: string }>): PressWindow | null {
+		if (live === null || !live.sessions.has(rail)) return null;
+		// one window at a time: whatever an earlier press left — finished or not — is let go of first.
+		for (const earlier of [...pressSessions]) retire(earlier);
+		const attempt = begin();
+		const session = createSession(
+			live.sdk,
+			rail,
+			signalsTo(() => attempt)
+		);
+		if (session === undefined) return null;
+		pressSessions.add(session);
+		session.start({ presentationMode: 'auto' }, order).then(
+			() => attempt.answer({ kind: 'silent' }),
+			(thrown: unknown) => attempt.answer(thrownTermination(thrown))
+		);
+		return { session, attempt };
+	}
+
+	/** a press's session cancelled and destroyed, each separately and neither allowed to throw. */
+	function retire(session: PaypalSessionLike): void {
+		pressSessions.delete(session);
+		try {
+			session.cancel();
+		} catch {
+			// a flow already over has nothing to cancel, and what PayPal makes of the call is its own.
+		}
+		try {
+			session.destroy();
+		} catch {
+			// as in `stop` below: what survives is inside PayPal's own script and out of reach.
+		}
+	}
+
+	/**
+	 * the window the last Donate press opened, while its order is still the press's to hand over.
+	 *
+	 * claimed by `confirm` in the quote's own task wherever the total is the one the donor was shown.
+	 * everywhere else the flow has walked away from it, and it is abandoned.
+	 */
+	let opened:
+		| (PressWindow & {
+				readonly rail: PaypalRail;
+				readonly release: (order: { orderId: string }) => void;
+				readonly refuse: (reason: unknown) => void;
+		  })
+		| null = null;
+
+	/**
+	 * the waiting window let go of: its order refused and its session retired.
+	 *
+	 * every way the flow can leave a press without confirming it reaches here — a quote that failed,
+	 * one that landed and was not confirmed in its own task (a corrected total, a 2xx the flow refuses,
+	 * one that answered after the flow stopped waiting on it, Back from the correction screen behind
+	 * that), a second press on any rail, and the card letting go. its attempt is answered too, so
+	 * nothing it says afterwards is read.
+	 */
+	function abandon(reason: unknown): void {
+		const press = opened;
+		if (press === null) return;
+		opened = null;
+		press.refuse(reason);
+		press.attempt.answer({ kind: 'silent' });
+		retire(press.session);
+	}
+
+	/**
+	 * PayPal's window, opened inside the donor's Donate press on an order still being minted.
+	 *
+	 * PayPal's documented shape: `start()` is called synchronously in the press and handed the order
+	 * as a pending promise, because a popup is opened on the press's transient activation and an
+	 * `await` of the quote's round trip spends it — Safari's lasts about a second.
+	 *
+	 * the order is handed over by `confirm` alone, never by the quote's answer: the flow reaches a
+	 * confirmation in the quote's own task wherever the total is the one the donor was shown, and a
+	 * window still waiting a task later is one the flow did not go on to confirm — the correction
+	 * screen among them, which must never stand behind an approvable order.
+	 */
+	function quoting(request: QuoteRequest, minted: Promise<Quote>): void {
+		abandon(new Error('a later press superseded this PayPal window'));
+		if (!isPaypalRail(request.method)) return;
+		const rail = request.method;
+
+		let release: (order: { orderId: string }) => void = () => {};
+		let refuse: (reason: unknown) => void = () => {};
+		const order = new Promise<{ orderId: string }>((resolve, reject) => {
+			release = resolve;
+			refuse = reject;
+		});
+		// PayPal is handed `order` itself; this only keeps a refusal it never subscribed to — its own
+		// `start()` having already ended — off the host page's unhandled rejections.
+		order.catch(() => {});
+		const opening = openWindow(rail, order);
+		if (opening === null) return;
+		const press = { ...opening, rail, release, refuse };
+		opened = press;
+		minted.then(
+			// a zero-delay timer is a task, so every microtask the quote's own task runs — the flow's
+			// junction and the confirmation it reaches — runs ahead of it.
+			() =>
+				setTimeout(() => {
+					if (opened === press) abandon(new Error('the flow did not confirm this order'));
+				}, 0),
+			(thrown: unknown) => {
+				if (opened === press) abandon(thrown);
+			}
+		);
 	}
 
 	const confirm: CheckoutPorts['confirm'] = async ({
 		paymentToken,
 		method
 	}): Promise<ConfirmOutcome> => {
-		const held = live ?? (await ready);
-		// the rail is narrowed here because `ConfirmInput.method` is the whole vocabulary and this
-		// adapter settles two of it. ./surface.ts routes a confirmation to the adapter that owns the
-		// rail, so nothing production sends reaches the other branch.
-		const session = held !== null && isPaypalRail(method) ? held.sessions.get(method) : undefined;
-		if (session === undefined) {
+		const press = opened;
+		if (press !== null && press.rail === method) {
+			opened = null;
+			// a window that already ended — closed, refused, blocked — is never handed an approvable
+			// order; its own ending is the answer.
+			if (press.attempt.answered()) press.refuse(new Error('this PayPal window had already ended'));
+			else press.release({ orderId: paymentToken });
+			return settled(press.attempt);
+		}
+
+		// no window waiting on this order — the correction screen's Confirm above all, whose press
+		// carries an activation of its own and calls this port inside it, so a window opened here on
+		// the order already in hand is not blocked; any other caller opens without one.
+		const opening = isPaypalRail(method)
+			? openWindow(method, Promise.resolve({ orderId: paymentToken }))
+			: null;
+		if (opening === null) {
 			report(UNCONFIRMED, `nothing on this form can settle a gift on the ${method} rail`);
 			return { kind: 'declined', message: UNCONFIRMABLE };
 		}
+		return settled(opening.attempt);
+	};
 
-		const waiting = begin();
-		// already settled, because the quote that minted this order landed a state earlier. an
-		// `await` here of anything else would spend the donor's press and the popup would be blocked
-		// for want of it — PayPal's own sample carries that warning against its order call.
-		const order = Promise.resolve({ orderId: paymentToken });
-		session.start({ presentationMode: 'auto' }, order).then(
-			() => record({ kind: 'silent' }),
-			(thrown: unknown) => record(thrownTermination(thrown))
-		);
+	/** the attempt a confirmation is waiting on, which `stop` answers. */
+	let confirming: Attempt | null = null;
 
-		const termination = await waiting;
+	/** a confirmation's attempt, waited on and read in this flow's outcome vocabulary. */
+	async function settled(attempt: Attempt): Promise<ConfirmOutcome> {
+		confirming = attempt;
+		const termination = await attempt.waiting;
+		if (confirming === attempt) confirming = null;
 		if (termination.kind === 'error') report(UNCONFIRMED, termination.message);
 		const outcome = outcomeOfTermination(termination);
 		last = outcome;
 		return outcome;
-	};
+	}
 
 	/**
 	 * what became of the order this page last sent to PayPal.
@@ -962,6 +1184,7 @@ export function createPaymentSurface(
 		confirm,
 		resume,
 		rows: rowList,
+		quoting,
 		async claimsReturn() {
 			await ready;
 			return returned;
@@ -970,10 +1193,14 @@ export function createPaymentSurface(
 		// own window states the figure off the order the server minted, and this button carries no
 		// figure of its own to correct.
 		quoted() {},
-		// the button is the same button on either cadence, and which rails a repeat may be collected
-		// on is decided before a config is served — `offered-rails.ts` in the app. a shape asked of
-		// the SDK here would be a second place that decision is made.
+		// which of these rails a repeat may be collected on is the flow's answer, carried by
+		// `offerVenmo` below — the served config lists rails without regard to cadence. a shape asked
+		// of the SDK here would be a second place that decision is made.
 		cadence() {},
+		offerVenmo(offered) {
+			venmoOffered = offered;
+			place();
+		},
 		stop() {
 			if (stopped) return;
 			stopped = true;
@@ -983,8 +1210,12 @@ export function createPaymentSurface(
 			letGo.abort();
 			// an attempt still waiting is answered, so a confirmation the card walked away from is a
 			// promise that settles rather than one nothing ever will.
-			record({ kind: 'silent' });
+			confirming?.answer({ kind: 'silent' });
+			returning?.answer({ kind: 'silent' });
+			abandon(new Error('the card let go of this PayPal window'));
+			for (const session of [...pressSessions]) retire(session);
 			for (const row of [...rowList.current()]) rowList.erase(row);
+			standing.clear();
 			void building.then((held) => {
 				for (const session of held?.sessions.values() ?? []) {
 					// each separately: two elements on one page hold sessions of their own off one shared

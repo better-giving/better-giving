@@ -580,6 +580,7 @@ describe('settleDelivery() — a settlement the gift’s lines cannot account fo
 		expect(groups?.n).toBe(0);
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain(gift.paymentId);
+		expect(mail.sent[0]?.text).toContain('Amount: USD 60.00');
 	});
 
 	it('corrects the payment row it refused to post', async () => {
@@ -710,6 +711,23 @@ describe('settleDelivery() — a settlement the books cannot take', () => {
 
 		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
 		expect(mail.sent).toEqual([]);
+	});
+
+	it('prints an amount that is not a whole number of minor units as it arrived, never rounded', async () => {
+		await pendingGift();
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider(undefined, { ok: true, value: settlement({ amountMinor: 1250.5 }) })
+			}),
+			DELIVERY
+		);
+
+		const text = mail.sent[0]?.text ?? '';
+		expect(text).toContain('Amount: 1250.5 USD (not a whole number of minor units)');
+		expect(text).not.toMatch(/USD 12\.5\d/);
 	});
 
 	it('names the offending figure in what it sends the operator', async () => {
@@ -1722,6 +1740,8 @@ describe('the processor an operator is sent to', () => {
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 		expect(mail.sent[0]?.subject).toContain('NOWPayments');
 		expect(`${mail.sent[0]?.subject} ${mail.sent[0]?.text}`).not.toContain('Stripe');
+		expect(mail.sent[0]?.text).toContain('USD 100.00');
+		expect(mail.sent[0]?.text).not.toContain('(minor units)');
 	});
 });
 

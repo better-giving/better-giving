@@ -281,6 +281,19 @@ describe('a donor-advised fund’s window, behind the payment surface', () => {
 		expect(k.unavailable).toHaveLength(1);
 	});
 
+	// a caller counting reports against the surfaces it has built has not counted this one until its
+	// constructor returns.
+	it('says so only once it has returned', () => {
+		const k = kit();
+		createPaymentSurface(
+			{ ...CONFIG, providers: [] },
+			k.mount,
+			(failure) => k.unavailable.push(failure),
+			k.fund
+		);
+		expect(k.unavailable).toHaveLength(0);
+	});
+
 	it('lets go of everything it put on the page, and raises nothing on a second stop', async () => {
 		const k = kit();
 		const surface = await surfaced(k);

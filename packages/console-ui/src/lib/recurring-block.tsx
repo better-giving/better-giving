@@ -4,6 +4,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import type { PaymentProcessor, RecurringRead, RecurringSetup } from '../api/types';
 import { noAnswer } from './processor-screen';
 import type { RecurringRow } from './recurring-rows';
@@ -135,13 +136,20 @@ function repeatingLines(
 				</p>
 				{row.press ? (
 					<div className="adm-actions">
+						{/* held with `aria-disabled` and turned away in its own handler, never closed by
+						    `disabled`: a natively closed button drops the focus standing on it, and the
+						    `aria-busy` beside it is then heard by nobody (../closed-while-writing.spec.ts).
+						    it is a submit, so turning it away is stopping the submission. */}
 						<Button
 							type="submit"
 							name="intent"
 							value={RECURRING_INTENT}
 							variant="primary"
-							disabled={closed}
-							aria-busy={pending === RECURRING_INTENT}
+							onClick={(event) => {
+								if (closed) event.preventDefault();
+							}}
+							aria-disabled={closed || undefined}
+							aria-busy={pending === RECURRING_INTENT || undefined}
 						>
 							Set up recurring gifts
 						</Button>
@@ -232,13 +240,37 @@ function provisionOutcome(provision: RecurringSetup | null): ReactNode {
 	// second setup.
 	const created = report.processors.filter((one) => one.outcome === 'set_up');
 	return created.length > 0 ? (
-		<Banner tone="done" word="Set up">
-			{accountsOpening(created.map((one) => one.label))} can now collect gifts that repeat.
-		</Banner>
+		<Landed
+			word="Set up"
+			sentence={`${accountsOpening(created.map((one) => one.label))} can now collect gifts that repeat.`}
+		/>
 	) : (
-		<Banner tone="done" word="Already set up">
-			{accountsOpening(report.processors.map((one) => one.label))} already had this, so nothing was
-			changed.
+		<Landed
+			word="Already set up"
+			sentence={`${accountsOpening(report.processors.map((one) => one.label))} already had this, so nothing was changed.`}
+		/>
+	);
+}
+
+/**
+ * a press that landed, said in a region that mounts empty and is written a task later.
+ *
+ * the banner is a `role="status"` region mounted with the answer, and a region reports a change to
+ * its contents and never its own arrival — so one that arrived holding its words would be
+ * announced by nobody. `ProgressBar` (`@better-giving/operator/components/status/ProgressBar`)
+ * writes its own region the same way. a second press takes this off the screen while it is in
+ * flight (`busy` in {@link recurringBlock}), so the same answer twice mounts it empty again.
+ */
+function Landed({ word, sentence }: { word: string; sentence: string }): ReactNode {
+	const [saying, setSaying] = useState(false);
+	useEffect(() => {
+		setSaying(false);
+		const say = setTimeout(() => setSaying(true), 0);
+		return () => clearTimeout(say);
+	}, [word, sentence]);
+	return (
+		<Banner tone="done" word={saying ? word : null}>
+			{saying ? sentence : null}
 		</Banner>
 	);
 }

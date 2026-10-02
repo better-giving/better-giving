@@ -279,6 +279,13 @@ export type GiveStepProps = {
 	readonly paymentPrepared: boolean;
 	readonly paymentRows: number;
 	readonly paymentWords: string;
+	/**
+	 * the offer of a one-time gift, or `''` where none stands. while one does it stands in place of
+	 * the payment box and the control that spends the money: the box would be empty and the press
+	 * refused, and taking the offer is the one thing on the step that moves the gift on.
+	 */
+	readonly oneTimeOffer: string;
+	readonly onMakeOneTime: () => void;
 	readonly onSubmit: () => void;
 	readonly submits: boolean;
 };
@@ -294,10 +301,13 @@ export function GiveStep({
 	paymentPrepared,
 	paymentRows,
 	paymentWords,
+	oneTimeOffer,
+	onMakeOneTime,
 	onSubmit,
 	submits
 }: GiveStepProps) {
 	const busy = api.submitButton['aria-busy'];
+	const offered = oneTimeOffer !== '';
 	return (
 		<section className="step step-give" hidden={hidden}>
 			{head}
@@ -307,14 +317,24 @@ export function GiveStep({
 				prepared={paymentPrepared}
 				rows={paymentRows}
 				words={paymentWords}
+				aside={offered}
 			/>
+			{/* `attention` rather than `message`: nothing went wrong with anything the donor did, and
+			    the sentence is a task — the markup `oneTimeGroup` in @better-giving/form's views.ts draws. */}
+			<div className="group" hidden={!offered}>
+				<p className="attention">{oneTimeOffer}</p>
+				<button part={part('action')} type="button" onClick={onMakeOneTime}>
+					{copy.MAKE_ONE_TIME}
+				</button>
+			</div>
 			<p className="aside" hidden={receiptTo === ''}>
 				{receiptTo}
 			</p>
 			<button
 				part={partWhen('action', { submit: true, busy })}
-				type={submits ? 'submit' : 'button'}
+				type={submits && !offered ? 'submit' : 'button'}
 				aria-busy={busy}
+				hidden={offered}
 				onClick={onSubmit}
 			>
 				<span className="action-label">{submitLabel}</span>

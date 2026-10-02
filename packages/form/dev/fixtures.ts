@@ -585,7 +585,9 @@ export function devRuntime(ending: DepositEnding): FormRuntime {
 					cadence: surface.cadence,
 					offerFund: surface.offerFund,
 					offerCrypto: surface.offerCrypto,
+					offerVenmo: surface.offerVenmo,
 					rows: surface.rows,
+					repeatingUnavailable: surface.repeatingUnavailable,
 					stop: surface.stop
 				};
 			}
@@ -597,8 +599,10 @@ export function devRuntime(ending: DepositEnding): FormRuntime {
 				cadence: () => {},
 				offerFund: () => {},
 				offerCrypto: () => {},
+				offerVenmo: () => {},
 				// no provider draws here, so the box is headed as though every offered rail were a row.
 				rows: (listener) => listener(config.paymentMethods.length),
+				repeatingUnavailable: () => {},
 				stop: () => {}
 			};
 		},

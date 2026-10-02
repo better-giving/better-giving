@@ -154,6 +154,22 @@ const UNAVAILABLE =
 	'sign-in password is set. The exact cause is in the deployment’s logs, which the console does ' +
 	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
 
+/**
+ * what a member is told when the edge attributed no address to the request, so there is no
+ * sign-in bucket to charge and the attempt is refused before their password is compared.
+ *
+ * it is read by a colleague and acted on by whoever runs the deployment, so it names the cause and
+ * the switch that usually produces it — the zone-level managed transform that strips
+ * `CF-Connecting-IP` from every request, described on `apiRateLimitKey` in
+ * $lib/server/api/rate-limit.ts. it says nothing about the account, because nothing about the
+ * account was read.
+ */
+const UNATTRIBUTED =
+	'Sign-in is unavailable. This deployment is not being told your address, so it cannot limit ' +
+	'password guesses and refuses member sign-ins until it is. The usual cause is Cloudflare’s ' +
+	'“Remove visitor IP headers” setting being switched on for this site; whoever runs this ' +
+	'deployment can switch it off in the Cloudflare dashboard.';
+
 export const links = operatorLinks;
 
 export function meta(): Route.MetaDescriptors {
@@ -259,8 +275,9 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 
 	// charged before the body is read and before anything is hashed.
 	//
-	// what it saves is the SHA-256 compare in `secretEquals` and, on a correct guess, the staff-row
-	// upsert. three actions pay on that bucket — this one, ./forgot.tsx and
+	// what it saves is the hash every attempt costs — the SHA-256 compare in `secretEquals` for the
+	// deployer, better-auth's scrypt for a member — and, on a correct guess, the session write.
+	// three actions pay on that bucket — this one, ./forgot.tsx and
 	// ./_app.admin.members_.password.tsx — and each charges it once, before its own body is read.
 	// they share a key rather than holding one each because a guess at a credential is a guess
 	// whichever form carries it ($lib/server/api/rate-limit.ts); nothing else in a request's path
@@ -278,11 +295,12 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// the parse it exists to save. it carries no values and no field errors, so the banner is the
 	// whole of it.
 	//
-	// a deployment with no binding signs staff in, and a caller the edge attributed no address to
-	// is not counted at all. both are `isRateLimited`'s decisions and are argued in
-	// $lib/server/api/rate-limit.ts; what is local here is that `ADMIN_PASSWORD` is what bounds
-	// this form either way.
-	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, signInRateLimitKey(request))) {
+	// a deployment with no binding is not counted at all, and neither is a caller the edge attributed
+	// no address to — both are `isRateLimited`'s decisions, argued in $lib/server/api/rate-limit.ts.
+	// the second is not the end of it for a member: that caller is refused below, once the box has
+	// said which way in this is.
+	const bucket = signInRateLimitKey(request);
+	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(LOGIN_FORM, signInRateLimitMessage()));
 	}
 
@@ -291,6 +309,27 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// a blank box and one over the cap are both rejections the box itself explains, and the second
 	// is refused before it is hashed. no banner: the sentence belongs under the input.
 	if (!submission.ok) return invalid(400, submission.reject());
+
+	// which of the two ways in this is, and the identifier is the whole of what decides. the
+	// deployer's is a constant, so this is a comparison and not a query — nothing here asks the
+	// database who a caller claims to be before deciding which credential to compare. the constant
+	// is normalised the same way the box was, so a deployment that raised it to a capital would not
+	// quietly send its own deployer down the member path.
+	const asStaff = submission.value.identifier === normaliseEmail(STAFF_USER_EMAIL);
+
+	// a member attempt with no bucket to charge is refused before the database is read or anything
+	// is hashed. members are many, each password chosen by a person, and every guess is an scrypt run
+	// this deployment pays for, so no bucket would mean unbounded guessing at all of them. the deployer
+	// is let through the same gap, unbounded: refusing them too would shut every way into the
+	// dashboard at once, and their one `ADMIN_PASSWORD` is minted by the console unless the operator
+	// typed their own. `signInRateLimitKey` in $lib/server/api/rate-limit.ts states both halves.
+	//
+	// 403 because nothing typed is wrong and no wait fixes it: the attempt is refused until the
+	// deployment is told the address. in `pnpm run logs` it is a line of its own beside the 429, the
+	// 401 and the 500.
+	if (!asStaff && bucket === null) {
+		return invalid(403, submission.reject({ formErrors: [UNATTRIBUTED] }));
+	}
 
 	// the read every other screen pays for on the gate. a deployment that cannot sign a cookie
 	// cannot sign one here either, and the fix is the same one the missing `auth_user` table below
@@ -315,17 +354,11 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		requestOrigin: url.origin
 	});
 
-	// which of the two ways in this is, and the identifier is the whole of what decides. the
-	// deployer's is a constant, so this is a comparison and not a query — nothing here asks the
-	// database who a caller claims to be before deciding which credential to compare. the constant
-	// is normalised the same way the box was, so a deployment that raised it to a capital would not
-	// quietly send its own deployer down the member path.
-	//
 	// the limiter above was charged once, ahead of this branch and ahead of the body: one bucket for
 	// both ways in, on a key that never moves with the path ($lib/server/api/rate-limit.ts). a
 	// charge inside either arm would be a second one on the same press, and a bucket per arm would
 	// be a guesser buying a fresh one by typing a different identity into the box.
-	if (submission.value.identifier !== normaliseEmail(STAFF_USER_EMAIL)) {
+	if (!asStaff) {
 		const signedIn = await signInMember(auth, {
 			email: submission.value.identifier,
 			password: submission.value.password,

@@ -151,13 +151,13 @@ import type { PostableAccountId } from './postable';
 //    `ON DELETE CASCADE` is never deferrable — a cascade is an action, not a violation,
 //    so it fires during the rebuild's implicit delete and empties the child table, leaving
 //    no orphan for any check to find.
-//    that is why exactly one FK in this schema carries a cascade —
-//    `auth_session.user_id -> auth_user.id`, argued at its own declaration in
-//    ./auth-schema.ts — and no other may: a session is worthless without its user and no
-//    accounting record hangs off either table, so a silently fired cascade there costs a
-//    logged-out admin rather than books nobody can reconcile. every domain FK is
-//    `NO ACTION`, and `strict.workers.spec.ts` reads `pragma_foreign_key_list` over every
-//    table and fails on a second.
+//    that is why exactly two FKs in this schema carry a cascade —
+//    `auth_session.user_id` and `auth_account.user_id`, both onto `auth_user.id` and each
+//    argued at its own declaration in ./auth-schema.ts — and no other may: a session or a
+//    credential is worthless without its user and no accounting record hangs off any of the
+//    three tables, so a silently fired cascade there costs a logged-out admin rather than
+//    books nobody can reconcile. every domain FK is `NO ACTION`, and `strict.workers.spec.ts`
+//    reads `pragma_foreign_key_list` over every table and fails on a third.
 //    this is why every constraint on `account` below landed in the first migration:
 //    adding one afterwards is this path.
 //    a self-referencing FK adds one more edit. the rebuild's `DROP TABLE payment` deletes

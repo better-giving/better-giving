@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/better-giving/console/internal/cf"
+	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/session"
 	"github.com/better-giving/console/internal/state"
@@ -183,6 +184,33 @@ func TestTwoConnectPressesInFlightProduceOneSession(t *testing.T) {
 	}
 	if answers[0]["kind"] != "connected" || answers[1]["kind"] != "connected" {
 		t.Fatalf("answered %v and %v", answers[0], answers[1])
+	}
+}
+
+// net/http recovers a handler's panic and the process lives on, so a press that panicked must not
+// leave the next one waiting on it.
+func TestAConnectPressThatPanickedLeavesTheNextPressFreeToRun(t *testing.T) {
+	presses := &connectPresses{}
+	func() {
+		defer func() { _ = recover() }()
+		presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			panic("the press broke")
+		})
+	}()
+
+	answered := make(chan deployment.Connection, 1)
+	go func() {
+		answered <- presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			return deployment.Connection{Kind: deployment.Connected}
+		})
+	}()
+	select {
+	case got := <-answered:
+		if got.Kind != deployment.Connected {
+			t.Fatalf("kind = %q, want the next press's own outcome", got.Kind)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the next press is still waiting on the one that panicked")
 	}
 }
 

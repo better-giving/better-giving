@@ -132,9 +132,11 @@ export function useRunPoll(
 	   account this press just set up, and only the deployment can report on that — the answer on
 	   screen was taken before any of it existed. the flag is a ref rather than a dependency because
 	   the revalidator is a fresh object on every render — read as one, this would revalidate the page
-	   for as long as the report stayed up. */
+	   for as long as the report stayed up. it starts as the mount found the run: a page drawn over a
+	   run that had already ended was drawn from a reading taken after the stop, so there is nothing
+	   to put back. */
 	const settled = live?.kind === 'ended';
-	const asked = useRef(false);
+	const asked = useRef(settled);
 	useEffect(() => {
 		if (!settled) {
 			asked.current = false;

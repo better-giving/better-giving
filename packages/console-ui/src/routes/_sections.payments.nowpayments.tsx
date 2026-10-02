@@ -10,7 +10,7 @@ import { NOWPAYMENTS_SAVE_INTENT, nowpaymentsPosted } from '../lib/nowpayments-s
 import { forgetReadings, readProcessorPage } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE as CONSOLE_TITLE } from './_index';
+import { ConsoleFailure, TITLE as CONSOLE_TITLE } from './_index';
 import type { Route } from './+types/_sections.payments.nowpayments';
 
 // /payments/nowpayments — NOWPayments' page, the fourth under the rail's donation processor heading.
@@ -94,6 +94,16 @@ export default function NowpaymentsPage({ loaderData, actionData, matches }: Rou
 				busy={press.busy}
 				pending={press.intent}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

@@ -240,7 +240,7 @@ function CheckoutCard({
 	/** a sentence one press asked for, spent by the snapshot it was asked on. */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
-		kind: 'details' | 'copy';
+		kind: 'details' | 'copy' | 'one-time';
 		words?: string;
 	} | null>(null);
 	/** a commit, so a press that changed nothing else still gets its caret moved. */
@@ -320,6 +320,30 @@ function CheckoutCard({
 	// next, and the decline names what happened last.
 	const paymentWords =
 		api.state.step !== 'give' ? '' : refusedPayment ? copy.PAYMENT_PROBLEM : decline.current.words;
+
+	// ── a repeating gift no processor still up can take ─────────────────────────────────────────
+
+	const oneTimeOffer =
+		api.state.step === 'give' && api.state.oneTimeInstead
+			? copy.oneTimeOffer(api.state.fv.frequency === 'yearly' ? 'yearly' : 'monthly')
+			: '';
+	/**
+	 * the offer appearing, said out loud: it arrives whenever the processors fail, which is as likely
+	 * to be while the donor is reading the step as on the way into it, and nothing moves the caret to
+	 * it. cached against the snapshot it was read for, as `decline` is.
+	 */
+	const offerSeen = useRef<{ at: CheckoutSnapshot | null; offer: string; arrived: boolean }>({
+		at: null,
+		offer: '',
+		arrived: false
+	});
+	if (offerSeen.current.at !== snapshot) {
+		offerSeen.current = {
+			at: snapshot,
+			offer: oneTimeOffer,
+			arrived: oneTimeOffer !== '' && offerSeen.current.offer === ''
+		};
+	}
 
 	// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
 
@@ -622,6 +646,16 @@ function CheckoutCard({
 		focusOn(state.method === 'crypto' ? (live?.coins ?? null) : paymentMount.current);
 	}
 
+	/**
+	 * the offer of a one-time gift taken. the press hides itself and un-hides the box, which is where
+	 * the next choice is, so the caret goes there and the change is said on the region.
+	 */
+	function onMakeOneTime(): void {
+		api.oneTimeButton.onClick();
+		setShot({ at: read(), kind: 'one-time' });
+		focusOn(paymentMount.current);
+	}
+
 	/** the fee decision; what it does to the total is said with every other move of it (`total`). */
 	function onFee(): void {
 		api.feeToggle.onClick();
@@ -651,13 +685,15 @@ function CheckoutCard({
 		setEntry(formatFigure(amountMinor, locale, currency));
 	}
 
-	function onOther(): void {
+	function onOther(via: 'pointer' | 'keyboard'): void {
 		setOtherChosen(true);
 		// whatever a preset wrote into the box is not what the donor is about to type, and a figure
 		// left standing there is a gift the next press would charge.
 		setEntry('');
 		api.amountGroup.onTyped?.(null);
-		focusOn(amountRefs.entry.current);
+		// arrow keys check a radio as they move, so taking the caret on a keyboard selection would pull
+		// a donor out of the group mid-move (WCAG 3.2.2).
+		if (via === 'pointer') focusOn(amountRefs.entry.current);
 	}
 
 	function onNoteToggle(): void {
@@ -733,12 +769,19 @@ function CheckoutCard({
 	const detailsSaid =
 		spent === 'details'
 			? [
-					missingFields.includes('email') ? fieldProblem('email', api.emailField.box.value) : '',
-					missingFields.includes('firstName') ? copy.NAME_PROBLEM : '',
-					missingFields.includes('lastName') ? copy.NAME_PROBLEM : ''
+					missingFields.includes('email')
+						? copy.refusalSaid(copy.EMAIL, fieldProblem('email', api.emailField.box.value))
+						: '',
+					missingFields.includes('firstName')
+						? copy.refusalSaid(copy.FIRST_NAME, copy.NAME_PROBLEM)
+						: '',
+					missingFields.includes('lastName')
+						? copy.refusalSaid(copy.LAST_NAME, copy.NAME_PROBLEM)
+						: ''
 				]
 					.filter((sentence) => sentence !== '')
-					.join(', ')
+					// a semicolon because each already holds a colon, and a comma runs one field into the next.
+					.join('; ')
 			: '';
 	const bounds = copy.amountProblem(offer, config.minAmountMinor, config.maxAmountMinor);
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
@@ -748,7 +791,10 @@ function CheckoutCard({
 	// control inside one, where a group's description is not reliably announced from a descendant — so
 	// it is on this channel however the press was made. the details step's is here only for the press
 	// that moved no caret and had no other channel.
-	const askedFor = [missingDecisions.includes('amount') ? bounds : '', detailsSaid]
+	const askedFor = [
+		missingDecisions.includes('amount') ? copy.refusalSaid(copy.AMOUNT, bounds) : '',
+		detailsSaid
+	]
 		.filter((sentence) => sentence !== '')
 		.join(', ');
 
@@ -767,11 +813,15 @@ function CheckoutCard({
 					? (reading?.words ?? '')
 					: refusedPayment
 						? copy.PAYMENT_PROBLEM
-						: spent === 'copy' && takeover.deposit !== null
-							? (shot?.words ?? '')
-							: busy
-								? workingWords(api.state)
-								: retitle.current.words;
+						: offerSeen.current.arrived
+							? oneTimeOffer
+							: spent === 'one-time'
+								? copy.MADE_ONE_TIME
+								: spent === 'copy' && takeover.deposit !== null
+									? (shot?.words ?? '')
+									: busy
+										? workingWords(api.state)
+										: retitle.current.words;
 
 	const receipt =
 		reading === null ? null : <Receipt reading={reading} onFee={() => onFee()} feeRef={feeBox} />;
@@ -857,6 +907,8 @@ function CheckoutCard({
 						paymentPrepared={live !== null}
 						paymentRows={paymentRows}
 						paymentWords={paymentWords}
+						oneTimeOffer={oneTimeOffer}
+						onMakeOneTime={onMakeOneTime}
 						onSubmit={onSubmit}
 						submits={shown === 'give'}
 					/>

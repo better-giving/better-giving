@@ -12,7 +12,14 @@ import type { ReactNode } from 'react';
 import { useCallback, useRef } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { Form, redirect, useNavigation, useSearchParams } from 'react-router';
-import { closeConsole, connect, freeWithheldVars, setVars } from '../api/client';
+import {
+	ConsoleRefused,
+	ConsoleUnreachable,
+	closeConsole,
+	connect,
+	freeWithheldVars,
+	setVars
+} from '../api/client';
 import type { Blocked, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
 import type { PlanAnswer } from '../lib/cloudflare-plan';
@@ -67,8 +74,9 @@ import type { Route } from './+types/_index';
 // of this repository either way; pinning one is the escape hatch DEPLOY.md documents.
 //
 // reads are the binary's and this `clientLoader`'s, writes are the presses below, and every
-// failure is a value: nothing here throws, because a rejected promise in a loader is a 500 in place
-// of the state that explains it.
+// failure the binary answers is a value drawn as the state that explains it. the one throw is
+// `readConsole` finding no binary at all, or one that turned the reading down, which this file's
+// `ErrorBoundary` draws.
 
 /** what the re-connect press on the unreachable face posts. */
 const CONNECT_INTENT = 'connect';
@@ -491,12 +499,18 @@ function UnreachableFace({
 
 	const recheck = (
 		<Form className="adm-actions" method="post" preventScrollReset>
+			{/* both presses on this gate are held with `aria-disabled` and their submission stopped
+			    in their own handler, never closed by `disabled`, which drops the focus standing on
+			    them (../closed-while-writing.spec.ts). */}
 			<Button
 				type="submit"
 				name="intent"
 				value={CHECK_INTENT}
-				disabled={busy}
-				aria-busy={intent === 'check'}
+				onClick={(event) => {
+					if (busy) event.preventDefault();
+				}}
+				aria-disabled={busy || undefined}
+				aria-busy={intent === 'check' || undefined}
 			>
 				Check again
 			</Button>
@@ -569,9 +583,12 @@ function UnreachableFace({
 					name="intent"
 					value={CONNECT_INTENT}
 					variant="primary"
-					disabled={busy}
+					onClick={(event) => {
+						if (busy) event.preventDefault();
+					}}
+					aria-disabled={busy || undefined}
 					aria-describedby={COLLEAGUE_COST}
-					aria-busy={pending}
+					aria-busy={pending || undefined}
 				>
 					Connect
 				</Button>
@@ -621,17 +638,51 @@ function UnreachableFace({
 	);
 }
 
-// the one way this page learns the console has stopped: a request it cannot reach the local process
-// with at all. drawn as the panel a route outside the shell is, because there is no reading to draw
-// a shell from — the same words wherever it is met (../lib/deployment-states.tsx).
+/**
+ * what an error boundary draws for anything but a gate, in the place the failure stood.
+ *
+ * **the stopped page is for a binary that could not be reached at all, and for nothing else** — told
+ * the console has stopped, an operator restarts one that is running. a refusal the binary sent is
+ * drawn in its own words, printed rather than marked for ../lib/said.tsx's reason. anything else
+ * threw on this side of the call, so a reload is the one way out this page has.
+ *
+ * exported for every boundary under ./_sections.tsx, which already reach this module for `TITLE`.
+ */
+export function ConsoleFailure({ error }: { error: unknown }): ReactNode {
+	if (error instanceof ConsoleUnreachable) return <ConsoleStopped />;
+	if (error instanceof ConsoleRefused) {
+		return (
+			<Banner tone="blocker" word="The console turned this down">
+				{error.message}
+			</Banner>
+		);
+	}
+	return (
+		<Banner
+			tone="blocker"
+			word="This part of the console failed"
+			actions={
+				<Button type="button" mark="refresh-cw" onClick={() => window.location.reload()}>
+					Reload
+				</Button>
+			}
+		>
+			Reload this page.
+		</Banner>
+	);
+}
+
+// drawn as the panel a route outside the shell is, because there is no reading to draw a shell
+// from. the one throw this page's loader has is `readConsole` meeting a binary it cannot reach, or
+// one that turned the reading down.
 //
 // it stands the same foot as every other screen, with no release in it: a boundary has no loader,
 // so nothing here read what this binary is and that end of the strip stands empty.
-export function ErrorBoundary() {
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	return (
 		<PanelRoute foot={<ProductFoot version="" />}>
 			<title>{TITLE}</title>
-			<ConsoleStopped />
+			<ConsoleFailure error={error} />
 		</PanelRoute>
 	);
 }

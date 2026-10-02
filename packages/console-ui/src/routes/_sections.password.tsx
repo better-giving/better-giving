@@ -2,14 +2,17 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars } from '../api/client';
+import type { VarsWritten } from '../api/types';
 import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { PasswordFold } from '../lib/password-fold';
 import { forgetReadings } from '../lib/processor-cache';
+import type { GroupReport } from '../lib/secret-group-form';
+import { useKeptAnswers } from '../lib/smtp-answers';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.password';
 
 // /password — the password that opens the dashboard for the operator who set the deployment up,
@@ -42,6 +45,16 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	return { unknown: true as const };
 }
 
+/**
+ * each press's last answer, kept apart: the freeing press stays pressable over a credentials press,
+ * and its answer landing must not take that press's refusal or Saved off the fold
+ * (../lib/smtp-answers.ts).
+ */
+const NO_ANSWERS: { readonly secrets: GroupReport | null; readonly freed: VarsWritten | null } = {
+	secrets: null,
+	freed: null
+};
+
 export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 	return consoleRereads(args);
 }
@@ -49,19 +62,30 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function PasswordPage({ actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const { intent, busy, revalidating } = usePress();
+	const { secrets, freed } = useKeptAnswers(NO_ANSWERS, actionData);
 	return (
 		<Column>
 			{/* no page title: it would say the box's own label directly over it. */}
 			<PasswordFold
 				values={shell.reading.values}
-				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}
-				freed={actionData && 'freed' in actionData ? actionData.freed : null}
+				secrets={secrets}
+				freed={freed}
 				workerName={shell.workerName}
 				accountName={shell.account}
 				busy={busy}
 				pending={intent}
 				revalidating={revalidating}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

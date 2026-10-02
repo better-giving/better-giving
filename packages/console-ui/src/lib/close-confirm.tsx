@@ -73,17 +73,26 @@ export function CloseConfirm({
 	const leave = useLeaveDialog();
 	const close = useFetcher({ key: CLOSE_FETCHER });
 	const dismiss = typeof back === 'string' ? () => leave(back) : back;
+	const closing = close.state !== 'idle';
 	return (
 		<close.Form method="post" action={SHELL_ACTION}>
 			<Modal
 				title="Close this console?"
 				onDismiss={dismiss}
 				danger="Close console"
+				/* held with `aria-disabled` and its submission stopped in its own handler while the
+				   close is in flight, never closed by `disabled`: a natively closed button drops the
+				   focus standing on it, and the `aria-busy` beside it is then heard by nobody
+				   (../closed-while-writing.spec.ts). */
 				dangerProps={{
 					type: 'submit',
 					name: 'intent',
 					value: CLOSE_INTENT,
-					'aria-busy': close.state !== 'idle'
+					'aria-disabled': closing || undefined,
+					'aria-busy': closing || undefined,
+					onClick: (event) => {
+						if (closing) event.preventDefault();
+					}
 				}}
 				cancel="Back"
 				cancelProps={{ type: 'button', onClick: dismiss }}

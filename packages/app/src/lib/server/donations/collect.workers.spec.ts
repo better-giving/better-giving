@@ -1363,6 +1363,8 @@ describe('settleDelivery() — a collection this deployment cannot attribute', (
 			expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 			expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 			expect(mail.sent[0]?.text).toContain(GIFT_ID);
+			expect(mail.sent[0]?.text).toContain('USD 25.00');
+			expect(mail.sent[0]?.text).not.toContain('(minor units)');
 		}
 	);
 

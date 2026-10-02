@@ -128,14 +128,15 @@ func Apply(ctx context.Context, send cf.Send, account, database string, carried 
 		saw("", 0, len(pending))
 	}
 	for at, file := range pending {
-		// checked between files as well as carried into the request: a request the context cuts is
-		// a file d1 may still land whole, row and all, and no further one is started behind it.
+		// checked between files and never carried into a file's request: a request the context cut
+		// would be a file d1 may still land whole, row and all, reported as not applied. the send's
+		// own deadline still bounds it — ../cf's schemaTimeout.
 		if ctx.Err() != nil {
 			result.Kind = Cancelled
 			result.Detail = ctx.Err().Error()
 			return result
 		}
-		if failure, stopped := query(ctx, send, path, file.Name, recorded(file)); stopped {
+		if failure, stopped := query(context.WithoutCancel(ctx), send, path, file.Name, recorded(file)); stopped {
 			result.Kind = failure.Kind
 			result.At = file.Name
 			result.Detail = failure.Detail

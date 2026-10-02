@@ -145,8 +145,9 @@ export const lineAt = (stage: PaypalStage): number =>
  * whether a run stopped because PayPal would not accept the pair.
  *
  * the one stop that is the boxes being wrong rather than the errand going wrong, so it reports at
- * the boxes and draws no ledger. PayPal not answering at the key check is not it: the pair may be
- * fine, and that stop keeps its ledger line.
+ * the boxes and draws no ledger. PayPal not answering at the key check is not it, and neither is
+ * PayPal refusing the app a permission there (`forbidden`): the pair may be fine, so it is read off
+ * the failure's kind and never the stop, and that stop keeps its ledger line.
  */
 export const pairTurnedDown = (run: PaypalRunRead | null): boolean =>
 	run?.kind === 'ended' &&

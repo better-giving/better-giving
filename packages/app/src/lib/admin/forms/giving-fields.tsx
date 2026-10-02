@@ -1,9 +1,12 @@
-import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { RangeSlider } from '@better-giving/operator/components/forms/RangeSlider';
+import {
+	RepeatingRows,
+	type RowControl
+} from '@better-giving/operator/components/forms/RepeatingRows';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { type MouseEventHandler, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { formatMinorBrief, minorUnitDigits } from '$lib/donations/money';
 import { majorEntry, readAmount } from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
@@ -28,29 +31,18 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // a row are the form's own controls, handed in as button props by the screen that holds the form,
 // so this group states no intent of its own and neither screen states the arithmetic twice.
 //
+// the rows are the library's `RepeatingRows`
+// (packages/operator/src/components/forms/RepeatingRows.jsx), handed those two controls as they
+// are, and each row the `key` the form minted for it: a row's id is its position, so the key is
+// what keeps a half-typed figure on its own row as rows are removed above it. where focus lands
+// after either press is that component's too.
+//
 // a row is a box with a name of its own, so it is refused under itself. `suggestedAmountsRule` in
 // `$lib/forms/input-schema.ts` keys an offending amount to `suggested_amounts[1]`, which is the
 // second row's input, and that row draws the sentence under its own box. the one sentence keyed to
 // the bare group name is the cap on how many amounts there may be, because a list holding too many
-// is a fact about no one row — so the message under the group is that one and never another.
-//
-// every box in this group is the library's `Field`, and the group's own geometry — the row and the
-// control that removes it — is written out of the classes packages/operator/src/styles/adm.css
-// already draws rather than mounted from the library's `RepeatingRows`
-// (packages/operator/src/components/forms/RepeatingRows.jsx). two things that component decides for
-// itself are decided by the form here, and either one alone is why:
-//
-// it mints its own Add and Remove, and each submits a position — an index under `removeName`, and
-// an Add carrying no name at all. these rows are a conform list, so adding and removing are that
-// form's own intents, minted by the form and handed in as button props by the screen holding it; a
-// control submitting a position instead would move no row and the press would do nothing.
-//
-// and it keys every row by the row's id, which here is the row's *position*:
-// `form-create-suggested_amounts[1]` is whichever row is second right now. keyed by that, a removed
-// row leaves react re-using the box below it for the row that took its place — see `AmountRow`
-// below, which is why a row carries a `key` the form minted as well as an id.
-//
-// the rows draw nothing new and state no value.
+// is a fact about no one row — so this group draws it under the rows, describes the group by it,
+// and marks no row with it, which is why it is not handed to `RepeatingRows` as the group's `error`.
 //
 // the bounds carry a slider over their two boxes, and it is the one control here that is not a
 // box: it moves along `BOUND_STOPS` below, writes the stop a thumb lands on into that thumb's box,
@@ -128,34 +120,8 @@ function typeInto(box: HTMLInputElement, text: string): void {
 	box.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-/**
- * one control that changes the boxes rather than the record.
- *
- * the four attributes conform's own `getButtonProps` writes, stated here rather than imported as
- * `ButtonHTMLAttributes`: the library's `Button` takes the union of a button's attributes and an
- * anchor's, so the whole of one of those two is not assignable to it — and what a caller actually
- * has to hand over is these four.
- */
-type IntentButton = {
-	readonly name: string;
-	readonly value: string;
-	readonly form: string;
-	readonly formNoValidate: boolean;
-	/** a press the form withholds the intent on — `insertWhenValid` in ../use-admin-form.ts. */
-	readonly onClick?: MouseEventHandler<HTMLButtonElement>;
-};
-
-/**
- * one amount box, plus the identity the form gives its row.
- *
- * `key` and not `id`. a box's `id` is composed from its name, so it is the row's *position* —
- * `form-create-suggested_amounts[1]` is whichever row is second right now. reconciled by that, a
- * removed row leaves react re-using the box below it for the row that took its place: the box is
- * uncontrolled, so it keeps the figure already typed into it and the group ends up showing an
- * amount the form no longer holds. `key` is minted per row and travels with it.
- */
+/** one amount box, plus the identity the form minted for its row when the row appeared. */
 type AmountRow = Box & {
-	/** the row's own identity, as the form minted it when the row appeared. */
 	readonly key: string | undefined;
 };
 
@@ -170,10 +136,13 @@ type AmountRows = {
 	readonly errors?: string[] | undefined;
 	/** one box per amount, in the order a donor sees them. */
 	readonly rows: readonly AmountRow[];
-	/** the control that adds an empty row at the end, as the form states it. */
-	readonly add: IntentButton;
+	/**
+	 * the control that adds an empty row at the end, as the form states it — and the press it is
+	 * withheld on, `insertWhenValid` in ../use-admin-form.ts.
+	 */
+	readonly add: RowControl;
 	/** the control that drops one row, as the form states it for that position. */
-	readonly remove: (index: number) => IntentButton;
+	readonly remove: (index: number) => RowControl;
 };
 
 type FormGivingFieldsProps = {
@@ -385,93 +354,44 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 					</div>
 				</fieldset>
 
-				{/* a fieldset rather than a labelled box, because the amounts are a repeating row
-				    editor: the legend names the group, and the one message belonging to the group
-				    rather than to a row is the cap on how many amounts there may be. */}
-				<fieldset className="adm-fieldset" aria-describedby={capError ? capErrorId : undefined}>
-					<legend className="adm-fieldset__legend">{FORM_FIELD_LABELS.suggested_amounts}</legend>
+				{/* the legend names the group in the plural and each row is one amount, so a row and
+				    its Remove are named by `rowLabel` rather than the legend.
 
-					{/* each one is a button on a card a donor reads on a phone. neither the unit nor how
-					    an amount is written is stated here: one box takes one amount and the
-					    placeholder shows the shape, and `amountRule` in `$lib/forms/amounts.ts` ends
-					    every sentence one of these boxes is refused with. */}
-					<p className="adm-hint" id={suggestedHintId}>
-						A donor sees these in the order you write them, and can still give any amount within the
-						bounds.
-					</p>
+				    each one is a button on a card a donor reads on a phone. neither the unit nor how an
+				    amount is written is stated here: one box takes one amount and the placeholder
+				    shows the shape, and `amountRule` in `$lib/forms/amounts.ts` ends every sentence
+				    one of these boxes is refused with. */}
+				<RepeatingRows
+					id={amounts.id}
+					legend={FORM_FIELD_LABELS.suggested_amounts}
+					rowLabel="suggested amount"
+					hint="A donor sees these in the order you write them, and can still give any amount within the bounds."
+					describedBy={capError ? capErrorId : undefined}
+					placeholder={suggestedExample}
+					addLabel="Add an amount"
+					add={amounts.add}
+					rows={amounts.rows.map((row, index) => ({
+						// bound the way every other box on these screens is: the message under a row is
+						// that row's own, and the standing hint is composed in beside it rather than
+						// replacing the message's id (../use-admin-form.ts). the sentence goes over as a
+						// node for the reason the bounds' do.
+						...boxProps(row, { describedBy: suggestedHintId }),
+						key: row.key,
+						className: 'adm-num',
+						inputMode: 'decimal',
+						error: row.errors?.[0] === undefined ? undefined : <MarkedText text={row.errors[0]} />,
+						// a lone row draws no Remove: with one box left there is nothing to choose
+						// between, and a control that would leave the group empty is one the group has
+						// no state for. it comes back on every row the moment there are two.
+						remove: amounts.rows.length > 1 ? amounts.remove(index) : undefined
+					}))}
+				/>
 
-					<div className="adm-rows">
-						{amounts.rows.map((row, index) => (
-							// keyed by the row's own key rather than by position: the form is what says
-							// which row is which as boxes are added and removed, and a key that was the
-							// position would carry a half-typed figure onto the row that took its place
-							// — see `AmountRow` above. the id is the fallback and is positional, which
-							// is only ever reached by a row the form minted no key for.
-							<div className="adm-rows__row" key={row.key ?? row.id}>
-								{/* no label on the row: the legend above names the group and the box says
-								    which row it is to a screen reader, so a label element here would be
-								    an empty one.
-
-								    bound the way every other box on these screens is, which is what
-								    keys the refusal to the row: the message under this box is this
-								    row's own and the mark on it is that message's, so a row nobody
-								    was refused about reads as fine beside one that was. the standing
-								    hint describes every row and is composed in rather than replacing
-								    the message's id (../use-admin-form.ts).
-
-								    the sentence goes over as a node for the reason the bounds' do —
-								    a marked value is drawn as code rather than shown with the marks
-								    in it. */}
-								<Field
-									className="adm-num"
-									inputMode="decimal"
-									placeholder={suggestedExample}
-									aria-label={`Suggested amount ${index + 1}`}
-									{...boxProps(row, { describedBy: suggestedHintId })}
-									error={
-										row.errors?.[0] === undefined ? undefined : <MarkedText text={row.errors[0]} />
-									}
-								/>
-								{/* a lone row draws no Remove: with one box left there is nothing to
-								    choose between, and a control that would leave the group empty is one
-								    the group has no state for. it comes back on every row the moment
-								    there are two.
-
-								    the quiet rank, because it repeats: a bordered control beside every
-								    box draws a column of boxes down the side of a group of boxes, and
-								    the row a reader is working in is the box rather than the control
-								    that drops it.
-
-								    the visible word is the same on every row, which is right beside the
-								    box it acts on and useless in a list of controls read out of context
-								    — so each says which row it is to a screen reader and nothing extra
-								    on the screen. */}
-								{amounts.rows.length > 1 ? (
-									<Button
-										variant="quiet"
-										mark="trash-2"
-										aria-label={`Remove suggested amount ${index + 1}`}
-										{...amounts.remove(index)}
-									>
-										Remove
-									</Button>
-								) : null}
-							</div>
-						))}
-					</div>
-
-					{capError ? (
-						<FieldMessage id={capErrorId}>
-							<MarkedText text={capError} />
-						</FieldMessage>
-					) : null}
-
-					<div className="adm-actions">
-						<Button mark="plus" {...amounts.add}>
-							Add an amount
-						</Button>
-					</div>
-				</fieldset>
+				{capError ? (
+					<FieldMessage id={capErrorId}>
+						<MarkedText text={capError} />
+					</FieldMessage>
+				) : null}
 			</div>
 
 			{footer ? <div className="adm-actions">{footer}</div> : null}

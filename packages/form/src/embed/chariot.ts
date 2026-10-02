@@ -199,9 +199,9 @@ export type ChariotPaymentSurface = PaymentSurface & {
 /**
  * the fund's own button, standing in the node it was handed while a fund is offered.
  *
- * `onUnavailable` is called at most once, where the element will never be registered — the script
- * erred, or answered neither way inside `MOUNT_DEADLINE_MS` — or the config names no Connect id to
- * open it on.
+ * `onUnavailable` is called at most once and never before this returns, where the element will
+ * never be registered — the script erred, or answered neither way inside `MOUNT_DEADLINE_MS` — or
+ * the config names no Connect id to open it on.
  */
 export function createPaymentSurface(
 	config: FormConfig,
@@ -300,7 +300,11 @@ export function createPaymentSurface(
 	}
 
 	if (cid === null) {
-		unavailable(`the served config names no ${PROVIDER_NAME} processor to open it on`);
+		// a microtask on, never inside this call, as the doc above promises: a caller counting reports
+		// against the surfaces it has built has not counted this one until this call returns.
+		queueMicrotask(() =>
+			unavailable(`the served config names no ${PROVIDER_NAME} processor to open it on`)
+		);
 	} else {
 		disarm = delay(() => {
 			disarm = null;
@@ -331,6 +335,7 @@ export function createPaymentSurface(
 		confirm: unanswerable,
 		resume: () => Promise.resolve({ kind: 'indeterminate' }),
 		rows: rowList,
+		quoting() {},
 		quoted() {},
 		// which cadence is offered a fund is the flow's answer, carried by `offer` below.
 		cadence() {},

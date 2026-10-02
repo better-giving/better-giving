@@ -119,6 +119,14 @@ function paymentProvider(answers: Answers = {}) {
 					handler({ collapsed: false, empty: false, value: { type } });
 				}
 			});
+		},
+		/** the element group saying its fields will not come up. */
+		fail: () => {
+			act(() => {
+				for (const handler of [...(held.loaderror ?? [])]) {
+					(handler as (payload: unknown) => void)({ error: { message: 'spec' } });
+				}
+			});
 		}
 	};
 }
@@ -411,16 +419,149 @@ it('writes a pressed preset into the entry and lights that tile alone', async ()
 	expect(input(root, '#amount-entry').value).toBe('25');
 });
 
-it('opens the entry empty on the way past the presets and takes the caret', async () => {
-	const { root } = await card();
+/**
+ * a pointer press on a tile, the way a mouse or a finger makes one: `pointerdown` on the tile, then
+ * the click the browser sends. a bare `click()` is what Space on a focused radio sends, so it stands
+ * for the keyboard.
+ */
+function point(node: HTMLElement): void {
+	act(() => {
+		node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		node.click();
+	});
+}
 
-	press(one(root, '.tiles > label:nth-of-type(2)'));
-	press(one(root, '.tiles > label.other'));
+/**
+ * an arrow key moving the selection in a group of radios, as a browser moves it: the keydown on the
+ * radio holding the caret, then the caret and the check on the next radio, which reports the click.
+ * happy-dom moves neither, so the spec moves both.
+ */
+function arrow(from: HTMLInputElement, key: string, onto: HTMLInputElement): void {
+	act(() => {
+		from.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+		onto.focus();
+		onto.click();
+		onto.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+	});
+}
 
-	const entry = input(root, '#amount-entry');
-	expect(one(root, '.tile.entry').hidden).toBe(false);
-	expect(entry.value).toBe('');
-	expect(document.activeElement).toBe(entry);
+/** the tray's radios in order, Other last. */
+function amountRadios(root: HTMLElement): HTMLInputElement[] {
+	return every(root, '.tiles > label > input[type="radio"]').filter(
+		(node) => node instanceof HTMLInputElement
+	);
+}
+
+describe('the way past the presets', () => {
+	it('opens the entry empty and takes the caret on a pointer press', async () => {
+		const { root } = await card();
+
+		point(one(root, '.tiles > label:nth-of-type(2)'));
+		point(one(root, '.tiles > label.other'));
+
+		const entry = input(root, '#amount-entry');
+		expect(one(root, '.tile.entry').hidden).toBe(false);
+		expect(entry.value).toBe('');
+		expect(document.activeElement).toBe(entry);
+	});
+
+	it.each(['ArrowRight', 'ArrowDown'])(
+		'leaves the caret on Other when %s reaches it from the last preset',
+		async (key) => {
+			const { root } = await card();
+			const radios = amountRadios(root);
+			const last = radios.at(-2);
+			const other = radios.at(-1);
+			if (last === undefined || other === undefined) throw new Error('no tray');
+
+			act(() => last.focus());
+			press(last);
+			arrow(last, key, other);
+
+			expect(document.activeElement).toBe(other);
+			expect(other.checked).toBe(true);
+			expect(one(root, '.tile.entry').hidden).toBe(false);
+			expect(input(root, '#amount-entry').value).toBe('');
+		}
+	);
+
+	it.each(['ArrowLeft', 'ArrowUp'])(
+		'leaves the caret on Other when %s wraps onto it from the first preset',
+		async (key) => {
+			const { root } = await card();
+			const radios = amountRadios(root);
+			const first = radios[0];
+			const other = radios.at(-1);
+			if (first === undefined || other === undefined) throw new Error('no tray');
+
+			act(() => first.focus());
+			press(first);
+			arrow(first, key, other);
+
+			expect(document.activeElement).toBe(other);
+			expect(other.checked).toBe(true);
+			expect(one(root, '.tile.entry').hidden).toBe(false);
+			expect(input(root, '#amount-entry').value).toBe('');
+		}
+	);
+
+	it('leaves the caret on Other when Space selects it', async () => {
+		const { root } = await card();
+		const other = amountRadios(root).at(-1);
+		if (other === undefined) throw new Error('no tray');
+
+		act(() => other.focus());
+		act(() => {
+			other.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+			other.click();
+		});
+
+		expect(document.activeElement).toBe(other);
+		expect(one(root, '.tile.entry').hidden).toBe(false);
+	});
+
+	it('does not carry a pointer press that selected nothing onto a later arrow', async () => {
+		const { root } = await card();
+		const radios = amountRadios(root);
+		const last = radios.at(-2);
+		const other = radios.at(-1);
+		if (last === undefined || other === undefined) throw new Error('no tray');
+
+		// the press lands on the tile and is dragged off it, so no click and no selection follow.
+		act(() => {
+			one(root, '.tiles > label.other').dispatchEvent(
+				new PointerEvent('pointerdown', { bubbles: true })
+			);
+		});
+		act(() => last.focus());
+		press(last);
+		arrow(last, 'ArrowRight', other);
+
+		expect(document.activeElement).toBe(other);
+	});
+
+	it.each([
+		['a pointer press', (root: HTMLElement) => point(one(root, '.tiles > label.other'))],
+		[
+			'an arrow key',
+			(root: HTMLElement) => {
+				const radios = amountRadios(root);
+				const last = radios.at(-2);
+				const other = radios.at(-1);
+				if (last === undefined || other === undefined) throw new Error('no tray');
+				arrow(last, 'ArrowRight', other);
+			}
+		]
+	])('withdraws the preset amount on %s, so Continue is refused for it', async (_way, reach) => {
+		const { root } = await card();
+
+		press(one(root, '.tiles > label:nth-of-type(2)'));
+		reach(root);
+		press(one(root, CONTINUE));
+
+		expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
+		expect(document.activeElement).toBe(input(root, '#amount-entry'));
+	});
 });
 
 it('refuses a figure outside the bounds and states them where the caret cannot land', async () => {
@@ -434,9 +575,25 @@ it('refuses a figure outside the bounds and states them where the caret cannot l
 	expect(one(root, '#amount-problem').textContent).toBe('between $5 and $5,000');
 	expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
 	// the caret lands on a control inside a fieldset, where a group's description is not reliably
-	// announced from a descendant — so the sentence is on the region however the press was made.
-	expect(said(root)).toBe('between $5 and $5,000');
+	// announced from a descendant — so the sentence is on the region however the press was made, and
+	// spoken with its subject, which the visible sentence takes from where it stands.
+	expect(said(root)).toBe('Amount: between $5 and $5,000');
 	expect(document.activeElement).toBe(input(root, '#amount-entry'));
+});
+
+it('describes the entry by the bounds while a missing amount is marked', async () => {
+	const { root } = await card();
+	const entry = input(root, '#amount-entry');
+
+	// before any press the sentence is not on screen, so nothing describes the box by it.
+	expect(entry.hasAttribute('aria-describedby')).toBe(false);
+
+	press(one(root, '.tiles > label.other'));
+	press(one(root, CONTINUE));
+
+	expect(entry.getAttribute('aria-invalid')).toBe('true');
+	expect(entry.getAttribute('aria-describedby')).toBe('amount-problem');
+	expect(one(root, '#amount-problem').hidden).toBe(false);
 });
 
 it('names every decision a press was refused for, not the first', async () => {
@@ -449,7 +606,7 @@ it('names every decision a press was refused for, not the first', async () => {
 	expect(one(root, '#amount-problem').hidden).toBe(false);
 	expect(one(root, '#note-problem').hidden).toBe(false);
 	// the note's sentence is on the control itself, so it is not repeated on the region.
-	expect(said(root)).toBe('between $5 and $5,000');
+	expect(said(root)).toBe('Amount: between $5 and $5,000');
 });
 
 it('marks a dedication the press was refused for and clears it when the block is taken back', async () => {
@@ -585,6 +742,26 @@ it('marks only the payer fields the press was refused for and puts the caret on 
 	expect(one(root, '#first-name-problem').tagName).toBe('P');
 	expect(one(root, '#email-problem').tagName).toBe('P');
 	expect(one(root, '#email-problem').parentElement?.className).toBe('field-row');
+});
+
+// the press that moved no caret: it is on the first refused box already, so the region is the only
+// channel, and a list of bare problems would say which rules broke without saying which boxes.
+it('names each refused field when a press leaves the caret where it was', async () => {
+	const { root } = await card();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+	press(one(root, CONTINUE));
+	type(input(root, '#last-name'), 'Lovelace');
+	act(() => {
+		input(root, '#email').focus();
+	});
+	press(one(root, CONTINUE));
+
+	expect(document.activeElement).toBe(input(root, '#email'));
+	expect(said(root)).toBe('Email: required for your receipt; First name: required');
+	// the sentences under the boxes are unchanged: their label is the one standing over them.
+	expect(one(root, '#email-problem').textContent).toBe(copy.EMAIL_MISSING);
+	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
 });
 
 it('says which of the two rules an address broke', async () => {
@@ -828,7 +1005,9 @@ it('draws no header over a box that is not prepared, however many options it lis
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	act(() => {
-		mounted.render(<PaymentBox mount={createRef()} prepared={false} rows={2} words="" />);
+		mounted.render(
+			<PaymentBox mount={createRef()} prepared={false} rows={2} words="" aside={false} />
+		);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -887,6 +1066,75 @@ it('stays on the review step, unbusied, with the fund’s button standing while 
 	expect(one(root, 'form.card-body').hasAttribute('aria-busy')).toBe(false);
 	expect(said(root)).toBe('');
 	expect(root.querySelector(CHARIOT_TAG)).toBe(button);
+});
+
+// with the card's fields down and only a fund up, a repeating gift has no rail left but can still be
+// made one-time: the review step offers that in place of a box with nothing in it, in the element's
+// words (`oneTimeOfferWords` in packages/form/src/views.ts).
+describe('a repeating gift no processor still up can take', () => {
+	const OFFER =
+		'This gift cannot be made monthly right now. You can make it a one-time gift instead.';
+
+	/** the review step of a gift on `cadence`, on a form whose card fields then fail. */
+	async function atReview(cadence: 1 | 2 | 3 = 2) {
+		const reached = await card(WITH_FUND);
+		press(one(reached.root, `.segment > label:nth-of-type(${cadence})`));
+		walkToGive(reached.root);
+		reached.payment.fail();
+		return reached;
+	}
+
+	const offer = (root: HTMLElement) => one(root, '.step-give .attention');
+	const makeOneTime = (root: HTMLElement) => one(root, '.step-give .attention + [part~="action"]');
+	const paymentGroup = (root: HTMLElement) =>
+		one(root, '[part~="payment"]').closest('.group') as HTMLElement;
+
+	it('offers the gift as one-time in place of the payment box, and draws no Donate', async () => {
+		const { root } = await atReview();
+
+		expect(screen(root).className).toContain('step-give');
+		expect(offer(root).closest('[hidden]')).toBeNull();
+		expect(offer(root).textContent).toBe(OFFER);
+		expect(makeOneTime(root).textContent).toBe('Make it one-time');
+		expect(makeOneTime(root).getAttribute('type')).toBe('button');
+		expect(paymentGroup(root).hidden).toBe(true);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(true);
+		expect(said(root)).toBe(OFFER);
+	});
+
+	it('names a yearly gift’s cadence in the offer', async () => {
+		const { root } = await atReview(3);
+
+		expect(offer(root).textContent).toBe(
+			'This gift cannot be made yearly right now. You can make it a one-time gift instead.'
+		);
+	});
+
+	it('makes the gift one-time on the press, says so, and puts the caret on the payment box', async () => {
+		const { root } = await atReview();
+		expect(root.querySelector(CHARIOT_TAG)).toBeNull();
+
+		press(makeOneTime(root));
+
+		expect(screen(root).className).toContain('step-give');
+		expect(one(root, '[part~="summary"] .row-label').textContent).toBe('One-time gift');
+		expect(offer(root).closest('[hidden]')).not.toBeNull();
+		expect(paymentGroup(root).hidden).toBe(false);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
+		expect(said(root)).toBe('This is now a one-time gift.');
+		expect(document.activeElement).toBe(one(root, '[part~="payment"]'));
+		// the fund's rail, which takes a one-time gift only, is offered from this reading on.
+		expect(root.querySelector(CHARIOT_TAG)).not.toBeNull();
+	});
+
+	it('offers nothing on a one-time gift', async () => {
+		const { root } = await atReview(1);
+
+		expect(offer(root).closest('[hidden]')).not.toBeNull();
+		expect(paymentGroup(root).hidden).toBe(false);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
+		expect(said(root)).not.toBe(OFFER);
+	});
 });
 
 // the donor may change the amount inside the fund's window, and the grant is recorded from what the
@@ -988,7 +1236,8 @@ describe('where the caret goes when one takeover replaces another', () => {
 
 		await pressHeld(takeoverPrimary(root));
 
-		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.CONFIRMING_HEADING);
+		expect(one(screen(root), '.prose').textContent).toBe(copy.CONFIRMING_BODY);
 		expect(takeoverPrimary(root).hidden).toBe(true);
 		expect(document.activeElement).toBe(takeoverHeading(root));
 	});
@@ -999,7 +1248,8 @@ describe('where the caret goes when one takeover replaces another', () => {
 
 		await pressHeld(takeoverPrimary(root));
 
-		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.CONFIRMING_HEADING);
+		expect(one(screen(root), '.prose').textContent).toBe(copy.CONFIRMING_BODY);
 		expect(takeoverPrimary(root).hidden).toBe(true);
 		expect(document.activeElement).toBe(takeoverHeading(root));
 	});

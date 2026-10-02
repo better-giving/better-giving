@@ -851,15 +851,26 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				primary: { label: 'Try again', submit: false }
 			};
 
-		// a resume, which is the only `working` that reaches a takeover: a donor is back from wherever
-		// they authorized, and the flow has not yet found out what happened. its two sentences name no
-		// rail, which is what makes them right on the page load that has none.
+		// two waits reach a takeover, and `phase` tells them apart: `resuming` is entered from `boot`
+		// alone (./checkout.machine.ts), so every other phase follows a press made on this page load.
+		//
+		// a resume is a donor back from wherever they authorized, and the flow has not yet found out
+		// what happened. the other is the wait after the correction screen's Give or the mandate's
+		// Authorize, whose donor has just pressed and is about to have the heading read to them —
+		// "finishing" and "what happened" would tell them the page lost track of their press. neither
+		// pair names a rail, which is what makes the resume's right on a page load that has none.
 		case 'working':
-			return {
-				...BLANK,
-				heading: 'Finishing your gift',
-				body: 'We are checking what happened with your payment. This takes a moment.'
-			};
+			return state.phase === 'resuming'
+				? {
+						...BLANK,
+						heading: 'Finishing your gift',
+						body: 'We are checking what happened with your payment. This takes a moment.'
+					}
+				: {
+						...BLANK,
+						heading: 'Confirming your gift…',
+						body: 'We are confirming your payment. Please do not close this page.'
+					};
 
 		// the three the card renders as a numbered step rather than as a takeover.
 		case 'amount':
@@ -893,10 +904,24 @@ function missingDecisions(api: DomApi): readonly AmountDecision[] {
 type DetailsField = {
 	readonly key: PayerField;
 	readonly field: HTMLInputElement;
+	/** the label the row draws, whose words name the field when its refusal is spoken. */
+	readonly label: HTMLLabelElement;
 	readonly message: HTMLElement;
 	readonly problemId: string;
 	readonly wording: (validity: ValidityState) => string;
 };
+
+/**
+ * a refusal as it is spoken: the field's own label, then what is wrong with it.
+ *
+ * the sentence on the card stands beside its box and needs no subject; the region's has none to
+ * stand beside, and a run of bare problems is "required, required" with nothing saying which box
+ * is which (WCAG 3.3.1). the label is read off the node the field already draws, so the name a
+ * donor hears is the name they see.
+ */
+function spokenRefusal(label: HTMLElement, problem: string): string {
+	return `${label.textContent}: ${problem}`;
+}
 
 /**
  * the words on the fee control, which are also its whole accessible name.
@@ -936,6 +961,29 @@ const PAYMENT_PROBLEM = 'Please select payment method';
 
 /** the payment box's name where no header stands over it to name it. */
 const PAYMENT_NAME = 'Payment details';
+
+/**
+ * the review step's offer of a one-time gift, where no processor still up takes the repeating one
+ * the donor chose (`oneTimeInstead` in ./connect.ts). nothing was charged and nothing went wrong
+ * with anything the donor did, so it is a task rather than a failure, and it names the cadence they
+ * chose so the offer reads as the change it is.
+ */
+function oneTimeOfferWords(frequency: 'monthly' | 'yearly'): string {
+	return `This gift cannot be made ${frequency} right now. You can make it a one-time gift instead.`;
+}
+
+/** what the region says once the offer is taken, which moves the caret to the payment box. */
+const MADE_ONE_TIME = 'This is now a one-time gift.';
+
+/** whether the review step is offering a one-time gift in place of the repeating one chosen. */
+function oneTimeOffered(state: State): state is State & { readonly step: 'give' } {
+	return state.step === 'give' && state.oneTimeInstead;
+}
+
+/** the repeating cadence an offer is made over, which is never one-time while one stands. */
+function oneTimeFrequency(state: State & { readonly step: 'give' }): 'monthly' | 'yearly' {
+	return state.fv.frequency === 'yearly' ? 'yearly' : 'monthly';
+}
 
 /** the id the payment box's header carries, which the box is named by while it stands. */
 const PAYMENT_HEADING = 'payment-heading';
@@ -1119,6 +1167,13 @@ export function createCard(
 	 * needs no `repeated` beside it. spent by the patch the press asks for.
 	 */
 	let flipped = false;
+	/**
+	 * whether the donor has just taken the offer of a one-time gift. set by that press and spent by
+	 * the patch it asks for, which says so on the region — see `oneTimeButton` below.
+	 */
+	let madeOneTime = false;
+	/** whether the last patch drew the offer of a one-time gift, which is what tells it arriving. */
+	let offerDrawn = false;
 	/** the screen on the card, which is what a busy flow stays on and what motion reports against. */
 	let shown: Screen = 'amount';
 	/** the projected step the last patch drew, which is what tells a refusal landing from a press. */
@@ -1313,9 +1368,10 @@ export function createCard(
 
 	// the way past the presets, drawn as one of them: a radio in the presets' own group, so the
 	// arrow keys reach it, carrying no figure. what it chooses is the entry under it, which is shown
-	// only while it is chosen and takes the caret on the press. built only where there are presets
-	// to be other than (`build` below) — on a form suggesting none, the entry is the whole amount
-	// block and stands alone, which is the shape `createSkeleton` draws.
+	// only while it is chosen and takes the caret on a pointer press (`reachedByPointer` below).
+	// built only where there are presets to be other than (`build` below) — on a form suggesting
+	// none, the entry is the whole amount block and stands alone, which is the shape
+	// `createSkeleton` draws.
 	//
 	// chosen is the view's to say and not the flow's. the flow carries one `amountMinor` and marks
 	// the preset that equals it, and a donor typing 25 into the entry would otherwise see the $25
@@ -1324,6 +1380,19 @@ export function createCard(
 	// the figure — the amount is still the flow's one number either way.
 	let otherChosen = false;
 	let otherTile: { label: HTMLElement; input: HTMLInputElement } | null = null;
+
+	// whether the next choosing of the other tile is a pointer press on it, which is the one way of
+	// choosing it that takes the caret into the entry. arrow keys check a radio as they move, so a
+	// keyboard donor passing through the group chooses the tile without reaching for the box, and a
+	// caret pulled out of the group there is a change of context on input (WCAG 3.2.2). set by a
+	// `pointerdown` on the tile and spent by its `change`; any key on the tray takes it back, so a
+	// press that chose nothing (the tile already chosen, a drag off it) cannot carry over onto a
+	// later arrow. a keyboard donor reaches the entry with Tab, the next stop after the group. not
+	// the click's `detail`: it is 0 for a keyboard's click and for some assistive technology's alike.
+	let reachedByPointer = false;
+	amountTiles.addEventListener('keydown', () => {
+		reachedByPointer = false;
+	});
 
 	// whether the donor has asked to tell someone about the gift, which is the view's and not the
 	// flow's: the tick and the note both go to the flow because each changes what the flow requires,
@@ -1352,10 +1421,10 @@ export function createCard(
 		// here (`build` below), so the box is not an alternative to the tiles above it — it is the
 		// amount, and they are shortcuts into it.
 		//
-		// it is described by nothing. the sentence is the group's and is pointed at from the
-		// fieldset while there is a refusal to state (`update` below) — a description written here
-		// would be read off `#amount-problem` whether that node is `hidden` or not, so a box wired
-		// to it at build time tells every donor their amount is wrong before they have typed one.
+		// it is described by nothing at build. the sentence is pointed at only while there is a
+		// refusal to state (`update` below) — a description written here would be read off
+		// `#amount-problem` whether that node is `hidden` or not, so a box wired to it at build time
+		// tells every donor their amount is wrong before they have typed one.
 		placeholder: 'Amount'
 	});
 	const entryLabel = make(doc, 'label', { part: part('label'), class: 'vh', for: 'amount-entry' }, [
@@ -1384,8 +1453,9 @@ export function createCard(
 	]);
 
 	// the bounds are the configuration's, so the sentence is built once here rather than written
-	// twice: `update` reads this same string onto the live region. they are offered the way a tile
-	// is, not stated the way a row is (./money.ts): `$5.00` here claims a precision nobody set.
+	// twice: `update` reads this same string onto the live region, under the entry's label. they are
+	// offered the way a tile is, not stated the way a row is (./money.ts): `$5.00` here claims a
+	// precision nobody set.
 	const amountProblem = `between ${offer(config.minAmountMinor)} and ${offer(config.maxAmountMinor)}`;
 	const amountMessage = make(doc, 'p', { class: 'message', id: 'amount-problem', hidden: true }, [
 		amountProblem
@@ -1990,18 +2060,19 @@ export function createCard(
 		// it into nothing.
 		const problemId = `${field.id}-problem`;
 		const message = make(doc, 'p', { class: 'message', id: problemId, hidden: true });
-		detailsFields.push({ key, field, message, problemId, wording });
 		// the label holds the words and nothing else in either construction, so the box is named by
 		// the label itself and needs no naming attribute. the span a floating row wraps them in is
 		// what carries the two steps and the resting weight the move is drawn with, which is a split
 		// a host's `::part(label)` rule is written against (../custom-elements.json).
+		const label = make(
+			doc,
+			'label',
+			{ part: part('label'), for: field.id },
+			floating ? [make(doc, 'span', { class: 'label-words' }, [labelText])] : [labelText]
+		);
+		detailsFields.push({ key, field, label, message, problemId, wording });
 		return make(doc, 'div', { class: floating ? 'field-row floating' : 'field-row' }, [
-			make(
-				doc,
-				'label',
-				{ part: part('label'), for: field.id },
-				floating ? [make(doc, 'span', { class: 'label-words' }, [labelText])] : [labelText]
-			),
+			label,
 			field,
 			message
 		]);
@@ -2174,6 +2245,25 @@ export function createCard(
 	// one of them. words here would be a second statement of one of the two, gone stale the first
 	// time it is reworded at its own site.
 	const paymentMessage = make(doc, 'p', { class: 'message', id: 'payment-problem', hidden: true });
+
+	// the offer of a one-time gift, standing in place of the payment box and the Donate button while
+	// no processor still up takes the repeating gift chosen: the box would be empty and the button
+	// refused, and this press is the one thing on the step that moves the gift on. `attention`
+	// rather than `message`, for the reason ./styles/parts.css gives at `.attention`.
+	const oneTimeOffer = make(doc, 'p', { class: 'attention' });
+	const oneTimeButton = make(doc, 'button', { part: part('action'), type: 'button' }, [
+		'Make it one-time'
+	]);
+	oneTimeButton.addEventListener('click', () => {
+		madeOneTime = true;
+		now().oneTimeButton.onClick();
+		// this button is hidden by the press, and the box it un-hides is where the next choice is.
+		payment.focus();
+	});
+	const oneTimeGroup = make(doc, 'div', { class: 'group', hidden: true }, [
+		oneTimeOffer,
+		oneTimeButton
+	]);
 	const coinPicker = createCoinPicker(doc);
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
@@ -2229,6 +2319,7 @@ export function createCard(
 		giveHead.head,
 		summary,
 		paymentGroup,
+		oneTimeGroup,
 		paymentMessage,
 		receiptTo,
 		submitButton
@@ -2480,12 +2571,16 @@ export function createCard(
 				// repainted here rather than left to the flow: a box already empty sends the flow
 				// nothing new, and the entry has to be shown before the caret can land in it.
 				update(now());
-				entryInput.focus();
+				if (reachedByPointer) entryInput.focus();
+				reachedByPointer = false;
 			});
 			const label = make(doc, 'label', { part: part('amount-option'), class: 'other' }, [
 				input,
 				make(doc, 'span', {}, ['Other'])
 			]);
+			label.addEventListener('pointerdown', () => {
+				reachedByPointer = true;
+			});
 			otherTile = { label, input };
 			put(doc, amountTiles, [label]);
 		}
@@ -2696,7 +2791,11 @@ export function createCard(
 		// email field. `paintTakeover` holds the fourth screen to the same rule.
 		toggleAttribute(continueButton, 'type', step === 'amount' ? 'submit' : 'button');
 		toggleAttribute(detailsContinue, 'type', step === 'details' ? 'submit' : 'button');
-		toggleAttribute(submitButton, 'type', step === 'give' ? 'submit' : 'button');
+		toggleAttribute(
+			submitButton,
+			'type',
+			step === 'give' && !oneTimeOffered(api.state) ? 'submit' : 'button'
+		);
 		// what the marks are offering, patched on every snapshot rather than settled at build: what
 		// a donor has completed moves as they type, so a step shut on arrival opens under them
 		// without the screen changing. the mark for the step a head belongs to is a `<span>` in that
@@ -2743,9 +2842,16 @@ export function createCard(
 		setHidden(noteMessage, !missingNote);
 		toggleAttribute(amountGroup, 'aria-describedby', amountWords === '' ? null : 'amount-problem');
 		// and the box holding the figure is described by it too, which is where a refusal sends the caret.
-		for (const control of [entryInput, ...amountOptions.map((option) => option.input)]) {
+		// the free entry is also described while a missing or out-of-range amount is marked, because
+		// it carries `aria-invalid` then, and a state with no description says wrong without saying how.
+		for (const control of amountOptions.map((option) => option.input)) {
 			toggleAttribute(control, 'aria-describedby', refusal === undefined ? null : 'amount-problem');
 		}
+		toggleAttribute(
+			entryInput,
+			'aria-describedby',
+			refusal === undefined && !missingAmount ? null : 'amount-problem'
+		);
 		// beside the part token rather than instead of it: the token is what a host's stylesheet
 		// paints, and this is what a screen reader is told, so a donor who cannot see the edge is
 		// not left with the sentence alone. it is written only where the role supports it — the free
@@ -2834,6 +2940,7 @@ export function createCard(
 		const missingFields = updateDetails(api);
 		const refusedPayment = updatePayment(api);
 		const coinRefused = updateCoins(api);
+		const offerArrived = updateOneTimeOffer(api);
 		// what a numbered step was refused for, said out loud, and one sentence however many steps
 		// there are: the three are mutually exclusive, because a press is refused on the step it was
 		// made on. every missing decision at once, for the reason `missingDecisions` above gives
@@ -2848,7 +2955,10 @@ export function createCard(
 		//
 		// the note is not among them: its sentence is on the control itself, and the caret lands
 		// there where it is the decision the press was refused for. a copy here would be twice.
-		const askedFor = [missingAmount ? amountProblem : '', unmoved ? missingFields : '']
+		const askedFor = [
+			missingAmount ? spokenRefusal(entryLabel, amountProblem) : '',
+			unmoved ? missingFields : ''
+		]
 			.filter((sentence) => sentence !== '')
 			.join(', ');
 
@@ -2898,18 +3008,23 @@ export function createCard(
 					? askedFor
 					: refusedPayment
 						? PAYMENT_PROBLEM
-						: flipped
-							? totalWords
-							: busy
-								? workingWords(api.state)
-								: retitled
-									? `${screen.heading}.`
-									: '',
+						: offerArrived !== ''
+							? offerArrived
+							: madeOneTime
+								? MADE_ONE_TIME
+								: flipped
+									? totalWords
+									: busy
+										? workingWords(api.state)
+										: retitled
+											? `${screen.heading}.`
+											: '',
 			repeated
 		);
 		repeated = false;
 		unmoved = false;
 		flipped = false;
+		madeOneTime = false;
 
 		// last, and after the step it lands in has been un-hidden: a heading inside a `hidden`
 		// subtree is not focusable, and a caret that failed to land is the defect this exists for.
@@ -2944,10 +3059,11 @@ export function createCard(
 	 * token alone, so what is red on the card is what this function called missing.
 	 *
 	 * one refusal, one channel, and this returns the words for the channel that is not the caret:
-	 * every sentence the press was refused for, joined. each field carries its own by
-	 * `aria-describedby` and announces it on arrival, so a press that moves the caret has said the
-	 * refusal already — and `update` above puts these words on the region only for a press that
-	 * moved no caret, which is the press with nothing else to say them. the Continue handler is
+	 * every sentence the press was refused for, each under its field's label (`spokenRefusal`),
+	 * joined. each field carries its own by `aria-describedby` and announces it on arrival, so a
+	 * press that moves the caret has said the refusal already — and `update` above puts these words
+	 * on the region only for a press that moved no caret, which is the press with nothing else to
+	 * say them. the Continue handler is
 	 * where the two are told apart, because only the press knows where the caret was.
 	 *
 	 * the amount step's `askedFor` is the same sentence built the same way and is said on every
@@ -3038,11 +3154,12 @@ export function createCard(
 			toggleAttribute(entry.field, 'part', partWhen('field', { invalid: wrong }));
 			toggleAttribute(entry.field, 'aria-invalid', wrong ? 'true' : null);
 			toggleAttribute(entry.field, 'aria-describedby', wrong ? entry.problemId : null);
-			if (words !== '') said.push(words);
+			if (words !== '') said.push(spokenRefusal(entry.label, words));
 		}
 		// in the order the fields are asked in, which is the order they are laid out in and the order
-		// the caret walks them — `detailsFields` is filled as the rows are built.
-		return said.join(', ');
+		// the caret walks them — `detailsFields` is filled as the rows are built. a semicolon between
+		// them because each already holds a colon, and a comma would run one field into the next.
+		return said.join('; ');
 	}
 
 	/**
@@ -3088,6 +3205,26 @@ export function createCard(
 		setHidden(paymentMessage, words === '');
 		toggleAttribute(payment, 'aria-describedby', words === '' ? null : 'payment-problem');
 		return refused;
+	}
+
+	/**
+	 * the offer of a one-time gift, standing in place of the payment box and the Donate button while
+	 * the flow makes it (`oneTimeInstead` in ./connect.ts), and its words where it has just appeared.
+	 *
+	 * appearing is said on the region: it arrives whenever the processors fail, which is as likely to
+	 * be while the donor is reading the step as on the way into it, and nothing moves the caret to it.
+	 */
+	function updateOneTimeOffer(api: DomApi): string {
+		const { state } = api;
+		const offered = oneTimeOffered(state);
+		const words = offered ? oneTimeOfferWords(oneTimeFrequency(state)) : '';
+		setText(oneTimeOffer, words);
+		setHidden(oneTimeGroup, !offered);
+		setHidden(paymentGroup, offered);
+		setHidden(submitButton, offered);
+		const arrived = offered && !offerDrawn;
+		offerDrawn = offered;
+		return arrived ? words : '';
 	}
 
 	/**

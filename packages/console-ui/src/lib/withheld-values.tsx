@@ -151,15 +151,22 @@ export function WithheldValues({
 			</p>
 			<div className="adm-actions">
 				{/* it asks rather than posts, for the reason every other destructive press on this page
-				    does: what it costs is stated in the confirm, against the values it is about. */}
+				    does: what it costs is stated in the confirm, against the values it is about.
+
+				    both presses here are held with `aria-disabled` and turned away in their own handler,
+				    never closed by `disabled`: a natively closed button drops the focus standing on it,
+				    and the `aria-busy` beside it is then heard by nobody
+				    (../closed-while-writing.spec.ts). */}
 				<Button
 					type="button"
 					variant="danger"
-					disabled={busy || freeing}
 					onClick={(event) => {
+						if (busy || freeing) return;
 						pressedIn.current = event.currentTarget.form;
 						setAsking(true);
 					}}
+					aria-disabled={busy || freeing || undefined}
+					aria-busy={freeing || undefined}
 				>
 					Remove {said}
 				</Button>
@@ -173,9 +180,10 @@ export function WithheldValues({
 					danger="Remove"
 					dangerProps={{
 						type: 'button',
-						disabled: busy || freeing || undefined,
+						'aria-disabled': busy || freeing || undefined,
 						'aria-busy': freeing || undefined,
-						onClick: () =>
+						onClick: () => {
+							if (busy || freeing) return;
 							void submit(
 								{ intent: FREE_INTENT },
 								{
@@ -183,7 +191,8 @@ export function WithheldValues({
 									preventScrollReset: true,
 									...(post && { ...post, navigate: false })
 								}
-							)
+							);
+						}
 					}}
 					cancel="Go back"
 					cancelProps={{ type: 'button', onClick: () => setAsking(false) }}

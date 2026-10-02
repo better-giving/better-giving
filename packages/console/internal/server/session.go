@@ -103,11 +103,14 @@ func (presses *connectPresses) joined(
 	presses.running = mine
 	presses.guard.Unlock()
 
+	// deferred so that a press that panics clears it too: net/http recovers the panic and the
+	// process lives on, and every later press would otherwise wait on a done that never closes.
+	defer func() {
+		presses.guard.Lock()
+		presses.running = nil
+		presses.guard.Unlock()
+		close(mine.done)
+	}()
 	mine.outcome = press(context.WithoutCancel(ctx))
-
-	presses.guard.Lock()
-	presses.running = nil
-	presses.guard.Unlock()
-	close(mine.done)
 	return mine.outcome
 }

@@ -8,6 +8,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { post, postingStatements, type PostingInput } from '$lib/server/ledger/posting';
 import { SERIES_MONTHS } from '$lib/server/months';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as dashboard from './_app.admin._index';
 
@@ -32,6 +33,7 @@ const PASSWORD = 'a-long-enough-password';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 /** the revenue account the fixture form posts to — the chart of accounts' own `4110`. */
@@ -48,10 +50,12 @@ beforeAll(async () => {
 		);
 	}
 	revenueAccountId = account.id;
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin', module: dashboard }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn();
 });
 

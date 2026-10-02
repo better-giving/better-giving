@@ -15,7 +15,8 @@
 // `pnpm --filter @better-giving/console-ui build` writes it to that package's build/client, and
 // .github/workflows/release.yml copies that over ./dist in front of the binary's own build.
 // locally the copy is a step somebody does by hand — so a binary built from a fresh checkout
-// serves the placeholder and says so on the page.
+// serves the placeholder and says so on the page. embed_test.go holds it to that — loading nothing
+// it does not carry, and naming the release's own commands — whenever it is alone in ./dist.
 //
 // the page is served for every path the router does not know, because a client route is a path only
 // the browser resolves — packages/console/internal/server states which paths are the exception.

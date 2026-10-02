@@ -386,9 +386,12 @@ export async function recordDonation(db: Db, input: RecordDonationInput): Promis
 		return { ok: true, value: await write(db, input) };
 	} catch (error) {
 		return refusalFor(error, input.formId, {
-			ok: false,
-			reason: 'duplicate_intent',
-			detail: `a payment is already recorded against this attempt's transaction id. the gift it belongs to was written by the first call and nothing was written by this one.`
+			code: 'SQLITE_CONSTRAINT_UNIQUE',
+			failure: {
+				ok: false,
+				reason: 'duplicate_intent',
+				detail: `a payment is already recorded against this attempt's transaction id. the gift it belongs to was written by the first call and nothing was written by this one.`
+			}
 		});
 	}
 }
@@ -447,14 +450,17 @@ export async function recordAuthorizedGift(
 		await db.batch(writes);
 		return { ok: true };
 	} catch (error) {
-		// nothing on this write sits under a unique index but the gift's own primary key, which is a
-		// UUIDv7 minted moments earlier — so a collision here is a defect rather than the retry
-		// `duplicate_intent` names, and calling it one would tell a caller the gift is already
-		// recorded when it is not.
+		// nothing on this write sits under a unique index, so the one collision it can meet is the
+		// gift's own primary key — a UUIDv7 minted moments earlier, which D1 reports as
+		// `SQLITE_CONSTRAINT_PRIMARYKEY`. that is a defect rather than the retry `duplicate_intent`
+		// names, and calling it one would tell a caller the gift is already recorded when it is not.
 		return refusalFor(error, input.formId, {
-			ok: false,
-			reason: 'write_failed',
-			detail: `the gift could not be written: its id (${input.donationId}) is already in the database. nothing about it was stored.`
+			code: 'SQLITE_CONSTRAINT_PRIMARYKEY',
+			failure: {
+				ok: false,
+				reason: 'write_failed',
+				detail: `the gift could not be written: its id (${input.donationId}) is already in the database. nothing about it was stored.`
+			}
 		});
 	}
 }
@@ -662,12 +668,13 @@ function depositProblem(input: RecordDonationInput): string | null {
 /**
  * a rejection out of the write, in this module's vocabulary rather than the driver's.
  *
- * the mapping is short because only two constraints on this write path can fire in a way a caller
- * can do anything about, and both are named here rather than left for an endpoint to recognise in
- * a sentence:
+ * the mapping is short because only two kinds of rejection on these write paths mean something a
+ * caller can act on, and both are named here rather than left for an endpoint to recognise in a
+ * sentence:
  *
- *   - `SQLITE_CONSTRAINT_UNIQUE` is `payment_provider_txn_idx` (../db/schema.ts), and it is the
- *     ordinary outcome of a retry rather than a fault. `IntentRequest.idempotencyKey` in
+ *   - a key collision, whose code and meaning are the caller's (`collision`). for `recordDonation`
+ *     it is `SQLITE_CONSTRAINT_UNIQUE` on `payment_provider_txn_idx` (../db/schema.ts), and it is
+ *     the ordinary outcome of a retry rather than a fault. `IntentRequest.idempotencyKey` in
  *     ../payments/provider.ts exists so that an attempt made twice resolves to the intent that
  *     already exists, which means the second call arrives here with a transaction id already in
  *     the table. the gift was recorded the first time; answering that with a fault would fail a
@@ -681,14 +688,23 @@ function depositProblem(input: RecordDonationInput): string | null {
  * detail carries the sentence the caller can act on and never the code: a route that matched on
  * `SQLITE_` prose would be a second, unreviewed copy of this mapping inside a public payment path.
  *
- * `unique` is the caller's, because a UNIQUE rejection does not mean the same thing to both
- * writers: one of them opens a `payment` row under `payment_provider_txn_idx` and the other opens
- * none at all. each states what a collision means for the rows it writes.
+ * `collision` is the caller's, because the two writers collide on different keys: one opens a
+ * `payment` row under `payment_provider_txn_idx`, a unique index, and the other opens none and can
+ * only meet the gift's primary key — which D1 reports as `SQLITE_CONSTRAINT_PRIMARYKEY`, never as
+ * `SQLITE_CONSTRAINT_UNIQUE`. each names the code its collision raises and what it means for the
+ * rows it writes.
  */
-function refusalFor(error: unknown, formId: string, unique: RecordFailure): RecordFailure {
-	switch (sqliteResultCode(error)) {
-		case 'SQLITE_CONSTRAINT_UNIQUE':
-			return unique;
+function refusalFor(
+	error: unknown,
+	formId: string,
+	collision: {
+		readonly code: 'SQLITE_CONSTRAINT_UNIQUE' | 'SQLITE_CONSTRAINT_PRIMARYKEY';
+		readonly failure: RecordFailure;
+	}
+): RecordFailure {
+	const code = sqliteResultCode(error);
+	if (code === collision.code) return collision.failure;
+	switch (code) {
 		case 'SQLITE_CONSTRAINT_FOREIGNKEY':
 			return {
 				ok: false,

@@ -48,6 +48,14 @@ export type GroupReport =
 /** the id the box for one credential carries. */
 export const secretBox = (name: string): string => `set-${name}`;
 
+/**
+ * whether a toggle of the fold this group stands in puts the group back at rest: the fold shut, and
+ * no write of this group's own in flight. a write's answer is still to land on the boxes it sent:
+ * put away under it, a refusal names a box that has been emptied and reopens the group inside a
+ * fold that is closed.
+ */
+export const putsAway = (open: boolean, pending: boolean): boolean => !open && !pending;
+
 /** no box named, as one value: a new empty array every render would be a new state every render. */
 const NONE: readonly string[] = [];
 
@@ -294,18 +302,19 @@ export function SecretGroupForm({
 	   the shut is for is `reset` — the boxes are on screen the moment the fold is, so what was typed
 	   into them has to go when it closes. the element is found rather than handed down: what shuts
 	   is several components above this one, and a flag threaded through each of them would be a prop
-	   every fold states and nothing else reads. */
+	   every fold states and nothing else reads. a shut made while this group's own write is in
+	   flight leaves it as it stands (`putsAway`). */
 	useEffect(() => {
 		const fold = form.current === null ? null : form.current.closest('details');
 		if (fold === null) return;
 		const shut = () => {
-			if (fold.open) return;
+			if (!putsAway(fold.open, pending)) return;
 			setOpened(false);
 			reset();
 		};
 		fold.addEventListener('toggle', shut);
 		return () => fold.removeEventListener('toggle', shut);
-	}, [form, reset]);
+	}, [form, reset, pending]);
 
 	return (
 		<Form

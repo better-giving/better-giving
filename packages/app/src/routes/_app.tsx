@@ -3,7 +3,15 @@ import { AppShell } from '@better-giving/operator/components/shell/AppShell';
 import { MoveStatus, ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
 import { holdBar, movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
 import { useEffect } from 'react';
-import { Form, Outlet, useLocation, useNavigation } from 'react-router';
+import {
+	data,
+	Form,
+	isRouteErrorResponse,
+	Outlet,
+	redirect,
+	useLocation,
+	useNavigation
+} from 'react-router';
 import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
 import { currentDestination, destinationGroupsFor } from '$lib/admin/destinations';
 import { operatorLinks } from '$lib/admin/operator-links';
@@ -12,13 +20,15 @@ import { APP_NAME } from '$lib/admin/screen-title';
 import { SetupGate } from '$lib/admin/setup-gate';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { staffGate } from '$lib/server/auth/gate';
+import type { SetupLine } from '$lib/server/config/readiness';
 import { setupOutstanding } from '$lib/server/config/readiness';
 import { readSetupState } from '$lib/server/config/setup-state';
-import { database, platform, staff } from '../context';
+import { database, platform, setupState, staff } from '../context';
+import { ErrorBoundary as RootErrorBoundary } from '../root';
 import type { Route } from './+types/_app';
 
-// the layout every screen behind the login sits under, and the one place the session gate is
-// mounted.
+// the layout every screen behind the login sits under, and the one place the session gate and the
+// set-up gate are mounted.
 //
 // pathless: the `_` prefix keeps the segment out of the URL, so /admin is /admin and this file is
 // what decides that reaching it needs a session. **being under this route is what makes a route
@@ -39,7 +49,58 @@ import type { Route } from './+types/_app';
 // and it draws the bar over a move to another screen, held by `clientMiddleware` below. the rule
 // that bar keeps is packages/operator/src/progress-bar.ts's header.
 
-export const middleware: Route.MiddlewareFunction[] = [staffGate];
+/** the one route beneath this layout that runs whatever set-up's state: see `middleware`. */
+const SIGN_OUT_PATH = '/admin/sign-out';
+
+/** what the set-up gate in `middleware` answers a read with, and `ErrorBoundary` draws. */
+type SetupAnswer = { readonly shape: 'setup'; readonly lines: SetupLine[] };
+
+const isSetupAnswer = (error: unknown): error is { data: SetupAnswer } =>
+	isRouteErrorResponse(error) && (error.data as Partial<SetupAnswer> | null)?.shape === 'setup';
+
+// **the dashboard is not served while any of the five set-up jobs is unfinished**, which is what
+// lets every screen under this layout be written against a deployment that is set up (CLAUDE.md).
+// middleware rather than this route's loader, because a loader runs beside its children's and an
+// action runs before any of them: thrown before `next()`, this is the only place where no child
+// reads and no child writes. the sign-in screen refuses on the same reading, so an operator meets
+// this before typing a password rather than after (./login.tsx).
+//
+// after `staffGate`, so an anonymous caller is sent to the login rather than told how far set-up
+// has got. one reading per request, handed to the loader through `setupState` (../context.ts) for
+// the identity band.
+//
+// written inline in the exported array: react router strips that export from the browser bundle,
+// and a module-scope `const` holding the gate would survive it (`reachesServerTree` in
+// ../routes.testing.ts).
+export const middleware: Route.MiddlewareFunction[] = [
+	staffGate,
+	async ({ context, request, url }, next) => {
+		// a stale tab must always be able to give its session up, and a sign-out reads nothing set-up
+		// decides (./_app.admin.sign-out.ts).
+		if (url.pathname === SIGN_OUT_PATH) return next();
+
+		// a read that did not land answers `null` and gates nothing: this layout covers the screens
+		// that explain a database which is not answering, on exactly the deployment that needs them
+		// ($lib/server/config/setup-state.ts).
+		const state = await readSetupState(context.get(database), context.get(platform).env);
+		context.set(setupState, state);
+		if (state === null || setupOutstanding(state.lines) === 0) return next();
+
+		// a write is refused unrun and sent back to the address it came from as a read, which is what
+		// draws the gate — the operator sees why, rather than a press that silently did nothing.
+		if (request.method !== 'GET' && request.method !== 'HEAD') {
+			throw redirect(url.pathname + url.search, 303);
+		}
+
+		// thrown before `next()`, so no loader has run and the router looks for a boundary from the
+		// highest matched route with a loader — this one, since the root has none
+		// (react-router/docs/how-to/middleware.md, "next() and Error Handling"). the address is left
+		// alone rather than redirected, so an operator who finishes the set-up and presses Check again
+		// lands on the screen they were going to.
+		const answer: SetupAnswer = { shape: 'setup', lines: state.lines };
+		throw data(answer, { status: 503 });
+	}
+];
 
 /** whether the frame, and with it the bar over a move, is on the screen. */
 let framed = false;
@@ -68,23 +129,9 @@ export const links = operatorLinks;
 // here with no loader of its own would be entered without the gate having run for it. one loader
 // on this route makes every navigation into the protected surface a request the gate sees.
 export async function loader({ context }: Route.LoaderArgs) {
-	// the identity band names the organisation, so every screen behind the login needs this row —
-	// and the five jobs this layout gates on are read off the same call
-	// ($lib/server/config/setup-state.ts).
-	//
-	// a failure is swallowed, unlike every other read in this app. this loader runs for every screen
-	// behind the login, including the ones that exist to explain a database that is not answering,
-	// so throwing would replace the screens able to say what is wrong with the error page, on
-	// exactly the deployment that needs them.
-	const state = await readSetupState(context.get(database), context.get(platform).env);
-
-	// **the dashboard is not served while any of the five is unfinished**, which is what lets every
-	// screen under this layout be written against a deployment that is set up (CLAUDE.md). the
-	// sign-in screen refuses on the same reading, so an operator meets this before typing a
-	// password rather than after (../routes/login.tsx).
-	if (state !== null && setupOutstanding(state.lines) > 0) {
-		return { shape: 'setup' as const, lines: state.lines };
-	}
+	// the identity band names the organisation, off the row the set-up gate already read: `null`
+	// where that read did not land, and the band then says what the software is instead.
+	const state = context.get(setupState);
 
 	// an explicit projection, because everything returned here is serialized into the page: a
 	// column a later better-auth or a wider org profile adds is not published by accident.
@@ -92,7 +139,6 @@ export async function loader({ context }: Route.LoaderArgs) {
 	// `deployer` is the predicate the pages in the rail's Integrations group read, read again here
 	// so a member is drawn no cell leading to their not-found ($lib/admin/destinations.ts).
 	return {
-		shape: 'ready' as const,
 		orgName: state?.profile?.legalName ?? null,
 		deployer: context.get(staff).id === STAFF_USER_ID
 	};
@@ -107,21 +153,14 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 	const crumbs = useCrumbs();
 	const navigation = useNavigation();
 	useEffect(() => pageDrawn(pathname), [pathname]);
-	const ready = loaderData.shape === 'ready';
 	useEffect(() => {
-		framed = ready;
+		framed = true;
 		return () => {
 			framed = false;
 		};
-	}, [ready]);
+	}, []);
 	const moving =
 		navigation.location !== undefined && movesPage(navigation.location.pathname, pathname);
-
-	// the gate stands in place of the frame and the screen alike, so no child route renders and no
-	// rail offers a destination this deployment is not serving ($lib/admin/setup-gate.tsx). the
-	// address is left alone rather than redirected, so an operator who finishes the set-up and
-	// presses Check again lands on the screen they were going to.
-	if (loaderData.shape === 'setup') return <SetupGate lines={loaderData.lines} />;
 
 	return (
 		<>
@@ -155,7 +194,7 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 					// organisation's long name contests the identity band's row, and what the collapsed
 					// rail keys its foot off; `.adm-signout__word` is the word it hides there, leaving the
 					// mark.
-					<Form method="post" action="/admin/sign-out" className="adm-signout">
+					<Form method="post" action={SIGN_OUT_PATH} className="adm-signout">
 						<Button variant="quiet" size="sm" mark="log-out">
 							<span className="adm-signout__word">Sign out</span>
 						</Button>
@@ -172,4 +211,18 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 			</AppShell>
 		</>
 	);
+}
+
+/**
+ * the set-up gate, drawn from the answer `middleware` throws, and the root's page for anything else.
+ *
+ * the gate stands in place of the frame and the screen alike, so no child route renders and no
+ * rail offers a destination this deployment is not serving ($lib/admin/setup-gate.tsx). every other
+ * failure beneath this layout is drawn by the root's boundary, as it would be with none here. it is
+ * rendered rather than rethrown, because no react error boundary catches a throw during the server
+ * render, so a rethrow here fails the whole document.
+ */
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	if (isSetupAnswer(error)) return <SetupGate lines={error.data.lines} />;
+	return <RootErrorBoundary />;
 }

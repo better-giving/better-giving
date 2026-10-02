@@ -1,7 +1,11 @@
 import { createExecutionContext, env } from 'cloudflare:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStaticHandler, type LoaderFunction } from 'react-router';
+import {
+	createStaticHandler,
+	type LoaderFunction,
+	type ShouldRevalidateFunctionArgs
+} from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NO_FORM } from '$lib/donate/copy';
 import { edgeCache } from '$lib/server/edge-cache.testing';
@@ -255,5 +259,46 @@ describe('an address that opens no form', () => {
 		const answered = await visit(`/${FORM_ID}`);
 		expect(answered.status).toBe(404);
 		expect(markup(answered.data)).toContain(NO_FORM);
+	});
+});
+
+describe('what re-reads the page under a gift in progress', () => {
+	/** react router's question about this route, for a move from `/{from}` to `next`. */
+	function asked(
+		from: string,
+		next: string,
+		extra: Partial<ShouldRevalidateFunctionArgs> = {}
+	): ShouldRevalidateFunctionArgs {
+		const nextUrl = new URL(next, OWN);
+		return {
+			currentUrl: new URL(`/${from}`, OWN),
+			currentParams: { formId: from },
+			nextUrl,
+			nextParams: { formId: nextUrl.pathname.slice(1) },
+			defaultShouldRevalidate: true,
+			...extra
+		};
+	}
+
+	it('keeps the config for a navigation that stays on the form', () => {
+		expect(donorPage.shouldRevalidate(asked(FORM_ID, `/${FORM_ID}?utm_source=mail`))).toBe(false);
+	});
+
+	it('reads the next form when the address names another', () => {
+		expect(donorPage.shouldRevalidate(asked(FORM_ID, '/frm_donorpage000002'))).toBe(true);
+	});
+
+	it('keeps the config for a submission on the form', () => {
+		const posted = asked(FORM_ID, `/${FORM_ID}`, {
+			formMethod: 'POST',
+			formAction: `/${FORM_ID}`,
+			formData: new FormData(),
+			actionStatus: 200
+		});
+		expect(donorPage.shouldRevalidate(posted)).toBe(false);
+	});
+
+	it('keeps the config for a revalidate on the same address', () => {
+		expect(donorPage.shouldRevalidate(asked(FORM_ID, `/${FORM_ID}`))).toBe(false);
 	});
 });

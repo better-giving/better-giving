@@ -1092,7 +1092,8 @@ describe('recordReversal() — a refund of more than is left of the gift', () =>
 		const alerts = staffMail(mail.sent);
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0]?.text).toMatch(/Capped/);
-		expect(alerts[0]?.text).toContain('6000 USD');
+		expect(alerts[0]?.text).toContain('USD 60.00');
+		expect(alerts[0]?.text).not.toContain('(minor units)');
 	});
 
 	it('writes nothing where nothing is left, answers 200, and tells staff once', async () => {
@@ -1347,7 +1348,8 @@ describe('recordReversal() — what staff are told when a dispute opens', () => 
 
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		const text = mail.sent[0]?.text ?? '';
-		expect(text).toContain('4000 USD');
+		expect(text).toContain('USD 40.00');
+		expect(text).not.toContain('(minor units)');
 		expect(text).toContain('2026-09-05');
 		expect(text).toContain('https://dashboard.stripe.com/disputes/dp_1');
 		expect(text).toContain('Stopped: no further charges');
@@ -1481,7 +1483,7 @@ describe('recordReversal() — a dispute won', () => {
 		expect(await groupCount()).toBe(groups);
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toMatch(/dp_1/);
-		expect(mail.sent[0]?.text).toMatch(/1500 USD/);
+		expect(mail.sent[0]?.text).toContain('USD 15.00');
 	});
 
 	it('tells staff of a win whose opening was never recorded once per delivery, each answered 200', async () => {
@@ -1577,7 +1579,7 @@ describe('recordReversal() — a dispute won with no opening recorded, whose kep
 		);
 		expect(await refundRows()).toEqual([]);
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
-		expect(mail.sent[0]?.text).toMatch(/1500 USD/);
+		expect(mail.sent[0]?.text).toContain('USD 15.00');
 		expect(mail.sent[0]?.text).not.toMatch(/dashboard/i);
 	});
 
@@ -1626,7 +1628,7 @@ describe('recordReversal() — a dispute won with no opening recorded, whose kep
 
 		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
 		expect(await groupCount()).toBe(groups);
-		expect(mail.sent[0]?.text).toMatch(/1500 USD/);
+		expect(mail.sent[0]?.text).toContain('USD 15.00');
 		expect(mail.sent[0]?.text).toMatch(/\/admin\/books/);
 	});
 
@@ -1758,7 +1760,8 @@ describe('recordReversal() — a refund of a gift whose open dispute holds the m
 		expect(await groupCount()).toBe(groups);
 		expect((await asAdminReads(gift.donationId)).given).toBe(6_000);
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
-		expect(mail.sent[0]?.text).toContain('6000 USD');
+		expect(mail.sent[0]?.text).toContain('USD 60.00');
+		expect(mail.sent[0]?.text).not.toContain('(minor units)');
 	});
 
 	it('tells staff nothing of a refund no larger than the dispute it closes', async () => {
@@ -2393,8 +2396,9 @@ describe('recordReversal() — a dispute of the whole charge after a partial ref
 		});
 		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
 		expect(mail.sent).toHaveLength(1);
-		expect(mail.sent[0]?.text).toContain('7000 USD');
-		expect(mail.sent[0]?.text).toMatch(/10000 USD.*capped at what was left/s);
+		expect(mail.sent[0]?.text).toContain('USD 70.00');
+		expect(mail.sent[0]?.text).toMatch(/USD 100\.00.*capped at what was left/s);
+		expect(mail.sent[0]?.text).not.toContain('(minor units)');
 	});
 
 	it('puts back, when won, exactly what it took, leaving the gift as the refund left it', async () => {
@@ -2429,7 +2433,7 @@ describe('recordReversal() — a dispute of the whole charge after a partial ref
 		expect(await refundRows()).toHaveLength(1);
 		expect(await groupCount()).toBe(groups);
 		expect(mail.sent).toHaveLength(1);
-		expect(mail.sent[0]?.text).toMatch(/took the whole gift.*1500 USD/s);
+		expect(mail.sent[0]?.text).toMatch(/took the whole gift.*USD 15\.00/s);
 	});
 });
 
@@ -2458,7 +2462,8 @@ describe('recordReversal() — a dispute the books cannot take, on a monthly gif
 		expect(await planStatus()).toBe('cancelled');
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		const text = mail.sent[0]?.text ?? '';
-		expect(text).toContain('1500 USD');
+		expect(text).toContain('USD 15.00');
+		expect(text).not.toContain('(minor units)');
 		expect(text).toContain('Stopped: no further charges will be made.');
 		expect(text).not.toMatch(/correct the gift/i);
 	});

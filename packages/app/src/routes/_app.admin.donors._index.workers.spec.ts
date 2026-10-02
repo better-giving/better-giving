@@ -5,6 +5,7 @@ import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
 import { consentState } from '$lib/contacts/consent';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as donors from './_app.admin.donors._index';
 
@@ -31,6 +32,7 @@ const LIST = '/admin/donors';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 /** the revenue account every fixture form posts to — the chart of accounts' own `4110`. */
@@ -49,10 +51,12 @@ beforeAll(async () => {
 	revenueAccountId = account.id;
 	// the pathless layout carries no path of its own, which is what makes the gate cover a screen
 	// without adding a segment to its address.
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/donors', module: donors }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn();
 });
 

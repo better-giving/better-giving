@@ -95,6 +95,17 @@ export function amountProblem(offer: (minor: number) => string, min: number, max
 	return `between ${offer(min)} and ${offer(max)}`;
 }
 
+/**
+ * one refusal spoken on the card's region, named by the label its box already draws.
+ *
+ * the visible sentence leaves the subject to the label standing over it; a region read with no box
+ * in sight has nothing standing over it, so the label is said first. the words match the element's
+ * own (`spokenRefusal` in packages/form/src/views.ts), so the two surfaces say one refusal one way.
+ */
+export function refusalSaid(label: string, problem: string): string {
+	return `${label}: ${problem}`;
+}
+
 // ── the details step ─────────────────────────────────────────────────────────────────────────
 
 export const EMAIL = 'Email';
@@ -128,6 +139,19 @@ export const PAYMENT_HEADING = 'Select payment method';
  * cannot land.
  */
 export const PAYMENT_PROBLEM = 'Please select payment method';
+
+/**
+ * the offer of a one-time gift, standing where the payment box was while no processor still up
+ * takes the repeating gift chosen. it names that cadence so the offer reads as the change it is.
+ */
+export function oneTimeOffer(frequency: 'monthly' | 'yearly'): string {
+	return `This gift cannot be made ${frequency} right now. You can make it a one-time gift instead.`;
+}
+
+export const MAKE_ONE_TIME = 'Make it one-time';
+
+/** what is said once the offer is taken, as the caret moves to the payment box. */
+export const MADE_ONE_TIME = 'This is now a one-time gift.';
 
 /**
  * the words on the fee control, which are also its whole accessible name.
@@ -503,10 +527,14 @@ export const BACK_TO_START = 'Back to start';
 export const FAILED_HEADING = 'This gift was not completed';
 export const TRY_AGAIN = 'Try again';
 
-/** the resume, which is the only busy flow that reaches a takeover. */
+/** the resume: a donor back from wherever they authorized, on a page that does not yet know the outcome. */
 export const RESUMING_HEADING = 'Finishing your gift';
 export const RESUMING_BODY =
 	'We are checking what happened with your payment. This takes a moment.';
+
+/** the wait after Give on the correction or Authorize on the mandate, which the caret lands on. */
+export const CONFIRMING_HEADING = 'Confirming your gift…';
+export const CONFIRMING_BODY = 'We are confirming your payment. Please do not close this page.';
 
 /**
  * what a busy flow says out loud, and it is not one sentence.

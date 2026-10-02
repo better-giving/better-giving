@@ -1,8 +1,10 @@
 package migrate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -253,6 +255,48 @@ func TestARunStoppedBeforeItReachedTheDatabaseIsCancelledRatherThanUnreachable(t
 
 	if result.Kind != Cancelled {
 		t.Errorf("kind = %q, want %q", result.Kind, Cancelled)
+	}
+}
+
+// a file's request is the one-way door: cut mid-flight, d1 may still land it while the run reports
+// it as not applied, so a stop waits for the file in flight and starts none behind it.
+func TestARunStoppedWhileAFileIsInFlightLetsThatFileFinishAndStartsNoOther(t *testing.T) {
+	held := &database{}
+	inner := held.serve(t)
+	defer inner.Close()
+
+	arrived := make(chan struct{})
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if bytes.Contains(body, []byte("create table 0000_a")) {
+			close(arrived)
+			<-release
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		inner.Config.Handler.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	ctx, stop := context.WithCancel(context.Background())
+	go func() {
+		<-arrived
+		stop()
+		close(release)
+	}()
+	result := Apply(ctx, cf.JSONSend(server.URL, nil), "an-account", "a-database",
+		carried("0000_a.sql", "0001_b.sql"), nil)
+
+	if result.Kind != Cancelled {
+		t.Fatalf("kind = %q, want %q", result.Kind, Cancelled)
+	}
+	if strings.Join(result.Applied, ",") != "0000_a.sql" {
+		t.Errorf("applied = %v, want the file that was in flight when it stopped", result.Applied)
+	}
+	for _, sql := range held.sql() {
+		if strings.HasPrefix(sql, "create table 0001_b") {
+			t.Error("a file went up after the run was stopped")
+		}
 	}
 }
 

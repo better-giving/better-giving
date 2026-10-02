@@ -7,13 +7,14 @@ import { readConfigEnv } from './env';
 import type { SetupLine } from './readiness';
 import { setupReadiness } from './readiness';
 
-// the five jobs read off this running deployment, which is the one place either loader that gates
-// on them gets them from.
+// the five jobs read off this running deployment, which is the one place either gate on them gets
+// them from.
 //
-// **two loaders and one read.** the sign-in screen and the layout every dashboard screen sits under
-// both refuse to serve while set-up is unfinished — ../../../routes/login.tsx and
-// ../../../routes/_app.tsx — and a deployment answering one of them differently from the other is
-// an operator signing in to be told the same thing again in different words.
+// **two gates and one read.** the sign-in screen's loader and the middleware of the layout every
+// dashboard screen sits under both refuse to serve while set-up is unfinished —
+// ../../../routes/login.tsx and ../../../routes/_app.tsx — and a deployment answering one of them
+// differently from the other is an operator signing in to be told the same thing again in
+// different words.
 //
 // **a read that did not land answers `null`, and a `null` gates nothing.** the five are a reading of
 // rows and values; a database that would not answer found no job undone. gating on that would hide

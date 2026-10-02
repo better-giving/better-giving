@@ -788,6 +788,18 @@ describe('POST /api/v1/forms/:id/donations — the capability it does not gate o
 			await edge.delete(RAIL_KEY);
 		}
 	});
+
+	// no served config offers Venmo on a repeating cadence (`venmoIsOffered` in
+	// packages/form/src/checkout.machine.ts), and a submission that names the pair anyway is the
+	// cached-page case above: charged rather than refused.
+	it('charges a Venmo gift on a repeating cadence no form offers it on', async () => {
+		const response = await post({ method: 'venmo', frequency: 'monthly' });
+
+		expect(response.status).toBe(503);
+		const answered = (await response.json()) as Record<string, unknown>;
+		expect(answered.error).toBeUndefined();
+		expect(String(answered.message)).toContain('challenge');
+	});
 });
 
 /**

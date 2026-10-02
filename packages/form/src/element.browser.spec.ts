@@ -93,7 +93,9 @@ async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promi
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				};
 			},
@@ -234,7 +236,9 @@ describe('the box a host page holds before the element upgrades', () => {
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -725,7 +729,7 @@ describe('the caret when one takeover replaces another', () => {
 
 		await userEvent.click(press);
 
-		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(heading(root).textContent).toBe('Confirming your gift…');
 		expect(press.hidden).toBe(true);
 		expect(focused).toEqual([press, heading(root)]);
 		expect(root.activeElement).toBe(heading(root));
@@ -749,9 +753,89 @@ describe('the caret when one takeover replaces another', () => {
 			}
 		});
 
-		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(heading(root).textContent).toBe('Confirming your gift…');
 		expect(focused).toEqual([press, heading(root)]);
 		expect(root.activeElement).toBe(heading(root));
 		expect(document.activeElement).toBe(outer);
+	});
+});
+
+// arrow keys check a radio as they move onto it, so the other tile is chosen by a keyboard donor
+// passing through the group as much as by one deciding on it. the box opens either way, but only a
+// pointer press on the tile is a donor reaching for the box: a caret pulled out of the group by an
+// arrow is a change of context on input (https://www.w3.org/WAI/WCAG22/Understanding/on-input).
+describe('the other tile by keyboard and by pointer', () => {
+	function tiles(root: ShadowRoot): HTMLInputElement[] {
+		return [...root.querySelectorAll<HTMLInputElement>('[part~="amount-option"] input')];
+	}
+
+	function entry(root: ShadowRoot): HTMLInputElement {
+		const node = root.querySelector<HTMLInputElement>('#amount-entry');
+		if (node === null) throw new Error('no free entry');
+		return node;
+	}
+
+	/** Continue pressed: a withdrawn amount keeps the donor on the step with the refusal shown. */
+	function refusesTheAmount(root: ShadowRoot): void {
+		root
+			.querySelector<HTMLElement>('.step:not([hidden]) [part~="action"]:not([part~="submit"])')
+			?.click();
+		expect(root.querySelector<HTMLElement>('#amount-problem')?.hidden).toBe(false);
+	}
+
+	it('leaves the caret on the other tile when an arrow moves onto it from the last preset', async () => {
+		const root = shadow(await mount());
+		const [, last, other] = tiles(root);
+		await userEvent.click(last as HTMLInputElement);
+		await userEvent.keyboard('{ArrowRight}');
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(other);
+		expect(root.querySelector<HTMLElement>('[part~="amount-input"]')?.hidden).toBe(false);
+		expect(entry(root).value).toBe('');
+		refusesTheAmount(root);
+	});
+
+	it('leaves the caret on the other tile when an arrow wraps onto it from the first preset', async () => {
+		const root = shadow(await mount());
+		const [first, , other] = tiles(root);
+		await userEvent.click(first as HTMLInputElement);
+		await userEvent.keyboard('{ArrowLeft}');
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(other);
+		expect(root.querySelector<HTMLElement>('[part~="amount-input"]')?.hidden).toBe(false);
+		expect(entry(root).value).toBe('');
+		refusesTheAmount(root);
+	});
+
+	it('puts the caret in the free entry on a pointer press on the other tile', async () => {
+		const root = shadow(await mount());
+		const [, , other] = tiles(root);
+		await userEvent.click(other as HTMLInputElement);
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(entry(root));
+		expect(entry(root).value).toBe('');
+		refusesTheAmount(root);
+	});
+
+	// a press on the tile while it is already chosen chooses nothing, so it fires no `change` to
+	// spend the pointer on — and the arrow that later comes back onto the tile is still a keyboard.
+	it('leaves the caret on the other tile when arrowed back onto after a press that chose nothing', async () => {
+		const root = shadow(await mount());
+		const [, , other] = tiles(root);
+		await userEvent.click(other as HTMLInputElement);
+		await userEvent.click(other as HTMLInputElement);
+		(other as HTMLInputElement).focus();
+		await userEvent.keyboard('{ArrowLeft}');
+		await userEvent.keyboard('{ArrowRight}');
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(other);
 	});
 });

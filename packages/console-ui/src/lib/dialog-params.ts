@@ -98,6 +98,11 @@ function withoutDialogs(url: URL): string {
 /**
  * whether this navigation does nothing but open or drop a dialog, and so has nothing to re-read.
  *
+ * **a navigation whose address does not move at all is a re-read, never one of these**: the
+ * router hands a page's own `revalidate()` the address it stands at as both `currentUrl` and
+ * `nextUrl`, with no `formMethod`, and those two differ in no dialog parameter either — so read by
+ * parameters alone, every re-read a screen asks for of itself would be skipped.
+ *
  * **a submission is never one of these however the address moves**: a press made from inside a
  * dialog posts at that dialog's address, and a page that skipped the read over it would go on
  * drawing what the press has just changed. `formMethod` is what separates the two: the router
@@ -110,6 +115,7 @@ export function opensOrDropsDialog({
 	formMethod
 }: ShouldRevalidateFunctionArgs): boolean {
 	if (formMethod !== undefined) return false;
+	if (currentUrl.href === nextUrl.href) return false;
 	return withoutDialogs(currentUrl) === withoutDialogs(nextUrl);
 }
 
@@ -117,13 +123,17 @@ export function opensOrDropsDialog({
  * the `shouldRevalidate` every console route with a loader states: every press re-reads, except the
  * one that ends the process it would read and one turned down over its boxes (./refused-answer.ts),
  * and no link that only opens or drops a dialog does, unless a press was dropped since the reading
- * on screen was taken.
+ * on screen was taken. a page's own `revalidate()` re-reads, since it moves the address not at all
+ * and so is no dialog link ({@link opensOrDropsDialog}).
  *
  * the binary answers the close and then stops, so a read after it cannot land: it reaches nothing,
  * the loader rejects, and the operator meets the boundary that says the console crashed in place of
  * the blank page closing it leaves. the answer carries the reading that stops it
  * (./close-answer.ts), which is what the router hands `actionResult` over for — a fetcher's answer
  * included, which is how the close is posted (./close-confirm.tsx).
+ *
+ * only the layout's own call counts: the router asks `shouldRevalidate` of a route with a loader,
+ * so on a section route with no `clientLoader` of its own the export is read by nothing.
  */
 export function consoleRereads(args: ShouldRevalidateFunctionArgs): boolean {
 	if (saidClosing(args.actionResult)) return false;

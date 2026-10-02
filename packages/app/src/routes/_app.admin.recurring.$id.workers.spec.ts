@@ -8,6 +8,7 @@ import type { PaymentProviderName } from '$lib/server/db/schema';
 import { redirectWithFlash, SAVED_FLASH } from '$lib/server/flash';
 import { readRecurringPlan } from '$lib/server/recurring/queries';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as detail from './_app.admin.recurring.$id';
 
@@ -43,6 +44,7 @@ const SCREEN_PATH = `/admin/recurring/${PLAN_ID}`;
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 let revenueAccountId: string;
 
@@ -50,10 +52,12 @@ beforeAll(async () => {
 	db = createDb(env.DB);
 	// the pathless layout carries no path of its own, which is what makes the gate cover a screen
 	// without adding a segment to its address.
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/recurring/:id', module: detail }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn();
 
 	const row = await env.DB.prepare(

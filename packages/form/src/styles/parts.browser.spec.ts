@@ -141,7 +141,9 @@ async function mount(config: FormConfig = CONFIG): Promise<Mounted> {
 				cadence: () => {},
 				offerFund: () => {},
 				offerCrypto: () => {},
+				offerVenmo: () => {},
 				rows: () => {},
+				repeatingUnavailable: () => {},
 				stop: () => {}
 			}),
 			challenge: () => ({ reset: () => {}, stop: () => {} })

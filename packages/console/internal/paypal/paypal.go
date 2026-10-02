@@ -80,9 +80,12 @@ type ResultKind string
 const (
 	// Value is an answer this console was written against.
 	Value ResultKind = "value"
-	// Refused is a pair PayPal would not accept, or an app it would not let do this. The way out is
-	// a different pair, which is the two boxes on the screen.
+	// Refused is a pair PayPal would not accept. The way out is a different pair, which is the two
+	// boxes on the screen.
 	Refused ResultKind = "refused"
+	// Forbidden is an app PayPal would not let make this call. The pair is not the way out of it, so
+	// the boxes it was typed in are not where it is drawn.
+	Forbidden ResultKind = "forbidden"
 	// Rejected is a request PayPal understood and would not carry out. Detail names what it said.
 	Rejected ResultKind = "rejected"
 	// Unreachable is nothing found out either way, a 5xx included.
@@ -112,16 +115,18 @@ func (result Result) Turned() *Failure {
 // Read sorts one answer into the states a screen draws differently.
 //
 // 401 is a pair PayPal will not accept and 403 an app without the permission a call needs
-// (https://developer.paypal.com/api/rest/responses/). Both are one arm because the way out of either
-// is the boxes the pair was typed in.
+// (https://developer.paypal.com/api/rest/responses/). They are two arms because only the first is
+// mended in the boxes the pair was typed in.
 func Read(answer cf.Answer) Result {
 	if answer.Kind == cf.Unreachable {
 		return Result{Kind: Unreachable, Detail: answer.Detail}
 	}
 	detail := Said(answer)
 	switch {
-	case answer.Status == http.StatusUnauthorized || answer.Status == http.StatusForbidden:
+	case answer.Status == http.StatusUnauthorized:
 		return Result{Kind: Refused, Detail: detail}
+	case answer.Status == http.StatusForbidden:
+		return Result{Kind: Forbidden, Detail: detail}
 	case answer.Status >= 400 && answer.Status < 500:
 		return Result{Kind: Rejected, Detail: detail}
 	case answer.Status < 200 || answer.Status > 299:

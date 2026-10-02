@@ -6,6 +6,7 @@ import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
 import { CREATED_FLASH, redirectWithFlash, SAVED_FLASH } from '$lib/server/flash';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as forms from './_app.admin.forms._index';
 
@@ -42,6 +43,14 @@ const FORM_ID = 'frm_adminformstest1';
 
 let db: Db;
 let request: RouteRequester;
+/**
+ * the list with no layout above it, for the cases about a deployment whose set-up is unfinished:
+ * the layout refuses every screen under it on one (./_app.tsx), and this screen reads nothing off
+ * the session or the set-up state, only the database.
+ */
+let direct: RouteRequester;
+/** the bindings of a deployment whose five set-up jobs are done. */
+let bindings: Env;
 let session: string;
 
 /**
@@ -59,6 +68,7 @@ beforeAll(async () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/forms', module: forms }
 	]);
+	direct = mountRoutes([{ path: 'admin/forms', module: forms }]);
 	session = await signIn();
 
 	const row = await env.DB.prepare(
@@ -79,6 +89,7 @@ beforeEach(async () => {
 	)
 		.bind(FORM_ID, revenueAccountId)
 		.run();
+	bindings = await finishSetup(PASSWORD);
 });
 
 /** a real session, as the `Cookie` header a browser would send back. */
@@ -160,11 +171,19 @@ type Loaded = {
  * case that opens the embed card visits the same address a press on the card's control navigates
  * to rather than calling anything of its own.
  */
-function visit(reason: StripeSlots = 'configured', flash = '', search = ''): Promise<Response> {
+function visit(
+	reason: StripeSlots = 'configured',
+	flash = '',
+	search = '',
+	ungated = false
+): Promise<Response> {
 	const cookie = [session, flash].filter((value) => value !== '').join('; ');
-	return request(new Request(`${ORIGIN}${LIST}${search}`, { headers: { cookie } }), {
-		env: { ...env, ...STRIPE_KEYS[reason] } as Env
-	});
+	// no Stripe keys is a set-up job undone, so that deployment is reached without the layout.
+	const unfinished = ungated || reason === 'keys-unset';
+	return (unfinished ? direct : request)(
+		new Request(`${ORIGIN}${LIST}${search}`, { headers: { cookie } }),
+		{ env: { ...(unfinished ? env : bindings), ...STRIPE_KEYS[reason] } as Env }
+	);
 }
 
 async function payload(response: Response): Promise<Loaded> {
@@ -176,9 +195,10 @@ async function payload(response: Response): Promise<Loaded> {
 async function runLoad(
 	reason: StripeSlots = 'configured',
 	flash = '',
-	search = ''
+	search = '',
+	ungated = false
 ): Promise<Loaded> {
-	return payload(await visit(reason, flash, search));
+	return payload(await visit(reason, flash, search, ungated));
 }
 
 /**
@@ -303,7 +323,7 @@ describe('/admin/forms load', () => {
 		// on the screens that make and publish a form. so an empty `org_profile` is not an error here
 		// and not a blank sentence either; it changes nothing about this screen.
 		await env.DB.prepare('delete from org_profile').run();
-		expect((await runLoad()).forms.map((f) => f.id)).toEqual([FORM_ID]);
+		expect((await runLoad('configured', '', '', true)).forms.map((f) => f.id)).toEqual([FORM_ID]);
 	});
 
 	it('hands back an empty list on a deployment that has no forms yet', async () => {

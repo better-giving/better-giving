@@ -125,7 +125,9 @@ async function mount(config: FormConfig = CONFIG): Promise<Card> {
 				cadence: () => {},
 				offerFund: () => {},
 				offerCrypto: () => {},
+				offerVenmo: () => {},
 				rows: () => {},
+				repeatingUnavailable: () => {},
 				stop: () => {}
 			}),
 			challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -419,15 +421,15 @@ describe('the browser’s own email rule against the flow’s', () => {
 describe('the free entry the donor has already typed into', () => {
 	it('rings its input on focus, and keeps the outline forced-colors paints', async () => {
 		const card = await mount();
-		(card.find('.other input') as HTMLInputElement).click();
+		await userEvent.click(card.find('.other input'));
 		const entry = card.find('#amount-entry') as HTMLInputElement;
 		entry.value = '73';
 		entry.dispatchEvent(new Event('input', { bubbles: true }));
 		await painted(entry, card.find("[part~='amount-input']"));
 		expect(card.find("[part~='amount-input']").getAttribute('part')).toContain('selected');
 
-		// opening Other puts the caret in the entry itself (`otherTile` in ../views.ts), so the
-		// resting input is read with it taken out again.
+		// a pointer press on Other puts the caret in the entry itself (`reachedByPointer` in
+		// ../views.ts), so the resting input is read with it taken out again.
 		const surface = card.find("[part~='amount-input']");
 		expect(card.shadow.activeElement).toBe(entry);
 		entry.blur();
@@ -538,7 +540,7 @@ describe('the free entry the donor has already typed into', () => {
 		const style = document.createElement('style');
 		style.textContent = `${card.shadow.host.localName}::part(amount-input) { box-shadow: none; }`;
 		document.body.appendChild(style);
-		(card.find('.other input') as HTMLInputElement).click();
+		await userEvent.click(card.find('.other input'));
 		const surface = card.find("[part~='amount-input']");
 		const entry = card.find('#amount-entry') as HTMLInputElement;
 		entry.blur();
@@ -585,7 +587,7 @@ describe('the amount step’s problem edge', () => {
 		const card = await mount();
 		// the seeded amount taken back through the other tile, so the press is refused for it and
 		// every option in the group is marked.
-		(card.find('.other input') as HTMLInputElement).click();
+		await userEvent.click(card.find('.other input'));
 		proceed(card);
 		const tray = card.find('.tiles');
 		const tile = card.shadow.querySelectorAll("[part~='amount-option']")[1] as HTMLElement;

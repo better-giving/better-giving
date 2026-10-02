@@ -1526,6 +1526,11 @@ export function StripeSection({
 				</StatusLedger>
 				{covered ? null : (
 					<div className="adm-dialog__actions">
+						{/* held with `aria-disabled` and turned away in its own handler, never closed by
+						    `disabled`: a natively closed button drops the focus standing on it, which in
+						    a panel is the reader put out of the panel for the whole wait
+						    (../closed-while-writing.spec.ts). it is a submit, so turning it away is
+						    stopping the submission. */}
 						<Button
 							type="submit"
 							form={READINGS_FORM}
@@ -1533,8 +1538,11 @@ export function StripeSection({
 							value={WALLETS_INTENT}
 							size="sm"
 							variant="primary"
-							disabled={busy || working}
-							aria-busy={pending === WALLETS_INTENT}
+							onClick={(event) => {
+								if (busy || working) event.preventDefault();
+							}}
+							aria-disabled={busy || working || undefined}
+							aria-busy={pending === WALLETS_INTENT || undefined}
 						>
 							Register all sites
 						</Button>

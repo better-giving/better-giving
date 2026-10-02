@@ -17,14 +17,14 @@ import { CloseConfirm, useClosed } from '../lib/close-confirm';
 import { CloudflareAccountPanel, cloudflareAccount } from '../lib/cloudflare-account';
 import { railGroups } from '../lib/console-pages';
 import { drawsReading, gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
-import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
+import { CloudflareGateFace, drawnAfterGate } from '../lib/deployment-states';
 import { ACCOUNT_PARAM, CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
 import { heldValues } from '../lib/held-values';
 import { keysTrouble } from '../lib/processor-screen';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections';
 
 // the shell every section page of a ready deployment stands in: the rail of pages and the foot naming
@@ -234,16 +234,16 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 }
 
 /**
- * a page standing behind a gate, or the console stopped.
+ * a page standing behind a gate, or the layout failing before it had a reading.
  *
  * **the gate is the page's whole screen**: the head keeps the account and the close press, which
  * are true whatever cloudflare said, and the rail goes, since every destination on it is read over
  * the answer that did not land (../lib/cloudflare-gate.ts).
  *
- * the console stopped is the one other thing a page meets here: a request it cannot reach the local
- * process with at all. drawn as the panel a route outside the shell is, because there is no reading
- * to draw a shell from — the same words wherever it is met (../lib/deployment-states.tsx). the foot
- * stands with no release in it, because nothing here read what this binary is.
+ * anything else is `ConsoleFailure`'s to tell apart (./_index.tsx), drawn as the panel a route
+ * outside the shell is, because there is no reading to draw a shell from. a page under the layout
+ * that fails is caught by its own boundary and keeps the shell. the foot stands with no release in it,
+ * because nothing here read what this binary is.
  */
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	/* the confirm opens from state here rather than off `?close` as it does over a page: the layout
@@ -257,7 +257,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 		return (
 			<PanelRoute foot={<ProductFoot version="" />}>
 				<title>{TITLE}</title>
-				<ConsoleStopped />
+				<ConsoleFailure error={error} />
 			</PanelRoute>
 		);
 	}

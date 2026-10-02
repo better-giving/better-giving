@@ -256,6 +256,40 @@ describe('repeating rows mounted into a document', () => {
 		).toEqual(['Remove Allowed origins 1', 'Remove Allowed origins 2']);
 	});
 
+	it('names each row and its Remove by what one row is called, where the legend is a plural', () => {
+		const root = render(RepeatingRows, {
+			id: 'amounts',
+			legend: 'Suggested amounts',
+			rowLabel: 'suggested amount',
+			add: ADD,
+			rows: SITES
+		});
+
+		expect(root.querySelector('legend')?.textContent).toBe('Suggested amounts');
+		expect(inputs(root).map((box) => box.getAttribute('aria-label'))).toEqual([
+			'suggested amount 1',
+			'suggested amount 2'
+		]);
+		expect(
+			[...root.querySelectorAll('.adm-rows__row button')].map((button) =>
+				button.getAttribute('aria-label')
+			)
+		).toEqual(['Remove suggested amount 1', 'Remove suggested amount 2']);
+	});
+
+	it('describes the group by a sentence its caller draws, and marks no row with it', () => {
+		const root = render(RepeatingRows, {
+			id: 'amounts',
+			legend: 'Suggested amounts',
+			describedBy: 'amounts-cap',
+			add: ADD,
+			rows: SITES
+		});
+
+		expect(root.querySelector('fieldset')?.getAttribute('aria-describedby')).toBe('amounts-cap');
+		expect(inputs(root).map((box) => box.getAttribute('aria-invalid'))).toEqual([null, null]);
+	});
+
 	/**
 	 * the guarantee a locked row rests on, and it is the missing name alone: a box with no name is
 	 * in no submission and in no reading of the form's own boxes by name, which is what feeds both

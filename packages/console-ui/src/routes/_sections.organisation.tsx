@@ -9,7 +9,7 @@ import { OrgFold } from '../lib/org-fold';
 import { storedOrg } from '../lib/org-form';
 import { forgetReadings } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.organisation';
 
 // /organisation — the legal identity this deployment asks for gifts under, drawn by
@@ -56,6 +56,16 @@ export default function OrganisationPage({ actionData, matches }: Route.Componen
 				busy={busy}
 				pending={intent === ORG_INTENT}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

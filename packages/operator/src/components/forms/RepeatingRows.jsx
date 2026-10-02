@@ -12,10 +12,9 @@ import { FieldMessage } from './FieldMessage.jsx';
  * one control that changes the boxes rather than the record: the four attributes a form layer's own
  * list intent is carried by, plus the press it may withhold on.
  *
- * stated structurally rather than as a button's attributes, for the reason
- * packages/app/src/lib/admin/forms/giving-fields.tsx states it: ./controls/Button.jsx takes the
- * union of a button's attributes and an anchor's, so the whole of one of those two is not
- * assignable to it — and what a caller actually has to hand over is these.
+ * stated structurally rather than as a button's attributes: ../controls/Button.jsx takes the union
+ * of a button's attributes and an anchor's, so the whole of one of those two is not assignable to
+ * it — and what a caller actually has to hand over is these.
  *
  * @typedef {object} RowControl
  * @property {string} name
@@ -32,7 +31,6 @@ import { FieldMessage } from './FieldMessage.jsx';
  * the second box `x[1]`, which is whichever row is second right now — so a removed row leaves react
  * re-using the box below it for the row that took its place, and the box is uncontrolled, so it
  * goes on showing and posting the figure already typed into it.
- * packages/app/src/lib/admin/forms/giving-fields.tsx's `AmountRow` is the same trap, and
  * packages/operator/src/components/data/DataTable.jsx argues the case for a table's rows.
  *
  * `remove` is the control that drops this row, absent where nothing may drop it — a list that has
@@ -110,9 +108,16 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {string | undefined} [name] the name every row submits under. a form that names its
  *   rows one at a time — an array's boxes are `x[0]`, `x[1]` — states it on the row instead.
  * @property {string} legend what the group is, stated rather than defaulted: both of a row's
- *   accessible names are built from it — the box's own and its Remove's — so a group without one is
- *   a run of unnamed boxes over a column of controls all called Remove, and the screen looks exactly
- *   the same either way. `legendHidden` below is how a group draws no mark and keeps the names.
+ *   accessible names are built from it unless `rowLabel` says otherwise — the box's own and its
+ *   Remove's — so a group without one is a run of unnamed boxes over a column of controls all
+ *   called Remove, and the screen looks exactly the same either way. `legendHidden` below is how a
+ *   group draws no mark and keeps the names.
+ * @property {string | undefined} [rowLabel] what one row is called, where that is not the legend —
+ *   a group whose legend names it in the plural. both of a row's accessible names are built from it
+ *   in the legend's place; absent, they are built from the legend.
+ * @property {string | undefined} [describedBy] an element describing the group that the group does
+ *   not draw itself, named on the fieldset. for a sentence about the list its caller draws and
+ *   holds against no row, which {@link RepeatingRowsProps.error} would mark every row refused by.
  * @property {boolean | undefined} [legendHidden] whether the legend is drawn to a reader and not on
  *   the screen (`.adm-vh` in packages/operator/src/styles/base.css). for the group whose name is
  *   already stated a step above it, where the mark would be a third naming of one thing. the names
@@ -163,6 +168,8 @@ export function RepeatingRows({
 	id,
 	name,
 	legend,
+	rowLabel = legend,
+	describedBy,
 	legendHidden,
 	hint,
 	error,
@@ -221,7 +228,7 @@ export function RepeatingRows({
 	});
 
 	return (
-		<fieldset className="adm-fieldset">
+		<fieldset className="adm-fieldset" aria-describedby={describedBy}>
 			<legend className={legendHidden ? 'adm-vh' : 'adm-fieldset__legend'}>{legend}</legend>
 			{hint ? (
 				<p className="adm-hint" id={`${id}-hint`}>
@@ -273,7 +280,7 @@ export function RepeatingRows({
 							placeholder={placeholder}
 							disabled={disabled}
 							error={said}
-							aria-label={`${legend} ${i + 1}`}
+							aria-label={`${rowLabel} ${i + 1}`}
 							aria-invalid={error && said === undefined ? 'true' : undefined}
 							aria-describedby={
 								[hintId, said === undefined ? groupErrorId : `${row}-err`]
@@ -292,7 +299,7 @@ export function RepeatingRows({
 								mark="trash-2"
 								type="submit"
 								disabled={disabled}
-								aria-label={`Remove ${legend} ${i + 1}`}
+								aria-label={`Remove ${rowLabel} ${i + 1}`}
 								{...remove}
 								onClick={(event) => {
 									remove.onClick?.(event);

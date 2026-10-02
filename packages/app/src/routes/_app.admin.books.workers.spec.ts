@@ -5,6 +5,7 @@ import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { POSTING_ACCOUNTS, ROLLUPS } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as books from './_app.admin.books';
 
@@ -32,14 +33,17 @@ const SCREEN = '/admin/books';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 beforeAll(async () => {
 	db = createDb(env.DB);
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/books', module: books }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn();
 });
 

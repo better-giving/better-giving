@@ -45,8 +45,10 @@ import type {
 // state the route's own error boundary draws in those words (../routes/_index.tsx) rather than a
 // value each screen would have to carry. a refusal it did answer is thrown for the same reason,
 // carrying whatever the handler named — every one of them is a state the page's own reading rules
-// out, so there is nothing here for an operator to act on. `consoleVersion` below is the one
-// exception and states its own reason.
+// out, so there is nothing here for an operator to act on. the two are thrown as two kinds
+// ({@link ConsoleUnreachable}, {@link ConsoleRefused}) because a boundary draws them differently:
+// told the console has stopped over a refusal, an operator restarts a console that is running.
+// `consoleVersion` below is the one exception and states its own reason.
 //
 // **a write is held among the writes out until the binary answers it** ({@link writesAnswered}),
 // whether or not the press that made it is still waiting: the router drops the answer to a press
@@ -57,9 +59,32 @@ import type {
 
 const writesOut = new Set<Promise<Response>>();
 
+/**
+ * a call that never reached the local process: the one failure the page draws as a console that has
+ * stopped (`ConsoleStopped` in ../lib/deployment-states.tsx).
+ */
+export class ConsoleUnreachable extends Error {
+	override readonly name = 'ConsoleUnreachable';
+}
+
+/** a call the local process answered and turned down, carrying what its handler said. */
+export class ConsoleRefused extends Error {
+	override readonly name = 'ConsoleRefused';
+	readonly status: number;
+	constructor(message: string, status: number) {
+		super(message);
+		this.status = status;
+	}
+}
+
 /** one request to the local process, held among the writes out while a `POST` is unanswered. */
 function call(path: string, init: RequestInit): Promise<Response> {
-	const answer = fetch(`/api${path}`, init);
+	const answer = fetch(`/api${path}`, init).catch((cause: unknown) => {
+		// an abandoned reading rejects the same way, and it is the router's to drop rather than a
+		// console that stopped.
+		if (init.signal?.aborted) throw cause;
+		throw new ConsoleUnreachable(`/api${path} could not be reached`, { cause });
+	});
 	if (init.method !== 'POST') return answer;
 	writesOut.add(answer);
 	const answered = () => writesOut.delete(answer);
@@ -83,7 +108,7 @@ async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal
 		signal: signal ?? null
 	});
 	const read = await parsed(answer);
-	if (!answer.ok) throw new Error(refusal(read, answer.status));
+	if (!answer.ok) throw refused(read, answer.status);
 	return read as T;
 }
 
@@ -95,7 +120,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 		body: JSON.stringify(body)
 	});
 	const read = await parsed(answer);
-	if (!answer.ok) throw new Error(refusal(read, answer.status));
+	if (!answer.ok) throw refused(read, answer.status);
 	return read as T;
 }
 
@@ -110,12 +135,12 @@ async function parsed(answer: Response): Promise<unknown> {
 }
 
 /** what a handler said about turning a call down, in its own words where it wrote any. */
-function refusal(body: unknown, status: number): string {
+function refused(body: unknown, status: number): ConsoleRefused {
 	if (typeof body === 'object' && body !== null && 'error' in body) {
 		const said = (body as { error: unknown }).error;
-		if (typeof said === 'string' && said !== '') return said;
+		if (typeof said === 'string' && said !== '') return new ConsoleRefused(said, status);
 	}
-	return `the console answered ${status}`;
+	return new ConsoleRefused(`the console answered ${status}`, status);
 }
 
 /**
@@ -349,9 +374,9 @@ export async function startStripeSetup(keys: {
 	}
 	/* the door turning the pair down is a value rather than a throw, for the reason a press already
 	   going is one: it is an answer about the boxes, and thrown it reaches the page's error boundary
-	   — which draws a console that has stopped over a console that is answering. */
+	   — which draws it in place of the whole page rather than at the boxes it is about. */
 	if (answer.status === 400) return { started: false, turnedDown: true };
-	if (!answer.ok) throw new Error(refusal(body, answer.status));
+	if (!answer.ok) throw refused(body, answer.status);
 	return startedOrUnwritten<StripeRunRead>(body);
 }
 
@@ -405,7 +430,7 @@ export async function startPaypalSetup(pair: {
 		return { started: false, run: (body as { run: PaypalRunRead }).run };
 	}
 	if (answer.status === 400) return { started: false, turnedDown: true };
-	if (!answer.ok) throw new Error(refusal(body, answer.status));
+	if (!answer.ok) throw refused(body, answer.status);
 	return startedOrUnwritten<PaypalRunRead>(body);
 }
 
@@ -439,7 +464,7 @@ export async function startChariotSetup(boxes: {
 		return { started: false, run: (body as { run: ChariotRunRead }).run };
 	}
 	if (answer.status === 400) return { started: false, turnedDown: true };
-	if (!answer.ok) throw new Error(refusal(body, answer.status));
+	if (!answer.ok) throw refused(body, answer.status);
 	return startedOrUnwritten<ChariotRunRead>(body);
 }
 

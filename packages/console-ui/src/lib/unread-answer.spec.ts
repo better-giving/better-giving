@@ -1,5 +1,6 @@
 import { globSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { NoReport } from '../api/types';
 import { UNREAD_ANSWER_TITLE, readableRefusal, unreadAnswer } from './unread-answer';
 
 // the console's gate over one claim it cannot make.
@@ -78,6 +79,15 @@ describe('a refusal the deployment wrote on purpose', () => {
 				status: 409
 			})
 		).toEqual({ message: 'The start date moved while this was open.', fix: 'Read it again.' });
+	});
+
+	it('is nothing where the answer arrived with no status at all, carrying a code or not', () => {
+		// the type says a status is always there and the binary always writes one, but this is read
+		// off the wire: an answer that lost it is one whose class nobody knows, not a 4xx.
+		const statusless = JSON.parse(
+			'{"kind":"unreadable","error":"account_wrong_type","detail":"Refused.","fix":null}'
+		) as NoReport;
+		expect(readableRefusal(statusless)).toBeNull();
 	});
 
 	it('is nothing at a 5xx, even one carrying a code, which is the deployment failing', () => {

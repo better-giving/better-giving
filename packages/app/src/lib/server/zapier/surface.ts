@@ -11,9 +11,9 @@ import { ZAPIER_TRIGGERS, type ZapierTrigger } from '../db/schema';
 /**
  * the URL prefix of the Zapier surface.
  *
- * a route joins it by nesting under `src/routes/zapier.ts`, whose `middleware` charges the rate
- * limit and then checks the key; `src/routes.spec.ts` fails on a route served under this prefix
- * that sits anywhere else.
+ * a route joins it by nesting under `src/routes/zapier.ts`, whose `middleware` checks the key
+ * first and charges the rate limit only for a check that failed; `src/routes.spec.ts` fails on a
+ * route served under this prefix that sits anywhere else.
  */
 export const ZAPIER_BASE_PATH = '/zapier';
 
