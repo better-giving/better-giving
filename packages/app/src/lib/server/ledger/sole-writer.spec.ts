@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// the guard on "posting.ts is the only module that may INSERT into the ledger".
+// the guard on "posting.ts is the only module that writes the ledger": the only INSERT, and no
+// UPDATE or DELETE of a ledger row from anywhere.
 //
 // why this test exists. that rule lives in `./posting.ts`'s header and is named in
 // CLAUDE.md's ledger ban, and until this file it was enforced by nothing — a convention,
@@ -24,23 +25,35 @@ import { describe, expect, it } from 'vitest';
 // name — that is accepted, because the failure mode it defends against is a shortcut
 // taken in a hurry, not an adversary.
 //
-// what is exempt: `src/lib/server/ledger/**` (the writer and its own specs) and this
-// file, which necessarily contains the patterns it searches for.
+// what is exempt: `./posting.ts`, every `*.spec.ts(x)` (they seed and tear down rows in a test
+// database — `delete from ledger_entry` between cases), and this file, which necessarily contains the patterns it
+// searches for. the rest of the ledger directory — `./queries.ts`, `./journal-file.ts` — is swept
+// like any other module, because a read-side module is exactly where a "quick" correction lands.
+//
+// the ledger's rows are `entry_group` and `ledger_entry` (../db/schema.ts). an UPDATE or DELETE of
+// either is swept as well as an INSERT: the ledger is append-only (./posting.ts's header), a
+// mistake is settled by a correcting entry, and a row edited or removed in place leaves books that
+// balance and are wrong. `account` is not a ledger row — it is the chart, and is edited.
 
 const SRC = resolve(import.meta.dirname, '../../..');
 const LEDGER_DIR = resolve(import.meta.dirname);
 const SELF = resolve(import.meta.filename);
+const POSTING = join(LEDGER_DIR, 'posting.ts');
 
 const EXTENSIONS = ['.ts', '.tsx', '.js'];
 
-/** every source file under `src/`, minus the ledger module itself and this spec. */
+function isExempt(path: string): boolean {
+	if (path === SELF || path === POSTING) return true;
+	return /\.spec\.tsx?$/.test(path);
+}
+
+/** every source file under `src/`, minus `posting.ts`, every spec and this spec. */
 function sourceFiles(dir: string, out: string[] = []): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			if (path === LEDGER_DIR) continue;
 			sourceFiles(path, out);
-		} else if (EXTENSIONS.some((e) => entry.name.endsWith(e)) && path !== SELF) {
+		} else if (EXTENSIONS.some((e) => entry.name.endsWith(e)) && !isExempt(path)) {
 			out.push(path);
 		}
 	}
@@ -48,22 +61,30 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 }
 
 /**
- * two patterns because there are two ways to write the row, and a rule that only knew
- * one would be worth less than no rule at all:
+ * the ways to write a ledger row, because a rule that only knew one would be worth less than no
+ * rule at all. each verb has a drizzle spelling and a raw SQL one:
  *
- *   - drizzle — `db.insert(ledgerEntry)`, optionally `schema.ledgerEntry`.
- *   - raw SQL — `insert into ledger_entry`, in any quoting, including `insert or ignore`
- *     / `or replace`, which is the shape a "make the retry idempotent" fix reaches for.
+ *   - drizzle — `db.insert(ledgerEntry)`, `db.update(ledgerEntry)`, `db.delete(entryGroup)`,
+ *     optionally `schema.ledgerEntry`.
+ *   - raw SQL — `insert into ledger_entry`, in any quoting, including `insert or ignore` /
+ *     `or replace`, which is the shape a "make the retry idempotent" fix reaches for; `update
+ *     ledger_entry` with the same `or` forms; `delete from entry_group`.
  */
+const TABLES_DRIZZLE = '(?:schema\\.)?(?:ledgerEntry|entryGroup)\\b';
+const TABLES_SQL = '[`"\']?(?:ledger_entry|entry_group)\\b';
 const WRITERS: { label: string; re: RegExp }[] = [
-	{
-		label: 'drizzle insert',
-		re: /\binsert\s*\(\s*(?:schema\.)?(?:ledgerEntry|entryGroup)\b/
-	},
+	{ label: 'drizzle insert', re: new RegExp(`\\binsert\\s*\\(\\s*${TABLES_DRIZZLE}`) },
+	{ label: 'drizzle update', re: new RegExp(`\\bupdate\\s*\\(\\s*${TABLES_DRIZZLE}`) },
+	{ label: 'drizzle delete', re: new RegExp(`\\bdelete\\s*\\(\\s*${TABLES_DRIZZLE}`) },
 	{
 		label: 'raw SQL insert',
-		re: /insert\s+(?:or\s+\w+\s+)?into\s+[`"']?(?:ledger_entry|entry_group)\b/i
-	}
+		re: new RegExp(`insert\\s+(?:or\\s+\\w+\\s+)?into\\s+${TABLES_SQL}`, 'i')
+	},
+	{
+		label: 'raw SQL update',
+		re: new RegExp(`\\bupdate\\s+(?:or\\s+\\w+\\s+)?${TABLES_SQL}`, 'i')
+	},
+	{ label: 'raw SQL delete', re: new RegExp(`\\bdelete\\s+from\\s+${TABLES_SQL}`, 'i') }
 ];
 
 describe('posting.ts is the only writer of the ledger', () => {
@@ -78,7 +99,7 @@ describe('posting.ts is the only writer of the ledger', () => {
 		expect(names.length).toBeGreaterThan(10);
 	});
 
-	it('finds no INSERT into ledger_entry or entry_group outside src/lib/server/ledger/', () => {
+	it('finds no INSERT, UPDATE or DELETE of ledger_entry or entry_group outside ledger/posting.ts', () => {
 		const offenders: string[] = [];
 		for (const file of files) {
 			const source = readFileSync(file, 'utf8');
@@ -90,14 +111,49 @@ describe('posting.ts is the only writer of the ledger', () => {
 		// the write.
 		expect(
 			offenders,
-			`these modules write the ledger directly: ${offenders.join(', ')}. only src/lib/server/ledger/posting.ts may — build the entry with post() and splice postingStatements(db, posting) into the same batch() as the rest of your write. a direct insert skips sums-to-zero, which nothing in the database checks.`
+			`these modules write the ledger directly: ${offenders.join(', ')}. only src/lib/server/ledger/posting.ts may insert — build the entry with post() and splice postingStatements(db, posting) into the same batch() as the rest of your write; a direct insert skips sums-to-zero, which nothing in the database checks. no module may update or delete a ledger row: the ledger is append-only, so post a correcting entry instead.`
 		).toEqual([]);
 	});
 
 	it('matches the writer itself, so the patterns are known to work', () => {
 		// without this, a typo'd regex that matches nothing anywhere would report a clean
 		// tree forever. posting.ts is the one file that must match.
-		const posting = readFileSync(join(LEDGER_DIR, 'posting.ts'), 'utf8');
+		const posting = readFileSync(POSTING, 'utf8');
 		expect(WRITERS.some(({ re }) => re.test(posting))).toBe(true);
+	});
+
+	it.each([
+		['drizzle insert', 'await db.insert(ledgerEntry).values(rows);'],
+		['drizzle update', 'await db.update(schema.ledgerEntry).set({ amount: 1 });'],
+		['drizzle delete', 'await db.delete(entryGroup).where(eq(entryGroup.id, id));'],
+		['raw SQL insert', 'INSERT OR IGNORE INTO "ledger_entry" (id) VALUES (1)'],
+		['raw SQL update', 'UPDATE ledger_entry SET amount = 1'],
+		['raw SQL delete', 'delete from `entry_group` where id = 1']
+	])('matches a %s as written', (label, line) => {
+		// the real tree holds none of the update or delete spellings, so nothing real exercises them.
+		expect(WRITERS.find((w) => w.label === label)?.re.test(line)).toBe(true);
+	});
+
+	it('reads neither a read of the tables nor an edit of another table as a write', () => {
+		for (const line of [
+			'await db.select().from(ledgerEntry);',
+			'await db.update(account).set({ name });',
+			'db.delete(donation)',
+			'select * from ledger_entry',
+			'update account set name = 1'
+		]) {
+			expect(
+				WRITERS.some(({ re }) => re.test(line)),
+				line
+			).toBe(false);
+		}
+	});
+
+	it('exempts posting.ts and specs, and nothing else in the ledger directory', () => {
+		const names = files.map((f) => relative(SRC, f));
+		expect(names).not.toContain('lib/server/ledger/posting.ts');
+		expect(names).not.toContain('lib/server/ledger/posting.workers.spec.ts');
+		expect(names).toContain('lib/server/ledger/queries.ts');
+		expect(names).toContain('lib/server/ledger/journal-file.ts');
 	});
 });
