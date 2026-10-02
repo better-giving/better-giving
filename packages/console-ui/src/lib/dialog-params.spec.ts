@@ -6,7 +6,14 @@ import type {
 } from 'react-router';
 import { createMemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import { consoleRereads, leaveDialog, OPENED_HERE, opensOrDropsDialog } from './dialog-params';
+import {
+	ACCOUNT_PARAM,
+	CLOSE_PARAM,
+	consoleRereads,
+	leaveDialog,
+	OPENED_HERE,
+	opensOrDropsDialog
+} from './dialog-params';
 
 /** a link press between two addresses on this one page, which is every navigation but a submission. */
 const pressed = (from: string, to: string): ShouldRevalidateFunctionArgs => ({
@@ -16,6 +23,18 @@ const pressed = (from: string, to: string): ShouldRevalidateFunctionArgs => ({
 	nextParams: {},
 	defaultShouldRevalidate: true
 });
+
+/** resolves once the router has finished every navigation and read it has under way. */
+const waitIdle = (router: ReturnType<typeof createMemoryRouter>) =>
+	new Promise<void>((resolve) => {
+		const idle = () => router.state.initialized && router.state.navigation.state === 'idle';
+		if (idle()) return resolve();
+		const stop = router.subscribe(() => {
+			if (!idle()) return;
+			stop();
+			resolve();
+		});
+	});
 
 describe('a navigation that does nothing but open or drop a dialog', () => {
 	it('reads the close confirm opening', () => {
@@ -154,5 +173,59 @@ describe('the way out of a dialog', () => {
 		expect(at(router)).toBe('/p');
 		await router.navigate(-1);
 		expect(at(router)).toBe('/a');
+	});
+});
+
+describe('what the router re-reads under consoleRereads', () => {
+	/** a page whose loader counts its reads, standing at `at`, with its first read landed. */
+	const reading = async (at: string) => {
+		let reads = 0;
+		const router = createMemoryRouter(
+			[
+				{
+					path: '*',
+					loader: () => ++reads,
+					action: () => ({ written: true }),
+					shouldRevalidate: consoleRereads,
+					Component: () => null
+				}
+			],
+			{ initialEntries: [at] }
+		);
+		await waitIdle(router);
+		return { router, reads: () => reads };
+	};
+
+	it("re-reads on the page's own revalidate", async () => {
+		const page = await reading('/quickbooks');
+
+		await page.router.revalidate();
+		expect(page.reads()).toBe(2);
+	});
+
+	it('does not re-read over a link that only opens or drops a dialog', async () => {
+		const page = await reading('/sites');
+
+		await page.router.navigate(`/sites?${ACCOUNT_PARAM}`);
+		await page.router.navigate('/sites');
+		await page.router.navigate(`/sites?${CLOSE_PARAM}`);
+		expect(page.reads()).toBe(1);
+	});
+
+	it('re-reads over a link to a different page', async () => {
+		const page = await reading('/sites');
+
+		await page.router.navigate('/smtp');
+		expect(page.reads()).toBe(2);
+	});
+
+	it('re-reads over a press, even one posted at a dialog address', async () => {
+		const page = await reading('/sites');
+
+		await page.router.navigate(`/sites?${ACCOUNT_PARAM}`, {
+			formMethod: 'post',
+			formData: new FormData()
+		});
+		expect(page.reads()).toBe(2);
 	});
 });
