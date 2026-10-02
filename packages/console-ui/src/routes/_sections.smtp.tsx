@@ -6,6 +6,7 @@ import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { forgetReadings } from '../lib/processor-cache';
+import { useKeptAnswers } from '../lib/smtp-answers';
 import { SmtpFold, TEST_EMAIL_INTENT } from '../lib/smtp-fold';
 import { TEST_TO_FIELD } from '../lib/smtp-fold-state';
 import { usePress } from '../lib/use-press';
@@ -62,6 +63,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function SmtpPage({ actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const { intent } = usePress();
+	const { secrets, freed, test } = useKeptAnswers(actionData);
 	return (
 		<Column>
 			<SmtpFold
@@ -71,9 +73,9 @@ export default function SmtpPage({ actionData, matches }: Route.ComponentProps) 
 				// the profile, because the test send is seeded from the notification address rather
 				// than from a value of its own.
 				stored={shell.reading.stored}
-				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}
-				freed={actionData && 'freed' in actionData ? actionData.freed : null}
-				test={actionData && 'test' in actionData ? actionData.test : null}
+				secrets={secrets}
+				freed={freed}
+				test={test}
 				pending={intent}
 			/>
 		</Column>
