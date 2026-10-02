@@ -186,9 +186,15 @@ function CheckoutCard({
 		started.rows(setPaymentRows);
 		setLive(started);
 		// a Copy's outcome is said on the card's one region, again on every press: the words do not
-		// change between two presses of one control.
+		// change between two presses of one control. it is tied to the heading the press was made
+		// under, because the reading loop moves the snapshot under it every few seconds.
 		const block = createDepositBlock(document, (words) => {
-			setShot({ at: started.actor.getSnapshot(), kind: 'copy', words });
+			setShot({
+				at: started.actor.getSnapshot(),
+				kind: 'copy',
+				words,
+				on: screen.current.heading
+			});
 			setNonce((at) => at + 1);
 		});
 		setDeposit(block);
@@ -247,11 +253,15 @@ function CheckoutCard({
 	const [notifyAsked, setNotifyAsked] = useState(false);
 	/** the press that asked for a sentence to be said again, which is the only thing a repeat has. */
 	const [nonce, setNonce] = useState(0);
-	/** a sentence one press asked for, spent by the snapshot it was asked on. */
+	/**
+	 * a sentence one press asked for. a refusal or a one-time switch is spent by the snapshot it was
+	 * asked on; a Copy's is kept by the heading it was pressed under, in `on`.
+	 */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
 		kind: 'details' | 'copy' | 'one-time';
 		words?: string;
+		on?: string;
 	} | null>(null);
 	/** a commit, so a press that changed nothing else still gets its caret moved. */
 	const [, setTick] = useState(0);
@@ -456,14 +466,18 @@ function CheckoutCard({
 	 * a caret elsewhere inside the takeover is moved onto the heading, and arriving there reads it.
 	 * that leaves a caret already on the heading, where focusing the node that holds focus says
 	 * nothing, and a caret outside the takeover, which is never taken — a resume's outcome and the
-	 * address closing both arrive with the donor anywhere on the page. cached against the snapshot it
-	 * was read for, as `decline` is: the commit that draws the new heading is what makes the next
-	 * render's comparison come out equal.
+	 * address closing both arrive with the donor anywhere on the page. cached against the heading it
+	 * was read for rather than the snapshot: the commit that draws the new heading is what makes the
+	 * next render's comparison come out equal, and the address screen's reading loop is a new
+	 * snapshot every few seconds with nothing to say — one landing in the same instant the address
+	 * closes would otherwise empty the sentence as it is written. a sentence the region moved on
+	 * from is emptied where `words` is chosen below.
 	 */
-	const retitle = useRef<{ at: CheckoutSnapshot | null; words: string }>({ at: null, words: '' });
-	if (retitle.current.at !== snapshot) {
+	const heard = withinTakeover ? takeover.heading : null;
+	const retitle = useRef<{ on: string | null; words: string }>({ on: null, words: '' });
+	if (retitle.current.on !== heard) {
 		retitle.current = {
-			at: snapshot,
+			on: heard,
 			words:
 				withinTakeover &&
 				takeover.heading !== screen.current.heading &&
@@ -528,7 +542,7 @@ function CheckoutCard({
 	 * read off the figure rather than off the press, because a rail is picked inside the provider's own
 	 * fields and no handler of ours sees it. a move that left the figure where it was is not news: the
 	 * fee box reports its own new setting either way. cached against the snapshot it was read for, as
-	 * `retitle` is.
+	 * `decline` is.
 	 */
 	const total = useRef<{
 		at: CheckoutSnapshot | null;
@@ -774,6 +788,15 @@ function CheckoutCard({
 	// ── what is said out loud ────────────────────────────────────────────────────────────────────
 
 	const spent = shot !== null && shot.at === snapshot ? shot.kind : null;
+	/** the Copy sentence the region moved on from, which is not said again when what replaced it clears. */
+	const outsaid = useRef<typeof shot>(null);
+	const copied =
+		shot?.kind === 'copy' &&
+		shot !== outsaid.current &&
+		shot.on === takeover.heading &&
+		takeover.deposit !== null
+			? (shot.words ?? '')
+			: '';
 	// in the order the fields are asked in, which is the order they are laid out in and the order the
 	// caret walks them.
 	const detailsSaid =
@@ -814,6 +837,10 @@ function CheckoutCard({
 	// refusal on the commit it moved on: the refusal was said on the press and stays on the payment
 	// box's description, and the figure that moved is said nowhere else. the retitled heading last: a
 	// screen's own sentence and the wait's both say more than its heading does.
+	//
+	// the Copy's sentence and the retitled heading's keep one rule: a live-region sentence stays
+	// until the heading it announces changes or another sentence replaces it; a new snapshot alone
+	// never clears it. each is spent below once another has taken its place.
 	const words =
 		takeover.announce !== ''
 			? takeover.announce
@@ -827,11 +854,15 @@ function CheckoutCard({
 							? oneTimeOffer
 							: spent === 'one-time'
 								? copy.MADE_ONE_TIME
-								: spent === 'copy' && takeover.deposit !== null
-									? (shot?.words ?? '')
+								: copied !== ''
+									? copied
 									: busy
 										? workingWords(api.state)
 										: retitle.current.words;
+	if (words !== '') {
+		if (words !== copied && shot?.kind === 'copy') outsaid.current = shot;
+		if (words !== retitle.current.words) retitle.current.words = '';
+	}
 
 	const receipt =
 		reading === null ? null : <Receipt reading={reading} onFee={() => onFee()} feeRef={feeBox} />;
