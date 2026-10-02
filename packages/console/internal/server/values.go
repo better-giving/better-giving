@@ -42,23 +42,21 @@ import (
 // about the call, and the names of any vars held as credentials — internal/deployment is where the
 // values go, and they go into a request body and nowhere else.
 
-// the names whose value is an answer about an account rather than a credential, and the one word
-// the deployment reads as yes: whether PayPal approved the organisation for its charity rate, and
-// whether the Cloudflare account is on the Workers Paid plan. no call reports either, so the
-// operator is the only one who can say.
+// the name whose value is an answer about an account rather than a credential, and the one word
+// the deployment reads as yes: whether PayPal approved the organisation for its charity rate. no
+// call reports it, so the operator is the only one who can say.
 //
-// **each is a switch with two positions, and the off one is the removal above rather than a stored
+// **it is a switch with two positions, and the off one is the removal above rather than a stored
 // no.** the deployment reads every other value — `false` and `no` alike — exactly as it does an
-// absent one: the standard PayPal rate (`paypalFeeRules` in
-// packages/app/src/lib/server/payments/fees.ts), the Free plan's pace (`planAnswered` in
-// packages/operator/src/delivery-pace.ts). so a word stored for off is a box this console draws
-// full over a deployment acting on no, and a fold would have a third shape to word and nothing
-// true to say in it.
+// absent one, as the standard PayPal rate (`paypalFeeRules` in
+// packages/app/src/lib/server/payments/fees.ts). so a word stored for off is a box this console
+// draws full over a deployment acting on no, and a fold would have a third shape to word and
+// nothing true to say in it.
 //
 // the word is exact rather than case-insensitive, though the deployment reads it either way: this
 // door is the only writer, so one spelling is what every deployment ends up holding and what the
 // row an operator reads back always says.
-var answerSwitches = []string{"PAYPAL_CHARITY_RATE_APPROVED", "CLOUDFLARE_PAID_PLAN"}
+var answerSwitches = []string{"PAYPAL_CHARITY_RATE_APPROVED"}
 
 const answeredYes = "true"
 
