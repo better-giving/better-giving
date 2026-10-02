@@ -74,11 +74,17 @@ const UNATTRIBUTED = 'unattributed';
  * cannot forge it is not cannot choose among it, and the granularity is what answers the
  * difference. a caller holding a routed ipv6 `/64` — the standard delegation from any vps host —
  * binds a fresh source address per request, so a key on the whole `/128` hands every request a
- * bucket of its own and bounds nothing. the key therefore holds the `/64` for ipv6 and the whole
- * address for ipv4, because those are the units one payer controls: a `/64` is the smallest block
- * a single subscriber or vm is normally delegated, and an ipv4 address is not subdivided at all.
- * an ipv4-mapped address (`::ffff:203.0.113.7`) is the ipv4 case in ipv6 notation and counts as
- * the address it holds.
+ * bucket of its own and bounds nothing. an ipv4 address is not subdivided at all and is keyed
+ * whole; an ipv4-mapped address (`::ffff:203.0.113.7`) is the ipv4 case in ipv6 notation and
+ * counts as the address it holds.
+ *
+ * for ipv6 the width is chosen per bucket, by what one extra bucket buys the caller (`Ipv6Block`).
+ * the sign-in and quote buckets key the `/48`: a `/48` is the block one subscriber is commonly
+ * handed and the cheapest a caller can hold many `/64`s inside — 65,536 of them, each a fresh
+ * budget of password guesses or gift submissions if the key were the `/64`. this key, the `/zapier`
+ * key and the read API's caller key bound reads, so they keep the `/64`, the smallest block one
+ * subscriber or vm is delegated: a `/48` of `/64`s buys reads there, and keying wider would put
+ * every donor on an office's or a campus's network in one bucket.
  *
  * an address shared by many people is the accepted cost, and it is what the generous limit in
  * `wrangler.jsonc` is sized against: a mobile carrier puts thousands of real donors behind one
@@ -104,21 +110,22 @@ const UNATTRIBUTED = 'unattributed';
  * instead of eating this one's.
  */
 export function apiRateLimitKey(request: Request): string {
-	return `${API_BASE_PATH} ${caller(request)}`;
+	return `${API_BASE_PATH} ${caller(request, 64)}`;
 }
 
 /**
  * what one submission at `POST /api/v1/forms/:id/donations` counts against, and `null` for a
  * caller with no bucket at all.
  *
- * the same caller as the key above, under a name of its own. the form id is out of it for the
+ * the same caller as the key above, under a name of its own and on an ipv6 caller's `/48` rather
+ * than its `/64` — that key's comment argues the width. the form id is out of it for the
  * reason it is out of that key and the reason is if anything stronger here: this endpoint is
  * reached with an id the caller wrote, and a per-form bucket would hand somebody submitting a
  * thousand invented ids a thousand buckets — while a donor giving to the one form on the site
  * holds one.
  */
 export function quoteRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request);
+	const payer = attributedCaller(request, 48);
 	return payer === null ? null : `${API_BASE_PATH} donations ${payer}`;
 }
 
@@ -140,7 +147,7 @@ export function quoteRateLimitKey(request: Request): string | null {
  * its own, which is the guesser this exists to bound.
  */
 export function signInRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request);
+	const payer = attributedCaller(request, 48);
 	return payer === null ? null : `sign-in ${payer}`;
 }
 
@@ -155,7 +162,7 @@ export function signInRateLimitKey(request: Request): string | null {
  * `isRateLimited`, which fails open: the 256-bit key is the bound on guessing.
  */
 export function zapierRateLimitKey(request: Request): string {
-	return `${ZAPIER_BASE_PATH} ${caller(request)}`;
+	return `${ZAPIER_BASE_PATH} ${caller(request, 64)}`;
 }
 
 /**
@@ -173,7 +180,7 @@ export function zapierRateLimitKey(request: Request): string {
  * integration closed. the surface is still bounded without it, by the key and the per-key bucket.
  */
 export function integrationsCallerRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request);
+	const payer = attributedCaller(request, 64);
 	return payer === null ? null : `${INTEGRATIONS_BASE_PATH} ${payer}`;
 }
 
@@ -190,9 +197,9 @@ export function integrationsKeyRateLimitKey(keyId: string): string {
 }
 
 /** the caller half of every key here: one payer, however they spelled their address. */
-function caller(request: Request): string {
+function caller(request: Request, block: Ipv6Block): string {
 	const address = request.headers.get('cf-connecting-ip');
-	return address === null ? UNATTRIBUTED : payer(address);
+	return address === null ? UNATTRIBUTED : payer(address, block);
 }
 
 /**
@@ -215,13 +222,20 @@ function caller(request: Request): string {
  * `string | null` and answers the `null`, so no call site can spend a bucket that is not there
  * and none has to know that it cannot.
  */
-function attributedCaller(request: Request): string | null {
-	const key = caller(request);
+function attributedCaller(request: Request, block: Ipv6Block): string | null {
+	const key = caller(request, block);
 	return key === UNATTRIBUTED ? null : key;
 }
 
-/** the block one payer holds: an ipv6 caller's `/64`, an ipv4 caller's whole address. */
-function payer(address: string): string {
+/**
+ * how much of an ipv6 address one bucket keys on. `apiRateLimitKey` argues which bucket takes
+ * which; the two are prefixes on hextet boundaries, which is what lets `payer` render one by
+ * slicing.
+ */
+type Ipv6Block = 48 | 64;
+
+/** the block one payer holds: an ipv6 caller's `block`, an ipv4 caller's whole address. */
+function payer(address: string, block: Ipv6Block): string {
 	if (!address.includes(':')) {
 		// rendered from the octets rather than kept as written, so that the two spellings of one
 		// ipv4 address (`203.0.113.7`, `203.000.113.007`) are one bucket — the same canonicalization
@@ -237,7 +251,8 @@ function payer(address: string): string {
 		// the same spelling the ipv4 form of it would produce.
 		return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
 	}
-	return `${[a, b, c, d].map((hextet) => hextet.toString(16)).join(':')}::/64`;
+	const prefix = [a, b, c, d].slice(0, block / 16);
+	return `${prefix.map((hextet) => hextet.toString(16)).join(':')}::/${block}`;
 }
 
 /**

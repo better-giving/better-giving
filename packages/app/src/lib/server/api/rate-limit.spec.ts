@@ -78,9 +78,10 @@ describe('what a public api request counts against', () => {
 	});
 
 	/**
-	 * and the other half of it: the block is `/64` and not something wider. a `/32` or a `/48` is
-	 * an allocation to a network rather than to a payer, so bucketing on one would put unrelated
-	 * subscribers of one isp in a single bucket and let any of them close it on the rest.
+	 * and the other half of it: this bucket's block is `/64` and not something wider. it bounds
+	 * reads, so a `/48` of `/64`s buys a caller reads, while a `/48` key would put every donor on
+	 * one office's or campus's network in a single bucket and let any of them close it on the rest.
+	 * the sign-in and quote buckets are the ones keyed wider, below.
 	 */
 	it('separates two ipv6 /64s', () => {
 		const first = apiRateLimitKey(
@@ -299,7 +300,7 @@ describe('when the binding does not answer', () => {
  * the caller half of a key, which every limiter in this app shares.
  *
  * one definition rather than three, and that is the whole reason the two tighter buckets are keyed
- * from this module at all: the `/64` rule above is a security property, and a second copy of it is
+ * from this module at all: the block rule above is a security property, and a second copy of it is
  * a second place somebody can key on the whole `/128` and hand a caller an address per request.
  * the cases here are the shape of that sharing; the cases above are what it means.
  */
@@ -314,9 +315,48 @@ describe('what the tighter buckets count against', () => {
 
 	it.each(TIGHT)('keys %s on the block one payer holds, not on one address', (_what, key) => {
 		expect(key(from('2001:db8:1:2::1'))).toBe(key(from('2001:db8:1:2:aaaa:bbbb:cccc:dddd')));
-		expect(key(from('2001:db8:1:2::1'))).not.toBe(key(from('2001:db8:1:3::1')));
 		expect(key(from('::ffff:203.0.113.7'))).toBe(key(from('203.0.113.7')));
 		expect(key(from('203.0.113.7'))).not.toBe(key(from('198.51.100.4')));
+	});
+
+	/**
+	 * the bypass a `/64` key leaves on these two buckets: a caller holding a `/48` — the block one
+	 * subscriber is commonly handed — holds 65,536 `/64`s, and keyed on each one that is 65,536
+	 * budgets of guesses or gifts a minute from one payer.
+	 */
+	it.each(TIGHT)('puts every /64 inside one ipv6 /48 in one bucket for %s', (_what, key) => {
+		expect(key(from('2001:db8:1:2::1'))).toBe(key(from('2001:db8:1:ffff::1')));
+		expect(key(from('2001:db8:1::1'))).toBe(key(from('2001:db8:1:abcd:1:2:3:4')));
+	});
+
+	/** and no wider: two `/48`s are two subscribers, and one of them must not close the other's. */
+	it.each(TIGHT)('separates two ipv6 /48s for %s', (_what, key) => {
+		expect(key(from('2001:db8:1::1'))).not.toBe(key(from('2001:db8:2::1')));
+		expect(key(from('2001:db8:1::1'))).not.toBe(key(from('2001:db9:1::1')));
+	});
+
+	it.each(TIGHT)('does not move for %s when the same /48 is spelled differently', (_what, key) => {
+		expect(key(from('2001:db8:1::1'))).toBe(key(from('2001:0db8:0001:0000::2')));
+		expect(key(from('2001:DB8:1::1'))).toBe(key(from('2001:db8:1:0:0:0:0.0.0.2')));
+	});
+
+	/** the `/48` is an ipv6 rule; an ipv4 caller is still keyed on its whole address. */
+	it('keys an ipv4 caller on its whole address, as before', () => {
+		expect(signInRateLimitKey(from('203.0.113.7'))).toBe('sign-in 203.0.113.7');
+		expect(quoteRateLimitKey(from('203.000.113.007'))).toBe('/api/v1 donations 203.0.113.7');
+		expect(quoteRateLimitKey(from('::ffff:203.0.113.7'))).toBe('/api/v1 donations 203.0.113.7');
+	});
+
+	/**
+	 * the `/48` is these two buckets' width and no other's. the surface and read-api caller buckets
+	 * bound reads rather than guesses or charges, so what a `/48` of `/64`s buys there is reads,
+	 * while keying them wider would put a whole network's donors in one bucket.
+	 */
+	it('leaves the surface and read-api caller buckets on the /64', () => {
+		const asked = from('2001:db8:1:2::1');
+		expect(apiRateLimitKey(asked)).toBe('/api/v1 2001:db8:1:2::/64');
+		expect(integrationsCallerRateLimitKey(asked)).toBe('/integrations/v1 2001:db8:1:2::/64');
+		expect(signInRateLimitKey(asked)).toBe('sign-in 2001:db8:1::/48');
 	});
 
 	/**

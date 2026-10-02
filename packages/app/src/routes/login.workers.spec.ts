@@ -667,29 +667,30 @@ describe('the limit on POST /login', () => {
 
 	/**
 	 * the bucket is per caller, on the same `payer` normalisation the public api's key uses
-	 * ($lib/server/api/rate-limit.ts). the `/64` half is the security property: a caller holding a
-	 * routed ipv6 `/64` — the standard delegation from any vps host — binds a fresh source address
-	 * per request, so a bucket keyed on the whole address would bound nothing at all here.
+	 * ($lib/server/api/rate-limit.ts), keyed on an ipv6 caller's `/48`. that is the security
+	 * property: a caller holding a `/48` — the block one subscriber is commonly handed — holds
+	 * 65,536 `/64`s and binds a source address in a fresh one per request, so a bucket keyed on
+	 * anything narrower would hand them a budget of guesses each.
 	 */
-	it('holds one ipv6 /64 to one bucket', async () => {
+	it('holds one ipv6 /48 to one bucket', async () => {
 		await untilRefused('2001:db8:a:1::1');
 		const signedInWhenRefused = await sessions();
 
-		const neighbour = await post(typed(PASSWORD), { ip: '2001:db8:a:1:ffff:ffff:ffff:ffff' });
+		const neighbour = await post(typed(PASSWORD), { ip: '2001:db8:a:ffff:ffff:ffff:ffff:ffff' });
 
 		expect(neighbour instanceof Response ? 0 : neighbour.init?.status).toBe(429);
 		expect(await sessions()).toBe(signedInWhenRefused);
 	});
 
 	/**
-	 * and the other half: the block is `/64` and not something wider. otherwise one guesser closes
+	 * and the other half: the block is `/48` and not something wider. otherwise one guesser closes
 	 * the login on every other subscriber of their isp — including the operator.
 	 */
-	it('leaves another /64 alone', async () => {
+	it('leaves another /48 alone', async () => {
 		await untilRefused('2001:db8:b:1::1');
 		const signedInWhenRefused = await sessions();
 
-		const elsewhere = await post(typed(PASSWORD), { ip: '2001:db8:b:2::1' });
+		const elsewhere = await post(typed(PASSWORD), { ip: '2001:db8:c:1::1' });
 
 		expect(elsewhere).toBeInstanceOf(Response);
 		expect(await sessions()).toBe(signedInWhenRefused + 1);
