@@ -555,10 +555,12 @@ func TestARefreshCloudflareTurnsDownLeavesCloudflareToSayWhatIsWrong(t *testing.
 }
 
 // the state directory as it stands on a machine whose config home has gone read-only, which a
-// chmod cannot stage for a suite run as root.
-func unwritable(flow *running) {
-	flow.keep = func(string, []byte) error { return os.ErrPermission }
-}
+// chmod cannot stage for a suite run as root: what is there still reads, and nothing is written.
+type readOnly struct{ records }
+
+func (readOnly) Write(string, []byte) error { return os.ErrPermission }
+
+func unwritable(flow *running) { flow.store = readOnly{flow.store} }
 
 func TestARefreshThatCouldNotBeWrittenDownIsReportedRatherThanSwallowed(t *testing.T) {
 	// the token that came back is good for the call being made now and is used; what is gone is the

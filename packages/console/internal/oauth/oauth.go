@@ -140,7 +140,6 @@ func New(options Options) *Flow {
 	}
 	return &Flow{
 		store:  options.Store,
-		keep:   options.Store.Write,
 		send:   cf.FormSend(base, nil),
 		open:   options.Open,
 		waits:  waiting,
@@ -286,7 +285,7 @@ func (flow *Flow) write(held record) error {
 	if err != nil {
 		return err
 	}
-	if err := flow.keep(Record, written); err != nil {
+	if err := flow.store.Write(Record, written); err != nil {
 		return err
 	}
 	// what is written down is newer than anything held: a fresh sign-in replaces it outright.

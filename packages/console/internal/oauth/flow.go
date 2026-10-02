@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/better-giving/console/internal/cf"
-	"github.com/better-giving/console/internal/state"
 )
 
 // PhaseName is what the sign-in is doing right now, as a screen draws it.
@@ -67,8 +66,7 @@ type Phase struct {
 // covers the stored credential, which the refresh reads and writes, and `unkept`, a refreshed pair
 // the record would not take.
 type Flow struct {
-	store  state.Store
-	keep   func(name string, data []byte) error
+	store  records
 	send   cf.FormPost
 	open   func(address string)
 	waits  time.Duration
@@ -81,6 +79,14 @@ type Flow struct {
 
 	held   sync.Mutex
 	unkept *record
+}
+
+// where the credential is kept between runs: ../state's Store on a console, and a store a case
+// replaces whole where the directory has to refuse.
+type records interface {
+	Read(name string) ([]byte, error)
+	Write(name string, data []byte) error
+	Forget(name string) error
 }
 
 // one sign-in open in a browser: what it is waiting on, and what proves it was this press.
