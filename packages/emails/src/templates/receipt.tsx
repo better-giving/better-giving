@@ -15,6 +15,7 @@ import {
 	SPACE_8,
 	WEIGHT_BOLD
 } from '../tokens';
+import { greetingFor } from './greeting';
 
 // the donor's receipt — the one document this app produces that somebody else files with a
 // tax authority.
@@ -234,7 +235,7 @@ export function template(data: ReceiptData): EmailTemplate {
 		goods.kind === 'provided' && data.contribution.totalMinor > QUID_PRO_QUO_THRESHOLD_MINOR;
 	const closing = `${goodsStatement(goods, value)} ${KEEP_THIS}`;
 	const subject = `Your donation receipt from ${org.legalName}`;
-	const greeting = data.donorName === null ? 'Hello,' : `Dear ${firstName(data.donorName)},`;
+	const greeting = greetingFor(data.donorName);
 	const thanks = `Thank you for your gift to ${org.legalName}. ${SUPPORT}`;
 	/**
 	 * the block, assembled once rather than per arm — which is what makes "the same rows in the
@@ -361,24 +362,6 @@ function amountRows(crypto: CryptoReceived | null, amount: string): ReceiptRow[]
 				{ label: CRYPTO_LABELS.amountReceived, value: crypto.coinAmount },
 				{ label: CRYPTO_LABELS.valueWhenReceived, value: amount }
 			];
-}
-
-/**
- * how the greeting addresses somebody, from a name that has no parts.
- *
- * `donorName` is one string a donor typed or a form derived, which the caller only proves is not
- * blank — it may arrive untrimmed and it carries no first-or-family structure to read. so the
- * first whitespace-delimited token is the whole heuristic, and it is wrong in the ways an
- * unstructured name is wrong: a name written family-name-first is greeted by the family name, and
- * one carrying a particle is greeted by the particle.
- *
- * that is a greeting and not the record. the full name is on the `Donor` row of the block below,
- * which is the line the document is read from.
- */
-function firstName(donorName: string): string {
-	const trimmed = donorName.trim();
-	const space = trimmed.search(/\s/);
-	return space === -1 ? trimmed : trimmed.slice(0, space);
 }
 
 /**

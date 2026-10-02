@@ -3,6 +3,7 @@ import { formatMoney } from '../format';
 import type { EmailTemplate } from '../template';
 import { dedicationSentence, NOT_A_TAX_RECEIPT } from './grant';
 import type { Dedication } from './receipt';
+import { greetingFor } from './greeting';
 
 // the donor's "your fund has the request", sent when they finish in their fund's window and the
 // grant is created.
@@ -35,7 +36,7 @@ export interface GrantRequestedData {
 export function template(data: GrantRequestedData): EmailTemplate {
 	const amount = formatMoney(data.amountMinor, data.currency);
 	const subject = `Your grant request to ${data.legalName} is on its way`;
-	const greeting = data.donorName === null ? 'Hello,' : `Dear ${data.donorName},`;
+	const greeting = greetingFor(data.donorName);
 	const said = [
 		`Your donor-advised fund has your request to give ${amount} to ${data.legalName}.`,
 		dedicationSentence(data.dedication)
