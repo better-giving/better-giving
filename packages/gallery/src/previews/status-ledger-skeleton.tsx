@@ -5,13 +5,13 @@ import { StatusLedger, StatusLine } from '@better-giving/operator/components/sta
  * the placeholder a processor page draws while its readings are asked for, beside the reading it
  * stands in for — so a change to either shows whether the two still take the same room.
  *
- * the status words are visually hidden and nothing about them is drawn; what is on the page is the
- * shape alone.
+ * the status words are not the skeleton's: a screen holds them over it in `SkeletonStatus`, and
+ * nothing about them is drawn, so what is on the page is the shape alone.
  */
 export default function StatusLedgerSkeletonPreview() {
 	return (
 		<div className="adm-stack">
-			<LedgerSkeleton label="Asking this deployment…" blocks={[2, 2]} />
+			<LedgerSkeleton blocks={[2, 2]} />
 			<div className="adm-stack">
 				<div className="adm-named">
 					<h3>Donation methods</h3>

@@ -5,7 +5,10 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
-import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
+import {
+	LedgerSkeleton,
+	SkeletonStatus
+} from '@better-giving/operator/components/status/LedgerSkeleton';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
@@ -260,32 +263,35 @@ export function PaypalSection({
 	/* the same wait over both boundaries: what an operator is waiting on is one account's readings,
 	   and two waits worded apart would be two subjects where there is one. it is shaped as they
 	   resolve — the rails' two lines, PayPal and Venmo, and the repeating-gift block's two — so the
-	   page does not move when they land. */
-	const asking = <LedgerSkeleton label="Asking this deployment…" blocks={[2, 2]} />;
+	   page does not move when they land. the words are the status held over both boundaries, so
+	   the region stands before either skeleton is drawn. */
+	const asking = <LedgerSkeleton blocks={[2, 2]} />;
 	return (
 		<Section>
 			{/* what the account answered, drawn above the boxes that change it for the reason the Stripe
 			    screen states: the reading is what an operator came to find out, and the press that
 			    would rewrite it comes last. */}
-			<Suspense fallback={asking}>
-				<Await resolve={payments}>
-					{(read) => (
-						<Suspense fallback={asking}>
-							<Await resolve={recurring}>
-								{(gifts) => (
-									<PaypalReadings
-										read={read}
-										gifts={gifts}
-										provision={provision}
-										busy={busy}
-										pending={pending}
-									/>
-								)}
-							</Await>
-						</Suspense>
-					)}
-				</Await>
-			</Suspense>
+			<SkeletonStatus label="Asking this deployment…">
+				<Suspense fallback={asking}>
+					<Await resolve={payments}>
+						{(read) => (
+							<Suspense fallback={asking}>
+								<Await resolve={recurring}>
+									{(gifts) => (
+										<PaypalReadings
+											read={read}
+											gifts={gifts}
+											provision={provision}
+											busy={busy}
+											pending={pending}
+										/>
+									)}
+								</Await>
+							</Suspense>
+						)}
+					</Await>
+				</Suspense>
+			</SkeletonStatus>
 
 			<PaypalKeysForm
 				values={held}

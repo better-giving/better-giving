@@ -11,7 +11,10 @@ import { FieldMessage } from '@better-giving/operator/components/forms/FieldMess
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
-import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
+import {
+	LedgerSkeleton,
+	SkeletonStatus
+} from '@better-giving/operator/components/status/LedgerSkeleton';
 import {
 	StatusLedger,
 	StatusLine,
@@ -471,10 +474,11 @@ export function StripeSection({
 	 * deployment holds no secret key, and it decides that off this same list of secrets — so on
 	 * that path the promises are settled before the screen is drawn, and a waiting placeholder would be
 	 * one render of a screen saying it is asking after something it asked nobody about.
+	 *
+	 * its words are the `SkeletonStatus` held over both boundaries below, which says nothing while no
+	 * skeleton is drawn under it.
 	 */
-	const asking = stored?.has('STRIPE_SECRET_KEY') ? (
-		<LedgerSkeleton label="Asking this deployment…" blocks={[4, 2]} />
-	) : null;
+	const asking = stored?.has('STRIPE_SECRET_KEY') ? <LedgerSkeleton blocks={[4, 2]} /> : null;
 
 	/** what the two boxes are holding right now, in the shape `stripeAsked` reads them in. */
 	const boxes = (form: HTMLFormElement): StripeKeyBoxes => ({
@@ -1790,15 +1794,17 @@ export function StripeSection({
 			{/* the two the deployment answers, and the form the one press among them stands in — both
 			    inside `readings` above, because what says whether either draws anything at all is
 			    what they resolved to. */}
-			<Suspense fallback={asking}>
-				<Await resolve={payments}>
-					{(accounts) => (
-						<Suspense fallback={asking}>
-							<Await resolve={recurring}>{(gifts) => readings(accounts, gifts)}</Await>
-						</Suspense>
-					)}
-				</Await>
-			</Suspense>
+			<SkeletonStatus label="Asking this deployment…">
+				<Suspense fallback={asking}>
+					<Await resolve={payments}>
+						{(accounts) => (
+							<Suspense fallback={asking}>
+								<Await resolve={recurring}>{(gifts) => readings(accounts, gifts)}</Await>
+							</Suspense>
+						)}
+					</Await>
+				</Suspense>
+			</SkeletonStatus>
 
 			{/* what this deployment has told Stripe to report to it, and where, once there is a
 			    registration to read: the signing secret is stored in the same breath the endpoint is
