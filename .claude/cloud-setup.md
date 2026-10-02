@@ -23,7 +23,7 @@ sandbox-quickbooks.api.intuit.com
 
 ```bash
 #!/bin/bash
-# kru v0.125.0
+# kru v0.137.0
 set -uo pipefail
 log=/tmp/setup.log; exec > >(tee -a "$log") 2>&1
 try() { for i in 1 2 3; do "$@" && return 0; sleep $((i*3)); done; echo "SETUP FAIL: $*"; return 1; }
