@@ -119,6 +119,14 @@ function paymentProvider(answers: Answers = {}) {
 					handler({ collapsed: false, empty: false, value: { type } });
 				}
 			});
+		},
+		/** the element group saying its fields will not come up. */
+		fail: () => {
+			act(() => {
+				for (const handler of [...(held.loaderror ?? [])]) {
+					(handler as (payload: unknown) => void)({ error: { message: 'spec' } });
+				}
+			});
 		}
 	};
 }
@@ -997,7 +1005,9 @@ it('draws no header over a box that is not prepared, however many options it lis
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	act(() => {
-		mounted.render(<PaymentBox mount={createRef()} prepared={false} rows={2} words="" />);
+		mounted.render(
+			<PaymentBox mount={createRef()} prepared={false} rows={2} words="" aside={false} />
+		);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -1056,6 +1066,75 @@ it('stays on the review step, unbusied, with the fund’s button standing while 
 	expect(one(root, 'form.card-body').hasAttribute('aria-busy')).toBe(false);
 	expect(said(root)).toBe('');
 	expect(root.querySelector(CHARIOT_TAG)).toBe(button);
+});
+
+// the card's fields down and a fund up is a gift the donor can still make, once: the review step
+// offers it in place of a box with nothing in it, with the element's words (`oneTimeOfferWords` in
+// packages/form/src/views.ts).
+describe('a repeating gift no processor still up can take', () => {
+	const OFFER =
+		'This gift cannot be made monthly right now. You can make it a one-time gift instead.';
+
+	/** the review step of a gift on `cadence`, on a form whose card fields then fail. */
+	async function atReview(cadence: 1 | 2 | 3 = 2) {
+		const reached = await card(WITH_FUND);
+		press(one(reached.root, `.segment > label:nth-of-type(${cadence})`));
+		walkToGive(reached.root);
+		reached.payment.fail();
+		return reached;
+	}
+
+	const offer = (root: HTMLElement) => one(root, '.step-give .attention');
+	const makeOneTime = (root: HTMLElement) => one(root, '.step-give .attention + [part~="action"]');
+	const paymentGroup = (root: HTMLElement) =>
+		one(root, '[part~="payment"]').closest('.group') as HTMLElement;
+
+	it('offers the gift as one-time in place of the payment box, and draws no Donate', async () => {
+		const { root } = await atReview();
+
+		expect(screen(root).className).toContain('step-give');
+		expect(offer(root).closest('[hidden]')).toBeNull();
+		expect(offer(root).textContent).toBe(OFFER);
+		expect(makeOneTime(root).textContent).toBe('Make it one-time');
+		expect(makeOneTime(root).getAttribute('type')).toBe('button');
+		expect(paymentGroup(root).hidden).toBe(true);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(true);
+		expect(said(root)).toBe(OFFER);
+	});
+
+	it('names a yearly gift’s cadence in the offer', async () => {
+		const { root } = await atReview(3);
+
+		expect(offer(root).textContent).toBe(
+			'This gift cannot be made yearly right now. You can make it a one-time gift instead.'
+		);
+	});
+
+	it('makes the gift one-time on the press, says so, and puts the caret on the payment box', async () => {
+		const { root } = await atReview();
+		expect(root.querySelector(CHARIOT_TAG)).toBeNull();
+
+		press(makeOneTime(root));
+
+		expect(screen(root).className).toContain('step-give');
+		expect(one(root, '[part~="summary"] .row-label').textContent).toBe('One-time gift');
+		expect(offer(root).closest('[hidden]')).not.toBeNull();
+		expect(paymentGroup(root).hidden).toBe(false);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
+		expect(said(root)).toBe('This is now a one-time gift.');
+		expect(document.activeElement).toBe(one(root, '[part~="payment"]'));
+		// the fund's rail, which takes a one-time gift only, is offered from this reading on.
+		expect(root.querySelector(CHARIOT_TAG)).not.toBeNull();
+	});
+
+	it('offers nothing on a one-time gift', async () => {
+		const { root } = await atReview(1);
+
+		expect(offer(root).closest('[hidden]')).not.toBeNull();
+		expect(paymentGroup(root).hidden).toBe(false);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
+		expect(said(root)).not.toBe(OFFER);
+	});
 });
 
 // the donor may change the amount inside the fund's window, and the grant is recorded from what the

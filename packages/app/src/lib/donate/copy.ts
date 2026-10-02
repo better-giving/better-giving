@@ -141,6 +141,19 @@ export const PAYMENT_HEADING = 'Select payment method';
 export const PAYMENT_PROBLEM = 'Please select payment method';
 
 /**
+ * the offer of a one-time gift, standing where the payment box was while no processor still up
+ * takes the repeating gift chosen. it names that cadence so the offer reads as the change it is.
+ */
+export function oneTimeOffer(frequency: 'monthly' | 'yearly'): string {
+	return `This gift cannot be made ${frequency} right now. You can make it a one-time gift instead.`;
+}
+
+export const MAKE_ONE_TIME = 'Make it one-time';
+
+/** what is said once the offer is taken, as the caret moves to the payment box. */
+export const MADE_ONE_TIME = 'This is now a one-time gift.';
+
+/**
  * the words on the fee control, which are also its whole accessible name.
  *
  * the box sits inside a label holding these words, so the name is the label a donor reads rather

@@ -125,9 +125,10 @@ export type Checkout = {
  * screen to finish in.
  *
  * every report either provider makes becomes an event rather than a call: the rail the donor picked,
- * the fields never coming up, a fund's window approving or closing, a token minted, a challenge that
- * could not be shown. the one report that is answered is a fund's press — its script asks for the
- * gift and opens its window in the same call — so `openFund` in @better-giving/form/machine sends
+ * the fields never coming up, a repeating gift none of them can take any longer, a fund's window
+ * approving or closing, a token minted, a challenge that could not be shown. the one report that is
+ * answered is a fund's press — its script asks for the gift and opens its window in the same call —
+ * so `openFund` in @better-giving/form/machine sends
  * the press and reads the answer back with nothing awaited between. the token goes
  * through the projection's own setter rather than at the actor, so the one this page collects and
  * the one a headless integrator would hand in travel one path.
@@ -171,6 +172,8 @@ export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Check
 	unavailable = (failure) => actor.send({ type: 'PAYMENT_UNAVAILABLE', failure });
 	fundSays = (event) => actor.send(event);
 	opened = () => openFund(actor);
+	// at the actor rather than through a holder: the surface replays a report made before this.
+	surface.repeatingUnavailable(() => actor.send({ type: 'REPEATING_UNAVAILABLE' }));
 
 	let challenge: { reset(): void; stop(): void } | null = null;
 	/** the step the last reading was on, which is what makes a reading a transition. */

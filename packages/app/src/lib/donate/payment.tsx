@@ -46,15 +46,21 @@ export type PaymentBoxProps = {
 	readonly rows: number;
 	/** what the box says about itself: a refused press, or the reason a rail gave for the last try. */
 	readonly words: string;
+	/**
+	 * whether the box stands aside for the offer of a one-time gift (`oneTimeInstead` in
+	 * @better-giving/form/connect), which leaves nothing in it to choose. hidden rather than
+	 * unmounted: the provider's fields are painted into the node and are not painted twice.
+	 */
+	readonly aside: boolean;
 };
 
-export function PaymentBox({ mount, prepared, rows, words }: PaymentBoxProps) {
+export function PaymentBox({ mount, prepared, rows, words, aside }: PaymentBoxProps) {
 	const heads = prepared && rows > 1;
 	return (
 		<>
 			{/* one group with the box, so the header stands at the group's distance above it rather
 			    than the step's — the markup `paymentRows` in @better-giving/form's views.ts draws. */}
-			<div className="group">
+			<div className="group" hidden={aside}>
 				<h3 part={part('label')} id={HEADING_ID} hidden={!heads}>
 					{copy.PAYMENT_HEADING}
 				</h3>
