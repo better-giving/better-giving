@@ -14,11 +14,11 @@ import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
-import { CloudflareAccountPanel, cloudflareAccount } from '../lib/cloudflare-account';
+import { cloudflareAccount } from '../lib/cloudflare-account';
 import { railGroups } from '../lib/console-pages';
 import { drawsReading, gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, drawnAfterGate } from '../lib/deployment-states';
-import { ACCOUNT_PARAM, CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
+import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
@@ -41,7 +41,7 @@ import type { Route } from './+types/_sections';
 //
 // **the account is the rail's foot, with the press that ends this console beside it.** it is the one
 // thing true on every page, and the record naming the account is written at the terminal and left
-// exactly as it is. its name opens the account panel, which states the account's id
+// exactly as it is. it is the Cloudflare logo and the account's name and opens nothing
 // (../lib/cloudflare-account.tsx). the account and the close both stand in the narrow band too,
 // where the foot is not drawn.
 //
@@ -134,12 +134,8 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	);
 
 	/* the account at both widths: the row in the rail's foot, and at phone width, where the foot is
-	   not drawn, the same panel opened from the band beside the close. */
-	const account = cloudflareAccount({
-		name: loaderData.account,
-		openHref: `${pathname}?${ACCOUNT_PARAM}`,
-		closeControl
-	});
+	   not drawn, the logo in the band beside the close. */
+	const account = cloudflareAccount({ name: loaderData.account, closeControl });
 
 	const foot = (
 		<>
@@ -209,13 +205,6 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 					<Outlet />
 				</Stack>
 				{params.has(CLOSE_PARAM) ? <CloseConfirm back={pathname} /> : null}
-				{params.has(ACCOUNT_PARAM) ? (
-					<CloudflareAccountPanel
-						name={loaderData.account}
-						accountId={loaderData.accountId}
-						back={pathname}
-					/>
-				) : null}
 			</AppShell>
 		</RailLabelsProvider>
 	);

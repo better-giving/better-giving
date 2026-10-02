@@ -16,17 +16,16 @@ import { saidRefused } from './refused-answer';
 //
 // **the dialogs are parameters on the address rather than component state**, which is what makes
 // Escape, the dialog's own way out and the browser's back button answer the same way
-// (./close-confirm.tsx and ./cloudflare-account.tsx draw them), save the close over the
-// cloudflare gate, which opens from state (../routes/_sections.tsx's `ErrorBoundary` says why).
-// every opener on this console pushes its entry carrying {@link OPENED_HERE}, and the way out
-// steps back over an entry that carries it, so the history holds no entry for a dialog once it is
-// left and Back after it leaves the page; an address that arrived carrying the parameter — typed,
-// say — has no entry of the page before it to step back to, so its way out takes that entry's
-// place instead ({@link leaveDialog}). the cost of the address is a link
-// press being a navigation: without a word from `shouldRevalidate` the
-// router re-reads the page before the dialog can draw, and the whole of that read is loopback round
-// trips — so the press an operator made sits doing nothing for as long as the binary takes to
-// answer.
+// (./close-confirm.tsx draws the one there is), save the close over the cloudflare gate, which
+// opens from state (../routes/_sections.tsx's `ErrorBoundary` says why). every opener on this
+// console pushes its entry carrying {@link OPENED_HERE}, and the way out steps back over an entry
+// that carries it, so the history holds no entry for a dialog once it is left and Back after it
+// leaves the page; an address that arrived carrying the parameter — typed, say — has no entry of
+// the page before it to step back to, so its way out takes that entry's place instead
+// ({@link leaveDialog}). the cost of the address is a link press being a navigation: without a word
+// from `shouldRevalidate` the router re-reads the page before the dialog can draw, and the whole of
+// that read is loopback round trips — so the press an operator made sits doing nothing for as long
+// as the binary takes to answer.
 //
 // **a link that only opens or drops a dialog still re-reads where a press was dropped since the
 // reading on screen was taken** (`droppedSinceRead` in ./console-reading.ts). a dialog link pressed
@@ -51,10 +50,7 @@ import { saidRefused } from './refused-answer';
 /** what the address carries while the head's close confirm is up, which is the whole of what draws it. */
 export const CLOSE_PARAM = 'close';
 
-/** what the address carries while the account panel is up (./cloudflare-account.tsx). */
-export const ACCOUNT_PARAM = 'account';
-
-const DIALOG_PARAMS = [CLOSE_PARAM, ACCOUNT_PARAM];
+const DIALOG_PARAMS = [CLOSE_PARAM];
 
 /** the history state every dialog opener on this console pushes its entry with. */
 export const OPENED_HERE = { openedHere: true } as const;

@@ -74,7 +74,7 @@ vi.mock('../api/client', async (original) => ({
 }));
 
 const bar = await import('@better-giving/operator/progress-bar');
-const { ACCOUNT_PARAM } = await import('../lib/dialog-params');
+const { CLOSE_PARAM } = await import('../lib/dialog-params');
 const { FREE_INTENT } = await import('../lib/withheld-values');
 const { gatedBy } = await import('../lib/console-reading');
 const { forgetReadings } = await import('../lib/processor-cache');
@@ -312,9 +312,11 @@ async function drawnReady(at: string): Promise<string> {
 	}
 }
 
-/** the rail foot's account row, open tag to its close control. */
+/** the rail foot's account row, open tag to the start of its close control. */
 const footRow = (page: string): string => {
-	const found = page.match(/<div class="adm-footaccount">[\s\S]*?<\/a>/);
+	const found = page.match(
+		/<div class="adm-footaccount">[\s\S]*?<span class="adm-footaccount__out">/
+	);
 	if (found === null) throw new Error('no account row drawn');
 	return found[0];
 };
@@ -326,40 +328,34 @@ const band = (page: string): string => {
 	return page.slice(found.index, page.indexOf('<nav', found.index));
 };
 
-/** the one link in `markup` opening the account panel over the books page, as its open tag. */
-const opener = (markup: string): string => {
-	const found = (markup.match(/<a\b[^>]*>/g) ?? []).filter((tag) =>
-		tag.includes('href="/quickbooks?account"')
-	);
-	expect(found).toHaveLength(1);
-	return found[0] as string;
-};
+/** every open tag in `markup` a reader could press or tab to. */
+const controls = (markup: string): string[] =>
+	markup.match(/<(?:a|button)\b[^>]*>|<[^>]*\b(?:href|tabindex)=[^>]*>/g) ?? [];
 
 describe('the Cloudflare account', () => {
-	it('is the rail’s foot, opening its panel, and carries no mark', async () => {
+	it('is the rail’s foot, the Cloudflare logo and the name, and opens nothing', async () => {
 		const row = footRow(await drawnReady('/quickbooks'));
-		expect(row).toContain('Riverbank Trust');
-		expect(row).toContain('href="/quickbooks?account"');
-		expect(row).not.toContain('adm-accountmark');
+		expect(row).toContain('adm-brand--cloudflare');
+		expect(row).toContain('aria-label="Cloudflare account"');
+		expect(row).toContain('<span class="adm-footaccount__name">Riverbank Trust</span>');
+		expect(controls(row)).toEqual([]);
 	});
 
-	it('stands in the narrow band beside the close, opening the same panel, unmarked', async () => {
+	it('stands in the narrow band beside the close, named whole, and opens nothing', async () => {
 		const drawn = band(await drawnReady('/quickbooks'));
-		expect(opener(drawn)).toContain('aria-label="Cloudflare account Riverbank Trust"');
-		expect(drawn).not.toContain('adm-accountmark');
+		const account = drawn.match(/<span class="adm-brand[^>]*>/)?.[0] ?? '';
+		expect(account).toContain('aria-label="Cloudflare account Riverbank Trust"');
+		expect(account).not.toMatch(/href|tabindex/);
+		expect(controls(drawn).filter((tag) => tag.includes('Cloudflare'))).toEqual([]);
 		expect(drawn).toContain('aria-label="Close console"');
 	});
 
-	it('opens its panel off the address, headed by the account and stating its id alone', async () => {
-		const heading = /<h2 id="[^"]+">Riverbank Trust<\/h2>/;
-		expect(await drawnReady('/quickbooks')).not.toMatch(heading);
-
-		const page = await drawnReady('/quickbooks?account');
-		const panel = page.slice(page.search(heading), page.indexOf('</dialog>'));
-		expect(panel).toMatch(heading);
-		expect(panel).toContain('8f3c2a1b');
-		expect(panel).not.toContain('<form');
-		expect(panel).not.toMatch(/plan|pace/i);
+	it('opens nothing off `?account` on the address', async () => {
+		const plain = await drawnReady('/quickbooks');
+		const asked = await drawnReady('/quickbooks?account');
+		expect(asked).not.toContain('<dialog');
+		expect(asked).not.toContain('8f3c2a1b');
+		expect(asked.replaceAll('?account', '')).toBe(plain);
 	});
 });
 
@@ -397,13 +393,13 @@ describe('a dialog opened while a page’s press is in flight', () => {
 
 			void router.navigate('/password', { formMethod: 'post', formData });
 			await vi.waitFor(() => expect(writes).toEqual(['/values/vars/free']));
-			const opening = router.navigate(`/password?${ACCOUNT_PARAM}`, { preventScrollReset: true });
+			const opening = router.navigate(`/password?${CLOSE_PARAM}`, { preventScrollReset: true });
 			await vi.waitFor(() => expect(binary.log).toContain('asked'));
 			answer({ kind: 'set' });
 			await opening;
 
 			expect(binary.log).toEqual(['asked', 'answered /values/vars/free', 'read', 'handed']);
-			expect(router.state.location.search).toBe(`?${ACCOUNT_PARAM}`);
+			expect(router.state.location.search).toBe(`?${CLOSE_PARAM}`);
 		} finally {
 			off();
 			router.dispose();
@@ -437,8 +433,8 @@ describe('a dialog opened while a page’s press is in flight', () => {
 				expect(binary.log).toEqual(['asked', 'answered /values/vars/free', 'read', 'handed'])
 			);
 			binary.log = [];
-			// then the account, on the page still drawn
-			const opening = router.navigate(`/password?${ACCOUNT_PARAM}`, { preventScrollReset: true });
+			// then the close confirm, on the page still drawn
+			const opening = router.navigate(`/password?${CLOSE_PARAM}`, { preventScrollReset: true });
 			binary.booksHeld = null;
 			release();
 			await opening;

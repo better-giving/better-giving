@@ -101,9 +101,7 @@ function StandInLink({ children, ...rest }: DestinationLinkProps) {
 const ACCOUNT = {
 	name: "Riverside Shelter's Account",
 	brand: 'cloudflare',
-	whose: 'Cloudflare account',
-	concern: null,
-	href: '#shell-app-shell-account'
+	whose: 'Cloudflare account'
 } as const;
 
 const CLOSE = (
