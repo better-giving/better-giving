@@ -34,30 +34,50 @@ import { describe, expect, it } from 'vitest';
 // two messages: the operator presses, nothing on the control says it may not be pressed again, and
 // the second press starts a second navigation. that is the hole this half was written for.
 //
-// **what a press is here is `SaveButton` and a `.adm-save` drawn by hand**
-// (`@better-giving/operator/components/controls/SaveButton`, and the one hand-drawn twin in
-// ./lib/smtp-fold.tsx, whose own comment says why it is not the shared button). those two are every
-// control on this console that carries a write. a link, a disclosure toggle and the Add and Remove
-// inside `RepeatingRows` are not presses by this reading and are not swept: the first two carry no
-// write at all, and the last two are closed as a group by the sweep above.
+// **what a press is here is three shapes.** `SaveButton`
+// (`@better-giving/operator/components/controls/SaveButton`); a `.adm-save` drawn by hand (the one
+// twin in ./lib/smtp-fold.tsx, whose own comment says why it is not the shared button); and a
+// `Button` that says it is carrying an errand — one stating `aria-busy` and a closing attribute,
+// whether at its own tag or in the `*Props` object a card hands the button it draws
+// (`dangerProps` on `Modal`, `@better-giving/operator/behaviour/Dialog`). those are every control on
+// this console that carries a write. a link, a disclosure toggle and the Add and Remove inside
+// `RepeatingRows` are not presses by this reading and are not swept: the first two carry no write at
+// all, and the last two are closed as a group by the sweep above.
 //
-// what is read off each of them is two things:
+// a `Button` stating `aria-busy` and no closing attribute at all is not read here: it is a press
+// nothing closes, which is a hole beside this one rather than this one. a props object reached
+// through a name rather than written at the attribute is not read either, for the spread's reason
+// below.
+//
+// what is read off each of them is three things:
 //
 // - **it states a reading of its own press.** `SaveButton` states `state`, out of which it composes
-//   the label, the live region and the closed rung, and closes on `disabled` beside it; a
-//   hand-drawn press states `aria-disabled` and turns the press away itself, as the shared button
-//   does, since a natively closed press drops the focus standing on it. a press stating neither is
-//   one nothing on the screen can ever close.
+//   the label, the live region and the closed rung, and closes on `disabled` beside it; every other
+//   press states `aria-disabled` and turns the press away in its own click handler, as the shared
+//   button does inside itself. a press stating neither is one nothing on the screen can ever close.
+// - **no press but the shared button is closed by `disabled`.** a natively closed button cannot
+//   hold focus, so the reader standing on it is dropped to the document for the whole wait — inside
+//   a popover or a card, out of the thing they were in — and the `aria-busy` beside it is heard by
+//   nobody. the click handler is what turns the second press away instead, so it reads every name
+//   `aria-disabled` reads; on a submit it has to stop the submission, which a handler that only
+//   returns does not do, and that half is held at the press's own spec rather than here.
 // - **a press that says it is busy is closed on the same reading it says it with.** `aria-busy`
 //   announces that a press is in flight, so a tag stating it out of one value and its closing
 //   attribute out of another is a control telling an operator it is working while taking a second
 //   press. the two attributes are compared by the identifiers their expressions read rather than
-//   by their text, because the closing condition is ordinarily one of several terms in it.
+//   by their text, because the closing condition is ordinarily one of several terms in it. it is
+//   read off the shared button and the hand-drawn twin; a `Button` beside a write of its own commonly
+//   closes on the page's reading and says busy on its own (`busy` and `own` in
+//   ./lib/quickbooks-section.tsx), which the names cannot tell from a press left open.
 //
-// **the same two presses carry a third rule, which is how each of them says the write landed.** an
-// outcome reports at the control that carried it, so both of these draw a confirmation in place —
-// and a confirmation nobody hears is a press an operator makes twice. two things hold for a press
-// here, and the second is the one a hand-drawn press has to state for itself:
+// **the shared button and the hand-drawn twin carry a further rule, which is how each of them says
+// the write landed.** an outcome reports at the control that carried it, so both of these draw a
+// confirmation in place — and a confirmation nobody hears is a press an operator makes twice. two
+// things hold for a press here, and the second is the one a hand-drawn press has to state for
+// itself. a `Button` press reports through the outcome its screen draws under it once the answer
+// lands, which is a region mounted with the answer, so it writes its words a task after it mounts
+// rather than arriving holding them (`Landed` in ./lib/recurring-block.tsx); the first rule below
+// holds over it all the same.
 //
 // - **the press is not the region and holds no region inside it.** a region reports every change to
 //   its own contents, so a press that was one announces the tick arriving over the label and the
@@ -112,11 +132,17 @@ import { describe, expect, it } from 'vitest';
 
 const PORTS = new Set(['CoinPicker', 'Field', 'RepeatingRows', 'SelectWithNote']);
 
-/** the shared button every write on this console is carried by, where it is not drawn by hand. */
+/** the shared button a save is carried by, which reports and closes itself. */
 const PRESS = 'SaveButton';
 
 /** the class a press drawn by hand wears, which is how one is told from every other button. */
 const HAND_DRAWN = 'adm-save';
+
+/** the shared button a press is drawn with where it is neither of the two above. */
+const BUTTON = 'Button';
+
+/** the attribute naming the props a card hands the button it draws, as `dangerProps` on `Modal`. */
+const HANDED_PROPS = /Props$/;
 
 /**
  * every control an operator can reach, by the name it is drawn under.
@@ -189,17 +215,24 @@ const attribute = (node: ts.JsxOpeningLikeElement, name: string): ts.JsxAttribut
  * `undefined` is dropped: it is the tail of every one of these expressions — an attribute is left
  * off rather than stated false — and comparing on it would make any two of them agree.
  */
-function reads(held: ts.JsxAttribute | undefined): string[] {
-	const initializer = held?.initializer;
-	if (initializer === undefined || !ts.isJsxExpression(initializer)) return [];
+function reads(held: ts.Expression | undefined): string[] {
+	if (held === undefined) return [];
 	const names: string[] = [];
 	const visit = (node: ts.Node): void => {
 		if (ts.isIdentifier(node) && node.text !== 'undefined') names.push(node.text);
 		ts.forEachChild(node, visit);
 	};
-	visit(initializer);
+	visit(held);
 	return names;
 }
+
+/** the expression one attribute is written with, or `undefined` where it is a literal or absent. */
+const expressionOf = (held: ts.JsxAttribute | undefined): ts.Expression | undefined => {
+	const initializer = held?.initializer;
+	return initializer !== undefined && ts.isJsxExpression(initializer)
+		? initializer.expression
+		: undefined;
+};
 
 /** whether one tag announces its own changes, however the region is spelled. */
 const isRegion = (node: ts.JsxOpeningLikeElement): boolean => {
@@ -287,12 +320,90 @@ function drawnBoxes(files: readonly string[]): Drawn[] {
 		.map((tag) => ({ where: tag.where, closable: attribute(tag.node, 'disabled') !== undefined }));
 }
 
+/** which of the three shapes a press is drawn in, which is what decides the rules read off it. */
+type Kind = 'shared' | 'hand-drawn' | 'button';
+
+/** one press as written: a tag, or the props object a card hands the button it draws. */
+type Site = {
+	readonly where: string;
+	readonly kind: Kind;
+	/** whether the attribute or key is stated at all. */
+	readonly states: (name: string) => boolean;
+	/** the expression it is stated with, or `undefined` where it is absent or a literal. */
+	readonly value: (name: string) => ts.Expression | undefined;
+	/** the element the tag opens, or `null` for a props object, which draws no element here. */
+	readonly element: ts.Node | null;
+};
+
+/** a tag read as a press. */
+const tagSite = (tag: Tag, kind: Kind): Site => ({
+	where: tag.where,
+	kind,
+	states: (name) => attribute(tag.node, name) !== undefined,
+	value: (name) => expressionOf(attribute(tag.node, name)),
+	element: element(tag)
+});
+
+/** the key a property is written under, quoted or bare. */
+const keyOf = (property: ts.PropertyAssignment): string =>
+	ts.isStringLiteral(property.name) ? property.name.text : property.name.getText();
+
+/** a props object read as a press, with only its own written keys standing for the attributes. */
+function objectSite(tag: Tag, held: ts.JsxAttribute, props: ts.ObjectLiteralExpression): Site {
+	const key = (name: string) =>
+		props.properties.find(
+			(property): property is ts.PropertyAssignment =>
+				ts.isPropertyAssignment(property) && keyOf(property) === name
+		);
+	return {
+		where: `${tag.where} ${held.name.getText()}`,
+		kind: 'button',
+		states: (name) => key(name) !== undefined,
+		value: (name) => key(name)?.initializer,
+		element: null
+	};
+}
+
+/** whether a `Button` says it carries an errand: it states `aria-busy` and something that closes it. */
+const carriesErrand = (site: Site): boolean =>
+	site.states('aria-busy') && (site.states('disabled') || site.states('aria-disabled'));
+
+/** whether one tag is the hand-drawn twin: a `<button>` wearing the hand-drawn class. */
+const isHandDrawn = (tag: Tag): boolean =>
+	tag.name === 'button' && (attribute(tag.node, 'className')?.getText() ?? '').includes(HAND_DRAWN);
+
+/** every press written in these files, in any of the three shapes. */
+function pressSites(files: readonly string[]): Site[] {
+	const found: Site[] = [];
+	for (const tag of tags(files)) {
+		if (tag.name === PRESS) found.push(tagSite(tag, 'shared'));
+		else if (isHandDrawn(tag)) found.push(tagSite(tag, 'hand-drawn'));
+		else if (tag.name === BUTTON) {
+			const site = tagSite(tag, 'button');
+			if (carriesErrand(site)) found.push(site);
+		}
+		for (const property of tag.node.attributes.properties) {
+			if (!ts.isJsxAttribute(property) || !HANDED_PROPS.test(property.name.getText())) continue;
+			const props = expressionOf(property);
+			if (props === undefined || !ts.isObjectLiteralExpression(props)) continue;
+			const site = objectSite(tag, property, props);
+			if (carriesErrand(site)) found.push(site);
+		}
+	}
+	return found;
+}
+
 type Pressed = {
 	readonly where: string;
+	readonly kind: Kind;
 	/** whether the tag states a reading of its own press at all. */
 	readonly reads: boolean;
 	/** whether it announces itself busy, which is the half of the rule the hole was in. */
 	readonly announcesBusy: boolean;
+	/** whether it is closed by `disabled` where it is not the shared button: focus dropped mid-press. */
+	readonly closedNatively: boolean;
+	/** what `aria-disabled` reads that its click handler does not: a refusal the press still takes. */
+	readonly takenWhileRefused: string[];
 	/** what `aria-busy` reads that the closing attribute does not: a press open while busy. */
 	readonly openWhileBusy: string[];
 	/** whether it is drawn by hand, which is the one that answers for its own region. */
@@ -303,32 +414,31 @@ type Pressed = {
 	readonly announcesBeside: boolean;
 };
 
-/** whether one tag is a press: the shared button, or a `<button>` wearing the hand-drawn class. */
-const isPress = (tag: Tag): boolean =>
-	tag.name === PRESS ||
-	(tag.name === 'button' &&
-		(attribute(tag.node, 'className')?.getText() ?? '').includes(HAND_DRAWN));
-
 /** every press drawn in these files, read against every rule this file holds over one. */
 function drawnPresses(files: readonly string[]): Pressed[] {
-	return tags(files)
-		.filter(isPress)
-		.map((tag) => {
-			const busy = attribute(tag.node, 'aria-busy');
-			const handDrawn = tag.name !== PRESS;
-			const closing = attribute(tag.node, handDrawn ? 'aria-disabled' : 'disabled');
-			const closed = new Set(reads(closing));
-			const own = element(tag);
-			return {
-				where: tag.where,
-				reads: closing !== undefined || attribute(tag.node, 'state') !== undefined,
-				announcesBusy: busy !== undefined,
-				openWhileBusy: reads(busy).filter((name) => !closed.has(name)),
-				handDrawn,
-				saysItself: holdsRegion(own),
-				announcesBeside: !handDrawn || besides(own).some(isRegion)
-			};
-		});
+	return pressSites(files).map((site) => {
+		const shared = site.kind === 'shared';
+		const closing = shared ? 'disabled' : 'aria-disabled';
+		const closed = new Set(reads(site.value(closing)));
+		const handled = new Set(reads(site.value('onClick')));
+		return {
+			where: site.where,
+			kind: site.kind,
+			reads: site.states(closing) || (shared && site.states('state')),
+			announcesBusy: site.states('aria-busy'),
+			closedNatively: !shared && site.states('disabled'),
+			takenWhileRefused: shared ? [] : [...closed].filter((name) => !handled.has(name)),
+			openWhileBusy:
+				site.kind === 'button'
+					? []
+					: reads(site.value('aria-busy')).filter((name) => !closed.has(name)),
+			handDrawn: site.kind === 'hand-drawn',
+			saysItself: site.element !== null && holdsRegion(site.element),
+			announcesBeside:
+				site.kind !== 'hand-drawn' ||
+				(site.element !== null && besides(site.element).some(isRegion))
+		};
+	});
 }
 
 describe('every box is closed while the page is writing', () => {
@@ -362,6 +472,35 @@ describe('every press is closed while its own press is in flight', () => {
 
 	it('draws no press that says it is busy and takes a second press anyway', () => {
 		expect(drawnPresses(screens).filter((press) => press.openWhileBusy.length > 0)).toEqual([]);
+	});
+
+	it('reads the Button presses drawn outside the shared button', () => {
+		// the three files a `Button` press was first swept in, each named, because a press that stops
+		// stating `aria-busy` leaves this sweep without failing it — and then a native `disabled` put
+		// back on it is read by nothing.
+		const at = (file: string) =>
+			drawnPresses(screens).filter(
+				(press) => press.kind === 'button' && press.where.startsWith(`${file}:`)
+			).length;
+		expect(at('src/lib/recurring-block.tsx')).toBeGreaterThanOrEqual(1);
+		expect(at('src/lib/stripe-section.tsx')).toBeGreaterThanOrEqual(1);
+		expect(at('src/lib/withheld-values.tsx')).toBeGreaterThanOrEqual(2);
+	});
+
+	it('draws no press but the shared button closed by `disabled`, which drops the focus on it', () => {
+		expect(
+			drawnPresses(screens)
+				.filter((press) => press.closedNatively)
+				.map((press) => press.where)
+		).toEqual([]);
+	});
+
+	it('draws no press whose own click handler takes the press its `aria-disabled` refuses', () => {
+		expect(
+			drawnPresses(screens)
+				.filter((press) => press.takenWhileRefused.length > 0)
+				.map((press) => `${press.where} takes a press over ${press.takenWhileRefused.join(', ')}`)
+		).toEqual([]);
 	});
 });
 

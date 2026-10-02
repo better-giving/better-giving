@@ -491,12 +491,18 @@ function UnreachableFace({
 
 	const recheck = (
 		<Form className="adm-actions" method="post" preventScrollReset>
+			{/* both presses on this gate are held with `aria-disabled` and their submission stopped
+			    in their own handler, never closed by `disabled`, which drops the focus standing on
+			    them (../closed-while-writing.spec.ts). */}
 			<Button
 				type="submit"
 				name="intent"
 				value={CHECK_INTENT}
-				disabled={busy}
-				aria-busy={intent === 'check'}
+				onClick={(event) => {
+					if (busy) event.preventDefault();
+				}}
+				aria-disabled={busy || undefined}
+				aria-busy={intent === 'check' || undefined}
 			>
 				Check again
 			</Button>
@@ -569,9 +575,12 @@ function UnreachableFace({
 					name="intent"
 					value={CONNECT_INTENT}
 					variant="primary"
-					disabled={busy}
+					onClick={(event) => {
+						if (busy) event.preventDefault();
+					}}
+					aria-disabled={busy || undefined}
 					aria-describedby={COLLEAGUE_COST}
-					aria-busy={pending}
+					aria-busy={pending || undefined}
 				>
 					Connect
 				</Button>
