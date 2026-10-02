@@ -160,6 +160,20 @@ const BOX_FIELDS = PAYPAL_BOX_NAMES.map((name) => PAYPAL_FIELD(name));
 const SET_UP_PRESS = 'paypal-set-up-press';
 
 /**
+ * the three boxes as a kept press holds them, out of what each box reads as typed.
+ *
+ * every one is trimmed, because what is kept re-seeds the boxes for the rest of the visit and the
+ * binary stored what `paypalPairPosted` in ./paypal-setup.ts posted, which is trimmed.
+ */
+export function typedBoxes(typed: (name: PaypalBoxName) => string): PaypalBoxes {
+	return {
+		PAYPAL_CLIENT_ID: typed('PAYPAL_CLIENT_ID').trim(),
+		PAYPAL_CLIENT_SECRET: typed('PAYPAL_CLIENT_SECRET').trim(),
+		PAYPAL_API_URL: typed('PAYPAL_API_URL').trim() || PAYPAL_DEFAULT_API_URL
+	};
+}
+
+/**
  * what the last press of the set-up said, as the route reads it off the action.
  *
  * the run itself is read off the loader, and what this carries is the three ways a press started
@@ -880,17 +894,11 @@ function PaypalKeysForm({
 	};
 
 	/** what the three boxes hold right now. */
-	const boxes = (element: HTMLFormElement): PaypalBoxes => {
-		const value = (name: PaypalBoxName) => {
+	const boxes = (element: HTMLFormElement): PaypalBoxes =>
+		typedBoxes((name) => {
 			const control = element.elements.namedItem(PAYPAL_FIELD(name));
 			return control instanceof HTMLInputElement ? control.value : '';
-		};
-		return {
-			PAYPAL_CLIENT_ID: value('PAYPAL_CLIENT_ID'),
-			PAYPAL_CLIENT_SECRET: value('PAYPAL_CLIENT_SECRET'),
-			PAYPAL_API_URL: value('PAYPAL_API_URL').trim() || PAYPAL_DEFAULT_API_URL
-		};
-	};
+		});
 
 	return (
 		<div className="adm-named">
