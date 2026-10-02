@@ -2189,8 +2189,10 @@
 
 	   the thumb is a control and dressed as one — the control ground, the control border, the one
 	   corner — and square-cornered for the reason ./tokens.css keeps the round corner to the status
-	   word. it is drawn at the 24px that clears 2.5.8's minimum, and the row it runs along is a
-	   control's height, so the band a finger can land in is taller than the thumb.
+	   word. it is drawn at the 24px that clears 2.5.8's minimum, and the target a finger lands on is
+	   `--admin-touch-min` square around it, drawn out of flow on `::before` as `.adm-markbtn` draws
+	   its own: the drawn thumb and the row it runs along keep their size, and a press on the target
+	   is a press on the thumb.
 
 	   the track is a fill with no border, so under forced colours it would vanish with its ground;
 	   the transparent outline is what that scheme paints instead, as ./base.css's ring does. */
@@ -2231,6 +2233,17 @@
 		background: var(--admin-control-bg);
 		cursor: grab;
 		transition: var(--admin-transition-state);
+	}
+
+	/* the target is placed off the thumb's own box, which the machine already positions
+	   absolutely with an inline style of its own, so nothing here re-states that. */
+	.adm-range__thumb::before {
+		content: '';
+		position: absolute;
+		inline-size: var(--admin-touch-min);
+		block-size: var(--admin-touch-min);
+		inset-block-start: calc((100% - var(--admin-touch-min)) / 2);
+		inset-inline-start: calc((100% - var(--admin-touch-min)) / 2);
 	}
 
 	.adm-range__thumb:hover,
@@ -2493,7 +2506,12 @@
 	/* a row: the mark, and beside it the ticker on one line with the network's pill under it. three
 	   block tracks, because a coin the list has come back without says so on a third line under the
 	   pill — a track that is empty, and so no height at all, on every other row, which is why there
-	   is no row gap to leave behind on those. */
+	   is no row gap to leave behind on those.
+
+	   a row is a finger's target and takes the row's floor, `--admin-touch-min`, which its two lines
+	   and padding come to less than. the rows of a list abut, so the floor is the row's own height
+	   rather than a target drawn past it into its neighbours; the type, the padding and the mark keep
+	   their size and stand centred in it. */
 	.adm-coinrow {
 		display: grid;
 		grid-column: 1 / -1;
@@ -2501,6 +2519,7 @@
 		grid-template-rows: auto auto auto;
 		align-content: center;
 		column-gap: var(--admin-space-3);
+		min-block-size: var(--admin-touch-min);
 		padding: var(--admin-space-2) var(--admin-space-3);
 		border-radius: var(--admin-radius);
 		cursor: pointer;
@@ -2515,13 +2534,17 @@
 	}
 
 	/* a row of the select's list: the line, and the tick on the one chosen. one line of words at the
-	   box's own size, so the list reads as the box's lines rather than as a second kind of text. */
+	   box's own size, so the list reads as the box's lines rather than as a second kind of text.
+
+	   it takes the row's floor for `.adm-coinrow`'s reason above, and the line stands centred in it. */
 	.adm-selectrow {
 		display: grid;
 		grid-column: 1 / -1;
 		grid-template-columns: subgrid;
+		align-content: center;
 		align-items: start;
 		column-gap: var(--admin-space-3);
+		min-block-size: var(--admin-touch-min);
 		padding: var(--admin-space-2) var(--admin-space-3);
 		font-size: var(--admin-field-size);
 		border-radius: var(--admin-radius);

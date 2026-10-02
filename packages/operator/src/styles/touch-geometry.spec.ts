@@ -28,9 +28,31 @@ describe("a row a finger aims at takes the row's floor", () => {
 		// the More sheet's way out: the sheet is open on a phone alone, under rows at the floor.
 		['.adm-sheet__close'],
 		// the foot of a plane something can be added to, as wide as the plane.
-		['.adm-table__add']
+		['.adm-table__add'],
+		// an option in a select's list and in the coin picker's: padding and a line or two of type.
+		['.adm-selectrow'],
+		['.adm-coinrow']
 	])('%s', (selector) => {
 		expect(ruleOf(css, selector).get('min-block-size')).toBe('var(--admin-touch-min)');
+	});
+});
+
+describe("the range slider's thumb is drawn small and aimed at at the floor", () => {
+	const thumb = ruleOf(css, '.adm-range__thumb');
+	const target = ruleOf(css, '.adm-range__thumb::before');
+
+	it('keeps the thumb drawn at its own size', () => {
+		expect(thumb.get('inline-size')).toBe('var(--admin-space-8)');
+		expect(thumb.get('block-size')).toBe('var(--admin-space-8)');
+	});
+
+	it('lays a target of the floor over it, out of flow and centred on it', () => {
+		expect(target.get('content')).toBe("''");
+		expect(target.get('position')).toBe('absolute');
+		expect(target.get('inline-size')).toBe('var(--admin-touch-min)');
+		expect(target.get('block-size')).toBe('var(--admin-touch-min)');
+		expect(terms(target.get('inset-block-start'))).toEqual(['--admin-touch-min']);
+		expect(terms(target.get('inset-inline-start'))).toEqual(['--admin-touch-min']);
 	});
 });
 
