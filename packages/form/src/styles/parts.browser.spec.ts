@@ -3281,10 +3281,13 @@ describe('the ring and the brand never touch', () => {
 		const { host, shadow } = await mount();
 		host.style.cssText = SEEDS;
 		await atReview(shadow);
-		// the one on the step the donor is standing on. every earlier step keeps its own, hidden, and
-		// `focus()` on a control with no layout box does nothing at all — which would read here as a
-		// button that draws no ring rather than as the wrong button.
-		const action = shadow.querySelector(".step:not([hidden]) [part~='action']") as HTMLElement;
+		// the Donate press on the step the donor is standing on. every earlier step keeps its own, hidden,
+		// and so does the one-time offer above it on this step; `focus()` on a control with no layout box
+		// does nothing at all — which would read here as a button that draws no ring rather than as the
+		// wrong button.
+		const action = shadow.querySelector(
+			".step:not([hidden]) [part~='action'][part~='submit']"
+		) as HTMLElement;
 		const drawn = await caretOn(action);
 
 		// the near-white the fill takes, and the ring here is the outline rather than a shadow. the
