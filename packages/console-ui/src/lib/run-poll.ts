@@ -9,14 +9,27 @@
 
 type RunLike = { readonly kind: 'running' | 'ended' };
 
-/**
- * a run as every processor's binary answers it: a stage and its facts, and on an ended run an
- * outcome whose arms include the console's own stop (`console-stopped` in ../api/types.ts).
- */
+/** a run as every processor's binary answers it: a stage and its facts, and an outcome once ended. */
 type StagedRun = RunLike & {
 	readonly stage: string;
 	readonly outcome?: { readonly kind: string } | null;
 };
+
+/** the outcome every processor's binary ends a run that died on its own goroutine with. */
+type ConsoleStop = { readonly kind: 'console-stopped' };
+
+/**
+ * nothing more to pass where `R`'s ended arm can carry the console's own stop (`console-stopped` in
+ * ../api/types.ts), and an argument nothing can be where it cannot — so a run handed to
+ * {@link polledRun} without one is a type error at the call, rather than a value its own type says
+ * it cannot hold.
+ */
+type StopsAsConsole<R> = [ConsoleStop] extends [EndedOutcome<R>]
+	? []
+	: [endedArmLacksConsoleStop: never];
+
+/** the outcomes `R`'s ended arm can carry. */
+type EndedOutcome<R> = R extends { readonly kind: 'ended'; readonly outcome: infer O } ? O : never;
 
 /** where a run stands, and `null` where the reading held none. */
 export type RunKind = RunLike['kind'] | null;
@@ -56,8 +69,8 @@ export function standingRun<R extends RunLike>(read: {
  * said, and `null` where the read did not land.
  *
  * **a read that did not land ends the run where it was last seen, as the console's own stop.** the
- * run is the binary's own memory, so a poll nobody answered is a console that has stopped — and
- * held on `Working` the screen would wait for ever with every control on it closed. the stop is the
+ * run is the binary's own memory, so a poll nobody answered is drawn as a console that has
+ * stopped — held on `Working` the screen would wait for ever with every control on it closed. the stop is the
  * arm the binary answers a run that died on its own goroutine with, which says nothing was observed
  * and to press again (./press-stopped.ts): a press made against a run still going is answered
  * with that run rather than a second one, so the sentence is safe whichever it was. the stop is
@@ -71,7 +84,8 @@ export function standingRun<R extends RunLike>(read: {
  */
 export function polledRun<R extends StagedRun>(
 	going: R,
-	answer: { readonly run: R | null } | null
+	answer: { readonly run: R | null } | null,
+	..._stoppable: StopsAsConsole<R>
 ): R | null {
 	if (answer !== null) return answer.run;
 	return { ...going, kind: 'ended', outcome: { kind: 'console-stopped' } };
@@ -90,9 +104,13 @@ export type HeldPoll<R> = {
 export function heldPoll<R extends StagedRun>(
 	going: R,
 	answer: { readonly run: R | null } | null,
-	reading: R | null
+	reading: R | null,
+	...stoppable: StopsAsConsole<R>
 ): HeldPoll<R> {
-	return { run: polledRun(going, answer), stoppedOver: answer === null ? { reading } : null };
+	return {
+		run: polledRun(going, answer, ...stoppable),
+		stoppedOver: answer === null ? { reading } : null
+	};
 }
 
 /**

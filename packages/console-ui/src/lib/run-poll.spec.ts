@@ -90,6 +90,17 @@ describe('one poll of a run the page is drawing as going', () => {
 		});
 	});
 
+	it('is asked only of a run whose ended arm can be the console’s own stop', () => {
+		// a run whose outcomes leave the stop out would be handed a value its own type says it cannot
+		// hold, and an exhaustive switch over those outcomes would draw nothing for it.
+		type Unstoppable =
+			| { kind: 'running'; stage: string; outcome: null }
+			| { kind: 'ended'; stage: string; outcome: { kind: 'done' } };
+		const going: Unstoppable = { kind: 'running', stage: 'registering', outcome: null };
+		// @ts-expect-error — `console-stopped` is no outcome of this run.
+		expect(polledRun<Unstoppable>(going, null)?.outcome).toEqual({ kind: 'console-stopped' });
+	});
+
 	it('is no run at all when the binary holds none, so the page reads itself again', () => {
 		// the run's report went to a read this window does not hold — another window on the same
 		// console — and the run is not going any more.
