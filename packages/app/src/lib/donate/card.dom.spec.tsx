@@ -15,13 +15,13 @@ import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/tur
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
-import { act, createRef } from 'react';
+import { act, createRef, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DonateCard } from './card';
 import { Choice } from './choice';
 import * as copy from './copy';
-import { reactPropTypes } from './normalize';
+import { createReactPropTypes, reactPropTypes } from './normalize';
 import { PaymentBox } from './payment';
 
 // the card a donor uses, driven the way a donor drives it.
@@ -191,26 +191,33 @@ const CHALLENGE: ChallengeSeam = {
  * built and subscribed a few microtasks after the effect that asked for it, and a spec that reported
  * a rail before then would be reporting into nothing.
  */
-async function card(config: FormConfig = CONFIG, answers: Answers = {}) {
+async function card(
+	config: FormConfig = CONFIG,
+	answers: Answers = {},
+	{ strict = false }: { readonly strict?: boolean } = {}
+) {
 	const payment = paymentProvider(answers);
 	const paypal = paypalProvider();
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
+	const drawn = (
+		<DonateCard
+			config={config}
+			seams={{
+				payment: {
+					stripe: { load: payment.load, delay: () => () => {} },
+					paypal: { load: paypal.load, delay: () => () => {} },
+					chariot: { load: async () => true, delay: () => () => {} }
+				},
+				challenge: CHALLENGE
+			}}
+		/>
+	);
 	act(() => {
-		mounted.render(
-			<DonateCard
-				config={config}
-				seams={{
-					payment: {
-						stripe: { load: payment.load, delay: () => () => {} },
-						paypal: { load: paypal.load, delay: () => () => {} },
-						chariot: { load: async () => true, delay: () => () => {} }
-					},
-					challenge: CHALLENGE
-				}}
-			/>
-		);
+		// react-router's default client entry hydrates under `<StrictMode>`, which runs every effect
+		// twice on a development mount.
+		mounted.render(strict ? <StrictMode>{drawn}</StrictMode> : drawn);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -355,23 +362,36 @@ it('holds the dedication a donor chose, on the box and on its row', async () => 
 	expect(chosen.map((row) => row.textContent)).toEqual(['In memory of']);
 });
 
+const TRIBUTE_KINDS = (label: string) => ({
+	name: 'tributeKind',
+	value: 'honor',
+	options: [
+		{ value: 'honor', label: 'In honor of' },
+		{ value: 'memory', label }
+	],
+	onChange: () => {}
+});
+
 // `connect` builds its options afresh on every projection; ark is handed a new collection only when
 // what they say changed.
 it('hands ark one collection for as long as the options say the same thing', () => {
-	const project = (label: string) =>
-		reactPropTypes.select({
-			name: 'tributeKind',
-			value: 'honor',
-			options: [
-				{ value: 'honor', label: 'In honor of' },
-				{ value: 'memory', label }
-			],
-			onChange: () => {}
-		}).root.collection;
+	const held = createReactPropTypes();
+	const project = (label: string) => held.select(TRIBUTE_KINDS(label)).root.collection;
 
 	const first = project('In memory of');
 	expect(project('In memory of')).toBe(first);
 	expect(project('In remembrance of')).not.toBe(first);
+});
+
+// the page is server-rendered in a worker isolate that outlives a request, so a collection held at
+// module scope would be handed from one donor's card to the next.
+it('shares no collection between two cards, or between two readings taken once', () => {
+	const read = () => reactPropTypes.select(TRIBUTE_KINDS('In memory of')).root.collection;
+	expect(read()).not.toBe(read());
+
+	const mounted = () =>
+		createReactPropTypes().select(TRIBUTE_KINDS('In memory of')).root.collection;
+	expect(mounted()).not.toBe(mounted());
 });
 
 // the flow is told once per pick, and not at all for a pick of what it already holds.
@@ -1447,6 +1467,22 @@ describe('where the caret goes when one takeover replaces another', () => {
 		expect(takeoverHeading(root).textContent).toBe(copy.PROCESSING_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 		expect(said(root)).toBe(`${copy.PROCESSING_HEADING}.`);
+	});
+
+	// the claim scrubs the url, so a second run of the effect that claimed it again would find nothing
+	// and boot the donor back from their bank onto an empty amount step.
+	it('resumes the gift a donor came back to under strict mode', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		const { root } = await card(
+			CONFIG,
+			{ retrieve: () => new Promise(() => {}) },
+			{ strict: true }
+		);
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
 	});
 });
 

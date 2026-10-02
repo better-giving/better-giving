@@ -118,61 +118,92 @@ type Shapes = {
 /** the whole surface this page's card renders from. */
 export type ReactApi = CheckoutApi<Shapes>;
 
-/**
- * each choice's last collection, by the choice's name, and the options it was built from as text.
- * `connect` builds the options afresh on every projection, so identity says nothing; the text is the
- * whole of an option, so the same text is the same collection and ark is handed the one it holds.
- */
-const collections = new Map<
-	string,
-	{ readonly key: string; readonly collection: ListCollection<SelectOption> }
->();
-
-function collectionOf(
+type CollectionOf = (
 	name: string,
 	options: readonly SelectOption[]
-): ListCollection<SelectOption> {
-	const key = JSON.stringify(options);
-	const held = collections.get(name);
-	if (held !== undefined && held.key === key) return held.collection;
-	const collection = createListCollection({ items: [...options] });
-	collections.set(name, { key, collection });
-	return collection;
+) => ListCollection<SelectOption>;
+
+function propTypesWith(collectionOf: CollectionOf): PropTypes<Shapes> {
+	return {
+		button: (props) => props as unknown as ButtonProps,
+		group: (props) => props as unknown as GroupProps,
+		field: (props) => {
+			const { onChange, ...rest } = props as unknown as Omit<FieldBox, 'onChange'> & {
+				onChange: (value: string) => void;
+			};
+			return {
+				box: { ...rest, onChange: (event) => onChange(event.currentTarget.value) },
+				set: onChange
+			};
+		},
+		select: (props) => {
+			const { name, value, options, onChange } = props as unknown as {
+				name: string;
+				value: string;
+				options: readonly SelectOption[];
+				onChange: (value: string) => void;
+			};
+			return {
+				value,
+				options,
+				root: {
+					collection: collectionOf(name, options),
+					value: [value],
+					// a select that cannot be emptied reports one value per pick, and never a pick of the
+					// value it already holds.
+					onValueChange: ({ value: picked }) => {
+						const next = picked[0];
+						if (next !== undefined) onChange(next);
+					}
+				},
+				set: onChange
+			};
+		}
+	};
 }
 
-export const reactPropTypes: PropTypes<Shapes> = {
-	button: (props) => props as unknown as ButtonProps,
-	group: (props) => props as unknown as GroupProps,
-	field: (props) => {
-		const { onChange, ...rest } = props as unknown as Omit<FieldBox, 'onChange'> & {
-			onChange: (value: string) => void;
-		};
-		return {
-			box: { ...rest, onChange: (event) => onChange(event.currentTarget.value) },
-			set: onChange
-		};
-	},
-	select: (props) => {
-		const { name, value, options, onChange } = props as unknown as {
-			name: string;
-			value: string;
-			options: readonly SelectOption[];
-			onChange: (value: string) => void;
-		};
-		return {
-			value,
-			options,
-			root: {
-				collection: collectionOf(name, options),
-				value: [value],
-				// a select that cannot be emptied reports one value per pick, and never a pick of the
-				// value it already holds.
-				onValueChange: ({ value: picked }) => {
-					const next = picked[0];
-					if (next !== undefined) onChange(next);
-				}
-			},
-			set: onChange
-		};
-	}
-};
+const freshCollection: CollectionOf = (_name, options) =>
+	createListCollection({ items: [...options] });
+
+/**
+ * the prop types for a reading taken once and thrown away: every projection builds its own
+ * collections, so nothing outlives the call.
+ */
+export const reactPropTypes: PropTypes<Shapes> = propTypesWith(freshCollection);
+
+/** whether two option lists say the same thing, field for field; every field is a primitive. */
+function sameOptions(held: readonly SelectOption[], next: readonly SelectOption[]): boolean {
+	return (
+		held.length === next.length &&
+		held.every((option, at) => {
+			const other = next[at];
+			const keys = Object.keys(option) as (keyof SelectOption)[];
+			return (
+				other !== undefined &&
+				keys.length === Object.keys(other).length &&
+				keys.every((key) => Object.is(option[key], other[key]))
+			);
+		})
+	);
+}
+
+/**
+ * the prop types for one mounted card, holding each choice's last collection by the choice's name.
+ * `connect` builds the options afresh on every projection, so identity says nothing; an option is
+ * the whole of what its fields say, so the same fields are the same collection and ark is handed the
+ * one it holds. made per mount and never at module scope: the page is server-rendered in an isolate
+ * that serves request after request, and a held collection there is one donor's handed to the next.
+ */
+export function createReactPropTypes(): PropTypes<Shapes> {
+	const held = new Map<
+		string,
+		{ readonly options: readonly SelectOption[]; readonly collection: ListCollection<SelectOption> }
+	>();
+	return propTypesWith((name, options) => {
+		const last = held.get(name);
+		if (last !== undefined && sameOptions(last.options, options)) return last.collection;
+		const collection = freshCollection(name, options);
+		held.set(name, { options, collection });
+		return collection;
+	});
+}
