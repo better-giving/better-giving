@@ -84,8 +84,8 @@ export type StaffCredentialConfig =
  * empty password, which is exactly the state a fork lands in if it deploys without
  * ever setting it. which values are refused, and the sentence saying what is wrong with it
  * (its `typeof`, or the minimum a value falls short of — never the value's own length), come
- * from the shared reader; what this function adds is the variable's name and where it is set,
- * after a period the reader's sentence does not always end with.
+ * from the shared reader; what this function adds is the variable's name, where it is set, and
+ * the closing period the reader's sentence sometimes leaves off.
  *
  * the message is written for whoever is reading the 4xx/5xx body — increasingly an
  * agent, not a human at a terminal — per CLAUDE.md.

@@ -222,7 +222,7 @@ function lengthOf(card: Card, token: string): number {
 	return read;
 }
 
-/** the colour of the outermost of several shadows, which is the last one serialized. */
+/** the colour of the last shadow serialized: the outer one wherever a band is under a ring. */
 function outerShadowColour(shadow: string): string {
 	return shadowColour(
 		shadow

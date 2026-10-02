@@ -121,7 +121,7 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
  * whether a re-read answered with the very lines it set out from.
  *
  * every key of a line is compared, so a field `SetupLine` grows later is counted without this
- * changing with it. strict equality on each value, which is exact for the strings and `null`s a
+ * changing with it. `Object.is` on each value, which is exact for the strings and `null`s a
  * line holds today; a value that is not one would read as moved on every re-read, which says
  * nothing beside the press rather than a "nothing has changed" that is wrong.
  */

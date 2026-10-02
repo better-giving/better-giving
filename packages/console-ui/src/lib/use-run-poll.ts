@@ -75,9 +75,9 @@ export function useRunPoll(
 		const timer = setTimeout(() => {
 			// read through the page's own reader, so a report this answer carries is held for the next
 			// visit where the operator has left (`pollRun` in ./processor-cache.ts). a read that did
-			// not land ends the run as the console's own stop, and an answer holding no run reads the
-			// page again (`polledRun` in ./run-poll.ts) — either way the screen is off `Working` until a
-			// reading says the run is still going (`stopUnmade`, below).
+			// not land ends the run as the console's own stop until a reading says the run is still
+			// going (`stopUnmade`, below), and an answer holding no run reads the page again
+			// (`polledRun` in ./run-poll.ts).
 			void pollRun(processor)
 				.then(
 					(run) => ({ run }),

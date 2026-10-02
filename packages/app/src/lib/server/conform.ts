@@ -269,7 +269,8 @@ export function parseForm<S extends z.ZodObject>(
 
 	const absent = form.mustArrive.filter((key) => !body.has(key));
 
-	// the deployment's logs carry it too, for the operator who reads them rather than the reply.
+	// the missing boxes go to the deployment's logs too, for the operator who reads those rather
+	// than the reply.
 	if (absent.length > 0) {
 		console.warn(`\`${form.id}\`: a submitted body carried none of these boxes`, absent);
 	}

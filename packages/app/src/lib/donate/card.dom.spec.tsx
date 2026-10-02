@@ -662,7 +662,7 @@ it('says nothing about the total when a rail pick leaves it where it was', async
 });
 
 // a refused press has been heard, and the box keeps the refusal as its description; a total that
-// moved after it is news the region would otherwise never carry, now that the figure is silent.
+// moved after it is news the region would otherwise never carry, because the figure is silent.
 it('says a total moved under a standing refusal on the card’s region', async () => {
 	const { root } = await card();
 	walkToGive(root);

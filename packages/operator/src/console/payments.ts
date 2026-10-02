@@ -21,7 +21,7 @@ import type { StripeUnreadableReason } from './stripe-read.js';
 // **every read here is the deployment's and can be nowhere else.** the rails, the endpoint's
 // subscription and the hostnames the account holds for wallets are read through the deployment's
 // payment port with the key the deployment holds, which no console has. the signing secret is
-// stronger than that: it is a plain var the console can read back, but Stripe never hands back the
+// another case: it is a plain var the console can read back, but Stripe never hands back the
 // endpoint's own secret to hold it against (../stripe/secret-fingerprint.ts says why). so the
 // comparison that says whether deliveries verify can be made by the deployment and by nothing else,
 // and a console asking anyone else gets `Stored` over a deployment verifying nothing.

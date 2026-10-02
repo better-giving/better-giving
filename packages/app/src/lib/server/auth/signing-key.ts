@@ -56,8 +56,9 @@ export type AuthSecretResolution =
  * signed in, so whoever reads this may be anonymous.
  *
  * it is written to be true of every arm that sends it, a database that throws before the key is
- * read included (src/routes/login.tsx), so it names what to do rather than what failed — and for
- * the reason `notConfiguredMessage` gives, the ways migrations are applied and no filename.
+ * read included (src/routes/login.tsx), so it names what to do rather than what failed. like
+ * `notConfiguredMessage`, and for the reason its comment gives, it names the two ways migrations
+ * are applied and no filename.
  */
 export const SIGNING_KEY_UNREADABLE =
 	'This deployment’s database is not ready, so no one can be signed in and no signed link can ' +

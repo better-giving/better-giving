@@ -348,8 +348,8 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * send leaves the earlier links working beside the new one, and the new mail still goes: a
 		 * member who asked for a link and got none is locked out, which is worse than two live links
 		 * for a moment, and `onPasswordReset` ends them all once either is used. one after a reset
-		 * leaves the other links working until they expire, so that the session revocation behind
-		 * it still runs.
+		 * leaves the other links working until they expire, and is caught so that the session
+		 * revocation behind it still runs.
 		 *
 		 * `revokeSessionsOnPasswordReset` is on, and it is the reason the reset mints no session:
 		 * somebody who has just proved they hold the mailbox ends every session the account had,

@@ -59,10 +59,9 @@ export const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/si
  *
  * it names the dashboard rather than a `pnpm` script for the first half because minting the pair is
  * the step no command in this repository can do — the widget is created in the operator's own
- * Cloudflare account, and the two calls after it are the part a script owns. both are
- * `setCommand` in `@better-giving/operator/deploy-split`, one `--var` each: the sitekey is rendered
- * into every donor's page and the secret key is a credential, and both are plain vars an operator
- * can read back.
+ * Cloudflare account, and the two calls after it are the part a script owns. both come from
+ * `setCommand` in `@better-giving/operator/deploy-split`, one `--var` each: the secret key is a
+ * credential, but like the sitekey it is a plain var an operator can read back.
  *
  * the console says the same things and no longer says them from here. that screen draws a box per
  * key with the command beside it (`packages/console-ui/src/lib/secret-groups.ts`). the overlap is

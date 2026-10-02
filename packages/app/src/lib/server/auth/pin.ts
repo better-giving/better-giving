@@ -5,7 +5,7 @@ import { type AuthEnv, readPin } from './env';
 /**
  * what a caller is told where `BETTER_AUTH_URL` names no address. `readPin`'s own message quotes
  * the value and is logged, never sent: the pin is read before anybody is signed in, so whoever
- * reads this may be anonymous. the fix is ./env.ts `readPin`'s, without the value.
+ * reads this may be anonymous. the fix it gives is ./env.ts `readPin`'s, without the value.
  */
 export const PIN_UNUSABLE =
 	'`BETTER_AUTH_URL` names no http(s) origin, so no one can be signed in. Set it to the address ' +

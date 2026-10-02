@@ -271,11 +271,11 @@ func (flow *Flow) Out(ctx context.Context) error {
 	err := flow.store.Forget(Record)
 	if err != nil {
 		// the record the directory would not let go of names the pair just revoked, so this process
-		// stops reading it; the error is for the operator, because the next launch will.
+		// stops reading it; the error is for the operator, because the next launch will read it again.
 		flow.forgotten = true
 	}
-	// a refresh that held the credential while Stop cleared the screen has since said it was not
-	// kept, about a sign-in that is now gone.
+	// a refresh holding the credential while Stop cleared the screen may since have said it was not
+	// kept, about a sign-in that is now gone, so that is cleared too.
 	flow.kept(nil)
 	return err
 }
@@ -313,7 +313,7 @@ func (flow *Flow) write(held record) error {
 	if err := flow.store.Write(Record, written); err != nil {
 		return err
 	}
-	// what is written down is newer than anything held: a fresh sign-in replaces it outright.
+	// what was just written is newer than anything held, so it is what the next read takes.
 	flow.unkept = nil
 	flow.forgotten = false
 	return nil
@@ -387,7 +387,7 @@ func (flow *Flow) granted(ctx context.Context, form url.Values, carried string) 
 	return held, true, flow.write(held)
 }
 
-// cloudflare turning a token call down by name, which says the grant is gone rather than the network.
+// cloudflare answering a token call with a 4xx, which says the grant is gone rather than the network.
 var errRefused = errors.New("cloudflare refused the grant")
 
 // a value nobody else can guess, which is what both the verifier and the state have to be.

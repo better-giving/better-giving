@@ -167,8 +167,8 @@
 	 * wrapping, word breaking and hyphenation, back at their initial keywords. left unstated each is
 	 * the host page's, so a centred hero centres the receipt, an uppercase, tracked theme shouts every
 	 * label and a `nowrap` banner runs the receipt off the card. colour, weight and leading are
-	 * `[part~='card']`'s in ./parts.css; the inherited properties neither names reach the card from
-	 * the host.
+	 * `[part~='card']`'s in ./parts.css; an inherited property neither block names still reaches the
+	 * card from the host.
 	 *
 	 * what this resets is the value the element inherits from the page around it, and only that. a
 	 * page rule that matches the element itself — `*`, its tag name — outranks every `:host` rule for

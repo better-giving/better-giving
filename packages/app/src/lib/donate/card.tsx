@@ -622,7 +622,7 @@ function CheckoutCard({
 		focusOn(state.method === 'crypto' ? (live?.coins ?? null) : paymentMount.current);
 	}
 
-	/** the fee decision; what it does to the total is said with every other move of it, below. */
+	/** the fee decision; what it does to the total is said with every other move of it (`total`). */
 	function onFee(): void {
 		api.feeToggle.onClick();
 	}

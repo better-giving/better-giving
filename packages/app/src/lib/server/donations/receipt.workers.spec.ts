@@ -282,8 +282,8 @@ describe('sendReceipt() — a deployment that cannot render one yet', () => {
 
 /**
  * a refusal's action is the one sentence an operator acts on, so each says what fixes its own
- * reason. the organisation's details fix only a missing detail: a gift whose own figures contradict
- * each other is sent to no settings screen, and is told which figures they are.
+ * reason. the organisation's details fix only a missing detail: the refusal of a gift whose own
+ * figures contradict each other sends the operator to no settings screen, and names the figures.
  */
 describe('sendReceipt() — what the operator is told to do about a refusal', () => {
 	beforeEach(orgProfile);

@@ -258,7 +258,7 @@ func settled(t *testing.T, flow *running) Phase {
 	return flow.Phase()
 }
 
-// waits for `done`, and fails the case naming `what` where it never is.
+// waits for `done` to hold, and fails the case naming `what` where it never does.
 func until(t *testing.T, done func() bool, what string) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)

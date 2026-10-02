@@ -2142,9 +2142,9 @@ export function createCard(
 	// a role and a name, because the caret landing on a bare `<div>` announces nothing at all — a
 	// generic with no name is where a description goes unread and where the refusal a donor cannot
 	// see would be the one refusal nobody hears. `group` rather than `region`: a region is a
-	// landmark, and this card is inside a page it does not own. `aria-invalid` is deliberately not written here:
-	// it is not a global attribute and `group` does not support it, so it would be an attribute
-	// that reads as coverage and states nothing. the sentence reaches the box through
+	// landmark, and this card is inside a page it does not own. `aria-invalid` is deliberately not
+	// written here: it is not a global attribute and `group` does not support it, so it would be an
+	// attribute that reads as coverage and states nothing. the sentence reaches the box through
 	// `aria-describedby`, which is global — and it is one of the two channels the refusal travels,
 	// never the whole of it: `updatePayment` below says why the live region carries it as well.
 	//

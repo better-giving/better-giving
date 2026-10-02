@@ -146,7 +146,7 @@ export async function loader({ context }: Route.LoaderArgs) {
  * there is no redirect on the way out, which is what makes a re-submit cheap to be wrong about: it
  * costs a bucket charge and one more mail, and the token it mints replaces every link the member has
  * not used yet, which are deleted before its mail is attempted. a delete that fails is logged and
- * the mail is still sent, so for a moment an earlier link works beside it until a reset lands
+ * the mail is still sent, so an earlier link can work beside it until a reset lands
  * ($lib/server/auth/index.ts, `emailAndPassword`).
  */
 export async function action({ context, request, url }: Route.ActionArgs) {

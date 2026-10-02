@@ -649,7 +649,7 @@ export function createQuickbooksProvider(
 		return own.value === null
 			? failed(
 					'invalid_record',
-					'The QuickBooks company already holds this donor’s display name, and the same name followed by “(donor)”, for something other than this donor, so there is no customer to record the gift against. Rename one of them in QuickBooks and retry this gift.'
+					'The QuickBooks company already uses both this donor’s display name and that name followed by “(donor)” for other records, so there is no customer to record the gift against. Rename one of them in QuickBooks and retry this gift.'
 				)
 			: { ok: true, value: own.value };
 	}

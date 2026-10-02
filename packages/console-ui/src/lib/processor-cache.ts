@@ -55,7 +55,7 @@ import { readProcessorScreen } from './processor-reading';
 // going joins nothing and reads again, finding the run already taken and held for that press.
 //
 // **and never for the page already on the screen**, whose cell is under the pointer as often as not.
-// that page asks after its own run (`pollRun`, from ./stripe-section.tsx) and reads itself again
+// that page asks after its own run (`pollRun`, from ./use-run-poll.ts) and reads itself again
 // when the run stops, so a reading ahead of it would only race those two for the landed run.
 
 /**
@@ -209,7 +209,7 @@ export async function readProcessorPage<P extends PaymentProcessor>(
 /**
  * a processor page's own poll of its run, read through the same reader its page's readings take, so
  * a report the poll is handed is held until a draw receives it — the operator may have left the
- * page while the request was in flight (`runDrawn`, from the section that draws it).
+ * page while the request was in flight (`runDrawn`, from ./use-run-poll.ts).
  *
  * answered nothing, it is the report a reading of the page took ahead of it where this console holds
  * one: the binary hands a landed run out once, and a re-read of the page on the screen can be the

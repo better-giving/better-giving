@@ -2289,11 +2289,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the control's own edge with no offset, so what is ringed is unambiguous on a card where controls
  * sit two tile-gaps apart.
  *
- * on the free entry the ring is the surface's rather than the input's, through `:has()`: the
- * surface is the part a host restyles and the one carrying an edge on a bare tray, so a ring drawn
- * from it stands outside that edge rather than under it. the step marks are a control ringed
- * somewhere the caret is not: the caret lands on a target `--_target-min` by `--_row-min`
- * around a mark a fraction of that, so the ring is drawn on the mark instead, in the block below.
+ * on the free entry the ring is the input's rather than the surface's: the surface is the part a
+ * host restyles, and a host's `::part()` rule outranks any ring drawn on it (the free entry's block
+ * below). the step marks are a control ringed somewhere the caret is not: the caret lands on a
+ * target `--_target-min` by `--_row-min` around a mark a fraction of that, so the ring is drawn on
+ * the mark instead, in the block below.
  *
  * a ring says where the caret is, which is state rather than brand, so it is `--_focus-ring` — the
  * ladder's darkest rung — everywhere except on the one control the primary fills, which is the
@@ -2306,8 +2306,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * a control the primary only *marks* — a chosen amount tile, a checked box, the fee switch set on
  * — has the same two darks to keep apart at its own edge and answers it the other way: a band of
  * `--_n1` first and the ring outside that band, so the mark and the ring are a pixel of near-white
- * apart and the ring is still on the outside where every other ring on this card is. every
- * block below that draws that band is the one decision.
+ * apart and the ring is still on the outside where every other ring on this card is. the blocks
+ * below that draw that band are one decision.
  *
  * the transparent outline is not decoration. forced-colors mode replaces the box-shadow with
  * nothing and paints the outline in the user's own colour, so removing the outline outright is

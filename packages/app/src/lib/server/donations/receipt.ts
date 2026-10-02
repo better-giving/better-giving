@@ -159,8 +159,8 @@ const CORRECT_THE_GIFT =
 	'No setting fixes this: the gift’s own record has to be corrected before its receipt can be sent.';
 
 /**
- * the sentence an operator acts on, one per refusal reason. a gift whose figures contradict each
- * other is told which figures they are, because nothing on a settings screen is wrong.
+ * the sentence an operator acts on, one per refusal reason. the refusal of a gift whose figures
+ * contradict each other names those figures, because nothing on a settings screen is wrong.
  *
  * the goods are always recorded as `none` here (`sendReceipt` above), so a non-deductible amount on
  * the gift is the whole of the contradiction `goods_or_services_inconsistent` can mean — and
