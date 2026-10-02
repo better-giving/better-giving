@@ -152,7 +152,7 @@
 	// the four buckets this app charges: the whole public surface, the one endpoint on it that
 	// takes money, the staff sign-in, and each key on the read API. CLAUDE.md names rate limiting
 	// as one of the things an endpoint on `/api/v1` owes before it ships; the sign-in is not on that
-	// surface and is here because it compares a single deploy-time secret for anyone who asks, and
+	// surface and is here because it compares a single deploy-time var for anyone who asks, and
 	// the read API's is here because a key reads donor records as fast as it is answered.
 	//
 	// this deployment answers anonymous writes on three paths, not one: `POST /api/v1/forms/:id/
