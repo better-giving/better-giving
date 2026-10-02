@@ -310,14 +310,23 @@ func (flow *Flow) write(held record) error {
 }
 
 // exchanges the code cloudflare handed back for the pair this machine keeps.
+//
+// A pair cloudflare handed back ends whatever this process held before it, written down or not: the
+// operator may have signed in to another account, and the earlier grant — held, or still in the
+// record a failed write left alone — is not the one they just allowed.
 func (flow *Flow) exchange(ctx context.Context, code, verifier string) (record, bool, error) {
-	return flow.granted(ctx, url.Values{
+	held, ok, err := flow.granted(ctx, url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"client_id":     {ClientID},
 		"redirect_uri":  {CallbackURL},
 		"code_verifier": {verifier},
 	}, "")
+	if ok && err != nil {
+		flow.unkept = nil
+		flow.forgotten = true
+	}
+	return held, ok, err
 }
 
 // takes a fresh access token on the refresh half of the stored pair.

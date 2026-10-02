@@ -675,6 +675,33 @@ func TestASignInThatCouldNotBeWrittenDownIsNotASignIn(t *testing.T) {
 	}
 }
 
+func TestSigningInAgainWhileNothingCanBeWrittenNeverAnswersWithThePreviousGrant(t *testing.T) {
+	// the second sign-in may be another account, so a console that carried on with the pair the
+	// first one left behind would deploy into the account the operator just signed away from.
+	held := &dash{expires: 1}
+	flow, _, _, ticking := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+	held.mutex.Lock()
+	held.access, held.expires = "a-second-access-token", 3600
+	held.mutex.Unlock()
+	unwritable(flow)
+	ticking.skip(time.Hour)
+	flow.Credential(context.Background())
+
+	held.mutex.Lock()
+	held.access = "a-third-access-token"
+	held.mutex.Unlock()
+	allow(t, flow, started(t, flow), nil)
+
+	if phase := settled(t, flow); phase.Why != NotKept {
+		t.Errorf("phase = %+v, want a sign-in that could not be kept", phase)
+	}
+	if credential := flow.Credential(context.Background()); credential.Kind != cf.NoCredential {
+		t.Errorf("credential = %q (%q), want a machine holding none", credential.Kind, credential.Token)
+	}
+}
+
 func TestTheSameCodeArrivingTwiceIsExchangedOnce(t *testing.T) {
 	// a reloaded redirect is a second callback under the state this flow minted, and an exchange
 	// per arrival is a second round trip cloudflare answers for a code it has already spent.
