@@ -2,7 +2,7 @@ import formLayout from '@better-giving/form/styles/layout.css?url';
 import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
-import { data } from 'react-router';
+import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateCard } from '$lib/donate/card';
 import { DonateNotice } from '$lib/donate/notice';
 import pageChrome from '$lib/donate/page.css?url';
@@ -105,6 +105,18 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	// `allowed_origins` — the list of sites this organisation's forms may be used on, which a
 	// document served to anyone is no place for.
 	return { ok: true, config: result.config } as const;
+}
+
+/**
+ * the loader runs again only for an address naming another form.
+ *
+ * the card builds its checkout from the config this loader returns and stops it when a new one
+ * arrives (the checkout effect in $lib/donate/card.tsx), so a re-read on the same form — a
+ * same-address navigation, a submission, a `revalidate()` — would swap the published config under a
+ * gift in progress and end it. a form republished meanwhile reaches the donor on their next load.
+ */
+export function shouldRevalidate({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) {
+	return currentParams.formId !== nextParams.formId;
 }
 
 /**
