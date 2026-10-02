@@ -21,10 +21,6 @@ import type { DeployVarName } from '../api/types';
 // from, set months after the keys are — and PayPal's credentials and their address are one group
 // beside it (`PAYPAL_GROUP` in ./secret-groups.ts).
 //
-// `CLOUDFLARE_PAID_PLAN` is in no group for that same reason: it is an answer about the Cloudflare
-// account the deployment runs on rather than a credential, set as a two-position switch with a press
-// of its own (./cloudflare-plan.ts).
-//
 // it is a list rather than a remark in a header because ./secret-groups.spec.ts reads it: the
 // covering there is two-directional, so a name added to the enumeration lands in a group or here,
 // and a name that lands in neither is a value with nowhere to be typed.
@@ -33,6 +29,5 @@ export const UNGROUPED_VARS: readonly DeployVarName[] = [
 	'STRIPE_PUBLISHABLE_KEY',
 	'TURNSTILE_SITE_KEY',
 	'BETTER_AUTH_URL',
-	'PAYPAL_CHARITY_RATE_APPROVED',
-	'CLOUDFLARE_PAID_PLAN'
+	'PAYPAL_CHARITY_RATE_APPROVED'
 ];

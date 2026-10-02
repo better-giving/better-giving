@@ -207,9 +207,4 @@ describe('an address that moved', () => {
 		const { clientLoader } = await import('../routes/receipts');
 		expect(await sentTo(clientLoader)).toBe('307 /smtp');
 	});
-
-	it('sends /cloudflare-plan to the account panel, over a page that keeps its search', async () => {
-		const { clientLoader } = await import('../routes/cloudflare-plan');
-		expect(await sentTo(clientLoader)).toBe('307 /organisation?account');
-	});
 });

@@ -115,8 +115,6 @@ async function takeReading() {
 			values: read.values,
 			sites: read.sites,
 			donatePage: read.donatePage,
-			// what the account row's mark reads beside the plan (`planConcern` in ./cloudflare-plan.ts).
-			feedsInUse: read.feedsInUse,
 			// the rail's processor cells, which read the held values and nothing about either account:
 			// what each processor answers is read on its own page.
 			processors: processorLinks(heldNames(read.values.vars))

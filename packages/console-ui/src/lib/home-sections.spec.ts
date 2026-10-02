@@ -49,7 +49,6 @@ const reading = (over: Partial<HomeReading> = {}): HomeReading => ({
 	// the rows read this not at all: what it gates is whether the deployment is asked about its
 	// Stripe account, which is the page's question and not a fold's.
 	holdsStripeKey: true,
-	feedsInUse: null,
 	...over
 });
 
