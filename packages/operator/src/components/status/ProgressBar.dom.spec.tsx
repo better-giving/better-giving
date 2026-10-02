@@ -1,4 +1,5 @@
 import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '../render.testing';
 import { MoveStatus, ProgressBar } from './ProgressBar.jsx';
@@ -8,7 +9,8 @@ import { MoveStatus, ProgressBar } from './ProgressBar.jsx';
 // is one a reader commonly has not registered yet. so over a move the region stands for the whole
 // life of the document and only its words change (`MoveStatus`, which both callers mount beside
 // the line: packages/console-ui/src/root.tsx, packages/app/src/routes/_app.tsx); the document's own
-// cells arrive with the document and write their words a task after it.
+// cells are prerendered into the document (the console's `HydrateFallback`) and write their words a
+// task after it hydrates.
 //
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.
@@ -63,5 +65,33 @@ describe("the progress bar as the document's own cells", () => {
 		act(() => vi.advanceTimersByTime(0));
 		expect(region(root).textContent).toBe('Starting');
 		expect(region(root).hasAttribute('aria-label')).toBe(false);
+	});
+
+	it('says a label handed it after mount a task later, in the region it already stands in', () => {
+		vi.useFakeTimers();
+		const bar = mount(ProgressBar, { label: 'Starting', overMove: false });
+		act(() => vi.advanceTimersByTime(0));
+		const standing = region(bar.root);
+
+		bar.again({ label: 'Reading the account', overMove: false });
+		expect(region(bar.root)).toBe(standing);
+		expect(standing.textContent).toBe('Starting');
+
+		act(() => vi.advanceTimersByTime(0));
+		expect(standing.textContent).toBe('Reading the account');
+	});
+
+	it('leaves no write pending when it is taken away before its label lands', () => {
+		vi.useFakeTimers();
+		const host = document.createElement('div');
+		document.body.append(host);
+		const mounted = createRoot(host);
+		act(() => mounted.render(<ProgressBar label="Starting" overMove={false} />));
+		expect(vi.getTimerCount()).toBe(1);
+
+		act(() => mounted.unmount());
+
+		expect(vi.getTimerCount()).toBe(0);
+		host.remove();
 	});
 });

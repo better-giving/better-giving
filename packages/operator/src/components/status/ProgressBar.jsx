@@ -6,8 +6,9 @@ import { progressBarFinishing, progressBarLanded, subscribeProgressBar } from '.
 /**
  * @typedef {object} ProgressBarProps
  * @property {string} [label] what the document's own cells are waiting on, and their status region's
- *   alone: the bar has nothing on the screen to name. over a move the words are {@link MoveStatus}'s
- *   and the line takes none.
+ *   alone: the bar has nothing on the screen to name. heard only where the cells are prerendered
+ *   with the document (below). over a move the words are {@link MoveStatus}'s and the line takes
+ *   none.
  * @property {boolean} overMove the thin line over the page being left, rather than the braille
  *   cells a document draws as its own waiting face.
  */
@@ -64,6 +65,13 @@ export function ProgressBar({ label, overMove }) {
 	// what the cells' region is holding, which it takes a task after the bar mounts: a live region
 	// reports a change to its contents and never its own arrival, so one that arrived holding its
 	// words would be announced by nobody. ../controls/SaveButton.jsx writes its region the same way.
+	//
+	// a task is enough only because the cells are prerendered with the document: the console's
+	// `HydrateFallback` (packages/console-ui/src/root.tsx) is in the index.html its build writes, so
+	// the region is on the page, empty, before the client hydrates and writes into it. the cells
+	// mounted later than the document — into a page already drawn — are a region arriving a task
+	// before its words, which a reader commonly has not registered; a caller that needs that mounts
+	// {@link MoveStatus} for the life of the document instead, as the line over a move does.
 	const [said, setSaid] = useState('');
 	useEffect(() => {
 		const say = setTimeout(() => setSaid(label ?? ''), 0);
