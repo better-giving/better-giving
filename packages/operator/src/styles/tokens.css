@@ -10,8 +10,9 @@
    read off the tree rather than held: each surface keeps its own gate over its own screens —
    packages/app/src/lib/admin/styles/raw-color.spec.ts and styles/conformance.spec.ts are the
    dashboard's, packages/console-ui/src/raw-values.spec.ts the console's,
-   packages/operator/src/components/raw-values.spec.ts the shared components' and
-   packages/emails/src/raw-values.spec.ts the mail templates' — and each hands
+   packages/operator/src/components/raw-values.spec.ts the shared components',
+   packages/emails/src/raw-values.spec.ts the mail templates' and
+   packages/gallery/src/raw-values.spec.ts the gallery's previews' — and each hands
    its file list to the one assertion in ./raw-values.ts. the duration and the curve are swept in
    the stylesheets alone — the motion cases in packages/app/src/lib/admin/styles/conformance.spec.ts
    read no screen file — so a screen spelling its own pace is caught by review and by nothing else.
