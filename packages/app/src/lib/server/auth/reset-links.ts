@@ -25,9 +25,12 @@ const minted = alias(authVerification, 'minted');
  * the same one-live-token rule for an address (./invitations.ts).
  *
  * "before" is `(created_at, id)` against the new row's, rather than every row but the new one: two
- * requests whose deletes interleave would each delete the other's link and leave the member none,
- * where this keeps the newest. a new row a later request has already deleted matches nothing, so
- * nothing is deleted on its behalf.
+ * requests whose deletes interleave would each delete the other's link and leave the member none.
+ * the pair is a total order every request agrees on, so the row greatest under it is deleted by
+ * nobody and at least one link survives. that row is the newest only by the clocks of the isolates
+ * that minted the rows — `created_at` is each one's own millisecond and the id breaks a tie — so it
+ * is not always the link whose mail went last. a new row a later request has already deleted
+ * matches nothing, so nothing is deleted on its behalf.
  */
 export async function deleteResetLinks(
 	db: Db,
