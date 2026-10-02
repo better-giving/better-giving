@@ -95,6 +95,17 @@ export function amountProblem(offer: (minor: number) => string, min: number, max
 	return `between ${offer(min)} and ${offer(max)}`;
 }
 
+/**
+ * one refusal spoken on the card's region, named by the label its box already draws.
+ *
+ * the visible sentence leaves the subject to the label standing over it; a region read with no box
+ * in sight has nothing standing over it, so the label is said first. the words match the element's
+ * own (`spokenRefusal` in packages/form/src/views.ts), so the two surfaces say one refusal one way.
+ */
+export function refusalSaid(label: string, problem: string): string {
+	return `${label}: ${problem}`;
+}
+
 // ── the details step ─────────────────────────────────────────────────────────────────────────
 
 export const EMAIL = 'Email';

@@ -735,12 +735,19 @@ function CheckoutCard({
 	const detailsSaid =
 		spent === 'details'
 			? [
-					missingFields.includes('email') ? fieldProblem('email', api.emailField.box.value) : '',
-					missingFields.includes('firstName') ? copy.NAME_PROBLEM : '',
-					missingFields.includes('lastName') ? copy.NAME_PROBLEM : ''
+					missingFields.includes('email')
+						? copy.refusalSaid(copy.EMAIL, fieldProblem('email', api.emailField.box.value))
+						: '',
+					missingFields.includes('firstName')
+						? copy.refusalSaid(copy.FIRST_NAME, copy.NAME_PROBLEM)
+						: '',
+					missingFields.includes('lastName')
+						? copy.refusalSaid(copy.LAST_NAME, copy.NAME_PROBLEM)
+						: ''
 				]
 					.filter((sentence) => sentence !== '')
-					.join(', ')
+					// a semicolon because each already holds a colon, and a comma runs one field into the next.
+					.join('; ')
 			: '';
 	const bounds = copy.amountProblem(offer, config.minAmountMinor, config.maxAmountMinor);
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
@@ -750,7 +757,10 @@ function CheckoutCard({
 	// control inside one, where a group's description is not reliably announced from a descendant — so
 	// it is on this channel however the press was made. the details step's is here only for the press
 	// that moved no caret and had no other channel.
-	const askedFor = [missingDecisions.includes('amount') ? bounds : '', detailsSaid]
+	const askedFor = [
+		missingDecisions.includes('amount') ? copy.refusalSaid(copy.AMOUNT, bounds) : '',
+		detailsSaid
+	]
 		.filter((sentence) => sentence !== '')
 		.join(', ');
 

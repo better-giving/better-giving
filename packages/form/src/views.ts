@@ -904,10 +904,24 @@ function missingDecisions(api: DomApi): readonly AmountDecision[] {
 type DetailsField = {
 	readonly key: PayerField;
 	readonly field: HTMLInputElement;
+	/** the label the row draws, whose words name the field when its refusal is spoken. */
+	readonly label: HTMLLabelElement;
 	readonly message: HTMLElement;
 	readonly problemId: string;
 	readonly wording: (validity: ValidityState) => string;
 };
+
+/**
+ * a refusal as it is spoken: the field's own label, then what is wrong with it.
+ *
+ * the sentence on the card stands beside its box and needs no subject; the region's has none to
+ * stand beside, and a run of bare problems is "required, required" with nothing saying which box
+ * is which (WCAG 3.3.1). the label is read off the node the field already draws, so the name a
+ * donor hears is the name they see.
+ */
+function spokenRefusal(label: HTMLElement, problem: string): string {
+	return `${label.textContent}: ${problem}`;
+}
 
 /**
  * the words on the fee control, which are also its whole accessible name.
@@ -1377,10 +1391,10 @@ export function createCard(
 		// here (`build` below), so the box is not an alternative to the tiles above it — it is the
 		// amount, and they are shortcuts into it.
 		//
-		// it is described by nothing. the sentence is the group's and is pointed at from the
-		// fieldset while there is a refusal to state (`update` below) — a description written here
-		// would be read off `#amount-problem` whether that node is `hidden` or not, so a box wired
-		// to it at build time tells every donor their amount is wrong before they have typed one.
+		// it is described by nothing at build. the sentence is pointed at only while there is a
+		// refusal to state (`update` below) — a description written here would be read off
+		// `#amount-problem` whether that node is `hidden` or not, so a box wired to it at build time
+		// tells every donor their amount is wrong before they have typed one.
 		placeholder: 'Amount'
 	});
 	const entryLabel = make(doc, 'label', { part: part('label'), class: 'vh', for: 'amount-entry' }, [
@@ -1409,8 +1423,9 @@ export function createCard(
 	]);
 
 	// the bounds are the configuration's, so the sentence is built once here rather than written
-	// twice: `update` reads this same string onto the live region. they are offered the way a tile
-	// is, not stated the way a row is (./money.ts): `$5.00` here claims a precision nobody set.
+	// twice: `update` reads this same string onto the live region, under the entry's label. they are
+	// offered the way a tile is, not stated the way a row is (./money.ts): `$5.00` here claims a
+	// precision nobody set.
 	const amountProblem = `between ${offer(config.minAmountMinor)} and ${offer(config.maxAmountMinor)}`;
 	const amountMessage = make(doc, 'p', { class: 'message', id: 'amount-problem', hidden: true }, [
 		amountProblem
@@ -2015,18 +2030,19 @@ export function createCard(
 		// it into nothing.
 		const problemId = `${field.id}-problem`;
 		const message = make(doc, 'p', { class: 'message', id: problemId, hidden: true });
-		detailsFields.push({ key, field, message, problemId, wording });
 		// the label holds the words and nothing else in either construction, so the box is named by
 		// the label itself and needs no naming attribute. the span a floating row wraps them in is
 		// what carries the two steps and the resting weight the move is drawn with, which is a split
 		// a host's `::part(label)` rule is written against (../custom-elements.json).
+		const label = make(
+			doc,
+			'label',
+			{ part: part('label'), for: field.id },
+			floating ? [make(doc, 'span', { class: 'label-words' }, [labelText])] : [labelText]
+		);
+		detailsFields.push({ key, field, label, message, problemId, wording });
 		return make(doc, 'div', { class: floating ? 'field-row floating' : 'field-row' }, [
-			make(
-				doc,
-				'label',
-				{ part: part('label'), for: field.id },
-				floating ? [make(doc, 'span', { class: 'label-words' }, [labelText])] : [labelText]
-			),
+			label,
 			field,
 			message
 		]);
@@ -2772,9 +2788,16 @@ export function createCard(
 		setHidden(noteMessage, !missingNote);
 		toggleAttribute(amountGroup, 'aria-describedby', amountWords === '' ? null : 'amount-problem');
 		// and the box holding the figure is described by it too, which is where a refusal sends the caret.
-		for (const control of [entryInput, ...amountOptions.map((option) => option.input)]) {
+		// the free entry is also described while a missing or out-of-range amount is marked, because
+		// it carries `aria-invalid` then, and a state with no description says wrong without saying how.
+		for (const control of amountOptions.map((option) => option.input)) {
 			toggleAttribute(control, 'aria-describedby', refusal === undefined ? null : 'amount-problem');
 		}
+		toggleAttribute(
+			entryInput,
+			'aria-describedby',
+			refusal === undefined && !missingAmount ? null : 'amount-problem'
+		);
 		// beside the part token rather than instead of it: the token is what a host's stylesheet
 		// paints, and this is what a screen reader is told, so a donor who cannot see the edge is
 		// not left with the sentence alone. it is written only where the role supports it — the free
@@ -2877,7 +2900,10 @@ export function createCard(
 		//
 		// the note is not among them: its sentence is on the control itself, and the caret lands
 		// there where it is the decision the press was refused for. a copy here would be twice.
-		const askedFor = [missingAmount ? amountProblem : '', unmoved ? missingFields : '']
+		const askedFor = [
+			missingAmount ? spokenRefusal(entryLabel, amountProblem) : '',
+			unmoved ? missingFields : ''
+		]
 			.filter((sentence) => sentence !== '')
 			.join(', ');
 
@@ -2973,10 +2999,11 @@ export function createCard(
 	 * token alone, so what is red on the card is what this function called missing.
 	 *
 	 * one refusal, one channel, and this returns the words for the channel that is not the caret:
-	 * every sentence the press was refused for, joined. each field carries its own by
-	 * `aria-describedby` and announces it on arrival, so a press that moves the caret has said the
-	 * refusal already — and `update` above puts these words on the region only for a press that
-	 * moved no caret, which is the press with nothing else to say them. the Continue handler is
+	 * every sentence the press was refused for, each under its field's label (`spokenRefusal`),
+	 * joined. each field carries its own by `aria-describedby` and announces it on arrival, so a
+	 * press that moves the caret has said the refusal already — and `update` above puts these words
+	 * on the region only for a press that moved no caret, which is the press with nothing else to
+	 * say them. the Continue handler is
 	 * where the two are told apart, because only the press knows where the caret was.
 	 *
 	 * the amount step's `askedFor` is the same sentence built the same way and is said on every
@@ -3067,11 +3094,12 @@ export function createCard(
 			toggleAttribute(entry.field, 'part', partWhen('field', { invalid: wrong }));
 			toggleAttribute(entry.field, 'aria-invalid', wrong ? 'true' : null);
 			toggleAttribute(entry.field, 'aria-describedby', wrong ? entry.problemId : null);
-			if (words !== '') said.push(words);
+			if (words !== '') said.push(spokenRefusal(entry.label, words));
 		}
 		// in the order the fields are asked in, which is the order they are laid out in and the order
-		// the caret walks them — `detailsFields` is filled as the rows are built.
-		return said.join(', ');
+		// the caret walks them — `detailsFields` is filled as the rows are built. a semicolon between
+		// them because each already holds a colon, and a comma would run one field into the next.
+		return said.join('; ');
 	}
 
 	/**

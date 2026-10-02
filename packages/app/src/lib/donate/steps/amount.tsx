@@ -99,6 +99,7 @@ export function AmountStep({
 	const missingAmount = missing.includes('amount');
 	const missingNote = missing.includes('note');
 	const amountWords = missingAmount ? amountProblem : refusal;
+	const amountDescribed = amountWords === '' ? undefined : 'amount-problem';
 	// a refusal sends the caret to the control holding the figure, so that control is described by it.
 	const figureProblem = refusal === '' ? undefined : 'amount-problem';
 
@@ -261,7 +262,7 @@ export function AmountStep({
 			 */}
 			<fieldset
 				className="group"
-				aria-describedby={amountWords === '' ? undefined : 'amount-problem'}
+				aria-describedby={amountDescribed}
 				onKeyDown={() => {
 					pointed.current = false;
 				}}
@@ -339,9 +340,10 @@ export function AmountStep({
 						{/*
 						 * a numeric keypad with a decimal separator on it rather than `type="number"`, whose
 						 * spinner and scroll-wheel stepping both change a gift by accident. it is described
-						 * only while a coin's refusal stands: a description written here otherwise would be
-						 * read whether the sentence is on screen or not, which tells every donor their amount
-						 * is wrong before they type one.
+						 * only while the sentence under the group stands — a missing or out-of-range figure,
+						 * or a coin's refusal: a description written here otherwise would be read whether the
+						 * sentence is on screen or not, which tells every donor their amount is wrong before
+						 * they type one.
 						 */}
 						<input
 							id="amount-entry"
@@ -352,7 +354,7 @@ export function AmountStep({
 							placeholder={copy.AMOUNT}
 							value={entry}
 							aria-invalid={missingAmount ? true : undefined}
-							aria-describedby={figureProblem}
+							aria-describedby={amountDescribed}
 							onChange={(event) => onEntry(event.currentTarget.value)}
 						/>
 						<span className="adorn-trail" aria-hidden="true">

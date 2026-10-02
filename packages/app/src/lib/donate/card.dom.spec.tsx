@@ -567,9 +567,25 @@ it('refuses a figure outside the bounds and states them where the caret cannot l
 	expect(one(root, '#amount-problem').textContent).toBe('between $5 and $5,000');
 	expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
 	// the caret lands on a control inside a fieldset, where a group's description is not reliably
-	// announced from a descendant — so the sentence is on the region however the press was made.
-	expect(said(root)).toBe('between $5 and $5,000');
+	// announced from a descendant — so the sentence is on the region however the press was made, and
+	// spoken with its subject, which the visible sentence takes from where it stands.
+	expect(said(root)).toBe('Amount: between $5 and $5,000');
 	expect(document.activeElement).toBe(input(root, '#amount-entry'));
+});
+
+it('describes the entry by the bounds while a missing amount is marked', async () => {
+	const { root } = await card();
+	const entry = input(root, '#amount-entry');
+
+	// before any press the sentence is not on screen, so nothing describes the box by it.
+	expect(entry.hasAttribute('aria-describedby')).toBe(false);
+
+	press(one(root, '.tiles > label.other'));
+	press(one(root, CONTINUE));
+
+	expect(entry.getAttribute('aria-invalid')).toBe('true');
+	expect(entry.getAttribute('aria-describedby')).toBe('amount-problem');
+	expect(one(root, '#amount-problem').hidden).toBe(false);
 });
 
 it('names every decision a press was refused for, not the first', async () => {
@@ -582,7 +598,7 @@ it('names every decision a press was refused for, not the first', async () => {
 	expect(one(root, '#amount-problem').hidden).toBe(false);
 	expect(one(root, '#note-problem').hidden).toBe(false);
 	// the note's sentence is on the control itself, so it is not repeated on the region.
-	expect(said(root)).toBe('between $5 and $5,000');
+	expect(said(root)).toBe('Amount: between $5 and $5,000');
 });
 
 it('marks a dedication the press was refused for and clears it when the block is taken back', async () => {
@@ -718,6 +734,26 @@ it('marks only the payer fields the press was refused for and puts the caret on 
 	expect(one(root, '#first-name-problem').tagName).toBe('P');
 	expect(one(root, '#email-problem').tagName).toBe('P');
 	expect(one(root, '#email-problem').parentElement?.className).toBe('field-row');
+});
+
+// the press that moved no caret: it is on the first refused box already, so the region is the only
+// channel, and a list of bare problems would say which rules broke without saying which boxes.
+it('names each refused field when a press leaves the caret where it was', async () => {
+	const { root } = await card();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+	press(one(root, CONTINUE));
+	type(input(root, '#last-name'), 'Lovelace');
+	act(() => {
+		input(root, '#email').focus();
+	});
+	press(one(root, CONTINUE));
+
+	expect(document.activeElement).toBe(input(root, '#email'));
+	expect(said(root)).toBe('Email: required for your receipt; First name: required');
+	// the sentences under the boxes are unchanged: their label is the one standing over them.
+	expect(one(root, '#email-problem').textContent).toBe(copy.EMAIL_MISSING);
+	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
 });
 
 it('says which of the two rules an address broke', async () => {

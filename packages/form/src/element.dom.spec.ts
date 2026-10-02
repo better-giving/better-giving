@@ -1639,6 +1639,26 @@ describe('the amount step', () => {
 		expect(card.find('#amount-entry').hasAttribute('aria-describedby')).toBe(false);
 	});
 
+	// and once a press is refused for the amount, the box carrying `aria-invalid` is described by the
+	// sentence saying why — an invalid state with no description is a box a reader is told is wrong
+	// and never told how (WCAG 3.3.1).
+	it('describes the free entry by the amount sentence while a missing amount is marked', async () => {
+		const card = await mount();
+		withdraw(card);
+		card.find('[part~="action"]:not([part~="submit"])').click();
+		const entry = card.find('#amount-entry');
+		const described = entry.getAttribute('aria-describedby') ?? '';
+
+		expect(entry.getAttribute('aria-invalid')).toBe('true');
+		expect(described).toBe('amount-problem');
+		expect(card.find(`#${described}`).hidden).toBe(false);
+		expect(card.text(`#${described}`)).toBe('between $5 and $50,000');
+
+		type(entry, '40');
+
+		expect(entry.hasAttribute('aria-describedby')).toBe(false);
+	});
+
 	// and it is marked by nothing either. the state is written on the press that was refused for the
 	// amount and on no other patch, so a donor heading for a preset tile never meets a box reporting
 	// itself invalid while it sits empty and untouched.
@@ -1653,18 +1673,17 @@ describe('the amount step', () => {
 		expect(card.find('#amount-entry').hasAttribute('aria-invalid')).toBe(false);
 	});
 
-	// and once there is a refusal, one node points at the sentence rather than two. the fieldset is
-	// the one that does: the caret lands inside it wherever the refusal put it, and the sentence is
-	// said out loud besides (the region test below). the box carries `aria-invalid`, which is the
-	// state the fieldset's role cannot hold.
-	it('points one node at the amount sentence when a press is refused, not two', async () => {
+	// and once a press is refused for the amount, the fieldset and the box carrying `aria-invalid`
+	// point at the sentence and nothing else does: a preset tile holds no invalid state of its own,
+	// and the sentence is said out loud besides (the region test below).
+	it('points the group and the free entry at the amount sentence when a press is refused', async () => {
 		const card = await mount();
 		withdraw(card);
 		card.find('[part~="action"]:not([part~="submit"])').click();
 		const described = card.all('[aria-describedby~="amount-problem"]');
 
-		expect(described).toHaveLength(1);
-		expect(described[0]?.tagName).toBe('FIELDSET');
+		expect(described.map((node) => node.tagName)).toEqual(['FIELDSET', 'INPUT']);
+		expect(described[1]?.id).toBe('amount-entry');
 	});
 
 	it('clears the message once the decision it asked for is made', async () => {
@@ -1711,7 +1730,20 @@ describe('the amount step', () => {
 		// something twice is a clear and a write a task apart (`#announce` in ./element.ts).
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe(card.text('#amount-problem'));
+		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
+	});
+
+	// the bounds on the card stand under the box they are about; the region's sentence has no box to
+	// stand under, so it carries the label the entry draws as its subject.
+	it('says an amount outside the bounds under the name of the box it is in', async () => {
+		const card = await mount();
+		withdraw(card);
+		type(card.find('#amount-entry'), '60000');
+		card.find('[part~="action"]:not([part~="submit"])').click();
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
+		expect(card.text('#amount-problem')).toBe('between $5 and $50,000');
 	});
 
 	// the second press is the whole of this one, and it is the same defect the review step's refusal
@@ -3705,9 +3737,13 @@ describe('the details step’s refusals', () => {
 		proceed(card);
 		await settle();
 
+		// each sentence spoken under the label the field draws, in the order the fields are laid out:
+		// a run of bare problems is "required, required" with nothing saying which box is which.
 		expect(card.text('[role="status"]')).toBe(
-			`${card.text('#email-problem')}, ${card.text('#first-name-problem')}, ${card.text('#last-name-problem')}`
+			'Email: required for your receipt; First name: required; Last name: required'
 		);
+		// and the words on the card stay the field's own, with no label repeated beside its box.
+		expect(card.text('#first-name-problem')).toBe('required');
 	});
 
 	// and it stops saying it the moment the donor does anything but press again. a region reading
