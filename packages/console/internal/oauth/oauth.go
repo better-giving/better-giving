@@ -268,13 +268,16 @@ func (flow *Flow) Out(ctx context.Context) error {
 		}
 	}
 	flow.unkept = nil
-	if err := flow.store.Forget(Record); err != nil {
+	err := flow.store.Forget(Record)
+	if err != nil {
 		// the record the directory would not let go of names the pair just revoked, so this process
 		// stops reading it; the error is for the operator, because the next launch will.
 		flow.forgotten = true
-		return err
 	}
-	return nil
+	// a refresh that held the credential while Stop cleared the screen has since said it was not
+	// kept, about a sign-in that is now gone.
+	flow.kept(nil)
+	return err
 }
 
 // the credential this machine holds — a refresh that could not be written down, else the one

@@ -252,6 +252,18 @@ func settled(t *testing.T, flow *running) Phase {
 	return flow.Phase()
 }
 
+// waits for `done`, and fails the case naming `what` where it never is.
+func until(t *testing.T, done func() bool, what string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for !done() {
+		if time.Now().After(deadline) {
+			t.Fatalf("gave up waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestTheAddressIsCloudflaresOwnAllowPageWithThisFlowsChallengeOnIt(t *testing.T) {
 	flow, _, _, _ := flowing(t, &dash{})
 	address := started(t, flow)
@@ -874,6 +886,36 @@ func TestSigningOutRevokesTheSignInAndForgetsIt(t *testing.T) {
 	}
 	if flow.Credential(context.Background()).Kind != cf.NoCredential {
 		t.Error("the credential is still held after signing out")
+	}
+}
+
+func TestARefreshInFlightDuringSignOutLeavesNothingSaidAboutAFolder(t *testing.T) {
+	// the refresh lands after sign-out has cleared the screen and before it takes the credential,
+	// so what it says about the folder would outlive the sign-in it was about.
+	held := &dash{expires: 1}
+	flow, _, _, ticking := flowing(t, held)
+	allow(t, flow, started(t, flow), nil)
+	settled(t, flow)
+	held.mutex.Lock()
+	held.access, held.expires, held.holds = "a-second-access-token", 3600, make(chan struct{})
+	held.mutex.Unlock()
+	unwritable(flow)
+	ticking.skip(time.Hour)
+
+	refreshed := make(chan struct{})
+	go func() { flow.Credential(context.Background()); close(refreshed) }()
+	until(t, func() bool { return len(held.sent("/oauth2/token")) == 2 }, "the refresh to reach cloudflare")
+	out := make(chan struct{})
+	go func() { _ = flow.Out(context.Background()); close(out) }()
+	// time for sign-out to clear the screen and queue behind the refresh, which nothing observable
+	// marks.
+	time.Sleep(50 * time.Millisecond)
+	close(held.holds)
+	<-refreshed
+	<-out
+
+	if phase := flow.Phase(); phase.Why == NotKept {
+		t.Errorf("phase = %+v, want nothing said after signing out", phase)
 	}
 }
 
