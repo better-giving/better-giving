@@ -7,6 +7,7 @@ import { staffGate } from './gate';
 import { createAuth, STAFF_USER_EMAIL } from './index';
 import { PIN_UNUSABLE } from './pin';
 import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
+import { withSigningKeyUnreadable } from './signing-key.testing';
 
 // a workers spec because the gate reads D1 twice on every request it lets through: the signing key
 // row and the session row. CLAUDE.md refuses a stand-in for either — what is worth asserting here
@@ -167,9 +168,7 @@ describe('the gate on the protected layout', () => {
 	 */
 	it('answers a signing key it cannot read with a fixed sentence, and logs the cause', async () => {
 		const beneath = screen();
-		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-		await env.DB.prepare('alter table auth_signing_key rename to auth_signing_key_away').run();
-		try {
+		await withSigningKeyUnreadable(async (logged) => {
 			const thrown = await staffGate(args(`${ORIGIN}/admin/forms`), beneath.next).then(
 				() => undefined,
 				(error: unknown) => error as { data: unknown; init: { status: number } }
@@ -179,10 +178,7 @@ describe('the gate on the protected layout', () => {
 			expect(thrown?.data).toBe(SIGNING_KEY_UNREADABLE);
 			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
 			expect(beneath.state.ran).toBe(false);
-		} finally {
-			await env.DB.prepare('alter table auth_signing_key_away rename to auth_signing_key').run();
-			logged.mockRestore();
-		}
+		});
 	});
 
 	it('hands the session it resolved to the loaders beneath it', async () => {
