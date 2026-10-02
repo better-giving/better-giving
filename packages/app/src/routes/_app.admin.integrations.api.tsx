@@ -329,43 +329,49 @@ const COLUMNS = [
 	{ key: 'revoke', label: 'Revoke', width: '16%' }
 ] as const;
 
+const KEYS_HEADING_ID = 'api-keys-heading';
+
 function KeyPlane({ keys }: { readonly keys: readonly ListedKey[] }) {
 	return (
-		<DataTable
-			// the count where there are rows, and the screen's own noun where there are none: an empty
-			// table draws no caption and is named from this string instead.
-			caption={
-				keys.length > 0 ? `${keys.length} ${keys.length === 1 ? 'key' : 'keys'}.` : 'API keys'
-			}
-			columns={COLUMNS}
-			rows={keys.map((key) => ({
-				id: key.id,
-				cells: {
-					name: key.name,
-					made: <time dateTime={key.madeAt}>{key.madeOn}</time>,
-					used:
-						key.lastUsedAt === null ? (
-							key.lastUsedOn
-						) : (
-							<time dateTime={key.lastUsedAt}>{key.lastUsedOn}</time>
-						),
-					// a link dressed as a button, because it writes nothing: it asks. named from its row,
-					// so a reader meeting it out of context is told which key it stops.
-					revoke: (
-						<Button
-							as={Link}
-							size="sm"
-							to={`${SCREEN}?confirm=${encodeURIComponent(key.id)}`}
-							preventScrollReset
-							aria-label={`Revoke ${key.name}`}
-						>
-							Revoke
-						</Button>
-					)
-				}
-			}))}
-			empty="No keys yet"
-		/>
+		<>
+			{/* the table's name, with rows or without, and drawn for no eye: an organisation holds a
+			    handful of keys and counts them at a glance, so the table takes no caption, and
+			    `DataTable` names a table with rows from a caption only by drawing it. */}
+			<h2 className="adm-vh" id={KEYS_HEADING_ID}>
+				API keys
+			</h2>
+			<DataTable
+				namedBy={KEYS_HEADING_ID}
+				columns={COLUMNS}
+				rows={keys.map((key) => ({
+					id: key.id,
+					cells: {
+						name: key.name,
+						made: <time dateTime={key.madeAt}>{key.madeOn}</time>,
+						used:
+							key.lastUsedAt === null ? (
+								key.lastUsedOn
+							) : (
+								<time dateTime={key.lastUsedAt}>{key.lastUsedOn}</time>
+							),
+						// a link dressed as a button, because it writes nothing: it asks. named from its row,
+						// so a reader meeting it out of context is told which key it stops.
+						revoke: (
+							<Button
+								as={Link}
+								size="sm"
+								to={`${SCREEN}?confirm=${encodeURIComponent(key.id)}`}
+								preventScrollReset
+								aria-label={`Revoke ${key.name}`}
+							>
+								Revoke
+							</Button>
+						)
+					}
+				}))}
+				empty="No keys yet"
+			/>
+		</>
 	);
 }
 
