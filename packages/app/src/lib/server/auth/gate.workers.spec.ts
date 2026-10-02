@@ -1,11 +1,13 @@
 import { createExecutionContext, env } from 'cloudflare:test';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { staff } from '../../../context';
 import { requestContext } from '../../../request-context';
 import { staffGate } from './gate';
 import { createAuth, STAFF_USER_EMAIL } from './index';
-import { resolveAuthSecret } from './signing-key';
+import { PIN_UNUSABLE } from './pin';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
+import { withSigningKeyUnreadable } from './signing-key.testing';
 
 // a workers spec because the gate reads D1 twice on every request it lets through: the signing key
 // row and the session row. CLAUDE.md refuses a stand-in for either — what is worth asserting here
@@ -75,7 +77,7 @@ function screen() {
  */
 async function signIn(): Promise<string> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,
@@ -133,8 +135,9 @@ describe('the gate on the protected layout', () => {
 		expect(redirect.headers.get('location')).toBe('/login?next=%2Fadmin%2Fforms%3Ftab%3Dlive');
 	});
 
-	it('names a pin that names no address, where the operator reads it', async () => {
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
 		const beneath = screen();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const pinnedNowhere = {
 			...args(`${ORIGIN}/admin/forms`),
 			context: requestContext(
@@ -144,12 +147,38 @@ describe('the gate on the protected layout', () => {
 		};
 
 		// the sentence as a 500's data, which is what src/root.tsx's boundary draws; a bare error is
-		// replaced by react router's own words outside development.
-		await expect(staffGate(pinnedNowhere, beneath.next)).rejects.toMatchObject({
-			data: expect.stringContaining('`BETTER_AUTH_URL` is `localhost:8787`'),
-			init: { status: 500 }
+		// replaced by react router's own words outside development. no session has been read yet,
+		// so the caller is as likely anonymous as staff and the value itself goes to the logs.
+		try {
+			await expect(staffGate(pinnedNowhere, beneath.next)).rejects.toMatchObject({
+				data: PIN_UNUSABLE,
+				init: { status: 500 }
+			});
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+			expect(beneath.state.ran).toBe(false);
+		} finally {
+			logged.mockRestore();
+		}
+	});
+
+	/**
+	 * the key is read before any session is, so whoever meets this refusal is as likely anonymous as
+	 * staff. the database's own error text stays in the logs, where an operator reads it; the
+	 * caller gets a sentence that names no table and quotes no driver.
+	 */
+	it('answers a signing key it cannot read with a fixed sentence, and logs the cause', async () => {
+		const beneath = screen();
+		await withSigningKeyUnreadable(async (logged) => {
+			const thrown = await staffGate(args(`${ORIGIN}/admin/forms`), beneath.next).then(
+				() => undefined,
+				(error: unknown) => error as { data: unknown; init: { status: number } }
+			);
+
+			expect(thrown?.init.status).toBe(500);
+			expect(thrown?.data).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+			expect(beneath.state.ran).toBe(false);
 		});
-		expect(beneath.state.ran).toBe(false);
 	});
 
 	it('hands the session it resolved to the loaders beneath it', async () => {

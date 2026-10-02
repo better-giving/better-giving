@@ -3,7 +3,8 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
 import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { STAFF_USER_EMAIL } from '$lib/server/auth/staff-plugin';
 import { createDb } from '$lib/server/db/client';
 import { requestContext } from '../request-context';
@@ -100,7 +101,7 @@ async function saveOrg(legalName = 'Acme Foundation'): Promise<void> {
 async function makeMember(email: string): Promise<void> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	const auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: PASSWORD },
@@ -233,6 +234,17 @@ describe('POST /forgot', () => {
 
 		expect(answer).toEqual({ sent: true });
 		expect(sent).toEqual([]);
+	});
+
+	it('tells a deployment with no schema to apply its migrations, and mails nobody', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answer = await refused(typed('nadia@riverbanktrust.org'));
+
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
+		expect(sent).toHaveLength(0);
 	});
 
 	it('refuses an empty box under the box, and mails nobody', async () => {

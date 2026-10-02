@@ -4119,6 +4119,49 @@ describe('createRecurringGift', () => {
 	});
 
 	/**
+	 * a price archived in the dashboard still holds its lookup key, and the gift is charged on a new
+	 * price that takes the key over rather than refused — including one archived within a day of
+	 * this app making it.
+	 *
+	 * the lookup answers as Stripe does: an archived price under the key comes back unless the query
+	 * asks for active prices only (https://docs.stripe.com/api/prices/list — `active`). the create
+	 * transfers the key off it (https://docs.stripe.com/api/prices/create — `transfer_lookup_key`),
+	 * and it is keyed apart from the create that made the archived one: Stripe replays a key's first
+	 * answer for 24 hours (https://docs.stripe.com/api/idempotent_requests), so under the same key
+	 * the gift is handed the archived price's id again.
+	 */
+	it('charges on a fresh price, keyed apart, when the one holding the key was archived', async () => {
+		const archived = (call: Recorded) => ({
+			status: 200,
+			json: decodeURIComponent(call.path).includes('active=true')
+				? priceList()
+				: priceList(price({ active: false }))
+		});
+		const { httpClient, calls } = recording([
+			{ status: 200, json: priceList() },
+			{ status: 200, json: product() },
+			{ status: 200, json: price() },
+			{ status: 200, json: customer() },
+			{ status: 200, json: subscription() },
+			archived,
+			{ status: 200, json: product() },
+			{ status: 200, json: price({ id: 'price_2' }) },
+			{ status: 200, json: customer({ id: 'cus_2' }) },
+			{ status: 200, json: subscription({ id: 'sub_2' }) }
+		]);
+		const provider = createStripeProvider(CREDENTIALS, { httpClient });
+
+		await provider.createRecurringGift(GIFT);
+		const result = await provider.createRecurringGift({ ...GIFT, idempotencyKey: 'gift-second' });
+
+		expect(calls[7]?.path).toBe('/v1/prices');
+		expect(fields(calls[7]).get('transfer_lookup_key')).toBe('true');
+		expect(calls[7]?.headers['Idempotency-Key']).not.toBe(calls[2]?.headers['Idempotency-Key']);
+		expect(fields(calls[9]).get('items[0][price]')).toBe('price_2');
+		expect(result.ok).toBe(true);
+	});
+
+	/**
 	 * a yearly gift is charged yearly, and its key says so.
 	 *
 	 * the two cadences share every line of this arm, so the one place they can diverge is the pair of
@@ -4160,8 +4203,7 @@ describe('createRecurringGift', () => {
 		['a different amount', { unit_amount: 100 }],
 		['a different currency', { currency: 'eur' }],
 		['a different cadence', { recurring: { interval: 'year', interval_count: 1 } }],
-		['another product', { product: 'prod_somethingelse' }],
-		['an archived price', { active: false }]
+		['another product', { product: 'prod_somethingelse' }]
 	])('refuses a price answering to the key with %s', async (_label, overrides) => {
 		const { httpClient, calls } = recording([{ status: 200, json: priceList(price(overrides)) }]);
 
@@ -4172,6 +4214,31 @@ describe('createRecurringGift', () => {
 		expect(calls).toHaveLength(1);
 		expect(result.ok).toBe(false);
 		expect(result.ok === false && result.detail).toContain('price_1');
+	});
+
+	/**
+	 * an archived price is never refused, whatever it holds — the create takes the key off it.
+	 *
+	 * the refusal above exists because a commitment would be charged on the price that came back.
+	 * nothing is charged on an archived one, so refusing it would turn a key the create repairs
+	 * into a gift that fails every time until someone edits the dashboard.
+	 */
+	it('makes a new price rather than refusing an archived one that does not match', async () => {
+		const { httpClient, calls } = recording([
+			{ status: 200, json: priceList(price({ active: false, unit_amount: 100 })) },
+			{ status: 200, json: product() },
+			{ status: 200, json: price({ id: 'price_2' }) },
+			{ status: 200, json: customer() },
+			{ status: 200, json: subscription() }
+		]);
+
+		const result = await createStripeProvider(CREDENTIALS, { httpClient }).createRecurringGift(
+			GIFT
+		);
+
+		expect(fields(calls[2]).get('unit_amount')).toBe('2500');
+		expect(fields(calls[4]).get('items[0][price]')).toBe('price_2');
+		expect(result.ok).toBe(true);
 	});
 
 	/**
@@ -4356,25 +4423,35 @@ describe('createRecurringGift', () => {
 	 * them is worse than sending none: the processor replays the first call's answer at the second,
 	 * so the request that wanted a commitment is handed a donor record and reads as a success. the
 	 * price's key is not the caller's at all, because its parameters belong to the amount rather than
-	 * to this donor.
+	 * to this donor — and the archived price it replaces, when there is one, is part of what it prices.
 	 */
-	it('keys each write separately, and the price by what it prices', async () => {
-		const { httpClient, calls } = recording([
-			{ status: 200, json: priceList() },
-			{ status: 200, json: product() },
-			{ status: 200, json: price() },
-			{ status: 200, json: customer() },
-			{ status: 200, json: subscription() }
-		]);
+	it.each([
+		['no price', priceList(), 'better-giving:price:better_giving_recurring_month_usd_2500'],
+		[
+			'an archived price',
+			priceList(price({ active: false })),
+			'better-giving:price:better_giving_recurring_month_usd_2500:replacing:price_1'
+		]
+	])(
+		'keys each write separately, and the price by what it prices, over %s',
+		async (_label, found, priceKey) => {
+			const { httpClient, calls } = recording([
+				{ status: 200, json: found },
+				{ status: 200, json: product() },
+				{ status: 200, json: price({ id: 'price_2' }) },
+				{ status: 200, json: customer() },
+				{ status: 200, json: subscription() }
+			]);
 
-		await createStripeProvider(CREDENTIALS, { httpClient }).createRecurringGift(GIFT);
+			await createStripeProvider(CREDENTIALS, { httpClient }).createRecurringGift(GIFT);
 
-		const keys = calls.map((call) => call.headers['Idempotency-Key']);
-		expect(keys[2]).toBe('better-giving:price:better_giving_recurring_month_usd_2500');
-		expect(keys[3]).toBe('better-giving:donor:gift-01932f7c');
-		expect(keys[4]).toBe('better-giving:gift:gift-01932f7c');
-		expect(new Set([keys[2], keys[3], keys[4]]).size).toBe(3);
-	});
+			const keys = calls.map((call) => call.headers['Idempotency-Key']);
+			expect(keys[2]).toBe(priceKey);
+			expect(keys[3]).toBe('better-giving:donor:gift-01932f7c');
+			expect(keys[4]).toBe('better-giving:gift:gift-01932f7c');
+			expect(new Set([keys[2], keys[3], keys[4]]).size).toBe(3);
+		}
+	);
 
 	/**
 	 * a request this app could not have meant never reaches the network.

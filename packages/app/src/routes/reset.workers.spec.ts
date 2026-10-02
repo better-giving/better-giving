@@ -9,7 +9,8 @@ import {
 	signInMember,
 	type Auth
 } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { createDb, type Db } from '$lib/server/db/client';
 import { PASSWORD_RESET_FLASH } from '$lib/server/flash';
 import { requestContext } from '../request-context';
@@ -68,7 +69,7 @@ async function authInstance(passwordReset?: {
 	background(task: Promise<unknown>): void;
 }): Promise<Auth> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	return createAuth(
 		db,
 		{ ADMIN_PASSWORD: STAFF_PASSWORD },
@@ -106,17 +107,20 @@ async function makeMember(): Promise<void> {
  */
 async function liveToken(): Promise<string> {
 	let minted: string | null = null;
+	const backgrounded: Promise<unknown>[] = [];
 	const auth = await authInstance({
 		send: async ({ token }) => {
 			minted = token;
 		},
-		// awaited rather than deferred, so the token exists by the time the request returns.
+		// kept, as `waitUntil` keeps it: the send runs after the request has answered, behind the
+		// delete of the earlier links, so the token exists only once the task has settled.
 		background: (task) => {
-			void task;
+			backgrounded.push(task);
 		}
 	});
 	const requested = await requestPasswordReset(auth, { email: MEMBER });
 	if (!requested.ok) throw new Error(`the fixture could not request a reset: ${requested.reason}`);
+	await Promise.all(backgrounded);
 	if (minted === null) throw new Error('the fixture was handed no token');
 	return minted;
 }
@@ -274,6 +278,16 @@ describe('POST /reset', () => {
 	});
 
 	/** and the box is never echoed back, whatever the refusal was about. */
+	it('tells a deployment with no schema to apply its migrations, and logs the cause', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answer = await refused('any-token', typed(NEW_PASSWORD));
+
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
+	});
+
 	it('never sends the password back to the browser', async () => {
 		await makeMember();
 

@@ -4,7 +4,13 @@ import type { Db } from '../db/client';
 import { donation } from '../db/schema';
 import { renderGrantReceived, type GrantNoticeInput } from '../email/grant';
 import type { RenderedEmail } from '../email/provider';
-import { renderReceipt, type CryptoReceived, type ReceiptContribution } from '../email/receipt';
+import {
+	renderReceipt,
+	type CryptoReceived,
+	type ReceiptContribution,
+	type ReceiptResult
+} from '../email/receipt';
+import { formatMinor } from '../../donations/money';
 import { readOrgProfile } from '../org/queries';
 import { alert, type MailDeps } from './delivery';
 
@@ -119,8 +125,8 @@ export type ReceiptTarget = {
  * signal to act on: every arm that needed an operator has already told one.
  */
 export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promise<ReceiptOutcome> {
-	return claimAndSend(deps, target.donationId, target.donorEmail, 'receipt', async () =>
-		renderReceipt({
+	return claimAndSend(deps, target.donationId, target.donorEmail, 'receipt', async () => {
+		const rendered = await renderReceipt({
 			// a document a donor files, so an incomplete profile is refused rather than printed with a
 			// gap in it — which is the refusal this function's own header describes, and the backlog
 			// below is what it leaves behind.
@@ -134,8 +140,59 @@ export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promis
 			tribute: target.tribute,
 			program: target.program,
 			crypto: target.crypto
-		})
-	);
+		});
+		if (rendered.ok) return rendered;
+		return {
+			ok: false,
+			detail: rendered.detail,
+			action: receiptRefusalAction(rendered.reason, target.contribution)
+		};
+	});
+}
+
+/** the refusal that only the organisation's saved details fix. */
+const FILL_IN_ORG_DETAILS =
+	'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.';
+
+/** how every refusal about the gift's own figures ends. */
+const CORRECT_THE_GIFT =
+	'No setting fixes this: the gift’s own record has to be corrected before its receipt can be sent.';
+
+/**
+ * the sentence an operator acts on, one per refusal reason. the refusal of a gift whose figures
+ * contradict each other names those figures, because nothing on a settings screen is wrong.
+ *
+ * the goods are always recorded as `none` here (`sendReceipt` above), so a non-deductible amount on
+ * the gift is the whole of the contradiction `goods_or_services_inconsistent` can mean — and
+ * nothing in the app writes one, so its sentence names no screen to correct it on.
+ */
+function receiptRefusalAction(
+	reason: Extract<ReceiptResult, { ok: false }>['reason'],
+	contribution: ReceiptContribution
+): string {
+	const money = (minor: number) => formatMinor(minor, contribution.currency);
+	switch (reason) {
+		case 'org_profile_incomplete':
+			return FILL_IN_ORG_DETAILS;
+		case 'goods_or_services_incomplete':
+			return (
+				'This gift is recorded as one where the donor received goods or services, without both a ' +
+				`description of them and their fair market value. ${CORRECT_THE_GIFT}`
+			);
+		case 'goods_or_services_inconsistent':
+			return (
+				`This gift carries ${money(contribution.nonDeductibleMinor)} recorded as not deductible, ` +
+				'and this deployment records no goods or services against any gift, so its receipt cannot ' +
+				'say what that amount was for. Nothing in this deployment sets that amount and no screen ' +
+				'edits it, so the gift’s record has to be corrected where it was changed before its ' +
+				'receipt can be sent.'
+			);
+		case 'covered_fee_inconsistent':
+			return (
+				`This gift is recorded with a processing fee of ${money(contribution.coveredFeeMinor)} ` +
+				`against a payment of ${money(contribution.totalMinor)}. ${CORRECT_THE_GIFT}`
+			);
+	}
 }
 
 /** one donor-advised fund gift to thank: who to write to, and the gift portion of the grant. */
@@ -158,15 +215,18 @@ export async function sendGrantReceived(
 	deps: MailDeps,
 	target: GrantReceivedTarget
 ): Promise<ReceiptOutcome> {
-	return claimAndSend(deps, target.donationId, target.donorEmail, 'thank-you', async () =>
-		renderGrantReceived({ ...target, org: await readOrgProfile(deps.db) })
-	);
+	return claimAndSend(deps, target.donationId, target.donorEmail, 'thank-you', async () => {
+		const rendered = await renderGrantReceived({ ...target, org: await readOrgProfile(deps.db) });
+		return rendered.ok
+			? rendered
+			: { ok: false, detail: rendered.detail, action: FILL_IN_ORG_DETAILS };
+	});
 }
 
-/** a rendered message, or the sentence saying why it could not be written. */
+/** a rendered message, or why it could not be written and what an operator does about it. */
 type Rendering =
 	| { readonly ok: true; readonly message: RenderedEmail }
-	| { readonly ok: false; readonly detail: string };
+	| { readonly ok: false; readonly detail: string; readonly action: string };
 
 /**
  * the gift claimed, the message rendered and sent, and the claim handed back on every way out that
@@ -205,8 +265,7 @@ async function claimAndSend(
 					{ label: 'Donation', value: donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: rendered.action
 			});
 			return 'not_sent';
 		}

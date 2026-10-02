@@ -2141,9 +2141,10 @@ export function createCard(
 	//
 	// a role and a name, because the caret landing on a bare `<div>` announces nothing at all — a
 	// generic with no name is where a description goes unread and where the refusal a donor cannot
-	// see would be the one refusal nobody hears. `aria-invalid` is deliberately not written here:
-	// it is not a global attribute and `group` does not support it, so it would be an attribute
-	// that reads as coverage and states nothing. the sentence reaches the box through
+	// see would be the one refusal nobody hears. `group` rather than `region`: a region is a
+	// landmark, and this card is inside a page it does not own. `aria-invalid` is deliberately not
+	// written here: it is not a global attribute and `group` does not support it, so it would be an
+	// attribute that reads as coverage and states nothing. the sentence reaches the box through
 	// `aria-describedby`, which is global — and it is one of the two channels the refusal travels,
 	// never the whole of it: `updatePayment` below says why the live region carries it as well.
 	//
@@ -2258,8 +2259,8 @@ export function createCard(
 	//
 	// the tab stop is what a keyboard donor scrolls it with, and a focusable `<div>` is a generic
 	// with no name: without the role and the label they land in the block they are being asked to
-	// agree to and hear nothing. `group` rather than `region`, on the payment box's own reasoning
-	// one screen back — a region is a landmark, and this card is inside a page it does not own.
+	// agree to and hear nothing. `group` rather than `region`: a region is a landmark, and this card
+	// is inside a page it does not own.
 	const mandateWell = make(
 		doc,
 		'div',

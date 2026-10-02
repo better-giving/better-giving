@@ -467,7 +467,7 @@ describe('the buttons this adapter draws', () => {
 		const k = kit();
 		await mounted(k);
 		const head = k.mount.children[0]?.shadowRoot?.querySelector('button');
-		const panel = k.mount.children[0]?.shadowRoot?.querySelector('[role="region"]');
+		const panel = k.mount.children[0]?.shadowRoot?.querySelector('#panel');
 		expect(head?.getAttribute('aria-expanded')).toBe('false');
 		expect(head?.textContent).toBe('PayPal');
 		expect(panel?.hasAttribute('hidden')).toBe(true);

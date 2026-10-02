@@ -180,8 +180,11 @@ function consentUrl(input: {
 	return `${INTUIT_AUTHORIZE_URL}?${query}`;
 }
 
-/** an answer Intuit gave, read as far as its status and its JSON. */
-type Answer = { readonly status: number; readonly body: unknown };
+/**
+ * an answer Intuit gave, read as far as its status and its JSON, with the values the request that
+ * drew it sent — which are what its refusal is redacted of (see {@link sentValues}).
+ */
+type Answer = { readonly status: number; readonly body: unknown; readonly sent: readonly string[] };
 
 /**
  * what currencies a company will take, off its own preferences.
@@ -205,6 +208,48 @@ function contentTypeOf(body: Payload): string {
 
 function bodyTextOf(body: Payload): string {
 	return 'text' in body ? body.text : JSON.stringify(body.json);
+}
+
+/** the JSON keys whose string values are this app's own structure rather than anything typed. */
+const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
+	'value',
+	'TxnDate',
+	'DetailType',
+	'PostingType',
+	'Type'
+]);
+
+/**
+ * the values a request sent that a refusal may not repeat, longest first.
+ *
+ * Intuit's `Message` can quote what it was sent, and a donor's name and email ride in the customer
+ * create, the journal lines and the query statements alike. every string the body carries is one,
+ * bar the structural ones — ids, dates and Intuit's own enums — so a field added to a payload is
+ * redacted until it is named here; a statement gives its quoted literals, unescaped as
+ * {@link escaped} wrote them, and a multi-line note gives each line, since a memo is quoted alone.
+ * `donorValues` join them whole, for a body that carries the donor only inside a longer string.
+ */
+function sentValues(body: Payload | undefined, donorValues: readonly string[]): string[] {
+	const found: string[] = [...donorValues];
+	if (body !== undefined && 'text' in body) {
+		for (const [, literal = ''] of body.text.matchAll(/'((?:\\.|[^'\\])*)'/g)) {
+			found.push(literal.replaceAll(/\\(.)/g, '$1'));
+		}
+	} else if (body !== undefined) {
+		const walk = (node: unknown, key: string | null): void => {
+			if (typeof node === 'string') {
+				if (key === null || !STRUCTURAL_KEYS.has(key)) found.push(node, ...node.split('\n'));
+			} else if (Array.isArray(node)) {
+				for (const item of node) walk(item, key);
+			} else if (node !== null && typeof node === 'object') {
+				for (const [inner, value] of Object.entries(node)) walk(value, inner);
+			}
+		};
+		walk(body.json, null);
+	}
+	return [...new Set(found.filter((value) => value.trim() !== ''))].sort(
+		(a, b) => b.length - a.length
+	);
 }
 
 export function createQuickbooksProvider(
@@ -344,12 +389,16 @@ export function createQuickbooksProvider(
 	 *
 	 * always a POST: the two creates are posts by nature and the query endpoint is one by choice,
 	 * so that no donor is named in a url (see {@link ask}).
+	 *
+	 * `donorValues` are what the caller knows of the donor beyond what the body spells whole — a
+	 * journal line carries the name inside a sentence — and are struck from a refusal with the rest.
 	 */
 	async function send(
 		accessToken: string,
 		path: string,
 		params: Record<string, string>,
-		body?: Payload
+		body?: Payload,
+		donorValues: readonly string[] = []
 	): Promise<Answer | AccountingFailure> {
 		const query = new URLSearchParams({ ...params, minorversion: QUICKBOOKS_MINOR_VERSION });
 		let response: Response;
@@ -367,7 +416,11 @@ export function createQuickbooksProvider(
 		} catch (error) {
 			return unreachable(error);
 		}
-		return { status: response.status, body: await readJson(response) };
+		return {
+			status: response.status,
+			body: await readJson(response),
+			sent: sentValues(body, donorValues)
+		};
 	}
 
 	/**
@@ -382,14 +435,15 @@ export function createQuickbooksProvider(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		path: string,
 		params: Record<string, string> = {},
-		body?: Payload
+		body?: Payload,
+		donorValues: readonly string[] = []
 	): Promise<Answer | AccountingFailure> {
-		const answer = await send(auth.accessToken, path, params, body);
+		const answer = await send(auth.accessToken, path, params, body, donorValues);
 		if ('ok' in answer || answer.status !== 401) return answer;
 
 		const issued = await refresh(auth.connection.refreshToken);
 		if (!issued.ok) return issued;
-		return send(issued.value.accessToken, path, params, body);
+		return send(issued.value.accessToken, path, params, body, donorValues);
 	}
 
 	/** the same call, with Intuit's refusal already read as one of the port's reasons. */
@@ -414,13 +468,15 @@ export function createQuickbooksProvider(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
 		entity: 'customer' | 'journalentry' | 'account',
 		keyed: Keyed,
-		json: unknown
+		json: unknown,
+		donorValues: readonly string[] = []
 	): Promise<Answer | AccountingFailure> {
 		return answerFor(
 			auth,
 			`/v3/company/${auth.connection.companyId}/${entity}`,
 			{ requestid: await requestIdFor(keyed, json) },
-			{ json }
+			{ json },
+			donorValues
 		);
 	}
 
@@ -558,7 +614,9 @@ export function createQuickbooksProvider(
 	 *
 	 * where the name is taken, the donor is given one of their own — Intuit's own remedy for a
 	 * collision across the three name lists — and it is looked for before it is created, because a
-	 * donor with no email finds their way back to it on no other reading.
+	 * donor with no email finds their way back to it on no other reading. where both names are
+	 * taken the refusal names neither, because its detail reaches `quickbooks_sync.last_error`, the
+	 * console and the failure notice email.
 	 */
 	async function customerFor(
 		auth: { connection: ConnectionSnapshot; accessToken: string },
@@ -591,7 +649,7 @@ export function createQuickbooksProvider(
 		return own.value === null
 			? failed(
 					'invalid_record',
-					`The QuickBooks company already holds the names ${displayName} and ${ownName} for something other than this donor, so there is no customer to record the gift against. Rename one of them in QuickBooks and retry this gift.`
+					'The QuickBooks company already uses both this donor’s display name and that name followed by “(donor)” for other records, so there is no customer to record the gift against. Rename one of them in QuickBooks and retry this gift.'
 				)
 			: { ok: true, value: own.value };
 	}
@@ -805,12 +863,18 @@ export function createQuickbooksProvider(
 
 		return createdRecord(
 			answered(
-				await create(auth, 'journalentry', keyed, {
-					TxnDate: txnDate,
-					CurrencyRef: { value: currency.value },
-					PrivateNote: privateNote(gift.key, gift.memo),
-					Line: lines
-				})
+				await create(
+					auth,
+					'journalentry',
+					keyed,
+					{
+						TxnDate: txnDate,
+						CurrencyRef: { value: currency.value },
+						PrivateNote: privateNote(gift.key, gift.memo),
+						Line: lines
+					},
+					donorValuesOf(gift.donor)
+				)
 			)
 		);
 	}
@@ -1056,6 +1120,20 @@ function journalLine(
 	};
 }
 
+/**
+ * every spelling of the donor a refusal may quote alone: the name as this app holds it and as
+ * QuickBooks takes it, their own "(donor)" name, and the email.
+ */
+function donorValuesOf(donor: Donor): string[] {
+	const displayName = quickbooksDisplayName(donor.displayName);
+	return [
+		donor.displayName,
+		displayName,
+		donorDisplayName(displayName),
+		...(donor.email === null ? [] : [donor.email])
+	];
+}
+
 /** the customer the first line naming one is posted against, or null where no line names one. */
 function customerOnLines(lines: unknown): string | null {
 	if (!Array.isArray(lines)) return null;
@@ -1190,7 +1268,7 @@ function queryRows(body: unknown, entity: string): unknown[] {
  * the data or the mapping changes. a 401 reaches here only after the refresh above did not fix it.
  */
 function classify(answer: Answer): AccountingFailure {
-	const words = faultWords(answer.body);
+	const words = faultWords(answer.body, answer.sent);
 	if (answer.status === 429) {
 		return failed('rate_limited', 'QuickBooks is throttling this deployment’s calls.');
 	}
@@ -1218,19 +1296,29 @@ function classify(answer: Answer): AccountingFailure {
 }
 
 /**
- * Intuit's own sentence about a refusal, bounded.
+ * which refusal Intuit answered with: its type, its code and the message Intuit keys to that code.
  *
- * the fault's code and detail are what say which field was wrong, and they are the whole reason an
- * operator can act on `quickbooks_sync.last_error` without a log.
+ * the type, code and message are what let an operator act on `quickbooks_sync.last_error` without a
+ * log, and `last_error` reaches the console and the failure notice email, so nothing a donor sent
+ * may ride in it. the message is carried with every value the request sent struck out of it
+ * ({@link sentValues}); the fault's `Detail` is never carried, because it is free text about the
+ * record and a value it repeats in any other spelling than the one sent is not struck.
  */
-function faultWords(body: unknown): string {
+function faultWords(body: unknown, sent: readonly string[]): string {
 	const first = firstFault(body);
-	const message = stringField(first, 'Message');
-	const detail = stringField(first, 'Detail');
-	const code = stringField(first, 'code');
-	const words = [message, detail].filter((part) => part !== null).join(' — ');
-	if (words === '') return '';
-	return `: ${words.slice(0, PROVIDER_QUOTE_MAX)}${code === null ? '' : ` (${code})`}`;
+	const message = redacted(stringField(first, 'Message'), sent);
+	const named = [stringField(field(body, 'Fault'), 'type'), stringField(first, 'code')]
+		.filter((part) => part !== null)
+		.join(' ');
+	const words = [message?.slice(0, PROVIDER_QUOTE_MAX) ?? null, named === '' ? null : `(${named})`]
+		.filter((part) => part !== null)
+		.join(' ');
+	return words === '' ? '' : `: ${words}`;
+}
+
+function redacted(words: string | null, sent: readonly string[]): string | null {
+	if (words === null) return null;
+	return sent.reduce((text, value) => text.replaceAll(value, '[redacted]'), words);
 }
 
 /** the code on the fault Intuit answered with, which is the only part of one anything branches on. */

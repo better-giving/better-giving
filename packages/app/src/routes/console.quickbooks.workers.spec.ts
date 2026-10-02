@@ -18,6 +18,8 @@ import {
 	type AccountingResult,
 	type LedgerAccount
 } from '$lib/server/accounting/provider';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
 import { contact, donation, payment, quickbooksSync } from '$lib/server/db/schema';
@@ -445,6 +447,22 @@ describe('the connect press', () => {
 		const report = await answered.json<QuickbooksPressReport>();
 		if (report.press !== 'connect') throw new Error(`answered ${report.press}`);
 		expect(new URL(report.url).origin).toBe(PINNED);
+	});
+
+	it('mints nothing where the signing key cannot be read, and logs what the database said', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answered = await press(
+				{ press: 'connect' },
+				{ ...DEPLOYMENT, BETTER_AUTH_SECRET: undefined }
+			);
+
+			expect(answered.status).toBe(500);
+			expect(await answered.json()).toEqual({
+				error: 'no_signing_key',
+				message: SIGNING_KEY_UNREADABLE
+			});
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
 	});
 
 	it('mints nothing where the pin names no address, and names the pin', async () => {

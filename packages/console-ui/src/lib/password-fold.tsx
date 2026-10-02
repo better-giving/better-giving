@@ -8,7 +8,10 @@ import { SecretGroupForm } from './secret-group-form';
 import { MINTED_BY_CONSOLE, SECRET_GROUPS, SIGN_IN_GROUP, groupIntent } from './secret-groups';
 import { secretTrouble } from './secret-trouble';
 import { FREE_INTENT } from './withheld-values';
-import type { AddressRead, DeployedValues, VarsWritten } from '../api/types';
+import type { AddressRead, DeployedValues, DeployedVar, VarsWritten } from '../api/types';
+
+/** one list for every render with nothing read, so the derivation drawn from it is one reading. */
+const NOTHING_READ: readonly DeployedVar[] = [];
 
 /**
  * how the operator who set the deployment up reaches /admin: the credential that opens the
@@ -111,7 +114,7 @@ export function PasswordFold({
 			</>
 		);
 
-	const held = heldValues(values.vars.kind === 'read' ? values.vars.vars : []);
+	const held = heldValues(values.vars.kind === 'read' ? values.vars.vars : NOTHING_READ);
 
 	/* a list of one, mapped rather than found: an id that stops matching draws no boxes rather than
 	   throwing at an operator who came to read the rows. it is ./smtp-fold.tsx's idiom. */

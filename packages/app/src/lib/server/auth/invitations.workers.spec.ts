@@ -43,7 +43,7 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from auth_user').run();
 
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	auth = createAuth(db, {}, { secret: signingKey.secret, requestOrigin: ORIGIN });
 });
 

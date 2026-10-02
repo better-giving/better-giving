@@ -4,7 +4,13 @@ import { createDb, type Db } from '$lib/server/db/client';
 import type { Auth } from './index';
 import { createAuth, PASSWORD_RESET_LIFETIME_SECONDS } from './index';
 import { inviteMember, MEMBER_PASSWORD_MIN_LENGTH, redeemInvitation } from './invitations';
-import { requestPasswordReset, resetMemberPassword, signInMember } from './members';
+import {
+	changeMemberPassword,
+	requestPasswordReset,
+	resetMemberPassword,
+	signInMember
+} from './members';
+import { deleteResetLinks } from './reset-links';
 import { resolveAuthSecret } from './signing-key';
 import { STAFF_USER_EMAIL } from './staff-plugin';
 
@@ -63,7 +69,7 @@ async function createAuthWith(passwordReset?: {
 	background(task: Promise<unknown>): void;
 }): Promise<Auth> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	return createAuth(
 		db,
 		{ ADMIN_PASSWORD: STAFF_PASSWORD },
@@ -120,6 +126,15 @@ async function signsIn(email: string, password: string): Promise<boolean> {
 	return result.ok;
 }
 
+/** a reset row written by hand, live for a minute, as better-auth would have written it. */
+async function insertResetRow(id: string, token: string, userId: string, createdAt: number) {
+	await env.DB.prepare(
+		'insert into auth_verification (id, identifier, value, expires_at, created_at, updated_at) values (?, ?, ?, ?, ?, ?)'
+	)
+		.bind(id, `reset-password:${token}`, userId, Date.now() + 60_000, createdAt, createdAt)
+		.run();
+}
+
 /** the link a member was mailed, or a failure saying none was. */
 async function tokenFor(email: string): Promise<string> {
 	const asked = await requestPasswordReset(auth, { email });
@@ -136,6 +151,7 @@ describe('requestPasswordReset', () => {
 		await member('priya@example.org');
 
 		expect(await requestPasswordReset(auth, { email: 'priya@example.org' })).toEqual({ ok: true });
+		await Promise.all(backgrounded);
 		expect(sent).toEqual([{ email: 'priya@example.org', token: expect.any(String) }]);
 	});
 
@@ -161,6 +177,7 @@ describe('requestPasswordReset', () => {
 		expect(await requestPasswordReset(auth, { email: '  Priya@Example.ORG ' })).toEqual({
 			ok: true
 		});
+		await Promise.all(backgrounded);
 		expect(sent.map((s) => s.email)).toEqual(['priya@example.org']);
 	});
 
@@ -177,6 +194,7 @@ describe('requestPasswordReset', () => {
 		await member('priya@example.org');
 
 		expect(await requestPasswordReset(auth, { email })).toEqual({ ok: true });
+		await Promise.all(backgrounded);
 		expect(sent).toEqual([]);
 	});
 
@@ -198,6 +216,33 @@ describe('requestPasswordReset', () => {
 			n: number;
 		}>();
 		expect(after?.n).toBe(0);
+	});
+
+	/**
+	 * a member locked out is worse than two live links for a moment, so a delete of the earlier
+	 * ones that throws costs the new mail nothing. the trigger refuses the delete of the earlier row
+	 * and nothing else.
+	 */
+	it('still sends the new link when deleting the earlier one fails', async () => {
+		await member('priya@example.org');
+		await tokenFor('priya@example.org');
+		const earlier = await env.DB.prepare('select id from auth_verification').first<{
+			id: string;
+		}>();
+		await env.DB.prepare(
+			`create trigger refuse_earlier_delete before delete on auth_verification when old.id = '${earlier?.id}' begin select raise(abort, 'refused'); end`
+		).run();
+
+		try {
+			backgrounded = [];
+			await requestPasswordReset(auth, { email: 'priya@example.org' });
+			await Promise.allSettled(backgrounded);
+
+			expect(sent).toHaveLength(2);
+			await expect(backgrounded[0]).resolves.toBeUndefined();
+		} finally {
+			await env.DB.prepare('drop trigger refuse_earlier_delete').run();
+		}
 	});
 
 	/**
@@ -242,6 +287,105 @@ describe('resetMemberPassword', () => {
 		expect(await signsIn('priya@example.org', NEW_PASSWORD)).toBe(true);
 	});
 
+	// a member who pressed "forgot" twice holds one live link, the one in the newest mail.
+	it('refuses an earlier link once a newer one has been requested', async () => {
+		await member('priya@example.org');
+		const earlier = await tokenFor('priya@example.org');
+		const newer = await tokenFor('priya@example.org');
+
+		expect(await resetMemberPassword(auth, { token: earlier, newPassword: NEW_PASSWORD })).toEqual({
+			ok: false,
+			reason: 'link'
+		});
+		expect(await resetMemberPassword(auth, { token: newer, newPassword: NEW_PASSWORD })).toEqual({
+			ok: true
+		});
+	});
+
+	/**
+	 * two requests whose deletes interleave keep the newest link rather than deleting each other's.
+	 * the hand-written row stands for the second request, minted after this one but deleting first.
+	 */
+	it('leaves a newer link working when an older request deletes last', async () => {
+		const userId = await member('priya@example.org');
+		await insertResetRow('newer', 'the-newest-link', userId, Date.now() + 10_000);
+
+		await tokenFor('priya@example.org');
+
+		expect(
+			await resetMemberPassword(auth, { token: 'the-newest-link', newPassword: NEW_PASSWORD })
+		).toEqual({ ok: true });
+	});
+
+	/**
+	 * two links minted in the same millisecond are ordered by id, so the two requests' deletes agree
+	 * on which is newer whichever runs first, and exactly one link is left.
+	 */
+	it.each([
+		['the lower id deletes first', ['a-row', 'b-row']],
+		['the higher id deletes first', ['b-row', 'a-row']]
+	] as const)('keeps exactly one of two links minted together when %s', async (_label, order) => {
+		const userId = await member('priya@example.org');
+		const createdAt = Date.now();
+		await insertResetRow('a-row', 'the-a-link', userId, createdAt);
+		await insertResetRow('b-row', 'the-b-link', userId, createdAt);
+
+		for (const id of order) {
+			await deleteResetLinks(db, userId, {
+				olderThan: id === 'a-row' ? 'the-a-link' : 'the-b-link'
+			});
+		}
+
+		const left = await env.DB.prepare('select id from auth_verification').all<{ id: string }>();
+		expect(left.results).toEqual([{ id: 'b-row' }]);
+	});
+
+	/**
+	 * a completed reset ends every other link the member holds. the stray row is written by hand
+	 * because a later request would have deleted it — it stands for what two requests landing
+	 * together, or a background delete that failed, leave behind.
+	 */
+	it('leaves no other link working once a reset is done', async () => {
+		const userId = await member('priya@example.org');
+		const token = await tokenFor('priya@example.org');
+		await insertResetRow('stray', 'a-link-still-in-a-mailbox', userId, Date.now());
+
+		await resetMemberPassword(auth, { token, newPassword: NEW_PASSWORD });
+
+		expect(
+			await resetMemberPassword(auth, {
+				token: 'a-link-still-in-a-mailbox',
+				newPassword: 'another-long-enough-one'
+			})
+		).toEqual({ ok: false, reason: 'link' });
+		expect(await signsIn('priya@example.org', NEW_PASSWORD)).toBe(true);
+	});
+
+	/**
+	 * better-auth runs `onPasswordReset` after the password is written and before it revokes the
+	 * sessions, so a delete that throws there must not cost the revocation. the trigger refuses
+	 * the delete of one stray row and nothing else, which leaves the consume of the real token
+	 * working.
+	 */
+	it('still ends every session when deleting the other links fails', async () => {
+		const userId = await member('priya@example.org');
+		const before = await sessionOf('priya@example.org', PASSWORD);
+		const token = await tokenFor('priya@example.org');
+		await insertResetRow('stray', 'a-link-still-in-a-mailbox', userId, Date.now());
+		await env.DB.prepare(
+			"create trigger refuse_stray_delete before delete on auth_verification when old.id = 'stray' begin select raise(abort, 'refused'); end"
+		).run();
+
+		try {
+			expect(await resetMemberPassword(auth, { token, newPassword: NEW_PASSWORD })).toEqual({
+				ok: true
+			});
+			expect(await auth.api.getSession({ headers: new Headers({ cookie: before }) })).toBeNull();
+		} finally {
+			await env.DB.prepare('drop trigger refuse_stray_delete').run();
+		}
+	});
+
 	// never minted is the same answer as expired and used, for `redeemInvitation`'s reason.
 	it('refuses a token nobody minted', async () => {
 		await member('priya@example.org');
@@ -249,6 +393,29 @@ describe('resetMemberPassword', () => {
 		expect(
 			await resetMemberPassword(auth, { token: 'not-a-token', newPassword: NEW_PASSWORD })
 		).toEqual({ ok: false, reason: 'link' });
+	});
+
+	/**
+	 * a member who asked for a link and then remembered their password changes it signed in. the
+	 * link still in their mailbox would otherwise overwrite what they just chose.
+	 */
+	it('refuses a link once the member has changed their password signed in', async () => {
+		await member('priya@example.org');
+		const token = await tokenFor('priya@example.org');
+		const cookie = await sessionOf('priya@example.org', PASSWORD);
+
+		expect(
+			await changeMemberPassword(db, auth, {
+				currentPassword: PASSWORD,
+				newPassword: NEW_PASSWORD,
+				headers: new Headers({ origin: ORIGIN, cookie })
+			})
+		).toMatchObject({ ok: true });
+
+		expect(
+			await resetMemberPassword(auth, { token, newPassword: 'another-long-enough-one' })
+		).toEqual({ ok: false, reason: 'link' });
+		expect(await signsIn('priya@example.org', NEW_PASSWORD)).toBe(true);
 	});
 
 	/**

@@ -10,8 +10,7 @@ import { StatusLedger, StatusLine } from '@better-giving/operator/components/sta
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Await, Form, useRevalidator } from 'react-router';
-import { paypalRun } from '../api/client';
+import { Await, Form } from 'react-router';
 import type {
 	AddressRead,
 	DeployedValues,
@@ -58,7 +57,7 @@ import { useKeyRereads } from './key-rereads';
 import { useReseeded } from './reseed';
 import { Said } from './said';
 import { PAYPAL_GROUP, SECRET_GROUPS, isMasked } from './secret-groups';
-import { pollOutlived, runKind, standingRun } from './run-poll';
+import { useRunPoll } from './use-run-poll';
 import type { PressAnswer, PressPhase, PressRefusal } from './stripe-press';
 import {
 	answerLanded,
@@ -156,9 +155,6 @@ const HINT: Partial<Record<PaypalBoxName, ReactNode>> = {
  * the address it was sent to, so a pair it turned down may be the address that is wrong.
  */
 const BOX_FIELDS = PAYPAL_BOX_NAMES.map((name) => PAYPAL_FIELD(name));
-
-/** how often the screen asks how far the run has got. the Stripe screen's interval. */
-const POLL_MS = 2500;
 
 /** the press, named so the card can put the reader back on it when it goes. */
 const SET_UP_PRESS = 'paypal-set-up-press';
@@ -500,17 +496,7 @@ function PaypalKeysForm({
 		| 'payments'
 		| 'recurring'
 	>): ReactNode {
-	/* how far the press has got, asked of the binary rather than of the page, for the Stripe screen's
-	   reason: reading the page again is every round trip on it. */
-	const [polled, setPolled] = useState<PaypalRunRead | null | undefined>(undefined);
-	/* the last thing either reading said: a run that landed is consumed by the reading that observed
-	   it, so the answer after that is `null` and the report would go off the screen under it. */
-	const [remembered, setRemembered] = useState<PaypalRunRead | null>(null);
-	const { answered, live } = standingRun({ run: press.run, polled, remembered });
-	useEffect(() => {
-		if (answered === null) return;
-		setRemembered(answered);
-	}, [answered]);
+	const live = useRunPoll('paypal', press.run, pending === PAYPAL_SETUP_INTENT);
 	const working = live?.kind === 'running';
 	const landed = live?.kind === 'ended' && live.outcome.kind === 'done';
 
@@ -528,37 +514,6 @@ function PaypalKeysForm({
 	const underway = runUnderway(phase, pressAnswer, working);
 	const elsewhere = writingElsewhere(phase, busy);
 
-	useEffect(() => {
-		if (!working) return;
-		let gone = false;
-		const timer = setTimeout(() => {
-			// a read that did not land is a console that has stopped, which the page's error boundary draws.
-			void paypalRun().then((read) => {
-				if (!gone) setPolled(read);
-			});
-		}, POLL_MS);
-		return () => {
-			gone = true;
-			clearTimeout(timer);
-		};
-		// `polled` schedules the next ask: each answer is a new value, so the poll goes on with the run.
-	}, [working, polled]);
-
-	/* the page read again once, when the run stops, so the readings above are of the account this
-	   press just set up. a ref rather than a dependency: the revalidator is a fresh object each render. */
-	const { revalidate } = useRevalidator();
-	const settled = live?.kind === 'ended';
-	const asked = useRef(false);
-	useEffect(() => {
-		if (!settled) {
-			asked.current = false;
-			return;
-		}
-		if (asked.current) return;
-		asked.current = true;
-		void revalidate();
-	}, [settled, revalidate]);
-
 	/* and asked for again, for as long as the deployment's latest reading is still behind the pair
 	   the run stored (./key-rereads.ts). */
 	useKeyRereads(pairStored(live), payments, recurring, (payments, gifts) =>
@@ -572,23 +527,11 @@ function PaypalKeysForm({
 	const [sent, setSent] = useKeptPress<PaypalBoxes>(PAYPAL_SETUP_INTENT);
 	/** whether a press was made from this page, which is what a box-level report of a run is about. */
 	const [pressedHere, setPressedHere] = useState(false);
-	/* and the poll's answer dropped with the next press, or whenever the page's reading moves to a run
-	   the poll cannot speak for (`pollOutlived` in ./run-poll.ts) — otherwise an earlier stopped run
-	   would mask the one a press here or anywhere else starts, and nothing would ask after it again. */
 	useEffect(() => {
 		if (pending !== PAYPAL_SETUP_INTENT) return;
-		setPolled(undefined);
 		setPressedHere(true);
 		setSent(typed.current);
 	}, [pending]);
-	const loaded = runKind(press.run);
-	const seen = useRef(loaded);
-	useEffect(() => {
-		if (!pollOutlived(seen.current, loaded)) return;
-		seen.current = loaded;
-		setPolled(undefined);
-	}, [loaded]);
-
 	/* what the press was turned down for, kept past the revalidations this section sets off itself —
 	   the router drops the answer on each, and the boxes still hold exactly what was turned down. */
 	const [rememberedRefusal, setRememberedRefusal] = useState<PressRefusal | null>(null);

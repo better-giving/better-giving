@@ -1,9 +1,11 @@
 import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
 import { createExecutionContext, env } from 'cloudflare:test';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
 import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { PIN_UNUSABLE } from '$lib/server/auth/pin';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { createDb } from '$lib/server/db/client';
 import { PASSWORD_RESET_FLASH, redirectWithFlash } from '$lib/server/flash';
 import { requestContext } from '../request-context';
@@ -55,11 +57,11 @@ const DEPLOYED = {
 /** a deployment whose `BETTER_AUTH_URL` pin names no address. */
 const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
 
-/** what that deployment throws: the sentence as a 500's data, which the error boundary draws. */
-const PIN_REFUSAL = {
-	data: expect.stringContaining('`BETTER_AUTH_URL` is `localhost:8787`'),
-	init: { status: 500 }
-};
+/**
+ * what that deployment throws: the sentence as a 500's data, which the error boundary draws. the
+ * caller is anonymous, so it names the variable and the fix and never the value.
+ */
+const PIN_REFUSAL = { data: PIN_UNUSABLE, init: { status: 500 } };
 
 /** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
 function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.LoaderArgs {
@@ -79,7 +81,7 @@ function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.Loa
 async function signIn(): Promise<string> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,
@@ -185,10 +187,15 @@ describe('GET /login — a visitor who is already signed in', () => {
 		expect(answer).not.toBeInstanceOf(Response);
 	});
 
-	it('names a pin that names no address, where the operator reads it', async () => {
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
 		await finished();
-
-		await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
 	});
 });
 
@@ -507,11 +514,18 @@ describe('POST /login — what the browser gets back', () => {
 		expect(await sessions()).toBe(0);
 	});
 
-	it('names a pin that names no address, where the operator reads it', async () => {
-		const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
 
-		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(PIN_UNUSABLE);
+			expect(JSON.stringify(answer.data)).not.toContain('localhost:8787');
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
 		expect(await sessions()).toBe(0);
 	});
 
@@ -547,16 +561,17 @@ describe('POST /login — what the browser gets back', () => {
 
 	/**
 	 * and the deployment whose schema is not there, which is what a fresh fork hits: no
-	 * `auth_signing_key` row to sign a cookie with. the answer names the commands that apply
-	 * migrations rather than the row, because that is the fix either way.
+	 * `auth_signing_key` table to sign a cookie with. the caller is anonymous, so the database's
+	 * own words go to the logs and the banner is the one reply every surface gives.
 	 */
-	it('tells a deployment with no schema to apply its migrations', async () => {
-		const unreachable = { ...DEPLOYED, DB: undefined } as unknown as typeof DEPLOYED;
+	it('tells a deployment with no schema to apply its migrations, and logs the cause', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answer = await refused(typed(PASSWORD));
 
-		const answer = await refused(typed(PASSWORD), { deployed: unreachable });
-
-		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('migrations');
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
 	});
 
 	/**
@@ -733,7 +748,7 @@ const MEMBER_PASSWORD = 'a-colleagues-own-password';
 async function makeMember(email: string): Promise<void> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	const auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: PASSWORD },

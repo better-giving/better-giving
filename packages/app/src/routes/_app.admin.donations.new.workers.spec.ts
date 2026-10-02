@@ -122,7 +122,7 @@ beforeEach(async () => {
 /** a real session, as the `Cookie` header a browser would send back. */
 async function signIn(): Promise<string> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,

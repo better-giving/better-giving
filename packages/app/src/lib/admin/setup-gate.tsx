@@ -2,7 +2,9 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
-import { Form, useNavigation } from 'react-router';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
+import { Form, useLocation, useNavigation } from 'react-router';
 import type { SetupLine } from '$lib/server/config/readiness';
 
 /* the whole of what this deployment serves behind the login while any of the five is unfinished.
@@ -23,6 +25,30 @@ import type { SetupLine } from '$lib/server/config/readiness';
 export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 	const navigation = useNavigation();
 	const rereading = navigation.state !== 'idle';
+	const { pathname, search } = useLocation();
+
+	// a re-read that moved a line is said by the ledger, whose words change under it. one that moved
+	// nothing changes no words anywhere, so it is said beside the press: the usual answer while a job
+	// is still open on the console, and silence there reads as a press nobody heard. only this
+	// form's GET is a press; any other navigation says nothing here.
+	const pressed =
+		navigation.state === 'loading' &&
+		navigation.formMethod === 'GET' &&
+		navigation.formAction === pathname;
+	const setOutFrom = useRef<readonly SetupLine[] | null>(null);
+	const [unchanged, setUnchanged] = useState(false);
+	useEffect(() => {
+		if (rereading) {
+			if (pressed) setOutFrom.current ??= lines;
+			else setOutFrom.current = null;
+			setUnchanged(false);
+			return;
+		}
+		const from = setOutFrom.current;
+		if (from === null) return;
+		setOutFrom.current = null;
+		setUnchanged(sameLines(from, lines));
+	}, [rereading, pressed, lines]);
 
 	return (
 		<PanelRoute>
@@ -52,14 +78,63 @@ export function SetupGate({ lines }: { lines: readonly SetupLine[] }) {
 				</StatusLedger>
 			</div>
 
-			{/* a GET and no action: this re-runs the read and writes nothing, which is the whole of
-			    what the press is for. a deploy from the console restarts the worker, so what the
-			    operator needs on coming back to this tab is exactly one re-read. */}
-			<Form method="get" className="adm-actions">
-				<Button type="submit" variant="primary" disabled={rereading} aria-busy={rereading}>
+			{/* a GET: this re-runs the read and writes nothing, which is the whole of what the press
+			    is for. a deploy from the console restarts the worker, so what the operator needs on
+			    coming back to this tab is exactly one re-read.
+
+			    the read is of the address they asked for, which the gate is drawn over in place of its
+			    screen (../../routes/_app.tsx). the action is named because the form is drawn from that
+			    pathless layout, which resolves a missing one to `/`; and the search is carried as
+			    fields because a GET form's own fields replace whatever search its action names. */}
+			<Form method="get" action={pathname} className="adm-actions">
+				{[...new URLSearchParams(search)].map(([name, value], at) => (
+					<input key={`${at}:${name}`} type="hidden" name={name} value={value} />
+				))}
+				{/* held with `aria-disabled` rather than `disabled` while the read is in flight: a
+				    disabled button gives up focus, which drops the operator on the page body at the
+				    moment the answer arrives beside it. the press is closed in the handler instead. */}
+				<Button
+					type="submit"
+					variant="primary"
+					aria-disabled={rereading || undefined}
+					aria-busy={rereading}
+					onClick={(event: MouseEvent<HTMLButtonElement>) => {
+						if (rereading) event.preventDefault();
+					}}
+				>
 					Check again
 				</Button>
+				{/* mounted empty, so the words arriving are announced. */}
+				<span role="status">
+					{unchanged ? (
+						<StatusWord register="momentary" neutral>
+							Nothing has changed yet.
+						</StatusWord>
+					) : null}
+				</span>
 			</Form>
 		</PanelRoute>
+	);
+}
+
+/**
+ * whether a re-read answered with the very lines it set out from.
+ *
+ * every key of a line is compared, so a field `SetupLine` grows later is counted without this
+ * changing with it. `Object.is` on each value, which is exact for the strings and `null`s a
+ * line holds today; a value that is not one would read as moved on every re-read, which says
+ * nothing beside the press rather than a "nothing has changed" that is wrong.
+ */
+function sameLines(a: readonly SetupLine[], b: readonly SetupLine[]): boolean {
+	return (
+		a.length === b.length &&
+		a.every((line, at) => {
+			const other = b[at];
+			if (other === undefined) return false;
+			const mine: Readonly<Record<string, unknown>> = line;
+			const theirs: Readonly<Record<string, unknown>> = other;
+			const keys = new Set([...Object.keys(mine), ...Object.keys(theirs)]);
+			return [...keys].every((key) => Object.is(mine[key], theirs[key]));
+		})
 	);
 }

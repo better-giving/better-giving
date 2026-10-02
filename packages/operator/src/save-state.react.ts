@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
-import { confirming, drawn, expireAfter, type SaveFacts, type SaveState } from './save-state';
+import {
+	armedAfter,
+	confirming,
+	drawn,
+	expireAfter,
+	type SaveFacts,
+	type SaveState
+} from './save-state';
 
-// the react binding of ./save-state.ts: a hook that keeps the one flag the four seconds write and
-// nothing else. every rule the button draws by is in that module and none of them is restated
-// here.
+// the react binding of ./save-state.ts: a hook that keeps two pieces of state and nothing else —
+// the flag the four seconds write, and what the render before this one was reporting and whether a
+// confirmation was armed on it, which `armedAfter` reads to decide the next. every rule the button
+// draws by is in that module and none of them is restated here.
 //
 // both facts arrive from the caller, `changed` included — this file is the only binding and names
 // no form layer of its own. what the second rule in ./save-state.ts costs is stated there: a group
@@ -22,12 +30,20 @@ export type { SaveFacts, SaveState };
 export function useSaveState(facts: SaveFacts): SaveState {
 	const [expired, setExpired] = useState(false);
 
-	// the trio's own answer as the dependency, so the run that arms a timer is the run where the
-	// button started drawing the tick — a second save into the same group re-arms rather than
-	// inheriting the first one's four seconds, and a slow round trip does not spend the window
-	// while the button still says `Saving`.
+	// whether a confirmation is armed is a fact about the render before as well as this one, so it
+	// is adjusted while rendering rather than in an effect: an effect would draw one frame of the
+	// tick over an undone edit before taking it off, and that frame is what the region announces.
 	const reporting = confirming(facts);
-	useEffect(() => expireAfter(reporting, setExpired), [reporting]);
+	const [seen, setSeen] = useState({ reporting, armed: true });
+	const armed = armedAfter(seen.armed, seen.reporting, facts);
+	if (seen.reporting !== reporting || seen.armed !== armed) setSeen({ reporting, armed });
 
-	return drawn(facts, expired);
+	// whether the tick is drawn as the dependency, so the run that arms a timer is the run where the
+	// button started drawing it — a second save into the same group re-arms rather than inheriting
+	// the first one's four seconds, and a slow round trip does not spend the window while the
+	// button still says `Saving`.
+	const shown = reporting && armed;
+	useEffect(() => expireAfter(shown, setExpired), [shown]);
+
+	return drawn(facts, armed, expired);
 }

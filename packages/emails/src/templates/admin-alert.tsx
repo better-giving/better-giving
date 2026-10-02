@@ -24,7 +24,7 @@ import type { EmailTemplate } from '../template';
 //
 // it goes to `org_profile.notification_email`, which is not a from address. that column is
 // documented as operational mail only and explicitly not donor-facing; the From address is
-// `MAIL_FROM`, a deploy-time secret, because it is authorised by the same third party that
+// `MAIL_FROM`, a deploy-time var, because it is authorised by the same third party that
 // issued the SMTP credential. the two are never interchangeable.
 
 /** one labelled value — a donation id, an event id, an HTTP status. */

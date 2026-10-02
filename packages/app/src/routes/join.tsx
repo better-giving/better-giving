@@ -14,7 +14,7 @@ import { operatorLinks } from '$lib/admin/operator-links';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
 import { createAuth, readAuthEnv, readInvitation, redeemInvitation } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { invalid, parseForm } from '$lib/server/conform';
 import { database, platform } from '../context';
@@ -117,16 +117,6 @@ const UNAVAILABLE =
 	'what you typed. Ask whoever invited you to check the console (`better-giving start`); the ' +
 	'exact cause is in the deployment’s logs, which the console does not read.';
 
-/**
- * what a deployment whose schema is not there says.
- *
- * no `auth_signing_key` row to sign a cookie with, which is what a fresh fork hits. the sentence
- * is written for the colleague and points at the person who can fix it, because they cannot.
- */
-const NOT_MIGRATED =
-	'Your password could not be set: this deployment’s database has not been set up. Ask whoever ' +
-	'invited you to open the console (`better-giving start`) and update the deployment.';
-
 export const links = operatorLinks;
 
 export function meta(): Route.MetaDescriptors {
@@ -184,8 +174,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
-		console.error('an invitation could not be redeemed — no signing key:', signingKey.message);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		console.error('an invitation could not be redeemed — no signing key:', signingKey.cause);
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and

@@ -617,6 +617,66 @@ it('moves the total and the control that spends it when the fee decision changes
 	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
 });
 
+// the figure is an `<output>`, a polite region by its tag alone, so a selector reading `role` off the
+// attribute never finds it: what is asserted is the attribute that overrides the tag. it is off on
+// every commit, and the card's one region is where a total that moved is said.
+it('says a fee decision once, on the card’s region and never on the figure’s own', async () => {
+	const { root } = await card();
+	walkToGive(root);
+	const total = one(root, 'output.figure');
+	expect(total.getAttribute('aria-live')).toBe('off');
+
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+});
+
+/** the same deployment offering a bank debit beside the card, which the fee rules price apart. */
+const WITH_BANK: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ach'] };
+
+it('says a total a rail pick moved once, on the card’s region', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	const total = one(root, 'output.figure');
+	const onCard = total.textContent;
+
+	payment.pick('us_bank_account');
+
+	expect(total.textContent).not.toBe(onCard);
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+});
+
+it('says nothing about the total when a rail pick leaves it where it was', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	const total = one(root, 'output.figure').textContent;
+
+	payment.pick('card');
+
+	expect(one(root, 'output.figure').textContent).toBe(total);
+	expect(said(root)).toBe('');
+});
+
+// a refused press has been heard, and the box keeps the refusal as its description; a total that
+// moved after it is news the region would otherwise never carry, because the figure is silent.
+it('says a total moved under a standing refusal on the card’s region', async () => {
+	const { root } = await card();
+	walkToGive(root);
+	press(one(root, 'button[part~="submit"]'));
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+	const total = one(root, 'output.figure');
+
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+	expect(one(root, '#payment-problem').hidden).toBe(false);
+});
+
 it('refuses a press with no rail, and says so on the box and on the region', async () => {
 	const { root } = await card();
 	walkToGive(root);
@@ -1012,6 +1072,65 @@ describe('where the caret goes when one takeover replaces another', () => {
 		expect(heading.textContent).toBe(copy.EXPIRED_HEADING);
 		expect(document.activeElement).toBe(heading);
 		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
+	});
+
+	// back to start remounts the card, which takes the pressed control with it; the new card's first
+	// step is where the caret was, so it lands on that step's heading rather than on the page body.
+	it('lands on the first step’s heading when Back to start rebuilds the card under the caret', async () => {
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{ confirm: async () => ({ paymentIntent: { status: 'succeeded' } }) }
+		);
+		expect(takeoverHeading(root).textContent).toBe(copy.SUCCESS_HEADING);
+		const back = every(screen(root), 'button').find(
+			(button) => button.textContent === copy.BACK_TO_START
+		);
+		if (back === undefined) throw new Error('the ending drew no way back to the start');
+
+		await pressHeld(back);
+
+		const heading = one(screen(root), 'h2');
+		expect(heading.textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(heading);
+	});
+
+	// a click that leaves the caret on the host page — Safari on macOS focuses no button on a click —
+	// is a restart the caret was never in, so the rebuilt card leaves it where it is.
+	it('leaves the caret on the host page when Back to start is pressed from outside the card', async () => {
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{ confirm: async () => ({ paymentIntent: { status: 'succeeded' } }) }
+		);
+		const back = every(screen(root), 'button').find(
+			(button) => button.textContent === copy.BACK_TO_START
+		);
+		if (back === undefined) throw new Error('the ending drew no way back to the start');
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+
+		press(back);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(elsewhere);
+	});
+
+	// the card's own first paint is no screen change: a donor tabbing through the host page keeps
+	// their place while the card loads.
+	it('takes no focus on a first load with the caret elsewhere on the page', async () => {
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+
+		await card();
+
+		expect(document.activeElement).toBe(elsewhere);
 	});
 
 	// a resume boots onto a takeover and is replaced by its outcome a moment later, with the caret

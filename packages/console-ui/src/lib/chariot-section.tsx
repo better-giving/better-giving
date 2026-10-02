@@ -14,8 +14,7 @@ import {
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Await, Form, Link, useRevalidator } from 'react-router';
-import { chariotRun } from '../api/client';
+import { Await, Form, Link } from 'react-router';
 import type {
 	AddressRead,
 	ChariotFacts,
@@ -52,7 +51,7 @@ import { REACHED_CHARIOT, pressStopped } from './press-stopped';
 import { configuredStanding } from './processor-payments';
 import { keysTrouble, noAnswer } from './processor-screen';
 import { useReseeded } from './reseed';
-import { pollOutlived, runKind, standingRun } from './run-poll';
+import { useRunPoll } from './use-run-poll';
 import { Said } from './said';
 import { CHARIOT_GROUP, SECRET_GROUPS, isMasked } from './secret-groups';
 import type { PressAnswer, PressPhase, PressRefusal } from './stripe-press';
@@ -130,9 +129,6 @@ const HINT: Partial<Record<ChariotBox, ReactNode>> = {
 
 /** the two boxes' names, which a refusal about the key at this address is about together. */
 const CHARIOT_BOX_FIELDS = CHARIOT_BOXES.map((box) => CHARIOT_FIELD(box));
-
-/** how often the screen asks how far the run has got. the Stripe screen's interval. */
-const POLL_MS = 2500;
 
 /** the press, named so the card can put the reader back on it when it goes. */
 const SET_UP_PRESS = 'chariot-set-up-press';
@@ -352,15 +348,7 @@ function ChariotKeysForm({
 	ChariotSectionProps,
 	'freed' | 'workerName' | 'accountName' | 'busy' | 'pending' | 'revalidating'
 >): ReactNode {
-	/* how far the press has got, asked of the binary rather than of the page, and the last thing
-	   either reading said — ./paypal-section.tsx argues both. */
-	const [polled, setPolled] = useState<ChariotRunRead | null | undefined>(undefined);
-	const [remembered, setRemembered] = useState<ChariotRunRead | null>(null);
-	const { answered, live } = standingRun({ run: press.run, polled, remembered });
-	useEffect(() => {
-		if (answered === null) return;
-		setRemembered(answered);
-	}, [answered]);
+	const live = useRunPoll('chariot', press.run, pending === CHARIOT_SETUP_INTENT);
 	const working = live?.kind === 'running';
 	const landed = live?.kind === 'ended' && live.outcome.kind === 'done';
 
@@ -376,37 +364,6 @@ function ChariotKeysForm({
 	const underway = runUnderway(phase, pressAnswer, working);
 	const elsewhere = writingElsewhere(phase, busy);
 
-	useEffect(() => {
-		if (!working) return;
-		let gone = false;
-		const timer = setTimeout(() => {
-			// a read that did not land is a console that has stopped, which the page's error boundary draws.
-			void chariotRun().then((read) => {
-				if (!gone) setPolled(read);
-			});
-		}, POLL_MS);
-		return () => {
-			gone = true;
-			clearTimeout(timer);
-		};
-		// `polled` schedules the next ask: each answer is a new value, so the poll goes on with the run.
-	}, [working, polled]);
-
-	/* the page read again once, when the run stops, so the reading above is of what this press set up.
-	   a ref rather than a dependency: the revalidator is a fresh object each render. */
-	const { revalidate } = useRevalidator();
-	const settled = live?.kind === 'ended';
-	const asked = useRef(false);
-	useEffect(() => {
-		if (!settled) {
-			asked.current = false;
-			return;
-		}
-		if (asked.current) return;
-		asked.current = true;
-		void revalidate();
-	}, [settled, revalidate]);
-
 	/* the boxes as they stood at the submit, kept once the press is in flight (`boxesStanding` in
 	   ./chariot-setup.ts). they outlive the page (./kept-press.ts). */
 	const typed = useRef<ChariotBoxes | null>(null);
@@ -414,18 +371,9 @@ function ChariotKeysForm({
 	const [pressedHere, setPressedHere] = useState(false);
 	useEffect(() => {
 		if (pending !== CHARIOT_SETUP_INTENT) return;
-		setPolled(undefined);
 		setPressedHere(true);
 		setSent(typed.current);
 	}, [pending]);
-	const loaded = runKind(press.run);
-	const seen = useRef(loaded);
-	useEffect(() => {
-		if (!pollOutlived(seen.current, loaded)) return;
-		seen.current = loaded;
-		setPolled(undefined);
-	}, [loaded]);
-
 	const [rememberedRefusal, setRememberedRefusal] = useState<PressRefusal | null>(null);
 	useEffect(() => {
 		if (!answerLanded(phase)) return;

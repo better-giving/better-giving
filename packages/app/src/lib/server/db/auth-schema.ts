@@ -64,7 +64,7 @@ const at = (name: string) => integer(name, { mode: 'timestamp_ms' });
  *
  * the deployer's row is the singleton at the fixed `STAFF_USER_ID` in
  * `src/lib/server/auth/staff-plugin.ts`, and it holds no credential in the
- * database at all — `ADMIN_PASSWORD` is a deploy-time secret compared in constant
+ * database at all — `ADMIN_PASSWORD` is a deploy-time var compared in constant
  * time, so that row has no `auth_account` beside it and nothing here or there
  * stores a hash of it.
  *
@@ -140,7 +140,7 @@ export const authSession = sqliteTable(
  * the two on every `pnpm test`, and a column left out is an insert that fails the day a version
  * starts writing it.
  *
- * the deployer has no row here. `ADMIN_PASSWORD` is a deploy-time secret and nothing hashes it —
+ * the deployer has no row here. `ADMIN_PASSWORD` is a deploy-time var and nothing hashes it —
  * see `src/lib/server/auth/credential.ts`, and the note at the top of this file for why a member's
  * password is hashed when the deployer's cannot be.
  *
@@ -192,7 +192,9 @@ export const authAccount = sqliteTable(
  * route mounts better-auth's router (`src/lib/server/auth/index.ts`, `src/routes.spec.ts`). one
  * row is one outstanding reset link — `identifier` is `reset-password:<token>` carrying the token
  * exactly as it was mailed, `value` is the member's `auth_user.id`, and the row is deleted when
- * the link is used. the token is stored as sent rather than hashed like
+ * the link is used, when a newer link is requested, when any of the member's resets lands, and when
+ * the member changes the password signed in (`src/lib/server/auth/reset-links.ts`). the token is
+ * stored as sent rather than hashed like
  * `auth_member_invitation.token_hash` below, because better-auth looks the row up by the
  * identifier it was handed and this table is its shape, not ours.
  *

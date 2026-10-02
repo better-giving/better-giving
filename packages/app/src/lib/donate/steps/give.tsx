@@ -241,18 +241,16 @@ export function Receipt({ reading, onFee, feeRef }: ReceiptProps) {
 			<div className="row total">
 				<span className="row-label">{reading.totalLabel}</span>
 				{/*
-				 * an `<output>`, and the only element on the card that is one: it carries `role="status"`
-				 * implicitly, which is the whole reason. the fee decision rewrites this figure without
-				 * changing the screen and without moving the caret, and the box reports its own new
-				 * setting while the total beside it is the half nobody is told.
-				 *
-				 * one screen turns it off, and it is the correction: the announcer states both figures
-				 * there, so the region would say the new total a second time.
+				 * an `<output>`, for what it is — the result of the decisions above it — and never a
+				 * second channel: its implicit `role="status"` is turned off on every commit. a live
+				 * attribute flipped in the same commit as the figure is read by nobody reliably, and the
+				 * card says out loud on one region, decided in one place (`words` in ../card.tsx), which
+				 * is where a fee decision, a rail pick and the correction all say the total.
 				 */}
 				<output
 					className="figure"
 					data-changed={reading.corrected ? '' : undefined}
-					aria-live={reading.corrected ? 'off' : undefined}
+					aria-live="off"
 				>
 					{reading.totalFigure}
 				</output>

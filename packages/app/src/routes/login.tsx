@@ -27,6 +27,8 @@ import {
 	signInMember,
 	STAFF_USER_EMAIL
 } from '$lib/server/auth';
+import { PIN_UNUSABLE } from '$lib/server/auth/pin';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, takeFlash } from '$lib/server/flash';
 import { SetupGate } from '$lib/admin/setup-gate';
@@ -131,12 +133,14 @@ const WRONG_CREDENTIAL =
 	'That username or email address and password do not match a member of this organisation.';
 
 /**
- * what every failure but the 401 says.
+ * what a failure the auth layer answered says, every one but the 401. a signing key that cannot be
+ * read, or a database that throws before the auth layer answers, says `SIGNING_KEY_UNREADABLE`
+ * ($lib/server/auth/signing-key.ts) instead.
  *
  * the messages the auth layer produces are about the deployment — among them the 500 for an
- * unconfigured staff credential, whose message states the configured `ADMIN_PASSWORD`'s length.
- * that is written for an agent reading a status body and belongs on the surfaces an operator
- * controls: the console says whether that secret is set and is where it is set again, and the
+ * unconfigured staff credential, whose message says what is wrong with `ADMIN_PASSWORD` and where
+ * it is set. that is written for an agent reading a status body and belongs on the surfaces an
+ * operator controls: the console says whether that var is set and is where it is set again, and the
  * running deployment's logs carry the withheld detail. an anonymous POST to this form must not
  * read it back, so what it gets is the pointer rather than the answer.
  *
@@ -149,20 +153,6 @@ const UNAVAILABLE =
 	'Sign-in is unavailable. The console (`better-giving start`) says whether this deployment’s ' +
 	'sign-in password is set. The exact cause is in the deployment’s logs, which the console does ' +
 	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
-
-/**
- * what a deployment whose schema is not there says.
- *
- * two failures reach it and both are the same fix: no `auth_signing_key` row to sign a cookie
- * with, and a throw out of the staff upsert on a database with no `auth_user` table — the one a
- * fresh fork actually hits.
- */
-const NOT_MIGRATED =
-	'Sign-in is unavailable. If this deployment is new, check that migrations have been ' +
-	'applied to its database: the console (`better-giving start`) applies them to the deployed D1 ' +
-	'when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies ' +
-	'them to a local one. Then read this deployment’s logs (the Cloudflare dashboard, or ' +
-	'`pnpm run logs` from a checkout).';
 
 export const links = operatorLinks;
 
@@ -307,11 +297,15 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// has — so both arms say it rather than naming a row an operator would then go looking for.
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
-		console.error('staff sign-in has no signing key:', signingKey.message);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		console.error('staff sign-in has no signing key:', signingKey.cause);
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
+	// the pin's own message quotes its value, and this caller is anonymous ($lib/server/auth/pin.ts).
 	const pin = readPin(authEnv);
-	if (!pin.ok) return invalid(500, submission.reject({ formErrors: [pin.message] }));
+	if (!pin.ok) {
+		console.error('staff sign-in has no usable pin:', pin.message);
+		return invalid(500, submission.reject({ formErrors: [PIN_UNUSABLE] }));
+	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
 	// the cookie `Secure` policy from it, so a deployment answers correctly on workers.dev and on a
@@ -380,7 +374,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		// fork hits is `no such table: auth_user` from the staff upsert — same cause and same fix
 		// as the message in $lib/server/auth/staff-plugin.ts, which is otherwise unreachable.
 		console.error('staff sign-in failed before the auth layer could respond:', e);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
 
 	return signedInAt(url, cookies);
@@ -512,9 +506,9 @@ function SignInScreen({
 					    does not, because ./base.css states a link's own.
 
 					    it is not offered to the deployer and is not withheld from them either —
-					    their password is a deploy-time secret and `requestPasswordReset` refuses
+					    their password is a deploy-time var and `requestPasswordReset` refuses
 					    their identifier by name, so what they get from /forgot is the same sentence
-					    everybody gets. the console is where that secret is set. */}
+					    everybody gets. the console is where that var is set. */}
 					<p className="adm-caption">
 						<Link to="/forgot">Forgot your password?</Link>
 					</p>

@@ -1,3 +1,4 @@
+import { opening } from '@better-giving/operator/progress-bar';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, Link } from 'react-router';
@@ -5,6 +6,9 @@ import { expect, it, onTestFinished } from 'vitest';
 import ProtectedLayout, { clientMiddleware } from './_app';
 import { handle as formHandle } from './_app.admin.forms.$id';
 
+// what the layout frames: the panel's top strip over each screen, the rail each viewer gets, the
+// bar over a move, and the words the frame says over one (the last, below).
+//
 // what the panel's top strip holds over each screen the layout frames.
 //
 // the strip is the layout's, and it is drawn only for a trail: the deepest matched route's `handle`
@@ -254,4 +258,71 @@ it('draws no bar over a reading of the page already drawn', async () => {
 	await follow(root, 'go');
 
 	expect(bar(root)).toBeNull();
+});
+
+// what the frame says out loud over a move to another screen.
+//
+// the words are `MoveStatus`'s (packages/operator/src/components/status/ProgressBar.jsx), whose own
+// spec holds that one region keeps its node while its words change. what only this layout can get
+// wrong is the mount: that the region stands before the move, that the line drawn over the move
+// brings no second one, and that the label it reads is the one the pressed link carried. so the
+// layout is mounted under a stub whose destination's reading has not landed, which is the move in
+// flight rather than a stand-in for it.
+
+/** the frame standing on the dashboard's first screen, with a link to a screen still being read. */
+async function frameOverReading() {
+	let land: (value: null) => void = () => {};
+	const reading = new Promise<null>((resolve) => {
+		land = resolve;
+	});
+	const Stub = createRoutesStub([
+		{
+			id: 'routes/_app',
+			Component: () =>
+				createElement(ProtectedLayout as never, {
+					loaderData: { shape: 'ready', orgName: 'Riverbank Trust', deployer: true },
+					params: {},
+					matches: []
+				}),
+			children: [
+				{
+					path: '/admin',
+					Component: () => (
+						<Link to="/admin/donations" state={opening('Opening Donations')}>
+							to donations
+						</Link>
+					)
+				},
+				{ path: '/admin/donations', loader: () => reading, Component: () => <p>arrived</p> }
+			]
+		}
+	]);
+	return { root: await mount(<Stub initialEntries={['/admin']} />), land: () => land(null) };
+}
+
+function regions(root: HTMLElement): HTMLElement[] {
+	return [...root.querySelectorAll<HTMLElement>('[role="status"]')];
+}
+
+it('says the opening label on one region over a move, and empties it when the move ends', async () => {
+	const { root, land } = await frameOverReading();
+	const [standing, ...others] = regions(root);
+	expect(others).toHaveLength(0);
+	expect(standing?.textContent).toBe('');
+
+	await follow(root, 'to donations');
+
+	// the line over the move is drawn, and it brings no region of its own.
+	expect(bar(root)).not.toBe(null);
+	expect(regions(root)).toEqual([standing]);
+	expect(standing?.textContent).toBe('Opening Donations');
+
+	await act(async () => {
+		land();
+	});
+
+	expect(root.textContent).toContain('arrived');
+	expect(bar(root)).toBe(null);
+	expect(regions(root)).toEqual([standing]);
+	expect(standing?.textContent).toBe('');
 });

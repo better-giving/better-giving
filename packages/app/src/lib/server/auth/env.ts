@@ -82,8 +82,9 @@ export type PinReading =
  * path on it is not part of it. a pin that names no http(s) origin is refused, naming the value:
  * `localhost:8787` parses as a scheme called `localhost` whose `.origin` is the string "null", and
  * better-auth refuses such a `baseURL` itself — reading it off the Worker's `process.env` when it
- * is passed none — so no caller may read it as unset. the message marks names with backticks for
- * the screens that draw it (src/root.tsx, the console's QuickBooks section).
+ * is passed none — so no caller may read it as unset. the message quotes the value and marks names
+ * with backticks for the console's QuickBooks section, which draws it; a caller who may be anonymous
+ * is answered `PIN_UNUSABLE` (./pin.ts) and the message is logged.
  */
 export function readPin(env: AuthEnv): PinReading {
 	const pinned = env.BETTER_AUTH_URL?.trim();

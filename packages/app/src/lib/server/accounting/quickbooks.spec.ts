@@ -983,18 +983,7 @@ describe('what a refusal costs the queued entry', () => {
 		{ status: 503, json: {}, reason: 'provider_error', retryable: true },
 		{
 			status: 400,
-			json: {
-				Fault: {
-					type: 'ValidationFault',
-					Error: [
-						{
-							Message: 'Invalid Reference Id',
-							Detail: 'Account element id 79 not found',
-							code: '610'
-						}
-					]
-				}
-			},
+			json: { Fault: { type: 'ValidationFault' } },
 			reason: 'invalid_record',
 			retryable: false
 		}
@@ -1038,22 +1027,73 @@ describe('what a refusal costs the queued entry', () => {
 		expect(result).not.toHaveProperty('companyId');
 	});
 
-	it('reports a fault Intuit named, so the console can show why', async () => {
-		servingCompany((statement) =>
+	it('names no donor when both of the names their customer could take are held already', async () => {
+		servingCompany((_statement, path) =>
+			path.endsWith('/customer')
+				? {
+						status: 400,
+						json: {
+							Fault: {
+								type: 'ValidationFault',
+								Error: [{ Message: 'Duplicate Name Exists Error', code: '6240' }]
+							}
+						}
+					}
+				: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'invalid_record', retryable: false });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('(donor)');
+		expect(detail).not.toContain('Lovelace');
+		expect(detail).not.toContain('ada@example.org');
+	});
+
+	it('reports a fault by its type and message with the values this request sent struck out', async () => {
+		servingCompany((_statement, path) =>
+			path.endsWith('/customer')
+				? {
+						status: 400,
+						json: {
+							Fault: {
+								type: 'ValidationFault',
+								Error: [
+									{
+										Message: 'Customer Ada Lovelace <ada@example.org> could not be saved',
+										Detail: 'Ada Lovelace'
+									}
+								]
+							}
+						}
+					}
+				: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'invalid_record' });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('could not be saved');
+		expect(detail).toContain('(ValidationFault)');
+		expect(detail).not.toContain('Lovelace');
+		expect(detail).not.toContain('ada@example.org');
+	});
+
+	it('strikes the donor’s name alone out of a refused journal entry’s message', async () => {
+		servingCompany((statement, path) =>
 			statement.startsWith('select * from Customer')
 				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
-				: statement === ''
+				: path.endsWith('/journalentry')
 					? {
 							status: 400,
 							json: {
 								Fault: {
-									Error: [
-										{
-											Message: 'Invalid Reference Id',
-											Detail: 'Account element id 79 not found',
-											code: '610'
-										}
-									]
+									type: 'ValidationFault',
+									Error: [{ Message: 'Line 1 names Ada Lovelace, who cannot be posted to' }]
 								}
 							}
 						}
@@ -1063,9 +1103,36 @@ describe('what a refusal costs the queued entry', () => {
 
 		const result = await provider.sendGift(GIFT, 'first', REVISION);
 
-		expect(result).toMatchObject({
-			detail: expect.stringContaining('Account element id 79 not found')
-		});
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('who cannot be posted to');
+		expect(detail).not.toContain('Lovelace');
+	});
+
+	it('strikes the values a refused lookup asked for out of its message', async () => {
+		servingCompany((statement) =>
+			statement.startsWith('select * from Customer')
+				? {
+						status: 400,
+						json: {
+							Fault: {
+								type: 'QueryParserError',
+								Error: [{ Message: "Error parsing query near 'Bridget O'Hara'" }]
+							}
+						}
+					}
+				: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(
+			{ ...GIFT, donor: { displayName: "Bridget O'Hara", email: null } },
+			'first',
+			REVISION
+		);
+
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('Error parsing query near');
+		expect(detail).not.toContain('Hara');
 	});
 
 	it('stops on a 403 with the permission it lacks, which connecting again as the same user does not give', async () => {

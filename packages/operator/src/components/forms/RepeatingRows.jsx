@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Button } from '../controls/Button.jsx';
 import { Field } from './Field.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
@@ -149,7 +150,14 @@ import { FieldMessage } from './FieldMessage.jsx';
 
    a row carrying no sentence of its own under a group that has one is drawn refused by it, because
    either row fixes the group and none of them is the wrong one — the same rule ./Field.jsx states
-   about a pair of boxes marked from outside. */
+   about a pair of boxes marked from outside.
+
+   where focus lands after either press is the group's, because the group is what places them.
+   a Remove stands inside the row it drops, so it goes with it and leaves focus on the page itself:
+   focus goes to the box above, or the one that took the row's place when it was the first, or Add
+   when no row is left. an Add puts focus into the box it added. the press only records where focus
+   is owed, and the move is made on the render whose rows changed — a press the form turned down
+   changes no row and moves nothing. */
 /** @param {RepeatingRowsProps} props */
 export function RepeatingRows({
 	id,
@@ -169,6 +177,49 @@ export function RepeatingRows({
 }) {
 	const hintId = hint ? `${id}-hint` : null;
 	const groupErrorId = error ? `${id}-err` : null;
+
+	const addRow = useRef(/** @type {HTMLDivElement | null} */ (null));
+	/** @type {import('react').RefObject<{ kind: 'add' | 'remove', at: number, had: readonly string[] } | null>} */
+	const owed = useRef(null);
+	const identities = rows.map((row) => row.key ?? row.id);
+
+	/** records where focus is owed after a press, against the rows it was pressed over. */
+	const owe = (/** @type {'add' | 'remove'} */ kind, /** @type {number} */ at) => {
+		const press = { kind, at, had: identities };
+		owed.current = press;
+		/* a press the form turned down commits nothing, so nothing would clear it — and a row that
+		   arrived later by some other way would be taken for its answer. a press the form applies
+		   commits inside the event that made it, ahead of this. */
+		setTimeout(() => {
+			if (owed.current === press) owed.current = null;
+		}, 0);
+	};
+
+	/* run on every commit, and spent by the first one after the press whether or not it moves
+	   anything: the move is made only where that commit's rows differ from the ones the press was
+	   made over, and only while focus is where the press left it — on the page itself or still on
+	   Add — so an operator who has moved on is not pulled back. */
+	useEffect(() => {
+		const press = owed.current;
+		if (press === null) return;
+		owed.current = null;
+		if (press.had.join('\n') === identities.join('\n')) return;
+		const addPress = addRow.current?.querySelector('button') ?? null;
+		const at = document.activeElement;
+		if (at !== null && at !== document.body && at !== addPress) return;
+		/** @param {number} place */
+		const box = (place) => {
+			const row = rows[place];
+			return row === undefined ? null : document.getElementById(row.id);
+		};
+		if (press.kind === 'add') {
+			const added = rows.findIndex((row) => !press.had.includes(row.key ?? row.id));
+			if (added !== -1) box(added)?.focus();
+			return;
+		}
+		(rows.length === 0 ? addPress : box(Math.max(press.at - 1, 0)))?.focus();
+	});
+
 	return (
 		<fieldset className="adm-fieldset">
 			<legend className={legendHidden ? 'adm-vh' : 'adm-fieldset__legend'}>{legend}</legend>
@@ -243,14 +294,28 @@ export function RepeatingRows({
 								disabled={disabled}
 								aria-label={`Remove ${legend} ${i + 1}`}
 								{...remove}
+								onClick={(event) => {
+									remove.onClick?.(event);
+									if (!event.defaultPrevented) owe('remove', i);
+								}}
 							>
 								Remove
 							</Button>
 						)}
 					</div>
 				))}
-				<div>
-					<Button size="sm" mark="plus" type="submit" disabled={disabled} {...add}>
+				<div ref={addRow}>
+					<Button
+						size="sm"
+						mark="plus"
+						type="submit"
+						disabled={disabled}
+						{...add}
+						onClick={(event) => {
+							add.onClick?.(event);
+							if (!event.defaultPrevented) owe('add', rows.length);
+						}}
+					>
 						{addLabel}
 					</Button>
 				</div>

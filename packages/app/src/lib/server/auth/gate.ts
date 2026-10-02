@@ -4,7 +4,7 @@ import { readAuthEnv } from './env';
 import { createAuth } from './index';
 import { LOGIN_PATH, NEXT_PARAM } from './next';
 import { requirePin } from './pin';
-import { resolveAuthSecret } from './signing-key';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
 
 /**
  * what react router hands a server `middleware`, taken off the framework's own type rather than
@@ -57,9 +57,11 @@ export async function staffGate(
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
 		// 500 rather than a redirect to the login: nothing the caller sent is wrong, and a
-		// deployment that cannot sign a cookie cannot sign one at the login either. the message
-		// names the table and the command that mints the row.
-		throw data(signingKey.message, { status: 500 });
+		// deployment that cannot sign a cookie cannot sign one at the login either. the key is read
+		// before any session, so the caller is as likely anonymous as staff: the cause, which can
+		// quote the database's own error, goes to the logs, and the response is the shared reply.
+		console.error('the dashboard has no signing key:', signingKey.cause);
+		throw data(SIGNING_KEY_UNREADABLE, { status: 500 });
 	}
 	// the same 500 for the same reason, and before `createAuth`, which throws a bare error on it.
 	requirePin(authEnv);
