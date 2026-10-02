@@ -212,10 +212,11 @@ export interface ReceiptData {
  * so it discloses, even though only $30 of it is a contribution.
  *
  * denominated in US dollars and applied to whatever currency the gift is in. §6115 is a US
- * rule and this is a US number; a deployment taking EUR compares euros against 7500 minor
- * units and therefore discloses slightly too often. that direction is the safe one — the
- * failure of over-disclosing is a sentence a donor did not need, and the failure of
- * under-disclosing is a penalty per contribution.
+ * rule and this is a US number; a deployment taking another currency compares its minor units
+ * against 7500, which under-discloses in a currency worth more than the dollar (EUR, GBP, CHF)
+ * and over-discloses in one worth less. under-disclosing is the costly direction — a penalty per
+ * contribution against a sentence a donor did not need — and every form charges USD today
+ * (`FORM_CURRENCY` in packages/app/src/lib/forms/amounts.ts).
  */
 const QUID_PRO_QUO_THRESHOLD_MINOR = 7500;
 
@@ -395,8 +396,9 @@ function firstName(donorName: string): string {
  * know about and adding one would mean thanking a repeating donor once and billing them monthly.
  *
  * static copy, and that is a property to keep: that caller claims `receipt_sent_at` before it
- * renders, so anything here able to fail to render is a donor recorded as receipted who received
- * nothing.
+ * renders and releases the claim when the send fails, so anything here able to fail to render
+ * turns every receipt into a release — and a release that itself fails leaves a donor recorded as
+ * receipted who received nothing.
  */
 const SUPPORT = 'Your support is what makes our work possible.';
 
