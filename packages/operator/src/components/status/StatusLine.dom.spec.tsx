@@ -385,6 +385,41 @@ describe('a section whose step cannot be taken yet', () => {
 		expect(details(locked({ open: true })).open).toBe(false);
 	});
 
+	it('lets its own fix link be followed', async () => {
+		// the refusal is of the summary's toggle, and a link drawn inside the summary is a press of
+		// its own: cancelled on the way down with the rest, it is a way on that goes nowhere. whether
+		// the line stays shut is not read here: a browser hands the click to the innermost element
+		// with an activation behaviour, which is the link and not the summary
+		// (https://dom.spec.whatwg.org/#concept-event-dispatch), and happy-dom toggles the
+		// `details` for a click from anything inside its summary.
+		const root = render(StatusLedger, {
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					label="Choose the accounts"
+					word="Waiting"
+					tone="note"
+					note="Connect a company first."
+					fixHref="#connect"
+					fixLabel="Connect a company"
+					beneath={<p>Nothing is connected yet.</p>}
+					locked
+				/>
+			)
+		});
+		const link = root.querySelector('summary a[href="#connect"]');
+		if (link === null) throw new Error('the locked line drew no fix link in its summary');
+
+		let followed = false;
+		await act(async () => {
+			followed = link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+			await Promise.resolve();
+		});
+
+		expect(followed).toBe(true);
+	});
+
 	it('shuts a line opened by hand when it becomes locked', async () => {
 		// the element holds what a press opened and the prop never said, so a line locked while open
 		// would stay open over a panel nothing can be done with — and refuse the press that shuts it.

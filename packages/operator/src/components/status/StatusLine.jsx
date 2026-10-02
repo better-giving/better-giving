@@ -368,10 +368,19 @@ export function StatusLine({
 					    so cancelling that one click refuses both. it is cancelled on the way down:
 					    happy-dom toggles the element as the click bubbles through it, before react's
 					    bubbling listener at the root has heard it. the summary stays in the tab order —
-					    a step skipped by focus is a step a reader is never told is there. */}
+					    a step skipped by focus is a step a reader is never told is there. a link drawn
+					    inside it (`fixHref`) is let through: its click is its own press rather than the
+					    summary's, and the browser follows the link instead of toggling the line. */}
 					<summary
 						aria-disabled={locked || undefined}
-						onClickCapture={locked ? (event) => event.preventDefault() : undefined}
+						onClickCapture={
+							locked
+								? (event) => {
+										if (event.target instanceof Element && event.target.closest('a[href]')) return;
+										event.preventDefault();
+									}
+								: undefined
+						}
 					>
 						<div className="adm-status__mark" id={wordId}>
 							{glyph}
