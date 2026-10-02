@@ -206,22 +206,16 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * what it does not cover is the form POST at `/login`: better-auth's own origin
 	 * middleware runs on a request its router handled, and this deployment mounts no router
 	 * — a direct `auth.api.*` call carries no `ctx.request` for it to read. what stands
-	 * there instead is the session cookie's `sameSite: 'lax'` below, which a cross-site POST
-	 * does not carry, and the sign-in bucket `signInRateLimitKey` charges (CLAUDE.md).
+	 * there instead is react-router's own check: framework mode refuses an action whose
+	 * `Origin` host differs from the request's host before the route's action runs
+	 * (`throwIfPotentialCSRFAttack` in react-router's server runtime, and
+	 * react-router.config.ts sets no `allowedActionOrigins`), which closes login-CSRF and
+	 * every other form-based `auth.api.*` call for a browser that sends `Origin`. behind it
+	 * stand the session cookie's `sameSite: 'lax'` below, which a cross-site POST does not
+	 * carry, and the sign-in bucket `signInRateLimitKey` charges (CLAUDE.md).
 	 *
-	 * **that is the accepted answer and not an omission waiting to be closed.** what `lax`
-	 * leaves standing is login-CSRF, where the victim's browser is made to submit the
-	 * attacker's own credentials and the victim ends up signed into the attacker's account —
-	 * it needs no cookie from the victim, which is why the cookie attribute does not reach it.
-	 * this deployment has one staff account, so a forced login lands the victim in the account
-	 * whose password the attacker already holds; there is no second account to be confused
-	 * into, and the donation page this project deploys carries no session at all — it is a
-	 * static shell on an origin of its own, so nothing on it holds or reads this deployment's
-	 * cookie (CLAUDE.md → Product surface). the control
-	 * that would close it is a comparison of `Origin` against the request's own host, and
-	 * CLAUDE.md bans exactly that reading: `Origin` is an attribution signal and never an
-	 * authorization control. reopen this the day a deployment has a second account, which is
-	 * the fact the argument turns on.
+	 * `/{form_id}` is served on this deployment's own origin (CLAUDE.md → Product surface),
+	 * so a script running on that page is same-origin to `/admin` and passes both checks.
 	 *
 	 * `x-forwarded-host` is not consulted: better-auth honours forwarded headers only
 	 * when `advanced.trustedProxyHeaders` is set, and it is not. that is also why
