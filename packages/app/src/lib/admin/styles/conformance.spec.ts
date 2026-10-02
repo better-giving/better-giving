@@ -948,7 +948,7 @@ describe('every motion in /admin collapses at source', () => {
 		]);
 	});
 
-	it('takes every pacing curve from a token', () => {
+	it('spells no pacing curve as a keyword of its own', () => {
 		// the ladder is what a reader retunes and what the reduced-motion block could collapse. a
 		// keyword at its own rule is neither, whichever of the two it is right about.
 		expect(literalCurves(swept)).toEqual([]);
