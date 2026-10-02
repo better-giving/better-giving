@@ -58,8 +58,8 @@ export async function staffGate(
 	if (!signingKey.ok) {
 		// 500 rather than a redirect to the login: nothing the caller sent is wrong, and a
 		// deployment that cannot sign a cookie cannot sign one at the login either. the key is read
-		// before any session, so the caller is as likely anonymous as staff: the cause, which
-		// quotes the database's own error, goes to the logs, and the response is the shared reply.
+		// before any session, so the caller is as likely anonymous as staff: the cause, which can
+		// quote the database's own error, goes to the logs, and the response is the shared reply.
 		console.error('the dashboard has no signing key:', signingKey.cause);
 		throw data(SIGNING_KEY_UNREADABLE, { status: 500 });
 	}

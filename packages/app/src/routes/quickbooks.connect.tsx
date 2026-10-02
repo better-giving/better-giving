@@ -73,8 +73,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
 		// 500 for $lib/server/auth/gate.ts's reasons: nothing the caller sent is wrong, and whoever
-		// opened the address holds no session, so the cause, which quotes the database's own error,
-		// goes to the logs and the browser is told the shared reply.
+		// opened the address holds no session, so the cause, which can quote the database's own
+		// error, goes to the logs and the browser is told the shared reply.
 		console.error(
 			'a QuickBooks connect address could not be checked — no signing key:',
 			signingKey.cause
