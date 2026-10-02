@@ -358,16 +358,26 @@ function typedAs(identifier: string, password: string): FormData {
 	return body;
 }
 
+/** how many callers `post` has made up, so each is its own `/48` and its own fresh bucket. */
+let callersMinted = 0;
+
+/**
+ * the form submitted from `ip`, which is what the edge writes as `cf-connecting-ip`.
+ *
+ * left out, the caller is a new address every call, which is what production looks like — every
+ * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * not attribute: no header at all.
+ */
 function post(
 	body: FormData,
 	{
 		search = '',
-		ip,
+		ip = `2001:db8:${(0x1000 + callersMinted++).toString(16)}::1`,
 		deployed = DEPLOYED
-	}: { search?: string; ip?: string; deployed?: typeof DEPLOYED } = {}
+	}: { search?: string; ip?: string | null; deployed?: typeof DEPLOYED } = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
-	if (ip) headers.set('cf-connecting-ip', ip);
+	if (ip !== null) headers.set('cf-connecting-ip', ip);
 	return action(
 		args(new Request(`${ORIGIN}/login${search}`, { method: 'POST', headers, body }), deployed)
 	);
@@ -698,8 +708,8 @@ describe('the limit on POST /login', () => {
 
 	/**
 	 * a deployment with no binding signs staff in, which is the decision and not an oversight —
-	 * `isRateLimited` in $lib/server/api/rate-limit.ts is where it is argued, and `ADMIN_PASSWORD`
-	 * is what bounds this form without it.
+	 * `isRateLimited` in $lib/server/api/rate-limit.ts is where it is argued, along with what it
+	 * leaves unbounded.
 	 *
 	 * the address is spent against the real binding first, and that half is what makes the case
 	 * discriminating rather than decorative: without it, a call site that never charged anything
@@ -727,6 +737,7 @@ describe('the limit on POST /login', () => {
 	 * "Remove visitor IP headers" managed transform is every caller of the deployment at once. the
 	 * binding is bound here and refusing this address is exactly what it must not do — otherwise
 	 * one guesser holds the only login closed on the operator, which is worse than the guessing.
+	 * a member's way in is refused instead, further down.
 	 */
 	it('signs staff in when the edge attributed no address at all', async () => {
 		for (let i = 0; i < 8; i++) {
@@ -915,5 +926,66 @@ describe('the limit on POST /login — one bucket for both ways in', () => {
 
 		expect(asStaff instanceof Response ? 0 : asStaff.init?.status).toBe(429);
 		expect(await sessions()).toBe(0);
+	});
+});
+
+describe('the limit on POST /login — a member the edge did not attribute', () => {
+	/**
+	 * a member's password is one of many and was chosen by a person, so a caller with no bucket
+	 * would be guessing at them without limit, each guess a hash this deployment pays for. the
+	 * correct password is the case that discriminates: refused without signing in is a refusal made
+	 * before the credential was compared, where a wrong password would be refused either way.
+	 */
+	it.each([
+		['with no address header', null],
+		['with a header that is not an address', 'not-an-address']
+	])('refuses a member %s, before the password is compared', async (_, ip) => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), { ip });
+
+		expect(answer.init?.status).toBe(403);
+		expect(banner(answer)).not.toBe(
+			'That username or email address and password do not match a member of this organisation.'
+		);
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * the person who can fix it is whoever runs the deployment, and nothing on their side says why
+	 * every colleague stopped being able to sign in. so the sentence carries the cause and the usual
+	 * switch behind it, in the page's own voice rather than as a status for a log line.
+	 */
+	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
+			ip: null
+		});
+
+		expect(banner(answer)).toMatch(/^Sign-in is unavailable\./);
+		expect(banner(answer)).toContain('address');
+		expect(banner(answer)).toContain('Remove visitor IP headers');
+		expect(identifierHeld(answer)).toBe('nadia@riverbanktrust.org');
+	});
+
+	/**
+	 * and the other half, so the refusal above is about the missing address and not about members:
+	 * one attributed address signs the same member in with the same password, and keeps doing so
+	 * until its bucket is spent.
+	 */
+	it('signs an attributed member in, and charges every sign-in to their address', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+		const statuses: number[] = [];
+		for (let i = 0; i < 50 && statuses.at(-1) !== 429; i++) {
+			const answer = await post(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
+				ip: '203.0.113.50'
+			});
+			statuses.push(answer instanceof Response ? answer.status : (answer.init?.status ?? 200));
+		}
+
+		expect(statuses[0]).toBe(303);
+		expect(statuses.at(-1)).toBe(429);
+		expect(await sessions()).toBe(statuses.length - 1);
 	});
 });

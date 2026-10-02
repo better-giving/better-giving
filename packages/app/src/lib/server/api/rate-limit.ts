@@ -130,7 +130,8 @@ export function quoteRateLimitKey(request: Request): string | null {
 }
 
 /**
- * what one staff sign-in attempt counts against, and `null` for a caller with no bucket at all.
+ * what one sign-in attempt counts against, the deployer's and a member's alike, and `null` for a
+ * caller with no bucket at all.
  *
  * named after the credential rather than after a path, and that is what makes three sites one
  * bucket. this bucket bounds guessing at a sign-in credential, so a key that moved with the path
@@ -141,10 +142,18 @@ export function quoteRateLimitKey(request: Request): string | null {
  * there mails whoever was named, so the bucket is also what bounds this deployment being used to
  * post somebody else's inbox.
  *
- * the caller and nothing else. there is one account and one secret, so there is no identity in the
- * key to enumerate and nothing an attacker can write that moves the bucket — the submitted
- * password is deliberately not in it, since keying on the guess would give every guess a bucket of
- * its own, which is the guesser this exists to bound.
+ * the caller and nothing else, so nothing an attacker can write moves the bucket. the submitted
+ * password is not in it, since keying on the guess would give every guess a bucket of its own; nor
+ * is the identifier typed beside it, since a guesser spreading guesses across every member would
+ * then hold a bucket per member. one address, one budget of guesses at every credential here.
+ *
+ * the `null` is answered by the identity the guess is at, at `src/routes/login.tsx`'s action. a
+ * member attempt with no bucket is refused before the password is compared: members are many, each
+ * password chosen by a person, and every guess an scrypt run this deployment pays for, so letting
+ * it through would be unbounded guessing at all of them. the deployer's attempt is let through
+ * uncounted, because refusing it would shut every way into the dashboard at once — under the
+ * transform `attributedCaller` describes that is every caller of the deployment — and one secret,
+ * minted by the console unless the operator typed their own, is the cost that leaves unbounded.
  */
 export function signInRateLimitKey(request: Request): string | null {
 	const payer = attributedCaller(request, 48);
@@ -214,7 +223,8 @@ function caller(request: Request, block: Ipv6Block): string {
  * address or they bound nobody, and an operator who switches that transform on gets the behaviour
  * these limits were added to, rather than a dark donation form. the surface bucket keeps counting
  * them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where that
- * side is argued.
+ * side is argued. the sign-in's `null` is not let through for every identity: a member's attempt is
+ * refused instead, which `signInRateLimitKey` argues.
  *
  * the decision is expressed in the return type rather than left to the call sites, for the reason
  * the keys themselves live in this file: which block counts as one caller is the whole security
@@ -378,7 +388,7 @@ export function quoteRateLimitRefusal(headers: Headers): Response {
 }
 
 /**
- * what a staff sign-in refused by the limiter is told.
+ * what a sign-in refused by the limiter is told.
  *
  * a sentence rather than a `Response`, because every site that spends this bucket answers with
  * data: each is a form action returning a rejection the page renders, so there is no header to
@@ -488,16 +498,18 @@ export async function refuseIfRateLimited(
  * the polarity is the opposite of `refuseIfRateLimited` above, and the difference is what absence
  * leaves behind rather than a difference of nerve. the surface limiter is the only thing metering
  * `/api/v1`, so serving without it is an unmetered public payment-initiating surface that reads as
- * working. the buckets charged through here refine a bound that does not depend on them: the quote
- * still has the surface bucket the hook charged above it, the sign-in still has `ADMIN_PASSWORD`
- * itself, which is what bounded it before any of these limiters existed, and the read API's two
- * still have its 256-bit keys, which bound who reads at all where the buckets bound only how fast
- * — so what absence costs here is the tighter bound rather than the bound.
+ * working. the quote's and the read API's buckets refine a bound that does not depend on them: the
+ * quote still has the surface bucket the hook charged above it, and the read API's two still have
+ * its 256-bit keys, which bound who reads at all where the buckets bound only how fast — so what
+ * absence costs there is the tighter bound rather than the bound.
  *
- * and the deployment that would actually reach this is the one where refusing costs most: a Worker
- * running with no such binding on it would be refused by its own login, and everything an operator
- * could act on sits behind that login. an unbounded login still has `ADMIN_PASSWORD` in front of
- * it; a bricked one has nothing in front of anybody.
+ * the sign-in's bucket is the only bound on guessing a password, so a missing binding leaves every
+ * credential here unbounded, a member's included. it is served on anyway because of which
+ * deployment reaches this: one running with no such binding would be refused by its own login, and
+ * everything an operator could act on sits behind that login, so a bricked one has nothing in front
+ * of anybody. `pnpm run deploy` cannot produce it: `scripts/preflight-deploy.js` refuses it. a
+ * caller with no bucket on a bound deployment is a different case, refused for members at the call
+ * site (`signInRateLimitKey`).
  *
  * the `catch` guards a failure nothing promises either way — the binding's documentation states no
  * error conditions, so `limit()` throwing is neither a documented outcome nor one to rule out
