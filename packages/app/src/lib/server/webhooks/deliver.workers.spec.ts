@@ -14,6 +14,7 @@ import {
 	DESTINATION_PAUSE_AFTER_MS,
 	type PausedDestination,
 	sendDueWebhooks,
+	WEBHOOK_POST_TIMEOUT_MS,
 	WEBHOOK_RETRY_JITTER,
 	WEBHOOK_RETRY_SCHEDULE_MS
 } from './deliver';
@@ -1058,6 +1059,45 @@ describe('sendDueWebhooks() — lanes', () => {
 
 		expect(most).toBe(MINUTE_RUN.webhooks.lanes);
 		expect(new Set(receiving.posts.map((post) => post.url)).size).toBe(PACE.webhooks);
+	});
+
+	it('posts a destination nothing more in a run once a post to it fails, and the destination beside it all it is owed', async () => {
+		const timingOut = await destination();
+		for (let gift = 0; gift < 10; gift++) await settle();
+		const beside = await destination();
+		vi.setSystemTime(later(1_000));
+		for (let gift = 0; gift < 5; gift++) await settle();
+		// each post to it answers at the timeout, so without the hold its ten rows outlast the run.
+		const receiving = receivers((post) => {
+			if (post.url !== timingOut.url) return new Response('ok');
+			vi.setSystemTime(Date.now() + WEBHOOK_POST_TIMEOUT_MS);
+			return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+		});
+		const runsAt = later(MINUTE);
+
+		await runAt(runsAt, receiving.fetch);
+
+		const toTimingOut = receiving.posts.filter((post) => post.url === timingOut.url);
+		expect(toTimingOut.length).toBeGreaterThan(0);
+		expect(toTimingOut.length).toBeLessThanOrEqual(MINUTE_RUN.webhooks.lanes);
+		expect(receiving.posts.filter((post) => post.url === beside.url)).toHaveLength(5);
+		const { results } = await env.DB.prepare(
+			`select status, attempts, next_attempt_at, leased_until, last_status
+			 from webhook_delivery where destination_id = ? and attempts = 0`
+		)
+			.bind(timingOut.id)
+			.all<{
+				status: string;
+				attempts: number;
+				next_attempt_at: number;
+				leased_until: number | null;
+				last_status: number | null;
+			}>();
+		expect(results).toHaveLength(15 - toTimingOut.length);
+		for (const row of results) {
+			expect(row).toMatchObject({ status: 'pending', leased_until: null, last_status: null });
+			expect(row.next_attempt_at).toBeLessThanOrEqual(runsAt.getTime());
+		}
 	});
 });
 
