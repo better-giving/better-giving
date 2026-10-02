@@ -141,6 +141,16 @@ const KEY_PREFIX = 'better-giving';
  */
 const DUPLICATE_NAME_FAULT = '6240';
 
+/**
+ * what Intuit calls a company whose trial or subscription ended, was cancelled, or hit a billing
+ * problem: a `ValidationFault`, "Invalid Company Status", that refuses every write to the books
+ * alike (the fixture in
+ * https://github.com/intuit/QuickBooks-V3-Java-SDK/blob/develop/ipp-v3-java-devkit/src/test/java/com/intuit/ipp/serialization/JSONSerializerTest.java),
+ * and a fault body Intuit sends with a 400
+ * (https://github.com/intuit/QuickBooks-V3-DotNET-SDK/blob/master/IPPDotNetDevKitCSV3/Code/Intuit.Ipp.Core/RestCalls/FaultHandler.cs).
+ */
+const COMPANY_STATUS_FAULT = '6190';
+
 /** how much of a sentence Intuit wrote a message of ours may repeat. */
 const PROVIDER_QUOTE_MAX = 200;
 
@@ -595,7 +605,7 @@ export function createQuickbooksProvider(
 		});
 		if ('ok' in answer) return answer;
 		if (answer.status < 200 || answer.status >= 300) {
-			return faultCode(answer.body) === DUPLICATE_NAME_FAULT
+			return faultCoded(answer.body, DUPLICATE_NAME_FAULT) !== undefined
 				? { ok: true, value: null }
 				: classify(answer);
 		}
@@ -1268,7 +1278,8 @@ function queryRows(body: unknown, entity: string): unknown[] {
  * the data or the mapping changes. a 401 reaches here only after the refresh above did not fix it.
  */
 function classify(answer: Answer): AccountingFailure {
-	const words = faultWords(answer.body, answer.sent);
+	const companyFault = faultCoded(answer.body, COMPANY_STATUS_FAULT);
+	const words = faultWords(answer.body, answer.sent, companyFault ?? faults(answer.body)[0]);
 	if (answer.status === 429) {
 		return failed('rate_limited', 'QuickBooks is throttling this deployment’s calls.');
 	}
@@ -1292,11 +1303,18 @@ function classify(answer: Answer): AccountingFailure {
 	if (answer.status === 404) {
 		return failed('not_found', `QuickBooks holds no such record (404${words}).`);
 	}
+	// stops the run like the 403 above: every gift behind this one is refused the same way.
+	if (companyFault !== undefined) {
+		return failed(
+			'reconnect_needed',
+			`QuickBooks refused to add anything to this company (${answer.status}${words}). Its QuickBooks trial or subscription has ended, was cancelled, or has a billing problem. Connecting again will not fix it: resubscribe or settle the billing in QuickBooks, then retry the waiting gifts.`
+		);
+	}
 	return failed('invalid_record', `QuickBooks refused the request (${answer.status}${words}).`);
 }
 
 /**
- * which refusal Intuit answered with: its type, its code and the message Intuit keys to that code.
+ * which refusal Intuit answered with: its type, and the code and message of the one `fault` named.
  *
  * the type, code and message are what let an operator act on `quickbooks_sync.last_error` without a
  * log, and `last_error` reaches the console and the failure notice email, so nothing a donor sent
@@ -1304,10 +1322,9 @@ function classify(answer: Answer): AccountingFailure {
  * ({@link sentValues}); the fault's `Detail` is never carried, because it is free text about the
  * record and a value it repeats in any other spelling than the one sent is not struck.
  */
-function faultWords(body: unknown, sent: readonly string[]): string {
-	const first = firstFault(body);
-	const message = redacted(stringField(first, 'Message'), sent);
-	const named = [stringField(field(body, 'Fault'), 'type'), stringField(first, 'code')]
+function faultWords(body: unknown, sent: readonly string[], fault: unknown): string {
+	const message = redacted(stringField(fault, 'Message'), sent);
+	const named = [stringField(field(body, 'Fault'), 'type'), stringField(fault, 'code')]
 		.filter((part) => part !== null)
 		.join(' ');
 	const words = [message?.slice(0, PROVIDER_QUOTE_MAX) ?? null, named === '' ? null : `(${named})`]
@@ -1321,15 +1338,17 @@ function redacted(words: string | null, sent: readonly string[]): string | null 
 	return sent.reduce((text, value) => text.replaceAll(value, '[redacted]'), words);
 }
 
-/** the code on the fault Intuit answered with, which is the only part of one anything branches on. */
-function faultCode(body: unknown): string | null {
-	return stringField(firstFault(body), 'code');
+/**
+ * the fault carrying `code` wherever Intuit listed it — the code is the only part of a fault
+ * anything branches on, and one refusal can list several faults in any order.
+ */
+function faultCoded(body: unknown, code: string): unknown {
+	return faults(body).find((fault) => stringField(fault, 'code') === code);
 }
 
-function firstFault(body: unknown): unknown {
+function faults(body: unknown): unknown[] {
 	const errors = field(field(body, 'Fault'), 'Error');
-	const [first] = Array.isArray(errors) ? errors : [];
-	return first;
+	return Array.isArray(errors) ? errors : [];
 }
 
 /**

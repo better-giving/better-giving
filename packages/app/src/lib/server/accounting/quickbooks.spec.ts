@@ -1154,6 +1154,89 @@ describe('what a refusal costs the queued entry', () => {
 		expect(detail).toContain('as the same user will not fix it');
 	});
 
+	it('stops on a company whose subscription has lapsed rather than failing the gift', async () => {
+		servingCompany((statement) =>
+			statement.startsWith('select * from Customer')
+				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
+				: statement === ''
+					? {
+							status: 400,
+							json: {
+								Fault: {
+									type: 'ValidationFault',
+									Error: [{ Message: 'Invalid Company Status', code: '6190' }]
+								}
+							}
+						}
+					: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'reconnect_needed', retryable: false });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('subscription');
+		expect(detail).toContain('6190');
+	});
+
+	it('fails only the gift on a refusal that lists faults about the record alone', async () => {
+		servingCompany((statement) =>
+			statement.startsWith('select * from Customer')
+				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
+				: statement === ''
+					? {
+							status: 400,
+							json: {
+								Fault: {
+									type: 'ValidationFault',
+									Error: [
+										{ Message: 'Required param missing', code: '2020' },
+										{ Message: 'A business validation error has occurred', code: '6000' }
+									]
+								}
+							}
+						}
+					: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'invalid_record', retryable: false });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('2020');
+	});
+
+	it('stops on a lapsed subscription that Intuit lists behind another fault', async () => {
+		servingCompany((statement) =>
+			statement.startsWith('select * from Customer')
+				? { status: 200, json: { QueryResponse: { Customer: [{ Id: '12' }] } } }
+				: statement === ''
+					? {
+							status: 400,
+							json: {
+								Fault: {
+									type: 'ValidationFault',
+									Error: [
+										{ Message: 'Required param missing', code: '2020' },
+										{ Message: 'Invalid Company Status', code: '6190' }
+									]
+								}
+							}
+						}
+					: undefined
+		);
+		const provider = createQuickbooksProvider(CREDENTIALS, store());
+
+		const result = await provider.sendGift(GIFT, 'first', REVISION);
+
+		expect(result).toMatchObject({ ok: false, reason: 'reconnect_needed', retryable: false });
+		const detail = result.ok ? '' : result.detail;
+		expect(detail).toContain('Invalid Company Status');
+		expect(detail).toContain('6190');
+	});
+
 	it('reports a call that never answered as worth making again', async () => {
 		vi.stubGlobal('fetch', async () => {
 			throw new DOMException('The operation was aborted', 'TimeoutError');
