@@ -100,11 +100,22 @@ type Mounted = {
 	fund(): FundReports;
 	/** the payment surface saying how many options its box now lists. */
 	rows(count: number): void;
+	/** the payment surface saying no processor still up takes a repeating gift. */
+	repeatingUnavailable(): void;
 };
 
 function view(
 	host: HTMLElement
-): Omit<Mounted, 'rail' | 'unavailable' | 'token' | 'challengeUnavailable' | 'fund' | 'rows'> {
+): Omit<
+	Mounted,
+	| 'rail'
+	| 'unavailable'
+	| 'token'
+	| 'challengeUnavailable'
+	| 'fund'
+	| 'rows'
+	| 'repeatingUnavailable'
+> {
 	const shadow = host.shadowRoot;
 	if (shadow === null) throw new Error('the element has not upgraded');
 	const find = (selector: string): HTMLElement => {
@@ -193,6 +204,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 	let unchallengeable: (failure: Failure) => void = () => {};
 	let reports: FundReports | null = null;
 	let counted: (count: number) => void = () => {};
+	let repeating: () => void = () => {};
 	defineDonateForm(
 		{
 			loadConfig: options.loadConfig ?? (async () => options.config ?? CONFIG),
@@ -228,6 +240,9 @@ async function mount(options: Options = {}): Promise<Mounted> {
 						counted = listener;
 						listener(options.rowCount ?? 1);
 					},
+					repeatingUnavailable: (listener) => {
+						repeating = listener;
+					},
 					stop: () => options.torn?.()
 				};
 			}
@@ -251,7 +266,8 @@ async function mount(options: Options = {}): Promise<Mounted> {
 			if (reports === null) throw new Error('the runtime was never asked for a checkout');
 			return reports;
 		},
-		rows: (count) => counted(count)
+		rows: (count) => counted(count),
+		repeatingUnavailable: () => repeating()
 	};
 }
 
@@ -321,6 +337,7 @@ function placed(attributes: Readonly<Record<string, string>> = { form: 'frm_a8x2
 							offerCrypto: () => {},
 							offerVenmo: () => {},
 							rows: () => {},
+							repeatingUnavailable: () => {},
 							stop: () => {}
 						};
 					},
@@ -1014,6 +1031,7 @@ describe('the live region', () => {
 					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -4292,8 +4310,8 @@ describe('the verification screens', () => {
 		// names nothing they can check.
 		const card = await atSubmitted({ ports: awaiting });
 
-		expect(shows(card, '.attention')).toMatch(/\b20\d{2}\b/);
-		expect(shows(card, '.attention')).not.toMatch(/\bdays\b/);
+		expect(shows(card, '.takeover .attention')).toMatch(/\b20\d{2}\b/);
+		expect(shows(card, '.takeover .attention')).not.toMatch(/\bdays\b/);
 	});
 
 	it('keeps the receipt in future tense and says nothing has been taken', async () => {
@@ -5431,6 +5449,8 @@ describe('where a payment provider paints', () => {
 		});
 
 		expect(shows(card, '.takeover .message')).toBe('This form cannot take a payment right now.');
+		expect(primary(card).hidden).toBe(false);
+		expect(primary(card).textContent).toBe('Try again');
 	});
 
 	// the `fix` beside that message names a key, a variable or a screen in /admin, and it is
@@ -5445,6 +5465,105 @@ describe('where a payment provider paints', () => {
 		});
 
 		expect(card.text('.takeover')).not.toContain('publishable key');
+	});
+
+	// the card down and a fund or crypto up is a gift the donor can still make, once. the failure
+	// screen is for a form with no way to pay at all; this donor is offered the gift they can make,
+	// and one press makes it.
+	describe('a repeating gift no processor still up can take', () => {
+		const OFFER =
+			'This gift cannot be made monthly right now. You can make it a one-time gift instead.';
+
+		/** the donor at the review step of a monthly gift, on a form offering `rails`. */
+		async function atMonthlyReview(
+			rails: Pick<FormConfig, 'paymentMethods' | 'coins'>,
+			options: Options = {}
+		): Promise<Mounted> {
+			const card = await mount({ config: { ...CONFIG, ...rails }, ...options });
+			press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+			press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+			proceed(card);
+			type(card.find('#email'), 'donor@example.org');
+			type(card.find('#first-name'), 'Ada');
+			type(card.find('#last-name'), 'Lovelace');
+			proceed(card);
+			return card;
+		}
+
+		/** the press that takes the offer, which stands under its sentence. */
+		function makeOneTime(card: Mounted): HTMLElement {
+			return card.find('.step-give .attention + [part~="action"]');
+		}
+
+		it('offers the gift as one-time in place of an empty payment box, and makes it so', async () => {
+			const cadences: (Frequency | undefined)[] = [];
+			const offers: boolean[] = [];
+			const card = await atMonthlyReview(
+				{ paymentMethods: ['card', 'daf'] },
+				{
+					cadences: (frequency) => void cadences.push(frequency),
+					offers: (offered) => void offers.push(offered)
+				}
+			);
+			card.repeatingUnavailable();
+
+			expect(card.find('.step-give').hidden).toBe(false);
+			expect(card.find('.takeover').hidden).toBe(true);
+			expect(shows(card, '.step-give .attention')).toBe(OFFER);
+			expect(makeOneTime(card).textContent).toBe('Make it one-time');
+			expect(card.find('[part~="payment"]').closest('.group')?.hasAttribute('hidden')).toBe(true);
+			expect(card.find('[part~="submit"]').hidden).toBe(true);
+			expect(offers.at(-1)).toBe(false);
+
+			makeOneTime(card).click();
+
+			expect(cadences.at(-1)).toBe('one_time');
+			expect(offers.at(-1)).toBe(true);
+			expect(shows(card, '.step-give .attention')).toBe('');
+			expect(card.find('[part~="payment"]').closest('.group')?.hasAttribute('hidden')).toBe(false);
+			expect(card.find('[part~="submit"]').hidden).toBe(false);
+		});
+
+		it('offers the crypto option once the gift is made one-time', async () => {
+			const cryptoOffers: boolean[] = [];
+			const coins = [
+				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+			];
+			const card = await atMonthlyReview(
+				{ paymentMethods: ['card', 'crypto'], coins },
+				{ cryptoOffers: (offered) => void cryptoOffers.push(offered) }
+			);
+			card.repeatingUnavailable();
+			expect(cryptoOffers.at(-1)).toBe(false);
+
+			makeOneTime(card).click();
+
+			expect(cryptoOffers.at(-1)).toBe(true);
+		});
+
+		it('names the cadence the donor chose', async () => {
+			const card = await mount({ config: { ...CONFIG, paymentMethods: ['card', 'daf'] } });
+			press(card.all('[part~="frequency-option"] input')[2] as HTMLElement);
+			press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+			proceed(card);
+			type(card.find('#email'), 'donor@example.org');
+			type(card.find('#first-name'), 'Ada');
+			type(card.find('#last-name'), 'Lovelace');
+			proceed(card);
+			card.repeatingUnavailable();
+
+			expect(shows(card, '.step-give .attention')).toBe(
+				'This gift cannot be made yearly right now. You can make it a one-time gift instead.'
+			);
+		});
+
+		it('says nothing over a one-time gift, which the processors still up can take', async () => {
+			const card = await atReview({ config: { ...CONFIG, paymentMethods: ['card', 'daf'] } });
+			card.repeatingUnavailable();
+
+			expect(shows(card, '.step-give .attention')).toBe('');
+			expect(card.find('[part~="submit"]').hidden).toBe(false);
+		});
 	});
 
 	// past a press there is an intent at the processor and possibly a charge against it, and the

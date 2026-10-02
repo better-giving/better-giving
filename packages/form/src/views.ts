@@ -962,6 +962,29 @@ const PAYMENT_PROBLEM = 'Please select payment method';
 /** the payment box's name where no header stands over it to name it. */
 const PAYMENT_NAME = 'Payment details';
 
+/**
+ * the review step's offer of a one-time gift, where no processor still up takes the repeating one
+ * the donor chose (`oneTimeInstead` in ./connect.ts). nothing was charged and nothing went wrong
+ * with anything the donor did, so it is a task rather than a failure, and it names the cadence they
+ * chose so the offer reads as the change it is.
+ */
+function oneTimeOfferWords(frequency: 'monthly' | 'yearly'): string {
+	return `This gift cannot be made ${frequency} right now. You can make it a one-time gift instead.`;
+}
+
+/** what the region says once the offer is taken, which moves the caret to the payment box. */
+const MADE_ONE_TIME = 'This is now a one-time gift.';
+
+/** whether the review step is offering a one-time gift in place of the repeating one chosen. */
+function oneTimeOffered(state: State): state is State & { readonly step: 'give' } {
+	return state.step === 'give' && state.oneTimeInstead;
+}
+
+/** the repeating cadence an offer is made over, which is never one-time while one stands. */
+function oneTimeFrequency(state: State & { readonly step: 'give' }): 'monthly' | 'yearly' {
+	return state.fv.frequency === 'yearly' ? 'yearly' : 'monthly';
+}
+
 /** the id the payment box's header carries, which the box is named by while it stands. */
 const PAYMENT_HEADING = 'payment-heading';
 
@@ -1144,6 +1167,13 @@ export function createCard(
 	 * needs no `repeated` beside it. spent by the patch the press asks for.
 	 */
 	let flipped = false;
+	/**
+	 * whether the donor has just taken the offer of a one-time gift. set by that press and spent by
+	 * the patch it asks for, which says so on the region — see `oneTimeButton` below.
+	 */
+	let madeOneTime = false;
+	/** whether the last patch drew the offer of a one-time gift, which is what tells it arriving. */
+	let offerDrawn = false;
 	/** the screen on the card, which is what a busy flow stays on and what motion reports against. */
 	let shown: Screen = 'amount';
 	/** the projected step the last patch drew, which is what tells a refusal landing from a press. */
@@ -2215,6 +2245,25 @@ export function createCard(
 	// one of them. words here would be a second statement of one of the two, gone stale the first
 	// time it is reworded at its own site.
 	const paymentMessage = make(doc, 'p', { class: 'message', id: 'payment-problem', hidden: true });
+
+	// the offer of a one-time gift, standing in place of the payment box and the Donate button while
+	// no processor still up takes the repeating gift chosen: the box would be empty and the button
+	// refused, and this press is the one thing on the step that moves the gift on. `attention`
+	// rather than `message`, for the reason ./styles/parts.css gives at `.attention`.
+	const oneTimeOffer = make(doc, 'p', { class: 'attention' });
+	const oneTimeButton = make(doc, 'button', { part: part('action'), type: 'button' }, [
+		'Make it one-time'
+	]);
+	oneTimeButton.addEventListener('click', () => {
+		madeOneTime = true;
+		now().oneTimeButton.onClick();
+		// this button is hidden by the press, and the box it un-hides is where the next choice is.
+		payment.focus();
+	});
+	const oneTimeGroup = make(doc, 'div', { class: 'group', hidden: true }, [
+		oneTimeOffer,
+		oneTimeButton
+	]);
 	const coinPicker = createCoinPicker(doc);
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
@@ -2270,6 +2319,7 @@ export function createCard(
 		giveHead.head,
 		summary,
 		paymentGroup,
+		oneTimeGroup,
 		paymentMessage,
 		receiptTo,
 		submitButton
@@ -2741,7 +2791,11 @@ export function createCard(
 		// email field. `paintTakeover` holds the fourth screen to the same rule.
 		toggleAttribute(continueButton, 'type', step === 'amount' ? 'submit' : 'button');
 		toggleAttribute(detailsContinue, 'type', step === 'details' ? 'submit' : 'button');
-		toggleAttribute(submitButton, 'type', step === 'give' ? 'submit' : 'button');
+		toggleAttribute(
+			submitButton,
+			'type',
+			step === 'give' && !oneTimeOffered(api.state) ? 'submit' : 'button'
+		);
 		// what the marks are offering, patched on every snapshot rather than settled at build: what
 		// a donor has completed moves as they type, so a step shut on arrival opens under them
 		// without the screen changing. the mark for the step a head belongs to is a `<span>` in that
@@ -2886,6 +2940,7 @@ export function createCard(
 		const missingFields = updateDetails(api);
 		const refusedPayment = updatePayment(api);
 		const coinRefused = updateCoins(api);
+		const offerArrived = updateOneTimeOffer(api);
 		// what a numbered step was refused for, said out loud, and one sentence however many steps
 		// there are: the three are mutually exclusive, because a press is refused on the step it was
 		// made on. every missing decision at once, for the reason `missingDecisions` above gives
@@ -2953,18 +3008,23 @@ export function createCard(
 					? askedFor
 					: refusedPayment
 						? PAYMENT_PROBLEM
-						: flipped
-							? totalWords
-							: busy
-								? workingWords(api.state)
-								: retitled
-									? `${screen.heading}.`
-									: '',
+						: offerArrived !== ''
+							? offerArrived
+							: madeOneTime
+								? MADE_ONE_TIME
+								: flipped
+									? totalWords
+									: busy
+										? workingWords(api.state)
+										: retitled
+											? `${screen.heading}.`
+											: '',
 			repeated
 		);
 		repeated = false;
 		unmoved = false;
 		flipped = false;
+		madeOneTime = false;
 
 		// last, and after the step it lands in has been un-hidden: a heading inside a `hidden`
 		// subtree is not focusable, and a caret that failed to land is the defect this exists for.
@@ -3145,6 +3205,26 @@ export function createCard(
 		setHidden(paymentMessage, words === '');
 		toggleAttribute(payment, 'aria-describedby', words === '' ? null : 'payment-problem');
 		return refused;
+	}
+
+	/**
+	 * the offer of a one-time gift, standing in place of the payment box and the Donate button while
+	 * the flow makes it (`oneTimeInstead` in ./connect.ts), and its words where it has just appeared.
+	 *
+	 * appearing is said on the region: it arrives whenever the processors fail, which is as likely to
+	 * be while the donor is reading the step as on the way into it, and nothing moves the caret to it.
+	 */
+	function updateOneTimeOffer(api: DomApi): string {
+		const { state } = api;
+		const offered = oneTimeOffered(state);
+		const words = offered ? oneTimeOfferWords(oneTimeFrequency(state)) : '';
+		setText(oneTimeOffer, words);
+		setHidden(oneTimeGroup, !offered);
+		setHidden(paymentGroup, offered);
+		setHidden(submitButton, offered);
+		const arrived = offered && !offerDrawn;
+		offerDrawn = offered;
+		return arrived ? words : '';
 	}
 
 	/**

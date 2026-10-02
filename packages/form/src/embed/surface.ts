@@ -67,6 +67,12 @@ type Part = {
 	readonly rows?: RowList;
 	/** whether this page load is a return from this processor's own window. */
 	claimsReturn(): Promise<boolean>;
+	/**
+	 * whether a repeating gift can be paid through it: a fund and crypto are one-time rails
+	 * (`fundIsOffered` and `cryptoIsOffered` in ../checkout.machine.ts), and so is Venmo
+	 * (`venmoIsOffered`), which leaves PayPal's window one only where the config offers `paypal`.
+	 */
+	readonly repeats: boolean;
 };
 
 /**
@@ -90,6 +96,13 @@ export type ComposedPaymentSurface = PaymentSurface & {
 	/** `venmoIsOffered` in ../checkout.machine.ts, told on every reading, as `offerFund` is. */
 	offerVenmo(offered: boolean): void;
 	rows(listener: (count: number) => void): void;
+	/**
+	 * `listener` called once every processor that takes a repeating gift has said it never came up
+	 * while one taking a one-time gift is still up — now, where that has already happened, or when it
+	 * does. one listener; a second call replaces the first. `createPaymentSurface` below says why
+	 * this is not `onUnavailable`.
+	 */
+	repeatingUnavailable(listener: () => void): void;
 };
 
 /**
@@ -165,21 +178,57 @@ export function createPaymentSurface(
 	const parts: Part[] = [];
 
 	/**
-	 * the first processor to say its surface never came up, held until every one of them has.
+	 * the first processor to say its surface never came up, held until there is nothing left to give
+	 * on.
 	 *
 	 * a form whose card box works and whose PayPal button did not is a form a donor can give on, so
-	 * the report is withheld until there is nothing left to give on. the first sentence rather than
-	 * the last is the one said, because the adapters are built in the order a donor reads them and
-	 * the first is the one they were looking at.
+	 * the report is withheld until every processor has either said so or takes no gift the form
+	 * offers. the first sentence rather than the last is the one said, because the adapters are built
+	 * in the order a donor reads them and the first is the one they were looking at. it is said once:
+	 * the flow answers it by leaving the box for good.
+	 *
+	 * short of that, the processors still up may all be ones that take a one-time gift only, which on
+	 * a form offering a repeating one is a gift the donor can make once and not again. that is said
+	 * once too, to `repeatingUnavailable`, and is not a form with no way to pay: the flow offers the
+	 * donor the one-time gift instead. it is a fact about the processors rather than the cadence,
+	 * because a processor that never came up does not come up later, and the flow is what knows
+	 * which cadence the donor is on.
+	 *
+	 * a processor is counted by the place it is built in, because its reporter is handed over before
+	 * its part exists — and PayPal's adapter can report inside its own constructor, so nothing is
+	 * read off the list until every processor is on it.
 	 */
 	let unsaid: Failure | null = null;
-	let quiet = 0;
-	const held = (failure: Failure): void => {
-		if (unsaid === null) unsaid = failure;
-		quiet += 1;
-		// every adapter reports through a promise chain of its own, so the earliest this can be
-		// reached is a microtask after the two blocks below have finished pushing.
-		if (quiet === parts.length) onUnavailable(unsaid);
+	let said = false;
+	let building = true;
+	const down = new Set<number>();
+	const up = (at: number): boolean => !down.has(at);
+	let repeatingDown = false;
+	let repeatingListener: (() => void) | null = null;
+	const sayWhatIsLeft = (): void => {
+		if (building || said || unsaid === null) return;
+		const oneTimeOffered = config.frequencies.includes('one_time');
+		const repeatingOffered = config.frequencies.some((frequency) => frequency !== 'one_time');
+		const takesAGift = (part: Part): boolean =>
+			oneTimeOffered || (part.repeats && repeatingOffered);
+		if (!parts.some((part, at) => up(at) && takesAGift(part))) {
+			said = true;
+			onUnavailable(unsaid);
+			return;
+		}
+		if (repeatingDown || !repeatingOffered) return;
+		if (parts.some((part, at) => up(at) && part.repeats)) return;
+		repeatingDown = true;
+		repeatingListener?.();
+	};
+	/** a reporter for the processor about to be built, which is the next place in `parts`. */
+	const heldAt = (): ((failure: Failure) => void) => {
+		const at = parts.length;
+		return (failure) => {
+			if (unsaid === null) unsaid = failure;
+			down.add(at);
+			sayWhatIsLeft();
+		};
 	};
 
 	/**
@@ -254,7 +303,7 @@ export function createPaymentSurface(
 				if (rail !== null) for (const row of drawnRows()) row.collapse();
 				reported(part, rail);
 			},
-			held,
+			heldAt(),
 			seams?.stripe
 		);
 		collapseInline = () => inline.collapse();
@@ -264,7 +313,8 @@ export function createPaymentSurface(
 			// the inline fields recognise no return ahead of a read: the token a redirect comes back
 			// with is the intent's own, and reading it is exactly what that adapter's `resume` does.
 			// so it claims nothing, and it is the fallback below instead.
-			claimsReturn: () => Promise.resolve(false)
+			claimsReturn: () => Promise.resolve(false),
+			repeats: true
 		};
 		parts.push(part);
 		inlinePart = part;
@@ -276,14 +326,15 @@ export function createPaymentSurface(
 			config,
 			open(),
 			(rail) => reported(part, rail),
-			held,
+			heldAt(),
 			seams?.paypal
 		);
 		const part: Part = {
 			owns: isPaypalRail,
 			surface: paypal,
 			rows: paypal.rows,
-			claimsReturn: () => paypal.claimsReturn()
+			claimsReturn: () => paypal.claimsReturn(),
+			repeats: config.paymentMethods.includes('paypal')
 		};
 		parts.push(part);
 		offerVenmo = (offered) => paypal.offerVenmo(offered);
@@ -293,13 +344,14 @@ export function createPaymentSurface(
 	// rail chosen and the window opened in one go, and that press reaches the flow through `fund`.
 	let offerFund: (offered: boolean) => void = () => {};
 	if (config.paymentMethods.some(isChariotRail)) {
-		const chariot = createChariotSurface(config, open(), held, fund, seams?.chariot);
+		const chariot = createChariotSurface(config, open(), heldAt(), fund, seams?.chariot);
 		parts.push({
 			owns: isChariotRail,
 			surface: chariot,
 			rows: chariot.rows,
 			// a grant id is nothing a browser can read back, and no window of the fund's returns here.
-			claimsReturn: () => Promise.resolve(false)
+			claimsReturn: () => Promise.resolve(false),
+			repeats: false
 		});
 		offerFund = (offered) => chariot.offer(offered);
 	}
@@ -312,7 +364,8 @@ export function createPaymentSurface(
 			owns: isNowpaymentsRail,
 			surface: crypto,
 			rows: crypto.rows,
-			claimsReturn: () => Promise.resolve(false)
+			claimsReturn: () => Promise.resolve(false),
+			repeats: false
 		};
 		parts.push(part);
 		offerCrypto = (offered) => crypto.offer(offered);
@@ -322,6 +375,8 @@ export function createPaymentSurface(
 	// recount rather than by a watcher reading a list still being assembled.
 	for (const part of parts) part.rows?.watch({ changed: recount, opened });
 	recount();
+	building = false;
+	sayWhatIsLeft();
 
 	/** whichever processor last took a confirmation, which is whose order a re-read is about. */
 	let confirmed: Part | null = null;
@@ -365,6 +420,10 @@ export function createPaymentSurface(
 		rows(next) {
 			listener = next;
 			if (counted !== null) next(counted);
+		},
+		repeatingUnavailable(next) {
+			repeatingListener = next;
+			if (repeatingDown) next();
 		},
 		quoting(request, minted) {
 			for (const part of parts) part.surface.quoting(request, minted);

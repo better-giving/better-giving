@@ -4,6 +4,7 @@ import {
 	checkoutMachine,
 	cryptoIsOffered,
 	fundIsOffered,
+	oneTimeIsOfferedInstead,
 	openFund,
 	stepIsReachable,
 	venmoIsOffered,
@@ -1420,6 +1421,8 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 		type: 'CHALLENGE_UNAVAILABLE',
 		failure: { message: 'The security check could not be shown.' }
 	},
+	REPEATING_UNAVAILABLE: { type: 'REPEATING_UNAVAILABLE' },
+	MAKE_ONE_TIME: { type: 'MAKE_ONE_TIME' },
 	SET_CONTACT: { type: 'SET_CONTACT', email: 'donor@example.org' },
 	TOGGLE_FEE_COVERAGE: { type: 'TOGGLE_FEE_COVERAGE' },
 	SET_CONSENT: { type: 'SET_CONSENT', consented: true },
@@ -1473,10 +1476,11 @@ describe('an outcome nobody can classify', () => {
 		expect(actor.getSnapshot().context.failure?.message).toBe('The connection was lost.');
 
 		// no event moves this state, asserted over every event the machine declares rather than over
-		// the ones a screen sends today, so a control wired here later fails this. three are accepted
-		// wherever the machine happens to be (`SET_METHOD`, `SET_TURNSTILE_TOKEN` and
-		// `CHALLENGE_UNAVAILABLE`, on the root) and none of them takes a transition — the last is held
-		// against a state that could answer it, and this state is one nothing leaves.
+		// the ones a screen sends today, so a control wired here later fails this. four are accepted
+		// wherever the machine happens to be (`SET_METHOD`, `SET_TURNSTILE_TOKEN`,
+		// `CHALLENGE_UNAVAILABLE` and `REPEATING_UNAVAILABLE`, on the root) and none of them takes a
+		// transition — the last two are held against a state that could answer them, and this state
+		// is one nothing leaves.
 		for (const event of EVERY_EVENT) {
 			actor.send(event);
 			expect(actor.getSnapshot().matches({ indeterminate: 'unresolved' })).toBe(true);
@@ -1680,6 +1684,85 @@ describe('a payment surface that never came up', () => {
 
 		expect(actor.getSnapshot().value).toBe('quoting');
 		expect(actor.getSnapshot().context.failure).toBeNull();
+	});
+});
+
+describe('a repeating gift no processor still up can take', () => {
+	const FUND_CONFIG: FormConfig = {
+		...CONFIG,
+		providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_x' }],
+		paymentMethods: ['card', 'daf']
+	};
+
+	/** the review step of a $25 monthly gift, with the details behind it filled in. */
+	function monthlyAtGive(config: FormConfig = FUND_CONFIG) {
+		const h = harness({ config });
+		h.actor.send({ type: 'SET_AMOUNT', amountMinor: 2500 });
+		h.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'CONTINUE' });
+		return h;
+	}
+
+	// the card down and a fund up is a gift the donor can still make, once: the dead end is for a
+	// form with no way to pay at all, which `PAYMENT_UNAVAILABLE` still is.
+	it('keeps the donor on the review step and offers the gift as one-time instead', () => {
+		const { actor } = monthlyAtGive();
+		actor.send({ type: 'REPEATING_UNAVAILABLE' });
+
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(oneTimeIsOfferedInstead(actor.getSnapshot())).toBe(true);
+		expect(fundIsOffered(actor.getSnapshot())).toBe(false);
+	});
+
+	it('makes the gift one-time on the donor’s press and offers the one-time rails', () => {
+		const { actor } = monthlyAtGive({
+			...FUND_CONFIG,
+			paymentMethods: ['card', 'daf', 'crypto']
+		});
+		actor.send({ type: 'REPEATING_UNAVAILABLE' });
+		actor.send({ type: 'MAKE_ONE_TIME' });
+
+		const snapshot = actor.getSnapshot();
+		expect(snapshot.value).toBe('give');
+		expect(snapshot.context.fv?.frequency).toBe('one_time');
+		expect(snapshot.context.draft.frequency).toBe('one_time');
+		expect(oneTimeIsOfferedInstead(snapshot)).toBe(false);
+		expect(fundIsOffered(snapshot)).toBe(true);
+		expect(cryptoIsOffered(snapshot)).toBe(true);
+	});
+
+	it('takes no such press while a repeating gift can still be paid', () => {
+		const { actor } = monthlyAtGive();
+		actor.send({ type: 'MAKE_ONE_TIME' });
+
+		expect(actor.getSnapshot().context.fv?.frequency).toBe('monthly');
+		expect(oneTimeIsOfferedInstead(actor.getSnapshot())).toBe(false);
+	});
+
+	// heard wherever it arrives, because the processors fail on their own schedule and the donor may
+	// commit to a repeating gift after the report rather than before it.
+	it('offers it on a repeating gift committed after the report arrived', () => {
+		const h = harness({ config: FUND_CONFIG });
+		h.actor.send({ type: 'REPEATING_UNAVAILABLE' });
+		expect(oneTimeIsOfferedInstead(h.actor.getSnapshot())).toBe(false);
+
+		h.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		h.actor.send({ type: 'GO_TO_STEP', step: 'details' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'CONTINUE' });
+		expect(oneTimeIsOfferedInstead(h.actor.getSnapshot())).toBe(true);
 	});
 });
 

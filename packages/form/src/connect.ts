@@ -42,6 +42,7 @@ import type { AdjustedReconciliation } from './fee';
 import {
 	declinedFee,
 	NUMBERED_STEPS,
+	oneTimeIsOfferedInstead,
 	payerIsComplete,
 	shownTotalMinor,
 	stepIsReachable,
@@ -223,6 +224,12 @@ export type State =
 			 * coin list's refusal — and never for whether a press is taken, which `payerComplete` is.
 			 */
 			readonly method?: PaymentMethod;
+			/**
+			 * whether this repeating gift is offered as one-time instead, because no processor still
+			 * up takes a repeating one — `oneTimeIsOfferedInstead` in ./checkout.machine.ts.
+			 * `oneTimeButton` below is the press that takes the offer.
+			 */
+			readonly oneTimeInstead: boolean;
 	  }
 	| {
 			readonly step: 'confirm';
@@ -369,6 +376,8 @@ export type CheckoutApi<
 	readonly declineMandateButton: T['button'];
 	readonly backButton: T['button'];
 	readonly retryButton: T['button'];
+	/** the review step's offer of a one-time gift taken — see `oneTimeInstead` on that step. */
+	readonly oneTimeButton: T['button'];
 	/**
 	 * the marks on the step head, one per numbered step and in the order a donor is asked.
 	 *
@@ -533,6 +542,7 @@ export function toState(snapshot: CheckoutSnapshot): State {
 						fv,
 						payable: methodIsChargeable(context.payerDraft, context.config),
 						payerComplete: payerIsComplete(context),
+						oneTimeInstead: oneTimeIsOfferedInstead(snapshot),
 						...(context.payerDraft.method === undefined
 							? {}
 							: { method: context.payerDraft.method })
@@ -891,6 +901,7 @@ export function connect<
 
 		backButton: button({ onClick: () => send({ type: 'BACK' }) }),
 		retryButton: button({ onClick: () => send({ type: 'RETRY' }) }),
+		oneTimeButton: button({ onClick: () => send({ type: 'MAKE_ONE_TIME' }) }),
 
 		// off the top-level state rather than off the projected `State` above, because the two do
 		// not answer the same question: `working` collapses five machine states into one screen, and

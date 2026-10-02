@@ -127,6 +127,7 @@ async function mount(config: FormConfig = CONFIG): Promise<Card> {
 				offerCrypto: () => {},
 				offerVenmo: () => {},
 				rows: () => {},
+				repeatingUnavailable: () => {},
 				stop: () => {}
 			}),
 			challenge: () => ({ reset: () => {}, stop: () => {} })

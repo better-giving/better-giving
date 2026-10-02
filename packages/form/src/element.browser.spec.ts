@@ -95,6 +95,7 @@ async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promi
 					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				};
 			},
@@ -237,6 +238,7 @@ describe('the box a host page holds before the element upgrades', () => {
 					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })
