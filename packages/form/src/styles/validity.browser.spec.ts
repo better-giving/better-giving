@@ -1,5 +1,7 @@
+// the provider's augmentation is what types `cdp()`'s `send`.
+/// <reference types="@vitest/browser-playwright" />
 import { afterEach, describe, expect, it } from 'vitest';
-import { userEvent } from 'vitest/browser';
+import { cdp, userEvent } from 'vitest/browser';
 import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import type { CheckoutPorts } from '../ports';
 import { completePayer, NAME_PATTERN } from '../value';
@@ -442,20 +444,88 @@ describe('the free entry the donor has already typed into', () => {
 		expect(resolved(drawn.outlineColor)).toBe(resolved('transparent'));
 	});
 
-	// a refused entry standing alone, which carries its own danger mark: the ring takes the mark's
-	// colour rather than the ordinary ring's, as every refused control's does.
-	it('rings a refused entry in the danger colour', async () => {
-		const card = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
-		proceed(card);
-		const surface = card.find("[part~='amount-input']");
-		const entry = card.find("[part~='amount-input'] input") as HTMLInputElement;
-		entry.blur();
-		entry.focus();
-		await painted(entry, surface);
+	/** every layer of a shadow, in the order the engine serialized them, as its colour alone. */
+	const layers = (shadow: string): string[] =>
+		shadow === 'none' ? [] : shadow.split(/,(?![^(]*\))/).map((layer) => shadowColour(layer.trim()));
 
-		expect(surface.getAttribute('part')).toContain('invalid');
-		expect(shadowColour(getComputedStyle(entry).boxShadow)).toBe(dangerOf(card));
-		expect(getComputedStyle(entry).boxShadow).not.toContain('inset');
+	/**
+	 * where the entry stands, whether the press was refused, and the colour of every shadow layer on
+	 * the input and on the surface while the keyboard is in it. a colour is a token's name, or
+	 * `danger` for the colour the sentence under a refused field is set in.
+	 */
+	const STANDINGS = [
+		{
+			standing: 'on a tray',
+			suggested: CONFIG.suggestedAmountsMinor,
+			refused: false,
+			input: ['--_n1', '--_focus-ring'],
+			surface: []
+		},
+		{
+			standing: 'on a tray',
+			suggested: CONFIG.suggestedAmountsMinor,
+			refused: true,
+			input: ['danger'],
+			surface: []
+		},
+		{ standing: 'alone', suggested: [], refused: false, input: ['--_focus-ring'], surface: [] },
+		// standing alone a refused entry carries the field's own mark, the inset hairline inside its
+		// danger edge, and the ring outside it is the mark's colour rather than the ordinary ring's.
+		{ standing: 'alone', suggested: [], refused: true, input: ['danger'], surface: ['danger'] }
+	] as const;
+
+	for (const { standing, suggested, refused, input, surface: marked } of STANDINGS) {
+		it(`rings ${refused ? 'a refused' : 'an accepted'} entry standing ${standing}`, async () => {
+			const card = await mount({ ...CONFIG, suggestedAmountsMinor: [...suggested] });
+			if (suggested.length > 1) (card.find('.other input') as HTMLInputElement).click();
+			if (refused) proceed(card);
+			const surface = card.find("[part~='amount-input']");
+			const entry = card.find("[part~='amount-input'] input") as HTMLInputElement;
+			entry.blur();
+			entry.focus();
+			await painted(entry, surface);
+			const colour = (name: string) => (name === 'danger' ? dangerOf(card) : tokenOf(card, name));
+
+			expect(card.find('.tiles').classList.contains('bare')).toBe(standing === 'alone');
+			expect(surface.getAttribute('part')?.includes('invalid')).toBe(refused);
+			expect(layers(getComputedStyle(entry).boxShadow)).toEqual(input.map(colour));
+			expect(layers(getComputedStyle(surface).boxShadow)).toEqual(marked.map(colour));
+			// standing alone it is a field like any other, and a field's ring is its edge recoloured
+			// with the ring flush outside it (`[part~='field']:focus-visible` in ../styles/parts.css).
+			// the input stands inside the surface's edge, so its ring is that edge's width wider.
+			if (standing === 'alone') {
+				const spread = /0px 0px 0px ([\d.]+)px/.exec(getComputedStyle(entry).boxShadow)?.[1];
+				expect(Number(spread)).toBe(
+					parseFloat(getComputedStyle(surface).borderTopWidth) + lengthOf(card, '--_focus-width')
+				);
+			}
+		});
+	}
+
+	// forced-colors drops every shadow above, so what is left of the ring is the outline the input
+	// keeps from the general focus rule, in the system's own colour.
+	it('keeps an outline the system paints when it forces its own colours', async () => {
+		const card = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
+		const entry = card.find("[part~='amount-input'] input") as HTMLInputElement;
+		const session = cdp();
+		await session.send('Emulation.setEmulatedMedia', {
+			features: [{ name: 'forced-colors', value: 'active' }]
+		});
+		try {
+			expect(matchMedia('(forced-colors: active)').matches, 'the mode is on').toBe(true);
+			entry.blur();
+			entry.focus();
+			await painted(entry);
+			const drawn = getComputedStyle(entry);
+
+			expect(drawn.boxShadow).toBe('none');
+			expect(drawn.outlineStyle).toBe('solid');
+			expect(parseFloat(drawn.outlineWidth)).toBeGreaterThan(0);
+			// read raw: the mode forces the colour of any probe `resolved` would read it through.
+			expect(drawn.outlineColor).not.toMatch(/^transparent$|^rgba\(.*,\s*0\)$/);
+		} finally {
+			await session.send('Emulation.setEmulatedMedia', { features: [] });
+		}
 	});
 
 	// a host page's normal `::part()` rule outranks every rule the element's own sheets write on that
@@ -478,28 +548,6 @@ describe('the free entry the donor has already typed into', () => {
 			(node) => outerShadowColour(getComputedStyle(node).boxShadow) === ring
 		);
 		expect(ringed).not.toEqual([]);
-	});
-
-	// standing alone the entry is a field like any other, and a field's ring is its edge recoloured
-	// with the ring flush outside it (`[part~='field']:focus-visible` in ../styles/parts.css). the
-	// input stands inside the surface's edge, so its one shadow is that edge's width wider than the
-	// field's ring.
-	it('rings as a field does where it stands alone', async () => {
-		const card = await mount({ ...CONFIG, suggestedAmountsMinor: [] });
-		const surface = card.find("[part~='amount-input']");
-		const entry = card.find("[part~='amount-input'] input") as HTMLInputElement;
-		entry.blur();
-		entry.focus();
-		await painted(entry, surface);
-		const drawn = getComputedStyle(entry).boxShadow;
-		const spread = /0px 0px 0px ([\d.]+)px/.exec(drawn)?.[1];
-
-		expect(card.find('.tiles').classList.contains('bare')).toBe(true);
-		expect(drawn.split(/,(?![^(]*\))/)).toHaveLength(1);
-		expect(shadowColour(drawn)).toBe(tokenOf(card, '--_focus-ring'));
-		expect(Number(spread)).toBe(
-			parseFloat(getComputedStyle(surface).borderTopWidth) + lengthOf(card, '--_focus-width')
-		);
 	});
 });
 
