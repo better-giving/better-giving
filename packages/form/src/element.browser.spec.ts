@@ -522,6 +522,56 @@ describe('the closed choices on the amount step', () => {
 		expect(above.bottom).toBeLessThanOrEqual(tight.box.getBoundingClientRect().top);
 	});
 
+	// the frame's `transform` is the containing block a `position: fixed` list would be placed in, and
+	// zag's `--x` is measured against the viewport — so a list placed in the frame would stand off to
+	// the side by the frame's own offset. the frame is pushed right for that offset to show, and
+	// narrowed so the box still ends inside the viewport: a box running off it has its list shifted
+	// back on screen, which is zag keeping it readable rather than misplacing it.
+	it('lines the open list up with the box’s left edge and width under a transformed host', async () => {
+		const { root, box, frame } = await clipped('0px');
+		frame.style.marginInlineStart = '48px';
+		frame.style.inlineSize = '340px';
+		frame.scrollTop = box.offsetTop;
+		box.focus();
+		await userEvent.keyboard('{ArrowDown}');
+		const list = (await placedList(root)).getBoundingClientRect();
+		const at = box.getBoundingClientRect();
+
+		expect(at.left).toBeGreaterThan(48);
+		expect(at.right).toBeLessThan(window.innerWidth);
+		expect(list.left).toBeCloseTo(at.left, 0);
+		expect(list.width).toBeCloseTo(at.width, 0);
+	});
+
+	// zag writes `--reference-width` onto the positioner only once it has measured the box, and the
+	// list is on screen a frame before that. a host's own property of that name, inherited through the
+	// shadow root, would size every frame the list stands unmeasured in.
+	it('sizes the open list by its box and never by a host’s own `--reference-width`', async () => {
+		const host = await mount(CHOICE);
+		host.style.setProperty('--reference-width', '900px');
+		const root = shadow(host);
+		const box = root.querySelector<HTMLElement>('#program');
+		const list = root.querySelector<HTMLElement>('[part~="select-list"]');
+		if (box === null || list === null) throw new Error('no program box');
+		const positioner = list.parentElement;
+		if (positioner === null) throw new Error('no positioner');
+		const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+		const drawn: number[] = [];
+
+		box.focus();
+		box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		const unmeasured = () => positioner.style.getPropertyValue('--reference-width') === '';
+		for (let frames = 0; frames < 30 && unmeasured(); frames += 1) {
+			if (positioner.matches(':popover-open')) drawn.push(list.getBoundingClientRect().width);
+			await frame();
+		}
+		await placedList(root);
+
+		expect(drawn.length).toBeGreaterThan(0);
+		for (const width of drawn) expect(width).toBeLessThanOrEqual(window.innerWidth);
+		expect(list.getBoundingClientRect().width).toBeCloseTo(box.getBoundingClientRect().width, 0);
+	});
+
 	// a move is a disconnect and a connect, and the removal hides an open popover under the machine.
 	// the box must not go on saying its list is open when no list is on screen.
 	it('closes the list a move took off the screen', async () => {
@@ -537,6 +587,52 @@ describe('the closed choices on the amount step', () => {
 
 		await vi.waitFor(() => expect(box.getAttribute('aria-expanded')).toBe('false'));
 		expect(root.querySelector('#program-positioner')?.matches(':popover-open')).toBe(false);
+	});
+
+	// the pair's removal blurs the caret onto the host's page along with hiding the list; the close
+	// `reattached` asks for is what hands it back to the box, after the move rather than with it.
+	it('hands the caret back to the box once a move has closed its list', async () => {
+		const host = await mount(CHOICE);
+		const root = shadow(host);
+		const box = root.querySelector<HTMLElement>('#program');
+		if (box === null) throw new Error('no program box');
+		box.focus();
+		await userEvent.keyboard('{ArrowDown}');
+		await vi.waitFor(() => expect(box.getAttribute('aria-expanded')).toBe('true'));
+
+		document.body.appendChild(host);
+
+		await vi.waitFor(() => expect(root.activeElement).toBe(box));
+		expect(document.activeElement).toBe(host);
+	});
+
+	// `moveBefore` keeps the popover in the top layer and the caret where it stood, so the card has
+	// nothing to close and nothing to hand back. this holds with `connectedMoveCallback` declared or
+	// not — the pair it stands in for finds the list still showing too — so it is the move's outcome
+	// asserted here, not which callback carried it.
+	it('leaves an open list and its caret alone through a move that never disconnects it', async () => {
+		const host = await mount(CHOICE);
+		const root = shadow(host);
+		const box = root.querySelector<HTMLElement>('#program');
+		if (box === null) throw new Error('no program box');
+		const after = document.createElement('div');
+		document.body.appendChild(after);
+		planted.push(after);
+		box.focus();
+		await userEvent.keyboard('{ArrowDown}');
+		await vi.waitFor(() => expect(box.getAttribute('aria-expanded')).toBe('true'));
+		const caret = root.activeElement;
+
+		document.body.moveBefore(host, null);
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		await settle();
+
+		expect(host.nextElementSibling).toBeNull();
+		expect(box.getAttribute('aria-expanded')).toBe('true');
+		expect(root.querySelector('#program-positioner')?.matches(':popover-open')).toBe(true);
+		expect(root.activeElement).toBe(caret);
+		await userEvent.keyboard('{Escape}');
+		await vi.waitFor(() => expect(root.activeElement).toBe(box));
 	});
 });
 
