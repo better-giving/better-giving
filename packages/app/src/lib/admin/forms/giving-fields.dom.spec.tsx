@@ -1,7 +1,11 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, onTestFinished } from 'vitest';
-import { boxErrorId } from '../use-admin-form';
+import { getFormProps } from '@conform-to/react';
+import { MAX_SUGGESTED_AMOUNTS } from '$lib/forms/amounts';
+import { defineForm } from '$lib/forms/definition';
+import { FORM_GIVING_INPUT } from '$lib/forms/input-schema';
+import { boxErrorId, insertWhenValid, useAdminForm } from '../use-admin-form';
 import { FormGivingFields } from './giving-fields';
 
 // which box a refused amount is said under, in the two shapes a refusal comes in: one keyed to the
@@ -86,7 +90,7 @@ function input(root: HTMLElement, index: number): HTMLInputElement {
 }
 
 const BELOW = 'must be more than smallest gift of $5';
-const CAP = 'at most 12';
+const CAP = `at most ${MAX_SUGGESTED_AMOUNTS}`;
 
 it('says a refused amount under the row that holds it, and marks no other row', () => {
 	const root = group({ rows: [row(0), row(1, [BELOW])] });
@@ -323,4 +327,127 @@ it('gives the bounds no named field but the two boxes', () => {
 	expect(
 		[...fieldset.querySelectorAll('[name]')].map((field) => field.getAttribute('name'))
 	).toEqual(['min_minor', 'max_minor']);
+});
+
+// these mount the group under the real form layer, because what is under test is what a press and
+// a save do to the rows and to focus, and both are conform's as much as the group's.
+
+const GIVING = defineForm({ id: 'form-edit-giving', schema: FORM_GIVING_INPUT });
+
+/** distinct figures inside the $5–$500 bounds, one per row. */
+const figures = (count: number) => Array.from({ length: count }, (_, i) => String(10 + i));
+
+function Giving({ rows, min = '5' }: { readonly rows: string[]; readonly min?: string }) {
+	const [form, fields] = useAdminForm(GIVING, undefined, {
+		defaultValue: { min_minor: min, max_minor: '500', suggested_amounts: rows }
+	});
+	return (
+		<form {...getFormProps(form)}>
+			<FormGivingFields
+				boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
+				amounts={{
+					id: fields.suggested_amounts.id,
+					errors: fields.suggested_amounts.errors,
+					rows: fields.suggested_amounts.getFieldList(),
+					add: insertWhenValid(form, GIVING, fields.suggested_amounts.name),
+					remove: (index) =>
+						form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
+				}}
+				currency="USD"
+				footer={<button type="submit">Save</button>}
+			/>
+		</form>
+	);
+}
+
+function giving(rows: string[], min?: string) {
+	const root = mount(createElement(Giving, min === undefined ? { rows } : { rows, min }));
+	const button = (label: string) => {
+		const found = [...root.querySelectorAll('button')].find((b) => b.textContent === label);
+		if (!found) throw new Error(`no ${label} button`);
+		return found;
+	};
+	return {
+		root,
+		rows: () => root.querySelectorAll('input[name^="suggested_amounts["]').length,
+		add: () => button('Add an amount'),
+		save: () => button('Save'),
+		/**
+		 * a press as a browser makes one: focus on the control, then the click — and the task after
+		 * it, which is when a refused save has settled where focus goes.
+		 */
+		press: (control: HTMLButtonElement) =>
+			act(async () => {
+				control.focus();
+				control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+				await new Promise((settled) => setTimeout(settled, 0));
+			}),
+		/** the text of every element the control's `aria-describedby` names. */
+		description: (control: HTMLElement) =>
+			(control.getAttribute('aria-describedby') ?? '')
+				.split(' ')
+				.filter(Boolean)
+				.map((id) => document.getElementById(id)?.textContent)
+	};
+}
+
+it('adds a row while the group is under the cap', async () => {
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS - 1));
+
+	await group.press(group.add());
+
+	expect(group.rows()).toBe(MAX_SUGGESTED_AMOUNTS);
+});
+
+it('holds Add at the cap, and says why on Add', async () => {
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS));
+
+	await group.press(group.add());
+
+	expect(group.rows()).toBe(MAX_SUGGESTED_AMOUNTS);
+	expect(group.description(group.add())).toContain(CAP);
+	// the press is answered where it was made: focus stays on Add.
+	expect(document.activeElement).toBe(group.add());
+});
+
+it('moves focus to Add when a save is refused by the cap alone', async () => {
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS + 1));
+
+	await group.press(group.save());
+
+	expect(document.activeElement).toBe(group.add());
+	expect(group.description(group.add())).toContain(CAP);
+});
+
+it('leaves focus on a bound the same save refused, which is where conform put it', async () => {
+	// the bounds the wrong way round are refused under the largest gift's own box, alongside the
+	// cap: the walk focuses that box, and it is the first thing on the group to fix.
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS + 1), '600');
+
+	await group.press(group.save());
+
+	expect(document.activeElement?.getAttribute('name')).toBe('max_minor');
+	expect(group.description(group.add())).toContain(CAP);
+});
+
+it('moves focus to Add again when a second save is refused the same way', async () => {
+	// the second refusal changes no error, so the form layer draws nothing new for it.
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS + 1));
+	await group.press(group.save());
+
+	await group.press(group.save());
+
+	expect(document.activeElement).toBe(group.add());
+});
+
+it('moves focus to Add once the bound a first save was refused by is fixed', async () => {
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS + 1), '600');
+	await group.press(group.save());
+	const max = group.root.querySelector('input[name="max_minor"]');
+	if (!(max instanceof HTMLInputElement)) throw new Error('no largest gift box');
+
+	await type(max, '700');
+	await group.press(group.save());
+
+	expect(document.activeElement).toBe(group.add());
 });

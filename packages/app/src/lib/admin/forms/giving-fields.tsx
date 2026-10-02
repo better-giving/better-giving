@@ -6,9 +6,14 @@ import {
 	type RowControl
 } from '@better-giving/operator/components/forms/RepeatingRows';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { formatMinorBrief, minorUnitDigits } from '$lib/donations/money';
-import { majorEntry, readAmount } from '$lib/forms/amounts';
+import {
+	MAX_SUGGESTED_AMOUNTS,
+	majorEntry,
+	readAmount,
+	TOO_MANY_SUGGESTED_AMOUNTS
+} from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { type Box, boxErrorId, boxProps } from '../use-admin-form';
@@ -43,6 +48,15 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // the bare group name is the cap on how many amounts there may be, because a list holding too many
 // is a fact about no one row — so this group draws it under the rows, describes the group by it,
 // and marks no row with it, which is why it is not handed to `RepeatingRows` as the group's `error`.
+//
+// the one control that sentence is about is Add, so Add is described by it too, and Add is where
+// the cap is kept: once the screen has hydrated, a press at `MAX_SUGGESTED_AMOUNTS` rows adds
+// nothing and draws the sentence until the rows change. before hydration Add is the plain intent
+// submit and the row is added, and the save is what refuses the list. a save refused by the cap is
+// answered at Add as well — the bare name is on no box, so conform's failed-submit walk focuses
+// nothing (`report` in @conform-to/dom's form.js matches a box's `name` and never a button), and
+// the group moves focus to Add itself, unless the walk has already moved it to a box some other
+// rule refused.
 //
 // the bounds carry a slider over their two boxes, and it is the one control here that is not a
 // box: it moves along `BOUND_STOPS` below, writes the stop a thumb lands on into that thumb's box,
@@ -138,7 +152,8 @@ type AmountRows = {
 	readonly rows: readonly AmountRow[];
 	/**
 	 * the control that adds an empty row at the end, as the form states it — and the press it is
-	 * withheld on, `insertWhenValid` in ../use-admin-form.ts.
+	 * withheld on, `insertWhenValid` in ../use-admin-form.ts. a press at the cap is held here, ahead
+	 * of it.
 	 */
 	readonly add: RowControl;
 	/** the control that drops one row, as the form states it for that position. */
@@ -163,9 +178,28 @@ type FormGivingFieldsProps = {
 };
 
 export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivingFieldsProps) {
-	const capError = amounts.errors?.[0];
+	// the rows a press was held over at the cap. the sentence stands while they are the rows on
+	// screen, and goes the moment one is added or dropped.
+	const identities = amounts.rows.map((row) => row.key ?? row.id).join('\n');
+	const [heldOver, setHeldOver] = useState<string | null>(null);
+	const capError =
+		amounts.errors?.[0] ?? (heldOver === identities ? TOO_MANY_SUGGESTED_AMOUNTS : undefined);
 
 	const capErrorId = boxErrorId(amounts.id);
+	const addId = `${amounts.id}-add`;
+	const add = {
+		...amounts.add,
+		id: addId,
+		...(capError ? { 'aria-describedby': capErrorId } : {}),
+		onClick(event: MouseEvent<HTMLButtonElement>) {
+			if (amounts.rows.length >= MAX_SUGGESTED_AMOUNTS) {
+				event.preventDefault();
+				setHeldOver(identities);
+				return;
+			}
+			amounts.add.onClick?.(event);
+		}
+	};
 	const suggestedHintId = `${amounts.id}-hint`;
 
 	// every figure drawn here goes through `$lib/forms/amounts.ts`, the module the save is parsed
@@ -228,6 +262,41 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 			clearTimeout(settling);
 		};
 	}, [boxes.min_minor.name, boxes.max_minor.name, currency]);
+
+	// whether the form's errors carry the cap, as of the last commit. read on the task after a
+	// save rather than on a commit: conform re-renders only when the errors change, so a save refused
+	// exactly as the last one was commits nothing at all.
+	const refusedByCap = useRef(false);
+	useEffect(() => {
+		refusedByCap.current = amounts.errors?.[0] !== undefined;
+	});
+
+	// a save refused by the cap leaves focus where it was, because the bare name is on no box for
+	// conform's walk to find. every intent conform submits — Add, Remove, the revalidation each
+	// keystroke runs after the first save, `form.validate` — goes under the intent's own name and is
+	// no save. focus that moved off where it stood at the submit is the walk's, on a box some other
+	// rule refused, and stays there.
+	const intentName = amounts.add.name;
+	useEffect(() => {
+		const form = bounds.current?.form;
+		if (!form) return;
+		let settling: ReturnType<typeof setTimeout> | undefined;
+		const submitted = (event: SubmitEvent) => {
+			if (event.target !== form || event.submitter?.getAttribute('name') === intentName) return;
+			const standing = document.activeElement;
+			clearTimeout(settling);
+			settling = setTimeout(() => {
+				if (!event.defaultPrevented || !refusedByCap.current) return;
+				if (document.activeElement !== standing) return;
+				document.getElementById(addId)?.focus();
+			}, 0);
+		};
+		form.addEventListener('submit', submitted);
+		return () => {
+			form.removeEventListener('submit', submitted);
+			clearTimeout(settling);
+		};
+	}, [intentName, addId]);
 
 	// a thumb that moved writes its stop into its own box, as the operator would have typed it. only
 	// the thumb whose stop changed writes: the other box may hold a figure between two stops, and
@@ -369,7 +438,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 					describedBy={capError ? capErrorId : undefined}
 					placeholder={suggestedExample}
 					addLabel="Add an amount"
-					add={amounts.add}
+					add={add}
 					rows={amounts.rows.map((row, index) => ({
 						// bound the way every other box on these screens is: the message under a row is
 						// that row's own, and the standing hint is composed in beside it rather than
