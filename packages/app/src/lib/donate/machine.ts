@@ -111,7 +111,8 @@ export type Checkout = {
 /**
  * the flow, running, with every provider wired into it.
  *
- * the payment surface is built before the actor because two of the actor's four ports are its own.
+ * the payment surface is built before the actor because two of the actor's five ports are its own
+ * and a third is wrapped around it (./ports.ts).
  * it is the composer in @better-giving/form/embed/surface rather than either processor's adapter,
  * so a deployment holding two of them still hands the flow one surface and nothing below this line
  * learns there was more than one.
@@ -129,9 +130,10 @@ export type Checkout = {
  * approving or closing, a token minted, a challenge that could not be shown. the one report that is
  * answered is a fund's press — its script asks for the gift and opens its window in the same call —
  * so `openFund` in @better-giving/form/machine sends
- * the press and reads the answer back with nothing awaited between. the token goes
- * through the projection's own setter rather than at the actor, so the one this page collects and
- * the one a headless integrator would hand in travel one path.
+ * the press and reads the answer back with nothing awaited between. the token is sent at the
+ * actor as `SET_TURNSTILE_TOKEN`, the event the projection's own `setTurnstileToken` sends
+ * (@better-giving/form's connect.ts), so the one this page collects and the one a headless
+ * integrator would hand in travel one path.
  */
 export function startCheckout(config: FormConfig, mounts: CheckoutMounts): Checkout {
 	const { paymentMount, challengeMount, resumeToken, seams } = mounts;
