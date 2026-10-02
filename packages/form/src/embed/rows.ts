@@ -219,8 +219,8 @@ export function createRows(mount: HTMLElement): RowDrawer {
 			const panel = doc.createElement('div');
 			panel.className = 'panel';
 			panel.id = 'panel';
-			// `group` rather than `region`, on the rule at `mandateWell` in ../views.ts: a region is a
-			// landmark, and every open row would add one to a page this card does not own.
+			// `group` rather than `region`: a region is a landmark, and every open row would add one to
+			// a page this card does not own.
 			panel.setAttribute('role', 'group');
 			panel.setAttribute('aria-labelledby', 'head');
 			panel.hidden = true;
