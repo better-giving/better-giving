@@ -52,11 +52,12 @@ import { offeredRails } from './offered-rails';
 const TTL_SECONDS = 300;
 
 /**
- * the address an answer is kept under, which no route serves.
+ * the address an answer is kept under, which no route reads.
  *
  * `caches.default` is the zone's own store, keyed by URL — so an entry written under a path this app
- * answers on could be handed to a visitor asking for that path. a name outside the routing tree is
- * what keeps this entry reachable only from here.
+ * answers on could be handed to a visitor asking for that path. this one is a single segment, so the
+ * only route that matches it is `/{form_id}` in ../../../routes/$formId.tsx, which answers it with its
+ * not-found refusal and never reads this store.
  */
 const CACHE_PATH = '/__offered-rails';
 

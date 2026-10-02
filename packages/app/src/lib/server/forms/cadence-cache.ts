@@ -20,8 +20,9 @@ import { offeredCadences } from './offered-cadences';
 // what a stale entry costs is bounded and one-directional: an operator who has just set up
 // repeating gifts waits out the TTL before Monthly appears on their forms, once, ever. nothing
 // about collecting a gift waits on this — `createRecurringGift` on the port charges against
-// whatever the account holds at the moment it is called — and a cadence a donor was offered is
-// re-checked against the served config by `parseQuoteRequest` in ../donations/quote-input.ts.
+// whatever the account holds at the moment it is called — and `parseQuoteRequest` in
+// ../donations/quote-input.ts accepts every cadence in `FREQUENCIES` rather than the served list, so a
+// cadence a stale page still offers is charged rather than refused.
 //
 // nothing built from a binding is a module-scope singleton (CLAUDE.md): the store is reached inside
 // the call, and the processor set arrives as an argument from whichever request built it.
@@ -36,11 +37,12 @@ import { offeredCadences } from './offered-cadences';
 const TTL_SECONDS = 300;
 
 /**
- * the address an answer is kept under, which no route serves.
+ * the address an answer is kept under, which no route reads.
  *
  * `caches.default` is the zone's own store, keyed by URL — so an entry written under a path this app
- * answers on could be handed to a visitor asking for that path. a name outside the routing tree is
- * what keeps this entry reachable only from here.
+ * answers on could be handed to a visitor asking for that path. this one is a single segment, so the
+ * only route that matches it is `/{form_id}` in ../../../routes/$formId.tsx, which answers it with its
+ * not-found refusal and never reads this store.
  */
 const CACHE_PATH = '/__recurring-cadences';
 
