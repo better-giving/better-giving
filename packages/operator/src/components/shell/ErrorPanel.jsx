@@ -22,7 +22,7 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  *
  * @template {ElementType} [W='button']
  * @typedef {object} ErrorPanelProps
- * @property {'404' | '500' | undefined} [code]
+ * @property {`${number}` | undefined} [code] the HTTP status the panel prints.
  * @property {ReactNode} [title]
  * @property {ReactNode} [children]
  * @property {ReactNode} [wayOut] the label on the way out. absent, the panel offers none.
@@ -33,10 +33,11 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
    once there and reached from here, so signing in and failing are the same centred panel rather
    than two that only look alike.
 
-   two faces. a 404 on a working deployment has somewhere to send anybody. a 500 has no way out at
+   three faces. a 404 on a working deployment has somewhere to send anybody. a 500 has no way out at
    all — deliberately: the deployment that would serve the next screen is the thing that failed, so
-   a link would be a lie. which face gets one is the caller's, because it is the caller that knows
-   the address; packages/app/src/root.tsx is where the two are chosen between. */
+   a link would be a lie. a refused request prints its own 4xx and, like the 500, has no way out.
+   which face gets one is the caller's, because it is the caller that knows the address;
+   packages/app/src/root.tsx is where they are chosen between. */
 /**
  * @template {ElementType} [W='button']
  * @param {ErrorPanelProps<W>} props

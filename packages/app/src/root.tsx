@@ -94,7 +94,7 @@ export function ErrorBoundary() {
 	// sheets — there are none here.
 	const sheet = <link rel="stylesheet" precedence="operator" href={operatorSheet} />;
 
-	// the panel has two faces and the 404 is the one with a way out: an address that is not there
+	// the panel has three faces and the 404 is the one with a way out: an address that is not there
 	// on a working deployment has somewhere to send anybody, while a deployment that would serve
 	// the next screen is the thing that failed. `ErrorPanel` draws the panel; the address is this
 	// app's and is stated here, because the part is a leaf shared with another surface whose route
@@ -125,6 +125,20 @@ export function ErrorBoundary() {
 	// text of anything it did not expect, so the fallback is a state rather than a sentence
 	// somebody wrote for it.
 	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';
+
+	// a 4xx is the app answering, not failing: the form layer refuses a hand-built body with a 400
+	// ($lib/server/conform.ts), and the page says what the status says. like the 500 face it offers
+	// no way out.
+	if (status >= 400 && status < 500) {
+		return (
+			<>
+				{sheet}
+				<ErrorPanel code={`${status}`} title="This request was refused">
+					<MarkedText text={message || 'Nothing more is known about why.'} />
+				</ErrorPanel>
+			</>
+		);
+	}
 
 	return (
 		<>
