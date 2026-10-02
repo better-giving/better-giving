@@ -44,7 +44,11 @@ function mount(tree: ReactNode): HTMLElement {
  */
 function railAt(pathname: string): HTMLElement {
 	return mount(
-		<AppShell groups={DESTINATION_GROUPS} current={currentDestination(pathname)}>
+		<AppShell
+			org="Riverside Shelter"
+			groups={DESTINATION_GROUPS}
+			current={currentDestination(pathname)}
+		>
 			screen
 		</AppShell>
 	);

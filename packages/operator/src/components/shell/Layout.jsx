@@ -34,16 +34,16 @@
  * @property {ReactNode} [children]
  *
  * @typedef {object} GroupProps
- * @property {ReactNode} [label] what the band names. a block with nothing to write there is a `Stack`.
- * @property {'h2' | 'h3' | 'h4' | 'h5' | 'h6'} labelAs the element the band's name is drawn as,
- *   stated by every caller and defaulted by none. the level a band belongs at is a fact about what
- *   it is drawn under rather than about the band — a group inside a screen's own section takes one
- *   level and the same group inside a panel folded under a heading takes another — so a component
- *   that picked one would be right on the first surface to use it and wrong on the next, which is
- *   the reason `StatusLine`'s own `labelAs` gives. `h2` is the ceiling because a screen's
- *   `PageHeader` draws its `h1`. every level is a heading and `span` is not among them, where
- *   `StatusLine` offers it: a band names the block, which is what a `Group` has and a `Stack` does
- *   not.
+ * @property {ReactNode} label what the band names, and the caller's alone: a primitive that
+ *   filled it in would print one screen's copy on every surface that forgot its own. a block with
+ *   nothing to write there is a `Stack`.
+ * @property {'h2' | 'h3' | 'h4' | 'h5' | 'h6' | undefined} [labelAs] the element the band's name is
+ *   drawn as, `h3` where unstated — the level a group takes inside a screen's own section. the level
+ *   a band belongs at is a fact about what it is drawn under rather than about the band, so a group
+ *   standing directly under the screen's heading, or inside a panel folded under one, states its
+ *   own. `h2` is the ceiling because a screen's `PageHeader` draws its `h1`. every level is a
+ *   heading and `span` is not among them, where `StatusLine` offers it: a band names the block,
+ *   which is what a `Group` has and a `Stack` does not.
  * @property {ReactNode} [children]
  */
 
@@ -131,7 +131,7 @@ export function Steps({ tight = false, children }) {
    nothing to write in the band is a `Stack`, and what separates it from the block beside it is
    the space. */
 /** @param {GroupProps} props */
-export function Group({ label = 'Payment notifications', labelAs: Label, children }) {
+export function Group({ label, labelAs: Label = 'h3', children }) {
 	return (
 		<div className="adm-group">
 			<Label className="adm-group__label">{label}</Label>

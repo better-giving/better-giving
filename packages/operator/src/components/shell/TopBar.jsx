@@ -39,7 +39,8 @@ import { Mark } from '../status/Mark.jsx';
 
 /**
  * @typedef {object} TopBarProps
- * @property {readonly TopBarFact[] | undefined} [facts] in the order they are read. the divider
+ * @property {readonly TopBarFact[]} facts in the order they are read, and only the caller's: a bar
+ *   with a run of its own would state a fictional account over a real deployment. the divider
  *   between two of them is drawn here rather than stated by a caller: it belongs to the pair and
  *   not to either fact, so a bar with one fact draws none.
  * @property {ReactNode} [end] what acts on the surface, at the bar's far end, named for the slot
@@ -73,7 +74,7 @@ import { Mark } from '../status/Mark.jsx';
    the bar is drawn as the first row of ../../styles/adm.css's shell, the same way the identity band
    is, and neither one is placed by name. */
 /** @param {TopBarProps} props */
-export function TopBar({ facts = [{ what: 'Account', name: 'Riverbank Trust' }], end }) {
+export function TopBar({ facts, end }) {
 	/** @type {ReactNode} */
 	const control =
 		end === undefined ? (

@@ -58,10 +58,10 @@ import {
  * is the column with its own gap taken off: the blocks inside it touch, which is what a screen gets
  * when it means to space them itself.
  *
- * `Group`'s `labelAs` is stated by every caller and defaulted by none, so all five levels are drawn
- * — they differ in the outline a reader navigates by and in nothing on the screen, which is exactly
- * why a specimen of each is here rather than one of `h3`. `label` has a default of its own, so the
- * last group is what a screen that forgot the prop actually draws.
+ * `Group`'s `labelAs` is `h3` where unstated, and all five levels are drawn — they differ in the
+ * outline a reader navigates by and in nothing on the screen, which is exactly why a specimen of
+ * each is here rather than one of `h3`. the last group leaves the level off and takes the default.
+ * `label` has none and is always the caller's.
  *
  * `Steps` is the one list in this system with markers, and the numerals only line up against a step
  * whose body wraps to a second line — so the loose run holds one.
@@ -232,11 +232,12 @@ export default function ShellLayoutPreview() {
 				</p>
 			</Group>
 
-			{/* `label` left off, which is the component's own default rather than a band with nothing in
-			    it — `Group` in packages/operator/src/components/shell/Layout.jsx. */}
-			<Group labelAs="h3">
+			{/* `labelAs` left off, which is the component's own default: the `h3` a group takes inside a
+			    screen's own section — `Group` in packages/operator/src/components/shell/Layout.jsx. */}
+			<Group label="Sender">
 				<p>
-					The band takes the default label, so a group with nothing to name still names something.
+					The band takes the default level, the same one the payment notifications group above
+					states.
 				</p>
 			</Group>
 		</div>

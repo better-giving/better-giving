@@ -45,7 +45,13 @@ function stub() {
 		{
 			path: first.href,
 			Component: () => (
-				<AppShell groups={DESTINATION_GROUPS} link={RouterLink} current={first.label} wayOut={null}>
+				<AppShell
+					org="Riverside Shelter"
+					groups={DESTINATION_GROUPS}
+					link={RouterLink}
+					current={first.label}
+					wayOut={null}
+				>
 					<p>the screen</p>
 				</AppShell>
 			)

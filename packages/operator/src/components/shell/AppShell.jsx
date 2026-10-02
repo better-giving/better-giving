@@ -47,7 +47,9 @@ import { Button } from '../controls/Button.jsx';
 
 /**
  * @typedef {object} AppShellProps
- * @property {ReactNode} [org] the operating organisation's legal name. there is no logo.
+ * @property {ReactNode} org the operating organisation's legal name. there is no logo. it has no
+ * default, and neither has `groups`: a shell that filled either in would put a fictional
+ * organisation and its rail on a real deployment whose surface forgot to state its own.
  * @property {string | undefined} [site] the address of the deployment's dashboard. drawn as a globe
  * leading the name, in the narrow band and the rail's head alike, opening in a new tab: the address
  * is its `title` and never printed. the console hands it; the dashboard hands nothing.
@@ -55,7 +57,7 @@ import { Button } from '../controls/Button.jsx';
  * word is the `label`, and the page itself. absent, the reader is in none of them and no cell is
  * marked — which is what a surface hands for an address under no destination, and is the only
  * honest rail to draw there.
- * @property {readonly DestinationGroup[] | undefined} [groups]
+ * @property {readonly DestinationGroup[]} groups
  * @property {ComponentType<DestinationLinkProps> | undefined} [link] what every cell in the rail
  * is drawn as, handed straight to ./DestinationCell.jsx — see the note on the prop there for why
  * this package takes one rather than importing a router's link. a surface that leaves it unstated
@@ -117,19 +119,10 @@ const RAIL_STORAGE_KEY = 'bg-operator-rail';
    the identity slot renders the operating organisation's legal name — there is no logo. */
 /** @param {AppShellProps} props */
 export function AppShell({
-	org = 'Riverbank Trust',
+	org,
 	site,
 	current,
-	groups = [
-		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }] },
-		{
-			destinations: [
-				{ label: 'Donation forms', short: 'Forms', mark: 'form' },
-				{ label: 'Donors', short: 'Donors', mark: 'users' },
-				{ label: 'Gifts', short: 'Gifts', mark: 'hand-heart' }
-			]
-		}
-	],
+	groups,
 	link,
 	wayOut,
 	foot,
