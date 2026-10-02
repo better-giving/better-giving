@@ -31,7 +31,14 @@ import {
 	type WebhookDelivery
 } from '../payments/provider';
 import { collectRecurringGift } from './collect';
-import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
+import {
+	alert,
+	alertMoney,
+	commit,
+	processorLabel,
+	type SettleDeps,
+	type SettleResult
+} from './delivery';
 import {
 	chargeEntry,
 	feeEntry,
@@ -1067,7 +1074,7 @@ async function unrecognisable(
 			{ label: 'Payment', value: target.payment.id },
 			{ label: 'Donation', value: target.donation.id },
 			{ label: 'Transaction', value: settlement.providerTxnId },
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
 			{ label: 'Problem', value: problem }
 		],
 		action:
@@ -1259,7 +1266,7 @@ async function unmatched(
 			{ label: 'Event', value: eventId },
 			{ label: 'Transaction', value: settlement.providerTxnId },
 			{ label: 'Status', value: settlement.status },
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
 			{ label: 'Donation named by the intent', value: named }
 		],
 		action: `Find this transaction in the ${processor} dashboard and record the gift by hand.`
@@ -1292,11 +1299,11 @@ async function revalued(deps: SettleDeps, target: Target, settlement: Settlement
 			{ label: 'Transaction', value: settlement.providerTxnId },
 			{
 				label: 'Posted as',
-				value: `${target.payment.coinAmount ?? ''} ${target.payment.coin ?? ''}, ${target.payment.amountMinor} ${target.payment.currency} (minor units)`
+				value: `${target.payment.coinAmount ?? ''} ${target.payment.coin ?? ''}, ${alertMoney(target.payment.amountMinor, target.payment.currency)}`
 			},
 			{
 				label: 'Reported as',
-				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}, ${settlement.amountMinor} ${settlement.currency} (minor units)`
+				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}, ${alertMoney(settlement.amountMinor, settlement.currency)}`
 			}
 		],
 		action: `Compare the payment in the ${processor} dashboard with the gift in /admin, and correct it by hand if the posted value is wrong.`
@@ -1320,7 +1327,7 @@ async function reportedUnsettled(
 			{ label: 'Now reported as', value: settlement.status },
 			{
 				label: 'Recorded amount',
-				value: `${target.payment.amountMinor} ${target.payment.currency} (minor units)`
+				value: alertMoney(target.payment.amountMinor, target.payment.currency)
 			}
 		],
 		action:
@@ -1475,7 +1482,7 @@ async function unmatchedDeposit(
 				label: 'Received',
 				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}`
 			},
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` }
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) }
 		],
 		action: `Find both payments in the ${processor} dashboard and record the gift by hand.`
 	});
@@ -1502,7 +1509,7 @@ async function unrecordedDeposit(
 		facts: [
 			{ label: 'First gift', value: first.donation.id },
 			{ label: 'Transaction', value: settlement.providerTxnId },
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
 			{ label: 'Problem', value: problem }
 		],
 		action: `Find this payment in the ${processor} dashboard and record the gift by hand.`

@@ -24,7 +24,14 @@ import {
 	type ReversalEvent,
 	type ReversalRead
 } from '../payments/provider';
-import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
+import {
+	alert,
+	alertMoney,
+	commit,
+	processorLabel,
+	type SettleDeps,
+	type SettleResult
+} from './delivery';
 import { reinstatementEntry, reversalEntry, settleUpEntry, unpostable } from './entries';
 import { sendRefundNotice } from './refund-notice';
 
@@ -487,7 +494,7 @@ async function disputeRefused(
 				value:
 					reversal.feeMinor === null
 						? 'None reported.'
-						: `${reversal.feeMinor} ${reversal.currency} (minor units), not booked.`
+						: `${alertMoney(reversal.feeMinor, reversal.currency)}, not booked.`
 			},
 			{
 				label: 'Repeating gift',
@@ -746,7 +753,7 @@ async function disputeWithdrew(
 ): Promise<void> {
 	const processor = processorLabel(deps);
 	const lost = reversal.kind === 'dispute_lost';
-	const inMinor = (figure: number) => `${figure} ${reversal.currency} (minor units)`;
+	const money = (figure: number) => alertMoney(figure, reversal.currency);
 	await tellStaff(deps, {
 		headline: lost
 			? `A ${processor} dispute was lost and took back a gift`
@@ -758,7 +765,7 @@ async function disputeWithdrew(
 				'decided. It is taken off the gift and the donor’s total, and it is put back if the ' +
 				'dispute is won.',
 		facts: [
-			{ label: 'Amount', value: inMinor(withdrawn.amountMinor) },
+			{ label: 'Amount', value: money(withdrawn.amountMinor) },
 			...(withdrawn.reportedMinor > withdrawn.amountMinor
 				? [cappedFact(deps, withdrawn.reportedMinor, reversal.currency)]
 				: []),
@@ -941,7 +948,7 @@ function cappedFact(deps: SettleDeps, reportedMinor: number, currency: string): 
 	return {
 		label: 'Capped',
 		value:
-			`${processorLabel(deps)} reported ${reportedMinor} ${currency} (minor units), and earlier refunds and ` +
+			`${processorLabel(deps)} reported ${alertMoney(reportedMinor, currency)}, and earlier refunds and ` +
 			'disputes had already taken the rest of the gift, so what this took off the gift is capped at what was left.'
 	};
 }
@@ -965,7 +972,7 @@ async function refundCapped(
 			{ label: 'Refund', value: refundId },
 			{ label: 'Donation', value: reversed.donationId },
 			{ label: 'Refund at the processor', value: reversal.providerReversalId },
-			{ label: 'Amount', value: `${amountMinor} ${reversal.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(amountMinor, reversal.currency) },
 			capped
 		],
 		action:
@@ -985,7 +992,7 @@ async function refundBeyondDispute(
 	withdrawal: Payment
 ): Promise<void> {
 	const processor = processorLabel(deps);
-	const inMinor = (figure: number) => `${figure} ${withdrawal.currency} (minor units)`;
+	const money = (figure: number) => alertMoney(figure, withdrawal.currency);
 	await tellStaff(deps, {
 		headline: `A ${processor} refund closed a dispute and was more than the dispute took`,
 		body:
@@ -996,9 +1003,9 @@ async function refundBeyondDispute(
 			{ label: 'Refund at the processor', value: refund.providerReversalId },
 			{ label: 'Dispute at the processor', value: withdrawal.providerTxnId ?? withdrawal.id },
 			{ label: 'Donation', value: withdrawal.donationId },
-			{ label: 'The dispute took', value: inMinor(withdrawal.amountMinor) },
-			{ label: 'The refund names', value: inMinor(refundedMinor) },
-			{ label: 'Difference', value: inMinor(refundedMinor - withdrawal.amountMinor) }
+			{ label: 'The dispute took', value: money(withdrawal.amountMinor) },
+			{ label: 'The refund names', value: money(refundedMinor) },
+			{ label: 'Difference', value: money(refundedMinor - withdrawal.amountMinor) }
 		],
 		action:
 			`Compare the refund and the dispute in the ${processor} dashboard. Where the difference went ` +
@@ -1027,7 +1034,7 @@ async function nothingLeftToRefund(
 			{ label: 'Refund at the processor', value: reversal.providerReversalId },
 			{ label: 'Transaction refunded', value: reversal.reversedTxnId },
 			{ label: 'Donation', value: reversed.donationId },
-			{ label: 'Amount reported', value: `${reportedMinor} ${reversal.currency} (minor units)` }
+			{ label: 'Amount reported', value: alertMoney(reportedMinor, reversal.currency) }
 		],
 		action:
 			`Compare the gift’s refunds and disputes in the ${processor} dashboard with the ones recorded ` +
@@ -1061,7 +1068,7 @@ async function refundNotPosted(
 			{ label: 'Payment refunded', value: reversed.id },
 			{ label: 'Donation', value: reversed.donationId },
 			{ label: 'Refund at the processor', value: reversal.providerReversalId },
-			{ label: 'Amount', value: `${amountMinor} ${reversal.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(amountMinor, reversal.currency) },
 			...(capped === null ? [] : [capped]),
 			{ label: 'Problem', value: problem }
 		],
@@ -1263,7 +1270,7 @@ async function wonUnheard(
 	keptMinor: number | null
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
-	const inMinor = (figure: number) => `${figure} ${reversed.currency} (minor units)`;
+	const money = (figure: number) => alertMoney(figure, reversed.currency);
 	const charge =
 		keptMinor === null || keptMinor === 0
 			? null
@@ -1342,9 +1349,9 @@ async function wonUnheard(
 			{ label: 'Donation', value: reversed.donationId },
 			{
 				label: 'Dispute fee given back',
-				value: returned === null ? 'None given back.' : inMinor(returned)
+				value: returned === null ? 'None given back.' : money(returned)
 			},
-			...(keptMinor === null ? [] : [{ label: 'Dispute fee kept', value: inMinor(keptMinor) }])
+			...(keptMinor === null ? [] : [{ label: 'Dispute fee kept', value: money(keptMinor) }])
 		],
 		action
 	});
@@ -1384,7 +1391,7 @@ async function closedTheOtherWay(
 			{ label: 'Dispute at the processor', value: reversal.providerReversalId },
 			{ label: 'Refund', value: refundRow.id },
 			{ label: 'Donation', value: refundRow.donationId },
-			{ label: 'Amount', value: `${refundRow.amountMinor} ${refundRow.currency} (minor units)` }
+			{ label: 'Amount', value: alertMoney(refundRow.amountMinor, refundRow.currency) }
 		],
 		action:
 			recorded === 'lost'
@@ -1421,7 +1428,7 @@ async function refundDidNotStand(
 			{ label: 'Refund', value: refundRow.id },
 			{ label: 'Donation', value: refundRow.donationId },
 			{ label: 'Refund at the processor', value: reversal.providerReversalId },
-			{ label: 'Amount', value: `${refundRow.amountMinor} ${refundRow.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(refundRow.amountMinor, refundRow.currency) },
 			{
 				label: 'Zaps',
 				value:

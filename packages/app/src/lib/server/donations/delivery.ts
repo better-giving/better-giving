@@ -1,4 +1,4 @@
-import { adminAlert, type EmailTemplate } from '@better-giving/emails';
+import { adminAlert, type EmailTemplate, formatMoney } from '@better-giving/emails';
 import { renderEmail } from '@better-giving/emails/render';
 import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
@@ -146,6 +146,17 @@ export type MailDeps = Pick<SettleDeps, 'db' | 'email'>;
  */
 export function processorLabel(deps: SettleDeps): string {
 	return PROCESSOR_LABELS[deps.provider.processor];
+}
+
+/**
+ * a money figure as an alert prints it: `formatMoney`'s, the way ./settled-notice.ts writes one.
+ * an alert is often about a figure that failed the books' checks, and `formatMoney` would round a
+ * fraction or print `NaN`, so anything not a safe integer prints as it arrived, saying so.
+ */
+export function alertMoney(minorUnits: number, currency: string): string {
+	return Number.isSafeInteger(minorUnits)
+		? formatMoney(minorUnits, currency)
+		: `${minorUnits} ${currency} (not a whole number of minor units)`;
 }
 
 /**
