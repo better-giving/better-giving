@@ -26,7 +26,6 @@ import {
 	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
-	shownTotalMinor,
 	venmoIsOffered,
 	type CheckoutContext,
 	type CheckoutEvent,
@@ -146,6 +145,15 @@ export type FormCheckout = {
 	 * second gift re-boots this element once per gift, so without this it is one orphan per gift.
 	 */
 	readonly stop: () => void;
+	/**
+	 * whether this checkout is the one that tells the host page its gift went through, asked once,
+	 * on arrival at `success`.
+	 *
+	 * a runtime that serves one return to more than one element (`FormBoot` below) has every one of
+	 * them reach `success` for one gift, and answers `true` to the first only; the rest still draw
+	 * the thank-you. absent, every checkout's gift is its own and each one tells.
+	 */
+	readonly claimSuccess?: () => boolean;
 };
 
 /**
@@ -402,20 +410,36 @@ const DONATE_FORM_EVENTS = {
 	success: 'bg-donate:success'
 } as const;
 
+/** each event's `detail`, keyed by its name; ../custom-elements.json states the same shapes. */
+type DonateFormEventDetails = {
+	readonly 'bg-donate:ready': { readonly formId: string };
+	readonly 'bg-donate:unavailable': { readonly message: string; readonly fix: string | null };
+	readonly 'bg-donate:success': {
+		readonly formId: string;
+		readonly amountMinor: number | null;
+		readonly currency: string;
+		readonly frequency: Frequency | null;
+	};
+};
+
 /**
  * what `bg-donate:success` tells the host page about the gift that went through.
  *
- * the figure is what the donor was charged: the server's quoted total where there was a quote, and
- * the total the donor was shown where there was none. a donor back from their bank arrives on a
- * page that remembers nothing of the gift but its payment token (`resuming` in
- * ./checkout.machine.ts), so there the figure and the cadence are not known and are `null` rather
- * than a guess.
+ * the figure is the server's quoted total, which is what the donor was charged — one charge, on a
+ * repeating gift. it is `null` where the form does not know what was given rather than a guess: a
+ * donor back from their bank arrives on a page that remembers nothing of the gift but its payment
+ * token (`resuming` in ./checkout.machine.ts), which leaves the cadence `null` too, and a crypto
+ * deposit is valued at what arrived, which may be short of what it was quoted.
+ *
+ * the currency is uppercase ISO 4217 whatever casing the configuration carried, because that is
+ * the casing an integrator is told to match.
  */
-function successDetail(context: CheckoutContext): Record<string, string | number | null> {
+function successDetail(context: CheckoutContext): DonateFormEventDetails['bg-donate:success'] {
+	const { quote } = context;
 	return {
 		formId: context.config.formId,
-		amountMinor: context.quote?.totalMinor ?? shownTotalMinor(context),
-		currency: context.config.currency,
+		amountMinor: quote === null || quote.deposit !== undefined ? null : quote.totalMinor,
+		currency: context.config.currency.toUpperCase(),
 		frequency: context.fv?.frequency ?? null
 	};
 }
@@ -1187,7 +1211,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				previous = step;
 				// on arrival only, so a reading that changes nothing on the receipt says nothing again;
 				// and last, for the reason the ready event below is last.
-				if (arrived && step === 'success') {
+				if (arrived && step === 'success' && (checkout.claimSuccess?.() ?? true)) {
 					this.#tell(DONATE_FORM_EVENTS.success, successDetail(snapshot.context));
 				}
 			};
@@ -1205,8 +1229,15 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		}
 
 		/** an event the host page hears, on this element and every ancestor, across shadow roots. */
-		#tell(name: string, detail: Readonly<Record<string, string | number | null>>): void {
-			this.dispatchEvent(new CustomEvent(name, { bubbles: true, composed: true, detail }));
+		#tell<Name extends keyof DonateFormEventDetails>(
+			name: Name,
+			detail: DonateFormEventDetails[Name]
+		): void {
+			// frozen: every listener on the path is handed this one object, so a host script writing
+			// into it would change what the next listener reads.
+			this.dispatchEvent(
+				new CustomEvent(name, { bubbles: true, composed: true, detail: Object.freeze(detail) })
+			);
 		}
 
 		/**

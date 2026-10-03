@@ -20,6 +20,7 @@ import {
 	type QuoteRequest
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
+import { createFormRuntime } from './embed/runtime';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
@@ -43,7 +44,7 @@ import coinStyles from './styles/coins.css?inline';
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
 	providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
-	currency: 'usd',
+	currency: 'USD',
 	suggestedAmountsMinor: [2500, 10_000, 25_000, 100_000],
 	minAmountMinor: 500,
 	maxAmountMinor: 5_000_000,
@@ -6350,6 +6351,26 @@ describe('a crypto gift', () => {
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
 
+	// valued at what arrived, which may be short of the quote: the host page is told no figure, as
+	// the card draws none.
+	it('tells the host page the gift arrived without a figure', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const success: unknown[] = [];
+		const listener = (event: Event): void => {
+			success.push((event as CustomEvent).detail);
+		};
+		document.addEventListener('bg-donate:success', listener);
+		onTestFinished(() => document.removeEventListener('bg-donate:success', listener));
+		let state: 'waiting' | 'received' = 'waiting';
+		await atAddress(USDT, 'USDT', { ports: { status: async () => ({ state }) } });
+		state = 'received';
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(success).toEqual([
+			{ formId: 'frm_a8x2k9', amountMinor: null, currency: 'USD', frequency: 'one_time' }
+		]);
+	});
+
 	it('withdraws the address once its send-by passes here, and keeps checking', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
 		const { card } = await atAddress(USDT, 'USDT', {
@@ -6770,8 +6791,30 @@ describe('the events a host page hears', () => {
 
 		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
 		expect(success).toEqual([
-			{ formId: 'frm_a8x2k9', amountMinor: 2606, currency: 'usd', frequency: 'one_time' }
+			{ formId: 'frm_a8x2k9', amountMinor: 2606, currency: 'USD', frequency: 'one_time' }
 		]);
+	});
+
+	// ISO 4217 is uppercase and so is what the deployment serves; a config that carried another
+	// casing still goes out in the one a host's `currency === 'USD'` matches.
+	it('says the currency in uppercase whatever casing the configuration carried', async () => {
+		const success = heard('bg-donate:success');
+		await atSubmitted({ config: { ...CONFIG, currency: 'usd' } });
+
+		expect(success).toEqual([expect.objectContaining({ currency: 'USD' })]);
+	});
+
+	// one detail reaches every listener on the path, so one host script writing into it would change
+	// what the next listener reads.
+	it('hands every listener a detail none of them can change', async () => {
+		const ready = heard('bg-donate:ready');
+		const success = heard('bg-donate:success');
+		const unavailable = heard('bg-donate:unavailable');
+		await atSubmitted();
+		await mount({ attributes: {} });
+
+		const details = [...ready, ...success, ...unavailable];
+		expect(details.map((detail) => Object.isFrozen(detail))).toEqual([true, true, true]);
 	});
 
 	it('says nothing of a gift that was declined', async () => {
@@ -6804,7 +6847,59 @@ describe('the events a host page hears', () => {
 		await settle();
 
 		expect(success).toEqual([
-			{ formId: 'frm_a8x2k9', amountMinor: null, currency: 'usd', frequency: null }
+			{ formId: 'frm_a8x2k9', amountMinor: null, currency: 'USD', frequency: null }
 		]);
+	});
+
+	// the shipped runtime serves one return to every element showing its form — a hero and a footer
+	// both draw the thank-you — and it is still one gift, so the host page hears it once. the claim
+	// is the runtime's own; only the ports and the payment surface around it are stood in.
+	it('says a gift a redirect return found went through once, however many elements show it', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			'/give?bg_donate_form=frm_a8x2k9&payment_intent_client_secret=pi_1_secret_x&payment_intent=pi_1'
+		);
+		onTestFinished(() => window.history.replaceState(null, '', '/'));
+		const shipped = createFormRuntime('https://donate.example', document);
+		const tag = `${DONATE_FORM_TAG}-${(tags += 1)}`;
+		defineDonateForm(
+			{
+				loadConfig: async () => CONFIG,
+				challenge: () => ({ reset: () => {}, stop: () => {} }),
+				checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
+					const real = shipped.checkout(config, mount, onRail, onUnavailable, boot, fund, coins);
+					return {
+						...real,
+						input: {
+							...real.input,
+							ports: { ...PORTS, resume: async () => ({ kind: 'succeeded' as const }) }
+						},
+						cadence: () => {},
+						offerFund: () => {},
+						offerCrypto: () => {},
+						offerVenmo: () => {},
+						rows: () => {},
+						repeatingUnavailable: () => {}
+					};
+				}
+			},
+			tag
+		);
+		const success = heard('bg-donate:success');
+		const hero = document.createElement(tag);
+		const footer = document.createElement(tag);
+		for (const host of [hero, footer]) {
+			host.setAttribute('form', 'frm_a8x2k9');
+			document.body.appendChild(host);
+		}
+		await settle();
+		await settle();
+
+		const thanked = [hero, footer].map(
+			(host) => view(host).text('.takeover [part~="heading"]') === 'Thank you'
+		);
+		expect(thanked).toEqual([true, true]);
+		expect(success).toHaveLength(1);
 	});
 });

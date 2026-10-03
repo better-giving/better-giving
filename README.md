@@ -101,7 +101,7 @@ The element dispatches three events, and each bubbles out of it, so a listener o
 
 - `bg-donate:ready` when the form has rendered. `detail` is `{ formId }`.
 - `bg-donate:unavailable` when the element shows the card saying the form cannot be rendered. `detail` is `{ message, fix }`, the two sentences on that card; `fix` is `null` where the card shows none.
-- `bg-donate:success` when a gift went through. `detail` is `{ formId, amountMinor, currency, frequency }`: the total the donor was charged in minor units, any fee they chose to cover included, so `2606` with `usd` is $26.06.
+- `bg-donate:success` when a gift went through. `detail` is `{ formId, amountMinor, currency, frequency }`: what the donor was charged in minor units of an uppercase ISO 4217 currency, any fee they chose to cover included, so `2606` with `USD` is $26.06. On a monthly or yearly gift it is one charge, not the gift's value over time.
 
 ```html
 <script>
@@ -112,7 +112,9 @@ The element dispatches three events, and each bubbles out of it, so a listener o
 </script>
 ```
 
-**`success` fires once per gift, on the thank-you screen, and never for a gift still settling** — a bank debit, a crypto deposit not yet arrived — or one that was declined. A donor who left for their bank to approve a card comes back to a page that remembers nothing of the gift but its payment, so on that return `amountMinor` and `frequency` are `null`. No event carries the donor's name or email.
+**`success` fires once per gift, on the thank-you screen, and never for a gift still waiting** — a bank debit settling or waiting for the donor to confirm their bank account, a gift from a donor-advised fund, which the fund pays later, a crypto deposit not yet arrived — or one that was declined. It fires once even on a page that shows the same form twice. `amountMinor` is `null` where the form does not know the amount: a donor who left for their bank to approve a card comes back to a page that remembers nothing of the gift but its payment, so on that return `frequency` is `null` too, and a crypto gift is valued at what arrives. No event carries the donor's name or email.
+
+Events and their details grow: ignore a `bg-donate:*` event you do not know, a `frequency` other than `one_time`, `monthly` and `yearly`, and a `detail` field you do not know.
 
 ## If your site sends a Content-Security-Policy
 
