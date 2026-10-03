@@ -27,6 +27,7 @@ import {
 	fundIsOffered,
 	openFund,
 	venmoIsOffered,
+	type CheckoutContext,
 	type CheckoutEvent,
 	type CheckoutInput,
 	type Failure
@@ -144,6 +145,15 @@ export type FormCheckout = {
 	 * second gift re-boots this element once per gift, so without this it is one orphan per gift.
 	 */
 	readonly stop: () => void;
+	/**
+	 * whether this checkout is the one that tells the host page its gift went through, asked once,
+	 * on arrival at `success`.
+	 *
+	 * a runtime that serves one return to more than one element (`FormBoot` below) has every one of
+	 * them reach `success` for one gift, and answers `true` to the first only; the rest still draw
+	 * the thank-you. absent, every checkout's gift is its own and each one tells.
+	 */
+	readonly claimSuccess?: () => boolean;
 };
 
 /**
@@ -382,6 +392,56 @@ function describe(error: unknown): { message: string; fix?: string } {
 		}
 	}
 	return { message: UNLOADABLE };
+}
+
+/**
+ * the events this element dispatches on itself, which are the one surface a host page reads back
+ * out of it.
+ *
+ * permanent the way the attributes and part names are (CLAUDE.md, "Permanent contracts";
+ * ../custom-elements.json is the list an integrator reads): a name here is in somebody's
+ * `addEventListener`, so one is added and never renamed, and a `detail` gains fields and loses
+ * none. every detail is primitives only, because it is handed to a page this project does not own
+ * — nothing the donor typed is in one.
+ */
+const DONATE_FORM_EVENTS = {
+	ready: 'bg-donate:ready',
+	unavailable: 'bg-donate:unavailable',
+	success: 'bg-donate:success'
+} as const;
+
+/** each event's `detail`, keyed by its name; ../custom-elements.json states the same shapes. */
+type DonateFormEventDetails = {
+	readonly 'bg-donate:ready': { readonly formId: string };
+	readonly 'bg-donate:unavailable': { readonly message: string; readonly fix: string | null };
+	readonly 'bg-donate:success': {
+		readonly formId: string;
+		readonly amountMinor: number | null;
+		readonly currency: string;
+		readonly frequency: Frequency | null;
+	};
+};
+
+/**
+ * what `bg-donate:success` tells the host page about the gift that went through.
+ *
+ * the figure is the server's quoted total, which is what the donor was charged — one charge, on a
+ * repeating gift. it is `null` where the form does not know what was given rather than a guess: a
+ * donor back from their bank arrives on a page that remembers nothing of the gift but its payment
+ * token (`resuming` in ./checkout.machine.ts), which leaves the cadence `null` too, and a crypto
+ * deposit is valued at what arrived, which may be short of what it was quoted.
+ *
+ * the currency is uppercase ISO 4217 whatever casing the configuration carried, because that is
+ * the casing an integrator is told to match.
+ */
+function successDetail(context: CheckoutContext): DonateFormEventDetails['bg-donate:success'] {
+	const { quote } = context;
+	return {
+		formId: context.config.formId,
+		amountMinor: quote === null || quote.deposit !== undefined ? null : quote.totalMinor,
+		currency: context.config.currency.toUpperCase(),
+		frequency: context.fv?.frequency ?? null
+	};
 }
 
 /** what the wait before a configuration lands is called, for a reader with no skeleton to watch. */
@@ -852,6 +912,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			// which is where that reader, person or agent, finds it.
 			if (this.#taking) view.focus();
 			else this.#announce(message);
+			// the fix does go out here: the host page is the reader it is addressed to.
+			this.#tell(DONATE_FORM_EVENTS.unavailable, { message, fix: fix ?? null });
 		}
 
 		/**
@@ -1145,16 +1207,37 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				// on the press that leaves it races the press after it. a reset works with the step
 				// hidden, which is what a takeover screen leaves it.
 				if (previous === 'working' && step !== 'working') this.#challenge?.reset();
+				const arrived = step !== previous;
 				previous = step;
+				// on arrival only, so a reading that changes nothing on the receipt says nothing again;
+				// and last, for the reason the ready event below is last.
+				if (arrived && step === 'success' && (checkout.claimSuccess?.() ?? true)) {
+					this.#tell(DONATE_FORM_EVENTS.success, successDetail(snapshot.context));
+				}
 			};
 
 			this.#actor = actor;
 			this.#subscription = actor.subscribe(render);
 			actor.start();
 			render();
-			// last, and after the first patch: the heading the caret lands on is inside the step that
-			// patch un-hid, and a heading inside a `hidden` subtree is not focusable.
+			// after the first patch: the heading the caret lands on is inside the step that patch
+			// un-hid, and a heading inside a `hidden` subtree is not focusable.
 			if (this.#taking) view.focus();
+			// last, because a host's listener runs inside this call and may set the `form` attribute
+			// or take the element off the page, and either one stops this boot.
+			this.#tell(DONATE_FORM_EVENTS.ready, { formId: config.formId });
+		}
+
+		/** an event the host page hears, on this element and every ancestor, across shadow roots. */
+		#tell<Name extends keyof DonateFormEventDetails>(
+			name: Name,
+			detail: DonateFormEventDetails[Name]
+		): void {
+			// frozen: every listener on the path is handed this one object, so a host script writing
+			// into it would change what the next listener reads.
+			this.dispatchEvent(
+				new CustomEvent(name, { bubbles: true, composed: true, detail: Object.freeze(detail) })
+			);
 		}
 
 		/**
