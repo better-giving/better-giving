@@ -16,6 +16,7 @@ type Manifest = {
 			cssProperties?: { name: string; syntax?: string; default?: string }[];
 			attributes?: { name: string }[];
 			slots?: { name: string }[];
+			events?: { name: string }[];
 		}[];
 	}[];
 };
@@ -362,5 +363,25 @@ describe('the free amount entry with the keyboard in it', () => {
 		const drawn = rulesFor("[part~='amount-input'][part~='invalid'] input:focus-visible");
 
 		expect(drawn.some((body) => /box-shadow:[^;]*var\(--_bad\)/.test(body))).toBe(true);
+	});
+});
+
+// the three events are the one surface the element speaks to a host page on, and a name only in the
+// source is one an integrator was never told. the dom spec holds the names the element dispatches
+// while it runs; this holds every name its source spells, which covers an event no scenario there
+// reaches.
+describe('the events the element dispatches', () => {
+	it('are the events the manifest lists, and no others', () => {
+		const spelled = new Set(
+			readFileSync(new URL('./element.ts', import.meta.url), 'utf8')
+				.replace(/\/\*[\s\S]*?\*\//g, '')
+				.replace(/(^|[^:])\/\/.*$/gm, '$1')
+				.match(/'bg-donate:[a-z-]+'/g)
+				?.map((literal) => literal.slice(1, -1))
+		);
+		const listed = (element?.events ?? []).map((event) => event.name);
+
+		expect([...spelled].sort()).toEqual([...listed].sort());
+		expect(listed).toHaveLength(3);
 	});
 });
