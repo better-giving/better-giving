@@ -47,8 +47,9 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * dashboard's three groups with marks, as the console's run with a headed group, logos and status
  * marks, as one entry, as none, and as the dashboard's with four entries stating `bar` and a headed
  * integrations group on the sheet. the empty rail is a `nav` with no cells in it, which below the
- * wide breakpoint is an empty strip across the foot of the window. a tab is an equal share of the width whatever the count, and the bar is flat:
- * a headed group's entries stand as tabs of their own.
+ * wide breakpoint is an empty strip across the foot of the window. a tab is an equal share of the
+ * width whatever the count, and the bar is flat: a headed group's entries stand as tabs of their
+ * own.
  *
  * the toggle on the rail's head collapses it to an icon rail, and the choice is kept per browser,
  * so every specimen on this page follows it once the page is reloaded.

@@ -6290,6 +6290,16 @@
 		max-inline-size: min(var(--admin-measure-panel), 100% - 2 * var(--admin-space-6));
 	}
 
+	/* where ../components/shell/ErrorPanel.jsx puts the reader, which is a heading and no control:
+	   the ring ./base.css gives every focused element would frame the words, and the next press of
+	   Tab is what the reader came for — the reason `.adm-shell > .adm-main:focus-visible` gives for
+	   its own landing target. */
+	.adm-panelroute > .adm-panel > h1[tabindex='-1']:focus-visible,
+	.adm-panelroute > .adm-panel > h1[tabindex='-1'].is-focus {
+		outline: 0;
+		box-shadow: none;
+	}
+
 	/* the same row with no panel in it: one control standing on the page's own ground. what
 	   qualifies a route for it is written at `bare` in
 	   ../components/shell/AppShell.jsx — there is nothing for a box to hold together.

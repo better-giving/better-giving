@@ -90,6 +90,25 @@ describe('an error panel arriving in front of a reader', () => {
 		expect(root.querySelector('h1')?.getAttribute('tabindex')).toBe('-1');
 	});
 
+	// packages/app/src/root.tsx draws its three faces at one place in the tree, so a 404 that turns
+	// into a 500 under the same boundary is this panel redrawn rather than a second one mounted. the
+	// press that was on the 404's way out is gone from the 500, and focus would fall to the body.
+	it('puts the reader on the new heading when the face it shows changes in place', () => {
+		const { root, again } = mount(ErrorPanel, {
+			code: '404',
+			title: 'No such page',
+			wayOut: 'Go to forms',
+			wayOutProps: { as: 'a', href: '/admin/forms' }
+		});
+		root.querySelector('a')?.focus();
+
+		again({ code: '500', title: 'This deployment could not answer' });
+
+		const heading = root.querySelector('h1');
+		expect(heading?.textContent).toBe('This deployment could not answer');
+		expect(document.activeElement).toBe(heading);
+	});
+
 	it('moves the reader once, when it arrives, and not again when it is drawn again', () => {
 		const { root, again } = mount(ErrorPanel, { code: '404', title: 'No such page' });
 		const elsewhere = document.createElement('button');

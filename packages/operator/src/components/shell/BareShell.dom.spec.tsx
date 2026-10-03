@@ -53,6 +53,8 @@ describe('the strip a bare shell can stand at its foot', () => {
 
 describe('what a bare shell draws that it was not handed', () => {
 	it('states no fact of its own where it was handed neither a head nor facts', () => {
+		// handed neither, the shell stands an empty `.adm-head`: the type is what refuses that shell,
+		// so this reads only that nothing of the shell's own fills the band.
 		// @ts-expect-error a shell takes `head` or `facts`, and dropping both is a type error.
 		const root = render(BareShell, { children: <h1>Set up</h1> });
 
@@ -63,8 +65,9 @@ describe('what a bare shell draws that it was not handed', () => {
 
 describe('the head a bare shell stands over its page', () => {
 	it('draws the run of stated facts where the surface handed no head of its own', () => {
-		// absence is the bar of facts and not an empty band: a shell that read nothing stated as a
-		// head would draw a rule over every screen ./TopBar.jsx is the head of.
+		// a head left out beside a run of facts is the bar of facts and not an empty band: a shell
+		// that stood the missing head anyway would draw a rule over every screen ./TopBar.jsx is the
+		// head of.
 		const root = render(BareShell, { facts: FACTS, children: <h1>Set up</h1> });
 
 		expect(root.querySelector('.adm-head')).toBeNull();

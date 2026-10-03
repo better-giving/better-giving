@@ -25,7 +25,7 @@ describe('the facts a bar states', () => {
 		expect(root.textContent).not.toContain('Riverbank Trust');
 	});
 
-	it('draws nothing at all rather than a run of its own where it was handed none', () => {
+	it('throws rather than state a run of its own where it was handed none', () => {
 		// @ts-expect-error `facts` is required: dropping it is what the type check exists to catch.
 		expect(() => render(TopBar, { end: null })).toThrow();
 	});
