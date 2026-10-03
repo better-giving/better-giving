@@ -57,15 +57,16 @@ import { signedHeaders } from './sign';
 //              run of failures is marked (../outbox/failing.ts) in the row's outcome batch.
 //   410      — a failure as above, and the destination paused at once: Standard Webhooks reads a
 //              410 as the endpoint withdrawn.
+// a failed row is kept, for the destination's recent deliveries. the mark, its clear and the pause
+// are each guarded on the run still holding the row (`holds` in ../outbox/lease.ts), so a run
+// that lost the row before its post was answered records nothing about the destination.
+//
 // **a destination that fails a post is posted nothing more in that run.** the rows it is owed that
 // the run holds and has not yet started are given back unposted, due as they were and their
 // attempts as they stand, so a receiver answering at {@link WEBHOOK_POST_TIMEOUT_MS} costs the run
 // a post per lane rather than the run's time, and the destinations beside it in the claim are
 // still posted. a row given back is no failed post: it neither marks the destination nor counts
 // toward pausing it, and it is posted by the next run that claims it.
-// a failed row is kept, for the destination's recent deliveries. the mark, its clear and the pause
-// are each guarded on the run still holding the row (`holds` in ../outbox/lease.ts), so a run
-// that lost the row before its post was answered records nothing about the destination.
 //
 // **a destination failing for {@link DESTINATION_PAUSE_AFTER_MS} is paused**, on
 // ../outbox/failing.ts's rule: a failure on a row that had failed before, where the destination's
@@ -410,8 +411,8 @@ function heldWindow(db: Db, destinationId: string): SQL {
  * how far apart a resume lets its rows out: half this feed's pace a minute, so a resumed backlog
  * takes about half of each run's claim and the destinations beside it the rest. a resumed
  * destination still failing gives the rest of its half back unposted after its first failed post
- * in a run, so the destinations beside it are posted however slowly it fails. the first row is due at `now`, so the first run
- * after a resume can take one row more than half.
+ * in a run, so the destinations beside it are posted however slowly it fails. the first row is
+ * due at `now`, so the first run after a resume can take one row more than half.
  */
 const RESUMED_ROWS_EVERY_MS = Math.ceil((2 * 60_000) / PACE.webhooks);
 

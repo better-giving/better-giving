@@ -6,9 +6,9 @@ import type { ReactNode } from 'react';
 //
 // **the account opens nothing.** both faces are
 // packages/operator/src/components/shell/AccountRow.jsx, a label at either width, so the only
-// press on the row is the close it is handed. the account's id is stated where an operator picks
-// the account — the `/` screen's head strip (`HeadIdentity` in ./head-strip.tsx) and the terminal's
-// picker — and nowhere on these pages.
+// press on the row is the close it is handed. the account's id is stated on the head strip over
+// the faces that stand before a deployment is ready (`ConsoleHead` in ./head-strip.tsx) and in the
+// terminal's account picker, and on no page the rail or the band stands on.
 
 export type CloudflareAccountProps = {
 	/** the account's name, as cloudflare holds it. */

@@ -51,12 +51,6 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 //              row waits out {@link backoffMs}, and the hook's `failing_since` marks the start of
 //              its run of failures — the mark and the row's outcome in one batch. a hook that
 //              never answers is as dead as one that refuses.
-// **a hook that fails a post is posted nothing more in that run.** the rows it is owed that the run
-// holds and has not yet started are given back unposted, due as they were and their attempts as
-// they stand, so a hook answering at {@link POST_TIMEOUT_MS} costs the run a post per lane rather
-// than the run's time, and the hooks beside it in the claim are still posted. a row given back is
-// no failed post: it neither marks the hook nor counts toward ending it, and it is posted by the
-// next run that claims it.
 // a hook ends the way a 410 ends it once every post to it has failed for {@link GIVE_UP_AFTER_MS}
 // and none was taken, on the failure of a row that had failed before. when a mark counts toward
 // that, and when a failure starts a run of its own instead, is ../outbox/failing.ts's: a mark left
@@ -64,6 +58,13 @@ import { endSubscriptionStatements, pauseZaps } from './subscriptions';
 // `ended_reason` has no value of its own for that end, so it reads `gone`, and each row dropped
 // with it says why in `last_error`. Zapier, unlike after a 410, does not know, so the Zap is then
 // paused the way a replaced key pauses every Zap (`pauseZaps` in ./subscriptions.ts).
+//
+// **a hook that fails a post is posted nothing more in that run.** the rows it is owed that the run
+// holds and has not yet started are given back unposted, due as they were and their attempts as
+// they stand (or, after a 429 that named a time, held to it, as above), so a hook answering at
+// {@link POST_TIMEOUT_MS} costs the run a post per lane rather than the run's time, and the hooks
+// beside it in the claim are still posted. a row given back is no failed post: it neither marks
+// the hook nor counts toward ending it, and it is posted by the next run that claims it.
 //
 // **a row still owed {@link GIVE_UP_AFTER_MS} after it was queued is `failed`**, without another
 // post, in the claim's own batch ahead of it (a standing sweep, ../outbox/lease.ts); ./report.ts
