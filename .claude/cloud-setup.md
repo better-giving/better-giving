@@ -23,7 +23,7 @@ sandbox-quickbooks.api.intuit.com
 
 ```bash
 #!/bin/bash
-# kru v0.137.0
+# kru v0.138.0
 set -uo pipefail
 log=/tmp/setup.log; exec > >(tee -a "$log") 2>&1
 try() { for i in 1 2 3; do "$@" && return 0; sleep $((i*3)); done; echo "SETUP FAIL: $*"; return 1; }
@@ -35,6 +35,7 @@ try git clone -q https://github.com/ap-justin/kru-store ~/.kru
 # plugins
 try claude plugin marketplace add ap-justin/kru
 try claude plugin install kru@kru --scope user
+try claude plugin enable cc-plugin-you-should-know@builtin --scope user
 try claude plugin marketplace add anthropics/claude-plugins-official
 try claude plugin install typescript-lsp@claude-plugins-official --scope user
 try npm install -g typescript-language-server typescript@6
