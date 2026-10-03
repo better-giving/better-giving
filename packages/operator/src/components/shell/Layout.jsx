@@ -34,7 +34,9 @@
  * @property {ReactNode} [children]
  *
  * @typedef {object} GroupProps
- * @property {ReactNode} [label] what the band names. a block with nothing to write there is a `Stack`.
+ * @property {ReactNode} label what the band names, and the caller's alone: a primitive that
+ *   filled it in would print one screen's copy on every surface that forgot its own. a block with
+ *   nothing to write there is a `Stack`.
  * @property {'h2' | 'h3' | 'h4' | 'h5' | 'h6'} labelAs the element the band's name is drawn as,
  *   stated by every caller and defaulted by none. the level a band belongs at is a fact about what
  *   it is drawn under rather than about the band — a group inside a screen's own section takes one
@@ -131,7 +133,7 @@ export function Steps({ tight = false, children }) {
    nothing to write in the band is a `Stack`, and what separates it from the block beside it is
    the space. */
 /** @param {GroupProps} props */
-export function Group({ label = 'Payment notifications', labelAs: Label, children }) {
+export function Group({ label, labelAs: Label, children }) {
 	return (
 		<div className="adm-group">
 			<Label className="adm-group__label">{label}</Label>

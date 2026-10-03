@@ -66,6 +66,12 @@ import { Mark } from './Mark.jsx';
  * @property {MarkName | undefined} [mark] the mark the tone would otherwise choose.
  * @property {ReactNode} [beneath] a whole screen's worth of detail, which opens in place.
  * @property {boolean | undefined} [open]
+ * @property {readonly string[] | undefined} [openFor] why the caller has `open` true, one word a
+ *   reason. react writes `open` only when the prop changes, so a line the reader shut by hand while
+ *   it held stays shut — which is right while nothing new asks for it, and wrong once something
+ *   does. a reason here that was not there on the render before opens the line again, whatever the
+ *   reader last did; a reason going away shuts nothing. it is read only while `open` holds and the
+ *   line is not `locked`, and a line given none keeps whatever the reader left it at.
  * @property {((open: boolean) => void) | undefined} [onToggle] what the line reports when it is
  *   opened or shut. the element holds that state and nothing else on the page can read it, so a
  *   screen with a control over the whole ledger — expand all, collapse all — cannot say what it
@@ -267,6 +273,7 @@ export function StatusLine({
 	mark,
 	beneath,
 	open = false,
+	openFor,
 	onToggle,
 	id,
 	labelAs
@@ -282,6 +289,15 @@ export function StatusLine({
 	useLayoutEffect(() => {
 		if (locked && fold.current) fold.current.open = false;
 	}, [locked]);
+	/* the reasons as of the render before, which is what tells a reason that arrived from one the
+	   line was already open for — and so a reader's shut from something new asking. */
+	const askedFor = useRef(openFor);
+	useLayoutEffect(() => {
+		const before = askedFor.current;
+		askedFor.current = openFor;
+		if (!open || locked || !fold.current || openFor === undefined) return;
+		if (openFor.some((reason) => !before?.includes(reason))) fold.current.open = true;
+	}, [open, locked, openFor]);
 	/* how many steps the line was handed, which is what the two rules below turn on — and what lets
 	   them be stated here rather than at every screen that draws a run. */
 	const stepCount = stepsIn(steps);

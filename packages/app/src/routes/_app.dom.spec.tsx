@@ -363,6 +363,12 @@ it('draws the set-up gate in place of the frame when the layout answers with it'
 	expect(root.textContent).not.toContain('the frame');
 });
 
+it('titles the document after the set-up gate', async () => {
+	await boundaryOver(data({ shape: 'setup', lines: OPEN_LINES }, { status: 503 }));
+
+	expect(document.title).toBe('Finish setting up this deployment · Better Giving');
+});
+
 it('hands any other failure to the root page', async () => {
 	const root = await boundaryOver(data('`BETTER_AUTH_URL` names no address.', { status: 500 }));
 

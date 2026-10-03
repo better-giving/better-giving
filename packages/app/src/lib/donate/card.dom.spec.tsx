@@ -16,7 +16,8 @@ import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { act, createRef, StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DonateCard } from './card';
 import { Choice, type ChoiceProps } from './choice';
@@ -1514,6 +1515,120 @@ describe('where the caret goes when one takeover replaces another', () => {
 	});
 });
 
+// the route reads the stamp off the request and the card draws a resume from its first paint: the
+// token is claimed only once the live flow starts, and a donor back from their bank must not be
+// shown the empty donation form in between, nor lose a caret they put on the page before then.
+describe('a resume drawn before the flow starts', () => {
+	const SEAMS = {
+		payment: {
+			stripe: {
+				load: paymentProvider({ retrieve: () => new Promise(() => {}) }).load,
+				delay: () => () => {}
+			},
+			paypal: { load: paypalProvider().load, delay: () => () => {} },
+			chariot: { load: async () => true, delay: () => () => {} }
+		},
+		challenge: CHALLENGE
+	};
+
+	/** the card's server markup, standing in a host on the page the way a document request leaves it. */
+	function served(resuming: boolean | undefined): HTMLElement {
+		const host = document.createElement('div');
+		host.innerHTML = renderToString(
+			resuming === undefined ? (
+				<DonateCard config={CONFIG} seams={SEAMS} />
+			) : (
+				<DonateCard config={CONFIG} seams={SEAMS} resuming={resuming} />
+			)
+		);
+		document.body.appendChild(host);
+		onTestFinished(() => {
+			host.remove();
+		});
+		return host;
+	}
+
+	/** that markup hydrated, with every screen the card showed on the way recorded. */
+	async function hydrated(host: HTMLElement, resuming: boolean) {
+		const shownOnTheWay: string[] = [];
+		const watch = new MutationObserver(() => {
+			const open = every(host, 'section.step').filter((section) => !section.hidden);
+			shownOnTheWay.push(open.map((section) => section.className).join(' + '));
+		});
+		watch.observe(host, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+		const recovered: unknown[] = [];
+		let mounted: ReturnType<typeof hydrateRoot> | null = null;
+		act(() => {
+			mounted = hydrateRoot(
+				host,
+				<StrictMode>
+					<DonateCard config={CONFIG} seams={SEAMS} resuming={resuming} />
+				</StrictMode>,
+				{ onRecoverableError: (error) => recovered.push(error) }
+			);
+		});
+		onTestFinished(() => {
+			act(() => {
+				mounted?.unmount();
+			});
+		});
+		await act(async () => {
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		watch.disconnect();
+		return { shownOnTheWay, recovered };
+	}
+
+	it('draws the resume’s takeover in the server render rather than the amount step', () => {
+		const host = served(true);
+
+		expect(screen(host).classList.contains('takeover')).toBe(true);
+		expect(one(screen(host), ':scope > h2').textContent).toBe(copy.RESUMING_HEADING);
+	});
+
+	it('draws the amount step in the server render when the page is no resume', () => {
+		for (const resuming of [undefined, false]) {
+			const host = served(resuming);
+
+			expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		}
+	});
+
+	it('keeps the takeover and a caret placed in it through hydration and the claim', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		const host = served(true);
+		const heading = one(screen(host), ':scope > h2');
+		heading.focus();
+		expect(document.activeElement).toBe(heading);
+
+		const { shownOnTheWay, recovered } = await hydrated(host, true);
+
+		expect(recovered).toEqual([]);
+		expect(shownOnTheWay.filter((open) => open !== 'step takeover')).toEqual([]);
+		expect(screen(host)).toBe(heading.parentElement);
+		expect(heading.textContent).toBe(copy.RESUMING_HEADING);
+		expect(document.activeElement).toBe(heading);
+		// the claim was made: the token is off the url, so the takeover is the live flow's own.
+		expect(window.location.search).toBe('');
+	});
+
+	// a host router or a parameter-stripping script can take the token and leave the stamp, and the
+	// live flow then has nothing to resume: the donor is given the form rather than a wait that never
+	// ends.
+	it('hands the donor the amount step where the stamped return arrived with no token', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+
+		await hydrated(host, true);
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+	});
+});
+
 describe('a crypto gift', () => {
 	const CRYPTO: FormConfig = {
 		...CONFIG,
@@ -1814,8 +1929,8 @@ describe('a crypto gift', () => {
 	// the flow replaces the heading on its own clock, under a caret the address screen put on it:
 	// focusing the node that holds focus says nothing, so the region says the new words.
 	it('says the address closing, and then expiring, to a caret on the heading', async () => {
-		// a second short of the send-by, so the address closes between two readings: a reading
-		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		// a second short of the send-by, so the address closes between two readings. a reading
+		// landing in the same instant is its own spec below.
 		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
 		const { root, server } = await atAddress();
 		const heading = one(screen(root), 'h2');
@@ -1838,8 +1953,8 @@ describe('a crypto gift', () => {
 	// a donor who stepped off the card while waiting on the chain is told each change, and the caret
 	// stays where they put it.
 	it('says the address closing, and then expiring, to a caret outside the card', async () => {
-		// a second short of the send-by, so the address closes between two readings: a reading
-		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		// a second short of the send-by, so the address closes between two readings. a reading
+		// landing in the same instant is its own spec below.
 		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
 		const { root, server } = await atAddress();
 		const elsewhere = document.createElement('button');
@@ -1863,6 +1978,81 @@ describe('a crypto gift', () => {
 		expect(one(screen(root), 'h2').textContent).toBe(copy.EXPIRED_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
+	});
+
+	// the reading loop's next snapshot carries nothing to say, and a sentence stays on the region
+	// until the heading it announces changes or another sentence replaces it.
+	it('says the address closing when a reading lands at the send-by, and keeps saying it', async () => {
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS
+		});
+		const { root, server } = await atAddress();
+		const heading = one(screen(root), 'h2');
+		expect(document.activeElement).toBe(heading);
+
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(server.reads).toBe(1);
+		expect(heading.textContent).toBe(copy.CHECKING_HEADING);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(server.reads).toBe(2);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+	});
+
+	it('keeps a Copy’s sentence through a reading, until a different one replaces it', async () => {
+		const clipboard = { writeText: vi.fn(async () => {}) };
+		vi.stubGlobal('navigator', { ...navigator, clipboard });
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const { root, server } = await atAddress();
+		const copyAddress = async () => {
+			await act(async () => {
+				one(root, '.deposit [aria-label="Copy address"]').click();
+				for (let at = 0; at < 4; at += 1) await Promise.resolve();
+			});
+		};
+
+		await copyAddress();
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(server.reads).toBe(1);
+		expect(said(root)).toBe('Address copied.');
+
+		clipboard.writeText.mockRejectedValueOnce(new Error('denied'));
+		await copyAddress();
+
+		expect(said(root)).toBe('Address not copied. It is selected so you can copy it.');
+	});
+
+	it('replaces a Copy’s sentence with the heading the address closes to', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS * 2
+		});
+		const { root } = await atAddress();
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+
+		await act(async () => {
+			one(root, '.deposit [aria-label="Copy address"]').click();
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		act(() => {
+			elsewhere.focus();
+		});
+		expect(said(root)).toBe('Address copied.');
+
+		await tick(DEPOSIT_POLL_MS * 2);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
 	});
 
 	it('lands a gift below the coin’s minimum on the amount step, naming the minimum', async () => {

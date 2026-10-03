@@ -165,6 +165,30 @@ it('says there are no keys yet on an empty list', () => {
 	expect(screen({ keys: [] }).textContent).toContain('No keys yet');
 });
 
+/** the keys table's accessible name, read the way a browser resolves it: by reference, then by label. */
+function tableName(root: HTMLElement): string | null {
+	const table = root.querySelector('table');
+	const by = table?.getAttribute('aria-labelledby');
+	if (by) return document.getElementById(by)?.textContent ?? null;
+	return table?.getAttribute('aria-label') ?? null;
+}
+
+const SECOND = { ...LISTED, id: 'key-2', name: 'Board report' };
+
+it.each([
+	['one key', [LISTED]],
+	['two keys', [LISTED, SECOND]]
+])('counts no keys over a list of %s, and names the table API keys', (_, keys) => {
+	const root = screen({ keys });
+
+	expect(root.textContent).not.toMatch(/\d+ keys?\./);
+	expect(tableName(root)).toBe('API keys');
+});
+
+it('names the empty table API keys', () => {
+	expect(tableName(screen({ keys: [] }))).toBe('API keys');
+});
+
 /**
  * the page over a loader and an action standing in for the route's own, so a press runs the whole
  * round: the make answers its key, and the revoke takes the row away and redirects to a load that

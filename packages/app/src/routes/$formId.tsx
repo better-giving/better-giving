@@ -1,6 +1,7 @@
 import formLayout from '@better-giving/form/styles/layout.css?url';
 import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
+import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
 import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateCard } from '$lib/donate/card';
@@ -57,6 +58,13 @@ import type { Route } from './+types/$formId';
 const SEGMENT = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
+ * what both answers carry, each for its own reason stated where it is returned. the edge cache in
+ * front of the served config is an entry per form behind an endpoint, not a document anybody is
+ * holding a link to, and it is no precedent for keeping this one.
+ */
+const UNKEPT = { 'cache-control': 'no-store' };
+
+/**
  * the answer for every address this route will not draw a form for, and there is only the one.
  *
  * a donor cannot act on which of the six refusals `readPublishedConfig` reached — a draft, a
@@ -64,15 +72,10 @@ const SEGMENT = /^[A-Za-z0-9_-]{1,64}$/;
  * them. the statuses those refusals carry belong to the endpoint an integrator reads
  * (./api.v1.forms.$id.config.ts) and stay there.
  *
- * `no-store` because the amounts are in this document: what is cached is a form as it was, and the
- * refusal is cached beside it. the edge cache in front of the served config is an entry per form
- * behind an endpoint, not a document anybody is holding a link to.
+ * `no-store` so that a form published after the refusal is not hidden behind a kept "no form here".
  */
 function noForm() {
-	return data({ ok: false } as const, {
-		status: 404,
-		headers: { 'cache-control': 'no-store' }
-	});
+	return data({ ok: false } as const, { status: 404, headers: UNKEPT });
 }
 
 export async function loader({ context, params, request }: Route.LoaderArgs) {
@@ -84,7 +87,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	// one `return { env }` from being published. `readPublishedConfig` narrows it.
 	const { env } = context.get(platform);
 	const processors = createPaymentProviders(env);
-	const origin = new URL(request.url).origin;
+	const url = new URL(request.url);
+	const origin = url.origin;
 
 	// composed exactly as ./api.v1.forms.$id.config.ts composes it, so the page and the embed refuse
 	// on the same ladder: an account approved for no rail draws the notice here for the same reason
@@ -101,10 +105,19 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	);
 	if (!result.ok) return noForm();
 
+	// a donor back from authorizing their gift arrives on this page's own address with the stamp
+	// naming this form, and the card's first paint is then the wait for that gift rather than an
+	// empty donation form. the stamp is the whole of what is read: the token beside it is the card's
+	// to claim once its flow starts. a stamp naming another form is no return of this one's.
+	const resuming = url.searchParams.get(RESUME_FORM_PARAM) === result.config.formId;
+
 	// the served config alone. `result.form` is the row it was read from and carries
 	// `allowed_origins` — the list of sites this organisation's forms may be used on, which a
 	// document served to anyone is no place for.
-	return { ok: true, config: result.config } as const;
+	//
+	// `no-store` because the amounts and settings are in this document: a kept copy would show a donor
+	// figures the operator has since changed.
+	return data({ ok: true, config: result.config, resuming } as const, { headers: UNKEPT });
 }
 
 /**
@@ -114,18 +127,22 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
  * arrives (the checkout effect in $lib/donate/card.tsx), so a re-read on the same form — a
  * same-address navigation, a submission, a `revalidate()` — would swap the published config under a
  * gift in progress and end it. a form republished meanwhile reaches the donor on their next load.
+ *
+ * the resume stamp is a search parameter and so re-reads nothing either. the card scrubs it with
+ * `history.replaceState`, out of react router's sight, so the router still holds the stamped address
+ * and a later navigation on the same form leaves from it — a re-read there would answer
+ * `resuming: false` under the takeover the flow is showing.
  */
 export function shouldRevalidate({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) {
 	return currentParams.formId !== nextParams.formId;
 }
 
 /**
- * the refusal's `cache-control`, carried out of the loader.
+ * the loader's `cache-control`, carried out of it onto the document.
  *
  * a `data()`'s headers reach a *document* response only through this export: react router merges a
  * loader's headers into the document's own by asking each matched route for one, and a route with
- * no `headers` contributes cookies and nothing else (`getDocumentHeaders` in react-router). the
- * successful answer sets none and takes the framework's default.
+ * no `headers` contributes cookies and nothing else (`getDocumentHeaders` in react-router).
  */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;
@@ -174,7 +191,7 @@ export default function DonorPage({ loaderData }: Route.ComponentProps) {
 	return (
 		<main className="stage">
 			<h1 className="org-name">{loaderData.config.orgLegalName}</h1>
-			<DonateCard config={loaderData.config} />
+			<DonateCard config={loaderData.config} resuming={loaderData.resuming} />
 		</main>
 	);
 }

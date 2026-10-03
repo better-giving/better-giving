@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { donation } from '../db/schema';
 import type { EmailMessage, EmailProvider } from '../email/provider';
+import { parseHeaderValue } from '../email/smtp-config';
 import type { PaymentProvider } from '../payments/provider';
 import type { SettleDeps } from './delivery';
 import { sendTributeNotice } from './tribute-notice';
@@ -118,6 +119,44 @@ describe('sendTributeNotice()', () => {
 		expect(mail.sent.map((m) => m.to)).toEqual(['ngozi@example.org']);
 		expect(await stampOf()).not.toBeNull();
 	});
+
+	/**
+	 * the honoree comes off a public endpoint whose caller can send any string, and a line break in
+	 * a subject is a refusal at the SMTP transport, which reads the subject through the same
+	 * `parseHeaderValue` this mailer does. the notice reaches the family on one line instead.
+	 */
+	it.each([
+		{
+			kind: 'carries a line break',
+			honoree: 'Ann\r\nBcc: x@y',
+			subject: 'in memory of Ann Bcc: x@y'
+		},
+		{ kind: 'is ordinary', honoree: 'Chidi Okafor', subject: 'in memory of Chidi Okafor' }
+	])(
+		'reaches the transport with a one-line subject where the honoree $kind',
+		async ({ honoree, subject }) => {
+			const mail = mailer();
+			const transport: EmailProvider = {
+				async send(message) {
+					const header = parseHeaderValue('subject line', message.subject);
+					if (!header.ok) {
+						return {
+							ok: false,
+							reason: 'invalid_message',
+							detail: header.detail,
+							indeterminate: false
+						};
+					}
+					return mail.port.send(message);
+				}
+			};
+
+			const outcome = await sendTributeNotice(deps(transport), target({ tributeHonoree: honoree }));
+
+			expect(outcome).toBe('sent');
+			expect(mail.sent.map((m) => m.subject)).toEqual([`A gift was made ${subject}`]);
+		}
+	);
 
 	/**
 	 * the guard that makes "once per series" hold.

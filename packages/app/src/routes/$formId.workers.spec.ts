@@ -7,7 +7,8 @@ import {
 	type ShouldRevalidateFunctionArgs
 } from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { NO_FORM } from '$lib/donate/copy';
+import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
+import { NO_FORM, RESUMING_HEADING, STEP_HEADINGS } from '$lib/donate/copy';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { requestContext } from '../request-context';
 import * as donorPage from './$formId';
@@ -170,6 +171,13 @@ describe('GET /{form_id}', () => {
 		expect(markup(answered.data)).toContain('<h1 class="org-name">Hope Foundation</h1>');
 	});
 
+	// the amounts and settings drawn here are the form as it is now, and a kept copy would show a
+	// donor figures the operator has since changed.
+	it('lets nothing keep the page', async () => {
+		const answered = await visit(`/${FORM_ID}`);
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+	});
+
 	it('names the organisation in the tab', async () => {
 		const answered = await visit(`/${FORM_ID}`);
 		expect(title(answered.data)).toEqual([{ title: 'Donate to Hope Foundation' }]);
@@ -206,6 +214,52 @@ describe('GET /{form_id}', () => {
 	});
 });
 
+/**
+ * the text of the one step the markup leaves showing.
+ *
+ * the card draws every step and hides all but one, so the question a first paint answers is which
+ * `section.step` arrives without `hidden` — not which headings appear anywhere in the html.
+ */
+function shownStep(html: string): string {
+	const open = [...html.matchAll(/<section class="step[^"]*"([^>]*)>/g)].filter(
+		([, attributes]) => !/\shidden(=|\s|$)/.test(attributes ?? '')
+	);
+	const [shown] = open;
+	if (shown === undefined || open.length !== 1) {
+		throw new Error(`expected one shown step, found ${open.length}`);
+	}
+	const from = shown.index + shown[0].length;
+	return html.slice(from, html.indexOf('</section>', from));
+}
+
+describe('a donor back from authorizing their gift', () => {
+	// the stamp is all the server can see of a return — the token is the card's to claim once the
+	// flow starts — and it is what keeps the first paint from showing an empty donation form to a
+	// donor who may already have paid.
+	it('draws the resume takeover rather than the amount step', async () => {
+		const answered = await visit(`/${FORM_ID}?${RESUME_FORM_PARAM}=${FORM_ID}`);
+		const shown = shownStep(markup(answered.data));
+		expect(shown).toContain(RESUMING_HEADING);
+		expect(shown).not.toContain(STEP_HEADINGS[0]);
+	});
+
+	// a return is claimed by the form it names and by nothing else: the stamp may have been left on
+	// a link by a different form on the organisation's own site.
+	it('draws the amount step for a stamp naming another form', async () => {
+		const answered = await visit(`/${FORM_ID}?${RESUME_FORM_PARAM}=frm_donorpage000002`);
+		const shown = shownStep(markup(answered.data));
+		expect(shown).toContain(STEP_HEADINGS[0]);
+		expect(shown).not.toContain(RESUMING_HEADING);
+	});
+
+	it('draws the amount step where there is no stamp', async () => {
+		const answered = await visit(`/${FORM_ID}`);
+		const shown = shownStep(markup(answered.data));
+		expect(shown).toContain(STEP_HEADINGS[0]);
+		expect(shown).not.toContain(RESUMING_HEADING);
+	});
+});
+
 describe('an address that opens no form', () => {
 	it('draws the notice for an id this deployment does not have', async () => {
 		const answered = await visit('/frm_nosuchform00001');
@@ -225,8 +279,8 @@ describe('an address that opens no form', () => {
 		expect(markup(answered.data)).toContain(NO_FORM);
 	});
 
-	// the amounts are in the html, so a cached document is a stale form. the edge cache in front of
-	// the served config covers that endpoint alone.
+	// a kept refusal would hide a form published after it. the edge cache in front of the served
+	// config covers that endpoint alone.
 	it('lets nothing keep the refusal', async () => {
 		const answered = await visit('/frm_nosuchform00001');
 		expect(answered.headers.get('cache-control')).toBe('no-store');
@@ -296,6 +350,15 @@ describe('what re-reads the page under a gift in progress', () => {
 			actionStatus: 200
 		});
 		expect(donorPage.shouldRevalidate(posted)).toBe(false);
+	});
+
+	// a navigation on the form after the card claimed a return leaves a stamped address behind, and
+	// a re-read there would answer `resuming: false` under the takeover the flow is showing.
+	it('keeps the config when the resume stamp leaves the address', () => {
+		const stamped = asked(FORM_ID, `/${FORM_ID}`, {
+			currentUrl: new URL(`/${FORM_ID}?${RESUME_FORM_PARAM}=${FORM_ID}`, OWN)
+		});
+		expect(donorPage.shouldRevalidate(stamped)).toBe(false);
 	});
 
 	it('keeps the config for a revalidate on the same address', () => {

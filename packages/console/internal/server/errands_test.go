@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
@@ -20,8 +21,15 @@ import (
 
 // the errands this console proxies to the deployment, and the session they all ride.
 
-// a token far enough out that a case never meets an expired session.
-const errandToken = "bg1.99999999999.0123456789012345678901234567890123456789012"
+// a token minted against the clock the server reads, so a case meets a live session and not one
+// ending further out than a deployment accepts.
+var errandToken = func() string {
+	token, _, err := session.Mint(time.Now())
+	if err != nil {
+		panic(err)
+	}
+	return token
+}()
 
 // one call the deployment was asked, as the fake below recorded it.
 type errand struct {

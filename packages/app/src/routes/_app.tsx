@@ -223,6 +223,15 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
  * render, so a rethrow here fails the whole document.
  */
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-	if (isSetupAnswer(error)) return <SetupGate lines={error.data.lines} />;
+	if (isSetupAnswer(error)) {
+		// the tab names the gate as the root's page names its faces, with the project's name: the gate
+		// answers before the read that carries the organisation's.
+		return (
+			<>
+				<title>{`Finish setting up this deployment · ${APP_NAME}`}</title>
+				<SetupGate lines={error.data.lines} />
+			</>
+		);
+	}
 	return <RootErrorBoundary />;
 }

@@ -10,7 +10,8 @@ import { FieldMessage } from './FieldMessage.jsx';
 
 /**
  * one control that changes the boxes rather than the record: the four attributes a form layer's own
- * list intent is carried by, plus the press it may withhold on.
+ * list intent is carried by, the press it may withhold on, and two of the caller's own — an `id` and
+ * an `aria-describedby`.
  *
  * stated structurally rather than as a button's attributes: ../controls/Button.jsx takes the union
  * of a button's attributes and an anchor's, so the whole of one of those two is not assignable to
@@ -22,6 +23,9 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {string} [form]
  * @property {boolean} [formNoValidate]
  * @property {MouseEventHandler<HTMLButtonElement>} [onClick]
+ * @property {string} [id] for a caller that moves focus to the control itself.
+ * @property {string} [aria-describedby] the id of a sentence the caller draws saying why a press of
+ *   this control is refused.
  */
 
 /**

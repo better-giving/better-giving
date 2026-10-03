@@ -21,7 +21,8 @@ import {
 	payment,
 	recurringPlan,
 	type Contact,
-	type NewContact
+	type NewContact,
+	type Payment
 } from '../db/schema';
 import type { ContactSort, ContactView, SortDir } from '../../contacts/sorts';
 import type { ParsedContact } from './contact-input';
@@ -30,13 +31,16 @@ import type { ParsedContact } from './contact-input';
 // have one place to be stated rather than being re-derived at each call site. a change to a
 // contact once made is ./changes.ts's, beside the event it owes.
 //
-// `donation` and `payment` are named here too, in `listContacts` and `readDonorSummary` and
-// nowhere else — the two places either table is read outside ../donations/queries.ts, whose header
-// claims otherwise for every other read and points here for these two. `recurring_plan` is the
-// third such crossing, in `activeCommitment` below and the two reads that spend it, and
+// `donation` and `payment` are named here too, in `listContacts`, `readDonorSummary` and
+// `findPaymentDonor` and nowhere else — the places either table is read outside
+// ../donations/queries.ts, whose header claims otherwise for every other read and points here for
+// these. `findPaymentDonor` is here because ../accounting/ reads it, and that directory may import
+// nothing under ../donations/ (../accounting/no-donations-imports.spec.ts). `recurring_plan` is
+// crossed too, in `activeCommitment` below and the two reads that spend it, and
 // ../recurring/queries.ts names it from the other end.
 //
-// the crossing is forced in both by the question being about donors rather than about gifts.
+// in `listContacts` and `readDonorSummary` the crossing is forced by the question being about
+// donors rather than about gifts.
 // `listContacts` orders the donor file by how much a donor has given, across the whole file rather
 // than across a page, so the aggregate and the `order by` that reads it have to be one statement —
 // and that statement's driving table is `contact`. splitting it is a read of every contact in the
@@ -49,7 +53,8 @@ import type { ParsedContact } from './contact-input';
 // pages `contact` — reading every commitment and intersecting in the Worker is the shape the
 // `LIMIT` exists to prevent, and it would page a file whose size the read no longer knows.
 //
-// **both are under the rule `projectStatus` in ../donations/queries.ts states**, and that file's
+// **`listContacts` and `readDonorSummary` are under the rule `projectStatus` in
+// ../donations/queries.ts states** — `findPaymentDonor` reads no status — and that file's
 // header pins the agreement from the other end: a succeeded inbound attempt is what collects and
 // every other attempt counts for nothing. the summary spends only that half of it — a count of
 // donors is not money, so a refund takes nothing off one.
@@ -653,6 +658,38 @@ export async function readContactSummaries(
 		.where(inArray(contact.id, [...ids]));
 
 	return new Map(rows.map(({ id, ...summary }) => [id, summary]));
+}
+
+/**
+ * the donor behind one settlement attempt, as an outside ledger names a payer, and the rail holding
+ * the money.
+ */
+export type PaymentDonor = {
+	readonly displayName: string;
+	readonly email: string | null;
+	/** the rail that settled it — `payment.provider`, null on a row recorded before the rail was known. */
+	readonly provider: Payment['provider'];
+};
+
+/**
+ * who gave the gift one payment settled and which rail settled it, or `null` where no payment
+ * carries the id.
+ *
+ * `payment.donation_id` and `donation.contact_id` are both NOT NULL, so the join cannot lose a
+ * donor a payment has; `null` is a payment row that is not there at all.
+ */
+export async function findPaymentDonor(db: Db, paymentId: string): Promise<PaymentDonor | null> {
+	const [row] = await db
+		.select({ contactId: donation.contactId, provider: payment.provider })
+		.from(payment)
+		.innerJoin(donation, eq(donation.id, payment.donationId))
+		.where(eq(payment.id, paymentId));
+	if (row === undefined) return null;
+
+	const summary = (await readContactSummaries(db, [row.contactId])).get(row.contactId);
+	return summary === undefined
+		? null
+		: { displayName: summary.displayName, email: summary.primaryEmail, provider: row.provider };
 }
 
 /** one contact by id, or `null` — the donor-profile lookup. archived rows included. */

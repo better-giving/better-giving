@@ -43,12 +43,13 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * rather than shown. **absent is the third**: the reader is under no destination and no cell is
  * marked, which is the only honest rail to draw there and is what the centred specimen has.
  *
- * `groups` is drawn as the component's own, as the dashboard's three groups with marks, as the
- * console's run with a headed group, logos and status marks, as one entry, as none, and as the
- * dashboard's with four entries stating `bar` and a headed integrations group on the sheet. the empty
- * rail is a `nav` with no cells in it, which below the wide breakpoint is an empty strip across the
- * foot of the window. a tab is an equal share of the width whatever the count, and the bar is flat:
- * a headed group's entries stand as tabs of their own.
+ * `groups` has no default and is always handed: drawn as a short rail of four with marks, as the
+ * dashboard's three groups with marks, as the console's run with a headed group, logos and status
+ * marks, as one entry, as none, and as the dashboard's with four entries stating `bar` and a headed
+ * integrations group on the sheet. the empty rail is a `nav` with no cells in it, which below the
+ * wide breakpoint is an empty strip across the foot of the window. a tab is an equal share of the
+ * width whatever the count, and the bar is flat: a headed group's entries stand as tabs of their
+ * own.
  *
  * the toggle on the rail's head collapses it to an icon rail, and the choice is kept per browser,
  * so every specimen on this page follows it once the page is reloaded.
@@ -117,9 +118,22 @@ const CLOSE = (
 export default function ShellAppShellPreview() {
 	return (
 		<div className="adm-stack">
-			{/* everything defaulted but the whereabouts: the groups the component names, the quiet way
-			    out, plain anchors, and a real screen in the page. */}
-			<AppShell org="Riverside Shelter" current="Donation forms">
+			{/* everything defaulted that has a default: the quiet way out, plain anchors, and a real
+			    screen in the page under a short rail. */}
+			<AppShell
+				org="Riverside Shelter"
+				current="Donation forms"
+				groups={[
+					{ destinations: [{ label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }] },
+					{
+						destinations: [
+							{ label: 'Donation forms', short: 'Forms', mark: 'form' },
+							{ label: 'Donors', short: 'Donors', mark: 'users' },
+							{ label: 'Gifts', short: 'Gifts', mark: 'hand-heart' }
+						]
+					}
+				]}
+			>
 				<Column>
 					<PageHeader
 						title="Donation forms"
@@ -186,8 +200,9 @@ export default function ShellAppShellPreview() {
 
 			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
 			    every entry, the site's globe before the name, the close in the band and an account in
-			    the foot. collapsed, the logo alone stands for the account, a label still and nothing
-			    to press. */}
+			    the foot. the strip names the page, so its header states no title and the standfirst
+			    opens the page alone, at the column's start, the shape the console's sites screen draws.
+			    collapsed, the logo alone stands for the account, a label still and nothing to press. */}
 			<AppShell
 				org="Riverside Shelter"
 				current="Sites"
@@ -247,7 +262,7 @@ export default function ShellAppShellPreview() {
 				head={<span className="adm-headstrip__title">Sites</span>}
 			>
 				<Column>
-					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
+					<PageHeader standfirst="Which sites your forms go on" />
 					<EmptyState>No site has been added yet.</EmptyState>
 				</Column>
 			</AppShell>

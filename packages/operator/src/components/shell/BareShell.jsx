@@ -6,20 +6,30 @@ import { TopBar } from './TopBar.jsx';
  */
 
 /**
- * @typedef {object} BareShellProps
- * @property {ReactNode} [head] the whole head as one node, in place of the bar of facts: what
+ * the two heads a bare shell can stand, and a shell states exactly one: the whole head as a node,
+ * or the run of facts its bar draws. the two are alternatives and a shell drawing both would be
+ * two bands over one page, so the type refuses a shell stating both or neither.
+ *
+ * @typedef {object} BareShellHead
+ * @property {ReactNode} head the whole head as one node, in place of the bar of facts: what
  *   stands on it and what stands under it are the caller's, the way ./AppShell.jsx's `PanelRoute`
  *   takes its `bar`. it is the same `.adm-head` that route stands, so a surface drawing one head on
  *   both hands the same node to both — which is what the console does, from
- *   packages/console-ui/src/lib/head-strip.tsx. handed one, `facts` and `end` are not read: the two
- *   heads are alternatives and a shell drawing both would be two bands over one page.
- * @property {readonly TopBarFact[] | undefined} [facts] the bar's, handed straight to ./TopBar.jsx
- *   — see the note on the prop there. stated on the shell rather than taken as a bar node, the way
+ *   packages/console-ui/src/lib/head-strip.tsx.
+ * @property {undefined} [facts]
+ * @property {undefined} [end]
+ *
+ * @typedef {object} BareShellFacts
+ * @property {undefined} [head]
+ * @property {readonly TopBarFact[]} facts the bar's, handed straight to ./TopBar.jsx — see the
+ *   note on the prop there. stated on the shell rather than taken as a bar node, the way
  *   ./AppShell.jsx takes `org` rather than an identity band: a run of stated facts is the shell's
  *   own furniture, and the surface that wants a head of its own takes `head` above instead.
  * @property {ReactNode} [end] what acts on the surface, at the bar's far end, handed through the
  *   same way, and `null` is still a bar with no control to draw. absence cannot say that —
  *   ./TopBar.jsx's own note is what argues it, and what may stand there.
+ *
+ * @typedef {object} BareShellPage
  * @property {boolean | undefined} [centred] the screen is one short block and stands in the middle
  *   of the space under the bar rather than at the top of it. what it is for is a screen that is
  *   waiting — nothing has arrived and there is nothing on it to act on — and a screen with anything
@@ -33,6 +43,8 @@ import { TopBar } from './TopBar.jsx';
  *   stands in its own foot slot, so a surface drawing one strip on the shell and the route alike
  *   hands the same node to both.
  * @property {ReactNode} [children] the screen.
+ *
+ * @typedef {(BareShellHead | BareShellFacts) & BareShellPage} BareShellProps
  */
 
 /* the shell a surface takes when it has no rail: a bar of facts across the top, the screen under
@@ -54,10 +66,10 @@ export function BareShell({ head, facts, end, centred = false, foot, children })
 			{/* one row either way: the head is the shell's first, and a node handed in stands in the
 			    band rather than beside it — the lines a surface puts under its strip are inside the
 			    head and the shell's tracks never see them. */}
-			{head === undefined ? (
-				<TopBar facts={facts} end={end} />
-			) : (
+			{facts === undefined ? (
 				<div className="adm-head">{head}</div>
+			) : (
+				<TopBar facts={facts} end={end} />
 			)}
 			<main className={centred ? 'adm-main adm-main--centred' : 'adm-main'}>{children}</main>
 			{/* the last row it is written in, the way the bar is the first: ../../styles/adm.css

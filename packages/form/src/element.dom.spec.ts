@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
 	CONFIG_DEADLINE_MS,
 	defineDonateForm,
@@ -5115,6 +5115,181 @@ describe('the stylesheets', () => {
 		).toEqual(['sample.css:3 3px — gap: 3px;']);
 	});
 
+	// the styles the element writes from a script rather than from a sheet: every string a source
+	// file hands `style.cssText`, by `=` or by `+=`, and the constant that assignment names when it
+	// names one rather than spelling the string. a name the file does not bind with a `const` of its
+	// own is not read: the assignment comes back in `unread`, at its line, for the caller to fail on.
+	// each string comes back as sheet text the two sweeps above can read — the file's own length,
+	// every line where it stands, the literal's characters kept and everything else in the file
+	// blanked to spaces, so a finding is reported at the line it is written on.
+	//
+	// what is kept besides the characters is what a sheet's note is written in: a `/* */` comment
+	// inside the expression, and the doc comment standing directly above the statement, which the
+	// head of the statement is turned into an empty comment to reach. a `//` line is blanked like
+	// the code, because the note the sweeps honour opens a `/*` comment and nothing else.
+	// an interpolation is blanked too, which leaves a constant it reads unswept.
+	const inlineStyles = (name: string, source: string): { styles: string; unread: string[] } => {
+		const kept = source.replace(/[^\n]/g, ' ').split('');
+		const keep = (from: number, to: number) => {
+			for (let i = from; i < to; i++) kept[i] = source[i] ?? ' ';
+		};
+		const lineStart = (at: number) => source.lastIndexOf('\n', at - 1) + 1;
+
+		// one statement: its head, the doc comment above it, and from just past its `=` to the `;`
+		// that ends it, string contents and comments kept.
+		const sweep = (head: number, from: number) => {
+			const start = lineStart(head);
+			// the head of the statement as an empty comment of its own width, so the walk in
+			// `rawLengths` reads it as a comment line and carries on up to the doc comment above it.
+			const end = source.lastIndexOf('=', from) + 1;
+			if (end - start >= 4) {
+				kept[start] = '/';
+				kept[start + 1] = '*';
+				kept[end - 2] = '*';
+				kept[end - 1] = '/';
+			}
+			let line = start - 1;
+			while (line > 0) {
+				const above = lineStart(line);
+				if (!/^\s*(?:\/\*|\*)/.test(source.slice(above, line))) break;
+				keep(above, line);
+				line = above - 1;
+			}
+
+			let depth = 0;
+			for (let i = from; i < source.length; i++) {
+				const char = source[i];
+				if (char === "'" || char === '"') {
+					const close = source.indexOf(char, i + 1);
+					keep(i + 1, close);
+					i = close;
+				} else if (char === '`') {
+					for (i += 1; i < source.length && source[i] !== '`'; i++) {
+						if (source[i] === '$' && source[i + 1] === '{') i = source.indexOf('}', i);
+						else keep(i, i + 1);
+					}
+				} else if (source.startsWith('/*', i)) {
+					const close = source.indexOf('*/', i) + 2;
+					keep(i, close);
+					i = close - 1;
+				} else if (source.startsWith('//', i)) {
+					i = source.indexOf('\n', i) - 1;
+				} else if (char === '(' || char === '[' || char === '{') depth += 1;
+				else if (char === ')' || char === ']' || char === '}') depth -= 1;
+				else if (char === ';' && depth === 0) return;
+			}
+		};
+
+		const unread: string[] = [];
+		for (const assigned of source.matchAll(/\.style\.cssText\s*\+?=(?!=)\s*/g)) {
+			const from = assigned.index + assigned[0].length;
+			const named = /^([A-Za-z_$][\w$]*)\s*;/.exec(source.slice(from))?.[1];
+			const bound =
+				named === undefined ? undefined : new RegExp(`\\bconst ${named}\\s*=\\s*`).exec(source);
+			if (bound === undefined) sweep(assigned.index, from);
+			else if (bound !== null) sweep(bound.index, bound.index + bound[0].length);
+			else {
+				const start = lineStart(assigned.index);
+				const end = source.indexOf('\n', assigned.index);
+				const line = source.slice(0, start).split('\n').length;
+				unread.push(`${name}:${line} ${source.slice(start, end === -1 ? undefined : end).trim()}`);
+			}
+		}
+		return { styles: kept.join(''), unread };
+	};
+
+	it('reads a length planted in a style the element builds as a string', async () => {
+		const source = [
+			'const PINNED =',
+			"\t'display:block;margin:0;' +",
+			"\t'inline-size:100%;gap:3px';",
+			'node.style.cssText = PINNED;',
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: source text, and the placeholder is the interpolation it holds
+			"other.style.cssText = 'padding:0;' + `margin:${GAP};inset:2rem`;"
+		].join('\n');
+
+		expect(rawLengths('fixture.ts', inlineStyles('fixture.ts', source).styles)).toEqual([
+			'fixture.ts:3 3px — inline-size:100%;gap:3px',
+			'fixture.ts:5 2rem — padding:0;     margin:      ;inset:2rem'
+		]);
+	});
+
+	it('excuses a length in such a string by the note a sheet would carry, and by no other', async () => {
+		const source = [
+			'/**',
+			' * raw-length-ok: a note.',
+			' */',
+			'const PINNED =',
+			"\t'gap:3px;' +",
+			"\t'margin:4px;';",
+			'node.style.cssText = PINNED;',
+			"other.style.cssText = 'inset:1px;' /* raw-length-ok: a note. */;",
+			'// raw-length-ok: a note.',
+			"third.style.cssText = 'gap:5px';"
+		].join('\n');
+
+		expect(rawLengths('fixture.ts', inlineStyles('fixture.ts', source).styles)).toEqual([
+			'fixture.ts:6 4px — margin:4px;',
+			'fixture.ts:10 5px — gap:5px'
+		]);
+	});
+
+	// a name the sweep cannot find bound in the same file would leave a style unread under a passing
+	// sweep, so it comes back as a finding at its line; a `+=` spelling its string is read like an `=`.
+	it('reports an assignment it cannot read rather than passing over it', async () => {
+		const source = [
+			"import { IMPORTED } from './elsewhere';",
+			'node.style.cssText = IMPORTED;',
+			"other.style.cssText += 'gap:3px';",
+			'third.style.cssText += IMPORTED;'
+		].join('\n');
+		const { styles, unread } = inlineStyles('fixture.ts', source);
+
+		expect(unread).toEqual([
+			'fixture.ts:2 node.style.cssText = IMPORTED;',
+			'fixture.ts:4 third.style.cssText += IMPORTED;'
+		]);
+		expect(rawLengths('fixture.ts', styles)).toEqual(['fixture.ts:3 3px — gap:3px']);
+	});
+
+	// every source file in the package, read as text rather than imported: what is swept is the
+	// string as written, and importing the element's modules would run them.
+	const scripts = Object.entries(
+		import.meta.glob<string>(['./**/*.ts', '!./**/*.spec.ts'], {
+			query: '?raw',
+			import: 'default',
+			eager: true
+		})
+	)
+		.map(([path, source]) => {
+			const name = path.slice('./'.length);
+			return [name, inlineStyles(name, source)] as const;
+		})
+		.filter(([, { styles, unread }]) => styles.trim() !== '' || unread.length > 0)
+		.sort(([left], [right]) => left.localeCompare(right));
+
+	it('writes no raw value into any style it builds as a string', async () => {
+		// named as well as swept, for the reason the sheet directory is named above: a sweep that
+		// stopped finding a file would otherwise go on passing over nothing.
+		expect(scripts.map(([name]) => name)).toEqual([
+			'element.ts',
+			'embed/rows.ts',
+			'embed/surface.ts',
+			'styles/resolve.ts'
+		]);
+		expect(
+			declarations(scripts.map(([, { styles }]) => styles).join('\n')).replace(/\s+/g, '').length
+		).toBeGreaterThan(500);
+
+		expect(scripts.flatMap(([, { unread }]) => unread)).toEqual([]);
+		expect(scripts.flatMap(([name, { styles }]) => rawLengths(name, styles))).toEqual([]);
+		expect(scripts.flatMap(([name, { styles }]) => rawDurations(name, styles))).toEqual([]);
+		for (const [, { styles }] of scripts) {
+			expect(declarations(styles)).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+			expect(declarations(styles)).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
+		}
+	});
+
 	// the coin list inside the crypto option carries a sheet of its own (./coin-picker.ts), held to it too.
 	it('derives every colour in the coin list from a token too', async () => {
 		const list = declarations(coinStyles);
@@ -6268,6 +6443,90 @@ describe('a crypto gift', () => {
 		expect(heading(card)).toBe('This gift needs to be started again');
 		expect(region(card)).toBe('This gift needs to be started again.');
 		expect(document.activeElement).toBe(outside);
+	});
+
+	// the reading loop's next snapshot carries nothing to say, and a sentence stays on the region
+	// until the heading it announces changes or another sentence replaces it.
+	it('says the address closing when a reading lands at the send-by, and keeps saying it', async () => {
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS
+		});
+		let reads = 0;
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: {
+				now: () => Date.now(),
+				status: async () => {
+					reads += 1;
+					return { state: 'waiting' };
+				}
+			}
+		});
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(1);
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(2);
+		expect(region(card)).toBe('Checking for your gift.');
+	});
+
+	it('keeps a Copy’s sentence through a reading, until a different one replaces it', async () => {
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		let reads = 0;
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: {
+				status: async () => {
+					reads += 1;
+					return { state: 'waiting' };
+				}
+			}
+		});
+		const copyAddress = async () => {
+			card.find('.deposit [aria-label="Copy address"]').click();
+			await settle();
+			await settle();
+		};
+
+		await copyAddress();
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(1);
+		expect(region(card)).toBe('Address copied.');
+
+		writeText.mockRejectedValueOnce(new Error('denied'));
+		await copyAddress();
+
+		expect(region(card)).toBe('Address not copied. It is selected so you can copy it.');
+	});
+
+	it('replaces a Copy’s sentence with the heading the address closes to', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS * 2
+		});
+		const { card } = await atAddress(USDT, 'USDT', { ports: { now: () => Date.now() } });
+		card.find('.deposit [aria-label="Copy address"]').click();
+		await settle();
+		await settle();
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		onTestFinished(() => outside.remove());
+		outside.focus();
+		expect(region(card)).toBe('Address copied.');
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS * 2);
+
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
 	});
 
 	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {

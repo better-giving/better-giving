@@ -3599,10 +3599,12 @@
 
 	   the steps are the four tiers from the inside out: a group's name sits on its options with no
 	   step of its own, because each option's touch row already stands its label off the name; the
-	   gap between options on a line is the stack's step; groups stand off each other at the break
-	   step; and the question's legend stands a stack step above its first group, wider than the
-	   close step `.adm-fieldset__legend + *` gives a single box, so the first group's name is not
-	   read as the legend's second line. the refusal takes no step: the last group's touch row is
+	   gap between options on a line is the break step, three times the gap a box keeps from its own
+	   label, so a label is plainly nearer its own box than the next one; groups stand off each other
+	   at the same break step, down the page rather than along a line; and the question's legend
+	   stands a stack step above its first group, wider than the close step
+	   `.adm-fieldset__legend + *` gives a single box, so the first group's name is not read as the
+	   legend's second line. the refusal takes no step: the last group's touch row is
 	   already the space it stands off by, and under it the group's buttons are further away. */
 	.adm-checkgroups {
 		display: grid;
@@ -3617,7 +3619,7 @@
 	.adm-checkgroups > .adm-fieldset > .adm-checkgroup {
 		display: flex;
 		flex-wrap: wrap;
-		column-gap: var(--admin-space-6);
+		column-gap: var(--admin-space-8);
 		margin-block-start: 0;
 	}
 
@@ -4536,6 +4538,21 @@
 	   on every plane that counts something. */
 	.adm-tablelead:not(:has(.adm-tablecaption)) {
 		justify-content: end;
+	}
+
+	/* a screen stands the heading over a list, this line and the plane side by side in one
+	   container, so the container's gap is on both sides of the line and `.adm-tablelead`'s own
+	   step adds to the gap under it — the sentence then stands further from its own table than from
+	   the heading, and reads as the heading's. inside a gapped container the line takes the gap
+	   back, and what stands between it and the plane is the line's own `--admin-space-4` alone:
+	   under the heading's gap, so the sentence reads with the table it counts.
+	   ./table-lead.spec.ts holds the pairing. */
+	.adm-stack > .adm-tablelead {
+		margin-block-end: calc(var(--admin-space-4) - var(--admin-space-6));
+	}
+
+	.adm-section > .adm-tablelead {
+		margin-block-end: calc(var(--admin-space-4) - var(--admin-space-5));
 	}
 
 	/* the sentence naming a table stands outside the scroll box — never in a `<caption>`,
@@ -5827,8 +5844,12 @@
 	/* a row may carry only what acts on the page, where the page's name is the strip's title
 	   (`.adm-headstrip__title` above) rather than a heading of its own. with no name at its start
 	   the spread would stand the actions at the start instead, so they go to the far end, where
-	   they sit on every row that has one. */
-	.adm-pageheader__row:not(:has(h1)) {
+	   they sit on every row that has one.
+
+	   a standfirst with no heading is not that row: the sentence opens the page as a heading would,
+	   and pushed to the far end it sits off to one side of the content it introduces. so the row
+	   keeps its spread wherever it holds either line, and only a row holding neither is turned. */
+	.adm-pageheader__row:not(:has(h1, .adm-standfirst)) {
 		justify-content: end;
 	}
 
@@ -6257,6 +6278,16 @@
 	   box wider than the track it stands in. */
 	.adm-panelroute > .adm-panel {
 		max-inline-size: min(var(--admin-measure-panel), 100% - 2 * var(--admin-space-6));
+	}
+
+	/* where ../components/shell/ErrorPanel.jsx puts the reader, which is a heading and no control:
+	   the ring ./base.css gives every focused element would frame the words, and the next press of
+	   Tab is what the reader came for — the reason `.adm-shell > .adm-main:focus-visible` gives for
+	   its own landing target. */
+	.adm-panelroute > .adm-panel > h1[tabindex='-1']:focus-visible,
+	.adm-panelroute > .adm-panel > h1[tabindex='-1'].is-focus {
+		outline: 0;
+		box-shadow: none;
 	}
 
 	/* the same row with no panel in it: one control standing on the page's own ground. what

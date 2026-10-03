@@ -102,6 +102,32 @@ describe('raw-length-ok:', () => {
 	});
 });
 
+describe('a negative length', () => {
+	it('is refused, sign and all', () => {
+		// a leading `-` is the value's sign, not the end of a name: `-1px` is the same raw length as
+		// `1px` pointed the other way. packages/form/src/element.dom.spec.ts's sweep reads it the same.
+		const files = fixture('length-negative', 'a { margin: -1px; }');
+		expect(rawLengthViolations(files)).toEqual([`${files[0]}:1 -1px — a { margin: -1px; }`]);
+	});
+
+	it('passes a hyphenated name that carries a length-like run', () => {
+		// the refusal above must not reach into a name: `--gap-1px` and `step-2rem` are a custom
+		// property and a class, and the `-` before the digits joins them rather than signs them.
+		const files = fixture(
+			'length-in-a-name',
+			'.step-2rem { margin: var(--gap-1px); inset: var(--x--1px); }'
+		);
+		expect(rawLengthViolations(files)).toEqual([]);
+	});
+
+	it('still passes a run inside a word, after a dot or after a hash', () => {
+		// the other three things the lookbehind refuses to start a length on: a word character
+		// (`.a1px` is a class), a `.` (`.x.5em` is two classes) and a `#` (`#1em` is an id).
+		const files = fixture('length-exclusions', '.a1px, .x.5em, #1em { margin: 0; }');
+		expect(rawLengthViolations(files)).toEqual([]);
+	});
+});
+
 describe('a face name is not a colour', () => {
 	it('passes a family whose name carries a colour word', () => {
 		// ./fonts.css declares ten faces of the red hat family, so `red` stands inside a proper

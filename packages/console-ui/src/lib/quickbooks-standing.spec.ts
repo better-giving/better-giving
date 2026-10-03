@@ -1148,6 +1148,19 @@ describe('which steps stand open, shut, locked or out of sight', () => {
 		]);
 	});
 
+	it('names each reason a step is open for, so a second trouble is one a reader has not shut', () => {
+		// a step shut by hand opens again only for a reason it was not open for a moment ago, so two
+		// troubles under one flag would leave the second one shut.
+		const unread = stepsStand({
+			configured: true,
+			books: { kind: 'unread', read: NOTHING_ANSWERED },
+			answer: silence('connect'),
+			confirming: null
+		});
+		expect(unread.connect.openFor).toEqual(['current', 'unread', 'unanswered']);
+		expect(unread.accounts.openFor).toEqual([]);
+	});
+
 	it('opens a finished Connect where Intuit has not named the company', () => {
 		expect(stand({ books: read({ connection: company({ companyName: null }) }) })[1]).toBe(
 			'connect: open done'
@@ -1161,6 +1174,7 @@ describe('what a step says about itself and what its save opens', () => {
 		trouble: false,
 		locked: false,
 		open: false,
+		openFor: [],
 		...over
 	});
 	const all = (

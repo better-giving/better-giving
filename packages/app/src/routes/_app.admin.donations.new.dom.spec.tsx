@@ -159,6 +159,39 @@ async function pressAdd(root: HTMLElement): Promise<void> {
 	await act(async () => form.requestSubmit(buttonReading(root, 'Add donation')));
 }
 
+/** the box an operator presses to open the donor kind's list, which is not the hidden select that carries the name. */
+function kindTrigger(root: HTMLElement): HTMLElement {
+	const pressed = box<HTMLElement>(root, 'kind')
+		.closest('.adm-selectwrap')
+		?.querySelector<HTMLElement>('[role="combobox"]');
+	if (pressed == null) throw new Error('the kind box has nothing to press');
+	return pressed;
+}
+
+/** the rows the donor kind's list draws, and not the program box's beside it. */
+function kindRows(root: HTMLElement): HTMLElement[] {
+	const wrap = box<HTMLElement>(root, 'kind').closest('.adm-selectwrap');
+	return [...(wrap?.querySelectorAll<HTMLElement>('.adm-selectrow') ?? [])];
+}
+
+/** a key pressed wherever focus stands; async because the machine settles on a microtask. */
+async function press(key: string): Promise<void> {
+	await act(async () => {
+		document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+	});
+}
+
+/** the kind as the form would post it. */
+function postedKind(root: HTMLElement): FormDataEntryValue | null {
+	const form = root.querySelector('form');
+	if (form === null) throw new Error('no form');
+	return new FormData(form).get('kind');
+}
+
+async function openCreateArm(root: HTMLElement): Promise<void> {
+	await act(async () => buttonReading(root, 'Add a new donor').click());
+}
+
 function receiptBox(root: HTMLElement): HTMLInputElement {
 	return box(root, 'send_receipt');
 }
@@ -244,6 +277,50 @@ it('draws the create arm at rest, and holds the receipt until an address is type
 	await act(async () => fill(box<HTMLElement>(root, 'kind'), 'organization'));
 	expect(box(root, 'legal_name')).toBeTruthy();
 	expect(hidden(root, 'first_name')?.value).toBe('');
+});
+
+it('opens the donor kind list by its visible box and takes the row pressed, as the hidden select does', async () => {
+	const { root } = screen();
+	await openCreateArm(root);
+	expect(postedKind(root)).toBe('individual');
+	expect(kindTrigger(root).textContent).toBe('Person');
+
+	await act(async () => kindTrigger(root).click());
+	expect(kindRows(root).map((r) => r.textContent)).toEqual(['Person', 'Organization', 'Household']);
+	const row = kindRows(root).find((node) => node.textContent === 'Organization');
+	if (row === undefined) throw new Error('the list drew no Organization row');
+	await act(async () => {
+		row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+		row.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+		row.click();
+	});
+
+	expect(kindTrigger(root).textContent).toBe('Organization');
+	expect(postedKind(root)).toBe('organization');
+	expect(box(root, 'legal_name')).toBeTruthy();
+	expect(hidden(root, 'first_name')?.value).toBe('');
+});
+
+it('opens the donor kind list from the keyboard and takes the row it lands on', async () => {
+	const { root } = screen();
+	await openCreateArm(root);
+	act(() => kindTrigger(root).focus());
+
+	await press('ArrowDown');
+	await press('ArrowDown');
+	await press('Enter');
+
+	expect(kindTrigger(root).textContent).toBe('Organization');
+	expect(postedKind(root)).toBe('organization');
+	expect(box(root, 'legal_name')).toBeTruthy();
+
+	// and on to the last row, which asks for a single display name.
+	await press('ArrowDown');
+	await press('ArrowDown');
+	await press('ArrowDown');
+	await press('Enter');
+	expect(postedKind(root)).toBe('household');
+	expect(box(root, 'display_name')).toBeTruthy();
 });
 
 it('marks every refusal at its box from the first press, and posts nothing', async () => {

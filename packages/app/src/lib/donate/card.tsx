@@ -2,7 +2,7 @@ import type { CoinOption } from '@better-giving/form/coin-picker';
 import { connect, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import { createDepositBlock, type DepositView } from '@better-giving/form/deposit';
 import { takeResumeToken } from '@better-giving/form/embed/resume';
-import type { CheckoutEvent } from '@better-giving/form/machine';
+import { checkoutMachine, type CheckoutEvent } from '@better-giving/form/machine';
 import { formatFigure, formatMinor, formatOffer, parseMinor } from '@better-giving/form/money';
 import { part } from '@better-giving/form/parts';
 import type { AmountDecision, PayerField } from '@better-giving/form/value';
@@ -17,6 +17,7 @@ import {
 	type ReactNode,
 	type RefObject
 } from 'react';
+import { getInitialSnapshot } from 'xstate';
 import { DonateAnnouncer } from './announce';
 import * as copy from './copy';
 import { initialSnapshot, startCheckout, type Checkout, type CheckoutMounts } from './machine';
@@ -42,9 +43,10 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     the query container every breakpoint in the form's layout sheet resolves against.
 //   - the server render. `initialSnapshot` is a pure function of the configuration, so the amounts,
 //     the cadences and the tiles are in the HTML and the client's first render produces the same
-//     tree. the live actor is created in an effect after that first commit — the payment provider
-//     reads computed style off a mounted node, and taking the resume token rewrites the URL, which
-//     is not a thing a render may do.
+//     tree; a page the route says is a resume draws the resume's takeover there instead
+//     (`servedSnapshot`). the live actor is created in an effect after that first commit — the
+//     payment provider reads computed style off a mounted node, and taking the resume token
+//     rewrites the URL, which is not a thing a render may do.
 //   - which screen the card is on. a busy flow stays on the last screen shown, because the flow
 //     collapses five machine states into one thing a donor is told and the projection cannot say
 //     which screen asked.
@@ -69,6 +71,25 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 // in the takeover. neither is react's to render — one carries its own shadow root and the other its
 // own Copy controls — so what is here is the words each is handed and when the caret goes into the
 // coin list.
+
+/**
+ * the snapshot the first paint draws, server and hydration alike.
+ *
+ * a resume boots into `resuming`, and what that state draws first names no rail and no figure, so
+ * the stamp alone chooses it and the token is not needed: the token is claimed in the effect that
+ * starts the live flow, and nothing reads it off this snapshot. `getInitialSnapshot` starts nothing
+ * — the read `resuming` invokes is never run and its timeout never armed — so this stays a value
+ * the way `initialSnapshot` is, on that snapshot's own inert ports.
+ */
+function servedSnapshot(config: FormConfig, resuming: boolean): CheckoutSnapshot {
+	const booted = initialSnapshot(config);
+	if (!resuming) return booted;
+	return getInitialSnapshot(checkoutMachine, {
+		config,
+		ports: booted.context.ports,
+		resume: { paymentToken: 'unclaimed' }
+	});
+}
 
 const SCREENS = ['amount', 'details', 'give', 'takeover'] as const;
 type Screen = (typeof SCREENS)[number];
@@ -115,9 +136,19 @@ export type DonateCardProps = {
 	 * boot into.
 	 */
 	readonly seams?: CheckoutMounts['seams'];
+	/**
+	 * whether the page's url carries this form's resume stamp (`RESUME_FORM_PARAM` in
+	 * @better-giving/form/embed/resume), which is what the route can see of a return from a payment
+	 * provider.
+	 *
+	 * true draws the resume's takeover from the first paint, server and hydration alike, and the live
+	 * flow carries on from it once it has claimed the token. it says nothing about the token itself:
+	 * a stamp that arrived without one hands the donor the amount step as soon as the flow starts.
+	 */
+	readonly resuming?: boolean;
 };
 
-export function DonateCard({ config, seams }: DonateCardProps) {
+export function DonateCard({ config, seams, resuming = false }: DonateCardProps) {
 	// a second gift is a fresh boot rather than a state on the flow: what the last gift left behind is
 	// not the flow's to clear — the provider's own fields still hold the card the donor entered and a
 	// challenge token is spent once. remounting is what builds both again, and it starts empty, which
@@ -131,6 +162,8 @@ export function DonateCard({ config, seams }: DonateCardProps) {
 			key={boot.at}
 			config={config}
 			takeFocus={boot.focused}
+			// a second gift is never a resume: the first card already claimed the return.
+			resuming={resuming && boot.at === 0}
 			restart={(focused) => setBoot((last) => ({ at: last.at + 1, focused }))}
 			{...(seams === undefined ? {} : { seams })}
 		/>
@@ -141,7 +174,8 @@ function CheckoutCard({
 	config,
 	takeFocus,
 	restart,
-	seams
+	seams,
+	resuming
 }: {
 	config: FormConfig;
 	/** whether this card's first paint puts the caret on its heading, which only a restart asks. */
@@ -149,12 +183,13 @@ function CheckoutCard({
 	/** a fresh card, told whether this one held the caret when it was asked for. */
 	restart: (focused: boolean) => void;
 	seams?: CheckoutMounts['seams'];
+	resuming: boolean;
 }) {
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
 	const offer = (minor: number) => formatOffer(minor, locale, currency);
 
-	const initial = useMemo(() => initialSnapshot(config), [config]);
+	const initial = useMemo(() => servedSnapshot(config, resuming), [config, resuming]);
 	const [live, setLive] = useState<Checkout | null>(null);
 	const [deposit, setDeposit] = useState<DepositView | null>(null);
 	const [paymentRows, setPaymentRows] = useState(0);
@@ -186,9 +221,15 @@ function CheckoutCard({
 		started.rows(setPaymentRows);
 		setLive(started);
 		// a Copy's outcome is said on the card's one region, again on every press: the words do not
-		// change between two presses of one control.
+		// change between two presses of one control. it is tied to the heading the press was made
+		// under, because the reading loop moves the snapshot under it every few seconds.
 		const block = createDepositBlock(document, (words) => {
-			setShot({ at: started.actor.getSnapshot(), kind: 'copy', words });
+			setShot({
+				at: started.actor.getSnapshot(),
+				kind: 'copy',
+				words,
+				on: screen.current.heading
+			});
 			setNonce((at) => at + 1);
 		});
 		setDeposit(block);
@@ -247,11 +288,15 @@ function CheckoutCard({
 	const [notifyAsked, setNotifyAsked] = useState(false);
 	/** the press that asked for a sentence to be said again, which is the only thing a repeat has. */
 	const [nonce, setNonce] = useState(0);
-	/** a sentence one press asked for, spent by the snapshot it was asked on. */
+	/**
+	 * a sentence one press asked for. a refusal or a one-time switch is spent by the snapshot it was
+	 * asked on; a Copy's is kept by the heading it was pressed under, in `on`.
+	 */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
 		kind: 'details' | 'copy' | 'one-time';
 		words?: string;
+		on?: string;
 	} | null>(null);
 	/** a commit, so a press that changed nothing else still gets its caret moved. */
 	const [, setTick] = useState(0);
@@ -414,7 +459,8 @@ function CheckoutCard({
 		heading: string;
 		primary: string | null;
 	}>({
-		shown: 'amount',
+		// the screen the first paint draws, so a resume's takeover is not counted as a move onto it.
+		shown: visibleStep(api.state, 'amount'),
 		moved: false,
 		painted: false,
 		step: null,
@@ -456,14 +502,18 @@ function CheckoutCard({
 	 * a caret elsewhere inside the takeover is moved onto the heading, and arriving there reads it.
 	 * that leaves a caret already on the heading, where focusing the node that holds focus says
 	 * nothing, and a caret outside the takeover, which is never taken — a resume's outcome and the
-	 * address closing both arrive with the donor anywhere on the page. cached against the snapshot it
-	 * was read for, as `decline` is: the commit that draws the new heading is what makes the next
-	 * render's comparison come out equal.
+	 * address closing both arrive with the donor anywhere on the page. cached against the heading it
+	 * was read for rather than the snapshot: the commit that draws the new heading is what makes the
+	 * next render's comparison come out equal, and the address screen's reading loop is a new
+	 * snapshot every few seconds with nothing to say — one landing in the same instant the address
+	 * closes would otherwise empty the sentence as it is written. a sentence the region moved on
+	 * from is emptied where `words` is chosen below.
 	 */
-	const retitle = useRef<{ at: CheckoutSnapshot | null; words: string }>({ at: null, words: '' });
-	if (retitle.current.at !== snapshot) {
+	const heard = withinTakeover ? takeover.heading : null;
+	const retitle = useRef<{ on: string | null; words: string }>({ on: null, words: '' });
+	if (retitle.current.on !== heard) {
 		retitle.current = {
-			at: snapshot,
+			on: heard,
 			words:
 				withinTakeover &&
 				takeover.heading !== screen.current.heading &&
@@ -481,7 +531,7 @@ function CheckoutCard({
 			shown,
 			moved: before.moved || shown !== before.shown,
 			// the server's render and the live flow's first snapshot are one paint: the actor is built
-			// after the first commit, so a resume's takeover arrives on the second.
+			// after the first commit, so a resume the route did not see arrives on the second.
 			painted: before.painted || live !== null,
 			step: state.step,
 			heading: takeover.heading,
@@ -528,7 +578,7 @@ function CheckoutCard({
 	 * read off the figure rather than off the press, because a rail is picked inside the provider's own
 	 * fields and no handler of ours sees it. a move that left the figure where it was is not news: the
 	 * fee box reports its own new setting either way. cached against the snapshot it was read for, as
-	 * `retitle` is.
+	 * `decline` is.
 	 */
 	const total = useRef<{
 		at: CheckoutSnapshot | null;
@@ -774,6 +824,15 @@ function CheckoutCard({
 	// ── what is said out loud ────────────────────────────────────────────────────────────────────
 
 	const spent = shot !== null && shot.at === snapshot ? shot.kind : null;
+	/** the Copy sentence the region moved on from, which is not said again when what replaced it clears. */
+	const outsaid = useRef<typeof shot>(null);
+	const copied =
+		shot?.kind === 'copy' &&
+		shot !== outsaid.current &&
+		shot.on === takeover.heading &&
+		takeover.deposit !== null
+			? (shot.words ?? '')
+			: '';
 	// in the order the fields are asked in, which is the order they are laid out in and the order the
 	// caret walks them.
 	const detailsSaid =
@@ -814,6 +873,10 @@ function CheckoutCard({
 	// refusal on the commit it moved on: the refusal was said on the press and stays on the payment
 	// box's description, and the figure that moved is said nowhere else. the retitled heading last: a
 	// screen's own sentence and the wait's both say more than its heading does.
+	//
+	// the Copy's sentence and the retitled heading's keep one rule: a live-region sentence stays
+	// until the heading it announces changes or another sentence replaces it; a new snapshot alone
+	// never clears it. each is spent below once another has taken its place.
 	const words =
 		takeover.announce !== ''
 			? takeover.announce
@@ -827,11 +890,15 @@ function CheckoutCard({
 							? oneTimeOffer
 							: spent === 'one-time'
 								? copy.MADE_ONE_TIME
-								: spent === 'copy' && takeover.deposit !== null
-									? (shot?.words ?? '')
+								: copied !== ''
+									? copied
 									: busy
 										? workingWords(api.state)
 										: retitle.current.words;
+	if (words !== '') {
+		if (words !== copied && shot?.kind === 'copy') outsaid.current = shot;
+		if (words !== retitle.current.words) retitle.current.words = '';
+	}
 
 	const receipt =
 		reading === null ? null : <Receipt reading={reading} onFee={() => onFee()} feeRef={feeBox} />;

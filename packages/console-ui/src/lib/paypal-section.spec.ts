@@ -1,4 +1,5 @@
 import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { prerenderToNodeStream } from 'react-dom/static';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -151,5 +152,41 @@ describe('a permission PayPal refused this app', () => {
 		expect(page).toContain('Switch Disputes on for this app');
 		expect(page).toContain('no webhook was added, and nothing was set up');
 		for (const wrong of WRONG_KEYS) expect(page).not.toContain(wrong);
+	});
+});
+
+describe('the words over the readings while they are asked for', () => {
+	it('stand in a region of their own ahead of the boundary, and not in the placeholder', () => {
+		// a live region inserted with a `Suspense` fallback is one a reader commonly has not
+		// registered by the time its words land, so the region is held for the section's life
+		// (`SkeletonStatus` in packages/operator/src/components/status/LedgerSkeleton.jsx) and the
+		// placeholder draws none of its own. drawn while the readings are still pending, which a
+		// prerender would wait out, so this renders once and keeps what it drew.
+		const asking = new Promise<never>(() => {});
+		const router = createMemoryRouter([
+			{
+				path: '/',
+				Component: () =>
+					createElement(PaypalSection, {
+						...SECTION,
+						payments: asking,
+						recurring: asking,
+						values: holding(PAIR)
+					})
+			}
+		]);
+		// what the server draws for a pending boundary — the marker comment and the template naming it
+		// — is taken out, so what is left is what a reader's tree holds.
+		const page = renderToString(createElement(RouterProvider, { router }))
+			.replace(/<template[^>]*><\/template>/g, '')
+			.replace(/<!--[^>]*-->/g, '');
+		const placeholder = page.indexOf(
+			'<div class="adm-stack" aria-hidden="true"><div class="adm-named">'
+		);
+		expect(placeholder).toBeGreaterThan(-1);
+
+		expect(page.slice(0, placeholder).match(/role="status"/g)).toHaveLength(1);
+		expect(page.slice(0, placeholder)).toMatch(/<div role="status" class="adm-vh"><\/div>$/);
+		expect(page.slice(placeholder, page.indexOf('<form'))).not.toContain('role="status"');
 	});
 });

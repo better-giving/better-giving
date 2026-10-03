@@ -2,18 +2,17 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { TopBar } from '@better-giving/operator/components/shell/TopBar';
 
 /*
- * the bar at every length a run of facts can be, and both of the two slots that have a default of
- * their own.
+ * the bar at every length a run of facts can be, and the slot that has a default of its own.
  *
  * the divider belongs to the pair and not to either fact
  * (packages/operator/src/components/shell/TopBar.jsx:69), so the counts are what draw it: three
  * facts draw two rules, one draws none, and none draws a bar that is only its control. all four
  * lengths are here because the divider is the one thing a specimen of a single length cannot show.
  *
- * `facts` and `end` both read absence as a request for the component's own specimen value, and
- * `null` as a bar with nothing in that slot — so the two are different states and each is drawn.
- * the empty array is the third: a bar that was handed a run and the run was empty, which is not the
- * default one fact.
+ * `facts` is the caller's alone and has no default. `end` reads absence as a request for the
+ * component's own quiet control and `null` as a bar with nothing in that slot — so the two are
+ * different states and each is drawn. the empty run is drawn as well: a bar that was handed a run
+ * and the run was empty.
  *
  * `code`, `mark`, `brand`, `note` and `beside` are per-fact. the mono face is for a value that must
  * stay whole — an address, an id — and it is only visible against a fact set in the body face
@@ -43,9 +42,9 @@ import { TopBar } from '@better-giving/operator/components/shell/TopBar';
 export default function ShellTopBarPreview() {
 	return (
 		<div className="adm-stack">
-			{/* both slots left off: one stated fact and the quiet control, which is the component's own
+			{/* one stated fact and `end` left off: the quiet control, which is the component's own
 			    specimen and never a mounted bar. */}
-			<TopBar />
+			<TopBar facts={[{ what: 'Account', name: 'Riverside Shelter' }]} />
 
 			<TopBar
 				facts={[

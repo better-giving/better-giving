@@ -47,9 +47,9 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
  * stays at the foot of the window. **narrow to the 375px floor and its two ends become two rows**,
  * starting at the same edge.
  *
- * the last specimen leaves every head slot and the foot off and hands the shell no screen, which is
- * the shell at its emptiest: the component's own one fact, its own quiet control, and a page with
- * nothing in it.
+ * the last specimen hands the bar one fact, leaves `end` and the foot off and hands the shell no
+ * screen, which is the shell at its emptiest: one fact, the bar's own quiet control, and a page
+ * with nothing in it.
  */
 /* the strip's two ends as a specimen wants them: plain text where the console hands the release it
    was built as, and one node at the trailing end rather than three links loose — the strip's step
@@ -158,8 +158,9 @@ export default function ShellBareShellPreview() {
 				</Column>
 			</BareShell>
 
-			{/* both bar slots defaulted, no foot and no screen handed in: the shell at its emptiest. */}
-			<BareShell />
+			{/* one fact, the control defaulted, no foot and no screen handed in: the shell at its
+			    emptiest. */}
+			<BareShell facts={[{ what: 'Account', name: 'Riverside Shelter' }]} />
 		</div>
 	);
 }
