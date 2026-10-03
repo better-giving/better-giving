@@ -6639,3 +6639,172 @@ describe('the Venmo option', () => {
 		expect(offers.at(-1)).toBe(true);
 	});
 });
+
+// the three events are the one surface a host page reads back out of this element, so each case
+// listens on the document rather than on the element: a listener there is only reached by an event
+// that bubbles and is composed, which is the whole of what makes it the host's to hear.
+describe('the events a host page hears', () => {
+	/** every detail the document heard under `name`, from the moment this is called. */
+	function heard(name: string): unknown[] {
+		const details: unknown[] = [];
+		const listener = (event: Event): void => {
+			details.push((event as CustomEvent).detail);
+		};
+		document.addEventListener(name, listener);
+		onTestFinished(() => document.removeEventListener(name, listener));
+		return details;
+	}
+
+	it('says the form is ready, once, with the form it is for', async () => {
+		const ready = heard('bg-donate:ready');
+		const card = await mount();
+		press(card.all('[part~="amount-option"] input')[1] as HTMLElement);
+		await settle();
+
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }]);
+	});
+
+	it('says it is ready again for a form the host switched to', async () => {
+		const ready = heard('bg-donate:ready');
+		const card = await mount({ loadConfig: async (formId) => ({ ...CONFIG, formId }) });
+		card.host.setAttribute('form', 'frm_b7y1j8');
+		await settle();
+
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }, { formId: 'frm_b7y1j8' }]);
+	});
+
+	it('says what it painted when no form was named', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		await mount({ attributes: {} });
+
+		expect(unavailable).toEqual([
+			{
+				message: 'This donation form was not told which form to render.',
+				fix: `Set the form attribute on <${DONATE_FORM_TAG}> to the id of the form to render.`
+			}
+		]);
+		expect(ready).toEqual([]);
+	});
+
+	it('says what it painted when the configuration read was refused', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		await mount({
+			loadConfig: async () => {
+				throw {
+					message: 'This donation form is not published.',
+					fix: 'Publish form frm_a8x2k9 in /admin.'
+				};
+			}
+		});
+
+		expect(unavailable).toEqual([
+			{ message: 'This donation form is not published.', fix: 'Publish form frm_a8x2k9 in /admin.' }
+		]);
+	});
+
+	// a thrown value with no fix of its own paints none, and the detail keeps the key rather than
+	// dropping it, so a host reading `detail.fix` reads a null rather than an absent field.
+	it('says a refusal that carried no fix with a null one', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		await mount({
+			loadConfig: async () => {
+				throw new Error('the network went away');
+			}
+		});
+
+		expect(unavailable).toEqual([{ message: 'the network went away', fix: null }]);
+	});
+
+	it('says what it painted when the configuration could not be read', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		await mount({ loadConfig: async () => ({ formId: 'frm_a8x2k9' }) });
+
+		expect(unavailable).toEqual([
+			{
+				message: 'The configuration for form frm_a8x2k9 could not be read.',
+				fix: expect.stringContaining('publishableKey')
+			}
+		]);
+		expect(ready).toEqual([]);
+	});
+
+	it('says what it painted when the configuration never arrived, and only that once', async () => {
+		vi.useFakeTimers();
+		try {
+			const unavailable = heard('bg-donate:unavailable');
+			let answer: (config: FormConfig) => void = () => {};
+			const mounting = mount({
+				loadConfig: () =>
+					new Promise((resolve) => {
+						answer = resolve;
+					})
+			});
+			await vi.advanceTimersByTimeAsync(0);
+			await mounting;
+			await vi.advanceTimersByTimeAsync(CONFIG_DEADLINE_MS);
+			// the read landing after the card went up is abandoned, and says nothing a second time.
+			answer(CONFIG);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(unavailable).toEqual([
+				{
+					message: 'This donation form could not be loaded.',
+					fix: expect.stringContaining('30 seconds')
+				}
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// the figure is the one the donor was charged — the server's quoted total, the covered fee in it
+	// — rather than the bare gift: `PORTS.quote` answers 2606 on a 2500 gift.
+	it('says a gift went through, once, with what was charged', async () => {
+		const success = heard('bg-donate:success');
+		const card = await atSubmitted();
+		// a reading after the ending, which is a re-render and not a second gift.
+		card.rail('card');
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(success).toEqual([
+			{ formId: 'frm_a8x2k9', amountMinor: 2606, currency: 'usd', frequency: 'one_time' }
+		]);
+	});
+
+	it('says nothing of a gift that was declined', async () => {
+		const success = heard('bg-donate:success');
+		const card = await atSubmitted({
+			ports: {
+				confirm: async () => ({ kind: 'declined' as const, message: 'Your card was declined.' })
+			}
+		});
+
+		expect(shows(card, '.takeover .message')).toBe('Your card was declined.');
+		expect(success).toEqual([]);
+	});
+
+	it('says nothing of a gift still in flight', async () => {
+		const success = heard('bg-donate:success');
+		await atSubmitted({ ports: { confirm: async () => ({ kind: 'processing' as const }) } });
+
+		expect(success).toEqual([]);
+	});
+
+	// the page a donor returns to from their bank remembers the payment token and nothing else, so
+	// the gift is said with what is known and the rest is null rather than invented.
+	it('says a gift a redirect return found went through, without figures it cannot know', async () => {
+		const success = heard('bg-donate:success');
+		await mount({
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: { resume: async () => ({ kind: 'succeeded' as const }) }
+		});
+		await settle();
+
+		expect(success).toEqual([
+			{ formId: 'frm_a8x2k9', amountMinor: null, currency: 'usd', frequency: null }
+		]);
+	});
+});

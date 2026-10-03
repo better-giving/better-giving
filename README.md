@@ -95,6 +95,25 @@ A form refuses to serve until the org profile carries a **registered name** and 
 
 A child carrying `slot="loading"` (`<p slot="loading">Loading…</p>`, or a block of your own) shows until the form's configuration is read; it renders before the element upgrades and is kept afterwards, over the form's own skeleton. Write the attribute on your own element, not a literal `<slot>` tag: a pasted `<slot>` shows its contents before the upgrade and disappears at it.
 
+### Listen to the form
+
+The element dispatches three events, and each bubbles out of it, so a listener on the element, on any ancestor or on `document` hears it:
+
+- `bg-donate:ready` when the form has rendered. `detail` is `{ formId }`.
+- `bg-donate:unavailable` when the element shows the card saying the form cannot be rendered. `detail` is `{ message, fix }`, the two sentences on that card; `fix` is `null` where the card shows none.
+- `bg-donate:success` when a gift went through. `detail` is `{ formId, amountMinor, currency, frequency }`: the total the donor was charged in minor units, any fee they chose to cover included, so `2606` with `usd` is $26.06.
+
+```html
+<script>
+	document.addEventListener('bg-donate:success', (event) => {
+		const { amountMinor, currency } = event.detail;
+		// fire your own conversion pixel here
+	});
+</script>
+```
+
+**`success` fires once per gift, on the thank-you screen, and never for a gift still settling** — a bank debit, a crypto deposit not yet arrived — or one that was declined. A donor who left for their bank to approve a card comes back to a page that remembers nothing of the gift but its payment, so on that return `amountMinor` and `frequency` are `null`. No event carries the donor's name or email.
+
 ## If your site sends a Content-Security-Policy
 
 The form needs seven directives, and the one most often missing is your own deployment.
