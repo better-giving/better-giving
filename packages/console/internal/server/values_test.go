@@ -311,9 +311,9 @@ func TestAVarPressCarryingNothingIsRefused(t *testing.T) {
 	}
 }
 
-// the two names holding an answer about an account rather than a credential: whether PayPal approved
-// the charity rate, and whether the Cloudflare account is on the Workers Paid plan.
-var answerNames = []string{"PAYPAL_CHARITY_RATE_APPROVED", "CLOUDFLARE_PAID_PLAN"}
+// the name holding an answer about an account rather than a credential: whether PayPal approved the
+// charity rate.
+var answerNames = []string{"PAYPAL_CHARITY_RATE_APPROVED"}
 
 // **an answer switch has two positions and its off one is the name being taken off.** the
 // deployment reads one word as yes and every other value — a stored `false` among them — as no, so

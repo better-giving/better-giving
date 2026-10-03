@@ -19,9 +19,9 @@ import { describe, expect, it } from 'vitest';
 // nothing — has still been made, and the call after the branch that returned is the one it skipped.
 //
 // **except a press that changes nothing a processor page is drawn from, named below by the branch
-// that answers it**: one that writes nothing, and one whose write is no processor's input. it reads
-// the body to know itself, answers from that branch alone, and the forget is the next thing after
-// it — a second way out ahead of the forget is a write answered from memory again.
+// that answers it**: one that writes nothing. it reads the body to know itself, answers from that
+// branch alone, and the forget is the next thing after it — a second way out ahead of the forget is
+// a write answered from memory again.
 
 const ROUTES = join(import.meta.dirname, 'routes');
 
@@ -34,9 +34,7 @@ const FORGET = 'await forgetReadings();';
 /** each route whose action answers, before it forgets, a press that changes no processor page. */
 const READ_FIRST: Record<string, string> = {
 	// the start-date preview, which writes nothing
-	'_sections.quickbooks.tsx': "if (intent === quickbooksIntent('start-date-preview')) {",
-	// the paid-plan switch, whose value is an answer about the cloudflare account
-	'_index.tsx': 'if (intent === PLAN_INTENT) return'
+	'_sections.quickbooks.tsx': "if (intent === quickbooksIntent('start-date-preview')) {"
 };
 
 const actions = readdirSync(ROUTES)

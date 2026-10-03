@@ -260,6 +260,27 @@ func TestANulledVarIsLeftOffTheListAndEveryOtherBindingIsKept(t *testing.T) {
 	}
 }
 
+// **a plain-text binding no list names is not the press's to touch.** a deployment can hold a var an
+// earlier release wrote and this one no longer lists, and a press that took it off would delete it.
+func TestAPlainTextBindingNoListNamesGoesBackUpAsInherit(t *testing.T) {
+	open, made := door(t, map[string]any{
+		settingsCall: varsHeld(
+			map[string]any{"name": "SOME_OLD_VAR", "type": "plain_text", "text": "true"},
+			map[string]any{"name": "TURNSTILE_SITE_KEY", "type": "plain_text", "text": "0x4"},
+		),
+		"PATCH " + settings: envelope(map[string]any{"bindings": []any{}}),
+	})
+
+	written := SetVars(context.Background(), open, map[string]*string{"TURNSTILE_SITE_KEY": value("0x5")})
+	if written.Kind != WriteSet {
+		t.Fatalf("wrote %+v", written)
+	}
+	list := patched(t, (*made)[1])
+	if kept := binding(list, "SOME_OLD_VAR"); kept == nil || kept["type"] != "inherit" {
+		t.Fatalf("the unlisted var went up as %+v", kept)
+	}
+}
+
 // a name the read says holds nothing is already off, so emptying a box nobody had filled costs no
 // request at all — the same reading a name already at its value is decided against.
 func TestANulledVarTheDeploymentHoldsNothingUnderIsNotAChange(t *testing.T) {

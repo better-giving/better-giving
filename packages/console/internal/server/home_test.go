@@ -8,7 +8,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -176,11 +177,10 @@ func TestTheReadingIsOneAnswerCarryingEveryReadThePageDraws(t *testing.T) {
 			t.Error("the deployment was asked without the session")
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"sites":      []any{"https://hound-haven.org"},
-			"org":        map[string]any{"legal_name": "Hound Haven"},
-			"mail":       map[string]any{"SMTP_HOST": "smtp.example", "SMTP_USERNAME": "post", "MAIL_FROM": "post@example"},
-			"session":    map[string]any{"expiresAt": "2026-09-01T00:00:00.000Z"},
-			"feedsInUse": map[string]any{"zapier": true, "webhooks": false, "books": false},
+			"sites":   []any{"https://hound-haven.org"},
+			"org":     map[string]any{"legal_name": "Hound Haven"},
+			"mail":    map[string]any{"SMTP_HOST": "smtp.example", "SMTP_USERNAME": "post", "MAIL_FROM": "post@example"},
+			"session": map[string]any{"expiresAt": "2026-09-01T00:00:00.000Z"},
 		})
 	}))
 	t.Cleanup(deployed.Close)
@@ -212,14 +212,20 @@ func TestTheReadingIsOneAnswerCarryingEveryReadThePageDraws(t *testing.T) {
 	if body["sites"] == nil || body["org"] == nil || body["values"] == nil {
 		t.Fatalf("read %v", body)
 	}
+	// the members console-ui's HomeReading names and no other: a field added to the reading reaches
+	// every screen's wire, so adding one is a decision this list is edited for.
+	members := []string{}
+	for member := range body {
+		members = append(members, member)
+	}
+	sort.Strings(members)
+	if want := []string{"donatePage", "face", "holdsStripeKey", "org", "sites", "values"}; !slices.Equal(members, want) {
+		t.Fatalf("the reading carries %v, not %v", members, want)
+	}
 	// the donor-facing page is a route on this deployment's own worker (CLAUDE.md → Product
 	// surface), so where it answers is where the deployment answers.
 	if body["donatePage"] != "https://"+release.Baked.Name+".hound-haven.workers.dev" {
 		t.Fatalf("donation page %v", body["donatePage"])
-	}
-	feeds := map[string]any{"zapier": true, "webhooks": false, "books": false}
-	if !reflect.DeepEqual(body["feedsInUse"], feeds) {
-		t.Fatalf("feedsInUse %v", body["feedsInUse"])
 	}
 }
 

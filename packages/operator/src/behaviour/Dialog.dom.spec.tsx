@@ -315,8 +315,7 @@ describe('the shell over the dialog', () => {
 	});
 
 	/**
-	 * a confirm drawn inside another card — packages/console-ui/src/lib/withheld-values.tsx's inside
-	 * the console's account panel — and which of the two each answer reaches.
+	 * a confirm drawn inside another card, and which of the two each answer reaches.
 	 */
 	function Nested({
 		onOuter,
@@ -326,7 +325,7 @@ describe('the shell over the dialog', () => {
 		readonly onInner: () => void;
 	}) {
 		return (
-			<Modal title="Cloudflare account" onDismiss={onOuter}>
+			<Modal title="Saved values" onDismiss={onOuter}>
 				<Modal title="Remove these values?" onDismiss={onInner} />
 			</Modal>
 		);
@@ -364,23 +363,22 @@ describe('the shell over the dialog', () => {
 	});
 
 	/**
-	 * the account panel as the console draws it: the panel is up first, off the address, and the
-	 * confirm is put up by a Remove inside it — which a free that lands takes off the page with the
-	 * confirm, while the panel is still the modal holding the page.
+	 * a panel that is up first, with a confirm put up by a Remove inside it — which a press that
+	 * lands takes off the page with the confirm, while the panel is still the modal holding the page.
 	 */
 	function Freeing() {
 		const [withheld, setWithheld] = useState(true);
 		const [asking, setAsking] = useState(false);
 		return (
-			<Modal title="Cloudflare account" onDismiss={() => {}}>
+			<Modal title="Saved values" onDismiss={() => {}}>
 				{withheld ? (
 					<button type="button" onClick={() => setAsking(true)}>
-						Remove CLOUDFLARE_PAID_PLAN
+						Remove SMTP_PORT
 					</button>
 				) : null}
 				{asking ? (
 					<Modal
-						title="Remove CLOUDFLARE_PAID_PLAN?"
+						title="Remove SMTP_PORT?"
 						danger="Remove"
 						dangerProps={{
 							type: 'button',

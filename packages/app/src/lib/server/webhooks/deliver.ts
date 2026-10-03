@@ -16,7 +16,7 @@ import { WEBHOOK_TEST_TYPE } from '../../webhooks/catalog';
 import type { Db } from '../db/client';
 import { webhookDelivery, webhookDestination } from '../db/schema';
 import { inPage } from '../db/id-set';
-import { MINUTE_RUN, PACE, type Plan } from '../outbox/budget';
+import { MINUTE_RUN, PACE } from '../outbox/budget';
 import { defineFailing } from '../outbox/failing';
 import { defineOutbox, type Outcome } from '../outbox/lease';
 import { refusal } from '../outbox/refusal';
@@ -60,6 +60,13 @@ import { signedHeaders } from './sign';
 // a failed row is kept, for the destination's recent deliveries. the mark, its clear and the pause
 // are each guarded on the run still holding the row (`holds` in ../outbox/lease.ts), so a run
 // that lost the row before its post was answered records nothing about the destination.
+//
+// **a destination that fails a post is posted nothing more in that run.** the rows it is owed that
+// the run holds and has not yet started are given back unposted, due as they were and their
+// attempts as they stand, so a receiver answering at {@link WEBHOOK_POST_TIMEOUT_MS} costs the run
+// a post per lane rather than the run's time, and the destinations beside it in the claim are
+// still posted. a row given back is no failed post: it neither marks the destination nor counts
+// toward pausing it, and it is posted by the next run that claims it.
 //
 // **a destination failing for {@link DESTINATION_PAUSE_AFTER_MS} is paused**, on
 // ../outbox/failing.ts's rule: a failure on a row that had failed before, where the destination's
@@ -109,15 +116,13 @@ export type PausedDestination = {
 /**
  * everything one run needs, per invocation. `fetch` is handed in so a spec can answer for
  * receivers. `onPaused` is told of each pause once, after the batch that made it has committed.
- * `plan` is the Cloudflare plan the invocation runs on, Free where it is not said: a run claims
- * this feed's pace on it, the longest-waiting first (../outbox/budget.ts), and a row no lane
- * reached stays leased, unposted, until the lease runs out and a later run takes it.
+ * a run claims this feed's pace, the longest-waiting first (../outbox/budget.ts), and a row no
+ * lane reached stays leased, unposted, until the lease runs out and a later run takes it.
  */
 export type WebhookDeliveryDeps = {
 	readonly db: Db;
 	readonly fetch: typeof fetch;
 	readonly onPaused: (destination: PausedDestination) => Promise<void>;
-	readonly plan?: Plan;
 };
 
 /**
@@ -206,7 +211,7 @@ function pausedDestination(db: Db, destinationId: string) {
  */
 export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Promise<void> {
 	const { db } = deps;
-	const claim = await claimDue(db, now, PACE[deps.plan ?? 'free'].webhooks);
+	const claim = await claimDue(db, now, PACE.webhooks);
 	if (claim.rows.length === 0) return;
 
 	const destinations = await readDestinations(
@@ -218,9 +223,14 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 		claim.land(row, { status: 'dropped', lastError, updatedAt: now });
 
 	const pausedThisRun = new Set<string>();
+	const failedThisRun = new Set<string>();
 
 	await claim.each(async (row) => {
 		if (pausedThisRun.has(row.destinationId)) return;
+		if (failedThisRun.has(row.destinationId)) {
+			await claim.land(row, { updatedAt: now });
+			return;
+		}
 		const destination = destinations.get(row.destinationId);
 		if (destination === undefined) {
 			await drop(
@@ -256,6 +266,7 @@ export async function sendDueWebhooks(deps: WebhookDeliveryDeps, now: Date): Pro
 			]);
 			return;
 		}
+		failedThisRun.add(row.destinationId);
 		const marked = failing.failed(db, row.destinationId, row, now, holds);
 		const landing = claim.landing(row, {
 			...afterFailure(db, row.destinationId, attempts, now, answer),
@@ -397,21 +408,22 @@ function heldWindow(db: Db, destinationId: string): SQL {
 }
 
 /**
- * how far apart a resume on `plan` lets its rows out: half this feed's pace a minute, so a
- * resumed backlog takes at most half of each run's claim and the destinations beside it the rest.
+ * how far apart a resume lets its rows out: half this feed's pace a minute, so a resumed backlog
+ * takes about half of each run's claim and the destinations beside it the rest. a resumed
+ * destination still failing gives the rest of its half back unposted after its first failed post
+ * in a run, so the destinations beside it are posted however slowly it fails. the first row is
+ * due at `now`, so the first run after a resume can take one row more than half.
  */
-function resumedRowsEveryMs(plan: Plan): number {
-	return Math.ceil((2 * 60_000) / PACE[plan].webhooks);
-}
+const RESUMED_ROWS_EVERY_MS = Math.ceil((2 * 60_000) / PACE.webhooks);
 
 /**
  * the held window of `destinationId` ({@link heldWindow}) re-queued at `now`, each row starting the
  * schedule afresh under its own id: taken back from any run posting it, so that run's answer lands
- * nothing over the restart, then let out {@link resumedRowsEveryMs} apart in the order the rows
+ * nothing over the restart, then let out {@link RESUMED_ROWS_EVERY_MS} apart in the order the rows
  * were queued, the first at `now`. the first statement answers with the ids it re-queued. they
  * match nothing once the destination is resumed, so they run in front of the write that resumes it.
  */
-export function requeueHeldStatements(db: Db, destinationId: string, now: Date, plan: Plan) {
+export function requeueHeldStatements(db: Db, destinationId: string, now: Date) {
 	const gathered = outbox.takeBack(db, {
 		where: heldWindow(db, destinationId),
 		outcome: { status: 'pending', attempts: 0, nextAttemptAt: HELD_UNTIL, updatedAt: now }
@@ -435,7 +447,7 @@ export function requeueHeldStatements(db: Db, destinationId: string, now: Date, 
 	const letOut = db
 		.update(webhookDelivery)
 		.set({
-			nextAttemptAt: sql`${now.getTime()} + ${resumedRowsEveryMs(plan)} * ${ranked.rank}`,
+			nextAttemptAt: sql`${now.getTime()} + ${RESUMED_ROWS_EVERY_MS} * ${ranked.rank}`,
 			updatedAt: now
 		})
 		.from(ranked)

@@ -4,10 +4,10 @@ import type { ClientActionFunctionArgs } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Connection, VarsWritten } from '../api/types';
 
-// the presses `/` answers for the account panel, which posts here from over any page
-// (../lib/close-confirm.tsx's `SHELL_ACTION`): which write each intent makes on the binary, and
-// which of them forgets the processor pages kept between visits. the client and that store are
-// replaced so every write is a record of what it was sent, and every forget a count.
+// the presses `/` answers, its gate's own and the close posted here from over any page
+// (../lib/close-confirm.tsx's `SHELL_ACTION`): that none of them writes a value on the binary, and
+// that each forgets the processor pages kept between visits. the client and that store are replaced
+// so every write is a record of what it was sent, and every forget a count.
 
 const binary = vi.hoisted(() => ({
 	written: [] as Record<string, string | null>[],
@@ -41,18 +41,16 @@ vi.mock('../lib/processor-cache', async (original) => ({
 	}
 }));
 
-const { PLAN_FIELD, PLAN_INTENT } = await import('../lib/cloudflare-plan');
 const { SHELL_ACTION } = await import('../lib/close-confirm');
 const { FREE_INTENT } = await import('../lib/withheld-values');
 const home = await import('./_index');
 
 const ORIGIN = 'http://localhost';
 
-/** a post to `/` carrying `intent` and whatever else the case names. */
-const press = (intent: string, fields: Record<string, string> = {}) => {
+/** a post to `/` carrying `intent`. */
+const press = (intent: string) => {
 	const posted = new FormData();
 	posted.set('intent', intent);
-	for (const [name, value] of Object.entries(fields)) posted.set(name, value);
 	return home.clientAction({
 		request: new Request(new URL(SHELL_ACTION, ORIGIN), { method: 'POST', body: posted })
 	} as unknown as ClientActionFunctionArgs);
@@ -65,46 +63,12 @@ beforeEach(() => {
 	binary.forgot = 0;
 });
 
-describe('the paid-plan switch', () => {
-	it('stores the one word where the box is ticked', async () => {
-		const answer = await press(PLAN_INTENT, { [PLAN_FIELD]: 'true' });
-
-		expect(binary.written).toEqual([{ CLOUDFLARE_PAID_PLAN: 'true' }]);
-		expect(answer).toEqual({ plan: SET });
-	});
-
-	it('takes the name off where the box is not ticked', async () => {
-		await press(PLAN_INTENT);
-
-		expect(binary.written).toEqual([{ CLOUDFLARE_PAID_PLAN: null }]);
-	});
-
-	it('keeps the processor pages read between visits, since the plan is no processor’s input', async () => {
-		await press(PLAN_INTENT, { [PLAN_FIELD]: 'true' });
-
-		expect(binary.forgot).toBe(0);
-	});
-});
-
-describe('the press that frees the withheld values', () => {
-	it('frees them, and writes nothing else', async () => {
-		const answer = await press(FREE_INTENT);
-
-		expect(binary.freed).toBe(1);
-		expect(binary.written).toEqual([]);
-		expect(answer).toEqual({ freed: SET });
-	});
-
-	it('forgets the processor pages read between visits, whose keys it can change', async () => {
-		await press(FREE_INTENT);
-
-		expect(binary.forgot).toBe(1);
-	});
-});
-
 describe('a press `/` does not answer', () => {
-	it('is answered without writing, freeing or closing anything', async () => {
-		const answer = await press('paypal:charity', { [PLAN_FIELD]: 'true' });
+	it.each([
+		['a section page’s own', 'paypal:charity'],
+		['the free a section page answers for itself', FREE_INTENT]
+	])('is answered without writing, freeing or closing anything: %s', async (_, intent) => {
+		const answer = await press(intent);
 
 		expect(answer).toEqual({ unknown: true });
 		expect(binary).toEqual({ written: [], freed: 0, closed: 0, forgot: 1 });

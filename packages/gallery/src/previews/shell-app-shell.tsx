@@ -55,11 +55,10 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  *
  * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
  * `foot` stands in the rail in its place, which is the console's shape: its account and close in
- * the band, and in the foot the account's logo and name as the link opening its panel — the real
- * AccountRow and AccountBand (./shell-account-row.tsx has them out of the shell), drawn marked as a
- * deployment delivering at the Free plan's pace draws them and unmarked in the specimen after, so
- * the toggle shows both in the icon rail too (packages/console-ui/src/lib/cloudflare-account.tsx
- * hands them). `null` for both drops the rail's foot rather than standing an empty one.
+ * the band, and in the foot the account's logo and name as a label that opens nothing — the real
+ * AccountRow and AccountBand as packages/console-ui/src/lib/cloudflare-account.tsx hands them
+ * (./shell-account-row.tsx has them out of the shell). `null` for both drops the rail's foot rather
+ * than standing an empty one.
  *
  * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
  * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
@@ -102,12 +101,8 @@ function StandInLink({ children, ...rest }: DestinationLinkProps) {
 const ACCOUNT = {
 	name: "Riverside Shelter's Account",
 	brand: 'cloudflare',
-	whose: 'Cloudflare account',
-	concern: null,
-	href: '#shell-app-shell-account'
+	whose: 'Cloudflare account'
 } as const;
-
-const PACED_ACCOUNT = { ...ACCOUNT, concern: 'Deliveries paced for the Free plan' };
 
 const CLOSE = (
 	<Button
@@ -191,7 +186,8 @@ export default function ShellAppShellPreview() {
 
 			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
 			    every entry, the site's globe before the name, the close in the band and an account in
-			    the foot. */}
+			    the foot. collapsed, the logo alone stands for the account, a label still and nothing
+			    to press. */}
 			<AppShell
 				org="Riverside Shelter"
 				current="Sites"
@@ -243,41 +239,12 @@ export default function ShellAppShellPreview() {
 				]}
 				wayOut={
 					<>
-						<AccountBand {...PACED_ACCOUNT} />
-						{CLOSE}
-					</>
-				}
-				foot={<AccountRow {...PACED_ACCOUNT} out={CLOSE} />}
-				head={<span className="adm-headstrip__title">Sites</span>}
-			>
-				<Column>
-					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
-					<EmptyState>No site has been added yet.</EmptyState>
-				</Column>
-			</AppShell>
-
-			{/* the console's rail again, its account unmarked: a deployment delivering nothing, or one
-			    already answered as on the paid plan. collapsed, the logo alone stands for the account,
-			    and it is still the press that opens the panel. */}
-			<AppShell
-				org="Riverside Shelter"
-				current="Sites"
-				site="https://better-giving.riverside.workers.dev/admin"
-				groups={[
-					{
-						destinations: [
-							{ label: 'Sites', short: 'Sites', href: '#', mark: 'globe' },
-							{ label: 'SMTP', short: 'SMTP', href: '#', mark: 'mail' }
-						]
-					}
-				]}
-				wayOut={
-					<>
 						<AccountBand {...ACCOUNT} />
 						{CLOSE}
 					</>
 				}
 				foot={<AccountRow {...ACCOUNT} out={CLOSE} />}
+				head={<span className="adm-headstrip__title">Sites</span>}
 			>
 				<Column>
 					<PageHeader title="Sites" standfirst="Which sites your forms go on" />

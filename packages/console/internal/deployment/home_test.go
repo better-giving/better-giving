@@ -2,7 +2,6 @@ package deployment
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/better-giving/console/internal/cf"
@@ -170,66 +169,5 @@ func TestADeploymentAnsweringNowhereCarriesNoDonationPageAddress(t *testing.T) {
 	read := reading(t, answers, true)
 	if read.DonatePage != "" {
 		t.Fatalf("donation page %q", read.DonatePage)
-	}
-}
-
-// a reading of a deployment whose own report is the one body given.
-func reportingWith(t *testing.T, answers map[string]any, body map[string]any) Reading {
-	t.Helper()
-	return Read(context.Background(), Inputs{
-		AccountID:    account,
-		WorkerName:   worker,
-		DatabaseName: "better-giving",
-		Credential:   cf.BearerCredential("a-token"),
-		Account:      fake(t, answers),
-		Session: &session.Session{
-			WorkerName: worker,
-			Token:      "a-session",
-			Origin:     "https://better-giving.hound-haven.workers.dev",
-		},
-		Deployment: func(string, string) cf.Get { return deployment(t, 200, body) },
-	})
-}
-
-// the feeds reach the page as the deployment stated them, every false still on the wire: the
-// account row weighs a free plan against them, and a dropped false is a feed the page cannot tell
-// from one nobody reported.
-func TestTheReadyFaceCarriesTheFeedsTheDeploymentHasInUse(t *testing.T) {
-	read := reportingWith(t, whole(), envelopeBody(map[string]any{
-		"feedsInUse": map[string]any{"zapier": false, "webhooks": false, "books": true},
-	}))
-	if read.Face.Kind != FaceReady {
-		t.Fatalf("read %+v", read.Face)
-	}
-	wire := carried(t, read)
-	want := map[string]any{"zapier": false, "webhooks": false, "books": true}
-	if !reflect.DeepEqual(wire["feedsInUse"], want) {
-		t.Fatalf("feedsInUse went on the wire as %v", wire["feedsInUse"])
-	}
-}
-
-// a deployment older than the member is unknown on the wire — present and null — and never three
-// falses the page would read as no feed in use.
-func TestADeploymentStatingNoFeedsIsUnknownOnTheWire(t *testing.T) {
-	wire := carried(t, reportingWith(t, whole(), envelopeBody(nil)))
-	feeds, stated := wire["feedsInUse"]
-	if !stated || feeds != nil {
-		t.Fatalf("feedsInUse went on the wire as %v (stated %v)", feeds, stated)
-	}
-}
-
-// every face but the ready one carries no feeds, the one whose report arrived stating them
-// included: a deployment whose values did not read is blocked, and the page weighs nothing on it.
-func TestAFaceBeforeTheReadyOneCarriesNoFeeds(t *testing.T) {
-	answers := whole()
-	answers[settings] = failed(10000, "Authentication error")
-	read := reportingWith(t, answers, envelopeBody(map[string]any{
-		"feedsInUse": map[string]any{"zapier": true, "webhooks": true, "books": true},
-	}))
-	if read.Face.Kind != FaceBlocked || read.Face.Why.Kind != NoValues {
-		t.Fatalf("read %+v", read.Face)
-	}
-	if read.FeedsInUse != nil {
-		t.Fatalf("a blocked face carried feeds %+v", *read.FeedsInUse)
 	}
 }

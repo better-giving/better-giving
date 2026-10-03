@@ -14,14 +14,12 @@ import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
-import { CloudflareAccountPanel, cloudflareAccount } from '../lib/cloudflare-account';
+import { cloudflareAccount } from '../lib/cloudflare-account';
 import { railGroups } from '../lib/console-pages';
 import { drawsReading, gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
 import { CloudflareGateFace, drawnAfterGate } from '../lib/deployment-states';
-import { ACCOUNT_PARAM, CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
+import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
-import { heldValues } from '../lib/held-values';
-import { keysTrouble } from '../lib/processor-screen';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
 import { ConsoleFailure, TITLE } from './_index';
@@ -43,9 +41,9 @@ import type { Route } from './+types/_sections';
 //
 // **the account is the rail's foot, with the press that ends this console beside it.** it is the one
 // thing true on every page, and the record naming the account is written at the terminal and left
-// exactly as it is. its name opens the account panel, where the paid-plan answer is given, and is
-// marked only where that answer slows a feed in use (../lib/cloudflare-account.tsx). the account and
-// the close both stand in the narrow band too, where the foot is not drawn.
+// exactly as it is. it is the Cloudflare logo and the account's name and opens nothing
+// (../lib/cloudflare-account.tsx). the account and the close both stand in the narrow band too,
+// where the foot is not drawn.
 //
 // **nothing on these pages deploys.** standing a deployment up and carrying newer code onto one are
 // `better-giving start` in a terminal, which is what opens the one-way door the remote migration is;
@@ -53,8 +51,8 @@ import type { Route } from './+types/_sections';
 // stands around it.
 //
 // **no press is answered here.** this route is pathless, so no address posts to it: each page answers
-// its own presses, and the presses over every page — the close and the account panel's — are
-// answered by `/` (../lib/close-confirm.tsx, ../lib/cloudflare-plan-block.tsx).
+// its own presses, and the one press over every page — the close — is answered by `/`
+// (../lib/close-confirm.tsx).
 //
 // **nothing on a page reaches cloudflare and nothing could**: cloudflare's API sends no cross-origin
 // headers, and the credential it is reached with is held by the binary on this machine. what a press
@@ -135,17 +133,9 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 		/>
 	);
 
-	// a ready deployment's values always read: an unread one stands behind the gate instead.
-	const held = reading.values.vars.kind === 'read' ? heldValues(reading.values.vars.vars) : null;
 	/* the account at both widths: the row in the rail's foot, and at phone width, where the foot is
-	   not drawn, the same panel opened from the band beside the close, marked alike. */
-	const account = cloudflareAccount({
-		name: loaderData.account,
-		values: held,
-		feedsInUse: reading.feedsInUse,
-		openHref: `${pathname}?${ACCOUNT_PARAM}`,
-		closeControl
-	});
+	   not drawn, the logo in the band beside the close. */
+	const account = cloudflareAccount({ name: loaderData.account, closeControl });
 
 	const foot = (
 		<>
@@ -215,19 +205,6 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 					<Outlet />
 				</Stack>
 				{params.has(CLOSE_PARAM) ? <CloseConfirm back={pathname} /> : null}
-				{held !== null && params.has(ACCOUNT_PARAM) ? (
-					<CloudflareAccountPanel
-						name={loaderData.account}
-						accountId={loaderData.accountId}
-						values={held}
-						feedsInUse={reading.feedsInUse}
-						trouble={keysTrouble({
-							workerName: loaderData.workerName,
-							accountName: loaderData.account
-						})}
-						back={pathname}
-					/>
-				) : null}
 			</AppShell>
 		</RailLabelsProvider>
 	);

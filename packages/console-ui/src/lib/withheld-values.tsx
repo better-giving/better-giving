@@ -40,17 +40,9 @@ import { refusalIn } from './secret-trouble';
  *
  * it carries the intent and nothing else — which names are freed is read on this machine from what
  * cloudflare answered, which `freeWithheldVars` in ../api/client.ts argues; each page that draws the
- * press answers it in its own `clientAction` (../routes/_sections.password.tsx and the others), and
- * `/` answers it for the account panel (../routes/_index.tsx).
+ * press answers it in its own `clientAction` (../routes/_sections.password.tsx and the others).
  */
 export const FREE_INTENT = 'free';
-
-/**
- * a press posted through a fetcher to another route's action, which is how a block standing over
- * every page posts: the page under it stays where it is, and the answer is read under `fetcherKey`.
- * absent, a press posts to its own page's route as a navigation.
- */
-export type FetcherPost = { action: string; fetcherKey: string };
 
 /**
  * the sentence over the boxes that cannot be typed, and the press that frees them.
@@ -65,8 +57,7 @@ export function WithheldValues({
 	written,
 	trouble,
 	busy,
-	freeing,
-	post
+	freeing
 }: {
 	/** the names this page's own press writes that are in this state, in the enumeration's order. */
 	names: readonly DeployVarName[];
@@ -94,8 +85,6 @@ export function WithheldValues({
 	busy: boolean;
 	/** this press is the one in flight. */
 	freeing: boolean;
-	/** where the press posts, where that is not its own page ({@link FetcherPost}). */
-	post?: FetcherPost | undefined;
 }): ReactNode {
 	/* the press posts on its own rather than through a `<Form>`: this block stands among the boxes
 	   it is about, and those are inside a form of their own — a `<form>` inside a `<form>` is not a
@@ -184,14 +173,7 @@ export function WithheldValues({
 						'aria-busy': freeing || undefined,
 						onClick: () => {
 							if (busy || freeing) return;
-							void submit(
-								{ intent: FREE_INTENT },
-								{
-									method: 'post',
-									preventScrollReset: true,
-									...(post && { ...post, navigate: false })
-								}
-							);
+							void submit({ intent: FREE_INTENT }, { method: 'post', preventScrollReset: true });
 						}
 					}}
 					cancel="Go back"

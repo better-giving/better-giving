@@ -16,7 +16,7 @@ import type { Db } from '../db/client';
 import { entryGroup, quickbooksSync } from '../db/schema';
 import { alert } from '../donations/delivery';
 import type { EmailProvider } from '../email/provider';
-import { PACE, type Plan } from '../outbox/budget';
+import { PACE } from '../outbox/budget';
 import type {
 	AccountingFailure,
 	AccountingFailureReason,
@@ -145,13 +145,6 @@ export type AccountingDeliveryDeps = {
 	readonly provider: AccountingProvider;
 	/** the mail transport the failure notice rides. its failures are reported, never raised. */
 	readonly email: EmailProvider;
-	/**
-	 * the Cloudflare plan the invocation runs on, Free where it is not said. a run sends this feed's
-	 * pace on it, in the order {@link dueRows} takes them: what its share of the minute cron's
-	 * subrequests and D1 queries pays for at a send's costliest, and never more than one lane
-	 * finishes in the minute (`ACCOUNTING_RUN_COST` in ../outbox/budget.ts).
-	 */
-	readonly plan?: Plan;
 };
 
 /**
@@ -564,11 +557,12 @@ async function land(
 /**
  * every entry group whose wait is over, sent, and an operator told where the backlog is stuck.
  *
- * `now` is the run's scheduled time. one row's fault does not stop the rest; a fault the whole
+ * `now` is the run's scheduled time. a run sends this feed's pace (../outbox/budget.ts), in the
+ * order {@link dueRows} takes them. one row's fault does not stop the rest; a fault the whole
  * backlog is behind does, and leaves every row unsent for the next run to read again.
  */
 export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): Promise<void> {
-	const due = await dueRows(deps.db, now, PACE[deps.plan ?? 'free'].books);
+	const due = await dueRows(deps.db, now, PACE.books);
 
 	const deadline = now.getTime() + RUN_DEADLINE_MS;
 	let blocked: AccountingFailure | null = null;

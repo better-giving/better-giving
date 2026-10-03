@@ -34,8 +34,7 @@ const READY: HomeReading = {
 	sites: [],
 	donatePage: '',
 	org: null,
-	holdsStripeKey: false,
-	feedsInUse: null
+	holdsStripeKey: false
 } as HomeReading;
 
 const json = (body: unknown, status = 200) =>

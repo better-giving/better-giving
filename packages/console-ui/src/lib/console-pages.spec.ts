@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { FOLD_LABELS, JOB_WORDS } from '@better-giving/operator/setup-folds';
 import { describe, expect, it } from 'vitest';
 import type { HomeSection, SectionId, SectionState } from './home-sections';
@@ -5,7 +6,8 @@ import { firstUnfinishedPage, railGroups } from './console-pages';
 import { processorLinks } from './processor-links';
 
 // the console's pages as values: where `/` sends a ready deployment, what the rail lists and marks,
-// and where each address that moved now sends the browser.
+// where each address that moved now sends the browser, and that an address that went answers
+// nothing.
 //
 // every input is a value, so all of it is read here with no binary and no rendered router.
 
@@ -207,9 +209,17 @@ describe('an address that moved', () => {
 		const { clientLoader } = await import('../routes/receipts');
 		expect(await sentTo(clientLoader)).toBe('307 /smtp');
 	});
+});
 
-	it('sends /cloudflare-plan to the account panel, over a page that keeps its search', async () => {
-		const { clientLoader } = await import('../routes/cloudflare-plan');
-		expect(await sentTo(clientLoader)).toBe('307 /organisation?account');
+describe('an address that went', () => {
+	/** every name under ../routes/ whose dotted segments carry `segment`, file or folder alike. */
+	const routesNaming = (segment: string) =>
+		readdirSync(new URL('../routes', import.meta.url)).filter((name) =>
+			name.split('.').includes(segment)
+		);
+
+	it('answers /cloudflare-plan with no route of its own', () => {
+		expect(routesNaming('cloudflare-plan')).toEqual([]);
+		expect(routesNaming('receipts')).toEqual(['receipts.tsx']);
 	});
 });

@@ -4,7 +4,6 @@ import type {
 	QuickbooksPressReport,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
-import type { FeedsInUse } from '@better-giving/operator/console/report';
 import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 
 // what the binary answers, in the shapes it answers in.
@@ -208,23 +207,7 @@ export type HomeReading = {
 	 * holding as a credential is a key it charges with, so `withheld` is `true` here.
 	 */
 	holdsStripeKey: boolean;
-	/**
-	 * which outbound feeds the deployment says it has in use, or `null` where it did not say.
-	 *
-	 * `null` is unknown and never no feed in use: a deployment behind the release that states this
-	 * answers without it, and reading that as three `false`s would clear a warning nothing cleared.
-	 * `null` on every face but the ready one too, which is the only face that carries a report.
-	 */
-	feedsInUse: FeedsInUse | null;
 };
-
-/**
- * each outbound feed the deployment sends and whether it is in use, every member stated. the
- * deployment's own report type, which the binary restates as exactly three booleans — any other
- * member dropped, and the whole `null` where one of the three is not a boolean (`FeedsInUse` in
- * `packages/console/internal/deployment/report.go`, held to `Feed` by its `report_test.go`).
- */
-export type { FeedsInUse };
 
 /**
  * why there was nowhere to write a deploy-time value to.

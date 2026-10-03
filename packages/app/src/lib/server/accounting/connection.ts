@@ -351,17 +351,6 @@ export async function readQuickbooksConnection(db: Db): Promise<QuickbooksConnec
 }
 
 /**
- * the connected company's realm, or no row: a statement for a caller's `batch()` asking whether the
- * books are connected, reading no credential.
- */
-export function connectedStatement(db: Db) {
-	return db
-		.select({ realmId: quickbooksConnection.realmId })
-		.from(quickbooksConnection)
-		.where(eq(quickbooksConnection.id, CONNECTION_ID));
-}
-
-/**
  * the credential gone from this deployment.
  *
  * the row and not a flag on it: a connection that is off but still holds a refresh token is a

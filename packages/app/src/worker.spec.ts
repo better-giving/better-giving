@@ -152,14 +152,13 @@ describe('which run an expression reaches', () => {
 
 		expect(sendDueEntries).toHaveBeenCalledWith(expect.anything(), SCHEDULED_AT);
 		expect(sendDueZapierEvents).toHaveBeenCalledWith(
-			{ db: expect.anything(), fetch: expect.any(Function), plan: 'free' },
+			{ db: expect.anything(), fetch: expect.any(Function) },
 			SCHEDULED_AT
 		);
 		expect(sendDueWebhooks).toHaveBeenCalledWith(
 			{
 				db: expect.anything(),
 				fetch: expect.any(Function),
-				plan: 'free',
 				onPaused: expect.any(Function)
 			},
 			SCHEDULED_AT
@@ -167,15 +166,23 @@ describe('which run an expression reaches', () => {
 		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
 	});
 
-	it.each([
-		['the Paid plan where its env answers `true`', { CLOUDFLARE_PAID_PLAN: 'true' }, 'paid'],
-		['the Free plan where its env answers nothing', {}, 'free']
-	] as const)('paces every minute job to %s', async (_, answer, plan) => {
-		await fires('* * * * *', { ...env, ...answer } as typeof env);
+	it('hands every feed the same deps on a deployment holding an unlisted var set to true', async () => {
+		await fires('* * * * *', {
+			DB: {},
+			SOME_OLD_VAR: 'true'
+		} as unknown as typeof env);
 
-		for (const job of [sendDueEntries, sendDueZapierEvents, sendDueWebhooks]) {
-			expect(vi.mocked(job).mock.calls[0]?.[0]).toMatchObject({ plan });
-		}
+		// no pace rides in the deps, so each feed claims the one it declares (outbox/budget.ts).
+		expect(sendDueZapierEvents).toHaveBeenCalledWith(
+			{ db: expect.anything(), fetch: expect.any(Function) },
+			SCHEDULED_AT
+		);
+		expect(sendDueWebhooks).toHaveBeenCalledWith(
+			{ db: expect.anything(), fetch: expect.any(Function), onPaused: expect.any(Function) },
+			SCHEDULED_AT
+		);
+		const booksDeps = vi.mocked(sendDueEntries).mock.calls[0]?.[0] ?? {};
+		expect(Object.keys(booksDeps).sort()).toEqual(['db', 'email', 'provider']);
 	});
 
 	/** the `onPaused` the minute run handed the destinations' delivery, told of one pause. */

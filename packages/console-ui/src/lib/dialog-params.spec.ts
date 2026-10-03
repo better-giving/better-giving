@@ -7,7 +7,6 @@ import type {
 import { createMemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import {
-	ACCOUNT_PARAM,
 	CLOSE_PARAM,
 	consoleRereads,
 	leaveDialog,
@@ -45,9 +44,13 @@ describe('a navigation that does nothing but open or drop a dialog', () => {
 		expect(opensOrDropsDialog(pressed('/?close', '/'))).toBe(true);
 	});
 
-	it('reads the account panel opening over a page, and being left', () => {
-		expect(opensOrDropsDialog(pressed('/sites', '/sites?account'))).toBe(true);
-		expect(opensOrDropsDialog(pressed('/sites?account', '/sites'))).toBe(true);
+	it('reads the close confirm opening over a section page, and being left', () => {
+		expect(opensOrDropsDialog(pressed('/sites', '/sites?close'))).toBe(true);
+		expect(opensOrDropsDialog(pressed('/sites?close', '/sites'))).toBe(true);
+	});
+
+	it('reads `?account` as no dialog', () => {
+		expect(opensOrDropsDialog(pressed('/sites', '/sites?account'))).toBe(false);
 	});
 });
 
@@ -158,7 +161,7 @@ describe('the way out of a dialog', () => {
 
 	it('steps back over the entry its opener pushed, so Back after it leaves the page', async () => {
 		const router = holding(['/a', '/p']);
-		await router.navigate('/p?account', { state: OPENED_HERE });
+		await router.navigate(`/p?${CLOSE_PARAM}`, { state: OPENED_HERE });
 
 		await leave(router);
 		expect(at(router)).toBe('/p');
@@ -167,7 +170,7 @@ describe('the way out of a dialog', () => {
 	});
 
 	it('takes the place of an address that arrived carrying the dialog, so Back after it leaves too', async () => {
-		const router = holding(['/a', '/p?account']);
+		const router = holding(['/a', `/p?${CLOSE_PARAM}`]);
 
 		await leave(router);
 		expect(at(router)).toBe('/p');
@@ -206,7 +209,7 @@ describe('what the router re-reads under consoleRereads', () => {
 	it('does not re-read over a link that only opens or drops a dialog', async () => {
 		const page = await reading('/sites');
 
-		await page.router.navigate(`/sites?${ACCOUNT_PARAM}`);
+		await page.router.navigate(`/sites?${CLOSE_PARAM}`);
 		await page.router.navigate('/sites');
 		await page.router.navigate(`/sites?${CLOSE_PARAM}`);
 		expect(page.reads()).toBe(1);
@@ -222,7 +225,7 @@ describe('what the router re-reads under consoleRereads', () => {
 	it('re-reads over a press, even one posted at a dialog address', async () => {
 		const page = await reading('/sites');
 
-		await page.router.navigate(`/sites?${ACCOUNT_PARAM}`, {
+		await page.router.navigate(`/sites?${CLOSE_PARAM}`, {
 			formMethod: 'post',
 			formData: new FormData()
 		});
