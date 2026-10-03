@@ -406,7 +406,7 @@ describe('parseQuoteRequest() — a gift given in honor or memory of someone', (
 	it.each(['tributeHonoree', 'tributeNotifyName'] as const)(
 		'bounds a %s by its folded length',
 		(field) => {
-			// 202 characters as sent, 200 once the break is one space: the stored value is in bounds.
+			// 203 characters as sent, 200 once the breaks are one space: the stored value is in bounds.
 			const atMaximum = `${'a'.repeat(100)}\r\n\r\n${'b'.repeat(99)}`;
 			const pastMaximum = `${'a'.repeat(100)}\r\n${'b'.repeat(100)}`;
 			const tribute = {

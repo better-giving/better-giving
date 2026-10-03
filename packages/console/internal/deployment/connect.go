@@ -108,8 +108,8 @@ type ConnectInputs struct {
 	Surface func(origin, token string) cf.Get
 	Within  time.Duration
 	Every   time.Duration
-	// Stopping closing ends that wait and never an ask, since by then the session is written and
-	// recorded and nothing is left to tear. a nil channel never ends it.
+	// Stopping closing ends the wait Within bounds, between asks and never during one: by then the
+	// session is written and recorded, and nothing is left to tear. A nil channel never ends it.
 	Stopping <-chan struct{}
 	Now      time.Time
 }

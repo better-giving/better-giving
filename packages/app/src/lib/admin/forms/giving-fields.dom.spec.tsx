@@ -453,10 +453,11 @@ it('moves focus to Add once the bound a first save was refused by is fixed', asy
 	expect(document.activeElement).toBe(group.add());
 });
 
-// both real screens mount the group in react-router's `<Form>` (`_app.admin.forms.$id.tsx`), which
-// cancels every submit once hydrated and hands the request to the router. so the submit event
-// reaches the group's listener already `defaultPrevented`, win or lose, and a refusal has to be
-// told from a save the router is about to post by what the form layer holds, not by that flag.
+// both real screens mount the group in react-router's `<Form>` (`_app.admin.forms.new.tsx` and
+// `_app.admin.forms.$id.tsx`), which cancels every submit once hydrated and hands the request to
+// the router. so the submit event reaches the group's listener already `defaultPrevented`, win or
+// lose, and a refusal has to be told from a save the router is about to post by what the form
+// layer holds, not by that flag.
 
 /** the group under `<Form>` in a data router whose action keeps what it was posted. */
 function routed(rows: string[], min = '5') {

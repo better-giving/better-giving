@@ -127,8 +127,8 @@ func (presses *connectPresses) joined(
 	presses.running = mine
 	presses.guard.Unlock()
 
-	// a closed terminal ends this process only once the press has recorded what it wrote
-	// (../hangup), as it does for a payments run (../run).
+	// a closed terminal ends this process only once the press has ended, so the session it wrote on
+	// the deployment is recorded on this machine first (../hangup), as for a payments run (../run).
 	release := hangup.Hold()
 	// deferred so that the press is cleared however it ends, or every later press would wait on a
 	// done that never closes.

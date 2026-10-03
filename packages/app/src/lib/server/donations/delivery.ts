@@ -106,7 +106,7 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
  * ./settle.ts, ./collect.ts and ./reverse.ts produce the answers above and read `db`, `provider` and
  * `email`, and ./reverse.ts `processors` as well. what they end at — ./receipt.ts and `alert`
  * (../email/alert.ts) — reads the database and sends mail and asks the processor nothing, so it
- * takes `MailDeps`. this type is `MailDeps` plus fields, so a bag of these is one by construction.
+ * takes `MailDeps`, which this type extends, so a bag of these is one as it is.
  * `email`'s failures are reported and never raised — see ./settle.ts's header.
  */
 export type SettleDeps = MailDeps & {

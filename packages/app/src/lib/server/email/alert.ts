@@ -15,8 +15,7 @@ import type { EmailProvider, SendResult } from './provider';
 /**
  * the part of `SettleDeps` (../donations/delivery.ts) that reads the database and sends mail — all
  * a receipt or an alert needs, so a gift no processor took (../donations/record-in-hand.ts) can be
- * receipted without a `PaymentProvider`. `SettleDeps` is written as `MailDeps & {…}`, so the
- * compiler holds it to that.
+ * receipted without a `PaymentProvider`.
  */
 export type MailDeps = { readonly db: Db; readonly email: EmailProvider };
 

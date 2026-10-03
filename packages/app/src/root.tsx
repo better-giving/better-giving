@@ -68,7 +68,7 @@ export default function App() {
 	return <Outlet />;
 }
 
-/** ./routes/$formId.tsx, spelled as react router ids a route module. */
+/** the id react router gives ./routes/$formId.tsx. */
 const DONOR_PAGE_ROUTE_ID = 'routes/$formId';
 
 /**
