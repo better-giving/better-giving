@@ -3,15 +3,19 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/hangup/hanguptest"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/session"
 	"github.com/better-giving/console/internal/state"
@@ -318,11 +322,7 @@ func TestAStopWaitsForTheConnectPressInFlightToRecordItsSession(t *testing.T) {
 		Presses: presses,
 	})
 
-	answered := make(chan struct{})
-	go func() {
-		defer close(answered)
-		press(t, handler, "/api/session", `{}`)
-	}()
+	answered := pressedAway(handler, "/api/session")
 	<-writing
 	presses.Stop()
 
@@ -345,5 +345,92 @@ func TestAStopWaitsForTheConnectPressInFlightToRecordItsSession(t *testing.T) {
 	if session.Held(records, release.Baked.Name, time.Now()) == nil {
 		t.Fatal("the stop read the press as ended before it recorded the session it wrote")
 	}
-	<-answered
+	if recorded := <-answered; recorded.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", recorded.Code, recorded.Body.String())
+	}
+}
+
+// a press made off the test goroutine, whose answer is read back on it: press's t.Fatalf may only
+// run on the goroutine the test is on.
+func pressedAway(handler http.Handler, path string) <-chan *httptest.ResponseRecorder {
+	answered := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		request.Host = loopback
+		request.Header.Set("Content-Type", "application/json")
+		recorded := httptest.NewRecorder()
+		handler.ServeHTTP(recorded, request)
+		answered <- recorded
+	}()
+	return answered
+}
+
+// a stop cuts short the wait for the deployment's edge to take a session this machine has already
+// recorded: nothing is left to tear, and the terminal would otherwise sit out
+// deployment.SessionBound.
+func TestAStopDuringTheEdgeWaitAfterTheRecordEndsThePress(t *testing.T) {
+	var writes atomic.Int64
+	api := connectable(t, &writes)
+	records, flow, accounts := machine(t, "an-account")
+	asking := make(chan struct{})
+	var asked sync.Once
+	presses := &Presses{}
+	handler := New(Options{
+		UI: http.NotFoundHandler(), Flow: flow, Accounts: accounts, Records: records,
+		Reads:   func(cf.Credential) cf.Get { return cf.JSONGet(api.URL, nil) },
+		Patches: func(cf.Credential) cf.Send { return cf.JSONSend(api.URL, nil) },
+		// an edge that never takes the session, so the press waits until something ends the wait.
+		Surface: func(string, string) cf.Send {
+			return func(context.Context, string, string, any) cf.Answer {
+				asked.Do(func() { close(asking) })
+				return cf.Answer{Kind: cf.Answered, Status: http.StatusUnauthorized, Body: map[string]any{}}
+			}
+		},
+		Presses: presses,
+	})
+
+	answered := pressedAway(handler, "/api/session")
+	<-asking
+	if session.Held(records, release.Baked.Name, time.Now()) == nil {
+		t.Fatal("the edge was asked before the session was recorded")
+	}
+	presses.Stop()
+
+	select {
+	case recorded := <-answered:
+		var answer map[string]any
+		if err := json.Unmarshal(recorded.Body.Bytes(), &answer); err != nil {
+			t.Fatalf("answered %q", recorded.Body.String())
+		}
+		if recorded.Code != http.StatusOK || answer["kind"] != string(deployment.Connected) {
+			t.Fatalf("%d %v, want the press to end connected as the bound running out would",
+				recorded.Code, answer)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the press is still waiting on the edge after the stop")
+	}
+	if _, going := presses.Going(); going {
+		t.Fatal("the press reads as going after it answered")
+	}
+}
+
+// a closed terminal ends this process only once the connect press has ended, so the session it
+// wrote on the deployment is recorded on this machine first.
+func TestAHangUpDuringAConnectPressIsHeldUntilThePressEnds(t *testing.T) {
+	said, ended := hanguptest.Child(t, func() {
+		presses := &connectPresses{}
+		presses.joined(context.Background(), func(context.Context) deployment.Connection {
+			hanguptest.HangUp()
+			fmt.Println("the press recorded its session")
+			return deployment.Connection{Kind: deployment.Connected}
+		})
+		fmt.Println("the process went on")
+	})
+	if !strings.Contains(said, "the press recorded its session") {
+		t.Errorf("printed %q, want the press to outlive a hang-up", said)
+	}
+	if strings.Contains(said, "the process went on") || ended != syscall.SIGHUP {
+		t.Errorf("printed %q and ended on %v, want the hang-up to end the process at the press's end",
+			said, ended)
+	}
 }

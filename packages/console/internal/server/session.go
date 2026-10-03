@@ -9,6 +9,7 @@ import (
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/hangup"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/session"
@@ -65,10 +66,11 @@ func sessionRoutes(
 				Record: func(mine session.Session) error {
 					return session.Record(records, mine)
 				},
-				Surface: deployment.Reads(surface),
-				Within:  deployment.SessionBound,
-				Every:   deployment.SessionAsked,
-				Now:     time.Now(),
+				Surface:  deployment.Reads(surface),
+				Within:   deployment.SessionBound,
+				Every:    deployment.SessionAsked,
+				Stopping: stops.Stopping(),
+				Now:      time.Now(),
 			})
 		}))
 	})
@@ -84,8 +86,8 @@ type connectPresses struct {
 }
 
 // going is the reading a stop makes of the press, which ../../cmd/better-giving/main.go's
-// waitForPress waits out: the listener's shutdown after it gives a handler seconds, and a press runs
-// for as long as deployment.ConnectBound.
+// waitForPress waits out before the listener's shutdown: that shutdown gives a handler five
+// seconds, and a press can run for as long as deployment.ConnectBound.
 func (presses *connectPresses) going() (string, bool) {
 	presses.guard.Lock()
 	defer presses.guard.Unlock()
@@ -125,9 +127,13 @@ func (presses *connectPresses) joined(
 	presses.running = mine
 	presses.guard.Unlock()
 
+	// a closed terminal ends this process only once the press has recorded what it wrote
+	// (../hangup), as it does for a payments run (../run).
+	release := hangup.Hold()
 	// deferred so that the press is cleared however it ends, or every later press would wait on a
 	// done that never closes.
 	defer func() {
+		defer release()
 		presses.guard.Lock()
 		presses.running = nil
 		presses.guard.Unlock()

@@ -108,7 +108,10 @@ type ConnectInputs struct {
 	Surface func(origin, token string) cf.Get
 	Within  time.Duration
 	Every   time.Duration
-	Now     time.Time
+	// Stopping closing ends that wait and never an ask, since by then the session is written and
+	// recorded and nothing is left to tear. a nil channel never ends it.
+	Stopping <-chan struct{}
+	Now      time.Time
 }
 
 // SessionBound is how long a connect waits for the deployment to take the session it wrote, and
@@ -198,8 +201,8 @@ func unconnected(written Written) Connection {
 	return Connection{Kind: ConnectFailed, Detail: written.Detail}
 }
 
-// waits until the deployment takes the session it was just written, or the bound elapses — or hands
-// back the refusal that says it never will.
+// waits until the deployment takes the session it was just written, the bound elapses or the
+// console is stopping — or hands back the refusal that says it never will.
 //
 // a refusal is not yet, but for one: a deployment refusing the expiry as past its ceiling refuses
 // every session this clock mints, so a wait for it is a wait out the bound for nothing. any other
@@ -219,6 +222,8 @@ func takes(ctx context.Context, inputs ConnectInputs, get cf.Get) *NoReport {
 		}
 		select {
 		case <-bound.Done():
+			return nil
+		case <-inputs.Stopping:
 			return nil
 		case <-time.After(inputs.Every):
 		}
