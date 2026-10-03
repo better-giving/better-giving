@@ -1175,12 +1175,12 @@ export function createCard(
 	/**
 	 * the sentence the region is holding for the takeover heading it was said under, or nothing.
 	 *
-	 * a live-region sentence stays until the heading it announces changes or another sentence
-	 * replaces it; a new snapshot alone never clears it. the address screen's reading loop is a new
-	 * snapshot every few seconds with nothing to say, and one landing in the same instant the address
-	 * closes would otherwise empty the sentence as it is written. the retitled heading and a Copy's
-	 * outcome are the two kept this way, each set where it is said; every other sentence lasts the
-	 * patch that chose it. `say` in `update` below is where it is spent.
+	 * two sentences are kept this way, the retitled heading and a Copy's outcome, each set where it is
+	 * said: either stays until the heading it was said under changes or another sentence replaces it,
+	 * and a new snapshot alone never clears it. every other sentence lasts the patch that chose it.
+	 * the address screen's reading loop is a new snapshot every few seconds with nothing to say, and
+	 * one landing in the same instant the address closes would otherwise empty the sentence as it is
+	 * written. `say` in `update` below is where it is spent.
 	 */
 	let held: { words: string; on: string } | null = null;
 	/** whether the last patch drew the offer of a one-time gift, which is what tells it arriving. */

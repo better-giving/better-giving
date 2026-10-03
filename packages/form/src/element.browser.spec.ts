@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { userEvent } from 'vitest/browser';
+import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
@@ -543,34 +544,96 @@ describe('the closed choices on the amount step', () => {
 		expect(list.width).toBeCloseTo(at.width, 0);
 	});
 
-	// zag writes `--reference-width` onto the positioner only once it has measured the box, and the
-	// list is on screen a frame before that. a host's own property of that name, inherited through the
-	// shadow root, would size every frame the list stands unmeasured in.
-	it('sizes the open list by its box and never by a host’s own `--reference-width`', async () => {
-		const host = await mount(CHOICE);
-		host.style.setProperty('--reference-width', '900px');
-		const root = shadow(host);
-		const box = root.querySelector<HTMLElement>('#program');
-		const list = root.querySelector<HTMLElement>('[part~="select-list"]');
-		if (box === null || list === null) throw new Error('no program box');
-		const positioner = list.parentElement;
-		if (positioner === null) throw new Error('no positioner');
-		const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-		const drawn: number[] = [];
-
-		box.focus();
-		box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-		const unmeasured = () => positioner.style.getPropertyValue('--reference-width') === '';
-		for (let frames = 0; frames < 30 && unmeasured(); frames += 1) {
-			if (positioner.matches(':popover-open')) drawn.push(list.getBoundingClientRect().width);
-			await frame();
+	// zag writes `--reference-width` and `--available-width` onto a list's positioner only once it has
+	// measured the box, and the list is on screen a frame before that. a host's own property of either
+	// name, inherited through the shadow root, would size every frame the list stands unmeasured in.
+	// each is planted past what any viewport is — wider than a screen, narrower than a word — so the
+	// case reads the same whatever viewport this pool is given.
+	const WIDE = '100000px';
+	const NARROW = '1px';
+	const opening = {
+		'the open list of causes': async () => {
+			const host = await mount(CHOICE);
+			const root = shadow(host);
+			const box = root.querySelector<HTMLElement>('#program');
+			if (box === null) throw new Error('no program box');
+			const press = () => {
+				box.focus();
+				box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+			};
+			return { page: host, root, box, press };
+		},
+		'the open coin list': async () => {
+			const picker = createCoinPicker(document);
+			onTestFinished(() => picker.stop());
+			const page = document.createElement('div');
+			page.appendChild(picker.host);
+			document.body.appendChild(page);
+			planted.push(page);
+			picker.update(
+				{
+					value: '',
+					options: [
+						{ value: 'btc', label: 'BTC', name: 'Bitcoin', network: 'Bitcoin', refused: false },
+						{ value: 'sol', label: 'SOL', name: 'Solana', network: 'Solana', refused: false }
+					],
+					onChange: () => {}
+				},
+				''
+			);
+			// a task first, as `mount` waits one: the case before leaves its element with a list open,
+			// and an element tears down a task after it leaves (`#leaving` in ./element.ts). pressed
+			// before then, this list does not open.
+			await settle();
+			const root = shadow(picker.host);
+			const box = root.querySelector<HTMLElement>('.picker');
+			if (box === null) throw new Error('no coin box');
+			const input = box.querySelector('input');
+			if (input === null) throw new Error('no coin search');
+			const press = () => {
+				input.focus();
+				input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+			};
+			return { page, root, box, press };
 		}
-		await placedList(root);
+	};
 
-		expect(drawn.length).toBeGreaterThan(0);
-		for (const width of drawn) expect(width).toBeLessThanOrEqual(window.innerWidth);
-		expect(list.getBoundingClientRect().width).toBeCloseTo(box.getBoundingClientRect().width, 0);
-	});
+	for (const [name, open] of Object.entries(opening)) {
+		it(`sizes ${name} by its box and never by a host’s own zag widths`, async () => {
+			const { page, root, box, press } = await open();
+			page.style.setProperty('--reference-width', WIDE);
+			page.style.setProperty('--available-width', NARROW);
+			const list = root.querySelector<HTMLElement>('[part~="select-list"]');
+			const positioner = list?.parentElement;
+			if (list === null || positioner === null || positioner === undefined)
+				throw new Error('no list');
+			const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+			const drawn: { width: number; min: string; max: string }[] = [];
+
+			press();
+			const unmeasured = () => positioner.style.getPropertyValue('--reference-width') === '';
+			for (let frames = 0; frames < 30 && unmeasured(); frames += 1) {
+				if (positioner.matches(':popover-open')) {
+					const style = getComputedStyle(list);
+					drawn.push({
+						width: list.getBoundingClientRect().width,
+						min: style.minInlineSize,
+						max: style.maxInlineSize
+					});
+				}
+				await frame();
+			}
+			await placedList(root);
+
+			expect(drawn.length).toBeGreaterThan(0);
+			for (const { width, min, max } of drawn) {
+				expect(min).not.toBe(WIDE);
+				expect(max).not.toBe(NARROW);
+				expect(width).toBeLessThanOrEqual(window.innerWidth);
+			}
+			expect(list.getBoundingClientRect().width).toBeCloseTo(box.getBoundingClientRect().width, 0);
+		});
+	}
 
 	// a move is a disconnect and a connect, and the removal hides an open popover under the machine.
 	// the box must not go on saying its list is open when no list is on screen.

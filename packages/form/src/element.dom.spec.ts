@@ -5116,17 +5116,19 @@ describe('the stylesheets', () => {
 	});
 
 	// the styles the element writes from a script rather than from a sheet: every string a source
-	// file hands `style.cssText`, and the constant that assignment names when it names one rather
-	// than spelling the string. each comes back as sheet text the two sweeps above can read — the
-	// file's own length, every line where it stands, the literal's characters kept and everything
-	// else in the file blanked to spaces, so a finding is reported at the line it is written on.
+	// file hands `style.cssText`, by `=` or by `+=`, and the constant that assignment names when it
+	// names one rather than spelling the string. a name the file does not bind with a `const` of its
+	// own is not read: the assignment comes back in `unread`, at its line, for the caller to fail on.
+	// each string comes back as sheet text the two sweeps above can read — the file's own length,
+	// every line where it stands, the literal's characters kept and everything else in the file
+	// blanked to spaces, so a finding is reported at the line it is written on.
 	//
 	// what is kept besides the characters is what a sheet's note is written in: a `/* */` comment
 	// inside the expression, and the doc comment standing directly above the statement, which the
 	// head of the statement is turned into an empty comment to reach. a `//` line is blanked like
 	// the code, because the note the sweeps honour opens a `/*` comment and nothing else.
 	// an interpolation is blanked too, which leaves a constant it reads unswept.
-	const inlineStyles = (source: string): string => {
+	const inlineStyles = (name: string, source: string): { styles: string; unread: string[] } => {
 		const kept = source.replace(/[^\n]/g, ' ').split('');
 		const keep = (from: number, to: number) => {
 			for (let i = from; i < to; i++) kept[i] = source[i] ?? ' ';
@@ -5178,15 +5180,22 @@ describe('the stylesheets', () => {
 			}
 		};
 
-		for (const assigned of source.matchAll(/\.style\.cssText\s*=\s*/g)) {
+		const unread: string[] = [];
+		for (const assigned of source.matchAll(/\.style\.cssText\s*\+?=(?!=)\s*/g)) {
 			const from = assigned.index + assigned[0].length;
 			const named = /^([A-Za-z_$][\w$]*)\s*;/.exec(source.slice(from))?.[1];
 			const bound =
 				named === undefined ? undefined : new RegExp(`\\bconst ${named}\\s*=\\s*`).exec(source);
 			if (bound === undefined) sweep(assigned.index, from);
 			else if (bound !== null) sweep(bound.index, bound.index + bound[0].length);
+			else {
+				const start = lineStart(assigned.index);
+				const end = source.indexOf('\n', assigned.index);
+				const line = source.slice(0, start).split('\n').length;
+				unread.push(`${name}:${line} ${source.slice(start, end === -1 ? undefined : end).trim()}`);
+			}
 		}
-		return kept.join('');
+		return { styles: kept.join(''), unread };
 	};
 
 	it('reads a length planted in a style the element builds as a string', async () => {
@@ -5199,7 +5208,7 @@ describe('the stylesheets', () => {
 			"other.style.cssText = 'padding:0;' + `margin:${GAP};inset:2rem`;"
 		].join('\n');
 
-		expect(rawLengths('fixture.ts', inlineStyles(source))).toEqual([
+		expect(rawLengths('fixture.ts', inlineStyles('fixture.ts', source).styles)).toEqual([
 			'fixture.ts:3 3px — inline-size:100%;gap:3px',
 			'fixture.ts:5 2rem — padding:0;     margin:      ;inset:2rem'
 		]);
@@ -5219,10 +5228,28 @@ describe('the stylesheets', () => {
 			"third.style.cssText = 'gap:5px';"
 		].join('\n');
 
-		expect(rawLengths('fixture.ts', inlineStyles(source))).toEqual([
+		expect(rawLengths('fixture.ts', inlineStyles('fixture.ts', source).styles)).toEqual([
 			'fixture.ts:6 4px — margin:4px;',
 			'fixture.ts:10 5px — gap:5px'
 		]);
+	});
+
+	// a name the sweep cannot find bound in the same file would leave a style unread under a passing
+	// sweep, so it comes back as a finding at its line; a `+=` spelling its string is read like an `=`.
+	it('reports an assignment it cannot read rather than passing over it', async () => {
+		const source = [
+			"import { IMPORTED } from './elsewhere';",
+			'node.style.cssText = IMPORTED;',
+			"other.style.cssText += 'gap:3px';",
+			'third.style.cssText += IMPORTED;'
+		].join('\n');
+		const { styles, unread } = inlineStyles('fixture.ts', source);
+
+		expect(unread).toEqual([
+			'fixture.ts:2 node.style.cssText = IMPORTED;',
+			'fixture.ts:4 third.style.cssText += IMPORTED;'
+		]);
+		expect(rawLengths('fixture.ts', styles)).toEqual(['fixture.ts:3 3px — gap:3px']);
 	});
 
 	// every source file in the package, read as text rather than imported: what is swept is the
@@ -5234,8 +5261,11 @@ describe('the stylesheets', () => {
 			eager: true
 		})
 	)
-		.map(([path, source]) => [path.slice('./'.length), inlineStyles(source)] as const)
-		.filter(([, styles]) => styles.trim() !== '')
+		.map(([path, source]) => {
+			const name = path.slice('./'.length);
+			return [name, inlineStyles(name, source)] as const;
+		})
+		.filter(([, { styles, unread }]) => styles.trim() !== '' || unread.length > 0)
 		.sort(([left], [right]) => left.localeCompare(right));
 
 	it('writes no raw value into any style it builds as a string', async () => {
@@ -5248,12 +5278,13 @@ describe('the stylesheets', () => {
 			'styles/resolve.ts'
 		]);
 		expect(
-			declarations(scripts.map(([, styles]) => styles).join('\n')).replace(/\s+/g, '').length
+			declarations(scripts.map(([, { styles }]) => styles).join('\n')).replace(/\s+/g, '').length
 		).toBeGreaterThan(500);
 
-		expect(scripts.flatMap(([name, styles]) => rawLengths(name, styles))).toEqual([]);
-		expect(scripts.flatMap(([name, styles]) => rawDurations(name, styles))).toEqual([]);
-		for (const [, styles] of scripts) {
+		expect(scripts.flatMap(([, { unread }]) => unread)).toEqual([]);
+		expect(scripts.flatMap(([name, { styles }]) => rawLengths(name, styles))).toEqual([]);
+		expect(scripts.flatMap(([name, { styles }]) => rawDurations(name, styles))).toEqual([]);
+		for (const [, { styles }] of scripts) {
 			expect(declarations(styles)).not.toMatch(/#[0-9a-f]{3,8}\b/i);
 			expect(declarations(styles)).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
 		}
