@@ -73,7 +73,7 @@ export type Background = (typeof BACKGROUNDS)[number];
 /**
  * what an assistant turn in a page's chat says about itself beside its words: `refused` when the
  * reply did not fit the page and nothing changed, `fell-back` when the chosen model did not answer
- * and the free model wrote the turn, `unanswered` when no model answered. a column of its own,
+ * and the default model wrote the turn, `unanswered` when no model answered. a column of its own,
  * `chat_turn.note`, since the model writes the turn's text and could write a marker into it.
  */
 export const CHAT_NOTES = ['refused', 'fell-back', 'unanswered'] as const;

@@ -37,7 +37,7 @@ import { FREE_INTENT, WithheldValues } from './withheld-values';
 // **the credits are the account's and not a model's**, so they stand once under the choices rather
 // than beside each one, and they describe the choice the deployment holds — a choice ticked and not
 // yet saved has been read against nothing. an account with none is the one state drawn above the
-// form: the chat is already answering from the free model, which no press here changes, and the
+// form: the chat is already answering from the default model, which no press here changes, and the
 // way on is in cloudflare's dashboard.
 //
 // **its own press, and one value through the door every value goes through**
@@ -160,8 +160,8 @@ export function ModelSection({
 						</Button>
 					}
 				>
-					Your Cloudflare account has no credits left, so the chat answers from the free model until
-					you add some.
+					Your Cloudflare account has no credits left, so the chat answers from the default model
+					until you add some.
 				</Banner>
 			) : null}
 
@@ -205,7 +205,7 @@ export function ModelSection({
 				<WithheldValues
 					names={model.kind === 'withheld' ? [model.name] : []}
 					all={withheld}
-					consequence="Until a model is saved again, the chat answers from the free one."
+					consequence="Until a model is saved again, the chat answers from the default one."
 					written={freed}
 					trouble={trouble}
 					busy={closed}

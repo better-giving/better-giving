@@ -5376,7 +5376,7 @@
 		border-radius: var(--admin-radius);
 	}
 
-	/* the line under a reply the free model wrote. its mark keeps to the first line when the
+	/* the line under a reply the default model wrote. its mark keeps to the first line when the
 	   sentence wraps, as `.adm-momentary`'s does. */
 	.adm-chat__note {
 		display: flex;

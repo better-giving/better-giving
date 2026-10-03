@@ -157,7 +157,7 @@
 		}
 	],
 
-	// the Workers AI binding, and the only way this deployment reaches a model — the free Workers
+	// the Workers AI binding, and the only way this deployment reaches a model — the default Workers
 	// AI one and the credit-billed Claude and GPT alike, each through AI Gateway
 	// (src/lib/server/ai/generate.ts). there is no resource behind it to create and no id to keep
 	// out of the repo: the binding is the account's, and the `default` gateway every call names

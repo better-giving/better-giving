@@ -157,7 +157,7 @@ export type ModelCredits =
  * `AI_MODEL` as the deployment holds it, and the credits that choice spends.
  *
  * the choice is written through the vars press like every other value, and refused there for an id
- * off `AI_MODELS` in `@better-giving/operator/ai-models`; an absent row is the free model.
+ * off `AI_MODELS` in `@better-giving/operator/ai-models`; an absent row is the default model.
  */
 export type ModelChoice =
 	| { kind: 'read'; model: DeployedVar; credits: ModelCredits }

@@ -50,7 +50,7 @@
 //
 // `AI_MODEL` is on the list though it is a choice rather than a credential or an address: which
 // model on `AI_MODELS` (./ai-models.ts) the deployment's generated text is answered by. the models
-// beside the free one are billed to the Cloudflare account's own credits, as ./ai-models.ts says,
+// beside the default one are billed to the Cloudflare account's own credits, as ./ai-models.ts says,
 // so choosing one stores no key — this name is the whole of what the choice writes.
 
 /**

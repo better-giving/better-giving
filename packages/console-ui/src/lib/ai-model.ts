@@ -1,4 +1,4 @@
-import { AI_MODELS, FREE_MODEL, modelById } from '@better-giving/operator/ai-models';
+import { AI_MODELS, DEFAULT_MODEL, modelById } from '@better-giving/operator/ai-models';
 import type { DeployVarName, DeployedVar, ModelCredits, VarsWritten } from '../api/types';
 
 // the model the donation page's chat answers from, as this console offers and stores it.
@@ -22,13 +22,13 @@ export const MODEL_PAGE = '/ai-model';
  * the id the choice is drawn holding, or `null` where no choice on the list is what the deployment
  * answers with.
  *
- * nothing stored is the free model, which is what the deployment calls then. an id off the list is
- * a refusal on every request that reaches a model rather than a fallback to the free one
+ * nothing stored is the default model, which is what the deployment calls then. an id off the list is
+ * a refusal on every request that reaches a model rather than a fallback to the default one
  * (packages/operator/src/ai-models.ts), and a value held as a secret cannot be read back, so both
  * draw no choice taken rather than one the deployment is not answering with.
  */
 export function chosenModel(row: DeployedVar): string | null {
-	if (row.kind === 'absent') return FREE_MODEL.id;
+	if (row.kind === 'absent') return DEFAULT_MODEL.id;
 	if (row.kind === 'withheld') return null;
 	return modelById(row.value)?.id ?? null;
 }
@@ -38,14 +38,14 @@ export function chosenModel(row: DeployedVar): string | null {
  *
  * composed from the list and never from the body, so an id off it — which the door refuses with a
  * 400 (`POST /api/values/vars` in packages/console/internal/server/values.go) — cannot be carried
- * whatever the body claimed. the free model is the name taken off rather than stored, because an
- * unset one is what the deployment answers the free model for, and `null` is what deletes a name.
+ * whatever the body claimed. the default model is the name taken off rather than stored, because an
+ * unset one is what the deployment answers the default model for, and `null` is what deletes a name.
  */
 export function modelEdit(posted: FormData): Record<string, string | null> | null {
 	const value = posted.get(MODEL_FIELD);
 	const model = typeof value === 'string' ? modelById(value) : undefined;
 	if (model === undefined) return null;
-	return { [MODEL_VAR]: model.id === FREE_MODEL.id ? null : model.id };
+	return { [MODEL_VAR]: model.id === DEFAULT_MODEL.id ? null : model.id };
 }
 
 /**
@@ -116,20 +116,20 @@ export function modelPhase(press: {
 	return { underway, closed: underway || (press.busy && !press.own) };
 }
 
-/** one choice as the page draws it: the free one says so under its name, the rest what they spend. */
+/** one choice as the page draws it: the default one says so under its name, the rest what they spend. */
 export type ModelOption = {
 	id: string;
 	label: string;
-	sub: 'Free' | null;
+	sub: 'Default' | null;
 	note: 'Needs Cloudflare credits' | null;
 };
 
-/** every model on the list, in its order, which is the free one first. */
+/** every model on the list, in its order, which is the default one first. */
 export const modelOptions = (): ModelOption[] =>
 	AI_MODELS.map((model) => ({
 		id: model.id,
 		label: model.label,
-		sub: model.creditBilled ? null : 'Free',
+		sub: model.creditBilled ? null : 'Default',
 		note: model.creditBilled ? 'Needs Cloudflare credits' : null
 	}));
 
@@ -145,7 +145,7 @@ export type CreditsLine =
  * ./ai-model.spec.ts.
  */
 export const CREDITS_UNREAD_ON_SIGN_IN =
-	"This console's Cloudflare sign-in cannot read the account's credits. If they run out, the chat answers from the free model and says so.";
+	"This console's Cloudflare sign-in cannot read the account's credits. If they run out, the chat answers from the default model and says so.";
 
 const DOLLARS = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const NO_CENTS = DOLLARS.format(0);

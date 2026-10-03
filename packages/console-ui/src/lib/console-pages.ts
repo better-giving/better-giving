@@ -83,7 +83,7 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
  * (`FOLD_LABELS.sites`), which the page states under its name rather than a cell carrying it.
  *
  * **the model cell is no section, and is written out as the integration cell below is.** no job
- * waits on it: an unset model is the free one, which answers (packages/operator/src/ai-models.ts),
+ * waits on it: an unset model is the default one, which answers (packages/operator/src/ai-models.ts),
  * so its cell carries no status. its short word is one word, which is what the narrow band has room
  * for.
  *

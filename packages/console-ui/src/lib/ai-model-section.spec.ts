@@ -1,4 +1,4 @@
-import { AI_MODELS, FREE_MODEL } from '@better-giving/operator/ai-models';
+import { AI_MODELS, DEFAULT_MODEL } from '@better-giving/operator/ai-models';
 import { createElement } from 'react';
 import { prerenderToNodeStream } from 'react-dom/static';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -15,7 +15,7 @@ import { ModelSection, type ModelSectionProps } from './ai-model-section';
 
 const CLAUDE = 'anthropic/claude-sonnet-4.6';
 const UNREAD =
-	"This console's Cloudflare sign-in cannot read the account's credits. If they run out, the chat answers from the free model and says so.";
+	"This console's Cloudflare sign-in cannot read the account's credits. If they run out, the chat answers from the default model and says so.";
 
 const stored = (value: string): DeployedVar => ({ name: 'AI_MODEL', kind: 'value', value });
 
@@ -76,24 +76,24 @@ function stated(page: string, label: string): string | null {
 }
 
 describe('the model section', () => {
-	it('draws every model in the list’s order, the free one marked Free and the rest as needing credits', async () => {
+	it('draws every model in the list’s order, the default one marked Default and the rest as needing credits', async () => {
 		const drawnChoices = choices(await drawn()).map(({ label, mark }) => [label, mark]);
 		expect(drawnChoices).toEqual(
 			AI_MODELS.map((model) => [
 				model.label,
-				model.creditBilled ? 'Needs Cloudflare credits' : 'Free'
+				model.creditBilled ? 'Needs Cloudflare credits' : 'Default'
 			])
 		);
-		expect(drawnChoices[0]).toEqual([FREE_MODEL.label, 'Free']);
+		expect(drawnChoices[0]).toEqual([DEFAULT_MODEL.label, 'Default']);
 	});
 
 	it('ticks the model the deployment holds', async () => {
 		expect(ticked(await drawn({ model: stored(CLAUDE) }))).toEqual([CLAUDE]);
 	});
 
-	it('ticks the free model where nothing is stored', async () => {
+	it('ticks the default model where nothing is stored', async () => {
 		const absent: DeployedVar = { name: 'AI_MODEL', kind: 'absent' };
-		expect(ticked(await drawn({ model: absent }))).toEqual([FREE_MODEL.id]);
+		expect(ticked(await drawn({ model: absent }))).toEqual([DEFAULT_MODEL.id]);
 	});
 
 	it('ticks nothing for a stored id off the list, and says which one it holds', async () => {
@@ -116,7 +116,7 @@ describe('the model section', () => {
 			return modelEdit(body);
 		});
 		expect(edits).toEqual(
-			AI_MODELS.map((model) => ({ AI_MODEL: model.id === FREE_MODEL.id ? null : model.id }))
+			AI_MODELS.map((model) => ({ AI_MODEL: model.id === DEFAULT_MODEL.id ? null : model.id }))
 		);
 	});
 

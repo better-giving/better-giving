@@ -146,7 +146,7 @@ describe('the rail', () => {
 	});
 
 	it('draws the model cell after notifications, marked and with no status', () => {
-		// no set-up job waits on the model: an unset one is the free model, which answers.
+		// no set-up job waits on the model: an unset one is the default model, which answers.
 		const model = (...todo: readonly SectionId[]) =>
 			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, INTEGRATIONS)[2]?.destinations.at(
 				-1

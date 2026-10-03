@@ -55,7 +55,7 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // three outcomes, each one assistant turn, its `note` the column's word for it:
 // - accepted: the draft is replaced. the assistant's words are the reply's `say` on one line, then
 //   a line naming each value `set` changed, each illustration made or not, and each thing
-//   `acceptReply` dropped, so what the chat says it did is what it did. `fell-back` where the free
+//   `acceptReply` dropped, so what the chat says it did is what it did. `fell-back` where the default
 //   model wrote it in place of the chosen.
 // - refused: the draft is untouched and the turn says why.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the

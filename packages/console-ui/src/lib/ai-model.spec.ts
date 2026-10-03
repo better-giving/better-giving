@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { AI_MODELS, FREE_MODEL } from '@better-giving/operator/ai-models';
+import { AI_MODELS, DEFAULT_MODEL } from '@better-giving/operator/ai-models';
 import { describe, expect, it } from 'vitest';
 import type { DeployedVar } from '../api/types';
 import {
@@ -23,8 +23,8 @@ const CLAUDE = 'anthropic/claude-sonnet-4.6';
 const stored = (value: string): DeployedVar => ({ name: 'AI_MODEL', kind: 'value', value });
 
 describe('the choice the deployment holds', () => {
-	it('is the free model where nothing is stored, which is what the deployment answers with', () => {
-		expect(chosenModel({ name: 'AI_MODEL', kind: 'absent' })).toBe(FREE_MODEL.id);
+	it('is the default model where nothing is stored, which is what the deployment answers with', () => {
+		expect(chosenModel({ name: 'AI_MODEL', kind: 'absent' })).toBe(DEFAULT_MODEL.id);
 	});
 
 	it('is the stored id where it is one on the list', () => {
@@ -34,8 +34,8 @@ describe('the choice the deployment holds', () => {
 		);
 	});
 
-	it('is no choice at all for an id off the list, rather than the free model it is not', () => {
-		// the deployment refuses such an id rather than falling back, so ticking the free model over
+	it('is no choice at all for an id off the list, rather than the default model it is not', () => {
+		// the deployment refuses such an id rather than falling back, so ticking the default model over
 		// it would say the chat answers when it does not.
 		expect(chosenModel(stored('openai/gpt-4'))).toBeNull();
 	});
@@ -52,8 +52,8 @@ const posted = (value?: string): FormData => {
 };
 
 describe('what one press stores', () => {
-	it('takes the name off for the free model, which is what an unset one answers with', () => {
-		expect(modelEdit(posted(FREE_MODEL.id))).toEqual({ AI_MODEL: null });
+	it('takes the name off for the default model, which is what an unset one answers with', () => {
+		expect(modelEdit(posted(DEFAULT_MODEL.id))).toEqual({ AI_MODEL: null });
 	});
 
 	it('stores the id of a model billed to credits', () => {
@@ -143,9 +143,9 @@ describe('where the save stands, and whether the choices are closed with it', ()
 });
 
 describe('the choices offered', () => {
-	it('is the list in its order, the free model marked free and the rest marked as spending credits', () => {
+	it('is the list in its order, the default model marked default and the rest marked as spending credits', () => {
 		expect(modelOptions()).toEqual([
-			{ id: FREE_MODEL.id, label: 'Llama 3.3 70B on Workers AI', sub: 'Free', note: null },
+			{ id: DEFAULT_MODEL.id, label: 'Llama 3.3 70B on Workers AI', sub: 'Default', note: null },
 			{ id: CLAUDE, label: 'Claude Sonnet 4.6', sub: null, note: 'Needs Cloudflare credits' },
 			{ id: 'openai/gpt-5-mini', label: 'GPT-5 mini', sub: null, note: 'Needs Cloudflare credits' }
 		]);
@@ -187,7 +187,7 @@ describe('what the credits say beside the choice', () => {
 
 	it('carries the fixed sentence of a sign-in that never asks as given, since it already names the balance', () => {
 		const detail =
-			"This console's Cloudflare sign-in cannot read the account's credits. If they run out, the chat answers from the free model and says so.";
+			"This console's Cloudflare sign-in cannot read the account's credits. If they run out, the chat answers from the default model and says so.";
 		expect(creditsLine({ kind: 'unknown', detail })).toEqual({ kind: 'unknown', detail });
 	});
 

@@ -8,7 +8,7 @@
 // that package's config_test.go holds to this list, ids and billing in order.
 //
 // every model is called through the Workers AI binding and AI Gateway's `default` gateway, the
-// one gateway that creates itself on first use. the first entry is free on Workers AI and is what
+// one gateway that creates itself on first use. the first entry is the default, on Workers AI, and is what
 // an unset `AI_MODEL` means. the others are billed to the account's Cloudflare credits through
 // AI Gateway's unified billing, so no provider key is stored anywhere
 // (https://developers.cloudflare.com/ai-gateway/features/unified-billing/). what a failed call to
@@ -32,7 +32,7 @@ export interface AiModel {
 	/** what the console calls it. */
 	readonly label: string;
 	readonly format: RequestFormat;
-	/** spent from the account's Cloudflare credits, where the free model is not. */
+	/** spent from the account's Cloudflare credits, where the default model is not. */
 	readonly creditBilled: boolean;
 }
 
@@ -58,7 +58,7 @@ export const AI_MODELS = [
 ] as const satisfies readonly AiModel[];
 
 /** what an unset `AI_MODEL` answers with, and what a failed credit-billed call falls back to. */
-export const FREE_MODEL: AiModel = AI_MODELS[0];
+export const DEFAULT_MODEL: AiModel = AI_MODELS[0];
 
 /** the entry `id` names, or `undefined` for an id off the list. */
 export function modelById(id: string): AiModel | undefined {

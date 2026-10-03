@@ -230,7 +230,7 @@ describe('the Donation page', () => {
 });
 
 describe('a credit-billed model that fails', () => {
-	it('is answered by the free model, whose turn carries its note', async () => {
+	it('is answered by the default model, whose turn carries its note', async () => {
 		const pageId = await insertPage(db, 'campaign');
 		const AI = answering(new Error('3036: insufficient credits'), {
 			say: 'Two-tone now.',
@@ -255,7 +255,7 @@ describe('a credit-billed model that fails', () => {
 		expect(result).toMatchObject({ turns: [{ role: 'operator' }, answer] });
 		expect(await readChat(db, pageId)).toMatchObject([{ role: 'operator' }, answer]);
 	});
-	it('that the free model then answers off the page is marked refused, since nothing changed', async () => {
+	it('that the default model then answers off the page is marked refused, since nothing changed', async () => {
 		const pageId = await insertPage(db, 'campaign');
 		const AI = answering(new Error('3036: insufficient credits'), {
 			say: 'Neon!',

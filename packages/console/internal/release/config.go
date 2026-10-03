@@ -203,7 +203,7 @@ var DeployVars = []string{
 // **stated here and gated rather than trusted, the way DeployVars above is.** ./config_test.go holds
 // the ids and which of them bill the account's credits to that module, so a model added there and
 // not here is a choice this console refuses to write, and one taken off there is a choice this
-// console would store for a deployment to refuse. the first entry is the free model an unset
+// console would store for a deployment to refuse. the first entry is the default model an unset
 // `AI_MODEL` means.
 var AIModels = []AIModel{
 	{ID: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", CreditBilled: false},
@@ -216,7 +216,7 @@ type AIModel struct {
 	// ID is what `AI_MODEL` holds.
 	ID string
 	// CreditBilled is whether the model is paid for out of the account's Cloudflare credits, which
-	// the free model is not.
+	// the default model is not.
 	CreditBilled bool
 }
 

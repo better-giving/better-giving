@@ -1,4 +1,4 @@
-import { FREE_MODEL } from '@better-giving/operator/ai-models';
+import { DEFAULT_MODEL } from '@better-giving/operator/ai-models';
 import type { ClientActionFunctionArgs, ClientLoaderFunctionArgs } from 'react-router';
 import { createMemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -166,8 +166,8 @@ describe('a press on the model page', () => {
 		expect(binary.stored).toEqual([{ AI_MODEL: CLAUDE }]);
 	});
 
-	it('takes the name off for the free model rather than storing it', async () => {
-		await press({ intent: MODEL_INTENT, [MODEL_FIELD]: FREE_MODEL.id });
+	it('takes the name off for the default model rather than storing it', async () => {
+		await press({ intent: MODEL_INTENT, [MODEL_FIELD]: DEFAULT_MODEL.id });
 		expect(binary.stored).toEqual([{ AI_MODEL: null }]);
 	});
 

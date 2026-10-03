@@ -348,7 +348,7 @@ TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
 # QUICKBOOKS_CLIENT_SECRET=""
 # QUICKBOOKS_API_URL="https://sandbox-quickbooks.api.intuit.com"
 
-# The model the dashboard's generated text is answered by. Unset is the free
+# The model the dashboard's generated text is answered by. Unset is the default
 # Workers AI model. The others are billed to the Cloudflare account's credits
 # through AI Gateway, so no provider key is ever stored. The console writes
 # this value. The ids it takes are `AI_MODELS` in

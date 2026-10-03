@@ -9,7 +9,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ChatWaiting } from './chat-sheet';
 
-const FELL_BACK = 'Your chosen model didn’t answer, so the free model wrote this reply.';
+const FELL_BACK = 'Your chosen model didn’t answer, so the default model wrote this reply.';
 const REFUSED =
 	'That reply didn’t fit the page, so nothing changed. Ask again, or say it another way.';
 

@@ -11,7 +11,7 @@ import (
 //
 // **the choice is one of the configuration values and nothing more.** it is `AI_MODEL`, a plain var
 // read off the worker's settings by ./values.go and written through ./write.go's SetVars like every
-// other one — so it reads back as what was stored, and taking it off is the free model. the ids a
+// other one — so it reads back as what was stored, and taking it off is the default model. the ids a
 // write may carry are internal/release's AIModels, which internal/server's values.go holds a write
 // to.
 //
@@ -31,7 +31,7 @@ const AIModelName = "AI_MODEL"
 type CreditsKind string
 
 const (
-	// CreditsNotAsked is a choice that spends no credits this console knows of — the free model, no
+	// CreditsNotAsked is a choice that spends no credits this console knows of — the default model, no
 	// choice at all, an id off the list, a value held as a secret — or a values read that did not
 	// land.
 	CreditsNotAsked CreditsKind = "not-asked"
@@ -46,7 +46,7 @@ const (
 // CreditsUnreadOnSignIn is what a credit-billed choice's credits say on the browser sign-in, which
 // cannot read them.
 const CreditsUnreadOnSignIn = "This console's Cloudflare sign-in cannot read the account's credits. " +
-	"If they run out, the chat answers from the free model and says so."
+	"If they run out, the chat answers from the default model and says so."
 
 // Credits is the account's balance as the choice needs it.
 type Credits struct {

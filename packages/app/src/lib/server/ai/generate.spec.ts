@@ -20,7 +20,7 @@ const REQUEST = {
 } as const;
 
 describe('the model a deployment answers with', () => {
-	it('is the free Workers AI model when nothing is chosen, called through the default gateway', async () => {
+	it('is the default Workers AI model when nothing is chosen, called through the default gateway', async () => {
 		const AI = answering({ response: 'A page.' });
 
 		const result = await generate({ AI }, REQUEST);
@@ -152,7 +152,7 @@ describe('a request for JSON', () => {
 		required: ['headline']
 	};
 
-	it('asks the free model in JSON mode, and hands back the object it answers as text', async () => {
+	it('asks the default model in JSON mode, and hands back the object it answers as text', async () => {
 		const AI = answering({ response: { headline: 'Feed a family' } });
 
 		const result = await generate({ AI }, { ...REQUEST, jsonSchema: SCHEMA });
@@ -193,7 +193,7 @@ describe('a request for JSON', () => {
 });
 
 describe('a chosen model that fails', () => {
-	it('is answered by the free model, marked as a fallback, when the chosen one is credit-billed', async () => {
+	it('is answered by the default model, marked as a fallback, when the chosen one is credit-billed', async () => {
 		const AI = answering(new Error('AiError: 402 insufficient credits'), { response: 'A page.' });
 
 		const result = await generate({ AI, AI_MODEL: 'anthropic/claude-sonnet-4.6' }, REQUEST);
@@ -207,7 +207,7 @@ describe('a chosen model that fails', () => {
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		const [model, input, options] = AI.run.mock.calls[1] ?? [];
 		expect(model).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-		// the same request, in the free model's own shape.
+		// the same request, in the default model's own shape.
 		expect(input.messages).toEqual([
 			{ role: 'system', content: 'You write donation pages.' },
 			{ role: 'user', content: 'A page for the food bank.' }
@@ -215,7 +215,7 @@ describe('a chosen model that fails', () => {
 		expect(options).toEqual({ gateway: { id: 'default' } });
 	});
 
-	it('is refused rather than thrown when the free model fails', async () => {
+	it('is refused rather than thrown when the default model fails', async () => {
 		const AI = answering(new Error('AiError: 3040: capacity temporarily exceeded'));
 
 		const result = await generate({ AI }, REQUEST);
@@ -228,7 +228,7 @@ describe('a chosen model that fails', () => {
 		expect(AI.run).toHaveBeenCalledOnce();
 	});
 
-	it('is refused rather than thrown when the free model fails after a credit-billed one did', async () => {
+	it('is refused rather than thrown when the default model fails after a credit-billed one did', async () => {
 		const AI = answering(new Error('credits'), new Error('capacity'));
 
 		const result = await generate({ AI, AI_MODEL: 'openai/gpt-5-mini' }, REQUEST);
@@ -266,7 +266,7 @@ describe('a chosen model that fails', () => {
 			};
 		}
 
-		it('is no answer from the free model', async () => {
+		it('is no answer from the default model', async () => {
 			const AI = spendingTheCeiling();
 
 			expect(await generate({ AI }, REQUEST)).toMatchObject({ ok: false, reason: 'unavailable' });

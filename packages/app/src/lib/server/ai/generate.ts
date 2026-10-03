@@ -1,10 +1,15 @@
-import { AI_MODELS, FREE_MODEL, modelById, type AiModel } from '@better-giving/operator/ai-models';
+import {
+	AI_MODELS,
+	DEFAULT_MODEL,
+	modelById,
+	type AiModel
+} from '@better-giving/operator/ai-models';
 import { setCommand } from '@better-giving/operator/deploy-split';
 import { readConfigEnv } from '../config/env';
 
 // the one way this deployment asks a model for text.
 //
-// every call is the Workers AI binding's `run` through AI Gateway's `default` gateway — the free
+// every call is the Workers AI binding's `run` through AI Gateway's `default` gateway — the default
 // model and the credit-billed ones alike, so no provider key exists to store
 // (https://developers.cloudflare.com/ai-gateway/usage/worker-binding-methods/). which model is
 // `AI_MODEL`, a plain var the console writes; the list and what each entry costs are
@@ -15,9 +20,9 @@ import { readConfigEnv } from '../config/env';
 //
 // nothing here throws. a caller is a screen someone is typing into, and a model that did not
 // answer is a sentence on that screen rather than a 500. a credit-billed model that fails for any
-// reason is answered by the free one and marked `fellBack`: no binding call reads the credit
+// reason is answered by the default one and marked `fellBack`: no binding call reads the credit
 // balance, and the error an empty one raises is undocumented, so an empty balance cannot be told
-// from any other failure and each is treated as that model being unavailable. the free model
+// from any other failure and each is treated as that model being unavailable. the default model
 // failing is the end of the line. a reply stopped by the ceiling on its length is no answer
 // either: it is text cut part way, and for JSON it does not parse.
 //
@@ -44,14 +49,14 @@ export type GenerateResult =
 	| {
 			readonly ok: true;
 			readonly text: string;
-			/** the model that answered, which is the free one whenever `fellBack` is set. */
+			/** the model that answered, which is the default one whenever `fellBack` is set. */
 			readonly model: string;
-			/** the chosen credit-billed model failed and the free one answered in its place. */
+			/** the chosen credit-billed model failed and the default one answered in its place. */
 			readonly fellBack: boolean;
 	  }
 	| GenerateFailure;
 
-/** a call no model answered, naming the model it asked: `AI_MODEL` as set, or the free one. */
+/** a call no model answered, naming the model it asked: `AI_MODEL` as set, or the default one. */
 export type GenerateFailure = { readonly model: string } & (
 	| {
 			readonly ok: false;
@@ -87,7 +92,7 @@ const GATEWAY = { gateway: { id: 'default' } } as const;
 
 export async function generate(source: unknown, request: GenerateRequest): Promise<GenerateResult> {
 	const chosen = readConfigEnv(source).AI_MODEL;
-	const model = chosen === undefined ? FREE_MODEL : modelById(chosen);
+	const model = chosen === undefined ? DEFAULT_MODEL : modelById(chosen);
 	if (!model) {
 		return {
 			ok: false,
@@ -109,11 +114,11 @@ export async function generate(source: unknown, request: GenerateRequest): Promi
 	console.error(`${model.id} did not answer:`, answer.error);
 
 	if (model.creditBilled) {
-		const fallback = await ask(binding, FREE_MODEL, request);
+		const fallback = await ask(binding, DEFAULT_MODEL, request);
 		if (fallback.ok) {
-			return { ok: true, text: fallback.text, model: FREE_MODEL.id, fellBack: true };
+			return { ok: true, text: fallback.text, model: DEFAULT_MODEL.id, fellBack: true };
 		}
-		console.error(`${FREE_MODEL.id} did not answer:`, fallback.error);
+		console.error(`${DEFAULT_MODEL.id} did not answer:`, fallback.error);
 	}
 	return { ok: false, reason: 'unavailable', operatorFix: null, model: model.id };
 }

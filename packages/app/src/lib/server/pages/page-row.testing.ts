@@ -102,7 +102,7 @@ export async function endAsItStands(db: Db, pageId: string): Promise<void> {
 	}
 }
 
-/** a Workers AI binding answering each call with the next of `replies`, in the free model's format. */
+/** a Workers AI binding answering each call with the next of `replies`, in the default model's format. */
 export function answering(...replies: unknown[]) {
 	const run = vi.fn();
 	for (const reply of replies) {

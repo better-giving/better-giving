@@ -104,7 +104,7 @@ describe('the chat sheet', () => {
 
 		expect(log.querySelectorAll('p')).toHaveLength(1);
 		expect(log.textContent).toContain('I cut the story to three sentences.');
-		expect(log.textContent).toContain('the free model wrote this reply');
+		expect(log.textContent).toContain('the default model wrote this reply');
 		expect(log.textContent).not.toContain('warm shade');
 	});
 

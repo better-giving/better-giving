@@ -42,12 +42,12 @@ func TestAModelChoiceIsWrittenAsAPlainVarAndReadBack(t *testing.T) {
 	}
 }
 
-// a choice that spends no credits — unset, the free model, an id off the list, a value held as a
+// a choice that spends no credits — unset, the default model, an id off the list, a value held as a
 // secret — asks nothing about what is left of them.
-func TestTheFreeModelAsksNothingAboutCredits(t *testing.T) {
+func TestTheDefaultModelAsksNothingAboutCredits(t *testing.T) {
 	for what, bindings := range map[string]map[string]any{
 		"unset":     varsHeld(),
-		"free":      holding("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
+		"default":   holding("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
 		"off-list":  holding("anthropic/claude-opus-9"),
 		"as secret": varsHeld(map[string]any{"name": "AI_MODEL", "type": "secret_text"}),
 	} {
@@ -60,7 +60,7 @@ func TestTheFreeModelAsksNothingAboutCredits(t *testing.T) {
 }
 
 // the balance can go negative (a call is billed after it is made), so anything at or under zero
-// is a choice that is answered by the free model instead.
+// is a choice that is answered by the default model instead.
 func TestACreditBilledChoiceReportsWhetherTheAccountHoldsCredits(t *testing.T) {
 	for _, one := range []struct {
 		balance float64

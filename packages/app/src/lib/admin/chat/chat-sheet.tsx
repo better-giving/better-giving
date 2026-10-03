@@ -13,7 +13,7 @@ import { ChatLog } from './chat-log';
  * one turn of a page's chat, as its `chat_turn` row holds it.
  *
  * `note` marks an assistant turn the log draws a line under: `fell-back` when the chosen model did
- * not answer and the free model wrote it, `refused` when the reply did not fit the page and nothing
+ * not answer and the default model wrote it, `refused` when the reply did not fit the page and nothing
  * changed.
  */
 export interface ChatMessage {

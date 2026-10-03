@@ -382,7 +382,7 @@ func TestAModelChoiceOffTheListIsRefusedNamingIt(t *testing.T) {
 	}
 }
 
-func TestAModelChoiceOnTheListIsWrittenAndTakingItOffIsTheFreeModel(t *testing.T) {
+func TestAModelChoiceOnTheListIsWrittenAndTakingItOffIsTheDefaultModel(t *testing.T) {
 	worker := release.Baked.Name
 	stored := map[string]any{"name": "AI_MODEL", "type": "plain_text", "text": "openai/gpt-5-mini"}
 	for what, one := range map[string]struct {

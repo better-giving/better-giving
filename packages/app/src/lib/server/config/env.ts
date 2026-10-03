@@ -143,7 +143,7 @@ export interface ConfigEnv {
 	readonly TURNSTILE_SECRET_KEY?: string;
 	/**
 	 * the model the deployment's generated text is answered by: an id on `AI_MODELS` in
-	 * `@better-giving/operator/ai-models`, which the console writes. unset is the free Workers AI
+	 * `@better-giving/operator/ai-models`, which the console writes. unset is the default Workers AI
 	 * model, and an id off that list is refused rather than guessed at (../ai/generate.ts).
 	 */
 	readonly AI_MODEL?: string;

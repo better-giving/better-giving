@@ -154,7 +154,7 @@ func valuesRoutes(
 			if name == deployment.AIModelName {
 				// the deployment refuses an id off that list on every request that reaches a model, so
 				// storing one would be a choice an operator reads back and nothing answers with. `null`
-				// is the free model, and is the removal above.
+				// is the default model, and is the removal above.
 				if _, listed := release.ModelByID(*value); !listed {
 					answer(w, http.StatusBadRequest, map[string]string{
 						"error": "this console stores " + name + " as one of the ids AI_MODELS lists in " +
