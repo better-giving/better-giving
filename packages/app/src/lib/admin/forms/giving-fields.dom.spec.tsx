@@ -1,5 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Form, createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { getFormProps } from '@conform-to/react';
 import { MAX_SUGGESTED_AMOUNTS } from '$lib/forms/amounts';
@@ -450,4 +451,94 @@ it('moves focus to Add once the bound a first save was refused by is fixed', asy
 	await group.press(group.save());
 
 	expect(document.activeElement).toBe(group.add());
+});
+
+// both real screens mount the group in react-router's `<Form>` (`_app.admin.forms.$id.tsx`), which
+// cancels every submit once hydrated and hands the request to the router. so the submit event
+// reaches the group's listener already `defaultPrevented`, win or lose, and a refusal has to be
+// told from a save the router is about to post by what the form layer holds, not by that flag.
+
+/** the group under `<Form>` in a data router whose action keeps what it was posted. */
+function routed(rows: string[], min = '5') {
+	const posted: FormData[] = [];
+	function Screen() {
+		const [form, fields] = useAdminForm(GIVING, undefined, {
+			defaultValue: { min_minor: min, max_minor: '500', suggested_amounts: rows }
+		});
+		return (
+			<Form method="post" {...getFormProps(form)}>
+				<FormGivingFields
+					boxes={{ min_minor: fields.min_minor, max_minor: fields.max_minor }}
+					amounts={{
+						id: fields.suggested_amounts.id,
+						errors: fields.suggested_amounts.errors,
+						rows: fields.suggested_amounts.getFieldList(),
+						add: insertWhenValid(form, GIVING, fields.suggested_amounts.name),
+						remove: (index) =>
+							form.remove.getButtonProps({ name: fields.suggested_amounts.name, index })
+					}}
+					currency="USD"
+					footer={<button type="submit">Save</button>}
+				/>
+			</Form>
+		);
+	}
+	const Stub = createRoutesStub([
+		{
+			path: '/',
+			Component: Screen,
+			action: async ({ request }) => {
+				posted.push(await request.formData());
+				return null;
+			}
+		}
+	]);
+	const root = mount(<Stub initialEntries={['/']} />);
+	const button = (label: string) => {
+		const found = [...root.querySelectorAll('button')].find((b) => b.textContent === label);
+		if (!found) throw new Error(`no ${label} button`);
+		return found;
+	};
+	return {
+		root,
+		posted,
+		add: () => button('Add an amount'),
+		save: () => button('Save'),
+		/** a press as a browser makes one, and the tasks after it, which is when a save has settled. */
+		press: (control: HTMLButtonElement) =>
+			act(async () => {
+				control.focus();
+				control.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+				await new Promise((settled) => setTimeout(settled, 20));
+			})
+	};
+}
+
+it('under the router form, moves focus to Add when a save is refused by the cap alone', async () => {
+	const group = routed(figures(MAX_SUGGESTED_AMOUNTS + 1));
+
+	await group.press(group.save());
+
+	expect(group.posted).toHaveLength(0);
+	expect(document.activeElement).toBe(group.add());
+});
+
+it('under the router form, leaves focus on Save for a valid save that holds one blank box over the cap', async () => {
+	// the blank box is dropped by the schema, so what is posted is at the cap and is no refusal:
+	// pulling focus to Add would be an operator's save answered as if it failed.
+	const group = routed([...figures(MAX_SUGGESTED_AMOUNTS), '']);
+
+	await group.press(group.save());
+
+	expect(group.posted).toHaveLength(1);
+	expect(document.activeElement).toBe(group.save());
+});
+
+it('under the router form, leaves focus on a bound the same save refused', async () => {
+	const group = routed(figures(MAX_SUGGESTED_AMOUNTS + 1), '600');
+
+	await group.press(group.save());
+
+	expect(group.posted).toHaveLength(0);
+	expect(document.activeElement?.getAttribute('name')).toBe('max_minor');
 });
