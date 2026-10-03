@@ -1,5 +1,5 @@
 import { destinationPaused } from '@better-giving/emails';
-import { type MailDeps, mailOperator } from '../donations/delivery';
+import { type MailDeps, mailOperator } from '../email/alert';
 import {
 	DESTINATION_PAUSE_AFTER_MS,
 	type PausedDestination,
@@ -7,7 +7,7 @@ import {
 } from './deliver';
 
 // the mail a pause sends: `onPaused` for ./deliver.ts, to the address every operational alert goes
-// to (`mailOperator` in ../donations/delivery.ts).
+// to (`mailOperator` in ../email/alert.ts).
 //
 // once per pause, and a send that did not go is logged and never retried: ./deliver.ts tells the
 // hook of each pause once, and a retry here would be the second mail that rule exists to prevent.

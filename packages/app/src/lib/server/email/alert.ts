@@ -9,12 +9,14 @@ import type { EmailProvider, SendResult } from './provider';
 // a module of its own, beside the port, because the money path and the books both send through
 // it: ../donations/ reaches ../accounting/ through ../books/writes.ts, so a sender living in either
 // would make the two import each other (../accounting/no-donations-imports.spec.ts).
-// ../donations/delivery.ts re-exports all three names for the modules under it.
+// ../donations/delivery.ts re-exports `alert` and `MailDeps` for the modules under it; every other
+// caller imports from here.
 
 /**
  * the part of `SettleDeps` (../donations/delivery.ts) that reads the database and sends mail — all
  * a receipt or an alert needs, so a gift no processor took (../donations/record-in-hand.ts) can be
- * receipted without a `PaymentProvider`.
+ * receipted without a `PaymentProvider`. `SettleDeps` is written as `MailDeps & {…}`, so the
+ * compiler holds it to that.
  */
 export type MailDeps = { readonly db: Db; readonly email: EmailProvider };
 

@@ -2,7 +2,7 @@ import { formatMoney } from '@better-giving/emails';
 import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import type { EmailProvider } from '../email/provider';
+import type { MailDeps } from '../email/alert';
 import type { Processors } from '../payments/factory';
 import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
 
@@ -106,10 +106,10 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
  * ./settle.ts, ./collect.ts and ./reverse.ts produce the answers above and read `db`, `provider` and
  * `email`, and ./reverse.ts `processors` as well. what they end at — ./receipt.ts and `alert`
  * (../email/alert.ts) — reads the database and sends mail and asks the processor nothing, so it
- * takes `MailDeps`, which a bag of these satisfies as it is.
+ * takes `MailDeps`. this type is `MailDeps` plus fields, so a bag of these is one by construction.
+ * `email`'s failures are reported and never raised — see ./settle.ts's header.
  */
-export type SettleDeps = {
-	readonly db: Db;
+export type SettleDeps = MailDeps & {
 	readonly provider: PaymentProvider;
 	/**
 	 * every processor this deployment holds, which a disputed gift's repeating plan is stopped through
@@ -117,8 +117,6 @@ export type SettleDeps = {
 	 * route that forgets it is a type error rather than a plan that silently never stops.
 	 */
 	readonly processors: Processors;
-	/** the mail transport. its failures are reported and never raised — see ./settle.ts's header. */
-	readonly email: EmailProvider;
 	/**
 	 * the coins the donor picked from, where a receipt for a crypto gift names its coin — `cachedCoins`
 	 * in ../forms/coin-cache.ts. absent, or answering null, a coin is named by its code uppercased.
@@ -126,7 +124,7 @@ export type SettleDeps = {
 	readonly payableCoins?: () => Promise<readonly PayableCoin[] | null>;
 };
 
-export { alert, type MailDeps, mailOperator } from '../email/alert';
+export { alert, type MailDeps } from '../email/alert';
 
 /**
  * what an operator-facing sentence calls the processor that delivered this.

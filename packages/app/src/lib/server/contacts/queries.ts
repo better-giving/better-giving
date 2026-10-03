@@ -39,7 +39,8 @@ import type { ParsedContact } from './contact-input';
 // crossed too, in `activeCommitment` below and the two reads that spend it, and
 // ../recurring/queries.ts names it from the other end.
 //
-// the crossing is forced in both by the question being about donors rather than about gifts.
+// in `listContacts` and `readDonorSummary` the crossing is forced by the question being about
+// donors rather than about gifts.
 // `listContacts` orders the donor file by how much a donor has given, across the whole file rather
 // than across a page, so the aggregate and the `order by` that reads it have to be one statement —
 // and that statement's driving table is `contact`. splitting it is a read of every contact in the
@@ -52,7 +53,8 @@ import type { ParsedContact } from './contact-input';
 // pages `contact` — reading every commitment and intersecting in the Worker is the shape the
 // `LIMIT` exists to prevent, and it would page a file whose size the read no longer knows.
 //
-// **both are under the rule `projectStatus` in ../donations/queries.ts states**, and that file's
+// **`listContacts` and `readDonorSummary` are under the rule `projectStatus` in
+// ../donations/queries.ts states** — `findPaymentDonor` reads no status — and that file's
 // header pins the agreement from the other end: a succeeded inbound attempt is what collects and
 // every other attempt counts for nothing. the summary spends only that half of it — a count of
 // donors is not money, so a refund takes nothing off one.
