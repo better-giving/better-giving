@@ -1,6 +1,6 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, data, Form } from 'react-router';
+import { createRoutesStub, data, Form, Outlet } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { ErrorBoundary } from './root';
 
@@ -10,6 +10,16 @@ import { ErrorBoundary } from './root';
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+/** a screen under the root, by the id react router gives its module and an address it answers. */
+type Screen = { id: string; path: string; at: string };
+
+const DASHBOARD: Screen = {
+	id: 'routes/_app.admin.forms',
+	path: '/admin/forms',
+	at: '/admin/forms'
+};
+const DONOR_PAGE: Screen = { id: 'routes/$formId', path: '/:formId', at: '/f_0001' };
+
 /**
  * the root's boundary over a screen whose read throws `thrown`, mounted into a document that lives
  * as long as the case.
@@ -17,22 +27,28 @@ import { ErrorBoundary } from './root';
  * `appendChild` rather than `append`: worker-configuration.d.ts declares HTMLRewriter's `Element`,
  * which merges into the DOM's and brings an `append(content, options)` that wins here.
  */
-async function boundaryOver(thrown: unknown): Promise<HTMLElement> {
+async function boundaryOver(thrown: unknown, screen: Screen = DASHBOARD): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
 		{
 			id: 'root',
-			path: '/admin/forms',
-			Component: () => <p>the screen</p>,
+			Component: Outlet,
 			ErrorBoundary: ErrorBoundary as never,
-			loader: () => {
-				throw thrown;
-			}
+			children: [
+				{
+					id: screen.id,
+					path: screen.path,
+					Component: () => <p>the screen</p>,
+					loader: () => {
+						throw thrown;
+					}
+				}
+			]
 		}
 	]);
 	const root = document.createElement('div');
 	document.body.appendChild(root);
 	const mounted = createRoot(root);
-	const tree: ReactNode = <Stub initialEntries={['/admin/forms']} />;
+	const tree: ReactNode = <Stub initialEntries={[screen.at]} />;
 	// async, because the stub runs the loader before it renders the boundary.
 	await act(async () => mounted.render(tree));
 	onTestFinished(() => {
@@ -152,6 +168,44 @@ it.each([
 	await boundaryOver(thrown);
 
 	expect(document.title).toBe(title);
+});
+
+/** the donor's page is the organisation's, so its tab names what the reader came to do instead. */
+it.each([
+	['a missing address', data(null, { status: 404 }), 'No such page · Donate'],
+	[
+		'a refused request',
+		data('`amount` is not a number.', { status: 400 }),
+		'This request was refused · Donate'
+	],
+	[
+		'a failure',
+		new Error('the database is not answering'),
+		'This deployment could not answer · Donate'
+	]
+])('titles the donor page after %s without the project name', async (_face, thrown, title) => {
+	await boundaryOver(thrown, DONOR_PAGE);
+
+	expect(document.title).toBe(title);
+});
+
+/** a donor holds no staff session, so a way out to the dashboard is a link they cannot use. */
+it.each([
+	['a missing address', data(null, { status: 404 })],
+	['a refused request', data('`amount` is not a number.', { status: 400 })]
+])('offers no way out to forms on the donor page after %s', async (_face, thrown) => {
+	const root = await boundaryOver(thrown, DONOR_PAGE);
+
+	expect(root.querySelector('a[href="/admin/forms"]')).toBeNull();
+	expect(root.querySelectorAll('a, button')).toHaveLength(0);
+});
+
+/** the fallback sentence names no way out the donor page does not draw. */
+it('tells a donor only to go back when a refusal carries no sentence', async () => {
+	const root = await boundaryOver(data({ field: 'amount' }, { status: 403 }), DONOR_PAGE);
+
+	expect(root.textContent).toContain('Nothing more is known about why. Go back and try again.');
+	expect(root.textContent).not.toContain('go to forms');
 });
 
 /** a 5xx response is the deployment failing whatever it carries, and has no way out. */

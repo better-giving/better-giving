@@ -9,6 +9,7 @@ import {
 	Outlet,
 	Scripts,
 	ScrollRestoration,
+	useMatches,
 	useRouteError
 } from 'react-router';
 import type { Route } from './+types/root';
@@ -67,6 +68,9 @@ export default function App() {
 	return <Outlet />;
 }
 
+/** ./routes/$formId.tsx, spelled as react router ids a route module. */
+const DONOR_PAGE_ROUTE_ID = 'routes/$formId';
+
 /**
  * the app's one error page, and it is on the root rather than on the protected layout
  * deliberately. the layout's own boundary draws the set-up gate and renders this for everything
@@ -100,7 +104,12 @@ export function ErrorBoundary() {
 	// organisation's off the layout's match, because the layout's own read may be what failed and
 	// this page depends on no data. `<Meta />` draws no title over it: it reads no route beneath a
 	// boundary, and neither this route nor ./routes/_app.tsx exports `meta`.
-	const tab = (face: string) => <title>{`${face} · ${APP_NAME}`}</title>;
+	//
+	// the donor's page is the organisation's and not the project's, so there the second half is the
+	// word its own tab falls back to (`meta` in ./routes/$formId.tsx). which page this is comes off
+	// the matched route's id and never its data, for the same reason the name does.
+	const onDonorPage = useMatches().some((match) => match.id === DONOR_PAGE_ROUTE_ID);
+	const tab = (face: string) => <title>{`${face} · ${onDonorPage ? 'Donate' : APP_NAME}`}</title>;
 
 	// the panel has three faces, and the 404 and the 4xx have a way out: an address that is not
 	// there, or a request the app refused, leaves a working deployment with somewhere to send
@@ -111,7 +120,12 @@ export function ErrorBoundary() {
 	// `Link` and never a bare anchor: /admin is one document and a way out that reloads it throws
 	// away the whole client for a destination the router already has
 	// ($lib/admin/button-navigates.dom.spec.tsx).
-	const toForms = { wayOut: 'Go to forms', wayOutProps: { as: Link, to: '/admin/forms' } } as const;
+	//
+	// a donor holds no staff session, so on the donor's page the way out is a sign-in screen they
+	// cannot pass and is not drawn at all.
+	const toForms = onDonorPage
+		? {}
+		: ({ wayOut: 'Go to forms', wayOutProps: { as: Link, to: '/admin/forms' } } as const);
 	if (status === 404) {
 		const title = 'No such page';
 		return (
@@ -145,7 +159,8 @@ export function ErrorBoundary() {
 				<ErrorPanel code={`${status}`} title={title} {...toForms}>
 					<MarkedText
 						text={
-							message || 'Nothing more is known about why. Go back and try again, or go to forms.'
+							message ||
+							`Nothing more is known about why. Go back and try again${onDonorPage ? '' : ', or go to forms'}.`
 						}
 					/>
 				</ErrorPanel>
