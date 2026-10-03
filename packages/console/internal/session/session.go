@@ -119,7 +119,7 @@ func digitsOnly(expiry string) bool {
 // otherwise.
 //
 // An expiry further out than a deployment accepts from now is no session either: the deployment
-// refuses it as `console_clock_ahead`, so the screen this lands on is about the deployment.
+// would refuse it as `console_clock_ahead`, so it is read as none.
 //
 // Every way the record could be wrong lands on the same nil, which is the state the screen already
 // draws: no session, and a control that mints one.

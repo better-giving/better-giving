@@ -676,8 +676,7 @@ export type PaymentDonor = {
  * carries the id.
  *
  * `payment.donation_id` and `donation.contact_id` are both NOT NULL, so the join cannot lose a
- * donor a payment has; `null` is a payment row that is not there at all. the contact itself is read
- * through `readContactSummaries` above.
+ * donor a payment has; `null` is a payment row that is not there at all.
  */
 export async function findPaymentDonor(db: Db, paymentId: string): Promise<PaymentDonor | null> {
 	const [row] = await db
