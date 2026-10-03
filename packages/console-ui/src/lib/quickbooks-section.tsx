@@ -12,6 +12,7 @@ import type {
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
 import { QUICKBOOKS_PRODUCTION_URL } from '@better-giving/operator/console/quickbooks';
+import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
@@ -357,13 +358,19 @@ export function QuickbooksSection({
 								<span className="adm-field__label" id={REDIRECT_CAPTION}>
 									Add this to your Intuit app’s redirect URIs
 								</span>
-								<CodeSlab
-									oneline
-									copyable
-									content={report.callbackAddress}
-									copyLabel="Copy address"
-									labelledBy={REDIRECT_CAPTION}
-								/>
+								{typeof report.callbackAddress === 'string' ? (
+									<CodeSlab
+										oneline
+										copyable
+										content={report.callbackAddress}
+										copyLabel="Copy address"
+										labelledBy={REDIRECT_CAPTION}
+									/>
+								) : (
+									<FieldMessage>
+										<MarkedText text={report.callbackAddress.message} />
+									</FieldMessage>
+								)}
 							</div>
 						)}
 					</Stack>
@@ -435,6 +442,7 @@ function Step({
 			mark={standing.trouble || standing.done ? undefined : 'circle-dashed'}
 			locked={standing.locked}
 			open={standing.open}
+			openFor={standing.openFor}
 			beneath={children}
 		/>
 	);

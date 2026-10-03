@@ -191,12 +191,22 @@ func (flow *Flow) Credential(ctx context.Context) cf.Credential {
 	if flow.now().Before(stored.Expires.Add(-skew)) || stored.Refresh == "" {
 		return cf.BearerCredential(stored.Access)
 	}
-	// a refresh that could not be written down is carried on with and said out loud: what came back
-	// is good for the call being made now, and the pair that was not written is the one the next run
-	// would have read — so this machine is signed in and is one launch away from not being.
-	refreshed, ok, err := flow.refresh(ctx, stored)
-	if ok {
-		flow.kept(err)
+	// a refresh that could not be written down is held and said out loud: the record still names the
+	// refresh token cloudflare has just rotated away, so this process carries on with the new pair and
+	// the next launch, reading the record, is signed out.
+	//
+	// the refresh outlives the request that asked for it: cloudflare rotates the refresh token as it
+	// answers, so a tab closed mid-call would leave the new pair with nobody and the stored token
+	// spent. what bounds it is cf.ReadTimeout inside the send.
+	refreshed, ok, err := flow.refresh(context.WithoutCancel(ctx), stored)
+	if !ok && errors.Is(err, errRefused) && flow.unkept != nil {
+		// a held pair cloudflare refuses is a grant no folder can save, and the record under it names
+		// a refresh token that pair rotated away: nothing is left to sign in with, and the screen
+		// stops naming the folder.
+		flow.unkept = nil
+		flow.forgotten = true
+		flow.kept(nil)
+		return cf.Credential{Kind: cf.NoCredential}
 	}
 	if !ok {
 		// the stored token is carried on rather than dropped: cloudflare's own refusal is what
@@ -204,6 +214,10 @@ func (flow *Flow) Credential(ctx context.Context) cf.Credential {
 		// second as the first.
 		return cf.BearerCredential(stored.Access)
 	}
+	if err != nil {
+		flow.unkept = &refreshed
+	}
+	flow.kept(err)
 	return cf.BearerCredential(refreshed.Access)
 }
 
@@ -242,25 +256,48 @@ func (flow *Flow) Out(ctx context.Context) error {
 		// both halves are handed back. revoking the refresh token is what stops another access
 		// token being taken on it, and the access token already in hand outlives that by up to its
 		// own hour.
+		//
+		// the revoke outlives the request that asked for it: the forgetting below happens either way,
+		// so a revoke cut off with a closed tab is a pair cloudflare still takes and nothing here can
+		// hand back. what bounds it is cf.ReadTimeout inside the send.
+		revoking := context.WithoutCancel(ctx)
 		for _, token := range []string{stored.Refresh, stored.Access} {
 			if token == "" {
 				continue
 			}
-			flow.send(ctx, revokePath, url.Values{
+			flow.send(revoking, revokePath, url.Values{
 				"token":     {token},
 				"client_id": {ClientID},
 			})
 		}
 	}
-	return flow.store.Forget(Record)
+	flow.unkept = nil
+	err := flow.store.Forget(Record)
+	if err != nil {
+		// the record the directory would not let go of names the pair just revoked, so this process
+		// stops reading it; the error is for the operator, because the next launch will read it again.
+		flow.forgotten = true
+	}
+	// a refresh holding the credential while Stop cleared the screen may since have said it was not
+	// kept, about a sign-in that is now gone, so that is cleared too.
+	flow.kept(nil)
+	return err
 }
 
-// the credential written down on this machine, or that there is none to read.
+// the credential this machine holds — a refresh that could not be written down, else the one
+// written down — or that there is none to read.
 //
 // A machine with nothing remembered is the ordinary state of a first run, and so is one whose
 // record cannot be read at all: either way there is no sign-in, and the screen that says so is the
-// one with the way out on it.
+// one with the way out on it. So is a record this process has stopped reading (./Flow's
+// `forgotten`), until a write lands over it.
 func (flow *Flow) stored() (record, bool) {
+	if flow.unkept != nil {
+		return *flow.unkept, true
+	}
+	if flow.forgotten {
+		return record{}, false
+	}
 	read, err := flow.store.Read(Record)
 	if err != nil || len(read) == 0 {
 		return record{}, false
@@ -277,18 +314,33 @@ func (flow *Flow) write(held record) error {
 	if err != nil {
 		return err
 	}
-	return flow.store.Write(Record, written)
+	if err := flow.store.Write(Record, written); err != nil {
+		return err
+	}
+	// what was just written is newer than anything held, so it is what the next read takes.
+	flow.unkept = nil
+	flow.forgotten = false
+	return nil
 }
 
 // exchanges the code cloudflare handed back for the pair this machine keeps.
+//
+// A pair cloudflare handed back ends whatever this process held before it, written down or not: the
+// operator may have signed in to another account, and the earlier grant — held, or still in the
+// record a failed write left alone — is not the one they just allowed.
 func (flow *Flow) exchange(ctx context.Context, code, verifier string) (record, bool, error) {
-	return flow.granted(ctx, url.Values{
+	held, ok, err := flow.granted(ctx, url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"client_id":     {ClientID},
 		"redirect_uri":  {CallbackURL},
 		"code_verifier": {verifier},
 	}, "")
+	if ok && err != nil {
+		flow.unkept = nil
+		flow.forgotten = true
+	}
+	return held, ok, err
 }
 
 // takes a fresh access token on the refresh half of the stored pair.
@@ -306,10 +358,14 @@ func (flow *Flow) refresh(ctx context.Context, stored record) (record, bool, err
 // refresh that rotates nothing hands back.
 //
 // The second answer is whether cloudflare handed a pair back at all, and the error is the writing
-// of it — two different things to say, because every read of the credential goes through the record
-// and one that was not written is one this process cannot read either.
+// of it — two different things to say, because a sign-in that was not written is one this process
+// cannot read either, and a refresh that was not written is one only this process holds. Where no
+// pair came back, the error is errRefused when cloudflare answered with a 4xx, and nil otherwise.
 func (flow *Flow) granted(ctx context.Context, form url.Values, carried string) (record, bool, error) {
 	answer := flow.send(ctx, tokenPath, form)
+	if answer.Kind == cf.Answered && answer.Status >= 400 && answer.Status < 500 {
+		return record{}, false, errRefused
+	}
 	if answer.Kind != cf.Answered || answer.Status < 200 || answer.Status > 299 {
 		return record{}, false, nil
 	}
@@ -334,6 +390,9 @@ func (flow *Flow) granted(ctx context.Context, form url.Values, carried string) 
 	}
 	return held, true, flow.write(held)
 }
+
+// cloudflare answering a token call with a 4xx, which says the grant is gone rather than the network.
+var errRefused = errors.New("cloudflare refused the grant")
 
 // a value nobody else can guess, which is what both the verifier and the state have to be.
 func secret() (string, error) {

@@ -19,9 +19,11 @@ export interface AuthEnv {
 	 * a custom domain at the same time. set it only to pin one canonical origin and stop
 	 * trusting the others. see the `baseURL` note in ./index.ts.
 	 *
-	 * it settles one thing outside auth: the address a QuickBooks connection is
-	 * registered at and exchanged against, which Intuit compares byte for byte
-	 * (../accounting/connect-link.ts).
+	 * it settles two things outside auth, both through `pinnedOrigin` below: the address
+	 * a QuickBooks connection is registered at and exchanged against, which Intuit
+	 * compares byte for byte (../accounting/connect-link.ts), and the dashboard link in
+	 * the mail a paused webhook destination sends from a cron run, which has no request
+	 * to derive one from (../webhooks/paused-mail.ts).
 	 */
 	readonly BETTER_AUTH_URL?: string;
 	/** the v0 staff sign-in password. compared, never stored, never hashed. */
@@ -65,4 +67,61 @@ export function readAuthEnv(source: unknown): AuthEnv {
 		if (typeof value === 'string') env[name] = value;
 	}
 	return env;
+}
+
+/** what `BETTER_AUTH_URL` pins: an origin, null where it is unset, or why it names none. */
+export type PinReading =
+	| { readonly ok: true; readonly origin: string | null }
+	| { readonly ok: false; readonly message: string };
+
+/**
+ * the one reading of the pin: every caller takes it, through `pinnedOrigin` or `publishedOrigin`
+ * below where not directly.
+ *
+ * `.origin` and never the value as typed: an operator pastes the pin, and a trailing slash or a
+ * path on it is not part of it. a pin that names no http(s) origin is refused, naming the value:
+ * `localhost:8787` parses as a scheme called `localhost` whose `.origin` is the string "null", and
+ * better-auth refuses such a `baseURL` itself — reading it off the Worker's `process.env` when it
+ * is passed none — so no caller may read it as unset. the message quotes the value and marks names
+ * with backticks for the console's QuickBooks section, which draws it; a caller who may be anonymous
+ * is answered `PIN_UNUSABLE` (./pin.ts) and the message is logged.
+ */
+export function readPin(env: AuthEnv): PinReading {
+	const pinned = env.BETTER_AUTH_URL?.trim();
+	if (!pinned) return { ok: true, origin: null };
+	const url = URL.parse(pinned);
+	if (url?.protocol !== 'https:' && url?.protocol !== 'http:') {
+		return {
+			ok: false,
+			message:
+				`\`BETTER_AUTH_URL\` is \`${pinned}\`, which names no http(s) origin. Set it to the ` +
+				'address the deployment answers on, scheme included (`https://donate.example.org`), or ' +
+				'unset it so the origin is read off each request (DEPLOY.md, .dev.vars.example).'
+		};
+	}
+	return { ok: true, origin: url.origin };
+}
+
+/** `readPin`'s origin, throwing its message where the pin names none. */
+export function pinnedOrigin(env: AuthEnv): string | null {
+	const pin = readPin(env);
+	if (!pin.ok) throw new Error(pin.message);
+	return pin.origin;
+}
+
+/** the hosts a local dev server answers on, which keep the scheme they were asked at. */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * the origin this deployment tells an integrator to call, for a request at `url`: the one
+ * `BETTER_AUTH_URL` pins where `pin` (`readPin` above) names one, so an address read at another
+ * host the deployment answers on — its workers.dev one, or behind a proxy that rewrites `Host` —
+ * never bakes that host into an integrator's config. where none is pinned, or the pin names no
+ * origin, the request's own. either is published as `https:` for every host but this machine, so
+ * neither a page read over plain http nor an `http:` pin ever tells a reader to send a key over
+ * it.
+ */
+export function publishedOrigin(url: URL, pin: PinReading): string {
+	const origin = new URL(pin.ok && pin.origin !== null ? pin.origin : url.origin);
+	return LOCAL_HOSTS.has(origin.hostname) ? origin.origin : `https://${origin.host}`;
 }

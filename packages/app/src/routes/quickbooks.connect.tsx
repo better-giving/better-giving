@@ -3,6 +3,7 @@ import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';
 import {
+	carriesConnectLink,
 	connectFlowOrigin,
 	connectStateCookie,
 	mintConnectState,
@@ -11,6 +12,7 @@ import {
 } from '$lib/server/accounting/connect-link';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { readAuthEnv, resolveAuthSecret } from '$lib/server/auth';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { database, platform } from '../context';
 import type { Route } from './+types/quickbooks.connect';
 
@@ -62,20 +64,29 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	const db = context.get(database);
 	const url = new URL(request.url);
+	const linkRefused = () => data({ refusal: 'link' as Refusal }, { status: 403 });
+	// the same refusal as an altered link's, before the key is read: a probe of the bare path costs
+	// no database read.
+	if (!carriesConnectLink(url)) return linkRefused();
 
 	const authEnv = readAuthEnv(env);
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
-		// 500 for $lib/server/auth/gate.ts's reason: nothing the caller sent is wrong, and the
-		// message names the table and the command that mints the row.
-		throw data(signingKey.message, { status: 500 });
+		// 500 for $lib/server/auth/gate.ts's reasons: nothing the caller sent is wrong, and whoever
+		// opened the address holds no session, so the cause, which can quote the database's own
+		// error, goes to the logs and the browser is told the shared reply.
+		console.error(
+			'a QuickBooks connect address could not be checked — no signing key:',
+			signingKey.cause
+		);
+		throw data(SIGNING_KEY_UNREADABLE, { status: 500 });
 	}
 
 	if (!(await readConnectLink({ secret: signingKey.secret, url, now: new Date() }))) {
 		// one answer for absent, altered and expired alike: they are the same thing to do next, and
 		// telling a forgery apart from a stale link in the answer would be this deployment reporting
 		// on the attempt to whoever made it.
-		return data({ refusal: 'link' as Refusal }, { status: 403 });
+		return linkRefused();
 	}
 
 	const state = mintConnectState();

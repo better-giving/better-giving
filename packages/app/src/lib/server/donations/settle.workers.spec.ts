@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSTING_ACCOUNTS, postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PostableAccountId } from '../db/postable';
@@ -21,6 +21,7 @@ import { recordReversal } from './reverse';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { failureIsNewsToTheDonor, settleDelivery, settleTransaction } from './settle';
 import { soleProcessor } from '../payments/processors.testing';
+import { createDestination } from '../webhooks/destinations';
 
 // the settlement half, against a real D1: what a verified delivery does to the payment row and to
 // the books.
@@ -579,6 +580,7 @@ describe('settleDelivery() — a settlement the gift’s lines cannot account fo
 		expect(groups?.n).toBe(0);
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain(gift.paymentId);
+		expect(mail.sent[0]?.text).toContain('Amount: USD 60.00');
 	});
 
 	it('corrects the payment row it refused to post', async () => {
@@ -709,6 +711,23 @@ describe('settleDelivery() — a settlement the books cannot take', () => {
 
 		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
 		expect(mail.sent).toEqual([]);
+	});
+
+	it('prints an amount that is not a whole number of minor units as it arrived, never rounded', async () => {
+		await pendingGift();
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider(undefined, { ok: true, value: settlement({ amountMinor: 1250.5 }) })
+			}),
+			DELIVERY
+		);
+
+		const text = mail.sent[0]?.text ?? '';
+		expect(text).toContain('Amount: 1250.5 USD (not a whole number of minor units)');
+		expect(text).not.toMatch(/USD 12\.5\d/);
 	});
 
 	it('names the offending figure in what it sends the operator', async () => {
@@ -1721,6 +1740,8 @@ describe('the processor an operator is sent to', () => {
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 		expect(mail.sent[0]?.subject).toContain('NOWPayments');
 		expect(`${mail.sent[0]?.subject} ${mail.sent[0]?.text}`).not.toContain('Stripe');
+		expect(mail.sent[0]?.text).toContain('USD 100.00');
+		expect(mail.sent[0]?.text).not.toContain('(minor units)');
 	});
 });
 
@@ -2351,5 +2372,75 @@ describe('settleDelivery() — what a settled gift owes a listening Zap', () => 
 			{ trigger: 'new_donor', payment_id: gift.paymentId },
 			{ trigger: 'new_gift', payment_id: gift.paymentId }
 		]);
+	});
+});
+
+describe('settleDelivery() — what a settled gift owes a listening destination', () => {
+	// per-file storage: the destinations are put up and taken down around these cases alone.
+	afterEach(async () => {
+		for (const table of ['webhook_delivery', 'webhook_destination_event', 'webhook_destination']) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	it('owes each destination taking gift.made one row about the gift, in the commit that posted it', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
+		await createDestination(db, { url: 'https://crm.example.org/b', events: ['gift.made'] });
+		await createDestination(db, { url: 'https://crm.example.org/c', events: ['gift.refunded'] });
+		const gift = await pendingGift();
+
+		await settleDelivery(deps(), DELIVERY);
+
+		const { results } = await env.DB.prepare(
+			`select d.url, w.event, w.subject_id, w.status from webhook_delivery w
+			 join webhook_destination d on d.id = w.destination_id order by d.url`
+		).all();
+		expect(results).toEqual(
+			['https://crm.example.org/a', 'https://crm.example.org/b'].map((url) => ({
+				url,
+				event: 'gift.made',
+				subject_id: gift.paymentId,
+				status: 'pending'
+			}))
+		);
+	});
+
+	it('owes each destination taking donor.added the donor of a first gift, in the commit that posted it', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['donor.added'] });
+		const gift = await pendingGift();
+
+		await settleDelivery(deps(), DELIVERY);
+
+		const [recorded] = await db
+			.select({ contactId: donation.contactId })
+			.from(donation)
+			.where(eq(donation.id, gift.donationId));
+		const { results } = await env.DB.prepare(
+			'select event, subject_id, status from webhook_delivery'
+		).all();
+		expect(results).toEqual([
+			{ event: 'donor.added', subject_id: recorded?.contactId, status: 'pending' }
+		]);
+	});
+
+	it('owes no donor.added for a donor whose checkout never settles', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['donor.added'] });
+
+		await pendingGift();
+
+		const { results } = await env.DB.prepare('select id from webhook_delivery').all();
+		expect(results).toEqual([]);
+	});
+
+	it('owes nothing a second time when the same settlement is delivered again', async () => {
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['gift.made'] });
+		await pendingGift();
+		await settleDelivery(deps(), DELIVERY);
+
+		const again = await settleDelivery(deps(), DELIVERY);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
+		const { results } = await env.DB.prepare('select id from webhook_delivery').all();
+		expect(results).toHaveLength(1);
 	});
 });

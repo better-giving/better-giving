@@ -1,6 +1,8 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
+import { SUBSCRIBED_EVENT_TYPES as PAYPAL_SUBSCRIBED_EVENT_TYPES } from '@better-giving/operator/paypal/webhook-listener';
+import { SUBSCRIBED_EVENT_TYPES as STRIPE_SUBSCRIBED_EVENT_TYPES } from '@better-giving/operator/stripe/webhook-endpoint';
 import { describe, expect, it } from 'vitest';
 
 // the guard on "one module per processor SDK, and nothing else may import one".
@@ -37,8 +39,18 @@ import { describe, expect, it } from 'vitest';
 // it reads text and can be fooled by a computed specifier — accepted, because what it defends
 // against is a shortcut taken in a hurry, not an adversary.
 //
+// **an address is guarded like an import.** Chariot's and NOWPayments' adapters import no package —
+// they speak over bare `fetch` — so a route that wanted one field in a hurry would reach either
+// processor with a `fetch` and import nothing, invisible to a sweep of import statements. the API
+// hostnames are swept too, as ../accounting/sole-importer.spec.ts does for Intuit's.
+//
 // what is exempt: each processor's own adapter, and this file, which necessarily contains the
-// patterns it searches for.
+// patterns it searches for. the hostname sweep also exempts every `*.spec.ts(x)` and the files
+// `GUARDED_HOSTS` lists as each host's vocabulary.
+//
+// the same sweep holds a second rule for the same reason: a processor's webhook event names are
+// spelled by its own adapter and nowhere else in code, since switching on one is the SDK's vocabulary
+// taken without its import. `EVENT_VOCABULARIES` below says which processors and what else is exempt.
 
 const ROOT = resolve(import.meta.dirname, '../../../../../..');
 const SELF = resolve(import.meta.filename);
@@ -78,6 +90,33 @@ const GUARDED: { specifier: string; adapter: string; imported: boolean }[] = [
 	}
 ];
 
+/**
+ * the API hosts of the processors that speak over `fetch`, each with the files that may state it.
+ *
+ * `home` is the adapter, the module that calls the host. `vocabulary` is every other file that
+ * states the address without calling it, which is not speaking: a comment documenting the
+ * `CHARIOT_API_URL` default (config/env.ts) and the console's placeholder for the address box
+ * (packages/console-ui/src/lib/chariot-setup.ts, which makes no call of its own). any other file
+ * naming a host is a second speaker. the sandbox hosts and the marketing, documentation and CDN
+ * hosts (`cdn.givechariot.com`, `nowpayments.io`) are deliberately absent: the adapters call only
+ * these two, and a rule that flagged a logo url or a doc link would be a rule people delete.
+ */
+const GUARDED_HOSTS: { host: string; home: string; vocabulary: string[] }[] = [
+	{
+		host: 'api.givechariot.com',
+		home: resolve(import.meta.dirname, 'chariot.ts'),
+		vocabulary: [
+			resolve(import.meta.dirname, '../config/env.ts'),
+			resolve(ROOT, 'packages/console-ui/src/lib/chariot-setup.ts')
+		]
+	},
+	{
+		host: 'api.nowpayments.io',
+		home: resolve(import.meta.dirname, 'nowpayments.ts'),
+		vocabulary: []
+	}
+];
+
 const ADAPTERS = new Set(GUARDED.map((entry) => entry.adapter));
 
 const EXTENSIONS = ['.ts', '.tsx', '.js', '.jsonc'];
@@ -109,22 +148,36 @@ const SKIP = new Set([
 	'build'
 ]);
 
-/** every authored source file in the repository, minus the adapters and this spec. */
-function sourceFiles(dir: string, out: string[] = []): string[] {
+/** every authored source file in the repository, minus `exempt` — the adapters — and this spec. */
+function sourceFiles(
+	dir: string,
+	exempt: ReadonlySet<string> = ADAPTERS,
+	out: string[] = []
+): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		if (SKIP.has(entry.name)) continue;
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) {
-			sourceFiles(path, out);
+			sourceFiles(path, exempt, out);
 		} else if (
 			EXTENSIONS.some((e) => entry.name.endsWith(e)) &&
-			!ADAPTERS.has(path) &&
+			!exempt.has(path) &&
 			path !== SELF
 		) {
 			out.push(path);
 		}
 	}
 	return out;
+}
+
+/**
+ * the hostname anywhere in a file, dots escaped. text and not a URL parse: a hostname built into a
+ * template literal or a constant is how a second speaker is written. it begins at a hostname
+ * boundary so `sandboxapi.givechariot.com` is not read as `api.givechariot.com`, and ends nowhere so
+ * a host inside a longer url is still caught.
+ */
+function mentions(host: string): RegExp {
+	return new RegExp(`(?<![\\w.-])${host.replaceAll('.', '\\.')}`);
 }
 
 /**
@@ -149,6 +202,72 @@ function importers(specifier: string): { label: string; re: RegExp }[] {
 		{ label: 'dynamic import', re: new RegExp(`\\bimport\\s*\\(\\s*${quoted}\\s*\\)`) },
 		{ label: 'require', re: new RegExp(`\\brequire\\s*\\(\\s*${quoted}\\s*\\)`) }
 	];
+}
+
+/**
+ * each processor whose webhook event names are guarded: the names are what its deployment
+ * subscribes to, the adapter is the one module that may spell them, and the list is where that
+ * subscription is enumerated for both operator surfaces, which spells them by definition.
+ *
+ * every other adapter is swept too — a PayPal adapter switching on a Stripe name is as much a
+ * second translation as a route doing it.
+ */
+const EVENT_VOCABULARIES: {
+	processor: string;
+	names: readonly string[];
+	adapter: string;
+	list: string;
+}[] = [
+	{
+		processor: 'Stripe',
+		names: STRIPE_SUBSCRIBED_EVENT_TYPES,
+		adapter: resolve(import.meta.dirname, 'stripe.ts'),
+		list: resolve(ROOT, 'packages/operator/src/stripe/webhook-endpoint.ts')
+	},
+	{
+		processor: 'PayPal',
+		names: PAYPAL_SUBSCRIBED_EVENT_TYPES,
+		adapter: resolve(import.meta.dirname, 'paypal.ts'),
+		list: resolve(ROOT, 'packages/operator/src/paypal/webhook-listener.ts')
+	}
+];
+
+/** a string literal naming `name`, in any quote style — a template literal's included. */
+function spells(source: string, name: string): boolean {
+	const escaped = name.replaceAll('.', '\\.');
+	if (new RegExp(`['"]${escaped}['"]`).test(source)) return true;
+	const template = new RegExp(`\`${escaped}\``);
+	return codeOf(source).some((line) => template.test(line));
+}
+
+/**
+ * the lines a backticked name is looked for in: comments name a delivery in backticks as markdown
+ * does. a line opening with `//`, `/*` or `*` is dropped, and a whitespace-led `//` cuts the rest of
+ * its line; every other comment form is read as code. the quoted match in `spells` reads the whole
+ * source, comments included.
+ */
+function codeOf(source: string): string[] {
+	return source
+		.split('\n')
+		.filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+		.map((line) => line.replace(/(^|\s)\/\/.*$/, ''));
+}
+
+/**
+ * the modules held to spelling none of a processor's event names: everything the walk finds but
+ * that processor's adapter, its list, test code (`*.spec.ts(x)`, `*.testing.ts`), which builds
+ * deliveries in the processor's words, and the mail previews, which render sample alerts naming a
+ * delivery's type as the alert itself does.
+ */
+function heldTo(vocabulary: { adapter: string; list: string }): string[] {
+	return sourceFiles(ROOT, new Set([vocabulary.adapter])).filter((file) => {
+		const path = relative(ROOT, file);
+		return (
+			file !== vocabulary.list &&
+			!/\.spec\.tsx?$|\.testing\.ts$/.test(path) &&
+			!path.startsWith('packages/emails-preview/')
+		);
+	});
 }
 
 describe('one module per processor SDK is the only importer of it', () => {
@@ -240,4 +359,97 @@ describe('one module per processor SDK is the only importer of it', () => {
 			expect(importers(specifier).some(({ re }) => re.test(source))).toBe(true);
 		}
 	);
+});
+
+describe('one module per processor speaks to its API host and nothing else does', () => {
+	const files = sourceFiles(ROOT);
+
+	it.each(GUARDED_HOSTS)(
+		'finds no mention of $host outside its adapter and vocabulary homes',
+		({ host, home, vocabulary }) => {
+			const offenders = files
+				// a spec's fixture is a string being asserted on and never a second speaker.
+				.filter(
+					(file) => file !== home && !vocabulary.includes(file) && !/\.spec\.tsx?$/.test(file)
+				)
+				.filter((file) => mentions(host).test(readFileSync(file, 'utf8')))
+				.map((file) => relative(ROOT, file));
+			expect(
+				offenders,
+				`these modules name \`${host}\` themselves: ${offenders.join(', ')}. only ${relative(ROOT, home)} may call it — take \`PaymentProvider\` from src/lib/server/payments/provider.ts and build one with \`createPaymentProviders(platform.env).for(…)\`. an address written a second time is a second client with no auth header, no error classification and no idempotency of its own.`
+			).toEqual([]);
+		}
+	);
+
+	it.each(GUARDED_HOSTS)(
+		'matches $host where it is stated, so the pattern works on real source',
+		({ host, home, vocabulary }) => {
+			// the case above is written from the same idea as the pattern; this one reads files nobody
+			// wrote for it, which is also what holds each home and vocabulary file to still stating it.
+			for (const file of [home, ...vocabulary]) {
+				expect(mentions(host).test(readFileSync(file, 'utf8')), relative(ROOT, file)).toBe(true);
+			}
+		}
+	);
+
+	it('does not read a sandbox host as the live one, and catches a host inside a longer url', () => {
+		const live = mentions('api.givechariot.com');
+		expect(live.test('https://sandboxapi.givechariot.com')).toBe(false);
+		expect(live.test('fetch("https://api.givechariot.com/v1/grants/1")')).toBe(true);
+	});
+});
+
+describe('a processor’s event names are spelled by its own adapter and nowhere else', () => {
+	it.each(EVENT_VOCABULARIES)(
+		'finds no $processor event name outside its adapter, its list, tests and mail previews',
+		({ processor, names, adapter, list }) => {
+			// a caller that switches on a delivery's type has taken the processor's vocabulary without
+			// importing its SDK, and the port hands every caller a reading in its own words instead
+			// (`PaymentEvent.kind`, `RecurringGiftNotice.failedAttempt` in ./provider.ts).
+			const offenders: string[] = [];
+			for (const file of heldTo({ adapter, list })) {
+				const source = readFileSync(file, 'utf8');
+				const spelled = names.filter((name) => spells(source, name));
+				if (spelled.length > 0) offenders.push(`${relative(ROOT, file)} (${spelled.join(', ')})`);
+			}
+			expect(
+				offenders,
+				`these modules spell a ${processor} event name: ${offenders.join(', ')}. only ${relative(ROOT, adapter)} may — read the delivery through \`PaymentProvider\`: \`verifyEvent\` says what kind it is and the read arms say what it means. if the port cannot say what you need, widen the port.`
+			).toEqual([]);
+		}
+	);
+
+	it('matches an event name written as any string literal', () => {
+		// each subscribed list spells its names in one quote style, so a style the pattern missed
+		// would pass the case below and let a module spelling a name in that style through the sweep
+		// above.
+		for (const literal of ["'invoice.paid'", '"invoice.paid"', '`invoice.paid`']) {
+			expect(spells(`if (type === ${literal}) {}`, 'invoice.paid'), literal).toBe(true);
+		}
+	});
+
+	it('does not read a comment naming an event in backticks as a spelling', () => {
+		const source = [
+			'// the `invoice.paid` that follows',
+			' * the `invoice.paid` that follows',
+			'settle(event); // the `invoice.paid` that follows'
+		].join('\n');
+		expect(spells(source, 'invoice.paid')).toBe(false);
+	});
+
+	it.each(EVENT_VOCABULARIES)(
+		'matches every $processor event name in the list that subscribes to it',
+		({ names, list }) => {
+			// the guard on the guard: the list is real source nobody wrote for this test, so a pattern
+			// that matched nothing would fail here rather than report a clean tree forever.
+			const source = readFileSync(list, 'utf8');
+			expect(names.filter((name) => !spells(source, name))).toEqual([]);
+		}
+	);
+
+	it.each(EVENT_VOCABULARIES)('sweeps every adapter but $processor’s own', ({ adapter }) => {
+		// the walk exempts only the one adapter, so another adapter spelling these names fails.
+		const swept = new Set(heldTo({ adapter, list: '' }));
+		for (const other of ADAPTERS) expect(swept.has(other)).toBe(other !== adapter);
+	});
 });

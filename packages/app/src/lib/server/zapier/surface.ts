@@ -11,9 +11,9 @@ import { ZAPIER_TRIGGERS, type ZapierTrigger } from '../db/schema';
 /**
  * the URL prefix of the Zapier surface.
  *
- * a route joins it by nesting under `src/routes/zapier.ts`, whose `middleware` charges the rate
- * limit and then checks the key; `src/routes.spec.ts` fails on a route served under this prefix
- * that sits anywhere else.
+ * a route joins it by nesting under `src/routes/zapier.ts`, whose `middleware` checks the key
+ * first and charges the rate limit only for a check that failed; `src/routes.spec.ts` fails on a
+ * route served under this prefix that sits anywhere else.
  */
 export const ZAPIER_BASE_PATH = '/zapier';
 
@@ -35,7 +35,7 @@ export function zapierKeyRefusal(): Response {
 		{
 			message:
 				'This request carries no Better Giving key this deployment accepts in its `Authorization: Bearer` header.',
-			fix: 'Make a Zapier key in the Better Giving console, or copy the one that replaced it, and reconnect the account on Zapier with it.'
+			fix: 'Make the Zapier key on your Better Giving dashboard, under Integrations → Zapier, or replace it there if it is lost, and reconnect the account on Zapier with the key it shows.'
 		},
 		401
 	);

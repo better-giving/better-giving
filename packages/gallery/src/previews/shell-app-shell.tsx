@@ -1,7 +1,9 @@
+import zapierImage from '@better-giving/operator/brand/zapier.png';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import type { DestinationLinkProps } from '@better-giving/operator/components/shell/DestinationCell';
+import { AccountBand, AccountRow } from '@better-giving/operator/components/shell/AccountRow';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Column, Group, Section } from '@better-giving/operator/components/shell/Layout';
 import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
@@ -15,13 +17,21 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * `.adm-shell` is `min-block-size: 100dvh` in packages/operator/src/styles/adm.css, because the page
  * is its `1fr` row and a short screen still has to fill the window. nothing in the system bounds it
  * to a smaller box and nothing should — so a gallery reader scrolls a window per specimen, and
- * there are five of them plus the panel for that reason rather than one of every combination.
+ * there is one per shape a surface draws, plus the panel, rather than one of every combination.
  *
  * **narrow the window past 64rem and every rail below becomes `position: fixed` at the foot of the
  * viewport**, one over another, because that is what a rail is at that width: a bar of tabs pinned
- * to the bottom of the screen. one shell on a page is one bar; five shells on a page is five bars
- * in the same strip. it is the arrangement being correct rather than a defect in it, and it is the
- * one thing on this page a second specimen makes worse.
+ * to the bottom of the screen. one shell on a page is one bar; seven shells on a page is seven bars
+ * in the same strip, and the one drawn over the rest is the last shell's. it is the arrangement
+ * being correct rather than a defect in it, and it is the one thing on this page a second specimen
+ * makes worse.
+ *
+ * **the last shell is the bar with a More tab, which is why it is last**: narrowed, its bar is the
+ * one on top, and More is the press that opens the sheet. the sheet is a modal, so it cannot be a
+ * resting specimen for the reason ./behaviour-dialog.tsx gives — standing open it would cover every
+ * other preview and hold the keyboard — and open is one press on More. at the wide width there is
+ * no More and the column draws every destination, which is the closed state beside every other
+ * rail on this page.
  *
  * the screens inside are built out of the real components the surfaces use, never filler: the
  * shell's whole job is the space around a page and the step from the rail to the first heading, and
@@ -33,27 +43,36 @@ import { Brand } from '@better-giving/operator/components/status/Brand';
  * rather than shown. **absent is the third**: the reader is under no destination and no cell is
  * marked, which is the only honest rail to draw there and is what the centred specimen has.
  *
- * `groups` is drawn as the component's own, as the dashboard's three groups with marks, as the
- * console's run with a headed group, logos and status marks, as one entry, and as none. the empty
- * rail is a `nav` with no cells in it, which below the wide breakpoint is an empty strip across the
- * foot of the window. a tab is an equal share of the width whatever the count, and the bar is flat:
- * a headed group's entries stand as tabs of their own.
+ * `groups` has no default and is always handed: drawn as a short rail of four with marks, as the
+ * dashboard's three groups with marks, as the console's run with a headed group, logos and status
+ * marks, as one entry, as none, and as the dashboard's with four entries stating `bar` and a headed
+ * integrations group on the sheet. the empty rail is a `nav` with no cells in it, which below the
+ * wide breakpoint is an empty strip across the foot of the window. a tab is an equal share of the
+ * width whatever the count, and the bar is flat: a headed group's entries stand as tabs of their
+ * own.
  *
  * the toggle on the rail's head collapses it to an icon rail, and the choice is kept per browser,
  * so every specimen on this page follows it once the page is reloaded.
  *
  * `wayOut` reads absence as a request for the component's own quiet button and `null` as none.
- * `foot` stands in the rail in its place, which is the console's shape: its close in the band and
- * its account in the foot. `null` for both drops the rail's foot rather than standing an empty one.
+ * `foot` stands in the rail in its place, which is the console's shape: its account and close in
+ * the band, and in the foot the account's logo and name as a label that opens nothing — the real
+ * AccountRow and AccountBand as packages/console-ui/src/lib/cloudflare-account.tsx hands them
+ * (./shell-account-row.tsx has them out of the shell). `null` for both drops the rail's foot rather
+ * than standing an empty one.
+ *
+ * every shell's first stop is its skip link, off the screen until it takes focus: Tab once into
+ * any specimen and it stands over the top corner of the window, and pressing it puts focus on that
+ * shell's page past the whole rail. the page draws no ring when it lands there.
  *
  * `head` is the strip across the top of the panel, and `site` is the globe leading the
  * organisation's name, drawn both ways: an address — the console's link to its deployment's
  * dashboard, a new tab — and an in-app destination with its own name, the dashboard's, drawn as the
  * handed link in the same tab.
  *
- * `folded` is drawn on the dashboard's rail: the column is unchanged, and below 64rem the bar holds
- * the rest and ends in a More tab whose sheet lists the folded ones with their marks. the reader is
- * in Donors there, a tab; press More to see the list.
+ * the dashboard's rail marks its four tabs `bar`, as the dashboard does: the column is unchanged,
+ * and below 64rem the bar holds those four and ends in a More tab whose sheet holds the rest. the
+ * reader is in Donors there, a tab; press More to see the sheet.
  *
  * `link` is what every cell is drawn as. a mounted rail states one — this package declares no
  * router and cannot (CLAUDE.md: the graph is `app → operator ← console`) — so the second shell
@@ -84,12 +103,43 @@ function StandInLink({ children, ...rest }: DestinationLinkProps) {
 	return <a {...rest}>{children}</a>;
 }
 
+/* the console's account, as packages/console-ui/src/lib/cloudflare-account.tsx hands it to both
+   faces, and the close it stands beside. */
+const ACCOUNT = {
+	name: "Riverside Shelter's Account",
+	brand: 'cloudflare',
+	whose: 'Cloudflare account'
+} as const;
+
+const CLOSE = (
+	<Button
+		variant="quiet"
+		size="sm"
+		mark="unplug"
+		className="adm-signout"
+		aria-label="Close console"
+	/>
+);
+
 export default function ShellAppShellPreview() {
 	return (
 		<div className="adm-stack">
-			{/* everything defaulted but the whereabouts: the groups the component names, the quiet way
-			    out, plain anchors, and a real screen in the page. */}
-			<AppShell org="Riverside Shelter" current="Donation forms">
+			{/* everything defaulted that has a default: the quiet way out, plain anchors, and a real
+			    screen in the page under a short rail. */}
+			<AppShell
+				org="Riverside Shelter"
+				current="Donation forms"
+				groups={[
+					{ destinations: [{ label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }] },
+					{
+						destinations: [
+							{ label: 'Donation forms', short: 'Forms', mark: 'form' },
+							{ label: 'Donors', short: 'Donors', mark: 'users' },
+							{ label: 'Gifts', short: 'Gifts', mark: 'hand-heart' }
+						]
+					}
+				]}
+			>
 				<Column>
 					<PageHeader
 						title="Donation forms"
@@ -108,8 +158,8 @@ export default function ShellAppShellPreview() {
 				</Column>
 			</AppShell>
 
-			{/* the dashboard's rail: three groups with a mark on every entry, the rare ones folded under
-			    More on a phone, the reader in a section rather than on its page, a name long enough to
+			{/* the dashboard's rail: three groups with a mark on every entry, the four tabs marked `bar`
+			    and the rest under More on a phone, the reader in a section rather than on its page, a name long enough to
 			    contest the identity row led by the in-app globe, a strip over the panel, and the cells
 			    drawn as the link the surface handed in. */}
 			<AppShell
@@ -119,46 +169,33 @@ export default function ShellAppShellPreview() {
 				groups={[
 					{
 						destinations: [
-							{ label: 'Dashboard', short: 'Dashboard', href: '#', mark: 'layout-dashboard' }
-						]
-					},
-					{
-						destinations: [
 							{
-								label: 'Donation forms',
-								short: 'Forms',
+								label: 'Dashboard',
+								short: 'Dashboard',
 								href: '#',
-								mark: 'file-text',
-								folded: true
-							},
-							{
-								label: 'Programs',
-								short: 'Programs',
-								href: '#',
-								mark: 'folder-heart',
-								folded: true
-							},
-							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users' },
-							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart' },
-							{
-								label: 'Recurring gifts',
-								short: 'Recurring',
-								href: '#',
-								mark: 'repeat',
-								folded: true
+								mark: 'layout-dashboard',
+								bar: true
 							}
 						]
 					},
 					{
 						destinations: [
 							{
-								label: 'Members',
-								short: 'Members',
+								label: 'Campaigns',
+								short: 'Campaigns',
 								href: '#',
-								mark: 'shield-check',
-								folded: true
-							}
+								mark: 'megaphone',
+								bar: true
+							},
+							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'file-text' },
+							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
+							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users', bar: true },
+							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart', bar: true },
+							{ label: 'Recurring gifts', short: 'Recurring', href: '#', mark: 'repeat' }
 						]
+					},
+					{
+						destinations: [{ label: 'Members', short: 'Members', href: '#', mark: 'shield-check' }]
 					}
 				]}
 				head={<span className="adm-headstrip__title">Donors</span>}
@@ -184,7 +221,9 @@ export default function ShellAppShellPreview() {
 
 			{/* the console's rail: a headed group of processors drawn with pictures, a status mark on
 			    every entry, the site's globe before the name, the close in the band and an account in
-			    the foot. */}
+			    the foot. the strip names the page, so its header states no title and the standfirst
+			    opens the page alone, at the column's start, the shape the console's sites screen draws.
+			    collapsed, the logo alone stands for the account, a label still and nothing to press. */}
 			<AppShell
 				org="Riverside Shelter"
 				current="Sites"
@@ -235,37 +274,16 @@ export default function ShellAppShellPreview() {
 					}
 				]}
 				wayOut={
-					<Button
-						variant="quiet"
-						size="sm"
-						mark="unplug"
-						className="adm-signout"
-						aria-label="Close console"
-					/>
+					<>
+						<AccountBand {...ACCOUNT} />
+						{CLOSE}
+					</>
 				}
-				foot={
-					<div className="adm-footaccount">
-						<span className="adm-rail__lead">
-							<Brand name="cloudflare" label="Cloudflare" />
-						</span>
-						<span className="adm-footaccount__name" title="0f3c9a8b2d4e41f6a7b8c9d0e1f2a3b4">
-							Riverside Shelter's Account
-						</span>
-						<span className="adm-footaccount__out">
-							<Button
-								variant="quiet"
-								size="sm"
-								mark="unplug"
-								className="adm-signout"
-								aria-label="Close console"
-							/>
-						</span>
-					</div>
-				}
+				foot={<AccountRow {...ACCOUNT} out={CLOSE} />}
 				head={<span className="adm-headstrip__title">Sites</span>}
 			>
 				<Column>
-					<PageHeader title="Sites" standfirst="Which sites your forms go on" />
+					<PageHeader standfirst="Which sites your forms go on" />
 					<EmptyState>No site has been added yet.</EmptyState>
 				</Column>
 			</AppShell>
@@ -293,6 +311,60 @@ export default function ShellAppShellPreview() {
 					<EmptyState>
 						The rail was handed an empty run, so the nav is drawn with no cells in it.
 					</EmptyState>
+				</Column>
+			</AppShell>
+
+			{/* the bar with a More tab, last so that its bar is the one drawn on top when the window is
+			    narrowed. the reader is in Webhooks, a sheet destination under a headed group, so More
+			    reads current on the closed bar and Webhooks is marked inside the open sheet. the groups
+			    are the dashboard's (packages/app/src/lib/admin/destinations.ts), so the sheet shows a
+			    picture mark in a row as well as the glyphs, and the bar has no Integrations group on
+			    it at all. */}
+			<AppShell
+				org="Riverside Shelter"
+				current={{ label: 'Webhooks', kind: 'page' }}
+				groups={[
+					{
+						destinations: [
+							{
+								label: 'Dashboard',
+								short: 'Dashboard',
+								href: '#',
+								mark: 'layout-dashboard',
+								bar: true
+							}
+						]
+					},
+					{
+						destinations: [
+							{ label: 'Donation forms', short: 'Forms', href: '#', mark: 'form', bar: true },
+							{ label: 'Programs', short: 'Programs', href: '#', mark: 'folder-heart' },
+							{ label: 'Donors', short: 'Donors', href: '#', mark: 'users', bar: true },
+							{ label: 'Gifts', short: 'Gifts', href: '#', mark: 'hand-heart', bar: true },
+							{ label: 'Recurring gifts', short: 'Recurring', href: '#', mark: 'repeat' }
+						]
+					},
+					{
+						destinations: [{ label: 'Members', short: 'Members', href: '#', mark: 'shield-check' }]
+					},
+					{
+						heading: 'Integrations',
+						destinations: [
+							{ label: 'Zapier', short: 'Zapier', href: '#', mark: { src: zapierImage } },
+							{ label: 'API', short: 'API', href: '#', mark: 'key-round' },
+							{ label: 'Webhooks', short: 'Webhooks', href: '#', mark: 'webhook' }
+						]
+					},
+					{ destinations: [{ label: 'Books', short: 'Books', href: '#', mark: 'book-open' }] }
+				]}
+				link={StandInLink}
+			>
+				<Column>
+					<PageHeader
+						title="Webhooks"
+						standfirst="Where this deployment posts a gift once it settles."
+					/>
+					<EmptyState>No destination has been added yet.</EmptyState>
 				</Column>
 			</AppShell>
 

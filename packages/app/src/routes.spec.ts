@@ -7,6 +7,8 @@ import {
 	QUICKBOOKS_CONNECT_PATH
 } from '$lib/server/accounting/connect-link';
 import { CONSOLE_BASE_PATH } from '$lib/server/console/surface';
+import { AGENT_PROMPT_PATH, OPENAPI_PATH } from '$lib/server/integrations/openapi';
+import { INTEGRATIONS_BASE_PATH } from '$lib/server/integrations/surface';
 import { ZAPIER_BASE_PATH } from '$lib/server/zapier/surface';
 import { CHARIOT_WEBHOOK_PATH } from '@better-giving/operator/chariot/webhook-subscription';
 import { NOWPAYMENTS_IPN_PATH } from '@better-giving/operator/nowpayments/ipn-callback';
@@ -33,7 +35,7 @@ import {
 // was already open.
 //
 // what is at stake is not only the record screens. `GET /console` enumerates by name the
-// deploy-time secrets a deployment has not set, in front of a public payment-initiating
+// deploy-time values a deployment has not set, in front of a public payment-initiating
 // `/api/v1` — so that surface answered without its credential is reconnaissance against this
 // deployment, which is why it is a category of its own below rather than a route somebody excused
 // as public.
@@ -64,6 +66,8 @@ import {
 // `/zapier` is the console's shape one credential over: Zapier's servers present the deployment's
 // Zapier key ($lib/server/zapier/key.ts), checked by the layout's middleware, so every route
 // served there is held to sitting under that layout and is none of the three categories above.
+// `/integrations/v1` is the same shape again: an organisation's own systems present an API key
+// ($lib/server/integrations/surface.ts), checked by that surface's layout.
 
 /** the layout the gate is mounted on, and being under it is what makes a route gated. */
 const PROTECTED_LAYOUT = 'routes/_app.tsx';
@@ -241,7 +245,14 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// and writes nothing, and a draft's image is as reachable by its id as a live one's: the id is a
 	// uuidv7 minted by `createImage` ($lib/server/images/queries.ts), whose random bits nobody outside
 	// this deployment can enumerate, so knowing the address is the permission.
-	'routes/image.$id.ts'
+	'routes/image.$id.ts',
+	// the read API's OpenAPI document and the agent prompt beside it: documentation a developer or
+	// an agent reads before they hold a key, so neither is under ./routes/integrations.v1.ts's key
+	// check. each is built from constants and the request's own origin and reads nothing from the
+	// database, which is what makes it safe to serve to anyone and to cache publicly
+	// ($lib/server/integrations/openapi.ts).
+	'routes/integrations.openapi[.]json.ts',
+	'routes/integrations.agent-prompt[.]md.ts'
 ];
 
 /**
@@ -289,10 +300,7 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
 	// the chart the three accounts are picked out of, how far behind the queue is, and the signed
 	// address that begins a connection. the connection's tokens are this deployment's own rows, so
 	// no console can read any of it.
-	'routes/console.quickbooks.ts',
-	// the key Zapier presents to this deployment and the Zaps listening on it: a read that never
-	// carries the key, and the two presses that make and replace it.
-	'routes/console.zapier.ts'
+	'routes/console.quickbooks.ts'
 ];
 
 /**
@@ -312,6 +320,12 @@ const CONSOLE_LAYOUT = 'routes/console.ts';
  */
 const ZAPIER_LAYOUT = 'routes/zapier.ts';
 
+/**
+ * the layout the read API's key check is mounted on — the same mounting again.
+ * src/routes/integrations.v1.ts argues it.
+ */
+const INTEGRATIONS_LAYOUT = 'routes/integrations.v1.ts';
+
 let routes: RouteRecord[];
 beforeAll(async () => {
 	routes = await routeManifest();
@@ -325,6 +339,13 @@ function consoleRoute(route: RouteRecord): boolean {
 /** whether a route is served on the surface Zapier's servers call. */
 function zapierRoute(route: RouteRecord): boolean {
 	return route.path === ZAPIER_BASE_PATH || route.path.startsWith(`${ZAPIER_BASE_PATH}/`);
+}
+
+/** whether a route is served on the read API an organisation's own systems call. */
+function integrationsRoute(route: RouteRecord): boolean {
+	return (
+		route.path === INTEGRATIONS_BASE_PATH || route.path.startsWith(`${INTEGRATIONS_BASE_PATH}/`)
+	);
 }
 
 /** whether a route is served on the public api. */
@@ -367,7 +388,8 @@ function ungatedRoutes(manifest: readonly RouteRecord[], allowed: readonly strin
 				route.file !== PREVIEW_PAGE &&
 				!allowed.includes(route.file) &&
 				!consoleRoute(route) &&
-				!zapierRoute(route)
+				!zapierRoute(route) &&
+				!integrationsRoute(route)
 		)
 		.map(
 			(route) =>
@@ -444,6 +466,16 @@ function uncheckedZapierRoutes(manifest: readonly RouteRecord[]): string[] {
 		.map(
 			(route) =>
 				`${route.file} is served at ${route.path} and is not under ${ZAPIER_LAYOUT}, so nothing checks the Zapier key for it. Name it so it nests under that layout.`
+		);
+}
+
+/** every route on the read API that is not under the layout checking the key. */
+function uncheckedIntegrationsRoutes(manifest: readonly RouteRecord[]): string[] {
+	return manifest
+		.filter((route) => integrationsRoute(route) && !under(route, INTEGRATIONS_LAYOUT))
+		.map(
+			(route) =>
+				`${route.file} is served at ${route.path} and is not under ${INTEGRATIONS_LAYOUT}, so nothing checks the API key for it. Name it so it nests under that layout.`
 		);
 }
 
@@ -543,6 +575,20 @@ describe('the rules the sweep runs on', () => {
 		expect(uncheckedZapierRoutes(manifest)).toEqual([]);
 	});
 
+	it('reports a read API route that sits outside the checked layout', () => {
+		const manifest = [route('routes/integrations.v1_.gifts.ts', '/integrations/v1/gifts')];
+		expect(uncheckedIntegrationsRoutes(manifest)).toHaveLength(1);
+		expect(ungatedRoutes(manifest, [])).toEqual([]);
+	});
+
+	it('passes a read API route that is under it, and the layout itself', () => {
+		const manifest = [
+			route(INTEGRATIONS_LAYOUT, '/integrations/v1'),
+			route('routes/integrations.v1.gifts.ts', '/integrations/v1/gifts', [INTEGRATIONS_LAYOUT])
+		];
+		expect(uncheckedIntegrationsRoutes(manifest)).toEqual([]);
+	});
+
 	it('passes a console route that is under it, and the layout itself', () => {
 		const manifest = [
 			route(CONSOLE_LAYOUT, '/console'),
@@ -566,6 +612,17 @@ describe('the route surface', () => {
 
 	// the sweep finding nothing would make the case below vacuous, the same way an empty route tree
 	// would make the whole file vacuous — and a renamed api layout is exactly how that happens.
+	/**
+	 * the read API's two documents are linked from the dashboard and named inside each other by
+	 * these constants, so a route file renamed without them leaves every link a 404.
+	 */
+	it('serves the read API’s documents at the addresses they are linked by', () => {
+		const servedAt = (file: string) => routes.find((route) => route.file === file)?.path;
+
+		expect(servedAt('routes/integrations.openapi[.]json.ts')).toBe(OPENAPI_PATH);
+		expect(servedAt('routes/integrations.agent-prompt[.]md.ts')).toBe(AGENT_PROMPT_PATH);
+	});
+
 	it('has a public api, with its metered layout in it', () => {
 		expect(routes.filter(apiRoute).length).toBeGreaterThan(0);
 		expect(routes.map((r) => r.file)).toContain(API_LAYOUT);
@@ -599,6 +656,11 @@ describe('the route surface', () => {
 	it('checks the key for every route it serves on the Zapier surface', () => {
 		expect(routes.map((r) => r.file)).toContain(ZAPIER_LAYOUT);
 		expect(uncheckedZapierRoutes(routes)).toEqual([]);
+	});
+
+	it('checks the key for every route it serves on the read API', () => {
+		expect(routes.map((r) => r.file)).toContain(INTEGRATIONS_LAYOUT);
+		expect(uncheckedIntegrationsRoutes(routes)).toEqual([]);
 	});
 
 	it('lists no console route as public', () => {
@@ -740,10 +802,11 @@ describe('reaching for middleware', () => {
 describe('where middleware is mounted', () => {
 	// the surface layouts, each covering one surface: the session gate over every screen behind the
 	// login, the meter over every route on the public api, the credential check over every route on
-	// the operator console, and the key check over every route Zapier calls. any other name here is
-	// a route that took a decision one of those makes for a whole surface, which is the shape they
-	// all exist to remove — but for the preview and the two donor pages, which sit under no layout
-	// that could carry what they owe, and are held to it by the cases below.
+	// the operator console, and a key check over every route Zapier calls and another over every
+	// route of the read API. any other name here is a route that took a decision one of those makes
+	// for a whole surface, which is the shape they all exist to remove — but for the preview and the
+	// two donor pages, which sit under no layout that could carry what they owe, and are held to it
+	// by the cases below.
 	//
 	// the console's is not the session gate and must never be confused for one. it reads a bearer
 	// header against a value only an account holder could have written
@@ -759,6 +822,7 @@ describe('where middleware is mounted', () => {
 			[
 				API_LAYOUT,
 				CONSOLE_LAYOUT,
+				INTEGRATIONS_LAYOUT,
 				PROTECTED_LAYOUT,
 				ZAPIER_LAYOUT,
 				PREVIEW_PAGE,
@@ -776,12 +840,15 @@ describe('where middleware is mounted', () => {
 		);
 	});
 
-	// the preview is the one exception above, and what it mounts is the layout's own gate and
-	// nothing else — a gate of its own would be a second one to keep true.
-	it('is the session gate alone on the preview, as on the protected layout', () => {
-		const gate = /export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/;
-		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(gate);
-		expect(readFromDisk(PREVIEW_PAGE) ?? '').toMatch(gate);
+	// the preview is the one exception above, and what it mounts is the layout's own session gate
+	// and nothing else — a gate of its own would be a second one to keep true.
+	it('is the session gate alone on the preview, the one the protected layout mounts first', () => {
+		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[\s*staffGate,/
+		);
+		expect(readFromDisk(PREVIEW_PAGE) ?? '').toMatch(
+			/export const middleware: Route\.MiddlewareFunction\[\] = \[staffGate\];/
+		);
 	});
 
 	it('is never the root route, which every request passes through', () => {
@@ -1046,8 +1113,9 @@ describe('the limit the layout charged', () => {
  * for: the credential is a bearer header, so a browser attaches it to nothing by itself and CSRF
  * is unrepresentable here rather than defended against — and that holds only while no route reads
  * a cookie. granting a preflight is the other half of the same decision: a page in a browser must
- * not be able to read an answer that names which of this deployment's secrets are set, and the way
- * to make sure of that is to hand it no header that would let it ($lib/server/console/surface.ts).
+ * not be able to read an answer that names which of this deployment's configuration values are
+ * set, and the way to make sure of that is to hand it no header that would let it
+ * ($lib/server/console/surface.ts).
  *
  * identifiers and header names rather than English, because a sweep over source cannot tell a
  * comment from code and both of these are things the headers on this surface talk about.
@@ -1076,7 +1144,7 @@ describe('what the console surface does not do', () => {
 			const source = readFromDisk(file) ?? '';
 			expect(
 				grantsAPreflight(source),
-				`${file} is on the console surface and hands a browser a CORS header, so a page on somebody's website could read which of this deployment's secrets are set ($lib/server/console/surface.ts).`
+				`${file} is on the console surface and hands a browser a CORS header, so a page on somebody's website could read which of this deployment's configuration values are set ($lib/server/console/surface.ts).`
 			).toBe(false);
 			expect(
 				readsACookie(source),
@@ -1281,7 +1349,7 @@ describe('the server tree and the browser bundle', () => {
 		for (const { file } of routes) {
 			expect(
 				reachesServerTree(file),
-				`${file} reaches $lib/server from an export react router ships to the browser, so D1, the stripe client and this deployment's secrets go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
+				`${file} reaches $lib/server from an export react router ships to the browser, so D1, the stripe client and this deployment's credentials go into the bundle a visitor downloads. Keep the server import to \`loader\`, \`action\`, \`middleware\` or \`headers\`, and hand the component serializable props.`
 			).toEqual([]);
 		}
 	});

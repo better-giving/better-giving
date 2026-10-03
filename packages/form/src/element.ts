@@ -26,6 +26,7 @@ import {
 	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
+	venmoIsOffered,
 	type CheckoutEvent,
 	type CheckoutInput,
 	type Failure
@@ -110,6 +111,12 @@ export type FormCheckout = {
 	 */
 	readonly offerCrypto: (offered: boolean) => void;
 	/**
+	 * whether the payment box lists the Venmo option, told on every reading.
+	 *
+	 * `venmoIsOffered` in ./checkout.machine.ts is the answer; PayPal's own option is not narrowed.
+	 */
+	readonly offerVenmo: (offered: boolean) => void;
+	/**
 	 * how many options the payment box lists, handed to `listener` now and on every change.
 	 *
 	 * the card heads the box only where there is a choice in it, and the count moves after the flow
@@ -117,6 +124,16 @@ export type FormCheckout = {
 	 * cadence.
 	 */
 	readonly rows: (listener: (count: number) => void) => void;
+	/**
+	 * `listener` called once no processor still up takes a repeating gift while one taking a
+	 * one-time gift is — now, where that has already happened, or when it does.
+	 *
+	 * not `onUnavailable`: that is a form with no way to pay at all, and this is one the donor can
+	 * still give on, once. the card turns it into a `REPEATING_UNAVAILABLE`, and the review step of
+	 * a repeating gift offers the gift as one-time (`oneTimeIsOfferedInstead` in
+	 * ./checkout.machine.ts).
+	 */
+	readonly repeatingUnavailable: (listener: () => void) => void;
 	/**
 	 * takes the provider's own fields down, which removing the node they were mounted into does not
 	 * do.
@@ -1072,6 +1089,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			const actor = createActor(checkoutMachine, { input: checkout.input });
 			report = (method) => actor.send({ type: 'SET_METHOD', method });
 			stop = (failure) => actor.send({ type: 'PAYMENT_UNAVAILABLE', failure });
+			checkout.repeatingUnavailable(() => actor.send({ type: 'REPEATING_UNAVAILABLE' }));
 			// through the same door a host writing their own layout has, rather than at the actor: a
 			// projection is what publishes `setTurnstileToken` (./connect.ts), so the token this
 			// element collects and the token a headless integrator hands in travel one path. built per
@@ -1096,6 +1114,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				checkout.cadence(committedFrequency(api.state));
 				checkout.offerFund(fundIsOffered(snapshot));
 				checkout.offerCrypto(cryptoIsOffered(snapshot));
+				checkout.offerVenmo(venmoIsOffered(snapshot));
 				view.update(api);
 				const { step } = api.state;
 

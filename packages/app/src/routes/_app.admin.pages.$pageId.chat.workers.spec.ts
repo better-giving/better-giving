@@ -1,10 +1,11 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { page } from '$lib/server/db/schema';
 import { answering, insertPage } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
+import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as chat from './_app.admin.pages.$pageId.chat';
@@ -44,11 +45,18 @@ function post(
 			body
 		}),
 		// the stand-in answers `run` alone, which is all `generate` calls.
-		{ env: { ...env, AI } as unknown as Env }
+		{ env: { ...bindings, AI } as unknown as Env }
 	);
 }
 
 const TURN = { message: 'make it two-tone', imageIds: '[]', timeZone: 'America/New_York' };
+
+/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
 
 describe('a turn posted to a page’s chat', () => {
 	it('is answered with its outcome and both turns, which the chat then reads', async () => {
@@ -66,7 +74,7 @@ describe('a turn posted to a page’s chat', () => {
 		});
 		const read = await request(
 			new Request(`${ORIGIN}/admin/pages/${pageId}/chat`, { headers: { cookie: session } }),
-			{ env }
+			{ env: bindings }
 		);
 		expect(await read.json()).toMatchObject({
 			turns: [{ role: 'operator' }, { role: 'assistant', text: 'Two-tone now.' }]

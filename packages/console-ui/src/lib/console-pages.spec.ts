@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { FOLD_LABELS, JOB_WORDS } from '@better-giving/operator/setup-folds';
 import { describe, expect, it } from 'vitest';
 import type { HomeSection, SectionId, SectionState } from './home-sections';
@@ -5,7 +6,8 @@ import { firstUnfinishedPage, railGroups } from './console-pages';
 import { processorLinks } from './processor-links';
 
 // the console's pages as values: where `/` sends a ready deployment, what the rail lists and marks,
-// and where each address that moved now sends the browser.
+// where each address that moved now sends the browser, and that an address that went answers
+// nothing.
 //
 // every input is a value, so all of it is read here with no binary and no rendered router.
 
@@ -81,7 +83,7 @@ const LOGOS = {
 };
 
 /** the integrations' own marks, which the caller resolves the same way it resolves the four above. */
-const INTEGRATIONS = { quickbooks: '/quickbooks.png', zapier: '/zapier.png' };
+const INTEGRATIONS = { quickbooks: '/quickbooks.png' };
 
 /** every cell of the rail, flat, as `label → href`. */
 const cells = (groups: ReturnType<typeof railGroups>) =>
@@ -101,8 +103,7 @@ describe('the rail', () => {
 			'SMTP → /smtp',
 			'Notifications → /notifications',
 			'AI model → /ai-model',
-			'QuickBooks → /quickbooks',
-			'Zapier → /zapier'
+			'QuickBooks → /quickbooks'
 		]);
 		expect(groups.map((group) => group.heading)).toEqual([
 			undefined,
@@ -125,8 +126,7 @@ describe('the rail', () => {
 			'SMTP',
 			'Notifications',
 			'AI',
-			'QuickBooks',
-			'Zapier'
+			'QuickBooks'
 		]);
 	});
 
@@ -140,8 +140,7 @@ describe('the rail', () => {
 					short: 'QuickBooks',
 					href: '/quickbooks',
 					mark: { src: '/quickbooks.png' }
-				},
-				{ label: 'Zapier', short: 'Zapier', href: '/zapier', mark: { src: '/zapier.png' } }
+				}
 			]
 		});
 	});
@@ -162,14 +161,14 @@ describe('the rail', () => {
 	});
 
 	it('marks the integration cells with no status, however the set-up jobs stand', () => {
-		// no set-up job waits on either, so there is no row to read one off and nothing for a reader
-		// to hear after the name.
+		// no set-up job waits on an integration, so there is no row to read a status off and nothing
+		// for a reader to hear after the name.
 		const statuses = (...todo: readonly SectionId[]) =>
 			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, INTEGRATIONS)
 				.at(-1)
 				?.destinations.map((d) => d.status);
-		expect(statuses()).toEqual([undefined, undefined]);
-		expect(statuses(...IDS)).toEqual([undefined, undefined]);
+		expect(statuses()).toEqual([undefined]);
+		expect(statuses(...IDS)).toEqual([undefined]);
 	});
 
 	it('marks each processor by whether its own pair is held, not by the payments job', () => {
@@ -242,5 +241,18 @@ describe('an address that moved', () => {
 	it('sends /receipts to the mail page', async () => {
 		const { clientLoader } = await import('../routes/receipts');
 		expect(await sentTo(clientLoader)).toBe('307 /smtp');
+	});
+});
+
+describe('an address that went', () => {
+	/** every name under ../routes/ whose dotted segments carry `segment`, file or folder alike. */
+	const routesNaming = (segment: string) =>
+		readdirSync(new URL('../routes', import.meta.url)).filter((name) =>
+			name.split('.').includes(segment)
+		);
+
+	it('answers /cloudflare-plan with no route of its own', () => {
+		expect(routesNaming('cloudflare-plan')).toEqual([]);
+		expect(routesNaming('receipts')).toEqual(['receipts.tsx']);
 	});
 });

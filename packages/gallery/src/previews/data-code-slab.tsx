@@ -1,4 +1,9 @@
-import { CodeChip, CodeSlab, InlineCode } from '@better-giving/operator/components/data/CodeSlab';
+import {
+	CodeChip,
+	CodeSlab,
+	InlineCode,
+	UrlText
+} from '@better-giving/operator/components/data/CodeSlab';
 
 /*
  * the slab's four heads, the two lengths it has to survive, and its one-line form.
@@ -45,7 +50,11 @@ import { CodeChip, CodeSlab, InlineCode } from '@better-giving/operator/componen
  * the form draws no head, and packages/operator/src/components/data/CodeSlab.jsx's type refuses the
  * prop outright.
  *
- * the module's other two exports are the same face in its two roles, and they are drawn together
+ * `UrlText` is the same face with no ground and no padding, drawn as the text of a link: an address
+ * standing as the name of a thing rather than a literal quoted in a sentence. the long one is what
+ * says it breaks at any glyph rather than running the page sideways.
+ *
+ * `InlineCode` and `CodeChip` are the same face in its two other roles, and they are drawn together
  * because the difference between them is only visible side by side. `InlineCode` stands in a
  * sentence and the sentence closes over it, so the specimen below ends one on a comma, one on an
  * apostrophe and one on a full stop: those are the marks a chip with inline padding pushes away
@@ -115,6 +124,19 @@ export default function DataCodeSlabPreview() {
 			</p>
 			<p>
 				The door a deploy goes through is <InlineCode>wrangler deploy</InlineCode>.
+			</p>
+			{/* the address as a link's own text, where the chip's ground would be a box in a row. */}
+			<p>
+				<a href="#destination">
+					<UrlText>https://hooks.riverbanktrust.org/giving</UrlText>
+				</a>
+			</p>
+			<p>
+				<a href="#destination-long">
+					<UrlText>
+						https://crm.example.net/webhooks/better-giving/incoming/riverbank-trust-production
+					</UrlText>
+				</a>
 			</p>
 			<ul className="adm-list">
 				<li>

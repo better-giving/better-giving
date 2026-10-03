@@ -9,6 +9,7 @@ import { Form } from 'react-router';
 import type { ValuesRefusal, VarsWritten } from '../api/types';
 import type { HeldValues } from './held-values';
 import { withheldInGroup } from './held-values';
+import { useReseeded } from './reseed';
 import { refusalIn } from './secret-trouble';
 import type { SecretGroup } from './secret-groups';
 import { VALUE_FIELD, groupIntent, isMasked, typedNames } from './secret-groups';
@@ -46,6 +47,14 @@ export type GroupReport =
 
 /** the id the box for one credential carries. */
 export const secretBox = (name: string): string => `set-${name}`;
+
+/**
+ * whether a toggle of the fold this group stands in puts the group back at rest: the fold shut, and
+ * no write of this group's own in flight. a write's answer is still to land on the boxes it sent:
+ * put away under it, a refusal names a box that has been emptied and reopens the group inside a
+ * fold that is closed.
+ */
+export const putsAway = (open: boolean, pending: boolean): boolean => !open && !pending;
 
 /** no box named, as one value: a new empty array every render would be a new state every render. */
 const NONE: readonly string[] = [];
@@ -206,9 +215,15 @@ export function SecretGroupForm({
 	const named = errors === null ? NONE : Object.keys(errors);
 	const unfixed = fixed.length === 0 ? named : named.filter((name) => !fixed.includes(name));
 
+	/* the boxes go back on the reading that lands after the write, and not on the answer that
+	   arrives ahead of it, which would put back the value the press just replaced (./reseed.ts).
+	   one derivation per reading is what lets `values` stand for it (./held-values.ts). */
+	const landed = written?.kind === 'set';
+	const spent = useReseeded({ landed, pending, reading: values });
 	const { form, state, onInput, onSubmit, reset } = useSavedFormState({
 		report,
-		landed: written?.kind === 'set',
+		landed,
+		spent,
 		busy,
 		pending,
 		/* every box over a stored value arrives full, so what counts as an edit is a box differing
@@ -287,18 +302,19 @@ export function SecretGroupForm({
 	   the shut is for is `reset` — the boxes are on screen the moment the fold is, so what was typed
 	   into them has to go when it closes. the element is found rather than handed down: what shuts
 	   is several components above this one, and a flag threaded through each of them would be a prop
-	   every fold states and nothing else reads. */
+	   every fold states and nothing else reads. a shut made while this group's own write is in
+	   flight leaves it as it stands (`putsAway`). */
 	useEffect(() => {
 		const fold = form.current === null ? null : form.current.closest('details');
 		if (fold === null) return;
 		const shut = () => {
-			if (fold.open) return;
+			if (!putsAway(fold.open, pending)) return;
 			setOpened(false);
 			reset();
 		};
 		fold.addEventListener('toggle', shut);
 		return () => fold.removeEventListener('toggle', shut);
-	}, [form, reset]);
+	}, [form, reset, pending]);
 
 	return (
 		<Form

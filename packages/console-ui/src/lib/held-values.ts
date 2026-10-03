@@ -25,7 +25,17 @@ export type HeldValues = {
 	readonly withheld: readonly DeployVarName[];
 };
 
+/**
+ * one derivation per reading, so a fold handed the same answer twice is handed the same object: a
+ * fold that puts its boxes back on the reading that lands after its press compares readings by
+ * identity (`useReseeded` in ./reseed.ts), and a derivation rebuilt at every render would read as
+ * a re-read at every render.
+ */
+const derived = new WeakMap<readonly DeployedVar[], HeldValues>();
+
 export function heldValues(vars: readonly DeployedVar[]): HeldValues {
+	const known = derived.get(vars);
+	if (known !== undefined) return known;
 	const seeds: Record<string, string> = {};
 	const held = new Set<string>();
 	const withheld: DeployVarName[] = [];
@@ -37,7 +47,9 @@ export function heldValues(vars: readonly DeployedVar[]): HeldValues {
 		if (row.kind === 'withheld') withheld.push(row.name);
 	}
 
-	return { seeds, held, withheld };
+	const values = { seeds, held, withheld };
+	derived.set(vars, values);
+	return values;
 }
 
 /**

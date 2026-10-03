@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Failure } from '../checkout.machine';
-import type { FormConfig, PaymentMethod } from '../v1';
+import { createActor } from 'xstate';
+import { checkoutMachine, type Failure } from '../checkout.machine';
+import type { CheckoutPorts } from '../ports';
+import type { FormConfig, PaymentMethod, Quote, QuoteRequest } from '../v1';
 import {
 	createPaymentSurface,
 	loadPaypalScript,
@@ -17,6 +19,7 @@ import {
 	type PaypalWindowLike,
 	type SessionOptionsLike
 } from './paypal';
+import { quoteThrough } from './surface';
 
 // the dom pool, and a processor that is a plain object. what is worth asserting here is what this
 // adapter asks PayPal's SDK for and what it makes of the answer — neither needs a network, an
@@ -253,6 +256,7 @@ type SessionRecorder = {
 	readonly options: SessionOptionsLike;
 	readonly starts: { presentation: unknown; order: Promise<{ orderId: string }> }[];
 	destroyed: number;
+	cancelled: number;
 	resumed: number;
 	returns: boolean;
 };
@@ -296,6 +300,7 @@ function kit(answers: Answers = {}): Kit {
 			options,
 			starts: [],
 			destroyed: 0,
+			cancelled: 0,
 			resumed: 0,
 			returns: answers.hasReturned ?? false,
 			session: {
@@ -304,7 +309,7 @@ function kit(answers: Answers = {}): Kit {
 					return (answers.start ?? (() => new Promise<unknown>(() => {})))();
 				},
 				destroy: () => void (record.destroyed += 1),
-				cancel: () => {},
+				cancel: () => void (record.cancelled += 1),
 				hasReturned: () => record.returns,
 				resume: () => {
 					record.resumed += 1;
@@ -368,6 +373,16 @@ function kit(answers: Answers = {}): Kit {
 	};
 }
 
+/** the session most recently created for a rail, which is the one the last window was opened on. */
+function latest(k: Kit, rail: 'paypal' | 'venmo'): SessionRecorder | undefined {
+	return k.sessions.filter((session) => session.rail === rail).at(-1);
+}
+
+/** a turn of the event loop, past every microtask the quote's own task runs. */
+function nextTask(): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /** the surface, and the microtasks its mount chain spends before anything is on screen. */
 async function mounted(kit: Kit, config: FormConfig = CONFIG): Promise<PaypalPaymentSurface> {
 	const surface = createPaymentSurface(
@@ -382,6 +397,28 @@ async function mounted(kit: Kit, config: FormConfig = CONFIG): Promise<PaypalPay
 	await Promise.resolve();
 	await Promise.resolve();
 	return surface;
+}
+
+/**
+ * a Donate press on the PayPal rail, and the confirmation the flow makes once its quote has landed.
+ *
+ * the two halves the flow drives in that order — the window opened on the press, the order handed
+ * to it at the confirmation — run back to back, as they do wherever the total is the one shown.
+ */
+function pressed(surface: PaypalPaymentSurface, paymentToken: string) {
+	const request: QuoteRequest = {
+		formId: CONFIG.formId,
+		amountMinor: 2500,
+		frequency: 'one_time',
+		method: 'paypal',
+		coversFee: false,
+		email: 'donor@example.org',
+		firstName: 'Ada',
+		lastName: 'Lovelace',
+		consentedToContact: null
+	};
+	surface.quoting(request, Promise.resolve({ paymentToken, feeMinor: 0, totalMinor: 2500 }));
+	return surface.confirm({ paymentToken, method: 'paypal', mandateAccepted: false });
 }
 
 describe('the buttons this adapter draws', () => {
@@ -467,7 +504,7 @@ describe('the buttons this adapter draws', () => {
 		const k = kit();
 		await mounted(k);
 		const head = k.mount.children[0]?.shadowRoot?.querySelector('button');
-		const panel = k.mount.children[0]?.shadowRoot?.querySelector('[role="region"]');
+		const panel = k.mount.children[0]?.shadowRoot?.querySelector('#panel');
 		expect(head?.getAttribute('aria-expanded')).toBe('false');
 		expect(head?.textContent).toBe('PayPal');
 		expect(panel?.hasAttribute('hidden')).toBe(true);
@@ -520,6 +557,54 @@ describe('the buttons this adapter draws', () => {
 		k.mount.querySelector('venmo-button')?.dispatchEvent(new Event('click'));
 		expect(k.rails).toEqual(['venmo']);
 	});
+
+	// told off `venmoIsOffered` in ../checkout.machine.ts: a repeating cadence takes the Venmo row off
+	// the box and one-time puts it back, with PayPal's row standing through both.
+	it('draws the Venmo row only while the flow offers Venmo, leaving PayPal’s standing', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+
+		surface.offerVenmo(false);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.mount.querySelector('venmo-button')).toBeNull();
+		expect(k.mount.querySelector('paypal-button')).not.toBeNull();
+
+		surface.offerVenmo(true);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal', 'Venmo']);
+		k.mount.querySelector('venmo-button')?.dispatchEvent(new Event('click'));
+		expect(k.rails).toEqual(['venmo']);
+	});
+
+	it('holds the Venmo row back when the flow withdrew it before the buttons came up', async () => {
+		const k = kit();
+		const surface = createPaymentSurface(
+			CONFIG,
+			k.mount,
+			(rail) => k.rails.push(rail),
+			(failure) => k.unavailable.push(failure),
+			k.seam
+		);
+		surface.offerVenmo(false);
+		await nextTask();
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.unavailable).toEqual([]);
+	});
+
+	// a donor who pressed Venmo and then went back and picked Monthly is holding a rail nothing can
+	// approve, so it is taken back with the row; a PayPal press is not.
+	it('takes back a Venmo press when the row leaves, and leaves a PayPal press chosen', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+
+		k.mount.querySelector('venmo-button')?.dispatchEvent(new Event('click'));
+		surface.offerVenmo(false);
+		expect(k.rails).toEqual(['venmo', null]);
+
+		surface.offerVenmo(true);
+		k.mount.querySelector('paypal-button')?.dispatchEvent(new Event('click'));
+		surface.offerVenmo(false);
+		expect(k.rails).toEqual(['venmo', null, 'paypal']);
+	});
 });
 
 describe('a donor’s gift through PayPal’s window', () => {
@@ -528,7 +613,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 	});
 
 	const paypalSession = (k: Kit): SessionRecorder => {
-		const found = k.sessions.find((session) => session.rail === 'paypal');
+		const found = latest(k, 'paypal');
 		if (found === undefined) throw new Error('no PayPal session was created');
 		return found;
 	};
@@ -536,11 +621,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 	it('opens the window for the rail the order was minted on, carrying that order', async () => {
 		const k = kit();
 		const surface = await mounted(k);
-		void surface.confirm({
-			paymentToken: '5O190127TN364715T',
-			method: 'paypal',
-			mandateAccepted: false
-		});
+		void pressed(surface, '5O190127TN364715T');
 		await Promise.resolve();
 		const started = paypalSession(k).starts[0];
 		expect(started?.presentation).toEqual({ presentationMode: 'auto' });
@@ -551,11 +632,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 	it('reads an approval as money in flight', async () => {
 		const k = kit();
 		const surface = await mounted(k);
-		const confirming = surface.confirm({
-			paymentToken: 'o1',
-			method: 'paypal',
-			mandateAccepted: false
-		});
+		const confirming = pressed(surface, 'o1');
 		await Promise.resolve();
 		await paypalSession(k).options.onApprove({ orderId: 'o1' });
 		await expect(confirming).resolves.toEqual({ kind: 'processing' });
@@ -566,11 +643,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 	it('reads a closed window as an unfinished form', async () => {
 		const k = kit();
 		const surface = await mounted(k);
-		const confirming = surface.confirm({
-			paymentToken: 'o1',
-			method: 'paypal',
-			mandateAccepted: false
-		});
+		const confirming = pressed(surface, 'o1');
 		await Promise.resolve();
 		paypalSession(k).options.onCancel({ orderId: 'o1' });
 		await expect(confirming).resolves.toEqual({ kind: 'unfinished' });
@@ -582,11 +655,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 	it('lets an approval dominate whatever PayPal says after it', async () => {
 		const k = kit();
 		const surface = await mounted(k);
-		const confirming = surface.confirm({
-			paymentToken: 'o1',
-			method: 'paypal',
-			mandateAccepted: false
-		});
+		const confirming = pressed(surface, 'o1');
 		await Promise.resolve();
 		const session = paypalSession(k);
 		await session.options.onApprove({ orderId: 'o1' });
@@ -599,11 +668,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 			start: () => Promise.reject({ code: 'ERR_DEV_UNABLE_TO_OPEN_POPUP', message: 'blocked' })
 		});
 		const surface = await mounted(k);
-		const outcome = await surface.confirm({
-			paymentToken: 'o1',
-			method: 'paypal',
-			mandateAccepted: false
-		});
+		const outcome = await pressed(surface, 'o1');
 		expect(outcome).toMatchObject({
 			kind: 'declined',
 			message: expect.stringContaining('pop-ups')
@@ -618,11 +683,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 		await expect(surface.resume({ paymentToken: 'o1' })).resolves.toEqual({
 			kind: 'indeterminate'
 		});
-		const confirming = surface.confirm({
-			paymentToken: 'o1',
-			method: 'paypal',
-			mandateAccepted: false
-		});
+		const confirming = pressed(surface, 'o1');
 		await Promise.resolve();
 		await paypalSession(k).options.onApprove({ orderId: 'o1' });
 		await confirming;
@@ -680,11 +741,7 @@ describe('letting go of the surface', () => {
 	it('answers a confirmation the card walked away from', async () => {
 		const k = kit();
 		const surface = await mounted(k);
-		const confirming = surface.confirm({
-			paymentToken: 'o1',
-			method: 'paypal',
-			mandateAccepted: false
-		});
+		const confirming = pressed(surface, 'o1');
 		await Promise.resolve();
 		surface.stop();
 		await expect(confirming).resolves.toEqual({ kind: 'indeterminate' });
@@ -716,5 +773,219 @@ describe('a start that never finishes', () => {
 		const second = kit({ load: first.seam.load });
 		await mounted(second);
 		expect(second.unavailable[0]?.fix).toContain('already been found dead');
+	});
+});
+
+// the press a popup is opened on is the Donate press itself, and a window opened a network round
+// trip after it is one the browser blocks for want of a transient activation — Safari's lasts about
+// a second. so the window opens in the press's own task, on an order that is still being minted.
+describe('the Donate press with PayPal chosen', () => {
+	afterEach(() => {
+		document.body.replaceChildren();
+	});
+
+	/** a quote the spec answers by hand, so the press can be observed before the server has spoken. */
+	function deferredQuote() {
+		let answer: (quote: Quote) => void = () => {};
+		let refuse: (reason: unknown) => void = () => {};
+		const asked: QuoteRequest[] = [];
+		const post = (request: QuoteRequest): Promise<Quote> => {
+			asked.push(request);
+			return new Promise<Quote>((resolve, reject) => {
+				answer = resolve;
+				refuse = reject;
+			});
+		};
+		return {
+			post,
+			asked,
+			answer: (quote: Quote) => answer(quote),
+			refuse: (r: unknown) => refuse(r)
+		};
+	}
+
+	/** the flow on the review step with `method` chosen, running on this adapter's own ports. */
+	async function onReview(method: PaymentMethod, config: FormConfig = CONFIG) {
+		const k = kit();
+		const surface = await mounted(k, config);
+		const quote = deferredQuote();
+		const ports: CheckoutPorts = {
+			quote: quoteThrough(surface, quote.post),
+			confirm: surface.confirm,
+			resume: surface.resume,
+			status: () => Promise.resolve({ state: 'waiting' }),
+			now: () => 0
+		};
+		const actor = createActor(checkoutMachine, { input: { config, ports } });
+		actor.start();
+		actor.send({ type: 'SET_AMOUNT', amountMinor: 2500 });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method });
+		return { k, actor, quote };
+	}
+
+	const sessionFor = (k: Kit, rail: 'paypal' | 'venmo'): SessionRecorder => {
+		const found = latest(k, rail);
+		if (found === undefined) throw new Error(`no ${rail} session was created`);
+		return found;
+	};
+
+	it('opens the window in the press’s own task, before the quote has answered', async () => {
+		const { k, actor, quote } = await onReview('paypal');
+		actor.send({ type: 'SUBMIT' });
+		expect(quote.asked).toHaveLength(1);
+		expect(sessionFor(k, 'paypal').starts).toHaveLength(1);
+		expect(sessionFor(k, 'paypal').starts[0]?.presentation).toEqual({ presentationMode: 'auto' });
+		expect(sessionFor(k, 'venmo').starts).toHaveLength(0);
+	});
+
+	it('hands PayPal the order the quote carries once the quote answers', async () => {
+		const { k, actor, quote } = await onReview('paypal');
+		actor.send({ type: 'SUBMIT' });
+		const shown = actor.getSnapshot().context.estimate?.totalMinor ?? 2500;
+		quote.answer({ paymentToken: '5O190127TN364715T', feeMinor: shown - 2500, totalMinor: shown });
+		await expect(sessionFor(k, 'paypal').starts[0]?.order).resolves.toEqual({
+			orderId: '5O190127TN364715T'
+		});
+		expect(actor.getSnapshot().value).toBe('confirming');
+	});
+
+	// the window closes on PayPal's side when the order it was handed is refused, and the flow lands
+	// exactly where a failed quote lands on any other rail.
+	it('refuses PayPal the order when the quote fails, and lands on the failed quote', async () => {
+		const { k, actor, quote } = await onReview('paypal');
+		actor.send({ type: 'SUBMIT' });
+		const order = sessionFor(k, 'paypal').starts[0]?.order;
+		const refusal = { message: 'This gift was not started, and nothing was charged.' };
+		quote.refuse(refusal);
+		await expect(order).rejects.toBe(refusal);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toBe(refusal.message);
+	});
+
+	// the correction screen is a page the donor has to read and press on, so no window may stand
+	// over it: the one opened on Donate is closed when the total lands corrected, and the screen's
+	// own Confirm — a press with its own activation — opens a fresh one on the order already minted.
+	it('closes the window on a corrected total and opens a fresh one on Confirm', async () => {
+		const { k, actor, quote } = await onReview('paypal');
+		actor.send({ type: 'SUBMIT' });
+		const first = sessionFor(k, 'paypal');
+		const shown = actor.getSnapshot().context.estimate?.totalMinor ?? 2500;
+		quote.answer({ paymentToken: 'o_corrected', feeMinor: shown - 2400, totalMinor: shown + 100 });
+		await nextTask();
+		expect(actor.getSnapshot().value).toBe('confirm');
+		await expect(first.starts[0]?.order).rejects.toBeDefined();
+
+		actor.send({ type: 'CONFIRM' });
+		const second = sessionFor(k, 'paypal');
+		expect(second).not.toBe(first);
+		expect(second.starts).toHaveLength(1);
+		await expect(second.starts[0]?.order).resolves.toEqual({ orderId: 'o_corrected' });
+	});
+
+	// a 2xx the flow refuses is a quote nothing will ever confirm, so the window opened for it closes.
+	it('refuses PayPal the order when the flow refuses the quote', async () => {
+		const { k, actor, quote } = await onReview('paypal');
+		actor.send({ type: 'SUBMIT' });
+		quote.answer({ paymentToken: 'o_unusable', feeMinor: 0, totalMinor: 100 });
+		await nextTask();
+		expect(actor.getSnapshot().value).toBe('failed');
+		await expect(sessionFor(k, 'paypal').starts[0]?.order).rejects.toBeDefined();
+	});
+
+	it('opens no PayPal window on a press made on another rail', async () => {
+		const config: FormConfig = { ...CONFIG, paymentMethods: ['paypal', 'venmo', 'card'] };
+		const { k, actor, quote } = await onReview('card', config);
+		actor.send({ type: 'SUBMIT' });
+		expect(quote.asked).toHaveLength(1);
+		expect(k.sessions.flatMap((session) => session.starts)).toHaveLength(0);
+	});
+});
+
+// every window this surface opens is answered by its own signals and no other window's, and every
+// one the flow walks away from is told so — the order it waits on refused, and the window cancelled.
+describe('windows the flow walks away from', () => {
+	afterEach(() => {
+		document.body.replaceChildren();
+	});
+
+	const request = (method: 'paypal' | 'venmo' = 'paypal'): QuoteRequest => ({
+		formId: CONFIG.formId,
+		amountMinor: 2500,
+		frequency: 'one_time',
+		method,
+		coversFee: false,
+		email: 'donor@example.org',
+		firstName: 'Ada',
+		lastName: 'Lovelace',
+		consentedToContact: null
+	});
+
+	const pending = (): Promise<Quote> => new Promise<Quote>(() => {});
+
+	it('cancels the window a second press supersedes, and refuses its order', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+		surface.quoting(request(), pending());
+		const first = latest(k, 'paypal');
+		surface.quoting(request(), pending());
+		expect(first?.cancelled).toBe(1);
+		await expect(first?.starts[0]?.order).rejects.toBeDefined();
+	});
+
+	it('lets no signal from a superseded window answer the press after it', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+		surface.quoting(request(), pending());
+		const first = latest(k, 'paypal');
+		surface.quoting(
+			request(),
+			Promise.resolve({ paymentToken: 'o2', feeMinor: 0, totalMinor: 2500 })
+		);
+		const second = latest(k, 'paypal');
+		const confirming = surface.confirm({
+			paymentToken: 'o2',
+			method: 'paypal',
+			mandateAccepted: false
+		});
+		first?.options.onCancel({});
+		await second?.options.onApprove({ orderId: 'o2' });
+		await expect(confirming).resolves.toEqual({ kind: 'processing' });
+	});
+
+	it('refuses the order a window is waiting on when the card lets go', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+		surface.quoting(request(), pending());
+		surface.stop();
+		await expect(latest(k, 'paypal')?.starts[0]?.order).rejects.toBeDefined();
+	});
+
+	// a window that already ended — the donor closed it — is never handed an approvable order.
+	it('refuses rather than releases the order to a window that already ended', async () => {
+		const k = kit();
+		const surface = await mounted(k);
+		surface.quoting(
+			request(),
+			Promise.resolve({ paymentToken: 'o1', feeMinor: 0, totalMinor: 2500 })
+		);
+		const session = latest(k, 'paypal');
+		session?.options.onCancel({});
+		const outcome = await surface.confirm({
+			paymentToken: 'o1',
+			method: 'paypal',
+			mandateAccepted: false
+		});
+		expect(outcome).toEqual({ kind: 'unfinished' });
+		await expect(session?.starts[0]?.order).rejects.toBeDefined();
 	});
 });

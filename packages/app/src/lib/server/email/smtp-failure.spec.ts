@@ -60,6 +60,19 @@ describe('classifySmtpFailure', () => {
 	});
 
 	/**
+	 * a credential is refused only in worker-mailer's own words. a host's reply quoted after
+	 * another prefix — a greeting, a `HELO` — is free to say "authentication failed" about
+	 * something else, and read as `auth_failed` it sends the operator to rotate a password the
+	 * session never got far enough to offer.
+	 */
+	it.each([
+		'Failed to connect to SMTP server: 554 5.7.1 authentication failed for this network\r\n',
+		'Failed to HELO. 554 5.7.1 Authentication rejected: host not permitted\r\n'
+	])('does not read the host reply in %j as a refused credential', (message) => {
+		expect(classifySmtpFailure(new Error(message)).reason).toBe('connect_failed');
+	});
+
+	/**
 	 * a rejected message is not a refused credential, even when the server says "authentication".
 	 * DMARC failures are about the sending domain's DNS records and arrive on a connection whose
 	 * password worked — a pattern as loose as a bare `/authentication/` reads these as
@@ -79,10 +92,156 @@ describe('classifySmtpFailure', () => {
 		'Failed to connect to SMTP server: proxy request failed, cannot connect to the specified address',
 		'Socket timeout!',
 		'Timeout while waiting for smtp server response',
-		'Failed to start TLS: connection reset',
-		'Failed to EHLO. 421 Service not available'
+		'Failed to start TLS: 454 4.7.0 TLS not available due to temporary reason\r\n',
+		'Failed to EHLO. 421 Service not available\r\n'
 	])('reads %j as connect_failed', (message) => {
 		expect(classifySmtpFailure(new Error(message)).reason).toBe('connect_failed');
+	});
+
+	/**
+	 * a host that answered and refused is not a connection that failed, whatever words its reply
+	 * uses. `worker-mailer` puts the host's own text after `Failed send email body:`,
+	 * `Invalid MAIL FROM` and `Invalid RCPT TO`, and that text is free to say `dns`, `network` or
+	 * `timeout` — matched there, a refusal reads as an outage, the operator is told to wait, and a
+	 * blocklist refusal is reported as possibly sent.
+	 */
+	it.each([
+		'Failed send email body: 550 5.7.1 Message rejected: no DNS records for SPF',
+		'Failed send email body: 554 5.7.1 Your IP is listed on a network blocklist',
+		'Failed send email body: 451 4.4.2 Timeout waiting for the content scanner'
+	])('reads %j as a refused message, delivered nowhere', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).not.toContain('Could not reach');
+	});
+
+	/**
+	 * a host that refuses `DATA` answered before any of the message was offered, so nothing went
+	 * out — and the refusal is about the session or the account (a size or rate limit, a policy),
+	 * never the sender address, which the host already accepted at `MAIL FROM`.
+	 */
+	it.each([
+		'Failed to send DATA: 552 5.3.4 Message size exceeds fixed maximum\r\n',
+		'Failed to send DATA: 554 5.7.1 Daily sending quota exceeded\r\n'
+	])('reads %j as a refusal before the message, blaming no setting', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(message.trimEnd());
+		expect(failure.detail).toContain('nothing was delivered');
+		expect(failure.detail).not.toContain('MAIL_FROM');
+	});
+
+	/**
+	 * the credential arm's words are just as free to appear in a host's reply: a refusal over SPF or
+	 * DMARC says "authentication" after a working login, and read as `auth_failed` it sends the
+	 * operator to rotate a password that is fine.
+	 */
+	it.each([
+		'Failed send email body: 550 5.7.1 SPF authentication failed',
+		'Invalid RCPT TO: <donor@example.org> 550 5.7.1 recipient domain requires authentication'
+	])('reads %j as a refusal, not as a refused credential', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+	});
+
+	it.each([
+		'Invalid MAIL FROM: <gifts@dns-example.org> 550 5.7.1 Sender address not authorised\r\n',
+		'Invalid MAIL FROM: <gifts@example.org> RET=HDRS 553 5.7.1 Sender address rejected: not owned by user\r\n'
+	])('blames MAIL_FROM for %j', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain('`MAIL_FROM`');
+	});
+
+	/**
+	 * a refused recipient is the address the message was going to, not the one it came from —
+	 * blaming `MAIL_FROM` sends the operator to a setting that works while the mistyped address
+	 * stays on the record. the address is named because a send can carry more than one.
+	 */
+	it.each([
+		{
+			message:
+				'Invalid RCPT TO: <donor@network.example> 550 5.1.1 The email account that you tried to reach does not exist',
+			recipient: 'donor@network.example'
+		},
+		{
+			message:
+				'Invalid RCPT TO: <jörg@example.org> NOTIFY=FAILURE 553 5.6.7 Non-ASCII address not permitted',
+			recipient: 'jörg@example.org'
+		}
+	])('names the refused recipient for $message', ({ message, recipient }) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(`The mail host refused the recipient ${recipient}`);
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).not.toContain('MAIL_FROM');
+		expect(failure.detail).toContain('Nothing in the mail settings needs changing');
+	});
+
+	/**
+	 * a 5.7.x refusal at `RCPT TO` is the host declining to carry mail for this connection — relay
+	 * denied, authentication required — and the address is fine. telling the operator the settings
+	 * need no change sends them to correct a donor's address that was never wrong.
+	 */
+	it.each([
+		'Invalid RCPT TO: <donor@example.org> 554 5.7.1 <donor@example.org>: Relay access denied\r\n',
+		'Invalid RCPT TO: <donor@example.org> NOTIFY=FAILURE 530 5.7.0 Authentication required\r\n'
+	])('sends a policy refusal of the recipient %j to the settings', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain(message.trimEnd());
+		expect(failure.detail).toContain('`SMTP_USERNAME`');
+		expect(failure.detail).toContain('`MAIL_FROM`');
+		expect(failure.detail).not.toContain('Nothing in the mail settings needs changing');
+		expect(failure.detail).not.toContain('spelled right');
+	});
+
+	// a refusal whose code is neither names the recipient and quotes the host, and blames nothing.
+	it('blames neither the address nor the settings for a recipient refusal it cannot place', () => {
+		const message =
+			'Invalid RCPT TO: <donor@example.org> NOTIFY=FAILURE 452 4.5.3 Too many recipients\r\n';
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('rejected');
+		expect(failure.detail).toContain(`The mail host refused the recipient donor@example.org`);
+		expect(failure.detail).toContain(message.trimEnd());
+		expect(failure.detail).not.toContain('spelled right');
+		expect(failure.detail).not.toContain('`SMTP_USERNAME`');
+	});
+
+	// the prefix is still worker-mailer's own, and a greeting that is not a 220 is still a
+	// connection that never got started, whatever the host put after the code.
+	it('reads a refused greeting as connect_failed even when the reply is about mail', () => {
+		const failure = classifySmtpFailure(
+			new Error('Failed to connect to SMTP server: 554 5.7.1 mail from this network refused')
+		);
+		expect(failure.reason).toBe('connect_failed');
+		expect(failure.detail).toContain('nothing was delivered');
+	});
+
+	/**
+	 * a certificate the platform will not trust is a connection that never opened, not a message
+	 * the host refused — read as `rejected` it sends the operator to the From address while the
+	 * certificate on their own mail host is what is wrong. the first is workerd's own wording.
+	 */
+	it.each([
+		"TLS peer's certificate is not trusted; reason = self signed certificate",
+		"TLS peer's certificate is not trusted; reason = certificate has expired",
+		'TLS handshake failed'
+	])('reads %j as a connect failure about the certificate', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('connect_failed');
+		expect(failure.detail).toContain(message);
+		expect(failure.detail).toContain('certificate');
+		expect(failure.detail).toContain('nothing was delivered');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).not.toContain('MAIL_FROM');
 	});
 
 	/**
@@ -91,14 +250,22 @@ describe('classifySmtpFailure', () => {
 	 * pattern going stale has to degrade into something useful rather than into a lie. the
 	 * unmatched case quotes the server verbatim, which is the part that gets it fixed.
 	 */
-	it.each([
-		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised',
-		'Failed to send DATA: 552 Message size exceeds fixed maximum',
-		'something nobody has ever seen'
-	])('falls back to rejected for %j, quoting the server', (message) => {
-		const failure = classifySmtpFailure(new Error(message));
-		expect(failure.reason).toBe('rejected');
-		expect(failure.detail).toContain(message);
+	it.each(['At least one of text or html must be provided', 'something nobody has ever seen'])(
+		'falls back to rejected for %j, quoting the server',
+		(message) => {
+			const failure = classifySmtpFailure(new Error(message));
+			expect(failure.reason).toBe('rejected');
+			expect(failure.detail).toContain(message);
+		}
+	);
+
+	// a host's reply arrives with its CRLF, which would sit between the quote and the full stop.
+	it('quotes a host reply without its trailing line break', () => {
+		const failure = classifySmtpFailure(
+			new Error('Failed send email body: 554 5.7.1 Message rejected\r\n')
+		);
+		expect(failure.detail).toContain('554 5.7.1 Message rejected. ');
+		expect(failure.detail).not.toContain('\r\n');
 	});
 
 	/**
@@ -168,23 +335,37 @@ describe('classifySmtpFailure — what may still have been delivered', () => {
 	 * the message body is being read leaves the host free to have queued it. only a failure that
 	 * names the connection attempt can claim nothing went out.
 	 */
-	it.each([
-		'Network connection lost',
-		'WorkerMailer is shutting down',
-		'Failed to send DATA: the socket was closed by the other end'
-	])('reports %j as indeterminate', (message) => {
-		const failure = classifySmtpFailure(new Error(message));
-		expect(failure.indeterminate).toBe(true);
-		expect(failure.detail).not.toContain('nothing was delivered');
-	});
+	it.each(['Network connection lost', 'WorkerMailer is shutting down'])(
+		'reports %j as indeterminate',
+		(message) => {
+			const failure = classifySmtpFailure(new Error(message));
+			expect(failure.indeterminate).toBe(true);
+			expect(failure.detail).not.toContain('nothing was delivered');
+		}
+	);
 
 	// a connection that never opened is a different claim and is safe to make.
 	it.each([
 		'Failed to connect to SMTP server: proxy request failed, cannot connect to the specified address',
 		'Failed to plain authentication: 535 credentials invalid',
-		'Invalid MAIL FROM 550 5.7.1 Sender address not authorised'
+		'Invalid MAIL FROM: <gifts@example.org> 550 5.7.1 Sender address not authorised\r\n'
 	])('reports %j as determinate', (message) => {
 		expect(classifySmtpFailure(new Error(message)).indeterminate).toBe(false);
+	});
+
+	/**
+	 * a host that refuses `EHLO`, `HELO` or `STARTTLS` ends the session before `MAIL FROM`, so no
+	 * message was offered — the same claim as a greeting that is not a 220.
+	 */
+	it.each([
+		'Failed to EHLO. 421 4.7.0 Too many connections, try again later\r\n',
+		'Failed to HELO. 501 5.5.4 Syntax: HELO hostname\r\n',
+		'Failed to start TLS: 454 4.7.0 TLS not available due to temporary reason\r\n'
+	])('reports %j as never connected', (message) => {
+		const failure = classifySmtpFailure(new Error(message));
+		expect(failure.reason).toBe('connect_failed');
+		expect(failure.indeterminate).toBe(false);
+		expect(failure.detail).toContain('nothing was delivered');
 	});
 
 	// the honest sentence for the case it can speak to.

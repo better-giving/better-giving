@@ -1,5 +1,9 @@
 import { secretEquals } from '../secret-compare';
-import { CONSOLE_TOKEN_MIN_RANDOM, parseConsoleToken } from '@better-giving/operator/console/token';
+import {
+	CONSOLE_SESSION_SECONDS,
+	CONSOLE_TOKEN_MIN_RANDOM,
+	parseConsoleToken
+} from '@better-giving/operator/console/token';
 
 // the whole of the check that stands in front of the console surface: env narrowing, the format,
 // the expiry, the compare, and the sentence each refusal answers with.
@@ -81,7 +85,8 @@ export const CONSOLE_REFUSALS = [
 	'session_too_weak',
 	'session_expiry_unreadable',
 	'session_expired',
-	'session_mismatch'
+	'session_mismatch',
+	'console_clock_ahead'
 ] as const;
 export type ConsoleRefusalCode = (typeof CONSOLE_REFUSALS)[number];
 
@@ -95,6 +100,16 @@ export interface ConsoleRefusal {
 export type ConsoleAccess =
 	| { readonly ok: true; readonly session: ConsoleSession }
 	| { readonly ok: false; readonly refusal: ConsoleRefusal };
+
+/**
+ * how far past `now + CONSOLE_SESSION_SECONDS` an expiry may sit and still be a session.
+ *
+ * the expiry is written by the console's clock and read against this deployment's, so a console
+ * running a little fast mints a twelve-hour session that reads here as slightly longer. five
+ * minutes absorbs that; an expiry beyond it is a session the console never mints, and it is
+ * refused rather than honoured for however long it claims.
+ */
+const CONSOLE_CLOCK_SKEW_SECONDS = 5 * 60;
 
 /** the one command that connects a console, named in every refusal that has a repair. */
 const CONNECT = 'Run `better-giving start` to connect a session to this deployment.';
@@ -180,8 +195,24 @@ export function consoleAccess(env: unknown, headers: Headers, now: Date): Consol
 		);
 	}
 
+	// `parseConsoleToken` refuses an expiry no `Date` can hold, so both values here are finite.
+	const expiresAtMs = parsed.token.expiresAt.getTime();
+	const latestExpiryMs =
+		now.getTime() + (CONSOLE_SESSION_SECONDS + CONSOLE_CLOCK_SKEW_SECONDS) * 1000;
+	if (expiresAtMs > latestExpiryMs)
+		return refuse(
+			'console_clock_ahead',
+			`The console session on this deployment ends at ${parsed.token.expiresAt.toISOString()}, ` +
+				`and the latest expiry this deployment accepts is ${new Date(latestExpiryMs).toISOString()}: ` +
+				`its clock reads ${now.toISOString()}, and a console session never runs longer than ` +
+				`${CONSOLE_SESSION_SECONDS / 3600} hours. The clock on the machine running the console is ahead ` +
+				`of this deployment's by more than ${CONSOLE_CLOCK_SKEW_SECONDS / 60} minutes.`,
+			'Correct the clock on the machine running the console, then connect again: a connect from a ' +
+				'clock that is still ahead mints the same expiry and is refused the same way.'
+		);
+
 	// `<` and not `<=`: the last instant of a session is still inside it.
-	if (parsed.token.expiresAt.getTime() < now.getTime())
+	if (expiresAtMs < now.getTime())
 		return refuse(
 			'session_expired',
 			`The console session on this deployment ended at ${parsed.token.expiresAt.toISOString()}, ` +

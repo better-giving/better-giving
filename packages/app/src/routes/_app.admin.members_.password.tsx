@@ -22,7 +22,7 @@ import {
 import { changeMemberPassword, STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
-import { auth, platform, staff } from '../context';
+import { auth, database, platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.members_.password';
 
 // a colleague changes their own password, and nobody changes anybody else's.
@@ -35,7 +35,7 @@ import type { Route } from './+types/_app.admin.members_.password';
 // **the deployer is refused, and the same predicate answers twice.** `context.get(staff).id ===
 // STAFF_USER_ID` sends their `GET` back to /admin/members and answers their `POST` 403 — the
 // loader's half so nothing is offered that would then be refused, the action's so a hand-written
-// body is refused too. their password is a deploy-time secret with no `auth_account` row behind it
+// body is refused too. their password is a deploy-time var with no `auth_account` row behind it
 // ($lib/server/auth/credential.ts), so there is nothing at this address to change and the console
 // is where it is changed. `changeMemberPassword` refuses them by name as well, and that arm stays
 // reachable only through a session this route did not gate.
@@ -142,7 +142,7 @@ const WRONG_CURRENT = 'does not match your password';
  * an agent (CLAUDE.md), so the sentence names where the value is set instead.
  */
 const NOT_A_MEMBER =
-	'The deployer’s sign-in password is a deploy-time secret rather than an account on this ' +
+	'The deployer’s sign-in password is a deploy-time var rather than an account on this ' +
 	'deployment, and is not changed here. Open the console (`better-giving start`) and set ' +
 	'`ADMIN_PASSWORD`.';
 
@@ -212,7 +212,7 @@ export async function action({ context, request }: Route.ActionArgs) {
 	// refused before anything is hashed.
 	if (!submission.ok) return invalid(400, submission.reject());
 
-	const changed = await changeMemberPassword(context.get(auth), {
+	const changed = await changeMemberPassword(context.get(database), context.get(auth), {
 		currentPassword: submission.value.current_password,
 		newPassword: submission.value.new_password,
 		headers: request.headers

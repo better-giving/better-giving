@@ -142,7 +142,9 @@ async function mount(config: FormConfig = CONFIG): Promise<Mounted> {
 				cadence: () => {},
 				offerFund: () => {},
 				offerCrypto: () => {},
+				offerVenmo: () => {},
 				rows: () => {},
+				repeatingUnavailable: () => {},
 				stop: () => {}
 			}),
 			challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -2269,7 +2271,7 @@ describe('a payment row drawn beside the provider’s frame', () => {
 		const content = document.createElement('button');
 		content.textContent = 'PayPal';
 		const row = createRows(mount).draw('PayPal', mark, content);
-		const panel = mount.firstElementChild?.shadowRoot?.querySelector('[role="region"]');
+		const panel = mount.firstElementChild?.shadowRoot?.querySelector('#panel');
 		if (!(panel instanceof HTMLElement)) throw new Error('the row drew no panel');
 		return { mount, panel, content, row };
 	}
@@ -3296,10 +3298,13 @@ describe('the ring and the brand never touch', () => {
 		const { host, shadow } = await mount();
 		host.style.cssText = SEEDS;
 		await atReview(shadow);
-		// the one on the step the donor is standing on. every earlier step keeps its own, hidden, and
-		// `focus()` on a control with no layout box does nothing at all — which would read here as a
-		// button that draws no ring rather than as the wrong button.
-		const action = shadow.querySelector(".step:not([hidden]) [part~='action']") as HTMLElement;
+		// the Donate press on the step the donor is standing on. every earlier step keeps its own, hidden,
+		// and so does the one-time offer above it on this step; `focus()` on a control with no layout box
+		// does nothing at all — which would read here as a button that draws no ring rather than as the
+		// wrong button.
+		const action = shadow.querySelector(
+			".step:not([hidden]) [part~='action'][part~='submit']"
+		) as HTMLElement;
 		const drawn = await caretOn(action);
 
 		// the near-white the fill takes, and the ring here is the outline rather than a shadow. the
@@ -3871,5 +3876,60 @@ describe('the presets a host page picks', () => {
 
 		expect(getComputedStyle(card).backgroundColor).toBe(computedColour('oklch(0.995 0.006 70)'));
 		expect(corner(card)).toBe('12px');
+	});
+});
+
+describe('the inherited text properties the card puts back', () => {
+	// what a host page sets on the element's parent is inherited into the shadow root, so a centred,
+	// uppercase, `nowrap` hero would draw every label on the card that way. the reset is the `:host`
+	// block in ../styles/tokens.css, and what is measured is the value inside the card rather than
+	// the declaration: an engine dropping a keyword it does not parse leaves the source looking right.
+	const HOST_TEXT: Record<string, string> = {
+		'text-align': 'center',
+		'text-transform': 'uppercase',
+		'text-indent': '3em',
+		'text-shadow': '1px 1px 2px currentcolor',
+		'letter-spacing': '0.2em',
+		'word-spacing': '0.5em',
+		'font-style': 'italic',
+		'font-variant': 'small-caps',
+		'font-variation-settings': '"wght" 700',
+		'white-space': 'nowrap',
+		'word-break': 'break-all',
+		hyphens: 'auto'
+	};
+
+	/** each property as an element nothing has styled computes it, outside the page body. */
+	function initialValues(): Record<string, string> {
+		const probe = document.createElement('div');
+		document.documentElement.appendChild(probe);
+		const drawn = getComputedStyle(probe);
+		const read = Object.fromEntries(
+			Object.keys(HOST_TEXT).map((name) => [name, drawn.getPropertyValue(name)])
+		);
+		probe.remove();
+		return read;
+	}
+
+	afterEach(() => {
+		document.body.removeAttribute('style');
+	});
+
+	it('takes none of them from the page the element is mounted in', async () => {
+		const { host, card } = await mount();
+		const parent = host.parentElement as HTMLElement;
+		for (const [name, value] of Object.entries(HOST_TEXT)) parent.style.setProperty(name, value);
+		const initial = initialValues();
+		const read = (node: HTMLElement) => {
+			const drawn = getComputedStyle(node);
+			return Object.fromEntries(
+				Object.keys(HOST_TEXT).map((name) => [name, drawn.getPropertyValue(name)])
+			);
+		};
+
+		// the premise: every one of them landed on the parent, so a match inside is the reset's.
+		const onParent = read(parent);
+		for (const name of Object.keys(HOST_TEXT)) expect(onParent[name], name).not.toBe(initial[name]);
+		expect(read(card)).toEqual(initial);
 	});
 });

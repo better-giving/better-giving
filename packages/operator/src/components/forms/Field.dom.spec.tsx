@@ -1,7 +1,7 @@
-import { act } from 'react';
+import { type ComponentProps, act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { closedRungOf } from '../closed-look.testing';
-import { render } from '../render.testing';
+import { mount, render } from '../render.testing';
 import { Field } from './Field.jsx';
 
 // the first case over a part rendered rather than read, and it is here to prove the harness as much
@@ -164,6 +164,42 @@ describe('a field mounted into a document', () => {
 		expect(reveal(root).getAttribute('aria-label')).toBe('Hide the value');
 	});
 
+	it('names the press for the value it shows where the screen says which one', () => {
+		// a screen holding two credentials names each press for its own, or a reader tabbing through
+		// hears the same `Show the value` twice and cannot tell which box either one opens.
+		const root = render(Field, {
+			id: 'webhook-secret',
+			label: 'Signing secret',
+			masked: true,
+			revealLabel: 'Show signing secret',
+			hideLabel: 'Hide signing secret',
+			defaultValue: 'whsec_abc'
+		});
+
+		expect(reveal(root).getAttribute('aria-label')).toBe('Show signing secret');
+
+		press(reveal(root));
+		expect(reveal(root).getAttribute('aria-label')).toBe('Hide signing secret');
+
+		press(reveal(root));
+		expect(reveal(root).getAttribute('aria-label')).toBe('Show signing secret');
+	});
+
+	it('cannot be handed one of the press’s two names without the other', () => {
+		// one name alone would leave the press named for one value and renamed for another. `pnpm run
+		// check` is what runs this case; the render asserts the default the other name falls back to.
+		// @ts-expect-error — `hideLabel` is required beside `revealLabel`.
+		const root = render(Field, {
+			id: 'webhook-secret',
+			label: 'Signing secret',
+			masked: true,
+			revealLabel: 'Show signing secret',
+			defaultValue: 'whsec_abc'
+		});
+
+		expect(reveal(root).getAttribute('aria-label')).toBe('Show signing secret');
+	});
+
 	it('does not submit the form it stands in', () => {
 		// it stands inside the form whose boxes it is about, and a press that submitted would post a
 		// credential the operator only wanted to look at.
@@ -316,9 +352,58 @@ describe('a field mounted into a document', () => {
 		});
 		const row = root.querySelector('.adm-actions');
 		const items = [...(row?.children ?? [])];
+		const column = [...(items[0]?.children ?? [])];
 
-		expect(items.map((item) => item.className)).toEqual(['adm-maskwrap', 'adm-btn']);
-		expect(items[0]?.contains(reveal(root))).toBe(true);
-		expect(items[0]?.querySelector('input')).not.toBeNull();
+		expect(items.map((item) => item.className)).toEqual(['adm-field__boxcol', 'adm-btn']);
+		expect(column.map((item) => item.className)).toEqual(['adm-maskwrap']);
+		expect(column[0]?.contains(reveal(root))).toBe(true);
+		expect(column[0]?.querySelector('input')).not.toBeNull();
+	});
+
+	it('puts the refusal directly under the box where a press shares its row', () => {
+		// the row wraps at the floor, so a message after the whole row lands under the press once it
+		// has. the box's own column is what keeps the two together at every width; nothing lays out
+		// in this pool, so what is read is the order the column holds, which is the order it draws.
+		const root = render(Field, {
+			id: 'api-key-make-name',
+			label: 'Name',
+			error: 'required',
+			needed: 'wanted by the Zapier page',
+			beside: (
+				<button type="submit" className="adm-btn adm-btn--primary">
+					Make key
+				</button>
+			)
+		});
+		const row = root.querySelector('.adm-field > .adm-actions');
+		const column = row?.querySelector(':scope > .adm-field__boxcol');
+
+		expect([...(row?.children ?? [])].at(-1)?.textContent).toBe('Make key');
+		expect(
+			[...(column?.children ?? [])].map((item) => `${item.tagName}.${item.className}`)
+		).toEqual(['INPUT.adm-input adm-input--invalid', 'P.adm-field__error', 'P.adm-field__needed']);
+		expect(root.querySelector('input')?.getAttribute('aria-describedby')).toBe(
+			'api-key-make-name-err api-key-make-name-need'
+		);
+	});
+
+	it('keeps the box in the same place when its refusal arrives, so it is not remounted', () => {
+		// the box is focused by the press that was refused; a box that moved into a new parent with
+		// its message would be a new element, with the value and the focus gone.
+		const field = mount<ComponentProps<typeof Field>>(Field, {
+			id: 'api-key-make-name',
+			label: 'Name',
+			beside: <button type="submit">Make key</button>
+		});
+		const before = field.root.querySelector('input');
+
+		field.again({
+			id: 'api-key-make-name',
+			label: 'Name',
+			error: 'required',
+			beside: <button type="submit">Make key</button>
+		});
+
+		expect(field.root.querySelector('input')).toBe(before);
 	});
 });

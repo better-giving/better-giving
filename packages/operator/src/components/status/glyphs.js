@@ -47,6 +47,7 @@ import {
 	Pencil,
 	Plus,
 	Redo2,
+	RefreshCw,
 	Repeat,
 	Search,
 	Server,
@@ -60,6 +61,7 @@ import {
 	Unplug,
 	UserPlus,
 	Users,
+	Webhook,
 	X
 } from 'lucide-react';
 
@@ -128,6 +130,7 @@ export const GLYPHS = {
 	pencil: Pencil,
 	plus: Plus,
 	'redo-2': Redo2,
+	'refresh-cw': RefreshCw,
 	repeat: Repeat,
 	search: Search,
 	server: Server,
@@ -141,5 +144,6 @@ export const GLYPHS = {
 	unplug: Unplug,
 	'user-plus': UserPlus,
 	users: Users,
+	webhook: Webhook,
 	x: X
 };

@@ -55,19 +55,67 @@ const NOT_CONFIGURED = /connections? to port 25|port 25 (?:is|are) prohibited/i;
  * `550 5.7.1 … DMARC authentication failure` is a message the host refused
  * over the sending domain's DNS records, with a working password on the connection that
  * carried it — so it too sends the operator to rotate the one secret that is fine. the
- * alternatives below are the phrases that mean a credential and nothing else: the four
+ * alternatives below are the phrases that mean a credential and nothing else: the five
  * `worker-mailer` throws itself, the enhanced status code RFC 4954 reserves for a bad
  * credential, and the wordings the large hosts put after the reply code. anything vaguer
  * belongs to `rejected`, whose sentence — a MAIL_FROM the host will not send as — is already
  * the right advice for a DMARC refusal.
+ *
+ * read off `ownWords`, never the host's quoted reply: a greeting or `HELO` refused with
+ * "authentication failed" in its prose is a session that never reached `AUTH`. so the enhanced
+ * code and the large hosts' wordings match only a message that is a bare reply, with no
+ * `worker-mailer` prefix in front of it.
  */
 const AUTH_FAILED =
 	/failed to (?:plain|login) authentication|invalid login|no supported auth method|requires authentication|authentication (?:failed|unsuccessful|rejected)|username and password not accepted|\b5\.7\.8\b/i;
 
 /**
- * nothing to talk to, or the conversation never got started: DNS, the socket, the TLS
- * upgrade, the greeting, a timeout. all one answer to an operator — the host in SMTP_HOST did
- * not answer — and all transient, unlike the two above.
+ * the TLS session never came up: the host's certificate was not trusted, or the handshake broke.
+ * a connect failure with its own sentence, because the fix is on the mail host rather than in
+ * the network, and a determinate one, because nothing is offered before the handshake finishes.
+ * read after the host-refusal arms, whose quoted reply may mention a certificate of its own.
+ * `TLS peer's certificate is not trusted; reason = …` is workerd's wording.
+ */
+const TLS_FAILED = /certificate|\b(?:tls|ssl) handshake/i;
+
+/**
+ * the host answered a command after the greeting and refused it, which is proof both that the
+ * connection worked and that this message was not taken. `worker-mailer` throws these after
+ * writing `MAIL FROM`, `RCPT TO`, `DATA` or the message body and reading a reply it does not
+ * accept, and appends that reply verbatim — the host's own prose, free to say `authentication`,
+ * `dns`, `network` or `timeout`. so these are read before `AUTH_FAILED` and every connect pattern,
+ * and never as either.
+ */
+const SENDER_REFUSED = /^Invalid MAIL FROM\b/i;
+const RECIPIENT_REFUSED = /^Invalid RCPT TO\b:?\s*<([^>]*)>/i;
+const DATA_REFUSED = /^Failed to send DATA:/i;
+const BODY_REFUSED = /^Failed send email body:/i;
+
+/**
+ * which recipient refusals are about the address. `worker-mailer` writes
+ * `Invalid RCPT TO: <addr>[ NOTIFY=…] <reply>`, and the reply's code is the only thing that tells
+ * a mailbox the host does not have (5.1.x, 553, and 5.6.7 for a non-ASCII local part) from a host
+ * declining to carry mail for this connection at all (5.7.x — relay denied, authentication
+ * required), whose fix is in the settings and never in the address.
+ * a 5.7.x code is read ahead of a 553 basic code, which some hosts put in front of a relay refusal.
+ */
+const RECIPIENT_REPLY =
+	/^Invalid RCPT TO\b:?\s*<[^>]*>(?:\s+NOTIFY=\S+)?\s+(\d{3})(?:[ -](\d\.\d{1,3}\.\d{1,3})\b)?/i;
+const MAILBOX_STATUS = /^(?:5\.1\.\d+|5\.6\.7)$/;
+const POLICY_STATUS = /^5\.7\.\d+$/;
+
+/**
+ * `worker-mailer`'s own prefix on a message that goes on to quote the host's reply. `TLS_FAILED`,
+ * the connect patterns and `INDETERMINATE` read only the prefix of such a message — the words are
+ * evidence when the client or the socket wrote them, and are the host's prose after a reply code.
+ */
+const QUOTED_REPLY = /^(.*?[:.]) [2-5]\d\d[ -]/;
+
+/**
+ * nothing to talk to, or the conversation never got started: DNS, the socket, a STARTTLS the
+ * host would not begin, the greeting, a timeout. all one answer to an operator — the host in
+ * SMTP_HOST did not answer — and all transient, unlike `NOT_CONFIGURED` and `AUTH_FAILED`. a
+ * certificate or handshake failure is `TLS_FAILED`'s, read ahead of this one.
  */
 const CONNECT_FAILED =
 	/failed to connect|cannot connect|proxy request failed|timeout|timed out|socket|start tls|ehlo|helo|network|dns|shutting down/i;
@@ -84,10 +132,11 @@ const CONNECT_FAILED =
  * `failed to connect` belongs here even though the socket is open by then. `worker-mailer`
  * throws it out of `greet()`, when the server's opening line is not a 220 — no message has
  * been offered at that point, so "nothing was delivered" is still a claim about the session
- * rather than a guess.
+ * rather than a guess. a refused `EHLO`, `HELO` or `STARTTLS` is the same claim one command
+ * later: each comes before `MAIL FROM`.
  */
 const NEVER_CONNECTED =
-	/failed to connect|cannot connect|proxy request failed|getaddrinfo|\bdns\b/i;
+	/failed to connect|cannot connect|proxy request failed|getaddrinfo|\bdns\b|failed to (?:ehlo|helo)\.|failed to start tls:/i;
 
 /**
  * a timeout is not proof of non-delivery, which is the one thing this classifier must not
@@ -98,9 +147,11 @@ const NEVER_CONNECTED =
  * socket break as well, so a failure there is indeterminate unless the text names the
  * connection attempt itself; see `NEVER_CONNECTED` for what that arm claims.
  *
- * matched across every arm rather than inside the connect arm, because which reason a timeout
- * lands under is a question about what to tell the operator, and whether the message might be
- * out there is a different question with a different consumer — `indeterminate` in
+ * read off `ownWords` alone, so a host's reply that mentions a timeout claims nothing, and carried
+ * by the platform, credential and connect arms. the host-refusal and TLS arms state
+ * `indeterminate: false` outright: a host that answered with a refusal took nothing, and nothing
+ * is offered before a handshake finishes. whether the message might be out there is a different
+ * question from which reason it lands under, with a different consumer — `indeterminate` in
  * ./provider.ts, read by whoever decides whether a resend would duplicate.
  */
 const INDETERMINATE = /timeout|timed out/i;
@@ -114,7 +165,8 @@ const INDETERMINATE = /timeout|timed out/i;
  */
 export function classifySmtpFailure(error: unknown): SmtpFailure {
 	const message = messageOf(error);
-	const indeterminate = INDETERMINATE.test(message);
+	const ownWords = QUOTED_REPLY.exec(message)?.[1] ?? message;
+	const indeterminate = INDETERMINATE.test(ownWords);
 
 	if (NOT_CONFIGURED.test(message)) {
 		return {
@@ -126,7 +178,47 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 		};
 	}
 
-	if (AUTH_FAILED.test(message)) {
+	const recipient = RECIPIENT_REFUSED.exec(message)?.[1];
+	if (recipient !== undefined) {
+		return {
+			reason: 'rejected',
+			detail: recipientRefusal(recipient, message),
+			indeterminate: false
+		};
+	}
+
+	if (SENDER_REFUSED.test(message)) {
+		return {
+			reason: 'rejected',
+			detail:
+				`The mail host refused the sender address: ${message}. ` +
+				'The most common cause is a `MAIL_FROM` address the host is not authorised to send as.',
+			indeterminate: false
+		};
+	}
+
+	if (DATA_REFUSED.test(message)) {
+		return {
+			reason: 'rejected',
+			detail:
+				`The mail host refused to take the message before any of it was sent, so nothing was delivered: ${message}. ` +
+				"The host's reply says why.",
+			indeterminate: false
+		};
+	}
+
+	if (BODY_REFUSED.test(message)) {
+		return {
+			reason: 'rejected',
+			detail:
+				`The mail host received the message and refused it, so nothing was delivered: ${message}. ` +
+				"The host's reply says why. A refusal over SPF, DKIM or DMARC is fixed in the DNS " +
+				'records of the domain in `MAIL_FROM`.',
+			indeterminate: false
+		};
+	}
+
+	if (AUTH_FAILED.test(ownWords)) {
 		return {
 			reason: 'auth_failed',
 			detail:
@@ -138,12 +230,24 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 		};
 	}
 
-	if (CONNECT_FAILED.test(message)) {
+	if (TLS_FAILED.test(ownWords)) {
+		return {
+			reason: 'connect_failed',
+			detail:
+				`Could not open a secure connection to the mail host in \`SMTP_HOST\`: ${message}. ` +
+				'The connection never opened, so nothing was delivered. The certificate the host ' +
+				'presents must be in date, issued for the name in `SMTP_HOST` and signed by a public ' +
+				'authority; a self-signed certificate is refused.',
+			indeterminate: false
+		};
+	}
+
+	if (CONNECT_FAILED.test(ownWords)) {
 		// non-delivery is claimed only where the text names the connection attempt itself, and
 		// everything else here is indeterminate whether it timed out or not. this function cannot
 		// know that a message was not sent: a socket that breaks mid-session says nothing about
 		// how far the session got, so "not a timeout" is not evidence that nothing was accepted.
-		const neverOpened = !indeterminate && NEVER_CONNECTED.test(message);
+		const neverOpened = !indeterminate && NEVER_CONNECTED.test(ownWords);
 		return {
 			reason: 'connect_failed',
 			detail:
@@ -166,6 +270,28 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
 	};
 }
 
+function recipientRefusal(recipient: string, message: string): string {
+	const refused = `The mail host refused the recipient ${recipient}: ${message}. `;
+	const [, basic, enhanced] = RECIPIENT_REPLY.exec(message) ?? [];
+	if (enhanced !== undefined && POLICY_STATUS.test(enhanced)) {
+		return (
+			refused +
+			'The host will not carry mail to this address for this connection, so the address is ' +
+			'not what is wrong. Check that `SMTP_USERNAME` and `SMTP_PASSWORD` are set under SMTP on ' +
+			'the console, and that `MAIL_FROM` is an address that login may send as.'
+		);
+	}
+	if ((enhanced !== undefined && MAILBOX_STATUS.test(enhanced)) || basic === '553') {
+		return (
+			refused +
+			'Check that the address is spelled right and still exists. Many hosts refuse an address ' +
+			'with accented or non-Latin letters before the @ when this deployment sends to it. ' +
+			'Nothing in the mail settings needs changing for this.'
+		);
+	}
+	return `${refused}The host's reply says why.`;
+}
+
 /**
  * the most useful string available, whatever was thrown.
  *
@@ -174,10 +300,13 @@ export function classifySmtpFailure(error: unknown): SmtpFailure {
  * unwrapped, the totality this function advertises is a claim rather than a fact. it is called
  * from inside `send`'s `catch`, so a throw here escapes the one method in this app that promises
  * it cannot throw, on the path where a `batch()` has already committed.
+ *
+ * trimmed at the end because `worker-mailer` quotes a host's reply with the CRLF that ended it,
+ * which would otherwise land between the quote and the sentence after it.
  */
 function messageOf(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === 'string') return error;
+	if (error instanceof Error) return error.message.trimEnd();
+	if (typeof error === 'string') return error.trimEnd();
 	try {
 		return String(error);
 	} catch {

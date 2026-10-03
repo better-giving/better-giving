@@ -11,6 +11,7 @@ import type {
 } from '../payments/provider';
 import { readRecurringPlan } from './queries';
 import { soleProcessor } from '../payments/processors.testing';
+import { createDestination } from '../webhooks/destinations';
 import { stopRecurringGift } from './stop';
 
 // a workers spec because every case here reads or writes a row, and the ordering this module owns
@@ -43,7 +44,15 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-	for (const table of ['recurring_plan', 'donation', 'contact', 'form']) {
+	for (const table of [
+		'webhook_delivery',
+		'webhook_destination_event',
+		'webhook_destination',
+		'recurring_plan',
+		'donation',
+		'contact',
+		'form'
+	]) {
 		await env.DB.prepare(`delete from ${table}`).run();
 	}
 	await env.DB.prepare(
@@ -327,5 +336,25 @@ describe('stopRecurringGift', () => {
 		});
 		expect(processor.called).toEqual([]);
 		expect((await readRecurringPlan(db, PLAN_ID))?.status).toBe('active');
+	});
+
+	it('owes a destination one recurring gift ended for a stop, pressed twice', async () => {
+		await createDestination(db, {
+			url: 'https://crm.example.org/recurring',
+			events: ['recurring_gift.ended']
+		});
+		await plan();
+
+		await stopRecurringGift(db, soleProcessor(port(ended())), PLAN_ID);
+		const again = await stopRecurringGift(db, soleProcessor(port(ended())), PLAN_ID);
+
+		expect(again).toEqual({ outcome: 'already-stopped' });
+		const { results } = await env.DB.prepare('select event, subject_id from webhook_delivery').all<{
+			event: string;
+			subject_id: string;
+		}>();
+		expect(results).toEqual([
+			{ event: 'recurring_gift.ended', subject_id: expect.stringMatching(`^${PLAN_ID}:\\d+$`) }
+		]);
 	});
 });

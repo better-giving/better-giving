@@ -18,7 +18,7 @@ import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest';
 import { initialSnapshot, startCheckout } from './machine';
-import { reactPropTypes } from './normalize';
+import { createReactPropTypes } from './normalize';
 
 // the actor's life, and the surfaces that live exactly as long as it does.
 //
@@ -227,7 +227,7 @@ async function settle(): Promise<void> {
 
 it('reads a snapshot off the configuration alone, so the served html holds the amounts', () => {
 	const snapshot = initialSnapshot(CONFIG);
-	const api = connect(snapshot, () => {}, reactPropTypes);
+	const api = connect(snapshot, () => {}, createReactPropTypes());
 
 	expect(api.state.step).toBe('amount');
 	expect(api.amountGroup.options.map((option) => option.value)).toEqual([2500]);
@@ -405,6 +405,47 @@ it('tells a listener how many options the payment box lists', async () => {
 	expect(pair).toEqual([2]);
 });
 
+// no Venmo session can approve a subscription, so a repeating cadence takes Venmo off this page's
+// box as it does off the embed's (`venmoIsOffered` in packages/form/src/checkout.machine.ts).
+it('lists Venmo on a one-time gift only, with PayPal standing on every cadence', async () => {
+	const { paymentMount, challengeMount } = boxes();
+	const paypal = paypalProvider();
+	const challenge = challengeProvider();
+	const timer = clock();
+
+	const checkout = startCheckout(
+		{
+			...PAYPAL_ONLY,
+			frequencies: ['one_time', 'monthly', 'yearly'],
+			paymentMethods: ['paypal', 'venmo']
+		},
+		{
+			paymentMount,
+			challengeMount,
+			resumeToken: null,
+			seams: {
+				payment: { paypal: { load: paypal.load, delay: timer.delay } },
+				challenge: { load: challenge.load, delay: timer.delay }
+			}
+		}
+	);
+	onTestFinished(() => checkout.stop());
+	await settle();
+	const drawn = () =>
+		[...paymentMount.querySelectorAll('paypal-button, venmo-button')].map((node) =>
+			node.tagName.toLowerCase()
+		);
+	expect(drawn()).toEqual(['paypal-button', 'venmo-button']);
+
+	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+	expect(drawn()).toEqual(['paypal-button']);
+	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'yearly' });
+	expect(drawn()).toEqual(['paypal-button']);
+
+	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
+	expect(drawn()).toEqual(['paypal-button', 'venmo-button']);
+});
+
 // the hole this page had until the surface it composes stopped being one processor's: a deployment
 // holding PayPal's keys and no card processor's drew a box nothing could be paid in.
 it('draws a payment surface for a config offering only PayPal’s rails, and confirms on one', async () => {
@@ -442,7 +483,8 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 
 	// the figure the donor was shown, answered back as the server's own: a quote that moved would
 	// put the flow on the correction screen, which is a different thing than this test is about.
-	const shown = connect(actor.getSnapshot(), () => {}, reactPropTypes).submitButton.totalMinor;
+	const shown = connect(actor.getSnapshot(), () => {}, createReactPropTypes()).submitButton
+		.totalMinor;
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(

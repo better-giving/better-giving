@@ -8,6 +8,7 @@ import { form, page } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { readOrgStory, updateOrgStory } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
+import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as editor from './_app.admin.donation-page';
@@ -59,7 +60,7 @@ async function open(): Promise<Drawn> {
 	const response = await request(
 		new Request(`${ORIGIN}${EDITOR}`, { headers: { cookie: session } }),
 		{
-			env
+			env: bindings
 		}
 	);
 	expect(response.status).toBe(200);
@@ -70,6 +71,13 @@ async function donationPage() {
 	const [row] = await db.select().from(page).where(eq(page.type, 'donation_page'));
 	return row ?? null;
 }
+
+/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
 
 describe('the Donation page editor', () => {
 	it('makes the Donation page on a fresh deployment and frames it, live from the start', async () => {
@@ -95,7 +103,7 @@ describe('the donation settings', () => {
 		for (const [name, value] of Object.entries(fields)) body.set(name, value);
 		return request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 	}
 
@@ -178,7 +186,7 @@ describe('the two switches in the donation settings', () => {
 		for (const [name, value] of Object.entries(ticked)) body.set(name, value);
 		return request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 	}
 
@@ -237,7 +245,7 @@ describe('the mission ask', () => {
 		for (const [name, value] of Object.entries(fields)) body.set(name, value);
 		return request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 	}
 
@@ -299,7 +307,7 @@ describe('Publish, Undo and Discard changes', () => {
 		body.set(RECORD_VERSION, String(version));
 		return request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 	}
 
@@ -389,7 +397,7 @@ describe('Publish, Undo and Discard changes', () => {
 
 		const response = await request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 
 		expect(response.status).toBe(400);
@@ -442,7 +450,7 @@ describe('a draft the page rule refuses', () => {
 		body.set(RECORD_VERSION, String(version));
 		return request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 	}
 
@@ -484,7 +492,7 @@ describe('a block’s sheet', () => {
 		body.set('variant', 'statement');
 		const response = await request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 
 		expect(response.status).toBe(200);
@@ -501,7 +509,7 @@ describe('Reset to default', () => {
 		body.set(RECORD_VERSION, String(version));
 		return request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 	}
 
@@ -562,7 +570,7 @@ describe('Reset to default', () => {
 
 		const response = await request(
 			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 
 		expect(response.status).toBe(400);

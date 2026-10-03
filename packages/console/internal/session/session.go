@@ -45,12 +45,20 @@ const (
 	parts     = 3
 	// how long a session lasts. it exists for the one case nothing else closes: a console that
 	// died without disconnecting leaves a live bearer on a public hostname held by nobody, and a
-	// laptop lid is that case.
+	// laptop lid is that case. it may not exceed CONSOLE_SESSION_SECONDS in
+	// packages/operator/src/console/token.ts: a deployment refuses an expiry further out than that
+	// from its own clock, past the skew packages/app/src/lib/server/console/access.ts allows
+	// (CONSOLE_CLOCK_SKEW_SECONDS), as `console_clock_ahead`.
+	// TestTheSessionIsNoLongerThanTheDeploymentAccepts reads it.
 	sessionSeconds = 12 * 60 * 60
-	// the largest expiry a deployment will read, which is the largest whole second its own clock
-	// can hold to the millisecond. a value past it is refused here rather than sent, because a
-	// deployment that cannot read the expiry reads the whole value as no token.
-	maxSeconds = 9_007_199_254_740
+	// how far past now + sessionSeconds a deployment still reads an expiry as a session:
+	// CONSOLE_CLOCK_SKEW_SECONDS in packages/app/src/lib/server/console/access.ts, and
+	// TestTheSkewIsTheOneTheDeploymentAllows reads it.
+	clockSkewSeconds = 5 * 60
+	// the largest expiry a deployment will read, which is the last whole second a javascript `Date`
+	// can hold (8.64e15 ms). a value past it is refused here rather than sent, because a deployment
+	// that cannot read the expiry reads the whole value as no token.
+	maxSeconds = 8_640_000_000_000
 	// the secret half is 32 bytes, which is the 43 characters minRandom is the floor for.
 	randomBytes = 32
 )
@@ -83,15 +91,35 @@ func Parse(token string) (time.Time, bool) {
 	if len(held) != parts || held[0] != version || len(held[2]) < minRandom {
 		return time.Time{}, false
 	}
+	if !digitsOnly(held[1]) {
+		return time.Time{}, false
+	}
 	seconds, err := strconv.ParseInt(held[1], 10, 64)
-	if err != nil || seconds < 0 || seconds > maxSeconds {
+	if err != nil || seconds > maxSeconds {
 		return time.Time{}, false
 	}
 	return time.Unix(seconds, 0), true
 }
 
+// digitsOnly is the deployment's `/^\d+$/` on the expiry, which ParseInt is looser than: it takes
+// a leading `+` or `-`, and `-0` reads as zero.
+func digitsOnly(expiry string) bool {
+	if expiry == "" {
+		return false
+	}
+	for i := 0; i < len(expiry); i++ {
+		if expiry[i] < '0' || expiry[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // Held is the session recorded on this machine where it is this deployment's and still one, and nil
 // otherwise.
+//
+// An expiry further out than a deployment accepts from now is no session either: the deployment
+// would refuse it as `console_clock_ahead`, so it is read as none.
 //
 // Every way the record could be wrong lands on the same nil, which is the state the screen already
 // draws: no session, and a control that mints one.
@@ -108,7 +136,8 @@ func Held(store state.Store, workerName string, now time.Time) *Session {
 		return nil
 	}
 	expiresAt, ok := Parse(held.Token)
-	if !ok || !expiresAt.After(now) {
+	latest := now.Add((sessionSeconds + clockSkewSeconds) * time.Second)
+	if !ok || !expiresAt.After(now) || expiresAt.After(latest) {
 		return nil
 	}
 	return &Session{

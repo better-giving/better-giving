@@ -473,6 +473,14 @@ it('tells a donor back from wherever they authorized that the flow is still find
 	expect(controls(root)).toEqual([]);
 });
 
+it('tells a donor who just pressed Give or Authorize that the gift is being confirmed', () => {
+	const root = draw({ step: 'working', fv: GIFT, phase: 'confirming', method: 'card' });
+
+	expect(heading(root)).toBe(copy.CONFIRMING_HEADING);
+	expect(shown(root, '.prose')).toBe(copy.CONFIRMING_BODY);
+	expect(controls(root)).toEqual([]);
+});
+
 it('draws nothing at all on a numbered step', () => {
 	const root = draw({ step: 'amount', missing: [] });
 

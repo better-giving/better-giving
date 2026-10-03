@@ -2,9 +2,16 @@ import { createExecutionContext, env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStaticHandler, type LoaderFunction, type MiddlewareFunction } from 'react-router';
+import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
+import {
+	createStaticHandler,
+	type LoaderFunction,
+	type MiddlewareFunction,
+	type ShouldRevalidateFunctionArgs
+} from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NO_FORM } from '$lib/donate/copy';
+import { NO_FORM, RESUMING_HEADING, STEP_HEADINGS } from '$lib/donate/copy';
+import { shownStep } from '$lib/donate/shown-step.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { defaultDonationPage } from '$lib/page/defaults';
 import { parseRichText } from '$lib/rich-text/document';
@@ -25,9 +32,10 @@ import {
 	updateOrgStory
 } from '$lib/server/org/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { ORIGIN, signIn } from '../program-routes.testing';
+import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as editor from './_app.admin.donation-page';
 import * as surface from './api.v1';
@@ -109,11 +117,12 @@ type LoaderData = Route.ComponentProps['loaderData'];
 
 async function visit(
 	vars: Record<string, string> = STRIPE,
-	headers: Record<string, string> = {}
+	headers: Record<string, string> = {},
+	search = ''
 ): Promise<{ status: number; data: LoaderData; headers: Headers }> {
 	const answered = await queryDocument(
 		handler,
-		new Request(`${OWN}/donate`, { headers }),
+		new Request(`${OWN}/donate${search}`, { headers }),
 		requestContext(envWith(vars), createExecutionContext())
 	);
 	return {
@@ -558,9 +567,15 @@ describe('/donate after the editor’s presses', () => {
 		{ path: 'forms/:id/donations', module: gifts }
 	]);
 	let session: string;
+	/** a deployment whose set-up is finished, which the layout above the editor serves alone. */
+	let finished: Env;
 
 	beforeAll(async () => {
 		session = await signIn(db);
+	});
+
+	beforeEach(async () => {
+		finished = await finishSetup(PASSWORD);
 	});
 
 	/** a press on the Donation page's editor, drawn at the version the page holds now. */
@@ -577,7 +592,7 @@ describe('/donate after the editor’s presses', () => {
 				headers: { cookie: session },
 				body
 			}),
-			{ env }
+			{ env: finished }
 		);
 		expect(response.status).toBe(200);
 	}
@@ -842,5 +857,124 @@ describe('the limit on GET /donate', () => {
 
 		expect(refused.status).toBe(429);
 		expect(await donationPageRows()).toBe(0);
+	});
+});
+
+/** the id of the settings row the Donation page owns, made on first need by the visit. */
+async function donationFormId(): Promise<string> {
+	await visit();
+	const row = await env.DB.prepare(`select form_id from page where type = 'donation_page'`).first<{
+		form_id: string;
+	}>();
+	if (!row) throw new Error('no Donation page was made');
+	return row.form_id;
+}
+
+/** publishes a document the read rule refuses, so /donate draws the donation box alone. */
+async function publishUnreadable(): Promise<void> {
+	await visit();
+	await env.DB.prepare(`update page set published = '{}' where type = 'donation_page'`).run();
+	vi.spyOn(console, 'error').mockImplementation(() => {});
+}
+
+describe('what /donate lets be kept', () => {
+	// the amounts and settings drawn here are the page as it is now, and a kept copy would show a
+	// donor figures the operator has since changed.
+	it('lets nothing keep the drawn page', async () => {
+		const answered = await visit();
+		expect(answered.data.kind).toBe('page');
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+	});
+
+	it('lets nothing keep the donation box drawn alone', async () => {
+		await publishUnreadable();
+		const answered = await visit();
+		expect(answered.data.kind).toBe('plain');
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+describe('a donor back on /donate from authorizing their gift', () => {
+	// the stamp is all the server can see of a return — the token is the card's to claim once the
+	// flow starts — and it is what keeps the first paint from showing an empty donation form to a
+	// donor who may already have paid.
+	it('draws the resume takeover rather than the amount step', async () => {
+		const formId = await donationFormId();
+		const answered = await visit(STRIPE, {}, `?${RESUME_FORM_PARAM}=${formId}`);
+		expect(answered.data).toMatchObject({ resuming: true });
+		const shown = shownStep(markup(answered.data));
+		expect(shown).toContain(RESUMING_HEADING);
+		expect(shown).not.toContain(STEP_HEADINGS[0]);
+	});
+
+	it('draws the takeover on the donation box drawn alone', async () => {
+		const formId = await donationFormId();
+		await publishUnreadable();
+		const answered = await visit(STRIPE, {}, `?${RESUME_FORM_PARAM}=${formId}`);
+		expect(answered.data).toMatchObject({ kind: 'plain', resuming: true });
+		expect(shownStep(markup(answered.data))).toContain(RESUMING_HEADING);
+	});
+
+	// a return is claimed by the settings row it names and by nothing else: the stamp may have been
+	// left on a link by a form embedded on the organisation's own site.
+	it('draws the amount step for a stamp naming another form', async () => {
+		await donationFormId();
+		const answered = await visit(STRIPE, {}, `?${RESUME_FORM_PARAM}=frm_donorpage000002`);
+		expect(answered.data).toMatchObject({ resuming: false });
+		const shown = shownStep(markup(answered.data));
+		expect(shown).toContain(STEP_HEADINGS[0]);
+		expect(shown).not.toContain(RESUMING_HEADING);
+	});
+
+	it('draws the amount step where there is no stamp', async () => {
+		const shown = shownStep(markup((await visit()).data));
+		expect(shown).toContain(STEP_HEADINGS[0]);
+		expect(shown).not.toContain(RESUMING_HEADING);
+	});
+});
+
+describe('what re-reads /donate under a gift in progress', () => {
+	/** react router's question about this route, for a move from /donate to `next`. */
+	function asked(
+		next: string,
+		extra: Partial<ShouldRevalidateFunctionArgs> = {}
+	): ShouldRevalidateFunctionArgs {
+		return {
+			currentUrl: new URL('/donate', OWN),
+			currentParams: {},
+			nextUrl: new URL(next, OWN),
+			nextParams: {},
+			defaultShouldRevalidate: true,
+			...extra
+		};
+	}
+
+	// the card builds its checkout from the config the loader returns and stops it when a new one
+	// arrives, and this route draws one page whose settings row never changes under it.
+	it('keeps the config for a navigation that stays on the page', () => {
+		expect(donatePage.shouldRevalidate(asked('/donate?utm_source=mail'))).toBe(false);
+	});
+
+	it('keeps the config for a submission on the page', () => {
+		const posted = asked('/donate', {
+			formMethod: 'POST',
+			formAction: '/donate',
+			formData: new FormData(),
+			actionStatus: 200
+		});
+		expect(donatePage.shouldRevalidate(posted)).toBe(false);
+	});
+
+	// a navigation after the card claimed a return leaves a stamped address behind, and a re-read
+	// there would answer `resuming: false` under the takeover the flow is showing.
+	it('keeps the config when the resume stamp leaves the address', () => {
+		const stamped = asked('/donate', {
+			currentUrl: new URL(`/donate?${RESUME_FORM_PARAM}=frm_donorpage000001`, OWN)
+		});
+		expect(donatePage.shouldRevalidate(stamped)).toBe(false);
+	});
+
+	it('keeps the config for a revalidate on the same address', () => {
+		expect(donatePage.shouldRevalidate(asked('/donate'))).toBe(false);
 	});
 });

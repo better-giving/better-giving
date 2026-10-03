@@ -11,7 +11,10 @@ import { FieldMessage } from '@better-giving/operator/components/forms/FieldMess
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
-import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
+import {
+	LedgerSkeleton,
+	SkeletonStatus
+} from '@better-giving/operator/components/status/LedgerSkeleton';
 import {
 	StatusLedger,
 	StatusLine,
@@ -24,15 +27,14 @@ import {
 } from '@better-giving/operator/stripe/webhook-endpoint';
 import type { ReactNode } from 'react';
 import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Await, Form, useRevalidator } from 'react-router';
-import { stripeRun } from '../api/client';
+import { Await, Form } from 'react-router';
 import { REACHED_STRIPE, pressStopped } from './press-stopped';
 import { Said } from './said';
 import { refusalIn } from './secret-trouble';
 import { heldValues, withheldAmong } from './held-values';
 import { keysTrouble, noAnswer } from './processor-screen';
 import { recurringBlock } from './recurring-block';
-import { pollOutlived, runKind, standingRun } from './run-poll';
+import { useRunPoll } from './use-run-poll';
 import { configuredStanding, processorStanding, STANDING } from './processor-payments';
 import { accountsSaid, recurringReading } from './recurring-rows';
 import type { AwaitingNote } from './awaiting-note';
@@ -246,9 +248,6 @@ const SET_UP_PRESS = 'stripe-set-up-press';
  */
 const READINGS_FORM = 'stripe-readings-form';
 
-/** how often this screen asks how far the run has got. the Creating screen's interval. */
-const POLL_MS = 2500;
-
 /**
  * the two credentials one press of this screen writes, taken out of the enumeration rather than named
  * again.
@@ -412,20 +411,7 @@ export function StripeSection({
 	webhookRepair,
 	onWebhookRepair
 }: StripeSectionProps): ReactNode {
-	/* how far the press has got, asked of the binary rather than of the page: reading the page again
-	   is every round trip on it, one of them against the deployment this run is setting up. */
-	const [polled, setPolled] = useState<StripeRunRead | null | undefined>(undefined);
-
-	/* the last thing either reading said, kept here rather than read off whichever answered last.
-	   a run that landed is consumed by the reading that observed it, so the answer after that is
-	   `null` on both doors — and the report an operator is looking at would go off the screen under
-	   them. what clears this is the next run, which arrives running again. */
-	const [remembered, setRemembered] = useState<StripeRunRead | null>(null);
-	const { answered, live } = standingRun({ run, polled, remembered });
-	useEffect(() => {
-		if (answered === null) return;
-		setRemembered(answered);
-	}, [answered]);
+	const live = useRunPoll('stripe', run, pending === SET_UP_INTENT);
 	const working = live?.kind === 'running';
 	/* where the router is with this screen's own press, and what it answered. the two are only
 	   meaningful together (./stripe-press.ts), and they are held as one value each so that the
@@ -448,60 +434,8 @@ export function StripeSection({
 	/** the rest of the page writing, which is what the seam means by its own `busy`. */
 	const elsewhere = writingElsewhere(phase, busy);
 
-	useEffect(() => {
-		if (!working) return;
-		let gone = false;
-		const timer = setTimeout(() => {
-			// the run is the binary's own memory, so a read that did not land is a console that has
-			// stopped — which the page's own error boundary draws. nothing here has a state for it.
-			void stripeRun().then((read) => {
-				if (!gone) setPolled(read);
-			});
-		}, POLL_MS);
-		return () => {
-			gone = true;
-			clearTimeout(timer);
-		};
-		// `polled` is what schedules the next ask: each answer is a new value, so the effect runs
-		// again and the poll goes on for as long as the run does.
-	}, [working, polled]);
-
-	/* and dropped the moment another press is made, or the page's reading moves to a run the poll
-	   cannot speak for (`pollOutlived` in ./run-poll.ts). a poll's answer stands in front of the run
-	   prop for as long as it is held, so an earlier stopped run would mask the one a press here or
-	   anywhere else starts — and with nothing reading as running, nothing would ever ask after it
-	   again. */
-	useEffect(() => {
-		if (pending !== SET_UP_INTENT) return;
-		setPolled(undefined);
-	}, [pending]);
-	const loaded = runKind(run);
-	const seen = useRef(loaded);
-	useEffect(() => {
-		if (!pollOutlived(seen.current, loaded)) return;
-		seen.current = loaded;
-		setPolled(undefined);
-	}, [loaded]);
-
-	/* the page read again once, when the run stops. what it is read for is the reading at the head
-	   of the screen: the account this press just set up is one only the deployment can report on, and
-	   the answer on screen was taken before any of it existed. the flag is a ref rather than a
-	   dependency because the revalidator is a fresh object on every render — read as one, this would
-	   revalidate the page for as long as the report stayed up. */
-	const revalidator = useRevalidator();
-	const settled = live?.kind === 'ended';
 	/** whether the run that stopped had stored the secret key by the time it did. */
 	const storedKey = secretStored(live);
-	const asked = useRef(false);
-	useEffect(() => {
-		if (!settled) {
-			asked.current = false;
-			return;
-		}
-		if (asked.current) return;
-		asked.current = true;
-		void revalidator.revalidate();
-	}, [settled, revalidator]);
 
 	/* and asked for again, for as long as the deployment's latest reading is still behind the key
 	   the run stored (./key-rereads.ts). */
@@ -540,10 +474,11 @@ export function StripeSection({
 	 * deployment holds no secret key, and it decides that off this same list of secrets — so on
 	 * that path the promises are settled before the screen is drawn, and a waiting placeholder would be
 	 * one render of a screen saying it is asking after something it asked nobody about.
+	 *
+	 * its words are the `SkeletonStatus` held over both boundaries below, which says nothing while no
+	 * skeleton is drawn under it.
 	 */
-	const asking = stored?.has('STRIPE_SECRET_KEY') ? (
-		<LedgerSkeleton label="Asking this deployment…" blocks={[4, 2]} />
-	) : null;
+	const asking = stored?.has('STRIPE_SECRET_KEY') ? <LedgerSkeleton blocks={[4, 2]} /> : null;
 
 	/** what the two boxes are holding right now, in the shape `stripeAsked` reads them in. */
 	const boxes = (form: HTMLFormElement): StripeKeyBoxes => ({
@@ -1595,6 +1530,11 @@ export function StripeSection({
 				</StatusLedger>
 				{covered ? null : (
 					<div className="adm-dialog__actions">
+						{/* held with `aria-disabled` and turned away in its own handler, never closed by
+						    `disabled`: a natively closed button drops the focus standing on it, which in
+						    a panel is the reader put out of the panel for the whole wait
+						    (../closed-while-writing.spec.ts). it is a submit, so turning it away is
+						    stopping the submission. */}
 						<Button
 							type="submit"
 							form={READINGS_FORM}
@@ -1602,8 +1542,11 @@ export function StripeSection({
 							value={WALLETS_INTENT}
 							size="sm"
 							variant="primary"
-							disabled={busy || working}
-							aria-busy={pending === WALLETS_INTENT}
+							onClick={(event) => {
+								if (busy || working) event.preventDefault();
+							}}
+							aria-disabled={busy || working || undefined}
+							aria-busy={pending === WALLETS_INTENT || undefined}
 						>
 							Register all sites
 						</Button>
@@ -1851,15 +1794,17 @@ export function StripeSection({
 			{/* the two the deployment answers, and the form the one press among them stands in — both
 			    inside `readings` above, because what says whether either draws anything at all is
 			    what they resolved to. */}
-			<Suspense fallback={asking}>
-				<Await resolve={payments}>
-					{(accounts) => (
-						<Suspense fallback={asking}>
-							<Await resolve={recurring}>{(gifts) => readings(accounts, gifts)}</Await>
-						</Suspense>
-					)}
-				</Await>
-			</Suspense>
+			<SkeletonStatus label="Asking this deployment…">
+				<Suspense fallback={asking}>
+					<Await resolve={payments}>
+						{(accounts) => (
+							<Suspense fallback={asking}>
+								<Await resolve={recurring}>{(gifts) => readings(accounts, gifts)}</Await>
+							</Suspense>
+						)}
+					</Await>
+				</Suspense>
+			</SkeletonStatus>
 
 			{/* what this deployment has told Stripe to report to it, and where, once there is a
 			    registration to read: the signing secret is stored in the same breath the endpoint is

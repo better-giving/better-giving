@@ -7,7 +7,7 @@ import { FieldMessage } from '@better-giving/operator/components/forms/FieldMess
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { Fragment, Suspense, useEffect, useState } from 'react';
 import { Await, Form } from 'react-router';
 import { nowpaymentsCurrencies } from '../api/client';
@@ -284,7 +284,7 @@ function NowpaymentsKeysForm({
 		const timer = setTimeout(() => {
 			/* a read that could not be made at all leaves the box exactly as it was, and says nothing:
 			   it means the binary has stopped, which every press on this page then reports at itself
-			   and the route draws as the whole screen (../routes/_index.tsx). */
+			   and the sections' `ErrorBoundary` draws as the whole screen (../routes/_sections.tsx). */
 			nowpaymentsCurrencies(asked).then(
 				(listing) => setCoins((read) => coinsLanded(read, asked, listing)),
 				() => {}
@@ -427,12 +427,18 @@ function NowpaymentsKeysForm({
 						title={ASK.title}
 						onDismiss={() => setConfirming(null)}
 						danger={ASK.press}
+						// held with `aria-disabled` and its submission stopped in its own handler, never
+						// closed by `disabled`, which drops the focus standing on it
+						// (../closed-while-writing.spec.ts).
 						dangerProps={{
 							type: 'submit',
 							name: 'intent',
 							value: NOWPAYMENTS_SAVE_INTENT,
-							disabled: own || undefined,
-							'aria-busy': own || undefined
+							'aria-disabled': own || undefined,
+							'aria-busy': own || undefined,
+							onClick: (event: MouseEvent<HTMLButtonElement>) => {
+								if (own) event.preventDefault();
+							}
 						}}
 						cancel="Go back"
 						cancelProps={{ type: 'button', onClick: () => setConfirming(null) }}

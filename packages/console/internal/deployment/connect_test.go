@@ -115,6 +115,36 @@ func TestAConnectStopsWaitingOnADeploymentThatNeverTakesTheSession(t *testing.T)
 	}
 }
 
+// a deployment refusing the expiry as past its own ceiling refuses every session this clock mints,
+// so waiting for it to take one is waiting out the bound for nothing: the press stops at the first
+// such answer and carries the deployment's own two sentences.
+func TestADeploymentRefusingThisConsolesClockEndsTheConnectAtOnce(t *testing.T) {
+	asked := 0
+	held, kept := connectingOver(t, answering(), stored(http.StatusOK), func(string, string) cf.Get {
+		return func(context.Context, string) cf.Answer {
+			asked++
+			return cf.Answer{Kind: cf.Answered, Status: http.StatusUnauthorized, Body: map[string]any{
+				"error":   "console_clock_ahead",
+				"message": "The clock on the machine running the console is ahead.",
+				"fix":     "Set the clock right, then connect again.",
+			}}
+		}
+	})
+	if held.Kind != ConnectClockAhead {
+		t.Fatalf("connection %+v, want %q", held, ConnectClockAhead)
+	}
+	if asked != 1 {
+		t.Fatalf("asked the deployment %d times, want once", asked)
+	}
+	if held.Message == nil || *held.Message != "The clock on the machine running the console is ahead." ||
+		held.Fix == nil || *held.Fix != "Set the clock right, then connect again." {
+		t.Fatalf("carried %v and %v rather than the deployment's own words", held.Message, held.Fix)
+	}
+	if held.ExpiresAt != "" || held.Origin == "" || kept == nil {
+		t.Fatalf("connection %+v, kept %v", held, kept)
+	}
+}
+
 // a machine with nowhere to keep what it remembers.
 var errNotKept = errors.New("the folder could not be written")
 
@@ -258,5 +288,39 @@ func TestNoSignInAsksCloudflareNothing(t *testing.T) {
 	})
 	if held.Kind != ConnectNowhere || held.Detail != "not signed in" {
 		t.Fatalf("connection %+v", held)
+	}
+}
+
+// every call a connect makes to cloudflare is bound to cf.ReadTimeout and made in turn, and every
+// write waits its turn at the binding list for up to TurnBound first, so the longest path's count of
+// them, with the wait after, is the least ConnectBound may say.
+func TestConnectBoundCoversEveryCallTheLongestConnectMakesInTurn(t *testing.T) {
+	calls, writes := 0, 0
+	get := fake(t, answering())
+	Connect(context.Background(), ConnectInputs{
+		Door: Door{
+			AccountID:  "acc",
+			WorkerName: "better-giving",
+			Get: func(ctx context.Context, path string) cf.Answer {
+				calls++
+				return get(ctx, path)
+			},
+			Patch: func(ctx context.Context, method, path string, body any) cf.Answer {
+				calls++
+				writes++
+				return stored(http.StatusOK)(ctx, method, path, body)
+			},
+		},
+		Credential: cf.Credential{Kind: cf.BearerToken},
+		Record:     func(session.Session) error { return nil },
+		Surface:    accepting,
+		Within:     time.Second,
+		Every:      time.Millisecond,
+		Now:        time.Unix(1_700_000_000, 0),
+	})
+	least := time.Duration(calls)*cf.ReadTimeout + time.Duration(writes)*TurnBound + SessionBound
+	if ConnectBound < least {
+		t.Fatalf("ConnectBound is %s and %d calls in turn, %d turns waited and the wait after take %s",
+			ConnectBound, calls, writes, least)
 	}
 }

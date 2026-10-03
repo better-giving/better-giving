@@ -4,6 +4,7 @@ import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as exportScreen from './_app.admin.donations.export';
 
@@ -33,21 +34,24 @@ const SCREEN = '/admin/donations/export';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 beforeAll(async () => {
 	db = createDb(env.DB);
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/donations/export', module: exportScreen }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn();
 });
 
 /** a real session, as the `Cookie` header a browser would send back. */
 async function signIn(): Promise<string> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,

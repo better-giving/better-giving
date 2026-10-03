@@ -1,15 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	ConsoleRefused,
+	ConsoleUnreachable,
 	chariotRun,
 	consoleVersion,
 	levelWallets,
 	pressQuickbooks,
 	readAiModel,
 	readQuickbooks,
-	readZapier,
 	repairWebhook,
 	saveNowpayments,
 	startChariotSetup,
+	readPayments,
 	startStripeSetup
 } from './client';
 
@@ -243,37 +245,6 @@ describe('the reading of the model choice', () => {
 	});
 });
 
-describe('the reading of where the Zapier key stands', () => {
-	const reading = (listening: Record<string, number>) => ({
-		kind: 'read',
-		report: {
-			key: null,
-			listening,
-			deliveries: { waiting: 0, failed: 0, oldestWaitingAt: null }
-		}
-	});
-
-	it('counts no Zap on a trigger a deployment older than this console does not report', async () => {
-		answering(200, reading({ newGift: 2, newDonor: 1 }));
-
-		const read = await readZapier();
-
-		expect(read.kind === 'read' && read.report.listening).toEqual({
-			newGift: 2,
-			newDonor: 1,
-			giftRefunded: 0
-		});
-	});
-
-	it('keeps every count a deployment does report', async () => {
-		answering(200, reading({ newGift: 2, newDonor: 1, giftRefunded: 3 }));
-
-		const read = await readZapier();
-
-		expect(read.kind === 'read' && read.report.listening.giftRefunded).toBe(3);
-	});
-});
-
 describe('the preview of a move of the date QuickBooks syncs gifts from', () => {
 	const side = (reversals?: number) => ({
 		gifts: 0,
@@ -350,5 +321,30 @@ describe('the reading of where the books stand', () => {
 		const read = await readQuickbooks();
 
 		expect(read.kind === 'read' && read.report.backlog.heldBehindFailed).toEqual(held);
+	});
+});
+
+describe('a call that did not land', () => {
+	it('is thrown as unreachable where the local process could not be reached', async () => {
+		vi.stubGlobal('fetch', () => Promise.reject(new TypeError('Failed to fetch')));
+
+		await expect(readPayments()).rejects.toBeInstanceOf(ConsoleUnreachable);
+	});
+
+	it('is thrown as it came where the reading was abandoned', async () => {
+		const abandoned = new AbortController();
+		abandoned.abort();
+		vi.stubGlobal('fetch', () => Promise.reject(new DOMException('aborted', 'AbortError')));
+
+		await expect(readPayments(abandoned.signal)).rejects.toMatchObject({ name: 'AbortError' });
+	});
+
+	it("is thrown as refused, in the handler's words, where the local process turned it down", async () => {
+		answering(409, { error: 'no account is recorded' });
+
+		const thrown = await readPayments().catch((error: unknown) => error);
+
+		expect(thrown).toBeInstanceOf(ConsoleRefused);
+		expect(thrown).toMatchObject({ message: 'no account is recorded', status: 409 });
 	});
 });

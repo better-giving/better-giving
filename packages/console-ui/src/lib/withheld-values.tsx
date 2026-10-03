@@ -1,7 +1,7 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
-import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSubmit } from 'react-router';
 import type { DeployVarName, ValuesRefusal, VarsWritten } from '../api/types';
 import { refusalIn } from './secret-trouble';
@@ -96,6 +96,27 @@ export function WithheldValues({
 	/** whether the confirm is on the screen. */
 	const [asking, setAsking] = useState(false);
 
+	/* where the reader lands once a free that landed has taken this block, and the Remove that put
+	   the card up, off the page: the first control of the form the press stood in, which is the state
+	   the free leaves — the boxes it stood among, writable again. the form is kept at the press,
+	   because by the time the card comes down the Remove is gone; the control is found when the card
+	   comes down, because that is when the one to land on is standing (`fallbackFocus` in
+	   packages/operator/src/behaviour/Dialog.tsx). */
+	const pressedIn = useRef<HTMLFormElement | null>(null);
+	const landing = useMemo<RefObject<HTMLElement | null>>(
+		() => ({
+			get current() {
+				const form = pressedIn.current;
+				return form?.isConnected
+					? form.querySelector<HTMLElement>(
+							'input:not([type="hidden"]):enabled, select:enabled, textarea:enabled, button:enabled'
+						)
+					: null;
+			}
+		}),
+		[]
+	);
+
 	/* the question is left the moment its own press is answered, whatever the answer says: a free
 	   that landed takes this whole block off the screen and a refused one draws its sentence under
 	   the control, and neither is readable behind a card. keyed on the answer itself and not on what
@@ -119,12 +140,22 @@ export function WithheldValues({
 			</p>
 			<div className="adm-actions">
 				{/* it asks rather than posts, for the reason every other destructive press on this page
-				    does: what it costs is stated in the confirm, against the values it is about. */}
+				    does: what it costs is stated in the confirm, against the values it is about.
+
+				    both presses here are held with `aria-disabled` and turned away in their own handler,
+				    never closed by `disabled`: a natively closed button drops the focus standing on it,
+				    and the `aria-busy` beside it is then heard by nobody
+				    (../closed-while-writing.spec.ts). */}
 				<Button
 					type="button"
 					variant="danger"
-					disabled={busy || freeing}
-					onClick={() => setAsking(true)}
+					onClick={(event) => {
+						if (busy || freeing) return;
+						pressedIn.current = event.currentTarget.form;
+						setAsking(true);
+					}}
+					aria-disabled={busy || freeing || undefined}
+					aria-busy={freeing || undefined}
 				>
 					Remove {said}
 				</Button>
@@ -134,13 +165,16 @@ export function WithheldValues({
 				<Modal
 					title={one ? `Remove ${all[0]}?` : 'Remove these values?'}
 					onDismiss={() => setAsking(false)}
+					fallbackFocus={landing}
 					danger="Remove"
 					dangerProps={{
 						type: 'button',
-						disabled: busy || freeing || undefined,
+						'aria-disabled': busy || freeing || undefined,
 						'aria-busy': freeing || undefined,
-						onClick: () =>
-							void submit({ intent: FREE_INTENT }, { method: 'post', preventScrollReset: true })
+						onClick: () => {
+							if (busy || freeing) return;
+							void submit({ intent: FREE_INTENT }, { method: 'post', preventScrollReset: true });
+						}
 					}}
 					cancel="Go back"
 					cancelProps={{ type: 'button', onClick: () => setAsking(false) }}

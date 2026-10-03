@@ -189,6 +189,20 @@ textarea[part~='field'] {
 }
 
 /*
+ * the two widths the list reads below are zag's own names, written inline on the positioner once zag
+ * has measured the box, and the list is on screen for a frame or more before that. until then the
+ * positioner inherits them, and an unprefixed custom property reaches through the shadow root from
+ * whatever the host page set — so they are cut off at the positioner's parent, where nothing but
+ * zag's inline write can put them back. a page rule matching the element itself outranks a `:host`
+ * rule, which is why the cut is not made there.
+ */
+:has(> [data-scope='select'][data-part='positioner']),
+:has(> [data-scope='combobox'][data-part='positioner']) {
+	--reference-width: initial;
+	--available-width: initial;
+}
+
+/*
  * the list's positioner is a popover in the top layer, and every property the UA sheet gives a
  * popover is taken back here: the box is zag's to place (`top`, `left` and the translate it writes
  * inline), so a UA inset, margin or border would move it off the box it is measured against. the
@@ -2290,11 +2304,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the control's own edge with no offset, so what is ringed is unambiguous on a card where controls
  * sit two tile-gaps apart.
  *
- * on the free entry the ring is the input's own rather than the surface it sits on, because the
- * input covers that surface to its every edge — so the ring is drawn on the same edge either way,
- * and the one element that can be focused is the one that reports it. the step marks are the one
- * exception to that sentence: the caret lands on a target `--_target-min` by `--_row-min` around a
- * mark a fraction of that, so the ring is drawn on the mark instead, in the block below.
+ * on the free entry the ring is the input's rather than the surface's: the surface is the part a
+ * host restyles, and a host's `::part()` rule outranks any ring drawn on it (the free entry's block
+ * below). the step marks are a control ringed somewhere the caret is not: the caret lands on a
+ * target `--_target-min` by `--_row-min` around a mark a fraction of that, so the ring is drawn on
+ * the mark instead, in the block below.
  *
  * a ring says where the caret is, which is state rather than brand, so it is `--_focus-ring` — the
  * ladder's darkest rung — everywhere except on the one control the primary fills, which is the
@@ -2307,12 +2321,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * a control the primary only *marks* — a chosen amount tile, a checked box, the fee switch set on
  * — has the same two darks to keep apart at its own edge and answers it the other way: a band of
  * `--_n1` first and the ring outside that band, so the mark and the ring are a pixel of near-white
- * apart and the ring is still on the outside where every other ring on this card is. three blocks
- * below draw that band and they are one decision.
- *
- * the free entry draws no ring at all: the caret in it is what says where the focus is, and it is
- * the one control on the card that has a caret to say so. the transparent outline the rule below
- * gives every input is kept on it, so forced-colors still paints one.
+ * apart and the ring is still on the outside where every other ring on this card is. the blocks
+ * below that draw that band are one decision.
  *
  * the transparent outline is not decoration. forced-colors mode replaces the box-shadow with
  * nothing and paints the outline in the user's own colour, so removing the outline outright is
@@ -2363,10 +2373,11 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * controls the primary fills (`[part~='checkbox']` above), so a single-tone ring hugging its edge
  * would lay the ladder's darkest rung against a fill that can be as dark, along that edge.
  *
- * so it takes the free entry's two tones for the free entry's reason — a near-white band laid over
- * the box's own edge first and the ring outside it — and one ring serves both states, because the
- * band is what separates the two darks and the box is filled in only one of them. the fee decision
- * draws a switch rather than a box and rings itself below.
+ * so it takes the two tones of a control the primary marks, for the reason the focus header above
+ * gives — a near-white band laid over the box's own edge first and the ring outside it, so the two
+ * darks never meet — and one ring serves both states, because the band is what separates the two
+ * darks and the box is filled in only one of them. the fee decision draws a switch rather than a
+ * box and rings itself below.
  */
 [part~='checkbox']:focus-visible {
 	box-shadow:
@@ -2375,34 +2386,40 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the free entry's ring, in two tones, and the second tone is what makes it a ring at all.
+ * the free entry's ring, drawn on the input rather than on the surface it fills. the surface is the
+ * part a host restyles, and a host page's `::part(amount-input)` rule outranks every rule here on
+ * it, so a ring drawn there is one a page clearing its shadows takes away from a keyboard donor.
+ * nothing outside reaches the input, and the input covers the surface edge to edge
+ * (`[part~='amount-input'] input` above), so a shadow laid outside it is laid outside the surface.
  *
- * the input is inset by the surface's own border, so a ring drawn from the input's edge spends its
- * first pixel underneath that border and lands one pixel proud of the tile. on a tile the donor has
- * typed into, that border is already the primary — so a single-tone ring in the primary adds one
- * pixel of the colour already there, and a keyboard donor typing an amount cannot tell focused from
- * chosen. that is the one state every keyboard donor is in while deciding the gift.
+ * on a tray of tiles it takes the marked controls' construction — a band of `--_n1` laid against the
+ * box's edge first and the ring outside it — so the ring meets the card on its outside and the
+ * near-white on its inside, and never shares a boundary with the tray's own fill.
  *
- * so a near-white band is laid over the surface's border first and the ring goes outside it. the
- * band does the second job the split needs as well: it is what keeps the ring off the primary edge
- * underneath it, so the ring meets the card on its outside and the near-white on its inside and the
- * two darks never share a boundary. one step of the ramp rather than a new value, and what a donor
- * sees is a band appearing where a solid edge was.
+ * on a bare tray the surface is a field like any other and rings as one: the field's ring is its
+ * edge recoloured and the ring flush outside it (`[part~='field']:focus-visible` above). the input
+ * stands inside that edge, so one shadow spread across the edge's width and the ring's paints both,
+ * over the surface's border rather than beside it.
  *
- * the invalid state is not drawn this way and does not need to be: its ring recolours the whole
- * edge from danger to danger over a surface carrying a danger border, and the change there is a
- * change of shape rather than a second pixel of one colour.
+ * the transparent outline from the first rule in this group stays on the input, so forced-colors,
+ * which drops both shadows, still paints one there.
  */
 [part~='amount-input'] input:focus-visible {
-	box-shadow: none;
+	box-shadow:
+		0 0 0 var(--_border) var(--_n1),
+		0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
+}
+
+.bare > [part~='amount-input'] input:focus-visible {
+	box-shadow: 0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_focus-ring);
 }
 
 /*
- * the switch's ring, in the free entry's two tones and for the same reasons: on, the track *is* the
- * primary, and a ring hugging it is either the colour of the thing it is meant to bound or the
- * ladder's darkest rung against a fill that can be as dark — the control growing, either way. a
- * near-white band is laid on the track's edge first and the ring goes outside it, so what a keyboard
- * donor sees is a band appearing where a solid edge was.
+ * the switch's ring, in the two tones of a control the primary marks (the focus header above): on,
+ * the track *is* the primary, and a ring hugging it is either the colour of the thing it is meant
+ * to bound or the ladder's darkest rung against a fill that can be as dark — the control growing,
+ * either way. a near-white band is laid on the track's edge first and the ring goes outside it, so
+ * what a keyboard donor sees is a band appearing where a solid edge was.
  *
  * one ring in both states rather than one per state. the ring says where the caret is and the fill
  * says which way the decision is set, and a ring that changed with the fill would be saying the
@@ -2508,13 +2525,20 @@ button.step-dot:focus-visible .step-mark {
 }
 
 /*
- * on an invalid control the ring itself carries the state rather than sitting beside it. the free
- * entry is named through its input for the reason the block above gives: the ring is on the control
- * that takes the focus, and the surface around it is not that control.
+ * on an invalid control the ring itself carries the state rather than sitting beside it. a tile is
+ * named through `:has()` and the free entry through its input, because the token is on the part and
+ * the input inside it is what takes the focus — and the free entry's ring is on that input for the
+ * reason its block above gives. on a bare tray the entry's ring spans its edge as well, as the
+ * ordinary one does there; the edge is already the danger, so the two read as one mark.
  */
 [part~='invalid']:focus-visible,
-[part~='amount-option'][part~='invalid']:has(:focus-visible) {
+[part~='amount-option'][part~='invalid']:has(:focus-visible),
+[part~='amount-input'][part~='invalid'] input:focus-visible {
 	box-shadow: 0 0 0 var(--_focus-width) var(--_bad);
+}
+
+.bare > [part~='amount-input'][part~='invalid'] input:focus-visible {
+	box-shadow: 0 0 0 calc(var(--_border) + var(--_focus-width)) var(--_bad);
 }
 
 /*

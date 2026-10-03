@@ -18,6 +18,7 @@ import {
 	commitmentMetadata,
 	type DepositInstructions,
 	type Intent,
+	type PaymentFailure,
 	type ProcessorName,
 	DONATION_METADATA_KEY,
 	FEE_COVERED_METADATA_KEY,
@@ -295,11 +296,11 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	// what comes back narrows what this path *offers* and never what it *accepts*, and two things
 	// hold that. `parseQuoteRequest` below reads both vocabularies whole rather than the served
 	// lists — `FREQUENCIES` in packages/form/src/v1.ts for the cadence and `OFFERED_PAYMENT_METHODS`
-	// for the rail; and `readPublishedConfig` mints no refusal over an empty rail list at all — the one that exists is `renderableConfig` in
-	// ../forms/published-config.ts, which only the config route composes. so a donor on a cached page
-	// holding a rail this deployment has since stopped offering is charged rather than turned away
-	// (CLAUDE.md), and so is every donor mid-checkout on an account whose last capability just went
-	// to `pending`.
+	// for the rail; and `readPublishedConfig` mints no refusal over an empty rail list at all — the
+	// one that exists is `renderableConfig` in ../forms/published-config.ts, which only the config
+	// route composes. so a donor on a cached page holding a rail this deployment has since stopped
+	// offering is charged rather than turned away (CLAUDE.md), and so is every donor mid-checkout on
+	// an account whose last capability just went to `pending`.
 	const origin = new URL(attempt.request.url).origin;
 	const served = await readPublishedConfig(
 		deps.db,
@@ -486,9 +487,10 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 
 	if (!written.ok) {
 		// a duplicate is a success, and it is the one refusal from the writer that is. it means the
-		// intent this call was handed already had a payment recorded against it, which is only
-		// reachable when an earlier call minted that same intent — so the gift exists, written by
-		// that call, and the token above is the token for it. `Quote` carries no donation id, so this
+		// intent this call was handed already had a payment recorded against it — no processor does
+		// that on this path today, because `idempotencyKey` above is a fresh `donationId` per call,
+		// but one that did would be handing back a gift an earlier call wrote, and the token above is
+		// the token for it. `Quote` carries no donation id, so this
 		// answer is complete and true. refusing instead would fail a donation that succeeded.
 		if (written.reason === 'duplicate_intent') return { ok: true, quote, form };
 
@@ -772,7 +774,7 @@ async function mintGrant(
 				})
 			);
 		}
-		return grantRefusal(form, created.reason, created.detail);
+		return grantRefusal(form, created);
 	}
 
 	const quote: Quote = {
@@ -934,11 +936,14 @@ function splitGrant(
  * from Chariot's 410), an approval Chariot holds nothing for (`not_found`, its 404 — a body naming
  * the wrong session, so `invalid_request` and never a claim that it expired), and an amount the fund
  * will not grant (`invalid_request`, carrying Chariot's reason — the adapter's own local refusals
- * cannot reach it, because the parser and the checks above refuse those figures first). a call whose
+ * cannot reach it, because the parser and the checks above refuse those figures first). every other
+ * Chariot 4xx lands on `invalid_request` too, a 400 caused by this app's own parameters included, and
+ * the copy on that arm reads to the donor as the fund's refusal in every one of them. a call whose
  * outcome is unknown (`unreachable`) is retryable, and never says nothing was given. everything else
  * is what any single gift's processor failure answers.
  */
-function grantRefusal(form: FormRecord, reason: string, detail: string): QuoteResult {
+function grantRefusal(form: FormRecord, failure: PaymentFailure): QuoteResult {
+	const { reason, detail } = failure;
 	if (reason === 'authorization_expired') {
 		return refuse(
 			form,
@@ -966,29 +971,17 @@ function grantRefusal(form: FormRecord, reason: string, detail: string): QuoteRe
 		);
 	}
 	if (reason === 'invalid_request') {
-		const said = fundsReason(detail);
 		return refuse(
 			form,
 			'daf_grant_declined',
-			said === null
+			failure.providerSaid === undefined
 				? 'Your fund didn’t approve this gift, so nothing was given.'
-				: `Your fund didn’t approve this gift: ${said}`,
+				: `Your fund didn’t approve this gift: ${failure.providerSaid}`,
 			'Give an amount the fund allows — at least its minimum and no more than the balance ' +
 				'available — through the fund’s window.'
 		);
 	}
 	return paymentRefusal(form, 'daf', 'one_time', reason, detail);
-}
-
-/**
- * the fund's own words out of the adapter's sentence, which names the processor and is written for
- * the deployment's log. `classifyStatus` in ../payments/chariot.ts ends every failure it sorts with
- * this marker and the quoted problem body.
- */
-function fundsReason(detail: string): string | null {
-	const marker = 'Chariot said: ';
-	const at = detail.lastIndexOf(marker);
-	return at === -1 ? null : detail.slice(at + marker.length);
 }
 
 /**

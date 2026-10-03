@@ -198,6 +198,12 @@ export function majorEntry(amountMinor: number, currency: string): string {
 export const MAX_SUGGESTED_AMOUNTS = 12;
 
 /**
+ * the sentence a list over `MAX_SUGGESTED_AMOUNTS` is refused with. exported because the editor's
+ * Add says it too, when a press at the cap is held, and the two have to be one sentence.
+ */
+export const TOO_MANY_SUGGESTED_AMOUNTS = `at most ${MAX_SUGGESTED_AMOUNTS}`;
+
+/**
  * a figure as the operator who typed it reads it back.
  *
  * every amount in a message about these boxes goes through here. they are written in major units, so
@@ -274,7 +280,7 @@ export function readSuggestedAmounts(
 		// come back as fifty sentences about individual amounts, none of which is the problem.
 		return {
 			amounts: [],
-			problem: `at most ${MAX_SUGGESTED_AMOUNTS}`,
+			problem: TOO_MANY_SUGGESTED_AMOUNTS,
 			problems: []
 		};
 	}

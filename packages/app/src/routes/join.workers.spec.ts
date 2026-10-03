@@ -1,6 +1,8 @@
 import { createExecutionContext, env } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { INVITATION_LIFETIME_MS, inviteMember } from '$lib/server/auth';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { createDb, type Db } from '$lib/server/db/client';
 import { requestContext } from '../request-context';
 import { action, loader } from './join';
@@ -229,6 +231,16 @@ describe('POST /join — setting a password', () => {
 	});
 
 	/** and the token is never echoed either: it is a working credential right up until it is not. */
+	it('tells a deployment with no schema to apply its migrations, and logs the cause', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answer = await refused('any-token', typed('Nadia Hart', CHOSEN));
+
+			expect(answer.init?.status).toBe(500);
+			expect(answer.data.form.result.error?.['']?.[0]).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
+	});
+
 	it('never sends the token back', async () => {
 		const token = await invitationFor('sam@riverbanktrust.org');
 

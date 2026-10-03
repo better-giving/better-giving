@@ -1,5 +1,12 @@
+import { globSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { currentDestination, DESTINATION_GROUPS, DESTINATIONS } from './destinations';
+import {
+	currentDestination,
+	DESTINATION_GROUPS,
+	DESTINATIONS,
+	destinationGroupsFor
+} from './destinations';
 
 describe('the rail', () => {
 	it('opens on the dashboard, then goes to a bare path under /admin, one per section', () => {
@@ -13,12 +20,43 @@ describe('the rail', () => {
 			'/admin/recurring',
 			'/admin/organisation',
 			'/admin/members',
+			'/admin/integrations/zapier',
+			'/admin/integrations/api',
+			'/admin/integrations/webhooks',
 			'/admin/books'
 		]);
 	});
 
-	it('stands the dashboard alone, then the records of giving, then the organisation and who can sign in, then the books', () => {
+	it('stands the dashboard alone, then the records of giving, then the organisation and who can sign in, then the integrations, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
+			['Dashboard'],
+			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
+			['Organisation', 'Members'],
+			['Zapier', 'API', 'Webhooks'],
+			['Books']
+		]);
+	});
+
+	it('heads the integrations and no other group', () => {
+		expect(DESTINATION_GROUPS.map((group) => ('heading' in group ? group.heading : null))).toEqual([
+			null,
+			null,
+			null,
+			'Integrations',
+			null
+		]);
+	});
+});
+
+describe('who the rail is drawn for', () => {
+	it('is every group for the deployer', () => {
+		expect(destinationGroupsFor(true)).toEqual(DESTINATION_GROUPS);
+	});
+
+	it('leaves the integrations out for a member, and nothing else', () => {
+		expect(
+			destinationGroupsFor(false).map((group) => group.destinations.map((d) => d.label))
+		).toEqual([
 			['Dashboard'],
 			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
 			['Organisation', 'Members'],
@@ -27,9 +65,9 @@ describe('the rail', () => {
 	});
 });
 
-describe('the bar at a phone’s width', () => {
-	it('keeps the dashboard, the campaigns, the donors and the gifts, and folds the rest under More', () => {
-		expect(DESTINATIONS.filter((d) => !('folded' in d)).map((d) => d.label)).toEqual([
+describe('the bar at a phone width', () => {
+	it('carries the dashboard, the campaigns, the donors and the gifts, and leaves the rest to More', () => {
+		expect(DESTINATIONS.filter((d) => 'bar' in d && d.bar).map((d) => d.label)).toEqual([
 			'Dashboard',
 			'Campaigns',
 			'Donors',
@@ -104,5 +142,20 @@ describe('the destination a page belongs to', () => {
 	it('is nothing for a path that merely starts with a destination’s letters', () => {
 		// a bare `startsWith` marks Donors here, and the reader is not in that section.
 		expect(currentDestination('/admin/donorships')).toBeUndefined();
+	});
+});
+
+describe('the Zapier cell', () => {
+	it('is marked with the image packages/operator publishes, and no glyph', () => {
+		const zapier = DESTINATIONS.find((d) => d.href === '/admin/integrations/zapier');
+
+		expect(zapier?.mark).toEqual({ src: expect.stringContaining('zapier') });
+	});
+
+	it('draws an image that is in the repository once, in packages/operator', () => {
+		const packages = resolve(import.meta.dirname, '../../../..');
+		const found = globSync('*/{src,static,public}/**/zapier.{png,svg,webp}', { cwd: packages });
+
+		expect(found).toEqual(['operator/src/styles/brand/zapier.png']);
 	});
 });

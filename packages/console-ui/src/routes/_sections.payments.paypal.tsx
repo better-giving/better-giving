@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, setUpRecurring, setVars, startPaypalSetup } from '../api/client';
 import type { RecurringSetup, VarsWritten } from '../api/types';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { CHARITY_INTENT, charityEdit } from '../lib/paypal-charity';
 import type { PaypalPress } from '../lib/paypal-section';
@@ -12,7 +13,7 @@ import { forgetReadings, readProcessorPage, runDrawn } from '../lib/processor-ca
 import { RECURRING_INTENT } from '../lib/recurring-block';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE as CONSOLE_TITLE } from './_index';
+import { ConsoleFailure, TITLE as CONSOLE_TITLE } from './_index';
 import type { Route } from './+types/_sections.payments.paypal';
 
 // /payments/paypal — PayPal's page, one of the two under the rail's donation processor heading.
@@ -37,6 +38,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * account, the worker and the address it is spent on read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
@@ -138,6 +140,16 @@ export default function PaypalPage({ loaderData, actionData, matches }: Route.Co
 				busy={busy}
 				pending={press.intent}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

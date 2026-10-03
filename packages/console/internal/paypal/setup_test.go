@@ -101,8 +101,9 @@ func working() *effects {
 		app: &app{
 			token: answered(200, map[string]any{"access_token": "A21AA-token", "app_id": "APP-1"}),
 			answers: map[string]cf.Answer{
-				"GET /v1/notifications/webhooks":  listed(),
-				"POST /v1/notifications/webhooks": answered(201, listener("WH-NEW", listenerURL)),
+				"GET /v1/notifications/webhooks":        listed(),
+				"GET /v1/customer/disputes?page_size=1": answered(200, map[string]any{"items": []any{}}),
+				"POST /v1/notifications/webhooks":       answered(201, listener("WH-NEW", listenerURL)),
 			},
 		},
 		address: deployment.Address{Kind: deployment.Deployed, WorkersDev: address},
@@ -177,7 +178,8 @@ func TestAnAppWithNoListenerHereGetsOneAndTheDeploymentStoresAllFourValues(t *te
 		t.Fatalf("outcome = %+v, want done", outcome)
 	}
 	if want := []string{
-		"POST /v1/oauth2/token", "GET /v1/notifications/webhooks", "POST /v1/notifications/webhooks",
+		"POST /v1/oauth2/token", "GET /v1/notifications/webhooks", "GET /v1/customer/disputes?page_size=1",
+		"POST /v1/notifications/webhooks",
 	}; !slices.Equal(held.app.keys(), want) {
 		t.Errorf("calls = %v, want %v", held.app.keys(), want)
 	}
@@ -230,7 +232,7 @@ func TestACreatedListenerIsAtThisAddressAndSubscribedToExactlyWhatTheDeploymentR
 	held := working()
 	Chain(context.Background(), pressed(), held.bound())
 
-	create := held.app.calls[2]
+	create := held.app.calls[3]
 	if create.body.(map[string]any)["url"] != listenerURL {
 		t.Errorf("the listener was registered at %v, want %s", create.body.(map[string]any)["url"], listenerURL)
 	}
@@ -251,7 +253,9 @@ func TestAListenerAlreadyHereAndSubscribedToEverythingIsKeptAsItIs(t *testing.T)
 	if outcome.Kind != Done {
 		t.Fatalf("outcome = %+v, want done", outcome)
 	}
-	if want := []string{"POST /v1/oauth2/token", "GET /v1/notifications/webhooks"}; !slices.Equal(held.app.keys(), want) {
+	if want := []string{
+		"POST /v1/oauth2/token", "GET /v1/notifications/webhooks", "GET /v1/customer/disputes?page_size=1",
+	}; !slices.Equal(held.app.keys(), want) {
 		t.Errorf("calls = %v, want %v — a listener that is right is touched by nothing", held.app.keys(), want)
 	}
 	if held.published[0]["PAYPAL_WEBHOOK_ID"] != "WH-HERE" {
@@ -279,13 +283,14 @@ func TestAListenerHereSubscribedToSomethingElseIsBroughtToExactlyTheList(t *test
 		t.Fatalf("outcome = %+v, want done", outcome)
 	}
 	if want := []string{
-		"POST /v1/oauth2/token", "GET /v1/notifications/webhooks", "PATCH /v1/notifications/webhooks/WH-HERE",
+		"POST /v1/oauth2/token", "GET /v1/notifications/webhooks", "GET /v1/customer/disputes?page_size=1",
+		"PATCH /v1/notifications/webhooks/WH-HERE",
 	}; !slices.Equal(held.app.keys(), want) {
 		t.Fatalf("calls = %v, want %v", held.app.keys(), want)
 	}
-	patch, ok := held.app.calls[2].body.([]map[string]any)
+	patch, ok := held.app.calls[3].body.([]map[string]any)
 	if !ok || len(patch) != 1 || patch[0]["op"] != "replace" || patch[0]["path"] != "/event_types" {
-		t.Fatalf("the patch is %#v, want one replace of /event_types", held.app.calls[2].body)
+		t.Fatalf("the patch is %#v, want one replace of /event_types", held.app.calls[3].body)
 	}
 	if names := namesIn(t, map[string]any{"event_types": patch[0]["value"]}); !slices.Equal(names, release.PaypalEventTypes) {
 		t.Errorf("the listener was brought to %v, want %v", names, release.PaypalEventTypes)
@@ -577,4 +582,88 @@ func TestTheDeploymentsOwnStepNamesThePaypalAccount(t *testing.T) {
 	if want := []string{release.PaypalProcessor}; !slices.Equal(held.repeatings, want) {
 		t.Errorf("the deployment was pressed about %v, want %v", held.repeatings, want)
 	}
+}
+
+// a 403 past the mint is the pair accepted and the app short of a permission, so the sentence names
+// the step and never sends the operator back to the boxes the pair was typed in.
+func TestAPermissionPayPalRefusesNamesTheStepAndThatThePairWasAccepted(t *testing.T) {
+	forbidden := answered(403, map[string]any{"name": "NOT_AUTHORIZED"})
+	for _, one := range []struct {
+		name string
+		set  func(held *effects)
+		want OutcomeKind
+		step string
+	}{
+		{"the list", func(held *effects) {
+			held.app.answers["GET /v1/notifications/webhooks"] = forbidden
+		}, Unlisted, "list this app’s webhook listeners"},
+		{"the create", func(held *effects) {
+			held.app.answers["POST /v1/notifications/webhooks"] = forbidden
+		}, Uncreated, "register a webhook listener"},
+		{"the resubscribe", func(held *effects) {
+			held.app.answers["GET /v1/notifications/webhooks"] = listed(listener("WH-HERE", listenerURL))
+			held.app.answers["PATCH /v1/notifications/webhooks/WH-HERE"] = forbidden
+		}, Unresubscribed, "change what a webhook listener is subscribed to"},
+	} {
+		held := working()
+		one.set(held)
+
+		outcome := Chain(context.Background(), pressed(), held.bound())
+
+		if outcome.Kind != one.want || outcome.Failure == nil || outcome.Failure.Kind != Forbidden {
+			t.Fatalf("%s: outcome = %+v, want %s and forbidden", one.name, outcome, one.want)
+		}
+		detail := outcome.Failure.Detail
+		if !strings.HasPrefix(detail, "PayPal said: NOT_AUTHORIZED") {
+			t.Errorf("%s: detail = %q, want it to carry what PayPal said", one.name, detail)
+		}
+		if !strings.Contains(detail, "accepted the pair") || !strings.Contains(detail, one.step) {
+			t.Errorf("%s: detail = %q, want the pair accepted and %q named", one.name, detail, one.step)
+		}
+		if strings.Contains(detail, "refused the pair") {
+			t.Errorf("%s: detail = %q reads as wrong keys", one.name, detail)
+		}
+		assertNothingStored(t, held)
+	}
+}
+
+// every refund the deployment records on PayPal lists the disputes first, and PayPal refuses that
+// read to an app without Disputes switched on (DEPLOY.md), so a press on such an app is refused
+// before anything is registered or stored, and its sentence names the switch.
+func TestAnAppWithoutDisputesIsRefusedAndTheSwitchIsNamed(t *testing.T) {
+	held := working()
+	held.app.answers["GET /v1/customer/disputes?page_size=1"] = answered(403, map[string]any{"name": "NOT_AUTHORIZED"})
+
+	outcome := Chain(context.Background(), pressed(), held.bound())
+
+	if outcome.Kind != DisputesUnread || outcome.Failure == nil || outcome.Failure.Kind != Forbidden {
+		t.Fatalf("outcome = %+v, want disputes-unread and forbidden", outcome)
+	}
+	detail := outcome.Failure.Detail
+	if !strings.HasPrefix(detail, "PayPal said: NOT_AUTHORIZED") {
+		t.Errorf("detail = %q, want it to carry what PayPal said", detail)
+	}
+	if !strings.Contains(detail, "Disputes") || !strings.Contains(detail, "developer dashboard") {
+		t.Errorf("detail = %q, want Disputes and the developer dashboard named", detail)
+	}
+	if slices.Contains(held.app.keys(), "POST /v1/notifications/webhooks") {
+		t.Errorf("a listener was registered on an app the deployment cannot read disputes on")
+	}
+	assertNothingStored(t, held)
+}
+
+// any other way the disputes read fails is sorted the way every other read past the mint is.
+func TestADisputesReadThatDidNotLandForAnotherReasonRegistersNothing(t *testing.T) {
+	held := working()
+	held.app.answers["GET /v1/customer/disputes?page_size=1"] = answered(503, map[string]any{"name": "SERVICE_UNAVAILABLE"})
+
+	outcome := Chain(context.Background(), pressed(), held.bound())
+
+	if outcome.Kind != DisputesUnread || outcome.Failure == nil || outcome.Failure.Kind != Unreachable {
+		t.Fatalf("outcome = %+v, want disputes-unread and unreachable", outcome)
+	}
+	if strings.Contains(outcome.Failure.Detail, "Disputes") {
+		t.Errorf("detail = %q names a switch PayPal did not say was off", outcome.Failure.Detail)
+	}
+	assertNothingStored(t, held)
 }

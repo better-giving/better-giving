@@ -75,8 +75,9 @@ export interface MountedRoute {
 }
 
 /**
- * sends one request into a mounted chain. `env` swaps the deploy-time values for that request, and
- * `ctx` is the execution context it runs in, for a case that waits on what it handed `waitUntil`.
+ * sends one request into a mounted chain. `env` swaps the deploy-time values for that request;
+ * `ctx` is the execution context it runs on, passed by a case that waits on what the route handed
+ * to `waitUntil` (`waitOnExecutionContext` from `cloudflare:test`).
  */
 export type RouteRequester = (
 	request: Request,

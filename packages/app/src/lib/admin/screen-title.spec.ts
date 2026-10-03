@@ -8,15 +8,12 @@ import { APP_NAME, screenTitle } from './screen-title';
 // compile in this file instead of falling quietly back to the software's own name at runtime.
 type LayoutMatch = Extract<Route.MetaArgs['matches'][number], { id: 'routes/_app' }>;
 
-// the `ready` shape, because that is the only one a screen is rendered under: the layout draws the
-// set-up gate in place of every child while any of the five is unfinished (../../routes/_app.tsx),
-// so no screen's `meta` ever runs against the other one.
 const layout = (orgName: string | null): LayoutMatch => ({
 	id: 'routes/_app',
 	params: {},
 	pathname: '/admin',
 	meta: [],
-	loaderData: { shape: 'ready', orgName }
+	loaderData: { orgName, deployer: true }
 });
 
 describe('a screen title', () => {

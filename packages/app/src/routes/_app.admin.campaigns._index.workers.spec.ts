@@ -11,6 +11,7 @@ import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { readChat } from '$lib/server/pages/draft';
 import { answering, insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
+import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as campaignPage from './$slug';
 import * as layout from './_app';
@@ -54,7 +55,7 @@ function post(fields: Record<string, string>, AI: { run: unknown } = answering()
 	return request(
 		new Request(`${ORIGIN}${LIST}?new`, { method: 'POST', headers: { cookie: session }, body }),
 		// the stand-in answers `run` alone, which is all `generate` calls.
-		{ env: { ...env, AI } as unknown as Env }
+		{ env: { ...bindings, AI } as unknown as Env }
 	);
 }
 
@@ -78,7 +79,7 @@ async function load(): Promise<{ campaigns: Row[]; ended: Row[] }> {
 	const response = await request(
 		new Request(`${ORIGIN}${LIST}`, { headers: { cookie: session } }),
 		{
-			env
+			env: bindings
 		}
 	);
 	expect(response.status).toBe(200);
@@ -114,7 +115,7 @@ function press(which: string, row: Pick<Row, 'id' | 'version'>, at = LIST) {
 	body.set('page_id', row.id);
 	return request(
 		new Request(`${ORIGIN}${at}`, { method: 'POST', headers: { cookie: session }, body }),
-		{ env }
+		{ env: bindings }
 	);
 }
 
@@ -154,6 +155,13 @@ async function listed(name: string): Promise<Row> {
 
 const DAY = 86_400_000;
 const NOW = Date.now();
+
+/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
 
 describe('the Campaigns list', () => {
 	it('lists live and unpublished campaigns newest first, and the ended ones apart, never the Donation page', async () => {
@@ -473,7 +481,7 @@ describe('Delete', () => {
 		const asked = async (pageId: string) => {
 			const response = await request(
 				new Request(`${ORIGIN}${LIST}?delete=${pageId}`, { headers: { cookie: session } }),
-				{ env }
+				{ env: bindings }
 			);
 			return ((await response.json()) as { deleting: { id: string } | null }).deleting?.id ?? null;
 		};
@@ -546,7 +554,7 @@ describe('what a landed press tells the list it lands on', () => {
 		const flash = pressed.headers.getSetCookie().map((cookie) => cookie.split(';', 1)[0]);
 		const response = await request(
 			new Request(`${ORIGIN}${LIST}`, { headers: { cookie: [session, ...flash].join('; ') } }),
-			{ env }
+			{ env: bindings }
 		);
 		const body = (await response.json()) as { landed: unknown };
 		return { landed: body.landed, clears: response.headers.getSetCookie().join('\n') };

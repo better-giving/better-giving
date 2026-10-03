@@ -189,6 +189,31 @@
 	font-size: var(--_root-size);
 	font-family: var(--_font);
 
+	/*
+	 * the alignment, case, indent, shadow, tracking, word spacing, slant, font variants and axes,
+	 * wrapping, word breaking and hyphenation, back at their initial keywords. left unstated each is
+	 * the host page's, so a centred hero centres the receipt, an uppercase, tracked theme shouts every
+	 * label and a `nowrap` banner runs the receipt off the card. colour, weight and leading are
+	 * `[part~='card']`'s in ./parts.css; an inherited property neither block names still reaches the
+	 * card from the host.
+	 *
+	 * what this resets is the value the element inherits from the page around it, and only that. a
+	 * page rule that matches the element itself — `*`, its tag name — outranks every `:host` rule for
+	 * that one node, so its value is the one the card inherits, exactly as the page wrote it.
+	 */
+	text-align: start;
+	text-transform: none;
+	text-indent: 0;
+	text-shadow: none;
+	letter-spacing: normal;
+	word-spacing: normal;
+	font-style: normal;
+	font-variant: normal;
+	font-variation-settings: normal;
+	white-space: normal;
+	word-break: normal;
+	hyphens: manual;
+
 	--_root-size: clamp(15px, 1rem, 18px);
 
 	/*

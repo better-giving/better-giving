@@ -4,6 +4,7 @@ import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { createDb, type Db } from '$lib/server/db/client';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as donations from './_app.admin.donations._index';
 import * as donorSearch from './_app.admin.donors.search';
@@ -48,6 +49,7 @@ let db: Db;
 /** one requester per chain: `mountRoutes` nests each module under the one before it. */
 let request: (req: Request) => Promise<Response>;
 let session: string;
+let bindings: Env;
 
 beforeAll(async () => {
 	db = createDb(env.DB);
@@ -78,7 +80,7 @@ beforeAll(async () => {
 		const { pathname } = new URL(req.url);
 		const chain = chains.find(([path]) => path === pathname);
 		if (chain === undefined) throw new Error(`no chain mounted for ${pathname}`);
-		return chain[1](req);
+		return chain[1](req, { env: bindings });
 	};
 	session = await signIn();
 });
@@ -117,12 +119,13 @@ beforeEach(async () => {
 		 values ('default', 'Hope Foundation', '12-3456789', 'No goods or services were provided.',
 		         '1 Main St', 'Springfield', 'US', 'ops@hope.example', 0, 0)`
 	).run();
+	bindings = await finishSetup(PASSWORD);
 });
 
 /** a real session, as the `Cookie` header a browser would send back. */
 async function signIn(): Promise<string> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,

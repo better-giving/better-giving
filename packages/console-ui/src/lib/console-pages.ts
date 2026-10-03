@@ -38,7 +38,7 @@ export const SECTION_PAGES: Record<SectionId, string> = {
 export type ProcessorLogos = Record<PaymentProcessor, string>;
 
 /** the integration logos the rail draws, resolved the same way. */
-export type IntegrationLogos = { quickbooks: string; zapier: string };
+export type IntegrationLogos = { quickbooks: string };
 
 /**
  * a job row's status, drawn in the glyph StatusLine gives its tone: a tick over a finished job and
@@ -82,23 +82,23 @@ function processorStatus(link: ProcessorLink): DestinationStatus {
  * every label is the section's own row label, except the site list's: its row label is a sentence
  * (`FOLD_LABELS.sites`), which the page states under its name rather than a cell carrying it.
  *
- * **the model cell is no section, and is written out as the integration cells below are.** no job
+ * **the model cell is no section, and is written out as the integration cell below is.** no job
  * waits on it: an unset model is the free one, which answers (packages/operator/src/ai-models.ts),
  * so its cell carries no status. its short word is one word, which is what the narrow band has room
  * for.
  *
- * **the integration cells are no section, so they are written out rather than made by `cell`** —
- * that helper is keyed to a `SectionId` and reads a set-up row, and there is no row here. their
- * heading is a literal for the same reason: `FOLD_LABELS` is keyed by set-up section, and neither
- * is one. they carry no status either: no job waits on them and a deployment that keeps its books
- * somewhere else, or feeds no Zap, is not half set up (packages/app/src/routes/console.quickbooks.ts,
- * packages/operator/src/console/zapier.ts). each mark is the brand's own, in the image form the
- * processor cells above them carry, so the rail draws one kind of thing one way.
+ * **an integration cell is no section, so it is written out rather than made by `cell`** — that
+ * helper is keyed to a `SectionId` and reads a set-up row, and there is no row here. the heading is
+ * a literal for the same reason: `FOLD_LABELS` is keyed by set-up section, and an integration is
+ * none. it carries no status either: no job waits on it and a deployment that keeps its books
+ * somewhere else is not half set up (packages/app/src/routes/console.quickbooks.ts). its mark is the
+ * brand's own, in the image form the processor cells above it carry, so the rail draws one kind of
+ * thing one way.
  *
  * **those marks arrive on their own and are never in `logos`.** {@link ProcessorLogos} is keyed by
- * `PaymentProcessor` and neither integration is a processor — no money moves on them and they are on
- * no processor enumeration (./quickbooks-section.tsx) — so carrying them in that record would put
- * them inside the vocabulary the payments rail is keyed by.
+ * `PaymentProcessor` and an integration is no processor — no money moves on it and it is on no
+ * processor enumeration (./quickbooks-section.tsx) — so carrying its mark in that record would put
+ * it inside the vocabulary the payments rail is keyed by.
  */
 export function railGroups(
 	sections: readonly HomeSection[],
@@ -151,12 +151,6 @@ export function railGroups(
 					short: 'QuickBooks',
 					href: '/quickbooks',
 					mark: { src: integrationLogos.quickbooks }
-				},
-				{
-					label: 'Zapier',
-					short: 'Zapier',
-					href: '/zapier',
-					mark: { src: integrationLogos.zapier }
 				}
 			]
 		}

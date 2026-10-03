@@ -6,6 +6,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { CREATED_FLASH, takeFlash } from '$lib/server/flash';
 import { readForm, readForms } from '$lib/server/forms/queries';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as create from './_app.admin.forms.new';
 
@@ -16,6 +17,8 @@ import * as create from './_app.admin.forms.new';
 // the chain is mounted rather than the loader called, which is ../route-request.testing.ts's
 // pattern: the session gate is a `middleware` on ./_app.tsx and the handle is on the request
 // context, so a loader called on its own is a loader with the gate above it never run.
+// the cases about a deployment whose set-up is unfinished mount the screen alone (`ungated`),
+// since the layout's set-up gate would answer them before the screen did.
 //
 // the deploy-time half is a per-request `env` rather than a value a case builds, so what a case
 // exercises is the deployment an operator can actually be in rather than a shape assembled here.
@@ -34,6 +37,14 @@ const PASSWORD = 'a-long-enough-password';
 
 let db: Db;
 let request: RouteRequester;
+/**
+ * the screen with no layout above it, for the cases about a deployment whose set-up is unfinished:
+ * the layout refuses every screen under it on one (./_app.tsx), and this screen reads nothing off
+ * the session or the set-up state, only the database.
+ */
+let direct: RouteRequester;
+/** the bindings of a deployment whose five set-up jobs are done: what `request` is sent with. */
+let bindings: Env;
 let session: string;
 
 /**
@@ -51,6 +62,7 @@ beforeAll(async () => {
 		{ path: undefined, module: layout },
 		{ path: 'admin/forms/new', module: create }
 	]);
+	direct = mountRoutes([{ path: 'admin/forms/new', module: create }]);
 	session = await signIn();
 
 	const row = await env.DB.prepare(
@@ -71,12 +83,13 @@ beforeEach(async () => {
 	// every case starts from a deployment with sites to tick; the cases about a deployment that lists
 	// none say so themselves.
 	await listSites('https://acme.org', 'https://give.acme.org');
+	bindings = await finishSetup(PASSWORD);
 });
 
 /** a real session, as the `Cookie` header a browser would send back. */
 async function signIn(): Promise<string> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,
@@ -164,7 +177,7 @@ const NOTHING_SET: Record<string, string> = Object.fromEntries(
 );
 
 function envOf(vars: Record<string, string>): Env {
-	return { ...env, ...vars } as Env;
+	return { ...bindings, ...vars } as Env;
 }
 
 /** what the screen is handed. */
@@ -176,10 +189,11 @@ type Loaded = {
 	currency: string;
 };
 
-async function load(vars: Record<string, string> = READY): Promise<Loaded> {
-	const response = await request(new Request(`${ORIGIN}${NEW}`, { headers: { cookie: session } }), {
-		env: envOf(vars)
-	});
+async function load(vars: Record<string, string> = READY, ungated = false): Promise<Loaded> {
+	const response = await (ungated ? direct : request)(
+		new Request(`${ORIGIN}${NEW}`, { headers: { cookie: session } }),
+		{ env: envOf(vars) }
+	);
 	expect(response.status).toBe(200);
 	return (await response.json()) as Loaded;
 }
@@ -244,8 +258,12 @@ type SaveRedirect = { status: number; location: string | null; cookie: string | 
  * things this route owes CLAUDE.md and calling the action directly would run it with the gate above
  * it never run.
  */
-async function save(fields: Record<string, string[]>, vars: Record<string, string> = READY) {
-	const response = await request(
+async function save(
+	fields: Record<string, string[]>,
+	vars: Record<string, string> = READY,
+	ungated = false
+) {
+	const response = await (ungated ? direct : request)(
 		new Request(`${ORIGIN}${NEW}`, {
 			method: 'POST',
 			headers: { cookie: session },
@@ -344,7 +362,7 @@ describe('/admin/forms/new load', () => {
 		// no screen saying why. what each line means is asserted in
 		// `$lib/server/forms/readiness.spec.ts`; what this route owes is publishing the answer.
 		await env.DB.prepare('delete from org_profile').run();
-		const { readiness } = await load();
+		const { readiness } = await load(READY, true);
 		expect(readiness?.find((line) => line.label === 'Organisation details')?.severity).toBe(
 			'blocker'
 		);
@@ -355,7 +373,7 @@ describe('/admin/forms/new load', () => {
 		// charge is settled on the console when it is pasted
 		// (`packages/console-ui/src/lib/stripe-edits.ts`), and this screen could only ever repeat
 		// it and point somewhere it is not.
-		expect((await load(NOTHING_SET)).readiness).toBe(null);
+		expect((await load(NOTHING_SET, true)).readiness).toBe(null);
 	});
 
 	it('publishes every site this deployment has listed, in the operator’s own order', async () => {
@@ -477,7 +495,7 @@ describe('/admin/forms/new save', () => {
 		// without a submit is markup, and markup is not what stops a POST — a stale tab, a hand-built
 		// body or a row emptied between the draw and the press all reach here.
 		await env.DB.prepare('delete from org_profile').run();
-		const { redirect, failure } = await save(submission());
+		const { redirect, failure } = await save(submission(), READY, true);
 		// asserted before the failure is read, because it is the shape the failure takes: a save that
 		// went through redirects, and reading a status off `undefined` would report this as a
 		// `TypeError` rather than as a form having been made on a deployment that serves nothing.
@@ -496,7 +514,7 @@ describe('/admin/forms/new save', () => {
 		// whether the deployment can charge is not asked here and is not this screen's to ask: it is
 		// settled on the console when the keys are pasted
 		// (`packages/console-ui/src/lib/stripe-edits.ts`).
-		const { redirect } = await save(submission(), NOTHING_SET);
+		const { redirect } = await save(submission(), NOTHING_SET, true);
 		expect(redirect?.status).toBe(303);
 		expect(await readForms(db)).toHaveLength(1);
 	});

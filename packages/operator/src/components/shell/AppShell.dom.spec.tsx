@@ -1,6 +1,6 @@
-import { act } from 'react';
+import { type ComponentProps, act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '../render.testing';
+import { mount, render } from '../render.testing';
 import { AppShell, PanelRoute } from './AppShell.jsx';
 import type { DestinationLinkProps } from './DestinationCell.jsx';
 
@@ -16,6 +16,8 @@ import type { DestinationLinkProps } from './DestinationCell.jsx';
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.
 
+const ORG = 'Riverside Shelter';
+
 const GROUPS = [
 	{
 		destinations: [
@@ -27,16 +29,26 @@ const GROUPS = [
 
 /** the rail cell reading `label`, by the word it draws at the wide width. */
 function cell(root: HTMLElement, label: string): Element {
-	const found = [...root.querySelectorAll('.adm-rail__cells > a')].find(
+	const found = [...root.querySelectorAll('.adm-rail__cells a')].find(
 		(a) => a.querySelector('.adm-dest__full')?.textContent === label
 	);
 	if (found === undefined) throw new Error(`the rail drew no cell reading ${label}`);
 	return found;
 }
 
+/**
+ * what a run of cells lays out, in order: a headed group's element is `display: contents` in
+ * ../../styles/adm.css, so it is its children that stand in the run.
+ */
+function laidOut(run: Element | null): Element[] {
+	return [...(run?.children ?? [])].flatMap((node) =>
+		node.matches('.adm-rail__group') ? [...node.children] : [node]
+	);
+}
+
 /** the rail's children in order, each as its first class and, for a cell, its full word. */
 function railRun(root: HTMLElement): string[] {
-	return [...(root.querySelector('.adm-rail__cells')?.children ?? [])].map((node) => {
+	return laidOut(root.querySelector('.adm-rail__cells')).map((node) => {
 		if (node.matches('a')) {
 			const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
 			return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
@@ -53,6 +65,7 @@ beforeEach(() => {
 describe('a rail mounted into a document', () => {
 	it('announces the destination the reader is at as the page', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'page' as const }
 		});
@@ -62,6 +75,7 @@ describe('a rail mounted into a document', () => {
 
 	it('announces a destination that only contains the address as the current one of these', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'section' as const }
 		});
@@ -74,7 +88,7 @@ describe('a rail mounted into a document', () => {
 		// and the page itself. packages/app hands the first from its pathname, and
 		// packages/app/src/lib/admin/rail-navigates.dom.spec.tsx hands the second, so the looser
 		// form is reached by a caller rather than only by this file.
-		const root = render(AppShell, { groups: GROUPS, current: 'Donors' });
+		const root = render(AppShell, { org: ORG, groups: GROUPS, current: 'Donors' });
 
 		expect(cell(root, 'Donors').getAttribute('aria-current')).toBe('page');
 	});
@@ -84,10 +98,12 @@ describe('a rail mounted into a document', () => {
 		// which reads the kind (packages/operator/src/styles/adm.css). a reader who can see the
 		// rail must lose nothing to the distinction.
 		const page = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'page' as const }
 		});
 		const section = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'section' as const }
 		});
@@ -99,14 +115,15 @@ describe('a rail mounted into a document', () => {
 	it('marks no cell at all where the reader is in no destination', () => {
 		// what a surface hands for an address under none of the destinations. the rail marks one of
 		// them or none, and a cell marked here would announce itself as the page the reader is on.
-		const root = render(AppShell, { groups: GROUPS, current: undefined });
+		const root = render(AppShell, { org: ORG, groups: GROUPS, current: undefined });
 
-		expect(root.querySelectorAll('.adm-rail__cells > a[aria-current]')).toHaveLength(0);
-		expect(root.querySelectorAll('.adm-rail__cells > a.is-current')).toHaveLength(0);
+		expect(root.querySelectorAll('.adm-rail__cells a[aria-current]')).toHaveLength(0);
+		expect(root.querySelectorAll('.adm-rail__cells a.is-current')).toHaveLength(0);
 	});
 
 	it('claims nothing on the destinations the reader is not in', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			current: { label: 'Donation forms', kind: 'section' as const }
 		});
@@ -118,6 +135,7 @@ describe('a rail mounted into a document', () => {
 describe('the groups a rail is divided into', () => {
 	it('rules between plain groups, and draws nothing before the first', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: [
 				{ destinations: [{ label: 'Dashboard' }] },
 				{ destinations: [{ label: 'Donation forms' }, { label: 'Donors' }] },
@@ -139,6 +157,7 @@ describe('the groups a rail is divided into', () => {
 		// the console's rail: the headed group's last entry carries the step, so the group after
 		// it needs no rule of its own.
 		const root = render(AppShell, {
+			org: ORG,
 			groups: [
 				{ destinations: [{ label: 'Dashboard password' }, { label: 'Organisation' }] },
 				{
@@ -163,6 +182,7 @@ describe('the groups a rail is divided into', () => {
 
 	it('draws the heading as words, never as a link', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: [
 				{ destinations: [{ label: 'Organisation' }] },
 				{ heading: 'Donation processor', destinations: [{ label: 'Stripe' }] }
@@ -172,11 +192,34 @@ describe('the groups a rail is divided into', () => {
 
 		expect(heading?.closest('a')).toBeNull();
 		expect(heading?.querySelector('a')).toBeNull();
-		expect(root.querySelectorAll('.adm-rail__cells > a')).toHaveLength(2);
+		expect(root.querySelectorAll('.adm-rail__cells a')).toHaveLength(2);
+	});
+
+	it('names a headed group by its heading, around its own cells and no others', () => {
+		const root = render(AppShell, {
+			org: ORG,
+			groups: [
+				{ destinations: [{ label: 'Members' }] },
+				{ heading: 'Integrations', destinations: [{ label: 'API' }, { label: 'Books' }] },
+				{ destinations: [{ label: 'Sites' }] }
+			]
+		});
+		const groups = [...root.querySelectorAll('.adm-rail__cells [role="group"]')];
+		const named = groups[0]?.getAttribute('aria-labelledby');
+
+		// one group: the unheaded runs have no name to be a group by.
+		expect(groups).toHaveLength(1);
+		expect(named ? document.getElementById(named)?.textContent : null).toBe('Integrations');
+		expect(
+			[...(groups[0]?.querySelectorAll('a') ?? [])].map(
+				(a) => a.querySelector('.adm-dest__full')?.textContent
+			)
+		).toEqual(['API', 'Books']);
 	});
 
 	it('draws a glyph mark as the glyph and a picture mark as an unnamed image', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: [
 				{
 					destinations: [
@@ -195,6 +238,7 @@ describe('the groups a rail is divided into', () => {
 
 	it('reads the status word out as part of the link', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: [
 				{
 					destinations: [
@@ -226,13 +270,14 @@ describe('the way out a shell draws', () => {
 		// one caller (packages/app/src/routes/_app.tsx) always hands one in. this asserts the
 		// prop's own declared default regardless, since a prop with a fallback should draw one
 		// that works.
-		const root = render(AppShell, { groups: GROUPS });
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
 
 		expect(waysOut(root).map((node) => node.textContent)).toEqual(['Sign out', 'Sign out']);
 	});
 
 	it('draws what a surface hands it, and the same node at both widths', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			wayOut: (
 				<button className="adm-signout" type="submit">
@@ -246,6 +291,7 @@ describe('the way out a shell draws', () => {
 
 	it('stands a handed foot in the rail and keeps the way out in the band', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			wayOut: (
 				<a className="adm-signout" href="/close">
@@ -260,7 +306,7 @@ describe('the way out a shell draws', () => {
 	});
 
 	it('draws no foot where neither a foot nor a way out is handed', () => {
-		const root = render(AppShell, { groups: GROUPS, wayOut: null, foot: null });
+		const root = render(AppShell, { org: ORG, groups: GROUPS, wayOut: null, foot: null });
 
 		expect(waysOut(root)).toHaveLength(0);
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
@@ -269,7 +315,7 @@ describe('the way out a shell draws', () => {
 	it('draws no foot where the way out is none and no foot is handed', () => {
 		// the foot goes with the control rather than standing empty: the box draws its own rule and
 		// its own padding, so an empty one is a divider under nothing.
-		const root = render(AppShell, { groups: GROUPS, wayOut: null });
+		const root = render(AppShell, { org: ORG, groups: GROUPS, wayOut: null });
 
 		expect(root.querySelector('.adm-rail__foot')).toBeNull();
 	});
@@ -335,9 +381,26 @@ describe('the identity a shell draws', () => {
 	});
 });
 
+describe('what a shell draws that it was not handed', () => {
+	it('names no organisation where none was handed', () => {
+		// @ts-expect-error `org` is required: dropping it is what the type check exists to catch.
+		const root = render(AppShell, { groups: GROUPS });
+
+		expect(root.textContent).not.toContain('Riverbank Trust');
+	});
+
+	it('draws no rail of its own where it was handed none', () => {
+		// a rail filled in from the component's own idea of a dashboard sends a real operator to
+		// screens their surface does not have, so a dropped run is a failure and not a specimen.
+		// @ts-expect-error `groups` is required: dropping it is what the type check exists to catch.
+		expect(() => render(AppShell, { org: 'Riverside Shelter' })).toThrow();
+	});
+});
+
 describe('the panel a shell draws the page in', () => {
 	it('draws the strip over the page where a head is handed, and the page under it', () => {
 		const root = render(AppShell, {
+			org: ORG,
 			groups: GROUPS,
 			head: <h1 className="adm-headstrip__title">Donors</h1>,
 			children: <p>the list</p>
@@ -353,10 +416,35 @@ describe('the panel a shell draws the page in', () => {
 	});
 
 	it('draws no strip where no head is handed', () => {
-		const root = render(AppShell, { groups: GROUPS, children: <h1>Donors</h1> });
+		const root = render(AppShell, { org: ORG, groups: GROUPS, children: <h1>Donors</h1> });
 
 		expect(root.querySelector('.adm-head')).toBeNull();
 		expect(root.querySelector('.adm-main > .adm-panelbody > h1')).not.toBeNull();
+	});
+});
+
+describe('the way past the rail a shell draws', () => {
+	it('is the first stop in the shell and points at the page', () => {
+		// what a keyboard reader meets first, before the identity and every destination: anything
+		// focusable written ahead of it is a stop they pay on every page before they can skip.
+		const root = render(AppShell, { org: ORG, groups: GROUPS, children: <p>The page</p> });
+		const first = root.querySelector('a[href], button, input, [tabindex]:not([tabindex="-1"])');
+		const main = root.querySelector('main');
+
+		expect(first?.textContent).toBe('Skip to content');
+		expect(main?.id).not.toBe('');
+		expect(first?.getAttribute('href')).toBe(`#${main?.id}`);
+	});
+
+	it('puts focus on the page when pressed, and leaves the address as it was', () => {
+		const root = render(AppShell, { org: ORG, groups: GROUPS, children: <p>The page</p> });
+		const skip = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Skip to content');
+		const before = window.location.href;
+
+		act(() => skip?.click());
+
+		expect(document.activeElement).toBe(root.querySelector('main'));
+		expect(window.location.href).toBe(before);
 	});
 });
 
@@ -370,7 +458,7 @@ describe('the collapse a shell keeps for itself', () => {
 	}
 
 	it('starts expanded, and the toggle collapses the rail and says so', () => {
-		const root = render(AppShell, { groups: GROUPS });
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
 		const { shell, toggle } = parts(root);
 
 		expect(shell.classList.contains('adm-shell--collapsed')).toBe(false);
@@ -392,7 +480,7 @@ describe('the collapse a shell keeps for itself', () => {
 
 	it('comes back collapsed where the choice was stored', () => {
 		localStorage.setItem('bg-operator-rail', 'collapsed');
-		const root = render(AppShell, { groups: GROUPS });
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
 
 		expect(parts(root).shell.classList.contains('adm-shell--collapsed')).toBe(true);
 	});
@@ -404,7 +492,7 @@ describe('the collapse a shell keeps for itself', () => {
 		vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
 			throw new Error('refused');
 		});
-		const root = render(AppShell, { groups: GROUPS });
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
 		const { shell, toggle } = parts(root);
 
 		expect(shell.classList.contains('adm-shell--collapsed')).toBe(false);
@@ -412,136 +500,6 @@ describe('the collapse a shell keeps for itself', () => {
 		act(() => toggle.click());
 
 		expect(shell.classList.contains('adm-shell--collapsed')).toBe(true);
-	});
-});
-
-describe('the destinations a phone bar folds under More', () => {
-	const FOLDING = [
-		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', href: '/admin' }] },
-		{
-			destinations: [
-				{
-					label: 'Donation forms',
-					short: 'Forms',
-					href: '/admin/forms',
-					mark: 'form' as const,
-					folded: true
-				},
-				{ label: 'Donors', short: 'Donors', href: '/admin/donors' },
-				{ label: 'Gifts', short: 'Gifts', href: '/admin/donations' },
-				{
-					label: 'Recurring gifts',
-					short: 'Recurring',
-					href: '/admin/recurring',
-					mark: 'repeat' as const,
-					folded: true
-				}
-			]
-		},
-		{
-			destinations: [
-				{
-					label: 'Books',
-					short: 'Books',
-					href: '/admin/books',
-					mark: 'book-open' as const,
-					folded: true
-				}
-			]
-		}
-	];
-
-	function more(root: HTMLElement): HTMLButtonElement {
-		const found = root.querySelector<HTMLButtonElement>('.adm-rail__cells > .adm-rail__more');
-		if (found === null) throw new Error('the bar drew no More tab');
-		return found;
-	}
-
-	it('keeps every destination in the column and marks the folded ones out of the bar', () => {
-		const root = render(AppShell, { groups: FOLDING, wayOut: null });
-
-		expect(railRun(root)).toEqual([
-			'Dashboard',
-			'adm-rail__rule',
-			'Donation forms',
-			'Donors',
-			'Gifts',
-			'Recurring gifts',
-			'adm-rail__rule',
-			'Books',
-			// the bar's last tab, after the column's last rule, which the bar does not draw.
-			'adm-dest adm-rail__more: More'
-		]);
-		const folded = [...root.querySelectorAll('.adm-rail__cells > .adm-dest--folded')].map(
-			(a) => a.querySelector('.adm-dest__full')?.textContent
-		);
-		expect(folded).toEqual(['Donation forms', 'Recurring gifts', 'Books']);
-	});
-
-	it('draws no More where nothing is folded, and every destination is a tab', () => {
-		const root = render(AppShell, { groups: GROUPS });
-
-		expect(root.querySelector('.adm-rail__more')).toBeNull();
-		expect(root.querySelector('.adm-dest--folded')).toBeNull();
-	});
-
-	it('opens a sheet holding the rest, in the rail order, with their marks', () => {
-		const root = render(AppShell, { groups: FOLDING, current: 'Donors' });
-		const tab = more(root);
-
-		expect(tab.getAttribute('aria-expanded')).toBe('false');
-		expect(root.querySelector('dialog')).toBeNull();
-		act(() => tab.click());
-
-		const sheet = root.querySelector('dialog.adm-sheet');
-		const heading = sheet?.querySelector('h2');
-		expect(sheet?.getAttribute('aria-labelledby')).toBe(heading?.id);
-		expect(heading?.textContent).toBe('More');
-		expect(tab.getAttribute('aria-expanded')).toBe('true');
-		const entries = [...(sheet?.querySelectorAll('nav.adm-morelist > a') ?? [])];
-		expect(entries.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-			['Donation forms', '/admin/forms'],
-			['Recurring gifts', '/admin/recurring'],
-			['Books', '/admin/books']
-		]);
-		expect(entries.every((a) => a.querySelector('svg.adm-mark') !== null)).toBe(true);
-		// the reader is on a tab, so neither More nor anything under it claims them.
-		expect(tab.hasAttribute('aria-current')).toBe(false);
-		expect(entries.some((a) => a.hasAttribute('aria-current'))).toBe(false);
-	});
-
-	it('marks More, and the entry under it, where the reader is in a folded destination', () => {
-		const root = render(AppShell, {
-			groups: FOLDING,
-			current: { label: 'Recurring gifts', kind: 'section' as const }
-		});
-		const tab = more(root);
-
-		expect(tab.getAttribute('aria-current')).toBe('true');
-		act(() => tab.click());
-		const here = root.querySelector('.adm-morelist [aria-current]');
-		expect(here?.textContent).toBe('Recurring gifts');
-		expect(here?.getAttribute('aria-current')).toBe('true');
-	});
-
-	it('closes the sheet when an entry in it is pressed, drawn as the handed link', () => {
-		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
-			<a {...rest} data-handed="yes">
-				{children}
-			</a>
-		);
-		const root = render(AppShell, { groups: FOLDING, link: Handed });
-		act(() => more(root).click());
-		// what a router's link does with the press: the page moves and the document stays.
-		root.addEventListener('click', (event) => event.preventDefault(), { capture: true });
-
-		const books = [...root.querySelectorAll<HTMLAnchorElement>('.adm-morelist > a')].find(
-			(a) => a.textContent === 'Books'
-		);
-		expect(books?.getAttribute('data-handed')).toBe('yes');
-		act(() => books?.click());
-
-		expect(root.querySelector('dialog')).toBeNull();
 	});
 });
 
@@ -557,9 +515,321 @@ describe('the link a rail draws its cells as', () => {
 		// the hop the rail makes: ./DestinationCell.jsx takes the link and this is the only place
 		// that hands it one, so a shell that drops it on the way leaves a rail of full page loads
 		// that renders identically.
-		const root = render(AppShell, { groups: GROUPS, link: Handed });
+		const root = render(AppShell, { org: ORG, groups: GROUPS, link: Handed });
 
-		expect(root.querySelectorAll('.adm-rail__cells > a[data-handed]')).toHaveLength(2);
+		expect(root.querySelectorAll('.adm-rail__cells a[data-handed]')).toHaveLength(2);
+	});
+});
+
+describe('the bar at a phone width, and the sheet its More tab opens', () => {
+	// the dashboard's rail with an integrations group added, so the sheet is read with a headed
+	// group in it. four entries carry `bar`, and everything else is the sheet's.
+	const BARRED = [
+		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', href: '#dashboard', bar: true }] },
+		{
+			destinations: [
+				{ label: 'Donation forms', short: 'Forms', href: '#forms', bar: true },
+				{ label: 'Programs', short: 'Programs', href: '#programs' },
+				{ label: 'Donors', short: 'Donors', href: '#donors', bar: true },
+				{ label: 'Gifts', short: 'Gifts', href: '#gifts', bar: true },
+				{ label: 'Recurring gifts', short: 'Recurring', href: '#recurring' }
+			]
+		},
+		{ destinations: [{ label: 'Members', short: 'Members', href: '#members' }] },
+		{
+			heading: 'Integrations',
+			destinations: [
+				{ label: 'Zapier', short: 'Zapier', href: '#zapier' },
+				{ label: 'API', short: 'API', href: '#api' },
+				{ label: 'Webhooks', short: 'Webhooks', href: '#webhooks' }
+			]
+		},
+		{ destinations: [{ label: 'Books', short: 'Books', href: '#books' }] }
+	];
+
+	function more(root: HTMLElement): HTMLButtonElement {
+		const found = root.querySelector<HTMLButtonElement>('.adm-rail__cells > button.adm-rail__more');
+		if (found === null) throw new Error('the bar drew no More tab');
+		return found;
+	}
+
+	/**
+	 * the open sheet, read off the document: it is the dialog the More tab controls. a closed one is
+	 * `data-state="closed"` for the moment before it is taken off the page, so the state is read
+	 * rather than the node's presence.
+	 */
+	function sheet(root: HTMLElement): HTMLElement | null {
+		const id = more(root).getAttribute('aria-controls');
+		const found = id === null ? null : document.getElementById(id);
+		return found?.getAttribute('data-state') === 'open' ? found : null;
+	}
+
+	/** the sheet's run of entries, spelled as `railRun` spells the rail's. */
+	function sheetRun(dialog: HTMLElement): string[] {
+		return laidOut(dialog.querySelector('.adm-moresheet__cells')).map((node) => {
+			if (node.matches('a')) {
+				const end = node.classList.contains('adm-dest--groupend') ? ' (end)' : '';
+				return `${node.querySelector('.adm-dest__full')?.textContent}${end}`;
+			}
+			if (node.matches('hr')) return node.className;
+			return `${node.className}: ${node.textContent}`;
+		});
+	}
+
+	async function open(root: HTMLElement): Promise<HTMLElement> {
+		await act(async () => more(root).click());
+		const dialog = sheet(root);
+		if (dialog === null) throw new Error('More opened no sheet');
+		return dialog;
+	}
+
+	/** Escape, pressed until the machine's deferred listener has taken it. */
+	async function pressEscape(root: HTMLElement) {
+		await vi.waitFor(async () => {
+			await act(async () => {
+				(document.activeElement ?? document.body).dispatchEvent(
+					new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+				);
+			});
+			if (sheet(root) !== null) throw new Error('the sheet is still open');
+		});
+	}
+
+	it('stands the bar entries as tabs, leaves the rest to the sheet, and ends on More', () => {
+		const root = render(AppShell, { org: ORG, groups: BARRED });
+		const onBar = [...root.querySelectorAll('.adm-rail__cells a:not(.adm-dest--offbar)')];
+
+		expect(onBar.map((a) => a.querySelector('.adm-dest__short')?.textContent)).toEqual([
+			'Dashboard',
+			'Forms',
+			'Donors',
+			'Gifts'
+		]);
+		// the column at the wide width still draws every destination; the sheet's are the ones the
+		// bar hides.
+		expect(root.querySelectorAll('.adm-rail__cells a.adm-dest--offbar')).toHaveLength(7);
+		const tab = more(root);
+		expect(tab.textContent).toContain('More');
+		expect(root.querySelector('.adm-rail__cells')?.lastElementChild).toBe(tab);
+		expect(tab.getAttribute('aria-haspopup')).toBe('dialog');
+		expect(tab.getAttribute('aria-expanded')).toBe('false');
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('draws no More and hides nothing where no destination is on the bar', () => {
+		// the console's rail and every specimen that states no `bar`: one tab per destination.
+		const root = render(AppShell, { org: ORG, groups: GROUPS });
+
+		expect(root.querySelector('.adm-rail__more')).toBeNull();
+		expect(root.querySelectorAll('.adm-dest--offbar')).toHaveLength(0);
+	});
+
+	it('names the sheet’s headed group by its own heading, apart from the rail’s', async () => {
+		const root = render(AppShell, { org: ORG, groups: BARRED });
+		const dialog = await open(root);
+		const group = dialog.querySelector('[role="group"]');
+		const named = group?.getAttribute('aria-labelledby');
+		const railGroup = root.querySelector('.adm-rail__cells [role="group"]');
+
+		expect(named ? document.getElementById(named)?.textContent : null).toBe('Integrations');
+		// the rail's column draws the same group, and each names its own heading rather than both
+		// pointing at whichever of the two ids came first.
+		expect(named).not.toBe(railGroup?.getAttribute('aria-labelledby'));
+		expect(group?.contains(named ? document.getElementById(named) : null)).toBe(true);
+	});
+
+	it('opens a sheet holding the rest, each a link, with the rail rules and headings', async () => {
+		const root = render(AppShell, { org: ORG, groups: BARRED });
+		const dialog = await open(root);
+
+		expect(dialog.getAttribute('role')).toBe('dialog');
+		expect(dialog.getAttribute('aria-label')).toBe('More');
+		expect(more(root).getAttribute('aria-expanded')).toBe('true');
+		expect(sheetRun(dialog)).toEqual([
+			'Programs',
+			'Recurring gifts',
+			'adm-rail__rule',
+			'Members',
+			'adm-rail__rule adm-rail__rule--group',
+			'adm-rail__heading: Integrations',
+			'Zapier',
+			'API',
+			'Webhooks (end)',
+			'Books'
+		]);
+		expect(
+			[...dialog.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])
+		).toEqual([
+			['ProgramsPrograms', '#programs'],
+			['RecurringRecurring gifts', '#recurring'],
+			['MembersMembers', '#members'],
+			['ZapierZapier', '#zapier'],
+			['APIAPI', '#api'],
+			['WebhooksWebhooks', '#webhooks'],
+			['BooksBooks', '#books']
+		]);
+	});
+
+	it('moves focus into the sheet on open, and back to More on Escape', async () => {
+		const root = render(AppShell, { org: ORG, groups: BARRED });
+		const dialog = await open(root);
+
+		await vi.waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+		await pressEscape(root);
+
+		await vi.waitFor(() => expect(document.activeElement).toBe(more(root)));
+		expect(more(root).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('ends on a Close a screen reader reaches, which closes it and hands focus back to More', async () => {
+		// the one way out that needs neither Escape nor a destination: a phone's screen reader has no
+		// Escape to send, and the machine hides everything outside the sheet from it.
+		const root = render(AppShell, { org: ORG, groups: BARRED });
+		const dialog = await open(root);
+		const close = dialog.querySelector('button:last-child');
+
+		expect(close?.textContent).toBe('Close');
+		expect(close?.closest('[aria-hidden="true"], [hidden]')).toBeNull();
+		expect(dialog.lastElementChild).toBe(close);
+
+		await act(async () => (close as HTMLButtonElement).click());
+
+		expect(sheet(root)).toBeNull();
+		await vi.waitFor(() => expect(document.activeElement).toBe(more(root)));
+	});
+
+	it('closes on a destination chosen inside it, and More then reads current', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, { org: ORG, groups: BARRED });
+		const dialog = await open(mounted.root);
+		const programs = [...dialog.querySelectorAll('a')].find((a) => a.href.endsWith('#programs'));
+
+		await act(async () => programs?.click());
+		// the surface resolves the new address and hands the shell where the reader now is.
+		mounted.again({ org: ORG, groups: BARRED, current: { label: 'Programs', kind: 'page' } });
+
+		expect(sheet(mounted.root)).toBeNull();
+		expect(more(mounted.root).getAttribute('aria-current')).toBe('true');
+	});
+
+	it('closes when the history steps under it, Back included', async () => {
+		const root = render(AppShell, { org: ORG, groups: BARRED, current: 'API' });
+		await open(root);
+
+		// what the browser sends on Back or Forward; the router under the shell answers the same event.
+		await act(async () => window.dispatchEvent(new PopStateEvent('popstate')));
+
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('closes when the surface hands it a different destination than the one it opened under', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, {
+			org: ORG,
+			groups: BARRED,
+			current: 'API'
+		});
+		await open(mounted.root);
+
+		// a move the page underneath made — a save that redirected, say — with no press in the sheet.
+		mounted.again({ org: ORG, groups: BARRED, current: 'Webhooks' });
+		// the machine takes a controlled close on its next turn rather than inside the render.
+		await act(async () => {});
+
+		expect(sheet(mounted.root)).toBeNull();
+	});
+
+	it('stays open while the surface hands it the destination it opened under', async () => {
+		const mounted = mount<ComponentProps<typeof AppShell>>(AppShell, {
+			org: ORG,
+			groups: BARRED,
+			current: 'API'
+		});
+		await open(mounted.root);
+
+		mounted.again({ org: ORG, groups: BARRED, current: 'API' });
+		// the same turn the case above waits for, so a close that was coming has come.
+		await act(async () => {});
+
+		expect(sheet(mounted.root)).not.toBeNull();
+	});
+
+	it('keeps the bar pressable over the open sheet, and a tab pressed there closes it', async () => {
+		const root = render(AppShell, { org: ORG, groups: BARRED });
+		await open(root);
+		const bar = root.querySelector<HTMLElement>('nav.adm-rail');
+		const gifts = cell(root, 'Gifts') as HTMLAnchorElement;
+
+		// the machine takes pointer events off everything outside a modal sheet, and gives them back
+		// to what it is told persists.
+		await vi.waitFor(() => expect(bar?.style.pointerEvents).toBe('auto'));
+		const pressed = new MouseEvent('click', { bubbles: true, cancelable: true });
+		await act(async () => gifts.dispatchEvent(pressed));
+
+		expect(pressed.defaultPrevented).toBe(false);
+		expect(sheet(root)).toBeNull();
+	});
+
+	it('leaves a headed group with no tab off the bar, and one holding a tab on it', () => {
+		const root = render(AppShell, {
+			org: ORG,
+			groups: [
+				...BARRED,
+				{ heading: 'Reports', destinations: [{ label: 'Totals', href: '#totals', bar: true }] }
+			]
+		});
+		const offBar = (heading: string) => {
+			const group = [...root.querySelectorAll('.adm-rail__cells .adm-rail__group')].find(
+				(g) => g.querySelector('.adm-rail__heading')?.textContent === heading
+			);
+			return group?.classList.contains('adm-rail__group--offbar');
+		};
+
+		expect(offBar('Integrations')).toBe(true);
+		expect(offBar('Reports')).toBe(false);
+	});
+
+	it('draws no group off the bar in a rail with no bar at all', () => {
+		const root = render(AppShell, {
+			org: ORG,
+			groups: [{ heading: 'Integrations', destinations: [{ label: 'API', href: '#api' }] }]
+		});
+
+		expect(root.querySelectorAll('.adm-rail__group--offbar')).toHaveLength(0);
+	});
+
+	it('reads More as current while the reader is under a sheet destination, and not otherwise', () => {
+		const inSheet = render(AppShell, {
+			org: ORG,
+			groups: BARRED,
+			current: { label: 'Webhooks', kind: 'section' as const }
+		});
+		const onBar = render(AppShell, { org: ORG, groups: BARRED, current: 'Donors' });
+
+		expect(more(inSheet).getAttribute('aria-current')).toBe('true');
+		expect(more(onBar).hasAttribute('aria-current')).toBe(false);
+	});
+
+	it('marks the current destination inside the open sheet with its own kind', async () => {
+		const root = render(AppShell, {
+			org: ORG,
+			groups: BARRED,
+			current: { label: 'API', kind: 'page' as const }
+		});
+		const dialog = await open(root);
+		const claims = [...dialog.querySelectorAll('a')].map((a) => a.getAttribute('aria-current'));
+
+		expect(claims).toEqual([null, null, null, null, 'page', null, null]);
+	});
+
+	it('draws the sheet cells as the handed link too', async () => {
+		const Handed = ({ children, ...rest }: DestinationLinkProps) => (
+			<a {...rest} data-handed="yes">
+				{children}
+			</a>
+		);
+		const root = render(AppShell, { org: ORG, groups: BARRED, link: Handed });
+		const dialog = await open(root);
+
+		expect(dialog.querySelectorAll('a[data-handed]')).toHaveLength(7);
 	});
 });
 

@@ -20,6 +20,13 @@
  * @typedef {object} ListProps
  * @property {ReactNode} [children]
  *
+ * @typedef {object} GroupsProps
+ * @property {ReactNode} [children] the groups, each a `Grouped` or a block that is one group on its
+ *   own — a table plane with its caption.
+ *
+ * @typedef {object} GroupedProps
+ * @property {ReactNode} [children]
+ *
  * @typedef {object} StepsProps
  * @property {boolean | undefined} [tight] the closer run a list of one-line steps takes, which is
  *   the same step a tight `Stack` sets. a step whose body is a block of its own carries its own
@@ -27,7 +34,9 @@
  * @property {ReactNode} [children]
  *
  * @typedef {object} GroupProps
- * @property {ReactNode} [label] what the band names. a block with nothing to write there is a `Stack`.
+ * @property {ReactNode} label what the band names, and the caller's alone: a primitive that
+ *   filled it in would print one screen's copy on every surface that forgot its own. a block with
+ *   nothing to write there is a `Stack`.
  * @property {'h2' | 'h3' | 'h4' | 'h5' | 'h6'} labelAs the element the band's name is drawn as,
  *   stated by every caller and defaulted by none. the level a band belongs at is a fact about what
  *   it is drawn under rather than about the band — a group inside a screen's own section takes one
@@ -40,7 +49,7 @@
  * @property {ReactNode} [children]
  */
 
-/* the six arrangements every operator screen is built out of, and the answer to a layout an
+/* the eight arrangements every operator screen is built out of, and the answer to a layout an
    inline grid would otherwise invent. packages/operator/src/styles/adm.css draws all of them, so
    a screen composed from these moves when that sheet moves and a hand-gridded one does not. */
 
@@ -82,6 +91,20 @@ export function Section({ card = false, children }) {
 	return <section className={card ? 'adm-card' : 'adm-section'}>{children}</section>;
 }
 
+/* the groups of a page that is one section with no heading over any of them, a break step apart.
+   `.adm-groups` in packages/operator/src/styles/adm.css argues the tiers. */
+/** @param {GroupsProps} props */
+export function Groups({ children }) {
+	return <div className="adm-groups">{children}</div>;
+}
+
+/* one group's items, a step closer than a `Stack` holds its own: a form and the presses under it, a
+   sentence and the list it opens onto. */
+/** @param {GroupedProps} props */
+export function Grouped({ children }) {
+	return <div className="adm-grouped">{children}</div>;
+}
+
 /* a run of records. */
 /** @param {ListProps} props */
 export function List({ children }) {
@@ -110,7 +133,7 @@ export function Steps({ tight = false, children }) {
    nothing to write in the band is a `Stack`, and what separates it from the block beside it is
    the space. */
 /** @param {GroupProps} props */
-export function Group({ label = 'Payment notifications', labelAs: Label, children }) {
+export function Group({ label, labelAs: Label, children }) {
 	return (
 		<div className="adm-group">
 			<Label className="adm-group__label">{label}</Label>

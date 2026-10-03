@@ -1,19 +1,19 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
-import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
-import { LedgerSkeleton } from '@better-giving/operator/components/status/LedgerSkeleton';
+import {
+	LedgerSkeleton,
+	SkeletonStatus
+} from '@better-giving/operator/components/status/LedgerSkeleton';
 import { StatusLedger, StatusLine } from '@better-giving/operator/components/status/StatusLine';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { useSavedFormState } from '@better-giving/operator/saved-form-state.react';
 import type { ReactNode } from 'react';
-import { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Await, Form, useRevalidator } from 'react-router';
-import { paypalRun } from '../api/client';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Await, Form } from 'react-router';
 import type {
 	AddressRead,
 	DeployedValues,
@@ -30,14 +30,9 @@ import type {
 } from '../api/types';
 import type { HeldValues } from './held-values';
 import { heldValues, withheldAmong } from './held-values';
+import { AnswerSwitchBlock } from './answer-switch-block';
 import { useKeptPress } from './kept-press';
-import {
-	CHARITY_APPROVED,
-	CHARITY_FIELD,
-	CHARITY_INTENT,
-	CHARITY_RATE,
-	charityApproved
-} from './paypal-charity';
+import { CHARITY_RATE, CHARITY_SWITCH, charityApproved } from './paypal-charity';
 import type { PaypalBoxName, PaypalBoxes } from './paypal-setup';
 import {
 	LINES,
@@ -64,9 +59,8 @@ import { keepRereading, ledgerLines } from './awaiting-note';
 import { useKeyRereads } from './key-rereads';
 import { useReseeded } from './reseed';
 import { Said } from './said';
-import { refusalIn } from './secret-trouble';
 import { PAYPAL_GROUP, SECRET_GROUPS, isMasked } from './secret-groups';
-import { pollOutlived, runKind, standingRun } from './run-poll';
+import { useRunPoll } from './use-run-poll';
 import type { PressAnswer, PressPhase, PressRefusal } from './stripe-press';
 import {
 	answerLanded,
@@ -165,11 +159,22 @@ const HINT: Partial<Record<PaypalBoxName, ReactNode>> = {
  */
 const BOX_FIELDS = PAYPAL_BOX_NAMES.map((name) => PAYPAL_FIELD(name));
 
-/** how often the screen asks how far the run has got. the Stripe screen's interval. */
-const POLL_MS = 2500;
-
 /** the press, named so the card can put the reader back on it when it goes. */
 const SET_UP_PRESS = 'paypal-set-up-press';
+
+/**
+ * the three boxes as a kept press holds them, out of what each box reads as typed.
+ *
+ * every one is trimmed, because what is kept re-seeds the boxes for the rest of the visit and the
+ * binary stored what `paypalPairPosted` in ./paypal-setup.ts posted, which is trimmed.
+ */
+export function typedBoxes(typed: (name: PaypalBoxName) => string): PaypalBoxes {
+	return {
+		PAYPAL_CLIENT_ID: typed('PAYPAL_CLIENT_ID').trim(),
+		PAYPAL_CLIENT_SECRET: typed('PAYPAL_CLIENT_SECRET').trim(),
+		PAYPAL_API_URL: typed('PAYPAL_API_URL').trim() || PAYPAL_DEFAULT_API_URL
+	};
+}
 
 /**
  * what the last press of the set-up said, as the route reads it off the action.
@@ -258,32 +263,35 @@ export function PaypalSection({
 	/* the same wait over both boundaries: what an operator is waiting on is one account's readings,
 	   and two waits worded apart would be two subjects where there is one. it is shaped as they
 	   resolve — the rails' two lines, PayPal and Venmo, and the repeating-gift block's two — so the
-	   page does not move when they land. */
-	const asking = <LedgerSkeleton label="Asking this deployment…" blocks={[2, 2]} />;
+	   page does not move when they land. the words are the status held over both boundaries, so
+	   the region stands before either skeleton is drawn. */
+	const asking = <LedgerSkeleton blocks={[2, 2]} />;
 	return (
 		<Section>
 			{/* what the account answered, drawn above the boxes that change it for the reason the Stripe
 			    screen states: the reading is what an operator came to find out, and the press that
 			    would rewrite it comes last. */}
-			<Suspense fallback={asking}>
-				<Await resolve={payments}>
-					{(read) => (
-						<Suspense fallback={asking}>
-							<Await resolve={recurring}>
-								{(gifts) => (
-									<PaypalReadings
-										read={read}
-										gifts={gifts}
-										provision={provision}
-										busy={busy}
-										pending={pending}
-									/>
-								)}
-							</Await>
-						</Suspense>
-					)}
-				</Await>
-			</Suspense>
+			<SkeletonStatus label="Asking this deployment…">
+				<Suspense fallback={asking}>
+					<Await resolve={payments}>
+						{(read) => (
+							<Suspense fallback={asking}>
+								<Await resolve={recurring}>
+									{(gifts) => (
+										<PaypalReadings
+											read={read}
+											gifts={gifts}
+											provision={provision}
+											busy={busy}
+											pending={pending}
+										/>
+									)}
+								</Await>
+							</Suspense>
+						)}
+					</Await>
+				</Suspense>
+			</SkeletonStatus>
 
 			<PaypalKeysForm
 				values={held}
@@ -508,17 +516,7 @@ function PaypalKeysForm({
 		| 'payments'
 		| 'recurring'
 	>): ReactNode {
-	/* how far the press has got, asked of the binary rather than of the page, for the Stripe screen's
-	   reason: reading the page again is every round trip on it. */
-	const [polled, setPolled] = useState<PaypalRunRead | null | undefined>(undefined);
-	/* the last thing either reading said: a run that landed is consumed by the reading that observed
-	   it, so the answer after that is `null` and the report would go off the screen under it. */
-	const [remembered, setRemembered] = useState<PaypalRunRead | null>(null);
-	const { answered, live } = standingRun({ run: press.run, polled, remembered });
-	useEffect(() => {
-		if (answered === null) return;
-		setRemembered(answered);
-	}, [answered]);
+	const live = useRunPoll('paypal', press.run, pending === PAYPAL_SETUP_INTENT);
 	const working = live?.kind === 'running';
 	const landed = live?.kind === 'ended' && live.outcome.kind === 'done';
 
@@ -536,37 +534,6 @@ function PaypalKeysForm({
 	const underway = runUnderway(phase, pressAnswer, working);
 	const elsewhere = writingElsewhere(phase, busy);
 
-	useEffect(() => {
-		if (!working) return;
-		let gone = false;
-		const timer = setTimeout(() => {
-			// a read that did not land is a console that has stopped, which the page's error boundary draws.
-			void paypalRun().then((read) => {
-				if (!gone) setPolled(read);
-			});
-		}, POLL_MS);
-		return () => {
-			gone = true;
-			clearTimeout(timer);
-		};
-		// `polled` schedules the next ask: each answer is a new value, so the poll goes on with the run.
-	}, [working, polled]);
-
-	/* the page read again once, when the run stops, so the readings above are of the account this
-	   press just set up. a ref rather than a dependency: the revalidator is a fresh object each render. */
-	const { revalidate } = useRevalidator();
-	const settled = live?.kind === 'ended';
-	const asked = useRef(false);
-	useEffect(() => {
-		if (!settled) {
-			asked.current = false;
-			return;
-		}
-		if (asked.current) return;
-		asked.current = true;
-		void revalidate();
-	}, [settled, revalidate]);
-
 	/* and asked for again, for as long as the deployment's latest reading is still behind the pair
 	   the run stored (./key-rereads.ts). */
 	useKeyRereads(pairStored(live), payments, recurring, (payments, gifts) =>
@@ -580,23 +547,11 @@ function PaypalKeysForm({
 	const [sent, setSent] = useKeptPress<PaypalBoxes>(PAYPAL_SETUP_INTENT);
 	/** whether a press was made from this page, which is what a box-level report of a run is about. */
 	const [pressedHere, setPressedHere] = useState(false);
-	/* and the poll's answer dropped with the next press, or whenever the page's reading moves to a run
-	   the poll cannot speak for (`pollOutlived` in ./run-poll.ts) — otherwise an earlier stopped run
-	   would mask the one a press here or anywhere else starts, and nothing would ask after it again. */
 	useEffect(() => {
 		if (pending !== PAYPAL_SETUP_INTENT) return;
-		setPolled(undefined);
 		setPressedHere(true);
 		setSent(typed.current);
 	}, [pending]);
-	const loaded = runKind(press.run);
-	const seen = useRef(loaded);
-	useEffect(() => {
-		if (!pollOutlived(seen.current, loaded)) return;
-		seen.current = loaded;
-		setPolled(undefined);
-	}, [loaded]);
-
 	/* what the press was turned down for, kept past the revalidations this section sets off itself —
 	   the router drops the answer on each, and the boxes still hold exactly what was turned down. */
 	const [rememberedRefusal, setRememberedRefusal] = useState<PressRefusal | null>(null);
@@ -753,11 +708,13 @@ function PaypalKeysForm({
 	const paypalTrouble = (failure: PaypalFailure, what: ReactNode): ReactNode => (
 		<>
 			<FieldMessage>
-				{failure.kind === 'refused' ? (
+				{failure.kind === 'forbidden' ? (
 					<>
-						PayPal wouldn’t let these keys do this, so {what}. Check the app’s permissions, then
-						press Save again.
+						PayPal wouldn’t give this app a permission it needs, so {what}. Turn that permission on
+						in the app’s settings in your PayPal developer dashboard, then press Save again.
 					</>
+				) : failure.kind === 'refused' ? (
+					<>PayPal wouldn’t accept these keys, so {what}. Check them, then press Save again.</>
 				) : failure.kind === 'unreachable' ? (
 					<>
 						The console couldn’t get an answer out of PayPal, so {what}. Check this machine’s
@@ -836,6 +793,11 @@ function PaypalKeysForm({
 				return paypalTrouble(
 					outcome.failure,
 					'the console couldn’t see which webhooks your PayPal app already has, and nothing was set up'
+				);
+			case 'disputes-unread':
+				return paypalTrouble(
+					outcome.failure,
+					'the console couldn’t read your PayPal app’s disputes, no webhook was added, and nothing was set up'
 				);
 			case 'full':
 				return (
@@ -945,17 +907,11 @@ function PaypalKeysForm({
 	};
 
 	/** what the three boxes hold right now. */
-	const boxes = (element: HTMLFormElement): PaypalBoxes => {
-		const value = (name: PaypalBoxName) => {
+	const boxes = (element: HTMLFormElement): PaypalBoxes =>
+		typedBoxes((name) => {
 			const control = element.elements.namedItem(PAYPAL_FIELD(name));
 			return control instanceof HTMLInputElement ? control.value : '';
-		};
-		return {
-			PAYPAL_CLIENT_ID: value('PAYPAL_CLIENT_ID'),
-			PAYPAL_CLIENT_SECRET: value('PAYPAL_CLIENT_SECRET'),
-			PAYPAL_API_URL: value('PAYPAL_API_URL').trim() || PAYPAL_DEFAULT_API_URL
-		};
-	};
+		});
 
 	return (
 		<div className="adm-named">
@@ -1071,20 +1027,15 @@ function PaypalKeysForm({
 
 /**
  * whether PayPal has approved this organisation for its charity rate, as a switch with two
- * positions.
+ * positions (./answer-switch-block.tsx over ./paypal-charity.ts).
  *
  * **there is no third position and no rate is typed.** what the answer picks between is two tables
  * of published rates that stay constants in the tree (`paypalFeeRules` in
- * packages/app/src/lib/server/payments/fees.ts), and off is the value taken away rather than a
- * stored no — ./paypal-charity.ts argues both.
+ * packages/app/src/lib/server/payments/fees.ts).
  *
  * **it is a fact about the account and never a preference**, which is what the label says: PayPal
  * reports it on no call, so the operator is the only party that can answer, and the deployment
  * quotes a donor covering fees off whichever table they said.
- *
- * its own press and its own form, for the reason ./paypal-charity.ts states — and one `<form>`
- * inside another is not a tree the parser keeps, so it stands beside the credentials rather than
- * inside them.
  */
 function CharityRate({
 	values,
@@ -1102,80 +1053,26 @@ function CharityRate({
 	busy: boolean;
 	pending: string | null;
 }): ReactNode {
-	const box = `${useId()}-charity-rate`;
-	const approved = charityApproved(values.seeds[CHARITY_RATE] ?? '');
-	const sending = pending === CHARITY_INTENT;
-	const failure = written === null ? null : refusalIn(written);
-
-	const { form, state, onInput, onSubmit } = useSavedFormState({
-		report: written,
-		landed: written?.kind === 'set',
-		// the switch is read off the element at every press of it, which is the reading a block with
-		// no form layer takes (`SavedFormInputs.changed` in
-		// packages/operator/src/saved-form-state.react.ts).
-		changed: (element) => {
-			const control = element.elements.namedItem(CHARITY_FIELD);
-			return (control instanceof HTMLInputElement ? control.checked : false) !== approved;
-		},
-		busy,
-		pending: sending
-	});
-
 	return (
 		<div className="adm-named">
 			<h3>Charity rate</h3>
-			<Form
-				className="adm-stack"
-				method="post"
-				preventScrollReset
-				ref={form}
-				onInput={onInput}
-				onSubmit={onSubmit}
-			>
-				<CheckboxGroup
-					id={box}
-					items={[
-						{
-							id: box,
-							name: CHARITY_FIELD,
-							value: CHARITY_APPROVED,
-							label: 'PayPal has approved this organisation',
-							// the consequence of getting it wrong, which is the one thing the label cannot
-							// carry and the one direction that costs the organisation money: the two tables
-							// are asymmetric, and `paypalFeeRules` in
-							// packages/app/src/lib/server/payments/fees.ts is where that is argued. what the
-							// switch is for is the heading over it, so nothing here says it again.
-							note: 'Ticked without PayPal’s approval, a donor covering the fee is quoted less than PayPal takes and this organisation makes up the difference.',
-							defaultChecked: approved,
-							// closed while this press is in flight and while another press on the page
-							// writes: the position is read once, at the press.
-							disabled: busy || sending
-						}
-					]}
-				/>
-
-				{/* the name in this state has no box to be typed out of, and this press is the only one
-				    that writes it — so the block that frees it stands here or nowhere. */}
-				<WithheldValues
-					names={withheldAmong(values, [CHARITY_RATE])}
-					all={values.withheld}
-					consequence="Until this is saved again, every donor covering a PayPal fee is quoted the standard rate."
-					written={freed}
-					trouble={trouble}
-					busy={busy}
-					freeing={pending === FREE_INTENT}
-				/>
-
-				<div className="adm-actions">
-					<SaveButton name="intent" value={CHARITY_INTENT} state={state} />
-				</div>
-
-				{/* an outcome reports at the control that made it, and a press that landed is the
-				    button's own tick — so what is left is the ways it did not happen. a press refused
-				    over a name held as a credential is drawn at the block above, which is where the way
-				    out of that state is (`refusalIn` in ./secret-trouble.tsx). */}
-				{failure === null ? null : trouble(failure)}
-			</Form>
+			<AnswerSwitchBlock
+				answer={CHARITY_SWITCH}
+				values={values}
+				on={charityApproved(values.seeds[CHARITY_RATE] ?? '')}
+				label="PayPal has approved this organisation"
+				// the consequence of getting it wrong, which is the one thing the label cannot carry and
+				// the one direction that costs the organisation money: the two tables are asymmetric, and
+				// `paypalFeeRules` in packages/app/src/lib/server/payments/fees.ts is where that is
+				// argued. what the switch is for is the heading over it, so nothing here says it again.
+				note="Ticked without PayPal’s approval, a donor covering the fee is quoted less than PayPal takes and this organisation makes up the difference."
+				consequence="Until this is saved again, every donor covering a PayPal fee is quoted the standard rate."
+				written={written}
+				freed={freed}
+				trouble={trouble}
+				busy={busy}
+				pending={pending}
+			/>
 		</div>
 	);
 }

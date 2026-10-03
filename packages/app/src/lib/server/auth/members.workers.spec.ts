@@ -41,7 +41,7 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from auth_user').run();
 
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: STAFF_PASSWORD },
@@ -270,7 +270,7 @@ describe('signInMember', () => {
 	});
 
 	/**
-	 * the deployer has no `auth_account` row — `ADMIN_PASSWORD` is a deploy-time secret and
+	 * the deployer has no `auth_account` row — `ADMIN_PASSWORD` is a deploy-time var and
 	 * nothing hashes it (./credential.ts) — so their identifier is refused here whatever is
 	 * typed, and `signInStaff` stays the only way that credential works.
 	 */
@@ -310,7 +310,7 @@ describe('changeMemberPassword', () => {
 		await member('priya@example.org');
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
-		const changed = await changeMemberPassword(auth, {
+		const changed = await changeMemberPassword(db, auth, {
 			currentPassword: PASSWORD,
 			newPassword: NEW_PASSWORD,
 			headers: new Headers({ origin: ORIGIN, cookie })
@@ -338,7 +338,7 @@ describe('changeMemberPassword', () => {
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
 		expect(
-			await changeMemberPassword(auth, {
+			await changeMemberPassword(db, auth, {
 				currentPassword: 'not-the-right-password',
 				newPassword: NEW_PASSWORD,
 				headers: new Headers({ origin: ORIGIN, cookie })
@@ -363,7 +363,7 @@ describe('changeMemberPassword', () => {
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
 		expect(
-			await changeMemberPassword(auth, {
+			await changeMemberPassword(db, auth, {
 				currentPassword: PASSWORD,
 				newPassword: 'x'.repeat(MEMBER_PASSWORD_MIN_LENGTH - 1),
 				headers: new Headers({ origin: ORIGIN, cookie })
@@ -382,7 +382,7 @@ describe('changeMemberPassword', () => {
 		const other = await sessionOf('priya@example.org', PASSWORD);
 		const cookie = await sessionOf('priya@example.org', PASSWORD);
 
-		const changed = await changeMemberPassword(auth, {
+		const changed = await changeMemberPassword(db, auth, {
 			currentPassword: PASSWORD,
 			newPassword: NEW_PASSWORD,
 			headers: new Headers({ origin: ORIGIN, cookie })
@@ -398,7 +398,7 @@ describe('changeMemberPassword', () => {
 
 	/**
 	 * the deployer holds a session like anybody's but no credential in the database, so this is the
-	 * screen's own refusal rather than a wrong password: their password is a deploy-time secret and
+	 * screen's own refusal rather than a wrong password: their password is a deploy-time var and
 	 * the console is where it is changed (./credential.ts).
 	 */
 	it('refuses the deployer, whose password is not a row', async () => {
@@ -410,7 +410,7 @@ describe('changeMemberPassword', () => {
 		const cookie = cookieHeader(headers.getSetCookie());
 
 		expect(
-			await changeMemberPassword(auth, {
+			await changeMemberPassword(db, auth, {
 				currentPassword: STAFF_PASSWORD,
 				newPassword: NEW_PASSWORD,
 				headers: new Headers({ origin: ORIGIN, cookie })

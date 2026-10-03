@@ -30,8 +30,9 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * @property {ReactNode} [children]
  * @property {boolean | undefined} [inPage] which of the two presentations
  *   packages/operator/src/styles/adm.css draws this in, defaulting to the one the server sends: an
- *   open, whole, non-modal column in the page. ../../behaviour/Dialog.tsx is what turns it off, at
- *   the moment the same element is lifted into the top layer.
+ *   open, whole, non-modal card standing where the lifted one will, on the same ground.
+ *   ../../behaviour/Dialog.tsx is what turns it off, at the moment the same element is lifted into
+ *   the top layer.
  * @property {ReactNode} [exit] the one way out of the "once" arrangement.
  * @property {ButtonProps<C> | undefined} [exitProps]
  * @property {ReactNode} [cancel] the label on the way out.
@@ -78,8 +79,8 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  *
  * **so this element carries no `autoFocus`, and a caller's own box may not rely on one either.**
  * react strips the prop and focuses imperatively at mount, which the modal path then overrides —
- * and in the non-modal presentation the card is a column in the page, which is not a thing that
- * takes the reader off whatever they were reading.
+ * and in the non-modal presentation nothing has lifted the card yet, and a reader tabbing through
+ * the page is not taken off whatever they were on by a question the server drew.
  *
  * `ref`, `onCancel` and `onClick` are the seam ../../behaviour/Dialog.tsx reaches through and are
  * the whole of it. a screen rendering this on its own passes none of the three: with no script

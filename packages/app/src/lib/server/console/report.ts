@@ -61,7 +61,7 @@ export type OrgWireFields = Agreed<SameNames<OrgProfileField, WireOrgField>>;
 /**
  * the deployment's own answer, assembled once.
  *
- * the two reads overlap rather than queue — neither has anything to say to the other.
+ * the reads overlap rather than queue — none has anything to say to another.
  *
  * no `platform.env` is passed in and none may be: this value is serialized to a caller, and an env
  * in scope here is the Stripe secret one spread away from being one of the fields.

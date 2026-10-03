@@ -1,3 +1,5 @@
+import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
+import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard } from '$lib/donate/page-with-card';
 import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
@@ -33,6 +35,9 @@ import type { Route } from './+types/donate';
 //
 // every view is charged per address before the loader reads anything (`meterDonorPage` in
 // $lib/server/api/meter.ts), and an address over it is drawn the same plain notice under a 429.
+//
+// every answer is `no-store`: the amounts and settings are in the document, so a kept copy would
+// show a donor figures the operator has since changed, and a kept refusal would outlive the fix.
 
 export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
 
@@ -59,13 +64,35 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		{ now: Date.now() }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
-	return loaded;
+	// a donor back from authorizing their gift arrives here with the stamp naming the page's
+	// settings row, and the card's first paint is then the wait for that gift rather than an empty
+	// donation box. the stamp is the whole of what is read: the token beside it is the card's to
+	// claim once its flow starts. a stamp naming another form is no return of this page's.
+	const { formId } = loaded.kind === 'page' ? loaded.view.config : loaded.config;
+	const resuming = new URL(request.url).searchParams.get(RESUME_FORM_PARAM) === formId;
+	return data({ ...loaded, resuming }, { headers: { 'cache-control': 'no-store' } });
 }
 
 /**
- * the refusal's `cache-control`, carried out of the loader: a `data()`'s headers reach a document
- * response only through this export (`getDocumentHeaders` in react-router). the drawn page sets
- * none and takes the framework's default.
+ * the loader never runs again under a drawn page.
+ *
+ * the card builds its checkout from the config this loader returns and stops it when a new one
+ * arrives (the checkout effect in $lib/donate/card.tsx), and this route draws one page whose
+ * settings row never changes under it, so a re-read — a same-address navigation, a submission, a
+ * `revalidate()` — could only swap the published config under a gift in progress and end it. a
+ * page republished meanwhile reaches the donor on their next load.
+ *
+ * the resume stamp is a search parameter and so re-reads nothing either. the card scrubs it with
+ * `history.replaceState`, out of react router's sight, so a re-read from the stamped address the
+ * router still holds would answer `resuming: false` under the takeover the flow is showing.
+ */
+export function shouldRevalidate(_asked: ShouldRevalidateFunctionArgs): boolean {
+	return false;
+}
+
+/**
+ * the loader's `cache-control`, carried out of it onto the document: a `data()`'s headers reach a
+ * document response only through this export (`getDocumentHeaders` in react-router).
  */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;
@@ -97,9 +124,15 @@ export function links(): Route.LinkDescriptors {
 export default function DonationPage({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
-			return <PageWithCard {...loaderData.view} />;
+			return <PageWithCard {...loaderData.view} resuming={loaderData.resuming} />;
 		case 'plain':
-			return <PlainDonationPage config={loaderData.config} look={loaderData.look} />;
+			return (
+				<PlainDonationPage
+					config={loaderData.config}
+					look={loaderData.look}
+					resuming={loaderData.resuming}
+				/>
+			);
 		case 'refused':
 			return (
 				<PlainPage look={FORM_LOOK}>

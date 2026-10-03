@@ -1,20 +1,29 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, exists } from 'drizzle-orm';
+import { and, eq, exists, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { zapierKey } from '../db/schema';
-import { secretEquals } from '../secret-compare';
+import { sqliteResultCode } from '../db/rejection';
+import { apiKey } from '../db/schema';
+import {
+	findKeyByPresented,
+	mintApiKey,
+	newApiKeyRow,
+	parseBearer,
+	ZAPIER_KEY_SHAPE
+} from '../integrations/keys';
 import { endSubscriptionStatements, type PauseOutcome, pauseZaps } from './subscriptions';
 
 // the one key Zapier presents on every call it makes to this deployment: made and replaced from
-// the console, checked on every `/zapier` request.
+// the dashboard's Zapier page, under Integrations, and checked on every `/zapier` request.
 //
-// the row holds the key, so the console can show it on every visit, and its SHA-256, which is
-// what a request is admitted by — never the stored key (`zapier_key`'s header in ../db/schema.ts).
-// it is the carve-out CLAUDE.md names as a key the app mints for itself.
+// the key is a `zapier` row of `api_key`, minted and hashed by ../integrations/keys.ts, whose
+// header holds for it too: the plaintext exists only in what make and replace answer with, and a
+// page shows its head and tail (`readZapierKey`). the read API refuses it (`admitKey` in
+// ../integrations/surface.ts) and `verifyZapierKey` refuses every other kind, so a key is good
+// only on the surface it was made for. it is the carve-out CLAUDE.md names as a key the app mints
+// for itself.
 
-const KEY_ID = 'zapier';
+const ZAPIER_KEY_KIND = { name: 'Zapier', kind: 'zapier' } as const;
 
-/** what a made key answers with. `key` is the plaintext, the same one `readZapierKey` gives after. */
+/** what a made key answers with. `key` is the plaintext, and nothing gives it again. */
 export type MadeZapierKey = { readonly ok: true; readonly key: string; readonly madeAt: Date };
 
 /** a make refused because a key already exists: only `replace` cuts one. */
@@ -33,45 +42,58 @@ export type ReplacedZapierKey = MadeZapierKey & { readonly disconnected: number 
 export type ZapierKeyNotReplaced = { readonly ok: false; readonly reason: 'no_key' | 'conflict' };
 
 /**
- * the current key and when it was made, or `null` before one is. a row with no stored key reads
- * as none (`zapierKey.key` in ../db/schema.ts).
+ * what a page may show of a key: its head and tail, never the key, and its row's `id`, which a
+ * replace pressed on that page names.
  */
-export async function readZapierKey(
-	db: Db
-): Promise<{ readonly madeAt: Date; readonly key: string } | null> {
+export type ZapierKeyShown = {
+	readonly id: string;
+	readonly prefix: string;
+	readonly lastFour: string;
+	readonly madeAt: Date;
+};
+
+/** the one un-revoked `zapier` row, which `api_key_one_zapier_idx` (../db/schema.ts) keeps one. */
+const CURRENT = and(eq(apiKey.kind, 'zapier'), isNull(apiKey.revokedAt));
+
+/** the current key as a page may show it, or `null` before one is made. */
+export async function readZapierKey(db: Db): Promise<ZapierKeyShown | null> {
 	const [row] = await db
-		.select({ madeAt: zapierKey.createdAt, key: zapierKey.key })
-		.from(zapierKey)
-		.where(eq(zapierKey.id, KEY_ID));
-	return row?.key == null ? null : { madeAt: row.madeAt, key: row.key };
+		.select({
+			id: apiKey.id,
+			prefix: apiKey.prefix,
+			lastFour: apiKey.lastFour,
+			madeAt: apiKey.createdAt
+		})
+		.from(apiKey)
+		.where(CURRENT);
+	return row ?? null;
 }
 
 async function currentKey(db: Db) {
-	const [row] = await db
-		.select({ keyHash: zapierKey.keyHash })
-		.from(zapierKey)
-		.where(eq(zapierKey.id, KEY_ID));
+	const [row] = await db.select({ id: apiKey.id }).from(apiKey).where(CURRENT);
 	return row;
 }
 
 /**
- * a new key, when there is none. a key already made is refused rather than overwritten, so two
- * consoles pressing make at once cannot disconnect each other's Zaps — the insert's conflict on
- * the singleton id is what decides it.
+ * a new key, when there is none. a key already made is refused rather than revoked, so two
+ * presses of make at once cannot disconnect each other's Zaps — `api_key_one_zapier_idx`
+ * (../db/schema.ts) refusing the second insert is what decides it.
  */
 export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyExists> {
-	const key = newKey();
-	const [row] = await db
-		.insert(zapierKey)
-		.values({ id: KEY_ID, key, keyHash: hashOf(key) })
-		.onConflictDoNothing()
-		.returning({ madeAt: zapierKey.createdAt });
-	if (row === undefined) return { ok: false, reason: 'key_exists' };
-	return { ok: true, key, madeAt: row.madeAt };
+	try {
+		const minted = await mintApiKey(db, ZAPIER_KEY_KIND);
+		return { ok: true, key: minted.key, madeAt: minted.createdAt };
+	} catch (error) {
+		if (sqliteResultCode(error) !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
+		return { ok: false, reason: 'key_exists' };
+	}
 }
 
 /**
- * a new key in place of the current one, which stops working in the same batch.
+ * a new key in place of `expectedKeyId`, the key the operator was shown and pressed replace on,
+ * which stops working in the same batch. **a replace naming any other key changes nothing and
+ * answers `conflict`**, so a second press sent against a page that still shows the first key
+ * cannot kill the key the first press just showed.
  *
  * **every open subscription ends with it, as `key_replaced`, and what they were owed is dropped.**
  * a REST hook receives events without presenting the key, so a replace that only cut the auth
@@ -82,36 +104,42 @@ export async function makeZapierKey(db: Db): Promise<MadeZapierKey | ZapierKeyEx
  * Zapier, with no error. the pause cannot fail the replace or undo it, and `fetcher` is how it
  * reaches Zapier.
  *
- * the write is conditional on the hash read here, and the ends on that write having landed: of
- * two replaces racing, the second changes nothing — it ends no Zap made on the first's key — and
- * answers `conflict`. `created_at` moves with the key, so it stays the current key's make date.
+ * the named row is revoked, not deleted, at the new row's `created_at`, and only while it is the
+ * un-revoked one. the new row goes in only while no un-revoked `zapier` row stands
+ * (`api_key_one_zapier_idx`), and the ends only once it has. so where the named row was not
+ * revoked here — already replaced, or never the current key — the current key still stands, the
+ * insert yields to it and nothing ends: of two replaces naming one key, the second answers
+ * `conflict`.
  */
 export async function replaceZapierKey(
 	db: Db,
-	fetcher: typeof fetch
+	fetcher: typeof fetch,
+	expectedKeyId: string
 ): Promise<ReplacedZapierKey | ZapierKeyNotReplaced> {
-	const current = await currentKey(db);
-	if (current === undefined) return { ok: false, reason: 'no_key' };
-	const key = newKey();
-	const keyHash = hashOf(key);
+	if ((await currentKey(db)) === undefined) return { ok: false, reason: 'no_key' };
+	const { key, row } = newApiKeyRow(ZAPIER_KEY_KIND);
 	const now = new Date();
 	const landed = exists(
-		db.select({ id: zapierKey.id }).from(zapierKey).where(eq(zapierKey.keyHash, keyHash))
+		db.select({ id: apiKey.id }).from(apiKey).where(eq(apiKey.keyHash, row.keyHash))
 	);
 	// `ended` is the subscriptions' update, the second of the pair
-	const [written, , ended] = await db.batch([
+	const [, inserted, , ended] = await db.batch([
 		db
-			.update(zapierKey)
-			.set({ key, keyHash, createdAt: now, updatedAt: now })
-			.where(and(eq(zapierKey.id, KEY_ID), eq(zapierKey.keyHash, current.keyHash)))
-			.returning({ madeAt: zapierKey.createdAt }),
-		...endSubscriptionStatements(db, 'every_open', 'key_replaced', now, landed)
+			.update(apiKey)
+			.set({ revokedAt: now })
+			.where(and(eq(apiKey.id, expectedKeyId), CURRENT)),
+		db
+			.insert(apiKey)
+			.values({ ...row, createdAt: now })
+			.onConflictDoNothing()
+			.returning({ madeAt: apiKey.createdAt }),
+		...endSubscriptionStatements(db, 'every_open', 'key_replaced', now, { onlyIf: landed })
 	]);
-	const [row] = written;
-	if (row === undefined) return { ok: false, reason: 'conflict' };
+	const [made] = inserted;
+	if (made === undefined) return { ok: false, reason: 'conflict' };
 	const hookUrls = ended.map((e) => e.hookUrl);
 	const pause = await pauseZaps(fetcher, hookUrls);
-	return { ok: true, key, madeAt: row.madeAt, disconnected: hookUrls.length, ...pause };
+	return { ok: true, key, madeAt: made.madeAt, disconnected: hookUrls.length, ...pause };
 }
 
 /**
@@ -120,31 +148,16 @@ export async function replaceZapierKey(
  * being wrong is the same `null`: the caller is told nothing about which.
  *
  * the hash goes down to a write that must only land while the key is still current
- * (`subscribe` in ./subscriptions.ts). a value in no key format is turned away before the read,
- * which tells a caller only the format the key is published in. the compare is
- * ../secret-compare.ts's, over the two hex digests.
+ * (`subscribe` in ./subscriptions.ts). a value in no Zapier key's shape is turned away before the
+ * read, which tells a caller only the format the key is published in; a read API key, a revoked
+ * key and one never made are all the same `null`.
  */
 export async function verifyZapierKey(
 	db: Db,
 	authorization: string | null
 ): Promise<string | null> {
-	const presented = authorization?.trim().match(BEARER_KEY)?.[1];
-	if (presented === undefined) return null;
-	const current = await currentKey(db);
-	return current !== undefined && secretEquals(hashOf(presented), current.keyHash)
-		? current.keyHash
-		: null;
-}
-
-/** `i` for the scheme (case-insensitive, RFC 9110 §11.1); a key in the wrong case fails the hash. */
-const BEARER_KEY = /^bearer +(bgz_[\w-]{43})$/i;
-
-/** `bgz_` and 32 random bytes as base64url: 256 bits, and a prefix a secret scanner can find. */
-function newKey(): string {
-	return `bgz_${randomBytes(32).toString('base64url')}`;
-}
-
-/** the lowercase hex SHA-256 of the whole key string, as `zapier_key.key_hash` holds it. */
-function hashOf(key: string): string {
-	return createHash('sha256').update(key, 'utf8').digest('hex');
+	const presented = authorization === null ? null : parseBearer(authorization);
+	if (presented === null || !ZAPIER_KEY_SHAPE.test(presented)) return null;
+	const key = await findKeyByPresented(db, presented, 'zapier');
+	return key !== null && key.revokedAt === null ? key.keyHash : null;
 }

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { DestinationCell, DestinationGlyph } from './DestinationCell.jsx';
-import { Sheet } from './Sheet.jsx';
+import { Dialog } from '@ark-ui/react/dialog';
+import { useEffect, useId, useRef, useState } from 'react';
+import { DestinationCell } from './DestinationCell.jsx';
 import { Button } from '../controls/Button.jsx';
 
 /**
@@ -19,10 +19,9 @@ import { Button } from '../controls/Button.jsx';
  * specimen wants and no mounted rail does.
  * @property {DestinationMark | undefined} [mark] the column's mark; the bar draws none.
  * @property {DestinationStatus | undefined} [status]
- * @property {boolean | undefined} [folded] on a phone, listed under More rather than standing as a
- *   tab of its own. the column draws it where it is either way. which destinations fold is the
- *   caller's: the bar is what an operator opens every week, and only the surface knows which those
- *   are. no destination folded is no More, and every destination a tab.
+ * @property {boolean | undefined} [bar] a tab on the phone's bar. where any destination in the rail
+ * carries it, the bar draws those and a More tab opening a sheet with the rest; where none does,
+ * the bar draws every destination. the column at the wide width draws every one either way.
  */
 
 /**
@@ -58,7 +57,9 @@ import { Button } from '../controls/Button.jsx';
 
 /**
  * @typedef {object} AppShellProps
- * @property {ReactNode} [org] the operating organisation's legal name. there is no logo.
+ * @property {ReactNode} org the operating organisation's legal name. there is no logo. it has no
+ * default, and neither has `groups`: a shell that filled either in would put a fictional
+ * organisation and its rail on a real deployment whose surface forgot to state its own.
  * @property {string | SiteLink | undefined} [site] the globe leading the name, in the narrow band and
  * the rail's head alike. an address is somewhere off this surface — the console hands its
  * deployment's dashboard — and opens in a new tab, named "Open dashboard", with the address as its
@@ -68,7 +69,7 @@ import { Button } from '../controls/Button.jsx';
  * word is the `label`, and the page itself. absent, the reader is in none of them and no cell is
  * marked — which is what a surface hands for an address under no destination, and is the only
  * honest rail to draw there.
- * @property {readonly DestinationGroup[] | undefined} [groups]
+ * @property {readonly DestinationGroup[]} groups
  * @property {ComponentType<DestinationLinkProps> | undefined} [link] what every cell in the rail
  * is drawn as, handed straight to ./DestinationCell.jsx — see the note on the prop there for why
  * this package takes one rather than importing a router's link. a surface that leaves it unstated
@@ -118,30 +119,22 @@ import { Button } from '../controls/Button.jsx';
 const RAIL_STORAGE_KEY = 'bg-operator-rail';
 
 /* two arrangements from one markup order. below the shell's breakpoint: an identity band across
-   the top and a bar of tabs fixed to the foot of the viewport, one tab per destination on a row
-   that never wraps — a tab is an equal share of the width whatever the count, so what bounds how
-   many the bar holds is the share each is left with at the 375px floor rather than a number
-   written anywhere. a destination the caller folds stands in no tab: the bar ends in a More tab
-   instead, opening a sheet that lists every folded one with its mark, in the rail's order. the
-   bar is flat: groups, marks and headings are the column's. above it: a left column with the
-   identity and the collapse toggle at its head, the grouped destinations, and the foot; the page
-   is a panel filling the rest of the window beside it.
+   the top and a bar of tabs fixed to the foot of the viewport on a row that never wraps — a tab is
+   an equal share of the width whatever the count, so what bounds how many the bar holds is the
+   share each is left with at the 375px floor rather than a number written anywhere. a rail whose
+   destinations state `bar` puts those on it and ends it with More, which opens a sheet holding the
+   rest in the column's order, under the column's rules and headings; a rail stating none has a tab
+   per destination. the bar itself is flat: groups, marks and headings are the column's and the
+   sheet's. above it: a left column with the identity and the collapse toggle at its head, the
+   grouped destinations, and the foot; the page is a panel filling the rest of the window beside
+   it.
    the identity slot renders the operating organisation's legal name — there is no logo. */
 /** @param {AppShellProps} props */
 export function AppShell({
-	org = 'Riverbank Trust',
+	org,
 	site,
 	current,
-	groups = [
-		{ destinations: [{ label: 'Dashboard', short: 'Dashboard', mark: 'layout-dashboard' }] },
-		{
-			destinations: [
-				{ label: 'Donation forms', short: 'Forms', mark: 'form' },
-				{ label: 'Donors', short: 'Donors', mark: 'users' },
-				{ label: 'Gifts', short: 'Gifts', mark: 'hand-heart' }
-			]
-		}
-	],
+	groups,
 	link,
 	wayOut,
 	foot,
@@ -154,7 +147,39 @@ export function AppShell({
 	   render that differed from it would not hydrate. storage can be refused (a blocked or private
 	   window), and then the rail simply forgets the choice. */
 	const [collapsed, setCollapsed] = useState(false);
-	const [moreOpen, setMoreOpen] = useState(false);
+	const [sheetOpen, setSheetOpen] = useState(false);
+	/** @type {import('react').RefObject<HTMLButtonElement | null>} */
+	const moreTab = useRef(null);
+	/** @type {import('react').RefObject<HTMLElement | null>} */
+	const railBox = useRef(null);
+	const mainId = useId();
+	/** @type {import('react').RefObject<HTMLElement | null>} */
+	const page = useRef(null);
+
+	/* the sheet closes when the tab that opened it stops being drawn — a window widened past the
+	   shell's breakpoint, a tablet turned on its side — because a modal left open under a column
+	   that has no More holds the keyboard in something nobody can see. the tab's own boxes are the
+	   signal: `display: none` leaves it none, and no width is restated here. */
+	useEffect(() => {
+		const tab = moreTab.current;
+		if (!sheetOpen || tab === null) return;
+		const watch = new ResizeObserver(() => {
+			if (tab.getClientRects().length === 0) setSheetOpen(false);
+		});
+		watch.observe(tab);
+		return () => watch.disconnect();
+	}, [sheetOpen]);
+
+	/* and it closes on a step through the history — Back and Forward, a phone's Back included —
+	   because a sheet left open over a page it was not opened on holds the keyboard in front of the
+	   wrong screen. the step is heard as it happens rather than read off `current`, since a step
+	   between two addresses under one destination hands this shell the `current` it already had. */
+	useEffect(() => {
+		if (!sheetOpen) return;
+		const stepped = () => setSheetOpen(false);
+		window.addEventListener('popstate', stepped);
+		return () => window.removeEventListener('popstate', stepped);
+	}, [sheetOpen]);
 
 	useEffect(() => {
 		try {
@@ -182,13 +207,22 @@ export function AppShell({
 	/** @type {Whereabouts | undefined} */
 	const at = typeof current === 'string' ? { label: current, kind: 'page' } : current;
 
-	/* the bar's More tab stands for every destination folded under it, so it is marked where the
-	   reader is in one of those — the bar would otherwise mark nothing at all while they are there.
-	   it claims `true`, the current one of these, and never the page: More is not an address. */
-	const folded = groups.flatMap((group) => group.destinations).filter((d) => d.folded === true);
-	const inFolded = at !== undefined && folded.some((d) => d.label === at.label);
-	const Cell = link ?? 'a';
-	const closeMore = () => setMoreOpen(false);
+	/* the destination the sheet was last drawn under. a surface handing a different one has moved
+	   the reader — a move the page itself made, with no press in the sheet — and the sheet comes
+	   down in the same render rather than a frame after it. */
+	const whereabouts = at === undefined ? '' : `${at.kind} ${at.label}`;
+	const [drawnAt, setDrawnAt] = useState(whereabouts);
+	if (drawnAt !== whereabouts) {
+		setDrawnAt(whereabouts);
+		setSheetOpen(false);
+	}
+
+	const barred = groups.some((group) => group.destinations.some((d) => d.bar));
+	const sheet = barred ? offBar(groups) : [];
+	/* the tab stands for every destination it opens, so it claims containment while the reader is
+	   in any of them: it is never the page itself. */
+	const inSheet =
+		at !== undefined && sheet.some((group) => group.destinations.some((d) => d.label === at.label));
 
 	/* settled once and drawn in both slots, so the two cannot disagree about which control the way
 	   out is. the specimen's own button carries `.adm-signout` for the same reason a caller's node
@@ -231,7 +265,7 @@ export function AppShell({
 					/>
 				) : (
 					<Button
-						as={Cell}
+						as={link ?? 'a'}
 						href={site.href}
 						variant="quiet"
 						size="sm"
@@ -248,55 +282,119 @@ export function AppShell({
 		</div>
 	);
 
+	const rail = (
+		<nav className="adm-rail" aria-label="Sections" ref={railBox}>
+			<div className="adm-rail__identity">
+				{lead}
+				{name}
+				<Button
+					type="button"
+					variant="quiet"
+					size="sm"
+					mark="panel-left"
+					className="adm-rail__toggle"
+					aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+					aria-expanded={!collapsed}
+					onClick={toggle}
+				/>
+			</div>
+			<div className="adm-rail__cells">
+				{groups.map((group, index) => (
+					<RailGroup
+						key={group.heading ?? `group-${index}`}
+						group={group}
+						rule={ruleBefore(group, groups[index - 1])}
+						at={at}
+						link={link}
+						collapsed={collapsed}
+						barred={barred}
+						onChoose={barred ? () => setSheetOpen(false) : undefined}
+					/>
+				))}
+				{barred ? (
+					<Dialog.Trigger
+						ref={moreTab}
+						className="adm-dest adm-rail__more"
+						aria-current={inSheet ? 'true' : undefined}
+					>
+						<span className="adm-dest__short">More</span>
+						<span className="adm-dest__full">More</span>
+					</Dialog.Trigger>
+				) : null}
+			</div>
+			{footing === null ? null : <div className="adm-rail__foot">{footing}</div>}
+		</nav>
+	);
+
 	return (
 		<div className={collapsed ? 'adm-shell adm-shell--collapsed' : 'adm-shell'}>
+			{/* the first stop, and the way past the identity and every destination the rail holds. it
+			    points at the page's own id, so it works before the script arrives; once it has, the
+			    press moves focus itself and leaves the address alone, because a fragment on the address
+			    is a history entry, and Back would then land on this same page rather than leave it. */}
+			<Button
+				as="a"
+				href={`#${mainId}`}
+				className="adm-skip"
+				onClick={(/** @type {import('react').MouseEvent} */ event) => {
+					event.preventDefault();
+					page.current?.focus();
+				}}
+			>
+				Skip to content
+			</Button>
 			<div className="adm-identity">
 				{lead}
 				{name}
 				{out}
 			</div>
-			<nav className="adm-rail" aria-label="Sections">
-				<div className="adm-rail__identity">
-					{lead}
-					{name}
-					<Button
-						type="button"
-						variant="quiet"
-						size="sm"
-						mark="panel-left"
-						className="adm-rail__toggle"
-						aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-						aria-expanded={!collapsed}
-						onClick={toggle}
-					/>
-				</div>
-				<div className="adm-rail__cells">
-					{groups.map((group, index) => (
-						<RailGroup
-							key={group.heading ?? `group-${index}`}
-							group={group}
-							rule={ruleBefore(group, groups[index - 1])}
-							at={at}
-							link={link}
-							collapsed={collapsed}
-						/>
-					))}
-					{folded.length === 0 ? null : (
-						<button
-							type="button"
-							className="adm-dest adm-rail__more"
-							aria-haspopup="dialog"
-							aria-expanded={moreOpen}
-							aria-current={inFolded ? 'true' : undefined}
-							onClick={() => setMoreOpen(true)}
-						>
-							More
-						</button>
-					)}
-				</div>
-				{footing === null ? null : <div className="adm-rail__foot">{footing}</div>}
-			</nav>
-			<main className="adm-main">
+			{barred ? (
+				<Dialog.Root
+					open={sheetOpen}
+					onOpenChange={(details) => setSheetOpen(details.open)}
+					aria-label="More"
+					lazyMount
+					unmountOnExit
+					persistentElements={[() => railBox.current]}
+				>
+					{/* before the bar in the markup and at its step (../../styles/adm.css, `.adm-rail`), so
+					    the bar draws over the scrim rather than under it — undimmed, and live: the bar is
+					    the machine's persistent element, so a tab pressed while the sheet is open goes
+					    where it says and its cell closes the sheet on the way. while it is open the
+					    machine hides everything but the sheet from the tree, and a press anywhere else
+					    outside it closes it. */}
+					<Dialog.Backdrop className="adm-sheetscrim" />
+					<Dialog.Positioner>
+						<Dialog.Content className="adm-moresheet">
+							<nav className="adm-moresheet__cells" aria-label="More sections">
+								{sheet.map((group, index) => (
+									<RailGroup
+										key={group.heading ?? `group-${index}`}
+										group={group}
+										rule={ruleBefore(group, sheet[index - 1])}
+										at={at}
+										link={link}
+										collapsed={false}
+										barred={false}
+										onChoose={() => setSheetOpen(false)}
+									/>
+								))}
+							</nav>
+							{/* last in the tab order and drawn under the last row: the way out for a reader
+							    with no Escape to send, which a phone's screen reader is — whose cursor
+							    reaches a control without focusing it, so one drawn only on focus would be a
+							    point a finger cannot find. */}
+							<Dialog.CloseTrigger className="adm-btn adm-btn--quiet adm-btn--sm adm-moresheet__close">
+								Close
+							</Dialog.CloseTrigger>
+						</Dialog.Content>
+					</Dialog.Positioner>
+					{rail}
+				</Dialog.Root>
+			) : (
+				rail
+			)}
+			<main className="adm-main" id={mainId} tabIndex={-1} ref={page}>
 				{head === undefined || head === null ? null : (
 					<div className="adm-head">
 						<div className="adm-headstrip">{head}</div>
@@ -306,26 +404,6 @@ export function AppShell({
 					{children}
 				</div>
 			</main>
-			{moreOpen ? (
-				<Sheet title="More" onDismiss={closeMore}>
-					<nav className="adm-morelist" aria-label="More sections">
-						{folded.map((d) => (
-							<Cell
-								key={d.label}
-								href={d.href ?? '#'}
-								className="adm-morelist__item"
-								aria-current={
-									at?.label === d.label ? (at.kind === 'section' ? 'true' : 'page') : undefined
-								}
-								onClick={closeMore}
-							>
-								{d.mark === undefined ? null : <DestinationGlyph mark={d.mark} />}
-								{d.label}
-							</Cell>
-						))}
-					</nav>
-				</Sheet>
-			) : null}
 		</div>
 	);
 }
@@ -347,40 +425,91 @@ function ruleBefore(group, previous) {
 }
 
 /**
+ * the rail's groups with every bar destination taken out, and a group left with none dropped: what
+ * the sheet stands, rules and headings still decided by `ruleBefore` over what remains.
+ *
+ * @param {readonly DestinationGroup[]} groups
+ * @returns {DestinationGroup[]}
+ */
+function offBar(groups) {
+	return groups
+		.map((group) => ({ ...group, destinations: group.destinations.filter((d) => !d.bar) }))
+		.filter((group) => group.destinations.length > 0);
+}
+
+/**
  * @typedef {object} RailGroupProps
  * @property {DestinationGroup} group
  * @property {'none' | 'plain' | 'group'} rule
  * @property {Whereabouts | undefined} at
  * @property {ComponentType<DestinationLinkProps> | undefined} link
  * @property {boolean} collapsed
+ * @property {boolean} barred hide from the bar the cells it leaves to the More sheet: the rail's own
+ *   run in a rail whose destinations state `bar`, and never the sheet's.
+ * @property {(() => void) | undefined} [onChoose] a press on any cell — the sheet's close, from a
+ *   cell in the sheet or a tab on the bar pressed while it is open.
  */
 
 /* one group's run of cells, flat inside `.adm-rail__cells` so the bar can stand every entry as a
-   tab of its own. */
+   tab of its own, and inside `.adm-moresheet__cells` for the More sheet's rows.
+
+   a headed group's heading and cells are one `group` named by the heading, so a reader moving
+   through the links hears which group they are in rather than meeting the heading as loose text
+   before them. the element is `.adm-rail__group`, which ../../styles/adm.css draws as
+   `display: contents`: it is in the accessibility tree and out of the layout, so the bar still
+   stands each entry as a tab and the column and the sheet still lay the entries out in their own
+   grid. an unheaded group has no name to be a group by and draws no element.
+
+   a headed group none of whose cells is a tab is `--offbar` in the bar's run, and
+   ../../styles/adm.css hides it on the bar as it hides the cells: `display: contents` keeps a box
+   out of the layout and not out of the tree, so it would stand on the bar as a named group
+   holding nothing. */
 /** @param {RailGroupProps} props */
-function RailGroup({ group, rule, at, link, collapsed }) {
+function RailGroup({ group, rule, at, link, collapsed, barred, onChoose }) {
 	const { heading, destinations } = group;
+	const headingId = useId();
+	const cells = destinations.map((d, i) => (
+		<DestinationCell
+			key={d.label}
+			short={d.short}
+			href={d.href}
+			mark={d.mark}
+			status={d.status}
+			title={collapsed ? d.label : undefined}
+			groupEnd={heading !== undefined && i === destinations.length - 1}
+			offBar={barred && !d.bar}
+			onClick={onChoose}
+			link={link}
+			current={at && d.label === at.label ? at.kind : undefined}
+		>
+			{d.label}
+		</DestinationCell>
+	));
 	return (
 		<>
 			{rule === 'plain' ? <hr className="adm-rail__rule" /> : null}
 			{rule === 'group' ? <hr className="adm-rail__rule adm-rail__rule--group" /> : null}
-			{heading === undefined ? null : <span className="adm-rail__heading">{heading}</span>}
-			{destinations.map((d, i) => (
-				<DestinationCell
-					key={d.label}
-					short={d.short}
-					href={d.href}
-					mark={d.mark}
-					status={d.status}
-					title={collapsed ? d.label : undefined}
-					groupEnd={heading !== undefined && i === destinations.length - 1}
-					folded={d.folded}
-					link={link}
-					current={at && d.label === at.label ? at.kind : undefined}
+			{heading === undefined ? (
+				cells
+			) : (
+				/* biome-ignore lint/a11y/useSemanticElements: a `<fieldset>` groups a form's own
+				   controls, and these are links to other pages — read as one, the rail would be a
+				   question with nothing to answer. */
+				<div
+					className={
+						barred && !destinations.some((d) => d.bar)
+							? 'adm-rail__group adm-rail__group--offbar'
+							: 'adm-rail__group'
+					}
+					role="group"
+					aria-labelledby={headingId}
 				>
-					{d.label}
-				</DestinationCell>
-			))}
+					<span className="adm-rail__heading" id={headingId}>
+						{heading}
+					</span>
+					{cells}
+				</div>
+			)}
 		</>
 	);
 }

@@ -1,4 +1,6 @@
 import { createExecutionContext, env } from 'cloudflare:test';
+import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
+import type { Config } from '@react-router/dev/config';
 import {
 	createRequestHandler,
 	type ServerBuild,
@@ -6,6 +8,7 @@ import {
 	UNSAFE_withErrorBoundaryProps
 } from 'react-router';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import routerConfig from '../react-router.config';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import type { ConfigEnv } from '$lib/server/config/env';
@@ -24,6 +27,7 @@ import * as publicApi from './routes/api.v1';
 import * as servedConfig from './routes/api.v1.forms.$id.config';
 import * as login from './routes/login';
 import * as previewPage from './routes/preview.$pageId';
+import { finishSetup } from './webhook-routes.testing';
 
 // the headers every answer this deployment draws a document for carries, and the ones it does not.
 //
@@ -37,6 +41,9 @@ import * as previewPage from './routes/preview.$pageId';
 //
 // the route ids and paths below are what `@react-router/fs-routes` resolves those files to; which
 // file is served at which address is ./routes.spec.ts's, against the app's own route config.
+//
+// `allowedActionOrigins` is read off ../react-router.config.ts rather than left out, because the
+// vite plugin copies it into the build and the cross-origin cases below hold whatever it says.
 
 /** the origin every request in this file arrives on. not loopback, so the cookie is `__Secure-`. */
 const ORIGIN = 'https://give.example';
@@ -85,6 +92,7 @@ function compiled(module: object): RouteModule {
  * its file name spells.
  */
 function buildOf(mounted: readonly Mounted[]): ServerBuild {
+	const { allowedActionOrigins }: Config = routerConfig;
 	const routes: ServerBuild['routes'] = {};
 	const clientRoutes: ServerBuild['assets']['routes'] = {};
 	for (const route of mounted) {
@@ -123,6 +131,7 @@ function buildOf(mounted: readonly Mounted[]): ServerBuild {
 			url: '/assets/manifest.js',
 			version: 'spec'
 		},
+		...(allowedActionOrigins !== undefined && { allowedActionOrigins }),
 		publicPath: '/',
 		assetsBuildDirectory: 'build/client',
 		future: {},
@@ -169,11 +178,19 @@ const handle = createRequestHandler(
 	'production'
 );
 
-/** a request sent to the deployment, whose vars are the pool's with `vars` laid over them. */
-function send(path: string, init?: RequestInit, vars: ConfigEnv = {}): Promise<Response> {
+/**
+ * a request sent to the deployment, whose vars are `bindings` — the pool's with the staff
+ * credential, unless a case brings a deployment of its own — with `vars` laid over them.
+ */
+function send(
+	path: string,
+	init?: RequestInit,
+	vars: ConfigEnv = {},
+	bindings: Env = DEPLOYED as unknown as Env
+): Promise<Response> {
 	return handle(
 		new Request(`${ORIGIN}${path}`, init),
-		requestContext({ ...DEPLOYED, ...vars }, createExecutionContext())
+		requestContext({ ...bindings, ...vars }, createExecutionContext())
 	);
 }
 
@@ -181,7 +198,7 @@ function send(path: string, init?: RequestInit, vars: ConfigEnv = {}): Promise<R
 async function signIn(): Promise<string> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	const auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: PASSWORD },
@@ -231,8 +248,18 @@ function scriptTags(html: string): string[] {
 }
 
 /**
+ * every `<link>` tag a document draws in its head from the routes' `links`, which the client
+ * hydrates: a module preload `<Scripts>` draws is a resource react hoists and does not compare.
+ */
+function linkTags(html: string): string[] {
+	return (html.match(/<link\b[^>]*>/g) ?? []).filter((tag) => !tag.includes('rel="modulepreload"'));
+}
+
+/**
  * what every document carries whichever policy it is drawn under: the directives no route widens,
- * the framing header, and the policy's nonce on every script the document draws.
+ * the framing header, and the policy's nonce on every script the document draws. no link the
+ * routes declare carries it: a browser hides a nonce's value from the page, and the client, which
+ * is never handed one, would hydrate every such link as a mismatch.
  */
 async function expectLocked(
 	response: Response,
@@ -245,9 +272,13 @@ async function expectLocked(
 	expect(policy.get('frame-ancestors')).toEqual(["'none'"]);
 	expect(response.headers.get('x-frame-options')).toBe('DENY');
 
-	const scripts = scriptTags(await response.text());
+	const html = await response.text();
+	const scripts = scriptTags(html);
 	expect(scripts.length).toBeGreaterThan(0);
 	for (const tag of scripts) expect(tag).toContain(` nonce="${nonce}"`);
+	const links = linkTags(html);
+	expect(links.length).toBeGreaterThan(0);
+	for (const tag of links) expect(tag).not.toContain(nonce);
 }
 
 /** a document answer's policy and framing headers, held to the dashboard's strict set. */
@@ -266,8 +297,18 @@ async function expectStrictDocument(response: Response): Promise<void> {
 }
 
 describe('a dashboard document', () => {
+	// the donor page's cases below are drawn on a deployment that has saved no profile.
+	afterAll(async () => {
+		await env.DB.prepare('delete from org_profile').run();
+	});
+
 	it('carries the strict policy, and its nonce is the one on every script it draws', async () => {
-		await expectStrictDocument(await send('/admin', { headers: { cookie: session } }));
+		// the dashboard is served only once set-up is finished (./routes/_app.tsx), and the gate's
+		// own document is not the one this case is about.
+		const finished = await finishSetup(PASSWORD);
+		await expectStrictDocument(
+			await send('/admin', { headers: { cookie: session } }, {}, finished)
+		);
 	});
 });
 
@@ -285,18 +326,6 @@ describe('two documents', () => {
 describe('a sign-in document', () => {
 	it('carries the strict policy, and its nonce is the one on every script it draws', async () => {
 		await expectStrictDocument(await send('/login'));
-	});
-
-	it('draws its links with no nonce, which the page could not hydrate to the same value', async () => {
-		const answer = await send('/login');
-		const nonce = policyNonce(directives(answer.headers.get('content-security-policy')));
-		// a modulepreload is `<Scripts>`'s, which keeps the nonce and is hydrated without a diff.
-		const links = ((await answer.text()).match(/<link\b[^>]*>/g) ?? []).filter(
-			(tag) => !tag.includes('rel="modulepreload"')
-		);
-
-		expect(links.some((tag) => /\brel="stylesheet"/.test(tag))).toBe(true);
-		for (const tag of links) expect(tag).not.toContain(nonce);
 	});
 
 	it('names no paypal origin whatever `PAYPAL_API_URL` is', async () => {
@@ -512,5 +541,40 @@ describe('an answer that is not a document', () => {
 		expect(response.status).toBeGreaterThanOrEqual(400);
 		expect(response.headers.get('content-type') ?? '').not.toMatch(/html/);
 		for (const name of DOCUMENT_ONLY) expect(response.headers.has(name)).toBe(false);
+	});
+});
+
+/**
+ * the deployer's correct password, posted the way the form posts it with `origin` set to `from`.
+ * the body is one the action would sign in on, so a refusal is the framework's and not the form's.
+ */
+function postSignIn(from: string): Promise<Response> {
+	const body = new FormData();
+	body.set('identifier', ADMIN_USERNAME);
+	body.set('password', PASSWORD);
+	return send('/login', { method: 'POST', headers: { origin: from }, body });
+}
+
+describe('a sign-in posted from another origin', () => {
+	// react router's own check, ahead of every middleware and the action, is the only cross-origin
+	// refusal in front of `/login`: no better-auth request check runs on a direct `auth.api.*` call
+	// ($lib/server/auth/index.ts). these hold that it is still there — a route turned into a
+	// resource route, or an `allowedActionOrigins` naming the host, fails them.
+	it('is refused with a 400 and no session', async () => {
+		const answer = await postSignIn('https://evil.example');
+		expect(answer.status).toBe(400);
+		expect(answer.headers.getSetCookie()).toEqual([]);
+	});
+
+	it('is refused when the origin is opaque', async () => {
+		const answer = await postSignIn('null');
+		expect(answer.status).toBe(400);
+		expect(answer.headers.getSetCookie()).toEqual([]);
+	});
+
+	it("reaches the action when the origin is the deployment's own", async () => {
+		const answer = await postSignIn(ORIGIN);
+		expect(answer.status).toBe(303);
+		expect(answer.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
 	});
 });

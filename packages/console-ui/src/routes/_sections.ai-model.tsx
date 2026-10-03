@@ -4,7 +4,7 @@ import { freeWithheldVars, readAiModel, setVars } from '../api/client';
 import type { VarsWritten } from '../api/types';
 import { MODEL_INTENT, MODEL_TITLE, modelEdit } from '../lib/ai-model';
 import { ModelSection } from '../lib/ai-model-section';
-import { notReady, readConsole, valuesNotRead } from '../lib/console-reading';
+import { notReady, readConsole, valuesNotRead, watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { heldValues } from '../lib/held-values';
 import { forgetReadings, readKeptPage } from '../lib/processor-cache';
@@ -54,6 +54,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * the loopback address.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');

@@ -4,12 +4,13 @@ import "sync"
 
 // what this process is holding while it is being told to stop.
 //
-// **it exists because a press outlives the request that started it.** the payments setup is the
-// one this server still holds, and it is several round trips across three hosts: a console that
-// went away mid-run leaves the processor account holding an endpoint the deployment has no key to
-// verify against, and nothing on the machine says so. so the terminal that is stopping asks what is
-// going, names it, and waits. the two deploys are not on this list at all — they are terminal
-// commands and the terminal running one is the terminal being stopped
+// **it exists because a press outlives the request that started it.** the payments setups are
+// several round trips across three hosts: a console that went away mid-run leaves the processor
+// account holding an endpoint the deployment has no key to verify against, and nothing on the
+// machine says so. the connect press is the other (./session.go): torn mid-write, it leaves a
+// session live on the deployment that this machine never recorded. so the terminal that is stopping
+// asks what is going, names it, and waits. the two deploys are not on this list at all — they are
+// terminal commands and the terminal running one is the terminal being stopped
 // (../../cmd/better-giving/start.go).
 //
 // **it carries a sentence and never the run.** what a stop prints is read by an operator who is
@@ -17,8 +18,8 @@ import "sync"
 // for; nothing here reaches the outcome, which is the page's to draw and not a terminal's.
 //
 // **and it carries the stop into a run's wait for the edge**, the one signal sent the other way:
-// Stopping is what each run's waits are bound with (./stripe.go, ./paypal.go), so a stop cuts a
-// wait short and never a call.
+// Stopping is what each run's waits are bound with (./stripe.go, ./paypal.go, ./session.go), so a
+// stop cuts a wait short and never a call.
 
 // Presses is every long press this server holds, as the readings a stop makes.
 type Presses struct {

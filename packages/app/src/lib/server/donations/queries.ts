@@ -1,6 +1,20 @@
 import type { TributeKind } from '@better-giving/form/v1';
-import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
+import {
+	and,
+	count,
+	desc,
+	eq,
+	exists,
+	inArray,
+	isNull,
+	lt,
+	ne,
+	notExists,
+	or,
+	type SQL,
+	sql
+} from 'drizzle-orm';
+import { alias, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { readContactNames, readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { dispute, donation, payment, program, type Donation, type Payment } from '../db/schema';
@@ -16,20 +30,23 @@ import { projectTribute } from '../../donations/tributes';
 // page, at no second round trip. ../programs/queries.ts owns every write of that table and every
 // read that has a rule in it.
 //
-// the exceptions are `listContacts` and `readDonorSummary` in ../contacts/queries.ts, which name
-// `donation` and `payment` to answer two questions about donors rather than about gifts: what each
-// donor has given, and which month each donor's money first moved. both are one statement whose
-// driving table is `contact` — the file is sorted by that total across the whole of it, and
-// whether a donor is counted at all turns on `contact.archived_at`; that file's own header argues
-// both at length. `readRaisedThroughForm` in ../ledger/queries.ts names both as well, as the path
-// from a form to its entries in the books, and counts money only as the ledger holds it.
+// the exceptions are `listContacts`, `readDonorSummary` and `findPaymentDonor` in
+// ../contacts/queries.ts. the first two name `donation` and `payment` to answer two questions about
+// donors rather than about gifts: what each donor has given, and which month each donor's money
+// first moved. both are one statement whose driving table is `contact` — the file is sorted by
+// that total across the whole of it, and whether a donor is counted at all turns on
+// `contact.archived_at`; that file's own header argues both at length, and why the third is there.
+// `readRaisedThroughForm` in ../ledger/queries.ts names both as well, as the path from a form to its
+// entries in the books, and counts money only as the ledger holds it.
 //
 // **those reads say in SQL what `projectStatus` below says in TypeScript, and the three have to
 // keep agreeing** — a succeeded inbound attempt collects, a succeeded refund takes back, every
 // other attempt counts for nothing. the summary spends only the first of those, because a count of
 // donors is not money and a refund takes nothing off one. `disputed` is the one state they need
 // not mirror: it names no money, and what a dispute withdrew is already a succeeded refund row
-// that the sums take off. a change to the rule here is a change to the `case when` there, and a
+// that the sums take off. `refundStands` below is the one read that parts from them on purpose,
+// during an open dispute: it counts that withdrawal as nothing sent back yet, since a win returns
+// it. a change to the rule here is a change to the `case when` there, and a
 // screen calling a gift `pending` while the donor file counts it is the failure that costs.
 //
 // no writes. a gift is written by ./record.ts, which composes four tables in one `batch()` and is
@@ -133,6 +150,92 @@ export function projectStatus(attempts: readonly SettlementAttempt[]): DonationS
 	if (latest?.status === 'failed') return 'failed';
 	if (latest?.status === 'cancelled') return 'cancelled';
 	return 'pending';
+}
+
+/**
+ * `row` is a refund whose money is gone for good: a refund-direction row still `succeeded`, and no
+ * dispute on it that is open or was won. every read of what a gift has lost for good takes it from
+ * here — the Zapier feed, the read API's `amount_refunded_minor`, the refund notice.
+ *
+ * it parts from `projectStatus` above during an open dispute: there the withdrawal is a succeeded
+ * refund and the gift reads `disputed`; here it stands for nothing until the dispute is lost.
+ */
+export function refundStands(db: Db, row: typeof payment) {
+	const unsettled = db
+		.select({ one: sql`1` })
+		.from(dispute)
+		.where(
+			and(eq(dispute.paymentId, row.id), or(isNull(dispute.outcome), ne(dispute.outcome, 'lost')))
+		);
+	return and(eq(row.direction, 'refund'), eq(row.status, 'succeeded'), notExists(unsettled));
+}
+
+/**
+ * `gift` is its donor's first settled gift: no other succeeded inbound payment of theirs exists.
+ * the one rule both feeds read "new donor" by — `zapierStatements` in ../zapier/events.ts and
+ * `webhookStatements` in ../webhooks/events.ts — inside the statement that owes the event, never
+ * in a read before it; the first of those argues the race it settles.
+ */
+export function isFirstSettledGift(
+	db: Db,
+	gift: { readonly paymentId: string; readonly contactId: string }
+): SQL {
+	return notExists(settledGiftsOf(db, gift.contactId, gift.paymentId));
+}
+
+/**
+ * the contact `contactId` has a settled gift: the fact {@link isFirstSettledGift} reads, held the
+ * other way round — a `donor.updated` is queued only once a gift of theirs has settled
+ * (`donorUpdatedWebhookStatements` in ../webhooks/events.ts, which lists where that still lets a
+ * destination hear of a change before a `donor.added`).
+ */
+export function hasSettledGift(db: Db, contactId: string): SQL {
+	return exists(settledGiftsOf(db, contactId));
+}
+
+/** the contact's succeeded inbound payments, but for `exceptPaymentId`. */
+function settledGiftsOf(db: Db, contactId: string, exceptPaymentId?: string) {
+	const prior = alias(payment, 'prior');
+	const priorDonation = alias(donation, 'prior_donation');
+	return db
+		.select({ one: sql`1` })
+		.from(prior)
+		.innerJoin(priorDonation, eq(priorDonation.id, prior.donationId))
+		.where(
+			and(
+				eq(priorDonation.contactId, contactId),
+				eq(prior.status, 'succeeded'),
+				eq(prior.direction, 'inbound'),
+				exceptPaymentId === undefined ? undefined : ne(prior.id, exceptPaymentId)
+			)
+		);
+}
+
+/**
+ * a settled gift from the same donor as the outer row's, dated before it — so the outer row with
+ * none is that donor's first. a tie on the date falls to the lower id, so exactly one row per
+ * donor is first. the outer query reads `payment` joined to `donation`, both unaliased: a
+ * `new_donor` Zap's samples (../zapier/payload.ts) and a `donor.added` destination's
+ * `first_gift` (../webhooks/payload.ts) read the first gift by it.
+ */
+export function earlierSettledGiftOfDonor(db: Db) {
+	const earlier = alias(payment, 'earlier');
+	const earlierDonation = alias(donation, 'earlier_donation');
+	return db
+		.select({ one: sql`1` })
+		.from(earlier)
+		.innerJoin(earlierDonation, eq(earlierDonation.id, earlier.donationId))
+		.where(
+			and(
+				eq(earlierDonation.contactId, donation.contactId),
+				eq(earlier.status, 'succeeded'),
+				eq(earlier.direction, 'inbound'),
+				or(
+					lt(earlier.occurredAt, payment.occurredAt),
+					and(eq(earlier.occurredAt, payment.occurredAt), lt(earlier.id, payment.id))
+				)
+			)
+		);
 }
 
 /**
@@ -531,40 +634,6 @@ export type RecordedGift = Pick<
 	/** how the money arrived, off the gift's first payment row, or `null` where it has none. */
 	readonly method: Payment['method'] | null;
 };
-
-/**
- * the donor behind one settlement attempt, as an outside ledger names a payer, and the rail holding
- * the money.
- */
-export type PaymentDonor = {
-	readonly displayName: string;
-	readonly email: string | null;
-	/** the rail that settled it — `payment.provider`, null on a row recorded before the rail was known. */
-	readonly provider: Payment['provider'];
-};
-
-/**
- * who gave the gift one payment settled and which rail settled it, or `null` where no payment
- * carries the id.
- *
- * `payment.donation_id` and `donation.contact_id` are both NOT NULL, so the join cannot lose a
- * donor a payment has; `null` is a payment row that is not there at all. the contact itself is read
- * through `readContactSummaries` rather than joined, for the reason this file's header states:
- * `contact` belongs to ../contacts/queries.ts.
- */
-export async function findPaymentDonor(db: Db, paymentId: string): Promise<PaymentDonor | null> {
-	const [row] = await db
-		.select({ contactId: donation.contactId, provider: payment.provider })
-		.from(payment)
-		.innerJoin(donation, eq(donation.id, payment.donationId))
-		.where(eq(payment.id, paymentId));
-	if (row === undefined) return null;
-
-	const summary = (await readContactSummaries(db, [row.contactId])).get(row.contactId);
-	return summary === undefined
-		? null
-		: { displayName: summary.displayName, email: summary.primaryEmail, provider: row.provider };
-}
 
 /**
  * one gift's figure, day, donor, cause, source and method, or `null` where no gift has the id.

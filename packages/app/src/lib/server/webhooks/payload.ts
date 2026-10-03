@@ -1,0 +1,261 @@
+import { and, eq, notExists } from 'drizzle-orm';
+import { majorText } from '../../forms/amounts';
+import type { Db } from '../db/client';
+import { donation, payment } from '../db/schema';
+import { earlierSettledGiftOfDonor } from '../donations/queries';
+import { type ApiDonor, readDonors } from '../integrations/donor';
+import { type ApiGift, readGifts } from '../integrations/gift';
+import { inPage } from '../db/id-set';
+import { type ApiRecurringGift, readRecurringGifts } from '../integrations/recurring-gift';
+import {
+	REFUND_NO_LONGER_STANDS,
+	type RefundRow,
+	type RenderedRefund,
+	readStandingRefunds,
+	renderRefund,
+	selectRefunds
+} from '../integrations/refund';
+import type { WebhookEvent } from '../../webhooks/catalog';
+import { CHARGE_FAILED_DETAIL, type ChargeFailedDetail, changedRecordOf } from './events';
+
+// the `data` a destination is posted for each event, rendered at send from the row's subject
+// (./deliver.ts). every gift in it is the read API's (`readGifts` in ../integrations/gift.ts),
+// every donor the read API's (`readDonors` in ../integrations/donor.ts) and every recurring gift
+// the read API's (`readRecurringGifts` in ../integrations/recurring-gift.ts), each as it stands at
+// that moment, and every key is held to those modules' rule: permanent, and present, null where
+// there is nothing to say.
+//
+// **a change event says which record, not what changed.** `donor.updated`, `recurring_gift.updated`
+// and `recurring_gift.ended` carry the record as it stands at send, not the change their row was
+// queued for, so of two changes queued close together both posts may read alike — an ending
+// followed at once by a revival posts an `ended` whose `status` is `active`; a receiver keeps the
+// latest by `updated_at`. `donor.added`'s `first_gift` is the
+// donor's earliest settled gift by date (`earlierSettledGiftOfDonor` in ../donations/queries.ts) —
+// the gift whose settlement queued the row, unless one dated earlier was entered by hand since.
+//
+// **a `recurring_gift.charge_failed` carries the attempt as it was written**, from the row's own
+// `detail` (`ChargeFailedDetail` in ./events.ts): an attempt is not a record the read API holds, so
+// only its `amount` and the `recurring_gift` beside it are rendered at send. a row whose `detail`
+// is not that shape is dropped rather than sent short of a key.
+//
+// **a `gift.refunded` row is sent only while its refund still stands**, read at send
+// (`readStandingRefunds` in ../integrations/refund.ts, the read a Zap's is) as it was in the
+// statement that queued it (`giftRefundedWebhookStatements` in ./events.ts). a refund that
+// failed after it was queued, or a dispute whose loss no longer holds, is not sent: no event
+// follows it, so posting it would leave a receiver acting on money that came back. what already
+// went out stays out. `gift.made` and `gift.dispute_opened` are sent whatever befell the gift
+// since: each is still true of the moment it names.
+
+/**
+ * one refund, or one dispute lost, as a `gift.refunded` destination receives it: what left, and
+ * the gift it left — `renderRefund`'s rendering in ../integrations/refund.ts, the one a
+ * `gift_refunded` Zap receives too (../zapier/payload.ts), with `gift` as the read API answers it.
+ */
+export type RefundedGift = RenderedRefund<ApiGift>;
+
+/**
+ * one dispute, as a `gift.dispute_opened` destination receives it: the money its opening withdrew
+ * from the gift. `id` is that withdrawal's payment id — the `id` a `gift.refunded` about the same
+ * dispute carries, should it be lost.
+ */
+export type OpenedDispute = {
+	readonly id: string;
+	/** when the dispute opened and withdrew the money, ISO 8601 in UTC. */
+	readonly opened_at: string;
+	/**
+	 * what the dispute holds, in `amount`'s notation on the gift: what the opening withdrew, or
+	 * where it has since been lost for less, what the processor took.
+	 */
+	readonly amount: string;
+	readonly amount_minor: number;
+	readonly currency: string;
+	/** the processor's deadline for the organisation's answer, ISO 8601 in UTC; null where it named none. */
+	readonly respond_by: string | null;
+	readonly gift: ApiGift;
+};
+
+/**
+ * a donor's first settled gift, as a `donor.added` destination receives it: the donor as the read
+ * API answers them, and `first_gift` as it answers that gift — the event a `new_donor` Zap
+ * receives (../zapier/payload.ts), with the donor's keys where the Zap has `name` and `email`. `id`
+ * is the donor's, so a destination hears of each donor once however many gifts follow.
+ */
+export type AddedDonor = ApiDonor & { readonly first_gift: ApiGift };
+
+/**
+ * one failed attempt at a collection, as a `recurring_gift.charge_failed` destination receives it:
+ * the attempt as it was written when it failed, and the commitment as the read API answers it at
+ * send. the attempt's keys are the row's own `detail` (`ChargeFailedDetail` in ./events.ts), since
+ * nothing read later can say which attempt this was.
+ */
+export type FailedCharge = ChargeFailedDetail & {
+	/** `amount_minor` in the read API's notation, rendered at send like every other `amount`. */
+	readonly amount: string;
+	readonly recurring_gift: ApiRecurringGift;
+};
+
+/** the subject a delivery row names, as ./deliver.ts claims it. */
+type Subject = {
+	readonly event: WebhookEvent;
+	readonly subjectId: string;
+	/** `webhook_delivery.detail`, as written. */
+	readonly detail: string | null;
+};
+
+/** a row's `data`, or the words `last_error` keeps for why it is not sent. */
+type Rendered = { readonly data: unknown } | { readonly dropped: string };
+
+/** each of `subjects` rendered, read in one pass over the lot. */
+export async function renderSubjects(
+	db: Db,
+	subjects: readonly Subject[]
+): Promise<(subject: Subject) => Rendered> {
+	const ofEvent = (event: WebhookEvent) =>
+		subjects.filter((s) => s.event === event).map((s) => s.subjectId);
+	const refundedIds = ofEvent('gift.refunded');
+	const withdrawalIds = [...refundedIds, ...ofEvent('gift.dispute_opened')];
+	const addedIds = ofEvent('donor.added');
+	const updatedIds = ofEvent('donor.updated').flatMap((subject) => changedRecordOf(subject) ?? []);
+	const planIds = [
+		...ofEvent('recurring_gift.started'),
+		...[
+			...ofEvent('recurring_gift.updated'),
+			...ofEvent('recurring_gift.charge_failed'),
+			...ofEvent('recurring_gift.ended')
+		].flatMap((subject) => changedRecordOf(subject) ?? [])
+	];
+	const [withdrawals, standing, donors, firstGiftIds, plans] = await Promise.all([
+		withdrawalIds.length === 0
+			? []
+			: selectRefunds(db).where(
+					and(eq(payment.direction, 'refund'), inPage(payment.id, withdrawalIds))
+				),
+		readStandingRefunds(db, refundedIds),
+		readDonors(db, [...addedIds, ...updatedIds]),
+		readFirstGifts(db, addedIds),
+		readRecurringGifts(db, planIds)
+	]);
+	const byId = new Map(withdrawals.map((row) => [row.id, row]));
+	const gifts = await readGifts(db, [
+		...ofEvent('gift.made'),
+		...withdrawals.flatMap((row) => (row.giftId === null ? [] : [row.giftId])),
+		...firstGiftIds.values()
+	]);
+	const withdrawalOf = (id: string) => {
+		const row = byId.get(id);
+		const gift = row?.giftId ? gifts.get(row.giftId) : undefined;
+		return row === undefined || gift === undefined ? undefined : { row, gift };
+	};
+
+	return ({ event, subjectId, detail }) => {
+		switch (event) {
+			case 'gift.made': {
+				const gift = gifts.get(subjectId);
+				return gift === undefined ? unreadable('settled gift', subjectId) : { data: gift };
+			}
+			case 'gift.refunded': {
+				const found = withdrawalOf(subjectId);
+				if (found === undefined) return unreadable('refund', subjectId);
+				if (!standing.has(subjectId)) return { dropped: REFUND_NO_LONGER_STANDS };
+				return { data: renderRefund(found.row, found.gift) };
+			}
+			case 'gift.dispute_opened': {
+				const found = withdrawalOf(subjectId);
+				if (found === undefined) return unreadable('dispute withdrawal', subjectId);
+				return { data: openedDispute(found.row, found.gift) };
+			}
+			case 'donor.added': {
+				const donor = donors.get(subjectId);
+				if (donor === undefined) return unreadable('donor', subjectId);
+				const giftId = firstGiftIds.get(subjectId);
+				const gift = giftId === undefined ? undefined : gifts.get(giftId);
+				if (gift === undefined) return unreadable('first settled gift of the donor', subjectId);
+				return { data: { ...donor, first_gift: gift } satisfies AddedDonor };
+			}
+			case 'donor.updated': {
+				const contactId = changedRecordOf(subjectId);
+				const donor = contactId === null ? undefined : donors.get(contactId);
+				return donor === undefined ? unreadable('donor', contactId ?? subjectId) : { data: donor };
+			}
+			case 'recurring_gift.started': {
+				const plan = plans.get(subjectId);
+				return plan === undefined ? unreadable('recurring gift', subjectId) : { data: plan };
+			}
+			case 'recurring_gift.updated':
+			case 'recurring_gift.ended': {
+				const planId = changedRecordOf(subjectId);
+				const plan = planId === null ? undefined : plans.get(planId);
+				return plan === undefined
+					? unreadable('recurring gift', planId ?? subjectId)
+					: { data: plan };
+			}
+			case 'recurring_gift.charge_failed': {
+				const attempt = chargeFailedDetailOf(detail);
+				if (attempt === null) return unreadable('failed attempt', subjectId);
+				const planId = changedRecordOf(subjectId);
+				const plan = planId === null ? undefined : plans.get(planId);
+				if (plan === undefined) return unreadable('recurring gift', planId ?? subjectId);
+				return { data: failedCharge(attempt, plan) };
+			}
+			default:
+				return { dropped: `A ${event} event is not one this deployment sends.` };
+		}
+	};
+}
+
+function unreadable(what: string, id: string): Rendered {
+	return { dropped: `The ${what} ${id} this event was queued for could not be read.` };
+}
+
+/** a `recurring_gift.charge_failed` row's `detail`, or null where it is not the shape written. */
+function chargeFailedDetailOf(text: string | null): ChargeFailedDetail | null {
+	if (text === null) return null;
+	let value: unknown;
+	try {
+		value = JSON.parse(text);
+	} catch {
+		return null;
+	}
+	const parsed = CHARGE_FAILED_DETAIL.safeParse(value);
+	return parsed.success ? parsed.data : null;
+}
+
+/** each of `contactIds`' first settled gift, by the donor's id: the one with no earlier one. */
+async function readFirstGifts(db: Db, contactIds: readonly string[]): Promise<Map<string, string>> {
+	if (contactIds.length === 0) return new Map();
+	const rows = await db
+		.select({ contactId: donation.contactId, paymentId: payment.id })
+		.from(payment)
+		.innerJoin(donation, eq(donation.id, payment.donationId))
+		.where(
+			and(
+				inPage(donation.contactId, contactIds),
+				eq(payment.status, 'succeeded'),
+				eq(payment.direction, 'inbound'),
+				notExists(earlierSettledGiftOfDonor(db))
+			)
+		);
+	return new Map(rows.map((row) => [row.contactId, row.paymentId]));
+}
+
+function failedCharge(attempt: ChargeFailedDetail, plan: ApiRecurringGift): FailedCharge {
+	return {
+		...attempt,
+		amount: majorText(attempt.amount_minor, attempt.currency),
+		recurring_gift: plan
+	};
+}
+
+/** a dispute's withdrawal, its keys `renderRefund`'s under the names this event gives them. */
+function openedDispute(row: RefundRow, gift: ApiGift): OpenedDispute {
+	const withdrawn = renderRefund(row, gift);
+	return {
+		id: withdrawn.id,
+		opened_at: withdrawn.occurred_at,
+		amount: withdrawn.amount,
+		amount_minor: withdrawn.amount_minor,
+		currency: withdrawn.currency,
+		respond_by: row.respondBy?.toISOString() ?? null,
+		gift
+	};
+}

@@ -1,9 +1,11 @@
 import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
 import { createExecutionContext, env } from 'cloudflare:test';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
 import { createAuth, inviteMember, redeemInvitation } from '$lib/server/auth';
-import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { PIN_UNUSABLE } from '$lib/server/auth/pin';
+import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { createDb } from '$lib/server/db/client';
 import { PASSWORD_RESET_FLASH, redirectWithFlash } from '$lib/server/flash';
 import { requestContext } from '../request-context';
@@ -52,6 +54,15 @@ const DEPLOYED = {
 	MAIL_FROM: 'giving@example.org'
 };
 
+/** a deployment whose `BETTER_AUTH_URL` pin names no address. */
+const PINNED_NOWHERE = { ...DEPLOYED, BETTER_AUTH_URL: 'localhost:8787' };
+
+/**
+ * what that deployment throws: the sentence as a 500's data, which the error boundary draws. the
+ * caller is anonymous, so it names the variable and the fix and never the value.
+ */
+const PIN_REFUSAL = { data: PIN_UNUSABLE, init: { status: 500 } };
+
 /** what react router hands a handler, built the way src/worker.ts builds it for a real request. */
 function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.LoaderArgs {
 	return {
@@ -70,7 +81,7 @@ function args(request: Request, deployed: typeof DEPLOYED = DEPLOYED): Route.Loa
 async function signIn(): Promise<string> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,
@@ -174,6 +185,17 @@ describe('GET /login — a visitor who is already signed in', () => {
 		const answer = await visit('?next=%2Fadmin%2Fdonors');
 
 		expect(answer).not.toBeInstanceOf(Response);
+	});
+
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
+		await finished();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await expect(loader(args(get(), PINNED_NOWHERE))).rejects.toMatchObject(PIN_REFUSAL);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
 	});
 });
 
@@ -336,17 +358,27 @@ function typedAs(identifier: string, password: string): FormData {
 	return body;
 }
 
+/** how many callers `post` has made up, so each is its own `/48` and its own fresh bucket. */
+let callersMinted = 0;
+
+/**
+ * the form submitted from `ip`, which is what the edge writes as `cf-connecting-ip`.
+ *
+ * left out, the caller is a new address every call, which is what production looks like — every
+ * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * not attribute: no header at all.
+ */
 function post(
 	body: FormData,
 	{
 		search = '',
-		ip,
+		ip = `2001:db8:${(0x1000 + callersMinted++).toString(16)}::1`,
 		site,
 		deployed = DEPLOYED
-	}: { search?: string; ip?: string; site?: string; deployed?: typeof DEPLOYED } = {}
+	}: { search?: string; ip?: string | null; site?: string; deployed?: typeof DEPLOYED } = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
-	if (ip) headers.set('cf-connecting-ip', ip);
+	if (ip !== null) headers.set('cf-connecting-ip', ip);
 	if (site) headers.set('sec-fetch-site', site);
 	return action(
 		args(new Request(`${ORIGIN}/login${search}`, { method: 'POST', headers, body }), deployed)
@@ -494,6 +526,21 @@ describe('POST /login — what the browser gets back', () => {
 		expect(await sessions()).toBe(0);
 	});
 
+	it('names a pin that names no address, and logs its value rather than sending it', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const answer = await refused(typed(PASSWORD), { deployed: PINNED_NOWHERE });
+
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(PIN_UNUSABLE);
+			expect(JSON.stringify(answer.data)).not.toContain('localhost:8787');
+			expect(logged.mock.calls.flat().join(' ')).toContain('`BETTER_AUTH_URL` is `localhost:8787`');
+		} finally {
+			logged.mockRestore();
+		}
+		expect(await sessions()).toBe(0);
+	});
+
 	/**
 	 * 401 is the only status whose message is repeated back to the caller, because it is the only
 	 * one about what they sent — and with one secret and one account there is nothing it could
@@ -526,16 +573,17 @@ describe('POST /login — what the browser gets back', () => {
 
 	/**
 	 * and the deployment whose schema is not there, which is what a fresh fork hits: no
-	 * `auth_signing_key` row to sign a cookie with. the answer names the commands that apply
-	 * migrations rather than the row, because that is the fix either way.
+	 * `auth_signing_key` table to sign a cookie with. the caller is anonymous, so the database's
+	 * own words go to the logs and the banner is the one reply every surface gives.
 	 */
-	it('tells a deployment with no schema to apply its migrations', async () => {
-		const unreachable = { ...DEPLOYED, DB: undefined } as unknown as typeof DEPLOYED;
+	it('tells a deployment with no schema to apply its migrations, and logs the cause', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answer = await refused(typed(PASSWORD));
 
-		const answer = await refused(typed(PASSWORD), { deployed: unreachable });
-
-		expect(answer.init?.status).toBe(500);
-		expect(banner(answer)).toContain('migrations');
+			expect(answer.init?.status).toBe(500);
+			expect(banner(answer)).toBe(SIGNING_KEY_UNREADABLE);
+			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
+		});
 	});
 
 	/**
@@ -631,29 +679,30 @@ describe('the limit on POST /login', () => {
 
 	/**
 	 * the bucket is per caller, on the same `payer` normalisation the public api's key uses
-	 * ($lib/server/api/rate-limit.ts). the `/64` half is the security property: a caller holding a
-	 * routed ipv6 `/64` — the standard delegation from any vps host — binds a fresh source address
-	 * per request, so a bucket keyed on the whole address would bound nothing at all here.
+	 * ($lib/server/api/rate-limit.ts), keyed on an ipv6 caller's `/48`. that is the security
+	 * property: a caller holding a `/48` — the block one subscriber is commonly handed — holds
+	 * 65,536 `/64`s and binds a source address in a fresh one per request, so a bucket keyed on
+	 * anything narrower would hand them a budget of guesses each.
 	 */
-	it('holds one ipv6 /64 to one bucket', async () => {
+	it('holds one ipv6 /48 to one bucket', async () => {
 		await untilRefused('2001:db8:a:1::1');
 		const signedInWhenRefused = await sessions();
 
-		const neighbour = await post(typed(PASSWORD), { ip: '2001:db8:a:1:ffff:ffff:ffff:ffff' });
+		const neighbour = await post(typed(PASSWORD), { ip: '2001:db8:a:ffff:ffff:ffff:ffff:ffff' });
 
 		expect(neighbour instanceof Response ? 0 : neighbour.init?.status).toBe(429);
 		expect(await sessions()).toBe(signedInWhenRefused);
 	});
 
 	/**
-	 * and the other half: the block is `/64` and not something wider. otherwise one guesser closes
+	 * and the other half: the block is `/48` and not something wider. otherwise one guesser closes
 	 * the login on every other subscriber of their isp — including the operator.
 	 */
-	it('leaves another /64 alone', async () => {
+	it('leaves another /48 alone', async () => {
 		await untilRefused('2001:db8:b:1::1');
 		const signedInWhenRefused = await sessions();
 
-		const elsewhere = await post(typed(PASSWORD), { ip: '2001:db8:b:2::1' });
+		const elsewhere = await post(typed(PASSWORD), { ip: '2001:db8:c:1::1' });
 
 		expect(elsewhere).toBeInstanceOf(Response);
 		expect(await sessions()).toBe(signedInWhenRefused + 1);
@@ -661,8 +710,8 @@ describe('the limit on POST /login', () => {
 
 	/**
 	 * a deployment with no binding signs staff in, which is the decision and not an oversight —
-	 * `isRateLimited` in $lib/server/api/rate-limit.ts is where it is argued, and `ADMIN_PASSWORD`
-	 * is what bounds this form without it.
+	 * `isRateLimited` in $lib/server/api/rate-limit.ts is where it is argued, along with what it
+	 * leaves unbounded.
 	 *
 	 * the address is spent against the real binding first, and that half is what makes the case
 	 * discriminating rather than decorative: without it, a call site that never charged anything
@@ -690,6 +739,8 @@ describe('the limit on POST /login', () => {
 	 * "Remove visitor IP headers" managed transform is every caller of the deployment at once. the
 	 * binding is bound here and refusing this address is exactly what it must not do — otherwise
 	 * one guesser holds the only login closed on the operator, which is worse than the guessing.
+	 * a member in the same position is refused instead: 'a member the edge did not attribute',
+	 * below.
 	 */
 	it('signs staff in when the edge attributed no address at all', async () => {
 		for (let i = 0; i < 8; i++) {
@@ -712,7 +763,7 @@ const MEMBER_PASSWORD = 'a-colleagues-own-password';
 async function makeMember(email: string): Promise<void> {
 	const db = createDb(env.DB);
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 	const auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: PASSWORD },
@@ -881,6 +932,67 @@ describe('the limit on POST /login — one bucket for both ways in', () => {
 	});
 });
 
+describe('the limit on POST /login — a member the edge did not attribute', () => {
+	/**
+	 * a member's password is one of many and was chosen by a person, so a caller with no bucket
+	 * would be guessing at them without limit, each guess a hash this deployment pays for. the
+	 * correct password is the case that discriminates: refused without signing in is a refusal made
+	 * before the credential was compared, where a wrong password would be refused either way.
+	 */
+	it.each([
+		['with no address header', null],
+		['with a header that is not an address', 'not-an-address']
+	])('refuses a member %s, before the password is compared', async (_, ip) => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), { ip });
+
+		expect(answer.init?.status).toBe(403);
+		expect(banner(answer)).not.toBe(
+			'That username or email address and password do not match a member of this organisation.'
+		);
+		expect(await sessions()).toBe(0);
+	});
+
+	/**
+	 * the person who can fix it is whoever runs the deployment, and nothing on their side says why
+	 * every colleague stopped being able to sign in. so the sentence carries the cause and the usual
+	 * switch behind it, in the page's own voice rather than as a status for a log line.
+	 */
+	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
+			ip: null
+		});
+
+		expect(banner(answer)).toMatch(/^Sign-in is unavailable\./);
+		expect(banner(answer)).toContain('address');
+		expect(banner(answer)).toContain('Remove visitor IP headers');
+		expect(identifierHeld(answer)).toBe('nadia@riverbanktrust.org');
+	});
+
+	/**
+	 * and the other half, so the refusal above is about the missing address and not about members:
+	 * one attributed address signs the same member in with the same password, and keeps doing so
+	 * until its bucket is spent.
+	 */
+	it('signs an attributed member in, and charges every sign-in to their address', async () => {
+		await makeMember('nadia@riverbanktrust.org');
+		const statuses: number[] = [];
+		for (let i = 0; i < 50 && statuses.at(-1) !== 429; i++) {
+			const answer = await post(typedAs('nadia@riverbanktrust.org', MEMBER_PASSWORD), {
+				ip: '203.0.113.50'
+			});
+			statuses.push(answer instanceof Response ? answer.status : (answer.init?.status ?? 200));
+		}
+
+		expect(statuses[0]).toBe(303);
+		expect(statuses.at(-1)).toBe(429);
+		expect(await sessions()).toBe(statuses.length - 1);
+	});
+});
+
 /** what a call answered with, or the `Response` it threw — a refused write is thrown. */
 async function thrownOrAnswered<T>(call: Promise<T>): Promise<T | Response> {
 	try {
@@ -897,7 +1009,7 @@ describe('POST /login from a page on another origin', () => {
 	// ($lib/server/auth/gate.ts, `refuseWriteFromAnotherOrigin`).
 	it('refuses a same-site post before the body is read', async () => {
 		const answer = await thrownOrAnswered(
-			post(typed(PASSWORD), { ip: '203.0.113.50', site: 'same-site' })
+			post(typed(PASSWORD), { ip: '203.0.113.53', site: 'same-site' })
 		);
 
 		expect(answer instanceof Response ? answer.status : answer.init?.status).toBe(403);

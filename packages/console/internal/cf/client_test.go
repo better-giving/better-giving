@@ -266,6 +266,29 @@ func TestACallMayBeBoundToADeadlineOfItsOwn(t *testing.T) {
 	}
 }
 
+func TestAMultipartCallMayBeBoundToADeadlineOfItsOwn(t *testing.T) {
+	// a worker's settings patch is multipart and small, and is held to a read's bound rather than an
+	// upload's: the turn at a worker's binding list is sized by it.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(120 * time.Millisecond)
+		_, _ = io.WriteString(w, `{"success":true,"result":{}}`)
+	}))
+	t.Cleanup(server.Close)
+	parts := []Part{{Name: "settings", Body: []byte(`{"bindings":[]}`)}}
+
+	cut := MultipartSendWithin(server.URL, nil, 20*time.Millisecond)(
+		context.Background(), http.MethodPatch, "/settings", parts, nil)
+	if cut.Kind != Unreachable {
+		t.Errorf("kind = %q, want %q on a call bound shorter than the answer takes", cut.Kind, Unreachable)
+	}
+
+	held := MultipartSendWithin(server.URL, nil, time.Minute)(
+		context.Background(), http.MethodPatch, "/settings", parts, nil)
+	if held.Kind != Answered {
+		t.Errorf("kind = %q (%s), want an answer on a call bound past it", held.Kind, held.Detail)
+	}
+}
+
 func TestAFormCallWithNoFormDeclaresNoBodyAndSendsNoBytes(t *testing.T) {
 	server, held := recording(t, 200, `{"id":"we_1"}`)
 	call := FormSender(server.URL, map[string]string{"Authorization": "Bearer sk"})

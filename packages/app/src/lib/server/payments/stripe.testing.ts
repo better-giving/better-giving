@@ -13,14 +13,18 @@ export type Recorded = {
 	readonly headers: Record<string, string | number | string[]>;
 };
 
+/** one scripted answer. */
+type Scripted = { readonly status: number; readonly json: unknown };
+
 /**
  * an HTTP client that answers from a script and remembers what it was asked.
  *
  * responses are consumed in order. running out is an error rather than a default, because a test
  * that made one more call than it scripted is a test whose subject did something it was not
- * asked to — and a permissive fallback would hide exactly that.
+ * asked to — and a permissive fallback would hide exactly that. a step may be a function of the
+ * request, for an answer that depends on what was asked, the way Stripe's own does.
  */
-export function recording(responses: readonly { status: number; json: unknown }[]) {
+export function recording(responses: readonly (Scripted | ((call: Recorded) => Scripted))[]) {
 	const remaining = [...responses];
 	const calls: Recorded[] = [];
 	const httpClient = {
@@ -33,9 +37,11 @@ export function recording(responses: readonly { status: number; json: unknown }[
 			headers: Record<string, string | number | string[]>,
 			requestData: string
 		) {
-			calls.push({ path, method, body: requestData, headers });
-			const next = remaining.shift();
-			if (!next) throw new Error(`unscripted request: ${method} ${path}`);
+			const call = { path, method, body: requestData, headers };
+			calls.push(call);
+			const step = remaining.shift();
+			if (!step) throw new Error(`unscripted request: ${method} ${path}`);
+			const next = typeof step === 'function' ? step(call) : step;
 			return {
 				getStatusCode: () => next.status,
 				getHeaders: () => ({}),

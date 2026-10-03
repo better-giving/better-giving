@@ -1,4 +1,4 @@
-// what the SMTP exchange is allowed to be handed — the connection secrets (`SMTP_HOST`,
+// what the SMTP exchange is allowed to be handed — the connection values (`SMTP_HOST`,
 // `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM`) and the envelope fields of a
 // message — decided from the strings alone.
 //
@@ -57,8 +57,8 @@ export interface SmtpEndpoint {
 }
 
 /**
- * no `reason` on the failure arm, and that is deliberate rather than incidental. the two
- * secrets refuse as `not_configured` and the message fields refuse as `invalid_message`, but
+ * no `reason` on the failure arm, and that is deliberate rather than incidental. the connection
+ * values refuse as `not_configured` and the message fields refuse as `invalid_message`, but
  * neither word appears here: the caller attaches the reason, so this module stays free of the
  * port's vocabulary and stays testable without importing it.
  */
@@ -486,7 +486,7 @@ const FROM_FIX = 'Set it under SMTP on the console.';
  * say where to set it — and the console says the same two things to a person standing at a
  * labelled box.
  *
- * it is a deploy-time secret and not a settings row, even though it carries no credential.
+ * it is a deploy-time var and not a settings row, even though it carries no credential.
  * the address is authorised by the same third party that issued the SMTP password — the SPF
  * record and DKIM key are on the domain, registered with that provider — so an address the
  * operator can edit in /admin independently of the credential is an address that silently

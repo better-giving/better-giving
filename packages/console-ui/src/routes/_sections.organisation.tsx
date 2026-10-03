@@ -2,13 +2,14 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { saveOrgProfile } from '../api/client';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { ORG_INTENT, orgEdits } from '../lib/org-fields';
 import { OrgFold } from '../lib/org-fold';
 import { storedOrg } from '../lib/org-form';
 import { forgetReadings } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.organisation';
 
 // /organisation — the legal identity this deployment asks for gifts under, drawn by
@@ -29,6 +30,7 @@ export function meta(): Route.MetaDescriptors {
  * one reading of the body serves both pages.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	if (posted.get('intent') === ORG_INTENT) return { write: await saveOrgProfile(orgEdits(posted)) };
@@ -54,6 +56,16 @@ export default function OrganisationPage({ actionData, matches }: Route.Componen
 				busy={busy}
 				pending={intent === ORG_INTENT}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

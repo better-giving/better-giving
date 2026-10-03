@@ -246,10 +246,9 @@ it('names each copy control for the placement it takes, not just for the record'
 	expect(copies).toEqual(['Copy the script for General Fund', 'Copy the element for General Fund']);
 });
 
-it('titles the card with the form’s name in quotes', () => {
-	// the quotes are the seam between the verb and the name: `Embed General Fund` reads as one
-	// run-on phrase.
-	expect(cardOn(screen(ASKED)).textContent).toContain('Embed “General Fund”');
+it('titles the card with the form’s name alone', () => {
+	// the form is the card's subject, so its name is the whole title.
+	expect(cardOn(screen(ASKED)).querySelector('h2')?.textContent).toBe('General Fund');
 });
 
 it('names the site the press carried, and the list alone when there was none', () => {

@@ -18,14 +18,18 @@ vi.mock('../api/client', () => ({
 		};
 	},
 	consoleVersion: async () => ({ version: '0.0.1' }),
-	homeReading: async (): Promise<HomeReading> => ({
-		face: { kind: 'ready', address: 'https://a.example' },
-		values: { vars: { kind: 'read', vars: [] } },
-		sites: [],
-		donatePage: 'https://a.example/donate',
-		org: null,
-		holdsStripeKey: false
-	})
+	// `retired` stands for a field a binary from another release answers with and no page reads.
+	homeReading: async (): Promise<HomeReading> =>
+		({
+			face: { kind: 'ready', address: 'https://a.example' },
+			values: { vars: { kind: 'read', vars: [] } },
+			sites: [],
+			donatePage: 'https://a.example/donate',
+			org: null,
+			holdsStripeKey: false,
+			retired: true
+		}) as HomeReading,
+	writesAnswered: async () => {}
 }));
 
 const { handOver, readConsole, valuesNotRead } = await import('./console-reading');
@@ -56,6 +60,13 @@ describe('the console reading', () => {
 		expect(read.count).toBe(1);
 		await readConsole(navigation());
 		expect(read.count).toBe(2);
+	});
+
+	it('carries what the pages read, and no other field the binary answers', async () => {
+		const { reading } = await readConsole(navigation());
+		expect(Object.keys(reading).sort()).toEqual(
+			['donatePage', 'face', 'processors', 'sections', 'sites', 'stored', 'values'].sort()
+		);
 	});
 });
 

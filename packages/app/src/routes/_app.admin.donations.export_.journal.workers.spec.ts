@@ -14,6 +14,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { uuidv7 } from 'uuidv7';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import * as layout from './_app';
 import * as journal from './_app.admin.donations.export_.journal';
 
@@ -36,14 +37,17 @@ const ROUTE = '/admin/donations/export/journal';
 
 let db: Db;
 let request: RouteRequester;
+let bindings: Env;
 let session: string;
 
 beforeAll(async () => {
 	db = createDb(env.DB);
-	request = mountRoutes([
+	bindings = await finishSetup(PASSWORD);
+	const mounted = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/donations/export/journal', module: journal }
 	]);
+	request = (incoming, options) => mounted(incoming, { env: bindings, ...options });
 	session = await signIn();
 });
 
@@ -57,7 +61,7 @@ beforeEach(async () => {
 /** a real session, as the `Cookie` header a browser would send back. */
 async function signIn(): Promise<string> {
 	const signingKey = await resolveAuthSecret(db, {});
-	if (!signingKey.ok) throw new Error(signingKey.message);
+	if (!signingKey.ok) throw new Error(signingKey.cause);
 
 	const auth = createAuth(
 		db,

@@ -46,8 +46,16 @@
 // counting from what is drawn is also what reports a second save into the same group. the marker
 // never moves across one: the operator edits, saves, and the form is rebound from the result, so a
 // timer armed on the marker would have run out during the first save and left the second drawing
-// no tick at all. `expireAfter` is where that is held, by taking the trio's own answer and nothing
-// else.
+// no tick at all. `expireAfter` is where that is held, by taking whether the tick is drawn — the
+// trio's answer while a confirmation is armed — and nothing else.
+//
+// but the trio alone cannot tell a second save from an undone edit: a box typed in and put back
+// the way it was swings `changed` back to false under a `landed` that never moved, which is the
+// same three facts a save leaves behind. a tick drawn there is announced as a write nobody made.
+// what tells them apart is the press — a real save always passes through `pending` — so a
+// confirmation that has stopped drawing is spent until the group's own press, and `armedAfter` is
+// that rule. the first paint is armed, because a group that arrives reporting arrived off the
+// redirect its own press set off.
 //
 // only the confirmation is timed. `disabled` is untouched by it, so a button whose tick has
 // cleared is back to its own label with nothing to press, which is where a group with no edits in
@@ -93,7 +101,23 @@ export function confirming({ landed, changed, pending }: SaveFacts): boolean {
 }
 
 /**
- * what the button draws, from the group's facts and whether its confirmation has run out.
+ * whether the group may draw a confirmation, from whether it could before, whether it was
+ * reporting on the render before, and its facts now.
+ *
+ * the group's own press arms it, and stopping reporting spends it — so a tick taken off by an edit
+ * does not come back when the edit is undone. the press is read first because it is what stops
+ * the reporting on a group pressed while still drawing a tick, and that press is the one that
+ * earns the next.
+ */
+export function armedAfter(armed: boolean, wasReporting: boolean, facts: SaveFacts): boolean {
+	if (facts.pending) return true;
+	if (wasReporting && !confirming(facts)) return false;
+	return armed;
+}
+
+/**
+ * what the button draws, from the group's facts, whether a confirmation is armed
+ * ({@link armedAfter}) and whether it has run out.
  *
  * `disabled` is a fact about the group and nothing else — a group with nothing in it to save draws
  * a button with nothing to press, from the first paint and on whichever side rendered it.
@@ -103,10 +127,10 @@ export function confirming({ landed, changed, pending }: SaveFacts): boolean {
  * free to disagree, and a button drawing `Saving` over a confirmation already counting down is
  * exactly what that disagreement looks like.
  */
-export function drawn(facts: SaveFacts, expired: boolean): SaveState {
+export function drawn(facts: SaveFacts, armed: boolean, expired: boolean): SaveState {
 	return {
 		pending: facts.pending,
-		done: confirming(facts) && !expired,
+		done: confirming(facts) && armed && !expired,
 		disabled: !facts.changed
 	};
 }
@@ -114,17 +138,18 @@ export function drawn(facts: SaveFacts, expired: boolean): SaveState {
 /**
  * the four seconds, as the body of whatever effect the binding runs.
  *
- * called with the trio's own answer, so the run that arms a timer is the run where the button
- * started drawing the tick — which is what makes a second save into the same group re-arm rather
- * than go unreported, and what keeps a slow round trip from spending the window behind `Saving`.
+ * called with whether the tick is drawn — the trio's answer while a confirmation is armed — so the
+ * run that arms a timer is the run where the button started drawing it, which is what makes a second
+ * save into the same group re-arm rather than go unreported, and what keeps a slow round trip from
+ * spending the window behind `Saving`.
  * `report` is written and never read in here, so writing it starts nothing.
  *
  * the returned teardown is the binding's to run before every re-run as well as on the way out, so
  * there is one timer at a time and none left behind by a screen that has gone.
  */
-export function expireAfter(reporting: boolean, report: (expired: boolean) => void): () => void {
+export function expireAfter(shown: boolean, report: (expired: boolean) => void): () => void {
 	report(false);
-	if (!reporting) return () => {};
+	if (!shown) return () => {};
 
 	const timer = setTimeout(() => report(true), CONFIRMATION_MS);
 	return () => clearTimeout(timer);

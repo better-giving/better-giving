@@ -3,6 +3,8 @@ import {
 	apiRateLimitKey,
 	donorPageRateLimitKey,
 	imageRateLimitKey,
+	integrationsCallerRateLimitKey,
+	integrationsKeyRateLimitKey,
 	isRateLimited,
 	quoteRateLimitKey,
 	quoteRateLimitRefusal,
@@ -78,9 +80,10 @@ describe('what a public api request counts against', () => {
 	});
 
 	/**
-	 * and the other half of it: the block is `/64` and not something wider. a `/32` or a `/48` is
-	 * an allocation to a network rather than to a payer, so bucketing on one would put unrelated
-	 * subscribers of one isp in a single bucket and let any of them close it on the rest.
+	 * and the other half of it: this bucket's block is `/64` and not something wider. it bounds
+	 * reads, so a `/48` of `/64`s buys a caller reads, while a `/48` key would put every donor on
+	 * one office's or campus's network in a single bucket and let any of them close it on the rest.
+	 * the sign-in and quote buckets are the ones keyed wider, below.
 	 */
 	it('separates two ipv6 /64s', () => {
 		const first = apiRateLimitKey(
@@ -299,7 +302,7 @@ describe('when the binding does not answer', () => {
  * the caller half of a key, which every limiter in this app shares.
  *
  * one definition rather than three, and that is the whole reason the two tighter buckets are keyed
- * from this module at all: the `/64` rule above is a security property, and a second copy of it is
+ * from this module at all: the block rule above is a security property, and a second copy of it is
  * a second place somebody can key on the whole `/128` and hand a caller an address per request.
  * the cases here are the shape of that sharing; the cases above are what it means.
  */
@@ -309,16 +312,62 @@ describe('what the tighter buckets count against', () => {
 
 	const TIGHT = [
 		['a sign-in attempt', signInRateLimitKey],
-		['a quote submission', quoteRateLimitKey],
+		['a quote submission', quoteRateLimitKey]
+	] as const;
+
+	/** every key built on the attributed caller: the tight two, and the two view keys on the `/64`. */
+	const ATTRIBUTED = [
+		...TIGHT,
 		['a photo view', imageRateLimitKey],
 		['a donor page view', donorPageRateLimitKey]
 	] as const;
 
-	it.each(TIGHT)('keys %s on the block one payer holds, not on one address', (_what, key) => {
+	it.each(ATTRIBUTED)('keys %s on the block one payer holds, not on one address', (_what, key) => {
 		expect(key(from('2001:db8:1:2::1'))).toBe(key(from('2001:db8:1:2:aaaa:bbbb:cccc:dddd')));
-		expect(key(from('2001:db8:1:2::1'))).not.toBe(key(from('2001:db8:1:3::1')));
 		expect(key(from('::ffff:203.0.113.7'))).toBe(key(from('203.0.113.7')));
 		expect(key(from('203.0.113.7'))).not.toBe(key(from('198.51.100.4')));
+	});
+
+	/**
+	 * the bypass a `/64` key leaves on these two buckets: a caller holding a `/48` — the block one
+	 * subscriber is commonly handed — holds 65,536 `/64`s, and keyed on each one that is 65,536
+	 * budgets of guesses or gifts a minute from one payer.
+	 */
+	it.each(TIGHT)('puts every /64 inside one ipv6 /48 in one bucket for %s', (_what, key) => {
+		expect(key(from('2001:db8:1:2::1'))).toBe(key(from('2001:db8:1:ffff::1')));
+		expect(key(from('2001:db8:1::1'))).toBe(key(from('2001:db8:1:abcd:1:2:3:4')));
+	});
+
+	/** and no wider: two `/48`s are two subscribers, and one of them must not close the other's. */
+	it.each(TIGHT)('separates two ipv6 /48s for %s', (_what, key) => {
+		expect(key(from('2001:db8:1::1'))).not.toBe(key(from('2001:db8:2::1')));
+		expect(key(from('2001:db8:1::1'))).not.toBe(key(from('2001:db9:1::1')));
+	});
+
+	it.each(TIGHT)('does not move for %s when the same /48 is spelled differently', (_what, key) => {
+		expect(key(from('2001:db8:1::1'))).toBe(key(from('2001:0db8:0001:0000::2')));
+		expect(key(from('2001:DB8:1::1'))).toBe(key(from('2001:db8:1:0:0:0:0.0.0.2')));
+	});
+
+	/** the `/48` is an ipv6 rule; an ipv4 caller is still keyed on its whole address. */
+	it('keys an ipv4 caller on its whole address, as before', () => {
+		expect(signInRateLimitKey(from('203.0.113.7'))).toBe('sign-in 203.0.113.7');
+		expect(quoteRateLimitKey(from('203.000.113.007'))).toBe('/api/v1 donations 203.0.113.7');
+		expect(quoteRateLimitKey(from('::ffff:203.0.113.7'))).toBe('/api/v1 donations 203.0.113.7');
+	});
+
+	/**
+	 * the `/48` is these two buckets' width and no other's. the surface, read-api caller, photo and
+	 * donor page buckets bound reads rather than guesses or charges, so what a `/48` of `/64`s buys
+	 * there is reads, while keying them wider would put a whole network's donors in one bucket.
+	 */
+	it('leaves the surface, read-api caller and view buckets on the /64', () => {
+		const asked = from('2001:db8:1:2::1');
+		expect(apiRateLimitKey(asked)).toBe('/api/v1 2001:db8:1:2::/64');
+		expect(integrationsCallerRateLimitKey(asked)).toBe('/integrations/v1 2001:db8:1:2::/64');
+		expect(imageRateLimitKey(asked)).toBe('image 2001:db8:1:2::/64');
+		expect(donorPageRateLimitKey(asked)).toBe('donor-page 2001:db8:1:2::/64');
+		expect(signInRateLimitKey(asked)).toBe('sign-in 2001:db8:1::/48');
 	});
 
 	/**
@@ -332,7 +381,7 @@ describe('what the tighter buckets count against', () => {
 	 * an operator who switches that transform on gets what this deployment did before these two
 	 * buckets existed rather than a dark donation form.
 	 */
-	it.each(TIGHT)('mints no bucket for %s it cannot attribute to a payer', (_what, key) => {
+	it.each(ATTRIBUTED)('mints no bucket for %s it cannot attribute to a payer', (_what, key) => {
 		expect(key(new Request('https://give.example.workers.dev/'))).toBeNull();
 		expect(key(from('not-an-ip'))).toBeNull();
 		expect(key(from(''))).toBeNull();
@@ -353,9 +402,9 @@ describe('what the tighter buckets count against', () => {
 	});
 
 	/**
-	 * the surface binding counts four things, and a prefix each is what keeps one from spending
+	 * the surface binding counts five things, and a prefix each is what keeps one from spending
 	 * another's allowance: a donor page's photos cannot refuse the donation box its config, nor a
-	 * keyless Zapier loop a donor's view of the page.
+	 * keyless Zapier loop or an integration's caller a donor's view of the page.
 	 */
 	it('keys every surface the surface binding counts apart', () => {
 		const asked = from('203.0.113.7');
@@ -363,10 +412,11 @@ describe('what the tighter buckets count against', () => {
 			new Set([
 				apiRateLimitKey(asked),
 				zapierRateLimitKey(asked),
+				integrationsCallerRateLimitKey(asked),
 				imageRateLimitKey(asked),
 				donorPageRateLimitKey(asked)
 			]).size
-		).toBe(4);
+		).toBe(5);
 	});
 
 	/**
@@ -420,6 +470,43 @@ describe('what a request from Zapier counts against', () => {
 		const response = rateLimitRefusal('Wait and retry the Zap step.');
 		expect(response.status).toBe(429);
 		expect(await response.json()).toMatchObject({ fix: 'Wait and retry the Zap step.' });
+	});
+});
+
+/**
+ * the bucket a request on `/integrations/v1` spends before its key is looked up, charged through
+ * the surface binding the way `/zapier`'s is — so its prefix is what keeps it off both other
+ * surfaces' counts.
+ */
+describe('what a request on the read API counts against before its key is looked up', () => {
+	it('is the /integrations/v1 surface and the payer', () => {
+		const from = request('/integrations/v1/gifts', FROM);
+		expect(integrationsCallerRateLimitKey(from)).toBe('/integrations/v1 203.0.113.7');
+		expect(integrationsCallerRateLimitKey(from)).not.toBe(apiRateLimitKey(from));
+		expect(integrationsCallerRateLimitKey(from)).not.toBe(zapierRateLimitKey(from));
+	});
+
+	it('has no bucket for a caller it cannot attribute', () => {
+		expect(integrationsCallerRateLimitKey(request('/integrations/v1/gifts'))).toBeNull();
+		expect(
+			integrationsCallerRateLimitKey(
+				request('/integrations/v1/gifts', { 'cf-connecting-ip': 'not-an-ip' })
+			)
+		).toBeNull();
+	});
+});
+
+/**
+ * the per-key bucket in front of `/integrations/v1`. the key row's id is the whole of it, so what
+ * one system spends is its own and never another's — whatever address either calls from.
+ */
+describe('what a request on the read API counts against once its key is admitted', () => {
+	it('gives two keys two buckets', () => {
+		expect(integrationsKeyRateLimitKey('key_a')).not.toBe(integrationsKeyRateLimitKey('key_b'));
+	});
+
+	it('gives one key one bucket, request after request', () => {
+		expect(integrationsKeyRateLimitKey('key_a')).toBe(integrationsKeyRateLimitKey('key_a'));
 	});
 });
 

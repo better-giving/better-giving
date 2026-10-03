@@ -62,7 +62,7 @@ import type { Tribute } from './quote-input';
 // both of those hand statements up rather than committing, precisely so a call site can make one
 // atomic write out of several tables. this is that call site. there is nothing above it left to be
 // atomic with — the ledger is deliberately absent, by the paragraph above — so this is where the
-// single commit belongs. the donor's own statement is decided by `resolveDonor` in ./donor.ts,
+// single commit belongs. the donor's own statements are decided by `resolveDonor` in ./donor.ts,
 // which uses those two modules exactly as their headers describe — the id is minted so the donation
 // can name it while statements are still being built, and the row becomes a statement without this
 // module ever naming the `contact` table. that decision lives there rather than here because the
@@ -239,12 +239,12 @@ export type RecordedDonation = {
  * in ../payments/provider.ts and `SEND_FAILURE_REASONS` in ../email/provider.ts do it.
  *
  * the reason this module returns a result at all, where ../ledger/posting.ts throws, is the shape
- * of its most likely failure. a repeated attempt is ordinary here — `IntentRequest.idempotencyKey`
- * is designed to make one resolve to the intent that already exists — so the call arrives with a
- * transaction id the database already holds, and it comes back as drizzle's `Failed query: …` with
- * sqlite's code demoted to `.cause`. presented as a throw, that is indistinguishable at the call
- * site from a bug, and a public payment route would have to grow its own cause-walker to tell the
- * two apart or answer 500 to a donation that succeeded.
+ * of its most likely failure. a donor-advised fund's session sent twice is ordinary here — Chariot
+ * answers the second with the grant the first created (`mintGrant` in ./quote.ts) — so the call
+ * arrives with a transaction id the database already holds, and it comes back as drizzle's
+ * `Failed query: …` with sqlite's code demoted to `.cause`. presented as a throw, that is
+ * indistinguishable at the call site from a bug, and a public payment route would have to grow its
+ * own cause-walker to tell the two apart or answer 500 to a donation that succeeded.
  *
  *   malformed_gift    — the gift does not add up, and nothing was written. this app built it, so
  *                       repeating the identical call changes nothing. see `problemWith`.
@@ -370,9 +370,10 @@ const QUOTED_RAIL_METHODS: Readonly<Record<QuotedRail, SettledRail>> = Object.fr
  *
  * the statements go in one `batch()` in foreign-key order — contact, donation, lines, payment —
  * one statement per row and never a multi-row `INSERT`, because D1 caps a query at 100 bound
- * parameters (CLAUDE.md). `Db` has no `transaction` and D1 has none, so this batch is the only
- * atomic unit available and everything the gift is made of has to be inside it: a donation with no
- * payment, or a contact with no gift, is a state nothing in the schema detects.
+ * parameters (https://developers.cloudflare.com/d1/platform/limits/). `Db` has no `transaction`
+ * and D1 has none, so this batch is the only atomic unit available and everything the gift is made
+ * of has to be inside it: a donation with no payment, or a contact with no gift, is a state nothing
+ * in the schema detects.
  *
  * it never throws — every outcome is a `RecordResult`, including a rejection out of `batch()` and
  * a fault from anywhere else in the call. see `RECORD_FAILURE_REASONS` for what a caller may find
@@ -386,9 +387,12 @@ export async function recordDonation(db: Db, input: RecordDonationInput): Promis
 		return { ok: true, value: await write(db, input) };
 	} catch (error) {
 		return refusalFor(error, input.formId, {
-			ok: false,
-			reason: 'duplicate_intent',
-			detail: `a payment is already recorded against this attempt's transaction id. the gift it belongs to was written by the first call and nothing was written by this one.`
+			code: 'SQLITE_CONSTRAINT_UNIQUE',
+			failure: {
+				ok: false,
+				reason: 'duplicate_intent',
+				detail: `a payment is already recorded against this attempt's transaction id. the gift it belongs to was written by the first call and nothing was written by this one.`
+			}
 		});
 	}
 }
@@ -447,14 +451,17 @@ export async function recordAuthorizedGift(
 		await db.batch(writes);
 		return { ok: true };
 	} catch (error) {
-		// nothing on this write sits under a unique index but the gift's own primary key, which is a
-		// UUIDv7 minted moments earlier — so a collision here is a defect rather than the retry
-		// `duplicate_intent` names, and calling it one would tell a caller the gift is already
-		// recorded when it is not.
+		// nothing on this write sits under a unique index, so the one collision it can meet is the
+		// gift's own primary key — a UUIDv7 minted moments earlier, which D1 reports as
+		// `SQLITE_CONSTRAINT_PRIMARYKEY`. that is a defect rather than the retry `duplicate_intent`
+		// names, and calling it one would tell a caller the gift is already recorded when it is not.
 		return refusalFor(error, input.formId, {
-			ok: false,
-			reason: 'write_failed',
-			detail: `the gift could not be written: its id (${input.donationId}) is already in the database. nothing about it was stored.`
+			code: 'SQLITE_CONSTRAINT_PRIMARYKEY',
+			failure: {
+				ok: false,
+				reason: 'write_failed',
+				detail: `the gift could not be written: its id (${input.donationId}) is already in the database. nothing about it was stored.`
+			}
 		});
 	}
 }
@@ -560,7 +567,7 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 	};
 
 	// foreign-key order, and non-empty by construction rather than by assertion: the gift's own
-	// three kinds of row are always there, and the donor's statement goes in front of them because
+	// three kinds of row are always there, and the donor's statements go in front of them because
 	// `donation.contact_id` has to resolve when its statement runs — which is a requirement of the
 	// insert case and harmless in the update one.
 	const gift: Writes = [
@@ -570,7 +577,7 @@ async function write(db: Db, input: RecordDonationInput): Promise<RecordedDonati
 	];
 	// a matched donor whose consent was never asked contributes no statement at all — see
 	// `resolveDonor` in ./donor.ts. the batch stays non-empty either way, which is what `Writes` says.
-	const writes: Writes = donor.statement === null ? gift : [donor.statement, ...gift];
+	const writes: Writes = [...donor.statements, ...gift];
 
 	await db.batch(writes);
 
@@ -662,16 +669,17 @@ function depositProblem(input: RecordDonationInput): string | null {
 /**
  * a rejection out of the write, in this module's vocabulary rather than the driver's.
  *
- * the mapping is short because only two constraints on this write path can fire in a way a caller
- * can do anything about, and both are named here rather than left for an endpoint to recognise in
- * a sentence:
+ * the mapping is short because only two kinds of rejection on these write paths mean something a
+ * caller can act on, and both are named here rather than left for an endpoint to recognise in a
+ * sentence:
  *
- *   - `SQLITE_CONSTRAINT_UNIQUE` is `payment_provider_txn_idx` (../db/schema.ts), and it is the
- *     ordinary outcome of a retry rather than a fault. `IntentRequest.idempotencyKey` in
- *     ../payments/provider.ts exists so that an attempt made twice resolves to the intent that
- *     already exists, which means the second call arrives here with a transaction id already in
- *     the table. the gift was recorded the first time; answering that with a fault would fail a
- *     donation that succeeded.
+ *   - a key collision, whose code and meaning are the caller's (`collision`). for `recordDonation`
+ *     it is `SQLITE_CONSTRAINT_UNIQUE` on `payment_provider_txn_idx` (../db/schema.ts), and it is
+ *     a fund's session sent twice rather than a fault: Chariot answers the second call with the
+ *     grant the first created, so it arrives here with a transaction id already in the table. a
+ *     retried single-gift POST never does — its `idempotencyKey` is a fresh `donationId` per call,
+ *     so it mints a second gift. the gift was recorded the first time; answering that with a fault
+ *     would fail a donation that succeeded.
  *   - `SQLITE_CONSTRAINT_FOREIGNKEY` is one of the gift's outward references: the form, the cause
  *     it is credited to, or the fund a line names. the reason is not called `unknown_form` because
  *     the constraint cannot say which — the code is the same for all three — and a name that picked
@@ -681,14 +689,23 @@ function depositProblem(input: RecordDonationInput): string | null {
  * detail carries the sentence the caller can act on and never the code: a route that matched on
  * `SQLITE_` prose would be a second, unreviewed copy of this mapping inside a public payment path.
  *
- * `unique` is the caller's, because a UNIQUE rejection does not mean the same thing to both
- * writers: one of them opens a `payment` row under `payment_provider_txn_idx` and the other opens
- * none at all. each states what a collision means for the rows it writes.
+ * `collision` is the caller's, because the two writers collide on different keys: one opens a
+ * `payment` row under `payment_provider_txn_idx`, a unique index, and the other opens none and can
+ * only meet the gift's primary key — which D1 reports as `SQLITE_CONSTRAINT_PRIMARYKEY`, never as
+ * `SQLITE_CONSTRAINT_UNIQUE`. each names the code its collision raises and what it means for the
+ * rows it writes.
  */
-function refusalFor(error: unknown, formId: string, unique: RecordFailure): RecordFailure {
-	switch (sqliteResultCode(error)) {
-		case 'SQLITE_CONSTRAINT_UNIQUE':
-			return unique;
+function refusalFor(
+	error: unknown,
+	formId: string,
+	collision: {
+		readonly code: 'SQLITE_CONSTRAINT_UNIQUE' | 'SQLITE_CONSTRAINT_PRIMARYKEY';
+		readonly failure: RecordFailure;
+	}
+): RecordFailure {
+	const code = sqliteResultCode(error);
+	if (code === collision.code) return collision.failure;
+	switch (code) {
 		case 'SQLITE_CONSTRAINT_FOREIGNKEY':
 			return {
 				ok: false,

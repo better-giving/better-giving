@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Button } from '../controls/Button.jsx';
 import { Field } from './Field.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
@@ -9,12 +10,12 @@ import { FieldMessage } from './FieldMessage.jsx';
 
 /**
  * one control that changes the boxes rather than the record: the four attributes a form layer's own
- * list intent is carried by, plus the press it may withhold on.
+ * list intent is carried by, the press it may withhold on, and two of the caller's own — an `id` and
+ * an `aria-describedby`.
  *
- * stated structurally rather than as a button's attributes, for the reason
- * packages/app/src/lib/admin/forms/giving-fields.tsx states it: ./controls/Button.jsx takes the
- * union of a button's attributes and an anchor's, so the whole of one of those two is not
- * assignable to it — and what a caller actually has to hand over is these.
+ * stated structurally rather than as a button's attributes: ../controls/Button.jsx takes the union
+ * of a button's attributes and an anchor's, so the whole of one of those two is not assignable to
+ * it — and what a caller actually has to hand over is these.
  *
  * @typedef {object} RowControl
  * @property {string} name
@@ -22,6 +23,9 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {string} [form]
  * @property {boolean} [formNoValidate]
  * @property {MouseEventHandler<HTMLButtonElement>} [onClick]
+ * @property {string} [id] for a caller that moves focus to the control itself.
+ * @property {string} [aria-describedby] the id of a sentence the caller draws saying why a press of
+ *   this control is refused.
  */
 
 /**
@@ -31,7 +35,6 @@ import { FieldMessage } from './FieldMessage.jsx';
  * the second box `x[1]`, which is whichever row is second right now — so a removed row leaves react
  * re-using the box below it for the row that took its place, and the box is uncontrolled, so it
  * goes on showing and posting the figure already typed into it.
- * packages/app/src/lib/admin/forms/giving-fields.tsx's `AmountRow` is the same trap, and
  * packages/operator/src/components/data/DataTable.jsx argues the case for a table's rows.
  *
  * `remove` is the control that drops this row, absent where nothing may drop it — a list that has
@@ -52,11 +55,15 @@ import { FieldMessage } from './FieldMessage.jsx';
  * `defaultValue` — or `value` with a handler beside it — and a row naming itself beats the group's
  * `name`. that file's header says why a starting value is never a prop of the component's own.
  *
- * three of a field's are not a row's. the label and the standing note belong to the group, and a
- * box that is a paragraph is not a row in a list of one-line values.
+ * five of a field's are not a row's. the label and the standing note belong to the group, a box
+ * that is a paragraph is not a row in a list of one-line values, and the masked press's pair of
+ * names says which credential a screen means — a row is told apart by its place in the list.
  *
  * @typedef {RepeatingRowOwnProps
- *   & Omit<FieldProps, keyof RepeatingRowOwnProps | 'label' | 'needed' | 'as'>} RepeatingRow
+ *   & Omit<
+ *     FieldProps,
+ *     keyof RepeatingRowOwnProps | 'label' | 'needed' | 'as' | 'revealLabel' | 'hideLabel'
+ *   >} RepeatingRow
  */
 
 /**
@@ -105,9 +112,16 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {string | undefined} [name] the name every row submits under. a form that names its
  *   rows one at a time — an array's boxes are `x[0]`, `x[1]` — states it on the row instead.
  * @property {string} legend what the group is, stated rather than defaulted: both of a row's
- *   accessible names are built from it — the box's own and its Remove's — so a group without one is
- *   a run of unnamed boxes over a column of controls all called Remove, and the screen looks exactly
- *   the same either way. `legendHidden` below is how a group draws no mark and keeps the names.
+ *   accessible names are built from it unless `rowLabel` says otherwise — the box's own and its
+ *   Remove's — so a group without one is a run of unnamed boxes over a column of controls all
+ *   called Remove, and the screen looks exactly the same either way. `legendHidden` below is how a
+ *   group draws no mark and keeps the names.
+ * @property {string | undefined} [rowLabel] what one row is called, where that is not the legend —
+ *   a group whose legend names it in the plural. both of a row's accessible names are built from it
+ *   in the legend's place; absent, they are built from the legend.
+ * @property {string | undefined} [describedBy] an element describing the group that the group does
+ *   not draw itself, named on the fieldset. for a sentence about the list its caller draws and
+ *   holds against no row, which {@link RepeatingRowsProps.error} would mark every row refused by.
  * @property {boolean | undefined} [legendHidden] whether the legend is drawn to a reader and not on
  *   the screen (`.adm-vh` in packages/operator/src/styles/base.css). for the group whose name is
  *   already stated a step above it, where the mark would be a third naming of one thing. the names
@@ -145,12 +159,21 @@ import { FieldMessage } from './FieldMessage.jsx';
 
    a row carrying no sentence of its own under a group that has one is drawn refused by it, because
    either row fixes the group and none of them is the wrong one — the same rule ./Field.jsx states
-   about a pair of boxes marked from outside. */
+   about a pair of boxes marked from outside.
+
+   where focus lands after either press is the group's, because the group is what places them.
+   a Remove stands inside the row it drops, so it goes with it and leaves focus on the page itself:
+   focus goes to the box above, or the one that took the row's place when it was the first, or Add
+   when no row is left. an Add puts focus into the box it added. the press only records where focus
+   is owed, and the move is made on the render whose rows changed — a press the form turned down
+   changes no row and moves nothing. */
 /** @param {RepeatingRowsProps} props */
 export function RepeatingRows({
 	id,
 	name,
 	legend,
+	rowLabel = legend,
+	describedBy,
 	legendHidden,
 	hint,
 	error,
@@ -165,8 +188,51 @@ export function RepeatingRows({
 }) {
 	const hintId = hint ? `${id}-hint` : null;
 	const groupErrorId = error ? `${id}-err` : null;
+
+	const addRow = useRef(/** @type {HTMLDivElement | null} */ (null));
+	/** @type {import('react').RefObject<{ kind: 'add' | 'remove', at: number, had: readonly string[] } | null>} */
+	const owed = useRef(null);
+	const identities = rows.map((row) => row.key ?? row.id);
+
+	/** records where focus is owed after a press, against the rows it was pressed over. */
+	const owe = (/** @type {'add' | 'remove'} */ kind, /** @type {number} */ at) => {
+		const press = { kind, at, had: identities };
+		owed.current = press;
+		/* a press the form turned down commits nothing, so nothing would clear it — and a row that
+		   arrived later by some other way would be taken for its answer. a press the form applies
+		   commits inside the event that made it, ahead of this. */
+		setTimeout(() => {
+			if (owed.current === press) owed.current = null;
+		}, 0);
+	};
+
+	/* run on every commit, and spent by the first one after the press whether or not it moves
+	   anything: the move is made only where that commit's rows differ from the ones the press was
+	   made over, and only while focus is where the press left it — on the page itself or still on
+	   Add — so an operator who has moved on is not pulled back. */
+	useEffect(() => {
+		const press = owed.current;
+		if (press === null) return;
+		owed.current = null;
+		if (press.had.join('\n') === identities.join('\n')) return;
+		const addPress = addRow.current?.querySelector('button') ?? null;
+		const at = document.activeElement;
+		if (at !== null && at !== document.body && at !== addPress) return;
+		/** @param {number} place */
+		const box = (place) => {
+			const row = rows[place];
+			return row === undefined ? null : document.getElementById(row.id);
+		};
+		if (press.kind === 'add') {
+			const added = rows.findIndex((row) => !press.had.includes(row.key ?? row.id));
+			if (added !== -1) box(added)?.focus();
+			return;
+		}
+		(rows.length === 0 ? addPress : box(Math.max(press.at - 1, 0)))?.focus();
+	});
+
 	return (
-		<fieldset className="adm-fieldset">
+		<fieldset className="adm-fieldset" aria-describedby={describedBy}>
 			<legend className={legendHidden ? 'adm-vh' : 'adm-fieldset__legend'}>{legend}</legend>
 			{hint ? (
 				<p className="adm-hint" id={`${id}-hint`}>
@@ -218,7 +284,7 @@ export function RepeatingRows({
 							placeholder={placeholder}
 							disabled={disabled}
 							error={said}
-							aria-label={`${legend} ${i + 1}`}
+							aria-label={`${rowLabel} ${i + 1}`}
 							aria-invalid={error && said === undefined ? 'true' : undefined}
 							aria-describedby={
 								[hintId, said === undefined ? groupErrorId : `${row}-err`]
@@ -237,16 +303,30 @@ export function RepeatingRows({
 								mark="trash-2"
 								type="submit"
 								disabled={disabled}
-								aria-label={`Remove ${legend} ${i + 1}`}
+								aria-label={`Remove ${rowLabel} ${i + 1}`}
 								{...remove}
+								onClick={(event) => {
+									remove.onClick?.(event);
+									if (!event.defaultPrevented) owe('remove', i);
+								}}
 							>
 								Remove
 							</Button>
 						)}
 					</div>
 				))}
-				<div>
-					<Button size="sm" mark="plus" type="submit" disabled={disabled} {...add}>
+				<div ref={addRow}>
+					<Button
+						size="sm"
+						mark="plus"
+						type="submit"
+						disabled={disabled}
+						{...add}
+						onClick={(event) => {
+							add.onClick?.(event);
+							if (!event.defaultPrevented) owe('add', rows.length);
+						}}
+					>
 						{addLabel}
 					</Button>
 				</div>

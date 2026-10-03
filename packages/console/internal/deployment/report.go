@@ -107,13 +107,13 @@ func Calls(origin, token string) cf.Send {
 	return cf.JSONSendWithin(origin, surfaceHeaders(token), cf.ReadTimeout)
 }
 
-// how long an errand the deployment answers only once a third party has may take before it counts
-// as unreachable.
+// PatientTimeout is how long an errand the deployment answers only once a third party has may take
+// before it counts as unreachable.
 //
 // far past the bound a read takes (cf.ReadTimeout), because what the deployment does before it
 // answers one of these is a round trip of its own: ../server/errands.go names the three errands
 // this bounds and argues what a cut on the disconnect would leave behind.
-const patientTimeout = time.Minute
+const PatientTimeout = time.Minute
 
 // PatientCalls is that same binding held to the longer deadline above, for the errands the
 // deployment answers only once a third party has.
@@ -121,7 +121,7 @@ const patientTimeout = time.Minute
 // The bound belongs to the call rather than to the client, which is internal/cf's arrangement and
 // its header's argument: one of these errands is not a read.
 func PatientCalls(origin, token string) cf.Send {
-	return cf.JSONSendWithin(origin, surfaceHeaders(token), patientTimeout)
+	return cf.JSONSendWithin(origin, surfaceHeaders(token), PatientTimeout)
 }
 
 // the session, as every call to that surface carries it: in a header, and on no url.

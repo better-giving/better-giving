@@ -11,18 +11,18 @@ import { holdBar } from '@better-giving/operator/progress-bar';
 import type { ReactNode } from 'react';
 import { useCallback, useRef } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Form, Link, redirect, useNavigation, useSearchParams } from 'react-router';
-import { closeConsole, connect } from '../api/client';
-import type { Blocked, NoReport } from '../api/types';
+import { Form, redirect, useNavigation, useSearchParams } from 'react-router';
+import { ConsoleRefused, ConsoleUnreachable, closeConsole, connect } from '../api/client';
+import type { Blocked, Connection, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
 import { firstUnfinishedPage } from '../lib/console-pages';
-import { gatedPage, handOver, readConsole } from '../lib/console-reading';
+import { drawsReading, gatedPage, handOver, readConsole, watchPress } from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
-import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
+import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
 import { forgetReadings } from '../lib/processor-cache';
 import { ProductFoot } from '../lib/product-foot';
-import { Said } from '../lib/said';
+import { Refusal, Said } from '../lib/said';
 import { UNREAD_ANSWER_TITLE } from '../lib/unread-answer';
 import type { Route } from './+types/_index';
 
@@ -64,8 +64,9 @@ import type { Route } from './+types/_index';
 // of this repository either way; pinning one is the escape hatch DEPLOY.md documents.
 //
 // reads are the binary's and this `clientLoader`'s, writes are the presses below, and every
-// failure is a value: nothing here throws, because a rejected promise in a loader is a 500 in place
-// of the state that explains it.
+// failure the binary answers is a value drawn as the state that explains it. the one throw is
+// `readConsole` finding no binary at all, or one that turned the reading down, which this file's
+// `ErrorBoundary` draws.
 
 /** what the re-connect press on the unreachable face posts. */
 const CONNECT_INTENT = 'connect';
@@ -109,6 +110,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 		throw redirect(firstUnfinishedPage(read.reading.sections));
 	}
 	await bar.finish();
+	drawsReading(request, read);
 	return {
 		// a face of its own for a deployment not there yet, where the sections draw a gate
 		gate: face.kind === 'deploy' ? null : (gatedPage(read)?.gate ?? null),
@@ -123,8 +125,9 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 }
 
 /**
- * the presses answered here: the re-connect on this page's gate, and the two that stand over every
- * screen of this console, which post here wherever they are pressed (../lib/close-confirm.tsx).
+ * the presses answered here: the re-connect and the check again on this page's gate, and the close,
+ * which stands over every screen of this console and posts here wherever it is pressed
+ * (../lib/close-confirm.tsx).
  *
  * **the binary owns all of them**: each is one call on the loopback address, and what a press
  * carries is what the operator asked for. the account it is spent on, the worker it is addressed to
@@ -132,6 +135,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
  * travelled through a page is a value written wherever that page said.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
@@ -172,8 +176,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 		return { closing: true as const };
 	}
 
-	// nothing posts anything else here. a body naming nothing, or naming a press drawn on a section
-	// page, is answered rather than run.
+	// nothing posts anything else here. a body naming none of the intents above — nothing at all, or
+	// a press a section page answers for itself — is answered rather than run.
 	return { unknown: true as const };
 }
 
@@ -208,7 +212,7 @@ export default function Console({ loaderData, actionData }: Route.ComponentProps
 	   anything down, so confirming over a save cuts nothing short. */
 	const closeControl = (
 		<Button
-			as={Link}
+			as={DialogLink}
 			to={`/?${CLOSE_PARAM}`}
 			variant="soft"
 			size="sm"
@@ -464,12 +468,18 @@ function UnreachableFace({
 
 	const recheck = (
 		<Form className="adm-actions" method="post" preventScrollReset>
+			{/* both presses on this gate are held with `aria-disabled` and their submission stopped
+			    in their own handler, never closed by `disabled`, which drops the focus standing on
+			    them (../closed-while-writing.spec.ts). */}
 			<Button
 				type="submit"
 				name="intent"
 				value={CHECK_INTENT}
-				disabled={busy}
-				aria-busy={intent === 'check'}
+				onClick={(event) => {
+					if (busy) event.preventDefault();
+				}}
+				aria-disabled={busy || undefined}
+				aria-busy={intent === 'check' || undefined}
 			>
 				Check again
 			</Button>
@@ -542,69 +552,154 @@ function UnreachableFace({
 					name="intent"
 					value={CONNECT_INTENT}
 					variant="primary"
-					disabled={busy}
+					onClick={(event) => {
+						if (busy) event.preventDefault();
+					}}
+					aria-disabled={busy || undefined}
 					aria-describedby={COLLEAGUE_COST}
-					aria-busy={pending}
+					aria-busy={pending || undefined}
 				>
 					Connect
 				</Button>
-				{connected === null || connected.kind === 'connected' ? null : (
-					// reported at the control that was pressed. the row stands on its own rather than
-					// under a box: what this is about is a press, and `Field` draws its rows under the
-					// box it labels — there is no box here to hang one off.
-					<FieldMessage>
-						{connected.kind === 'nowhere' ? (
-							// the same words ../lib/smtp-fold.tsx says this in, because it is the same
-							// fact: the deployment answers nowhere, and the way out is over at cloudflare.
-							<>
-								This deployment answers on no address, so there's nowhere to connect to. Turn its{' '}
-								<InlineCode>workers.dev</InlineCode> address back on, or attach a domain, at{' '}
-								<a href={DASHBOARD} target="_blank" rel="noreferrer">
-									dash.cloudflare.com
-								</a>{' '}
-								&rarr; Compute (Workers), then try again.
-							</>
-						) : connected.kind === 'refused' ? (
-							<>
-								Cloudflare won't let this sign-in change <InlineCode>{workerName}</InlineCode> in{' '}
-								{accountName}. Nothing was connected. Ask an administrator of that account for
-								administrator access, or switch account.
-							</>
-						) : connected.kind === 'unreachable' ? (
-							// this machine's own call failing, so it is kept off cloudflare's name: what
-							// the slab under it carries is a fetch that never landed and no sentence
-							// cloudflare sent (../lib/secret-trouble.tsx).
-							<>
-								This console couldn't reach Cloudflare, so nothing was connected. Check this
-								machine's connection, then try again.
-							</>
-						) : (
-							'Nothing was connected. This is what Cloudflare said:'
-						)}
-					</FieldMessage>
-				)}
-				{connected?.kind === 'refused' ||
-				connected?.kind === 'unreachable' ||
-				connected?.kind === 'failed' ? (
-					<Said answer={connected} />
-				) : null}
+				<ConnectOutcome connected={connected} workerName={workerName} accountName={accountName} />
 			</Form>
 			<p className="adm-hint">A connection lasts twelve hours.</p>
 		</div>
 	);
 }
 
-// the one way this page learns the console has stopped: a request it cannot reach the local process
-// with at all. drawn as the panel a route outside the shell is, because there is no reading to draw
-// a shell from — the same words wherever it is met (../lib/deployment-states.tsx).
+/**
+ * how the connect press went — nothing where it connected or was not pressed.
+ *
+ * exported for ./_index.spec.ts, which draws it without the router the gate's form needs.
+ */
+export function ConnectOutcome({
+	connected,
+	workerName,
+	accountName
+}: {
+	connected: Connection | null;
+	workerName: string;
+	accountName: string;
+}): ReactNode {
+	if (connected === null) return null;
+	// reported at the control that was pressed. the row stands on its own rather than under a box:
+	// what this is about is a press, and `Field` draws its rows under the box it labels — there is no
+	// box here to hang one off.
+	switch (connected.kind) {
+		case 'connected':
+			return null;
+		case 'nowhere':
+			// the same words ../lib/smtp-fold.tsx says this in, because it is the same fact: the
+			// deployment answers nowhere, and the way out is over at cloudflare.
+			return (
+				<FieldMessage>
+					This deployment answers on no address, so there's nowhere to connect to. Turn its{' '}
+					<InlineCode>workers.dev</InlineCode> address back on, or attach a domain, at{' '}
+					<a href={DASHBOARD} target="_blank" rel="noreferrer">
+						dash.cloudflare.com
+					</a>{' '}
+					&rarr; Compute (Workers), then try again.
+				</FieldMessage>
+			);
+		case 'refused':
+			return (
+				<>
+					<FieldMessage>
+						Cloudflare won't let this sign-in change <InlineCode>{workerName}</InlineCode> in{' '}
+						{accountName}. Nothing was connected. Ask an administrator of that account for
+						administrator access, or switch account.
+					</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
+		case 'unreachable':
+			// this machine's own call failing, so it is kept off cloudflare's name: what the slab under
+			// it carries is a fetch that never landed and no sentence cloudflare sent
+			// (../lib/secret-trouble.tsx).
+			return (
+				<>
+					<FieldMessage>
+						This console couldn't reach Cloudflare, so nothing was connected. Check this machine's
+						connection, then try again.
+					</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
+		case 'clock-ahead':
+			// the deployment's own sentences with none of this console's over them: the session was
+			// written and the deployment refused it for this machine's clock, so cloudflare said nothing
+			// about it and another press is refused the same way
+			// (packages/console/internal/deployment/connect.go).
+			return (
+				<Refusal
+					refusal={{
+						message:
+							connected.message ??
+							"This deployment refused the session because this machine's clock is ahead of its own. Correct this machine's clock, then connect again.",
+						fix: connected.fix
+					}}
+				/>
+			);
+		case 'failed':
+			return (
+				<>
+					<FieldMessage>Nothing was connected. This is what Cloudflare said:</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
+		case 'unkept':
+			return <FieldMessage>Nothing was connected. This is what Cloudflare said:</FieldMessage>;
+		default:
+			return connected.kind satisfies never;
+	}
+}
+
+/**
+ * what an error boundary draws for anything but a gate, in the place the failure stood.
+ *
+ * **the stopped page is for a binary that could not be reached at all, and for nothing else** — told
+ * the console has stopped, an operator restarts one that is running. a refusal the binary sent is
+ * drawn in its own words, printed rather than marked for ../lib/said.tsx's reason. anything else
+ * threw on this side of the call, so a reload is the one way out this page has.
+ *
+ * exported for every boundary under ./_sections.tsx, which already reach this module for `TITLE`.
+ */
+export function ConsoleFailure({ error }: { error: unknown }): ReactNode {
+	if (error instanceof ConsoleUnreachable) return <ConsoleStopped />;
+	if (error instanceof ConsoleRefused) {
+		return (
+			<Banner tone="blocker" word="The console turned this down">
+				{error.message}
+			</Banner>
+		);
+	}
+	return (
+		<Banner
+			tone="blocker"
+			word="This part of the console failed"
+			actions={
+				<Button type="button" mark="refresh-cw" onClick={() => window.location.reload()}>
+					Reload
+				</Button>
+			}
+		>
+			Reload this page.
+		</Banner>
+	);
+}
+
+// drawn as the panel a route outside the shell is, because there is no reading to draw a shell
+// from. the one throw this page's loader has is `readConsole` meeting a binary it cannot reach, or
+// one that turned the reading down.
 //
 // it stands the same foot as every other screen, with no release in it: a boundary has no loader,
 // so nothing here read what this binary is and that end of the strip stands empty.
-export function ErrorBoundary() {
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	return (
 		<PanelRoute foot={<ProductFoot version="" />}>
 			<title>{TITLE}</title>
-			<ConsoleStopped />
+			<ConsoleFailure error={error} />
 		</PanelRoute>
 	);
 }

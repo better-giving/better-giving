@@ -23,6 +23,10 @@ import { Button } from '@better-giving/operator/components/controls/Button';
  * operator intent is one write. each stands beside the rank's plain disabled specimen above, and the
  * pair is the whole case: a press that is working holds its rank's active rung and a press that is
  * unavailable greys, so two specimens that came out the same colour is the finding.
+ *
+ * the two filled ranks closed by `aria-disabled` with the keyboard on them close the page: a press
+ * closed that way keeps the focus, and over the closed grey the ring is the hugging one rather than
+ * the inset near-white a solid fill wears, so a closed press with no ring visible is the finding.
  */
 export default function ButtonPreview() {
 	return (
@@ -88,6 +92,12 @@ export default function ButtonPreview() {
 			</Button>
 			<Button variant="danger" aria-busy disabled>
 				danger busy and closed
+			</Button>
+			<Button variant="primary" aria-disabled className="is-focus">
+				primary closed, focused
+			</Button>
+			<Button variant="danger" aria-disabled className="is-focus">
+				danger closed, focused
 			</Button>
 		</>
 	);

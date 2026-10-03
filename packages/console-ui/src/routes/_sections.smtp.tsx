@@ -2,14 +2,16 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { freeWithheldVars, sendTestEmail } from '../api/client';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { groupPress } from '../lib/group-press';
 import { forgetReadings } from '../lib/processor-cache';
+import { NO_ANSWERS, useKeptAnswers } from '../lib/smtp-answers';
 import { SmtpFold, TEST_EMAIL_INTENT } from '../lib/smtp-fold';
 import { TEST_TO_FIELD } from '../lib/smtp-fold-state';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.smtp';
 
 // /smtp — what carries this deployment's mail out, receipts included, drawn by
@@ -22,6 +24,7 @@ export function meta(): Route.MetaDescriptors {
 }
 
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
@@ -60,6 +63,7 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
 export default function SmtpPage({ actionData, matches }: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const { intent } = usePress();
+	const { secrets, freed, test } = useKeptAnswers(NO_ANSWERS, actionData);
 	return (
 		<Column>
 			<SmtpFold
@@ -69,11 +73,21 @@ export default function SmtpPage({ actionData, matches }: Route.ComponentProps) 
 				// the profile, because the test send is seeded from the notification address rather
 				// than from a value of its own.
 				stored={shell.reading.stored}
-				secrets={actionData && 'secrets' in actionData ? actionData.secrets : null}
-				freed={actionData && 'freed' in actionData ? actionData.freed : null}
-				test={actionData && 'test' in actionData ? actionData.test : null}
+				secrets={secrets}
+				freed={freed}
+				test={test}
 				pending={intent}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

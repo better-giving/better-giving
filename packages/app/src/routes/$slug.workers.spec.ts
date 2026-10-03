@@ -2,9 +2,16 @@ import { createExecutionContext, env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStaticHandler, type LoaderFunction, type MiddlewareFunction } from 'react-router';
+import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
+import {
+	createStaticHandler,
+	type LoaderFunction,
+	type MiddlewareFunction,
+	type ShouldRevalidateFunctionArgs
+} from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NO_FORM } from '$lib/donate/copy';
+import { NO_FORM, RESUMING_HEADING, STEP_HEADINGS } from '$lib/donate/copy';
+import { shownStep } from '$lib/donate/shown-step.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign } from '$lib/page/defaults';
@@ -20,9 +27,10 @@ import { endAsItStands } from '$lib/server/pages/page-row.testing';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { readOrgLogo, readOrgLook, updateOrgLogo, updateOrgLook } from '$lib/server/org/queries';
-import { ORIGIN, signIn } from '../program-routes.testing';
+import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
+import { finishSetup } from '../webhook-routes.testing';
 import type { Route } from './+types/$slug';
 import * as campaignPage from './$slug';
 import * as layout from './_app';
@@ -516,13 +524,14 @@ const giftRoute = mountRoutes([
 ]);
 
 /**
- * a caller of its own for each request, so no meter answers for the form: one `/64` each, since
- * that is one caller to the surface's and the quote's buckets ($lib/server/api/rate-limit.ts).
+ * a caller of its own for each request, so no meter answers for the form: one `/48` each, since
+ * that is one caller to the quote's bucket, the widest of those a request here spends
+ * ($lib/server/api/rate-limit.ts).
  */
 let callers = 0;
 function nextCaller(): string {
 	callers += 1;
-	return `2001:db8:59:${callers.toString(16)}::1`;
+	return `2001:db8:${(0x5900 + callers).toString(16)}::1`;
 }
 
 /** what the card on a donor page here is answered for `formId`: its config, then a gift. */
@@ -620,9 +629,15 @@ describe('a campaign after its editor’s Publish', () => {
 		{ path: 'admin/campaigns/:pageId', module: editor }
 	]);
 	let session: string;
+	/** a deployment whose set-up is finished, which the layout above the editor serves alone. */
+	let finished: Env;
 
 	beforeAll(async () => {
 		session = await signIn(db);
+	});
+
+	beforeEach(async () => {
+		finished = await finishSetup(PASSWORD);
 	});
 
 	beforeEach(async () => {
@@ -648,7 +663,7 @@ describe('a campaign after its editor’s Publish', () => {
 				headers: { cookie: session },
 				body
 			}),
-			{ env }
+			{ env: finished }
 		);
 		expect(response.status).toBe(200);
 	}
@@ -744,5 +759,116 @@ describe('the limit on GET /{slug}', () => {
 		expect(markup(refused.data)).toContain(NO_FORM);
 		expect(refused.headers.get('retry-after')).toBe('60');
 		expect(refused.headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+describe('what a live campaign lets be kept', () => {
+	// the amounts and settings drawn here are the campaign as it is now, and a kept copy would show
+	// a donor figures the operator has since changed.
+	it('lets nothing keep the drawn page', async () => {
+		await campaign();
+		const answered = await visit();
+		expect(answered.data.kind).toBe('page');
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+	});
+
+	it('lets nothing keep the donation box drawn alone', async () => {
+		await campaign({ published: {} });
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const answered = await visit();
+		expect(answered.data.kind).toBe('plain');
+		expect(answered.headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+describe('a donor back at a campaign from authorizing their gift', () => {
+	// the stamp is all the server can see of a return — the token is the card's to claim once the
+	// flow starts — and it is what keeps the first paint from showing an empty donation form to a
+	// donor who may already have paid.
+	it('draws the resume takeover rather than the amount step', async () => {
+		const formId = await campaign();
+		const answered = await visit(`/${SLUG}?${RESUME_FORM_PARAM}=${formId}`);
+		expect(answered.data).toMatchObject({ resuming: true });
+		const shown = shownStep(markup(answered.data));
+		expect(shown).toContain(RESUMING_HEADING);
+		expect(shown).not.toContain(STEP_HEADINGS[0]);
+	});
+
+	it('draws the takeover on the donation box drawn alone', async () => {
+		const formId = await campaign({ published: {} });
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const answered = await visit(`/${SLUG}?${RESUME_FORM_PARAM}=${formId}`);
+		expect(answered.data).toMatchObject({ kind: 'plain', resuming: true });
+		expect(shownStep(markup(answered.data))).toContain(RESUMING_HEADING);
+	});
+
+	// a return is claimed by the settings row it names and by nothing else: another campaign's row,
+	// or a form embedded on the organisation's own site, is no return of this one's.
+	it('draws the amount step for a stamp naming another campaign’s settings row', async () => {
+		await campaign();
+		const other = await campaign({ name: 'Spring fun run', slug: 'spring-fun-run' });
+		const answered = await visit(`/${SLUG}?${RESUME_FORM_PARAM}=${other}`);
+		expect(answered.data).toMatchObject({ resuming: false });
+		const shown = shownStep(markup(answered.data));
+		expect(shown).toContain(STEP_HEADINGS[0]);
+		expect(shown).not.toContain(RESUMING_HEADING);
+	});
+
+	it('draws the amount step where there is no stamp', async () => {
+		await campaign();
+		const shown = shownStep(markup((await visit()).data));
+		expect(shown).toContain(STEP_HEADINGS[0]);
+		expect(shown).not.toContain(RESUMING_HEADING);
+	});
+});
+
+describe('what re-reads a campaign under a gift in progress', () => {
+	/** react router's question about this route, for a move from `/{from}` to `next`. */
+	function asked(
+		from: string,
+		next: string,
+		extra: Partial<ShouldRevalidateFunctionArgs> = {}
+	): ShouldRevalidateFunctionArgs {
+		const nextUrl = new URL(next, OWN);
+		return {
+			currentUrl: new URL(`/${from}`, OWN),
+			currentParams: { slug: from },
+			nextUrl,
+			nextParams: { slug: nextUrl.pathname.slice(1) },
+			defaultShouldRevalidate: true,
+			...extra
+		};
+	}
+
+	it('keeps the config for a navigation that stays on the campaign', () => {
+		expect(campaignPage.shouldRevalidate(asked(SLUG, `/${SLUG}?utm_source=mail`))).toBe(false);
+	});
+
+	// each campaign owns its own settings row, so another address is another config.
+	it('reads the next campaign when the address names another', () => {
+		expect(campaignPage.shouldRevalidate(asked(SLUG, '/spring-fun-run'))).toBe(true);
+	});
+
+	it('keeps the config for a submission on the campaign', () => {
+		const posted = asked(SLUG, `/${SLUG}`, {
+			formMethod: 'POST',
+			formAction: `/${SLUG}`,
+			formData: new FormData(),
+			actionStatus: 200
+		});
+		expect(campaignPage.shouldRevalidate(posted)).toBe(false);
+	});
+
+	// a navigation on the campaign after the card claimed a return leaves a stamped address behind,
+	// and a re-read there would answer `resuming: false` under the takeover the flow is showing.
+	it('keeps the config when the resume stamp leaves the address', () => {
+		const stamped = asked(SLUG, `/${SLUG}`, {
+			currentUrl: new URL(`/${SLUG}?${RESUME_FORM_PARAM}=frm_campaign00000001`, OWN)
+		});
+		expect(campaignPage.shouldRevalidate(stamped)).toBe(false);
+	});
+
+	it('keeps the config for a revalidate on the same address', () => {
+		expect(campaignPage.shouldRevalidate(asked(SLUG, `/${SLUG}`))).toBe(false);
 	});
 });

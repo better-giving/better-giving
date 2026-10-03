@@ -14,6 +14,7 @@ import { createDb, type Db } from '$lib/server/db/client';
 import { page } from '$lib/server/db/schema';
 import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../../../program-routes.testing';
+import { finishedDeployment } from '../../../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../../../route-request.testing';
 import * as layout from '../../../routes/_app';
 import * as campaignEditor from '../../../routes/_app.admin.campaigns.$pageId';
@@ -76,7 +77,7 @@ async function post(pageId: string, form: string, fields: Record<string, string>
 			headers: { cookie: session },
 			body
 		}),
-		{ env }
+		{ env: bindings }
 	);
 }
 
@@ -86,6 +87,13 @@ function donationPage(): Promise<string> {
 }
 
 const CUSTOM = { look: 'custom', shade: 'warm', corner: 'round', brand_colour: '#1d6b4f' };
+
+/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
 
 describe('the look', () => {
 	it('stores a custom look whole on the draft', async () => {
@@ -349,7 +357,7 @@ describe('what the editor is drawn with', () => {
 	async function open(pageId: string): Promise<Record<string, unknown>> {
 		const response = await campaignRequest(
 			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }),
-			{ env }
+			{ env: bindings }
 		);
 		expect(response.status).toBe(200);
 		return response.json();

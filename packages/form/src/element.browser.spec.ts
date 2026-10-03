@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { userEvent } from 'vitest/browser';
+import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
@@ -93,7 +94,9 @@ async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promi
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				};
 			},
@@ -234,7 +237,9 @@ describe('the box a host page holds before the element upgrades', () => {
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -518,6 +523,118 @@ describe('the closed choices on the amount step', () => {
 		expect(above.bottom).toBeLessThanOrEqual(tight.box.getBoundingClientRect().top);
 	});
 
+	// the frame's `transform` is the containing block a `position: fixed` list would be placed in, and
+	// zag's `--x` is measured against the viewport — so a list placed in the frame would stand off to
+	// the side by the frame's own offset. the frame is pushed right for that offset to show, and
+	// narrowed so the box still ends inside the viewport: a box running off it has its list shifted
+	// back on screen, which is zag keeping it readable rather than misplacing it.
+	it('lines the open list up with the box’s left edge and width under a transformed host', async () => {
+		const { root, box, frame } = await clipped('0px');
+		frame.style.marginInlineStart = '48px';
+		frame.style.inlineSize = '340px';
+		frame.scrollTop = box.offsetTop;
+		box.focus();
+		await userEvent.keyboard('{ArrowDown}');
+		const list = (await placedList(root)).getBoundingClientRect();
+		const at = box.getBoundingClientRect();
+
+		expect(at.left).toBeGreaterThan(48);
+		expect(at.right).toBeLessThan(window.innerWidth);
+		expect(list.left).toBeCloseTo(at.left, 0);
+		expect(list.width).toBeCloseTo(at.width, 0);
+	});
+
+	// zag writes `--reference-width` and `--available-width` onto a list's positioner only once it has
+	// measured the box, and the list is on screen a frame before that. a host's own property of either
+	// name, inherited through the shadow root, would size every frame the list stands unmeasured in.
+	// each is planted past what any viewport is — wider than a screen, narrower than a word — so the
+	// case reads the same whatever viewport this pool is given.
+	const WIDE = '100000px';
+	const NARROW = '1px';
+	const opening = {
+		'the open list of causes': async () => {
+			const host = await mount(CHOICE);
+			const root = shadow(host);
+			const box = root.querySelector<HTMLElement>('#program');
+			if (box === null) throw new Error('no program box');
+			const press = () => {
+				box.focus();
+				box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+			};
+			return { page: host, root, box, press };
+		},
+		'the open coin list': async () => {
+			const picker = createCoinPicker(document);
+			onTestFinished(() => picker.stop());
+			const page = document.createElement('div');
+			page.appendChild(picker.host);
+			document.body.appendChild(page);
+			planted.push(page);
+			picker.update(
+				{
+					value: '',
+					options: [
+						{ value: 'btc', label: 'BTC', name: 'Bitcoin', network: 'Bitcoin', refused: false },
+						{ value: 'sol', label: 'SOL', name: 'Solana', network: 'Solana', refused: false }
+					],
+					onChange: () => {}
+				},
+				''
+			);
+			// a task first, as `mount` waits one: the case before leaves its element with a list open,
+			// and an element tears down a task after it leaves (`#leaving` in ./element.ts). pressed
+			// before then, this list does not open.
+			await settle();
+			const root = shadow(picker.host);
+			const box = root.querySelector<HTMLElement>('.picker');
+			if (box === null) throw new Error('no coin box');
+			const input = box.querySelector('input');
+			if (input === null) throw new Error('no coin search');
+			const press = () => {
+				input.focus();
+				input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+			};
+			return { page, root, box, press };
+		}
+	};
+
+	for (const [name, open] of Object.entries(opening)) {
+		it(`sizes ${name} by its box and never by a host’s own zag widths`, async () => {
+			const { page, root, box, press } = await open();
+			page.style.setProperty('--reference-width', WIDE);
+			page.style.setProperty('--available-width', NARROW);
+			const list = root.querySelector<HTMLElement>('[part~="select-list"]');
+			const positioner = list?.parentElement;
+			if (list === null || positioner === null || positioner === undefined)
+				throw new Error('no list');
+			const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+			const drawn: { width: number; min: string; max: string }[] = [];
+
+			press();
+			const unmeasured = () => positioner.style.getPropertyValue('--reference-width') === '';
+			for (let frames = 0; frames < 30 && unmeasured(); frames += 1) {
+				if (positioner.matches(':popover-open')) {
+					const style = getComputedStyle(list);
+					drawn.push({
+						width: list.getBoundingClientRect().width,
+						min: style.minInlineSize,
+						max: style.maxInlineSize
+					});
+				}
+				await frame();
+			}
+			await placedList(root);
+
+			expect(drawn.length).toBeGreaterThan(0);
+			for (const { width, min, max } of drawn) {
+				expect(min).not.toBe(WIDE);
+				expect(max).not.toBe(NARROW);
+				expect(width).toBeLessThanOrEqual(window.innerWidth);
+			}
+			expect(list.getBoundingClientRect().width).toBeCloseTo(box.getBoundingClientRect().width, 0);
+		});
+	}
+
 	// a move is a disconnect and a connect, and the removal hides an open popover under the machine.
 	// the box must not go on saying its list is open when no list is on screen.
 	it('closes the list a move took off the screen', async () => {
@@ -533,6 +650,52 @@ describe('the closed choices on the amount step', () => {
 
 		await vi.waitFor(() => expect(box.getAttribute('aria-expanded')).toBe('false'));
 		expect(root.querySelector('#program-positioner')?.matches(':popover-open')).toBe(false);
+	});
+
+	// the pair's removal blurs the caret onto the host's page along with hiding the list; the close
+	// `reattached` asks for is what hands it back to the box, after the move rather than with it.
+	it('hands the caret back to the box once a move has closed its list', async () => {
+		const host = await mount(CHOICE);
+		const root = shadow(host);
+		const box = root.querySelector<HTMLElement>('#program');
+		if (box === null) throw new Error('no program box');
+		box.focus();
+		await userEvent.keyboard('{ArrowDown}');
+		await vi.waitFor(() => expect(box.getAttribute('aria-expanded')).toBe('true'));
+
+		document.body.appendChild(host);
+
+		await vi.waitFor(() => expect(root.activeElement).toBe(box));
+		expect(document.activeElement).toBe(host);
+	});
+
+	// `moveBefore` keeps the popover in the top layer and the caret where it stood, so the card has
+	// nothing to close and nothing to hand back. this holds with `connectedMoveCallback` declared or
+	// not — the pair it stands in for finds the list still showing too — so it is the move's outcome
+	// asserted here, not which callback carried it.
+	it('leaves an open list and its caret alone through a move that never disconnects it', async () => {
+		const host = await mount(CHOICE);
+		const root = shadow(host);
+		const box = root.querySelector<HTMLElement>('#program');
+		if (box === null) throw new Error('no program box');
+		const after = document.createElement('div');
+		document.body.appendChild(after);
+		planted.push(after);
+		box.focus();
+		await userEvent.keyboard('{ArrowDown}');
+		await vi.waitFor(() => expect(box.getAttribute('aria-expanded')).toBe('true'));
+		const caret = root.activeElement;
+
+		document.body.moveBefore(host, null);
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		await settle();
+
+		expect(host.nextElementSibling).toBeNull();
+		expect(box.getAttribute('aria-expanded')).toBe('true');
+		expect(root.querySelector('#program-positioner')?.matches(':popover-open')).toBe(true);
+		expect(root.activeElement).toBe(caret);
+		await userEvent.keyboard('{Escape}');
+		await vi.waitFor(() => expect(root.activeElement).toBe(box));
 	});
 });
 
@@ -725,7 +888,7 @@ describe('the caret when one takeover replaces another', () => {
 
 		await userEvent.click(press);
 
-		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(heading(root).textContent).toBe('Confirming your gift…');
 		expect(press.hidden).toBe(true);
 		expect(focused).toEqual([press, heading(root)]);
 		expect(root.activeElement).toBe(heading(root));
@@ -749,9 +912,89 @@ describe('the caret when one takeover replaces another', () => {
 			}
 		});
 
-		expect(heading(root).textContent).toBe('Finishing your gift');
+		expect(heading(root).textContent).toBe('Confirming your gift…');
 		expect(focused).toEqual([press, heading(root)]);
 		expect(root.activeElement).toBe(heading(root));
 		expect(document.activeElement).toBe(outer);
+	});
+});
+
+// arrow keys check a radio as they move onto it, so the other tile is chosen by a keyboard donor
+// passing through the group as much as by one deciding on it. the box opens either way, but only a
+// pointer press on the tile is a donor reaching for the box: a caret pulled out of the group by an
+// arrow is a change of context on input (https://www.w3.org/WAI/WCAG22/Understanding/on-input).
+describe('the other tile by keyboard and by pointer', () => {
+	function tiles(root: ShadowRoot): HTMLInputElement[] {
+		return [...root.querySelectorAll<HTMLInputElement>('[part~="amount-option"] input')];
+	}
+
+	function entry(root: ShadowRoot): HTMLInputElement {
+		const node = root.querySelector<HTMLInputElement>('#amount-entry');
+		if (node === null) throw new Error('no free entry');
+		return node;
+	}
+
+	/** Continue pressed: a withdrawn amount keeps the donor on the step with the refusal shown. */
+	function refusesTheAmount(root: ShadowRoot): void {
+		root
+			.querySelector<HTMLElement>('.step:not([hidden]) [part~="action"]:not([part~="submit"])')
+			?.click();
+		expect(root.querySelector<HTMLElement>('#amount-problem')?.hidden).toBe(false);
+	}
+
+	it('leaves the caret on the other tile when an arrow moves onto it from the last preset', async () => {
+		const root = shadow(await mount());
+		const [, last, other] = tiles(root);
+		await userEvent.click(last as HTMLInputElement);
+		await userEvent.keyboard('{ArrowRight}');
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(other);
+		expect(root.querySelector<HTMLElement>('[part~="amount-input"]')?.hidden).toBe(false);
+		expect(entry(root).value).toBe('');
+		refusesTheAmount(root);
+	});
+
+	it('leaves the caret on the other tile when an arrow wraps onto it from the first preset', async () => {
+		const root = shadow(await mount());
+		const [first, , other] = tiles(root);
+		await userEvent.click(first as HTMLInputElement);
+		await userEvent.keyboard('{ArrowLeft}');
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(other);
+		expect(root.querySelector<HTMLElement>('[part~="amount-input"]')?.hidden).toBe(false);
+		expect(entry(root).value).toBe('');
+		refusesTheAmount(root);
+	});
+
+	it('puts the caret in the free entry on a pointer press on the other tile', async () => {
+		const root = shadow(await mount());
+		const [, , other] = tiles(root);
+		await userEvent.click(other as HTMLInputElement);
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(entry(root));
+		expect(entry(root).value).toBe('');
+		refusesTheAmount(root);
+	});
+
+	// a press on the tile while it is already chosen chooses nothing, so it fires no `change` to
+	// spend the pointer on — and the arrow that later comes back onto the tile is still a keyboard.
+	it('leaves the caret on the other tile when arrowed back onto after a press that chose nothing', async () => {
+		const root = shadow(await mount());
+		const [, , other] = tiles(root);
+		await userEvent.click(other as HTMLInputElement);
+		await userEvent.click(other as HTMLInputElement);
+		(other as HTMLInputElement).focus();
+		await userEvent.keyboard('{ArrowLeft}');
+		await userEvent.keyboard('{ArrowRight}');
+		await settle();
+
+		expect(other?.checked).toBe(true);
+		expect(root.activeElement).toBe(other);
 	});
 });

@@ -128,8 +128,12 @@ export type ParsedForm<T> =
 
 type Reject = (reasons?: RejectionReasons) => FormRejection;
 
-/** what a body says when it did not carry the whole form. */
-const INCOMPLETE = 'Reload the page and try again. Part of the form did not submit.';
+/**
+ * what a body says when it did not carry the whole form. it leads with the reload, the one thing an
+ * operator can do, and names the boxes for a caller posting a body by hand, who has to add them.
+ */
+const incomplete = (absent: readonly string[]) =>
+	`Reload the page and try again. Part of the form did not submit; missing: ${absent.map((key) => `\`${key}\``).join(', ')}.`;
 
 /**
  * a name a body may carry: one box, or one row of a repeating editor.
@@ -319,8 +323,8 @@ export function parseForm<S extends z.ZodObject>(
 
 	const absent = form.mustArrive.filter((key) => !body.has(key));
 
-	// the operator is told to reload, which is the whole of what they can do; which boxes were
-	// missing is the developer's half and has nowhere else to go.
+	// the missing boxes go to the deployment's logs too, for the operator who reads those rather
+	// than the reply.
 	if (absent.length > 0) {
 		console.warn(`\`${form.id}\`: a submitted body carried none of these boxes`, absent);
 	}
@@ -329,7 +333,10 @@ export function parseForm<S extends z.ZodObject>(
 	const reject: Reject = (reasons) => ({
 		id: form.id,
 		result: submission.reply({
-			formErrors: [...(absent.length > 0 ? [INCOMPLETE] : []), ...(reasons?.formErrors ?? [])],
+			formErrors: [
+				...(absent.length > 0 ? [incomplete(absent)] : []),
+				...(reasons?.formErrors ?? [])
+			],
 			...(reasons?.fieldErrors ? { fieldErrors: reasons.fieldErrors } : {}),
 			hideFields: [...(form.withheld ?? [])]
 		})

@@ -18,6 +18,8 @@ import {
 } from '@better-giving/operator/stripe/webhook-endpoint';
 import type {
 	AccountChargeability,
+	DeliveredAttempt,
+	FailedCollection,
 	RailCapabilityState,
 	Intent,
 	IntentRequest,
@@ -83,6 +85,20 @@ import type {
 
 /** the one dispute delivery whose own time is the close's: a `Dispute` records no close time. */
 const DISPUTE_CLOSED_EVENT = 'charge.dispute.closed' satisfies (typeof DISPUTE_EVENT_TYPES)[number];
+
+/**
+ * the version a delivery's body is rendered in, as an operator reads it: the receiving endpoint's
+ * `api_version` (`WebhookEndpoint` in the installed SDK) — `API_VERSION` on the endpoint
+ * `createEndpoint` registers, the account's default on any other, a `stripe listen` session among
+ * them. every read below re-fetches at `API_VERSION` whatever the body's version was.
+ */
+const RENDERED_VERSION =
+	`A delivery is rendered in its endpoint's API version: ${API_VERSION} on the endpoint this app ` +
+	"registers, the account's default on any other, a `stripe listen` session included.";
+
+/** the one collection delivery that reports an attempt failing: one delivery per failed attempt. */
+const COLLECTION_FAILED_EVENT =
+	'invoice.payment_failed' satisfies (typeof RECURRING_COLLECTION_EVENT_TYPES)[number];
 
 /** what the adapter needs to talk to an account. */
 export type StripeCredentials = {
@@ -638,7 +654,7 @@ function unusableMoney(request: {
  * why a repeating gift may not be committed to, or nothing.
  *
  * the same three money checks an intent gets, plus the two facts a commitment has: the cadence it
- * collects at and the rail it collects on. it refuses before the network for the reason `unusable`
+ * collects at and the rail it collects on. it refuses before the network for the reason `unusableMoney`
  * above does, and one reason more: this arm makes several writes, so a malformed request caught at
  * the second of them leaves the account holding the first — a donor record with no commitment
  * behind it.
@@ -671,9 +687,9 @@ function unusableGift(request: RecurringGiftRequest): PaymentFailure | null {
 /**
  * why an endpoint may not be registered for this URL, or nothing.
  *
- * checked here rather than left to the API for the reason `unusable` above is: the message names the
- * value and where it came from, instead of quoting a processor's error at an operator who is looking
- * at a button.
+ * checked here rather than left to the API for the reason `unusableMoney` above is: the message
+ * names the value and where it came from, instead of quoting a processor's error at an operator who
+ * is looking at a button.
  *
  * `https` is the whole of the rule, and it is the processor's rather than this app's — a live
  * endpoint must be a publicly reachable HTTPS URL
@@ -986,7 +1002,70 @@ function collectedOn(collected: Stripe.Invoice): string | null {
 }
 
 /**
- * why a price found under this app's own lookup key may not be charged against, or nothing.
+ * the attempt an `invoice.payment_failed` body states, or null where the body does not state it —
+ * any of the four fields missing or of the wrong type.
+ *
+ * read off the verified body rather than the invoice fetched afterwards, which by a late delivery
+ * holds the next attempt's count and schedule. the body is in its endpoint's version
+ * (`RENDERED_VERSION`), which need not be `API_VERSION`, so each field is checked rather than
+ * trusted and a body missing one is refused (`verifyEvent`). the figure is `amount_remaining`: an
+ * attempt charges what is still owed, and on an invoice paid in part `amount_due` is still the
+ * whole.
+ */
+function deliveredAttemptOf(object: unknown): DeliveredAttempt | null {
+	if (typeof object !== 'object' || object === null) return null;
+	const body = object as Partial<Record<keyof Stripe.Invoice, unknown>>;
+	const { attempt_count, next_payment_attempt, amount_remaining, currency } = body;
+	if (
+		typeof attempt_count !== 'number' ||
+		(next_payment_attempt !== null && typeof next_payment_attempt !== 'number') ||
+		typeof amount_remaining !== 'number' ||
+		typeof currency !== 'string'
+	) {
+		return null;
+	}
+	return {
+		attemptCount: attempt_count,
+		nextRetryAt: next_payment_attempt === null ? null : atMillis(next_payment_attempt),
+		amountMinor: amount_remaining,
+		currency: currency.toUpperCase()
+	};
+}
+
+/**
+ * the failed attempt an `invoice.payment_failed` reports, or null where it reports none a
+ * destination is owed.
+ *
+ * the invoice is the fresh read, and it decides only whether the attempt is reported. two cases
+ * report nothing:
+ *
+ *   - the opening invoice (`subscription_create`). that is the donor's own first charge, failing on
+ *     the page, under a commitment no charge has opened yet — the page tells them, and no repeating
+ *     gift exists to report against.
+ *   - an invoice paid since. the retry that paid overtook this delivery, and a failure reported
+ *     after the charge that cured it tells a destination the donor's card is failing now.
+ *
+ * a void or uncollectible invoice is still reported: nothing cured the attempt, it failed.
+ *
+ * everything reported is the delivery's. Stripe sends one `invoice.payment_failed` per failed
+ * attempt, keeps its id across a redelivery, and stamps it when the attempt failed, and its body is
+ * the invoice as that attempt left it (`deliveredAttemptOf`). the fresh invoice can say none of it:
+ * a delivery held back past the next retry would read that retry's count and schedule.
+ */
+function failedAttemptOf(
+	collected: Stripe.Invoice,
+	delivered: RecurringEvent,
+	attempt: DeliveredAttempt
+): FailedCollection | null {
+	if (collected.billing_reason === 'subscription_create' || collected.status === 'paid') {
+		return null;
+	}
+	return { ...attempt, attemptKey: delivered.id, failedAt: delivered.occurredAt };
+}
+
+/**
+ * why an active price found under this app's own lookup key may not be charged against, or
+ * nothing. an archived one is never asked about: it is replaced rather than charged against.
  *
  * a lookup key belongs to one price at a time and can be moved between them, so what comes back
  * under a key is the processor's answer rather than this app's own object. every field the key
@@ -1005,7 +1084,6 @@ function mismatchedPrice(
 ): PaymentFailure | null {
 	const product = typeof found.product === 'string' ? found.product : found.product.id;
 	const agrees =
-		found.active &&
 		found.unit_amount === wanted.amountMinor &&
 		found.currency === wanted.currency &&
 		found.recurring?.interval === wanted.interval &&
@@ -1030,34 +1108,6 @@ function mismatchedPrice(
 	};
 }
 
-/**
- * what the processor took, in the currency the gift was charged in.
- *
- * the balance transaction is denominated in the account's settlement currency, which need not be
- * the currency the donor was charged in, and an entry group holds exactly one currency
- * (../ledger/posting.ts) — so a fee that settled in another one arrives in the gift's currency or
- * not at all. it is converted rather than dropped because that is the case most likely to have been
- * mispriced: a foreign card is exactly where the processor's real fee exceeds the rule ./fees.ts
- * quotes from, and a fee that never posts leaves `1020 Undeposited Funds` overstated by it with no
- * error anywhere (../donations/entries.ts).
- *
- * the rate runs from the charged currency to the settlement currency: the `amount` in the charged
- * currency multiplied by `exchange_rate` is the `amount` in the settlement currency
- * (https://docs.stripe.com/api/balance_transactions/object). so a fee stated in the settlement
- * currency is divided by it and never multiplied. worked: a gift charged 10.00 EUR settles to 12.34
- * USD, `exchange_rate` is 1.234, and a fee of 66 USD cents is 66 / 1.234 = 53 EUR cents. multiplied
- * instead it reads 81, which is a plausible figure no total downstream disagrees with — which is
- * why ./stripe.spec.ts asserts the arithmetic and not merely that something came back.
- *
- * no usable rate is no figure. `exchange_rate` is null on a transaction that converted nothing, so
- * a cross-currency fee without one is a conversion this app cannot do — null, which
- * ../donations/settle.ts already answers by telling an operator the gift posted with no processor
- * fee. never the unconverted figure, which would balance arithmetically and be wrong by the rate,
- * and never a zero, which claims the processor took nothing.
- *
- * rounded to whole minor units, because that is what the ledger takes. the residual is at most half
- * a minor unit against the processor's own statement.
- */
 /**
  * one transaction as the port carries it, off the three objects one retrieve brings back.
  *
@@ -1091,6 +1141,34 @@ function settlementOf(
 	};
 }
 
+/**
+ * what the processor took, in the currency the gift was charged in.
+ *
+ * the balance transaction is denominated in the account's settlement currency, which need not be
+ * the currency the donor was charged in, and an entry group holds exactly one currency
+ * (../ledger/posting.ts) — so a fee that settled in another one arrives in the gift's currency or
+ * not at all. it is converted rather than dropped because that is the case most likely to have been
+ * mispriced: a foreign card is exactly where the processor's real fee exceeds the rule ./fees.ts
+ * quotes from, and a fee that never posts leaves `1020 Undeposited Funds` overstated by it with no
+ * error anywhere (../donations/entries.ts).
+ *
+ * the rate runs from the charged currency to the settlement currency: the `amount` in the charged
+ * currency multiplied by `exchange_rate` is the `amount` in the settlement currency
+ * (https://docs.stripe.com/api/balance_transactions/object). so a fee stated in the settlement
+ * currency is divided by it and never multiplied. worked: a gift charged 10.00 EUR settles to 12.34
+ * USD, `exchange_rate` is 1.234, and a fee of 66 USD cents is 66 / 1.234 = 53 EUR cents. multiplied
+ * instead it reads 81, which is a plausible figure no total downstream disagrees with — which is
+ * why ./stripe.spec.ts asserts the arithmetic and not merely that something came back.
+ *
+ * no usable rate is no figure. `exchange_rate` is null on a transaction that converted nothing, so
+ * a cross-currency fee without one is a conversion this app cannot do — null, which
+ * ../donations/settle.ts already answers by telling an operator the gift posted with no processor
+ * fee. never the unconverted figure, which would balance arithmetically and be wrong by the rate,
+ * and never a zero, which claims the processor took nothing.
+ *
+ * rounded to whole minor units, because that is what the ledger takes. the residual is at most half
+ * a minor unit against the processor's own statement.
+ */
 function feeOf(balance: Stripe.BalanceTransaction | null, currency: string): number | null {
 	if (!balance) return null;
 	if (balance.currency.toUpperCase() === currency) return balance.fee;
@@ -1312,8 +1390,8 @@ export function createStripeProvider(
 				// subscribe only to what the integration handles — every other delivery is a request
 				// this deployment answers and discards.
 				enabled_events: [...SUBSCRIBED_EVENT_TYPES],
-				// pinned, so deliveries to this endpoint are serialised in the version this app reads
-				// them against rather than in whatever version the account happens to be set to.
+				// pinned, so deliveries to this endpoint are rendered in the version this app reads
+				// them against (`RENDERED_VERSION`).
 				api_version: API_VERSION,
 				description: ENDPOINT_DESCRIPTION
 			});
@@ -1470,16 +1548,26 @@ export function createStripeProvider(
 	 * the parameters are the same for every donor giving this amount at this cadence, so two of them
 	 * arriving together resolve to one price instead of racing to make two — a caller's own key would
 	 * make each of them a first attempt.
+	 *
+	 * a price archived from the dashboard keeps its lookup key, and it is replaced rather than
+	 * charged against or refused. the lookup asks for archived prices too, because the one it finds
+	 * names the create that replaces it: Stripe replays a key's first answer for 24 hours
+	 * (https://docs.stripe.com/api/idempotent_requests), so a replacement keyed like the create that
+	 * made the archived price would be handed that price's id back. donors arriving together after
+	 * an archive find the same archived id, so they still resolve to one price.
 	 */
 	async function findOrCreatePrice(request: RecurringGiftRequest): Promise<PaymentResult<string>> {
 		const lookupKey = priceLookupKey(request.interval, request.currency, request.amountMinor);
 		const currency = request.currency.toLowerCase();
 		const interval = RECURRING_INTERVALS[request.interval];
 
+		let archived: Stripe.Price | undefined;
 		try {
+			// no `active` filter: an archived price under the key comes back too, and its id is what
+			// keys the create below apart from the create that made it.
 			const page = await stripe.prices.list({ lookup_keys: [lookupKey], limit: 1 });
 			const found = page.data[0];
-			if (found) {
+			if (found?.active) {
 				const mismatch = mismatchedPrice(found, {
 					lookupKey,
 					currency,
@@ -1488,6 +1576,7 @@ export function createStripeProvider(
 				});
 				return mismatch ?? { ok: true, value: found.id };
 			}
+			archived = found;
 		} catch (error) {
 			return classify(error);
 		}
@@ -1506,14 +1595,18 @@ export function createStripeProvider(
 					unit_amount: request.amountMinor,
 					recurring: { interval, interval_count: 1 },
 					lookup_key: lookupKey,
-					// the key belongs to one price at a time, and a price this app made can be archived
-					// from the dashboard — after which the lookup no longer finds it and the create is
-					// refused for a key that is taken. transferring it makes that state self-repairing:
-					// the new price answers to the key and every commitment already charged against the
-					// old one is untouched, because a price's amount cannot change.
+					// the key belongs to one price at a time, and an archived price still holds it, so
+					// without the transfer the create is refused for a key that is taken. transferring it
+					// makes that state self-repairing: the new price answers to the key and every
+					// commitment already charged against the old one is untouched, because a price's
+					// amount cannot change.
 					transfer_lookup_key: true
 				},
-				{ idempotencyKey: `${DERIVED_KEY}:price:${lookupKey}` }
+				{
+					idempotencyKey: archived
+						? `${DERIVED_KEY}:price:${lookupKey}:replacing:${archived.id}`
+						: `${DERIVED_KEY}:price:${lookupKey}`
+				}
 			);
 			return { ok: true, value: created.id };
 		} catch (error) {
@@ -1538,16 +1631,32 @@ export function createStripeProvider(
 	 * on it at all, every collection reports no transaction, and that reads as a gift settled outside
 	 * Stripe rather than as a request missing a parameter.
 	 */
-	async function readCollection(invoiceId: string): Promise<PaymentResult<RecurringGiftNotice>> {
+	async function readCollection(
+		event: RecurringEvent
+	): Promise<PaymentResult<RecurringGiftNotice>> {
+		const fails = event.type === COLLECTION_FAILED_EVENT;
+		if (fails && !event.delivered) {
+			return {
+				ok: false,
+				reason: 'internal_error',
+				detail:
+					`The \`${event.type}\` delivery about invoice ${redactPublicId(event.providerNoticeId)} ` +
+					'reached this read without the attempt its body stated, so which attempt failed could ' +
+					'not be told and nothing was recorded. `verifyEvent` sets it on every such delivery; ' +
+					'one built any other way is a bug in this app rather than anything about the gift.'
+			};
+		}
+		const attempt = fails ? event.delivered : undefined;
+
 		try {
-			const collected = await stripe.invoices.retrieve(invoiceId, {
+			const collected = await stripe.invoices.retrieve(event.providerNoticeId, {
 				expand: ['parent.subscription_details.subscription', 'payments']
 			});
 
 			// where this API version keeps it. an invoice's own `subscription` field is not read
-			// anywhere here, and a delivery replayed from an account on an older version is answered
-			// by this read rather than by the shape that arrived — which is the whole reason nothing
-			// is taken off the event body.
+			// anywhere here, and a delivery rendered in another version (`RENDERED_VERSION`) is
+			// answered by this read rather than by the shape that arrived — which is why nothing but
+			// a failed attempt's own figures is taken off the event body (`deliveredAttemptOf`).
 			const commitment = expansionOf<Stripe.Subscription>(
 				collected.parent?.subscription_details?.subscription
 			);
@@ -1579,7 +1688,11 @@ export function createStripeProvider(
 				};
 			}
 
-			return { ok: true, value: noticeOf(commitment.value, 'collection', collectedOn(collected)) };
+			const notice = noticeOf(commitment.value, 'collection', collectedOn(collected));
+			if (!attempt) return { ok: true, value: notice };
+
+			const failed = failedAttemptOf(collected, event, attempt);
+			return { ok: true, value: failed ? { ...notice, failedAttempt: failed } : notice };
 		} catch (error) {
 			return classify(error);
 		}
@@ -2086,8 +2199,8 @@ export function createStripeProvider(
 					: null;
 
 			if (id === null) {
-				// verified, subscribed, and unreadable. an event is serialised in the API version the
-				// account held when it happened, so a replayed old delivery can carry a shape this
+				// verified, subscribed, and unreadable. a delivery to an endpoint this app did not
+				// register is in the account's version (`RENDERED_VERSION`), which can be a shape this
 				// app does not know. reported as `ignored` it would be a settlement dropped in
 				// silence under a 200, which is the failure that loses a gift.
 				return {
@@ -2095,27 +2208,56 @@ export function createStripeProvider(
 					reason: 'provider_error',
 					detail:
 						`A verified \`${redactPublicId(type)}\` delivery carried no readable object id, so ` +
-						'there is nothing to reconcile it against. Events are serialised in the API ' +
-						`version the account held when they happened; this app reads them against ${API_VERSION}.`
+						`there is nothing to reconcile it against. ${RENDERED_VERSION}`
 				};
 			}
 
-			// the id is all that is read off any kind of delivery, and the kind is decided by the
-			// type rather than by what the id looks like. what that id names — a transaction, a
-			// commitment, one collection, one refund, one dispute — is the read arm's business, which
-			// is where a shape this version does not recognise is a failure rather than a silent
-			// misreading.
+			// the id is all that is read off any kind of delivery but a failed collection, whose
+			// attempt is read below, and the kind is decided by the type rather than by what the id
+			// looks like. what that id names — a transaction, a commitment, one collection, one
+			// refund, one dispute — is the read arm's business, which is where a shape this version
+			// does not recognise is a failure rather than a silent misreading.
 			if (settles) {
 				return {
 					ok: true,
 					value: { id: event.id, kind: 'settlement', type, providerTxnId: id, occurredAt }
 				};
 			}
+			if (!repeats) {
+				return {
+					ok: true,
+					value: { id: event.id, kind: 'reversal', type, providerNoticeId: id, occurredAt }
+				};
+			}
+			if (type !== COLLECTION_FAILED_EVENT) {
+				return {
+					ok: true,
+					value: { id: event.id, kind: 'recurring', type, providerNoticeId: id, occurredAt }
+				};
+			}
+
+			// the one delivery whose body is read past its id, and `deliveredAttemptOf` says why.
+			const delivered = deliveredAttemptOf(object);
+			if (delivered === null) {
+				return {
+					ok: false,
+					reason: 'provider_error',
+					detail:
+						`A verified \`${type}\` delivery about ${redactPublicId(id)} did not state the ` +
+						'attempt it reports (its count, next retry, amount or currency), so which attempt ' +
+						`failed could not be told and nothing was recorded. ${RENDERED_VERSION}`
+				};
+			}
 			return {
 				ok: true,
-				value: repeats
-					? { id: event.id, kind: 'recurring', type, providerNoticeId: id, occurredAt }
-					: { id: event.id, kind: 'reversal', type, providerNoticeId: id, occurredAt }
+				value: {
+					id: event.id,
+					kind: 'recurring',
+					type,
+					providerNoticeId: id,
+					occurredAt,
+					delivered
+				}
 			};
 		},
 
@@ -2185,7 +2327,7 @@ export function createStripeProvider(
 		 */
 		async readRecurringGift(event: RecurringEvent): Promise<PaymentResult<RecurringGiftNotice>> {
 			return (RECURRING_COLLECTION_EVENT_TYPES as readonly string[]).includes(event.type)
-				? readCollection(event.providerNoticeId)
+				? readCollection(event)
 				: readCommitment(event.providerNoticeId);
 		},
 

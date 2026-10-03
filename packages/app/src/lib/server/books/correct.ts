@@ -15,7 +15,7 @@ import { correctionWrites } from './writes';
 // is here is everything a caller would otherwise have had to know; what is left to the route is
 // parsing a body and answering with a page.
 //
-// **the amount is one figure and the entry is balanced by construction.** the same value is written
+// the amount is one figure and the entry is balanced by construction. the same value is written
 // as a debit on one side and a credit on the other, so there is no arithmetic at a call site for
 // anyone to get wrong and no arm on which `post()`'s sums-to-zero rejection is reachable. a
 // correction that needs three lines is a decision to widen this module out loud.

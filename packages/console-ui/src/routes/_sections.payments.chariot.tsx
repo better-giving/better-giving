@@ -6,11 +6,12 @@ import type { VarsWritten } from '../api/types';
 import type { ChariotPress } from '../lib/chariot-section';
 import { ChariotSection } from '../lib/chariot-section';
 import { CHARIOT_SETUP_INTENT, chariotPosted } from '../lib/chariot-setup';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { forgetReadings, readProcessorPage, runDrawn } from '../lib/processor-cache';
 import { usePress } from '../lib/use-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE as CONSOLE_TITLE } from './_index';
+import { ConsoleFailure, TITLE as CONSOLE_TITLE } from './_index';
 import type { Route } from './+types/_sections.payments.chariot';
 
 // /payments/chariot — Chariot's page, the third under the rail's donation processor heading. what it
@@ -35,6 +36,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * account, the worker and the address it is spent on read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
@@ -103,6 +105,16 @@ export default function ChariotPage({ loaderData, actionData, matches }: Route.C
 				busy={busy}
 				pending={press.intent}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

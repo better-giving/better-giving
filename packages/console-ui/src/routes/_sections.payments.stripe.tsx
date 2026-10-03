@@ -12,6 +12,7 @@ import {
 	startStripeSetup
 } from '../api/client';
 import type { RecurringSetup, VarsWritten, WalletsLevel, WebhookRepaired } from '../api/types';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { heldValues } from '../lib/held-values';
 import { repairLanded, WEBHOOK_REPAIR_INTENT } from '../lib/notices-standing';
@@ -24,7 +25,7 @@ import { unreadHeld } from '../lib/unread-held';
 import { usePress } from '../lib/use-press';
 import { WALLETS_INTENT } from '../lib/wallets-press';
 import { FREE_INTENT } from '../lib/withheld-values';
-import { TITLE as CONSOLE_TITLE } from './_index';
+import { ConsoleFailure, TITLE as CONSOLE_TITLE } from './_index';
 import type { Route } from './+types/_sections.payments.stripe';
 
 // /payments/stripe — Stripe's page, one of the two under the rail's donation processor heading.
@@ -51,6 +52,7 @@ export function clientLoader(args: Route.ClientLoaderArgs) {
  * worker and the address a press is spent on are read inside the binary and never posted.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	const intent = posted.get('intent');
@@ -227,6 +229,16 @@ export default function StripePage({ loaderData, actionData, matches }: Route.Co
 				busy={busy}
 				pending={intent}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

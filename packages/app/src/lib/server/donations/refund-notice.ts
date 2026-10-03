@@ -1,12 +1,12 @@
 import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
+import { findPaymentDonor } from '../contacts/queries';
 import { donation, payment } from '../db/schema';
 import { renderRefundNotice, type RefundNoticeInput } from '../email/refund-notice';
 import { readOrgProfile } from '../org/queries';
-import { refundStands } from '../zapier/events';
+import { refundStands } from './queries';
 import { alert, type MailDeps } from './delivery';
-import { findPaymentDonor } from './queries';
 
 // the donor's notice of a refund, sent once the batch that recorded the refund commits —
 // ./crypto-pending.ts's shape, for the same reasons.
@@ -121,7 +121,7 @@ export async function sendRefundNotice(deps: MailDeps, target: RefundNoticeTarge
  *   - the day on the gift's receipt: `donation.received_at`, written at authorization and never
  *     moved by a settlement.
  *   - what is left of the gift: what it collected, less the refunds of it that stand
- *     (`refundStands` in ../zapier/events.ts), so a dispute still open, which may yet be won, takes
+ *     (`refundStands` in ./queries.ts), so a dispute still open, which may yet be won, takes
  *     nothing off.
  *   - what of that is deductible: what is left, less the part that was never deductible.
  *

@@ -7,8 +7,9 @@ import { zapierStatements } from './events';
 import { readZapierDeliveries } from './report';
 import { subscribe } from './subscriptions';
 
-// the queue as the console reads it, against a real D1. rows are queued by `zapierStatements`, the
-// statement the money path splices in, and put into the state a case needs by a plain update.
+// the queue as the dashboard's Zapier page reads it, against a real D1. rows are queued by
+// `zapierStatements`, the statement the money path splices in, and put into the state a case needs
+// by a plain update.
 
 const KEY_HASH = 'a'.repeat(64);
 const DAY = 24 * 60 * 60_000;
@@ -23,9 +24,10 @@ beforeAll(() => {
 beforeEach(async () => {
 	await env.DB.prepare('delete from zapier_delivery').run();
 	await env.DB.prepare('delete from zapier_subscription').run();
-	await env.DB.prepare('delete from zapier_key').run();
+	await env.DB.prepare('delete from api_key').run();
 	await env.DB.prepare(
-		`insert into zapier_key (id, key_hash, created_at, updated_at) values ('zapier', ?, 0, 0)`
+		`insert into api_key (id, name, kind, key_hash, prefix, last_four, created_at)
+		 values ('0192f0c4-7d2a-7000-8000-000000000000', 'Zapier', 'zapier', ?, 'bgz_AAAA', 'AAAA', 0)`
 	)
 		.bind(KEY_HASH)
 		.run();

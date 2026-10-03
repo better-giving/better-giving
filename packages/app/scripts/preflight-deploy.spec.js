@@ -19,8 +19,13 @@ afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** the three rate limiters a deployment of this app has to be bound to, in wrangler.jsonc's order. */
-const LIMITERS = ['API_RATE_LIMITER', 'QUOTE_RATE_LIMITER', 'SIGN_IN_RATE_LIMITER'];
+/** the rate limiters a deployment of this app has to be bound to, in wrangler.jsonc's order. */
+const LIMITERS = [
+	'API_RATE_LIMITER',
+	'QUOTE_RATE_LIMITER',
+	'SIGN_IN_RATE_LIMITER',
+	'INTEGRATIONS_KEY_RATE_LIMITER'
+];
 
 /**
  * the bindings block one environment declares, cut to the two fields the guard reads.
@@ -29,7 +34,7 @@ const LIMITERS = ['API_RATE_LIMITER', 'QUOTE_RATE_LIMITER', 'SIGN_IN_RATE_LIMITE
  * the database; none of them is this guard's business — what it answers is whether the binding is
  * declared at all, and `src/lib/server/api/rate-limit.config.spec.ts` is what holds the numbers.
  *
- * `limiters` names the three by default so that a case about something else reaches its own check,
+ * `limiters` names them all by default so that a case about something else reaches its own check,
  * and takes a shorter list so that a case about a missing one can drop exactly one.
  *
  * @param {{ db?: boolean, limiters?: string[] }} [declared]
@@ -436,8 +441,8 @@ describe('refusing a deploy whose selected environment is not wired', () => {
 
 	/**
 	 * every limiter, one at a time, because what a missing one costs differs by which one it is and
-	 * none of the three is loud: `/api/v1` goes dark by name without API_RATE_LIMITER, and the
-	 * quote and the sign-in buckets fail open and silently meter nothing
+	 * none of them is loud: `/api/v1` goes dark by name without API_RATE_LIMITER, and the
+	 * quote, sign-in and read-API key buckets fail open and silently meter nothing
 	 * (src/lib/server/api/rate-limit.ts).
 	 */
 	it.each(LIMITERS)('refuses when the selected environment is missing %s', (missing) => {

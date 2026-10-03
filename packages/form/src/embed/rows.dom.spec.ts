@@ -172,3 +172,43 @@ describe('the payment rows drawn beside the provider’s frame', () => {
 		expect(Math.abs(ours - PROVIDER_NAME_OFFSET_PX)).toBeLessThanOrEqual(1);
 	});
 });
+
+// the card is inside a page it does not own, and every landmark it adds is one a reader of that
+// page has to step past: a role written out or an element that carries one implicitly.
+describe('a payment row as a reader meets it', () => {
+	// one of these with a role written on it has that role instead, and the `[role]` query reads it.
+	const LANDMARK_ELEMENTS =
+		':is(header, footer, aside, form, main, nav, section, search):not([role])';
+	const LANDMARKS = [
+		'banner',
+		'complementary',
+		'contentinfo',
+		'form',
+		'main',
+		'navigation',
+		'region',
+		'search'
+	];
+
+	it('adds no landmark to the page, open or closed, and names its panel by its head', () => {
+		const mount = document.createElement('div');
+		const row = createRows(mount).draw('PayPal', 'paypal', document.createElement('div'));
+		const root = mount.firstElementChild?.shadowRoot;
+		const landmarks = () => [
+			...[...(root?.querySelectorAll('[role]') ?? [])]
+				.map((node) => node.getAttribute('role'))
+				.filter((role) => LANDMARKS.includes(role ?? '')),
+			...[...(root?.querySelectorAll(LANDMARK_ELEMENTS) ?? [])].map((node) => node.localName)
+		];
+
+		expect(landmarks()).toEqual([]);
+		row.expand();
+		expect(landmarks()).toEqual([]);
+
+		const panel = root?.getElementById('panel');
+		expect(panel?.getAttribute('role')).toBe('group');
+		expect(root?.getElementById(panel?.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(
+			'PayPal'
+		);
+	});
+});

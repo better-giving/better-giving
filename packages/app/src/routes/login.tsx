@@ -20,12 +20,16 @@ import {
 	createAuth,
 	normaliseEmail,
 	readAuthEnv,
+	readPin,
+	requirePin,
 	resolveAuthSecret,
 	signInDestination,
 	signInMember,
 	STAFF_USER_EMAIL
 } from '$lib/server/auth';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
+import { PIN_UNUSABLE } from '$lib/server/auth/pin';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { PASSWORD_RESET_FLASH, takeFlash } from '$lib/server/flash';
 import { SetupGate } from '$lib/admin/setup-gate';
@@ -130,12 +134,14 @@ const WRONG_CREDENTIAL =
 	'That username or email address and password do not match a member of this organisation.';
 
 /**
- * what every failure but the 401 says.
+ * what a failure the auth layer answered says, every one but the 401. a signing key that cannot be
+ * read, or a database that throws before the auth layer answers, says `SIGNING_KEY_UNREADABLE`
+ * ($lib/server/auth/signing-key.ts) instead.
  *
  * the messages the auth layer produces are about the deployment — among them the 500 for an
- * unconfigured staff credential, whose message states the configured `ADMIN_PASSWORD`'s length.
- * that is written for an agent reading a status body and belongs on the surfaces an operator
- * controls: the console says whether that secret is set and is where it is set again, and the
+ * unconfigured staff credential, whose message says what is wrong with `ADMIN_PASSWORD` and where
+ * it is set. that is written for an agent reading a status body and belongs on the surfaces an
+ * operator controls: the console says whether that var is set and is where it is set again, and the
  * running deployment's logs carry the withheld detail. an anonymous POST to this form must not
  * read it back, so what it gets is the pointer rather than the answer.
  *
@@ -150,18 +156,20 @@ const UNAVAILABLE =
 	'not read: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.';
 
 /**
- * what a deployment whose schema is not there says.
+ * what a member is told when the edge attributed no address to the request, so there is no
+ * sign-in bucket to charge and the attempt is refused before their password is compared.
  *
- * two failures reach it and both are the same fix: no `auth_signing_key` row to sign a cookie
- * with, and a throw out of the staff upsert on a database with no `auth_user` table — the one a
- * fresh fork actually hits.
+ * it is read by a colleague and acted on by whoever runs the deployment, so it names the cause and
+ * the switch that usually produces it — the zone-level managed transform that strips
+ * `CF-Connecting-IP` from every request, described on `apiRateLimitKey` in
+ * $lib/server/api/rate-limit.ts. it says nothing about the account, because nothing about the
+ * account was read.
  */
-const NOT_MIGRATED =
-	'Sign-in is unavailable. If this deployment is new, check that migrations have been ' +
-	'applied to its database: the console (`better-giving start`) applies them to the deployed D1 ' +
-	'when it updates this deployment, and `pnpm wrangler d1 migrations apply DB --local` applies ' +
-	'them to a local one. Then read this deployment’s logs (the Cloudflare dashboard, or ' +
-	'`pnpm run logs` from a checkout).';
+const UNATTRIBUTED =
+	'Sign-in is unavailable. This deployment is not being told your address, so it cannot limit ' +
+	'password guesses and refuses member sign-ins until it is. The usual cause is Cloudflare’s ' +
+	'“Remove visitor IP headers” setting being switched on for this site; whoever runs this ' +
+	'deployment can switch it off in the Cloudflare dashboard.';
 
 export const links = operatorLinks;
 
@@ -173,6 +181,11 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	const db = context.get(database);
 	const authEnv = readAuthEnv(env);
+
+	// a pin that names no address is the gate's 500 here too, because no page under the login
+	// signs anybody in until it is fixed; its sentence names the variable and the fix
+	// ($lib/server/auth/gate.ts).
+	requirePin(authEnv);
 
 	// already signed in: there is nothing to do on this page. it honours the destination for the
 	// same reason the action does — a second tab that signed in first leaves this one holding a
@@ -263,8 +276,9 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 
 	// charged before the body is read and before anything is hashed.
 	//
-	// what it saves is the SHA-256 compare in `secretEquals` and, on a correct guess, the staff-row
-	// upsert. five actions pay on that bucket — this one, ./forgot.tsx, ./join.tsx, ./reset.tsx and
+	// what it saves is the hash every attempt costs — the SHA-256 compare in `secretEquals` for the
+	// deployer, better-auth's scrypt for a member — and, on a correct guess, the session write.
+	// five actions pay on that bucket — this one, ./forgot.tsx, ./join.tsx, ./reset.tsx and
 	// ./_app.admin.members_.password.tsx — and each charges it once, before its own body is read.
 	// they share a key rather than holding one each because a guess at a credential is a guess
 	// whichever form carries it ($lib/server/api/rate-limit.ts); nothing else in a request's path
@@ -282,11 +296,12 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// the parse it exists to save. it carries no values and no field errors, so the banner is the
 	// whole of it.
 	//
-	// a deployment with no binding signs staff in, and a caller the edge attributed no address to
-	// is not counted at all. both are `isRateLimited`'s decisions and are argued in
-	// $lib/server/api/rate-limit.ts; what is local here is that `ADMIN_PASSWORD` is what bounds
-	// this form either way.
-	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, signInRateLimitKey(request))) {
+	// a deployment with no binding is not counted at all, and neither is a caller the edge attributed
+	// no address to — both are `isRateLimited`'s decisions, argued in $lib/server/api/rate-limit.ts.
+	// the second is not the end of it for a member: that caller is refused below, once the box has
+	// said which way in this is.
+	const bucket = signInRateLimitKey(request);
+	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(LOGIN_FORM, signInRateLimitMessage()));
 	}
 	// after the charge, so a post refused for its origin still spends a guess.
@@ -298,13 +313,40 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// is refused before it is hashed. no banner: the sentence belongs under the input.
 	if (!submission.ok) return invalid(400, submission.reject());
 
+	// which of the two ways in this is, and the identifier is the whole of what decides. the
+	// deployer's is a constant, so this is a comparison and not a query — nothing here asks the
+	// database who a caller claims to be before deciding which credential to compare. the constant
+	// is normalised the same way the box was, so a deployment that raised it to a capital would not
+	// quietly send its own deployer down the member path.
+	const asStaff = submission.value.identifier === normaliseEmail(STAFF_USER_EMAIL);
+
+	// a member attempt with no bucket to charge is refused before the database is read or anything
+	// is hashed. members are many, each password chosen by a person, and every guess is an scrypt run
+	// this deployment pays for, so no bucket would mean unbounded guessing at all of them. the deployer
+	// is let through the same gap, unbounded: refusing them too would shut every way into the
+	// dashboard at once, and their one `ADMIN_PASSWORD` is minted by the console unless the operator
+	// typed their own. `signInRateLimitKey` in $lib/server/api/rate-limit.ts states both halves.
+	//
+	// 403 because nothing typed is wrong and no wait fixes it: the attempt is refused until the
+	// deployment is told the address. in `pnpm run logs` it is a line of its own beside the 429, the
+	// 401 and the 500.
+	if (!asStaff && bucket === null) {
+		return invalid(403, submission.reject({ formErrors: [UNATTRIBUTED] }));
+	}
+
 	// the read every other screen pays for on the gate. a deployment that cannot sign a cookie
 	// cannot sign one here either, and the fix is the same one the missing `auth_user` table below
 	// has — so both arms say it rather than naming a row an operator would then go looking for.
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
-		console.error('staff sign-in has no signing key:', signingKey.message);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		console.error('staff sign-in has no signing key:', signingKey.cause);
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
+	}
+	// the pin's own message quotes its value, and this caller is anonymous ($lib/server/auth/pin.ts).
+	const pin = readPin(authEnv);
+	if (!pin.ok) {
+		console.error('staff sign-in has no usable pin:', pin.message);
+		return invalid(500, submission.reject({ formErrors: [PIN_UNUSABLE] }));
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and
@@ -315,17 +357,11 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		requestOrigin: url.origin
 	});
 
-	// which of the two ways in this is, and the identifier is the whole of what decides. the
-	// deployer's is a constant, so this is a comparison and not a query — nothing here asks the
-	// database who a caller claims to be before deciding which credential to compare. the constant
-	// is normalised the same way the box was, so a deployment that raised it to a capital would not
-	// quietly send its own deployer down the member path.
-	//
 	// the limiter above was charged once, ahead of this branch and ahead of the body: one bucket for
 	// both ways in, on a key that never moves with the path ($lib/server/api/rate-limit.ts). a
 	// charge inside either arm would be a second one on the same press, and a bucket per arm would
 	// be a guesser buying a fresh one by typing a different identity into the box.
-	if (submission.value.identifier !== normaliseEmail(STAFF_USER_EMAIL)) {
+	if (!asStaff) {
 		const signedIn = await signInMember(auth, {
 			email: submission.value.identifier,
 			password: submission.value.password,
@@ -374,7 +410,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		// fork hits is `no such table: auth_user` from the staff upsert — same cause and same fix
 		// as the message in $lib/server/auth/staff-plugin.ts, which is otherwise unreachable.
 		console.error('staff sign-in failed before the auth layer could respond:', e);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
 
 	return signedInAt(url, cookies);
@@ -511,9 +547,9 @@ function SignInScreen({
 					    does not, because ./base.css states a link's own.
 
 					    it is not offered to the deployer and is not withheld from them either —
-					    their password is a deploy-time secret and `requestPasswordReset` refuses
+					    their password is a deploy-time var and `requestPasswordReset` refuses
 					    their identifier by name, so what they get from /forgot is the same sentence
-					    everybody gets. the console is where that secret is set. */}
+					    everybody gets. the console is where that var is set. */}
 					<p className="adm-caption">
 						<Link to="/forgot">Forgot your password?</Link>
 					</p>

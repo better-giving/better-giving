@@ -32,7 +32,14 @@ import {
 	type WebhookDelivery
 } from '../payments/provider';
 import { collectRecurringGift } from './collect';
-import { alert, commit, processorLabel, type SettleDeps, type SettleResult } from './delivery';
+import {
+	alert,
+	alertMoney,
+	commit,
+	processorLabel,
+	type SettleDeps,
+	type SettleResult
+} from './delivery';
 import {
 	chargeEntry,
 	feeEntry,
@@ -72,15 +79,14 @@ import { sendTributeNotice } from './tribute-notice';
 // pins it for `payment` and `fee` to the settlement's own `payment.id`. that is what makes "revenue
 // for this payment is recognised exactly once" the thing the database enforces.
 //
-// keying on the delivery's event id instead would enforce something weaker and wrong: every one of
-// `SETTLEMENT_EVENT_TYPES` — each processor's, stated in packages/operator/src/stripe/ and
-// packages/operator/src/paypal/ alike — re-reads the transaction rather than trusting what arrived,
-// precisely because deliveries carry no ordering guarantee. so two different events about one
-// charge can both read `succeeded`, and under distinct event ids both would post; the gift would be
-// in the books twice, with every row reading clean.
+// the key is never the delivery's event id: every one of `SETTLEMENT_EVENT_TYPES` — each
+// processor's, stated in packages/operator/src/stripe/ and packages/operator/src/paypal/ alike —
+// re-reads the transaction, because deliveries carry no ordering guarantee, so two events about one
+// charge can both read `succeeded` and, keyed apart, would put the gift in the books twice.
 //
-// a redelivery therefore surfaces as a UNIQUE violation on insert, which CLAUDE.md names as the
-// correct and only reliable answer, and `alreadyPosted` below is what turns it back into a 200.
+// a redelivery therefore surfaces as a UNIQUE violation on insert, which ../ledger/posting.ts's
+// header names as the correct and only reliable answer, and `alreadyPosted` below is what turns it
+// back into a 200.
 // the whole batch rolls back with it, the update included — which costs nothing, because the update
 // writes what the previous delivery already wrote.
 //
@@ -176,15 +182,15 @@ import { sendTributeNotice } from './tribute-notice';
 // ---------------------------------------------------------------------------
 // a payment that settled is never walked back here, on any rail (`write`).
 //
-// its entries, the row it owes QuickBooks and the rows it owes every listening Zap stay whatever a
-// later report says, so a status moved off `succeeded` would leave the gift reading `cancelled` or
-// `pending` while the books count it. a fresh read reporting such a payment unsettled — a grant the
-// fund cancelled — changes nothing and tells an operator, because whatever the books hold for it
-// may be money the processor has taken back, and only a correction posted in /admin/books
-// (../books/correct.ts) takes it out. two reports are stale rather than news and say nothing: a
-// crypto read, which can report a state from before the coins landed, and a delivery's own state
-// standing in for a read, which can be older than the one that settled the payment. money a refund
-// takes back is a row of its own (./reverse.ts), never a status on this one.
+// its entries, the row it owes QuickBooks and the rows it owes every listening Zap and destination
+// stay whatever a later report says, so a status moved off `succeeded` would leave the gift reading
+// `cancelled` or `pending` while the books count it. a fresh read reporting such a payment
+// unsettled — a grant the fund cancelled — changes nothing and tells an operator, because whatever
+// the books hold for it may be money the processor has taken back, and only a correction posted in
+// /admin/books (../books/correct.ts) takes it out. two reports are stale rather than news and say
+// nothing: a crypto read, which can report a state from before the coins landed, and a delivery's
+// own state standing in for a read, which can be older than the one that settled the payment. money
+// a refund takes back is a row of its own (./reverse.ts), never a status on this one.
 //
 // ---------------------------------------------------------------------------
 // a read that reports the money sent back as well (`Settlement.alsoRefunded`) is the gift and its
@@ -852,12 +858,13 @@ async function recognitionOf(
 }
 
 /**
- * the correction, the postings and the rows they owe QuickBooks and every listening Zap, in one
- * `batch()`.
+ * the correction, the postings and the rows they owe QuickBooks and every listening Zap and
+ * destination, in one `batch()`.
  *
  * one statement per row and never a multi-row `INSERT` — D1 caps a query at 100 bound parameters
- * (CLAUDE.md) — and one commit, because a payment corrected without its posting, or a posting
- * without its correction, is a state nothing in the schema detects.
+ * (https://developers.cloudflare.com/d1/platform/limits/) — and one commit, because a payment
+ * corrected without its posting, or a posting without its correction, is a state nothing in the
+ * schema detects.
  *
  * `credits` is null where nothing is posted at all: a transaction that did not succeed, a settled
  * one carrying figures the ledger will not take, and a settled one whose lines cannot account for
@@ -1068,7 +1075,7 @@ async function unrecognisable(
 			{ label: 'Payment', value: target.payment.id },
 			{ label: 'Donation', value: target.donation.id },
 			{ label: 'Transaction', value: settlement.providerTxnId },
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
 			{ label: 'Problem', value: problem }
 		],
 		action:
@@ -1259,7 +1266,7 @@ async function unmatched(
 			{ label: 'Event', value: eventId },
 			{ label: 'Transaction', value: settlement.providerTxnId },
 			{ label: 'Status', value: settlement.status },
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
 			{ label: 'Donation named by the intent', value: named }
 		],
 		action: `Find this transaction in the ${processor} dashboard and record the gift by hand.`
@@ -1292,11 +1299,11 @@ async function revalued(deps: SettleDeps, target: Target, settlement: Settlement
 			{ label: 'Transaction', value: settlement.providerTxnId },
 			{
 				label: 'Posted as',
-				value: `${target.payment.coinAmount ?? ''} ${target.payment.coin ?? ''}, ${target.payment.amountMinor} ${target.payment.currency} (minor units)`
+				value: `${target.payment.coinAmount ?? ''} ${target.payment.coin ?? ''}, ${alertMoney(target.payment.amountMinor, target.payment.currency)}`
 			},
 			{
 				label: 'Reported as',
-				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}, ${settlement.amountMinor} ${settlement.currency} (minor units)`
+				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}, ${alertMoney(settlement.amountMinor, settlement.currency)}`
 			}
 		],
 		action: `Compare the payment in the ${processor} dashboard with the gift in /admin, and correct it by hand if the posted value is wrong.`
@@ -1320,7 +1327,7 @@ async function reportedUnsettled(
 			{ label: 'Now reported as', value: settlement.status },
 			{
 				label: 'Recorded amount',
-				value: `${target.payment.amountMinor} ${target.payment.currency} (minor units)`
+				value: alertMoney(target.payment.amountMinor, target.payment.currency)
 			}
 		],
 		action:
@@ -1475,7 +1482,7 @@ async function unmatchedDeposit(
 				label: 'Received',
 				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}`
 			},
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` }
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) }
 		],
 		action: `Find both payments in the ${processor} dashboard and record the gift by hand.`
 	});
@@ -1502,7 +1509,7 @@ async function unrecordedDeposit(
 		facts: [
 			{ label: 'First gift', value: first.donation.id },
 			{ label: 'Transaction', value: settlement.providerTxnId },
-			{ label: 'Amount', value: `${settlement.amountMinor} ${settlement.currency} (minor units)` },
+			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
 			{ label: 'Problem', value: problem }
 		],
 		action: `Find this payment in the ${processor} dashboard and record the gift by hand.`

@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:test';
+import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
@@ -277,5 +278,66 @@ describe('sendReceipt() — a deployment that cannot render one yet', () => {
 
 		expect(mail.sent).toHaveLength(0);
 		expect(await stampOf()).toBeNull();
+	});
+});
+
+/**
+ * a refusal's action is the one sentence an operator acts on, so each says what fixes its own
+ * reason. the organisation's details fix only a missing detail: the refusal of a gift whose own
+ * figures contradict each other sends the operator to no settings screen, and names the figures.
+ */
+describe('sendReceipt() — what the operator is told to do about a refusal', () => {
+	beforeEach(orgProfile);
+
+	const alertText = (sent: readonly EmailMessage[]) => {
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.to).toBe('ops@hope.example');
+		return sent[0]?.text ?? '';
+	};
+
+	it('names the non-deductible amount a gift carries when this deployment records no goods', async () => {
+		const mail = mailer();
+		await sendReceipt(
+			deps(mail.port),
+			target({
+				contribution: { ...target().contribution, nonDeductibleMinor: 600 }
+			})
+		);
+
+		const text = alertText(mail.sent);
+		expect(text).toContain(
+			'This gift carries $6.00 recorded as not deductible, and this deployment records no goods ' +
+				'or services against any gift, so its receipt cannot say what that amount was for.'
+		);
+		// no screen edits the amount, so the operator is sent to none.
+		expect(text).toContain('no screen edits it');
+		expect(text).not.toContain('organisation’s details');
+		expect(await stampOf()).toBeNull();
+	});
+
+	it('names the fee and the payment on a gift whose fee is larger than what was paid', async () => {
+		const mail = mailer();
+		await sendReceipt(
+			deps(mail.port),
+			target({
+				contribution: { ...target().contribution, coveredFeeMinor: 3000 }
+			})
+		);
+
+		const text = alertText(mail.sent);
+		expect(text).toContain(
+			'This gift is recorded with a processing fee of $30.00 against a payment of $25.00.'
+		);
+		expect(text).not.toContain('organisation’s details');
+	});
+
+	it('sends an organisation missing a receipt detail to the console', async () => {
+		await env.DB.prepare(`update org_profile set tax_id = null`).run();
+		const mail = mailer();
+		await sendReceipt(deps(mail.port), target());
+
+		expect(alertText(mail.sent)).toContain(
+			`Open the console (\`better-giving start\`) and fill in the organisation’s details under ${IDENTITY_FOLD}.`
+		);
 	});
 });

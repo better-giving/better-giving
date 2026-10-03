@@ -15,14 +15,14 @@ import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/tur
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
-import { act, createRef, type ReactElement } from 'react';
+import { act, createRef, type ReactElement, StrictMode } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { DonateCard, type DonateCardProps } from './card';
-import { Choice } from './choice';
+import { Choice, type ChoiceProps } from './choice';
 import * as copy from './copy';
-import { reactPropTypes } from './normalize';
+import { createReactPropTypes } from './normalize';
 import { PaymentBox } from './payment';
 
 // the card a donor uses, driven the way a donor drives it.
@@ -36,6 +36,21 @@ import { PaymentBox } from './payment';
 // control an `aria-describedby` names, where the caret landed. it is not the browser spec CLAUDE.md
 // keeps for the form package — nothing here reads a computed style, and this page's dress is free to
 // change.
+
+// every collection each mounted choice was drawn with, by the choice's id, in render order — read
+// by the card-level case below, which is the only one that asks what a choice was handed rather than
+// what it drew. the choice itself is drawn as it is.
+const drawnWith = vi.hoisted(() => new Map<string, unknown[]>());
+vi.mock('./choice', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./choice')>();
+	function Recorded(props: ChoiceProps) {
+		const seen = drawnWith.get(props.id) ?? [];
+		seen.push(props.choice.root.collection);
+		drawnWith.set(props.id, seen);
+		return <actual.Choice {...props} />;
+	}
+	return { ...actual, Choice: Recorded };
+});
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -118,6 +133,14 @@ function paymentProvider(answers: Answers = {}) {
 			act(() => {
 				for (const handler of [...change]) {
 					handler({ collapsed: false, empty: false, value: { type } });
+				}
+			});
+		},
+		/** the element group saying its fields will not come up. */
+		fail: () => {
+			act(() => {
+				for (const handler of [...(held.loaderror ?? [])]) {
+					(handler as (payload: unknown) => void)({ error: { message: 'spec' } });
 				}
 			});
 		}
@@ -204,6 +227,11 @@ async function card(
 		readonly pageProgram?: string | null;
 		readonly onProgramChange?: (programId: string | null, locked: boolean) => void;
 		readonly opening?: DonateCardProps['opening'];
+		/**
+		 * react-router's default client entry hydrates under `<StrictMode>`, which runs every effect
+		 * twice on a development mount.
+		 */
+		readonly strict?: boolean;
 	} = {}
 ) {
 	const payment = paymentProvider(answers);
@@ -213,7 +241,7 @@ async function card(
 	// built once: a new seams object is a new checkout, and a re-render here is the page's pick moving.
 	const seams = seamsOver(payment);
 	const draw = (pageProgram: string | null | undefined): void => {
-		mounted.render(
+		const drawn = (
 			<DonateCard
 				config={config}
 				seams={seams}
@@ -222,6 +250,7 @@ async function card(
 				{...(page.opening === undefined ? {} : { opening: page.opening })}
 			/>
 		);
+		mounted.render(page.strict === true ? <StrictMode>{drawn}</StrictMode> : drawn);
 	};
 	act(() => {
 		draw(page.pageProgram);
@@ -511,29 +540,55 @@ it('holds the dedication a donor chose, on the box and on its row', async () => 
 	expect(chosen.map((row) => row.textContent)).toEqual(['In memory of']);
 });
 
+const TRIBUTE_KINDS = (label: string) => ({
+	name: 'tributeKind',
+	value: 'honor',
+	options: [
+		{ value: 'honor', label: 'In honor of' },
+		{ value: 'memory', label }
+	],
+	onChange: () => {}
+});
+
 // `connect` builds its options afresh on every projection; ark is handed a new collection only when
 // what they say changed.
 it('hands ark one collection for as long as the options say the same thing', () => {
-	const project = (label: string) =>
-		reactPropTypes.select({
-			name: 'tributeKind',
-			value: 'honor',
-			options: [
-				{ value: 'honor', label: 'In honor of' },
-				{ value: 'memory', label }
-			],
-			onChange: () => {}
-		}).root.collection;
+	const held = createReactPropTypes();
+	const project = (label: string) => held.select(TRIBUTE_KINDS(label)).root.collection;
 
 	const first = project('In memory of');
 	expect(project('In memory of')).toBe(first);
 	expect(project('In remembrance of')).not.toBe(first);
 });
 
+// the page is server-rendered in a worker isolate that outlives a request, so a collection held at
+// module scope would be handed from one donor's card to the next.
+it('shares no collection between two cards', () => {
+	const mounted = () =>
+		createReactPropTypes().select(TRIBUTE_KINDS('In memory of')).root.collection;
+	expect(mounted()).not.toBe(mounted());
+});
+
+// the same at the card: a press that re-renders it projects the program choice's options afresh,
+// and the card's own table is what hands ark the collection it already holds.
+it('hands a mounted choice the same collection across a re-render that left its options alone', async () => {
+	drawnWith.clear();
+	const { root } = await card();
+	const drawn = drawnWith.get('program') ?? [];
+	const renders = drawn.length;
+	const held = drawn.at(-1);
+	expect(held).toBeDefined();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+
+	expect(drawn.length).toBeGreaterThan(renders);
+	expect(drawn.at(-1)).toBe(held);
+});
+
 // the flow is told once per pick, and not at all for a pick of what it already holds.
 it('reports a pick to the flow once, with the value picked', async () => {
 	const onChange = vi.fn();
-	const choice = reactPropTypes.select({
+	const choice = createReactPropTypes().select({
 		name: 'programId',
 		value: '',
 		options: [
@@ -575,16 +630,149 @@ it('writes a pressed preset into the entry and lights that tile alone', async ()
 	expect(input(root, '#amount-entry').value).toBe('25');
 });
 
-it('opens the entry empty on the way past the presets and takes the caret', async () => {
-	const { root } = await card();
+/**
+ * a pointer press on a tile, the way a mouse or a finger makes one: `pointerdown` on the tile, then
+ * the click the browser sends. a bare `click()` is what Space on a focused radio sends, so it stands
+ * for the keyboard.
+ */
+function point(node: HTMLElement): void {
+	act(() => {
+		node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		node.click();
+	});
+}
 
-	press(one(root, '.tiles > label:nth-of-type(2)'));
-	press(one(root, '.tiles > label.other'));
+/**
+ * an arrow key moving the selection in a group of radios, as a browser moves it: the keydown on the
+ * radio holding the caret, then the caret and the check on the next radio, which reports the click.
+ * happy-dom moves neither, so the spec moves both.
+ */
+function arrow(from: HTMLInputElement, key: string, onto: HTMLInputElement): void {
+	act(() => {
+		from.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+		onto.focus();
+		onto.click();
+		onto.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+	});
+}
 
-	const entry = input(root, '#amount-entry');
-	expect(one(root, '.tile.entry').hidden).toBe(false);
-	expect(entry.value).toBe('');
-	expect(document.activeElement).toBe(entry);
+/** the tray's radios in order, Other last. */
+function amountRadios(root: HTMLElement): HTMLInputElement[] {
+	return every(root, '.tiles > label > input[type="radio"]').filter(
+		(node) => node instanceof HTMLInputElement
+	);
+}
+
+describe('the way past the presets', () => {
+	it('opens the entry empty and takes the caret on a pointer press', async () => {
+		const { root } = await card();
+
+		point(one(root, '.tiles > label:nth-of-type(2)'));
+		point(one(root, '.tiles > label.other'));
+
+		const entry = input(root, '#amount-entry');
+		expect(one(root, '.tile.entry').hidden).toBe(false);
+		expect(entry.value).toBe('');
+		expect(document.activeElement).toBe(entry);
+	});
+
+	it.each(['ArrowRight', 'ArrowDown'])(
+		'leaves the caret on Other when %s reaches it from the last preset',
+		async (key) => {
+			const { root } = await card();
+			const radios = amountRadios(root);
+			const last = radios.at(-2);
+			const other = radios.at(-1);
+			if (last === undefined || other === undefined) throw new Error('no tray');
+
+			act(() => last.focus());
+			press(last);
+			arrow(last, key, other);
+
+			expect(document.activeElement).toBe(other);
+			expect(other.checked).toBe(true);
+			expect(one(root, '.tile.entry').hidden).toBe(false);
+			expect(input(root, '#amount-entry').value).toBe('');
+		}
+	);
+
+	it.each(['ArrowLeft', 'ArrowUp'])(
+		'leaves the caret on Other when %s wraps onto it from the first preset',
+		async (key) => {
+			const { root } = await card();
+			const radios = amountRadios(root);
+			const first = radios[0];
+			const other = radios.at(-1);
+			if (first === undefined || other === undefined) throw new Error('no tray');
+
+			act(() => first.focus());
+			press(first);
+			arrow(first, key, other);
+
+			expect(document.activeElement).toBe(other);
+			expect(other.checked).toBe(true);
+			expect(one(root, '.tile.entry').hidden).toBe(false);
+			expect(input(root, '#amount-entry').value).toBe('');
+		}
+	);
+
+	it('leaves the caret on Other when Space selects it', async () => {
+		const { root } = await card();
+		const other = amountRadios(root).at(-1);
+		if (other === undefined) throw new Error('no tray');
+
+		act(() => other.focus());
+		act(() => {
+			other.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+			other.click();
+		});
+
+		expect(document.activeElement).toBe(other);
+		expect(one(root, '.tile.entry').hidden).toBe(false);
+	});
+
+	it('does not carry a pointer press that selected nothing onto a later arrow', async () => {
+		const { root } = await card();
+		const radios = amountRadios(root);
+		const last = radios.at(-2);
+		const other = radios.at(-1);
+		if (last === undefined || other === undefined) throw new Error('no tray');
+
+		// the press lands on the tile and is dragged off it, so no click and no selection follow.
+		act(() => {
+			one(root, '.tiles > label.other').dispatchEvent(
+				new PointerEvent('pointerdown', { bubbles: true })
+			);
+		});
+		act(() => last.focus());
+		press(last);
+		arrow(last, 'ArrowRight', other);
+
+		expect(document.activeElement).toBe(other);
+	});
+
+	it.each([
+		['a pointer press', (root: HTMLElement) => point(one(root, '.tiles > label.other'))],
+		[
+			'an arrow key',
+			(root: HTMLElement) => {
+				const radios = amountRadios(root);
+				const last = radios.at(-2);
+				const other = radios.at(-1);
+				if (last === undefined || other === undefined) throw new Error('no tray');
+				arrow(last, 'ArrowRight', other);
+			}
+		]
+	])('withdraws the preset amount on %s, so Continue is refused for it', async (_way, reach) => {
+		const { root } = await card();
+
+		press(one(root, '.tiles > label:nth-of-type(2)'));
+		reach(root);
+		press(one(root, CONTINUE));
+
+		expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
+		expect(document.activeElement).toBe(input(root, '#amount-entry'));
+	});
 });
 
 it('refuses a figure outside the bounds and states them where the caret cannot land', async () => {
@@ -598,9 +786,25 @@ it('refuses a figure outside the bounds and states them where the caret cannot l
 	expect(one(root, '#amount-problem').textContent).toBe('between $5 and $5,000');
 	expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
 	// the caret lands on a control inside a fieldset, where a group's description is not reliably
-	// announced from a descendant — so the sentence is on the region however the press was made.
-	expect(said(root)).toBe('between $5 and $5,000');
+	// announced from a descendant — so the sentence is on the region however the press was made, and
+	// spoken with its subject, which the visible sentence takes from where it stands.
+	expect(said(root)).toBe('Amount: between $5 and $5,000');
 	expect(document.activeElement).toBe(input(root, '#amount-entry'));
+});
+
+it('describes the entry by the bounds while a missing amount is marked', async () => {
+	const { root } = await card();
+	const entry = input(root, '#amount-entry');
+
+	// before any press the sentence is not on screen, so nothing describes the box by it.
+	expect(entry.hasAttribute('aria-describedby')).toBe(false);
+
+	press(one(root, '.tiles > label.other'));
+	press(one(root, CONTINUE));
+
+	expect(entry.getAttribute('aria-invalid')).toBe('true');
+	expect(entry.getAttribute('aria-describedby')).toBe('amount-problem');
+	expect(one(root, '#amount-problem').hidden).toBe(false);
 });
 
 it('names every decision a press was refused for, not the first', async () => {
@@ -613,7 +817,7 @@ it('names every decision a press was refused for, not the first', async () => {
 	expect(one(root, '#amount-problem').hidden).toBe(false);
 	expect(one(root, '#note-problem').hidden).toBe(false);
 	// the note's sentence is on the control itself, so it is not repeated on the region.
-	expect(said(root)).toBe('between $5 and $5,000');
+	expect(said(root)).toBe('Amount: between $5 and $5,000');
 });
 
 it('marks a dedication the press was refused for and clears it when the block is taken back', async () => {
@@ -859,6 +1063,26 @@ it('marks only the payer fields the press was refused for and puts the caret on 
 	expect(one(root, '#email-problem').parentElement?.className).toBe('field-row');
 });
 
+// the press that moved no caret: it is on the first refused box already, so the region is the only
+// channel, and a list of bare problems would say which rules broke without saying which boxes.
+it('names each refused field when a press leaves the caret where it was', async () => {
+	const { root } = await card();
+
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+	press(one(root, CONTINUE));
+	type(input(root, '#last-name'), 'Lovelace');
+	act(() => {
+		input(root, '#email').focus();
+	});
+	press(one(root, CONTINUE));
+
+	expect(document.activeElement).toBe(input(root, '#email'));
+	expect(said(root)).toBe('Email: required for your receipt; First name: required');
+	// the sentences under the boxes are unchanged: their label is the one standing over them.
+	expect(one(root, '#email-problem').textContent).toBe(copy.EMAIL_MISSING);
+	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
+});
+
 it('says which of the two rules an address broke', async () => {
 	const { root } = await card();
 
@@ -887,6 +1111,66 @@ it('moves the total and the control that spends it when the fee decision changes
 	expect(submit.textContent).toBe(`Donate ${total.textContent}`);
 	// the box reports its own new setting; the figure that moved is the half nobody is told.
 	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+});
+
+// the figure is an `<output>`, a polite region by its tag alone, so a selector reading `role` off the
+// attribute never finds it: what is asserted is the attribute that overrides the tag. it is off on
+// every commit, and the card's one region is where a total that moved is said.
+it('says a fee decision once, on the card’s region and never on the figure’s own', async () => {
+	const { root } = await card();
+	walkToGive(root);
+	const total = one(root, 'output.figure');
+	expect(total.getAttribute('aria-live')).toBe('off');
+
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+});
+
+/** the same deployment offering a bank debit beside the card, which the fee rules price apart. */
+const WITH_BANK: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ach'] };
+
+it('says a total a rail pick moved once, on the card’s region', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	const total = one(root, 'output.figure');
+	const onCard = total.textContent;
+
+	payment.pick('us_bank_account');
+
+	expect(total.textContent).not.toBe(onCard);
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+});
+
+it('says nothing about the total when a rail pick leaves it where it was', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	const total = one(root, 'output.figure').textContent;
+
+	payment.pick('card');
+
+	expect(one(root, 'output.figure').textContent).toBe(total);
+	expect(said(root)).toBe('');
+});
+
+// a refused press has been heard, and the box keeps the refusal as its description; a total that
+// moved after it is news the region would otherwise never carry, because the figure is silent.
+it('says a total moved under a standing refusal on the card’s region', async () => {
+	const { root } = await card();
+	walkToGive(root);
+	press(one(root, 'button[part~="submit"]'));
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+	const total = one(root, 'output.figure');
+
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+
+	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
+	expect(total.getAttribute('aria-live')).toBe('off');
+	expect(one(root, '#payment-problem').hidden).toBe(false);
 });
 
 it('refuses a press with no rail, and says so on the box and on the region', async () => {
@@ -1040,7 +1324,9 @@ it('draws no header over a box that is not prepared, however many options it lis
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
 	act(() => {
-		mounted.render(<PaymentBox mount={createRef()} prepared={false} rows={2} words="" />);
+		mounted.render(
+			<PaymentBox mount={createRef()} prepared={false} rows={2} words="" aside={false} />
+		);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -1099,6 +1385,75 @@ it('stays on the review step, unbusied, with the fund’s button standing while 
 	expect(one(root, 'form.card-body').hasAttribute('aria-busy')).toBe(false);
 	expect(said(root)).toBe('');
 	expect(root.querySelector(CHARIOT_TAG)).toBe(button);
+});
+
+// with the card's fields down and only a fund up, a repeating gift has no rail left but can still be
+// made one-time: the review step offers that in place of a box with nothing in it, in the element's
+// words (`oneTimeOfferWords` in packages/form/src/views.ts).
+describe('a repeating gift no processor still up can take', () => {
+	const OFFER =
+		'This gift cannot be made monthly right now. You can make it a one-time gift instead.';
+
+	/** the review step of a gift on `cadence`, on a form whose card fields then fail. */
+	async function atReview(cadence: 1 | 2 | 3 = 2) {
+		const reached = await card(WITH_FUND);
+		press(one(reached.root, `.segment > label:nth-of-type(${cadence})`));
+		walkToGive(reached.root);
+		reached.payment.fail();
+		return reached;
+	}
+
+	const offer = (root: HTMLElement) => one(root, '.step-give .attention');
+	const makeOneTime = (root: HTMLElement) => one(root, '.step-give .attention + [part~="action"]');
+	const paymentGroup = (root: HTMLElement) =>
+		one(root, '[part~="payment"]').closest('.group') as HTMLElement;
+
+	it('offers the gift as one-time in place of the payment box, and draws no Donate', async () => {
+		const { root } = await atReview();
+
+		expect(screen(root).className).toContain('step-give');
+		expect(offer(root).closest('[hidden]')).toBeNull();
+		expect(offer(root).textContent).toBe(OFFER);
+		expect(makeOneTime(root).textContent).toBe('Make it one-time');
+		expect(makeOneTime(root).getAttribute('type')).toBe('button');
+		expect(paymentGroup(root).hidden).toBe(true);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(true);
+		expect(said(root)).toBe(OFFER);
+	});
+
+	it('names a yearly gift’s cadence in the offer', async () => {
+		const { root } = await atReview(3);
+
+		expect(offer(root).textContent).toBe(
+			'This gift cannot be made yearly right now. You can make it a one-time gift instead.'
+		);
+	});
+
+	it('makes the gift one-time on the press, says so, and puts the caret on the payment box', async () => {
+		const { root } = await atReview();
+		expect(root.querySelector(CHARIOT_TAG)).toBeNull();
+
+		press(makeOneTime(root));
+
+		expect(screen(root).className).toContain('step-give');
+		expect(one(root, '[part~="summary"] .row-label').textContent).toBe('One-time gift');
+		expect(offer(root).closest('[hidden]')).not.toBeNull();
+		expect(paymentGroup(root).hidden).toBe(false);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
+		expect(said(root)).toBe('This is now a one-time gift.');
+		expect(document.activeElement).toBe(one(root, '[part~="payment"]'));
+		// the fund's rail, which takes a one-time gift only, is offered from this reading on.
+		expect(root.querySelector(CHARIOT_TAG)).not.toBeNull();
+	});
+
+	it('offers nothing on a one-time gift', async () => {
+		const { root } = await atReview(1);
+
+		expect(offer(root).closest('[hidden]')).not.toBeNull();
+		expect(paymentGroup(root).hidden).toBe(false);
+		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
+		expect(said(root)).not.toBe(OFFER);
+	});
 });
 
 // the donor may change the amount inside the fund's window, and the grant is recorded from what the
@@ -1200,7 +1555,8 @@ describe('where the caret goes when one takeover replaces another', () => {
 
 		await pressHeld(takeoverPrimary(root));
 
-		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.CONFIRMING_HEADING);
+		expect(one(screen(root), '.prose').textContent).toBe(copy.CONFIRMING_BODY);
 		expect(takeoverPrimary(root).hidden).toBe(true);
 		expect(document.activeElement).toBe(takeoverHeading(root));
 	});
@@ -1211,7 +1567,8 @@ describe('where the caret goes when one takeover replaces another', () => {
 
 		await pressHeld(takeoverPrimary(root));
 
-		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+		expect(takeoverHeading(root).textContent).toBe(copy.CONFIRMING_HEADING);
+		expect(one(screen(root), '.prose').textContent).toBe(copy.CONFIRMING_BODY);
 		expect(takeoverPrimary(root).hidden).toBe(true);
 		expect(document.activeElement).toBe(takeoverHeading(root));
 	});
@@ -1286,6 +1643,65 @@ describe('where the caret goes when one takeover replaces another', () => {
 		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
 	});
 
+	// back to start remounts the card, which takes the pressed control with it; the new card's first
+	// step is where the caret was, so it lands on that step's heading rather than on the page body.
+	it('lands on the first step’s heading when Back to start rebuilds the card under the caret', async () => {
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{ confirm: async () => ({ paymentIntent: { status: 'succeeded' } }) }
+		);
+		expect(takeoverHeading(root).textContent).toBe(copy.SUCCESS_HEADING);
+		const back = every(screen(root), 'button').find(
+			(button) => button.textContent === copy.BACK_TO_START
+		);
+		if (back === undefined) throw new Error('the ending drew no way back to the start');
+
+		await pressHeld(back);
+
+		const heading = one(screen(root), 'h2');
+		expect(heading.textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(heading);
+	});
+
+	// a click that leaves the caret on the host page — Safari on macOS focuses no button on a click —
+	// is a restart the caret was never in, so the rebuilt card leaves it where it is.
+	it('leaves the caret on the host page when Back to start is pressed from outside the card', async () => {
+		const root = await donated(
+			{ paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 },
+			{ confirm: async () => ({ paymentIntent: { status: 'succeeded' } }) }
+		);
+		const back = every(screen(root), 'button').find(
+			(button) => button.textContent === copy.BACK_TO_START
+		);
+		if (back === undefined) throw new Error('the ending drew no way back to the start');
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+
+		press(back);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(elsewhere);
+	});
+
+	// the card's own first paint is no screen change: a donor tabbing through the host page keeps
+	// their place while the card loads.
+	it('takes no focus on a first load with the caret elsewhere on the page', async () => {
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+
+		await card();
+
+		expect(document.activeElement).toBe(elsewhere);
+	});
+
 	// a resume boots onto a takeover and is replaced by its outcome a moment later, with the caret
 	// wherever the page left it.
 	it('takes no focus when a resume’s outcome replaces the takeover it booted onto', async () => {
@@ -1350,6 +1766,188 @@ describe('where the caret goes when one takeover replaces another', () => {
 		expect(takeoverHeading(root).textContent).toBe(copy.PROCESSING_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 		expect(said(root)).toBe(`${copy.PROCESSING_HEADING}.`);
+	});
+
+	// the claim scrubs the url, so a second run of the effect that claimed it again would find nothing
+	// and boot the donor back from their bank onto an empty amount step.
+	it('resumes the gift a donor came back to under strict mode', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		const { root } = await card(
+			CONFIG,
+			{ retrieve: () => new Promise(() => {}) },
+			{ strict: true }
+		);
+		expect(takeoverHeading(root).textContent).toBe(copy.RESUMING_HEADING);
+	});
+});
+
+// the route reads the stamp off the request and the card draws a resume from its first paint: the
+// token is claimed only once the live flow starts, and a donor back from their bank must not be
+// shown the empty donation form in between, nor lose a caret they put on the page before then.
+describe('a resume drawn before the flow starts', () => {
+	const SEAMS = {
+		payment: {
+			stripe: {
+				load: paymentProvider({ retrieve: () => new Promise(() => {}) }).load,
+				delay: () => () => {}
+			},
+			paypal: { load: paypalProvider().load, delay: () => () => {} },
+			chariot: { load: async () => true, delay: () => () => {} }
+		},
+		challenge: CHALLENGE
+	};
+
+	/** the card's server markup, standing in a host on the page the way a document request leaves it. */
+	function served(
+		resuming: boolean | undefined,
+		opening?: DonateCardProps['opening']
+	): HTMLElement {
+		const host = document.createElement('div');
+		host.innerHTML = renderToString(
+			resuming === undefined ? (
+				<DonateCard config={CONFIG} seams={SEAMS} />
+			) : (
+				<DonateCard
+					config={CONFIG}
+					seams={SEAMS}
+					resuming={resuming}
+					{...(opening === undefined ? {} : { opening })}
+				/>
+			)
+		);
+		document.body.appendChild(host);
+		onTestFinished(() => {
+			host.remove();
+		});
+		return host;
+	}
+
+	/** that markup hydrated, with every screen the card showed on the way recorded. */
+	async function hydrated(
+		host: HTMLElement,
+		resuming: boolean,
+		opening?: DonateCardProps['opening']
+	) {
+		const shownOnTheWay: string[] = [];
+		const watch = new MutationObserver(() => {
+			const open = every(host, 'section.step').filter((section) => !section.hidden);
+			shownOnTheWay.push(open.map((section) => section.className).join(' + '));
+		});
+		watch.observe(host, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+		const recovered: unknown[] = [];
+		let mounted: ReturnType<typeof hydrateRoot> | null = null;
+		act(() => {
+			mounted = hydrateRoot(
+				host,
+				<StrictMode>
+					<DonateCard
+						config={CONFIG}
+						seams={SEAMS}
+						resuming={resuming}
+						{...(opening === undefined ? {} : { opening })}
+					/>
+				</StrictMode>,
+				{ onRecoverableError: (error) => recovered.push(error) }
+			);
+		});
+		onTestFinished(() => {
+			act(() => {
+				mounted?.unmount();
+			});
+		});
+		await act(async () => {
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		watch.disconnect();
+		return { shownOnTheWay, recovered };
+	}
+
+	it('draws the resume’s takeover in the server render rather than the amount step', () => {
+		const host = served(true);
+
+		expect(screen(host).classList.contains('takeover')).toBe(true);
+		expect(one(screen(host), ':scope > h2').textContent).toBe(copy.RESUMING_HEADING);
+	});
+
+	it('draws the amount step in the server render when the page is no resume', () => {
+		for (const resuming of [undefined, false]) {
+			const host = served(resuming);
+
+			expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		}
+	});
+
+	it('keeps the takeover and a caret placed in it through hydration and the claim', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		const host = served(true);
+		const heading = one(screen(host), ':scope > h2');
+		heading.focus();
+		expect(document.activeElement).toBe(heading);
+
+		const { shownOnTheWay, recovered } = await hydrated(host, true);
+
+		expect(recovered).toEqual([]);
+		expect(shownOnTheWay.filter((open) => open !== 'step takeover')).toEqual([]);
+		expect(screen(host)).toBe(heading.parentElement);
+		expect(heading.textContent).toBe(copy.RESUMING_HEADING);
+		expect(document.activeElement).toBe(heading);
+		// the claim was made: the token is off the url, so the takeover is the live flow's own.
+		expect(window.location.search).toBe('');
+	});
+
+	// a host router or a parameter-stripping script can take the token and leave the stamp, and the
+	// live flow then has nothing to resume: the donor is given the form rather than a wait that never
+	// ends.
+	it('hands the donor the amount step where the stamped return arrived with no token', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+
+		await hydrated(host, true);
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+	});
+
+	// a page's opening is where a fresh card starts, and a return from the donor's bank is no fresh
+	// card: the checking screen is drawn whatever the page asked for.
+	it('draws the resume’s takeover over a page’s opening, server and hydration alike', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			`?bg_donate_form=${CONFIG.formId}&payment_intent_client_secret=pi_1_secret_x`
+		);
+		const opening = { monthly: true, dedication: true };
+		const host = served(true, opening);
+
+		expect(screen(host).classList.contains('takeover')).toBe(true);
+		expect(one(screen(host), ':scope > h2').textContent).toBe(copy.RESUMING_HEADING);
+
+		const { shownOnTheWay, recovered } = await hydrated(host, true, opening);
+
+		expect(recovered).toEqual([]);
+		expect(shownOnTheWay.filter((open) => open !== 'step takeover')).toEqual([]);
+		expect(one(screen(host), ':scope > h2').textContent).toBe(copy.RESUMING_HEADING);
+	});
+
+	it('hands back the page’s opening where the stamped return arrived with no token', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true, { monthly: true });
+
+		await hydrated(host, true, { monthly: true });
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(
+			[...host.querySelectorAll('.segment input[type="radio"]')]
+				.filter((box) => box instanceof HTMLInputElement && box.checked)
+				.map((box) => box.getAttribute('value'))
+		).toEqual(['monthly']);
 	});
 });
 
@@ -1653,8 +2251,8 @@ describe('a crypto gift', () => {
 	// the flow replaces the heading on its own clock, under a caret the address screen put on it:
 	// focusing the node that holds focus says nothing, so the region says the new words.
 	it('says the address closing, and then expiring, to a caret on the heading', async () => {
-		// a second short of the send-by, so the address closes between two readings: a reading
-		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		// a second short of the send-by, so the address closes between two readings. a reading
+		// landing in the same instant is its own spec below.
 		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
 		const { root, server } = await atAddress();
 		const heading = one(screen(root), 'h2');
@@ -1677,8 +2275,8 @@ describe('a crypto gift', () => {
 	// a donor who stepped off the card while waiting on the chain is told each change, and the caret
 	// stays where they put it.
 	it('says the address closing, and then expiring, to a caret outside the card', async () => {
-		// a second short of the send-by, so the address closes between two readings: a reading
-		// landing in the same task is a snapshot with nothing to say, and it would clear the region.
+		// a second short of the send-by, so the address closes between two readings. a reading
+		// landing in the same instant is its own spec below.
 		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
 		const { root, server } = await atAddress();
 		const elsewhere = document.createElement('button');
@@ -1702,6 +2300,81 @@ describe('a crypto gift', () => {
 		expect(one(screen(root), 'h2').textContent).toBe(copy.EXPIRED_HEADING);
 		expect(document.activeElement).toBe(elsewhere);
 		expect(said(root)).toBe(`${copy.EXPIRED_HEADING}.`);
+	});
+
+	// the reading loop's next snapshot carries nothing to say, and a sentence stays on the region
+	// until the heading it announces changes or another sentence replaces it.
+	it('says the address closing when a reading lands at the send-by, and keeps saying it', async () => {
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS
+		});
+		const { root, server } = await atAddress();
+		const heading = one(screen(root), 'h2');
+		expect(document.activeElement).toBe(heading);
+
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(server.reads).toBe(1);
+		expect(heading.textContent).toBe(copy.CHECKING_HEADING);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(server.reads).toBe(2);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+	});
+
+	it('keeps a Copy’s sentence through a reading, until a different one replaces it', async () => {
+		const clipboard = { writeText: vi.fn(async () => {}) };
+		vi.stubGlobal('navigator', { ...navigator, clipboard });
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const { root, server } = await atAddress();
+		const copyAddress = async () => {
+			await act(async () => {
+				one(root, '.deposit [aria-label="Copy address"]').click();
+				for (let at = 0; at < 4; at += 1) await Promise.resolve();
+			});
+		};
+
+		await copyAddress();
+		await tick(DEPOSIT_POLL_MS);
+
+		expect(server.reads).toBe(1);
+		expect(said(root)).toBe('Address copied.');
+
+		clipboard.writeText.mockRejectedValueOnce(new Error('denied'));
+		await copyAddress();
+
+		expect(said(root)).toBe('Address not copied. It is selected so you can copy it.');
+	});
+
+	it('replaces a Copy’s sentence with the heading the address closes to', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS * 2
+		});
+		const { root } = await atAddress();
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+
+		await act(async () => {
+			one(root, '.deposit [aria-label="Copy address"]').click();
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		act(() => {
+			elsewhere.focus();
+		});
+		expect(said(root)).toBe('Address copied.');
+
+		await tick(DEPOSIT_POLL_MS * 2);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
 	});
 
 	it('lands a gift below the coin’s minimum on the amount step, naming the minimum', async () => {

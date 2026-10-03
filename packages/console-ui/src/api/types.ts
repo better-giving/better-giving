@@ -4,11 +4,6 @@ import type {
 	QuickbooksPressReport,
 	QuickbooksReport
 } from '@better-giving/operator/console/quickbooks';
-import type {
-	ZapierPress,
-	ZapierPressReport,
-	ZapierReport
-} from '@better-giving/operator/console/zapier';
 import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 
 // what the binary answers, in the shapes it answers in.
@@ -24,10 +19,6 @@ import type { DEPLOY_VARS } from '@better-giving/operator/deploy-split';
 // browser reads — so what crosses about it is an account id, a name and a folder on this machine. a
 // field carrying it would be a token in the document, in the browser's memory and in whatever a page
 // extension can read.
-//
-// **the zapier key is the one credential that does**, in `ZapierRead` and `ZapierPressed`: the
-// operator is shown it to paste into zapier, so the page is where it is meant to arrive. the binary
-// answers both `Cache-Control: no-store` and logs and keeps neither.
 
 /** the cloudflare account this deployment is in. */
 export type Account = { id: string; name: string };
@@ -300,16 +291,23 @@ export type VarsUnwritten = Exclude<
  *
  * `connected` is the only one that left anything anywhere. `unkept` is the deployment holding a
  * session this machine could not write down — its own state and not a failure of the write, because
- * the value is live there and the way out is the folder rather than the press.
+ * the value is live there and the way out is the folder rather than the press. `clock-ahead` is the
+ * deployment refusing the session as ending further out than it ever lets one run, which is this
+ * machine's clock reading ahead of its own: the write landed and is recorded, every session this
+ * clock mints is refused the same way, and so the way out is the clock rather than the press.
  */
 export type Connection = {
-	kind: 'connected' | 'nowhere' | 'refused' | 'unreachable' | 'failed' | 'unkept';
+	kind: 'connected' | 'nowhere' | 'refused' | 'unreachable' | 'failed' | 'unkept' | 'clock-ahead';
 	/** when the session ends, and empty on every other kind. */
 	expiresAt: string;
 	/** where it was written, which is the deployment the operator is looking at. */
 	origin: string;
 	/** cloudflare's own words about the call, or this machine's about a record it could not write. */
 	detail: string;
+	/** the deployment's own sentence on `clock-ahead`, and null on every other kind or where it wrote none. */
+	message: string | null;
+	/** the deployment's own way out on `clock-ahead`, and null on every other kind or where it wrote none. */
+	fix: string | null;
 };
 
 /**
@@ -753,26 +751,6 @@ export type QuickbooksPressed =
 	| { kind: 'unanswered'; read: NoReport };
 
 /**
- * where this deployment's Zapier key stands, or which way the binary did not find out — read off
- * the shared type for {@link QuickbooksRead}'s reason (`packages/operator/src/console/zapier.ts`).
- */
-export type ZapierRead =
-	| { kind: 'read'; report: ZapierReport }
-	| { kind: 'unread'; read: NoReport };
-
-/** what one press on the Zapier key posts. */
-export type ZapierPressBody = { press: ZapierPress };
-
-/**
- * how a make or replace went. a refusal is `reported` with `ok: false`: the deployment answered,
- * and said why. the answer carries the new key, as every reading does after it (or null in a
- * reading, for a key made before the deployment stored it).
- */
-export type ZapierPressed =
-	| { kind: 'reported'; report: ZapierPressReport }
-	| { kind: 'unanswered'; read: NoReport };
-
-/**
  * where this deployment answers, as the binary read it out of the cloudflare account.
  *
  * no hostname is committed to this repository (CLAUDE.md), so the address is worked out from the
@@ -1005,12 +983,14 @@ export type PaypalListener = { id: string; url: string; eventTypes: string[] };
 /**
  * the ways a call to PayPal did not answer.
  *
- * `refused` is a pair PayPal would not accept or an app it would not let do this, and the way out
- * is the boxes the pair was typed in; `rejected` is a request it understood and would not carry
- * out; `unreachable` is nothing found out either way, a 5xx included.
+ * `refused` is a pair PayPal would not accept, and the way out is the boxes the pair was typed in;
+ * `forbidden` is an app it would not let do this, and the way out is that app's settings on
+ * PayPal — on the token mint under the `unauthorized` stop as well, so the stop alone never says
+ * the pair is wrong; `rejected` is a request it understood and would not carry out; `unreachable`
+ * is nothing found out either way, a 5xx included.
  */
 export type PaypalFailure = {
-	kind: 'refused' | 'rejected' | 'unreachable' | 'unreadable';
+	kind: 'refused' | 'forbidden' | 'rejected' | 'unreachable' | 'unreadable';
 	detail: string;
 };
 
@@ -1056,6 +1036,8 @@ export type PaypalSetup =
 	| { kind: 'insecure'; origin: string }
 	/** the app's listeners could not be read. */
 	| { kind: 'unlisted'; failure: PaypalFailure }
+	/** the app's disputes could not be read, which every refund on PayPal reads first. */
+	| { kind: 'disputes-unread'; failure: PaypalFailure }
 	/** the app already holds PayPal's ten listeners, none of them here; `listeners` is all ten. */
 	| { kind: 'full'; listeners: PaypalListener[] }
 	/** PayPal refused the create, so nothing listens here. */

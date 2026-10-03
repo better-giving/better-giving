@@ -9,8 +9,9 @@ import { readFileSync } from 'node:fs';
 // asserting that those globs matched something —
 // packages/app/src/lib/admin/styles/raw-color.spec.ts and .../conformance.spec.ts are the
 // dashboard's two, ../components/raw-values.spec.ts is this package's own over the components
-// beside it, packages/console-ui/src/raw-values.spec.ts is the console's, and
-// packages/emails/src/raw-values.spec.ts is the mail templates' — five in all. that case travels
+// beside it, packages/console-ui/src/raw-values.spec.ts is the console's,
+// packages/emails/src/raw-values.spec.ts is the mail templates', and
+// packages/gallery/src/raw-values.spec.ts is the gallery's over its previews. that case travels
 // with the caller and is never shared away: a glob that quietly stops matching reads as a passing
 // gate forever, and only the surface that wrote the glob knows what it was supposed to reach.
 //
@@ -31,7 +32,7 @@ import { readFileSync } from 'node:fs';
 // rawLengthViolations, and every caller hands screens — no sweep here reads a sheet for one. what
 // the sheets carry is lengths that are not steps of a scale at all: ./base.css's hairline rule and
 // the underline offsets that belong to the face, and the drawing geometry in ./adm.css — a caret's
-// triangle, a checkbox's own square, a track's bound — where a token per shape would be a scale
+// triangle, a coin's circle, a track's bound — where a token per shape would be a scale
 // nobody counts along. a length rule over them would be mostly allowlist, and an allowlist is the
 // thing that rots. a raw length in a sheet carries a `raw-length-ok:` note and is caught by review.
 //
@@ -111,7 +112,12 @@ const RAW_COLOUR = new RegExp(
 // packages/app/src/lib/admin/styles/conformance.spec.ts. `fr` and `%` are absent for the same
 // reason a grid line number is: they describe a share of something the screen already owns, not a
 // size taken from the scale.
-const RAW_LENGTH = /(?<![\w.#-])\d*\.?\d+(?:px|rem|em|ch|vh|dvh|vw)(?![\w-])/g;
+//
+// a length never starts after a word character, a `.` or a `#`, so a run inside a class, an id or a
+// longer number is not one. it never starts after a `-` either, which keeps `--gap-1px` a name — but
+// a `-` that stands where a length may start is the length's own sign, so `-1px` is refused whole,
+// as packages/form/src/element.dom.spec.ts's sweep refuses it.
+const RAW_LENGTH = /(?<![\w.#-])-?\d*\.?\d+(?:px|rem|em|ch|vh|dvh|vw)(?![\w-])/g;
 
 // the two breakpoints, and they are permitted in a media condition only: a media condition cannot
 // read a custom property, so those two numbers are the one place this system is spelled as a

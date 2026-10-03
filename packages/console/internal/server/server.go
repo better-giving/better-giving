@@ -48,7 +48,8 @@ type Options struct {
 	// the one call this console makes in a json dialect of its own. Nil is cloudflare's own API.
 	Patches func(cf.Credential) cf.Send
 	// Settings is how a var is written on a credential, which is the multipart patch cloudflare
-	// takes no json body for, and how the worker's script goes up. Nil is cloudflare's own API.
+	// takes no json body for, held to a read's bound. Nil is cloudflare's own API (internal/cf's
+	// APISettings).
 	Settings func(cf.Credential) cf.MultipartUpload
 	// Sends is how a plain json call to cloudflare is made on a credential, which is the widget the
 	// site list is levelled against. Nil is cloudflare's own API.
@@ -98,7 +99,7 @@ func New(options Options) http.Handler {
 	}
 	settings := options.Settings
 	if settings == nil {
-		settings = cf.APIMultipart
+		settings = cf.APISettings
 	}
 	surface := options.Surface
 	// the same surface held to a longer deadline, for the errands the deployment answers only once
@@ -141,7 +142,8 @@ func New(options Options) http.Handler {
 	homeRoutes(routes, options.Flow, reads, options.Accounts, options.Records, surface)
 	valuesRoutes(routes, options.Flow, reads, patches, settings, options.Accounts)
 	aiRoutes(routes, options.Flow, reads, options.Accounts)
-	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records, surface)
+	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records, surface,
+		presses)
 	errandRoutes(routes, doors, patientDoors)
 	widgetRoutes(routes, options.Flow, reads, sends, options.Accounts)
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
@@ -210,12 +212,25 @@ func Listen(handler http.Handler, port int) *http.Server {
 		MaxHeaderBytes:    headerBytes,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		// no answer here is held open: every one is a read or a write to cloudflare or to the
-		// deployment, each carrying a deadline of its own (internal/cf), and this bounds them all.
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       120 * time.Second,
 	}
 }
+
+// how long an answer may take once its request has arrived: the longest any press here is bound to
+// by its own deadlines — a connect, an errand the deployment answers once a third party has, and a
+// write of the values — and slack past that for the answer itself to be written. the NOWPayments
+// press is counted by none of the three: it is two reads at cf.ReadTimeout in front of a write,
+// which stays under the connect's bound.
+//
+// **derived, never typed.** an answer cut off by this deadline is a press that finished on the
+// deployment and reads as a failure on the page, and a connect pressed again on that reading mints
+// a second session — so the deadline follows the bounds it must cover rather than restating them.
+const writeTimeout = max(deployment.ConnectBound, deployment.PatientTimeout, deployment.WriteBound) +
+	answerSlack
+
+// what writing an answer may take past the press it carries: a local record and a json body.
+const answerSlack = 10 * time.Second
 
 // Guard refuses any request that another page could have caused.
 //

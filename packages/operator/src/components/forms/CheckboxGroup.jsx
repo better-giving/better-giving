@@ -60,6 +60,10 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   ../../styles/adm.css takes the step off what follows a legend nobody sees.
  * @property {ReactNode} [hint]
  * @property {ReactNode} [error] the group's, never a single box's.
+ * @property {string | undefined} [errorId] the id of a refusal a group around this one draws —
+ *   ./CheckboxGroups.jsx's, whose one sentence answers for several of these. every box is marked
+ *   refused and described by it exactly as by an `error` of this group's own, and nothing is drawn
+ *   here. a group holding its own `error` takes that one.
  * @property {boolean | undefined} [boxed] each choice drawn as a bordered row, with the taken one
  *   holding the accent. what earns it is a second line that is an identifier rather than a
  *   description: two long ids under two similar names leave a bare list with nothing saying where
@@ -82,9 +86,11 @@ export function CheckboxGroup({
 	legendHidden = false,
 	hint,
 	error,
+	errorId,
 	boxed = false,
 	items = []
 }) {
+	const refusal = error ? `${id}-err` : errorId;
 	const group = (
 		<>
 			{hint ? (
@@ -100,9 +106,7 @@ export function CheckboxGroup({
 					// box names the text alone and points at the line beneath instead.
 					const lines = [note ? `${box}-note` : null, sub ? `${box}-sub` : null].filter(Boolean);
 					const describedBy =
-						[hint ? `${id}-hint` : null, error ? `${id}-err` : null, ...lines]
-							.filter(Boolean)
-							.join(' ') || undefined;
+						[hint ? `${id}-hint` : null, refusal, ...lines].filter(Boolean).join(' ') || undefined;
 					// the class list is spelled at the element rather than assembled above it, for the
 					// reason ../status/Mark.jsx gives: a name that only exists in a variable is a name
 					// packages/app/src/lib/admin/styles/conformance.spec.ts cannot see.
@@ -120,7 +124,7 @@ export function CheckboxGroup({
 									[state === 'focus' ? 'is-focus' : '', className].filter(Boolean).join(' ') ||
 									undefined
 								}
-								aria-invalid={error ? 'true' : undefined}
+								aria-invalid={refusal ? 'true' : undefined}
 								aria-labelledby={lines.length ? `${box}-text` : undefined}
 								aria-describedby={describedBy}
 								{...rest}

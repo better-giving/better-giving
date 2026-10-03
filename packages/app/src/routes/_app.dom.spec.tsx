@@ -1,11 +1,15 @@
+import { opening } from '@better-giving/operator/progress-bar';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, Link } from 'react-router';
+import { createRoutesStub, data, Link } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import ProtectedLayout, { clientMiddleware } from './_app';
+import ProtectedLayout, { ErrorBoundary as AppErrorBoundary, clientMiddleware } from './_app';
 import { handle as donationPageHandle } from './_app.admin.donation-page';
 import { handle as formHandle } from './_app.admin.forms.$id';
 
+// what the layout frames: the panel's top strip over each screen, the rail each viewer gets, the
+// bar over a move, and the words the frame says over one (the last, below).
+//
 // what the panel's top strip holds over each screen the layout frames.
 //
 // the strip is the layout's, and it is drawn only for a trail: the deepest matched route's `handle`
@@ -36,13 +40,13 @@ async function mount(tree: ReactNode): Promise<HTMLElement> {
 }
 
 /** the layout, set up and named, over a list screen and a detail screen beneath it. */
-function frameAt(at: string): Promise<HTMLElement> {
+function frameAt(at: string, deployer = true): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
 		{
 			id: 'app',
 			Component: () =>
 				createElement(ProtectedLayout as never, {
-					loaderData: { shape: 'ready', orgName: 'Riverbank Trust' },
+					loaderData: { orgName: 'Riverbank Trust', deployer },
 					params: {},
 					matches: []
 				}),
@@ -129,6 +133,42 @@ it('draws an editor across the whole window, with no rail or band around it', as
 	expect(root.textContent).not.toContain('Riverbank Trust');
 });
 
+// the rail's Integrations group is the deployer's alone: every page in it answers a member with
+// not-found, and ./_app.admin.integrations.api.workers.spec.ts and
+// ./_app.admin.integrations.zapier.workers.spec.ts hold the loaders' half.
+
+/** the column's headings and the destinations it offers, in the order it draws them. */
+function rail(root: HTMLElement): string[] {
+	return [...root.querySelectorAll('.adm-rail__heading, .adm-rail__cells a .adm-dest__full')].map(
+		(node) => node.textContent ?? ''
+	);
+}
+
+it('draws the deployer the Integrations group, headed, between Members and Books', async () => {
+	const root = await frameAt('/admin/forms');
+	const drawn = rail(root);
+
+	expect(drawn.slice(drawn.indexOf('Members'))).toEqual([
+		'Members',
+		'Integrations',
+		'Zapier',
+		'API',
+		'Webhooks',
+		'Books'
+	]);
+	// the one cell marked with a company's own image rather than a glyph.
+	expect(root.querySelector('a[href="/admin/integrations/zapier"] img')).not.toBeNull();
+});
+
+it('draws a member no Integrations group, and the rest of the rail as it is', async () => {
+	const drawn = rail(await frameAt('/admin/forms', false));
+
+	expect(drawn).not.toContain('Integrations');
+	expect(drawn).not.toContain('Zapier');
+	expect(drawn).not.toContain('API');
+	expect(drawn.slice(drawn.indexOf('Members'))).toEqual(['Members', 'Books']);
+});
+
 // the bar over a move, drawn by the layout while the router reads the next page. the stub's loaders
 // never settle for `?wait`, so the navigation a press starts stays pending for the whole case.
 
@@ -141,7 +181,7 @@ function frameWithLinkTo(to: string): Promise<HTMLElement> {
 			id: 'app',
 			Component: () =>
 				createElement(ProtectedLayout as never, {
-					loaderData: { shape: 'ready', orgName: 'Riverbank Trust' },
+					loaderData: { orgName: 'Riverbank Trust' },
 					params: {},
 					matches: []
 				}),
@@ -190,7 +230,7 @@ it('keeps the page being left until the bar has been seen full', async () => {
 			middleware: clientMiddleware as never,
 			Component: () =>
 				createElement(ProtectedLayout as never, {
-					loaderData: { shape: 'ready', orgName: 'Riverbank Trust' },
+					loaderData: { orgName: 'Riverbank Trust' },
 					params: {},
 					matches: []
 				}),
@@ -224,7 +264,7 @@ it('enters from a page outside the layout without holding for a bar nobody drew'
 			middleware: clientMiddleware as never,
 			Component: () =>
 				createElement(ProtectedLayout as never, {
-					loaderData: { shape: 'ready', orgName: 'Riverbank Trust' },
+					loaderData: { orgName: 'Riverbank Trust' },
 					params: {},
 					matches: []
 				}),
@@ -242,4 +282,119 @@ it('draws no bar over a reading of the page already drawn', async () => {
 	await follow(root, 'go');
 
 	expect(bar(root)).toBeNull();
+});
+
+// what the frame says out loud over a move to another screen.
+//
+// the words are `MoveStatus`'s (packages/operator/src/components/status/ProgressBar.jsx), whose own
+// spec holds that one region keeps its node while its words change. what only this layout can get
+// wrong is the mount: that the region stands before the move, that the line drawn over the move
+// brings no second one, and that the label it reads is the one the pressed link carried. so the
+// layout is mounted under a stub whose destination's reading has not landed, which is the move in
+// flight rather than a stand-in for it.
+
+/** the frame standing on the dashboard's first screen, with a link to a screen still being read. */
+async function frameOverReading() {
+	let land: (value: null) => void = () => {};
+	const reading = new Promise<null>((resolve) => {
+		land = resolve;
+	});
+	const Stub = createRoutesStub([
+		{
+			id: 'routes/_app',
+			Component: () =>
+				createElement(ProtectedLayout as never, {
+					loaderData: { orgName: 'Riverbank Trust', deployer: true },
+					params: {},
+					matches: []
+				}),
+			children: [
+				{
+					path: '/admin',
+					Component: () => (
+						<Link to="/admin/donations" state={opening('Opening Donations')}>
+							to donations
+						</Link>
+					)
+				},
+				{ path: '/admin/donations', loader: () => reading, Component: () => <p>arrived</p> }
+			]
+		}
+	]);
+	return { root: await mount(<Stub initialEntries={['/admin']} />), land: () => land(null) };
+}
+
+function regions(root: HTMLElement): HTMLElement[] {
+	return [...root.querySelectorAll<HTMLElement>('[role="status"]')];
+}
+
+it('says the opening label on one region over a move, and empties it when the move ends', async () => {
+	const { root, land } = await frameOverReading();
+	const [standing, ...others] = regions(root);
+	expect(others).toHaveLength(0);
+	expect(standing?.textContent).toBe('');
+
+	await follow(root, 'to donations');
+
+	// the line over the move is drawn, and it brings no region of its own.
+	expect(bar(root)).not.toBe(null);
+	expect(regions(root)).toEqual([standing]);
+	expect(standing?.textContent).toBe('Opening Donations');
+
+	await act(async () => {
+		land();
+	});
+
+	expect(root.textContent).toContain('arrived');
+	expect(bar(root)).toBe(null);
+	expect(regions(root)).toEqual([standing]);
+	expect(standing?.textContent).toBe('');
+});
+
+// the set-up gate is answered by the layout's middleware before any loader runs, so there is no
+// loader data to draw a frame from: the layout's boundary draws the gate from the answer itself,
+// and anything else thrown beneath the layout is drawn as the root's page.
+
+/** the five as an unfinished deployment reads them, two still open. */
+const OPEN_LINES = [
+	{ id: 'password', label: 'Dashboard password', state: 'ready', word: 'Configured', note: null },
+	{ id: 'organisation', label: 'Organisation', state: 'todo', word: 'Incomplete', note: null },
+	{ id: 'payments', label: 'Payments', state: 'ready', word: 'Configured', note: null },
+	{ id: 'smtp', label: 'Email delivery', state: 'ready', word: 'Configured', note: null },
+	{ id: 'notifications', label: 'Notifications', state: 'todo', word: 'Incomplete', note: null }
+];
+
+/** the layout's boundary over a screen whose read throws `thrown`. */
+function boundaryOver(thrown: unknown): Promise<HTMLElement> {
+	const Stub = createRoutesStub([
+		{
+			id: 'app',
+			Component: () => <p>the frame</p>,
+			ErrorBoundary: AppErrorBoundary as never,
+			loader: () => {
+				throw thrown;
+			},
+			children: [{ path: '/admin/forms', Component: () => <p>the list</p> }]
+		}
+	]);
+	return mount(<Stub initialEntries={['/admin/forms']} />);
+}
+
+it('draws the set-up gate in place of the frame when the layout answers with it', async () => {
+	const root = await boundaryOver(data({ shape: 'setup', lines: OPEN_LINES }, { status: 503 }));
+
+	expect(root.querySelector('h1')?.textContent).toBe('Finish setting up this deployment');
+	expect(root.textContent).not.toContain('the frame');
+});
+
+it('titles the document after the set-up gate', async () => {
+	await boundaryOver(data({ shape: 'setup', lines: OPEN_LINES }, { status: 503 }));
+
+	expect(document.title).toBe('Finish setting up this deployment · Better Giving');
+});
+
+it('hands any other failure to the root page', async () => {
+	const root = await boundaryOver(data('`BETTER_AUTH_URL` names no address.', { status: 500 }));
+
+	expect(root.querySelector('h1')?.textContent).toBe('This deployment could not answer');
 });

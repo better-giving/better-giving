@@ -1,10 +1,13 @@
 import { env } from 'cloudflare:test';
-import { sql } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { eq, sql } from 'drizzle-orm';
+import { uuidv7 } from 'uuidv7';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact, type ParsedContact } from '../contacts/contact-input';
 import { createDb, type Db } from '../db/client';
-import { contact } from '../db/schema';
-import { commitDonor } from './donor';
+import { createContact } from '../contacts/queries';
+import { contact, donation, payment } from '../db/schema';
+import { createDestination } from '../webhooks/destinations';
+import { type CommitDonorResult, commitDonor } from './donor';
 
 // the donor half of a gift, against a real D1.
 //
@@ -97,5 +100,120 @@ describe('commitDonor() — a donor this deployment already has', () => {
 		// that cannot be undone by merging.
 		const [rows] = await db.select({ n: sql<number>`count(*)` }).from(contact);
 		expect(rows?.n).toBe(2);
+	});
+});
+
+describe('commitDonor() — what a changed donor owes a listening destination', () => {
+	const CHANGED_AT = new Date('2026-09-28T12:00:00.000Z');
+
+	beforeEach(async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(CHANGED_AT);
+		await createDestination(db, { url: 'https://crm.example.org/a', events: ['donor.updated'] });
+		await createDestination(db, { url: 'https://crm.example.org/b', events: ['donor.updated'] });
+		await createDestination(db, { url: 'https://crm.example.org/c', events: ['donor.added'] });
+	});
+
+	afterEach(async () => {
+		vi.useRealTimers();
+		for (const table of [
+			'webhook_delivery',
+			'webhook_destination_event',
+			'webhook_destination',
+			'payment',
+			'donation'
+		]) {
+			await env.DB.prepare(`delete from ${table}`).run();
+		}
+	});
+
+	async function owed() {
+		const { results } = await env.DB.prepare(
+			`select d.url, w.event, w.subject_id from webhook_delivery w
+			 join webhook_destination d on d.id = w.destination_id order by d.url`
+		).all();
+		return results;
+	}
+
+	/** the donor `committed` names, with one $50 gift of theirs settled. */
+	async function withSettledGift(committed: CommitDonorResult): Promise<string> {
+		if (!committed.ok) throw new Error(committed.detail);
+		const { contactId } = committed.value;
+		const donationId = uuidv7();
+		await db.batch([
+			db.insert(donation).values({
+				id: donationId,
+				contactId,
+				totalMinor: 5_000,
+				currency: 'USD',
+				receivedAt: CHANGED_AT
+			}),
+			db.insert(payment).values({
+				donationId,
+				amountMinor: 5_000,
+				currency: 'USD',
+				direction: 'inbound',
+				method: 'check',
+				status: 'succeeded',
+				provider: 'manual',
+				occurredAt: CHANGED_AT
+			})
+		]);
+		return contactId;
+	}
+
+	it('owes each destination taking donor.updated one row when a donor who has given changes their answer, keyed on the donor and the moment', async () => {
+		const contactId = await withSettledGift(await commitDonor(db, donor(), true));
+
+		await commitDonor(db, donor(), false);
+
+		expect(await owed()).toEqual(
+			['https://crm.example.org/a', 'https://crm.example.org/b'].map((url) => ({
+				url,
+				event: 'donor.updated',
+				subject_id: `${contactId}:${CHANGED_AT.getTime()}`
+			}))
+		);
+	});
+
+	it('owes one when a donor who has given, and was never asked, answers for the first time', async () => {
+		await withSettledGift(await commitDonor(db, donor(), null));
+
+		await commitDonor(db, donor(), true);
+
+		expect(await owed()).toHaveLength(2);
+	});
+
+	it('owes nothing for a donor typed in on the dashboard who answers before any gift of theirs settles, and changes the row all the same', async () => {
+		const typed = await createContact(db, donor());
+
+		await commitDonor(db, donor(), true);
+
+		expect(await owed()).toEqual([]);
+		const [row] = await db.select().from(contact).where(eq(contact.id, typed.id));
+		expect(row?.consentedToContact).toBe(true);
+	});
+
+	it('owes one for that donor once a gift of theirs has settled', async () => {
+		const typed = await createContact(db, donor());
+		await withSettledGift({ ok: true, value: { contactId: typed.id, created: false } });
+
+		await commitDonor(db, donor(), true);
+
+		expect(await owed()).toHaveLength(2);
+	});
+
+	it('owes nothing when the returning donor gives the answer they gave before', async () => {
+		await withSettledGift(await commitDonor(db, donor(), true));
+
+		await commitDonor(db, donor(), true);
+
+		expect(await owed()).toEqual([]);
+	});
+
+	it('owes nothing for a donor this deployment has not seen: their row is an insert', async () => {
+		await commitDonor(db, donor(), true);
+
+		expect(await owed()).toEqual([]);
 	});
 });

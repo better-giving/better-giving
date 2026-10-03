@@ -12,7 +12,7 @@ import { Dialog } from './Dialog.jsx';
 // in. ../../behaviour/Dialog.dom.spec.tsx is the other half.
 
 describe('the dialog the server renders', () => {
-	it('is an open dialog element drawn as a column in the page', () => {
+	it('is an open dialog element drawn in the presentation no script has lifted', () => {
 		const root = render(Dialog, { title: 'Rotate the signing secret?' });
 		const dialog = root.querySelector('dialog');
 

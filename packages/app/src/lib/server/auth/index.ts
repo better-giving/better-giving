@@ -6,11 +6,13 @@ import { betterAuth } from 'better-auth/minimal';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '$lib/server/db/client';
 import { authAccount, authSession, authUser, authVerification } from '$lib/server/db/auth-schema';
-import type { AuthEnv } from './env';
+import { type AuthEnv, pinnedOrigin } from './env';
 import { MEMBER_PASSWORD_MIN_LENGTH } from './invitations';
+import { deleteResetLinks } from './reset-links';
 import { staffCredentialPlugin } from './staff-plugin';
 
-export { readAuthEnv, type AuthEnv } from './env';
+export { publishedOrigin, readAuthEnv, readPin, type AuthEnv, type PinReading } from './env';
+export { requirePin } from './pin';
 export { readStaffCredential, type StaffCredential } from './credential';
 export {
 	INVITATION_LIFETIME_MS,
@@ -69,7 +71,7 @@ export { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 // through no router at all. CLAUDE.md records the decision so a fork does not go looking for an
 // API this app does not serve.
 //
-// the deployer's credential is outside all of it. it is a deploy-time secret with no hash and no
+// the deployer's credential is outside all of it. it is a deploy-time var with no hash and no
 // row (./credential.ts), so there is nothing for a reset to write and nothing for a link to
 // address — ./members.ts refuses that identifier by name before the auth layer is asked, and the
 // console is where the value is changed.
@@ -81,7 +83,7 @@ export { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 /**
  * the two values `createAuth` cannot read for itself, resolved per request.
  *
- * neither is a deploy-time secret, which is the whole point: a one-click deploy asks for
+ * neither is a value an operator has to set, which is the whole point: a one-click deploy asks for
  * `ADMIN_PASSWORD` and nothing else.
  */
 export interface AuthRuntime {
@@ -181,52 +183,64 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	/**
 	 * the origin, and why it is not a secret.
 	 *
-	 * `BETTER_AUTH_URL` is an optional override that a one-click deploy never sets, because
-	 * better-auth already derives the origin from the request when `baseURL` is absent: its
-	 * handler resolves `getOrigin(request.url)` and then recomputes `trustedOrigins` from
-	 * that, per request (`better-auth/dist/auth/base.mjs`). that costs nothing here — this
-	 * factory is already per-request — and it avoids the asymmetry a fixed value carries,
-	 * where a deployment reachable on both workers.dev and a custom domain serves
-	 * cookie-bearing mutations on only one of them.
+	 * `BETTER_AUTH_URL` is an optional pin that a one-click deploy never sets. better-auth
+	 * derives an origin from a request only inside `auth.handler`
+	 * (`better-auth/dist/auth/base.mjs`), which nothing mounts. on a direct `auth.api.*` call
+	 * with no pin, its context carries an empty base URL and a `trustedOrigins` holding the
+	 * list below and nothing else (`better-auth/dist/context/create-context.mjs`). no call
+	 * here reads that base URL, because the reset mail and the invitation have their links
+	 * composed by the route. so the origin only decides this module's own settings:
+	 * `requestOrigin`, or the pin when one is set, is what the loopback check below sees, and
+	 * that check sets the cookie's `Secure` policy and the development `trustedOrigins`.
 	 *
-	 * the origin check still has teeth. it is not circular, because the two sides are
-	 * independent facts: better-auth compares the request's `Origin`/`Referer` header
-	 * (what page initiated the request) against the trusted list derived from
-	 * `request.url` (which host the browser addressed). a cross-site POST from evil.com
-	 * carries `Origin: https://evil.com` while `request.url` is still this deployment's
-	 * host, so it is refused. defeating that needs `Origin == Host` and the victim's
-	 * cookies, which browsers make mutually exclusive: the cookie jar and the Host come
-	 * from the same hostname, so `Origin == Host` means the request came from this app.
-	 * a spoofed `Host` from a script carries no session cookie and has nothing to hijack.
-	 * the cross-site navigation login block does not consult the list at all — it keys on
-	 * `Sec-Fetch-Site`/`Sec-Fetch-Mode`.
+	 * none of better-auth's request checks runs on this deployment. its origin middleware —
+	 * the `Origin`/`Referer` comparison against `trustedOrigins` and the `Sec-Fetch-*`
+	 * navigation-login block — runs only on a request `auth.handler` routed, and nothing
+	 * mounts it (CLAUDE.md → Product surface). the endpoint-level ones, `formCsrfMiddleware`
+	 * on the email sign-in and sign-up and the `originCheck` on a reset's `redirectTo`, return
+	 * early on a call that carries no `request`, and every call here passes `headers` alone.
+	 * passing `request:` to one switches them on, against the `trustedOrigins` set below,
+	 * which names nothing on a non-loopback host.
 	 *
-	 * none of that runs here. better-auth's origin middleware is mounted on its router, which this
-	 * deployment never serves, and the check its email sign-in and sign-up carry returns at once on a
-	 * direct `auth.api.*` call, because such a call has no `ctx.request` to read
-	 * (`better-auth/dist/api/middlewares/origin-check.mjs`, `better-auth/dist/api/index.mjs`).
+	 * two checks stand in their place, and both bound other origins only. the first is
+	 * react-router's: on a document or `.data` POST it answers 400, ahead of every middleware and
+	 * the action, when the `Origin` host differs from the request's (`throwIfPotentialCSRFAttack`
+	 * in its server runtime; react-router.config.ts sets no `allowedActionOrigins`). `Origin: null`
+	 * is refused too. a request with no `Origin` passes, and `Referer` is not read. it covers
+	 * `/login`, `/join`, `/forgot` and `/reset`, and not `/admin/sign-out`, a resource route the
+	 * check never runs on (../../../routes/_app.admin.sign-out.ts). it only ever refuses: a matching
+	 * `Origin` grants nothing, and the session is what authorizes (CLAUDE.md → Bans). the cases under
+	 * "a sign-in posted from another origin" in ../../../entry.server.workers.spec.ts hold it.
 	 *
-	 * what stands in front of a write behind the login is `staffGate` (./gate.ts), which refuses any
-	 * method but GET and HEAD whose `Sec-Fetch-Site` is present and not `same-origin`. the session
-	 * cookie's `sameSite: 'lax'` below keeps a cross-site POST from carrying the session. it does not
-	 * stop a same-site one, and a deployment on the organisation's own domain is same-site with the
-	 * organisation's website. the gate's rule is what covers that case. both controls bound other
-	 * origins only: a script running on this origin, the donor pages included, is inside them.
+	 * the second is `refuseWriteFromAnotherOrigin` (./gate.ts), which refuses any method but GET and
+	 * HEAD whose `Sec-Fetch-Site` is present and not `same-origin`. `staffGate` runs it for every
+	 * write behind the login, the sign-out included, and the routes that sign someone in
+	 * (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`) and the reset request at `forgot.tsx` sit
+	 * outside the gate, so each action calls it itself, after charging the bucket
+	 * `signInRateLimitKey` names (CLAUDE.md). a browser that sends no `Sec-Fetch-Site` passes it.
 	 *
-	 * the routes that sign someone in (`src/routes/login.tsx`, `join.tsx`, `reset.tsx`) and the
-	 * reset request at `forgot.tsx` sit outside the gate, so each action calls its rule itself
-	 * (`refuseWriteFromAnotherOrigin`), after charging the bucket `signInRateLimitKey` names
-	 * (CLAUDE.md). that rule is what stands against login-CSRF, where the victim's browser submits
-	 * credentials the attacker holds and the victim is signed into the attacker's account: it needs
-	 * no cookie from the victim, which is why the cookie attribute does not reach it. a browser that
-	 * sends no `Sec-Fetch-Site` passes the rule, and nothing else here stops it.
+	 * behind them stands the session cookie's `sameSite: 'lax'` below, which keeps a cross-site POST
+	 * from carrying the session. it does not stop a same-site one, and a deployment on the
+	 * organisation's own domain is same-site with the organisation's website; the `Sec-Fetch-Site`
+	 * rule is what covers that case. login-CSRF, where the victim's browser submits credentials the
+	 * attacker holds and the victim is signed into the attacker's account, needs no cookie from the
+	 * victim, so the cookie attribute does not reach it: a browser that omits both `Origin` and
+	 * `Sec-Fetch-Site` is accepted.
+	 *
+	 * none of it bounds a script on this origin, and the donor pages, `/donate` and each campaign's
+	 * address, are served on it (CLAUDE.md → Product surface) and run vendor scripts. what bounds
+	 * that is argued in ../../../document-policy.ts's header.
 	 *
 	 * `x-forwarded-host` is not consulted: better-auth honours forwarded headers only
 	 * when `advanced.trustedProxyHeaders` is set, and it is not. that is also why
 	 * `baseURL: { allowedHosts }` is deliberately unused — on 1.6.25 that path defaults
 	 * `trustedProxyHeaders` to `true`, which would trust an attacker-supplied header.
+	 *
+	 * a pin is read by `pinnedOrigin` (./env.ts), so its origin and not the value as typed is
+	 * `baseURL` and what the loopback check below sees, and a pin that names no http(s) origin
+	 * throws here.
 	 */
-	const configuredBaseURL = env.BETTER_AUTH_URL?.trim() || undefined;
+	const configuredBaseURL = pinnedOrigin(env) ?? undefined;
 	const effectiveOrigin = configuredBaseURL ?? runtime.requestOrigin;
 	const isLoopback = isLoopbackOrigin(effectiveOrigin);
 
@@ -297,6 +311,9 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			// worth more.
 		},
 		account: { modelName: 'authAccount' },
+		// `storeIdentifier` stays unset, so identifiers are stored as written: `deleteResetLinks`
+		// finds a member's links by their `reset-password:` prefix, and a hashed identifier would
+		// match nothing.
 		verification: { modelName: 'authVerification' },
 
 		/**
@@ -307,7 +324,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * Workers plan.** ./credential.ts argues that a KDF cannot run inside 10 ms of CPU and
 		 * that a KDF tuned to fit is one an attacker brute-forces trivially; that is the **free**
 		 * plan's budget and it binds the staff credential, which is why that one is still a
-		 * deploy-time secret with no hash anywhere. paid is 30 s per invocation, which scrypt at
+		 * deploy-time var with no hash anywhere. paid is 30 s per invocation, which scrypt at
 		 * N=16384, r=16 fits with room to spare — so a member's password is hashed properly
 		 * rather than at a cost chosen to fit a limit. tuning it down here would be the failure
 		 * that argument describes, not a saving. DEPLOY.md is where a fork reads which plan a
@@ -329,6 +346,19 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * ./members.ts is the other half, and `changeMemberPassword` beside it is the way a member
 		 * who *can* sign in changes theirs.
 		 *
+		 * a member holds one live link. `sendResetPassword` deletes every earlier one before the new
+		 * mail goes, and `onPasswordReset` deletes whatever is left once a reset lands, so an older
+		 * mail cannot overwrite the password just chosen (`deleteResetLinks` in ./reset-links.ts).
+		 * the first delete runs inside the backgrounded send and so costs the request nothing: an
+		 * address this deployment has still answers in the time one it does not.
+		 *
+		 * neither delete is guaranteed, and each one that throws is caught and logged. one before a
+		 * send leaves the earlier links working beside the new one, and the new mail still goes: a
+		 * member who asked for a link and got none is locked out, which is worse than two live links
+		 * for a moment, and `onPasswordReset` ends them all once either is used. one after a reset
+		 * leaves the other links working until they expire, and is caught so that the session
+		 * revocation behind it still runs.
+		 *
 		 * `revokeSessionsOnPasswordReset` is on, and it is the reason the reset mints no session:
 		 * somebody who has just proved they hold the mailbox ends every session the account had,
 		 * then signs in with what they chose. the default is off, which would leave whoever the
@@ -348,10 +378,29 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 			requireEmailVerification: false,
 			minPasswordLength: MEMBER_PASSWORD_MIN_LENGTH,
 			revokeSessionsOnPasswordReset: true,
+			onPasswordReset: async ({ user }) => {
+				// caught, not thrown: better-auth revokes the sessions after this returns, and a throw
+				// would leave them live under the new password.
+				try {
+					await deleteResetLinks(db, user.id);
+				} catch (cause) {
+					console.error('a reset landed but its other links could not be deleted:', cause);
+				}
+			},
 			resetPasswordTokenExpiresIn: PASSWORD_RESET_LIFETIME_SECONDS,
 			...(passwordReset
 				? {
 						sendResetPassword: async ({ user, token }) => {
+							// caught, not thrown: a member left with no mail is locked out, and the earlier
+							// links this leaves live end at the next reset that lands.
+							try {
+								await deleteResetLinks(db, user.id, { olderThan: token });
+							} catch (cause) {
+								console.error(
+									'a reset link was minted but the earlier ones could not be deleted:',
+									cause
+								);
+							}
 							await passwordReset.send({ email: user.email, token });
 						}
 					}
@@ -442,19 +491,12 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		},
 
 		/**
-		 * the effective origin is trusted by better-auth automatically — per request when
-		 * `baseURL` is unset. this list is only what makes local development work without
-		 * weakening the deployed app.
-		 *
-		 * `pnpm dev` serves on 5321 and `pnpm preview`/`wrangler dev` on 8787 off the same
-		 * `.dev.vars`, so a request arriving on either loopback port trusts both. 5321 is pinned
-		 * in `packages/app/vite.config.ts`, and this list is a reason it is pinned: a dev server
-		 * that drifted to another port would be an origin better-auth refuses the sign-in POST
-		 * from.
-		 *
-		 * a deployed origin is never loopback, so a real deployment trusts exactly the origin
-		 * it was reached on — no localhost entry that a page on a developer's machine could
-		 * POST from.
+		 * read by none of better-auth's checks on this deployment: they run only inside
+		 * `auth.handler`, which nothing mounts, or on a call passed a `request:`, which nothing
+		 * passes (the note above `configuredBaseURL`). it is stated for the day either changes,
+		 * and then it is what lets local development post from both loopback ports — `pnpm dev`
+		 * on 5321 (pinned in `packages/app/vite.config.ts`) and `pnpm preview`/`wrangler dev` on
+		 * 8787 — without a localhost entry on a deployed origin, which is never loopback.
 		 */
 		trustedOrigins: isLoopback ? ['http://localhost:5321', 'http://localhost:8787'] : [],
 

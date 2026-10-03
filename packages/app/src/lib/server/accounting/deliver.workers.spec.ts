@@ -8,6 +8,7 @@ import { createDb, type Db } from '../db/client';
 import { contact, donation, payment, quickbooksSync } from '../db/schema';
 import { chargeEntry, feeEntry } from '../donations/entries';
 import type { EmailMessage, EmailProvider } from '../email/provider';
+import { PACE } from '../outbox/budget';
 import { post, postingStatements, type Posting } from '../ledger/posting';
 import type { Settlement } from '../payments/provider';
 import { dueRows, sendDueEntries, sendQueuedEntry } from './deliver';
@@ -148,8 +149,9 @@ async function connected(realmId = REALM): Promise<void> {
 		.run();
 }
 
+/** a run's needs. its pace sends every row a case queues in one run. */
 function deps(port: AccountingProvider, email: EmailProvider = mailer().port) {
-	return { db, provider: port, email };
+	return { db, provider: port, email } as const;
 }
 
 /** the postings committed the way every poster commits them, with a queue row for each of `owed`. */
@@ -522,7 +524,7 @@ describe('the due backlog', () => {
 	);
 
 	it('narrows the backlog through the index, and reaches each entry group by its key', async () => {
-		const { sql: statement, params } = dueRows(db, NOW).toSQL();
+		const { sql: statement, params } = dueRows(db, NOW, PACE.books).toSQL();
 
 		const plan = await env.DB.prepare(`explain query plan ${statement}`)
 			.bind(...params)
@@ -713,14 +715,16 @@ describe('the due backlog', () => {
 		}
 	});
 
-	it('sends ten entry groups in a run and leaves the eleventh queued', async () => {
-		const postings = Array.from({ length: 11 }, () => correction('donationsDeductible'));
+	it('sends a run’s pace and leaves the rest queued', async () => {
+		const postings = Array.from({ length: PACE.books + 1 }, () =>
+			correction('donationsDeductible')
+		);
 		await commit(postings, postings);
 		const qb = provider();
 
 		await sendDueEntries(deps(qb.port), NOW);
 
-		expect(qb.asked).toHaveLength(10);
+		expect(qb.asked).toHaveLength(PACE.books);
 		const statuses = await Promise.all(postings.map(async (p) => (await row(idOf(p))).status));
 		expect(statuses.filter((status) => status === 'pending')).toHaveLength(1);
 	});

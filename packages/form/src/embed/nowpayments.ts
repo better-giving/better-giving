@@ -58,6 +58,7 @@ export function createPaymentSurface(
 		confirm: unanswerable,
 		resume: () => Promise.resolve({ kind: 'indeterminate' }),
 		rows: rowList,
+		quoting() {},
 		quoted() {},
 		// which cadence is offered crypto is the flow's answer, carried by `offer` below.
 		cadence() {},

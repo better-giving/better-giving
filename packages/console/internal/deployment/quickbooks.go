@@ -172,7 +172,7 @@ func quickbooksReport(answer cf.Answer) any {
 // report naming another press is the deployment answering about something nobody asked it, which a
 // screen would draw at the control that was pressed as what that press did. A refusal outside 200
 // is not read for one: the deployment answers it with the words to act on, and those reach the page
-// as the unanswered arm's own. One inside 200 names its press and is a report (./zapier.go).
+// as the unanswered arm's own. One inside 200 names its press and is a report.
 func pressReport(answer cf.Answer, sent string) any {
 	if answer.Kind != cf.Answered || answer.Status != http.StatusOK {
 		return nil

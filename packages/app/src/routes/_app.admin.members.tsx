@@ -356,7 +356,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
 			) : (
 				// a member is offered one control on this screen and it is about themselves, in the
 				// place the deployer is offered the invite. the deployer is offered neither: their
-				// password is a deploy-time secret set on the console, and that screen refuses their
+				// password is a deploy-time var set on the console, and that screen refuses their
 				// session (./_app.admin.members_.password.tsx).
 				<Section>
 					<div className="adm-actions">

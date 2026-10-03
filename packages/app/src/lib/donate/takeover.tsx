@@ -324,11 +324,14 @@ export function takeoverFor(
 				primary: { label: copy.TRY_AGAIN, submit: false }
 			};
 
-		// a resume, which is the only busy flow that reaches a takeover: a donor is back from wherever
-		// they authorized, and the flow has not yet found out what happened. its two sentences name no
-		// rail, which is what makes them right on the page load that has none.
+		// two busy flows reach a takeover, told apart by the machine's own phase: a resume — a donor
+		// back from wherever they authorized, on a page load that names no rail — and the wait after
+		// Give on the correction or Authorize on the mandate. the caret lands on this heading after
+		// that press, so it may not say the resume's words.
 		case 'working':
-			return { ...BLANK, heading: copy.RESUMING_HEADING, body: copy.RESUMING_BODY };
+			return state.phase === 'resuming'
+				? { ...BLANK, heading: copy.RESUMING_HEADING, body: copy.RESUMING_BODY }
+				: { ...BLANK, heading: copy.CONFIRMING_HEADING, body: copy.CONFIRMING_BODY };
 
 		// the three the card renders as a numbered step rather than as a takeover.
 		case 'amount':

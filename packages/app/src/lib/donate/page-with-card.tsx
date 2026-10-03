@@ -26,9 +26,11 @@ export type PageWithCardProps = Omit<
 	readonly seams?: CheckoutMounts['seams'];
 	/** where the card starts, the card's own `opening`. */
 	readonly opening?: DonateCardProps['opening'];
+	/** whether the address carries this page's resume stamp, the card's own `resuming`. */
+	readonly resuming?: boolean;
 };
 
-export function PageWithCard({ config, seams, opening, ...page }: PageWithCardProps) {
+export function PageWithCard({ config, seams, opening, resuming, ...page }: PageWithCardProps) {
 	const [picked, setPicked] = useState<string | null>(null);
 	const [held, setHeld] = useState<{ programId: string | null; locked: boolean }>({
 		programId: null,
@@ -53,6 +55,7 @@ export function PageWithCard({ config, seams, opening, ...page }: PageWithCardPr
 					onProgramChange={report}
 					{...(seams === undefined ? {} : { seams })}
 					{...(opening === undefined ? {} : { opening })}
+					{...(resuming === undefined ? {} : { resuming })}
 					{...(hideProgramSelect ? { pageProgram: picked } : {})}
 				/>
 			)}

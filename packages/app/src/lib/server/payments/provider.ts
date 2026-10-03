@@ -451,6 +451,14 @@ export type PaymentFailure = {
 	 * is inside it, as it is inside `amountMinor`. absent on every other refusal.
 	 */
 	readonly minimumMinor?: number;
+	/**
+	 * `invalid_request` only, and only where the processor gave a reason about this gift: the
+	 * processor's own words for it, which a donor may be shown, while `detail` around it is written
+	 * for the log and is free to be reworded. one line of at most 200 UTF-16 units and an ellipsis,
+	 * carrying no credential — anything key-shaped is replaced — and no field of the transaction.
+	 * absent on every other refusal.
+	 */
+	readonly providerSaid?: string;
 };
 
 /**
@@ -831,12 +839,13 @@ export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
  * what every verified delivery carries, whatever it turns out to be about.
  *
  * it holds no metadata, no amount and no status, and that is a rule rather than an omission: a
- * delivery is serialised in the API version the account held when it happened, so a replayed one
- * can carry an older shape for any field. what is read here is the little that has never moved.
+ * delivery's body is in whatever version its processor rendered it in, which need not be the one
+ * a read pins — stripe's rule is `RENDERED_VERSION` in ./stripe.ts — so it can carry another shape
+ * for any field. what is read here is the little that has never moved.
  * everything a handler acts on comes from a read — `readSettlement`, `readRecurringGift` or
  * `readReversal` — which fetches the object fresh against one pinned version.
- * `SettlementEvent.delivered` and `ReversalEvent.delivered` are the exceptions, and the first says
- * why.
+ * `SettlementEvent.delivered`, `ReversalEvent.delivered` and `RecurringEvent.delivered` are the
+ * exceptions, and each says why.
  */
 type VerifiedDelivery = {
 	/**
@@ -880,6 +889,32 @@ export type SettlementEvent = VerifiedDelivery & {
 export type RecurringEvent = VerifiedDelivery & {
 	readonly kind: 'recurring';
 	readonly providerNoticeId: string;
+	/**
+	 * the failed attempt as the verified body itself states it — an exception to
+	 * `VerifiedDelivery`'s rule, on the one delivery each of stripe and paypal sends per failed
+	 * attempt: the object a read fetches afterwards — stripe's invoice, paypal's subscription —
+	 * already holds the next attempt's count and schedule when a delivery arrives late, and only the
+	 * body was stamped by the attempt it reports. ./stripe.ts sets it on every collection failure
+	 * and refuses one whose body does not state it, and its `readRecurringGift` refuses a failure
+	 * without it. ./paypal.ts sets it where the body states it and otherwise reads the attempt off the
+	 * subscription, only while the read has not moved past the delivery (`readFailure`). each
+	 * adapter's own `readRecurringGift` is its one reader. absent on every other delivery and
+	 * processor.
+	 */
+	readonly delivered?: DeliveredAttempt;
+};
+
+/** what a failed attempt's own delivery states about it: `FailedCollection` less its key. */
+export type DeliveredAttempt = Pick<
+	FailedCollection,
+	'attemptCount' | 'nextRetryAt' | 'amountMinor' | 'currency'
+> & {
+	/**
+	 * when the attempt failed, where the body states it apart from the delivery's own time —
+	 * paypal's `last_failed_payment.time`. absent on stripe's, whose delivery is stamped when the
+	 * attempt failed, and `failedAt` is then the delivery's `occurredAt`.
+	 */
+	readonly failedAt?: Date;
 };
 
 /**
@@ -1596,6 +1631,8 @@ export type RecurringGiftEnd = {
  * it carries no amount, no currency and no fee. those are facts about one transaction and this app
  * already has one arm that reads them — `readSettlement` against `providerTxnId` — so a second copy
  * of them here would be two numbers for one charge with nothing saying which is the one to post.
+ * the one figure on it is `failedAttempt`'s, which is what an attempt asked for and moved none of,
+ * so nothing posts it.
  */
 export type RecurringGiftNotice = {
 	/**
@@ -1677,6 +1714,62 @@ export type RecurringGiftNotice = {
 	 * delivery's own time and is never a guess.
 	 */
 	readonly endedAt: Date | null;
+	/**
+	 * the attempt this delivery reports failing at a collection under the commitment. absent on
+	 * every other notice — a collection that paid, and the commitment's own standing.
+	 * ./stripe.ts and ./paypal.ts report it (`failedAttemptOf` in the one, `readFailure` in the
+	 * other). stripe's omits the opening invoice, the donor's own first charge failing on the page;
+	 * paypal's reports a subscription's first payment too, which no commitment row stands behind
+	 * yet, and ../donations/collect.ts reports nothing for an attempt under none. a failure reported
+	 * with no attempt reads as a collection that did not collect only where it names the failed
+	 * transaction in `providerTxnId`; with no transaction either, it reads as money settled outside
+	 * the processor, and ../donations/collect.ts alerts an operator to record a gift nobody gave. so
+	 * a failure with no transaction behind it must carry its attempt.
+	 */
+	readonly failedAttempt?: FailedCollection;
+};
+
+/**
+ * one failed attempt at a collection under a commitment, as a destination is told of it: the
+ * `recurring_gift.charge_failed` ../donations/collect.ts owes, keyed on `attemptKey`.
+ *
+ * per attempt rather than per collection: the processor retries on its own schedule, and what a
+ * reader acts on is which attempt this was and whether another is scheduled. nothing here is
+ * posted — no money moved — and the amount is what the attempt asked for, never a figure for the
+ * books.
+ */
+export type FailedCollection = {
+	/**
+	 * the attempt's identity: the processor's own id for the delivery that reported it, which a
+	 * redelivery or a resend repeats and each further failed attempt — a manual retry included —
+	 * carries afresh. the delivery rather than anything read about the collection, because a read
+	 * made after the next attempt cannot tell the two apart. opaque to a caller, which stores and
+	 * compares it and reads nothing out of it.
+	 */
+	readonly attemptKey: string;
+	/**
+	 * where this attempt stands on the processor's retry schedule, counted from 1, as the processor
+	 * stated it when the attempt failed. an attempt made by hand off the schedule can state the
+	 * count the one before it did, and `attemptKey` is what tells the two apart.
+	 */
+	readonly attemptCount: number;
+	/**
+	 * when the processor has scheduled its next try at this collection, as of this failed attempt,
+	 * or null where it scheduled none — the last miss. a schedule and not a promise: after a
+	 * decline the processor treats as final, the try runs only if the donor gives a new payment
+	 * method, and a collection closed since runs none.
+	 */
+	readonly nextRetryAt: Date | null;
+	/**
+	 * business time: when the attempt failed, as the processor recorded it and a redelivery repeats
+	 * it — the reporting delivery's own time on stripe (`failedAttemptOf` in ./stripe.ts), the
+	 * failed payment's own `time` on paypal (`readFailure` in ./paypal.ts).
+	 */
+	readonly failedAt: Date;
+	/** minor units, positive: what the attempt asked for — what was still owed on the collection. */
+	readonly amountMinor: number;
+	/** ISO-4217, uppercase. */
+	readonly currency: string;
 };
 
 export interface PaymentProvider {
@@ -1790,7 +1883,12 @@ export interface PaymentProvider {
 	verifyEvent(delivery: WebhookDelivery): Promise<PaymentResult<PaymentEvent>>;
 
 	/**
-	 * reads what a transaction currently is. the reconciliation read, safe to repeat.
+	 * reads what a transaction currently is, and may complete an authorisation the donor already
+	 * gave: ./paypal.ts captures an `APPROVED` order here, because PayPal has no auto-capture (its
+	 * header argues it). the reconciliation, safe to repeat — an order captured once reads as
+	 * captured the next time — and never a read for a page that only shows a transaction, which
+	 * handed a PayPal id would move the donor's money. which modules may call it is held by
+	 * ./sole-settlement-reader.spec.ts.
 	 *
 	 * it can take seconds rather than one round trip, and that is the arm's contract rather than an
 	 * implementation detail a caller may ignore: a charge whose fee the processor has not computed yet

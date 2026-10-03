@@ -197,6 +197,18 @@ export default function FormsFieldPreview() {
 					</button>
 				}
 			/>
+			{/* a press named for the value it shows, as a screen names it where a bare `Show the value`
+			    would not say which. the name is read rather than drawn, so this specimen looks like
+			    the first masked one; it is here so the name can be inspected on a real press. */}
+			<Field
+				id="forms-field-masked-named"
+				label="Signing secret"
+				code
+				masked
+				revealLabel="Show signing secret"
+				hideLabel="Hide signing secret"
+				defaultValue="whsec_4tLp0Zd8fJq"
+			/>
 			<Field id="forms-field-unlabelled" aria-label="Suggested amount 1" defaultValue="25" />
 			<Field id="forms-field-hover" label="hover" state="hover" />
 			<Field id="forms-field-focus" label="focus" state="focus" />

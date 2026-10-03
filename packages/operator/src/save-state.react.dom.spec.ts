@@ -119,8 +119,8 @@ describe('the confirmation a react save button draws', () => {
 
 	it('reports a second save into the same group', () => {
 		// the marker never moves across this, which is why the timer is armed on what the button is
-		// drawing and not on the marker: the operator edits, saves, and the form is rebound from the
-		// result. armed on the marker the second save would draw no tick at all, having spent its
+		// drawing and not on the marker: the operator edits, presses, and the form is rebound from
+		// the result. armed on the marker the second save would draw no tick at all, having spent its
 		// four seconds during the first.
 		vi.useFakeTimers();
 		const button = mounted();
@@ -129,10 +129,41 @@ describe('the confirmation a react save button draws', () => {
 		expect(button.confirming).toBe(false);
 
 		button.edit();
+		button.press();
 		button.save();
+		button.settle();
 		expect(button.confirming).toBe(true);
 
 		button.wait(4000);
+		expect(button.confirming).toBe(false);
+
+		button.stop();
+	});
+
+	it('says nothing when an edit is undone back to what is stored', () => {
+		// the defect this is here for: the boxes reading what is stored again is the same three facts
+		// a save leaves behind, with no press between them. a tick drawn there is announced as a
+		// write, and nobody made one — so only the group's own press is what earns another.
+		vi.useFakeTimers();
+		const button = mounted();
+
+		button.wait(4000);
+		button.edit();
+		button.save();
+		expect(button.confirming).toBe(false);
+
+		button.stop();
+	});
+
+	it('says nothing when an edit is undone before the first confirmation has run out', () => {
+		// the edit is what took the tick off, so the same tick coming back over the undo is a second
+		// announcement of the first write.
+		vi.useFakeTimers();
+		const button = mounted();
+
+		button.wait(1000);
+		button.edit();
+		button.save();
 		expect(button.confirming).toBe(false);
 
 		button.stop();

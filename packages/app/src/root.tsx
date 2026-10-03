@@ -9,9 +9,12 @@ import {
 	Outlet,
 	Scripts,
 	ScrollRestoration,
+	useMatches,
 	useRouteError
 } from 'react-router';
 import type { Route } from './+types/root';
+import { APP_NAME } from '$lib/admin/screen-title';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
 // below renders the donor pages, `/donate` and each campaign's address, as well as every operator
 // screen, and the donation form's four sheets are unlayered while every operator declaration is
@@ -46,10 +49,10 @@ export function Layout({ children }: { children: ReactNode }) {
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
 				<Meta />
-				{/* an empty nonce, so `<Links>` does not take the document's from `ServerRouter`: the
-				    client router never holds it, and a browser blanks the attribute once a header
-				    policy applies, so any nonce drawn here fails hydration. no policy in
-				    ./document-policy.ts asks a link for one — only its `script-src` names a nonce. */}
+				{/* an empty nonce in place of the one `ServerRouter` hands down: a browser hides a nonce's
+				    value from the page, and the client is never handed one, so a link drawn with it
+				    hydrates as a mismatch. a link needs none — `style-src` and `script-src` both take
+				    'self' (./document-policy.ts). */}
 				<Links nonce="" />
 			</head>
 			<body>
@@ -65,9 +68,14 @@ export default function App() {
 	return <Outlet />;
 }
 
+/** the ids react router gives the donor pages, ./routes/donate.tsx and ./routes/$slug.tsx. */
+const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set(['routes/donate', 'routes/$slug']);
+
 /**
  * the app's one error page, and it is on the root rather than on the protected layout
- * deliberately.
+ * deliberately. the layout's own boundary draws the set-up gate and renders this for everything
+ * else (`ErrorBoundary` in ./routes/_app.tsx), so a failure behind the login reads the same as one
+ * anywhere.
  *
  * an address matching no route matches nothing under `./routes/_app.tsx` either, so the gate never
  * runs for it and there is no session in the answer at all — which is what makes this reachable on
@@ -77,7 +85,7 @@ export default function App() {
  * it is also the one thing in this app under no surface, and therefore the one place a stylesheet
  * is linked from inside a tree rather than from a route's `links`: react 19 hoists a
  * `<link rel="stylesheet" precedence>` into the head, which is how a boundary that can replace any
- * screen — the donor's page included — still arrives dressed.
+ * screen — a donor page included — still arrives dressed.
  *
  * nothing under `/api/v1` renders it: those routes answer with json or with the framework's own
  * fallback, so the public surface is unchanged by anything here.
@@ -91,25 +99,40 @@ export function ErrorBoundary() {
 	// sheets — there are none here.
 	const sheet = <link rel="stylesheet" precedence="operator" href={operatorSheet} />;
 
-	// the panel has two faces and the 404 is the one with a way out: an address that is not there
-	// on a working deployment has somewhere to send anybody, while a deployment that would serve
-	// the next screen is the thing that failed. `ErrorPanel` draws the panel; the address is this
-	// app's and is stated here, because the part is a leaf shared with another surface whose route
-	// table is not this one's.
+	// the tab names the face the panel draws, in $lib/admin/screen-title.ts's shape, and react
+	// hoists the tag into the head as it does the sheet. it reads the project's name rather than the
+	// organisation's off the layout's match, because the layout's own read may be what failed and
+	// this page depends on no data. `<Meta />` draws no title over it: it reads no route beneath a
+	// boundary, and neither this route nor ./routes/_app.tsx exports `meta`.
+	//
+	// a donor page is the organisation's and not the project's, so there the second half is the
+	// word its own tab falls back to (`meta` in ./routes/donate.tsx). which page this is comes off
+	// the matched route's id and never its data, for the same reason the name does.
+	const onDonorPage = useMatches().some((match) => DONOR_PAGE_ROUTE_IDS.has(match.id));
+	const tab = (face: string) => <title>{`${face} · ${onDonorPage ? 'Donate' : APP_NAME}`}</title>;
+
+	// the panel has three faces, and the 404 and the 4xx have a way out: an address that is not
+	// there, or a request the app refused, leaves a working deployment with somewhere to send
+	// anybody, while a deployment that would serve the next screen is the thing that failed.
+	// `ErrorPanel` draws the panel; the address is this app's and is stated here, because the part is
+	// a leaf shared with another surface whose route table is not this one's.
 	//
 	// `Link` and never a bare anchor: /admin is one document and a way out that reloads it throws
 	// away the whole client for a destination the router already has
 	// ($lib/admin/button-navigates.dom.spec.tsx).
+	//
+	// a donor holds no staff session, so on a donor page the way out is a sign-in screen they
+	// cannot pass and is not drawn at all.
+	const toForms = onDonorPage
+		? {}
+		: ({ wayOut: 'Go to forms', wayOutProps: { as: Link, to: '/admin/forms' } } as const);
 	if (status === 404) {
+		const title = 'No such page';
 		return (
 			<>
 				{sheet}
-				<ErrorPanel
-					code="404"
-					title="No such page"
-					wayOut="Go to forms"
-					wayOutProps={{ as: Link, to: '/admin/forms' }}
-				>
+				{tab(title)}
+				<ErrorPanel code="404" title={title} {...toForms}>
 					It may have been deleted, or the address may be wrong.
 				</ErrorPanel>
 			</>
@@ -117,22 +140,41 @@ export function ErrorBoundary() {
 	}
 
 	// the failures able to reach here are written where the failure is known and mark their
-	// commands and variable names with backticks — the gate's message names the table and the
-	// command that mints the signing key ($lib/server/auth/signing-key.ts). react router hides the
+	// commands and variable names with backticks — the message for a pin that names no address
+	// names `BETTER_AUTH_URL` and how to set it ($lib/server/auth/pin.ts). react router hides the
 	// text of anything it did not expect, so the fallback is a state rather than a sentence
 	// somebody wrote for it.
 	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';
 
+	// a 4xx is the app answering, not failing: the form layer refuses a hand-built body with a 400
+	// ($lib/server/conform.ts), and the page says what the status says. a string thrown with a 4xx
+	// is drawn as page copy on every page this boundary replaces, a donor page included, so a
+	// 4xx thrown anywhere under it is a sentence its reader will see.
+	if (status >= 400 && status < 500) {
+		const title = 'This request was refused';
+		return (
+			<>
+				{sheet}
+				{tab(title)}
+				<ErrorPanel code={`${status}`} title={title} {...toForms}>
+					<MarkedText
+						text={
+							message ||
+							`Nothing more is known about why. Go back and try again${onDonorPage ? '' : ', or go to forms'}.`
+						}
+					/>
+				</ErrorPanel>
+			</>
+		);
+	}
+
+	const title = 'This deployment could not answer';
 	return (
 		<>
 			{sheet}
-			<ErrorPanel code="500" title="This deployment could not answer">
-				<MarkedText
-					text={
-						message ||
-						'Nothing more is known here. This deployment’s logs say why: the Cloudflare dashboard has them, and `pnpm run logs` reads them from a checkout.'
-					}
-				/>
+			{tab(title)}
+			<ErrorPanel code="500" title={title}>
+				<MarkedText text={message || `Nothing more is known here. ${LOGS_SAY_WHY}`} />
 			</ErrorPanel>
 		</>
 	);

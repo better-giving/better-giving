@@ -1,29 +1,28 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { AppShell, PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { BareShell } from '@better-giving/operator/components/shell/BareShell';
-import { Brand } from '@better-giving/operator/components/status/Brand';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { holdBar } from '@better-giving/operator/progress-bar';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
+import { Outlet, useLocation, useSearchParams } from 'react-router';
 import chariotLogo from '../assets/processors/chariot.png';
 import nowpaymentsLogo from '../assets/processors/nowpayments.png';
 import paypalLogo from '../assets/processors/paypal.png';
 import quickbooksLogo from '../assets/integrations/quickbooks.png';
 import stripeLogo from '../assets/processors/stripe.png';
-import zapierLogo from '../assets/integrations/zapier.png';
 import github from '../assets/social/github.webp';
 import { CloseConfirm, useClosed } from '../lib/close-confirm';
+import { cloudflareAccount } from '../lib/cloudflare-account';
 import { railGroups } from '../lib/console-pages';
-import { gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
-import { CloudflareGateFace, ConsoleStopped, drawnAfterGate } from '../lib/deployment-states';
-import { CLOSE_PARAM, consoleRereads } from '../lib/dialog-params';
+import { drawsReading, gatedBy, gatedPage, notReady, readConsole } from '../lib/console-reading';
+import { CloudflareGateFace, drawnAfterGate } from '../lib/deployment-states';
+import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead, HeadNotes, machineNoted } from '../lib/head-strip';
 import { PRODUCT_NAME, ProductFoot, SOURCE_URL, productLine } from '../lib/product-foot';
 import { RailLabelsProvider, RouterLink } from '../lib/router-link';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections';
 
 // the shell every section page of a ready deployment stands in: the rail of pages and the foot naming
@@ -42,7 +41,9 @@ import type { Route } from './+types/_sections';
 //
 // **the account is the rail's foot, with the press that ends this console beside it.** it is the one
 // thing true on every page, and the record naming the account is written at the terminal and left
-// exactly as it is. the same press stands in the narrow band, where the foot is not drawn.
+// exactly as it is. it is the Cloudflare logo and the account's name and opens nothing
+// (../lib/cloudflare-account.tsx). the account and the close both stand in the narrow band too,
+// where the foot is not drawn.
 //
 // **nothing on these pages deploys.** standing a deployment up and carrying newer code onto one are
 // `better-giving start` in a terminal, which is what opens the one-way door the remote migration is;
@@ -50,7 +51,8 @@ import type { Route } from './+types/_sections';
 // stands around it.
 //
 // **no press is answered here.** this route is pathless, so no address posts to it: each page answers
-// its own presses, and the close over every page is answered by `/` (../lib/close-confirm.tsx).
+// its own presses, and the one press over every page — the close — is answered by `/`
+// (../lib/close-confirm.tsx).
 //
 // **nothing on a page reaches cloudflare and nothing could**: cloudflare's API sends no cross-origin
 // headers, and the credential it is reached with is held by the binary on this machine. what a press
@@ -74,6 +76,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 		notReady(read);
 	}
 	await bar.finish();
+	drawsReading(request, read);
 	return { ...read, address: read.reading.face.address };
 }
 
@@ -103,7 +106,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 			chariot: chariotLogo,
 			nowpayments: nowpaymentsLogo
 		},
-		{ quickbooks: quickbooksLogo, zapier: zapierLogo }
+		{ quickbooks: quickbooksLogo }
 	);
 	const here = groups
 		.flatMap((group) => group.destinations)
@@ -119,7 +122,7 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 	   the mark is the plug being pulled, and its label is the whole of its name. */
 	const closeControl = (
 		<Button
-			as={Link}
+			as={DialogLink}
 			to={`${pathname}?${CLOSE_PARAM}`}
 			preventScrollReset
 			variant="quiet"
@@ -130,18 +133,13 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 		/>
 	);
 
+	/* the account at both widths: the row in the rail's foot, and at phone width, where the foot is
+	   not drawn, the logo in the band beside the close. */
+	const account = cloudflareAccount({ name: loaderData.account, closeControl });
+
 	const foot = (
 		<>
-			<div className="adm-footaccount">
-				<span className="adm-rail__lead">
-					<Brand name="cloudflare" label="Cloudflare" />
-				</span>
-				{/* the title is what cloudflare resolves that name by: the name is not unique and the id is. */}
-				<span className="adm-footaccount__name" title={loaderData.accountId}>
-					{loaderData.account}
-				</span>
-				<span className="adm-footaccount__out">{closeControl}</span>
-			</div>
+			{account.row}
 			<div className="adm-footline">
 				<span className="adm-rail__lead">
 					{/* github's trademark, used to point at that repository and for nothing else. the
@@ -177,7 +175,12 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 				groups={groups}
 				link={RouterLink}
 				current={here?.label}
-				wayOut={closeControl}
+				wayOut={
+					<>
+						{account.band}
+						{closeControl}
+					</>
+				}
 				foot={foot}
 			>
 				{here === undefined ? null : (
@@ -208,16 +211,16 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
 }
 
 /**
- * a page standing behind a gate, or the console stopped.
+ * a page standing behind a gate, or the layout failing before it had a reading.
  *
  * **the gate is the page's whole screen**: the head keeps the account and the close press, which
  * are true whatever cloudflare said, and the rail goes, since every destination on it is read over
  * the answer that did not land (../lib/cloudflare-gate.ts).
  *
- * the console stopped is the one other thing a page meets here: a request it cannot reach the local
- * process with at all. drawn as the panel a route outside the shell is, because there is no reading
- * to draw a shell from — the same words wherever it is met (../lib/deployment-states.tsx). the foot
- * stands with no release in it, because nothing here read what this binary is.
+ * anything else is `ConsoleFailure`'s to tell apart (./_index.tsx), drawn as the panel a route
+ * outside the shell is, because there is no reading to draw a shell from. a page under the layout
+ * that fails is caught by its own boundary and keeps the shell. the foot stands with no release in it,
+ * because nothing here read what this binary is.
  */
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	/* the confirm opens from state here rather than off `?close` as it does over a page: the layout
@@ -231,7 +234,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 		return (
 			<PanelRoute foot={<ProductFoot version="" />}>
 				<title>{TITLE}</title>
-				<ConsoleStopped />
+				<ConsoleFailure error={error} />
 			</PanelRoute>
 		);
 	}

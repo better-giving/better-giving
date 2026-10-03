@@ -1,6 +1,7 @@
 import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/layout';
 import { formatDate, formatMoney } from '../format';
 import type { EmailTemplate } from '../template';
+import { greetingFor } from './greeting';
 
 // the donor's "we have refunded your gift" — a short notice, not a second receipt.
 //
@@ -59,7 +60,7 @@ export function template(data: RefundNoticeData): EmailTemplate {
 		data.remainingMinor === 0
 			? `Your gift to ${data.legalName} has been refunded`
 			: `Part of your gift to ${data.legalName} has been refunded`;
-	const greeting = data.donorName === null ? 'Hello,' : `Dear ${data.donorName},`;
+	const greeting = greetingFor(data.donorName);
 	const said =
 		data.refundedMinor === data.giftMinor
 			? `We have refunded ${gift}.`

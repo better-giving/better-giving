@@ -1,3 +1,4 @@
+import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 
 /*
@@ -15,6 +16,12 @@ import { StatedValue } from '@better-giving/operator/components/forms/StatedValu
  *
  * the last two are the length cases: a value long enough to wrap, and a value that is empty, which
  * draws a label over nothing.
+ *
+ * the last specimen is the Zapier page's address row, and it wears the two remaining props at
+ * once. `block` sets the value as a block of its own — a one-line copyable slab — in a group named
+ * by the label. `flush` drops the block's padding, for a value standing in a `.adm-grouped` group
+ * whose gap already spaces it; it is shown in one, under a sentence, so the step between the two
+ * is the group's alone.
  */
 export default function FormsStatedValuePreview() {
 	return (
@@ -35,6 +42,21 @@ export default function FormsStatedValuePreview() {
 				Stripe posts every settled charge here. It is registered from the console.
 			</StatedValue>
 			<StatedValue label="Registered address" value="" />
+			<div className="adm-grouped">
+				<p className="adm-prose">Zapier asks for this address when a Zap first connects.</p>
+				<StatedValue
+					label="Your deployment address"
+					block={
+						<CodeSlab
+							content="https://give.riverbanktrust.org"
+							oneline
+							copyable
+							copyLabel="Copy address"
+						/>
+					}
+					flush
+				/>
+			</div>
 		</div>
 	);
 }

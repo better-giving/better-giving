@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { act, type FormEvent, useState } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, render } from '../render.testing';
 import { type RepeatingRow, type RowControl, RepeatingRows } from './RepeatingRows.jsx';
 
@@ -255,6 +256,40 @@ describe('repeating rows mounted into a document', () => {
 		).toEqual(['Remove Allowed origins 1', 'Remove Allowed origins 2']);
 	});
 
+	it('names each row and its Remove by what one row is called, where the legend is a plural', () => {
+		const root = render(RepeatingRows, {
+			id: 'amounts',
+			legend: 'Suggested amounts',
+			rowLabel: 'suggested amount',
+			add: ADD,
+			rows: SITES
+		});
+
+		expect(root.querySelector('legend')?.textContent).toBe('Suggested amounts');
+		expect(inputs(root).map((box) => box.getAttribute('aria-label'))).toEqual([
+			'suggested amount 1',
+			'suggested amount 2'
+		]);
+		expect(
+			[...root.querySelectorAll('.adm-rows__row button')].map((button) =>
+				button.getAttribute('aria-label')
+			)
+		).toEqual(['Remove suggested amount 1', 'Remove suggested amount 2']);
+	});
+
+	it('describes the group by a sentence its caller draws, and marks no row with it', () => {
+		const root = render(RepeatingRows, {
+			id: 'amounts',
+			legend: 'Suggested amounts',
+			describedBy: 'amounts-cap',
+			add: ADD,
+			rows: SITES
+		});
+
+		expect(root.querySelector('fieldset')?.getAttribute('aria-describedby')).toBe('amounts-cap');
+		expect(inputs(root).map((box) => box.getAttribute('aria-invalid'))).toEqual([null, null]);
+	});
+
 	/**
 	 * the guarantee a locked row rests on, and it is the missing name alone: a box with no name is
 	 * in no submission and in no reading of the form's own boxes by name, which is what feeds both
@@ -310,5 +345,161 @@ describe('repeating rows mounted into a document', () => {
 				button.getAttribute('aria-label')
 			)
 		).toEqual(['Remove Allowed origins 1', 'Remove Allowed origins 2']);
+	});
+});
+
+/**
+ * the group under a form that applies its own list intents, the way a form layer does: the press
+ * submits, the form reads which control submitted, and the rows are drawn again from what that
+ * changed. nothing about focus is wired here, so whatever lands focus is the group's own.
+ */
+function Listing(props: {
+	start: readonly string[];
+	/** whether the form turns every press down, applying no intent. */
+	refuse?: boolean;
+	/** rows the page adds by some other way than these presses. */
+	extra?: readonly string[];
+	/** the box outside the group the form puts focus on as it applies a press, by id. */
+	focusTo?: string;
+}) {
+	const [keys, setKeys] = useState(props.start);
+	const [minted, setMinted] = useState(0);
+	const apply = (event: FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		if (props.refuse) return;
+		const intent = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') ?? '';
+		if (intent === 'insert') {
+			setKeys((was) => [...was, `new-${minted}`]);
+			setMinted((n) => n + 1);
+		} else if (intent.startsWith('remove:')) {
+			const gone = intent.slice('remove:'.length);
+			setKeys((was) => was.filter((key) => key !== gone));
+		}
+		if (props.focusTo !== undefined) document.getElementById(props.focusTo)?.focus();
+	};
+	return (
+		<form onSubmit={apply}>
+			<input id="elsewhere" aria-label="Elsewhere" />
+			<RepeatingRows
+				id="origins"
+				name="allowed_origins"
+				legend="Site"
+				add={ADD}
+				rows={byPosition([...keys, ...(props.extra ?? [])])}
+			/>
+		</form>
+	);
+}
+
+/** presses the control a reader knows by `name`, the way a keyboard does. */
+function press(root: HTMLElement, name: string): void {
+	const control = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
+		(button) => (button.getAttribute('aria-label') ?? button.textContent) === name
+	);
+	if (control === undefined) throw new Error(`no control is called ${name}`);
+	act(() => {
+		control.focus();
+		control.click();
+	});
+}
+
+/**
+ * the group under a caller that claims the Add press for itself: it turns the submit down and puts
+ * the row in on its own, in the same press.
+ */
+function Claimed() {
+	const [keys, setKeys] = useState<readonly string[]>(['a']);
+	const add: RowControl = {
+		...ADD,
+		onClick: (event) => {
+			event.preventDefault();
+			setKeys((was) => [...was, 'claimed']);
+		}
+	};
+	return (
+		<form>
+			<RepeatingRows
+				id="origins"
+				name="allowed_origins"
+				legend="Site"
+				add={add}
+				rows={byPosition(keys)}
+			/>
+		</form>
+	);
+}
+
+describe('where focus lands after a row is added or dropped', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// the press that drops a row is inside the row, so it goes with it — and focus on a node that has
+	// gone is focus on the page itself, which sends a keyboard operator back to the top.
+	it('goes to the box above a row that was dropped', () => {
+		const { root } = mount(Listing, { start: ['a', 'b', 'c'] });
+
+		press(root, 'Remove Site 2');
+
+		expect(document.activeElement).toBe(inputs(root)[0]);
+	});
+
+	it('goes to the box that took the first row’s place when the first is dropped', () => {
+		const { root } = mount(Listing, { start: ['a', 'b'] });
+
+		press(root, 'Remove Site 1');
+
+		expect(document.activeElement).toBe(inputs(root)[0]);
+	});
+
+	it('goes to Add when the last row is dropped', () => {
+		const { root } = mount(Listing, { start: ['a'] });
+
+		press(root, 'Remove Site 1');
+
+		expect(inputs(root)).toHaveLength(0);
+		expect(document.activeElement?.textContent).toBe('Add another');
+	});
+
+	it('moves nothing later for a press the form turned down', () => {
+		// the press changed no row, so it owes nothing — and a row arriving later by some other way,
+		// a task or more after it, is no answer to it.
+		vi.useFakeTimers();
+		const listing = mount(Listing, { start: ['a', 'b'], refuse: true, extra: [] as string[] });
+		press(listing.root, 'Remove Site 2');
+		expect(inputs(listing.root)).toHaveLength(2);
+
+		act(() => vi.advanceTimersByTime(0));
+		act(() => (document.activeElement as HTMLElement | null)?.blur());
+		listing.again({ start: ['a', 'b'], refuse: true, extra: ['c'] });
+
+		expect(document.activeElement).toBe(document.body);
+	});
+
+	it('goes into the new box when a row is added', () => {
+		const { root } = mount(Listing, { start: ['a'] });
+
+		press(root, 'Add another');
+
+		expect(inputs(root)).toHaveLength(2);
+		expect(document.activeElement).toBe(inputs(root)[1]);
+	});
+
+	it('leaves focus where the form put it as it applied the press', () => {
+		const { root } = mount(Listing, { start: ['a', 'b'], focusTo: 'elsewhere' });
+
+		press(root, 'Remove Site 2');
+
+		expect(inputs(root)).toHaveLength(1);
+		expect(document.activeElement?.id).toBe('elsewhere');
+	});
+
+	it('moves nothing for a press the caller claimed, though the rows changed', () => {
+		const { root } = mount(Claimed, {});
+
+		press(root, 'Add another');
+
+		expect(inputs(root)).toHaveLength(2);
+		expect(document.activeElement?.textContent).toBe('Add another');
 	});
 });

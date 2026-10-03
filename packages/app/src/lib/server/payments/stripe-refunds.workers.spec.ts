@@ -767,7 +767,7 @@ describe('a Stripe dispute opened on a settled card gift', () => {
 		expect(await disputeRows()).toEqual([[null, new Date(RESPOND_BY * 1000)]]);
 		const alerts = toStaff();
 		expect(alerts).toHaveLength(1);
-		expect(alerts[0]?.text).toContain('10000 USD');
+		expect(alerts[0]?.text).toContain('USD 100.00');
 		expect(alerts[0]?.text).toContain(new Date(RESPOND_BY * 1000).toISOString());
 		expect(alerts[0]?.text).toContain('https://dashboard.stripe.com/disputes/du_1');
 	});

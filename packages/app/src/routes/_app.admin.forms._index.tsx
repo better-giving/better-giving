@@ -407,9 +407,9 @@ function EmbedCard({
 
 	return (
 		<Modal
-			// the quotes are the seam between the verb and the name: `Embed General Fund` reads as one
-			// run-on phrase with nothing marking where the name starts.
-			title={<>Embed &ldquo;{form.name}&rdquo;</>}
+			// the form is the card's subject, so its name is the whole title; the numbered steps under
+			// it say what the card is for.
+			title={form.name}
 			// a `Link` rather than an anchor, so leaving the card is a navigation the router handles
 			// rather than a full document load.
 			exitProps={{ as: Link, to: SCREEN }}

@@ -5,6 +5,7 @@ import type { RichTextDocument } from '$lib/rich-text/document';
 import { createDb } from '$lib/server/db/client';
 import { createImage } from '$lib/server/images/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
+import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as organisation from './_app.admin.organisation';
@@ -67,7 +68,7 @@ type Loaded = {
 async function load(flash = ''): Promise<Loaded> {
 	const cookie = [session, flash].filter((value) => value !== '').join('; ');
 	const response = await request(new Request(`${ORIGIN}${SCREEN}`, { headers: { cookie } }), {
-		env
+		env: bindings
 	});
 	expect(response.status).toBe(200);
 	return (await response.json()) as Loaded;
@@ -97,7 +98,7 @@ async function post(
 	}
 	const response = await request(
 		new Request(`${ORIGIN}${SCREEN}`, { method: 'POST', headers: { cookie: session }, body }),
-		{ env }
+		{ env: bindings }
 	);
 	if (response.status === 303) {
 		return {
@@ -127,6 +128,13 @@ async function save(mission: RichTextDocument, vision: RichTextDocument | null =
 		vision: JSON.stringify(vision ?? { type: 'doc', content: [{ type: 'paragraph' }] })
 	});
 }
+
+/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
 
 describe('the story', () => {
 	it('is saved and read back', async () => {
@@ -200,7 +208,7 @@ describe('the story', () => {
 		body.set('vision', JSON.stringify(words('Warm.')));
 		const response = await request(
 			new Request(`${ORIGIN}${SCREEN}`, { method: 'POST', headers: { cookie: session }, body }),
-			{ env }
+			{ env: bindings }
 		);
 		expect(response.status).toBe(400);
 		expect(await response.text()).toContain(`\`${RECORD_VERSION}\``);
@@ -297,7 +305,7 @@ async function postLook(
 	for (const [field, value] of Object.entries(fields)) body.set(field, value);
 	const response = await request(
 		new Request(`${ORIGIN}${SCREEN}`, { method: 'POST', headers: { cookie: session }, body }),
-		{ env }
+		{ env: bindings }
 	);
 	const answered = (await response.json()) as {
 		saved?: 'look' | 'look-undone' | 'logo' | 'logo-undone';

@@ -1,11 +1,12 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { IMAGE_BYTES_MAX, image } from '$lib/server/db/schema';
 import { d1BytesPort } from '$lib/server/images/bytes';
 import { jpegHeader, pngHeader, webpHeader } from '$lib/server/images/headers.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
+import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as images from './_app.admin.images';
@@ -33,7 +34,7 @@ function post(file: Blob | string | null, cookie = session) {
 	if (file !== null) body.set('file', file);
 	return request(
 		new Request(`${ORIGIN}/admin/images`, { method: 'POST', headers: { cookie }, body }),
-		{ env }
+		{ env: bindings }
 	);
 }
 
@@ -47,6 +48,13 @@ const PHOTOS = [
 	{ type: 'image/jpeg', bytes: jpegHeader(1600, 1067) },
 	{ type: 'image/png', bytes: pngHeader(1600, 1067) }
 ] as const;
+
+/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
 
 describe('a photo posted to the images route', () => {
 	it.each(PHOTOS)(
@@ -138,7 +146,7 @@ describe('a post the images route refuses', () => {
 				},
 				body: 'x'.repeat(2_400_000)
 			}),
-			{ env }
+			{ env: bindings }
 		);
 
 		expect(response.status).toBe(413);
@@ -164,7 +172,7 @@ describe('a post the images route refuses', () => {
 				headers: { cookie: session, 'content-type': 'multipart/form-data; boundary=x' },
 				body
 			}),
-			{ env }
+			{ env: bindings }
 		);
 
 		expect(response.status).toBe(413);

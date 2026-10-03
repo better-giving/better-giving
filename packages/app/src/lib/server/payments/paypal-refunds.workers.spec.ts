@@ -726,7 +726,7 @@ describe('a PayPal dispute holding a settled gift’s money', () => {
 			expect(await disputeRows()).toEqual([[null, RESPOND_BY]]);
 			const alerts = toStaff();
 			expect(alerts).toHaveLength(1);
-			expect(alerts[0]?.text).toContain('10000 USD');
+			expect(alerts[0]?.text).toContain('USD 100.00');
 			expect(alerts[0]?.text).toContain(RESPOND_BY);
 			expect(alerts[0]?.text).toContain('https://www.paypal.com/resolutioncenter');
 		}

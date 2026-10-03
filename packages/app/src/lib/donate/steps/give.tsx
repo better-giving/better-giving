@@ -241,18 +241,16 @@ export function Receipt({ reading, onFee, feeRef }: ReceiptProps) {
 			<div className="row total">
 				<span className="row-label">{reading.totalLabel}</span>
 				{/*
-				 * an `<output>`, and the only element on the card that is one: it carries `role="status"`
-				 * implicitly, which is the whole reason. the fee decision rewrites this figure without
-				 * changing the screen and without moving the caret, and the box reports its own new
-				 * setting while the total beside it is the half nobody is told.
-				 *
-				 * one screen turns it off, and it is the correction: the announcer states both figures
-				 * there, so the region would say the new total a second time.
+				 * an `<output>`, for what it is — the result of the decisions above it — and never a
+				 * second channel: its implicit `role="status"` is turned off on every commit. a live
+				 * attribute flipped in the same commit as the figure is read by nobody reliably, and the
+				 * card says out loud on one region, decided in one place (`words` in ../card.tsx), which
+				 * is where a fee decision, a rail pick and the correction all say the total.
 				 */}
 				<output
 					className="figure"
 					data-changed={reading.corrected ? '' : undefined}
-					aria-live={reading.corrected ? 'off' : undefined}
+					aria-live="off"
 				>
 					{reading.totalFigure}
 				</output>
@@ -281,6 +279,13 @@ export type GiveStepProps = {
 	readonly paymentPrepared: boolean;
 	readonly paymentRows: number;
 	readonly paymentWords: string;
+	/**
+	 * the offer of a one-time gift, or `''` where none stands. while one does it stands in place of
+	 * the payment box and the control that spends the money: the box would be empty and the press
+	 * refused, and taking the offer is the one thing on the step that moves the gift on.
+	 */
+	readonly oneTimeOffer: string;
+	readonly onMakeOneTime: () => void;
 	readonly onSubmit: () => void;
 	readonly submits: boolean;
 };
@@ -296,10 +301,13 @@ export function GiveStep({
 	paymentPrepared,
 	paymentRows,
 	paymentWords,
+	oneTimeOffer,
+	onMakeOneTime,
 	onSubmit,
 	submits
 }: GiveStepProps) {
 	const busy = api.submitButton['aria-busy'];
+	const offered = oneTimeOffer !== '';
 	return (
 		<section className="step step-give" hidden={hidden}>
 			{head}
@@ -309,14 +317,24 @@ export function GiveStep({
 				prepared={paymentPrepared}
 				rows={paymentRows}
 				words={paymentWords}
+				aside={offered}
 			/>
+			{/* `attention` rather than `message`: nothing went wrong with anything the donor did, and
+			    the sentence is a task — the markup `oneTimeGroup` in @better-giving/form's views.ts draws. */}
+			<div className="group" hidden={!offered}>
+				<p className="attention">{oneTimeOffer}</p>
+				<button part={part('action')} type="button" onClick={onMakeOneTime}>
+					{copy.MAKE_ONE_TIME}
+				</button>
+			</div>
 			<p className="aside" hidden={receiptTo === ''}>
 				{receiptTo}
 			</p>
 			<button
 				part={partWhen('action', { submit: true, busy })}
-				type={submits ? 'submit' : 'button'}
+				type={submits && !offered ? 'submit' : 'button'}
 				aria-busy={busy}
+				hidden={offered}
 				onClick={onSubmit}
 			>
 				<span className="action-label">{submitLabel}</span>

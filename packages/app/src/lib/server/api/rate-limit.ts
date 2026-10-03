@@ -1,4 +1,5 @@
 import { data } from 'react-router';
+import { INTEGRATIONS_BASE_PATH } from '../integrations/surface';
 import { ZAPIER_BASE_PATH } from '../zapier/surface';
 import { API_BASE_PATH } from './surface';
 
@@ -34,6 +35,10 @@ import { API_BASE_PATH } from './surface';
 // `/zapier` is a second surface charged through the same binding under its own key
 // (`zapierRateLimitKey`), in `src/routes/zapier.ts`'s middleware, and so are a photo view at
 // `/image/:id` (`imageRateLimitKey`) and a view of a donor page (`donorPageRateLimitKey`).
+// `/integrations/v1` is a further surface, with two buckets, both spent in
+// `src/routes/integrations.v1.ts`'s middleware: the caller's on that same binding for every
+// request, ahead of the key lookup (`integrationsCallerRateLimitKey`), and the key's own on
+// `INTEGRATIONS_KEY_RATE_LIMITER` once it is admitted (`integrationsKeyRateLimitKey`).
 //
 // the buckets are not answered alike when the binding is missing, and not answered alike for a
 // caller the edge did not attribute. both differences are written down once, at the foot of this
@@ -72,11 +77,17 @@ const UNATTRIBUTED = 'unattributed';
  * cannot forge it is not cannot choose among it, and the granularity is what answers the
  * difference. a caller holding a routed ipv6 `/64` — the standard delegation from any vps host —
  * binds a fresh source address per request, so a key on the whole `/128` hands every request a
- * bucket of its own and bounds nothing. the key therefore holds the `/64` for ipv6 and the whole
- * address for ipv4, because those are the units one payer controls: a `/64` is the smallest block
- * a single subscriber or vm is normally delegated, and an ipv4 address is not subdivided at all.
- * an ipv4-mapped address (`::ffff:203.0.113.7`) is the ipv4 case in ipv6 notation and counts as
- * the address it holds.
+ * bucket of its own and bounds nothing. an ipv4 address is not subdivided at all and is keyed
+ * whole; an ipv4-mapped address (`::ffff:203.0.113.7`) is the ipv4 case in ipv6 notation and
+ * counts as the address it holds.
+ *
+ * for ipv6 the width is chosen per bucket, by what one extra bucket buys the caller (`Ipv6Block`).
+ * the sign-in and quote buckets key the `/48`: a `/48` is the block one subscriber is commonly
+ * handed and the cheapest a caller can hold many `/64`s inside — 65,536 of them, each a fresh
+ * budget of password guesses or gift submissions if the key were the `/64`. this key, the `/zapier`
+ * key, the read API's caller key and the photo and donor page keys bound reads, so they keep the
+ * `/64`, the smallest block one subscriber or vm is delegated: a `/48` of `/64`s buys reads there,
+ * and keying wider would put every donor on an office's or a campus's network in one bucket.
  *
  * an address shared by many people is the accepted cost, and it is what the generous limit in
  * `wrangler.jsonc` is sized against: a mobile carrier puts thousands of real donors behind one
@@ -93,7 +104,7 @@ const UNATTRIBUTED = 'unattributed';
  * on, every request to this deployment counts in one bucket and the per-address limit becomes a
  * single tap that one caller can hold closed on every donor at once.
  *
- * this key and `zapierRateLimitKey` accept that and the tighter keys below do not —
+ * this key and `zapierRateLimitKey` accept that and the other keys below do not —
  * `attributedCaller` is where that split is argued, and it is a split about which bucket is the
  * only meter on its surface rather than about how an address is read.
  *
@@ -102,26 +113,28 @@ const UNATTRIBUTED = 'unattributed';
  * instead of eating this one's.
  */
 export function apiRateLimitKey(request: Request): string {
-	return `${API_BASE_PATH} ${caller(request)}`;
+	return `${API_BASE_PATH} ${caller(request, 64)}`;
 }
 
 /**
  * what one submission at `POST /api/v1/forms/:id/donations` counts against, and `null` for a
  * caller with no bucket at all.
  *
- * the same caller as the key above, under a name of its own. the form id is out of it for the
+ * the same caller as the key above, under a name of its own and on an ipv6 caller's `/48` rather
+ * than its `/64` — that key's comment argues the width. the form id is out of it for the
  * reason it is out of that key and the reason is if anything stronger here: this endpoint is
  * reached with an id the caller wrote, and a per-form bucket would hand somebody submitting a
  * thousand invented ids a thousand buckets — while a donor giving to the one form on the site
  * holds one.
  */
 export function quoteRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request);
+	const payer = attributedCaller(request, 48);
 	return payer === null ? null : `${API_BASE_PATH} donations ${payer}`;
 }
 
 /**
- * what one staff sign-in attempt counts against, and `null` for a caller with no bucket at all.
+ * what one sign-in attempt counts against, the deployer's and a member's alike, and `null` for a
+ * caller with no bucket at all.
  *
  * named after the credential rather than after a path, and that is what makes five sites one
  * bucket. this bucket bounds guessing at a sign-in credential, so a key that moved with the path
@@ -132,13 +145,21 @@ export function quoteRateLimitKey(request: Request): string | null {
  * own: a press there mails whoever was named, so the bucket is also what bounds this deployment
  * being used to post somebody else's inbox.
  *
- * the caller and nothing else. there is one account and one secret, so there is no identity in the
- * key to enumerate and nothing an attacker can write that moves the bucket — the submitted
- * password is deliberately not in it, since keying on the guess would give every guess a bucket of
- * its own, which is the guesser this exists to bound.
+ * the caller and nothing else, so nothing an attacker can write moves the bucket. the submitted
+ * password is not in it, since keying on the guess would give every guess a bucket of its own; nor
+ * is the identifier typed beside it, since a guesser spreading guesses across every member would
+ * then hold a bucket per member. one address, one budget of guesses at every credential here.
+ *
+ * the `null` is answered by the identity the guess is at, at `src/routes/login.tsx`'s action. a
+ * member attempt with no bucket is refused before the password is compared: members are many, each
+ * password chosen by a person, and every guess an scrypt run this deployment pays for, so letting
+ * it through would be unbounded guessing at all of them. the deployer's attempt is let through
+ * uncounted, because refusing it would shut every way into the dashboard at once — under the
+ * transform `attributedCaller` describes that is every caller of the deployment — and one secret,
+ * minted by the console unless the operator typed their own, is the cost that leaves unbounded.
  */
 export function signInRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request);
+	const payer = attributedCaller(request, 48);
 	return payer === null ? null : `sign-in ${payer}`;
 }
 
@@ -153,7 +174,38 @@ export function signInRateLimitKey(request: Request): string | null {
  * `isRateLimited`, which fails open: the 256-bit key is the bound on guessing.
  */
 export function zapierRateLimitKey(request: Request): string {
-	return `${ZAPIER_BASE_PATH} ${caller(request)}`;
+	return `${ZAPIER_BASE_PATH} ${caller(request, 64)}`;
+}
+
+/**
+ * what one request on `/integrations/v1` counts against before its key is looked up, and `null`
+ * for a caller with no bucket at all: that surface and the caller, charged against the surface
+ * binding on every request, keyed or not.
+ *
+ * it bounds what one address costs before anything is known about it — how many presented keys it
+ * has checked in a minute, and so the indexed read each well-formed one costs. the 256-bit key is
+ * what makes a guess hopeless; this is the bound on what hoping costs this deployment. its own
+ * prefix, so it never spends a donation form's count or Zapier's.
+ *
+ * built on `attributedCaller`, unlike the `/zapier` key: this bucket is charged to callers holding
+ * a real key too, so one shared bucket for every unattributed caller would let anyone hold every
+ * integration closed. the surface is still bounded without it, by the key and the per-key bucket.
+ */
+export function integrationsCallerRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 64);
+	return payer === null ? null : `${INTEGRATIONS_BASE_PATH} ${payer}`;
+}
+
+/**
+ * what one request on `/integrations/v1` counts against once its key is admitted: the admitted
+ * key's row id, charged against `INTEGRATIONS_KEY_RATE_LIMITER`.
+ *
+ * the key is the payer here: two systems calling from one host hold two keys and two budgets, and
+ * one busy or leaked key spends only its own, from however many addresses in one Cloudflare
+ * location it is presented. what the limit bounds is how fast one key can read the database.
+ */
+export function integrationsKeyRateLimitKey(keyId: string): string {
+	return `${INTEGRATIONS_BASE_PATH} key ${keyId}`;
 }
 
 /**
@@ -168,7 +220,7 @@ export function zapierRateLimitKey(request: Request): string {
  * is every photo on every page refused together.
  */
 export function imageRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request);
+	const payer = attributedCaller(request, 64);
 	return payer === null ? null : `image ${payer}`;
 }
 
@@ -179,28 +231,30 @@ export function imageRateLimitKey(request: Request): string | null {
  * above has one, and unattributed callers uncounted for the same reason.
  */
 export function donorPageRateLimitKey(request: Request): string | null {
-	const payer = attributedCaller(request);
+	const payer = attributedCaller(request, 64);
 	return payer === null ? null : `donor-page ${payer}`;
 }
 
 /** the caller half of every key here: one payer, however they spelled their address. */
-function caller(request: Request): string {
+function caller(request: Request, block: Ipv6Block): string {
 	const address = request.headers.get('cf-connecting-ip');
-	return address === null ? UNATTRIBUTED : payer(address);
+	return address === null ? UNATTRIBUTED : payer(address, block);
 }
 
 /**
  * the same caller, and `null` where this deployment has no bucket to put them in.
  *
- * the two tighter keys and the two view keys are built from this and the surface key is not, and
- * the split is the "Remove visitor IP headers" managed transform described on `apiRateLimitKey`
- * above. with that transform on, every caller collapses into one bucket — which turns a tight
- * per-address limit into a deployment-wide tap: every donor there is sharing one address's worth of
- * gifts a minute, and one guesser able to hold the login closed on the operator. so these buckets
- * bound an address or they bound nobody, and an operator who switches that transform on gets the
- * behaviour these limits were added to, rather than a dark donation form. the surface bucket keeps
- * counting them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where
- * that side is argued.
+ * the quote's, the sign-in's, the read API's per-address key and the two view keys are built from
+ * this and the surface key is not, and the split is the "Remove visitor IP headers" managed
+ * transform described on `apiRateLimitKey` above. with that transform on, every caller collapses
+ * into one bucket — which turns a per-address limit into a deployment-wide tap: every donor there
+ * sharing one address's worth of gifts a minute, one guesser able to hold the login closed on the
+ * operator, and one caller able to hold every integration closed. so these buckets bound an
+ * address or they bound nobody, and an operator who switches that transform on gets the behaviour
+ * these limits were added to, rather than a dark donation form. the surface bucket keeps counting
+ * them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where that
+ * side is argued. the sign-in's `null` is not let through for every identity: a member's attempt is
+ * refused instead, which `signInRateLimitKey` argues.
  *
  * the decision is expressed in the return type rather than left to the call sites, for the reason
  * the keys themselves live in this file: which block counts as one caller is the whole security
@@ -208,13 +262,20 @@ function caller(request: Request): string {
  * `string | null` and answers the `null`, so no call site can spend a bucket that is not there
  * and none has to know that it cannot.
  */
-function attributedCaller(request: Request): string | null {
-	const key = caller(request);
+function attributedCaller(request: Request, block: Ipv6Block): string | null {
+	const key = caller(request, block);
 	return key === UNATTRIBUTED ? null : key;
 }
 
-/** the block one payer holds: an ipv6 caller's `/64`, an ipv4 caller's whole address. */
-function payer(address: string): string {
+/**
+ * how much of an ipv6 address one bucket keys on. `apiRateLimitKey` argues which bucket takes
+ * which; the two are prefixes on hextet boundaries, which is what lets `payer` render one by
+ * slicing.
+ */
+type Ipv6Block = 48 | 64;
+
+/** the block one payer holds: an ipv6 caller's `block`, an ipv4 caller's whole address. */
+function payer(address: string, block: Ipv6Block): string {
 	if (!address.includes(':')) {
 		// rendered from the octets rather than kept as written, so that the two spellings of one
 		// ipv4 address (`203.0.113.7`, `203.000.113.007`) are one bucket — the same canonicalization
@@ -230,7 +291,8 @@ function payer(address: string): string {
 		// the same spelling the ipv4 form of it would produce.
 		return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
 	}
-	return `${[a, b, c, d].map((hextet) => hextet.toString(16)).join(':')}::/64`;
+	const prefix = [a, b, c, d].slice(0, block / 16);
+	return `${prefix.map((hextet) => hextet.toString(16)).join(':')}::/${block}`;
 }
 
 /**
@@ -378,7 +440,7 @@ export function quoteRateLimitRefusal(headers: Headers): Response {
 }
 
 /**
- * what a staff sign-in refused by the limiter is told.
+ * what a sign-in refused by the limiter is told.
  *
  * a sentence rather than a `Response`, because every site that spends this bucket answers with
  * data: each is a form action returning a rejection the page renders, so there is no header to
@@ -444,11 +506,11 @@ function unboundSurface(): Response {
  * whether waiting fixes it: a rejected `limit()` is transient and the request carries on
  * uncounted, while a missing binding is a deployment that shipped wrong and is refused by name
  * (`unboundSurface` above). the missing binding is unreachable through `pnpm run deploy` anyway,
- * because `test` runs first and `rate-limit.config.spec.ts` fails without the block — which is
- * what makes refusing the cheap choice there.
+ * because `scripts/preflight-deploy.js` refuses a config without the block ahead of the migration
+ * — which is what makes refusing the cheap choice there.
  *
  * a caller the edge did not attribute is counted here rather than let past, which is the opposite
- * of what the two tighter buckets do with one (`attributedCaller` above). this bucket is the only
+ * of what the buckets built on `attributedCaller` above do with one. this bucket is the only
  * meter `/api/v1` has, so exempting anybody from it leaves the surface unmetered for exactly the
  * caller nothing can identify — and `apiRateLimitKey` puts them all in one bucket, which makes
  * them the most limited caller there is rather than the least.
@@ -488,15 +550,18 @@ export async function refuseIfRateLimited(
  * the polarity is the opposite of `refuseIfRateLimited` above, and the difference is what absence
  * leaves behind rather than a difference of nerve. the surface limiter is the only thing metering
  * `/api/v1`, so serving without it is an unmetered public payment-initiating surface that reads as
- * working. the buckets charged through here refine a bound that does not depend on them: the quote
- * still has the surface bucket the hook charged above it, and the sign-in still has
- * `ADMIN_PASSWORD` itself, which is what bounded it before any of these limiters existed — so what
- * absence costs here is the tighter bound rather than the bound.
+ * working. the quote's and the read API's buckets refine a bound that does not depend on them: the
+ * quote still has the surface bucket the hook charged above it, and the read API's two still have
+ * its 256-bit keys, which bound who reads at all where the buckets bound only how fast — so what
+ * absence costs there is the tighter bound rather than the bound.
  *
- * and the deployment that would actually reach this is the one where refusing costs most: a Worker
- * running with no such binding on it would be refused by its own login, and everything an operator
- * could act on sits behind that login. an unbounded login still has `ADMIN_PASSWORD` in front of
- * it; a bricked one has nothing in front of anybody.
+ * the sign-in's bucket is the only bound on guessing a password, so a missing binding leaves every
+ * credential here unbounded, a member's included. it is served on anyway because of which
+ * deployment reaches this: one running with no such binding would be refused by its own login, and
+ * everything an operator could act on sits behind that login, so a bricked one has nothing in front
+ * of anybody. `pnpm run deploy` cannot produce it: `scripts/preflight-deploy.js` refuses it. a
+ * caller with no bucket on a bound deployment is a different case, refused for members at the call
+ * site (`signInRateLimitKey`).
  *
  * the `catch` guards a failure nothing promises either way — the binding's documentation states no
  * error conditions, so `limit()` throwing is neither a documented outcome nor one to rule out
@@ -504,7 +569,7 @@ export async function refuseIfRateLimited(
  * the same answer `refuseIfRateLimited` gives for the same unpromised case.
  *
  * the key is passed rather than derived, because which bucket a request counts against is the call
- * site's decision and the three above are not interchangeable.
+ * site's decision and the keys above are not interchangeable.
  */
 export async function isRateLimited(
 	limiter: RateLimit | undefined,

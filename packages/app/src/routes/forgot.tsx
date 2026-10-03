@@ -20,6 +20,7 @@ import {
 } from '$lib/server/api/rate-limit';
 import { createAuth, readAuthEnv, requestPasswordReset, resolveAuthSecret } from '$lib/server/auth';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { invalid, parseForm, unread } from '$lib/server/conform';
 import { createEmailProvider } from '$lib/server/email/factory';
@@ -46,7 +47,7 @@ import type { Route } from './+types/forgot';
 // $lib/server/auth/members.ts is where that is decided and argued — telling them apart would turn
 // this form into a way to ask whether a given person works here, on a deployment whose donation
 // page names the organisation — and the deployer is refused inside it by name, because their
-// password is a deploy-time secret with no `auth_account` row behind it.
+// password is a deploy-time var with no `auth_account` row behind it.
 //
 // **the send runs in `waitUntil` rather than on the request.** better-auth defers it through
 // `passwordReset.background` ($lib/server/auth/index.ts), so an address this deployment has takes
@@ -120,16 +121,6 @@ const UNAVAILABLE =
 	'what you typed. Ask whoever runs it to check the console (`better-giving start`); the exact ' +
 	'cause is in the deployment’s logs, which the console does not read.';
 
-/**
- * what a deployment whose schema is not there says.
- *
- * no `auth_signing_key` row to build an auth instance with, which is what a fresh fork hits. the
- * sentence is written for the member and points at the person who can fix it, because they cannot.
- */
-const NOT_MIGRATED =
-	'A reset link could not be sent: this deployment’s database has not been set up. Ask whoever ' +
-	'runs it to open the console (`better-giving start`) and update the deployment.';
-
 export const links = operatorLinks;
 
 export function meta(): Route.MetaDescriptors {
@@ -154,8 +145,10 @@ export async function loader({ context }: Route.LoaderArgs) {
  * what it returns and nothing above this route may.
  *
  * there is no redirect on the way out, which is what makes a re-submit cheap to be wrong about: it
- * costs a bucket charge and nothing else, and the token it would mint replaces one the member has
- * not used yet rather than anything that matters.
+ * costs a bucket charge and one more mail, and the token it mints replaces every link the member has
+ * not used yet, which are deleted before its mail is attempted. a delete that fails is logged and
+ * the mail is still sent, so an earlier link can work beside it until a reset lands
+ * ($lib/server/auth/index.ts, `emailAndPassword`).
  */
 export async function action({ context, request, url }: Route.ActionArgs) {
 	const { env, ctx } = context.get(platform);
@@ -187,8 +180,8 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 
 	const signingKey = await resolveAuthSecret(db, authEnv);
 	if (!signingKey.ok) {
-		console.error('a reset link could not be requested — no signing key:', signingKey.message);
-		return invalid(500, submission.reject({ formErrors: [NOT_MIGRATED] }));
+		console.error('a reset link could not be requested — no signing key:', signingKey.cause);
+		return invalid(500, submission.reject({ formErrors: [SIGNING_KEY_UNREADABLE] }));
 	}
 
 	// the origin is passed rather than configured: `createAuth` derives the trusted-origin list and

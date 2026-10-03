@@ -52,11 +52,12 @@ import { offeredRails } from './offered-rails';
 const TTL_SECONDS = 300;
 
 /**
- * the address an answer is kept under, which no route serves.
+ * the address an answer is kept under, on the request's own origin.
  *
- * `caches.default` is the zone's own store, keyed by URL — so an entry written under a path this app
- * answers on could be handed to a visitor asking for that path. a name outside the routing tree is
- * what keeps this entry reachable only from here.
+ * `caches.default` is keyed by URL, and a visitor's request runs this worker before any cache
+ * (https://developers.cloudflare.com/workers/reference/how-the-cache-works/), so an entry is read
+ * only by a `cache.match` this app makes — and the one that reads this key is below. a path of its
+ * own is what keeps that read from meeting an entry another module wrote.
  */
 const CACHE_PATH = '/__offered-rails';
 

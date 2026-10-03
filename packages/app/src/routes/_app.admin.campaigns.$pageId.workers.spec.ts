@@ -8,6 +8,7 @@ import { createCampaign, readServedCampaign } from '$lib/server/pages/campaign';
 import { draftTurn } from '$lib/server/pages/draft';
 import { answering, insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
+import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as editor from './_app.admin.campaigns.$pageId';
@@ -90,7 +91,7 @@ async function ownedName(pageId: string): Promise<string | undefined> {
 /** the editor as a load draws it. */
 const open = (pageId: string) =>
 	request(new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }), {
-		env
+		env: bindings
 	});
 
 /** the version the editor was drawn with: the row's `updated_at` as it stands. */
@@ -110,7 +111,7 @@ async function post(pageId: string, form: string, fields: Record<string, string>
 			headers: { cookie: session },
 			body
 		}),
-		{ env }
+		{ env: bindings }
 	);
 }
 
@@ -123,6 +124,13 @@ async function slugError(response: Response): Promise<unknown> {
 	};
 	return answer.form?.result?.error?.slug;
 }
+
+/** a deployment whose set-up is finished, which the layout's set-up gate serves this screen on. */
+let bindings: Env;
+
+beforeEach(async () => {
+	bindings = await finishedDeployment();
+});
 
 describe('the address', () => {
 	it.each([
@@ -760,7 +768,7 @@ describe('a block’s sheet and the layout pictures', () => {
 	async function drawn(pageId: string) {
 		const response = await request(
 			new Request(`${ORIGIN}/admin/campaigns/${pageId}`, { headers: { cookie: session } }),
-			{ env }
+			{ env: bindings }
 		);
 		return (await response.json()) as {
 			blocks: { id: string; summary: string; text: unknown }[];

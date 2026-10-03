@@ -1,5 +1,6 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { InlineCode } from '@better-giving/operator/components/data/CodeSlab';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { CheckboxGroup } from '@better-giving/operator/components/forms/CheckboxGroup';
 import { Field } from '@better-giving/operator/components/forms/Field';
@@ -755,7 +756,9 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 									<Banner tone="attention" word="Donors could not be searched" />
 								) : shown.matches.length === 0 ? (
 									answer === null ? null : (
-										<EmptyState>Nobody matches “{typed}”.</EmptyState>
+										<EmptyState>
+											Nobody matches <InlineCode>{typed}</InlineCode>.
+										</EmptyState>
 									)
 								) : (
 									<CheckboxGroup

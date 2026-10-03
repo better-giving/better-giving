@@ -7,8 +7,8 @@ import { Mark } from '../status/Mark.jsx';
  *
  * what a cell hands whatever it is drawn as: the address, the class list the sheet draws off, and
  * the claim about where the reader is. everything the cell settles, and nothing a caller restates.
- * ./AppShell.jsx draws two more links through the same component — the globe, which is a mark and
- * so is named by `aria-label`, and an entry under More, whose press also closes the sheet it is in.
+ * ./AppShell.jsx draws one more link through the same component — the globe, which is a mark and so
+ * is named by `aria-label`.
  *
  * @typedef {{
  *   href: string;
@@ -43,8 +43,10 @@ import { Mark } from '../status/Mark.jsx';
  *   off the screen.
  * @property {boolean | undefined} [groupEnd] the last entry of a headed group in the rail, which
  *   the column stands a step apart from what follows.
- * @property {boolean | undefined} [folded] drawn in the column and not in the bar, where it stands
- *   under ./AppShell.jsx's More instead.
+ * @property {boolean | undefined} [offBar] a destination the phone's bar leaves to its More sheet:
+ *   drawn in the column at the wide width and hidden from the bar below it.
+ * @property {MouseEventHandler<HTMLAnchorElement> | undefined} [onClick] a press on the cell, before
+ *   it navigates. the More sheet closes itself on it.
  * @property {boolean | 'page' | 'section' | undefined} [current] where the reader is, and which
  *   kind of currency the cell announces. `page` — which bare `true` is — is the address itself;
  *   `section` is a destination that only contains it, which is every rail cell standing over a
@@ -62,8 +64,8 @@ import { Mark } from '../status/Mark.jsx';
    current and hovered must be unmistakably different: current changes ground and ink, hover only
    fills. the current cell is marked by that tint alone — no edge, at either width.
    `short` is the word the rail reads across the top of a narrow window, where the full one does
-   not fit. both are in the markup and the sheet chooses — a cell that swapped its own text would
-   be a name changing under a reader between two widths.
+   not fit. both are in the markup and the sheet chooses, hiding the other with `display: none`,
+   so the link's accessible name is the word drawn at that width and the swap needs no script.
 
    the status word is `.adm-vh` and outside `.adm-dest__status`, because the sheet hides the glyph
    in the bar and a status hidden with it would stop being read out there. its comma is what
@@ -83,15 +85,16 @@ export function DestinationCell({
 	status,
 	title,
 	groupEnd = false,
-	folded = false,
+	offBar = false,
 	current,
 	state,
-	link
+	link,
+	onClick
 }) {
 	const cls = [
 		'adm-dest',
 		groupEnd ? 'adm-dest--groupend' : '',
-		folded ? 'adm-dest--folded' : '',
+		offBar ? 'adm-dest--offbar' : '',
 		current ? 'is-current' : '',
 		state ? `is-${state}` : ''
 	]
@@ -103,9 +106,14 @@ export function DestinationCell({
 			className={cls}
 			href={href}
 			title={title}
+			onClick={onClick}
 			aria-current={current ? (current === 'section' ? 'true' : 'page') : undefined}
 		>
-			{mark === undefined ? null : <DestinationGlyph mark={mark} />}
+			{mark === undefined ? null : typeof mark === 'string' ? (
+				<Mark name={mark} />
+			) : (
+				<img className="adm-mark" src={mark.src} alt="" />
+			)}
 			{short ? <span className="adm-dest__short">{short}</span> : null}
 			<span className="adm-dest__full">{children}</span>
 			{status ? (
@@ -117,19 +125,5 @@ export function DestinationCell({
 				</>
 			) : null}
 		</Cell>
-	);
-}
-
-/**
- * a destination's mark, wherever the destination is listed: a glyph, or a picture drawn as an unnamed
- * image. the name beside it is what a reader hears, so neither is in the tree.
- *
- * @param {{ mark: DestinationMark }} props
- */
-export function DestinationGlyph({ mark }) {
-	return typeof mark === 'string' ? (
-		<Mark name={mark} />
-	) : (
-		<img className="adm-mark" src={mark.src} alt="" />
 	);
 }

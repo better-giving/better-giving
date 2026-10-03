@@ -1,4 +1,5 @@
-import { data } from 'react-router';
+import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
+import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
 import * as copy from '$lib/donate/copy';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard } from '$lib/donate/page-with-card';
@@ -36,7 +37,7 @@ import type { Route } from './+types/$slug';
 //
 // a `live` campaign draws its published page, read through the rule $lib/server/pages/view.ts
 // applies; where that rule refuses the document, the plain page of its donation settings is drawn
-// instead and the refusal is logged.
+// instead and the refusal is logged. either is `no-store`, for the reason ./donate.tsx gives.
 //
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
@@ -95,13 +96,24 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		{ now }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
-	return loaded;
+	// a donor's return from authorizing their gift, read as ./donate.tsx reads it: the stamp naming
+	// this campaign's own settings row, and nothing else.
+	const { formId } = loaded.kind === 'page' ? loaded.view.config : loaded.config;
+	const resuming = new URL(request.url).searchParams.get(RESUME_FORM_PARAM) === formId;
+	return data({ ...loaded, resuming }, { headers: { 'cache-control': 'no-store' } });
 }
 
 /**
- * the ended screen's and the refusal's `cache-control`, carried out of the loader as ./donate.tsx
- * carries it.
+ * the loader runs again only for an address naming another campaign, which owns another settings
+ * row and so serves another config. on the same address a re-read could only swap the config under
+ * a gift in progress and end it, and would answer `resuming: false` under a claimed return — the
+ * argument is `shouldRevalidate` in ./donate.tsx.
  */
+export function shouldRevalidate({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) {
+	return currentParams.slug !== nextParams.slug;
+}
+
+/** every answer's `cache-control`, carried out of the loader as ./donate.tsx carries it. */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;
 }
@@ -134,9 +146,15 @@ export function links(): Route.LinkDescriptors {
 export default function CampaignPage({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
-			return <PageWithCard {...loaderData.view} />;
+			return <PageWithCard {...loaderData.view} resuming={loaderData.resuming} />;
 		case 'plain':
-			return <PlainDonationPage config={loaderData.config} look={loaderData.look} />;
+			return (
+				<PlainDonationPage
+					config={loaderData.config}
+					look={loaderData.look}
+					resuming={loaderData.resuming}
+				/>
+			);
 		case 'ended':
 			return (
 				<EndedCampaignPage

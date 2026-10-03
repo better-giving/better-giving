@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -183,7 +185,10 @@ func TestTheReadingIsOneAnswerCarryingEveryReadThePageDraws(t *testing.T) {
 	}))
 	t.Cleanup(deployed.Close)
 
-	token := "bg1.99999999999.0123456789012345678901234567890123456789012"
+	token, _, err := session.Mint(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
 	record, _ := json.Marshal(map[string]string{
 		"workerName": release.Baked.Name, "origin": deployed.URL, "token": token,
 	})
@@ -209,6 +214,16 @@ func TestTheReadingIsOneAnswerCarryingEveryReadThePageDraws(t *testing.T) {
 	}
 	if body["sites"] == nil || body["org"] == nil || body["values"] == nil {
 		t.Fatalf("read %v", body)
+	}
+	// the members console-ui's HomeReading names and no other: a field added to the reading reaches
+	// every screen's wire, so adding one is a decision this list is edited for.
+	members := []string{}
+	for member := range body {
+		members = append(members, member)
+	}
+	sort.Strings(members)
+	if want := []string{"donatePage", "face", "holdsStripeKey", "org", "sites", "values"}; !slices.Equal(members, want) {
+		t.Fatalf("the reading carries %v, not %v", members, want)
 	}
 	// the donor-facing page is the one route `/donate` on this deployment's own worker (CLAUDE.md →
 	// Product surface), so it answers at that path on the deployment's own address.

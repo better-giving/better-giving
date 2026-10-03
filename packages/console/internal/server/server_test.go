@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/better-giving/console/internal/account"
+	"github.com/better-giving/console/internal/deployment"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/state"
 )
@@ -246,5 +248,19 @@ func TestTheHeadersARequestArrivesWithAreBoundedLikeItsBodyIs(t *testing.T) {
 	// handler runs, and an http.Server that states none takes a megabyte of them.
 	if listening := Listen(http.NotFoundHandler(), 5320); listening.MaxHeaderBytes == 0 {
 		t.Error("the header surface is whatever net/http defaults to, which this server never chose")
+	}
+}
+
+func TestTheConnectPressIsAnsweredWithinTheDeadlineItsAnswerIsWrittenUnder(t *testing.T) {
+	// an answer cut off here is a session live on the deployment that the page reads as a failure.
+	written := Listen(http.NotFoundHandler(), 5320).WriteTimeout
+	for press, bound := range map[string]time.Duration{
+		"connect": deployment.ConnectBound,
+		"patient": deployment.PatientTimeout,
+		"values":  deployment.WriteBound,
+	} {
+		if written <= bound {
+			t.Errorf("an answer is cut off at %s and the %s press is bound to %s", written, press, bound)
+		}
 	}
 }

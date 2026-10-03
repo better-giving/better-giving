@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
 	CONFIG_DEADLINE_MS,
 	defineDonateForm,
@@ -100,11 +100,22 @@ type Mounted = {
 	fund(): FundReports;
 	/** the payment surface saying how many options its box now lists. */
 	rows(count: number): void;
+	/** the payment surface saying no processor still up takes a repeating gift. */
+	repeatingUnavailable(): void;
 };
 
 function view(
 	host: HTMLElement
-): Omit<Mounted, 'rail' | 'unavailable' | 'token' | 'challengeUnavailable' | 'fund' | 'rows'> {
+): Omit<
+	Mounted,
+	| 'rail'
+	| 'unavailable'
+	| 'token'
+	| 'challengeUnavailable'
+	| 'fund'
+	| 'rows'
+	| 'repeatingUnavailable'
+> {
 	const shadow = host.shadowRoot;
 	if (shadow === null) throw new Error('the element has not upgraded');
 	const find = (selector: string): HTMLElement => {
@@ -157,6 +168,8 @@ type Options = {
 	readonly offers?: (offered: boolean) => void;
 	/** every reading of whether crypto is offered, in the order the card told the payment surface. */
 	readonly cryptoOffers?: (offered: boolean) => void;
+	/** every reading of whether Venmo is offered, in the order the card told the payment surface. */
+	readonly venmoOffers?: (offered: boolean) => void;
 	/** how many options the payment box lists when the card first asks; one where unsaid. */
 	readonly rowCount?: number;
 	readonly attributes?: Readonly<Record<string, string>>;
@@ -191,6 +204,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 	let unchallengeable: (failure: Failure) => void = () => {};
 	let reports: FundReports | null = null;
 	let counted: (count: number) => void = () => {};
+	let repeating: () => void = () => {};
 	defineDonateForm(
 		{
 			loadConfig: options.loadConfig ?? (async () => options.config ?? CONFIG),
@@ -221,9 +235,13 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					cadence: (frequency) => options.cadences?.(frequency),
 					offerFund: (offered) => options.offers?.(offered),
 					offerCrypto: (offered) => options.cryptoOffers?.(offered),
+					offerVenmo: (offered) => options.venmoOffers?.(offered),
 					rows: (listener) => {
 						counted = listener;
 						listener(options.rowCount ?? 1);
+					},
+					repeatingUnavailable: (listener) => {
+						repeating = listener;
 					},
 					stop: () => options.torn?.()
 				};
@@ -248,7 +266,8 @@ async function mount(options: Options = {}): Promise<Mounted> {
 			if (reports === null) throw new Error('the runtime was never asked for a checkout');
 			return reports;
 		},
-		rows: (count) => counted(count)
+		rows: (count) => counted(count),
+		repeatingUnavailable: () => repeating()
 	};
 }
 
@@ -316,7 +335,9 @@ function placed(attributes: Readonly<Record<string, string>> = { form: 'frm_a8x2
 							cadence: () => {},
 							offerFund: () => {},
 							offerCrypto: () => {},
+							offerVenmo: () => {},
 							rows: () => {},
+							repeatingUnavailable: () => {},
 							stop: () => {}
 						};
 					},
@@ -1008,7 +1029,9 @@ describe('the live region', () => {
 					cadence: () => {},
 					offerFund: () => {},
 					offerCrypto: () => {},
+					offerVenmo: () => {},
 					rows: () => {},
+					repeatingUnavailable: () => {},
 					stop: () => {}
 				}),
 				challenge: () => ({ reset: () => {}, stop: () => {} })
@@ -1222,10 +1245,11 @@ describe('the amount step', () => {
 	});
 
 	// the other tile is a radio in the presets' own group, so it is one press or one arrow away
-	// from them, and what it chooses is the box under it: the box opens, takes the caret, and the
-	// preset that was lit goes out — the figure it wrote is cleared with it, because a figure left
-	// standing in a box the donor was told to type into is a gift the next press would charge.
-	it('opens the free entry on the other tile, with the caret in it and the preset put out', async () => {
+	// from them, and what it chooses is the box under it: the box opens and the preset that was lit
+	// goes out — the figure it wrote is cleared with it, because a figure left standing in a box the
+	// donor was told to type into is a gift the next press would charge. whether the caret follows
+	// turns on a pointer having pressed the tile, which is ./element.browser.spec.ts's question.
+	it('opens the free entry on the other tile, emptied, with the preset put out', async () => {
 		const card = await mount();
 		press(card.all('[part~="amount-option"] input')[1] as HTMLElement);
 		expect((card.find('#amount-entry') as HTMLInputElement).value).toBe('100');
@@ -1233,7 +1257,6 @@ describe('the amount step', () => {
 		press(card.all('[part~="amount-option"] input')[4] as HTMLElement);
 
 		expect(card.find('[part~="amount-input"]').hidden).toBe(false);
-		expect(card.shadow.activeElement).toBe(card.find('#amount-entry'));
 		expect((card.find('#amount-entry') as HTMLInputElement).value).toBe('');
 		// the tile stays on the tray while the box is open, chosen, so no preset reads as chosen over
 		// the box and a preset press is what closes it.
@@ -1634,6 +1657,26 @@ describe('the amount step', () => {
 		expect(card.find('#amount-entry').hasAttribute('aria-describedby')).toBe(false);
 	});
 
+	// and once a press is refused for the amount, the box carrying `aria-invalid` is described by the
+	// sentence saying why — an invalid state with no description is a box a reader is told is wrong
+	// and never told how (WCAG 3.3.1).
+	it('describes the free entry by the amount sentence while a missing amount is marked', async () => {
+		const card = await mount();
+		withdraw(card);
+		card.find('[part~="action"]:not([part~="submit"])').click();
+		const entry = card.find('#amount-entry');
+		const described = entry.getAttribute('aria-describedby') ?? '';
+
+		expect(entry.getAttribute('aria-invalid')).toBe('true');
+		expect(described).toBe('amount-problem');
+		expect(card.find(`#${described}`).hidden).toBe(false);
+		expect(card.text(`#${described}`)).toBe('between $5 and $50,000');
+
+		type(entry, '40');
+
+		expect(entry.hasAttribute('aria-describedby')).toBe(false);
+	});
+
 	// and it is marked by nothing either. the state is written on the press that was refused for the
 	// amount and on no other patch, so a donor heading for a preset tile never meets a box reporting
 	// itself invalid while it sits empty and untouched.
@@ -1648,18 +1691,17 @@ describe('the amount step', () => {
 		expect(card.find('#amount-entry').hasAttribute('aria-invalid')).toBe(false);
 	});
 
-	// and once there is a refusal, one node points at the sentence rather than two. the fieldset is
-	// the one that does: the caret lands inside it wherever the refusal put it, and the sentence is
-	// said out loud besides (the region test below). the box carries `aria-invalid`, which is the
-	// state the fieldset's role cannot hold.
-	it('points one node at the amount sentence when a press is refused, not two', async () => {
+	// and once a press is refused for the amount, the fieldset and the box carrying `aria-invalid`
+	// point at the sentence and nothing else does: a preset tile holds no invalid state of its own,
+	// and the sentence is said out loud besides (the region test below).
+	it('points the group and the free entry at the amount sentence when a press is refused', async () => {
 		const card = await mount();
 		withdraw(card);
 		card.find('[part~="action"]:not([part~="submit"])').click();
 		const described = card.all('[aria-describedby~="amount-problem"]');
 
-		expect(described).toHaveLength(1);
-		expect(described[0]?.tagName).toBe('FIELDSET');
+		expect(described.map((node) => node.tagName)).toEqual(['FIELDSET', 'INPUT']);
+		expect(described[1]?.id).toBe('amount-entry');
 	});
 
 	it('clears the message once the decision it asked for is made', async () => {
@@ -1706,7 +1748,20 @@ describe('the amount step', () => {
 		// something twice is a clear and a write a task apart (`#announce` in ./element.ts).
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe(card.text('#amount-problem'));
+		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
+	});
+
+	// the bounds on the card stand under the box they are about; the region's sentence has no box to
+	// stand under, so it carries the label the entry draws as its subject.
+	it('says an amount outside the bounds under the name of the box it is in', async () => {
+		const card = await mount();
+		withdraw(card);
+		type(card.find('#amount-entry'), '60000');
+		card.find('[part~="action"]:not([part~="submit"])').click();
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe('Amount: between $5 and $50,000');
+		expect(card.text('#amount-problem')).toBe('between $5 and $50,000');
 	});
 
 	// the second press is the whole of this one, and it is the same defect the review step's refusal
@@ -3255,7 +3310,10 @@ describe('where focus goes when the screen changes', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
+		expect(card.text('.takeover .prose')).toBe(
+			'We are confirming your payment. Please do not close this page.'
+		);
 		expect(primary(card).hidden).toBe(true);
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
@@ -3273,7 +3331,7 @@ describe('where focus goes when the screen changes', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
 
@@ -3391,7 +3449,7 @@ describe('where focus goes when the screen changes', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
 		expect(card.text('[role="status"]')).toBe('Confirming your gift with your card issuer.');
 	});
 
@@ -3697,9 +3755,13 @@ describe('the details step’s refusals', () => {
 		proceed(card);
 		await settle();
 
+		// each sentence spoken under the label the field draws, in the order the fields are laid out:
+		// a run of bare problems is "required, required" with nothing saying which box is which.
 		expect(card.text('[role="status"]')).toBe(
-			`${card.text('#email-problem')}, ${card.text('#first-name-problem')}, ${card.text('#last-name-problem')}`
+			'Email: required for your receipt; First name: required; Last name: required'
 		);
+		// and the words on the card stay the field's own, with no label repeated beside its box.
+		expect(card.text('#first-name-problem')).toBe('required');
 	});
 
 	// and it stops saying it the moment the donor does anything but press again. a region reading
@@ -4214,7 +4276,10 @@ describe('the mandate', () => {
 		primary(card).click();
 		await settle();
 
-		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover [part~="heading"]')).toBe('Confirming your gift…');
+		expect(card.text('.takeover .prose')).toBe(
+			'We are confirming your payment. Please do not close this page.'
+		);
 		expect(primary(card).hidden).toBe(true);
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
@@ -4245,8 +4310,8 @@ describe('the verification screens', () => {
 		// names nothing they can check.
 		const card = await atSubmitted({ ports: awaiting });
 
-		expect(shows(card, '.attention')).toMatch(/\b20\d{2}\b/);
-		expect(shows(card, '.attention')).not.toMatch(/\bdays\b/);
+		expect(shows(card, '.takeover .attention')).toMatch(/\b20\d{2}\b/);
+		expect(shows(card, '.takeover .attention')).not.toMatch(/\bdays\b/);
 	});
 
 	it('keeps the receipt in future tense and says nothing has been taken', async () => {
@@ -4684,6 +4749,9 @@ describe('the resume', () => {
 
 		expect(card.all('.step').map((step) => step.hidden)).toEqual([true, true, true, false]);
 		expect(card.text('.takeover [part~="heading"]')).toBe('Finishing your gift');
+		expect(card.text('.takeover .prose')).toBe(
+			'We are checking what happened with your payment. This takes a moment.'
+		);
 	});
 });
 
@@ -5047,6 +5115,181 @@ describe('the stylesheets', () => {
 		).toEqual(['sample.css:3 3px — gap: 3px;']);
 	});
 
+	// the styles the element writes from a script rather than from a sheet: every string a source
+	// file hands `style.cssText`, by `=` or by `+=`, and the constant that assignment names when it
+	// names one rather than spelling the string. a name the file does not bind with a `const` of its
+	// own is not read: the assignment comes back in `unread`, at its line, for the caller to fail on.
+	// each string comes back as sheet text the two sweeps above can read — the file's own length,
+	// every line where it stands, the literal's characters kept and everything else in the file
+	// blanked to spaces, so a finding is reported at the line it is written on.
+	//
+	// what is kept besides the characters is what a sheet's note is written in: a `/* */` comment
+	// inside the expression, and the doc comment standing directly above the statement, which the
+	// head of the statement is turned into an empty comment to reach. a `//` line is blanked like
+	// the code, because the note the sweeps honour opens a `/*` comment and nothing else.
+	// an interpolation is blanked too, which leaves a constant it reads unswept.
+	const inlineStyles = (name: string, source: string): { styles: string; unread: string[] } => {
+		const kept = source.replace(/[^\n]/g, ' ').split('');
+		const keep = (from: number, to: number) => {
+			for (let i = from; i < to; i++) kept[i] = source[i] ?? ' ';
+		};
+		const lineStart = (at: number) => source.lastIndexOf('\n', at - 1) + 1;
+
+		// one statement: its head, the doc comment above it, and from just past its `=` to the `;`
+		// that ends it, string contents and comments kept.
+		const sweep = (head: number, from: number) => {
+			const start = lineStart(head);
+			// the head of the statement as an empty comment of its own width, so the walk in
+			// `rawLengths` reads it as a comment line and carries on up to the doc comment above it.
+			const end = source.lastIndexOf('=', from) + 1;
+			if (end - start >= 4) {
+				kept[start] = '/';
+				kept[start + 1] = '*';
+				kept[end - 2] = '*';
+				kept[end - 1] = '/';
+			}
+			let line = start - 1;
+			while (line > 0) {
+				const above = lineStart(line);
+				if (!/^\s*(?:\/\*|\*)/.test(source.slice(above, line))) break;
+				keep(above, line);
+				line = above - 1;
+			}
+
+			let depth = 0;
+			for (let i = from; i < source.length; i++) {
+				const char = source[i];
+				if (char === "'" || char === '"') {
+					const close = source.indexOf(char, i + 1);
+					keep(i + 1, close);
+					i = close;
+				} else if (char === '`') {
+					for (i += 1; i < source.length && source[i] !== '`'; i++) {
+						if (source[i] === '$' && source[i + 1] === '{') i = source.indexOf('}', i);
+						else keep(i, i + 1);
+					}
+				} else if (source.startsWith('/*', i)) {
+					const close = source.indexOf('*/', i) + 2;
+					keep(i, close);
+					i = close - 1;
+				} else if (source.startsWith('//', i)) {
+					i = source.indexOf('\n', i) - 1;
+				} else if (char === '(' || char === '[' || char === '{') depth += 1;
+				else if (char === ')' || char === ']' || char === '}') depth -= 1;
+				else if (char === ';' && depth === 0) return;
+			}
+		};
+
+		const unread: string[] = [];
+		for (const assigned of source.matchAll(/\.style\.cssText\s*\+?=(?!=)\s*/g)) {
+			const from = assigned.index + assigned[0].length;
+			const named = /^([A-Za-z_$][\w$]*)\s*;/.exec(source.slice(from))?.[1];
+			const bound =
+				named === undefined ? undefined : new RegExp(`\\bconst ${named}\\s*=\\s*`).exec(source);
+			if (bound === undefined) sweep(assigned.index, from);
+			else if (bound !== null) sweep(bound.index, bound.index + bound[0].length);
+			else {
+				const start = lineStart(assigned.index);
+				const end = source.indexOf('\n', assigned.index);
+				const line = source.slice(0, start).split('\n').length;
+				unread.push(`${name}:${line} ${source.slice(start, end === -1 ? undefined : end).trim()}`);
+			}
+		}
+		return { styles: kept.join(''), unread };
+	};
+
+	it('reads a length planted in a style the element builds as a string', async () => {
+		const source = [
+			'const PINNED =',
+			"\t'display:block;margin:0;' +",
+			"\t'inline-size:100%;gap:3px';",
+			'node.style.cssText = PINNED;',
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: source text, and the placeholder is the interpolation it holds
+			"other.style.cssText = 'padding:0;' + `margin:${GAP};inset:2rem`;"
+		].join('\n');
+
+		expect(rawLengths('fixture.ts', inlineStyles('fixture.ts', source).styles)).toEqual([
+			'fixture.ts:3 3px — inline-size:100%;gap:3px',
+			'fixture.ts:5 2rem — padding:0;     margin:      ;inset:2rem'
+		]);
+	});
+
+	it('excuses a length in such a string by the note a sheet would carry, and by no other', async () => {
+		const source = [
+			'/**',
+			' * raw-length-ok: a note.',
+			' */',
+			'const PINNED =',
+			"\t'gap:3px;' +",
+			"\t'margin:4px;';",
+			'node.style.cssText = PINNED;',
+			"other.style.cssText = 'inset:1px;' /* raw-length-ok: a note. */;",
+			'// raw-length-ok: a note.',
+			"third.style.cssText = 'gap:5px';"
+		].join('\n');
+
+		expect(rawLengths('fixture.ts', inlineStyles('fixture.ts', source).styles)).toEqual([
+			'fixture.ts:6 4px — margin:4px;',
+			'fixture.ts:10 5px — gap:5px'
+		]);
+	});
+
+	// a name the sweep cannot find bound in the same file would leave a style unread under a passing
+	// sweep, so it comes back as a finding at its line; a `+=` spelling its string is read like an `=`.
+	it('reports an assignment it cannot read rather than passing over it', async () => {
+		const source = [
+			"import { IMPORTED } from './elsewhere';",
+			'node.style.cssText = IMPORTED;',
+			"other.style.cssText += 'gap:3px';",
+			'third.style.cssText += IMPORTED;'
+		].join('\n');
+		const { styles, unread } = inlineStyles('fixture.ts', source);
+
+		expect(unread).toEqual([
+			'fixture.ts:2 node.style.cssText = IMPORTED;',
+			'fixture.ts:4 third.style.cssText += IMPORTED;'
+		]);
+		expect(rawLengths('fixture.ts', styles)).toEqual(['fixture.ts:3 3px — gap:3px']);
+	});
+
+	// every source file in the package, read as text rather than imported: what is swept is the
+	// string as written, and importing the element's modules would run them.
+	const scripts = Object.entries(
+		import.meta.glob<string>(['./**/*.ts', '!./**/*.spec.ts'], {
+			query: '?raw',
+			import: 'default',
+			eager: true
+		})
+	)
+		.map(([path, source]) => {
+			const name = path.slice('./'.length);
+			return [name, inlineStyles(name, source)] as const;
+		})
+		.filter(([, { styles, unread }]) => styles.trim() !== '' || unread.length > 0)
+		.sort(([left], [right]) => left.localeCompare(right));
+
+	it('writes no raw value into any style it builds as a string', async () => {
+		// named as well as swept, for the reason the sheet directory is named above: a sweep that
+		// stopped finding a file would otherwise go on passing over nothing.
+		expect(scripts.map(([name]) => name)).toEqual([
+			'element.ts',
+			'embed/rows.ts',
+			'embed/surface.ts',
+			'styles/resolve.ts'
+		]);
+		expect(
+			declarations(scripts.map(([, { styles }]) => styles).join('\n')).replace(/\s+/g, '').length
+		).toBeGreaterThan(500);
+
+		expect(scripts.flatMap(([, { unread }]) => unread)).toEqual([]);
+		expect(scripts.flatMap(([name, { styles }]) => rawLengths(name, styles))).toEqual([]);
+		expect(scripts.flatMap(([name, { styles }]) => rawDurations(name, styles))).toEqual([]);
+		for (const [, { styles }] of scripts) {
+			expect(declarations(styles)).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+			expect(declarations(styles)).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
+		}
+	});
+
 	// the coin list inside the crypto option carries a sheet of its own (./coin-picker.ts), held to it too.
 	it('derives every colour in the coin list from a token too', async () => {
 		const list = declarations(coinStyles);
@@ -5381,6 +5624,8 @@ describe('where a payment provider paints', () => {
 		});
 
 		expect(shows(card, '.takeover .message')).toBe('This form cannot take a payment right now.');
+		expect(primary(card).hidden).toBe(false);
+		expect(primary(card).textContent).toBe('Try again');
 	});
 
 	// the `fix` beside that message names a key, a variable or a screen in /admin, and it is
@@ -5395,6 +5640,105 @@ describe('where a payment provider paints', () => {
 		});
 
 		expect(card.text('.takeover')).not.toContain('publishable key');
+	});
+
+	// the card down and a fund or crypto up is a gift the donor can still make, once. the failure
+	// screen is for a form with no way to pay at all; this donor is offered the gift they can make,
+	// and one press makes it.
+	describe('a repeating gift no processor still up can take', () => {
+		const OFFER =
+			'This gift cannot be made monthly right now. You can make it a one-time gift instead.';
+
+		/** the donor at the review step of a monthly gift, on a form offering `rails`. */
+		async function atMonthlyReview(
+			rails: Pick<FormConfig, 'paymentMethods' | 'coins'>,
+			options: Options = {}
+		): Promise<Mounted> {
+			const card = await mount({ config: { ...CONFIG, ...rails }, ...options });
+			press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+			press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+			proceed(card);
+			type(card.find('#email'), 'donor@example.org');
+			type(card.find('#first-name'), 'Ada');
+			type(card.find('#last-name'), 'Lovelace');
+			proceed(card);
+			return card;
+		}
+
+		/** the press that takes the offer, which stands under its sentence. */
+		function makeOneTime(card: Mounted): HTMLElement {
+			return card.find('.step-give .attention + [part~="action"]');
+		}
+
+		it('offers the gift as one-time in place of an empty payment box, and makes it so', async () => {
+			const cadences: (Frequency | undefined)[] = [];
+			const offers: boolean[] = [];
+			const card = await atMonthlyReview(
+				{ paymentMethods: ['card', 'daf'] },
+				{
+					cadences: (frequency) => void cadences.push(frequency),
+					offers: (offered) => void offers.push(offered)
+				}
+			);
+			card.repeatingUnavailable();
+
+			expect(card.find('.step-give').hidden).toBe(false);
+			expect(card.find('.takeover').hidden).toBe(true);
+			expect(shows(card, '.step-give .attention')).toBe(OFFER);
+			expect(makeOneTime(card).textContent).toBe('Make it one-time');
+			expect(card.find('[part~="payment"]').closest('.group')?.hasAttribute('hidden')).toBe(true);
+			expect(card.find('[part~="submit"]').hidden).toBe(true);
+			expect(offers.at(-1)).toBe(false);
+
+			makeOneTime(card).click();
+
+			expect(cadences.at(-1)).toBe('one_time');
+			expect(offers.at(-1)).toBe(true);
+			expect(shows(card, '.step-give .attention')).toBe('');
+			expect(card.find('[part~="payment"]').closest('.group')?.hasAttribute('hidden')).toBe(false);
+			expect(card.find('[part~="submit"]').hidden).toBe(false);
+		});
+
+		it('offers the crypto option once the gift is made one-time', async () => {
+			const cryptoOffers: boolean[] = [];
+			const coins = [
+				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+			];
+			const card = await atMonthlyReview(
+				{ paymentMethods: ['card', 'crypto'], coins },
+				{ cryptoOffers: (offered) => void cryptoOffers.push(offered) }
+			);
+			card.repeatingUnavailable();
+			expect(cryptoOffers.at(-1)).toBe(false);
+
+			makeOneTime(card).click();
+
+			expect(cryptoOffers.at(-1)).toBe(true);
+		});
+
+		it('names the cadence the donor chose', async () => {
+			const card = await mount({ config: { ...CONFIG, paymentMethods: ['card', 'daf'] } });
+			press(card.all('[part~="frequency-option"] input')[2] as HTMLElement);
+			press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+			proceed(card);
+			type(card.find('#email'), 'donor@example.org');
+			type(card.find('#first-name'), 'Ada');
+			type(card.find('#last-name'), 'Lovelace');
+			proceed(card);
+			card.repeatingUnavailable();
+
+			expect(shows(card, '.step-give .attention')).toBe(
+				'This gift cannot be made yearly right now. You can make it a one-time gift instead.'
+			);
+		});
+
+		it('says nothing over a one-time gift, which the processors still up can take', async () => {
+			const card = await atReview({ config: { ...CONFIG, paymentMethods: ['card', 'daf'] } });
+			card.repeatingUnavailable();
+
+			expect(shows(card, '.step-give .attention')).toBe('');
+			expect(card.find('[part~="submit"]').hidden).toBe(false);
+		});
 	});
 
 	// past a press there is an intent at the processor and possibly a charge against it, and the
@@ -6101,6 +6445,90 @@ describe('a crypto gift', () => {
 		expect(document.activeElement).toBe(outside);
 	});
 
+	// the reading loop's next snapshot carries nothing to say, and a sentence stays on the region
+	// until the heading it announces changes or another sentence replaces it.
+	it('says the address closing when a reading lands at the send-by, and keeps saying it', async () => {
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS
+		});
+		let reads = 0;
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: {
+				now: () => Date.now(),
+				status: async () => {
+					reads += 1;
+					return { state: 'waiting' };
+				}
+			}
+		});
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(1);
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(2);
+		expect(region(card)).toBe('Checking for your gift.');
+	});
+
+	it('keeps a Copy’s sentence through a reading, until a different one replaces it', async () => {
+		const writeText = vi.fn(async (_text: string) => {});
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		let reads = 0;
+		const { card } = await atAddress(USDT, 'USDT', {
+			ports: {
+				status: async () => {
+					reads += 1;
+					return { state: 'waiting' };
+				}
+			}
+		});
+		const copyAddress = async () => {
+			card.find('.deposit [aria-label="Copy address"]').click();
+			await settle();
+			await settle();
+		};
+
+		await copyAddress();
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(reads).toBe(1);
+		expect(region(card)).toBe('Address copied.');
+
+		writeText.mockRejectedValueOnce(new Error('denied'));
+		await copyAddress();
+
+		expect(region(card)).toBe('Address not copied. It is selected so you can copy it.');
+	});
+
+	it('replaces a Copy’s sentence with the heading the address closes to', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		vi.useFakeTimers({
+			shouldAdvanceTime: true,
+			now: new Date(VALID_UNTIL).getTime() - DEPOSIT_POLL_MS * 2
+		});
+		const { card } = await atAddress(USDT, 'USDT', { ports: { now: () => Date.now() } });
+		card.find('.deposit [aria-label="Copy address"]').click();
+		await settle();
+		await settle();
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		onTestFinished(() => outside.remove());
+		outside.focus();
+		expect(region(card)).toBe('Address copied.');
+
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS * 2);
+
+		expect(heading(card)).toBe('Checking for your gift');
+		expect(region(card)).toBe('Checking for your gift.');
+	});
+
 	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const { card } = await atAddress(USDT, 'USDT', {
@@ -6182,5 +6610,32 @@ describe('a crypto gift', () => {
 		expect(coins(card).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
 			'USDT'
 		);
+	});
+});
+
+describe('the Venmo option', () => {
+	const WALLETS: FormConfig = {
+		...CONFIG,
+		providers: [
+			{ name: 'stripe', publishableKey: 'pk_live_x' },
+			{ name: 'paypal', publishableKey: 'live_client_id' }
+		],
+		paymentMethods: ['card', 'paypal', 'venmo']
+	};
+
+	it('tells the card which way Venmo is offered as the cadence moves', async () => {
+		const offers: boolean[] = [];
+		const card = await atReviewBeforeRail({
+			config: WALLETS,
+			venmoOffers: (offered) => offers.push(offered)
+		});
+		expect(offers.at(-1)).toBe(true);
+
+		dot(card, 1).click();
+		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+		expect(offers.at(-1)).toBe(false);
+
+		press(card.all('[part~="frequency-option"] input')[0] as HTMLElement);
+		expect(offers.at(-1)).toBe(true);
 	});
 });

@@ -1,6 +1,7 @@
 import { Divider, Heading, Layout, Paragraph, SmallPrint } from '../components/layout';
 import { formatMoney } from '../format';
 import type { EmailTemplate } from '../template';
+import { greetingFor } from './greeting';
 
 // the donor's "we could not collect your gift".
 //
@@ -28,7 +29,7 @@ export interface UncollectedData {
 export function template(data: UncollectedData): EmailTemplate {
 	const amount = formatMoney(data.amountMinor, data.currency);
 	const subject = `Your gift to ${data.legalName} did not go through`;
-	const greeting = data.donorName === null ? 'Hello,' : `Dear ${data.donorName},`;
+	const greeting = greetingFor(data.donorName);
 	// the instrument is named because it is the whole explanation: this message reaches a donor on
 	// one rail only, a bank debit that ended after they left the form, and "your payment" would
 	// leave them guessing which card it was.

@@ -15,6 +15,8 @@ import { BareShell } from './BareShell.jsx';
 // a component spec is `.tsx` and both pools collect either extension — ../forms/Field.dom.spec.tsx
 // says why.
 
+const FACTS = [{ what: 'Worker', name: 'riverside-shelter', code: true }];
+
 /** the shell's own children, by the class each wears, in the order they are written. */
 function rows(root: HTMLElement): string[] {
 	return [...(root.firstElementChild?.children ?? [])].map((node) => node.className);
@@ -24,7 +26,7 @@ describe('the strip a bare shell can stand at its foot', () => {
 	it('draws none where the surface handed it none', () => {
 		// an empty strip is a rule drawn under the screen with space beneath it, and the page stops
 		// being the row that takes the leftover height.
-		const root = render(BareShell, { children: <h1>Set up</h1> });
+		const root = render(BareShell, { facts: FACTS, children: <h1>Set up</h1> });
 
 		expect(root.querySelector('.adm-footstrip')).toBeNull();
 		expect(rows(root)).toEqual(['adm-topbar', 'adm-main']);
@@ -32,6 +34,7 @@ describe('the strip a bare shell can stand at its foot', () => {
 
 	it('draws what a surface hands it, under the page and in the last row', () => {
 		const root = render(BareShell, {
+			facts: FACTS,
 			foot: (
 				<>
 					<span>better-giving</span>
@@ -48,11 +51,24 @@ describe('the strip a bare shell can stand at its foot', () => {
 	});
 });
 
+describe('what a bare shell draws that it was not handed', () => {
+	it('states no fact of its own where it was handed neither a head nor facts', () => {
+		// handed neither, the shell stands an empty `.adm-head`: the type is what refuses that shell,
+		// so this reads only that nothing of the shell's own fills the band.
+		// @ts-expect-error a shell takes `head` or `facts`, and dropping both is a type error.
+		const root = render(BareShell, { children: <h1>Set up</h1> });
+
+		expect(root.querySelector('.adm-topbar')).toBeNull();
+		expect(root.textContent).not.toContain('Riverbank Trust');
+	});
+});
+
 describe('the head a bare shell stands over its page', () => {
 	it('draws the run of stated facts where the surface handed no head of its own', () => {
-		// absence is the bar of facts and not an empty band: a shell that read nothing stated as a
-		// head would draw a rule over every screen ./TopBar.jsx is the head of.
-		const root = render(BareShell, { children: <h1>Set up</h1> });
+		// a head left out beside a run of facts is the bar of facts and not an empty band: a shell
+		// that stood the missing head anyway would draw a rule over every screen ./TopBar.jsx is the
+		// head of.
+		const root = render(BareShell, { facts: FACTS, children: <h1>Set up</h1> });
 
 		expect(root.querySelector('.adm-head')).toBeNull();
 		expect(root.querySelector('.adm-topbar')).not.toBeNull();

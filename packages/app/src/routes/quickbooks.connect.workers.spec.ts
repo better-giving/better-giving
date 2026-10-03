@@ -1,9 +1,11 @@
 import { createExecutionContext, env } from 'cloudflare:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createStaticHandler, type LoaderFunction } from 'react-router';
+import { createStaticHandler, isRouteErrorResponse, type LoaderFunction } from 'react-router';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { CONNECT_LINK_LIFETIME_MS, mintConnectLink } from '$lib/server/accounting/connect-link';
+import { SIGNING_KEY_UNREADABLE } from '$lib/server/auth/signing-key';
+import { withSigningKeyUnreadable } from '$lib/server/auth/signing-key.testing';
 import { INTUIT_AUTHORIZE_URL, QUICKBOOKS_PRODUCTION_URL } from '$lib/server/accounting/quickbooks';
 import { requestContext } from '../request-context';
 import * as connect from './quickbooks.connect';
@@ -149,6 +151,22 @@ describe('GET /quickbooks/connect', () => {
 		expect(answered.status).toBe(403);
 	});
 
+	// an address with nothing of the link on it is refused before the signing key is read, so a
+	// stranger probing the path costs no database read and cannot reach the 500 below.
+	it('refuses an address carrying none of the link without reading the signing key', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answered = await open(`${OWN}/quickbooks/connect`, {
+				...INTUIT,
+				BETTER_AUTH_SECRET: undefined
+			});
+			if ('redirect' in answered) throw new Error('a bare address was honoured');
+
+			expect(answered.status).toBe(403);
+			expect(answered.data.refusal).toBe('link');
+			expect(logged).not.toHaveBeenCalled();
+		});
+	});
+
 	it('names the value to set where this deployment holds no Intuit client id', async () => {
 		const answered = await open(link, { ...INTUIT, QUICKBOOKS_CLIENT_ID: undefined });
 		if ('redirect' in answered) throw new Error('a deployment with no client id redirected');
@@ -158,5 +176,29 @@ describe('GET /quickbooks/connect', () => {
 		const page = markup(answered.data);
 		expect(page).toContain('This deployment has no QuickBooks credentials');
 		expect(page).toContain('Put your Intuit app’s credentials in on the console, then try again.');
+	});
+
+	/**
+	 * whoever opens the address holds no session, so the database's own error text stays in the
+	 * logs and the browser is told a fixed sentence. the key is read off the row here, which is the
+	 * path that can fail with the driver's words in it.
+	 */
+	it('answers a signing key it cannot read with a fixed sentence, and logs the cause', async () => {
+		await withSigningKeyUnreadable(async (logged) => {
+			const answered = await handler.query(new Request(link), {
+				requestContext: requestContext(
+					envWith({ ...INTUIT, BETTER_AUTH_SECRET: undefined }),
+					createExecutionContext()
+				)
+			});
+			if (answered instanceof Response) throw new Error('a deployment with no key redirected');
+
+			expect(answered.statusCode).toBe(500);
+			const error = answered.errors?.[ROUTE_ID];
+			expect(isRouteErrorResponse(error) && error.data).toBe(SIGNING_KEY_UNREADABLE);
+			const [prefix, cause] = logged.mock.calls[0] ?? [];
+			expect(prefix).toBe('a QuickBooks connect address could not be checked — no signing key:');
+			expect(String(cause ?? '').trim()).not.toBe('');
+		});
 	});
 });

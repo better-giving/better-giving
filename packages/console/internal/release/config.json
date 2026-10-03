@@ -16,15 +16,22 @@
 		"0010_gift_refunded_trigger_and_dispute.sql",
 		"0011_quickbooks_sync_realm.sql",
 		"0012_payment_provider_reference.sql",
-		"0013_store_pages_organisation_and_chat.sql",
-		"0014_image_metadata_and_bytes.sql",
-		"0015_chat_turn_note.sql",
-		"0016_org_logo_and_program_photo.sql"
+		"0013_api_key.sql",
+		"0014_zapier_subscription_failing_since.sql",
+		"0015_webhooks.sql",
+		"0016_payment_settled_gift_index.sql",
+		"0017_zapier_key_is_an_api_key.sql",
+		"0018_zapier_key_dropped.sql",
+		"0019_webhook_delivery_dropped_and_detail.sql",
+		"0020_webhook_delivery_recent_index.sql",
+		"0021_list_walk_indexes.sql",
+		"0022_webhook_delivery_owed_index.sql",
+		"0023_donor_pages_images_and_chat.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "adda16b23bdd24c05ff1a2be38735b30b6fa9513"
+	"commit": "0bf89d7ae7732bf25077edda37eebccd2573c78f"
 }

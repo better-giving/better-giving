@@ -57,6 +57,13 @@ import {
 // times it out. there is nothing to do about it from here short of driving `connect`/`close`
 // by hand, and the blast radius is one abandoned connection per failed send on a path that
 // sends one message per request. if this app ever sends in a loop, that changes.
+//
+// and a second, same version: its `encodeHeader` turns a non-ASCII subject into one RFC 2047
+// encoded-word and never folds it, so "Your donation receipt from Fundación Niños del Perú" is a
+// 78-character word (the RFC caps one at 75) and a tribute naming a 200-character CJK honoree is a
+// `Subject:` line near 1,850 characters (RFC 5322 caps a line at 998). `encodeSubject` below
+// encodes such a subject before it is handed over: the library leaves an all-ASCII value as it
+// is, and writes a header value verbatim, CRLF included.
 
 /**
  * what a send needs: the raw `SMTP_*` variables and `MAIL_FROM`, all validated per send rather
@@ -157,7 +164,7 @@ export function createSmtpProvider(
 					await WorkerMailer.send(connectionOptions(endpoint.value, LogLevel.WARN), {
 						from: from.value,
 						to: to.value,
-						subject: subject.value,
+						subject: encodeSubject(subject.value),
 						// both arms, always: `worker-mailer` builds multipart/alternative when it has
 						// the pair and a bare text or html part when it has one, and the port's type
 						// makes having only one impossible.
@@ -270,4 +277,42 @@ function connectionOptions(endpoint: SmtpEndpoint, logLevel: LogLevel) {
 		logLevel,
 		socketTimeoutMs: RESPONSE_TIMEOUT_MS
 	};
+}
+
+/**
+ * a subject as RFC 2047 says it may travel: no line holding an encoded-word past 76 characters,
+ * which also keeps every line inside RFC 5322's 998.
+ *
+ * an ASCII subject is returned as it is. anything else becomes base64 encoded-words cut between
+ * characters, since each word must decode on its own, and joined by CRLF + space, which a decoder
+ * drops between two encoded-words. `=?UTF-8?B?` and `?=` are 12 characters of every word: a
+ * folded line is a space and a word, so a word is at most 75 characters and carries 45 bytes, and
+ * the first line is `Subject: ` and a word, so that word is at most 67 and carries 39. the value
+ * is already free of CR and LF: `parseHeaderValue` refused it otherwise.
+ */
+function encodeSubject(subject: string): string {
+	if (!NON_ASCII.test(subject)) return subject;
+	const words: string[] = [];
+	let chunk: number[] = [];
+	for (const character of subject) {
+		const bytes = utf8.encode(character);
+		const budget = words.length === 0 ? FIRST_WORD_BYTES : FOLDED_WORD_BYTES;
+		if (chunk.length + bytes.length > budget) {
+			words.push(encodedWord(chunk));
+			chunk = [];
+		}
+		chunk.push(...bytes);
+	}
+	words.push(encodedWord(chunk));
+	return words.join('\r\n ');
+}
+
+// no `u` flag: an astral character is two surrogates, and both fall inside the range.
+const NON_ASCII = /[\u0080-\uffff]/;
+const FIRST_WORD_BYTES = 39;
+const FOLDED_WORD_BYTES = 45;
+const utf8 = new TextEncoder();
+
+function encodedWord(bytes: readonly number[]): string {
+	return `=?UTF-8?B?${btoa(String.fromCharCode(...bytes))}?=`;
 }

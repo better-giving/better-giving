@@ -6,9 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 
 /**
  * a `dialog` element lifted into the browser's top layer for as long as the caller is mounted, and
- * the focus handed back to whatever put it there when it goes. ../../behaviour/Dialog.tsx lifts a
- * card with it and ./Sheet.jsx a sheet, so the two modals on these surfaces take and return focus
- * the same way.
+ * the focus handed back to whatever put it there when it goes. ./Sheet.jsx lifts a sheet with it.
  *
  * most of what a modal is arrives with `showModal()` and is not written here. the top layer keeps
  * the tab ring inside the element and the page behind it inert, and Escape reaches the element as a
@@ -18,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
  * wrote it and nothing here needs a document until the browser has one.
  *
  * `lifted` is whether the element is in the top layer, for a caller whose markup differs once it
- * is: ../../behaviour/Dialog.tsx draws the card as a column in the page until then.
+ * is. ./Sheet.jsx draws the same markup either way and reads only `ref`.
  *
  * @returns {{ ref: RefObject<HTMLDialogElement | null>, lifted: boolean }}
  */

@@ -24,7 +24,7 @@ import type { EmailTemplate } from '../template';
 //
 // it goes to `org_profile.notification_email`, which is not a from address. that column is
 // documented as operational mail only and explicitly not donor-facing; the From address is
-// `MAIL_FROM`, a deploy-time secret, because it is authorised by the same third party that
+// `MAIL_FROM`, a deploy-time var, because it is authorised by the same third party that
 // issued the SMTP credential. the two are never interchangeable.
 
 /** one labelled value — a donation id, an event id, an HTTP status. */
@@ -75,7 +75,7 @@ export function template(data: AdminAlertData): EmailTemplate {
 }
 
 /** what the address is for, said on every message that arrives at it. */
-const FOOTER = 'Sent by your donations app. This address receives operational mail only.';
+export const FOOTER = 'Sent by your donations app. This address receives operational mail only.';
 
 /** `label: value`, one per line, in both arms. */
 function factLines(facts: readonly AlertFact[]): string[] {

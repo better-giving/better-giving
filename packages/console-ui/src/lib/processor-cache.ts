@@ -9,8 +9,7 @@ import { readProcessorScreen } from './processor-reading';
 
 // what a page that reads the deployment for itself was last read as, kept between visits, so opening
 // it a second time draws at once rather than taking those round trips again. every processor page is
-// one (./processor-reading.ts), and so are the books page (../routes/_sections.quickbooks.tsx) and
-// the Zapier page (../routes/_sections.zapier.tsx).
+// one (./processor-reading.ts), and so is the books page (../routes/_sections.quickbooks.tsx).
 //
 // **the store is `remix-client-cache`'s own in-memory map and never a `Storage`**: the reading holds
 // the account's payments as promises, which no storage can hold, and nothing about a deployment
@@ -22,13 +21,14 @@ import { readProcessorScreen } from './processor-reading';
 //   once a run stops (./stripe-section.tsx) — which wants what the binary says now;
 // - an entry the page itself reads past (`standing`), because what it holds could have moved with
 //   nothing pressed here: a run going (it has since moved on) or ended with its report already
-//   drawn, a books page with no company connected, since a company is connected in a browser at
-//   the deployment and never here, and a Zapier page with a key, since a Zap is turned on at Zapier;
+//   drawn, and a books page with no company connected, since a company is connected in a browser
+//   at the deployment and never here;
 // - anything after a press, on any page: every `clientAction` forgets every entry before it writes
 //   (`forgetReadings`), so nothing drawn after a write was read before it. a reading that was in
 //   flight when that happened is thrown away when it lands rather than kept, and so is one whose
-//   move the router abandoned, which no page draws. a press that writes nothing — the books page's
-//   start-date preview — forgets nothing.
+//   move the router abandoned, which no page draws. a press that changes nothing a processor page
+//   is drawn from forgets nothing: the books page's start-date preview, which writes nothing
+//   (../every-press-forgets.spec.ts).
 //
 // an entry whose payments or recurring reading rejects is dropped, so the next visit asks again
 // rather than meeting the same error from memory.
@@ -55,8 +55,8 @@ import { readProcessorScreen } from './processor-reading';
 // going joins nothing and reads again, finding the run already taken and held for that press.
 //
 // **and never for the page already on the screen**, whose cell is under the pointer as often as not.
-// that page asks after its own run (./stripe-section.tsx), and a reading ahead that got to the landed
-// run first would leave its poll holding a run that is going forever — the page frozen busy.
+// that page asks after its own run (`pollRun`, from ./use-run-poll.ts) and reads itself again
+// when the run stops, so a reading ahead of it would only race those two for the landed run.
 
 /**
  * each processor page's setup run, which is the one reading the pages differ by. NOWPayments' press
@@ -95,11 +95,18 @@ const warming = new Map<string, { under: number; screen: Promise<Kept | null> }>
  */
 const undrawn = new Map<string, NonNullable<Kept['run']>>();
 
-/** `processor`'s run read, holding an ended run under `key` until a draw of that page receives it. */
+/**
+ * `processor`'s run read, holding an ended run under `key` until a draw of that page receives it.
+ *
+ * a read that sees a run going lets go of the one held: a newer run has started since — from
+ * another window on the same console — and the held report is about a run that is over, so a page
+ * answered nothing about the new one would otherwise draw the old one's outcome as its own.
+ */
 function runReader(processor: PaymentProcessor, key: string): () => Promise<Kept['run']> {
 	return async () => {
 		const run = await RUNS[processor]();
 		if (run?.kind === 'ended') undrawn.set(key, run);
+		if (run?.kind === 'running') undrawn.delete(key);
 		return run;
 	};
 }
@@ -197,6 +204,21 @@ export async function readProcessorPage<P extends PaymentProcessor>(
 		}
 	);
 	return { ...screen, run: (screen.run ?? undrawn.get(key) ?? null) as ProcessorScreen<P>['run'] };
+}
+
+/**
+ * a processor page's own poll of its run, read through the same reader its page's readings take, so
+ * a report the poll is handed is held until a draw receives it — the operator may have left the
+ * page while the request was in flight (`runDrawn`, from ./use-run-poll.ts).
+ *
+ * answered nothing, it is the report a reading of the page took ahead of it where this console holds
+ * one: the binary hands a landed run out once, and a re-read of the page on the screen can be the
+ * read that observed it.
+ */
+export async function pollRun<P extends PaymentProcessor>(processor: P): Promise<RunOf<P>> {
+	const key = PROCESSORS[processor].href;
+	const run = await runReader(processor, key)();
+	return (run ?? undrawn.get(key) ?? null) as RunOf<P>;
 }
 
 /** a processor page's render, once it has drawn `run`: a report drawn is never drawn again. */

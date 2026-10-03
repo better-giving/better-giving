@@ -385,6 +385,41 @@ describe('a section whose step cannot be taken yet', () => {
 		expect(details(locked({ open: true })).open).toBe(false);
 	});
 
+	it('lets its own fix link be followed', async () => {
+		// the refusal is of the summary's toggle, and a link drawn inside the summary is a press of
+		// its own: cancelled on the way down with the rest, it is a way on that goes nowhere. whether
+		// the line stays shut is not read here: a browser hands the click to the innermost element
+		// with an activation behaviour, which is the link and not the summary
+		// (https://dom.spec.whatwg.org/#concept-event-dispatch), and happy-dom toggles the
+		// `details` for a click from anything inside its summary.
+		const root = render(StatusLedger, {
+			sections: true,
+			children: (
+				<StatusLine
+					labelAs="h2"
+					label="Choose the accounts"
+					word="Waiting"
+					tone="note"
+					note="Connect a company first."
+					fixHref="#connect"
+					fixLabel="Connect a company"
+					beneath={<p>Nothing is connected yet.</p>}
+					locked
+				/>
+			)
+		});
+		const link = root.querySelector('summary a[href="#connect"]');
+		if (link === null) throw new Error('the locked line drew no fix link in its summary');
+
+		let followed = false;
+		await act(async () => {
+			followed = link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+			await Promise.resolve();
+		});
+
+		expect(followed).toBe(true);
+	});
+
 	it('shuts a line opened by hand when it becomes locked', async () => {
 		// the element holds what a press opened and the prop never said, so a line locked while open
 		// would stay open over a panel nothing can be done with — and refuse the press that shuts it.
@@ -408,6 +443,56 @@ describe('a section whose step cannot be taken yet', () => {
 		again(line(true));
 
 		expect(details(root).open).toBe(false);
+	});
+});
+
+describe('a section the reader shut while it was asked open', () => {
+	// react writes `open` only when the prop changes, and a reader's press never changes it — so a
+	// step held open for one reason and shut by hand would stay shut through every reason after it.
+	const step = (openFor: readonly string[]) => ({
+		sections: true,
+		children: (
+			<StatusLine
+				labelAs="h2"
+				label="Connect"
+				word="To do"
+				tone="note"
+				beneath={<p>Connect your QuickBooks company.</p>}
+				open
+				openFor={openFor}
+			/>
+		)
+	});
+	function details(root: HTMLElement): HTMLDetailsElement {
+		return drawn(root) as HTMLDetailsElement;
+	}
+
+	it('stays shut while it is asked open for the same reason', async () => {
+		const { root, again } = mount(StatusLedger, step(['current']));
+		await press(root);
+
+		again(step(['current']));
+
+		expect(details(root).open).toBe(false);
+	});
+
+	it('stays shut when a reason it was open for goes away', async () => {
+		const { root, again } = mount(StatusLedger, step(['current', 'unread']));
+		await press(root);
+
+		again(step(['current']));
+
+		expect(details(root).open).toBe(false);
+	});
+
+	it('opens again when something new asks for it', async () => {
+		const { root, again } = mount(StatusLedger, step(['current']));
+		await press(root);
+		again(step(['current']));
+
+		again(step(['current', 'unanswered']));
+
+		expect(details(root).open).toBe(true);
 	});
 });
 

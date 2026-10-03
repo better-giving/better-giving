@@ -321,6 +321,12 @@ export type CheckoutContext = {
 	 * (`coin_not_accepted` in ./v1.ts), so a press for one of these is refused here instead.
 	 */
 	readonly refusedCoins: readonly string[];
+	/**
+	 * every processor that takes a repeating gift has said it never came up, while one taking a
+	 * one-time gift has not — `repeatingUnavailable` on the surface in ./embed/surface.ts, which says
+	 * it once. kept for the card's life: a processor that never came up does not come up later.
+	 */
+	readonly repeatingUnavailable: boolean;
 };
 
 /**
@@ -415,6 +421,8 @@ export type CheckoutEvent =
 	| { readonly type: 'SET_COIN'; readonly coin: string | null }
 	| { readonly type: 'PAYMENT_UNAVAILABLE'; readonly failure: Failure }
 	| { readonly type: 'CHALLENGE_UNAVAILABLE'; readonly failure: Failure }
+	| { readonly type: 'REPEATING_UNAVAILABLE' }
+	| { readonly type: 'MAKE_ONE_TIME' }
 	| {
 			readonly type: 'SET_CONTACT';
 			readonly email?: string;
@@ -815,6 +823,42 @@ export function cryptoIsOffered(snapshot: { readonly context: CheckoutContext })
 	return draft.frequency === 'one_time' && config.paymentMethods.includes('crypto');
 }
 
+/**
+ * whether the payment box lists the Venmo option: a form offering the rail, on a gift the donor has
+ * made one-time.
+ *
+ * Venmo has a one-time session and no subscription session (`venmo-payments` in `@paypal/paypal-js`),
+ * so a repeating gift on it is a subscription nobody can approve. read off the cadence as it is being
+ * picked, for the reason `cryptoIsOffered` above gives. PayPal's own rail is not narrowed here.
+ * exported for both surfaces that run this flow, which tell their payment surface on every reading.
+ */
+export function venmoIsOffered(snapshot: { readonly context: CheckoutContext }): boolean {
+	const { config, draft } = snapshot.context;
+	return draft.frequency === 'one_time' && config.paymentMethods.includes('venmo');
+}
+
+/**
+ * whether the review step offers the gift as one-time in place of the repeating one committed to:
+ * no processor that takes a repeating gift is up (`repeatingUnavailable` on the context) and one
+ * taking a one-time gift is.
+ *
+ * the dead end is for a form with no way to pay at all, which `PAYMENT_UNAVAILABLE` reports. this
+ * is a gift the donor can still make, once, and `MAKE_ONE_TIME` is the press that makes it so.
+ * exported for both surfaces that run this flow, which draw the offer off it.
+ */
+export function oneTimeIsOfferedInstead(snapshot: {
+	readonly context: CheckoutContext;
+	readonly value: unknown;
+}): boolean {
+	return snapshot.value === 'give' && repeatingIsRefused(snapshot.context);
+}
+
+/** a repeating gift committed to that no processor still up can take. */
+function repeatingIsRefused(context: CheckoutContext): boolean {
+	const frequency = context.fv?.frequency;
+	return context.repeatingUnavailable && frequency !== undefined && frequency !== 'one_time';
+}
+
 /** everything the amount step exists to decide has been decided. */
 function amountIsDecided(context: CheckoutContext): boolean {
 	return completeAmount(context.draft, context.config) !== null;
@@ -1020,6 +1064,9 @@ export const checkoutMachine = setup({
 
 		/** the donor has filled in everything a typed rail needs before an intent can be minted. */
 		payerIsComplete: ({ context }) => payerIsComplete(context),
+
+		/** the review step offering the gift as one-time — see `oneTimeIsOfferedInstead`. */
+		repeatingIsRefused: ({ context }) => repeatingIsRefused(context),
 
 		/**
 		 * the donor on a fund's rail may open its window: a one-time gift and every field the receipt
@@ -1322,10 +1369,11 @@ export const checkoutMachine = setup({
 		sentToken: null,
 		heldChallenge: null,
 		coinRefusal: null,
-		refusedCoins: []
+		refusedCoins: [],
+		repeatingUnavailable: false
 	}),
-	// three reports from surfaces that resolve on their own schedule. none of them is a step in the
-	// flow and none moves it from here, so all three are accepted wherever the machine happens to be.
+	// four reports from surfaces that resolve on their own schedule. none of them is a step in the
+	// flow and none moves it from here, so all four are accepted wherever the machine happens to be.
 	on: {
 		SET_TURNSTILE_TOKEN: {
 			actions: assign({ turnstileToken: ({ event }) => event.token })
@@ -1350,6 +1398,14 @@ export const checkoutMachine = setup({
 		 */
 		CHALLENGE_UNAVAILABLE: {
 			actions: assign({ heldChallenge: ({ event }) => event.failure })
+		},
+		/**
+		 * the payment surface reporting that a repeating gift can no longer be paid and a one-time one
+		 * still can. it moves nothing: the donor may not have committed to a cadence yet, and the
+		 * review step reads it against whichever one they do (`oneTimeIsOfferedInstead`).
+		 */
+		REPEATING_UNAVAILABLE: {
+			actions: assign({ repeatingUnavailable: true })
 		},
 		/**
 		 * the rail, as the payment provider's own fields report it.
@@ -1652,6 +1708,21 @@ export const checkoutMachine = setup({
 				// the only thing this press can be refused for here is the rail.
 				SUBMIT: { guard: 'payerIsComplete', target: 'quoting', actions: 'commitPayer' },
 				OPEN_FUND: { guard: 'fundCanOpen', target: 'authorizing', actions: 'chooseFund' },
+				/**
+				 * the donor taking the offer of a one-time gift in place of the repeating one no
+				 * processor still up can take. the step is entered again, so the attempt is begun
+				 * afresh and the estimate restated, and the one-time rails stand on it from this
+				 * reading on.
+				 */
+				MAKE_ONE_TIME: {
+					guard: 'repeatingIsRefused',
+					target: 'give',
+					reenter: true,
+					actions: assign({
+						draft: ({ context }) => ({ ...context.draft, frequency: 'one_time' }),
+						fv: ({ context }) => context.fv && { ...context.fv, frequency: 'one_time' }
+					})
+				},
 				/**
 				 * the marks, and from the last step every move they offer is backwards and so
 				 * unconditional.

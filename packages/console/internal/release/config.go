@@ -81,6 +81,7 @@ var Upload = UploadShape{
 		{Name: "API_RATE_LIMITER", NamespaceID: "7412", Simple: Simple{Limit: 600, Period: 60}},
 		{Name: "QUOTE_RATE_LIMITER", NamespaceID: "7413", Simple: Simple{Limit: 60, Period: 60}},
 		{Name: "SIGN_IN_RATE_LIMITER", NamespaceID: "7414", Simple: Simple{Limit: 10, Period: 60}},
+		{Name: "INTEGRATIONS_KEY_RATE_LIMITER", NamespaceID: "7415", Simple: Simple{Limit: 120, Period: 60}},
 	},
 	CompatibilityDate:  "2026-07-22",
 	CompatibilityFlags: []string{"nodejs_compat"},

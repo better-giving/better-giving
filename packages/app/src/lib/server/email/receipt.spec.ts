@@ -194,6 +194,10 @@ describe('renderReceipt — when it refuses', () => {
 		);
 		if (result.ok) throw new Error('a receipt was rendered contradicting the ledger');
 		expect(result.reason).toBe('goods_or_services_inconsistent');
+		// it lands in the same alert as the operator's action, which names no column and no screen.
+		expect(result.detail).toContain('recorded as not deductible');
+		expect(result.detail).not.toContain('`donation.');
+		expect(result.detail).not.toContain('Correct the donation record');
 	});
 
 	// a negative figure is the same contradiction from the other side, and would print a
@@ -220,6 +224,8 @@ describe('renderReceipt — when it refuses', () => {
 		);
 		if (result.ok) throw new Error('a receipt was rendered for a gift worth less than its perks');
 		expect(result.reason).toBe('goods_or_services_inconsistent');
+		expect(result.detail).not.toContain('`donation.');
+		expect(result.detail).not.toContain('Correct the donation record');
 	});
 
 	// equal is not refused: a $50 ticket for a $50 payment is a real transaction with a

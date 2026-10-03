@@ -13,8 +13,8 @@ import type { Route } from './+types/api.paypal.webhook';
 // the port hands back. that file's header argues every choice below; what is written here is the
 // part that is PayPal's.
 //
-// **an unanswered delivery here is a gift that is never taken, which is not true of the other
-// route.** PayPal has no auto-capture: an order this app created with `intent: CAPTURE` and the
+// an unanswered delivery here is a gift that is never taken, which is not true of the other
+// route. PayPal has no auto-capture: an order this app created with `intent: CAPTURE` and the
 // payer approved is money authorised and not moved, and the capture is made inside the
 // reconciliation read off the `CHECKOUT.ORDER.APPROVED` delivery (`readSettlement` in
 // $lib/server/payments/paypal.ts). so a delivery this route swallows is not a settlement recorded
@@ -27,8 +27,8 @@ import type { Route } from './+types/api.paypal.webhook';
 // `POST`, so it reaches the `action`; the `loader` at the foot of this file is where every other
 // method the framework routes to it lands.
 //
-// it lives outside `/api/v1` for the reason the Stripe callback does, and **it is named to nest
-// under no layout, which is a control rather than filing.** the body is read exactly once, here, as
+// it lives outside `/api/v1` for the reason the Stripe callback does, and it is named to nest
+// under no layout, which is a control rather than filing. the body is read exactly once, here, as
 // text (CLAUDE.md): PayPal is asked to vouch for the delivery's own event
 // (https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature) together with the
 // five headers it signed, and a body some hook above the route had already consumed reaches the
@@ -36,7 +36,7 @@ import type { Route } from './+types/api.paypal.webhook';
 // layout above it and that no route but the three surface layouts exports a `middleware` at all,
 // and ./api.paypal.webhook.workers.spec.ts holds that the bytes arrive unread and are read once.
 //
-// **the console registers this address, and its id is what `PAYPAL_WEBHOOK_ID` holds.** the path is
+// the console registers this address, and its id is what `PAYPAL_WEBHOOK_ID` holds. the path is
 // `PAYPAL_WEBHOOK_PATH` in packages/operator/src/paypal/webhook-listener.ts, which the binary's copy is
 // gated against, and ../routes.spec.ts pins this file's name to it.
 //

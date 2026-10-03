@@ -1,0 +1,11 @@
+-- a Zap's subscription records when its hook began failing, so a hook that has answered nothing but
+-- failures for long enough can be ended. `zapier_subscription` gains `failing_since`, a unix
+-- millisecond time, null while the hook takes what it is posted.
+-- `src/lib/server/db/schema.ts` argues the column beside it.
+--
+-- no table is rebuilt: a native `ADD COLUMN` with no check and no default, appended after the
+-- table's last column, so every row already there reads null.
+--
+-- no backfill: which hooks are failing now is not stored anywhere to copy, and a hook failing today
+-- starts its count at its next failed post.
+ALTER TABLE `zapier_subscription` ADD `failing_since` integer;

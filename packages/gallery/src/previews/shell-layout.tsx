@@ -1,8 +1,11 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { CopyControl } from '@better-giving/operator/components/controls/CopyControl';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import {
 	Column,
 	Group,
+	Grouped,
+	Groups,
 	List,
 	Section,
 	Stack,
@@ -10,10 +13,10 @@ import {
 } from '@better-giving/operator/components/shell/Layout';
 
 /*
- * the six arrangements every operator screen is built out of, each drawn at the one thing it
+ * the eight arrangements every operator screen is built out of, each drawn at the one thing it
  * decides and nothing else.
  *
- * spacing is the whole of what five of these do, so every specimen holds at least two blocks: one
+ * spacing is the whole of what seven of these do, so every specimen holds at least two blocks: one
  * block in a `Stack` shows no gap, and a gap is the only thing there is to look at. the pairs are
  * drawn tight and loose beside each other for the same reason — a step is a step relative to
  * another step, and a single run of rows says nothing about which one it took.
@@ -36,6 +39,11 @@ import {
  * is the panel alone and not the route around it:
  * `.adm-panelroute` is a screen tall, and a page of specimens cannot spend a viewport on each.
  *
+ * `Groups` and `Grouped` are drawn together because the pair is one decision: the step inside a
+ * group against the step between groups. the specimen is the API page's shape — a form and the
+ * presses under it, then the list the form adds to — and the second group is a lone block standing
+ * as a group of its own, which is how a table plane with its caption sits in one.
+ *
  * `Section` is the one arrangement whose rule is drawn by the element rather than written: two
  * adjacent sections take a rule between them and a lone section takes none
  * (`.adm-section + .adm-section` in packages/operator/src/styles/adm.css), so three in a row is the
@@ -50,10 +58,9 @@ import {
  * is the column with its own gap taken off: the blocks inside it touch, which is what a screen gets
  * when it means to space them itself.
  *
- * `Group`'s `labelAs` is stated by every caller and defaulted by none, so all five levels are drawn
- * — they differ in the outline a reader navigates by and in nothing on the screen, which is exactly
- * why a specimen of each is here rather than one of `h3`. `label` has a default of its own, so the
- * last group is what a screen that forgot the prop actually draws.
+ * `Group`'s `labelAs` is stated by every caller and defaulted by none, and all five levels are
+ * drawn — they differ in the outline a reader navigates by and in nothing on the screen, which is
+ * exactly why a specimen of each is here rather than one of `h3`. `label` is the caller's as well.
  *
  * `Steps` is the one list in this system with markers, and the numerals only line up against a step
  * whose body wraps to a second line — so the loose run holds one.
@@ -162,6 +169,30 @@ export default function ShellLayoutPreview() {
 				<li>Paste it into Stripe.</li>
 			</Steps>
 
+			<Groups>
+				<Grouped>
+					<Field
+						id="shell-layout-groups-name"
+						label="Name"
+						beside={<Button variant="primary">Make key</Button>}
+					/>
+					<div className="adm-actions">
+						<Button variant="quiet" size="sm" markAfter="external-link">
+							API reference
+						</Button>
+						<CopyControl
+							wording="Copy agent prompt"
+							text="You are integrating with the Riverside Shelter donations API."
+							wayOut="Open agent prompt, after this button, opens it to copy by hand."
+							onBlocked={() => {}}
+						/>
+					</div>
+				</Grouped>
+				<p>
+					The second group, a break step under the first: the list of keys the form above adds to.
+				</p>
+			</Groups>
+
 			<Group label="Corrections" labelAs="h2">
 				<p>
 					A correcting entry moves an amount between two accounts and says why. It is the level a
@@ -197,14 +228,6 @@ export default function ShellLayoutPreview() {
 				<p>
 					Nothing stops. The commitment is held at Stripe and the new key reads the same account, so
 					the next collection settles on the day it was always going to.
-				</p>
-			</Group>
-
-			{/* `label` left off, which is the component's own default rather than a band with nothing in
-			    it — `Group` in packages/operator/src/components/shell/Layout.jsx. */}
-			<Group labelAs="h3">
-				<p>
-					The band takes the default label, so a group with nothing to name still names something.
 				</p>
 			</Group>
 		</div>

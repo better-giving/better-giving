@@ -34,8 +34,9 @@ import { Mark } from './Mark.jsx';
    descriptive — a fact in a value slot, with no mark and no sentence: a pill everywhere but
                  inside a table, where it is the word alone. hueless until it is handed a `tone`,
                  which only a record's own lifecycle status gets.
-   momentary   — this just happened, on this control. accent, with a mark, transient; attention
-                 when `blocked`, and ink with the info mark when `neutral`. */
+   momentary   — this just happened, on this control. accent, with the check, transient;
+                 attention with the triangle when `blocked`, and ink with the info mark when
+                 `neutral`. a `mark` handed in replaces the register's own. */
 /** @param {StatusWordProps} props */
 export function StatusWord({
 	children,
@@ -58,7 +59,7 @@ export function StatusWord({
 							: 'adm-momentary'
 				}
 			>
-				<Mark name={mark || (neutral ? 'info' : 'check')} />
+				<Mark name={mark || (blocked ? 'triangle-alert' : neutral ? 'info' : 'check')} />
 				{/* one flex item: a message mixing text and elements would otherwise split into columns. */}
 				<span>{children}</span>
 			</span>

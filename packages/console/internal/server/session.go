@@ -9,6 +9,7 @@ import (
 	"github.com/better-giving/console/internal/account"
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/hangup"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/release"
 	"github.com/better-giving/console/internal/session"
@@ -40,8 +41,10 @@ func sessionRoutes(
 	store *account.Store,
 	records state.Store,
 	surface func(origin, token string) cf.Send,
+	stops *Presses,
 ) {
 	presses := &connectPresses{}
+	stops.watch(presses.going)
 
 	routes.HandleFunc("POST /api/session", func(w http.ResponseWriter, r *http.Request) {
 		chosen := store.Chosen()
@@ -63,10 +66,11 @@ func sessionRoutes(
 				Record: func(mine session.Session) error {
 					return session.Record(records, mine)
 				},
-				Surface: deployment.Reads(surface),
-				Within:  deployment.SessionBound,
-				Every:   deployment.SessionAsked,
-				Now:     time.Now(),
+				Surface:  deployment.Reads(surface),
+				Within:   deployment.SessionBound,
+				Every:    deployment.SessionAsked,
+				Stopping: stops.Stopping(),
+				Now:      time.Now(),
 			})
 		}))
 	})
@@ -76,6 +80,21 @@ func sessionRoutes(
 type connectPresses struct {
 	guard   sync.Mutex
 	running *connectPress
+	// joining is called by a request that found a press running, before it waits on that press; nil
+	// outside a test, which is how a case knows the request is waiting rather than guessing it.
+	joining func()
+}
+
+// going is the reading a stop makes of the press, which ../../cmd/better-giving/main.go's
+// waitForPress waits out before the listener's shutdown: that shutdown gives a handler five
+// seconds, and a press can run for as long as deployment.ConnectBound.
+func (presses *connectPresses) going() (string, bool) {
+	presses.guard.Lock()
+	defer presses.guard.Unlock()
+	if presses.running == nil {
+		return "", false
+	}
+	return "this console is still connecting to your deployment", true
 }
 
 // one press, and the outcome every request that joined it is answered with.
@@ -88,7 +107,9 @@ type connectPress struct {
 //
 // The press outlives the request that started it, because a tab closed mid-write would otherwise
 // tear a call that is already storing a credential on the deployment — leaving a session live there
-// that nothing recorded. The call has a deadline of its own, so nothing here waits without bound.
+// that nothing recorded. Every wait the call makes, its turn at the worker's binding list included,
+// is bound by deadlines of its own that deployment.ConnectBound sums, so nothing here waits without
+// bound.
 func (presses *connectPresses) joined(
 	ctx context.Context,
 	press func(context.Context) deployment.Connection,
@@ -96,6 +117,9 @@ func (presses *connectPresses) joined(
 	presses.guard.Lock()
 	if held := presses.running; held != nil {
 		presses.guard.Unlock()
+		if presses.joining != nil {
+			presses.joining()
+		}
 		<-held.done
 		return held.outcome
 	}
@@ -103,11 +127,35 @@ func (presses *connectPresses) joined(
 	presses.running = mine
 	presses.guard.Unlock()
 
-	mine.outcome = press(context.WithoutCancel(ctx))
-
-	presses.guard.Lock()
-	presses.running = nil
-	presses.guard.Unlock()
-	close(mine.done)
+	// a closed terminal ends this process only once the press has ended, so the session it wrote on
+	// the deployment is recorded on this machine first (../hangup), as for a payments run (../run).
+	release := hangup.Hold()
+	// deferred so that the press is cleared however it ends, or every later press would wait on a
+	// done that never closes.
+	defer func() {
+		defer release()
+		presses.guard.Lock()
+		presses.running = nil
+		presses.guard.Unlock()
+		close(mine.done)
+	}()
+	mine.outcome = outcomeOf(ctx, press)
 	return mine.outcome
+}
+
+// the press's outcome, or — where it panicked — that nothing was found out either way.
+//
+// the panic is recovered here rather than left to net/http, which would drop the pressing request's
+// connection while every request that joined it is answered: one press, two screens. such a press
+// said nothing about the write, and an empty kind is a state no screen draws.
+func outcomeOf(
+	ctx context.Context,
+	press func(context.Context) deployment.Connection,
+) (outcome deployment.Connection) {
+	defer func() {
+		if recover() != nil {
+			outcome = deployment.Connection{Kind: deployment.ConnectUnreachable}
+		}
+	}()
+	return press(context.WithoutCancel(ctx))
 }

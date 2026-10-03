@@ -14,8 +14,8 @@ import type { Route } from './+types/api.v1.forms.$id.donations.$donationId';
 // `HEAD` and `OPTIONS` reach the `loader`; any other method finds no `action` and the framework
 // answers it 405.
 //
-// this endpoint is an exception to the four controls CLAUDE.md names for `/api/v1`, approved by the
-// user on 2026-09-17, and the exception is Turnstile alone:
+// this endpoint is an exception to the four controls CLAUDE.md names for `/api/v1`, and the
+// exception is Turnstile alone:
 //
 //   rate limiting — the surface bucket, charged by the `middleware` on ./api.v1.ts before this file
 //                   runs. no bucket of its own: a poll costs one D1 read, which is what the surface

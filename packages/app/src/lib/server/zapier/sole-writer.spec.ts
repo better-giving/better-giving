@@ -10,6 +10,10 @@ import { describe, expect, it } from 'vitest';
 // fourth writer — a correction in ../books/correct.ts announcing an edit, a screen resending by
 // hand — is an event no trigger describes, or a row sent twice whose status nobody else moved.
 //
+// ./deliver.ts writes a send's outcome through ../outbox/lease.ts, which names no table of its own
+// and writes whichever one an outbox is defined over. so defining an outbox over
+// `zapier_delivery` counts as writing it, wherever it is done.
+//
 // a source scan rather than a runtime hook, so it catches the writer nobody wrote a test for, and
 // it reads text, so a computed table name fools it; the failure it defends against is a shortcut,
 // not an adversary. specs are out of scope: a fixture row is not an event.
@@ -45,9 +49,13 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 	return out;
 }
 
-/** a write in drizzle — `db.insert(zapierDelivery)`, `.update(…)`, `.delete(…)` — or in raw SQL. */
+/**
+ * a write in drizzle — `db.insert(zapierDelivery)`, `.update(…)`, `.delete(…)` — an outbox defined
+ * over the table, or a write in raw SQL.
+ */
 const WRITES: { label: string; re: RegExp }[] = [
 	{ label: 'drizzle write', re: /\b(?:insert|update|delete)\s*\(\s*(?:schema\.)?zapierDelivery\b/ },
+	{ label: 'outbox over it', re: /\btable\s*:\s*(?:schema\.)?zapierDelivery\b/ },
 	{
 		label: 'raw SQL write',
 		re: /\b(?:insert\s+(?:or\s+\w+\s+)?into|update|delete\s+from)\s+[`"']?zapier_delivery\b/i
@@ -87,5 +95,12 @@ describe('zapier/ is the only writer of zapier_delivery', () => {
 				relative(SRC, writer)
 			).toBe(true);
 		}
+	});
+
+	it("matches the deliverer's outbox, where its outcomes are written", () => {
+		const outbox = WRITES.find(({ label }) => label === 'outbox over it');
+		expect(outbox?.re.test(readFileSync(resolve(import.meta.dirname, 'deliver.ts'), 'utf8'))).toBe(
+			true
+		);
 	});
 });

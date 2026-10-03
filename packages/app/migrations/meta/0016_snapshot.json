@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "fe13f3a0-7ec1-4e57-915c-c6c3bc13970a",
-  "prevId": "0f90a728-f65e-4b04-80ce-27f764c913be",
+  "id": "b9ec3851-4b66-46ee-b515-9ef5dd90fd71",
+  "prevId": "0e7ea55a-7005-4957-ac16-911c0a748336",
   "tables": {
     "account": {
       "name": "account",
@@ -163,8 +163,8 @@
         }
       }
     },
-    "chat_turn": {
-      "name": "chat_turn",
+    "api_key": {
+      "name": "api_key",
       "columns": {
         "id": {
           "name": "id",
@@ -173,48 +173,40 @@
           "notNull": true,
           "autoincrement": false
         },
-        "page_id": {
-          "name": "page_id",
+        "name": {
+          "name": "name",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "author": {
-          "name": "author",
+        "kind": {
+          "name": "kind",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "text": {
-          "name": "text",
+        "key_hash": {
+          "name": "key_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "image_ids": {
-          "name": "image_ids",
+        "prefix": {
+          "name": "prefix",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'[]'"
+          "autoincrement": false
+        },
+        "last_four": {
+          "name": "last_four",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",
@@ -223,61 +215,72 @@
           "notNull": true,
           "autoincrement": false
         },
-        "note": {
-          "name": "note",
-          "type": "text",
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         }
       },
       "indexes": {
-        "chat_turn_page_seq_idx": {
-          "name": "chat_turn_page_seq_idx",
+        "api_key_key_hash_idx": {
+          "name": "api_key_key_hash_idx",
           "columns": [
-            "page_id",
-            "seq"
+            "key_hash"
           ],
           "isUnique": true
+        },
+        "api_key_one_zapier_idx": {
+          "name": "api_key_one_zapier_idx",
+          "columns": [
+            "kind"
+          ],
+          "isUnique": true,
+          "where": "\"api_key\".\"kind\" = 'zapier' and \"api_key\".\"revoked_at\" is null"
         }
       },
-      "foreignKeys": {
-        "chat_turn_page_id_page_id_fk": {
-          "name": "chat_turn_page_id_page_id_fk",
-          "tableFrom": "chat_turn",
-          "tableTo": "page",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "chat_turn_author_check": {
-          "name": "chat_turn_author_check",
-          "value": "\"chat_turn\".\"author\" in ('operator', 'assistant')"
+        "api_key_name_not_blank_check": {
+          "name": "api_key_name_not_blank_check",
+          "value": "trim(\"api_key\".\"name\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
         },
-        "chat_turn_note_check": {
-          "name": "chat_turn_note_check",
-          "value": "\"chat_turn\".\"note\" is null or (\"chat_turn\".\"author\" = 'assistant' and \"chat_turn\".\"note\" in ('refused', 'fell-back', 'unanswered'))"
+        "api_key_kind_check": {
+          "name": "api_key_kind_check",
+          "value": "\"api_key\".\"kind\" in ('api', 'zapier')"
         },
-        "chat_turn_model_check": {
-          "name": "chat_turn_model_check",
-          "value": "(\"chat_turn\".\"model\" is not null) = (\"chat_turn\".\"author\" = 'assistant') and (\"chat_turn\".\"model\" is null or trim(\"chat_turn\".\"model\", char(32, 9, 10, 11, 12, 13, 160)) <> '')"
+        "api_key_key_hash_check": {
+          "name": "api_key_key_hash_check",
+          "value": "length(\"api_key\".\"key_hash\") = 64 and \"api_key\".\"key_hash\" not glob '*[^0-9a-f]*'"
         },
-        "chat_turn_image_ids_array_check": {
-          "name": "chat_turn_image_ids_array_check",
-          "value": "json_valid(\"chat_turn\".\"image_ids\") and json_type(\"chat_turn\".\"image_ids\") = 'array'"
+        "api_key_prefix_check": {
+          "name": "api_key_prefix_check",
+          "value": "length(\"api_key\".\"prefix\") = 8 and \"api_key\".\"prefix\" glob 'bgk_*' and substr(\"api_key\".\"prefix\", 5) not glob '*[^0-9A-Za-z]*'"
         },
-        "chat_turn_text_check": {
-          "name": "chat_turn_text_check",
-          "value": "trim(\"chat_turn\".\"text\", char(32, 9, 10, 11, 12, 13, 160)) <> '' or json_array_length(\"chat_turn\".\"image_ids\") > 0"
+        "api_key_last_four_check": {
+          "name": "api_key_last_four_check",
+          "value": "length(\"api_key\".\"last_four\") = 4 and \"api_key\".\"last_four\" not glob '*[^0-9A-Za-z]*'"
+        },
+        "api_key_archived_revoked_check": {
+          "name": "api_key_archived_revoked_check",
+          "value": "\"api_key\".\"archived_at\" is null or \"api_key\".\"revoked_at\" is not null"
         }
       }
     },
@@ -1088,139 +1091,6 @@
         }
       }
     },
-    "image": {
-      "name": "image",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "width": {
-          "name": "width",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "height": {
-          "name": "height",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "byte_size": {
-          "name": "byte_size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "alt": {
-          "name": "alt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "image_kind_check": {
-          "name": "image_kind_check",
-          "value": "\"image\".\"kind\" in ('photo', 'illustration')"
-        },
-        "image_content_type_check": {
-          "name": "image_content_type_check",
-          "value": "\"image\".\"content_type\" in ('image/webp', 'image/jpeg', 'image/png')"
-        },
-        "image_size_check": {
-          "name": "image_size_check",
-          "value": "\"image\".\"width\" > 0 and \"image\".\"height\" > 0 and \"image\".\"byte_size\" > 0"
-        },
-        "image_alt_check": {
-          "name": "image_alt_check",
-          "value": "\"image\".\"alt\" is null or trim(\"image\".\"alt\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
-        }
-      }
-    },
-    "image_bytes": {
-      "name": "image_bytes",
-      "columns": {
-        "image_id": {
-          "name": "image_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "bytes": {
-          "name": "bytes",
-          "type": "blob",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "image_bytes_image_id_image_id_fk": {
-          "name": "image_bytes_image_id_image_id_fk",
-          "tableFrom": "image_bytes",
-          "tableTo": "image",
-          "columnsFrom": [
-            "image_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "image_bytes_length_check": {
-          "name": "image_bytes_length_check",
-          "value": "length(\"image_bytes\".\"bytes\") between 1 and 1900000"
-        }
-      }
-    },
     "ledger_entry": {
       "name": "ledger_entry",
       "columns": {
@@ -1458,152 +1328,6 @@
         }
       }
     },
-    "org_presentation": {
-      "name": "org_presentation",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "story": {
-          "name": "story",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "look": {
-          "name": "look",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "sharing": {
-          "name": "sharing",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "story_previous": {
-          "name": "story_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "look_previous": {
-          "name": "look_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sharing_previous": {
-          "name": "sharing_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "logo_image_id": {
-          "name": "logo_image_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "logo_image_id_previous": {
-          "name": "logo_image_id_previous",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "org_presentation_logo_image_id_image_id_fk": {
-          "name": "org_presentation_logo_image_id_image_id_fk",
-          "tableFrom": "org_presentation",
-          "tableTo": "image",
-          "columnsFrom": [
-            "logo_image_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "org_presentation_logo_image_id_previous_image_id_fk": {
-          "name": "org_presentation_logo_image_id_previous_image_id_fk",
-          "tableFrom": "org_presentation",
-          "tableTo": "image",
-          "columnsFrom": [
-            "logo_image_id_previous"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "org_presentation_id_check": {
-          "name": "org_presentation_id_check",
-          "value": "\"org_presentation\".\"id\" = 'default'"
-        },
-        "org_presentation_story_object_check": {
-          "name": "org_presentation_story_object_check",
-          "value": "json_valid(\"org_presentation\".\"story\") and json_type(\"org_presentation\".\"story\") = 'object'"
-        },
-        "org_presentation_look_check": {
-          "name": "org_presentation_look_check",
-          "value": "json_valid(\"org_presentation\".\"look\") and json_type(\"org_presentation\".\"look\") = 'object' and (json_extract(\"org_presentation\".\"look\", '$.shade') is null or json_extract(\"org_presentation\".\"look\", '$.shade') in ('light', 'warm', 'cool')) and (json_extract(\"org_presentation\".\"look\", '$.corner') is null or json_extract(\"org_presentation\".\"look\", '$.corner') in ('square', 'soft', 'round')) and (json_extract(\"org_presentation\".\"look\", '$.brandColour') is null or json_extract(\"org_presentation\".\"look\", '$.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')"
-        },
-        "org_presentation_sharing_object_check": {
-          "name": "org_presentation_sharing_object_check",
-          "value": "json_valid(\"org_presentation\".\"sharing\") and json_type(\"org_presentation\".\"sharing\") = 'object'"
-        },
-        "org_presentation_story_previous_object_check": {
-          "name": "org_presentation_story_previous_object_check",
-          "value": "\"org_presentation\".\"story_previous\" is null or (json_valid(\"org_presentation\".\"story_previous\") and json_type(\"org_presentation\".\"story_previous\") = 'object')"
-        },
-        "org_presentation_look_previous_check": {
-          "name": "org_presentation_look_previous_check",
-          "value": "\"org_presentation\".\"look_previous\" is null or (json_valid(\"org_presentation\".\"look_previous\") and json_type(\"org_presentation\".\"look_previous\") = 'object' and (json_extract(\"org_presentation\".\"look_previous\", '$.shade') is null or json_extract(\"org_presentation\".\"look_previous\", '$.shade') in ('light', 'warm', 'cool')) and (json_extract(\"org_presentation\".\"look_previous\", '$.corner') is null or json_extract(\"org_presentation\".\"look_previous\", '$.corner') in ('square', 'soft', 'round')) and (json_extract(\"org_presentation\".\"look_previous\", '$.brandColour') is null or json_extract(\"org_presentation\".\"look_previous\", '$.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "org_presentation_sharing_previous_object_check": {
-          "name": "org_presentation_sharing_previous_object_check",
-          "value": "\"org_presentation\".\"sharing_previous\" is null or (json_valid(\"org_presentation\".\"sharing_previous\") and json_type(\"org_presentation\".\"sharing_previous\") = 'object')"
-        }
-      }
-    },
     "org_profile": {
       "name": "org_profile",
       "columns": {
@@ -1747,199 +1471,6 @@
         "org_profile_deductibility_statement_not_blank_check": {
           "name": "org_profile_deductibility_statement_not_blank_check",
           "value": "\"org_profile\".\"deductibility_statement\" is null or trim(\"org_profile\".\"deductibility_statement\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
-        }
-      }
-    },
-    "page": {
-      "name": "page",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "slug": {
-          "name": "slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "form_id": {
-          "name": "form_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "draft": {
-          "name": "draft",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "published": {
-          "name": "published",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_published": {
-          "name": "last_published",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "editor_visited_at": {
-          "name": "editor_visited_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "page_form_id_idx": {
-          "name": "page_form_id_idx",
-          "columns": [
-            "form_id"
-          ],
-          "isUnique": true
-        },
-        "page_slug_idx": {
-          "name": "page_slug_idx",
-          "columns": [
-            "slug"
-          ],
-          "isUnique": true,
-          "where": "\"page\".\"slug\" is not null"
-        },
-        "page_one_donation_page_idx": {
-          "name": "page_one_donation_page_idx",
-          "columns": [
-            "type"
-          ],
-          "isUnique": true,
-          "where": "\"page\".\"type\" = 'donation_page'"
-        }
-      },
-      "foreignKeys": {
-        "page_form_id_form_id_fk": {
-          "name": "page_form_id_form_id_fk",
-          "tableFrom": "page",
-          "tableTo": "form",
-          "columnsFrom": [
-            "form_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "page_type_check": {
-          "name": "page_type_check",
-          "value": "\"page\".\"type\" in ('donation_page', 'campaign')"
-        },
-        "page_state_check": {
-          "name": "page_state_check",
-          "value": "\"page\".\"state\" in ('never_published', 'live', 'ended')"
-        },
-        "page_donation_page_live_check": {
-          "name": "page_donation_page_live_check",
-          "value": "\"page\".\"type\" <> 'donation_page' or \"page\".\"state\" = 'live'"
-        },
-        "page_name_check": {
-          "name": "page_name_check",
-          "value": "(\"page\".\"type\" <> 'donation_page' or \"page\".\"name\" is null) and (\"page\".\"type\" <> 'campaign' or (\"page\".\"name\" is not null and trim(\"page\".\"name\", char(32, 9, 10, 11, 12, 13, 160)) <> ''))"
-        },
-        "page_slug_check": {
-          "name": "page_slug_check",
-          "value": "(\"page\".\"type\" <> 'donation_page' or \"page\".\"slug\" is null) and (\"page\".\"type\" <> 'campaign' or \"page\".\"slug\" is not null or \"page\".\"state\" = 'ended')"
-        },
-        "page_published_check": {
-          "name": "page_published_check",
-          "value": "(\"page\".\"published\" is null) = (\"page\".\"state\" = 'never_published')"
-        },
-        "page_last_published_check": {
-          "name": "page_last_published_check",
-          "value": "\"page\".\"last_published\" is null or \"page\".\"published\" is not null"
-        },
-        "page_draft_object_check": {
-          "name": "page_draft_object_check",
-          "value": "json_valid(\"page\".\"draft\") and json_type(\"page\".\"draft\") = 'object'"
-        },
-        "page_published_object_check": {
-          "name": "page_published_object_check",
-          "value": "\"page\".\"published\" is null or (json_valid(\"page\".\"published\") and json_type(\"page\".\"published\") = 'object')"
-        },
-        "page_last_published_object_check": {
-          "name": "page_last_published_object_check",
-          "value": "\"page\".\"last_published\" is null or (json_valid(\"page\".\"last_published\") and json_type(\"page\".\"last_published\") = 'object')"
-        },
-        "page_draft_look_check": {
-          "name": "page_draft_look_check",
-          "value": "json_extract(\"page\".\"draft\", '$.look') is null or (json_type(\"page\".\"draft\", '$.look') = 'object' and (json_extract(\"page\".\"draft\", '$.look.shade') is null or json_extract(\"page\".\"draft\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"draft\", '$.look.corner') is null or json_extract(\"page\".\"draft\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"draft\", '$.look.brandColour') is null or json_extract(\"page\".\"draft\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "page_published_look_check": {
-          "name": "page_published_look_check",
-          "value": "json_extract(\"page\".\"published\", '$.look') is null or (json_type(\"page\".\"published\", '$.look') = 'object' and (json_extract(\"page\".\"published\", '$.look.shade') is null or json_extract(\"page\".\"published\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"published\", '$.look.corner') is null or json_extract(\"page\".\"published\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"published\", '$.look.brandColour') is null or json_extract(\"page\".\"published\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "page_last_published_look_check": {
-          "name": "page_last_published_look_check",
-          "value": "json_extract(\"page\".\"last_published\", '$.look') is null or (json_type(\"page\".\"last_published\", '$.look') = 'object' and (json_extract(\"page\".\"last_published\", '$.look.shade') is null or json_extract(\"page\".\"last_published\", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract(\"page\".\"last_published\", '$.look.corner') is null or json_extract(\"page\".\"last_published\", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract(\"page\".\"last_published\", '$.look.brandColour') is null or json_extract(\"page\".\"last_published\", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))"
-        },
-        "page_campaign_only_settings_check": {
-          "name": "page_campaign_only_settings_check",
-          "value": "\"page\".\"type\" <> 'donation_page' or (json_extract(\"page\".\"draft\", '$.goalMinor') is null and json_extract(\"page\".\"draft\", '$.endsAt') is null and json_extract(\"page\".\"published\", '$.goalMinor') is null and json_extract(\"page\".\"published\", '$.endsAt') is null and json_extract(\"page\".\"last_published\", '$.goalMinor') is null and json_extract(\"page\".\"last_published\", '$.endsAt') is null)"
-        },
-        "page_editor_visited_check": {
-          "name": "page_editor_visited_check",
-          "value": "\"page\".\"editor_visited_at\" is null or \"page\".\"type\" = 'donation_page'"
         }
       }
     },
@@ -2089,6 +1620,15 @@
           ],
           "isUnique": false,
           "where": "\"payment\".\"method\" = 'crypto' and \"payment\".\"status\" = 'pending'"
+        },
+        "payment_settled_gift_occurred_at_idx": {
+          "name": "payment_settled_gift_occurred_at_idx",
+          "columns": [
+            "occurred_at",
+            "id"
+          ],
+          "isUnique": false,
+          "where": "\"payment\".\"status\" = 'succeeded' and \"payment\".\"direction\" = 'inbound'"
         },
         "payment_provider_txn_idx": {
           "name": "payment_provider_txn_idx",
@@ -2252,13 +1792,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "image_id": {
-          "name": "image_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
@@ -2270,21 +1803,7 @@
           "isUnique": true
         }
       },
-      "foreignKeys": {
-        "program_image_id_image_id_fk": {
-          "name": "program_image_id_image_id_fk",
-          "tableFrom": "program",
-          "tableTo": "image",
-          "columnsFrom": [
-            "image_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
@@ -2976,6 +2495,302 @@
         }
       }
     },
+    "webhook_delivery": {
+      "name": "webhook_delivery",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "destination_id": {
+          "name": "destination_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "leased_until": {
+          "name": "leased_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_status": {
+          "name": "last_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "webhook_delivery_event_idx": {
+          "name": "webhook_delivery_event_idx",
+          "columns": [
+            "destination_id",
+            "event",
+            "subject_id"
+          ],
+          "isUnique": true
+        },
+        "webhook_delivery_due_idx": {
+          "name": "webhook_delivery_due_idx",
+          "columns": [
+            "status",
+            "next_attempt_at",
+            "id",
+            "leased_until"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "webhook_delivery_destination_id_webhook_destination_id_fk": {
+          "name": "webhook_delivery_destination_id_webhook_destination_id_fk",
+          "tableFrom": "webhook_delivery",
+          "tableTo": "webhook_destination",
+          "columnsFrom": [
+            "destination_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "webhook_delivery_id_check": {
+          "name": "webhook_delivery_id_check",
+          "value": "length(\"webhook_delivery\".\"id\") = 40 and \"webhook_delivery\".\"id\" glob 'msg_*' and substr(\"webhook_delivery\".\"id\", 5) not glob '*[^0-9a-f-]*'"
+        },
+        "webhook_delivery_event_check": {
+          "name": "webhook_delivery_event_check",
+          "value": "\"webhook_delivery\".\"event\" in ('gift.made', 'gift.refunded', 'gift.dispute_opened', 'donor.added', 'donor.updated', 'recurring_gift.started', 'recurring_gift.updated', 'recurring_gift.charge_failed', 'recurring_gift.ended')"
+        },
+        "webhook_delivery_subject_id_not_blank_check": {
+          "name": "webhook_delivery_subject_id_not_blank_check",
+          "value": "trim(\"webhook_delivery\".\"subject_id\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "webhook_delivery_status_check": {
+          "name": "webhook_delivery_status_check",
+          "value": "\"webhook_delivery\".\"status\" in ('pending', 'delivered', 'failed')"
+        },
+        "webhook_delivery_attempts_check": {
+          "name": "webhook_delivery_attempts_check",
+          "value": "\"webhook_delivery\".\"attempts\" >= 0"
+        },
+        "webhook_delivery_last_status_check": {
+          "name": "webhook_delivery_last_status_check",
+          "value": "\"webhook_delivery\".\"last_status\" is null or \"webhook_delivery\".\"last_status\" between 100 and 599"
+        },
+        "webhook_delivery_last_error_not_blank_check": {
+          "name": "webhook_delivery_last_error_not_blank_check",
+          "value": "\"webhook_delivery\".\"last_error\" is null or trim(\"webhook_delivery\".\"last_error\", char(32, 9, 10, 11, 12, 13, 160)) <> ''"
+        },
+        "webhook_delivery_delivered_check": {
+          "name": "webhook_delivery_delivered_check",
+          "value": "(\"webhook_delivery\".\"status\" = 'delivered') = (\"webhook_delivery\".\"delivered_at\" is not null)"
+        }
+      }
+    },
+    "webhook_destination": {
+      "name": "webhook_destination",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "signing_secret": {
+          "name": "signing_secret",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "paused_at": {
+          "name": "paused_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "failing_since": {
+          "name": "failing_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "webhook_destination_url_check": {
+          "name": "webhook_destination_url_check",
+          "value": "substr(\"webhook_destination\".\"url\", 1, 8) = 'https://'"
+        },
+        "webhook_destination_signing_secret_check": {
+          "name": "webhook_destination_signing_secret_check",
+          "value": "length(\"webhook_destination\".\"signing_secret\") = 50 and \"webhook_destination\".\"signing_secret\" glob 'whsec_*' and substr(\"webhook_destination\".\"signing_secret\", 7) not glob '*[^A-Za-z0-9+/=]*'"
+        }
+      }
+    },
+    "webhook_destination_event": {
+      "name": "webhook_destination_event",
+      "columns": {
+        "destination_id": {
+          "name": "destination_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "webhook_destination_event_destination_id_webhook_destination_id_fk": {
+          "name": "webhook_destination_event_destination_id_webhook_destination_id_fk",
+          "tableFrom": "webhook_destination_event",
+          "tableTo": "webhook_destination",
+          "columnsFrom": [
+            "destination_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "webhook_destination_event_destination_id_event_pk": {
+          "columns": [
+            "destination_id",
+            "event"
+          ],
+          "name": "webhook_destination_event_destination_id_event_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "webhook_destination_event_event_check": {
+          "name": "webhook_destination_event_event_check",
+          "value": "\"webhook_destination_event\".\"event\" in ('gift.made', 'gift.refunded', 'gift.dispute_opened', 'donor.added', 'donor.updated', 'recurring_gift.started', 'recurring_gift.updated', 'recurring_gift.charge_failed', 'recurring_gift.ended')"
+        }
+      }
+    },
     "zapier_delivery": {
       "name": "zapier_delivery",
       "columns": {
@@ -3237,6 +3052,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "failing_since": {
+          "name": "failing_since",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/better-giving/console/internal/cf"
-	"github.com/better-giving/console/internal/state"
 )
 
 // PhaseName is what the sign-in is doing right now, as a screen draws it.
@@ -64,9 +63,11 @@ type Phase struct {
 // pressing the control twice does not open a second browser.
 //
 // Handlers run concurrently, so both halves are guarded: `waiting` is the flow in flight and `held`
-// covers the stored credential, which the refresh reads and writes.
+// covers the stored credential, which the refresh reads and writes, together with `unkept`, a
+// refreshed pair the record would not take, and `forgotten`, a record still on disk that this
+// process no longer reads as a sign-in.
 type Flow struct {
-	store  state.Store
+	store  records
 	send   cf.FormPost
 	open   func(address string)
 	waits  time.Duration
@@ -77,7 +78,17 @@ type Flow struct {
 	waiting *attempt
 	why     Why
 
-	held sync.Mutex
+	held      sync.Mutex
+	unkept    *record
+	forgotten bool
+}
+
+// where the credential is kept between runs: ../state's Store on a console, and that same store
+// wrapped by a case whose directory has to refuse a write.
+type records interface {
+	Read(name string) ([]byte, error)
+	Write(name string, data []byte) error
+	Forget(name string) error
 }
 
 // one sign-in open in a browser: what it is waiting on, and what proves it was this press.
@@ -300,10 +311,10 @@ func (flow *Flow) end(open *attempt, why Why) {
 
 // what a refresh that landed leaves the sign-in saying about whether it was written down.
 //
-// **the credential in hand is good either way, and this is about the next run.** every read of the
-// record goes through the file, so a refresh nothing wrote down is a machine signed in now and
-// signed out at the next launch — and the operator can only act on that while something says which
-// folder would not take it.
+// **the credential in hand is good either way, and this is about the next run.** a refresh nothing
+// wrote down is held by this process alone, while the record keeps the refresh token cloudflare
+// rotated away — a machine signed in until the console is closed and signed out at the next launch,
+// and the operator can only act on that while something says which folder would not take it.
 //
 // A write that landed clears it, so the state lasts exactly as long as it is true.
 func (flow *Flow) kept(err error) {

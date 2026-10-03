@@ -9,8 +9,8 @@ import type {
 	PaypalSdkLike,
 	SessionOptionsLike
 } from './paypal';
-import type { ElementsLike, PaymentElementLike, StripeLike } from './stripe';
-import { createPaymentSurface } from './surface';
+import type { ElementsLike, PaymentElementLike, PaymentSurface, StripeLike } from './stripe';
+import { createPaymentSurface, quoteThrough } from './surface';
 
 // the composer, driven through both real adapters with a plain object standing in for each
 // processor's SDK. what is worth asserting here is the composition itself — which adapter a reading
@@ -227,6 +227,9 @@ describe('one payment surface over however many processors a config names', () =
 	it('sends a confirmation to the processor that settles the rail it was quoted on', async () => {
 		const k = kit();
 		const surface = await composed(k);
+		const minted = Promise.resolve({ ...QUOTE, paymentToken: 'o1' });
+		surface.quoting({ ...REQUEST, method: 'paypal' }, minted);
+		expect(k.paypalStarts).toHaveLength(1);
 		void surface.confirm({ paymentToken: 'o1', method: 'paypal', mandateAccepted: false });
 		await Promise.resolve();
 		expect(k.paypalStarts).toHaveLength(1);
@@ -260,6 +263,92 @@ describe('one payment surface over however many processors a config names', () =
 		await composed(k);
 		expect(k.unavailable).toHaveLength(1);
 		expect(k.unavailable[0]?.message).toContain('nothing was charged');
+	});
+
+	// the fund's adapter answers a microtask after it is built where the config names no Connect id,
+	// which is before the card's own adapter has had any chance to answer.
+	it('says nothing when a fund fails at once beside a card box still loading', async () => {
+		const k = kit({ stripe: () => new Promise<StripeLike | null>(() => {}) });
+		await composed(k, { ...CONFIG, paymentMethods: ['card', 'daf'] });
+		expect(k.unavailable).toHaveLength(0);
+	});
+
+	// PayPal's adapter answers inside its own constructor where the config names no client id, which
+	// is before the crypto option after it has been built at all.
+	it('says nothing when PayPal fails at once ahead of an option still to be built', async () => {
+		const k = kit();
+		await composed(k, {
+			...CONFIG,
+			providers: [],
+			paymentMethods: ['paypal', 'crypto']
+		});
+		expect(k.unavailable).toHaveLength(0);
+	});
+
+	// a fund and crypto are one-time rails (`fundIsOffered` and `cryptoIsOffered` in
+	// ../checkout.machine.ts), so with the card down they are a way to pay a one-time gift and no way
+	// to pay a repeating one — which is a gift the donor can still make, once, rather than a form with
+	// no way to pay.
+	describe('the processors left up taking only one-time gifts', () => {
+		const STRIPE = { name: 'stripe', publishableKey: 'pk_live_x' } as const;
+		const CARD_AND_FUND: FormConfig = {
+			...CONFIG,
+			providers: [STRIPE, { name: 'chariot', publishableKey: 'cid_x' }],
+			frequencies: ['one_time', 'monthly'],
+			paymentMethods: ['card', 'daf']
+		};
+		const CARD_AND_CRYPTO: FormConfig = {
+			...CONFIG,
+			providers: [STRIPE],
+			frequencies: ['one_time', 'monthly'],
+			paymentMethods: ['card', 'crypto']
+		};
+		const ONE_TIME_RAILS = [CARD_AND_FUND, CARD_AND_CRYPTO];
+
+		it('says a repeating gift cannot be paid, once, and not that nothing can', async () => {
+			for (const config of ONE_TIME_RAILS) {
+				const k = kit({ stripe: () => Promise.resolve(null) });
+				const surface = await composed(k, config);
+				const said: number[] = [];
+				surface.repeatingUnavailable(() => said.push(1));
+				surface.cadence('monthly');
+				surface.cadence('one_time');
+				expect(said, config.paymentMethods.join('+')).toHaveLength(1);
+				expect(k.unavailable, config.paymentMethods.join('+')).toHaveLength(0);
+				surface.stop();
+				document.body.replaceChildren();
+			}
+		});
+
+		it('says nothing of a repeating gift while the card box is still loading', async () => {
+			let answer: (stripe: null) => void = () => {};
+			const k = kit({ stripe: () => new Promise((resolve) => (answer = resolve)) });
+			const surface = await composed(k, CARD_AND_FUND);
+			const said: number[] = [];
+			surface.repeatingUnavailable(() => said.push(1));
+			expect(said).toHaveLength(0);
+
+			answer(null);
+			for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+			expect(said).toHaveLength(1);
+			expect(k.unavailable).toHaveLength(0);
+		});
+
+		it('says nothing can be paid once the one-time rails are down as well', async () => {
+			const k = kit({ stripe: () => Promise.resolve(null) });
+			const surface = await composed(k, { ...CARD_AND_FUND, providers: [STRIPE] });
+			const said: number[] = [];
+			surface.repeatingUnavailable(() => said.push(1));
+			expect(k.unavailable).toHaveLength(1);
+			expect(said).toHaveLength(0);
+		});
+
+		// a form offering no one-time gift has no gift these rails can take at all.
+		it('says nothing can be paid where the form offers no one-time gift', async () => {
+			const k = kit({ stripe: () => Promise.resolve(null) });
+			await composed(k, { ...CARD_AND_CRYPTO, frequencies: ['monthly'] });
+			expect(k.unavailable).toHaveLength(1);
+		});
 	});
 
 	// a picker collapsing in one processor's box must not un-pick the rail a donor chose in the
@@ -476,6 +565,22 @@ describe('one payment surface over however many processors a config names', () =
 			surface.stop();
 		});
 
+		// told off `venmoIsOffered` in ../checkout.machine.ts, as the crypto option is off its own.
+		it('lists Venmo only while it is offered, and counts the box without it', async () => {
+			const k = kit();
+			const surface = await composed(k, { ...CONFIG, paymentMethods: ['card', 'paypal', 'venmo'] });
+			const counts: number[] = [];
+			surface.rows((count) => counts.push(count));
+
+			surface.offerVenmo(false);
+			expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
+
+			surface.offerVenmo(true);
+			expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Venmo']);
+			expect(counts).toEqual([3, 2, 3]);
+			surface.stop();
+		});
+
 		describe('the crypto option', () => {
 			const CRYPTO: FormConfig = {
 				...CONFIG,
@@ -558,5 +663,24 @@ describe('one payment surface over however many processors a config names', () =
 			expect(counts).toEqual([3, 4, 3]);
 			surface.stop();
 		});
+	});
+});
+
+describe('the quote port the surface is told through', () => {
+	// opening a window is the surface's business and never the quote's: a surface that throws while
+	// being told cannot turn a minted quote into a failed one.
+	it('answers with the quote even when a surface throws on being told of it', async () => {
+		const told: Quote[] = [];
+		const surface = {
+			quoting() {
+				throw new Error('no window today');
+			},
+			quoted(_request: QuoteRequest, quote: Quote) {
+				told.push(quote);
+			}
+		} as unknown as PaymentSurface;
+		const quote = quoteThrough(surface, () => Promise.resolve(QUOTE));
+		await expect(quote(REQUEST)).resolves.toEqual(QUOTE);
+		expect(told).toEqual([QUOTE]);
 	});
 });

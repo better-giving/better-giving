@@ -19,10 +19,10 @@ export interface ConfigEnv {
 	 * the matching publishable key, which is what the donation form is handed.
 	 *
 	 * not a credential: it is designed to sit in public HTML, and `/api/v1/forms/:id/config`
-	 * serves it to any browser that asks. so an operator sets it as a Worker var and can read
-	 * it back, where the secret key beside it is a secret and cannot be — DEPLOY.md draws that
-	 * split for every one of them. either arrives here as a string on the platform env, which is why
-	 * nothing below this line distinguishes them.
+	 * serves it to any browser that asks. the secret key beside it is a credential, and both are
+	 * plain Worker vars an operator can read back on the console all the same
+	 * (`packages/operator/src/deploy-split.ts`). either arrives here as a string on the platform
+	 * env, which is why nothing below this line distinguishes them.
 	 */
 	readonly STRIPE_PUBLISHABLE_KEY?: string;
 	/** the signing secret of the org's own webhook endpoint. */

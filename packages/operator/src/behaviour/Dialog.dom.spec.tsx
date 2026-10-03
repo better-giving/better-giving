@@ -1,4 +1,4 @@
-import { act, useState } from 'react';
+import { act, useRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Dialog } from '../components/shell/Dialog.jsx';
 import { render } from '../components/render.testing';
@@ -75,6 +75,13 @@ describe('the shell over the dialog', () => {
 		expect(dialog.open).toBe(true);
 	});
 
+	/** a whole press: down at one point, and the click it ends in at another. */
+	function press(dialog: HTMLDialogElement, down: [number, number], up: [number, number]) {
+		const at = ([clientX, clientY]: [number, number]) => ({ bubbles: true, clientX, clientY });
+		dialog.dispatchEvent(new PointerEvent('pointerdown', at(down)));
+		dialog.dispatchEvent(new MouseEvent('click', at(up)));
+	}
+
 	it('hands a press on the ground to the caller', () => {
 		const onDismiss = vi.fn();
 		const root = render(Modal, { title: 'Confirm', onDismiss });
@@ -82,9 +89,31 @@ describe('the shell over the dialog', () => {
 
 		// the ground is the element's own `::backdrop`, so a press on it arrives with the element
 		// itself as the target and a point outside the element's box.
-		dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 400, clientY: 400 }));
+		press(dialog, [400, 400], [400, 400]);
 
 		expect(onDismiss).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not read a press that went down before the card was lifted as one on the ground', () => {
+		// a question drawn in the server's markup is pressable before the lift: a press that went
+		// down on the page under its ground reaches the element only as the click it ends in.
+		const onDismiss = vi.fn();
+		const root = render(Modal, { title: 'Delete this destination?', onDismiss });
+
+		dialogIn(root).dispatchEvent(
+			new MouseEvent('click', { bubbles: true, clientX: 400, clientY: 400 })
+		);
+
+		expect(onDismiss).not.toHaveBeenCalled();
+	});
+
+	it('does not read a press that went down inside the card and ended outside it as one on the ground', () => {
+		const onDismiss = vi.fn();
+		const root = render(Modal, { title: 'Confirm', onDismiss });
+
+		press(dialogIn(root), [0, 0], [400, 400]);
+
+		expect(onDismiss).not.toHaveBeenCalled();
 	});
 
 	it('does not read a press inside the card as a press on the ground', () => {
@@ -107,9 +136,9 @@ describe('the shell over the dialog', () => {
 		const dialog = dialogIn(root);
 
 		// the padding is inside the card and targets the element exactly as the ground does, so the
-		// point is the whole of what separates them. a click at the element's own origin is inside
+		// point is the whole of what separates them. a press at the element's own origin is inside
 		// any box it has.
-		dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 0, clientY: 0 }));
+		press(dialog, [0, 0], [0, 0]);
 
 		expect(onDismiss).not.toHaveBeenCalled();
 	});
@@ -187,5 +216,211 @@ describe('the shell over the dialog', () => {
 
 		expect(root.querySelector('dialog')).toBe(null);
 		expect(document.activeElement).toBe(opener);
+	});
+
+	/**
+	 * a card whose answer takes its own opener off the page — a revoke confirm, where the row that
+	 * held the Revoke goes with the record — and the box the screen names to land on instead.
+	 */
+	function Revoking({ named }: { readonly named: boolean }) {
+		const [row, setRow] = useState(true);
+		const [up, setUp] = useState(false);
+		const box = useRef<HTMLInputElement>(null);
+		return (
+			// the shell's page, focusable for its skip link and so the box a pointer press lands focus
+			// on in safari (./Dialog.tsx's header).
+			<main tabIndex={-1}>
+				<input ref={box} aria-label="Name" />
+				{row ? (
+					<button type="button" onClick={() => setUp(true)}>
+						Revoke
+					</button>
+				) : null}
+				{up ? (
+					<Modal
+						title="Revoke Reporting sheet?"
+						danger="Yes, revoke"
+						dangerProps={{
+							type: 'button',
+							onClick: () => {
+								setRow(false);
+								setUp(false);
+							}
+						}}
+						cancel="Cancel"
+						cancelProps={{ type: 'button', onClick: () => setUp(false) }}
+						onDismiss={() => setUp(false)}
+						fallbackFocus={named ? box : undefined}
+					/>
+				) : null}
+			</main>
+		);
+	}
+
+	function pressed(root: HTMLElement, name: string): void {
+		const control = [...dialogIn(root).querySelectorAll('button')].find(
+			(c) => c.textContent === name
+		);
+		if (control === undefined) throw new Error(`the dialog drew no ${name}`);
+		act(() => control.click());
+	}
+
+	it('puts the focus on the target the screen named when the answer took the opener away', () => {
+		const root = render(Revoking, { named: true });
+		opened(root);
+
+		pressed(root, 'Yes, revoke');
+
+		expect(root.querySelector('dialog')).toBe(null);
+		expect(document.activeElement).toBe(root.querySelector('input'));
+	});
+
+	it('still goes back to the control that opened it when it is on the page, whatever the screen named', () => {
+		const root = render(Revoking, { named: true });
+		const opener = opened(root);
+
+		pressed(root, 'Cancel');
+
+		expect(document.activeElement).toBe(opener);
+	});
+
+	it('reads a page that only held the focus as no opener, and lands where the screen named', () => {
+		// what safari does with a pointer press on Revoke: the button is not focused, the page around
+		// it is, and the press still puts the card up.
+		const root = render(Revoking, { named: true });
+		const page = root.querySelector('main');
+		const revoke = root.querySelector('button');
+		if (page === null || revoke === null) throw new Error('no page or no Revoke');
+		page.focus();
+		act(() => revoke.click());
+
+		pressed(root, 'Cancel');
+
+		expect(document.activeElement).toBe(root.querySelector('input'));
+	});
+
+	it('goes back to the page that held the focus when nothing was named', () => {
+		// the same safari press on a screen that names no target: the page is no opener, but it is
+		// where the reader was, and it is still standing.
+		const root = render(Revoking, { named: false });
+		const page = root.querySelector('main');
+		const revoke = root.querySelector('button');
+		if (page === null || revoke === null) throw new Error('no page or no Revoke');
+		page.focus();
+		act(() => revoke.click());
+
+		pressed(root, 'Yes, revoke');
+
+		expect(document.activeElement).toBe(page);
+	});
+
+	/**
+	 * a confirm drawn inside another card, and which of the two each answer reaches.
+	 */
+	function Nested({
+		onOuter,
+		onInner
+	}: {
+		readonly onOuter: () => void;
+		readonly onInner: () => void;
+	}) {
+		return (
+			<Modal title="Saved values" onDismiss={onOuter}>
+				<Modal title="Remove these values?" onDismiss={onInner} />
+			</Modal>
+		);
+	}
+
+	/** the confirm, and the panel it is drawn inside. */
+	function nestedIn(root: HTMLElement): { outer: HTMLDialogElement; inner: HTMLDialogElement } {
+		const [outer, inner] = root.querySelectorAll('dialog');
+		if (outer === undefined || inner === undefined)
+			throw new Error('the shell drew no two dialogs');
+		return { outer, inner };
+	}
+
+	it('hands Escape on a confirm inside another card to the confirm alone', () => {
+		const onOuter = vi.fn();
+		const onInner = vi.fn();
+		const { inner } = nestedIn(render(Nested, { onOuter, onInner }));
+
+		// not bubbling at the platform, and react hands it up its own tree regardless.
+		act(() => inner.dispatchEvent(new Event('cancel', { cancelable: true })));
+
+		expect(onInner).toHaveBeenCalledTimes(1);
+		expect(onOuter).not.toHaveBeenCalled();
+	});
+
+	it('hands a press on the ground of a confirm inside another card to the confirm alone', () => {
+		const onOuter = vi.fn();
+		const onInner = vi.fn();
+		const { inner } = nestedIn(render(Nested, { onOuter, onInner }));
+
+		act(() => press(inner, [400, 400], [400, 400]));
+
+		expect(onInner).toHaveBeenCalledTimes(1);
+		expect(onOuter).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * a panel that is up first, with a confirm put up by a Remove inside it — which a press that
+	 * lands takes off the page with the confirm, while the panel is still the modal holding the page.
+	 */
+	function Freeing() {
+		const [withheld, setWithheld] = useState(true);
+		const [asking, setAsking] = useState(false);
+		return (
+			<Modal title="Saved values" onDismiss={() => {}}>
+				{withheld ? (
+					<button type="button" onClick={() => setAsking(true)}>
+						Remove SMTP_PORT
+					</button>
+				) : null}
+				{asking ? (
+					<Modal
+						title="Remove SMTP_PORT?"
+						danger="Remove"
+						dangerProps={{
+							type: 'button',
+							onClick: () => {
+								setWithheld(false);
+								setAsking(false);
+							}
+						}}
+						onDismiss={() => setAsking(false)}
+					/>
+				) : null}
+			</Modal>
+		);
+	}
+
+	it('lands inside the card it was drawn in when its opener is gone and nothing was named', () => {
+		const root = render(Freeing, {});
+		const outer = dialogIn(root);
+		// the panel went up in a commit of its own, before anything inside it was pressed.
+		expect(document.activeElement).toBe(outer);
+		const remove = outer.querySelector('button');
+		if (remove === null) throw new Error('the panel drew no Remove');
+		remove.focus();
+		act(() => remove.click());
+		const [, inner] = root.querySelectorAll('dialog');
+		if (inner === undefined) throw new Error('the Remove put no confirm up');
+		expect(document.activeElement).toBe(inner);
+
+		const confirm = [...inner.querySelectorAll('button')].find((c) => c.textContent === 'Remove');
+		if (confirm === undefined) throw new Error('the confirm drew no Remove');
+		act(() => confirm.click());
+
+		expect(root.querySelectorAll('dialog')).toHaveLength(1);
+		expect(outer.contains(document.activeElement)).toBe(true);
+	});
+
+	it('leaves the focus on the body when the opener is gone and nothing was named', () => {
+		const root = render(Revoking, { named: false });
+		opened(root);
+
+		pressed(root, 'Yes, revoke');
+
+		expect(document.activeElement).toBe(document.body);
 	});
 });

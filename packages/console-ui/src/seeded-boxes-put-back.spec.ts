@@ -34,11 +34,17 @@ import { describe, expect, it } from 'vitest';
 // packages/operator/src/saved-form-state.react.dom.spec.ts's: this package pins one node pool and
 // no dom (../vite.config.ts).
 //
-// **a fold with no form layer calls the hook underneath the seam itself**, and its seeds are the
-// element's own — `defaultChecked` on the model page's radios — which `form.reset()` puts back just
-// the same. so a direct call states `spent` whatever it seeds from, and the two that do not yet are
-// `STANDING` below; a call spreading its options in is the seam passing its own caller's statement
-// through, and that caller is the one read.
+// **a block with no form layer calls the hook under the seam itself** and is held to the same
+// statement: its boxes are seeded by its own markup, so there is no `defaultValue` to read, and the
+// put-back is the same `form.reset()` with the same wrong default. the seam's own call hands its
+// mounts' options on whole and is answered for by them.
+//
+// **and a block's `spent` is a reading it takes beside the call**: a name bound from `useReseeded`
+// (./lib/reseed.ts) in the function making it, or `false` where a landed answer empties nothing. a
+// block seeds from its own markup, which is always a reading, so a `spent` that is merely present —
+// the answer itself, or a value handed in from somewhere this file does not sweep — is the default
+// the rule exists against under another name. a mount of the seam is not held to this: the identity
+// and notification folds seed from the answer and rightly state it.
 //
 // the shape is ./forms-mounted-through-the-seam.spec.ts's and ./closed-while-writing.spec.ts's:
 // findings come back as a list so one failure names every offender at once, the source is parsed
@@ -49,8 +55,16 @@ import { describe, expect, it } from 'vitest';
 /** the one way a console fold mounts a form (./lib/use-console-form.ts). */
 const SEAM = 'useConsoleForm';
 
-/** the hook underneath the seam, which a fold with no form layer calls itself. */
-const HOOK = 'useSavedFormState';
+/**
+ * the hook under the seam, which a block with no form layer calls itself
+ * (packages/operator/src/saved-form-state.react.ts). its boxes are seeded by the block's own
+ * markup rather than through a `defaultValue` this file can see, and the put-back is the same
+ * `form.reset()` — so every direct call says when, whatever it seeds from.
+ */
+const UNDER = 'useSavedFormState';
+
+/** the seam's own file, whose call hands its mounts' options on whole and is answered for by them. */
+const SEAM_FILE = 'src/lib/use-console-form.ts';
 
 /** what conform seeds the boxes from, which is the seed that goes stale. */
 const SEED = 'defaultValue';
@@ -58,33 +72,84 @@ const SEED = 'defaultValue';
 /** what says the boxes go back, which is the statement this file is over. */
 const PUT_BACK = 'spent';
 
-/** every call of `callee` in one source, as the options it states, placed. */
-function calls(
-	callee: string,
-	file: string,
-	source: string
-): { where: string; stated: Set<string>; spread: boolean }[] {
+/** what reads the deployment again and says when the boxes go back (./lib/reseed.ts). */
+const REREAD = 'useReseeded';
+
+/**
+ * one call, placed, with the options it states — and whether its `spent` is a reading this file can
+ * see taken: an identifier bound from a `useReseeded` call in the function making this one, or
+ * `false`, a block whose landed answer empties nothing (./lib/quickbooks-accounts.tsx).
+ */
+type Call = { where: string; stated: Set<string>; reread: boolean };
+
+/** whether `property`, the `spent` of `call`, is a reading taken beside it, as {@link Call} says. */
+function rereadBeside(call: ts.CallExpression, property: ts.ObjectLiteralElementLike): boolean {
+	const value = ts.isShorthandPropertyAssignment(property)
+		? property.name
+		: ts.isPropertyAssignment(property)
+			? property.initializer
+			: null;
+	if (value === null) return false;
+	if (value.kind === ts.SyntaxKind.FalseKeyword) return true;
+	if (!ts.isIdentifier(value)) return false;
+
+	let scope: ts.Node | undefined = call.parent;
+	while (scope !== undefined && !ts.isFunctionLike(scope)) scope = scope.parent;
+	if (scope === undefined) return false;
+
+	let bound = false;
+	const visit = (node: ts.Node): void => {
+		if (
+			ts.isVariableDeclaration(node) &&
+			ts.isIdentifier(node.name) &&
+			node.name.text === value.text &&
+			node.initializer !== undefined &&
+			ts.isCallExpression(node.initializer) &&
+			ts.isIdentifier(node.initializer.expression) &&
+			node.initializer.expression.text === REREAD
+		) {
+			bound = true;
+		}
+		// a function inside this one binds its own names, which this call cannot read.
+		if (node !== scope && ts.isFunctionLike(node)) return;
+		ts.forEachChild(node, visit);
+	};
+	visit(scope);
+	return bound;
+}
+
+/**
+ * every call of `hook` in one source, as the options each states, placed. `at` is which argument
+ * carries them, and a spread among them is recorded as `...`: options handed on whole are stated
+ * by whoever handed them.
+ */
+function calls(hook: string, at: number, file: string, source: string): Call[] {
 	const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-	const found: { where: string; stated: Set<string>; spread: boolean }[] = [];
+	const found: Call[] = [];
 	const visit = (node: ts.Node): void => {
 		if (
 			ts.isCallExpression(node) &&
 			ts.isIdentifier(node.expression) &&
-			node.expression.text === callee
+			node.expression.text === hook
 		) {
-			// the seam takes its schema first and its options second; the hook takes only options.
-			const options = node.arguments[callee === SEAM ? 1 : 0];
+			const options = node.arguments[at];
 			const line = parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1;
 			const stated = new Set<string>();
-			let spread = false;
+			let putBack: ts.ObjectLiteralElementLike | null = null;
 			if (options !== undefined && ts.isObjectLiteralExpression(options)) {
 				for (const property of options.properties) {
-					if (ts.isSpreadAssignment(property)) spread = true;
+					if (ts.isSpreadAssignment(property)) stated.add('...');
 					const name = property.name;
-					if (name !== undefined) stated.add(name.getText(parsed));
+					if (name === undefined) continue;
+					stated.add(name.getText(parsed));
+					if (name.getText(parsed) === PUT_BACK) putBack = property;
 				}
 			}
-			found.push({ where: `${file}:${line}`, stated, spread });
+			found.push({
+				where: `${file}:${line}`,
+				stated,
+				reread: putBack !== null && rereadBeside(node, putBack)
+			});
 		}
 		ts.forEachChild(node, visit);
 	};
@@ -93,53 +158,128 @@ function calls(
 }
 
 /** every mount of the seam in one source. */
-const mounts = (file: string, source: string) => calls(SEAM, file, source);
+const mounts = (file: string, source: string) => calls(SEAM, 1, file, source);
+
+/** every direct call of the hook under the seam in one source. */
+const direct = (file: string, source: string) => calls(UNDER, 0, file, source);
 
 /** every mount that seeds through the form layer and leaves the put-back to a default. */
 function seededWithoutAPutBack(file: string, source: string): string[] {
-	return mounts(file, source)
+	const seam = mounts(file, source)
 		.filter((mount) => mount.stated.has(SEED) && !mount.stated.has(PUT_BACK))
 		.map((mount) => `${mount.where}: seeds \`${SEED}\` and states no \`${PUT_BACK}\``);
+	const under = direct(file, source)
+		.filter((call) => !(file === SEAM_FILE && call.stated.has('...')))
+		.flatMap((call) => {
+			if (!call.stated.has(PUT_BACK))
+				return [`${call.where}: calls \`${UNDER}\` and states no \`${PUT_BACK}\``];
+			if (!call.reread)
+				return [
+					`${call.where}: calls \`${UNDER}\` with a \`${PUT_BACK}\` no \`${REREAD}\` call in the same function binds`
+				];
+			return [];
+		});
+	return [...seam, ...under];
 }
 
-/** every direct call of the hook that leaves the put-back to a default. */
-function calledWithoutAPutBack(file: string, source: string): string[] {
-	return calls(HOOK, file, source)
-		.filter((call) => !call.spread && !call.stated.has(PUT_BACK))
-		.map((call) => `${call.where}: calls \`${HOOK}\` and states no \`${PUT_BACK}\``);
-}
-
-/** the same over the tree, both ways a fold reaches the put-back. */
+/** the same over the tree. */
 const acrossTheFolds = (files: readonly string[]): string[] =>
-	files.flatMap((file) => {
-		const source = readFileSync(file, 'utf8');
-		return [...seededWithoutAPutBack(file, source), ...calledWithoutAPutBack(file, source)];
-	});
+	files.flatMap((file) => seededWithoutAPutBack(file, readFileSync(file, 'utf8')));
 
-/* the direct callers that still leave the put-back to the default, each drawing a box seeded from
-   a reading and so put back to the one its press was made against. an entry here is an exemption
-   and not a skip: the case below asserts the sweep finds exactly these, so one put right fails this
-   file until it is taken off. */
-const STANDING: readonly string[] = [
-	// the charity-rate switch, seeded `defaultChecked` from the held values.
-	'src/lib/paypal-section.tsx',
-	// every group of deploy-time values, its boxes seeded from the held values.
-	'src/lib/secret-group-form.tsx'
-];
-
-describe('a fold whose boxes a landed press puts back says when they go back', () => {
-	const folds = globSync('src/**/*.tsx');
+describe('a fold seeding its boxes through the form layer says when they go back', () => {
+	const folds = globSync('src/**/*.{ts,tsx}', { exclude: (file) => /\.spec\.tsx?$/.test(file) });
 
 	it('finds the folds it is meant to be guarding', () => {
 		const mounted = folds.filter((file) => mounts(file, readFileSync(file, 'utf8')).length > 0);
 		expect(mounted).toContain('src/lib/sites-fold.tsx');
 		expect(mounted).toContain('src/lib/stripe-section.tsx');
 		expect(mounted).toContain('src/lib/smtp-fold.tsx');
-		const calling = folds.filter(
-			(file) => calls(HOOK, file, readFileSync(file, 'utf8')).length > 0
-		);
+
+		const calling = folds.filter((file) => direct(file, readFileSync(file, 'utf8')).length > 0);
+		expect(calling).toContain('src/lib/secret-group-form.tsx');
+		expect(calling).toContain('src/lib/answer-switch-block.tsx');
 		expect(calling).toContain('src/lib/ai-model-section.tsx');
 		expect(calling).toContain('src/lib/quickbooks-accounts.tsx');
+		expect(calling).toContain('src/lib/use-console-form.ts');
+	});
+
+	it('reports a block calling the hook under the seam that leaves the put-back to the default', () => {
+		// the charity switch's own shape: the box is ticked from the reading, and the answer that
+		// arrives ahead of the re-read unticks it again under `Saved`.
+		const source = `
+			export function AnswerSwitchBlock({ written, on, busy, pending }) {
+				const { form } = useSavedFormState({
+					report: written,
+					landed: written?.kind === 'set',
+					changed: (element) => element.checked !== on,
+					busy,
+					pending
+				});
+				return form;
+			}
+		`;
+		expect(seededWithoutAPutBack('src/lib/answer-switch-block.tsx', source)).toEqual([
+			'src/lib/answer-switch-block.tsx:3: calls `useSavedFormState` and states no `spent`'
+		]);
+	});
+
+	it('leaves the seam itself alone, which hands on what its mounts state', () => {
+		const source = `
+			export function useConsoleForm(definition, options) {
+				return useSavedFormState({ ...options, changed: true, press });
+			}
+		`;
+		expect(seededWithoutAPutBack(SEAM_FILE, source)).toEqual([]);
+	});
+
+	it('reports a block whose `spent` is anything but a reading taken in the same block', () => {
+		// a statement that is only present: the answer itself, which arrives ahead of the re-read and
+		// puts the boxes back to what the press replaced, or a reading taken somewhere this block
+		// cannot answer for.
+		const source = `
+			export function AnswerSwitchBlock({ written, values, busy, pending, spent: given }) {
+				const landed = written?.kind === 'set';
+				const one = useSavedFormState({ report: written, landed, spent: landed, busy, pending });
+				const two = useSavedFormState({ report: written, landed, spent: given, busy, pending });
+				return [one, two];
+			}
+			function useElsewhere({ landed, pending, values }) {
+				return useReseeded({ landed, pending, reading: values });
+			}
+		`;
+		expect(seededWithoutAPutBack('src/lib/answer-switch-block.tsx', source)).toEqual([
+			'src/lib/answer-switch-block.tsx:4: calls `useSavedFormState` with a `spent` no `useReseeded` call in the same function binds',
+			'src/lib/answer-switch-block.tsx:5: calls `useSavedFormState` with a `spent` no `useReseeded` call in the same function binds'
+		]);
+	});
+
+	it('leaves a block alone whose `spent` is a reading taken beside the call, or never', () => {
+		// the secret groups' shape, and the account picks', whose landed answer empties nothing.
+		const source = `
+			export function SecretGroupForm({ written, values, busy, pending }) {
+				const landed = written?.kind === 'set';
+				const spent = useReseeded({ landed, pending, reading: values });
+				const reread = useReseeded({ landed, pending, reading: values });
+				const one = useSavedFormState({ report: written, landed, spent, busy, pending });
+				const two = useSavedFormState({ report: written, landed, spent: reread, busy, pending });
+				const three = useSavedFormState({ report: written, landed, spent: false, busy, pending });
+				return [one, two, three];
+			}
+		`;
+		expect(seededWithoutAPutBack('src/lib/secret-group-form.tsx', source)).toEqual([]);
+	});
+
+	it('reports a block anywhere else that hands the hook options it was given', () => {
+		// a spread is a statement only where what it spreads is swept: the seam's mounts are, and a
+		// block's own props are not.
+		const source = `
+			export function SwitchBlock(options) {
+				return useSavedFormState({ ...options, changed: true });
+			}
+		`;
+		expect(seededWithoutAPutBack('src/lib/switch-block.tsx', source)).toEqual([
+			'src/lib/switch-block.tsx:3: calls `useSavedFormState` and states no `spent`'
+		]);
 	});
 
 	it('reports a fold that seeds from a reading and leaves the put-back to the default', () => {
@@ -182,41 +322,7 @@ describe('a fold whose boxes a landed press puts back says when they go back', (
 		expect(seededWithoutAPutBack('src/lib/org-fold.tsx', source)).toEqual([]);
 	});
 
-	it('reports a fold that calls the hook itself and leaves the put-back to the default', () => {
-		// a call stating no `spent`: its radios go back to the choice the press was made against, and
-		// stand there for the whole of the re-read.
-		const source = `
-			export function ModelSection({ written, busy, pending }) {
-				const saved = useSavedFormState({
-					report: written,
-					landed: written?.kind === 'set',
-					changed: () => true,
-					busy,
-					pending
-				});
-				return saved;
-			}
-		`;
-		expect(calledWithoutAPutBack('src/lib/ai-model-section.tsx', source)).toEqual([
-			'src/lib/ai-model-section.tsx:3: calls `useSavedFormState` and states no `spent`'
-		]);
-	});
-
-	it('leaves the seam passing its own caller’s options through alone', () => {
-		const source = `
-			export function useConsoleForm(schema, options) {
-				return useSavedFormState({ ...options, changed: true });
-			}
-		`;
-		expect(calledWithoutAPutBack('src/lib/use-console-form.ts', source)).toEqual([]);
-	});
-
 	it('is what the folds do', () => {
-		const found = acrossTheFolds(globSync('src/**/*.{ts,tsx}'));
-		const standing = found.filter((line) => STANDING.some((file) => line.startsWith(`${file}:`)));
-		expect(found.filter((line) => !standing.includes(line))).toEqual([]);
-		expect([...new Set(standing.map((line) => line.slice(0, line.indexOf(':'))))].sort()).toEqual(
-			[...STANDING].sort()
-		);
+		expect(acrossTheFolds(folds)).toEqual([]);
 	});
 });

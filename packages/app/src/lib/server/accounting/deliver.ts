@@ -14,8 +14,9 @@ import {
 } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { entryGroup, quickbooksSync } from '../db/schema';
-import { alert } from '../donations/delivery';
+import { alert } from '../email/alert';
 import type { EmailProvider } from '../email/provider';
+import { PACE } from '../outbox/budget';
 import type {
 	AccountingFailure,
 	AccountingFailureReason,
@@ -147,23 +148,13 @@ export type AccountingDeliveryDeps = {
 };
 
 /**
- * entry groups sent per run, in the order {@link dueRows} takes them.
- *
- * a send costs a handful of D1 statements — the entry and its lines, the cut posted beside it, the
- * donor it names — three to five calls to the provider, and one write. ten of those finish well
- * inside {@link RUN_DEADLINE_MS} and inside what Intuit meters per realm per minute, and a run a
- * minute drains a backlog steadily rather than in one invocation that cannot finish.
- */
-const SENDS_PER_RUN = 10;
-
-/**
  * no send starts this long after the run's scheduled time.
  *
  * the schedule is every minute, and a cron invocation at a cadence under an hour is killed at
- * thirty seconds of CPU — the fifteen-minute figure is the wall-clock row, for an hourly or longer
- * trigger, and does not apply here. the margin left is for the send already under way. what is not
- * reached is read on the next run, because nothing here is finished by a run ending — the row is
- * still `pending` and still owed.
+ * thirty seconds of CPU on a Paid plan — fifteen minutes of CPU is for an hourly or longer trigger,
+ * and the fifteen-minute wall-clock cap binds every cron invocation but is reached long after
+ * this. the margin left is for the send already under way. what is not reached is read on the next
+ * run, because nothing here is finished by a run ending — the row is still `pending` and still owed.
  */
 const RUN_DEADLINE_MS = 20_000;
 
@@ -566,11 +557,12 @@ async function land(
 /**
  * every entry group whose wait is over, sent, and an operator told where the backlog is stuck.
  *
- * `now` is the run's scheduled time. one row's fault does not stop the rest; a fault the whole
+ * `now` is the run's scheduled time. a run sends this feed's pace (../outbox/budget.ts), in the
+ * order {@link dueRows} takes them. one row's fault does not stop the rest; a fault the whole
  * backlog is behind does, and leaves every row unsent for the next run to read again.
  */
 export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): Promise<void> {
-	const due = await dueRows(deps.db, now);
+	const due = await dueRows(deps.db, now, PACE.books);
 
 	const deadline = now.getTime() + RUN_DEADLINE_MS;
 	let blocked: AccountingFailure | null = null;
@@ -607,19 +599,21 @@ export async function sendDueEntries(deps: AccountingDeliveryDeps, now: Date): P
 const QUEUED_AS_SETTLED = sql`${quickbooksSync.createdAt} = ${entryGroup.createdAt}`;
 
 /**
- * what one run reads: entry groups nobody is holding whose wait is over. gifts queued as they
- * settled come first, oldest queued first, then the history a move queued, in date order.
+ * what one run reads: at most `sends` entry groups nobody is holding whose wait is over. gifts
+ * queued as they settled come first, oldest queued first, then the history a move queued, in date
+ * order.
  *
- * gifts first because a move earlier can queue the whole of a deployment's history at ten a run,
- * and a gift that settles after it would otherwise wait for all of it. the sort is over every due
- * row rather than read off `quickbooks_sync_status_due_idx`, which answers the filter only — the
- * tier comes from the entry group, and the table has no column of its own that carries it.
+ * gifts first because a move earlier can queue the whole of a deployment's history, sent a run's
+ * pace at a time, and a gift that settles after it would otherwise wait for all of it. the sort is
+ * over every due row rather than read off `quickbooks_sync_status_due_idx`, which answers the
+ * filter only — the tier comes from the entry group, and the table has no column of its own that
+ * carries it.
  *
  * exported for its query rather than its rows, so ./deliver.workers.spec.ts can read sqlite's plan
  * for this statement and ./outbox.workers.spec.ts the order a move leaves. a second copy of the
  * query written there would be a second query.
  */
-export function dueRows(db: Db, now: Date) {
+export function dueRows(db: Db, now: Date, sends: number) {
 	return db
 		.select({ entryGroupId: quickbooksSync.entryGroupId })
 		.from(quickbooksSync)
@@ -630,7 +624,7 @@ export function dueRows(db: Db, now: Date) {
 			sql`case when ${QUEUED_AS_SETTLED} then ${quickbooksSync.createdAt} else ${entryGroup.occurredAt} end`,
 			asc(quickbooksSync.entryGroupId)
 		)
-		.limit(SENDS_PER_RUN);
+		.limit(sends);
 }
 
 /** one alert for the whole failing backlog, and no second one until the cooldown is out. */

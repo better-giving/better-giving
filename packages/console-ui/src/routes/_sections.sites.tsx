@@ -6,12 +6,13 @@ import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { levelWallets, levelWidget, saveSites } from '../api/client';
 import type { SitesPress, WidgetLevel } from '../api/types';
 import { SITES_TITLE } from '../lib/console-pages';
+import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { forgetReadings } from '../lib/processor-cache';
 import { SITES_INTENT, siteEdits } from '../lib/sites';
 import { SitesFold } from '../lib/sites-fold';
 import { usePress } from '../lib/use-press';
-import { TITLE } from './_index';
+import { ConsoleFailure, TITLE } from './_index';
 import type { Route } from './+types/_sections.sites';
 
 // /sites — the sites a donation form may be loaded on, drawn by ../lib/sites-fold.tsx. no job waits
@@ -76,6 +77,7 @@ const stored = (press: SitesPress) => ({ sites: press });
  * it has just stored (../lib/wallets-press.ts).
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
+	watchPress(request);
 	await forgetReadings();
 	const posted = await request.formData();
 	if (posted.get('intent') !== SITES_INTENT) return { unknown: true as const };
@@ -116,6 +118,16 @@ export default function SitesPage({ actionData, matches }: Route.ComponentProps)
 				busy={busy}
 				pending={intent}
 			/>
+		</Column>
+	);
+}
+
+// a failure on this page stands in its place under the shell, so the rail and the other pages stay
+// reachable (`ConsoleFailure` in ./_index.tsx says what each failure draws).
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	return (
+		<Column>
+			<ConsoleFailure error={error} />
 		</Column>
 	);
 }

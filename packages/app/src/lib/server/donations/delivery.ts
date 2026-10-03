@@ -1,16 +1,14 @@
-import { adminAlert } from '@better-giving/emails';
-import { renderEmail } from '@better-giving/emails/render';
+import { formatMoney } from '@better-giving/emails';
 import type { Writes } from '../books/writes';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import type { EmailProvider } from '../email/provider';
+import type { MailDeps } from '../email/alert';
 import type { Processors } from '../payments/factory';
 import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
-import { readOrgProfile } from '../org/queries';
 
 // what one verified delivery may answer with, the one way this app tells an operator about a
-// delivery it could not finish, and the one way a delivery's batch is committed and a refusal read
-// (`commit`).
+// delivery it could not finish (`alert`, stated in ../email/alert.ts and re-exported here), and
+// the one way a delivery's batch is committed and a refusal read (`commit`).
 //
 // it is a module of its own because the answer is shared by the three writers that produce it:
 // ./settle.ts settles one transaction against the payment row a quote minted, ./collect.ts keeps
@@ -106,12 +104,12 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
  * everything the webhook's modules need that they may not build for themselves, all per request.
  *
  * ./settle.ts, ./collect.ts and ./reverse.ts produce the answers above and read `db`, `provider` and
- * `email`, and ./reverse.ts `processors` as well. what they end at —
- * ./receipt.ts and `alert` below — reads the database and sends mail and asks the processor nothing,
- * so it takes `MailDeps`, which a bag of these satisfies as it is.
+ * `email`, and ./reverse.ts `processors` as well. what they end at — ./receipt.ts and `alert`
+ * (../email/alert.ts) — reads the database and sends mail and asks the processor nothing, so it
+ * takes `MailDeps`, which this type extends.
+ * `email`'s failures are reported and never raised — see ./settle.ts's header.
  */
-export type SettleDeps = {
-	readonly db: Db;
+export type SettleDeps = MailDeps & {
 	readonly provider: PaymentProvider;
 	/**
 	 * every processor this deployment holds, which a disputed gift's repeating plan is stopped through
@@ -119,8 +117,6 @@ export type SettleDeps = {
 	 * route that forgets it is a type error rather than a plan that silently never stops.
 	 */
 	readonly processors: Processors;
-	/** the mail transport. its failures are reported and never raised — see ./settle.ts's header. */
-	readonly email: EmailProvider;
 	/**
 	 * the coins the donor picked from, where a receipt for a crypto gift names its coin — `cachedCoins`
 	 * in ../forms/coin-cache.ts. absent, or answering null, a coin is named by its code uppercased.
@@ -128,11 +124,7 @@ export type SettleDeps = {
 	readonly payableCoins?: () => Promise<readonly PayableCoin[] | null>;
 };
 
-/**
- * the part of `SettleDeps` that reads the database and sends mail — all a receipt or an alert needs,
- * so a gift no processor took (./record-in-hand.ts) can be receipted without a `PaymentProvider`.
- */
-export type MailDeps = Pick<SettleDeps, 'db' | 'email'>;
+export { alert, type MailDeps } from '../email/alert';
 
 /**
  * what an operator-facing sentence calls the processor that delivered this.
@@ -149,24 +141,14 @@ export function processorLabel(deps: SettleDeps): string {
 }
 
 /**
- * one operational alert, to the address the console names.
- *
- * silent where no address is saved, because there is nowhere to send it — `notification_email` is
- * nullable and a fresh deployment has none. the sentence still reaches the logs either way, which
- * is the floor: an alert nobody configured must not become an exception on the money path.
+ * a money figure as an alert prints it: `formatMoney`'s, the way ./settled-notice.ts writes one.
+ * an alert is often about a figure that failed the books' checks, and `formatMoney` would round a
+ * fraction or print `NaN`, so anything not a safe integer prints as it arrived, saying so.
  */
-export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): Promise<void> {
-	try {
-		console.error(`${input.headline}:`, JSON.stringify(input.facts));
-	} catch {
-		// nothing to report it to, and nothing on this path may throw.
-	}
-
-	const profile = await readOrgProfile(deps.db);
-	const to = profile?.notificationEmail ?? null;
-	if (to === null) return;
-
-	await deps.email.send({ to, ...(await renderEmail(adminAlert.template(input))) });
+export function alertMoney(minorUnits: number, currency: string): string {
+	return Number.isSafeInteger(minorUnits)
+		? formatMoney(minorUnits, currency)
+		: `${minorUnits} ${currency} (not a whole number of minor units)`;
 }
 
 /**

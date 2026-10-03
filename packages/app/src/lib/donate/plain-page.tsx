@@ -60,14 +60,17 @@ export function PlainPage({
  */
 export function PlainDonationPage({
 	config,
-	look
+	look,
+	resuming = false
 }: {
 	readonly config: FormConfig;
 	readonly look: PageLook;
+	/** whether the address carries this box's resume stamp, the card's own `resuming`. */
+	readonly resuming?: boolean;
 }) {
 	return (
 		<PlainPage look={look}>
-			<DonateCard config={config} />
+			<DonateCard config={config} resuming={resuming} />
 		</PlainPage>
 	);
 }

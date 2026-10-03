@@ -20,12 +20,11 @@ import type { StripeUnreadableReason } from './stripe-read.js';
 //
 // **every read here is the deployment's and can be nowhere else.** the rails, the endpoint's
 // subscription and the hostnames the account holds for wallets are read through the deployment's
-// payment port with the key the deployment holds, which no console has. the signing secret is stronger than that: it is a deploy-time secret that
-// no read of any kind hands back —
-// not Stripe's (../stripe/secret-fingerprint.ts says why), and not Cloudflare's, which reports only
-// that a slot is filled. so the comparison that says whether deliveries verify can be made by the
-// deployment and by nothing else, and a console asking anyone else gets `Stored` over a deployment
-// verifying nothing.
+// payment port with the key the deployment holds, which no console has. the signing secret is
+// another case: it is a plain var the console can read back, but Stripe never hands back the
+// endpoint's own secret to hold it against (../stripe/secret-fingerprint.ts says why). so the
+// comparison that says whether deliveries verify can be made by the deployment and by nothing else,
+// and a console asking anyone else gets `Stored` over a deployment verifying nothing.
 //
 // **no secret value crosses this wire, and none can.** what travels is which of four states the
 // stored secret is in; the value and its digest stay inside the worker
