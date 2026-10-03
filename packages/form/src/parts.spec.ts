@@ -366,7 +366,7 @@ describe('the free amount entry with the keyboard in it', () => {
 	});
 });
 
-// the three events are the one surface the element speaks to a host page on, and a name only in the
+// the events are the one surface the element speaks to a host page on, and a name only in the
 // source is one an integrator was never told. the dom spec holds the names the element dispatches
 // while it runs; this holds every name its source spells, which covers an event no scenario there
 // reaches.

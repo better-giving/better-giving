@@ -6700,7 +6700,7 @@ describe('the Venmo option', () => {
 	});
 });
 
-// the three events are the one surface a host page reads back out of this element, so each case
+// the events are the one surface a host page reads back out of this element, so each case
 // listens on the document rather than on the element: a listener there is only reached by an event
 // that bubbles and is composed, which is the whole of what makes it the host's to hear.
 describe('the events a host page hears', () => {
@@ -7114,9 +7114,9 @@ describe('the events a host page hears', () => {
 		}
 	);
 
-	// the event names the wire it is told on, and the manifest an integrator reads lists the same
-	// three: a fourth dispatched and unlisted, or one listed and never dispatched, fails here. the
-	// names are read off what the element dispatches while it is driven through each of its endings.
+	// the names the element dispatches and the names the manifest an integrator reads lists are one
+	// set: one dispatched and unlisted, or listed and never dispatched, fails here. the names are
+	// read off what the element dispatches while it is driven through each of its endings.
 	it('dispatches exactly the events the manifest lists', async () => {
 		const names = new Set<string>();
 		// whichever prototype in an element's chain owns `dispatchEvent`: under happy-dom that is not
