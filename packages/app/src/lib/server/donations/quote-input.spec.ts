@@ -382,6 +382,52 @@ describe('parseQuoteRequest() — a gift given in honor or memory of someone', (
 		});
 	});
 
+	it('folds a line break in a name onto one line', () => {
+		// a direct `/api/v1` caller can send what no box in the element can type, and every surface
+		// that carries the stored name — receipt, webhooks, Zapier, the integrations API — would carry
+		// the break as sent.
+		const result = parseQuoteRequest(
+			body({
+				tributeKind: 'memory',
+				tributeHonoree: 'Ann\r\nBcc: x@y',
+				tributeNotifyName: 'Mary\t\u0085\u2028\u2029Hopper',
+				tributeNotifyEmail: 'mary@example.org'
+			}),
+			CONFIG
+		);
+
+		expect(result.ok && result.value.tribute).toEqual({
+			kind: 'memory',
+			honoree: 'Ann Bcc: x@y',
+			notify: { name: 'Mary Hopper', email: 'mary@example.org' }
+		});
+	});
+
+	it.each(['tributeHonoree', 'tributeNotifyName'] as const)(
+		'bounds a %s by its folded length',
+		(field) => {
+			// 202 characters as sent, 200 once the break is one space: the stored value is in bounds.
+			const atMaximum = `${'a'.repeat(100)}\r\n\r\n${'b'.repeat(99)}`;
+			const pastMaximum = `${'a'.repeat(100)}\r\n${'b'.repeat(100)}`;
+			const tribute = {
+				tributeKind: 'memory',
+				tributeHonoree: 'Grace',
+				tributeNotifyName: 'Mary',
+				tributeNotifyEmail: 'mary@example.org'
+			};
+
+			const accepted = parseQuoteRequest(body({ ...tribute, [field]: atMaximum }), CONFIG);
+			expect(accepted.ok).toBe(true);
+			expect(refusal({ ...tribute, [field]: pastMaximum }).message).toContain(field);
+		}
+	);
+
+	it('refuses an honoree that is only line breaks, as it does an empty one', () => {
+		expect(
+			refusal({ tributeKind: 'honor', tributeHonoree: '\r\n\t\u0085\u2028' }).message
+		).toContain('tributeHonoree');
+	});
+
 	it('refuses a kind that is not one of the two', () => {
 		// `honour` and not some arbitrary word: the near miss is what a caller writing this by hand
 		// actually sends, and the stored token is US-spelled.

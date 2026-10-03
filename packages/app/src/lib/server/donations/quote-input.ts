@@ -393,17 +393,29 @@ const TRIBUTE_KIND = z.enum(TRIBUTE_KINDS, {
 const TRIBUTE_KIND_FIX = `Send one of ${quoted(TRIBUTE_KINDS)} together with \`tributeHonoree\`, or leave every tribute field out.`;
 
 /**
+ * every run of whitespace, line breaks included. `\s` is unicode-aware but leaves out U+0085, which
+ * some mail and text tooling still reads as a line break.
+ */
+const WHITESPACE_RUN = /[\s\u0085]+/g;
+
+/**
  * one submitted tribute string, bounded and trimmed, where `''` is a box the donor left alone.
  *
- * the cap is measured on what arrived rather than on the trimmed value, for the reason the note's
- * is: it exists to stop a stranger making the field arbitrarily large on an unauthenticated path,
- * and whitespace costs the same bytes. the trim is `.trim()` and so unicode-aware, which a check on
- * the column could not be — and the column has none anyway.
+ * a name is folded onto one line first — every run of whitespace becomes one space — and the cap is
+ * measured on the folded value, which is the one stored. a name is a single line on every surface
+ * that carries it (the receipt, the tribute notice's subject, webhooks, Zapier, the integrations
+ * API), and a direct `/api/v1` caller can send a CR/LF no box in the element can type.
+ *
+ * the address is not folded, and its cap is measured on what arrived rather than on the trimmed
+ * value, for the reason the note's is: it exists to stop a stranger making the field arbitrarily
+ * large on an unauthenticated path, and whitespace costs the same bytes. the trim is `.trim()` and
+ * so unicode-aware, which a check on the column could not be — and the column has none anyway.
  */
 function tributeText(
 	value: unknown,
 	field: string,
-	max: number
+	max: number,
+	{ singleLine }: { readonly singleLine: boolean }
 ): { readonly ok: true; readonly value: string } | Refusal {
 	const shape = z
 		.string({
@@ -423,7 +435,9 @@ function tributeText(
 			error: (issue) =>
 				`\`${field}\` is ${String(issue.input).length} characters, over the ${max}-character maximum.`
 		})
-		.safeParse(shape.data ?? '');
+		.safeParse(
+			singleLine ? (shape.data ?? '').replace(WHITESPACE_RUN, ' ').trim() : (shape.data ?? '')
+		);
 	if (!bounded.success) return refusal(first(bounded.error), `Send at most ${max} characters.`);
 
 	return { ok: true, value: bounded.data.trim() };
@@ -443,11 +457,17 @@ function tributeText(
 function parseTribute(
 	posted: Record<string, unknown>
 ): { ok: true; value: Tribute | null } | Refusal {
-	const honoree = tributeText(posted.tributeHonoree, 'tributeHonoree', MAX_NAME);
+	const honoree = tributeText(posted.tributeHonoree, 'tributeHonoree', MAX_NAME, {
+		singleLine: true
+	});
 	if (!honoree.ok) return honoree;
-	const notifyName = tributeText(posted.tributeNotifyName, 'tributeNotifyName', MAX_NAME);
+	const notifyName = tributeText(posted.tributeNotifyName, 'tributeNotifyName', MAX_NAME, {
+		singleLine: true
+	});
 	if (!notifyName.ok) return notifyName;
-	const notifyEmail = tributeText(posted.tributeNotifyEmail, 'tributeNotifyEmail', MAX_EMAIL);
+	const notifyEmail = tributeText(posted.tributeNotifyEmail, 'tributeNotifyEmail', MAX_EMAIL, {
+		singleLine: false
+	});
 	if (!notifyEmail.ok) return notifyEmail;
 
 	if (posted.tributeKind === undefined) {
