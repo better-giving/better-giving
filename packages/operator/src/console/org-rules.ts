@@ -85,6 +85,20 @@ export const einAsPrinted = (value: string): string => {
 };
 
 /**
+ * the EIN box's text while it is being typed: its digits and nothing else, at most nine, with the
+ * dash put in once a third digit arrives — `12` stays `12`, `123` is `12-3`.
+ *
+ * it reads anything, because a box hands over whatever was pasted into it — `12 345 6789`, a
+ * letter, a tenth digit — and what it hands back is always a prefix of {@link einAsPrinted}'s
+ * spelling, so a box held to it can only ever be completed into the stored one. it is a courtesy
+ * to the person typing and states no rule: what is stored is still {@link EIN}'s to accept.
+ */
+export const einAsTyped = (value: string): string => {
+	const digits = value.replace(/\D/g, '').slice(0, 9);
+	return digits.length <= 2 ? digits : `${digits.slice(0, 2)}-${digits.slice(2)}`;
+};
+
+/**
  * the sentence a box the save refuses blank gets, and it is one word: the box it is drawn under
  * is labelled, so a sentence naming the field again or arguing what it is for is the label spelled
  * twice under itself. which boxes are refused blank, and why, is stated on each rule below.

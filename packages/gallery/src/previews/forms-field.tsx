@@ -2,7 +2,8 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 
 /*
  * every combination of the four blocks a field draws around its box — label, hint, error, needed —
- * plus the box types, the two pointer states, and the box with a control on its own row.
+ * plus the box types, the two pointer states, and the box with a control on its own row. `status`
+ * is drawn twice, empty and speaking, because the empty region is the state that has to hold no room.
  *
  * `beside` is drawn three times because the row is where the two heights meet: the press takes the
  * field's height rather than the control's, so a specimen of it at rest says nothing on its own —
@@ -59,6 +60,22 @@ export default function FormsFieldPreview() {
 				id="forms-field-needed"
 				label="Registered charity number"
 				needed="A test send is waiting on this."
+			/>
+			<Field
+				id="forms-field-status-empty"
+				label="EIN"
+				className="adm-num"
+				inputMode="numeric"
+				defaultValue="12-3456789"
+				status=""
+			/>
+			<Field
+				id="forms-field-status"
+				label="EIN"
+				className="adm-num"
+				inputMode="numeric"
+				defaultValue="12-3456789"
+				status="Tax-exempt status revoked May 15, 2023."
 			/>
 			<Field
 				id="forms-field-hint-error"

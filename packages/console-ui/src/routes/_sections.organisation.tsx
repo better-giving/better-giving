@@ -1,7 +1,7 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { saveOrgProfile } from '../api/client';
+import { lookUpNonprofit, saveOrgProfile, searchNonprofits } from '../api/client';
 import { watchPress } from '../lib/console-reading';
 import { consoleRereads } from '../lib/dialog-params';
 import { ORG_INTENT, orgEdits } from '../lib/org-fields';
@@ -55,6 +55,8 @@ export default function OrganisationPage({ actionData, matches }: Route.Componen
 				write={write}
 				busy={busy}
 				pending={intent === ORG_INTENT}
+				lookUp={lookUpNonprofit}
+				search={searchNonprofits}
 			/>
 		</Column>
 	);

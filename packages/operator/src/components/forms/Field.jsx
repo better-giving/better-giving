@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../controls/Button.jsx';
 import { CopyControl } from '../controls/CopyControl.jsx';
+import { Mark } from '../status/Mark.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
@@ -21,6 +22,12 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {ReactNode} [hint]
  * @property {ReactNode} [error]
  * @property {ReactNode} [needed] what marks the field as wanted by something elsewhere on the page.
+ * @property {ReactNode} [status] a fact found out about the value after it was typed — a lookup's
+ *   answer — said in a polite live region under the box. the region is drawn whenever this is not
+ *   `undefined`, and `''` draws it empty: a caller that will speak later hands `''` from the first
+ *   render, because a region arriving with its words is an insertion a reader may never be told
+ *   about. it is not a refusal and marks nothing on the box. it takes the row `needed` takes, so a
+ *   field states one or the other.
  * @property {ReactNode} [beside] a control that acts on what is in the box, put on the box's own
  *   row rather than under it — one destination and one send, instead of a press below a column of
  *   boxes. the row is `.adm-actions`, which is what makes the box take the line's remainder and the
@@ -101,6 +108,7 @@ export function Field({
 	hint,
 	error,
 	needed,
+	status,
 	beside,
 	masked,
 	revealLabel = 'Show the value',
@@ -217,7 +225,12 @@ export function Field({
 	// either box fixes the pair and neither one is the wrong one.
 	const refused = error ? true : stated === true || stated === 'true';
 	const describedBy =
-		[hint ? `${id}-hint` : null, error ? `${id}-err` : null, needed ? `${id}-need` : null]
+		[
+			hint ? `${id}-hint` : null,
+			error ? `${id}-err` : null,
+			needed ? `${id}-need` : null,
+			status ? `${id}-status` : null
+		]
 			.filter(Boolean)
 			.join(' ') || undefined;
 	const cls = [
@@ -269,6 +282,19 @@ export function Field({
 							{needed}
 						</FieldMessage>
 					) : null}
+					{/* the standing row's look on an element that is a region rather than a message: the
+					    mark and the words only while there are words, so the empty region holds no room
+					    (`.adm-field > .adm-field__needed:empty` in packages/operator/src/styles/adm.css). */}
+					{status === undefined ? null : (
+						<p className="adm-field__needed" id={`${id}-status`} role="status">
+							{status ? (
+								<>
+									<Mark name="triangle-alert" />
+									<span>{status}</span>
+								</>
+							) : null}
+						</p>
+					)}
 				</>
 			)}
 		</div>

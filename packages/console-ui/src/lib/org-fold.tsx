@@ -1,13 +1,24 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Field } from '@better-giving/operator/components/forms/Field';
+import { einAsPrinted, einAsTyped } from '@better-giving/operator/console/org-rules';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import type { ReactNode } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Form } from 'react-router';
+import { type EinWatch, einCaret, foundBoxes, matchBoxes, watchEin } from './ein-lookup';
+import { FindOrgDialog } from './find-org-dialog';
+import { rememberWebsite } from './found-organisation';
 import { IDENTITY_BOXES, ORG_FIELDS, ORG_INTENT, carriedBoxes } from './org-fields';
 import { ORG_FORM, foldErrors, seedFor, type IdentityField } from './org-form';
 import { useConsoleForm } from './use-console-form';
 import { OrgWriteOutcome } from './org-write';
-import type { OrgWrite } from '../api/types';
+import type {
+	NonprofitLookup,
+	NonprofitMatch,
+	NonprofitOrganisation,
+	NonprofitSearch,
+	OrgWrite
+} from '../api/types';
 import type { OrgBoxes } from './org-fields';
 
 // the legal identity this deployment asks for gifts under, read and edited on the organisation page
@@ -64,6 +75,21 @@ import type { OrgBoxes } from './org-fields';
 // `ORG_PROFILE_FIELD_RULES`, refused blank by nothing), so an identity saved first is an identity
 // saved.
 //
+// **the IRS list fills the boxes and never saves them.** a whole EIN typed into its box is looked up
+// once (./ein-lookup.ts says when), and the find dialog (./find-org-dialog.tsx) looks an
+// organisation up by name; either way a found organisation's values go into the boxes the way typing
+// them would, so the press is armed over them and Save stores them like any edit. what the list says
+// about the number stands under the EIN box in a region drawn before it speaks, and goes when the box
+// changes. the dialog opens itself on a fresh set-up — every identity box empty — once per visit to
+// the page, and a quiet press beside Save opens it at any time. the list is reached through the two
+// calls the page hands in, so this names no address and no binary route.
+//
+// **a value put into a box is made to say it changed.** a value written to an element fires no
+// event, and both layers that read this form count the events its boxes fire — conform's, and the
+// one that arms the button — so a box filled silently would hold an organisation under a button
+// nothing could press. `CoinPicker` in `@better-giving/operator/components/forms/` does the same for
+// its own hidden box and says the same.
+//
 // it is a component and not a screen: ../routes/_sections.organisation.tsx mounts it and answers its
 // press, and everything about which section this is — its label, its tone, the word on its rail cell
 // and what stands between it and its job — is decided in ./home-sections.ts with the others.
@@ -76,9 +102,16 @@ export type OrgFoldProps = {
 	/** something else on the page is writing, which holds every control on it closed. */
 	busy: boolean;
 	pending: boolean;
+	/** one organisation from the IRS list by EIN. a throw reads as the list being unavailable. */
+	lookUp: (ein: string, signal: AbortSignal) => Promise<NonprofitLookup>;
+	/** organisations from the IRS list by name or EIN, for the find dialog. */
+	search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
 };
 
-export function OrgFold({ stored, write, busy, pending }: OrgFoldProps): ReactNode {
+/** a fresh set-up: nothing about the organisation's identity has been saved yet. */
+const unset = (stored: OrgBoxes): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
+
+export function OrgFold({ stored, write, busy, pending, lookUp, search }: OrgFoldProps): ReactNode {
 	/** whether the last press left the deployment holding this profile, which is what a save reports. */
 	const landed = write?.kind === 'saved';
 
@@ -103,6 +136,73 @@ export function OrgFold({ stored, write, busy, pending }: OrgFoldProps): ReactNo
 		pending
 	});
 
+	/* the find dialog is up from the first draw on a fresh set-up, and from a press after that. read
+	   once, at the mount, which is the visit to the page: a save landing does not put it back up. */
+	const [finding, setFinding] = useState(() => unset(stored));
+	/** a match was taken, which renames the press that opens the dialog. */
+	const [picked, setPicked] = useState(false);
+	/** what the list said about the number in the EIN box, `''` for nothing. */
+	const [note, setNote] = useState('');
+	const findPress = useRef<HTMLButtonElement>(null);
+
+	/** what one box holds as it stands, which is not what was stored once it has been typed in. */
+	const held = (field: IdentityField): string => {
+		const element = form.mount.ref.current?.elements.namedItem(field);
+		return element instanceof HTMLInputElement ? element.value : '';
+	};
+
+	/** boxes given values, each made to say so. */
+	const put = (boxes: Partial<Record<IdentityField, string>>) => {
+		const elements = form.mount.ref.current?.elements;
+		for (const [field, value] of Object.entries(boxes)) {
+			const element = elements?.namedItem(field);
+			if (!(element instanceof HTMLInputElement)) continue;
+			element.value = value;
+			element.dispatchEvent(new Event('input', { bubbles: true }));
+		}
+	};
+
+	/* what a found organisation leaves behind: its values in the boxes, and its website for the Sites
+	   fold. an effect event, so the watch made once per mount fills the form standing when the answer
+	   lands. */
+	const found = useEffectEvent((organisation: NonprofitOrganisation) => {
+		rememberWebsite(organisation.website);
+		put(foundBoxes(organisation, held('country')));
+	});
+
+	/* the watch over the EIN box, made once per mount and handed the box's text at every change. */
+	const watch = useRef<EinWatch | null>(null);
+	useEffect(() => {
+		const watching = watchEin({ lookUp, onNote: setNote, onFound: found });
+		watch.current = watching;
+		return () => {
+			watching.stop();
+			watch.current = null;
+		};
+	}, [lookUp]);
+
+	/** the EIN box as typed: spelled as it is typed, and handed to the watch. */
+	const einTyped = (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+		const element = event.currentTarget;
+		const typed = element.value;
+		const shown = einAsTyped(typed);
+		if (shown !== typed) {
+			// written back with the caret where the operator was typing rather than at the end.
+			const caret = einCaret(typed, element.selectionStart ?? typed.length, shown);
+			element.value = shown;
+			element.setSelectionRange(caret, caret);
+		}
+		watch.current?.typed(shown, stored.tax_id);
+	};
+
+	/** a match taken: its number in the EIN box, what it carries in the boxes, and its whole record asked for. */
+	const pick = (match: NonprofitMatch) => {
+		setFinding(false);
+		setPicked(true);
+		put(matchBoxes(match, held('country')));
+		watch.current?.typed(einAsPrinted(match.ein), stored.tax_id, true);
+	};
+
 	/** one box, drawn from what this fold calls it and what the deployment holds in it. */
 	const box = (field: IdentityField) => {
 		const copy = ORG_FIELDS[field];
@@ -110,11 +210,24 @@ export function OrgFold({ stored, write, busy, pending }: OrgFoldProps): ReactNo
 		   when this box is typed in — one composition, in the seam, for every fold at once
 		   (./use-console-form.ts). */
 		const bound = form.box(form.fields[field]);
+		/* the EIN box spells itself as it is typed and is the one the list is asked about, and the
+		   note on what it said stands under it. */
+		const ein =
+			field === 'tax_id'
+				? {
+						inputMode: 'numeric' as const,
+						status: note,
+						onInput: (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+							bound.onInput?.();
+							einTyped(event);
+						}
+					}
+				: { onInput: bound.onInput };
 		return (
 			<Field
 				id={bound.id}
 				name={bound.name}
-				onInput={bound.onInput}
+				{...ein}
 				label={copy.label}
 				optional={copy.optional}
 				// the example the box stands on while it is empty. a box seeded from the profile is full
@@ -146,44 +259,68 @@ export function OrgFold({ stored, write, busy, pending }: OrgFoldProps): ReactNo
 	};
 
 	return (
-		<Form {...form.mount} className="adm-stack" method="post" preventScrollReset>
-			{/* the boxes this fold does not draw, carried at exactly what the deployment holds: the
+		<>
+			<Form {...form.mount} className="adm-stack" method="post" preventScrollReset>
+				{/* the boxes this fold does not draw, carried at exactly what the deployment holds: the
 			    profile is stored whole, so a field left out of the body is one it stores as cleared. */}
-			{carriedBoxes(IDENTITY_BOXES).map((field) => (
-				<input key={field} type="hidden" name={field} value={stored[field]} readOnly />
-			))}
-			<div className="adm-pair adm-pair--side">
-				{box('legal_name')}
-				{box('tax_id')}
-			</div>
+				{carriedBoxes(IDENTITY_BOXES).map((field) => (
+					<input key={field} type="hidden" name={field} value={stored[field]} readOnly />
+				))}
+				<div className="adm-pair adm-pair--side">
+					{box('tax_id')}
+					{box('legal_name')}
+				</div>
 
-			<fieldset className="adm-fieldset">
-				<legend className="adm-fieldset__legend">Address on receipts</legend>
-				<div className="adm-pair adm-pair--side">
-					{box('address_line1')}
-					{box('address_line2')}
-				</div>
-				<div className="adm-pair adm-pair--side">
-					{box('city')}
-					{box('region')}
-				</div>
-				<div className="adm-pair adm-pair--side">
-					{box('postal_code')}
-					{box('country')}
-				</div>
-			</fieldset>
+				<fieldset className="adm-fieldset">
+					<legend className="adm-fieldset__legend">Address on receipts</legend>
+					<div className="adm-pair adm-pair--side">
+						{box('address_line1')}
+						{box('address_line2')}
+					</div>
+					<div className="adm-pair adm-pair--side">
+						{box('city')}
+						{box('region')}
+					</div>
+					<div className="adm-pair adm-pair--side">
+						{box('postal_code')}
+						{box('country')}
+					</div>
+				</fieldset>
 
-			<div className="adm-actions">
-				<SaveButton
-					name="intent"
-					value={ORG_INTENT}
-					state={form.state}
-					label="Save details"
-					doneLabel="Saved"
+				<div className="adm-actions">
+					<SaveButton
+						name="intent"
+						value={ORG_INTENT}
+						state={form.state}
+						label="Save details"
+						doneLabel="Saved"
+					/>
+					{/* closed with the boxes, since a pick fills them; closed as the field's own presses are,
+				    so a reader standing on it keeps the focus. */}
+					<Button
+						ref={findPress}
+						type="button"
+						variant="quiet"
+						aria-disabled={busy || undefined}
+						onClick={() => {
+							if (!busy) setFinding(true);
+						}}
+					>
+						{picked ? 'Pick a different organisation' : 'Find your organisation'}
+					</Button>
+				</div>
+
+				{busy ? null : <OrgWriteOutcome write={write} drawn={IDENTITY_BOXES} />}
+			</Form>
+			{/* outside the form, so Enter in its box can never be the form's own submit. */}
+			{finding ? (
+				<FindOrgDialog
+					search={search}
+					onPick={pick}
+					onClose={() => setFinding(false)}
+					fallbackFocus={findPress}
 				/>
-			</div>
-
-			{busy ? null : <OrgWriteOutcome write={write} drawn={IDENTITY_BOXES} />}
-		</Form>
+			) : null}
+		</>
 	);
 }

@@ -2026,6 +2026,13 @@
 		grid-row: 5;
 	}
 
+	/* the same row drawn as a region with nothing in it yet (`status` in
+	   packages/operator/src/components/forms/Field.jsx): it is on the page so that its first words
+	   are a change a reader is told about, and it holds no room until it has some. */
+	.adm-field > .adm-field__needed:empty {
+		margin-block-start: 0;
+	}
+
 	.adm-field__label {
 		font-size: var(--admin-label-size);
 		font-weight: var(--admin-label-weight);
@@ -2578,7 +2585,8 @@
 	   `:hover` beside it. */
 	.adm-coinrow[data-highlighted],
 	.adm-selectrow[data-highlighted],
-	.adm-menurow[data-highlighted] {
+	.adm-menurow[data-highlighted],
+	.adm-findrow[data-highlighted] {
 		background: var(--admin-control-soft-bg);
 	}
 
@@ -2668,6 +2676,92 @@
 	.adm-coinempty {
 		padding: var(--admin-space-2) var(--admin-space-3);
 		font-size: var(--admin-caption-size);
+		color: var(--admin-ink-muted);
+	}
+
+	/* ---------- the organisation finder ---------------------------------------------
+
+	   the box an organisation is searched for by name or EIN, and the IRS list's matches under it
+	   (packages/console-ui/src/lib/find-org-dialog.tsx). the machine is ark's combobox, as the coin
+	   picker's is, but the list stands in the card's own flow rather than floating over what follows:
+	   the card is the box's whole context and the two ways out under the list stay in view.
+
+	   the label, the box and the region saying how the search went stand one field step apart, as
+	   the parts of a `.adm-field` do. */
+	.adm-findorg {
+		display: grid;
+		gap: var(--admin-space-3);
+	}
+
+	/* the region saying how the search went. it is there before it speaks, and while empty the gap
+	   above it is taken back, so it holds no room — `.adm-dialog__refusal:empty`'s arrangement. */
+	.adm-findorg__said:empty {
+		margin-block-start: calc(-1 * var(--admin-space-3));
+	}
+
+	/* the matches. ruled as a box of its own, the height of four and a half rows at the row's floor
+	   for `.adm-coinlist`'s reason — a longer list shows half of its fifth row — and no shadow: it
+	   is part of the card, not a layer over it. */
+	.adm-findlist {
+		display: grid;
+		align-content: start;
+		max-block-size: calc(
+			4.5 *
+			var(--admin-touch-min) +
+			2 *
+			(var(--admin-space-2) + var(--admin-border-width))
+		);
+		padding: var(--admin-space-2);
+		border: var(--admin-hairline);
+		border-radius: var(--admin-radius);
+		overflow-y: auto;
+	}
+
+	/* a match: who it is on the left, and the EIN in a column of its own at the right — the number
+	   is what an operator holds up against their own papers, so it stands where the eye finds it on
+	   every row. the row takes the floor and its lines stand centred in it. */
+	.adm-findrow {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+		column-gap: var(--admin-space-5);
+		min-block-size: var(--admin-touch-min);
+		padding: var(--admin-space-2) var(--admin-space-3);
+		border-radius: var(--admin-radius);
+		cursor: pointer;
+	}
+
+	/* the name, the city and state under it, and the one badge under those where one applies. */
+	.adm-findrow__who {
+		display: grid;
+		justify-items: start;
+		gap: var(--admin-space-1);
+		min-inline-size: 0;
+		overflow-wrap: anywhere;
+	}
+
+	.adm-findrow__name {
+		font-weight: var(--admin-label-weight);
+		color: var(--admin-ink);
+	}
+
+	.adm-findrow__place {
+		font-size: var(--admin-caption-size);
+		line-height: var(--admin-caption-lh);
+		color: var(--admin-ink-muted);
+	}
+
+	/* the number under its small label, both at the column's end. */
+	.adm-findrow__ein {
+		display: grid;
+		justify-items: end;
+		gap: var(--admin-space-1);
+	}
+
+	.adm-findrow__einlabel {
+		font-size: var(--admin-fineprint-size);
+		font-weight: var(--admin-label-weight);
+		letter-spacing: var(--admin-label-track);
 		color: var(--admin-ink-muted);
 	}
 

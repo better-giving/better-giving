@@ -407,3 +407,39 @@ describe('a field mounted into a document', () => {
 		expect(field.root.querySelector('input')).toBe(before);
 	});
 });
+
+describe('a field that reports what was found about its value', () => {
+	it('stands its status region under the box before it has anything to say', () => {
+		// a region that arrives holding its words is an insertion rather than a change, and a reader
+		// may be told nothing — so it is there, empty, before the lookup answers.
+		const root = render(Field, { id: 'org-tax_id', label: 'EIN', status: '' });
+		const region = root.querySelector('[role="status"]');
+
+		expect(region?.textContent).toBe('');
+		expect(describedBy(root)).toEqual([]);
+	});
+
+	it('says the fact in that same region and points the box at it', () => {
+		const root = render(Field, {
+			id: 'org-tax_id',
+			label: 'EIN',
+			status: 'Not on the IRS list.'
+		});
+
+		expect(root.querySelector('[role="status"]')?.textContent).toBe('Not on the IRS list.');
+		expect(describedBy(root)).toEqual(['org-tax_id-status']);
+	});
+
+	it('draws no region where the caller has nothing to report', () => {
+		const root = render(Field, { id: 'org-legal_name', label: 'Registered name' });
+
+		expect(root.querySelector('[role="status"]')).toBeNull();
+	});
+
+	it('leaves the box unmarked, since a fact about the value is not a refusal of it', () => {
+		const root = render(Field, { id: 'org-tax_id', label: 'EIN', status: 'Not on the IRS list.' });
+
+		expect(root.querySelector('input')?.getAttribute('aria-invalid')).toBeNull();
+		expect(boxClasses(root)).not.toContain('adm-input--needed');
+	});
+});

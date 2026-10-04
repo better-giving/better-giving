@@ -212,6 +212,8 @@ type IntentProps = {
 export type ListControls = {
 	/** the press that puts an empty row at the end. */
 	readonly add: IntentProps;
+	/** the press that puts a row holding `value` at the end — a value offered rather than typed. */
+	readonly addHolding: (value: string) => IntentProps;
 	/** the press that drops the row at one position. */
 	readonly remove: (index: number) => IntentProps;
 };
@@ -386,6 +388,9 @@ export function useConsoleForm<S extends z.ZodObject>(
 		},
 		list: (name) => ({
 			add: conform.insert.getButtonProps({ name }),
+			/* the schema is a type parameter here, so the row type conform derives from it is
+			   unresolved; every list on this console is a list of strings (./sites.ts). */
+			addHolding: (value) => conform.insert.getButtonProps({ name, defaultValue: value as never }),
 			remove: (index) => conform.remove.getButtonProps({ name, index })
 		}),
 		press,
