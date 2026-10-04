@@ -5,11 +5,13 @@ import {
 	chariotRun,
 	consoleVersion,
 	levelWallets,
+	lookUpNonprofit,
 	pressQuickbooks,
 	readAiModel,
 	readQuickbooks,
 	repairWebhook,
 	saveNowpayments,
+	searchNonprofits,
 	startChariotSetup,
 	readPayments,
 	startStripeSetup
@@ -160,6 +162,70 @@ describe('the press that stores nowpayments from the three boxes', () => {
 		answering(400, { error: 'the api key slot holds nothing, or a value with space around it' });
 
 		await expect(saveNowpayments(press)).rejects.toThrow('api key slot');
+	});
+});
+
+describe('finding the organisation in the IRS nonprofit API', () => {
+	it('asks the binary for a search with the query encoded, and answers its matches', async () => {
+		const matches = {
+			state: 'ok',
+			matches: [
+				{
+					ein: '530196605',
+					name: 'American National Red Cross',
+					city: 'Washington',
+					state: 'DC',
+					deductible: true,
+					revokedOn: ''
+				}
+			]
+		};
+		const calls = recording(matches);
+
+		await expect(searchNonprofits('red cross & co')).resolves.toEqual(matches);
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/search?q=red%20cross%20%26%20co');
+		expect(calls[0]?.[1]?.method).toBe('GET');
+	});
+
+	it('answers a search the API could not make as a value', async () => {
+		answering(200, { state: 'unavailable', matches: [] });
+
+		await expect(searchNonprofits('red cross')).resolves.toEqual({
+			state: 'unavailable',
+			matches: []
+		});
+	});
+
+	it('throws a search the binary refused, which the box never sends', async () => {
+		answering(400, { error: 'the search box needs 3 to 200 characters, and "ab" is 2' });
+
+		await expect(searchNonprofits('ab')).rejects.toThrow(ConsoleRefused);
+	});
+
+	it('asks the binary for one EIN, encoded into the path, and answers the organisation', async () => {
+		const organisation = {
+			ein: '530196605',
+			name: 'American National Red Cross',
+			address_line1: '431 18th St NW',
+			city: 'Washington',
+			region: 'DC',
+			postal_code: '20006-5310',
+			deductible: true,
+			revokedOn: '',
+			website: 'https://www.redcross.org'
+		};
+		const calls = recording({ state: 'found', organisation });
+
+		await expect(lookUpNonprofit('53-0196605')).resolves.toEqual({ state: 'found', organisation });
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/53-0196605');
+	});
+
+	it('encodes what the box held, so a slash cannot reach another route', async () => {
+		const calls = recording({ state: 'not_found', organisation: {} });
+
+		await lookUpNonprofit('53/search');
+
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/53%2Fsearch');
 	});
 });
 

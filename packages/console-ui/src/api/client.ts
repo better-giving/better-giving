@@ -6,6 +6,8 @@ import type {
 	HomeReading,
 	HomeShape,
 	ModelChoice,
+	NonprofitLookup,
+	NonprofitSearch,
 	NowpaymentsListing,
 	NowpaymentsPress,
 	NowpaymentsSaved,
@@ -547,3 +549,24 @@ function named(body: unknown, name: string): string {
  */
 export const levelWidget = (sites: readonly string[]): Promise<WidgetLevel> =>
 	post('/widget/level', { sites: [...sites] });
+
+/**
+ * the organisations the IRS nonprofit API lists for what the find box holds: a name, or an EIN, which
+ * is answered as the one organisation it names.
+ *
+ * **every search is one request the API is charged for**, the first time it is made in a run — the
+ * binary remembers the rest (`packages/console/internal/nonprofits`). so the box asks once its query
+ * has settled and holds at least three characters, which the binary refuses under and this throws.
+ * `signal` is the box's own, so a query typed past is not waited on.
+ */
+export const searchNonprofits = (query: string, signal?: AbortSignal): Promise<NonprofitSearch> =>
+	ask(`/nonprofits/search?q=${encodeURIComponent(query)}`, 'GET', signal);
+
+/**
+ * one organisation by EIN, `12-3456789` or `123456789`, as the IRS nonprofit API holds it.
+ *
+ * anything else is refused by the binary and thrown here, so the box asks only once it holds a whole
+ * EIN, and once per EIN that changed.
+ */
+export const lookUpNonprofit = (ein: string, signal?: AbortSignal): Promise<NonprofitLookup> =>
+	ask(`/nonprofits/${encodeURIComponent(ein)}`, 'GET', signal);

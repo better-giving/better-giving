@@ -25,6 +25,7 @@ import (
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/chariot"
 	"github.com/better-giving/console/internal/deployment"
+	"github.com/better-giving/console/internal/nonprofits"
 	"github.com/better-giving/console/internal/nowpayments"
 	"github.com/better-giving/console/internal/oauth"
 	"github.com/better-giving/console/internal/paypal"
@@ -80,6 +81,9 @@ type Options struct {
 	// Presses is where the long presses register the reading a stop makes of them. Nil is a server
 	// nothing is waiting on, which is every case that starts one without a terminal to stop it.
 	Presses *Presses
+	// Nonprofits is where an organisation is found in the IRS nonprofit API, remembered for the life
+	// of this server. Nil is the API at the address every console is built with.
+	Nonprofits *nonprofits.Client
 	// Close asks the run around this server to end, which the close press calls and may call more
 	// than once — guarding a second press is the run's own (../../cmd/better-giving/main.go). Nil
 	// is a server with no run to stop, which is every case that starts one; the press still
@@ -131,6 +135,10 @@ func New(options Options) http.Handler {
 	if sends == nil {
 		sends = cf.APISend
 	}
+	lookups := options.Nonprofits
+	if lookups == nil {
+		lookups = nonprofits.New()
+	}
 	presses := options.Presses
 	if presses == nil {
 		presses = &Presses{}
@@ -153,6 +161,7 @@ func New(options Options) http.Handler {
 	chariotRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, bindChariot,
 		presses)
 	nowpaymentsRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, bindNowpayments)
+	nonprofitRoutes(routes, lookups)
 	closeRoutes(routes, options.Close)
 	routes.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
 		// a placeholder while the folds are still the react app's own: what it says is true, and

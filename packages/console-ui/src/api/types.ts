@@ -1340,3 +1340,59 @@ export type ConsoleVersion = {
 	version: string;
 	commit: string;
 };
+
+/**
+ * one organisation a search of the IRS nonprofit API listed
+ * (`packages/console/internal/nonprofits`).
+ *
+ * `ein` is the nine digits with no dash. `state` is the US state the IRS lists it in, and `revokedOn`
+ * is the `YYYY-MM-DD` its tax-exempt status was revoked on, `''` where it is not revoked or was
+ * reinstated since.
+ */
+export type NonprofitMatch = {
+	ein: string;
+	name: string;
+	city: string;
+	state: string;
+	deductible: boolean;
+	revokedOn: string;
+};
+
+/**
+ * how one search went. `unavailable` is the API not answering, or a console built with no address
+ * for it, and `matches` is empty on it — never a refusal, so set-up goes on by hand. at most ten
+ * matches, in the API's order.
+ */
+export type NonprofitSearch = {
+	state: 'ok' | 'unavailable';
+	matches: NonprofitMatch[];
+};
+
+/**
+ * one organisation as the IRS nonprofit API holds it, under the names the Legal details fold gives
+ * the boxes it fills (`ORG_FIELDS` in ../lib/org-fields.ts) where it fills one.
+ *
+ * `ein` is the nine digits with no dash, which is not the spelling `tax_id` is stored in — the fold
+ * spells it. `deductible` is the IRS listing gifts to it as tax-deductible; `revokedOn` and
+ * `website` are `''` where there is none.
+ */
+export type NonprofitOrganisation = {
+	ein: string;
+	name: string;
+	address_line1: string;
+	city: string;
+	region: string;
+	postal_code: string;
+	deductible: boolean;
+	revokedOn: string;
+	website: string;
+};
+
+/**
+ * how one lookup by EIN went. `organisation` is written in every state and every field of it is
+ * empty unless `found`; `unavailable` is never a refusal, for the reason a search's is not.
+ */
+export type NonprofitLookup = {
+	state: 'found' | 'not_found' | 'unavailable';
+	organisation: NonprofitOrganisation;
+};
