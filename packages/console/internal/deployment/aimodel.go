@@ -31,8 +31,8 @@ const AIModelName = "AI_MODEL"
 type CreditsKind string
 
 const (
-	// CreditsNotAsked is a choice that spends no credits this console knows of — the default model, no
-	// choice at all, an id off the list, a value held as a secret — or a values read that did not
+	// CreditsNotAsked is a choice that spends no credits this console knows of — a model not credit-billed,
+	// no choice at all, an id off the list, a value held as a secret — or a values read that did not
 	// land.
 	CreditsNotAsked CreditsKind = "not-asked"
 	// CreditsHeld is a balance above zero.

@@ -14,26 +14,48 @@ function answering(...replies: unknown[]) {
 	return { run };
 }
 
+/** a chat-completions reply, the shape gpt-oss and GPT answer in. */
+function completion(content: string | null, finish_reason = 'stop') {
+	return { choices: [{ message: { role: 'assistant', content }, finish_reason }] };
+}
+
+const GPT_OSS = '@cf/openai/gpt-oss-120b';
+const LLAMA = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
 const REQUEST = {
 	system: 'You write donation pages.',
 	messages: [{ role: 'user', content: 'A page for the food bank.' }]
 } as const;
 
 describe('the model a deployment answers with', () => {
-	it('is the default Workers AI model when nothing is chosen, called through the default gateway', async () => {
-		const AI = answering({ response: 'A page.' });
+	it('is gpt-oss-120b on Workers AI when nothing is chosen, called through the default gateway', async () => {
+		const AI = answering(completion('A page.'));
 
 		const result = await generate({ AI }, REQUEST);
 
-		expect(result).toEqual({
-			ok: true,
-			text: 'A page.',
-			model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-			fellBack: false
-		});
+		expect(result).toEqual({ ok: true, text: 'A page.', model: GPT_OSS, fellBack: false });
 		expect(AI.run).toHaveBeenCalledOnce();
 		const [model, input, options] = AI.run.mock.calls[0] ?? [];
-		expect(model).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+		expect(model).toBe(GPT_OSS);
+		expect(input).toEqual({
+			messages: [
+				{ role: 'system', content: 'You write donation pages.' },
+				{ role: 'user', content: 'A page for the food bank.' }
+			],
+			max_tokens: 8192,
+			reasoning_effort: 'low'
+		});
+		expect(options).toEqual({ gateway: { id: 'default' } });
+	});
+
+	it('is Llama 3.3 on Workers AI when the console chose it', async () => {
+		const AI = answering({ response: 'A page.' });
+
+		const result = await generate({ AI, AI_MODEL: LLAMA }, REQUEST);
+
+		expect(result).toEqual({ ok: true, text: 'A page.', model: LLAMA, fellBack: false });
+		const [model, input, options] = AI.run.mock.calls[0] ?? [];
+		expect(model).toBe(LLAMA);
 		expect(input.messages).toEqual([
 			{ role: 'system', content: 'You write donation pages.' },
 			{ role: 'user', content: 'A page for the food bank.' }
@@ -108,8 +130,8 @@ describe('the model a deployment answers with', () => {
 	});
 
 	it('is called on the binding of the env each call is handed, and no other', async () => {
-		const first = answering({ response: 'first' });
-		const second = answering({ response: 'second' });
+		const first = answering(completion('first'));
+		const second = answering(completion('second'));
 
 		expect(await generate({ AI: first }, REQUEST)).toMatchObject({ text: 'first' });
 		expect(await generate({ AI: second }, REQUEST)).toMatchObject({ text: 'second' });
@@ -152,14 +174,60 @@ describe('a request for JSON', () => {
 		required: ['headline']
 	};
 
-	it('asks the default model in JSON mode, and hands back the object it answers as text', async () => {
-		const AI = answering({ response: { headline: 'Feed a family' } });
+	it('asks the default model in JSON mode, under the name chat completions give it', async () => {
+		const AI = answering(completion('{"headline":"Feed a family"}'));
 
 		const result = await generate({ AI }, { ...REQUEST, jsonSchema: SCHEMA });
 
 		expect(result).toMatchObject({ ok: true, text: '{"headline":"Feed a family"}' });
 		const [, input] = AI.run.mock.calls[0] ?? [];
+		expect(input.response_format).toEqual({
+			type: 'json_schema',
+			json_schema: { name: 'reply', schema: SCHEMA }
+		});
+	});
+
+	it('asks Llama in JSON mode, and hands back the object it answers as text', async () => {
+		const AI = answering({ response: { headline: 'Feed a family' } });
+
+		const result = await generate({ AI, AI_MODEL: LLAMA }, { ...REQUEST, jsonSchema: SCHEMA });
+
+		expect(result).toMatchObject({ ok: true, text: '{"headline":"Feed a family"}' });
+		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.response_format).toEqual({ type: 'json_schema', json_schema: SCHEMA });
+	});
+
+	describe('sends a schema without `propertyNames`, which Workers AI JSON mode refuses with a 400', () => {
+		const record = { type: 'object', propertyNames: { type: 'string' }, additionalProperties: {} };
+		const withRecords = {
+			type: 'object',
+			properties: { doc: record, list: { type: 'array', items: { anyOf: [record] } } },
+			$defs: { value: record }
+		};
+		const kept = { type: 'object', additionalProperties: {} };
+		const stripped = {
+			type: 'object',
+			properties: { doc: kept, list: { type: 'array', items: { anyOf: [kept] } } },
+			$defs: { value: kept }
+		};
+
+		it('to the default model', async () => {
+			const AI = answering(completion('{}'));
+
+			await generate({ AI }, { ...REQUEST, jsonSchema: withRecords });
+
+			const [, input] = AI.run.mock.calls[0] ?? [];
+			expect(input.response_format.json_schema.schema).toEqual(stripped);
+		});
+
+		it('to Llama', async () => {
+			const AI = answering({ response: {} });
+
+			await generate({ AI, AI_MODEL: LLAMA }, { ...REQUEST, jsonSchema: withRecords });
+
+			const [, input] = AI.run.mock.calls[0] ?? [];
+			expect(input.response_format.json_schema).toEqual(stripped);
+		});
 	});
 
 	it('asks GPT in its own JSON mode', async () => {
@@ -194,19 +262,14 @@ describe('a request for JSON', () => {
 
 describe('a chosen model that fails', () => {
 	it('is answered by the default model, marked as a fallback, when the chosen one is credit-billed', async () => {
-		const AI = answering(new Error('AiError: 402 insufficient credits'), { response: 'A page.' });
+		const AI = answering(new Error('AiError: 402 insufficient credits'), completion('A page.'));
 
 		const result = await generate({ AI, AI_MODEL: 'anthropic/claude-sonnet-4.6' }, REQUEST);
 
-		expect(result).toEqual({
-			ok: true,
-			text: 'A page.',
-			model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-			fellBack: true
-		});
+		expect(result).toEqual({ ok: true, text: 'A page.', model: GPT_OSS, fellBack: true });
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		const [model, input, options] = AI.run.mock.calls[1] ?? [];
-		expect(model).toBe('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+		expect(model).toBe(GPT_OSS);
 		// the same request, in the default model's own shape.
 		expect(input.messages).toEqual([
 			{ role: 'system', content: 'You write donation pages.' },
@@ -220,11 +283,7 @@ describe('a chosen model that fails', () => {
 
 		const result = await generate({ AI }, REQUEST);
 
-		expect(result).toMatchObject({
-			ok: false,
-			reason: 'unavailable',
-			model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-		});
+		expect(result).toMatchObject({ ok: false, reason: 'unavailable', model: GPT_OSS });
 		expect(AI.run).toHaveBeenCalledOnce();
 	});
 
@@ -238,17 +297,23 @@ describe('a chosen model that fails', () => {
 	});
 
 	it.each([
-		['no reply field', {}],
-		['an empty reply', { response: '' }],
-		['a reply that is not text', { response: 42 }]
-	])('counts %s as no answer', async (_, reply) => {
+		['no reply field', undefined, {}],
+		['no choice', undefined, { choices: [] }],
+		['a choice with no content, its reasoning having spent the reply', undefined, completion(null)],
+		['no reply field', LLAMA, {}],
+		['an empty reply', LLAMA, { response: '' }],
+		['a reply that is not text', LLAMA, { response: 42 }]
+	])('counts %s as no answer from %s', async (_, model, reply) => {
 		const AI = answering(reply);
 
-		expect(await generate({ AI }, REQUEST)).toMatchObject({ ok: false, reason: 'unavailable' });
+		expect(await generate({ AI, AI_MODEL: model }, REQUEST)).toMatchObject({
+			ok: false,
+			reason: 'unavailable'
+		});
 	});
 
 	it('counts a credit-billed reply with no text as a failure, and falls back', async () => {
-		const AI = answering({ choices: [] }, { response: 'A page.' });
+		const AI = answering({ choices: [] }, completion('A page.'));
 
 		const result = await generate({ AI, AI_MODEL: 'openai/gpt-5-mini' }, REQUEST);
 
@@ -267,9 +332,18 @@ describe('a chosen model that fails', () => {
 		}
 
 		it('is no answer from the default model', async () => {
-			const AI = spendingTheCeiling();
+			const AI = answering(completion('{"headline":"Feed a', 'length'));
 
 			expect(await generate({ AI }, REQUEST)).toMatchObject({ ok: false, reason: 'unavailable' });
+		});
+
+		it('is no answer from Llama', async () => {
+			const AI = spendingTheCeiling();
+
+			expect(await generate({ AI, AI_MODEL: LLAMA }, REQUEST)).toMatchObject({
+				ok: false,
+				reason: 'unavailable'
+			});
 		});
 
 		it.each([
@@ -282,7 +356,7 @@ describe('a chosen model that fails', () => {
 				{ choices: [{ message: { content: '{"headline":"Feed a' }, finish_reason: 'length' }] }
 			]
 		])('is no answer from %s, which falls back', async (model, cut) => {
-			const AI = answering(cut, { response: 'A page.' });
+			const AI = answering(cut, completion('A page.'));
 
 			const result = await generate({ AI, AI_MODEL: model }, REQUEST);
 
@@ -292,11 +366,12 @@ describe('a chosen model that fails', () => {
 		it('is an answer when the model stopped on its own', async () => {
 			const AI = answering(
 				{ content: [{ type: 'text', text: 'A page.' }], stop_reason: 'end_turn' },
-				{ choices: [{ message: { content: 'A page.' }, finish_reason: 'stop' }] },
-				{ response: 'A page.', usage: { completion_tokens: 3 } }
+				completion('A page.'),
+				{ response: 'A page.', usage: { completion_tokens: 3 } },
+				completion('A page.')
 			);
 
-			for (const model of ['anthropic/claude-sonnet-4.6', 'openai/gpt-5-mini', undefined]) {
+			for (const model of ['anthropic/claude-sonnet-4.6', 'openai/gpt-5-mini', LLAMA, undefined]) {
 				expect(await generate({ AI, AI_MODEL: model }, REQUEST)).toMatchObject({
 					ok: true,
 					fellBack: false

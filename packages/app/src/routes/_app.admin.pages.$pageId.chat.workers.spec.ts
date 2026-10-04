@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { page } from '$lib/server/db/schema';
-import { answering, insertPage } from '$lib/server/pages/page-row.testing';
+import { answering, defaultModelReply, insertPage } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -92,7 +92,7 @@ describe('a turn that cannot land', () => {
 				.update(page)
 				.set({ draft: JSON.stringify(edited) })
 				.where(eq(page.id, pageId));
-			return { response: JSON.stringify(TWO_TONE) };
+			return defaultModelReply(JSON.stringify(TWO_TONE));
 		});
 
 		const response = await post(pageId, TURN, { run });
@@ -287,7 +287,7 @@ describe('answers, posted as intent answers', () => {
 				.update(page)
 				.set({ draft: JSON.stringify(edited) })
 				.where(eq(page.id, pageId));
-			return { response: JSON.stringify(TWO_TONE) };
+			return defaultModelReply(JSON.stringify(TWO_TONE));
 		});
 
 		const response = await post(

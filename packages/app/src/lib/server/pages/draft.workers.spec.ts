@@ -14,7 +14,7 @@ import { readOrgStory, updateOrgStory } from '../org/queries';
 import { draftIllustrations, editorDraft } from './blocks';
 import { readCampaigns } from './campaign';
 import { answerTurn, draftTurn, openTurn, readChat } from './draft';
-import { answering, insertPage, SETTINGS } from './page-row.testing';
+import { answering, defaultModelReply, insertPage, SETTINGS } from './page-row.testing';
 
 // a workers spec because every turn reads a page and its chat and writes them back. the model is
 // one stand-in: a binding whose `run` answers with the text given, as ../ai/generate.spec.ts
@@ -101,7 +101,7 @@ describe('an accepted reply', () => {
 			{
 				author: 'assistant',
 				text: 'Two-tone now.',
-				model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+				model: DEFAULT_MODEL,
 				note: null,
 				questions: null,
 				answers: null
@@ -198,6 +198,65 @@ describe('a campaign’s goal and end date', () => {
 	});
 });
 
+describe('a value the deployment does not hold', () => {
+	it.each([
+		['a program "none"', { programId: 'none' }, 'set.programId: "none" is not an active program'],
+		[
+			'a sixteen-digit suggested amount',
+			{ suggestedAmounts: [2500, 1_234_567_890_123_456] },
+			'set.suggestedAmounts: $12,345,678,901,234.56 must be less than largest gift of $1,000'
+		],
+		[
+			'a sixteen-digit goal',
+			{ goalMinor: 1_234_567_890_123_456 },
+			'set.goalMinor: $12,345,678,901,234.56 must be less than largest goal of $9,999,999,999,999.99'
+		],
+		[
+			'a goal the operator never stated',
+			{ goalMinor: 500_000_000 },
+			'set.goalMinor: $5,000,000 is not a figure the operator wrote in the chat'
+		]
+	])('is refused for %s, and the draft stays as it was', async (_, set, reason) => {
+		const before = { ...defaultCampaign(), settings: SETTINGS };
+		const pageId = await insertPage(db, 'campaign', before);
+
+		await turn(pageId, 'tidy the heading', answering({ say: 'Done.', set }));
+
+		expect((await stored(pageId)).draft).toEqual(before);
+		const [, answer] = await chat(pageId);
+		expect(answer).toMatchObject({
+			text: expect.stringContaining(reason),
+			note: 'refused'
+		});
+	});
+});
+
+describe('a page’s share buttons', () => {
+	it('change on "only Copy link and WhatsApp, Copy link first", and the reply names them', async () => {
+		const pageId = await insertPage(db, 'campaign');
+
+		await turn(
+			pageId,
+			'only Copy link and WhatsApp, Copy link first',
+			answering({ say: 'Done.', set: { shareChannels: ['copy-link', 'whatsapp'] } })
+		);
+
+		expect((await stored(pageId)).draft.shareChannels).toEqual(['copy-link', 'whatsapp']);
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe('Done.\nShare buttons: Copy link, WhatsApp.');
+	});
+
+	it('come off on "no share buttons", and the reply says so', async () => {
+		const pageId = await insertPage(db, 'campaign');
+
+		await turn(pageId, 'no share buttons', answering({ say: 'Done.', set: { shareChannels: [] } }));
+
+		expect((await stored(pageId)).draft.shareChannels).toEqual([]);
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe('Done.\nShare buttons taken off.');
+	});
+});
+
 describe('a campaign’s name', () => {
 	it('changes on "call it Coats for Kids", and the reply names it', async () => {
 		const pageId = await insertPage(db, 'campaign');
@@ -274,7 +333,7 @@ describe('a credit-billed model that fails', () => {
 			{
 				author: 'assistant',
 				text: 'Two-tone now.',
-				model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+				model: DEFAULT_MODEL,
 				note: 'fell-back'
 			}
 		]);
@@ -349,6 +408,23 @@ describe('what the model is told', () => {
 		);
 		expect(system.content).toContain(
 			'- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.'
+		);
+	});
+
+	it('states the share buttons the page draws, in order, and every one it may offer', async () => {
+		const pageId = await insertPage(db, 'campaign', {
+			...handEdited(),
+			shareChannels: ['x', 'copy-link']
+		});
+		const AI = answering({ say: 'Warmer.' });
+
+		await turn(pageId, 'warmer colours', AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		const [system] = input.messages;
+		expect(system.content).toContain('- share buttons, in order: X, Copy link\n');
+		expect(system.content).toContain(
+			'- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of facebook (Facebook), whatsapp (WhatsApp), email (Email), copy-link (Copy link), linkedin (LinkedIn) or x (X); [] takes them all off.'
 		);
 	});
 
@@ -462,10 +538,12 @@ describe('what the model is told', () => {
 			- where no photo attached in the chat or already on the page fits a hero or image block, its imageId may be {"illustrate": "a short description of the picture wanted"} and an illustration is drawn from it; a photo that fits always wins, and a reply asks for at most 2
 
 			REPLY:
-			Answer with one JSON object and nothing else: {"say": ..., "page": ..., "set": ...} to change the page, or {"say": ..., "ask": [...]} to ask the operator first.
+			Answer with one JSON object and nothing else: {"page": ..., "say": ..., "set": ...} to change the page, or {"ask": [...], "say": ...} to ask the operator first, its keys in that order.
 			- say: one or two sentences to the operator saying what you changed, naming each value you set; when you ask, one sentence leading into the questions.
-			- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations, e.g. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...}]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.
-			- set: only what the operator asked for, of {"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...]}. Amounts are in minor units ($15,000 is 1500000); suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs.
+			- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.
+			- a patch path starts at /layout, /palette or /blocks; set is not part of the page, so no path starts at /set: a setting goes in set alone, and a reply that changes only settings has {"kind": "patch", "ops": []} as its page. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...} changes one value; {"op": "add", "path": "/blocks/-", "value": {a whole block}} adds a block after the last; {"op": "add", "path": "/blocks/2", "value": {a whole block}} adds one before the third.
+			- set: only what the operator asked for, of {"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...], "shareChannels": [...]}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.
+			- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of facebook (Facebook), whatsapp (WhatsApp), email (Email), copy-link (Copy link), linkedin (LinkedIn) or x (X); [] takes them all off.
 			- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.
 			- write an amount in the words only from a figure the operator stated in the chat or one the page already shows.
 			- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.
@@ -484,6 +562,7 @@ describe('what the model is told', () => {
 			- end date: none
 			- donation settings: minimum $5, maximum $1,000, suggested amounts $25, $50, program none
 			- donation box: Open on monthly off, Dedication on by default off
+			- share buttons, in order: Facebook, Email, Copy link
 			- active programs: none
 
 			THE PAGE AS IT STANDS, hand edits included:
@@ -512,7 +591,7 @@ describe('what the model is told', () => {
 		const pageId = await insertPage(db, 'campaign');
 		await turn(
 			pageId,
-			'Winter coat drive',
+			'Winter coat drive, goal $15,000',
 			answering({ say: 'Drafted.', set: { goalMinor: 1_500_000 } })
 		);
 		await turn(
@@ -528,7 +607,7 @@ describe('what the model is told', () => {
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		const [, ...chatSoFar] = input.messages;
 		expect(chatSoFar).toEqual([
-			{ role: 'user', content: 'Winter coat drive' },
+			{ role: 'user', content: 'Winter coat drive, goal $15,000' },
 			{ role: 'assistant', content: 'Drafted.' },
 			{ role: 'user', content: 'warmer colours' }
 		]);
@@ -621,7 +700,7 @@ describe('a turn no model answers', () => {
 			text: expect.stringMatching(
 				/^No model answered, so nothing changed\. This deployment was uploaded without the Workers AI binding `AI`/
 			),
-			model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+			model: DEFAULT_MODEL,
 			note: 'unanswered'
 		});
 		const [, drawn] = (await readChat(db, pageId)) ?? [];
@@ -638,12 +717,9 @@ describe('a hand edit saved while the model was answering', () => {
 				.update(page)
 				.set({ draft: JSON.stringify(edited) })
 				.where(eq(page.id, pageId));
-			return {
-				response: JSON.stringify({
-					say: 'Two-tone.',
-					page: { kind: 'merge', doc: { palette: 'duo' } }
-				})
-			};
+			return defaultModelReply(
+				JSON.stringify({ say: 'Two-tone.', page: { kind: 'merge', doc: { palette: 'duo' } } })
+			);
 		});
 
 		expect(await turn(pageId, 'two-tone', { run })).toEqual({ ok: false, reason: 'stale' });
@@ -1351,7 +1427,7 @@ describe('a figure in a question the model asked', () => {
 	});
 });
 
-const DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+const DEFAULT_MODEL = '@cf/openai/gpt-oss-120b';
 const MISSION = { id: 'mission', kind: 'text', prompt: 'Your mission, in a sentence' };
 const OWN = [
 	{ id: 'who', kind: 'choice', prompt: 'Who does it help?', options: ['Kids', 'Families'] },
@@ -1717,12 +1793,9 @@ describe('the mission answered', () => {
 					draft: JSON.stringify({ ...defaultCampaign(), settings: SETTINGS, palette: 'bold' })
 				})
 				.where(eq(page.id, pageId));
-			return {
-				response: JSON.stringify({
-					say: 'Two-tone.',
-					page: { kind: 'merge', doc: { palette: 'duo' } }
-				})
-			};
+			return defaultModelReply(
+				JSON.stringify({ say: 'Two-tone.', page: { kind: 'merge', doc: { palette: 'duo' } } })
+			);
 		});
 
 		expect(await answer(pageId, [{ id: 'mission', value: 'Warm coats.' }], { run })).toEqual({

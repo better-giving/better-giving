@@ -206,6 +206,7 @@ var DeployVars = []string{
 // console would store for a deployment to refuse. the first entry is the default model an unset
 // `AI_MODEL` means.
 var AIModels = []AIModel{
+	{ID: "@cf/openai/gpt-oss-120b", CreditBilled: false},
 	{ID: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", CreditBilled: false},
 	{ID: "anthropic/claude-sonnet-4.6", CreditBilled: true},
 	{ID: "openai/gpt-5-mini", CreditBilled: true},
@@ -216,7 +217,7 @@ type AIModel struct {
 	// ID is what `AI_MODEL` holds.
 	ID string
 	// CreditBilled is whether the model is paid for out of the account's Cloudflare credits, which
-	// the default model is not.
+	// a Workers AI model, the default among them, is not.
 	CreditBilled bool
 }
 

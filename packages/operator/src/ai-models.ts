@@ -9,8 +9,8 @@
 //
 // every model is called through the Workers AI binding and AI Gateway's `default` gateway, the
 // one gateway that creates itself on first use. the first entry is the default, on Workers AI:
-// what an unset `AI_MODEL` means. the others are billed to the account's Cloudflare credits through
-// AI Gateway's unified billing, so no provider key is stored anywhere
+// what an unset `AI_MODEL` means. the ones not on Workers AI are billed to the account's Cloudflare
+// credits through AI Gateway's unified billing, so no provider key is stored anywhere
 // (https://developers.cloudflare.com/ai-gateway/features/unified-billing/). what a failed call to
 // one of them is answered with, and why, is `generate`'s header.
 //
@@ -20,11 +20,13 @@
 /**
  * how a model is asked and how it answers, one per provider's native shape.
  *
- * `workers-ai` takes `messages` and answers `{ response }`; `openai-chat` is chat completions,
- * answering `choices[0].message.content`; `anthropic-messages` is the Messages API, with the system
- * prompt beside the messages rather than among them, answering `content[].text`.
+ * `workers-ai` takes `messages` and answers `{ response }`; `workers-ai-chat` is a model Workers AI
+ * hosts that takes `messages` with a reasoning effort and answers in chat completions' shape;
+ * `openai-chat` is chat completions, answering `choices[0].message.content`; `anthropic-messages` is
+ * the Messages API, with the system prompt beside the messages rather than among them, answering
+ * `content[].text`.
  */
-export type RequestFormat = 'workers-ai' | 'openai-chat' | 'anthropic-messages';
+export type RequestFormat = 'workers-ai' | 'workers-ai-chat' | 'openai-chat' | 'anthropic-messages';
 
 export interface AiModel {
 	/** the id `env.AI.run` takes, and the value `AI_MODEL` holds. */
@@ -37,6 +39,12 @@ export interface AiModel {
 }
 
 export const AI_MODELS = [
+	{
+		id: '@cf/openai/gpt-oss-120b',
+		label: 'GPT-OSS 120B on Workers AI',
+		format: 'workers-ai-chat',
+		creditBilled: false
+	},
 	{
 		id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
 		label: 'Llama 3.3 70B on Workers AI',

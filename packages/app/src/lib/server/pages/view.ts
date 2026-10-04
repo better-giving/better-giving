@@ -159,7 +159,7 @@ export async function loadPageView(
 			programPhotos: chooserPhotos(config, photos),
 			look: page.look ?? orgLook.look,
 			sharing: {
-				channels: sharing.channels ?? SHARE_CHANNELS_DEFAULT,
+				channels: page.shareChannels ?? SHARE_CHANNELS_DEFAULT,
 				message:
 					page.shareMessage ??
 					sharing.message ??

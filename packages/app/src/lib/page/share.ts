@@ -1,6 +1,7 @@
 // the share channels a donor page can offer, what each is called on a button, and where each sends
-// a donor. the organisation's Sharing picks some of these and orders them; the page's share block
-// draws them in that order ($lib/donate/blocks/share.tsx).
+// a donor. each page picks some of these and orders them (`shareChannels` in ./catalog.ts, set
+// through its editor's chat); the page's share block draws them in that order
+// ($lib/donate/blocks/share.tsx).
 //
 // pure and not under `$lib/server/**`, for the reason ./keys.ts gives: the rule that refuses an
 // off-list channel and the block that draws one read the same list.
@@ -15,7 +16,7 @@ export const SHARE_CHANNELS = [
 ] as const;
 export type ShareChannel = (typeof SHARE_CHANNELS)[number];
 
-/** the channels a page offers where the organisation has chosen none. */
+/** the channels a page offers where the page has chosen none. */
 export const SHARE_CHANNELS_DEFAULT: readonly ShareChannel[] = ['facebook', 'email', 'copy-link'];
 
 /** the most social links the organisation's Sharing holds. */

@@ -341,6 +341,36 @@ describe('program photos on the /donate chooser', () => {
 	});
 });
 
+describe('the share buttons /donate draws', () => {
+	/** the published Donation page with its share channels set to `channels`. */
+	async function publishChannels(channels: readonly string[]): Promise<void> {
+		await visit();
+		const row = await env.DB.prepare(
+			`select published from page where type = 'donation_page'`
+		).first<{ published: string | null }>();
+		if (!row?.published) throw new Error('the Donation page was not published');
+		await env.DB.prepare(`update page set published = ? where type = 'donation_page'`)
+			.bind(JSON.stringify({ ...JSON.parse(row.published), shareChannels: channels }))
+			.run();
+	}
+
+	async function channelsDrawn() {
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		return answered.data.view.sharing.channels;
+	}
+
+	it('draws the page’s own channels, in its order', async () => {
+		await publishChannels(['copy-link', 'facebook']);
+		expect(await channelsDrawn()).toEqual(['copy-link', 'facebook']);
+	});
+
+	it('draws none where the page chose none', async () => {
+		await publishChannels([]);
+		expect(await channelsDrawn()).toEqual([]);
+	});
+});
+
 describe('the organisation’s sharing on /donate', () => {
 	async function share(sharing: unknown): Promise<void> {
 		await env.DB.prepare(
@@ -350,22 +380,29 @@ describe('the organisation’s sharing on /donate', () => {
 			.run();
 	}
 
-	it('offers its channels in its order, with its message, and lists its social links', async () => {
+	it('says its message and lists its social links', async () => {
 		await share({
-			channels: ['whatsapp', 'x', 'copy-link'],
 			message: 'Every meal counts this winter.',
 			links: [{ label: 'Instagram', href: 'https://instagram.com/hopefoundation' }]
 		});
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.view.sharing).toEqual({
-			channels: ['whatsapp', 'x', 'copy-link'],
-			message: 'Every meal counts this winter.',
-			url: `${OWN}/donate`
-		});
+		expect(answered.data.view.sharing.message).toBe('Every meal counts this winter.');
 		expect(answered.data.view.org.info.links).toEqual([
 			{ label: 'Instagram', href: 'https://instagram.com/hopefoundation' }
 		]);
+	});
+
+	// a `channels` key in the row is read past: which share buttons stand is each page's own.
+	it('reads a row still holding share channels, and draws the page’s buttons', async () => {
+		await share({ channels: ['whatsapp', 'x'], message: 'Every meal counts this winter.' });
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.sharing).toEqual({
+			channels: ['facebook', 'email', 'copy-link'],
+			message: 'Every meal counts this winter.',
+			url: `${OWN}/donate`
+		});
 	});
 
 	// a link is typed by a person and drawn as an `href`, so anything but http(s) never reaches one.
@@ -383,26 +420,23 @@ describe('the organisation’s sharing on /donate', () => {
 		]);
 	});
 
-	it('follows each save of the sharing, in the order it was saved', async () => {
-		const reorder = async (channels: ('x' | 'whatsapp' | 'email')[]) => {
+	it('follows each save of the message', async () => {
+		const save = async (message: string) => {
 			const { version } = await readOrgSharing(db);
-			expect(await updateOrgSharing(db, version, { channels, message: null, links: [] })).toBe(
-				'written'
-			);
+			expect(await updateOrgSharing(db, version, { message, links: [] })).toBe('written');
 			const answered = await visit();
 			if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-			return answered.data.view.sharing.channels;
+			return answered.data.view.sharing.message;
 		};
 
-		expect(await reorder(['x', 'whatsapp', 'email'])).toEqual(['x', 'whatsapp', 'email']);
-		expect(await reorder(['email', 'x', 'whatsapp'])).toEqual(['email', 'x', 'whatsapp']);
+		expect(await save('Every meal counts.')).toBe('Every meal counts.');
+		expect(await save('Warm a family tonight.')).toBe('Warm a family tonight.');
 	});
 
 	it('reads a part it does not hold, or holds off the rule, as the default', async () => {
-		await share({ channels: ['myspace'] });
+		await share({ message: 7 });
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.view.sharing.channels).toEqual(['facebook', 'email', 'copy-link']);
 		expect(answered.data.view.sharing.message).toBe('Donate to Hope Foundation');
 	});
 });

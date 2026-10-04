@@ -143,9 +143,15 @@ describe('where the save stands, and whether the choices are closed with it', ()
 });
 
 describe('the choices offered', () => {
-	it('is the list in its order, the default model marked default and the rest marked as spending credits', () => {
+	it('is the list in its order, the default model marked default and the credit-billed ones marked as spending credits', () => {
 		expect(modelOptions()).toEqual([
-			{ id: DEFAULT_MODEL.id, label: 'Llama 3.3 70B on Workers AI', sub: 'Default', note: null },
+			{ id: DEFAULT_MODEL.id, label: 'GPT-OSS 120B on Workers AI', sub: 'Default', note: null },
+			{
+				id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+				label: 'Llama 3.3 70B on Workers AI',
+				sub: null,
+				note: null
+			},
 			{ id: CLAUDE, label: 'Claude Sonnet 4.6', sub: null, note: 'Needs Cloudflare credits' },
 			{ id: 'openai/gpt-5-mini', label: 'GPT-5 mini', sub: null, note: 'Needs Cloudflare credits' }
 		]);

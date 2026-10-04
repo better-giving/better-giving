@@ -16,7 +16,8 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 // a campaign has none: nothing here takes a page to name, and a campaign's editor names no such form.
 //
 // a Reset puts the current default Donation page (`defaultDonationPage` in ../../page/defaults.ts)
-// in the draft and the live page alike, so both take the Organisation's look and share message;
+// in the draft and the live page alike, so both take the Organisation's look and share message
+// and the default share buttons;
 // clears `last_published`, so Undo has nothing to put back; and empties the page's chat — in one
 // `batch()` guarded on the version the editor was drawn at, as ./publish.ts's presses are.
 // - the live donation settings stay: the owned settings row is not written, and the document
@@ -81,7 +82,8 @@ function face(document: PageDocument) {
 		palette,
 		blocks,
 		look: document.look ?? null,
-		share: document.shareMessage ?? null
+		share: document.shareMessage ?? null,
+		channels: document.shareChannels ?? null
 	};
 }
 

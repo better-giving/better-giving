@@ -35,6 +35,7 @@ import {
 } from './keys';
 import { isTimeZone } from './end-date';
 import { draftSettings } from './settings';
+import { SHARE_CHANNELS } from './share';
 
 export { BACKGROUNDS, LAYOUTS, PALETTES };
 
@@ -247,6 +248,8 @@ const PAGE_NAMES: Record<PageType, string> = {
 };
 
 const GOAL = 'a goal is a whole number of minor units above zero';
+/** the largest goal a campaign is set to: fifteen digits of minor units, short of 2^53. */
+export const GOAL_MINOR_MAX = 999_999_999_999_999;
 const END = 'an end date is a whole number of milliseconds since 1970';
 const CAMPAIGN_ONLY = [
 	[PAGE_KEYS.name, 'name'],
@@ -265,6 +268,19 @@ const pageDocument = (type: PageType) =>
 				.string()
 				.max(SHARE_MESSAGE_MAX, {
 					error: `a share message holds at most ${SHARE_MESSAGE_MAX} characters`
+				})
+				.optional(),
+			/** the share buttons in the order they stand; absent draws ./share.ts's default. */
+			shareChannels: z
+				.array(oneOf(SHARE_CHANNELS, 'a share channel', 'a channel is'))
+				.check((ctx) => {
+					const twice = ctx.value.find((channel, at) => ctx.value.indexOf(channel) !== at);
+					if (twice === undefined) return;
+					ctx.issues.push({
+						code: 'custom',
+						input: twice,
+						message: `"${twice}" is named twice; a page offers each share button once`
+					});
 				})
 				.optional(),
 			switches: z.strictObject({ openOnMonthly: z.boolean(), dedicationOn: z.boolean() }),

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { defineForm } from '../../forms/definition';
-import { SHARE_MESSAGE_MAX } from '../../page/catalog';
+import { GOAL_MINOR_MAX, SHARE_MESSAGE_MAX } from '../../page/catalog';
 import { dayWords, endOfDay, isTimeZone } from '../../page/end-date';
 import {
 	PAGE_END_DATE_FORM_ID,
@@ -82,8 +82,8 @@ const SHARE_EDIT = defineForm({
 	})
 });
 
-/** a goal as the sheet posts it: whole minor units above zero, short of 2^53. */
-const GOAL_MINOR = /^[1-9]\d{0,14}$/;
+/** a goal as the sheet posts it: whole minor units above zero. `readGoal` holds it to `GOAL_MINOR_MAX`. */
+const GOAL_MINOR = /^[1-9]\d*$/;
 
 const STALE =
 	'Nothing was changed: this page has been saved since the editor was opened. Reload it, then make this change again.';
@@ -133,7 +133,7 @@ function readGoal(body: FormData, target: SettingsTarget): Read {
 	if (target.type !== 'campaign') return campaignsOnly(submission, 'goal');
 	const sent = submission.value.goal_minor;
 	if (sent === undefined) return taken(submission, { goalMinor: undefined });
-	if (!GOAL_MINOR.test(sent)) {
+	if (!GOAL_MINOR.test(sent) || Number(sent) > GOAL_MINOR_MAX) {
 		return refusedBoxes(submission, {
 			goal_minor: `a whole number of minor units above zero, not ${JSON.stringify(sent)}`
 		});

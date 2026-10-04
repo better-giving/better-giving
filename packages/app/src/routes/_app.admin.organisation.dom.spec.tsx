@@ -19,7 +19,7 @@ vi.mock('$lib/images/resize', async (actual) => ({
 // holds, a pick made while one is in flight goes after it with the version its answer revalidated,
 // and the answer is reported beside the control with an Undo. what the Story section posts and
 // says around the same three: a save, its landing with an Undo, and a refusal. and what the Sharing
-// section's presses post: the order its channels go in, the message and links, and its Undo. and
+// section's presses post: the message and links, and its Undo. and
 // what the logo, first in the Look, posts: the write the moment an upload lands, Remove, and Undo.
 //
 // in the dom pool because every case is a press, and a look's is a fetcher round trip — a press, an
@@ -46,14 +46,13 @@ type Stored = { shade: string; corner: string; brandColour: string | null };
 /** the row the stand-in action writes, and each version it moves through: v0, v1, … */
 let stored: { look: Stored; version: string };
 let posted: Record<string, string>[];
-/** each sharing save and Undo as it arrived, kept whole: its channels are one name repeated. */
+/** each sharing save and Undo as it arrived, kept whole: its links are names repeated. */
 let shared: FormData[];
 /** each story save and Undo as it arrived. */
 let told: FormData[];
 type Story = { version: string; mission: string | null; vision: string | null };
 type Sharing = {
 	version: string;
-	channels: string[];
 	message: string | null;
 	links: { label: string; href: string }[];
 };
@@ -94,7 +93,6 @@ beforeEach(() => {
 	storyBefore = null;
 	sharing = {
 		version: 'sharing-v0',
-		channels: ['facebook', 'email', 'copy-link'],
 		message: null,
 		links: []
 	};
@@ -136,11 +134,7 @@ function screen(): HTMLElement {
 					landing: taken === null ? null : `landing-${landings}`,
 					look: stored.look,
 					lookVersion: stored.version,
-					sharing: {
-						channels: sharing.channels,
-						message: sharing.message,
-						links: sharing.links
-					},
+					sharing: { message: sharing.message, links: sharing.links },
 					sharingVersion: sharing.version,
 					sharingSaved: taken?.startsWith('sharing') ? taken : null,
 					logo: logo.now,
@@ -162,7 +156,6 @@ function screen(): HTMLElement {
 					sharing = {
 						...sharing,
 						version: `sharing-v${shared.length}`,
-						channels: form.getAll('channels').map(String),
 						message: message === '' ? null : message
 					};
 					return landed('sharing');
@@ -527,21 +520,7 @@ describe('the story', () => {
 	});
 });
 
-describe('the sharing channels', () => {
-	function press(root: HTMLElement, name: string): HTMLButtonElement {
-		const found = [...root.querySelectorAll('button')].find(
-			(b) => b.getAttribute('aria-label') === name
-		);
-		if (found === undefined) throw new Error(`no button named ${name}`);
-		return found;
-	}
-
-	function drawnOrder(root: HTMLElement): string[] {
-		return [...root.querySelectorAll<HTMLInputElement>('input[name="channels"]')].map(
-			(box) => box.value
-		);
-	}
-
+describe('the sharing', () => {
 	async function saveSharing(root: HTMLElement): Promise<FormData> {
 		const save = [...root.querySelectorAll('button')].find((b) => b.textContent === 'Save sharing');
 		if (save === undefined) throw new Error('no Save sharing');
@@ -552,72 +531,6 @@ describe('the sharing channels', () => {
 		return sent;
 	}
 
-	it('draws the chosen channels first, in their order, and the rest of the list unticked after', async () => {
-		const root = await drawn();
-		expect(drawnOrder(root)).toEqual([
-			'facebook',
-			'email',
-			'copy-link',
-			'whatsapp',
-			'linkedin',
-			'x'
-		]);
-		const ticked = [...root.querySelectorAll<HTMLInputElement>('input[name="channels"]:checked')];
-		expect(ticked.map((box) => box.value)).toEqual(['facebook', 'email', 'copy-link']);
-	});
-
-	it('moves a channel down and up, keeping the focus on the pressed button', async () => {
-		const root = await drawn();
-
-		const down = press(root, 'Move Facebook down');
-		down.focus();
-		act(() => down.click());
-		await settle();
-		expect(drawnOrder(root).slice(0, 3)).toEqual(['email', 'facebook', 'copy-link']);
-		expect(document.activeElement).toBe(press(root, 'Move Facebook down'));
-
-		const up = press(root, 'Move Copy link up');
-		up.focus();
-		act(() => up.click());
-		await settle();
-		expect(drawnOrder(root).slice(0, 3)).toEqual(['email', 'copy-link', 'facebook']);
-		expect(document.activeElement).toBe(press(root, 'Move Copy link up'));
-	});
-
-	it('holds Move up on the first channel and Move down on the last, and a press there moves nothing', async () => {
-		const root = await drawn();
-		const top = press(root, 'Move Facebook up');
-		const bottom = press(root, 'Move X down');
-		expect(top.getAttribute('aria-disabled')).toBe('true');
-		expect(bottom.getAttribute('aria-disabled')).toBe('true');
-		expect(press(root, 'Move Facebook down').getAttribute('aria-disabled')).toBeNull();
-
-		act(() => top.click());
-		act(() => bottom.click());
-		await settle();
-		expect(drawnOrder(root)).toEqual([
-			'facebook',
-			'email',
-			'copy-link',
-			'whatsapp',
-			'linkedin',
-			'x'
-		]);
-	});
-
-	it('saves the ticked channels in the order they are drawn, against the sharing’s version', async () => {
-		const root = await drawn();
-		act(() => press(root, 'Move Copy link up').click());
-		act(() => press(root, 'Move Copy link up').click());
-		act(() => root.querySelector<HTMLInputElement>('input[value="x"]')?.click());
-		act(() => root.querySelector<HTMLInputElement>('input[value="email"]')?.click());
-		await settle();
-
-		const sent = await saveSharing(root);
-		expect(sent.getAll('channels')).toEqual(['copy-link', 'facebook', 'x']);
-		expect(sent.get(RECORD_VERSION)).toBe('sharing-v0');
-	});
-
 	/** types into the box or text area named `name`, the way a keystroke does. */
 	function type(root: HTMLElement, name: string, value: string): void {
 		const box = root.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
@@ -627,6 +540,18 @@ describe('the sharing channels', () => {
 			box.dispatchEvent(new Event('input', { bubbles: true }));
 		});
 	}
+
+	it('offers no share buttons to choose, and a save posts none', async () => {
+		const root = await drawn();
+		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');
+		expect(card?.parentElement?.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+		type(root, 'message', 'Give a coat.');
+
+		const sent = await saveSharing(root);
+		expect(sent.get('message')).toBe('Give a coat.');
+		expect(sent.has('channels')).toBe(false);
+		expect(sent.get(RECORD_VERSION)).toBe('sharing-v0');
+	});
 
 	it('posts the message and every link with the save, the stored ones and the added', async () => {
 		sharing = {
@@ -654,7 +579,7 @@ describe('the sharing channels', () => {
 
 	it('offers Undo after a landed save, and it posts against the version the save wrote', async () => {
 		const root = await drawn();
-		act(() => root.querySelector<HTMLInputElement>('input[value="x"]')?.click());
+		type(root, 'message', 'Give a coat.');
 		await saveSharing(root);
 		await settle();
 
@@ -670,8 +595,6 @@ describe('the sharing channels', () => {
 
 	it('draws the stored sharing after a landed Undo, with Save sharing off', async () => {
 		const root = await drawn();
-		act(() => root.querySelector<HTMLInputElement>('input[value="whatsapp"]')?.click());
-		act(() => press(root, 'Move WhatsApp up').click());
 		type(root, 'message', 'Ghost share message');
 		await saveSharing(root);
 		await settle();
@@ -681,16 +604,6 @@ describe('the sharing channels', () => {
 		await pressOwned(undo);
 		expect(sharing.version).toBe('sharing-v0');
 
-		expect(drawnOrder(root)).toEqual([
-			'facebook',
-			'email',
-			'copy-link',
-			'whatsapp',
-			'linkedin',
-			'x'
-		]);
-		const ticked = [...root.querySelectorAll<HTMLInputElement>('input[name="channels"]:checked')];
-		expect(ticked.map((box) => box.value)).toEqual(['facebook', 'email', 'copy-link']);
 		expect(root.querySelector<HTMLTextAreaElement>('[name="message"]')?.value).toBe('');
 		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');
 		const save = card?.parentElement?.querySelector('.adm-actions .adm-save');
@@ -699,7 +612,7 @@ describe('the sharing channels', () => {
 
 	it('reads Undo after a save, Redo once its Undo lands, and Undo again once the Redo lands', async () => {
 		const root = await drawn();
-		act(() => root.querySelector<HTMLInputElement>('input[value="x"]')?.click());
+		type(root, 'message', 'Give a coat.');
 		await saveSharing(root);
 		await settle();
 		const card = [...root.querySelectorAll('h2')].find((h) => h.textContent === 'Sharing');

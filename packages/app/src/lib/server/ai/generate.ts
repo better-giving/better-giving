@@ -158,16 +158,49 @@ function input(model: AiModel, request: GenerateRequest): Record<string, unknown
 					}
 				})
 			};
+		case 'workers-ai-chat':
+			// the `reasoning_effort` and `json_schema` shapes are `ChatCompletionsCommonOptions` in
+			// worker-configuration.d.ts. reasoning tokens are spent from `max_tokens`, and a page's JSON
+			// needs little of it.
+			return {
+				messages: [{ role: 'system', content: request.system }, ...request.messages],
+				max_tokens: MAX_OUTPUT_TOKENS,
+				reasoning_effort: 'low',
+				...(request.jsonSchema && {
+					response_format: {
+						type: 'json_schema',
+						json_schema: { name: 'reply', schema: withoutPropertyNames(request.jsonSchema) }
+					}
+				})
+			};
 		case 'workers-ai':
 			// https://developers.cloudflare.com/workers-ai/features/json-mode/
 			return {
 				messages: [{ role: 'system', content: request.system }, ...request.messages],
 				max_tokens: MAX_OUTPUT_TOKENS,
 				...(request.jsonSchema && {
-					response_format: { type: 'json_schema', json_schema: request.jsonSchema }
+					response_format: {
+						type: 'json_schema',
+						json_schema: withoutPropertyNames(request.jsonSchema)
+					}
 				})
 			};
 	}
+}
+
+/**
+ * the schema with every `propertyNames` dropped, which Workers AI's JSON mode refuses with a 400
+ * ("The provided JSON schema contains features not supported by xgrammar.") before inference. it
+ * only loosens what is sent: the reply is still validated by the caller. `z.record` emits it.
+ */
+function withoutPropertyNames(schema: unknown): unknown {
+	if (Array.isArray(schema)) return schema.map(withoutPropertyNames);
+	if (typeof schema !== 'object' || schema === null) return schema;
+	return Object.fromEntries(
+		Object.entries(schema)
+			.filter(([key]) => key !== 'propertyNames')
+			.map(([key, value]) => [key, withoutPropertyNames(value)])
+	);
 }
 
 /**
@@ -183,7 +216,8 @@ function text(model: AiModel, reply: unknown): string | null {
 			const texts = blocks.flatMap((block) => (typeof block.text === 'string' ? [block.text] : []));
 			return texts.length > 0 ? texts.join('') : null;
 		}
-		case 'openai-chat': {
+		case 'openai-chat':
+		case 'workers-ai-chat': {
 			const first = Array.isArray(body.choices) ? record(body.choices[0]) : {};
 			if (first.finish_reason === 'length') return null;
 			const content = record(first.message).content;

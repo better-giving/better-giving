@@ -54,7 +54,7 @@ type Choice = { attrs: Record<string, string>; label: string; mark: string };
 /** each choice as its radio's attributes, the words naming it and the line under it. */
 function choices(page: string): Choice[] {
 	const row =
-		/<label class="adm-check[^"]*"><input ([^>]*)\/><span class="adm-check__text"[^>]*>(.*?)<\/span><span class="adm-check__(?:sub|note)"[^>]*>(.*?)<\/span><\/label>/g;
+		/<label class="adm-check[^"]*"><input ([^>]*)\/><span class="adm-check__text"[^>]*>(.*?)<\/span>(?:<span class="adm-check__(?:sub|note)"[^>]*>(.*?)<\/span>)?<\/label>/g;
 	return [...page.matchAll(row)].map(([, attrs = '', label = '', mark = '']) => ({
 		attrs: Object.fromEntries([...attrs.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v])),
 		label: text(label),
@@ -76,12 +76,16 @@ function stated(page: string, label: string): string | null {
 }
 
 describe('the model section', () => {
-	it('draws every model in the list’s order, the default one marked Default and the rest as needing credits', async () => {
+	it('draws every model in the list’s order, the default one marked Default and the credit-billed ones as needing credits', async () => {
 		const drawnChoices = choices(await drawn()).map(({ label, mark }) => [label, mark]);
 		expect(drawnChoices).toEqual(
 			AI_MODELS.map((model) => [
 				model.label,
-				model.creditBilled ? 'Needs Cloudflare credits' : 'Default'
+				model.id === DEFAULT_MODEL.id
+					? 'Default'
+					: model.creditBilled
+						? 'Needs Cloudflare credits'
+						: ''
 			])
 		);
 		expect(drawnChoices[0]).toEqual([DEFAULT_MODEL.label, 'Default']);

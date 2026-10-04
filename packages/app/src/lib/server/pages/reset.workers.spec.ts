@@ -204,6 +204,18 @@ describe('a Donation page’s edits', () => {
 		expect(documentOf((await stored(pageId)).published).palette).toBe('tint');
 	});
 
+	it('include share buttons a page chose, on a page that is otherwise the default', async () => {
+		const pageId = await insertPage(db, 'donation_page', {
+			...defaultDonationPage(),
+			shareChannels: ['copy-link']
+		});
+
+		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
+
+		expect(outcome).toEqual({ kind: 'reset' });
+		expect(documentOf((await stored(pageId)).draft).shareChannels).toBeUndefined();
+	});
+
 	it('leave out a settings or switch change alone, which Discard changes answers', async () => {
 		const pageId = await insertPage(db, 'donation_page', defaultDonationPage());
 		const drawn = await stored(pageId);

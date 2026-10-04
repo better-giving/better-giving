@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"testing"
+
+	"github.com/better-giving/console/internal/release"
 )
 
 var balancePath = "/accounts/" + account + "/ai-gateway/billing/credit-balance"
@@ -42,12 +44,13 @@ func TestAModelChoiceIsWrittenAsAPlainVarAndReadBack(t *testing.T) {
 	}
 }
 
-// a choice that spends no credits — unset, the default model, an id off the list, a value held as a
+// a choice that spends no credits — unset, a model not credit-billed, an id off the list, a value held as a
 // secret — asks nothing about what is left of them.
 func TestTheDefaultModelAsksNothingAboutCredits(t *testing.T) {
 	for what, bindings := range map[string]map[string]any{
 		"unset":     varsHeld(),
-		"default":   holding("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
+		"default":   holding(release.AIModels[0].ID),
+		"llama":     holding("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
 		"off-list":  holding("anthropic/claude-opus-9"),
 		"as secret": varsHeld(map[string]any{"name": "AI_MODEL", "type": "secret_text"}),
 	} {

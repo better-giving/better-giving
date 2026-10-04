@@ -8,10 +8,12 @@ import {
 	illustrationRequests,
 	OPS_MAX,
 	REPLY_BYTES_MAX,
+	REPLY_JSON_SCHEMA,
 	SAY_MAX
 } from './accept-reply';
+import { MAX_SUGGESTED_AMOUNTS, TOO_MANY_SUGGESTED_AMOUNTS } from '../forms/amounts';
 import { draftFromPage } from './ai-catalog';
-import { ALT_MAX, type Page } from './catalog';
+import { ALT_MAX, GOAL_MINOR_MAX, type Page } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
 // node pool, no database, no model: a reply is the text a model would answer with, and every case
@@ -57,12 +59,41 @@ describe('a reply off the reply schema', () => {
 		['no say', { page: { kind: 'merge', doc: { palette: 'duo' } } }, 'say: '],
 		['an unknown page edit', { say: 'Done.', page: { kind: 'rewrite', doc: {} } }, 'page.kind: '],
 		['a blank say', { say: '  \n ' }, 'say: say holds no words'],
-		['a say past its cap', { say: 'x'.repeat(SAY_MAX + 1) }, `say: say holds at most ${SAY_MAX}`]
+		['a say past its cap', { say: 'x'.repeat(SAY_MAX + 1) }, `say: say holds at most ${SAY_MAX}`],
+		[
+			'suggested amounts past their cap',
+			{
+				say: 'Set.',
+				set: {
+					suggestedAmounts: Array.from({ length: MAX_SUGGESTED_AMOUNTS + 1 }, (_, i) => 500 + i)
+				}
+			},
+			`set.suggestedAmounts: a page suggests ${TOO_MANY_SUGGESTED_AMOUNTS}`
+		]
 	])('is refused when %s, handing current back unchanged', (_, reply, reason) => {
 		const current = campaign();
 		const result = accept(reply, { current });
 		expect(result).toEqual({ ok: false, reason: expect.stringContaining(reason), current });
 		expect(current).toEqual(campaign());
+	});
+});
+
+describe('the schema a model is sent', () => {
+	// a model decoding under JSON mode stops a list only where the schema caps it: Workers AI's
+	// default model, sent an uncapped list of amounts, wrote amounts until the request timed out.
+	it('caps every list a reply names', () => {
+		const uncapped: string[] = [];
+		const visit = (node: unknown, path: string) => {
+			if (typeof node !== 'object' || node === null) return;
+			const schema = node as Record<string, unknown>;
+			if (schema.type === 'array' && typeof schema.maxItems !== 'number') uncapped.push(path);
+			for (const [key, value] of Object.entries(schema)) {
+				// `$defs` holds `z.json()`'s any-JSON value, which no list in it can cap.
+				if (key !== '$defs') visit(value, `${path}/${key}`);
+			}
+		};
+		visit(REPLY_JSON_SCHEMA, '');
+		expect(uncapped).toEqual([]);
 	});
 });
 
@@ -343,7 +374,7 @@ describe('what a reply never changes', () => {
 		const result = accept({ say: 'Changed it.', set: { [key]: value } }, { current });
 		expect(result).toEqual({
 			ok: false,
-			reason: `set: a reply sets only name, goalMinor, endDate, programId and suggestedAmounts, not "${key}"`,
+			reason: `set: a reply sets only name, goalMinor, endDate, programId, suggestedAmounts and shareChannels, not "${key}"`,
 			current
 		});
 	});
@@ -369,7 +400,10 @@ describe('what a reply sets', () => {
 					suggestedAmounts: [3000, 6000]
 				}
 			},
-			{ activePrograms: programs }
+			{
+				activePrograms: programs,
+				messages: [{ author: 'operator', text: 'aim for $5,000 by the end of December' }]
+			}
 		);
 		expect(result).toEqual({
 			ok: true,
@@ -585,6 +619,125 @@ describe('what a reply sets', () => {
 			expect(result).toEqual({ ok: false, reason, current });
 		}
 	);
+
+	it('refuses a goal the operator never stated, naming it, and leaves the draft as it was', () => {
+		const current = campaign();
+		const result = accept(
+			{ say: 'Set a goal.', set: { goalMinor: 500_000_000 } },
+			{ current, messages: [{ author: 'operator', text: 'set an ambitious goal' }] }
+		);
+		expect(result).toEqual({
+			ok: false,
+			reason: 'set.goalMinor: $5,000,000 is not a figure the operator wrote in the chat',
+			current
+		});
+	});
+
+	it.each(['set the goal to $20,000', 'a $20k goal', 'we need 20,000 dollars'])(
+		'takes a goal the operator stated as "%s"',
+		(text) => {
+			const result = accept(
+				{ say: 'Goal set.', set: { goalMinor: 2_000_000 } },
+				{ messages: [{ author: 'operator', text }] }
+			);
+			expect(result).toMatchObject({
+				ok: true,
+				draft: { goalMinor: 2_000_000 },
+				changes: [{ field: 'goal', from: null, to: 2_000_000 }]
+			});
+		}
+	);
+
+	it('refuses a goal only the assistant or the page’s own words state', () => {
+		const current = campaign();
+		current.blocks[1] = {
+			id: 'title',
+			type: 'title',
+			variant: 'left',
+			background: 'none',
+			heading: 'Last winter we raised $20,000'
+		};
+		const reply = { say: 'Goal set.', set: { goalMinor: 2_000_000 } };
+		const refused = {
+			ok: false,
+			reason: 'set.goalMinor: $20,000 is not a figure the operator wrote in the chat'
+		};
+		expect(accept(reply, { current })).toMatchObject(refused);
+		expect(
+			accept(reply, {
+				messages: [
+					{ author: 'assistant', text: 'Shall I set the goal to $20,000?' },
+					{ author: 'operator', text: 'sure' }
+				]
+			})
+		).toMatchObject(refused);
+	});
+
+	it('takes a goal up to the largest the Settings sheet takes, and refuses one past it', () => {
+		const current = campaign();
+		const messages = [{ author: 'operator' as const, text: 'a goal of $9,999,999,999,999.99' }];
+		const at = accept(
+			{ say: 'Goal set.', set: { goalMinor: GOAL_MINOR_MAX } },
+			{ current, messages }
+		);
+		expect(at).toMatchObject({ ok: true, draft: { goalMinor: GOAL_MINOR_MAX } });
+
+		const past = accept({ say: 'Goal set.', set: { goalMinor: GOAL_MINOR_MAX + 1 } }, { current });
+		expect(past).toEqual({
+			ok: false,
+			reason:
+				'set.goalMinor: $10,000,000,000,000 must be less than largest goal of $9,999,999,999,999.99',
+			current
+		});
+	});
+
+	describe('the share buttons', () => {
+		it('sets which stand and in what order, returning the change from the buttons drawn', () => {
+			const result = accept({
+				say: 'Copy link first, then WhatsApp.',
+				set: { shareChannels: ['copy-link', 'whatsapp'] }
+			});
+			expect(result).toMatchObject({
+				ok: true,
+				draft: { shareChannels: ['copy-link', 'whatsapp'] },
+				changes: [
+					{
+						field: 'shareChannels',
+						from: ['facebook', 'email', 'copy-link'],
+						to: ['copy-link', 'whatsapp']
+					}
+				]
+			});
+		});
+
+		it('takes none as a page with no share buttons, on the Donation page too', () => {
+			const current = { ...defaultDonationPage(), shareChannels: ['x' as const] };
+			const result = accept(
+				{ say: 'Took the share buttons off.', set: { shareChannels: [] } },
+				{ type: 'donation_page', current, name: null }
+			);
+			expect(result).toMatchObject({
+				ok: true,
+				draft: { shareChannels: [] },
+				changes: [{ field: 'shareChannels', from: ['x'], to: [] }]
+			});
+		});
+
+		it.each([
+			[
+				['facebook', 'myspace'],
+				'set.shareChannels.1: "myspace" is not a share channel; a channel is facebook, whatsapp, email, copy-link, linkedin or x'
+			],
+			[
+				['x', 'email', 'x'],
+				'set.shareChannels: "x" is named twice; a page offers each share button once'
+			]
+		])('refuses %j, naming the channel, and hands current back', (shareChannels, reason) => {
+			const current = campaign();
+			const result = accept({ say: 'Done.', set: { shareChannels } }, { current });
+			expect(result).toEqual({ ok: false, reason, current });
+		});
+	});
 });
 
 describe('an impact figure', () => {
@@ -865,8 +1018,7 @@ describe('a figure in the words', () => {
 		const words = { ...lede('Help us raise $15,000 this winter.'), set: { goalMinor: 1_500_000 } };
 		expect(accept(words)).toMatchObject({
 			ok: false,
-			reason:
-				'block 2 (id "title"): "$15,000" is not a figure the operator wrote in the chat or one the page already shows'
+			reason: 'set.goalMinor: $15,000 is not a figure the operator wrote in the chat'
 		});
 		const asked = accept(words, { messages: [operator('set the goal to $15,000')] });
 		expect(asked).toMatchObject({ ok: true });
@@ -879,8 +1031,7 @@ describe('a figure in the words', () => {
 		);
 		expect(result).toMatchObject({
 			ok: false,
-			reason:
-				'block 2 (id "title"): "$50" is not a figure the operator wrote in the chat or one the page already shows'
+			reason: 'set.goalMinor: $50 is not a figure the operator wrote in the chat'
 		});
 	});
 

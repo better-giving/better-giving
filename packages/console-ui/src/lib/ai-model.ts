@@ -116,7 +116,7 @@ export function modelPhase(press: {
 	return { underway, closed: underway || (press.busy && !press.own) };
 }
 
-/** one choice as the page draws it: the default one says so under its name, the rest what they spend. */
+/** one choice as the page draws it: the default one says so under its name, a credit-billed one what it spends. */
 export type ModelOption = {
 	id: string;
 	label: string;
@@ -129,7 +129,7 @@ export const modelOptions = (): ModelOption[] =>
 	AI_MODELS.map((model) => ({
 		id: model.id,
 		label: model.label,
-		sub: model.creditBilled ? null : 'Default',
+		sub: model.id === DEFAULT_MODEL.id ? 'Default' : null,
 		note: model.creditBilled ? 'Needs Cloudflare credits' : null
 	}));
 

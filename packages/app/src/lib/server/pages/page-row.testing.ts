@@ -108,8 +108,13 @@ export function answering(...replies: unknown[]) {
 	for (const reply of replies) {
 		run.mockImplementationOnce(async () => {
 			if (reply instanceof Error) throw reply;
-			return { response: typeof reply === 'string' ? reply : JSON.stringify(reply) };
+			return defaultModelReply(typeof reply === 'string' ? reply : JSON.stringify(reply));
 		});
 	}
 	return { run };
+}
+
+/** `text` as the default model's reply, which is chat completions' shape. */
+export function defaultModelReply(text: string) {
+	return { choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }] };
 }

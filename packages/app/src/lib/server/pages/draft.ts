@@ -21,6 +21,12 @@ import { dayOf, dayWords, endDayOf } from '../../page/end-date';
 import type { ChatNote, PageType } from '../../page/keys';
 import { SWITCH_LABELS } from '../../page/settings-form';
 import {
+	SHARE_CHANNEL_LABELS,
+	SHARE_CHANNELS,
+	SHARE_CHANNELS_DEFAULT,
+	type ShareChannel
+} from '../../page/share';
+import {
 	type Answer,
 	answeredLines,
 	answerValueWords,
@@ -775,14 +781,19 @@ function systemPrompt(context: PromptContext): string {
 function replyFormat(type: PageType): string[] {
 	const settable =
 		type === 'campaign'
-			? '{"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...]}'
-			: '{"programId": ..., "suggestedAmounts": [...]}';
+			? '{"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...], "shareChannels": [...]}'
+			: '{"programId": ..., "suggestedAmounts": [...], "shareChannels": [...]}';
+	const channels = SHARE_CHANNELS.map((channel) => `${channel} (${SHARE_CHANNEL_LABELS[channel]})`);
 	return [
 		'REPLY:',
-		'Answer with one JSON object and nothing else: {"say": ..., "page": ..., "set": ...} to change the page, or {"say": ..., "ask": [...]} to ask the operator first.',
+		// Workers AI's JSON mode lets a reply's keys come only in alphabetical order, whatever the
+		// schema's order, so a model told `say` comes first starts there and can no longer reach `page`.
+		'Answer with one JSON object and nothing else: {"page": ..., "say": ..., "set": ...} to change the page, or {"ask": [...], "say": ...} to ask the operator first, its keys in that order.',
 		'- say: one or two sentences to the operator saying what you changed, naming each value you set; when you ask, one sentence leading into the questions.',
-		'- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations, e.g. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...}]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.',
-		`- set: only what the operator asked for, of ${settable}. Amounts are in minor units ($15,000 is 1500000); suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs.`,
+		'- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.',
+		'- a patch path starts at /layout, /palette or /blocks; set is not part of the page, so no path starts at /set: a setting goes in set alone, and a reply that changes only settings has {"kind": "patch", "ops": []} as its page. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...} changes one value; {"op": "add", "path": "/blocks/-", "value": {a whole block}} adds a block after the last; {"op": "add", "path": "/blocks/2", "value": {a whole block}} adds one before the third.',
+		`- set: only what the operator asked for, of ${settable}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.`,
+		`- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of ${channels.slice(0, -1).join(', ')} or ${channels.at(-1)}; [] takes them all off.`,
 		...(type === 'campaign'
 			? []
 			: [
@@ -831,6 +842,7 @@ function contextLines({
 			? '- donation settings: none yet'
 			: `- donation settings: minimum ${settings.minMinor === null ? 'none' : money(settings.minMinor)}, maximum ${settings.maxMinor === null ? 'none' : money(settings.maxMinor)}, suggested amounts ${settings.suggestedAmounts.map(money).join(', ') || 'none'}, program ${settings.programMode === 'pinned' ? `pinned to ${programName(settings.programId)}` : settings.programMode === 'choice' ? 'chosen by each donor' : 'none'}`,
 		`- donation box: ${SWITCH_LABELS.open_on_monthly} ${onOff(current.switches.openOnMonthly)}, ${SWITCH_LABELS.dedication_on} ${onOff(current.switches.dedicationOn)}`,
+		`- share buttons, in order: ${shareLabels(current.shareChannels ?? SHARE_CHANNELS_DEFAULT) || 'none'}`,
 		`- active programs: ${programs.map(({ id, name }) => `${id} (${name})`).join(', ') || 'none'}`
 	];
 }
@@ -856,6 +868,11 @@ function filingLines(filing: Filing | null): string[] {
 }
 
 const onOff = (on: boolean) => (on ? 'on' : 'off');
+
+/** the channels as a fundraiser names them, in order. */
+function shareLabels(channels: readonly ShareChannel[]) {
+	return channels.map((channel) => SHARE_CHANNEL_LABELS[channel]).join(', ');
+}
 
 /**
  * an illustration a reply asked for, and the id of the picture drawn for it, or null. `honoured` is
@@ -924,6 +941,10 @@ function changeWords(change: Change, programs: readonly ProgramOption[]): string
 		}
 		case 'amounts':
 			return `Suggested amounts: ${change.to.map(money).join(', ')}.`;
+		case 'shareChannels':
+			return change.to.length === 0
+				? 'Share buttons taken off.'
+				: `Share buttons: ${shareLabels(change.to)}.`;
 	}
 }
 

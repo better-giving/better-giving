@@ -29,13 +29,7 @@ import {
 } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { CORNERS, type Corner, SHADES, type Shade } from '$lib/page/keys';
-import {
-	SHARE_CHANNEL_LABELS,
-	SHARE_CHANNELS,
-	SHARE_CHANNELS_DEFAULT,
-	type ShareChannel,
-	SOCIAL_LINKS_MAX
-} from '$lib/page/share';
+import { SOCIAL_LINKS_MAX } from '$lib/page/share';
 import { isEmptyDocument, type RichTextDocument } from '$lib/rich-text/document';
 import { invalid, parseForm, submittedDigest, submittedForm, unread } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
@@ -96,9 +90,8 @@ import type { Route } from './+types/_app.admin.organisation';
 //
 // the sharing is the third, a text form saved and undone as the story is, against a digest of the
 // sharing column alone; its landing is its own marker, so a sharing save lights no story button.
-// the channels reorder by Move up and Move down, and what a page's share buttons draw is the ticked
-// ones in that order (`$lib/server/pages/view.ts`). the rule a sharing passes is
-// `$lib/server/org/presentation.ts`'s.
+// it holds the share message and the social links; which share buttons a page draws is that page's
+// own, set in its editor's chat. the rule a sharing passes is `$lib/server/org/presentation.ts`'s.
 
 const SCREEN_TITLE = 'Organisation';
 
@@ -142,14 +135,10 @@ const LOGO_UNDO = defineForm({ id: LOGO_UNDO_FORM_ID, schema: z.object({}) });
 const SHARING_FORM_ID = 'org-sharing';
 const SHARING_UNDO_FORM_ID = 'org-sharing-undo';
 
-/**
- * the ticked channels in the order they are drawn, the message, and each social link a row of two
- * boxes; what each may hold is the sharing rule's to say.
- */
+/** the message, and each social link a row of two boxes; what each may hold is the sharing rule's to say. */
 const SHARING_EDIT = defineForm({
 	id: SHARING_FORM_ID,
 	schema: z.object({
-		channels: z.array(z.string()),
 		message: z.string().optional(),
 		linkLabel: z.array(z.string().optional()),
 		linkUrl: z.array(z.string().optional())
@@ -237,11 +226,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			logo: logo.logo,
 			logoVersion: logo.version,
 			logoUndoable: logo.undoable,
-			sharing: {
-				channels: sharing.sharing.channels ?? SHARE_CHANNELS_DEFAULT,
-				message: sharing.sharing.message,
-				links: sharing.sharing.links
-			},
+			sharing: sharing.sharing,
 			sharingVersion: sharing.version,
 			sharingSaved: savedSection(landed?.marker ?? null, SHARING_SAVED)
 		},
@@ -941,9 +926,8 @@ function LogoPart({
 	);
 }
 
-/** the sharing as the loader publishes it, the default channels standing where none are chosen. */
+/** the sharing as the loader publishes it. */
 type SharingDrawn = {
-	readonly channels: readonly ShareChannel[];
 	readonly message: string | null;
 	readonly links: readonly { readonly label: string; readonly href: string }[];
 };
@@ -954,9 +938,6 @@ type LinkRow = { readonly key: number; readonly label: string; readonly url: str
 /** the section's boxes since they were last drawn afresh, the `drawn`th time. */
 type SharingEdit = {
 	readonly drawn: number;
-	/** every channel on the list, in the order drawn: the chosen first, then the rest. */
-	readonly order: readonly ShareChannel[];
-	readonly chosen: ReadonlySet<ShareChannel>;
 	readonly message: string;
 	readonly rows: readonly LinkRow[];
 };
@@ -964,8 +945,6 @@ type SharingEdit = {
 function freshEdit(sharing: SharingDrawn, drawn: number): SharingEdit {
 	return {
 		drawn,
-		order: [...sharing.channels, ...SHARE_CHANNELS.filter((c) => !sharing.channels.includes(c))],
-		chosen: new Set(sharing.channels),
 		message: sharing.message ?? '',
 		rows: sharing.links.map((link, key) => ({ key, label: link.label, url: link.href }))
 	};
@@ -974,7 +953,6 @@ function freshEdit(sharing: SharingDrawn, drawn: number): SharingEdit {
 /** what a save of these boxes would write, in terms two readings can be compared by. */
 function sharingText(edit: SharingEdit): string {
 	return JSON.stringify({
-		channels: edit.order.filter((channel) => edit.chosen.has(channel)),
 		message: edit.message.trim(),
 		links: edit.rows
 			.map((row) => [row.label.trim(), row.url.trim()])
@@ -984,9 +962,6 @@ function sharingText(edit: SharingEdit): string {
 
 /** the id of each box and press the section moves the focus onto. */
 const sharingIds = {
-	channel: (channel: ShareChannel) => `sharing-channel-${channel}`,
-	move: (channel: ShareChannel, way: 'up' | 'down') => `sharing-move-${channel}-${way}`,
-	channels: 'sharing-channels',
 	message: 'sharing-message',
 	linkLabel: (key: number) => `sharing-link-${key}-label`,
 	linkUrl: (key: number) => `sharing-link-${key}-url`,
@@ -995,16 +970,12 @@ const sharingIds = {
 };
 
 /**
- * the channels a page's share buttons offer and their order, the organisation's share message, and
- * its social links: one text form with one Save, answered by a redirect as the story is.
+ * the organisation's share message and its social links: one text form with one Save, answered by
+ * a redirect as the story is.
  *
- * the boxes are held in state rather than read off the form, because the order is what a move
- * changes and no box records it: the ticked channels post in the order they are drawn. that state
- * is tagged with the redraw it was made after, so a landed save or Undo draws the fresh read, and a
- * refusal, which lands nothing, leaves what was typed.
- *
- * a move keeps the focus on the pressed button, which a reorder of keyed rows would otherwise drop,
- * and says where the channel now stands.
+ * the boxes are held in state rather than read off the form, because the link rows are keyed by
+ * an identity no box records. that state is tagged with the redraw it was made after, so a landed
+ * save or Undo draws the fresh read, and a refusal, which lands nothing, leaves what was typed.
  */
 function SharingSection({
 	sharing,
@@ -1043,30 +1014,14 @@ function SharingSection({
 	const redo = useRedoNext(landing, swapOrSave(saved, 'sharing-undone'));
 	const save = useSaveState({ landed, changed, pending: pressed === SHARING_EDIT.id });
 
-	// the box or press a move, an Add or a Remove leaves the focus on, taken after the render that
-	// drew it.
+	// the box or press an Add or a Remove leaves the focus on, taken after the render that drew it.
 	const focusNext = useRef<string | null>(null);
 	useEffect(() => {
 		if (focusNext.current === null) return;
 		document.getElementById(focusNext.current)?.focus();
 		focusNext.current = null;
 	});
-	const [moved, setMoved] = useState('');
-
-	const move = (channel: ShareChannel, way: 'up' | 'down') => {
-		const at = edit.order.indexOf(channel);
-		const to = way === 'up' ? at - 1 : at + 1;
-		if (to < 0 || to >= edit.order.length) return;
-		const order = [...edit.order];
-		order.splice(at, 1);
-		order.splice(to, 0, channel);
-		change(() => ({ order }));
-		focusNext.current = sharingIds.move(channel, way);
-		setMoved(`${SHARE_CHANNEL_LABELS[channel]}, ${to + 1} of ${order.length}`);
-	};
-
 	const errors = form.allErrors;
-	const channelsError = fields.channels.errors?.[0];
 	const messageError = fields.message.errors?.[0];
 	const linksError = fields.linkUrl.errors?.[0];
 	const rowError = (box: 'linkLabel' | 'linkUrl', at: number) => errors[`${box}[${at}]`]?.[0];
@@ -1075,7 +1030,6 @@ function SharingSection({
 
 	// the first refused box in reading order, as a failed submit leaves the focus there.
 	const refused: [string | undefined, string][] = [
-		[channelsError, sharingIds.channel(edit.order[0] ?? SHARE_CHANNELS[0])],
 		[messageError, sharingIds.message],
 		...edit.rows.flatMap((row, at): [string | undefined, string][] => [
 			[rowError('linkLabel', at), sharingIds.linkLabel(row.key)],
@@ -1108,73 +1062,6 @@ function SharingSection({
 				<input {...recordVersion(version)} />
 				<div className="adm-stack">
 					<div className="adm-stack">
-						<fieldset
-							className="adm-fieldset"
-							aria-describedby={
-								channelsError === undefined ? undefined : `${sharingIds.channels}-err`
-							}
-						>
-							<legend className="adm-fieldset__legend">Share buttons, in order</legend>
-							<div className="adm-orderlist">
-								{edit.order.map((channel, at) => {
-									const label = SHARE_CHANNEL_LABELS[channel];
-									const first = at === 0;
-									const last = at === edit.order.length - 1;
-									return (
-										<div className="adm-orderrow" key={channel}>
-											<label className="adm-check">
-												<input
-													type="checkbox"
-													id={sharingIds.channel(channel)}
-													name={fields.channels.name}
-													value={channel}
-													checked={edit.chosen.has(channel)}
-													onChange={(event) => {
-														const on = event.currentTarget.checked;
-														change((was) => {
-															const chosen = new Set(was.chosen);
-															if (on) chosen.add(channel);
-															else chosen.delete(channel);
-															return { chosen };
-														});
-													}}
-												/>
-												<span className="adm-check__text">{label}</span>
-											</label>
-											<Button
-												type="button"
-												variant="quiet"
-												size="sm"
-												mark="chevron-up"
-												id={sharingIds.move(channel, 'up')}
-												aria-label={`Move ${label} up`}
-												aria-disabled={first || undefined}
-												onClick={() => move(channel, 'up')}
-											/>
-											<Button
-												type="button"
-												variant="quiet"
-												size="sm"
-												mark="chevron-down"
-												id={sharingIds.move(channel, 'down')}
-												aria-label={`Move ${label} down`}
-												aria-disabled={last || undefined}
-												onClick={() => move(channel, 'down')}
-											/>
-										</div>
-									);
-								})}
-							</div>
-							{channelsError === undefined ? null : (
-								<FieldMessage id={`${sharingIds.channels}-err`}>
-									<MarkedText text={channelsError} />
-								</FieldMessage>
-							)}
-							{/* mounted empty, so each move is announced. */}
-							<span role="status" className="adm-vh">
-								{moved}
-							</span>
-						</fieldset>
 						<Field
 							id={sharingIds.message}
 							name={fields.message.name}

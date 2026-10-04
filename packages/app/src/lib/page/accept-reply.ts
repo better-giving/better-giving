@@ -7,18 +7,24 @@
 // `SAY_MAX` characters. `page` edits the page as the model reads it (`draftFromPage` in
 // ./ai-catalog.ts: layout, palette and blocks, each block's values under `props`), as an RFC 6902
 // patch or an RFC 7396 merge (./json-patch.ts); an edit reaching past those three keys is refused,
-// so the look, the switches, the share message, the donation settings, and a campaign's name, goal
-// and end date never move through it. `set` names the five things a reply may change beside the
-// page — a campaign's name, goal and end date, the program the page's gifts are pinned to and its
-// suggested amounts — each written into the draft, and anything else it names is refused: the
-// fund, the program's destination, the payment options, the look and the switches are the
-// operator's alone. an end date is a day, `YYYY-MM-DD`, in the zone of the browser that posted the
-// chat turn, stored as ./end-date.ts's `endOfDay` of it with that zone beside it, and refused once
-// that day is over. pinning a program is refused on the Donation page while its donors choose one,
-// since its program chooser stays. each value `set` changes comes back in `changes` — an end date
-// as its day, a program with the mode it leaves — so the reply's own words can be held to what it
-// did. a rename is from the draft's own name where it holds one, and from the dashboard's
-// otherwise.
+// so the look, the switches, the share message, the share buttons, the donation settings, and a
+// campaign's name, goal and end date never move through it. `set` names the six things a reply may
+// change beside the page — a campaign's name, goal and end date, the program the page's gifts are
+// pinned to, its suggested amounts and its share buttons — each written into the draft, and
+// anything else it names is refused: the fund, the program's destination, the payment options, the
+// look and the switches are the operator's alone. the share buttons are an ordered list of distinct
+// ./share.ts channels, `[]` being none, and a channel off that list or named twice is refused. an
+// end date is a day, `YYYY-MM-DD`, in the zone of the browser that posted the chat turn, stored as
+// ./end-date.ts's `endOfDay` of it with that zone beside it, and refused once that day is over. a program is one of the active programs, suggested amounts sit within the
+// page's smallest and largest gift, and a goal is at most ./catalog.ts's `GOAL_MINOR_MAX`, the most
+// the Settings sheet takes, and is one the operator stated: a figure in a chat message of theirs,
+// read by the grammar below, or the goal the page already stores. a figure the assistant wrote or
+// the page's words draw is not the operator asking for that goal. any other value is refused,
+// naming it. pinning a program is refused on the Donation page while its donors choose one, since
+// its program chooser stays. each value `set` changes comes back in `changes` — an end date
+// as its day, a program with the mode it leaves, the share buttons from the ones the page drew —
+// so the reply's own words can be held to what it did. a rename is from the draft's own name where
+// it holds one, and from the dashboard's otherwise.
 //
 // a reply may instead be `{ say, ask }`: up to `QUESTIONS_MAX` questions for the operator, read by
 // ./questions.ts's rule, and handed back as asked with no draft at all. an `ask` beside `page` or
@@ -45,9 +51,8 @@
 // - a figure in the words: a new campaign name and every string a block draws — a heading, a lede,
 //   what a tier buys, a question, each paragraph of a story or an answer — and each illustration's
 //   description may hold only figures the operator wrote in the chat or the page already draws, in
-//   its words, its tiers' amounts or its stored goal. a goal this same reply sets grants no figure
-//   the operator did not state. any other refuses the reply, naming the figure. a donor reads a
-//   figure as a promise the model cannot check.
+//   its words, its tiers' amounts or its stored goal. any other refuses the reply, naming the
+//   figure. a donor reads a figure as a promise the model cannot check.
 // - an impact in the words: a sentence of those words holding one of `IMPACT`'s words says what
 //   each figure in it does, and each needs the grant a tier needs — the operator's own sentence
 //   pairing that amount with an impact — or the reply is refused, naming the sentence. a figure
@@ -81,14 +86,22 @@
 // pure and not under `$lib/server/**`, beside the catalog it reads.
 import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
-import { FORM_CURRENCY, majorEntry, readAmount, readSuggestedAmounts } from '../forms/amounts';
+import {
+	FORM_CURRENCY,
+	MAX_SUGGESTED_AMOUNTS,
+	majorEntry,
+	readAmount,
+	readSuggestedAmounts,
+	TOO_MANY_SUGGESTED_AMOUNTS
+} from '../forms/amounts';
 import type { ProgramMode } from '../forms/program-modes';
 import { draftFromPage, illustrationRequest, pageFromDraft } from './ai-catalog';
 import { endDayOf, endOfDay } from './end-date';
-import { HEADING_MAX, type Page, parsePage } from './catalog';
+import { GOAL_MINOR_MAX, HEADING_MAX, type Page, parsePage } from './catalog';
 import { PAGE_KEYS, type PageType } from './keys';
 import { applyPatch, deeperThan, mergePatch, outOfBounds, pointer } from './json-patch';
 import { askSchema, type Question } from './questions';
+import { SHARE_CHANNELS, SHARE_CHANNELS_DEFAULT, type ShareChannel } from './share';
 
 /** a reply's text, measured before it is parsed at all. */
 export const REPLY_BYTES_MAX = 64 * 1024;
@@ -130,12 +143,28 @@ const replySchema = z.strictObject({
 				goalMinor: z.int().positive().optional(),
 				endDate: z.string().optional(),
 				programId: z.string().min(1).optional(),
-				suggestedAmounts: z.array(z.int().positive()).optional()
+				// the cap is sent as `maxItems` too: a model decoding under JSON mode stops a list only
+				// where the schema caps it.
+				suggestedAmounts: z
+					.array(z.int().positive())
+					.max(MAX_SUGGESTED_AMOUNTS, { error: `a page suggests ${TOO_MANY_SUGGESTED_AMOUNTS}` })
+					.optional(),
+				shareChannels: z
+					.array(
+						z.enum(SHARE_CHANNELS, {
+							error: (issue) =>
+								`${JSON.stringify(issue.input)} is not a share channel; a channel is ${SHARE_CHANNELS.slice(0, -1).join(', ')} or ${SHARE_CHANNELS.at(-1)}`
+						})
+					)
+					.max(SHARE_CHANNELS.length, {
+						error: `a page offers at most ${SHARE_CHANNELS.length} share buttons`
+					})
+					.optional()
 			},
 			{
 				error: (issue) =>
 					issue.code === 'unrecognized_keys'
-						? `a reply sets only name, goalMinor, endDate, programId and suggestedAmounts, not ${issue.keys.map((key) => `"${key}"`).join(', ')}`
+						? `a reply sets only name, goalMinor, endDate, programId, suggestedAmounts and shareChannels, not ${issue.keys.map((key) => `"${key}"`).join(', ')}`
 						: undefined
 			}
 		)
@@ -198,7 +227,9 @@ export type Change =
 			from: { mode: ProgramMode; programId: string | null };
 			to: { mode: 'pinned'; programId: string };
 	  }
-	| { field: 'amounts'; from: number[]; to: number[] };
+	| { field: 'amounts'; from: number[]; to: number[] }
+	/** `from` is the buttons the page drew, ./share.ts's default where it had chosen none. */
+	| { field: 'shareChannels'; from: ShareChannel[]; to: ShareChannel[] };
 
 export type Dropped =
 	| {
@@ -278,14 +309,14 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 		return refuse(located(stray.path, `image "${stray.id}" was not attached in this chat`));
 	}
 
-	const set = settle(input, reply.set ?? {});
+	const said = operatorTexts(input.messages);
+	const stated = new Set(said.flatMap(readFigures));
+	const set = settle(input, reply.set ?? {}, stated);
 	if (!set.ok) return refuse(set.reason);
 
 	const page = pageFromDraft(type, draft, set.onto);
 	if (!page.ok) return refuse(located(page.path, page.message));
 	const dropped: Dropped[] = [];
-	const said = operatorTexts(input.messages);
-	const stated = new Set(said.flatMap(readFigures));
 	const impacts = new Set(impactFigures([...said, ...current.blocks.flatMap(textsIn)]));
 	const held = new Set(tiersOf(current).map(tierKey));
 	const heldAmounts = new Set(tiersOf(current).map(({ amountMinor }) => amountMinor));
@@ -608,10 +639,14 @@ function textsIn(value: unknown): string[] {
 
 type Settable = NonNullable<z.infer<typeof replySchema>['set']>;
 
-/** `current` with what the reply sets put onto it, and each change it makes. */
+/**
+ * `current` with what the reply sets put onto it, and each change it makes. `stated` is every figure
+ * in the operator's own chat messages.
+ */
 function settle(
 	{ type, current, name, activePrograms, timeZone, now }: AcceptInput,
-	set: Settable
+	set: Settable,
+	stated: ReadonlySet<number>
 ):
 	| { ok: true; onto: Page; renamed: string | undefined; changes: Change[] }
 	| { ok: false; reason: string } {
@@ -630,7 +665,23 @@ function settle(
 		changes.push({ field: 'name', from: named, to: renamed });
 		onto.name = renamed;
 	}
+	if (set.goalMinor !== undefined && set.goalMinor > GOAL_MINOR_MAX) {
+		const [goal, largest] = [set.goalMinor, GOAL_MINOR_MAX].map((minor) =>
+			formatMinorBrief(minor, FORM_CURRENCY)
+		);
+		return {
+			ok: false,
+			reason: `set.goalMinor: ${goal} must be less than largest goal of ${largest}`
+		};
+	}
 	if (set.goalMinor !== undefined && set.goalMinor !== current.goalMinor) {
+		if (!stated.has(set.goalMinor)) {
+			const goal = formatMinorBrief(set.goalMinor, FORM_CURRENCY);
+			return {
+				ok: false,
+				reason: `set.goalMinor: ${goal} is not a figure the operator wrote in the chat`
+			};
+		}
 		changes.push({ field: 'goal', from: current.goalMinor ?? null, to: set.goalMinor });
 		onto.goalMinor = set.goalMinor;
 	}
@@ -641,6 +692,21 @@ function settle(
 		changes.push({ field: 'endDate', from: endedOn, to: set.endDate });
 		onto.endsAt = end.endsAt;
 		onto.endsZone = timeZone;
+	}
+	if (set.shareChannels !== undefined) {
+		const { shareChannels } = set;
+		const twice = shareChannels.find((channel, at) => shareChannels.indexOf(channel) !== at);
+		if (twice !== undefined) {
+			return {
+				ok: false,
+				reason: `set.shareChannels: "${twice}" is named twice; a page offers each share button once`
+			};
+		}
+		const drawn = [...(current.shareChannels ?? SHARE_CHANNELS_DEFAULT)];
+		if (!sameList(shareChannels, drawn)) {
+			changes.push({ field: 'shareChannels', from: drawn, to: shareChannels });
+			onto.shareChannels = shareChannels;
+		}
 	}
 	if (set.programId === undefined && set.suggestedAmounts === undefined) {
 		return { ok: true, onto, renamed, changes };
@@ -693,7 +759,7 @@ function settle(
 	return { ok: true, onto, renamed, changes };
 }
 
-function sameList(a: readonly number[], b: readonly number[]) {
+function sameList<T>(a: readonly T[], b: readonly T[]) {
 	return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 

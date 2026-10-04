@@ -192,7 +192,7 @@ describe('the goal', () => {
 		expect(await draftOf(pageId)).not.toHaveProperty('goalMinor');
 	});
 
-	it.each(['0', '-500', '12.5', 'lots'])(
+	it.each(['0', '-500', '12.5', 'lots', '1000000000000000'])(
 		'refuses %s naming it, and writes nothing',
 		async (sent) => {
 			const pageId = await insertPage(db, 'campaign');
