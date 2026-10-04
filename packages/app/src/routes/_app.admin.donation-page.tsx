@@ -44,7 +44,7 @@ import type { Route } from './+types/_app.admin.donation-page';
 // the Donation page's editor, reached from the globe beside the organisation's name: its draft
 // framed by the preview route, the publish bar over it, the AI panel beside it
 // ($lib/admin/editor/chat-wiring.tsx, which asks an empty chat its opening questions — the mission
-// first while the Organisation has none, $lib/server/pages/draft.ts), and the Settings sheet behind
+// first while the profile has none, $lib/server/pages/draft.ts), and the Settings sheet behind
 // the bar's Edit by hand. the parts are $lib/admin/editor/'s. the Donation page has no name to edit
 // and no address of its own: the bar calls it "Donation page", and it is always at /donate.
 //

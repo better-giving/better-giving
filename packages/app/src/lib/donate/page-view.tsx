@@ -249,12 +249,15 @@ export function Masthead({
 	readonly logo: PageLogo | null;
 }) {
 	if (logo === null) {
+		const letters = initials(name);
 		return (
 			<header className="page-mast">
 				<div className="page-in page-mast-in">
-					<span className="page-mast-badge" aria-hidden="true">
-						{initials(name)}
-					</span>
+					{letters === '' ? null : (
+						<span className="page-mast-badge" aria-hidden="true">
+							{letters}
+						</span>
+					)}
 					<p className="page-mast-name">{name}</p>
 				</div>
 			</header>
@@ -287,17 +290,19 @@ export function Masthead({
 
 /**
  * the first letter of each of the name's first two words, upper-cased, a leading "The" passed over
- * where a word follows it: "The Hope Fund" is `HF`, "Kiva" is `K`. a word opening on no letter or
- * digit, an `&` or a dash, is not counted.
+ * where a word follows it: "The Hope Fund" is `HF`, "Kiva" is `K`. a word holding no letter, an `&`,
+ * a dash or a `1%`, is not counted, and a name with none is `''`, which draws no badge. a letter
+ * keeps its combining marks, so a decomposed accent survives. upper-cased with no locale, so the
+ * server's render and a Turkish-locale browser's hydration read the same `I`.
  */
 export function initials(name: string): string {
 	const words = name.split(/\s+/).filter((word) => word !== '');
 	const named = words.length > 1 && words[0]?.toLowerCase() === 'the' ? words.slice(1) : words;
 	return named
-		.flatMap((word) => /^[\p{L}\p{N}]/u.exec(word)?.[0] ?? [])
+		.flatMap((word) => /\p{L}\p{M}*/u.exec(word)?.[0] ?? [])
 		.slice(0, 2)
 		.join('')
-		.toLocaleUpperCase();
+		.toUpperCase();
 }
 
 /** the cover's hero and the title laid over it: the first two blocks drawn, in that order. */

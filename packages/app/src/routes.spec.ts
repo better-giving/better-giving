@@ -717,6 +717,16 @@ describe('the route surface', () => {
 		expect(routes.filter((r) => r.path === '/admin/not-a-screen' || r.path === '/a/b')).toEqual([]);
 	});
 
+	/**
+	 * the organisation's profile, logo, colour, mission, vision and links are the console's
+	 * (CLAUDE.md → Two operator surfaces), so the dashboard serves no screen for them. two segments,
+	 * so no campaign's address catches it either: the matcher finds nothing and the gate never runs.
+	 */
+	it('serves no dashboard screen for the organisation', async () => {
+		expect(await matchedFileAt('/admin/organisation')).toBeNull();
+		expect(await statusAt('/admin/organisation')).toBe(404);
+	});
+
 	it.each(['/winter-coat-drive', '/frm_something', '/.env'])(
 		'hands the single segment %s to the campaign route',
 		async (address) => {

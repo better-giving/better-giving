@@ -26,7 +26,8 @@ import { createDb } from './client';
 // for it; a squash into one file leaves nothing to stop short of, and the first assertion says so.
 // `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it, and
 // `webhook_delivery` another, which `seedWebhookDeliveries` writes in front of 0019 and
-// `seedPausedBacklog` in front of 0022.
+// `seedPausedBacklog` in front of 0022, and `org_presentation` a third, which `seedOrgPresentation`
+// writes in front of 0025.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -56,6 +57,15 @@ const WEBHOOK_DELIVERY_REBUILD = env.TEST_MIGRATIONS.findIndex(
 
 const OWED_ROWS_PARKED_BY = '0022_webhook_delivery_owed_index.sql';
 const OWED_ROWS_PARKING = env.TEST_MIGRATIONS.findIndex((m) => m.name === OWED_ROWS_PARKED_BY);
+
+const ORG_PRESENTATION_DROPPED_BY = '0025_org_presentation_dropped.sql';
+const ORG_PRESENTATION_DROP = env.TEST_MIGRATIONS.findIndex(
+	(m) => m.name === ORG_PRESENTATION_DROPPED_BY
+);
+const LOGO_IMAGES = [
+	'019fb300-0000-7000-8000-000000000201',
+	'019fb300-0000-7000-8000-000000000202'
+] as const;
 
 /**
  * tables a file from the stop on drops on purpose, each asserted gone in that file's own block
@@ -281,6 +291,29 @@ async function seedPausedBacklog() {
 	]);
 }
 
+/** the one `org_presentation` row, its logo and its previous logo each naming an image with bytes. */
+async function seedOrgPresentation() {
+	const [logo, previous] = LOGO_IMAGES;
+	await db().batch([
+		db()
+			.prepare(
+				`insert into image (id, kind, content_type, width, height, byte_size, alt, created_at, updated_at)
+				 values (?, 'illustration', 'image/png', 64, 64, 3, null, 1, 1),
+				        (?, 'illustration', 'image/png', 32, 32, 3, null, 0, 0)`
+			)
+			.bind(logo, previous),
+		db()
+			.prepare(`insert into image_bytes (image_id, bytes) values (?, x'010203'), (?, x'040506')`)
+			.bind(logo, previous),
+		db()
+			.prepare(
+				`insert into org_presentation (id, created_at, updated_at, logo_image_id, logo_image_id_previous)
+				 values ('default', 0, 1, ?, ?)`
+			)
+			.bind(logo, previous)
+	]);
+}
+
 /**
  * a journal entry for a delivery row to hang off, posted through `post()`: ../ledger/sole-writer.spec.ts
  * refuses a direct write to the ledger tables anywhere outside the ledger module.
@@ -314,6 +347,7 @@ let migrated:
 			apiKeysBefore: Row[];
 			webhookDeliveriesBefore: Row[];
 			pausedBacklogBefore: Row[];
+			orgPresentationBefore: Row[];
 			atApiKeyMove: Map<string, Row[]>;
 			recopy: { error: string | null; zapierRows: Row[] };
 			after: Map<string, Row[]>;
@@ -370,6 +404,10 @@ function migrateOverSeed() {
 				.bind(...PAUSED_DESTINATIONS)
 				.all<Row>()
 		).results;
+		await applyD1Migrations(db(), chain.slice(0, ORG_PRESENTATION_DROP));
+		await seedOrgPresentation();
+		const orgPresentationBefore = (await db().prepare('select * from org_presentation').all<Row>())
+			.results;
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
 		return {
@@ -377,6 +415,7 @@ function migrateOverSeed() {
 			apiKeysBefore,
 			webhookDeliveriesBefore,
 			pausedBacklogBefore,
+			orgPresentationBefore,
 			atApiKeyMove,
 			recopy,
 			after: await snapshot(),
@@ -857,4 +896,38 @@ describe('0023 notes an assistant turn and never an operator one', () => {
 			turn('019fb300-0000-7000-8000-000000000103', 2, 'operator', null, 'refused')
 		).rejects.toThrow(/chat_turn_note_check/);
 	});
+});
+
+// what 0025 is for: the dashboard's organisation page was `org_presentation`'s only reader and
+// writer, and the organisation's story, brand colour and logo are `org_profile`'s, so the table goes.
+describe('0025 drops org_presentation', () => {
+	let after: Map<string, Row[]>;
+	let orgPresentationBefore: Row[];
+	let overSeed: string[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ after, orgPresentationBefore, overSeed } = await migrateOverSeed());
+	});
+
+	it('is in the chain', () => {
+		expect(env.TEST_MIGRATIONS.map((m) => m.name)).toContain(ORG_PRESENTATION_DROPPED_BY);
+	});
+
+	it.skipIf(nowhereToStop)('leaves no org_presentation table', () => {
+		expect([...after.keys()]).not.toContain('org_presentation');
+	});
+
+	it.skipIf(nowhereToStop)(
+		'applies over a row whose two logo columns name images, and keeps both images and their bytes',
+		() => {
+			expect(
+				orgPresentationBefore.map((r) => [r.logo_image_id, r.logo_image_id_previous]),
+				'the seed wrote no logo for the drop to run over'
+			).toEqual([[...LOGO_IMAGES]]);
+			expect(overSeed).toContain(ORG_PRESENTATION_DROPPED_BY);
+			expect(after.get('image')?.map((r) => r.id)).toEqual([...LOGO_IMAGES]);
+			expect(after.get('image_bytes')?.map((r) => r.image_id)).toEqual([...LOGO_IMAGES]);
+		}
+	);
 });

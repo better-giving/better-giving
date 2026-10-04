@@ -176,6 +176,13 @@
       "when": 1791138000926,
       "tag": "0024_org_profile_story_brand_and_logo",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1791146752599,
+      "tag": "0025_org_presentation_dropped",
+      "breakpoints": true
     }
   ]
 }

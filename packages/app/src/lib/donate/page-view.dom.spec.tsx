@@ -428,10 +428,29 @@ describe('the masthead with no logo', () => {
 		['Kiva', 'K'],
 		['the north side food & coat bank', 'NS'],
 		['The', 'T'],
-		['  Elm   Street Neighbors ', 'ES']
+		['  Elm   Street Neighbors ', 'ES'],
+		['1% for the Planet', 'FT'],
+		['e\u0301lan Vital', 'E\u0301V']
 	])('%s: the badge reads %s', (name, letters) => {
 		expect(initials(name)).toBe(letters);
 		expect(masthead(name, '#1d6b4f').badge?.textContent).toBe(letters);
+	});
+
+	it('upper-cases the same in a Turkish-locale browser as on the server', () => {
+		const turkish = vi.spyOn(String.prototype, 'toLocaleUpperCase').mockImplementation(function (
+			this: string
+		) {
+			return this.replaceAll('i', '\u0130').toUpperCase();
+		});
+		onTestFinished(() => turkish.mockRestore());
+		expect(masthead('iCare Fund', '#1d6b4f').badge?.textContent).toBe('IF');
+	});
+
+	it('draws no badge for a name holding no letter, and still draws the name', () => {
+		const { root, badge } = masthead('1234', '#1d6b4f');
+		expect(initials('1234')).toBe('');
+		expect(badge).toBeNull();
+		expect(root.querySelector('.page-mast-name')?.textContent).toBe('1234');
 	});
 
 	it('says nothing of its own beside the name, which names the organisation', () => {

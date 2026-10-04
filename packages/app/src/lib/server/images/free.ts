@@ -1,6 +1,6 @@
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { chatTurn, image, orgPresentation, orgProfile, page, program } from '../db/schema';
+import { chatTurn, image, orgProfile, page, program } from '../db/schema';
 import { deleteBytes } from './bytes';
 
 // freeing an image: its metadata row and its bytes deleted together, and only where nothing names it.
@@ -12,13 +12,12 @@ import { deleteBytes } from './bytes';
 // but nothing refuses the bytes', and a JSON holder refuses neither.
 
 /**
- * no row names `id`: no cause's photo, neither presented logo column, the profile's logo, no page
- * document and no chat turn's photos. a page document is matched on its text, so an id anywhere in
- * one keeps the image whichever block holds it.
+ * no row names `id`: no cause's photo, the profile's logo, no page document and no chat turn's
+ * photos. a page document is matched on its text, so an id anywhere in one keeps the image whichever
+ * block holds it.
  */
 function unreferenced(id: string): SQL {
 	return sql`not exists (select 1 from ${program} where ${program.imageId} = ${id})
-		and not exists (select 1 from ${orgPresentation} where ${orgPresentation.logoImageId} = ${id} or ${orgPresentation.logoImageIdPrevious} = ${id})
 		and not exists (select 1 from ${orgProfile} where ${orgProfile.logoImageId} = ${id})
 		and not exists (select 1 from ${page} where instr(${page.draft}, ${id}) > 0 or instr(${page.published}, ${id}) > 0 or instr(${page.lastPublished}, ${id}) > 0)
 		and not exists (select 1 from ${chatTurn}, json_each(${chatTurn.imageIds}) where json_each.value = ${id})`;

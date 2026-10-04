@@ -49,7 +49,7 @@ export default function FormsCheckboxGroupPreview() {
 				id="forms-check-both"
 				name="receipts"
 				legend="Receipts"
-				hint="Sent from the address on the organisation screen."
+				hint="Sent from the sender email address set in the console."
 				error="A receipt cannot be sent until a sender address is set."
 				items={[
 					{ id: 'forms-check-both-donor', label: 'Email the donor' },

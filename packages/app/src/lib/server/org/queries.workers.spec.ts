@@ -8,14 +8,7 @@ import { d1BytesPort } from '../images/bytes';
 import { createImage, firstMissingImage } from '../images/queries';
 import { insertPage, SETTINGS } from '../pages/page-row.testing';
 import { parseOrgProfile, type OrgProfileFormValues, type ParsedOrgProfile } from './org-input';
-import {
-	readOrgLogo,
-	readOrgProfile,
-	removeOrgProfileLogo,
-	saveOrgProfile,
-	setOrgProfileLogo,
-	updateOrgLogo
-} from './queries';
+import { readOrgProfile, removeOrgProfileLogo, saveOrgProfile, setOrgProfileLogo } from './queries';
 
 // real D1 inside workerd, over the committed migrations — so the singleton check, the
 // not-blank CHECKs and `STRICT` are all the deployed ones.
@@ -457,14 +450,6 @@ describe('the profile logo', () => {
 		[
 			'a cause’s photo',
 			(id) => db.insert(program).values({ name: `Clean water ${id}`, imageId: id })
-		],
-		['the presented logo', async (id) => updateOrgLogo(db, (await readOrgLogo(db)).version, id)],
-		[
-			'the presented logo’s undo',
-			async (id) => {
-				await updateOrgLogo(db, (await readOrgLogo(db)).version, id);
-				await updateOrgLogo(db, (await readOrgLogo(db)).version, null);
-			}
 		],
 		['a page’s draft', (id) => insertPage(db, 'campaign', showing(id))],
 		[

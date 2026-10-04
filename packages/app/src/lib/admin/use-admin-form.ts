@@ -125,7 +125,7 @@ export function whichForm(id: string): {
  * one per `<form>` whose save replaces columns, with the version the loader published — so a
  * revalidation after any save hands every form on the screen the new one without touching what is
  * typed in its boxes. what it is for is `$lib/forms/definition.ts`; what reads it is
- * `submittedVersion` or `submittedDigest` in `$lib/server/conform.ts`.
+ * `submittedVersion` in `$lib/server/conform.ts`.
  */
 export function recordVersion(version: number | string): {
 	readonly type: 'hidden';

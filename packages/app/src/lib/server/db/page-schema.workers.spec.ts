@@ -2,10 +2,10 @@ import { env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS } from './accounts';
 
-// the constraints `page`, `chat_turn` and `org_presentation` carry, each a table rebuild to change
-// once shipped — the reason ./donation-schema.workers.spec.ts opens with.
+// the constraints `page` and `chat_turn` carry, each a table rebuild to change once shipped — the
+// reason ./donation-schema.workers.spec.ts opens with.
 //
-// `STRICT` on the three tables and `NO ACTION` on their foreign keys are read off sqlite's
+// `STRICT` on the two tables and `NO ACTION` on their foreign keys are read off sqlite's
 // catalogue by ./strict.workers.spec.ts and not repeated here.
 //
 // the pool gives per-file storage, not per-test: every case starts with one Donation page, and a
@@ -276,7 +276,7 @@ describe('a goal or an end date belongs to a campaign, never to the Donation pag
 	});
 });
 
-describe("a page's own look takes the closed sets the organisation's does", () => {
+describe("a page's own look takes the closed sets", () => {
 	const LIVE = { ...CAMPAIGN, slug: 'look-probe', state: 'live', published: CAMPAIGN.draft };
 	const withLook = (look: Record<string, unknown>) => JSON.stringify({ blocks: [], look });
 	const DOCUMENTS = ['draft', 'published', 'last_published'] as const;
@@ -300,8 +300,8 @@ describe("a page's own look takes the closed sets the organisation's does", () =
 		expect(message).toContain(`page_${column}_look_check`);
 	});
 
-	it("accepts a page with its own look, and one using the organisation's", async () => {
-		const own = withLook({ brandColour: '#1f6feb', shade: 'warm', corner: 'round' });
+	it('accepts a page with its own look, and one with none', async () => {
+		const own = withLook({ shade: 'warm', corner: 'round' });
 		const id = await insertPage({ ...LIVE, draft: own, published: '{"look":null}' });
 		const row = await env.DB.prepare(
 			`select json_extract(draft, '$.look.shade') as shade from page where id = ?`
@@ -557,83 +557,5 @@ describe('the chat, a page at a time and in order', () => {
 			.bind(pageId)
 			.first();
 		expect(row).toEqual({ text: '' });
-	});
-});
-
-describe("the Organisation's story, look and sharing, one row of them", () => {
-	const upsertLook = (look: string, previous: string | null = null) =>
-		env.DB.prepare(
-			`insert into org_presentation (id, look, look_previous, created_at, updated_at)
-			 values ('default', ?, ?, 0, 0)
-			 on conflict (id) do update set look = excluded.look, look_previous = excluded.look_previous`
-		)
-			.bind(look, previous)
-			.run();
-
-	it('refuses a second row', async () => {
-		await upsertLook('{}');
-		const message = await rejection(() =>
-			env.DB.prepare(
-				`insert into org_presentation (id, created_at, updated_at) values ('second', 0, 0)`
-			).run()
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('org_presentation_id_check');
-	});
-
-	it.each([['dark'], ['Light'], [''], [1]])('refuses the shade %j', async (shade) => {
-		const message = await rejection(() => upsertLook(JSON.stringify({ shade })));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('org_presentation_look_check');
-	});
-
-	it.each([['pill'], ['Round'], ['']])('refuses the corner %j', async (corner) => {
-		const message = await rejection(() => upsertLook(JSON.stringify({ corner })));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('org_presentation_look_check');
-	});
-
-	it.each([['red'], ['#FFAA00'], ['#fa0'], ['#ffaa00;x']])(
-		'refuses the brand colour %j',
-		async (brandColour) => {
-			const message = await rejection(() => upsertLook(JSON.stringify({ brandColour })));
-			expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-			expect(message).toContain('org_presentation_look_check');
-		}
-	);
-
-	it('refuses an off-list look kept for Undo', async () => {
-		const message = await rejection(() => upsertLook('{}', JSON.stringify({ shade: 'dark' })));
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('org_presentation_look_previous_check');
-	});
-
-	it.each([
-		['story', '[]'],
-		['sharing', 'not json'],
-		['story_previous', 'null'],
-		['sharing_previous', '"x"']
-	])('refuses %s holding %j', async (column, value) => {
-		const message = await rejection(() =>
-			env.DB.prepare(`update org_presentation set ${column} = ? where id = 'default'`)
-				.bind(value)
-				.run()
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain(`org_presentation_${column}_object_check`);
-	});
-
-	it('undoes a save in one statement, putting the previous look back', async () => {
-		const warm = JSON.stringify({ brandColour: '#1f6feb', shade: 'warm', corner: 'round' });
-		const cool = JSON.stringify({ brandColour: '#1f6feb', shade: 'cool', corner: 'square' });
-		await upsertLook(cool, warm);
-		await env.DB.prepare(
-			`update org_presentation set look = look_previous, look_previous = look
-			 where id = 'default' and look_previous is not null`
-		).run();
-		const row = await env.DB.prepare(
-			`select look, look_previous from org_presentation where id = 'default'`
-		).first();
-		expect(row).toEqual({ look: warm, look_previous: cool });
 	});
 });

@@ -181,7 +181,7 @@ describe('a block with no photo yet', () => {
 	});
 });
 
-/** the control with no description box, as the logo and a program's photo draw it. */
+/** the control with no description box, as a program's photo draws it. */
 const bare = (over: Partial<Extract<ReplacePhotoControlProps, { describe: false }>> = {}) =>
 	({
 		imageSrc: '/image/0192a4c1',
@@ -197,19 +197,10 @@ describe('an image whose words stand beside it', () => {
 		expect(one(host, 'img').getAttribute('alt')).toBe('');
 	});
 
-	it('names the press for what the image is', () => {
-		const { host, redraw } = mount(<ReplacePhotoControl {...bare({ noun: 'logo' })} />);
-		expect(press(host).textContent).toBe('Replace logo');
-
-		redraw(<ReplacePhotoControl {...bare({ noun: 'logo', imageSrc: undefined })} />);
-		expect(press(host).textContent).toBe('Add logo');
-	});
-
-	it('frames the art whole or square, and as the sheet crops it by default', () => {
-		const art = (frame?: 'whole' | 'square') =>
+	it('frames the art square, and as the sheet crops it by default', () => {
+		const art = (frame?: 'square') =>
 			one(mount(<ReplacePhotoControl {...bare({ frame })} />).host, 'img').className;
 		expect(art()).toBe('adm-placed__art');
-		expect(art('whole')).toBe('adm-placed__art adm-placed__art--whole');
 		expect(art('square')).toBe('adm-placed__art adm-placed__art--square');
 	});
 });
@@ -220,10 +211,10 @@ describe('Remove', () => {
 
 	it('stands beside the press, named for what it takes away, and reports the press', () => {
 		const onRemove = vi.fn();
-		const { host } = mount(<ReplacePhotoControl {...bare({ noun: 'logo', onRemove })} />);
+		const { host } = mount(<ReplacePhotoControl {...bare({ onRemove })} />);
 		const button = remove(host);
 
-		expect(button?.getAttribute('aria-label')).toBe('Remove the logo');
+		expect(button?.getAttribute('aria-label')).toBe('Remove the photo');
 		act(() => button?.click());
 		expect(onRemove).toHaveBeenCalledOnce();
 	});
@@ -241,16 +232,16 @@ describe('Remove', () => {
 
 	it('hands the focus to the press once the image it removed is gone', () => {
 		const onRemove = vi.fn();
-		const { host, redraw } = mount(<ReplacePhotoControl {...bare({ noun: 'logo', onRemove })} />);
+		const { host, redraw } = mount(<ReplacePhotoControl {...bare({ onRemove })} />);
 		const button = remove(host);
 		act(() => {
 			button?.focus();
 			button?.click();
 		});
-		redraw(<ReplacePhotoControl {...bare({ noun: 'logo', onRemove, imageSrc: undefined })} />);
+		redraw(<ReplacePhotoControl {...bare({ onRemove, imageSrc: undefined })} />);
 
 		expect(document.activeElement).toBe(press(host));
-		expect(press(host).textContent).toBe('Add logo');
+		expect(press(host).textContent).toBe('Add photo');
 	});
 });
 

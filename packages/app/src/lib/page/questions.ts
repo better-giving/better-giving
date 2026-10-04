@@ -216,9 +216,9 @@ export function answerValueWords(
 }
 
 /**
- * the question the server puts first in a page's opening while the Organisation's mission is empty.
- * its answer is written to the mission where the asked question is this one, id, kind and prompt
- * alike, and a model's question under its id is dropped from an opening that asks this one.
+ * the question the server puts first in a page's opening while the profile's mission is empty. its
+ * answer reaches the model as any answer does and is kept in the chat alone; the mission is the
+ * console's to save. a model's question under its id is dropped from an opening that asks this one.
  */
 export const MISSION_QUESTION = {
 	id: 'mission',

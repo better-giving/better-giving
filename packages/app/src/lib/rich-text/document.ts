@@ -173,22 +173,6 @@ export function parseRichText(
 	};
 }
 
-/**
- * words typed into a plain box, as a document: each line holding words a paragraph of its own, in
- * order, its text untouched. what `plainText` gives back for it is what was typed, where paragraphs
- * were a blank line apart. the length is unchecked — `parseRichText` is what bounds it.
- */
-export function textDocument(text: string): RichTextDocument {
-	const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
-	return {
-		type: 'doc',
-		content:
-			lines.length === 0
-				? [{ type: 'paragraph' }]
-				: lines.map((line) => ({ type: 'paragraph', content: [{ type: 'text', text: line }] }))
-	};
-}
-
 /** true when no text in the document holds anything but whitespace — the editor's blank state included */
 export function isEmptyDocument(doc: RichTextDocument): boolean {
 	for (const { paragraph } of paragraphsIn(doc.content, [])) {

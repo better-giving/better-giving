@@ -18,7 +18,6 @@ describe('the rail', () => {
 			'/admin/donors',
 			'/admin/donations',
 			'/admin/recurring',
-			'/admin/organisation',
 			'/admin/members',
 			'/admin/integrations/zapier',
 			'/admin/integrations/api',
@@ -27,11 +26,11 @@ describe('the rail', () => {
 		]);
 	});
 
-	it('stands the dashboard alone, then the records of giving, then the organisation and who can sign in, then the integrations, then the books', () => {
+	it('stands the dashboard alone, then the records of giving, then who can sign in, then the integrations, then the books', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
 			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
-			['Organisation', 'Members'],
+			['Members'],
 			['Zapier', 'API', 'Webhooks'],
 			['Books']
 		]);
@@ -59,7 +58,7 @@ describe('who the rail is drawn for', () => {
 		).toEqual([
 			['Dashboard'],
 			['Campaigns', 'Donation forms', 'Programs', 'Donors', 'Gifts', 'Recurring gifts'],
-			['Organisation', 'Members'],
+			['Members'],
 			['Books']
 		]);
 	});

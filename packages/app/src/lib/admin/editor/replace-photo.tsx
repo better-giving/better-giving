@@ -19,7 +19,7 @@ type Description =
 			readonly altError?: string | null | undefined;
 	  }
 	| {
-			/** no box: a logo's words are the name beside it, a program photo's the program's name. */
+			/** no box: a program photo's words are the program's name beside it. */
 			readonly describe: false;
 			readonly alt?: undefined;
 			readonly onAltChange?: undefined;
@@ -34,21 +34,19 @@ export type ReplacePhotoControlProps = Description & {
 	readonly onResized: (result: Resized) => void;
 	/** `uploading` while the route posts; `refused` with the words to show at the press. */
 	readonly state?: 'uploading' | { readonly refused: string } | undefined;
-	/** what the press calls the image — Add logo, Replace logo. */
-	readonly noun?: string | undefined;
-	/** how the art is framed: absent, cropped to the sheet's frame; `whole`, never cropped, as a
-	 *  logo is; `square`, cropped as the program chooser crops a program's photo. */
-	readonly frame?: 'whole' | 'square' | undefined;
+	/** how the art is framed: absent, cropped to the sheet's frame; `square`, cropped as the
+	 *  program chooser crops a program's photo. */
+	readonly frame?: 'square' | undefined;
 	/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
 	readonly onRemove?: (() => void) | undefined;
 	/** a plain word over the art, naming what kind of image it is — Illustration. */
 	readonly flag?: string | undefined;
 };
 
-/* a placed image and the press that swaps it: a block's photo in its edit sheet, the organisation's
-   logo, a program's photo. a new image is resized here and reported; the route uploads it and hands
-   back `state`. none placed yet draws the press alone, as Add photo, on the same path; the box that
-   describes a photo comes with the photo, unless the caller leaves it off.
+/* a placed image and the press that swaps it: a block's photo in its edit sheet, a program's
+   photo. a new image is resized here and reported; the route uploads it and hands back `state`.
+   none placed yet draws the press alone, as Add photo, on the same path; the box that describes a
+   photo comes with the photo, unless the caller leaves it off.
 
    the press reports its own outcome. while the image resizes or uploads it says so, held with
    `aria-disabled` so the focus stays on it; a refusal stands under it and the press is described
@@ -66,7 +64,6 @@ export function ReplacePhotoControl({
 	altId,
 	altError,
 	describe = true,
-	noun = 'photo',
 	frame,
 	onRemove,
 	flag
@@ -98,11 +95,7 @@ export function ReplacePhotoControl({
 				{placed ? (
 					<img
 						className={
-							frame === 'whole'
-								? 'adm-placed__art adm-placed__art--whole'
-								: frame === 'square'
-									? 'adm-placed__art adm-placed__art--square'
-									: 'adm-placed__art'
+							frame === 'square' ? 'adm-placed__art adm-placed__art--square' : 'adm-placed__art'
 						}
 						src={imageSrc}
 						alt={alt ?? ''}
@@ -126,15 +119,15 @@ export function ReplacePhotoControl({
 							: uploading
 								? 'Uploading'
 								: placed
-									? `Replace ${noun}`
-									: `Add ${noun}`}
+									? 'Replace photo'
+									: 'Add photo'}
 					</Button>
 					{onRemove === undefined || !placed || busy ? null : (
 						<Button
 							type="button"
 							variant="quiet"
 							mark="trash-2"
-							aria-label={`Remove the ${noun}`}
+							aria-label="Remove the photo"
 							onClick={() => {
 								removing.current = true;
 								onRemove();

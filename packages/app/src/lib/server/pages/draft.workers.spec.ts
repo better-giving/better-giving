@@ -1526,16 +1526,8 @@ function open(pageId: string, AI: { run: unknown }) {
 	return openTurn(db, { ...env, AI }, { pageId, timeZone: ZONE, now: NOW });
 }
 
-async function writeMission(mission: string | null, vision: string | null = null) {
-	await saveProfile(db, {
-		...(mission === null ? {} : { mission }),
-		...(vision === null ? {} : { vision })
-	});
-}
-
-/** the profile's mission, null where it holds none. */
-async function profileMission() {
-	return (await readOrgProfile(db))?.mission ?? null;
+async function writeMission(mission: string) {
+	await saveProfile(db, { mission });
 }
 
 /** a campaign of `campaignType`, its chat empty. */
@@ -1587,7 +1579,7 @@ describe('a page opened with an empty chat', () => {
 		]);
 	});
 
-	it('asks no mission once the Organisation has one, and keeps five at most', async () => {
+	it('asks no mission once the profile has one, and keeps five at most', async () => {
 		await writeMission('Warm coats for every child.');
 		const pageId = await insertPage(db, 'campaign');
 		const six = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, kind: 'text', prompt: 'More?' }));
@@ -1602,7 +1594,7 @@ describe('a page opened with an empty chat', () => {
 		);
 	});
 
-	it('once the Organisation has a mission keeps a question of the model’s under its id', async () => {
+	it('once the profile has a mission keeps a question of the model’s under its id', async () => {
 		await writeMission('Warm coats for every child.');
 		const pageId = await insertPage(db, 'campaign');
 		const lead = {
@@ -1805,24 +1797,23 @@ describe('the mission answered', () => {
 		return pageId;
 	}
 
-	it('is written to the Organisation’s mission, the vision kept', async () => {
-		await writeMission(null, 'A warm town.');
+	it('reaches the prompt, and nothing is written to the profile', async () => {
 		const pageId = await opened();
+		const before = await readOrgProfile(db);
+		const AI = answering({ say: 'Drafted.' });
 
-		await answer(
-			pageId,
-			[{ id: 'mission', value: 'Warm coats for every child.' }],
-			answering({ say: 'Drafted.' })
+		await answer(pageId, [{ id: 'mission', value: 'Warm coats for every child.' }], AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		expect(input.messages.at(-1).content).toContain(
+			'Your mission, in a sentence — Warm coats for every child.'
 		);
-
-		expect(await readOrgProfile(db)).toMatchObject({
-			mission: 'Warm coats for every child.',
-			vision: 'A warm town.'
-		});
+		expect(await readOrgProfile(db)).toEqual(before);
 	});
 
-	it('is written even when no model then answers, and the answers are not', async () => {
+	it('writes nothing to the profile when no model then answers', async () => {
 		const pageId = await opened();
+		const before = await readOrgProfile(db);
 
 		const result = await answer(
 			pageId,
@@ -1831,12 +1822,13 @@ describe('the mission answered', () => {
 		);
 
 		expect(result).toMatchObject({ ok: false, reason: 'unanswered' });
-		expect(await profileMission()).toBe('Warm coats.');
+		expect(await readOrgProfile(db)).toEqual(before);
 		expect(await chat(pageId)).toHaveLength(1);
 	});
 
-	it('is written even when the reply is refused', async () => {
+	it('writes nothing to the profile when the reply is refused', async () => {
 		const pageId = await opened();
+		const before = await readOrgProfile(db);
 
 		const result = await answer(
 			pageId,
@@ -1845,45 +1837,7 @@ describe('the mission answered', () => {
 		);
 
 		expect(result).toMatchObject({ ok: false, reason: 'refused' });
-		expect(await profileMission()).toBe('Warm coats.');
-	});
-
-	it('never writes over a mission saved since it was asked', async () => {
-		const pageId = await opened();
-		await writeMission('Saved by hand.');
-
-		await answer(pageId, [{ id: 'mission', value: 'Warm coats.' }], answering({ say: 'Drafted.' }));
-
-		expect(await profileMission()).toBe('Saved by hand.');
-	});
-
-	it('blank writes nothing', async () => {
-		const pageId = await opened();
-
-		await answer(pageId, [{ id: 'mission', value: '   ' }], answering({ say: 'Drafted.' }));
-
-		expect(await profileMission()).toBeNull();
-	});
-
-	it('in a turn that lands nothing writes nothing', async () => {
-		const pageId = await opened();
-		const run = vi.fn(async () => {
-			await db
-				.update(page)
-				.set({
-					draft: JSON.stringify({ ...defaultCampaign(), settings: SETTINGS, palette: 'bold' })
-				})
-				.where(eq(page.id, pageId));
-			return defaultModelReply(
-				JSON.stringify({ say: 'Two-tone.', page: { kind: 'merge', doc: { palette: 'duo' } } })
-			);
-		});
-
-		expect(await answer(pageId, [{ id: 'mission', value: 'Warm coats.' }], { run })).toEqual({
-			ok: false,
-			reason: 'stale'
-		});
-		expect(await profileMission()).toBeNull();
+		expect(await readOrgProfile(db)).toEqual(before);
 	});
 });
 
@@ -1967,7 +1921,7 @@ describe('a page opened with a 990 on record', () => {
 		});
 	});
 
-	it('asks no mission and prefills nothing once the Organisation has one', async () => {
+	it('asks no mission and prefills nothing once the profile has one', async () => {
 		await onRecord();
 		await writeMission('Coats for kids.');
 		const pageId = await insertPage(db, 'campaign');

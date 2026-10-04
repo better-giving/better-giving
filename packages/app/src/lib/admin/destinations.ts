@@ -3,18 +3,17 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
  * one look, then the campaigns and forms that take the money, the donors it came from, the gifts
- * themselves, the ones that repeat, the organisation and who may sign in, the systems outside that
- * read it, and the books all of it lands in. the dashboard is first because it is the surface's own
- * address and what an operator opens on, and each record after it is a step further from the page
- * or form that produced it.
+ * themselves, the ones that repeat, who may sign in, the systems outside that read it, and the
+ * books all of it lands in. the dashboard is first because it is the surface's own address and
+ * what an operator opens on, and each record after it is a step further from the page or form that
+ * produced it.
  *
- * the dashboard states figures and every other one but Organisation is a collection. what a
- * deployment holds one of — payments, mail, spam protection, the site list, the organisation's
- * legal identity — is set up on the operator console and is not a destination here. Organisation
- * is the one singleton on this rail, because it is what the organisation's pages say about it —
- * its story — and is written by anyone signed in, where the console is the deployer's. the
- * colleagues who may sign in are the one thing about access that is a collection rather than a
- * singleton, which is why Members is on this rail and the sign-in password is not.
+ * the dashboard states figures and every other one is a collection. what a deployment or its
+ * organisation holds one of — payments, mail, spam protection, the site list, the organisation's
+ * profile with its mission, logo and brand colour — is set up on the operator console and is not a
+ * destination here (CLAUDE.md → Two operator surfaces). the colleagues who may sign in are the one
+ * thing about access that is a collection rather than a singleton, which is why Members is on this
+ * rail and the sign-in password is not.
  *
  * a `label` is the word a fundraiser says and a path is the word the domain uses, and the two need
  * not be one: `/admin/donations` is Gifts. CLAUDE.md → Product surface is the rule, and it is why a
@@ -45,10 +44,10 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * time.
  *
  * the rail's column draws the destinations in five groups: the dashboard alone, the one
- * destination stating figures; the records of giving; the organisation and Members, who can open
- * the rest, neither of them recording a gift; the integrations, the ways a system outside the
- * deployment reaches it; and the books, which everything above writes into. a rule is the whole of
- * the separation between the other four. the integrations carry the one heading, because their
+ * destination stating figures; the records of giving; Members, who can open the rest and records
+ * no gift; the integrations, the ways a system outside the deployment reaches it; and the books,
+ * which everything above writes into. a rule is the whole of the separation between the other
+ * four. the integrations carry the one heading, because their
  * entries are named after a mechanism rather than a record — API — and that word in a run of
  * records says nothing about what it holds. the groups are the shape `AppShell` takes as `groups`,
  * and `DESTINATIONS` is the same entries flat, which is what a match against an address walks.
@@ -99,12 +98,6 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
-			{
-				href: '/admin/organisation',
-				label: 'Organisation',
-				short: 'Organisation',
-				mark: 'building-2'
-			},
 			// who can open every destination on this rail, which is no record of giving. what a
 			// deployment holds one of is set up on the console, and this is neither — a colleague
 			// is a row somebody adds and removes, which is what makes it a collection.

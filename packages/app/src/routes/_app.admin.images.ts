@@ -5,9 +5,8 @@ import type { Route } from './+types/_app.admin.images';
 
 // a photo posted from the dashboard, stored: an `action` with no component, which the editor asks
 // by fetcher and which answers `{ id, width, height }`. under the protected layout by its name, so
-// anyone signed in may store one; the photo belongs to nothing until a chat turn, a block, the
-// organisation's logo or a program names its id, and each of those writes refuses an id no stored
-// image has.
+// anyone signed in may store one; the photo belongs to nothing until a chat turn, a block or a
+// program names its id, and each of those writes refuses an id no stored image has.
 //
 // the body is `multipart/form-data` with the photo in `file`, taken by the one photo intake
 // ($lib/server/images/intake.ts), whose header states every bound it holds a post to.

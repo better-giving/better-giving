@@ -2,9 +2,9 @@
 // sets and a chat turn's notes, in the one place both the schema's checks and the page catalog
 // import from.
 //
-// `$lib/server/db/schema.ts` builds `page` and `org_presentation` checks out of these names with
-// `json_extract`, and a check reading a key the document no longer carries reads null, which it
-// accepts. naming each key once is what keeps the check and the parser reading the same key.
+// `$lib/server/db/schema.ts` builds `page`'s checks out of these names with `json_extract`, and a
+// check reading a key the document no longer carries reads null, which it accepts. naming each key
+// once is what keeps the check and the parser reading the same key.
 //
 // pure and not under `$lib/server/**`, for the reason `$lib/forms/statuses.ts` gives: a component
 // renders the shades and corners, and ./catalog.ts reads a page by its type, and neither can
@@ -33,8 +33,9 @@ export const PAGE_KEYS = {
 } as const;
 
 /**
- * keys of a look: the organisation's (`org_presentation.look`) holds all three, and a page's own its
- * shade and corner alone, since the brand colour is the organisation's.
+ * keys of a look. a page's holds its shade and corner; no page document writes `brandColour`, which
+ * the schema's look check reads beside them — the brand colour is the organisation's, on its
+ * profile (`org_profile.brand_colour`).
  */
 export const LOOK_KEYS = {
 	/** lowercase `#rrggbb`. */

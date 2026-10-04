@@ -1,10 +1,9 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
-// the checks `image` carries, each a table rebuild to change once shipped, and the keys pointing at
-// an image from `org_presentation` and `program`. `STRICT` and `NO ACTION` on every key are read off
-// sqlite's catalogue by ./strict.workers.spec.ts, and the bytes' length check is held by
-// ../images/bytes.workers.spec.ts.
+// the checks `image` carries, each a table rebuild to change once shipped, and the key pointing at
+// an image from `program`. `STRICT` and `NO ACTION` on every key are read off sqlite's catalogue by
+// ./strict.workers.spec.ts, and the bytes' length check is held by ../images/bytes.workers.spec.ts.
 
 type ImageRow = {
 	kind: string;
@@ -89,34 +88,19 @@ async function insertProgram(imageId: string | null) {
 		.run();
 }
 
-/** the one `org_presentation` row, with `column` set to `imageId`. */
-async function setOrgImage(column: string, imageId: string | null) {
-	await env.DB.prepare(
-		`insert into org_presentation (id, ${column}, created_at, updated_at)
-		 values ('default', ?, 0, 0)
-		 on conflict (id) do update set ${column} = excluded.${column}`
-	)
-		.bind(imageId)
-		.run();
-}
-
-// that each image is a `photo` is not a constraint here: a check reads only its own row, and the
+// that the image is a `photo` is not a constraint here: a check reads only its own row, and the
 // kind is on the image's. the write path holds it.
-describe.each([
-	['the logo', (id: string | null) => setOrgImage('logo_image_id', id)],
-	['the logo kept for undo', (id: string | null) => setOrgImage('logo_image_id_previous', id)],
-	["a program's photo", insertProgram]
-])('%s', (_, point) => {
+describe("a program's photo", () => {
 	it('takes an image that exists', async () => {
-		await expect(point(await insertImage(PHOTO))).resolves.toBeUndefined();
+		await expect(insertProgram(await insertImage(PHOTO))).resolves.toBeUndefined();
 	});
 
 	it('takes none', async () => {
-		await expect(point(null)).resolves.toBeUndefined();
+		await expect(insertProgram(null)).resolves.toBeUndefined();
 	});
 
 	it('refuses an image that does not exist', async () => {
-		const message = await rejection(() => point(MISSING_IMAGE));
+		const message = await rejection(() => insertProgram(MISSING_IMAGE));
 		expect(message).toContain(SQLITE_CONSTRAINT_FOREIGNKEY);
 	});
 });

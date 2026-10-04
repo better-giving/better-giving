@@ -3154,14 +3154,13 @@ export const webhookDelivery = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
-// the pages this deployment serves on its own address, and what they say about the organisation:
-// `org_presentation`, `page` and `chat_turn`.
+// the pages this deployment serves on its own address and the chat that drafts them: `page` and
+// `chat_turn`.
 //
-// each page and each of the organisation's three parts is held as a JSON document whose shape is
-// the parse boundary's, and the database reads a handful of keys out of them with `json_extract`.
-// a key a check reads is pinned by that check: rename it in the document and the check reads null,
-// which it accepts. so every such key is named once, in ../../page/keys.ts, for the checks here and
-// the page catalog's parser alike.
+// each page is held as a JSON document whose shape is the parse boundary's, and the database reads
+// a handful of keys out of them with `json_extract`. a key a check reads is pinned by that check:
+// rename it in the document and the check reads null, which it accepts. so every such key is named
+// once, in ../../page/keys.ts, for the checks here and the page catalog's parser alike.
 // ---------------------------------------------------------------------------
 
 /**
@@ -3178,95 +3177,22 @@ const jsonKeyIn = (doc: SQLiteColumn, path: SQL, values: readonly string[]) => {
 	return sql`(${key} is null or ${key} in (${quotedList(values)}))`;
 };
 
-/**
- * check body for the look held at `at` in `doc` (no keys: the document itself): its shade and
- * corner from their closed sets and its brand colour a lowercase `#rrggbb`, each where present.
- *
- * the colour is the one free value on a donor page's stylesheet, so anything but six hex digits —
- * a colour name, `#fa0`, a trailing `;` — is refused here as well as at the parse.
- */
-const lookFields = (doc: SQLiteColumn, at: readonly string[]) => {
-	const colour = sql`json_extract(${doc}, ${jsonPath(...at, LOOK_KEYS.brandColour)})`;
-	return sql`${jsonKeyIn(doc, jsonPath(...at, LOOK_KEYS.shade), SHADES)} and ${jsonKeyIn(doc, jsonPath(...at, LOOK_KEYS.corner), CORNERS)} and (${colour} is null or ${colour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')`;
-};
-
-/** check body for a column holding a look: a JSON object, with `lookFields`. */
-const lookCheck = (doc: SQLiteColumn) => sql`${jsonObject(doc)} and ${lookFields(doc, [])}`;
-
-/**
- * the organisation as the dashboard's organisation page holds it — its story (mission and an
- * optional vision), its look (brand colour, shade, corner) and its sharing (a share message and its
- * social links). no other screen reads it: a donor page and a page's chat are drawn from
- * `org_profile`, the console's.
- *
- * one row, ever — `org_presentation_id_check`, as on `org_profile` — and none is seeded: absent,
- * each part reads as our defaults. the first save of any part writes the row, the other two at
- * `{}`, which also reads as the defaults key by key.
- *
- * each part is saved on its own and keeps the version it replaced in its `_previous` column, so
- * undo is one statement per part — `set look = look_previous, look_previous = look`, which sqlite
- * evaluates against the row as it stood — and a `_previous` that is null has nothing to undo.
- *
- * `story` holds the mission and vision as structured rich-text documents, never HTML. `look` is
- * checked by `lookCheck` in both of its columns, since undo writes the previous look back unread.
- * `story` and `sharing` are asserted to be objects and nothing more.
- *
- * the logo, atop every page, is a fourth part: `logo_image_id`, null for none, with its undo in
- * `logo_image_id_previous` by the same swap. null is a value here, so a null `_previous` does not
- * mean nothing to undo — there is nothing to undo exactly when the two columns are equal. both
- * must name an `image` of kind `photo`, which no check here can read — the kind is on the image's
- * row — so the write path holds it.
- */
-export const orgPresentation = sqliteTable(
-	'org_presentation',
-	{
-		// the singleton key, as `org_profile.id` is.
-		id: text('id').primaryKey(),
-		story: text('story').notNull().default('{}'),
-		look: text('look').notNull().default('{}'),
-		sharing: text('sharing').notNull().default('{}'),
-		storyPrevious: text('story_previous'),
-		lookPrevious: text('look_previous'),
-		sharingPrevious: text('sharing_previous'),
-		createdAt: createdAt(),
-		updatedAt: updatedAt(),
-		logoImageId: text('logo_image_id').references(() => image.id),
-		logoImageIdPrevious: text('logo_image_id_previous').references(() => image.id)
-		// append new columns below this line — see rule 1 at the top of this file.
-	},
-	(t) => [
-		check('org_presentation_id_check', sql`${t.id} = 'default'`),
-		check('org_presentation_story_object_check', jsonObject(t.story)),
-		check('org_presentation_look_check', lookCheck(t.look)),
-		check('org_presentation_sharing_object_check', jsonObject(t.sharing)),
-		check(
-			'org_presentation_story_previous_object_check',
-			sql`${t.storyPrevious} is null or (${jsonObject(t.storyPrevious)})`
-		),
-		check(
-			'org_presentation_look_previous_check',
-			sql`${t.lookPrevious} is null or (${lookCheck(t.lookPrevious)})`
-		),
-		check(
-			'org_presentation_sharing_previous_object_check',
-			sql`${t.sharingPrevious} is null or (${jsonObject(t.sharingPrevious)})`
-		)
-	]
-);
-
 /** check body: a page document carries neither of a campaign's two keys, a goal and an end date. */
 const noCampaignSettings = (doc: SQLiteColumn) =>
 	sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.goalMinor)}) is null and json_extract(${doc}, ${jsonPath(PAGE_KEYS.endsAt)}) is null`;
 
 /**
- * check body for a page document's own look: absent or null, or an object `lookFields` accepts. a
- * null document extracts null and passes. the page rule is narrower — a look is a shade and a
- * corner, never null and never a brand colour — and absent draws `DEFAULT_SHADE` and
- * `DEFAULT_CORNER` ($lib/page/keys.ts).
+ * check body for a page document's own look: absent or null, or an object whose shade and corner
+ * are from their closed sets. a null document extracts null and passes. the parse is narrower — a
+ * look is a shade and a corner, never null — and absent draws `DEFAULT_SHADE` and `DEFAULT_CORNER`
+ * ($lib/page/keys.ts).
  */
 const pageLookCheck = (doc: SQLiteColumn) => {
 	const look = jsonPath(PAGE_KEYS.look);
-	return sql`json_extract(${doc}, ${look}) is null or (json_type(${doc}, ${look}) = 'object' and ${lookFields(doc, [PAGE_KEYS.look])})`;
+	// no page document writes a brand colour and the catalog's parse refuses one
+	// ($lib/page/catalog.ts); the arm stays because dropping it rebuilds `page`.
+	const colour = sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.look, LOOK_KEYS.brandColour)})`;
+	return sql`json_extract(${doc}, ${look}) is null or (json_type(${doc}, ${look}) = 'object' and ${jsonKeyIn(doc, jsonPath(PAGE_KEYS.look, LOOK_KEYS.shade), SHADES)} and ${jsonKeyIn(doc, jsonPath(PAGE_KEYS.look, LOOK_KEYS.corner), CORNERS)} and (${colour} is null or ${colour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))`;
 };
 
 /**
@@ -3291,7 +3217,7 @@ const pageLookCheck = (doc: SQLiteColumn) => {
  *
  * the database reads three of those keys, named in ../../page/keys.ts: `goalMinor` and `endsAt` are
  * refused on the donation page (`page_campaign_only_settings_check`), and `look`, where present, is
- * held to the closed sets the organisation's look is (`page_<document>_look_check`), each in all
+ * held to `SHADES` and `CORNERS` there (`page_<document>_look_check`), each in all
  * three documents. the header over this section says what reading a key pins.
  *
  * **one donation page**, held by `page_one_donation_page_idx` rather than by any read. no row is
@@ -3557,8 +3483,6 @@ export type WebhookDestination = typeof webhookDestination.$inferSelect;
 export type NewWebhookDestination = typeof webhookDestination.$inferInsert;
 export type WebhookDelivery = typeof webhookDelivery.$inferSelect;
 export type NewWebhookDelivery = typeof webhookDelivery.$inferInsert;
-export type OrgPresentation = typeof orgPresentation.$inferSelect;
-export type NewOrgPresentation = typeof orgPresentation.$inferInsert;
 export type Page = typeof page.$inferSelect;
 export type NewPage = typeof page.$inferInsert;
 export type ChatTurn = typeof chatTurn.$inferSelect;
