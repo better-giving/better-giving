@@ -1010,9 +1010,7 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 			    own row rather than in the page under it. the header is written out of the classes
 			    packages/operator/src/styles/adm.css already draws rather than mounted from the
 			    library's `PageHeader`, which is the gap this route was reported against: that
-			    component has one trailing slot and it is documented as the page's own action — and a
-			    route exporting an `action` cannot pass a prop of that name at all, because
-			    ../routes.spec.ts's bundle sweep reads the attribute as a reference to the export.
+			    component has one trailing slot and it is documented as the page's own action.
 			    nothing new is drawn and no value is stated.
 
 			    an archived form's word is the hueless one: the `note` tone is for a status that has

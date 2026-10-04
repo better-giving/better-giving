@@ -193,6 +193,11 @@ export const readFromDisk: ReadModule = (file) => {
  * strict reading applies to all of it again; `clientLoader` on a route with no component is that
  * case, and it is why the test is for a client-side export rather than for a component by name.
  *
+ * an identifier is followed only where it reads a binding. a name that labels a property — a JSX
+ * attribute's (`<Form action={…}>`), the one after a dot (`x.action`), an object key
+ * (`{ action: … }`) — reads none, so it is not followed even when it spells a stripped export.
+ * shorthand `{ action }` does read the binding of that name, and is followed.
+ *
  * `import type` is not followed, and does not need to be: this package sets
  * `verbatimModuleSyntax`, so a type-only import is erased with the text it was written as.
  */
@@ -412,9 +417,20 @@ function declaredNames(statement: ts.Statement): string[] {
 
 function collectIdentifiers(node: ts.Node, out: Set<string>): void {
 	node.forEachChild((child) => {
-		if (ts.isIdentifier(child)) out.add(child.text);
+		if (ts.isIdentifier(child) && !isPropertyLabel(child)) out.add(child.text);
 		collectIdentifiers(child, out);
 	});
+}
+
+/** shorthand `{ action }` is not a label: it reads the binding of that name. */
+function isPropertyLabel(identifier: ts.Identifier): boolean {
+	const parent = identifier.parent;
+	return (
+		(ts.isJsxAttribute(parent) ||
+			ts.isPropertyAccessExpression(parent) ||
+			ts.isPropertyAssignment(parent)) &&
+		parent.name === identifier
+	);
 }
 
 /**

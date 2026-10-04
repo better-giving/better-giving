@@ -1294,6 +1294,54 @@ describe('the server tree and the browser bundle', () => {
 		expect(chain).toEqual([]);
 	});
 
+	/** a route exporting an `action` that reaches the server tree, beside a component written in `body`. */
+	function besideAnAction(body: string): ReadModule {
+		return tree({
+			'routes/_app.donors.tsx': [
+				"import { Form } from 'react-router';",
+				"import { saveDonor } from '$lib/server/donors/commands';",
+				"const SAVE = '?index';",
+				'export async function action() { return saveDonor(); }',
+				body
+			].join('\n'),
+			'lib/server/donors/commands.ts': 'export function saveDonor() {}'
+		});
+	}
+
+	it('reads a JSX attribute name as a label, not as the export it is spelled like', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction(
+				'export default function Donors() { return <Form method="post" action={SAVE} />; }'
+			)
+		);
+		expect(chain).toEqual([]);
+	});
+
+	it('reads the name after a dot as a property, not as the export it is spelled like', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction('export default function Donors(props) { return props.action ?? SAVE; }')
+		);
+		expect(chain).toEqual([]);
+	});
+
+	it('reads an object key as a property, not as the export it is spelled like', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction('export default function Donors() { return { action: SAVE }; }')
+		);
+		expect(chain).toEqual([]);
+	});
+
+	it('follows a shorthand property, which reads the export it names', () => {
+		const chain = reachesServerTree(
+			'routes/_app.donors.tsx',
+			besideAnAction('export default function Donors() { return { action }; }')
+		);
+		expect(chain).toEqual(['routes/_app.donors.tsx', 'lib/server/donors/commands.ts']);
+	});
+
 	/** the page header's slot names, read off the component so a rename to one of them lands here. */
 	function pageHeaderSlots(): string[] {
 		const file = createRequire(import.meta.url).resolve(
@@ -1312,17 +1360,9 @@ describe('the server tree and the browser bundle', () => {
 	}
 
 	/**
-	 * a slot on a shared component may not carry the name of an export react router strips.
-	 *
-	 * `collectIdentifiers` in ./routes.testing.ts adds every identifier it walks, a JSX attribute
-	 * name included — so a route writing `action={…}` on a component reaches its own `action`
-	 * handler from its component, and with it every `$lib/server/**` import the handler has. the
-	 * failure that produces is the last case in this file, which reports D1 and the stripe client in
-	 * the bundle a visitor downloads: a diagnosis pointing at nothing real. that over-reach is what
-	 * makes the sweep safe, so the name moves rather than the sweep.
-	 *
-	 * the slots are read off the header itself, so renaming one back onto a stripped export fails
-	 * here rather than on whichever screen next mounts it beside an `action`.
+	 * the real header, every slot it has written as an attribute, beside an `action` that reaches
+	 * the server tree. the slots are read off the header itself, so whatever it is given to draw,
+	 * mounting it on a route with handlers reaches nothing.
 	 */
 	it('mounts the page header on a route that exports an action, and reaches nothing', () => {
 		const slots = pageHeaderSlots();

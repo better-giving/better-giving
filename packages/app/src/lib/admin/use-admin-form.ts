@@ -406,8 +406,7 @@ type BoxOptions = {
 	 * the attribute and the invalid border from — its own message or a caller's mark, either one.
 	 *
 	 * `refused` and not `invalid`, because a screen that writes this also imports `invalid()` to
-	 * reject with — and `src/routes.spec.ts` reads an object key by its name alone, so the two
-	 * spelled alike make a component look like it reaches into the server tree.
+	 * reject with, and the two spelled alike would read as one.
 	 */
 	readonly refused?: boolean;
 };

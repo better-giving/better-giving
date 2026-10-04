@@ -413,9 +413,7 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 
 			{/* the header is written out of the classes packages/operator/src/styles/adm.css already
 			    draws rather than mounted from the library's `PageHeader`: that component's trailing
-			    slot is documented as the page's own action, and a route exporting an `action` cannot
-			    pass a prop of that name at all, because ../routes.spec.ts's bundle sweep reads the
-			    attribute as a reference to the export.
+			    slot is documented as the page's own action.
 
 			    an archived cause's word is the hueless one: the `note` tone is for a status that has
 			    run its course, and $lib/admin/status-tones.ts is where the four are mapped. */}
