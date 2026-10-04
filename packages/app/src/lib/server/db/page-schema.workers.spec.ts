@@ -48,7 +48,6 @@ type PageRow = {
 	draft: string;
 	published: string | null;
 	last_published: string | null;
-	editor_visited_at: number | null;
 	campaign_type: string | null;
 };
 
@@ -60,7 +59,6 @@ const DONATION_PAGE: PageRow = {
 	draft: '{"blocks":[]}',
 	published: '{"blocks":[]}',
 	last_published: null,
-	editor_visited_at: null,
 	campaign_type: null
 };
 
@@ -71,8 +69,8 @@ async function insertPage(row: PageRow): Promise<string> {
 	const id = `019fc400-0000-7000-8000-${String(pageSequence).padStart(12, '0')}`;
 	await env.DB.prepare(
 		`insert into page (id, type, name, slug, state, form_id, draft, published, last_published,
-		                   editor_visited_at, campaign_type, created_at, updated_at)
-		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`
+		                   campaign_type, created_at, updated_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`
 	)
 		.bind(
 			id,
@@ -84,7 +82,6 @@ async function insertPage(row: PageRow): Promise<string> {
 			row.draft,
 			row.published,
 			row.last_published,
-			row.editor_visited_at,
 			row.campaign_type
 		)
 		.run();
@@ -121,7 +118,6 @@ const CAMPAIGN: PageRow = {
 	draft: '{"blocks":[],"goalMinor":1500000}',
 	published: null,
 	last_published: null,
-	editor_visited_at: null,
 	campaign_type: null
 };
 
@@ -313,16 +309,6 @@ describe("a page's own look takes the closed sets the organisation's does", () =
 			.bind(id)
 			.first();
 		expect(row).toEqual({ shade: 'warm' });
-	});
-});
-
-describe('the mission is asked for once, on the Donation page', () => {
-	it('refuses an editor visit recorded on a campaign', async () => {
-		const message = await rejection(() =>
-			insertPage({ ...CAMPAIGN, slug: 'visit-probe', editor_visited_at: 1 })
-		);
-		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
-		expect(message).toContain('page_editor_visited_check');
 	});
 });
 

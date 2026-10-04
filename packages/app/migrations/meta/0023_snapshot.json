@@ -1994,13 +1994,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "editor_visited_at": {
-          "name": "editor_visited_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -2121,10 +2114,6 @@
         "page_campaign_only_settings_check": {
           "name": "page_campaign_only_settings_check",
           "value": "\"page\".\"type\" <> 'donation_page' or (json_extract(\"page\".\"draft\", '$.goalMinor') is null and json_extract(\"page\".\"draft\", '$.endsAt') is null and json_extract(\"page\".\"published\", '$.goalMinor') is null and json_extract(\"page\".\"published\", '$.endsAt') is null and json_extract(\"page\".\"last_published\", '$.goalMinor') is null and json_extract(\"page\".\"last_published\", '$.endsAt') is null)"
-        },
-        "page_editor_visited_check": {
-          "name": "page_editor_visited_check",
-          "value": "\"page\".\"editor_visited_at\" is null or \"page\".\"type\" = 'donation_page'"
         },
         "page_campaign_type_check": {
           "name": "page_campaign_type_check",

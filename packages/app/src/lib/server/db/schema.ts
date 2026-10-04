@@ -3267,8 +3267,6 @@ const pageLookCheck = (doc: SQLiteColumn) => {
  * first needs at once are settled by that index: the losing `batch()` fails whole, its owned
  * `form` insert with it, and the loser then reads the winner's row. the donation page is always
  * `live`, and has no name (screens call it "Donation page"), no slug, no goal and no end date.
- * `editor_visited_at` is its alone: when its editor was first opened, so the mission is asked for
- * once.
  *
  * **a campaign** is named, and holds a slug from creation, unique among the slugs held — a
  * never-published campaign's included. an ended campaign keeps its slug until another campaign
@@ -3298,7 +3296,6 @@ export const page = sqliteTable(
 		draft: text('draft').notNull(),
 		published: text('published'),
 		lastPublished: text('last_published'),
-		editorVisitedAt: at('editor_visited_at'),
 		createdAt: createdAt(),
 		updatedAt: updatedAt(),
 		campaignType: text('campaign_type').$type<CampaignType>()
@@ -3343,10 +3340,6 @@ export const page = sqliteTable(
 		check(
 			'page_campaign_only_settings_check',
 			sql`${t.type} <> 'donation_page' or (${noCampaignSettings(t.draft)} and ${noCampaignSettings(t.published)} and ${noCampaignSettings(t.lastPublished)})`
-		),
-		check(
-			'page_editor_visited_check',
-			sql`${t.editorVisitedAt} is null or ${t.type} = 'donation_page'`
 		),
 		check(
 			'page_campaign_type_check',

@@ -250,7 +250,6 @@ describe('the mission', () => {
 			expect(response.status).toBe(400);
 			expect(await response.text()).toContain('names no form on this screen');
 			expect((await readOrgStory(db)).story.mission).toBeNull();
-			expect((await donationPage())?.editorVisitedAt).toBeNull();
 		}
 	);
 });

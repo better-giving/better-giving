@@ -115,7 +115,6 @@ CREATE TABLE `page` (
 	`draft` text NOT NULL,
 	`published` text,
 	`last_published` text,
-	`editor_visited_at` integer,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	`campaign_type` text,
@@ -134,7 +133,6 @@ CREATE TABLE `page` (
 	CONSTRAINT "page_published_look_check" CHECK(json_extract("page"."published", '$.look') is null or (json_type("page"."published", '$.look') = 'object' and (json_extract("page"."published", '$.look.shade') is null or json_extract("page"."published", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract("page"."published", '$.look.corner') is null or json_extract("page"."published", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract("page"."published", '$.look.brandColour') is null or json_extract("page"."published", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))),
 	CONSTRAINT "page_last_published_look_check" CHECK(json_extract("page"."last_published", '$.look') is null or (json_type("page"."last_published", '$.look') = 'object' and (json_extract("page"."last_published", '$.look.shade') is null or json_extract("page"."last_published", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract("page"."last_published", '$.look.corner') is null or json_extract("page"."last_published", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract("page"."last_published", '$.look.brandColour') is null or json_extract("page"."last_published", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))),
 	CONSTRAINT "page_campaign_only_settings_check" CHECK("page"."type" <> 'donation_page' or (json_extract("page"."draft", '$.goalMinor') is null and json_extract("page"."draft", '$.endsAt') is null and json_extract("page"."published", '$.goalMinor') is null and json_extract("page"."published", '$.endsAt') is null and json_extract("page"."last_published", '$.goalMinor') is null and json_extract("page"."last_published", '$.endsAt') is null)),
-	CONSTRAINT "page_editor_visited_check" CHECK("page"."editor_visited_at" is null or "page"."type" = 'donation_page'),
 	CONSTRAINT "page_campaign_type_check" CHECK("page"."campaign_type" is null or ("page"."type" = 'campaign' and "page"."campaign_type" in ('year_end', 'emergency', 'building', 'event', 'tribute', 'monthly', 'program', 'other')))
 ) STRICT;
 --> statement-breakpoint
