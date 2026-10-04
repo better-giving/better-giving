@@ -1363,6 +1363,15 @@ describe('a reply that asks', () => {
 		});
 	});
 
+	it.each([
+		['empty', []],
+		['null', null]
+	])('that is %s is no ask, so the page change beside it lands', (_, empty) => {
+		expect(
+			accept({ say: 'Two-tone.', ask: empty, page: { kind: 'merge', doc: { palette: 'duo' } } })
+		).toMatchObject({ ok: true, kind: 'drafted', draft: { palette: 'duo' } });
+	});
+
 	it('is refused in reply to answers, which it changes the page from instead', () => {
 		const current = campaign();
 		expect(accept({ say: 'One more.', ask }, { current, answering: true })).toEqual({

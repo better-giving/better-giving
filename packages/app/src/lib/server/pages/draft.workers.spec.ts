@@ -608,7 +608,7 @@ describe('an impact tier the page held', () => {
 });
 
 describe('a turn no model answers', () => {
-	it('leaves the draft as it was and says so plainly, with what the operator can do', async () => {
+	it('leaves the draft as it was and says so plainly, with what the operator can do, noted for the chat', async () => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
 
@@ -625,7 +625,7 @@ describe('a turn no model answers', () => {
 			note: 'unanswered'
 		});
 		const [, drawn] = (await readChat(db, pageId)) ?? [];
-		expect(drawn).not.toHaveProperty('note');
+		expect(drawn).toMatchObject({ note: 'unanswered' });
 	});
 });
 
@@ -1191,16 +1191,40 @@ describe('answers to the questions asked', () => {
 		expect(await chat(pageId)).toHaveLength(4);
 	});
 
-	it('answered with another ask are refused, and the draft is untouched', async () => {
+	it('answered with another ask are refused, writing no turn, so the questions stay asked', async () => {
 		const pageId = await asking();
 		const before = (await stored(pageId)).draft;
 
 		const result = await answer(pageId, [], answering({ say: 'One more.', ask: ASKED }));
 
-		expect(result).toMatchObject({ outcome: 'refused' });
+		expect(result).toEqual({
+			ok: false,
+			reason: 'refused',
+			text: 'I couldn’t apply that: a reply to answers changes the page from them and never asks again'
+		});
 		expect((await stored(pageId)).draft).toEqual(before);
-		const [, , , reply] = await chat(pageId);
-		expect(reply).toMatchObject({ note: 'refused', questions: null });
+		expect(await chat(pageId)).toHaveLength(2);
+	});
+
+	it('that no model answers write no turn, and sent again once one does, draft', async () => {
+		const pageId = await asking();
+
+		expect(await answer(pageId, [{ id: 'goal', value: 5000 }], undefined as never)).toEqual({
+			ok: false,
+			reason: 'unanswered',
+			text: expect.stringMatching(/^No model answered, so nothing changed\. /)
+		});
+		expect(await chat(pageId)).toHaveLength(2);
+
+		const again = await answer(
+			pageId,
+			[{ id: 'goal', value: 5000 }],
+			answering({ say: 'Drafted.', set: { goalMinor: 5000 } })
+		);
+
+		expect(again).toMatchObject({ ok: true, outcome: 'accepted' });
+		expect((await stored(pageId)).draft.goalMinor).toBe(5000);
+		expect(await chat(pageId)).toHaveLength(4);
 	});
 
 	it('give an amount the reply may then write, and no impact tier from it alone', async () => {
@@ -1230,6 +1254,100 @@ describe('answers to the questions asked', () => {
 		const { draft } = await stored(pageId);
 		expect(draft.blocks[1]).toMatchObject({ heading: 'Give $50 this winter' });
 		expect(draft.blocks.find(({ type }) => type === 'impact-tiers')).toMatchObject({ tiers: [] });
+	});
+});
+
+describe('a figure in a question the model asked', () => {
+	const heading = (words: string) => ({
+		say: 'Drafted.',
+		page: { kind: 'patch', ops: [{ op: 'replace', path: '/blocks/1/props/heading', value: words }] }
+	});
+
+	it('answered "No" is no figure the operator stated, so a reply writing it is refused', async () => {
+		const pageId = await asking([
+			{
+				id: 'size',
+				kind: 'choice',
+				prompt: 'Is your goal $10,000 or more?',
+				options: ['Yes', 'No']
+			}
+		]);
+		const before = (await stored(pageId)).draft;
+
+		const result = await answer(
+			pageId,
+			[{ id: 'size', value: 'No' }],
+			answering(heading('Help us reach $10,000'))
+		);
+
+		expect(result).toEqual({
+			ok: false,
+			reason: 'refused',
+			text: expect.stringContaining('$10,000')
+		});
+		expect((await stored(pageId)).draft).toEqual(before);
+	});
+
+	it('pairing an amount with an impact, answered "No", grants no impact tier', async () => {
+		const pageId = await asking([
+			{
+				id: 'meals',
+				kind: 'choice',
+				prompt: 'Does $50 provide a week of meals?',
+				options: ['Yes', 'No']
+			}
+		]);
+		const tiers = {
+			id: 'impact',
+			type: 'impact-tiers',
+			variant: 'cards',
+			background: 'none',
+			props: { tiers: [{ amountMinor: 5000, buys: 'a week of meals' }] }
+		};
+		const AI = answering({
+			say: 'Drafted.',
+			page: { kind: 'patch', ops: [{ op: 'add', path: '/blocks/4', value: tiers }] }
+		});
+
+		expect(await answer(pageId, [{ id: 'meals', value: 'No' }], AI)).toMatchObject({
+			outcome: 'accepted'
+		});
+
+		const { draft } = await stored(pageId);
+		expect(draft.blocks.find(({ type }) => type === 'impact-tiers')).toMatchObject({ tiers: [] });
+	});
+
+	it('picked as the answer is the operator’s figure, which the reply may write', async () => {
+		const pageId = await asking([
+			{ id: 'gift', kind: 'choice', prompt: 'Which gift should lead?', options: ['$25', '$50'] }
+		]);
+
+		const result = await answer(
+			pageId,
+			[{ id: 'gift', value: '$50' }],
+			answering(heading('Give $50 this winter'))
+		);
+
+		expect(result).toMatchObject({ outcome: 'accepted' });
+		expect((await stored(pageId)).draft.blocks[1]).toMatchObject({
+			heading: 'Give $50 this winter'
+		});
+	});
+
+	it('answered on an earlier turn is still no figure the operator stated', async () => {
+		const pageId = await asking([
+			{
+				id: 'size',
+				kind: 'choice',
+				prompt: 'Is your goal $10,000 or more?',
+				options: ['Yes', 'No']
+			}
+		]);
+		await answer(pageId, [{ id: 'size', value: 'No' }], answering({ say: 'Drafted.' }));
+
+		const result = await turn(pageId, 'add a heading', answering(heading('Help us reach $10,000')));
+
+		expect(result).toMatchObject({ ok: true, outcome: 'refused' });
 	});
 });
 
@@ -1315,6 +1433,21 @@ describe('a page opened with an empty chat', () => {
 		expect(input.messages.at(-1).content).toBe(
 			'Before you draft this page, ask me 3 to 5 questions whose answers you need to draft it.'
 		);
+	});
+
+	it('once the Organisation has a mission keeps a question of the model’s under its id', async () => {
+		await writeMission('Warm coats for every child.');
+		const pageId = await insertPage(db, 'campaign');
+		const lead = {
+			id: 'mission',
+			kind: 'choice',
+			prompt: 'Which part of your mission should lead?',
+			options: ['Coats', 'Boots']
+		};
+
+		const result = await open(pageId, answering({ say: 'Questions.', ask: [lead] }));
+
+		expect(result).toMatchObject({ turns: [{ text: 'Questions.', questions: [lead] }] });
 	});
 
 	it('with the mission first keeps four of the model’s questions', async () => {
@@ -1531,7 +1664,7 @@ describe('the mission answered', () => {
 		});
 	});
 
-	it('is written even when no model then answers', async () => {
+	it('is written even when no model then answers, and the answers are not', async () => {
 		const pageId = await opened();
 
 		const result = await answer(
@@ -1540,7 +1673,21 @@ describe('the mission answered', () => {
 			undefined as never
 		);
 
-		expect(result).toMatchObject({ outcome: 'unanswered' });
+		expect(result).toMatchObject({ ok: false, reason: 'unanswered' });
+		expect((await readOrgStory(db)).story.mission).toEqual(textDocument('Warm coats.'));
+		expect(await chat(pageId)).toHaveLength(1);
+	});
+
+	it('is written even when the reply is refused', async () => {
+		const pageId = await opened();
+
+		const result = await answer(
+			pageId,
+			[{ id: 'mission', value: 'Warm coats.' }],
+			answering({ say: 'One more.', ask: OWN })
+		);
+
+		expect(result).toMatchObject({ ok: false, reason: 'refused' });
 		expect((await readOrgStory(db)).story.mission).toEqual(textDocument('Warm coats.'));
 	});
 

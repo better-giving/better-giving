@@ -618,14 +618,27 @@ describe('the suggestions', () => {
 		expect(suggestions()).toContain('Add a FAQ');
 	});
 
-	it('are not offered on a chat whose only reply changed nothing', async () => {
+	it.each([
+		['refused', 'That reply didn’t fit.'],
+		['unanswered', 'No model answered, so nothing changed. Try again in a moment.']
+	] as const)('are not offered on a chat whose only reply was %s', async (note, text) => {
 		stored = [
 			{ id: 't1', role: 'operator', text: 'Make it warmer' },
-			{ id: 't2', role: 'assistant', text: 'That reply didn’t fit.', note: 'refused' }
+			{ id: 't2', role: 'assistant', text, note }
 		];
 		await opened();
 
 		expect(suggestions()).toEqual([]);
+	});
+
+	it('are offered on a chat whose reply the default model wrote', async () => {
+		stored = [
+			{ id: 't1', role: 'operator', text: 'Make it warmer' },
+			{ id: 't2', role: 'assistant', text: 'Warmer now.', note: 'fell-back' }
+		];
+		await opened();
+
+		expect(suggestions()).toContain('Add a FAQ');
 	});
 
 	it('leave free words sent while a card is up to post as a message', async () => {

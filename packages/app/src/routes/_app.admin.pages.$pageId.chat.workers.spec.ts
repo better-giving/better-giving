@@ -258,9 +258,84 @@ describe('answers, posted as intent answers', () => {
 
 		expect([response.status, await response.json()]).toEqual([
 			409,
-			{ error: expect.stringContaining('answered already'), reason: 'answered' }
+			{
+				error: expect.stringContaining('are no longer the chat’s last turn'),
+				reason: 'answered'
+			}
 		]);
 		expect(AI.run).not.toHaveBeenCalled();
+	});
+
+	it('to questions a message has followed are the same 409, which claims no answer', async () => {
+		const pageId = await asked();
+		await post(pageId, TURN);
+
+		const response = await post(pageId, { intent: 'answers', answers: '[]', timeZone: ZONE });
+
+		expect(response.status).toBe(409);
+		const body = (await response.json()) as { error: string; reason: string };
+		expect(body.reason).toBe('answered');
+		expect(body.error).not.toContain('answered already');
+	});
+
+	it('landing after a save made while the model answered are a 409 marked stale, asking them sent again', async () => {
+		const pageId = await asked();
+		const [row] = await db.select().from(page).where(eq(page.id, pageId));
+		const edited = { ...JSON.parse(row?.draft ?? '{}'), palette: 'bold' };
+		const run = vi.fn(async () => {
+			await db
+				.update(page)
+				.set({ draft: JSON.stringify(edited) })
+				.where(eq(page.id, pageId));
+			return { response: JSON.stringify(TWO_TONE) };
+		});
+
+		const response = await post(
+			pageId,
+			{ intent: 'answers', answers: '[]', timeZone: ZONE },
+			{ run }
+		);
+
+		expect([response.status, await response.json()]).toEqual([
+			409,
+			{ error: expect.stringContaining('send the answers again'), reason: 'stale' }
+		]);
+	});
+
+	it('that no model answers are a 503 marked unanswered, and sent again once one does, land', async () => {
+		const pageId = await asked();
+		const fields = { intent: 'answers', answers: '[{"id":"goal","value":5000}]', timeZone: ZONE };
+
+		const response = await post(pageId, fields, {} as never);
+
+		expect([response.status, await response.json()]).toEqual([
+			503,
+			{
+				error: expect.stringMatching(/^No model answered, so nothing changed\. /),
+				reason: 'unanswered'
+			}
+		]);
+		const resent = await post(pageId, fields);
+		expect([resent.status, await resent.json()]).toMatchObject([200, { outcome: 'accepted' }]);
+	});
+
+	it('whose reply asks again are a 422 marked refused, saying why', async () => {
+		const pageId = await asked();
+
+		const response = await post(
+			pageId,
+			{ intent: 'answers', answers: '[]', timeZone: ZONE },
+			answering(ASK)
+		);
+
+		expect([response.status, await response.json()]).toEqual([
+			422,
+			{
+				error:
+					'I couldn’t apply that: a reply to answers changes the page from them and never asks again',
+				reason: 'refused'
+			}
+		]);
 	});
 
 	it.each([
@@ -270,6 +345,11 @@ describe('answers, posted as intent answers', () => {
 			'answers.0: "colour" is no question asked'
 		],
 		['an amount of nothing', { answers: '[{"id":"goal","value":0}]' }, 'answers.0.value: '],
+		[
+			'more answers than an ask holds questions',
+			{ answers: JSON.stringify(Array.from({ length: 6 }, () => ({ id: 'goal', value: 5000 }))) },
+			'answers: holds at most 5 answers, one per question asked'
+		],
 		['no answers box', {}, 'answers is a JSON array'],
 		['answers that are not JSON', { answers: 'goal=50' }, 'answers is a JSON array']
 	])('are a 400 naming the box, for %s, and ask no model', async (_, fields, error) => {

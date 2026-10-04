@@ -17,14 +17,14 @@ import type { CardAnswer, CardQuestion } from './question-card';
  * `note` marks an assistant turn the log draws a line under: `fell-back` when the chosen model did
  * not answer and the default model wrote it, `refused` when the reply did not fit the page and nothing
  * changed, `starter` when the AI did not answer the opening and the page's usual questions were
- * asked instead.
+ * asked instead. `unanswered` marks a turn no model answered, whose words say so; no line is drawn.
  */
 export interface ChatMessage {
 	readonly id: string;
 	readonly role: 'operator' | 'assistant';
 	readonly text: string;
 	readonly imageIds?: readonly string[] | undefined;
-	readonly note?: 'fell-back' | 'refused' | 'starter' | undefined;
+	readonly note?: 'fell-back' | 'refused' | 'starter' | 'unanswered' | undefined;
 	/** an assistant turn that asks: its words are `text` and these are put under them as a card. */
 	readonly questions?: readonly CardQuestion[] | undefined;
 	/** an operator turn that answered a card: each question answered, and the answer in words. */

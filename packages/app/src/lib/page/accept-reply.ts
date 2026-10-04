@@ -23,7 +23,8 @@
 // a reply may instead be `{ say, ask }`: up to `QUESTIONS_MAX` questions for the operator, read by
 // ./questions.ts's rule, and handed back as asked with no draft at all. an `ask` beside `page` or
 // `set` refuses the reply, since a reply that asks never also changes the page, and so does any
-// `ask` where the caller says the turn answers questions: one round of questions, then a draft.
+// `ask` where the caller says the turn answers questions: one round of questions, then a draft. an
+// `ask` that is `[]` or `null` is read as none.
 //
 // the model's answer is text nobody checked, so its size is bounded before anything reads it
 // (`readReply`, which $lib/server/pages/draft.ts reads a reply through too): the text at
@@ -139,7 +140,11 @@ const replySchema = z.strictObject({
 			}
 		)
 		.optional(),
-	ask: askSchema.optional()
+	// a model in JSON mode fills every key, so an empty or null ask is none.
+	ask: z.preprocess(
+		(ask) => (ask === null || (Array.isArray(ask) && ask.length === 0) ? undefined : ask),
+		askSchema.optional()
+	)
 });
 
 /** the reply's shape as JSON Schema, for a model's JSON mode; this door checks it again whatever. */

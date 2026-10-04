@@ -181,6 +181,22 @@ describe('the starter questions', () => {
 		expect(starter.map(({ id }) => id)).toEqual(['mission', 'purpose', 'who', 'pays-for', 'goal']);
 	});
 
+	it.each([null, 'year_end', 'program'] as const)(
+		'of a %s campaign say its goal and its end may be left blank',
+		(type) => {
+			const starter = starterQuestions('campaign', type, false);
+			expect(
+				starter.filter(({ id }) => id === 'goal' || id === 'end-date').map(({ hint }) => hint)
+			).toEqual(['Leave it blank for no goal', 'Leave it blank for no end']);
+		}
+	);
+
+	it('of a campaign made before types are those of one of type other', () => {
+		expect(starterQuestions('campaign', null, true)).toEqual(
+			starterQuestions('campaign', 'other', true)
+		);
+	});
+
 	it('of an event are its own, in the order the type asks them', () => {
 		const starter = starterQuestions('campaign', 'event', false);
 		expect(starter.map(({ kind, prompt }) => [kind, prompt])).toEqual([

@@ -1,6 +1,7 @@
 // what New campaign takes: the kind of campaign it is and its name. the name becomes the campaign's
 // name, so it is held to the name's own limit (`HEADING_MAX` in ./catalog.ts); the type is one of
-// `CAMPAIGN_TYPES` (./campaign-types.ts), and a value off that list is refused by the value sent.
+// `CAMPAIGN_TYPES` (./campaign-types.ts), and a value off that list is refused naming the value
+// sent and the list.
 //
 // pure and not under `$lib/server/**`: the dialog validates with it in the browser
 // (`$lib/admin/use-admin-form.ts`), and a component cannot import from there.

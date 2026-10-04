@@ -8,9 +8,11 @@
 // choice, so a choice's answer is one of its options or the Other words, and a several-choices
 // answer holds at most one string that is not an option.
 //
-// the operator turn's text is `answerWords`, one line per answered question, an amount in dollars
-// and a day in words. the model reads those words, and ./accept-reply.ts reads a figure in them as
-// one the operator stated.
+// the operator turn's text is `answerWords`, one line per answered question, its prompt and its
+// answer, an amount in dollars and a day in words; the model reads those words. ./accept-reply.ts
+// reads a figure the operator stated out of `answerValueWords` alone, the answers without their
+// prompts: a prompt is the model's words, and "Is your goal $10,000 or more?" answered "No" states
+// no figure. an option the operator picked is their answer, figure and all.
 //
 // pure and not under `$lib/server/**`, beside the catalog its replies edit.
 import { z } from 'zod';
@@ -152,7 +154,9 @@ export function readAnswers(
 ): { ok: true; answers: Answer[] } | { ok: false; reason: string } {
 	const list = z
 		.array(answerShape, { error: 'answers is a list of {id, value}' })
-		.max(QUESTIONS_MAX)
+		.max(QUESTIONS_MAX, {
+			error: `holds at most ${QUESTIONS_MAX} answers, one per question asked`
+		})
 		.safeParse(json);
 	if (!list.success) return { ok: false, reason: issueText(list.error, ['answers']) };
 	const answers: Answer[] = [];
@@ -199,9 +203,22 @@ export function answerWords(questions: readonly Question[], answers: readonly An
 }
 
 /**
+ * the operator's own words in `answers`, one line per answered question: the answers alone, never
+ * the prompts, which the model wrote. what ./accept-reply.ts reads an answers turn's figures from.
+ */
+export function answerValueWords(
+	questions: readonly Question[],
+	answers: readonly Answer[]
+): string {
+	return answeredLines(questions, answers)
+		.map(({ words }) => words)
+		.join('\n');
+}
+
+/**
  * the question the server puts first in a page's opening while the Organisation's mission is empty.
  * its answer is written to the mission where the asked question is this one, id, kind and prompt
- * alike, and a model's question under its id is dropped from an opening.
+ * alike, and a model's question under its id is dropped from an opening that asks this one.
  */
 export const MISSION_QUESTION = {
 	id: 'mission',
@@ -238,18 +255,10 @@ const DONATION_PAGE_STARTER: readonly Question[] = [
 	{ id: 'typical-gift', kind: 'amount', prompt: 'A typical gift' }
 ];
 
-/** a campaign made before its type was asked. */
-const UNTYPED_CAMPAIGN_STARTER: readonly Question[] = [
-	{ id: 'purpose', kind: 'text', prompt: 'What is this campaign for?' },
-	{ id: 'who', kind: 'text', prompt: 'Who does it help?' },
-	{ id: 'pays-for', kind: 'text', prompt: 'What will gifts pay for?' },
-	{ id: 'goal', kind: 'amount', prompt: 'Your goal', hint: 'Leave it blank for no goal' },
-	{ id: 'end-date', kind: 'date', prompt: 'When does it end?', hint: 'Leave it blank for no end' }
-];
-
 /**
  * the questions a page opens on when no model drafts its own: the mission first while it is empty,
- * then the page's set — a campaign's its type's — `QUESTIONS_MAX` at most, the set's last dropped.
+ * then the page's set — a campaign's its type's, and `other`'s for one made before its type was
+ * asked — `QUESTIONS_MAX` at most, the set's last dropped.
  */
 export function starterQuestions(
 	type: PageType,
@@ -259,9 +268,7 @@ export function starterQuestions(
 	const set =
 		type === 'donation_page'
 			? DONATION_PAGE_STARTER
-			: campaignType === null
-				? UNTYPED_CAMPAIGN_STARTER
-				: CAMPAIGN_TYPE_DETAILS[campaignType].starter;
+			: CAMPAIGN_TYPE_DETAILS[campaignType ?? 'other'].starter;
 	return [...(missionEmpty ? [MISSION_QUESTION] : []), ...set].slice(0, QUESTIONS_MAX);
 }
 

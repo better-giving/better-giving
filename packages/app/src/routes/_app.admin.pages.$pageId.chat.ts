@@ -27,11 +27,14 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 //   it stands, outcome `unchanged`, and nothing is written.
 // a turn the edge refuses is a 400 whose `error` names the box, an answer by its index.
 //
-// three answers carry a `reason` beside `error` for the editor to word its own line from: `stale`
-// on the 409 a save made while the model answered earns, `answered` on the 409 for answers to
-// questions already answered, or to a chat whose last turn asks nothing, and `failed` on the 500 a
-// turn that threw is caught into — caught, because a fetcher's thrown error lands on the editor's
-// error boundary and takes the editor with it.
+// these answers carry a `reason` beside `error` for the editor to word its own line from: `stale` on
+// the 409 a save made while the model answered earns, `answered` on the 409 for answers to a chat
+// whose last turn asks nothing — its questions answered, or followed by a message — and `failed` on
+// the 500 a turn that threw is caught into — caught, because a fetcher's thrown error lands on the
+// editor's error boundary and takes the editor with it. answers whose reply could not land write no
+// turn, so the questions stay asked and the same answers can be sent again: `unanswered` on the 503
+// where no model answered, `refused` on the 422 where the reply was refused, each `error` the line
+// the turn would have said.
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const turns = await readChat(context.get(database), params.pageId);
@@ -81,6 +84,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	const intent = body.get('intent') ?? 'message';
 
 	let turn: () => Promise<TurnResult>;
+	let resend = 'the message';
 	if (intent === 'message') {
 		const parsed = messageInput.safeParse({
 			message: body.get('message') ?? undefined,
@@ -93,6 +97,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 		const parsed = answersInput.safeParse({ answers: jsonOf(body.get('answers')), timeZone: zone });
 		if (!parsed.success) return refused(parsed.error);
 		turn = () => answerTurn(db, env, { pageId, ...parsed.data, now: Date.now() });
+		resend = 'the answers';
 	} else if (intent === 'open') {
 		const parsed = openInput.safeParse({ timeZone: zone });
 		if (!parsed.success) return refused(parsed.error);
@@ -122,7 +127,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 		case 'answered':
 			return data(
 				{
-					error: `the questions on page "${pageId}" were answered already, and its chat asks none now; reload the chat`,
+					error: `the questions on page "${pageId}" are no longer the chat’s last turn; reload the chat to see where it stands`,
 					reason: 'answered'
 				},
 				409
@@ -130,12 +135,15 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 		case 'stale':
 			return data(
 				{
-					error:
-						'the page was saved while the reply was being written, so nothing changed; send the message again',
+					error: `the page was saved while the reply was being written, so nothing changed; send ${resend} again`,
 					reason: 'stale'
 				},
 				409
 			);
+		case 'unanswered':
+			return data({ error: result.text, reason: 'unanswered' }, 503);
+		case 'refused':
+			return data({ error: result.text, reason: 'refused' }, 422);
 	}
 }
 

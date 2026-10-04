@@ -23,6 +23,7 @@ import { SWITCH_LABELS } from '../../page/settings-form';
 import {
 	type Answer,
 	answeredLines,
+	answerValueWords,
 	answerWords,
 	MISSION_QUESTION,
 	type Question,
@@ -92,6 +93,13 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // - refused: the draft is untouched and the turn says why.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
 //   operator's fix where there is one. its `model` is the one `generate` asked.
+// answers whose reply is refused or unanswered write neither turn, so the questions stay the chat's
+// last turn and the same answers can be sent again: the caller hears `refused` or `unanswered`
+// with the words the turn would have said. only the mission they answer is written.
+//
+// `acceptReply` reads the figures the operator stated out of their messages whole and out of each
+// answers turn's answers alone (`answerValueWords` in ../../page/questions.ts), never the prompts
+// the model wrote, though the model reads both.
 //
 // the operator's turn is inserted first, and everything after it lands only where it did. an
 // accepted turn's is guarded on the draft text the reply was built against, so a hand edit or a
@@ -141,7 +149,7 @@ export type ChatEntry = {
 	role: 'operator' | 'assistant';
 	text: string;
 	imageIds: string[];
-	note?: Exclude<ChatNote, 'unanswered'>;
+	note?: ChatNote;
 	/** the questions an assistant turn asked. */
 	questions?: Question[];
 	/** what an operator turn answered them, in the order asked; `[]` where it skipped them all. */
@@ -159,6 +167,8 @@ export type TurnResult =
 	| { ok: false; reason: 'unknown_image'; imageId: string }
 	/** the chat's last turn asks nothing open: its questions were answered, or none were asked. */
 	| { ok: false; reason: 'answered' }
+	/** answers whose reply was refused or that no model answered; `text` is what the turn said. */
+	| { ok: false; reason: 'refused' | 'unanswered'; text: string }
 	| { ok: false; reason: 'invalid_answers'; error: string };
 
 /** a page's chat in order, or `null` where there is no such page. */
@@ -181,9 +191,10 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 		turns,
 		operator: operatorTurn(request.message, [...request.imageIds], null),
 		said: withImages(request.message, request.imageIds),
-		answering: false,
+		stated: request.message,
+		answering: null,
 		lookUp: false,
-		alongside: [],
+		alongside: () => [],
 		timeZone: request.timeZone,
 		now: request.now
 	});
@@ -192,9 +203,11 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 /**
  * the operator's answers to the questions the chat's last turn asked: one operator turn whose text
  * is `answerWords` and whose `answers` are the answers read, then the model's reply as any turn's,
- * except that it may not ask again, and told the filing where the questions were the opening's.
- * the mission question answered writes the Organisation's mission in the same `batch()` as that
- * turn, whatever the reply, while none is stored.
+ * except that it may not ask again, and told the filing where the questions were the opening's. a
+ * reply refused or unanswered writes no turn, and is answered with the words its turn would have
+ * said. the mission question answered writes the Organisation's mission while none is stored and
+ * the questions are still the chat's last turn, whatever the reply: in the same `batch()` as the
+ * turns where they land, and on its own where none does.
  */
 export async function answerTurn(
 	db: Db,
@@ -218,10 +231,10 @@ export async function answerTurn(
 		turns,
 		operator,
 		said: answersMessage(words),
-		answering: true,
+		stated: answerValueWords(questions, read.answers),
+		answering: sql`not exists (select 1 from ${chatTurn} where ${chatTurn.pageId} = ${row.id} and ${chatTurn.seq} > ${last.seq})`,
 		lookUp: turns[0]?.id === last.id,
-		fresh: sql`not exists (select 1 from ${chatTurn} where ${chatTurn.pageId} = ${row.id} and ${chatTurn.seq} > ${last.seq})`,
-		alongside: mission === null ? [] : [missionWhileEmptyStatement(db, mission, landed(operator))],
+		alongside: (when) => (mission === null ? [] : [missionWhileEmptyStatement(db, mission, when)]),
 		timeZone: request.timeZone,
 		now: request.now
 	});
@@ -236,7 +249,8 @@ export async function answerTurn(
  * insert itself holds that, so two opens at once write one turn.
  *
  * while the Organisation's mission is empty, `MISSION_QUESTION` comes first and a question of the
- * model's under its id is dropped, `QUESTIONS_MAX` in all. no model answering, a reply refused or
+ * model's under its id is dropped, `QUESTIONS_MAX` in all; once it holds one, the model's questions
+ * stand as asked, one under that id included. no model answering, a reply refused or
  * read as anything but an ask, or an ask holding nothing past the mission, opens on
  * `starterQuestions` instead: a turn noted `starter`, its `model` the one asked. either way the
  * mission question carries the filing's mission as its `prefill` where one was found.
@@ -250,7 +264,7 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 	const missionEmpty = context.story.mission === null;
 	const mission = missionQuestion(context.filing);
 	const prefilled = (questions: readonly Question[]) =>
-		questions.map((question) => (question.id === MISSION_QUESTION.id ? mission : question));
+		questions.map((question) => (question === MISSION_QUESTION ? mission : question));
 	const answer = await generate(env, {
 		system: systemPrompt(context),
 		messages: [{ role: 'user', content: openingRequest(missionEmpty, row.campaignType) }],
@@ -271,7 +285,8 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 			})
 		: null;
 	const asked = reply?.ok === true && reply.kind === 'asked' ? reply : null;
-	const own = asked?.questions.filter(({ id }) => id !== MISSION_QUESTION.id) ?? [];
+	const own =
+		asked?.questions.filter(({ id }) => !missionEmpty || id !== MISSION_QUESTION.id) ?? [];
 	const assistant =
 		asked !== null && own.length > 0
 			? assistantTurn(
@@ -355,14 +370,21 @@ type Turning = {
 	operator: NewTurn;
 	/** the operator's turn as the model reads it. */
 	said: string;
-	/** the turn answers the chat's questions, so the reply may not ask. */
-	answering: boolean;
+	/** the operator's turn as `acceptReply` reads it for figures (`acceptMessage`). */
+	stated: string;
+	/**
+	 * where the turn answers the chat's questions, what must hold, over `page`, for it to land:
+	 * nothing having followed them. the reply may not ask, and one refused or unanswered writes no
+	 * turn. null on a message.
+	 */
+	answering: SQL | null;
 	/** the turn answers the opening ask, so the filing is looked up for it as for the opening. */
 	lookUp: boolean;
-	/** what else must hold, over `page`, for the operator's turn to land. */
-	fresh?: SQL;
-	/** statements landing with the operator's turn, each guarded on it. */
-	alongside: readonly ReturnType<typeof missionWhileEmptyStatement>[];
+	/**
+	 * statements landing with the operator's turn, each guarded on `when`: the turn landed, or, on
+	 * answers that land no turn, `answering`.
+	 */
+	alongside: (when: SQL) => ReturnType<typeof missionWhileEmptyStatement>[];
 	timeZone: string;
 	now: number;
 };
@@ -385,18 +407,35 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 		outcome: 'refused' | 'unanswered' | 'asked',
 		assistant: NewTurn
 	): Promise<TurnResult> => {
-		const entries = await writeTurns(db, row.id, operator, assistant, turning.fresh, alongside);
+		const entries = await writeTurns(
+			db,
+			row.id,
+			operator,
+			assistant,
+			turning.answering ?? undefined,
+			alongside(landed(operator))
+		);
 		if (entries.length === 0) return { ok: false, reason: 'stale' };
 		return { ok: true, outcome, turns: entryPair(turns, entries) };
 	};
 
+	const failed = async (
+		outcome: 'refused' | 'unanswered',
+		assistant: NewTurn
+	): Promise<TurnResult> => {
+		if (turning.answering === null) return written(outcome, assistant);
+		const [first, ...rest] = alongside(turning.answering);
+		if (first !== undefined) await db.batch([first, ...rest]);
+		return { ok: false, reason: outcome, text: assistant.text };
+	};
+
 	if (!answer.ok) {
 		const text = `No model answered, so nothing changed. ${answer.operatorFix ?? 'Try again in a moment.'}`;
-		return written('unanswered', assistantTurn(text, answer.model, 'unanswered'));
+		return failed('unanswered', assistantTurn(text, answer.model, 'unanswered'));
 	}
 
 	const refusedFor = (reason: string) =>
-		written('refused', assistantTurn(`${REFUSED_PREFIX}${reason}`, answer.model, 'refused'));
+		failed('refused', assistantTurn(`${REFUSED_PREFIX}${reason}`, answer.model, 'refused'));
 
 	const read = readReply(answer.text);
 	const asked = read.ok ? illustrationRequests(read.json) : read;
@@ -410,11 +449,14 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 			reply: asked.place(placed),
 			attached: [...placeable, ...placed.filter((id) => id !== null)],
 			illustrations: asked.requests,
-			messages: [...turns.map(acceptMessage), { author: 'operator', text: operator.text }],
+			messages: [
+				...turns.map((turn, index) => acceptMessage(turn, turns[index - 1])),
+				{ author: 'operator', text: turning.stated }
+			],
 			activePrograms: programs,
 			timeZone: turning.timeZone,
 			now: turning.now,
-			answering: turning.answering
+			answering: turning.answering !== null
 		});
 	let drawn: Drawn[] = [];
 	if (asked.requests.length > 0) {
@@ -436,7 +478,7 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 	const summary = summarise(result, drawn, programs);
 	const text = [oneLine(result.say), summary].filter((line) => line !== '').join('\n');
 	const assistant = assistantTurn(text, answer.model, note);
-	const seen = and(eq(page.id, row.id), turning.fresh, eq(page.draft, row.draft));
+	const seen = and(eq(page.id, row.id), turning.answering ?? undefined, eq(page.draft, row.draft));
 	const name = nameToCarry(row, result.draft);
 	for (let attempt = 1; ; attempt += 1) {
 		const rename = name === null ? null : await renaming(db, row, name, seen);
@@ -448,7 +490,7 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 				.set({ draft, ...rename?.columns })
 				.where(sql`${eq(page.id, row.id)} and ${landed(operator)}`)
 				.returning({ id: page.id }),
-			...alongside
+			...alongside(landed(operator))
 		] as const;
 		try {
 			// the settings row's rename runs first, since the page's update moves the draft `seen` reads.
@@ -551,7 +593,7 @@ async function writeTurns(
 	operator: NewTurn,
 	assistant: NewTurn,
 	when: SQL | undefined,
-	alongside: Turning['alongside']
+	alongside: ReturnType<Turning['alongside']>
 ) {
 	const [first, second] = await db.batch([
 		turnStatement(db, pageId, operator, when),
@@ -631,20 +673,32 @@ function chatEntry(turn: ChatTurn, before: ChatTurn | undefined): ChatEntry {
 		text: turn.text,
 		imageIds: imageIdsOf(turn)
 	};
-	// an unanswered turn's words say so, and the chat draws no note under it.
-	if (turn.note !== null && turn.note !== 'unanswered') entry.note = turn.note;
+	if (turn.note !== null) entry.note = turn.note;
 	const questions = questionsOf(turn);
 	if (questions !== null) entry.questions = questions;
-	if (turn.answers !== null) {
-		const asked = before === undefined ? [] : (questionsOf(before) ?? []);
-		const read = readAnswers(asked, JSON.parse(turn.answers));
-		entry.answers = read.ok ? answeredLines(asked, read.answers) : [];
-	}
+	const answered = answersOf(turn, before);
+	if (answered !== null) entry.answers = answeredLines(answered.asked, answered.answers);
 	return entry;
 }
 
-function acceptMessage(turn: ChatTurn): AcceptMessage {
-	return { author: turn.author, text: turn.text };
+/**
+ * an answering turn's answers, read against the questions `before` asked; none read where they no
+ * longer read. null on any other turn.
+ */
+function answersOf(turn: ChatTurn, before: ChatTurn | undefined) {
+	if (turn.answers === null) return null;
+	const asked = before === undefined ? [] : (questionsOf(before) ?? []);
+	const read = readAnswers(asked, JSON.parse(turn.answers));
+	return { asked, answers: read.ok ? read.answers : [] };
+}
+
+/** `turn` as `acceptReply` reads it: an answering turn as its answers alone, never their prompts. */
+function acceptMessage(turn: ChatTurn, before: ChatTurn | undefined): AcceptMessage {
+	const answered = answersOf(turn, before);
+	return {
+		author: turn.author,
+		text: answered === null ? turn.text : answerValueWords(answered.asked, answered.answers)
+	};
 }
 
 /**

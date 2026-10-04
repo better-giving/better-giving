@@ -2,7 +2,8 @@
 // as `page.campaign_type` and checked there by `$lib/server/db/schema.ts`. a campaign made before
 // the type was asked holds none. each type's label and line are what New campaign shows, the label
 // is what the chat's model is told the campaign is, and the starter questions are what its opening
-// asks when no model writes its own (`starterQuestions` in ./questions.ts).
+// asks when no model writes its own (`starterQuestions` in ./questions.ts), `other`'s for a campaign
+// that holds none.
 //
 // pure, and imports nothing at run time, for the reason ./keys.ts gives: the one import is a type.
 
@@ -28,8 +29,18 @@ export type CampaignTypeDetails = {
 	readonly starter: readonly Question[];
 };
 
-const GOAL = { id: 'goal', kind: 'amount', prompt: 'Goal' } as const satisfies Question;
-const END_DATE = { id: 'end-date', kind: 'date', prompt: 'End date' } as const satisfies Question;
+const GOAL = {
+	id: 'goal',
+	kind: 'amount',
+	prompt: 'Goal',
+	hint: 'Leave it blank for no goal'
+} as const satisfies Question;
+const END_DATE = {
+	id: 'end-date',
+	kind: 'date',
+	prompt: 'End date',
+	hint: 'Leave it blank for no end'
+} as const satisfies Question;
 const PAYS_FOR = {
 	id: 'pays-for',
 	kind: 'text',

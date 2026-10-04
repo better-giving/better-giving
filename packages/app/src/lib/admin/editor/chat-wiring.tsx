@@ -70,13 +70,15 @@ import { useWide } from './wide';
 const SUGGESTIONS = ['Tell donors what each amount buys', 'Add a FAQ', 'Shorten the story'];
 
 /**
- * whether a reply in `turns` changed the page: one that asks nothing and was not refused. the wire
- * drops the note off a turn no model answered, so that one counts too.
+ * whether a reply in `turns` changed the page: one that asks nothing and was accepted, so carries no
+ * note but `fell-back`.
  */
 const drafted = (turns: readonly ChatMessage[]) =>
 	turns.some(
 		(turn) =>
-			turn.role === 'assistant' && (turn.questions?.length ?? 0) === 0 && turn.note !== 'refused'
+			turn.role === 'assistant' &&
+			(turn.questions?.length ?? 0) === 0 &&
+			(turn.note === undefined || turn.note === 'fell-back')
 	);
 
 /** what the chat route's loader answers. */
@@ -85,7 +87,10 @@ type History = { readonly turns: readonly ChatMessage[] };
 /** what the chat route's action answers: the turn stored, or why nothing was. */
 type TurnAnswer =
 	| { readonly outcome: string; readonly turns: readonly ChatMessage[] }
-	| { readonly error: string; readonly reason?: 'stale' | 'failed' | 'answered' };
+	| {
+			readonly error: string;
+			readonly reason?: 'stale' | 'failed' | 'answered' | 'unanswered' | 'refused';
+	  };
 
 type Refused = Extract<TurnAnswer, { error: string }>;
 
