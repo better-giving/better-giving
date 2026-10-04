@@ -8,20 +8,32 @@ import { useSyncExternalStore } from 'react';
 // the server draws the wide editor. a phone's first paint then holds a docked column, which
 // `.adm-aipanel` keeps out of sight below the breakpoint until this reads the real width; the
 // other way round, a wide screen's preview would shrink under the operator once the panel arrived.
+//
+// `useMiddle` is the same answer for the middle breakpoint, which the publish bar's presses take
+// one line from (`.adm-publishbar__quiet` in adm.css): the bar puts them in the order they are drawn
+// at the width it is at, so the focus walks them as they read. the server draws them at the middle
+// width too, and the sheet's `order` draws that order the phone's way until this reads the width.
 
-/** the wide breakpoint, one of the two literals packages/operator/src/styles/tokens.css allows. */
-const WIDE = '(min-width: 64rem)';
-
-function subscribe(changed: () => void): () => void {
-	const query = window.matchMedia(WIDE);
-	query.addEventListener('change', changed);
-	return () => query.removeEventListener('change', changed);
+/** a breakpoint, one of the two literals packages/operator/src/styles/tokens.css allows. */
+function breakpoint(media: string) {
+	return {
+		subscribe: (changed: () => void) => {
+			const query = window.matchMedia(media);
+			query.addEventListener('change', changed);
+			return () => query.removeEventListener('change', changed);
+		},
+		reached: () => window.matchMedia(media).matches
+	};
 }
 
+const WIDE = breakpoint('(min-width: 64rem)');
+const MIDDLE = breakpoint('(min-width: 44rem)');
+const serverDraws = () => true;
+
 export function useWide(): boolean {
-	return useSyncExternalStore(
-		subscribe,
-		() => window.matchMedia(WIDE).matches,
-		() => true
-	);
+	return useSyncExternalStore(WIDE.subscribe, WIDE.reached, serverDraws);
+}
+
+export function useMiddle(): boolean {
+	return useSyncExternalStore(MIDDLE.subscribe, MIDDLE.reached, serverDraws);
 }

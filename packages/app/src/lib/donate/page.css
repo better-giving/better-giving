@@ -756,6 +756,12 @@ body {
 	max-inline-size: var(--page-measure);
 }
 
+/* the organisation's own words, an address or a long word among them, broken where they must be
+   rather than run out of the block, as `.page-mast-name` is. */
+:is(.page-about-words, .page-about-statement, .page-about-beneath) {
+	overflow-wrap: anywhere;
+}
+
 .page-about-words {
 	font-size: var(--_t-lg);
 	line-height: var(--page-lh-lede);

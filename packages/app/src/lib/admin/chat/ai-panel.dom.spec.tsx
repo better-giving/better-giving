@@ -129,10 +129,7 @@ describe('the AI panel', () => {
 	});
 
 	it('opens an empty chat that is not being asked on an empty log, saying nothing', () => {
-		const { host } = mount(
-			// @ts-expect-error a new campaign's waiting line is no prop: creation drafts nothing.
-			props({ messages: [], waiting: { title: 'Winter coat drive', purpose: 'Coats' } })
-		);
+		const { host } = mount(props({ messages: [] }));
 
 		expect(one(host, '.adm-chat__log').textContent).toBe('');
 		expect(host.querySelector('.adm-chat__mine')).toBeNull();
@@ -330,6 +327,13 @@ describe('the log', () => {
 	const presses = (host: HTMLElement) =>
 		[...host.querySelectorAll('.adm-questions button')].map((b) => b.textContent);
 	const placeholder = (host: HTMLElement) => box(host).getAttribute('placeholder');
+	const cardPress = (host: HTMLElement, words: string) => {
+		const found = [...host.querySelectorAll<HTMLButtonElement>('.adm-questions button')].find(
+			(b) => b.textContent === words
+		);
+		if (found === undefined) throw new Error(`no ${words} press`);
+		return found;
+	};
 
 	it('draws an answered turn as its answers, each prompt labelling its words', () => {
 		const { host } = mount(
@@ -418,10 +422,105 @@ describe('the log', () => {
 		expect(document.activeElement).toBe(skip);
 	});
 
+	describe('answers refused', () => {
+		const said = (host: HTMLElement) => one(host, '.adm-questions__refusal').textContent;
+
+		it('says why at the card, the values and the focus where they were, the box left alone', async () => {
+			const onAnswer = vi.fn();
+			const { host, redraw } = mount(props({ messages: [asked('a1')], onAnswer }));
+			const draft = cardPress(host, 'Draft my page');
+			await press(one<HTMLInputElement>(host, '.adm-questions input[value="Children"]'));
+			await press(draft);
+			redraw(props({ messages: [asked('a1')], onAnswer, isRunning: true }));
+
+			redraw(
+				props({
+					messages: [asked('a1')],
+					onAnswer,
+					answerRefusal: 'That didn’t go through. Send your answers again.'
+				})
+			);
+
+			expect(said(host)).toBe('That didn’t go through. Send your answers again.');
+			expect(document.activeElement).toBe(draft);
+			expect(one<HTMLInputElement>(host, 'input[value="Children"]').checked).toBe(true);
+			expect(refusal(host).textContent).toBe('');
+			expect(box(host).value).toBe('');
+		});
+
+		it('says nothing at the card while none is handed', () => {
+			const { host } = mount(props({ messages: [asked('a1')] }));
+
+			expect(said(host)).toBe('');
+		});
+	});
+
+	describe('answers that land', () => {
+		const answered = (id: string): ChatMessage[] => [
+			asked(id),
+			{
+				id: `${id}-o`,
+				role: 'operator',
+				text: 'Who do your gifts mostly help? — Children',
+				answers: [{ id: 'who', prompt: 'Who do your gifts mostly help?', words: 'Children' }]
+			},
+			{ id: `${id}-r`, role: 'assistant', text: 'I drafted your page.' }
+		];
+
+		it('hand the focus from the card that went to the message box', async () => {
+			const { host, redraw } = mount(props({ messages: [asked('a1')] }));
+			await press(cardPress(host, 'Draft my page'));
+			redraw(props({ messages: [asked('a1')], isRunning: true }));
+
+			redraw(props({ messages: answered('a1') }));
+
+			expect(cards(host)).toHaveLength(0);
+			expect(document.activeElement).toBe(box(host));
+		});
+
+		it('leave the focus where the operator took it while they were on their way', async () => {
+			const elsewhere = document.createElement('button');
+			document.body.appendChild(elsewhere);
+			onTestFinished(() => {
+				elsewhere.remove();
+			});
+			const { host, redraw } = mount(props({ messages: [asked('a1')] }));
+			await press(cardPress(host, 'Draft my page'));
+			redraw(props({ messages: [asked('a1')], isRunning: true }));
+			act(() => elsewhere.focus());
+
+			redraw(props({ messages: answered('a1') }));
+
+			expect(document.activeElement).toBe(elsewhere);
+		});
+	});
+
 	it('marks the usual questions the AI did not answer for', () => {
 		const { host } = mount(props({ messages: [{ ...asked('a1'), note: 'starter' }] }));
 
 		expect(one(host, '.adm-questions').textContent).toContain('The AI isn’t answering right now');
+	});
+
+	it('mounts the region saying so empty, and says the opening questions are being read on the commit after', () => {
+		const host = document.createElement('div');
+		document.body.appendChild(host);
+		const watch = new MutationObserver(() => {});
+		watch.observe(host, { childList: true, subtree: true, characterData: true });
+		const root = createRoot(host);
+		onTestFinished(() => {
+			watch.disconnect();
+			act(() => root.unmount());
+			host.remove();
+		});
+
+		act(() => root.render(<AiPanel {...props({ messages: [], opening: true })} />));
+		const status = one(host, '.adm-vh [role="status"]');
+		const changed = watch
+			.takeRecords()
+			.filter((record) => record.target === status || record.target.parentNode === status);
+
+		expect(status.textContent).toBe('Reading your page');
+		expect(changed.length).toBeGreaterThan(0);
 	});
 
 	it('says the opening questions are being read while they are', () => {

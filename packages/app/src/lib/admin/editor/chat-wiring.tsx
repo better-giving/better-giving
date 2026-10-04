@@ -47,10 +47,14 @@ import { useWide } from './wide';
 //
 // a send nothing was stored from comes back as `unsent`: its words, for the box to take back, and
 // the operator's line for why, worded here off the answer's `reason` (a 400 or 404 names none and
-// is said in its own `error`); answers come back the same way with no words, worded off their own.
-// the refusal is held in state, taken from each new answer the fetcher lands, because the fetcher's
-// answer outlives the sheet; it is cleared by the next send, so a refusal repeated word for word
-// still reads as a new one, and by reopening the sheet.
+// is said in its own `error`). answers nothing was stored from come back as `answerRefusal`, said
+// at the card, which is still up with every value in it and the focus on its press: worded here
+// for `answered`, `stale` and `failed`, and otherwise the route's own `error` — the reply's words
+// where no model answered (503 `unanswered`) or the reply was refused (422 `refused`), which mark a
+// command in backticks the card draws as code. each refusal is held in state, taken from each new
+// answer the fetcher lands, because the fetcher's answer outlives the sheet; it is cleared by the
+// next send or answers, so a refusal repeated word for word still reads as a new one, and by
+// reopening the sheet.
 //
 // suggestions are offered only while no card is live and a reply has changed the page: before
 // that, the card is what drafts it, and a suggestion beside a card would skip it unanswered.
@@ -126,10 +130,10 @@ function unsentReason(answer: Refused): string {
 }
 
 /** the operator's words for answers nothing was stored from. */
-function unansweredReason(answer: Refused): string {
+function answersRefusal(answer: Refused): string {
 	switch (answer.reason) {
 		case 'answered':
-			return 'These questions were answered already. Reload the editor to see the chat.';
+			return 'These questions are no longer the latest in the chat. Reload the editor to see where it stands.';
 		case 'stale':
 			return 'The page was saved while this was being written, so nothing changed. Send your answers again.';
 		case 'failed':
@@ -194,6 +198,7 @@ export function useEditorChat(url: string): {
 		text: ''
 	});
 	const [unsent, setUnsent] = useState<ChatUnsent | undefined>(undefined);
+	const [answerRefusal, setAnswerRefusal] = useState<string | undefined>(undefined);
 	const [answered, setAnswered] = useState(turn.data);
 	const upload = useFetcher<UploadAnswer>();
 	const [photo, setPhoto] = useState<Photo | undefined>(undefined);
@@ -203,8 +208,8 @@ export function useEditorChat(url: string): {
 	if (turn.data !== answered) {
 		setAnswered(turn.data);
 		if (turn.data !== undefined && 'error' in turn.data) {
-			const reason = sent.answers ? unansweredReason(turn.data) : unsentReason(turn.data);
-			setUnsent({ text: sent.text, reason });
+			if (sent.answers) setAnswerRefusal(answersRefusal(turn.data));
+			else setUnsent({ text: sent.text, reason: unsentReason(turn.data) });
 		} else if (turn.data !== undefined && !sent.answers) {
 			setPhoto(undefined);
 		}
@@ -277,6 +282,7 @@ export function useEditorChat(url: string): {
 	const send = ({ text, imageIds }: ChatSend) => {
 		setSent({ answers: false, text });
 		setUnsent(undefined);
+		setAnswerRefusal(undefined);
 		turn.submit(
 			{
 				message: text,
@@ -290,6 +296,7 @@ export function useEditorChat(url: string): {
 	const answer = (answers: readonly CardAnswer[]) => {
 		setSent({ answers: true, text: '' });
 		setUnsent(undefined);
+		setAnswerRefusal(undefined);
 		turn.submit(
 			{ intent: 'answers', answers: JSON.stringify(answers), timeZone: zone() },
 			{ method: 'post', action: url }
@@ -320,6 +327,7 @@ export function useEditorChat(url: string): {
 				suggestions={liveAsk(turns) === null && drafted(turns) ? SUGGESTIONS : []}
 				imageSrc={imageSrc}
 				unsent={unsent}
+				answerRefusal={answerRefusal}
 				attachment={photo && { ...photo, onRemove: remove }}
 				attach={({ held }) => <AttachControl held={held} onPicked={picked} onResized={resized} />}
 			/>
@@ -328,6 +336,7 @@ export function useEditorChat(url: string): {
 	return {
 		open: () => {
 			setUnsent(undefined);
+			setAnswerRefusal(undefined);
 			setOpenedOnArrival(false);
 			setOpen(true);
 		},

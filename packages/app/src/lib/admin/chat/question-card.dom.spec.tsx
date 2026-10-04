@@ -5,8 +5,9 @@ import { type CardQuestion, QuestionCard, type QuestionCardProps } from './quest
 
 // what the question card sends for what was picked and typed: one choice, several, Other with its
 // words and without them, words prefilled and cleared, an amount read into minor units or refused at
-// its box, a date; the tick that marks a question taking several answers; the skip press; the presses held while answers are on their way; the starter
-// note; and the presses' words for each round.
+// its box, a date; the tick that marks a question taking several answers; the skip press; the
+// presses held while answers are on their way; a refusal of the answers said at the card; the
+// starter note; and the presses' words for each round.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -196,6 +197,18 @@ describe('the question card', () => {
 		expect(onSubmit.mock.calls[0]?.[0]).toContainEqual({ id: 'gift', value: 5000 });
 	});
 
+	it('takes a press anywhere on an amount box’s drawn frame, named by its question alone', () => {
+		const { host } = mount(props());
+		const gift = box(host, 'A typical gift');
+		const frame = gift.closest('.adm-affixed');
+
+		expect(frame?.tagName).toBe('LABEL');
+		expect(frame?.querySelector('.adm-affixed__unit')?.textContent).toBe('$');
+		expect(document.getElementById(gift.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(
+			'A typical gift'
+		);
+	});
+
 	it('refuses an amount it cannot read under its box, puts the caret there and sends nothing', async () => {
 		const onSubmit = vi.fn();
 		const { host } = mount(props({ onSubmit }));
@@ -254,6 +267,42 @@ describe('the question card', () => {
 		await press(send);
 		await press(button(host, 'Skip, draft anyway'));
 		expect(onSubmit).toHaveBeenCalledOnce();
+		expect(box(host, 'Your mission, in a sentence').value).toBe(
+			'No family in Riverside goes hungry'
+		);
+	});
+
+	it('says why its answers were refused under its presses, in a region there before it speaks', async () => {
+		const onSubmit = vi.fn();
+		const { host, redraw } = mount(props({ onSubmit }));
+		const region = host.querySelector('.adm-questions__refusal');
+		expect(region?.getAttribute('role')).toBe('status');
+		expect(region?.textContent).toBe('');
+		const send = button(host, 'Draft my page');
+		expect(send.hasAttribute('aria-describedby')).toBe(false);
+
+		await press(chip(host, 'Who do your gifts mostly help?', 'Children'));
+		type(box(host, 'A typical gift'), '50');
+		await press(send);
+		redraw(props({ onSubmit, busy: true }));
+		redraw(
+			props({
+				onSubmit,
+				busy: false,
+				refusal: 'No model answered. Set `AI` and run `pnpm run login`.'
+			})
+		);
+
+		expect(host.querySelector('.adm-questions__refusal')).toBe(region);
+		expect(region?.textContent).toBe('No model answered. Set AI and run pnpm run login.');
+		expect([...(region?.querySelectorAll('code') ?? [])].map((code) => code.textContent)).toEqual([
+			'AI',
+			'pnpm run login'
+		]);
+		expect(send.getAttribute('aria-describedby')).toBe(region?.id);
+		expect(document.activeElement).toBe(send);
+		expect(chip(host, 'Who do your gifts mostly help?', 'Children').checked).toBe(true);
+		expect(box(host, 'A typical gift').value).toBe('50');
 		expect(box(host, 'Your mission, in a sentence').value).toBe(
 			'No family in Riverside goes hungry'
 		);

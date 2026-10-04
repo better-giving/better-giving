@@ -77,8 +77,44 @@ describe('a menu mounted into a document', () => {
 		expect(reset).not.toHaveBeenCalled();
 	});
 
+	it('keeps a link line out of the tab sequence, so Tab stays in the list and the arrows walk across it', async () => {
+		const reset = vi.fn();
+		const root = render(Menu, { label: 'More', items: items({ reset }) });
+		act(() => trigger(root).focus());
+		await press('ArrowDown');
+		const link = root.querySelector<HTMLAnchorElement>('a[role="menuitem"]');
+
+		expect(link?.tabIndex).toBe(-1);
+		const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+		await act(async () => {
+			document.activeElement?.dispatchEvent(tab);
+		});
+		expect(tab.defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(list(root));
+
+		expect(highlighted(root)).toBe('Open /donate (opens in a new tab)');
+		await press('ArrowDown');
+		expect(highlighted(root)).toBe('Reset to default');
+		await press('ArrowUp');
+		expect(highlighted(root)).toBe('Open /donate (opens in a new tab)');
+
+		await press('Escape');
+		expect(trigger(root).getAttribute('aria-expanded')).toBe('false');
+		expect(reset).not.toHaveBeenCalled();
+	});
+
+	it('stands open whatever is pressed when held open', async () => {
+		const root = render(Menu, { label: 'More', items: items(), open: true });
+		expect(list(root)?.hidden).toBe(false);
+
+		act(() => list(root)?.focus());
+		await press('Escape');
+
+		expect(list(root)?.hidden).toBe(false);
+	});
+
 	it('draws a link line as a link, opening in a new tab where it says so', () => {
-		const root = render(Menu, { label: 'More', items: items(), defaultOpen: true });
+		const root = render(Menu, { label: 'More', items: items(), open: true });
 		const link = root.querySelector<HTMLAnchorElement>('a[role="menuitem"]');
 
 		expect(link?.getAttribute('href')).toBe('/donate');

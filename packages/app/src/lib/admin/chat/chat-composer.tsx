@@ -89,7 +89,8 @@ export function ChatComposer({
 	attach,
 	unsent,
 	reason,
-	placeholder
+	placeholder,
+	cardWent
 }: {
 	running: boolean;
 	suggestions: readonly string[];
@@ -101,6 +102,8 @@ export function ChatComposer({
 	reason: string;
 	/** what the empty box says it is for. */
 	placeholder: string;
+	/** the asked turn whose card went once its answers landed, or none. */
+	cardWent: string | null;
 }) {
 	const aui = useAui();
 	const text = useAuiState((s) => s.composer.text).trim();
@@ -113,6 +116,16 @@ export function ChatComposer({
 		if (aui.composer.getState().text.trim() === '') aui.composer.setText(unsent.text);
 		input.current?.focus();
 	}, [aui, unsent]);
+
+	// a card that went with the focus in it leaves the focus on the document, or on the panel
+	// where the panel takes it back; anywhere else is where the operator went, and stays.
+	useEffect(() => {
+		const box = input.current;
+		if (cardWent === null || box === null) return;
+		const at = document.activeElement;
+		if (at === null || at === document.body || at === box.closest('.adm-aipanel, .adm-sheet'))
+			box.focus();
+	}, [cardWent]);
 
 	const landing = attachment?.state === 'resizing' || attachment?.state === 'uploading';
 	const canSend = !running && !landing && (text !== '' || attachment?.state === 'ready');

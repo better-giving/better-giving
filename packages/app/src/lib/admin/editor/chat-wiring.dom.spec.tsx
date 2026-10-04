@@ -550,9 +550,20 @@ describe('a question card answered', () => {
 
 	it.each([
 		[
-			'answered already',
-			{ body: { error: 'the questions… were answered already', reason: 'answered' }, status: 409 },
-			'These questions were answered already. Reload the editor to see the chat.'
+			'questions no longer the chat’s last turn',
+			{
+				body: {
+					error: 'the questions on page "p1" are no longer the chat’s last turn',
+					reason: 'answered'
+				},
+				status: 409
+			},
+			'These questions are no longer the latest in the chat. Reload the editor to see where it stands.'
+		],
+		[
+			'a page saved while they were answered',
+			{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 },
+			'The page was saved while this was being written, so nothing changed. Send your answers again.'
 		],
 		[
 			'a turn that failed',
@@ -560,21 +571,75 @@ describe('a question card answered', () => {
 			'That didn’t go through. Send your answers again.'
 		],
 		[
+			'no model answering',
+			{
+				body: {
+					error: 'No model answered. Set `AI` and run `pnpm run login`.',
+					reason: 'unanswered'
+				},
+				status: 503
+			},
+			'No model answered. Set AI and run pnpm run login.'
+		],
+		[
+			'a reply refused',
+			{
+				body: {
+					error: 'That reply didn’t fit the page. Send your answers again.',
+					reason: 'refused'
+				},
+				status: 422
+			},
+			'That reply didn’t fit the page. Send your answers again.'
+		],
+		[
 			'answers the route refused',
 			{ body: { error: 'answers[0] names no question asked: "who-else"' }, status: 400 },
 			'answers[0] names no question asked: "who-else"'
 		]
-	])('says %s where a refused send is said, the card still up', async (_, refusal, line) => {
+	])('says %s at the card, its values and the focus kept', async (_, refusal, line) => {
 		await asked();
+		answer('mission', 'Warm coats for every child.');
 		refusals = [refusal];
+		const draft = button('Draft my page');
 
+		await press(draft);
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(questionCard()?.querySelector('.adm-questions__refusal')?.textContent).toBe(line);
+		expect(refusalShown()).toBe('');
+		expect(document.activeElement).toBe(draft);
+		expect(questionCard()?.querySelector<HTMLInputElement>('input[name="mission"]')?.value).toBe(
+			'Warm coats for every child.'
+		);
+		expect(box()).toBe('');
+	});
+
+	it('clears the card’s refusal as the answers are sent again', async () => {
+		await asked();
+		refusals = [{ body: { error: 'the turn failed', reason: 'failed' }, status: 500 }];
 		await press(button('Draft my page'));
 		await act(async () => held.shift()?.());
 		await settle();
 
-		expect(refusalShown()).toBe(line);
-		expect(questionCard()).not.toBeNull();
-		expect(box()).toBe('');
+		await press(button('Draft my page'));
+		await settle();
+
+		expect(questionCard()?.querySelector('.adm-questions__refusal')?.textContent).toBe('');
+	});
+
+	it('puts the focus in the message box once they land', async () => {
+		await asked();
+		answer('mission', 'Warm coats for every child.');
+		await press(button('Draft my page'));
+		await settle();
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(questionCard()).toBeNull();
+		expect(document.activeElement).toBe(document.querySelector('textarea'));
 	});
 
 	it('draws the answers and the drafted turn once they land, and the preview reads again', async () => {

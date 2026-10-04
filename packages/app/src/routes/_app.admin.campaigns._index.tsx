@@ -72,6 +72,13 @@ const SCREEN = href('/admin/campaigns');
 /** where New campaign is asked, on this same address. */
 const ASKING = `${SCREEN}?new`;
 
+/**
+ * where New campaign posts: this index route's action, still asking, so a refusal is drawn in the
+ * dialog. stated, because the router's default is built from the address, which the server holds
+ * as `?new=` and the browser as `?new`, and the two would draw different `action`s.
+ */
+const CREATE_ACTION = `${ASKING}&index`;
+
 /** a campaign's editor, which the create opens. */
 const editorOf = (pageId: string) => `${SCREEN}/${encodeURIComponent(pageId)}`;
 
@@ -637,7 +644,7 @@ function NewCampaignCard({
 	const typeError = fields.type.errors?.[0];
 
 	return (
-		<Form method="post" preventScrollReset {...getFormProps(form)}>
+		<Form method="post" action={CREATE_ACTION} preventScrollReset {...getFormProps(form)}>
 			<input {...whichForm(CAMPAIGN_CREATE.id)} />
 			<Modal
 				title="New campaign"

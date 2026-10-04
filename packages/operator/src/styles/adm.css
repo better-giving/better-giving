@@ -5809,6 +5809,13 @@
 		border-radius: var(--admin-radius);
 	}
 
+	/* why the card's answers were not taken, under its presses. the region is on the card before it
+	   has anything to say, so it is announced when it does; while it is empty the card's gap above
+	   it is taken back, and it holds no room. */
+	.adm-questions__refusal:empty {
+		margin-block-start: calc(-1 * var(--admin-space-8));
+	}
+
 	/* what an operator turn answered, in place of its words: a quiet title, and each question's prompt
 	   beside its answer, the prompt a column of its own that gives way to the answer past half the
 	   width so a long prompt wraps rather than squeezing the answer it labels.
@@ -5840,6 +5847,11 @@
 		color: var(--admin-ink-2);
 	}
 
+	/* an answer is the operator's own words, an address or a long word among them. */
+	.adm-answers__list > dd {
+		overflow-wrap: anywhere;
+	}
+
 	/* ---------- the page editor ---------------------------------------------------------------
 
 	   a route of its own outside the rail, for the Donation page and a campaign alike: the publish
@@ -5852,10 +5864,13 @@
 	   halves space-6; in a sheet a part's heading to its rows space-5 and part to part the body's
 	   space-9. */
 
+	/* one column as wide as the editor: an implicit `auto` one grows to the bar's min-content
+	   width, which is a campaign's whole name, and would run past a phone's screen. */
 	.adm-editor {
 		position: fixed;
 		inset: 0;
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: auto minmax(0, 1fr);
 		background: var(--admin-page);
 	}
@@ -5955,8 +5970,11 @@
 	}
 
 	/* where the page stands, then the presses. on a phone Publish is pushed to the end of the state
-	   word's line and the quieter presses are moved under both, at the end edge; from the wide
-	   breakpoint they stand back between the two on one line. */
+	   word's line and the quieter presses are moved under both, at the end edge; from the middle
+	   breakpoint they stand back between the two on one line. the bar's markup holds the presses in
+	   the order drawn at the width it is at (packages/app/src/lib/admin/editor/publish-bar.tsx), so
+	   the focus walks them as they read; the `order` here draws the server's markup, which is the
+	   middle width's, the phone's way until the browser has read the width. */
 	.adm-publishbar__acts {
 		display: flex;
 		flex: 1 1 auto;

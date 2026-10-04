@@ -1,5 +1,5 @@
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ruleOf, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { ChoiceChips, type ChoiceChipsProps } from './ChoiceChips.jsx';
@@ -162,6 +162,48 @@ describe('choice chips mounted into a document', () => {
 			).toEqual(['The giving-season ask', 'A crisis, right now']);
 		});
 
+		it('say a refusal between the question and the cards, so it is on screen above the first', () => {
+			const root = render(Bound, {
+				options: KINDS,
+				other: undefined,
+				cards: true,
+				error: 'pick one'
+			});
+			const said = root.querySelector('.adm-field__error');
+			const grid = root.querySelector('.adm-choicechips');
+			const legend = root.querySelector('legend');
+			if (said === null || grid === null || legend === null) throw new Error('nothing to order');
+
+			expect(legend.compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			expect(said.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		});
+
+		it('bring the card the focus lands on into view, the first under the refusal while there is one', () => {
+			const shown = vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {});
+			const root = render(Bound, {
+				options: KINDS,
+				other: undefined,
+				cards: true,
+				error: 'pick one'
+			});
+			const card = (value: string) => {
+				const radio = root.querySelector<HTMLInputElement>(`input[value="${value}"]`);
+				if (radio === null) throw new Error(`no ${value} card`);
+				return radio;
+			};
+
+			act(() => card('year_end').focus());
+			expect(shown.mock.contexts).toEqual([
+				root.querySelector('.adm-field__error'),
+				card('year_end').closest('label')
+			]);
+
+			shown.mockClear();
+			act(() => card('emergency').focus());
+			expect(shown.mock.contexts).toEqual([card('emergency').closest('label')]);
+			expect(shown.mock.calls).toEqual([[{ block: 'nearest' }]]);
+		});
+
 		it('submit the value of the one taken', async () => {
 			const root = render(Bound, { options: KINDS, other: undefined, cards: true });
 			const emergency = root.querySelector<HTMLInputElement>('input[value="emergency"]');
@@ -173,6 +215,15 @@ describe('choice chips mounted into a document', () => {
 	});
 
 	describe('refused', () => {
+		it('says it after the chips in a row of chips', () => {
+			const root = render(Bound, { error: 'required' });
+			const said = root.querySelector('.adm-field__error');
+			const row = root.querySelector('.adm-choicechips');
+			if (said === null || row === null) throw new Error('nothing to order');
+
+			expect(row.compareDocumentPosition(said) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		});
+
 		it('says why once under the group, and marks and describes every control by it', () => {
 			const root = render(Bound, { hint: 'Pick the closest.', error: 'required' });
 			const said = root.querySelectorAll('.adm-field__error');
@@ -195,7 +246,17 @@ describe('choice chips mounted into a document', () => {
 	});
 
 	describe('the Other chip', () => {
-		it('opens its box when taken, named Other, and leaves the focus on the chip', async () => {
+		it('names its box by the question and its own words', async () => {
+			const root = render(Bound, {});
+			await take(chip(root, 'Other'));
+			const names = (otherBox(root)?.getAttribute('aria-labelledby') ?? '')
+				.split(' ')
+				.map((id) => document.getElementById(id)?.textContent);
+
+			expect(names.join(' ')).toBe('Who do your gifts mostly help? Other');
+		});
+
+		it('opens its box when taken, and leaves the focus on the chip', async () => {
 			const root = render(Bound, {});
 			expect(otherBox(root)).toBeNull();
 
@@ -204,9 +265,6 @@ describe('choice chips mounted into a document', () => {
 
 			const box = otherBox(root);
 			expect(box).not.toBeNull();
-			expect(document.getElementById(box?.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(
-				'Other'
-			);
 			expect(box?.placeholder).toBe('In your words');
 			expect(document.activeElement).toBe(other);
 		});

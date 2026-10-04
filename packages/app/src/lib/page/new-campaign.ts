@@ -12,11 +12,12 @@ import { HEADING_MAX } from './catalog';
 const TYPES_LISTED = `${CAMPAIGN_TYPES.slice(0, -1).join(', ')} or ${CAMPAIGN_TYPES.at(-1)}`;
 
 export const NEW_CAMPAIGN_SCHEMA = z.object({
-	// a box left blank arrives absent, since conform strips "" before the schema reads it.
+	// a box left blank arrives absent, since conform strips "" before the schema reads it. a group of
+	// cards has no box to be required, so its refusal says what to do.
 	type: z.enum(CAMPAIGN_TYPES, {
 		error: (issue) =>
 			issue.input === undefined
-				? 'required'
+				? 'pick a campaign type'
 				: `"${String(issue.input)}" is no campaign type: ${TYPES_LISTED}`
 	}),
 	name: z

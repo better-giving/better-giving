@@ -8,7 +8,7 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from './ai-panel';
-import { type CardAnswer, QuestionCard, STARTER_NOTE } from './question-card';
+import { type CardAnswer, QuestionCard, type QuestionRound, STARTER_NOTE } from './question-card';
 
 const FELL_BACK = 'Your chosen model didn’t answer, so the default model wrote this reply.';
 const REFUSED =
@@ -81,9 +81,10 @@ function OperatorTurn({
 
 /** the card under an asked turn while it is the chat's last, and what it answers through. */
 type Ask = {
-	readonly round: 'opening' | 'follow-up';
+	readonly round: QuestionRound;
 	readonly onAnswer: (answers: readonly CardAnswer[]) => void;
 	readonly busy: boolean;
+	readonly refusal: string | undefined;
 };
 
 function AssistantTurn({ message, ask }: { message: ChatMessage; ask: Ask | null }) {
@@ -109,6 +110,7 @@ function AssistantTurn({ message, ask }: { message: ChatMessage; ask: Ask | null
 					onSubmit={ask.onAnswer}
 					busy={ask.busy}
 					starter={message.note === 'starter'}
+					refusal={ask.refusal}
 				/>
 			)}
 		</MessagePrimitive.Root>
@@ -147,7 +149,8 @@ export function ChatLog({
 	opening,
 	imageSrc,
 	onAnswer,
-	answering
+	answering,
+	answerRefusal
 }: {
 	messages: readonly ChatMessage[];
 	running: boolean;
@@ -157,6 +160,8 @@ export function ChatLog({
 	onAnswer: (answers: readonly CardAnswer[]) => void;
 	/** answers sent from the card are on their way. */
 	answering: boolean;
+	/** why the card's last answers were not taken. */
+	answerRefusal: string | undefined;
 }) {
 	const [history] = useState(
 		() => new Set(messages.flatMap((m) => (m.role === 'assistant' ? [m.id] : [])))
@@ -164,8 +169,12 @@ export function ChatLog({
 	const replies = messages.filter((m) => m.role === 'assistant' && !history.has(m.id));
 	const byId = new Map(messages.map((m) => [m.id, m]));
 	const asking = liveAsk(messages)?.id;
-	const round = messages[0]?.id === asking ? 'opening' : 'follow-up';
+	const round: QuestionRound = messages[0]?.id === asking ? 'opening' : 'follow-up';
 	const writing = opening ? 'Reading your page' : running ? 'Writing a reply' : '';
+	// the status takes its words a commit after the log mounts: the log mounts in the same render
+	// that starts the opening, and a region that arrives already holding words is not announced.
+	const [spoken, setSpoken] = useState('');
+	useEffect(() => setSpoken(writing), [writing]);
 
 	const log = useRef<HTMLDivElement>(null);
 	const newest = messages.at(-1)?.id;
@@ -181,7 +190,9 @@ export function ChatLog({
 		) : (
 			<AssistantTurn
 				message={row}
-				ask={row.id === asking ? { round, onAnswer, busy: answering } : null}
+				ask={
+					row.id === asking ? { round, onAnswer, busy: answering, refusal: answerRefusal } : null
+				}
 			/>
 		);
 	};
@@ -207,7 +218,7 @@ export function ChatLog({
 						</p>
 					))}
 				</div>
-				<p role="status">{writing}</p>
+				<p role="status">{spoken}</p>
 			</div>
 		</>
 	);

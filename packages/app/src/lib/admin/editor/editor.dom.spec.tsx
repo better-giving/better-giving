@@ -618,6 +618,43 @@ describe('the publish bar', () => {
 		expect(onAi).toHaveBeenCalledOnce();
 	});
 
+	it('walks its presses in the order it draws them: Publish before the quieter ones on a phone', () => {
+		/** below the wide breakpoint, and at or past the middle one or not, as ./wide.ts reads them. */
+		const atMiddle = (middle: boolean) =>
+			vi.spyOn(window, 'matchMedia').mockImplementation(
+				(media) =>
+					({
+						matches: media.includes('44rem') ? middle : false,
+						media,
+						addEventListener: () => {},
+						removeEventListener: () => {}
+					}) as unknown as MediaQueryList
+			);
+		const presses = () =>
+			names(
+				routed(
+					<PublishBar
+						closeHref="/admin"
+						page={{ kind: 'donation' }}
+						state="changed"
+						livePath="/donate"
+						publishing={false}
+						republished={false}
+						onPublish={() => {}}
+						undoing={false}
+						onEditByHand={() => {}}
+						onAi={() => {}}
+					/>
+				)
+			).filter((name) => name !== 'Close editor' && name !== 'Open /donate (opens in a new tab)');
+
+		atMiddle(false);
+		expect(presses()).toEqual(['Publish', 'Edit by hand', 'AI', 'More']);
+
+		atMiddle(true);
+		expect(presses()).toEqual(['Edit by hand', 'AI', 'More', 'Publish']);
+	});
+
 	it('offers Reset to default only once the page has edits', () => {
 		expect(names(routed(bar({ hasEdits: false })))).not.toContain('Reset to default');
 		expect(names(routed(bar({ hasEdits: true })))).toContain('Reset to default');

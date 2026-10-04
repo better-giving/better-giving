@@ -3,7 +3,7 @@ import { Mark } from '../status/Mark.jsx';
 import { FieldMessage } from './FieldMessage.jsx';
 
 /**
- * @import { ReactNode } from 'react'
+ * @import { FocusEvent, ReactNode } from 'react'
  * @import { PointerState } from '../closed-sets.js'
  */
 
@@ -35,7 +35,7 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {string | undefined} [value] what the chip submits — empty unless stated, which no
  *   option's value may also be, so a reader of the form tells the chip from an option by it.
  * @property {string | undefined} [label] the chip's words, `Other` unless stated. the box is named
- *   by them too.
+ *   by the legend and them.
  * @property {string | undefined} [placeholder]
  * @property {boolean | undefined} [defaultChecked]
  * @property {string | undefined} [defaultValue] the box's words when it first opens.
@@ -73,9 +73,18 @@ import { FieldMessage } from './FieldMessage.jsx';
    the refusal is the group's and so is every control's, for that file's reason too: any chip fixes
    it, and none of them is the wrong one.
 
+   the refusal stands under the group in a row of chips, and between the question and the grid in
+   cards: the focus a refused submit moves lands on the first card, and on a phone the cards run on
+   for a screen or more, so a refusal under them would be off screen from where the operator is put.
+   a card the focus lands on is brought into view whole, because the control the focus is on is
+   the 1px one held out of sight in the card's corner; the first card is brought in with the
+   refusal above it while there is one, which is where that focus lands.
+
    the Other box opens on the render the chip is taken in and the focus stays on the chip: the
    arrow keys walking a radio group would otherwise be pulled out of it on passing Other. Tab is
-   the next step into the box, which stands straight after the chips. */
+   the next step into the box, which stands straight after the chips. it is named by the question
+   and the chip's words together, so a card of several questions does not hold several boxes all
+   named Other. */
 /** @param {ChoiceChipsProps} props */
 export function ChoiceChips({
 	id,
@@ -93,20 +102,35 @@ export function ChoiceChips({
 	const hintId = hint ? `${id}-hint` : undefined;
 	const errorId = error ? `${id}-err` : undefined;
 	const groupLines = [hintId, errorId].filter(Boolean).join(' ') || undefined;
+	const legendId = `${id}-legend`;
 	const otherText = `${id}-other-text`;
 	const tick = type === 'checkbox' ? <Mark name="check" className="adm-choicechip__tick" /> : null;
+	const refusal = error ? <FieldMessage id={errorId}>{error}</FieldMessage> : null;
+
+	/** @param {FocusEvent<HTMLFieldSetElement>} event */
+	const bringIntoView = (event) => {
+		const card = event.target instanceof Element ? event.target.closest('.adm-choicechip') : null;
+		if (card === null) return;
+		if (errorId && card === card.parentElement?.firstElementChild)
+			document.getElementById(errorId)?.scrollIntoView({ block: 'nearest' });
+		card.scrollIntoView({ block: 'nearest' });
+	};
 
 	return (
 		<fieldset
 			className="adm-fieldset"
 			onChange={() => setOtherOpen(otherChip.current?.checked ?? false)}
+			onFocus={cards ? bringIntoView : undefined}
 		>
-			<legend className="adm-fieldset__legend">{legend}</legend>
+			<legend className="adm-fieldset__legend" id={legendId}>
+				{legend}
+			</legend>
 			{hint ? (
 				<p className="adm-hint" id={hintId}>
 					{hint}
 				</p>
 			) : null}
+			{cards ? refusal : null}
 			<div className={cards ? 'adm-choicechips adm-choicechips--cards' : 'adm-choicechips'}>
 				{options.map(({ value, label, description, defaultChecked, state }, at) => {
 					const words = `${id}-${at}`;
@@ -157,13 +181,13 @@ export function ChoiceChips({
 					type="text"
 					name={other.name}
 					className="adm-input adm-choicechips__other"
-					aria-labelledby={otherText}
+					aria-labelledby={`${legendId} ${otherText}`}
 					placeholder={other.placeholder}
 					defaultValue={other.defaultValue}
 					autoComplete="off"
 				/>
 			) : null}
-			{error ? <FieldMessage id={errorId}>{error}</FieldMessage> : null}
+			{cards ? null : refusal}
 		</fieldset>
 	);
 }

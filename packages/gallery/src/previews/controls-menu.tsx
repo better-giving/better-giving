@@ -2,9 +2,10 @@ import { Menu } from '@better-giving/operator/components/controls/Menu';
 
 /*
  * the menu: a press named for what it holds, and its lines. the first specimen is the editor bar's
- * More at rest, holding a link line and two action lines; the second stands open, which is the one
+ * More at rest, holding a link line and two action lines; the second is held open, which is the one
  * state no press reaches on a page that has to stay readable — the list stands over what follows
- * it, so the open one is last.
+ * it, so the open one is last. it is held, so it stays open when another specimen on the page
+ * takes the focus.
  *
  * the keys are ark's: Enter, Space or the down arrow open it, the arrows walk it, Enter runs a line,
  * Escape closes it, and the focus goes back to the press either way. a link line is followed as a
@@ -24,7 +25,7 @@ export default function ControlsMenuPreview() {
 				<Menu label="More" size="sm" variant="quiet" items={LINES} />
 			</div>
 			<div className="adm-actions">
-				<Menu label="More" items={LINES} defaultOpen />
+				<Menu label="More" items={LINES} open />
 			</div>
 		</div>
 	);

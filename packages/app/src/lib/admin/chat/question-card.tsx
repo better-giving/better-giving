@@ -2,6 +2,8 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { ChoiceChips } from '@better-giving/operator/components/forms/ChoiceChips';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { type FormEvent, type ReactNode, useId, useRef, useState } from 'react';
 import { FORM_CURRENCY, readAmount } from '$lib/forms/amounts';
 import { AffixedField } from '../editor/affixed-field';
@@ -23,6 +25,12 @@ import { AffixedField } from '../editor/affixed-field';
 //
 // while the answers are on their way (`busy`) both presses are held with `aria-disabled` rather
 // than `disabled`, so the focus stays on the one pressed, and the boxes stay as typed.
+//
+// answers the route stored nothing from come back as `refusal`, said under the presses — the card
+// is still up, every box as it was, and the focus still on the press that sent them, so that is
+// where it is read. the region is on the card before it has anything to say, so it is announced
+// when it does, and both presses are described by it while it speaks. a server's sentence marks a
+// command or a name in backticks, which is drawn as code here as the chat log draws it.
 
 export type QuestionKind = 'choice' | 'choices' | 'text' | 'amount' | 'date';
 
@@ -61,6 +69,8 @@ export interface QuestionCardProps {
 	readonly busy: boolean;
 	/** the questions are the page's usual ones, asked because the AI did not answer. */
 	readonly starter?: boolean | undefined;
+	/** why the last answers sent were not taken, as a sentence the operator reads. */
+	readonly refusal?: string | undefined;
 }
 
 const PRESSES = {
@@ -115,8 +125,17 @@ function answerOf(question: CardQuestion, data: FormData): CardAnswer | null {
 	}
 }
 
-export function QuestionCard({ questions, round, onSubmit, busy, starter }: QuestionCardProps) {
+export function QuestionCard({
+	questions,
+	round,
+	onSubmit,
+	busy,
+	starter,
+	refusal = ''
+}: QuestionCardProps) {
 	const uid = useId();
+	const refusalId = `${uid}-refusal`;
+	const describedBy = refusal === '' ? undefined : refusalId;
 	const domId = (question: CardQuestion) => `${uid}-${question.id}`;
 	const [amounts, setAmounts] = useState<Readonly<Record<string, string>>>({});
 	// the predicate a press found under each amount box, re-read as the box is typed in until clear.
@@ -240,6 +259,7 @@ export function QuestionCard({ questions, round, onSubmit, busy, starter }: Ques
 					variant="primary"
 					aria-disabled={busy || undefined}
 					aria-busy={busy && pressed === 'send'}
+					aria-describedby={describedBy}
 					onClick={(event) => {
 						if (busy) event.preventDefault();
 					}}
@@ -251,11 +271,19 @@ export function QuestionCard({ questions, round, onSubmit, busy, starter }: Ques
 					variant="quiet"
 					aria-disabled={busy || undefined}
 					aria-busy={busy && pressed === 'skip'}
+					aria-describedby={describedBy}
 					onClick={skip}
 				>
 					{words.skip}
 				</Button>
 			</div>
+			<p className="adm-questions__refusal" id={refusalId} role="status">
+				{refusal === '' ? null : (
+					<StatusWord register="momentary" blocked mark="circle-alert">
+						<MarkedText text={refusal} />
+					</StatusWord>
+				)}
+			</p>
 		</form>
 	);
 }

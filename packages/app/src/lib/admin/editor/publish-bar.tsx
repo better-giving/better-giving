@@ -6,7 +6,7 @@ import { type Ref, useId } from 'react';
 import { RouterLink } from '../router-link';
 import { useAiEntry } from './editor-shell';
 import { InPlaceName } from './in-place-name';
-import { useWide } from './wide';
+import { useMiddle, useWide } from './wide';
 
 // the bar across the top of the editor: the way out, the page's name and where it stands, and the
 // presses that act on the whole page — Edit by hand, AI below the wide breakpoint, a More menu, and
@@ -39,6 +39,11 @@ import { useWide } from './wide';
 // the menu hands the focus back to More; a Reset or a Discard that lands takes its own line away,
 // and the caller puts the focus on the state word instead (`statusRef`), which reads the state the
 // press left.
+//
+// **the presses are in the order they are drawn**, so the focus walks them as they read: from the
+// middle width the quieter presses stand before Publish on one line, and below it Publish ends the
+// state word's line and they take the line under it, so below it Publish comes first
+// (`useMiddle` in ./wide.ts).
 //
 // **nothing pressable does nothing.** a caller with no handler for Edit by hand, AI, Undo or
 // Discard changes gets no such press drawn — the editor over a draft it cannot read has neither
@@ -90,7 +95,7 @@ type PublishBarPage =
 			readonly onRename: (name: string) => void;
 	  };
 
-export type PublishBarProps = {
+type PublishBarProps = {
 	/** where the X goes: the dashboard or the Campaigns list. */
 	readonly closeHref: string;
 	/** opens the Settings sheet. absent: no Edit by hand is drawn. */
@@ -150,12 +155,68 @@ export function PublishBar({
 	const { word, tone } = STATE_WORDS[state];
 	const live = state === 'changed' || state === 'live';
 	const wide = useWide();
+	const middle = useMiddle();
 	const ai = useAiEntry();
 	const more: MenuItem[] = [];
 	if (live && livePath) more.push({ label: `Open ${livePath}`, href: livePath, newTab: true });
 	if (reset?.hasEdits) more.push({ label: 'Reset to default', onSelect: reset.onReset });
 	if (state === 'changed' && onDiscard)
 		more.push({ label: 'Discard changes', onSelect: onDiscard });
+
+	const quiet = (
+		<div key="quiet" className="adm-publishbar__quiet">
+			{onEditByHand ? (
+				<Button type="button" mark="pencil" aria-haspopup="dialog" onClick={onEditByHand}>
+					Edit by hand
+				</Button>
+			) : null}
+			{wide || !onAi ? null : (
+				<Button
+					ref={ai.ref}
+					type="button"
+					mark="sparkles"
+					aria-haspopup="dialog"
+					aria-busy={ai.opening || undefined}
+					aria-disabled={ai.opening || undefined}
+					onClick={() => {
+						if (!ai.opening) onAi();
+					}}
+				>
+					AI
+				</Button>
+			)}
+			{more.length === 0 ? null : <Menu label="More" items={more} />}
+		</div>
+	);
+	const done = (
+		<div key="done" className="adm-publishbar__done">
+			<SaveButton
+				type="button"
+				label="Publish"
+				doneLabel="Published"
+				elsewhere=""
+				state={publishPressState({ held, publishing, republished, state })}
+				aria-describedby={heldReason ? heldId : describe('publish')}
+				onClick={onPublish}
+			/>
+			{republished && onUndo ? (
+				<Button
+					type="button"
+					variant="quiet"
+					size="sm"
+					mark="undo-2"
+					aria-busy={undoing}
+					aria-disabled={undoing || undefined}
+					aria-describedby={describe('undo')}
+					onClick={() => {
+						if (!undoing) onUndo();
+					}}
+				>
+					Undo
+				</Button>
+			) : null}
+		</div>
+	);
 
 	return (
 		<header className="adm-publishbar">
@@ -189,56 +250,7 @@ export function PublishBar({
 				<span className="adm-publishbar__state" ref={statusRef} tabIndex={-1}>
 					<StatusWord tone={tone}>{word}</StatusWord>
 				</span>
-				<div className="adm-publishbar__quiet">
-					{onEditByHand ? (
-						<Button type="button" mark="pencil" aria-haspopup="dialog" onClick={onEditByHand}>
-							Edit by hand
-						</Button>
-					) : null}
-					{wide || !onAi ? null : (
-						<Button
-							ref={ai.ref}
-							type="button"
-							mark="sparkles"
-							aria-haspopup="dialog"
-							aria-busy={ai.opening || undefined}
-							aria-disabled={ai.opening || undefined}
-							onClick={() => {
-								if (!ai.opening) onAi();
-							}}
-						>
-							AI
-						</Button>
-					)}
-					{more.length === 0 ? null : <Menu label="More" items={more} />}
-				</div>
-				<div className="adm-publishbar__done">
-					<SaveButton
-						type="button"
-						label="Publish"
-						doneLabel="Published"
-						elsewhere=""
-						state={publishPressState({ held, publishing, republished, state })}
-						aria-describedby={heldReason ? heldId : describe('publish')}
-						onClick={onPublish}
-					/>
-					{republished && onUndo ? (
-						<Button
-							type="button"
-							variant="quiet"
-							size="sm"
-							mark="undo-2"
-							aria-busy={undoing}
-							aria-disabled={undoing || undefined}
-							aria-describedby={describe('undo')}
-							onClick={() => {
-								if (!undoing) onUndo();
-							}}
-						>
-							Undo
-						</Button>
-					) : null}
-				</div>
+				{middle ? [quiet, done] : [done, quiet]}
 			</div>
 			<p className="adm-publishbar__report" role="status">
 				{report ? (

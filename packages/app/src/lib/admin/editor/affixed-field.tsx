@@ -9,6 +9,10 @@ import type { InputHTMLAttributes, Ref } from 'react';
 // the affix is read with the box: the input is described by it, so a screen reader hears "USD" or
 // the host along with the label.
 //
+// the whole drawn frame takes a press, the affix and the padding round the input included: the
+// frame is a second `<label>` of the input, so the platform puts the caret in the box from any of
+// it. the input is named by the field's label alone, which keeps the affix out of its name.
+//
 // the box is the caller's to hold, with `value` and `onValueChange`, or the form's, with `name` and
 // `defaultValue`, posted with the rest of the form's boxes — a block's tier amounts
 // (./block-edit.tsx).
@@ -58,6 +62,7 @@ export function AffixedField({
 	defaultValue,
 	inputMode
 }: AffixedFieldProps) {
+	const labelId = `${id}-label`;
 	const affixId = `${id}-affix`;
 	const describedBy = [affixId, hint ? `${id}-hint` : null, error ? `${id}-err` : null]
 		.filter(Boolean)
@@ -69,7 +74,7 @@ export function AffixedField({
 	);
 	return (
 		<div className="adm-field">
-			<label className="adm-field__label" htmlFor={id}>
+			<label className="adm-field__label" htmlFor={id} id={labelId}>
 				{label}
 				{optional ? <span className="adm-field__optional"> (optional)</span> : null}
 			</label>
@@ -78,7 +83,7 @@ export function AffixedField({
 					{hint}
 				</p>
 			) : null}
-			<div className="adm-affixed">
+			<label className="adm-affixed">
 				{affixAt === 'start' ? unit : null}
 				<input
 					ref={inputRef}
@@ -87,6 +92,7 @@ export function AffixedField({
 					type="text"
 					inputMode={inputMode}
 					autoComplete="off"
+					aria-labelledby={labelId}
 					aria-invalid={error ? 'true' : undefined}
 					aria-describedby={describedBy}
 					name={name}
@@ -97,7 +103,7 @@ export function AffixedField({
 					}
 				/>
 				{affixAt === 'end' ? unit : null}
-			</div>
+			</label>
 			{error ? <FieldMessage id={`${id}-err`}>{error}</FieldMessage> : null}
 		</div>
 	);

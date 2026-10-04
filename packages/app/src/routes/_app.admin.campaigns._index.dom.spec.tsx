@@ -400,10 +400,10 @@ describe('New campaign', () => {
 			'What kind of campaign?'
 		);
 		const said = dialog.querySelectorAll('fieldset .adm-field__error');
-		expect([...said].map((one) => one.textContent)).toEqual(['required']);
+		expect([...said].map((one) => one.textContent)).toEqual(['pick a campaign type']);
 		for (const radio of dialog.querySelectorAll('input[name="type"]')) {
 			expect(radio.getAttribute('aria-invalid')).toBe('true');
-			expect(describedBy(radio)).toContain('required');
+			expect(describedBy(radio)).toContain('pick a campaign type');
 		}
 	});
 

@@ -98,6 +98,8 @@ export interface AiPanelProps {
 	 * `undefined` while the second send is in flight.
 	 */
 	readonly unsent?: ChatUnsent | undefined;
+	/** why the live card's last answers were not taken, said at the card; none while they are away. */
+	readonly answerRefusal?: string | undefined;
 }
 
 const convertMessage = (message: ChatMessage): ThreadMessageLike => ({
@@ -131,7 +133,14 @@ const textOf = (message: AppendMessage) =>
    a refused send comes back through `unsent`. its reason is drawn at the composer until the next
    send or answer, which every press reaches through `onNew` or the card, so that is where it is
    cleared; putting the words back and the focus in the box is the composer's, off the value this
-   holds. */
+   holds. refused answers come back through `answerRefusal` instead, which the live card draws under
+   its own presses: the card is still up with every value in it, and the focus is on its press.
+
+   answers that land end the card, unmounted under the press that sent them, so the focus would
+   drop to the document; the composer takes it, which is where the next thing to say is typed. it is
+   keyed to the card that was answered going, never to a count of turns, and the composer takes it
+   only from the document or the panel itself — not from wherever the operator went while the
+   answers were away. */
 export function AiPanel(props: AiPanelProps) {
 	const wide = useWide();
 	// the sheet's state goes with it: a sheet opened again is a sheet drawn afresh, with no refusal
@@ -151,6 +160,7 @@ function Shown({
 	attachment,
 	attach,
 	unsent,
+	answerRefusal,
 	wide
 }: AiPanelProps & { readonly wide: boolean }) {
 	const heading = useId();
@@ -161,6 +171,16 @@ function Shown({
 	if (unsent?.text !== landed?.text || unsent?.reason !== landed?.reason) {
 		setLanded(unsent);
 		if (unsent !== undefined) setReason(unsent.reason);
+	}
+	const asking = liveAsk(messages)?.id ?? null;
+	/** the card whose answers were last sent from here. */
+	const [answeredCard, setAnsweredCard] = useState<string | null>(null);
+	const [asked, setAsked] = useState(asking);
+	/** the answered card that last went, which hands the focus to the composer. */
+	const [cardWent, setCardWent] = useState<string | null>(null);
+	if (asking !== asked) {
+		setAsked(asking);
+		if (asked !== null && asked === answeredCard) setCardWent(asked);
 	}
 	const runtime = useExternalStoreRuntime<ChatMessage>({
 		messages,
@@ -180,9 +200,11 @@ function Shown({
 			imageSrc={imageSrc}
 			onAnswer={(answers) => {
 				setReason('');
+				setAnsweredCard(asking);
 				onAnswer(answers);
 			}}
 			answering={isRunning}
+			answerRefusal={answerRefusal}
 		/>
 	);
 	const composer = (
@@ -193,7 +215,8 @@ function Shown({
 			attach={attach}
 			unsent={landed}
 			reason={reason}
-			placeholder={liveAsk(messages) ? 'Or tell me in your own words' : 'Ask for a change'}
+			placeholder={asking !== null ? 'Or tell me in your own words' : 'Ask for a change'}
+			cardWent={cardWent}
 		/>
 	);
 

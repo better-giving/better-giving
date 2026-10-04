@@ -29,8 +29,8 @@ import { Button } from './Button.jsx';
  * @property {MarkName | undefined} [mark] the press's mark, `ellipsis` unless stated.
  * @property {ButtonVariant | undefined} [variant]
  * @property {ButtonSize | undefined} [size]
- * @property {boolean | undefined} [defaultOpen] the list open on the first draw. a specimen's prop:
- *   a screen opens a menu by the press an operator makes on it.
+ * @property {boolean | undefined} [open] the list held open whatever is pressed, Escape and a press
+ *   outside included. a specimen's prop: a screen opens a menu by the press an operator makes on it.
  */
 
 /* a press that opens a short list of actions. the machine is ark's menu and everything it answers
@@ -38,24 +38,20 @@ import { Button } from './Button.jsx';
    arrow, the arrows and Home and End inside, typeahead, Escape and a press outside closing it, and
    the focus handed back to the press when it closes. what this adds is the look — the list is
    ../forms/SelectWithNote.jsx's surface and the line its row, so the two read as one family — and
-   a link line, which the machine follows as a link.
+   a link line, which the machine follows as a link. the link is out of the tab sequence, as every
+   other line is: the list holds the focus and the machine walks its lines by the arrows, and a
+   link Tab could land on would take the focus off the list, where neither the arrows nor Tab
+   reach anything.
 
    the list stands in the flow under the press rather than in a portal, for
    ../forms/SelectWithNote.jsx's reason: `.adm-menuwrap` is what lifts it over whatever follows
    (../../styles/adm.css). an empty menu is a press that opens onto nothing, so a caller with no
    line to offer draws no menu. */
 /** @param {MenuProps} props */
-export function Menu({
-	label,
-	items,
-	mark = 'ellipsis',
-	variant = 'default',
-	size = 'md',
-	defaultOpen
-}) {
+export function Menu({ label, items, mark = 'ellipsis', variant = 'default', size = 'md', open }) {
 	return (
 		<div className="adm-menuwrap">
-			<ArkMenu.Root defaultOpen={defaultOpen}>
+			<ArkMenu.Root open={open}>
 				<ArkMenu.Trigger asChild>
 					<Button type="button" variant={variant} size={size} mark={mark} aria-label={label} />
 				</ArkMenu.Trigger>
@@ -76,6 +72,7 @@ export function Menu({
 									<a
 										className="adm-menurow"
 										href={item.href}
+										tabIndex={-1}
 										target={item.newTab ? '_blank' : undefined}
 										rel={item.newTab ? 'noopener' : undefined}
 									>

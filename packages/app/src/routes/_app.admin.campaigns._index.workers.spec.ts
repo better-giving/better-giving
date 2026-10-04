@@ -258,7 +258,7 @@ describe('New campaign', () => {
 	});
 
 	it.each([
-		['no type', { name: 'Winter coat drive' }, 'required'],
+		['no type', { name: 'Winter coat drive' }, 'pick a campaign type'],
 		[
 			'a type off the list',
 			{ ...CREATE, type: 'gala' },
