@@ -1,6 +1,7 @@
 package nonprofits
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -425,4 +426,63 @@ func TestASearchForAnEINIsALookupAnsweredAsAList(t *testing.T) {
 			t.Errorf("searched %+v, want unavailable with an empty list", searched)
 		}
 	})
+}
+
+// an upstream that holds every request until `release` is closed, then answers `body`.
+func held(t *testing.T, body string) (*Client, func() []string, chan struct{}) {
+	t.Helper()
+	release := make(chan struct{})
+	client, asked := upstream(t, func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		says(http.StatusOK, body)(w, r)
+	})
+	return client, asked, release
+}
+
+// blocks until the upstream has been asked once.
+func reached(asked func() []string) {
+	for len(asked()) == 0 {
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestACallerThatGivesUpStillLeavesTheAnswerRemembered(t *testing.T) {
+	client, asked, release := held(t, redCross)
+	ctx, cancel := context.WithCancel(t.Context())
+	first := make(chan Lookup, 1)
+	go func() { first <- client.LookUp(ctx, "530196605") }()
+	reached(asked)
+
+	cancel()
+	if gave := <-first; gave.State != Unavailable {
+		t.Errorf("the caller that gave up got %q, want unavailable", gave.State)
+	}
+	close(release)
+	second := client.LookUp(t.Context(), "530196605")
+
+	if second.State != Found || len(asked()) != 1 {
+		t.Errorf("then looked up %q over %q, want found from the one request already made",
+			second.State, asked())
+	}
+}
+
+func TestAWaiterThatGivesUpReturnsWhileAnotherGetsTheAnswer(t *testing.T) {
+	client, asked, release := held(t, `{"results": [`+entry("530196605", "Red Cross")+`]}`)
+	first := make(chan Search, 1)
+	go func() { first <- client.Search(t.Context(), "red cross") }()
+	reached(asked)
+
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+	if gave := client.Search(gone, "Red Cross"); gave.State != SearchUnavailable || gave.Matches == nil {
+		t.Errorf("the waiter that gave up got %+v, want unavailable with an empty list", gave)
+	}
+	close(release)
+
+	if got := <-first; got.State != Listed || len(got.Matches) != 1 {
+		t.Errorf("the caller still waiting got %+v, want ok with its match", got)
+	}
+	if again := client.Search(t.Context(), "red cross"); again.State != Listed || len(asked()) != 1 {
+		t.Errorf("then searched %q over %q, want ok from the one request", again.State, asked())
+	}
 }

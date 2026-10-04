@@ -1396,3 +1396,9 @@ export type NonprofitLookup = {
 	state: 'found' | 'not_found' | 'unavailable';
 	organisation: NonprofitOrganisation;
 };
+
+/**
+ * whether this binary was built with the IRS nonprofit API's address. `false` is every search and
+ * lookup answering `unavailable`, known before anyone types; asking it spends nothing of the API's.
+ */
+export type NonprofitsStatus = { built: boolean };

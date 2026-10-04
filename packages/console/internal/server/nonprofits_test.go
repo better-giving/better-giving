@@ -229,7 +229,11 @@ func TestAnotherPageCannotSpendTheLookups(t *testing.T) {
 	api, asked := nonprofitAPI(t, http.StatusOK, redCross)
 	console := finding(t, api)
 
-	for _, path := range []string{"/api/nonprofits/530196605", "/api/nonprofits/search?q=red+cross"} {
+	for _, path := range []string{
+		"/api/nonprofits/530196605",
+		"/api/nonprofits/search?q=red+cross",
+		"/api/nonprofits/status",
+	} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		request.Host = loopback
 		request.Header.Set("Sec-Fetch-Site", "cross-site")
@@ -250,4 +254,27 @@ func jsonEqual(a, b any) bool {
 	left, _ := json.Marshal(a)
 	right, _ := json.Marshal(b)
 	return string(left) == string(right)
+}
+
+func TestTheStatusSaysWhetherThisConsoleWasBuiltWithTheAPIsAddress(t *testing.T) {
+	addressed, asked := nonprofitAPI(t, http.StatusOK, redCross)
+	for _, one := range []struct {
+		name  string
+		api   *nonprofits.Client
+		built bool
+	}{
+		{"no address", nonprofits.At(""), false},
+		{"an address", addressed, true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			status, body := found(t, finding(t, one.api), "/api/nonprofits/status")
+
+			if status != http.StatusOK || !jsonEqual(body, map[string]any{"built": one.built}) {
+				t.Errorf("%d %v, want built %v", status, body, one.built)
+			}
+		})
+	}
+	if got := asked(); len(got) != 0 {
+		t.Errorf("asked %q, want nothing", got)
+	}
 }

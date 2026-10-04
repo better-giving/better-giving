@@ -14,8 +14,9 @@
 //
 // **what was found out is remembered for the run, and what was not is not.** the API is sized for
 // set-up rather than for a box asking per keystroke, so one console run asks it once per EIN and
-// once per query, callers in flight together included; an `unavailable` is forgotten, because the
-// next try may land.
+// once per query, callers in flight together included, and a caller that gives up does not take the
+// request it started down with it (memory); an `unavailable` is forgotten, because the next try may
+// land.
 //
 // **the upstream shape is decoded in one place per path** (upstreamOrganisation, upstreamMatches),
 // and unknown members are ignored: the API grows facts this console does not read, and a member it
@@ -127,6 +128,10 @@ func At(base string) *Client {
 	}
 }
 
+// Built is whether this client has an address to ask: false is every answer `unavailable`, which
+// a screen can know before anyone types.
+func (c *Client) Built() bool { return c.base != "" }
+
 // EIN is the nine digits an EIN is, read off what was typed: space around it and the one dash the
 // IRS prints after the second digit are dropped, and anything else is no EIN.
 func EIN(typed string) (string, bool) {
@@ -152,8 +157,9 @@ func (c *Client) LookUp(ctx context.Context, typed string) Lookup {
 	if !ok || c.base == "" {
 		return Lookup{State: Unavailable}
 	}
-	return c.lookups.recall(ein, func() (Lookup, bool) {
-		looked := c.lookUp(ctx, ein)
+	missed := Lookup{State: Unavailable}
+	return c.lookups.recall(ctx, ein, missed, func(asking context.Context) (Lookup, bool) {
+		looked := c.lookUp(asking, ein)
 		return looked, looked.State != Unavailable
 	})
 }
@@ -168,8 +174,9 @@ func (c *Client) Search(ctx context.Context, typed string) Search {
 	if c.base == "" || query == "" {
 		return Search{State: SearchUnavailable, Matches: []Match{}}
 	}
-	return c.searches.recall(query, func() (Search, bool) {
-		searched := c.search(ctx, query)
+	missed := Search{State: SearchUnavailable, Matches: []Match{}}
+	return c.searches.recall(ctx, query, missed, func(asking context.Context) (Search, bool) {
+		searched := c.search(asking, query)
 		return searched, searched.State != SearchUnavailable
 	})
 }
@@ -342,8 +349,13 @@ func (c *Client) get(ctx context.Context, path string) (int, []byte) {
 
 // what one console run found out, by key.
 //
-// a caller arriving while the same key is being asked waits on that ask rather than making a
-// second, and an answer `ask` says not to keep is forgotten once it is handed out.
+// **an ask, once made, belongs to the run rather than to the caller that made it.** the API counts a
+// request it received whether or not anyone waits for the answer, and the find box drops its call
+// whenever the operator types on — so the ask runs on its own, bounded by `within` alone, and what it
+// finds out is kept for whoever asks next. a caller arriving while the same key is being asked waits
+// on that ask rather than making a second; any caller that gives up is answered `missed` alone, and
+// changes nothing for the others or for what is kept. an answer `ask` says not to keep is forgotten
+// once it is handed out.
 type memory[T any] struct {
 	held sync.Mutex
 	kept map[string]*recalled[T]
@@ -354,26 +366,48 @@ type recalled[T any] struct {
 	value T
 }
 
-func (m *memory[T]) recall(key string, ask func() (T, bool)) T {
+func (m *memory[T]) recall(
+	ctx context.Context,
+	key string,
+	missed T,
+	ask func(context.Context) (T, bool),
+) T {
 	m.held.Lock()
 	one, asking := m.kept[key]
 	if !asking {
 		one = &recalled[T]{done: make(chan struct{})}
 		m.kept[key] = one
+		go m.settle(context.WithoutCancel(ctx), key, one, missed, ask)
 	}
 	m.held.Unlock()
-	if asking {
-		<-one.done
+	select {
+	case <-one.done:
 		return one.value
+	case <-ctx.Done():
+		return missed
 	}
+}
 
-	defer close(one.done)
-	value, keep := ask()
-	one.value = value
-	if !keep {
-		m.held.Lock()
-		delete(m.kept, key)
-		m.held.Unlock()
-	}
-	return value
+// one ask, run to its end. a panic in it is an answer nobody found out and is not kept: it runs
+// outside any handler, where nothing else would catch it before it ended the console.
+func (m *memory[T]) settle(
+	ctx context.Context,
+	key string,
+	one *recalled[T],
+	missed T,
+	ask func(context.Context) (T, bool),
+) {
+	keep := false
+	defer func() {
+		if recover() != nil {
+			one.value, keep = missed, false
+		}
+		if !keep {
+			m.held.Lock()
+			delete(m.kept, key)
+			m.held.Unlock()
+		}
+		close(one.done)
+	}()
+	one.value, keep = ask(ctx)
 }

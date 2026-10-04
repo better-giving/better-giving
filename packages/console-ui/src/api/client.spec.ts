@@ -6,6 +6,7 @@ import {
 	consoleVersion,
 	levelWallets,
 	lookUpNonprofit,
+	nonprofitsStatus,
 	pressQuickbooks,
 	readAiModel,
 	readQuickbooks,
@@ -218,6 +219,14 @@ describe('finding the organisation in the IRS nonprofit API', () => {
 
 		await expect(lookUpNonprofit('53-0196605')).resolves.toEqual({ state: 'found', organisation });
 		expect(calls[0]?.[0]).toBe('/api/nonprofits/53-0196605');
+	});
+
+	it('asks the binary whether it was built with the API address at all', async () => {
+		const calls = recording({ built: false });
+
+		await expect(nonprofitsStatus()).resolves.toEqual({ built: false });
+		expect(calls[0]?.[0]).toBe('/api/nonprofits/status');
+		expect(calls[0]?.[1]?.method).toBe('GET');
 	});
 
 	it('encodes what the box held, so a slash cannot reach another route', async () => {

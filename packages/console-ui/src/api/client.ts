@@ -8,6 +8,7 @@ import type {
 	ModelChoice,
 	NonprofitLookup,
 	NonprofitSearch,
+	NonprofitsStatus,
 	NowpaymentsListing,
 	NowpaymentsPress,
 	NowpaymentsSaved,
@@ -570,3 +571,7 @@ export const searchNonprofits = (query: string, signal?: AbortSignal): Promise<N
  */
 export const lookUpNonprofit = (ein: string, signal?: AbortSignal): Promise<NonprofitLookup> =>
 	ask(`/nonprofits/${encodeURIComponent(ein)}`, 'GET', signal);
+
+/** whether this binary can ask the IRS nonprofit API at all, which asks the API nothing. */
+export const nonprofitsStatus = (signal?: AbortSignal): Promise<NonprofitsStatus> =>
+	ask('/nonprofits/status', 'GET', signal);
