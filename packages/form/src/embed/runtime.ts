@@ -148,6 +148,23 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 		return token;
 	};
 
+	/**
+	 * the returns whose gift a host page has already been told went through.
+	 *
+	 * the other half of serving one return to every element showing its form: each of them reaches
+	 * the thank-you, and it is still one gift, so the first to arrive tells the host page and the
+	 * rest do not (`FormCheckout.claimSuccess` in ../element.ts).
+	 */
+	const told = new Set<string>();
+
+	/** whether a checkout on `resumeToken` is the one that tells; a fresh gift is always its own. */
+	const claimSuccess = (resumeToken: string | null): boolean => {
+		if (resumeToken === null) return true;
+		if (told.has(resumeToken)) return false;
+		told.add(resumeToken);
+		return true;
+	};
+
 	return {
 		loadConfig: createLoadConfig(origin),
 		checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
@@ -189,6 +206,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				rows: surface.rows,
 				// what the processors still up can take, passed straight through as the count is.
 				repeatingUnavailable: surface.repeatingUnavailable,
+				claimSuccess: () => claimSuccess(resumeToken),
 				// the card letting go of the surface built for this configuration, and it is this
 				// surface's own: a second gift is a second call here, so a door shared between them
 				// would stop the live one on the orphan's behalf.

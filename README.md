@@ -95,6 +95,29 @@ A form refuses to serve until the org profile carries a **registered name** and 
 
 A child carrying `slot="loading"` (`<p slot="loading">Loading…</p>`, or a block of your own) shows until the form's configuration is read; it renders before the element upgrades and is kept afterwards, over the form's own skeleton. Write the attribute on your own element, not a literal `<slot>` tag: a pasted `<slot>` shows its contents before the upgrade and disappears at it.
 
+### Listen to the form
+
+The element dispatches three events, and each bubbles out of it, so a listener on the element, on any ancestor or on `document` hears it:
+
+- `bg-donate:ready` when the form has rendered. `detail` is `{ formId }`.
+- `bg-donate:unavailable` when the element shows the card saying the form cannot be rendered. `detail` is `{ message, fix }`, the two sentences on that card; `fix` is `null` where the card shows none.
+- `bg-donate:success` when a gift went through. `detail` is `{ formId, amountMinor, currency, frequency }`: what the donor was charged in minor units of an uppercase ISO 4217 currency, any fee they chose to cover included, so `2606` with `USD` is $26.06. On a monthly or yearly gift it is one charge, not the gift's value over time.
+
+```html
+<script>
+	document.addEventListener('bg-donate:success', (event) => {
+		const { amountMinor, currency } = event.detail;
+		// fire your own conversion pixel here
+	});
+</script>
+```
+
+**`success` fires once per gift, on the thank-you screen.** It never fires for a gift that was declined or is still waiting: a bank debit settling or waiting for the donor to confirm their bank account, a gift from a donor-advised fund (the fund pays later), or a crypto deposit not yet arrived. It fires once even on a page that shows the same form twice.
+
+`amountMinor` is `null` where the form does not know the amount. A donor who left for their bank to approve a card comes back to a page that remembers only the gift's payment, so on that return `frequency` is `null` too. A crypto gift is valued at what arrives, so it carries no amount either. No event carries the donor's name or email.
+
+Events and their details grow: ignore a `bg-donate:*` event you do not know, a `frequency` other than `one_time`, `monthly` and `yearly`, and a `detail` field you do not know.
+
 ## If your site sends a Content-Security-Policy
 
 The form needs seven directives, and the one most often missing is your own deployment.

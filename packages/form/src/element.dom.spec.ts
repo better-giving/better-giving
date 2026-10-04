@@ -7,6 +7,7 @@ import {
 	type FormBoot,
 	type FormRuntime
 } from './element';
+import manifestText from '../custom-elements.json?raw';
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from './parts';
 import type { CheckoutPorts, FundReports } from './ports';
 import { DEPOSIT_POLL_MS, type Failure } from './checkout.machine';
@@ -20,6 +21,7 @@ import {
 	type QuoteRequest
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
+import { createFormRuntime } from './embed/runtime';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
@@ -43,7 +45,7 @@ import coinStyles from './styles/coins.css?inline';
 const CONFIG: FormConfig = {
 	formId: 'frm_a8x2k9',
 	providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
-	currency: 'usd',
+	currency: 'USD',
 	suggestedAmountsMinor: [2500, 10_000, 25_000, 100_000],
 	minAmountMinor: 500,
 	maxAmountMinor: 5_000_000,
@@ -1104,6 +1106,9 @@ describe('the style adoption', () => {
 	});
 
 	it('adopts one set of sheets however many elements a page holds', async () => {
+		// the first element adopts the document's sheets, so the count is read once one has: alone, this
+		// would measure that first adoption instead of whether a second set is added.
+		await mount();
 		const before = document.adoptedStyleSheets.length;
 		await mount();
 		await mount();
@@ -5988,6 +5993,25 @@ describe('a donor-advised fund’s window', () => {
 		expect(shows(card, '.takeover .prose')).not.toContain('charge');
 	});
 
+	it('tells the host page nothing of a grant the fund pays later', async () => {
+		const success: unknown[] = [];
+		const listener = (event: Event): void => {
+			success.push((event as CustomEvent).detail);
+		};
+		document.addEventListener('bg-donate:success', listener);
+		onTestFinished(() => document.removeEventListener('bg-donate:success', listener));
+		const card = await atReviewBeforeRail({
+			config: DAF_CONFIG,
+			ports: { quote: async () => ({ paymentToken: 'grant_1', feeMinor: 200, totalMinor: 5200 }) }
+		});
+		card.fund().opened();
+		card.fund().approved({ authorizationId: 'wfs_1', authorizedMinor: 5200 });
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Your gift is on its way');
+		expect(success).toEqual([]);
+	});
+
 	// the fund's own button is drawn off the flow's own reading, told on every patch: on the review
 	// step of a one-time gift, and not once the donor has left it.
 	it('tells the payment surface whether a fund is offered on every reading', async () => {
@@ -6350,6 +6374,42 @@ describe('a crypto gift', () => {
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 	});
 
+	// valued at what arrived, which may be short of the quote: the host page is told no figure, as
+	// the card draws none.
+	it('tells the host page the gift arrived without a figure', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const success: unknown[] = [];
+		const listener = (event: Event): void => {
+			success.push((event as CustomEvent).detail);
+		};
+		document.addEventListener('bg-donate:success', listener);
+		onTestFinished(() => document.removeEventListener('bg-donate:success', listener));
+		let state: 'waiting' | 'received' = 'waiting';
+		await atAddress(USDT, 'USDT', { ports: { status: async () => ({ state }) } });
+		state = 'received';
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+
+		expect(success).toEqual([
+			{ formId: 'frm_a8x2k9', amountMinor: null, currency: 'USD', frequency: 'one_time' }
+		]);
+	});
+
+	// the pair of the test above: the same deposit, still unpaid across several checks, says nothing.
+	it('tells the host page nothing while the deposit has not arrived', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const success: unknown[] = [];
+		const listener = (event: Event): void => {
+			success.push((event as CustomEvent).detail);
+		};
+		document.addEventListener('bg-donate:success', listener);
+		onTestFinished(() => document.removeEventListener('bg-donate:success', listener));
+		const { card } = await atAddress();
+		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS * 3);
+
+		expect(heading(card)).toBe('Send your gift');
+		expect(success).toEqual([]);
+	});
+
 	it('withdraws the address once its send-by passes here, and keeps checking', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
 		const { card } = await atAddress(USDT, 'USDT', {
@@ -6637,5 +6697,455 @@ describe('the Venmo option', () => {
 
 		press(card.all('[part~="frequency-option"] input')[0] as HTMLElement);
 		expect(offers.at(-1)).toBe(true);
+	});
+});
+
+// the events are the one surface a host page reads back out of this element, so each case
+// listens on the document rather than on the element: a listener there is only reached by an event
+// that bubbles and is composed, which is the whole of what makes it the host's to hear.
+describe('the events a host page hears', () => {
+	/** every detail the document heard under `name`, from the moment this is called. */
+	function heard(name: string): unknown[] {
+		const details: unknown[] = [];
+		const listener = (event: Event): void => {
+			details.push((event as CustomEvent).detail);
+		};
+		document.addEventListener(name, listener);
+		onTestFinished(() => document.removeEventListener(name, listener));
+		return details;
+	}
+
+	it('says the form is ready, once, with the form it is for', async () => {
+		const ready = heard('bg-donate:ready');
+		const card = await mount();
+		press(card.all('[part~="amount-option"] input')[1] as HTMLElement);
+		await settle();
+
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }]);
+	});
+
+	it('says it is ready again for a form the host switched to', async () => {
+		const ready = heard('bg-donate:ready');
+		const card = await mount({ loadConfig: async (formId) => ({ ...CONFIG, formId }) });
+		card.host.setAttribute('form', 'frm_b7y1j8');
+		await settle();
+
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }, { formId: 'frm_b7y1j8' }]);
+	});
+
+	it('says what it painted when no form was named', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		await mount({ attributes: {} });
+
+		expect(unavailable).toEqual([
+			{
+				message: 'This donation form was not told which form to render.',
+				fix: `Set the form attribute on <${DONATE_FORM_TAG}> to the id of the form to render.`
+			}
+		]);
+		expect(ready).toEqual([]);
+	});
+
+	it('says what it painted when the configuration read was refused', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		await mount({
+			loadConfig: async () => {
+				throw {
+					message: 'This donation form is not published.',
+					fix: 'Publish form frm_a8x2k9 in /admin.'
+				};
+			}
+		});
+
+		expect(unavailable).toEqual([
+			{ message: 'This donation form is not published.', fix: 'Publish form frm_a8x2k9 in /admin.' }
+		]);
+	});
+
+	// a thrown value with no fix of its own paints none, and the detail keeps the key rather than
+	// dropping it, so a host reading `detail.fix` reads a null rather than an absent field.
+	it('says a refusal that carried no fix with a null one', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		await mount({
+			loadConfig: async () => {
+				throw new Error('the network went away');
+			}
+		});
+
+		expect(unavailable).toEqual([{ message: 'the network went away', fix: null }]);
+	});
+
+	it('says what it painted when the configuration could not be read', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		await mount({ loadConfig: async () => ({ formId: 'frm_a8x2k9' }) });
+
+		expect(unavailable).toEqual([
+			{
+				message: 'The configuration for form frm_a8x2k9 could not be read.',
+				fix: expect.stringContaining('publishableKey')
+			}
+		]);
+		expect(ready).toEqual([]);
+	});
+
+	it('says what it painted when the configuration never arrived, and only that once', async () => {
+		vi.useFakeTimers();
+		try {
+			const unavailable = heard('bg-donate:unavailable');
+			const ready = heard('bg-donate:ready');
+			let answer: (config: FormConfig) => void = () => {};
+			const mounting = mount({
+				loadConfig: () =>
+					new Promise((resolve) => {
+						answer = resolve;
+					})
+			});
+			await vi.advanceTimersByTimeAsync(0);
+			await mounting;
+			await vi.advanceTimersByTimeAsync(CONFIG_DEADLINE_MS);
+			// the read landing after the card went up is abandoned, and says nothing a second time.
+			answer(CONFIG);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(unavailable).toEqual([
+				{
+					message: 'This donation form could not be loaded.',
+					fix: expect.stringContaining('30 seconds')
+				}
+			]);
+			expect(ready).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// the figure is the one the donor was charged — the server's quoted total, the covered fee in it
+	// — rather than the bare gift: `PORTS.quote` answers 2606 on a 2500 gift.
+	it('says a gift went through, once, with what was charged', async () => {
+		const success = heard('bg-donate:success');
+		const card = await atSubmitted();
+		// a reading after the ending, which is a re-render and not a second gift.
+		card.rail('card');
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(success).toEqual([
+			{ formId: 'frm_a8x2k9', amountMinor: 2606, currency: 'USD', frequency: 'one_time' }
+		]);
+	});
+
+	// `atSubmitted` types this donor's name and email into the card, so a detail that carried either
+	// would hold them; `toEqual` above fails on an extra key, and this fails on one hidden in a value.
+	it('carries nothing the donor typed', async () => {
+		const success = heard('bg-donate:success');
+		const ready = heard('bg-donate:ready');
+		const card = await atSubmitted();
+		expect((card.find('#email') as HTMLInputElement).value).toBe('donor@example.org');
+
+		const said = JSON.stringify([...ready, ...success]);
+		expect(success).toHaveLength(1);
+		for (const typed of ['Ada', 'Lovelace', 'donor@example.org']) {
+			expect(said).not.toContain(typed);
+		}
+	});
+
+	// ISO 4217 is uppercase and so is what the deployment serves; a config that carried another
+	// casing still goes out in the one a host's `currency === 'USD'` matches.
+	it('says the currency in uppercase whatever casing the configuration carried', async () => {
+		const success = heard('bg-donate:success');
+		await atSubmitted({ config: { ...CONFIG, currency: 'usd' } });
+
+		expect(success).toEqual([expect.objectContaining({ currency: 'USD' })]);
+	});
+
+	// one detail reaches every listener on the path, so one host script writing into it would change
+	// what the next listener reads.
+	it('hands every listener a detail none of them can change', async () => {
+		const ready = heard('bg-donate:ready');
+		const success = heard('bg-donate:success');
+		const unavailable = heard('bg-donate:unavailable');
+		await atSubmitted();
+		await mount({ attributes: {} });
+
+		const details = [...ready, ...success, ...unavailable];
+		expect(details.map((detail) => Object.isFrozen(detail))).toEqual([true, true, true]);
+	});
+
+	it('says nothing of a gift that was declined', async () => {
+		const success = heard('bg-donate:success');
+		const card = await atSubmitted({
+			ports: {
+				confirm: async () => ({ kind: 'declined' as const, message: 'Your card was declined.' })
+			}
+		});
+
+		expect(shows(card, '.takeover .message')).toBe('Your card was declined.');
+		expect(success).toEqual([]);
+	});
+
+	it('says nothing of a gift still in flight', async () => {
+		const success = heard('bg-donate:success');
+		await atSubmitted({ ports: { confirm: async () => ({ kind: 'processing' as const }) } });
+
+		expect(success).toEqual([]);
+	});
+
+	// the page a donor returns to from their bank remembers the payment token and nothing else, so
+	// the gift is said with what is known and the rest is null rather than invented.
+	it('says a gift a redirect return found went through, without figures it cannot know', async () => {
+		const success = heard('bg-donate:success');
+		await mount({
+			resume: { paymentToken: 'pi_1_secret_x' },
+			ports: { resume: async () => ({ kind: 'succeeded' as const }) }
+		});
+		await settle();
+
+		expect(success).toEqual([
+			{ formId: 'frm_a8x2k9', amountMinor: null, currency: 'USD', frequency: null }
+		]);
+	});
+
+	// the shipped runtime serves one return to every element showing its form — a hero and a footer
+	// both draw the thank-you — and it is still one gift, so the host page hears it once. the claim
+	// is the runtime's own; only the ports and the payment surface around it are stood in.
+	it('says a gift a redirect return found went through once, however many elements show it', async () => {
+		window.history.replaceState(
+			null,
+			'',
+			'/give?bg_donate_form=frm_a8x2k9&payment_intent_client_secret=pi_1_secret_x&payment_intent=pi_1'
+		);
+		onTestFinished(() => window.history.replaceState(null, '', '/'));
+		const shipped = createFormRuntime('https://donate.example', document);
+		const tag = `${DONATE_FORM_TAG}-${(tags += 1)}`;
+		defineDonateForm(
+			{
+				loadConfig: async () => CONFIG,
+				challenge: () => ({ reset: () => {}, stop: () => {} }),
+				checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
+					const real = shipped.checkout(config, mount, onRail, onUnavailable, boot, fund, coins);
+					return {
+						...real,
+						input: {
+							...real.input,
+							ports: { ...PORTS, resume: async () => ({ kind: 'succeeded' as const }) }
+						},
+						cadence: () => {},
+						offerFund: () => {},
+						offerCrypto: () => {},
+						offerVenmo: () => {},
+						rows: () => {},
+						repeatingUnavailable: () => {}
+					};
+				}
+			},
+			tag
+		);
+		const success = heard('bg-donate:success');
+		const hero = document.createElement(tag);
+		const footer = document.createElement(tag);
+		for (const host of [hero, footer]) {
+			host.setAttribute('form', 'frm_a8x2k9');
+			document.body.appendChild(host);
+		}
+		await settle();
+		await settle();
+
+		const thanked = [hero, footer].map(
+			(host) => view(host).text('.takeover [part~="heading"]') === 'Thank you'
+		);
+		expect(thanked).toEqual([true, true]);
+		expect(success).toHaveLength(1);
+	});
+
+	// a listener on the document is reached from inside a wrapper's shadow root only by an event that
+	// is composed; the same host nested in one is what a design-system wrapper around the snippet is.
+	it('is heard on the page from an element inside a wrapper’s shadow root', async () => {
+		const wrapper = document.createElement('div');
+		document.body.append(wrapper);
+		const inside = wrapper.attachShadow({ mode: 'open' });
+		const ready = heard('bg-donate:ready');
+		const success = heard('bg-donate:success');
+		const unavailable = heard('bg-donate:unavailable');
+
+		await atSubmitted({ parent: inside });
+		await mount({ attributes: {}, parent: inside });
+
+		expect([ready.length, success.length, unavailable.length]).toEqual([1, 1, 1]);
+	});
+
+	it('is heard by a listener on the element itself', async () => {
+		const card = await mount({ loadConfig: async (formId) => ({ ...CONFIG, formId }) });
+		const own: unknown[] = [];
+		card.host.addEventListener('bg-donate:ready', (event) => {
+			own.push((event as CustomEvent).detail);
+		});
+		card.host.setAttribute('form', 'frm_b7y1j8');
+		await settle();
+
+		expect(own).toEqual([{ formId: 'frm_b7y1j8' }]);
+	});
+
+	it('says it is ready again when the element is put back on the page, and not when it moves', async () => {
+		const ready = heard('bg-donate:ready');
+		const card = await mount();
+		const elsewhere = document.createElement('div');
+		document.body.append(elsewhere);
+
+		elsewhere.append(card.host);
+		await settle();
+		expect(ready).toHaveLength(1);
+
+		card.host.remove();
+		await settle();
+		document.body.append(card.host);
+		await settle();
+		expect(ready).toHaveLength(2);
+	});
+
+	it('says it is ready after a Try again that loaded the form', async () => {
+		const ready = heard('bg-donate:ready');
+		const unavailable = heard('bg-donate:unavailable');
+		let reads = 0;
+		const card = await mount({
+			loadConfig: async () => {
+				reads += 1;
+				if (reads === 1) throw new Error('The first read failed.');
+				return CONFIG;
+			}
+		});
+		expect(ready).toEqual([]);
+
+		card.find('.card-body > [part~="action"]').click();
+		await settle();
+
+		expect(unavailable).toHaveLength(1);
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }]);
+	});
+
+	it('says it is unavailable again after a Try again that failed again', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		let reads = 0;
+		const card = await mount({
+			loadConfig: async () => {
+				reads += 1;
+				throw new Error(`Read ${reads} failed.`);
+			}
+		});
+
+		card.find('.card-body > [part~="action"]').click();
+		await settle();
+
+		expect(unavailable).toEqual([
+			{ message: 'Read 1 failed.', fix: null },
+			{ message: 'Read 2 failed.', fix: null }
+		]);
+		expect(ready).toEqual([]);
+	});
+
+	it('says it is unavailable when the form attribute moves to a form that will not load', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		const card = await mount({
+			loadConfig: async (formId) => {
+				if (formId === 'frm_gone') throw new Error('This form is not published.');
+				return { ...CONFIG, formId };
+			}
+		});
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }]);
+		expect(unavailable).toEqual([]);
+
+		card.host.setAttribute('form', 'frm_gone');
+		await settle();
+
+		expect(unavailable).toEqual([{ message: 'This form is not published.', fix: null }]);
+		expect(ready).toHaveLength(1);
+	});
+
+	it('says it is ready again after Back to start begins a second gift', async () => {
+		const ready = heard('bg-donate:ready');
+		const success = heard('bg-donate:success');
+		const card = await atSubmitted();
+		expect(ready).toHaveLength(1);
+
+		secondary(card).click();
+		await settle();
+
+		expect(card.all('.step').map((step) => step.hidden)).toEqual([false, true, true, true]);
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }, { formId: 'frm_a8x2k9' }]);
+		expect(success).toHaveLength(1);
+	});
+
+	it.each([
+		['monthly', 1],
+		['yearly', 2]
+	] as const)('says a %s gift’s frequency', async (frequency, option) => {
+		const success = heard('bg-donate:success');
+		const card = await mount();
+		press(card.all('[part~="frequency-option"] input')[option] as HTMLElement);
+		press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+		proceed(card);
+		type(card.find('#email'), 'donor@example.org');
+		type(card.find('#first-name'), 'Ada');
+		type(card.find('#last-name'), 'Lovelace');
+		proceed(card);
+		card.rail('card');
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Thank you');
+		expect(success).toEqual([
+			{ formId: 'frm_a8x2k9', amountMinor: 2606, currency: 'USD', frequency }
+		]);
+	});
+
+	// a bank debit waiting on the donor's confirmation and an expired verification are endings that
+	// are not a thank-you; the same press with a settled charge is `succeeded` above.
+	it.each(['awaiting_microdeposits', 'verification_expired'] as const)(
+		'says nothing of a gift whose ending is %s',
+		async (kind) => {
+			const success = heard('bg-donate:success');
+			const card = await atSubmitted({ ports: { confirm: async () => ({ kind }) } });
+
+			expect(card.text('.takeover [part~="heading"]')).not.toBe('Thank you');
+			expect(success).toEqual([]);
+		}
+	);
+
+	// the names the element dispatches and the names the manifest an integrator reads lists are one
+	// set: one dispatched and unlisted, or listed and never dispatched, fails here. the names are
+	// read off what the element dispatches while it is driven through each of its endings.
+	it('dispatches exactly the events the manifest lists', async () => {
+		const names = new Set<string>();
+		// whichever prototype in an element's chain owns `dispatchEvent`: under happy-dom that is not
+		// node's global `EventTarget`.
+		let target = Object.getPrototypeOf(document.body) as EventTarget;
+		while (!Object.hasOwn(target, 'dispatchEvent')) {
+			target = Object.getPrototypeOf(target) as EventTarget;
+		}
+		const dispatch = target.dispatchEvent;
+		const spy = vi.spyOn(target, 'dispatchEvent').mockImplementation(function (
+			this: EventTarget,
+			event: Event
+		) {
+			if (event.type.startsWith('bg-donate:')) names.add(event.type);
+			return dispatch.call(this, event);
+		});
+		onTestFinished(() => spy.mockRestore());
+		await atSubmitted();
+		await mount({ attributes: {} });
+
+		const manifest = JSON.parse(manifestText) as {
+			modules: { declarations: { tagName?: string; events?: { name: string }[] }[] }[];
+		};
+		const listed = manifest.modules
+			.flatMap((module) => module.declarations)
+			.find((declaration) => declaration.tagName === DONATE_FORM_TAG)
+			?.events?.map((event) => event.name);
+
+		expect([...names].sort()).toEqual([...(listed ?? [])].sort());
+		expect(names.size).toBe(3);
 	});
 });
