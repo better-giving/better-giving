@@ -1,6 +1,5 @@
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { SettingRow } from '@better-giving/operator/components/data/SettingRow';
-import { Field } from '@better-giving/operator/components/forms/Field';
 import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
@@ -9,9 +8,9 @@ import { useId, useState } from 'react';
 // the editor's questions, each a card over the editor that the caller puts up and takes down.
 //
 // two arrangements, by what the press costs: Reset to default and Discard changes destroy work and
-// are the danger card, listing only what the press replaces; a campaign's first Publish and the
-// mission ask destroy nothing and are the commit card. the act stands first in both, and Escape or
-// a press on the ground is the way out the card names.
+// are the danger card, listing only what the press replaces; a campaign's first Publish destroys
+// nothing and is the commit card. the act stands first in both, and Escape or a press on the
+// ground is the way out the card names.
 //
 // the act holds its focus while it is in flight — `aria-disabled` and the press turned away, never
 // `disabled` — and a refusal it comes back with is said inside the card, in a region that is there
@@ -159,47 +158,6 @@ export function FirstPublishConfirm({
 					</p>
 				) : null}
 			</div>
-			<Refusal id={refusalId} text={refusal} />
-		</Modal>
-	);
-}
-
-type MissionAskProps = {
-	readonly saving: boolean;
-	/** the mission as typed, trimmed; `''` when Save was pressed on an empty box. */
-	readonly onSave: (mission: string) => void;
-	/** Skip, Escape or a press on the ground: the ask is not made again. */
-	readonly onSkip: () => void;
-	readonly refusal?: string | null | undefined;
-};
-
-/**
- * the Donation page editor's first visit while the Organisation's mission is empty: asked once,
- * optional, saved verbatim to the Organisation page. every way out of the card is Skip.
- */
-export function MissionAsk({ saving, onSave, onSkip, refusal }: MissionAskProps) {
-	const id = useId();
-	const refusalId = `${id}-refusal`;
-	const [mission, setMission] = useState('');
-	return (
-		<Modal
-			title="What’s your mission?"
-			commit="Save"
-			commitProps={held(saving, () => onSave(mission.trim()), refusal ? refusalId : undefined)}
-			cancel="Skip"
-			cancelProps={{ type: 'button', onClick: onSkip }}
-			onDismiss={onSkip}
-		>
-			<Field
-				id={`${id}-mission`}
-				label="Mission"
-				optional
-				as="textarea"
-				rows={4}
-				hint="Saved to your Organisation page. Every page’s About us uses it."
-				value={mission}
-				onChange={(event) => setMission(event.target.value)}
-			/>
 			<Refusal id={refusalId} text={refusal} />
 		</Modal>
 	);

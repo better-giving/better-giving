@@ -1,4 +1,4 @@
-import { and, eq, exists, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, exists, ne, or, sql } from 'drizzle-orm';
 import { NEW_FORM } from '../../forms/new-form';
 import { defaultDonationPage } from '../../page/defaults';
 import type { Db } from '../db/client';
@@ -146,15 +146,4 @@ async function makeDonationPage(db: Db): Promise<Page> {
 		if (winner === null) throw error;
 		return winner;
 	}
-}
-
-/**
- * records that the Donation page's editor has asked for the mission and been answered — saved or
- * skipped — so it is never asked again. the first answer's moment stands.
- */
-export async function markDonationEditorVisited(db: Db): Promise<void> {
-	await db
-		.update(page)
-		.set({ editorVisitedAt: new Date() })
-		.where(and(eq(page.type, 'donation_page'), isNull(page.editorVisitedAt)));
 }

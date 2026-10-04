@@ -74,6 +74,30 @@ beforeEach(() => {
 	resizes.length = 0;
 });
 
+/** the opening questions the stand-in route asks an empty chat. */
+const OPENING: ChatMessage = {
+	id: 'q1',
+	role: 'assistant',
+	text: 'A few questions first.',
+	questions: [
+		{ id: 'mission', kind: 'text', prompt: 'Your mission, in a sentence' },
+		{
+			id: 'who',
+			kind: 'choice',
+			prompt: 'Who do gifts mostly help?',
+			options: ['Children', 'Elders']
+		}
+	]
+};
+
+/** the answers summary the real route reads back from an answers post, for the stand-in to store. */
+function answeredWith(body: Record<string, string>) {
+	const prompts = new Map(OPENING.questions?.map((q) => [q.id, q.prompt]));
+	return (JSON.parse(body.answers ?? '[]') as { id: string; value: string }[]).map(
+		({ id, value }) => ({ id, prompt: prompts.get(id) ?? id, words: String(value) })
+	);
+}
+
 function mount(tree: ReactNode): HTMLElement {
 	const root = document.createElement('div');
 	document.body.appendChild(root);
@@ -140,13 +164,25 @@ function screen(entry = PAGE): HTMLElement {
 					[...(await request.formData())].map(([k, v]) => [k, String(v)])
 				);
 				posted.push(body);
+				const n = posted.length;
 				await new Promise<void>((resolve) => held.push(resolve));
 				const refused = refusals.shift();
 				if (refused !== undefined) return data(refused.body, refused.status);
-				const turns: ChatMessage[] = [
-					{ id: `o${posted.length}`, role: 'operator', text: body.message ?? '' },
-					{ id: `a${posted.length}`, role: 'assistant', text: 'I added a FAQ.' }
-				];
+				if (body.intent === 'open') {
+					if (stored.length > 0) return { outcome: 'unchanged', turns: stored };
+					stored = [OPENING];
+					return { outcome: 'asked', turns: stored };
+				}
+				const turns: ChatMessage[] =
+					body.intent === 'answers'
+						? [
+								{ id: `o${n}`, role: 'operator', text: 'answered', answers: answeredWith(body) },
+								{ id: `a${n}`, role: 'assistant', text: 'I drafted your page.' }
+							]
+						: [
+								{ id: `o${n}`, role: 'operator', text: body.message ?? '' },
+								{ id: `a${n}`, role: 'assistant', text: 'I added a FAQ.' }
+							];
 				stored = [...stored, ...turns];
 				return { outcome: 'accepted', turns };
 			}
@@ -407,6 +443,231 @@ describe('the editor’s chat', () => {
 	});
 });
 
+const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** the question card, while one is up. */
+const questionCard = () => document.querySelector<HTMLFormElement>('.adm-questions');
+
+describe('a chat with turns', () => {
+	it('is asked nothing on arrival, and below the wide breakpoint opens nothing', async () => {
+		screen();
+		await settle();
+
+		expect(posted).toEqual([]);
+		expect(document.querySelector('dialog')).toBeNull();
+	});
+});
+
+describe('an empty chat', () => {
+	beforeEach(() => {
+		stored = [];
+	});
+
+	it('is asked its opening questions once, reading the page until they land', async () => {
+		atWidth(true);
+		screen();
+		await settle();
+
+		expect(posted).toEqual([{ intent: 'open', timeZone: ZONE }]);
+		expect(document.querySelector('.adm-chat__waiting')?.textContent).toBe('Reading your page');
+		expect(questionCard()).toBeNull();
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(questionCard()).not.toBeNull();
+		expect(document.querySelector('.adm-chat__waiting')).toBeNull();
+		expect(posted).toHaveLength(1);
+	});
+
+	it('opens the AI sheet on arrival below the wide breakpoint, the card in it once it lands', async () => {
+		screen();
+		await settle();
+
+		expect(document.querySelector('dialog .adm-chat__log')).not.toBeNull();
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(document.querySelector('dialog .adm-questions')).not.toBeNull();
+	});
+
+	it('hands the focus to the AI press when the sheet it opened on arrival is closed', async () => {
+		screen();
+		await settle();
+		await act(async () => held.shift()?.());
+		await settle();
+
+		await press(button('Close'));
+		await settle();
+
+		expect(document.querySelector('dialog')).toBeNull();
+		expect(document.activeElement).toBe(button('AI'));
+	});
+
+	it('says the questions did not load when the opening fails, and stops reading', async () => {
+		atWidth(true);
+		refusals = [{ body: { error: 'the turn on page "p1" failed', reason: 'failed' }, status: 500 }];
+		screen();
+		await settle();
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(refusalShown()).toBe('The questions didn’t load. Reload the editor to be asked them.');
+		expect(document.querySelector('.adm-chat__waiting')).toBeNull();
+		expect(posted).toHaveLength(1);
+	});
+
+	it('shows the card docked from the wide breakpoint, with no sheet', async () => {
+		atWidth(true);
+		screen();
+		await settle();
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(document.querySelector('aside .adm-questions')).not.toBeNull();
+		expect(document.querySelector('dialog')).toBeNull();
+	});
+});
+
+/** an empty chat at the wide breakpoint, its opening questions landed. */
+async function asked(): Promise<HTMLElement> {
+	stored = [];
+	atWidth(true);
+	const root = screen();
+	await settle();
+	await act(async () => held.shift()?.());
+	await settle();
+	return root;
+}
+
+/** types `words` into the card's box for the question `id`. */
+function answer(id: string, words: string) {
+	const box = questionCard()?.querySelector<HTMLInputElement>(`input[name="${id}"]`);
+	if (box === null || box === undefined) throw new Error(`no box for ${id}`);
+	act(() => {
+		Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, words);
+		box.dispatchEvent(new Event('input', { bubbles: true }));
+	});
+}
+
+describe('a question card answered', () => {
+	it('posts the answers as JSON with the browser’s zone, the card held until they land', async () => {
+		await asked();
+		answer('mission', 'Warm coats for every child.');
+
+		await press(button('Draft my page'));
+		await settle();
+
+		expect(posted.at(-1)).toEqual({
+			intent: 'answers',
+			answers: JSON.stringify([{ id: 'mission', value: 'Warm coats for every child.' }]),
+			timeZone: ZONE
+		});
+		expect(button('Draft my page').getAttribute('aria-disabled')).toBe('true');
+		expect(button('Draft my page').getAttribute('aria-busy')).toBe('true');
+		expect(document.activeElement).toBe(button('Draft my page'));
+	});
+
+	it('posts no answers for a skip', async () => {
+		await asked();
+
+		await press(button('Skip, draft anyway'));
+		await settle();
+
+		expect(posted.at(-1)).toEqual({ intent: 'answers', answers: '[]', timeZone: ZONE });
+	});
+
+	it.each([
+		[
+			'answered already',
+			{ body: { error: 'the questions… were answered already', reason: 'answered' }, status: 409 },
+			'These questions were answered already. Reload the editor to see the chat.'
+		],
+		[
+			'a turn that failed',
+			{ body: { error: 'the turn on page "p1" failed', reason: 'failed' }, status: 500 },
+			'That didn’t go through. Send your answers again.'
+		],
+		[
+			'answers the route refused',
+			{ body: { error: 'answers[0] names no question asked: "who-else"' }, status: 400 },
+			'answers[0] names no question asked: "who-else"'
+		]
+	])('says %s where a refused send is said, the card still up', async (_, refusal, line) => {
+		await asked();
+		refusals = [refusal];
+
+		await press(button('Draft my page'));
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(refusalShown()).toBe(line);
+		expect(questionCard()).not.toBeNull();
+		expect(box()).toBe('');
+	});
+
+	it('draws the answers and the drafted turn once they land, and the preview reads again', async () => {
+		const root = await asked();
+		const version = () => root.querySelector('output')?.textContent;
+		const before = version();
+		answer('mission', 'Warm coats for every child.');
+		await press(button('Draft my page'));
+		await settle();
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(questionCard()).toBeNull();
+		expect(turnsShown().slice(1)).toEqual([
+			'Your answersYour mission, in a sentenceWarm coats for every child.',
+			'I drafted your page.'
+		]);
+		expect(version()).not.toBe(before);
+	});
+});
+
+/** the suggestions the composer offers. */
+const suggestions = () =>
+	[...document.querySelectorAll('.adm-chat__suggestions button')].map((b) => b.textContent);
+
+describe('the suggestions', () => {
+	it('are not offered while a question card is up', async () => {
+		await asked();
+
+		expect(questionCard()).not.toBeNull();
+		expect(suggestions()).toEqual([]);
+	});
+
+	it('are offered once the answers have drafted the page', async () => {
+		await asked();
+		await press(button('Skip, draft anyway'));
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(suggestions()).toContain('Add a FAQ');
+	});
+
+	it('are not offered on a chat whose only reply changed nothing', async () => {
+		stored = [
+			{ id: 't1', role: 'operator', text: 'Make it warmer' },
+			{ id: 't2', role: 'assistant', text: 'That reply didn’t fit.', note: 'refused' }
+		];
+		await opened();
+
+		expect(suggestions()).toEqual([]);
+	});
+
+	it('leave free words sent while a card is up to post as a message', async () => {
+		await asked();
+
+		await sendAndLand('Just make it warm');
+
+		expect(posted.at(-1)).toEqual({ message: 'Just make it warm', imageIds: '[]', timeZone: ZONE });
+		expect(turnsShown().slice(-2)).toEqual(['Just make it warm', 'I added a FAQ.']);
+	});
+});
+
 /** picks `name` in the attach press's picker, the way the device hands a file back. */
 async function attach(name = 'food-bank.heic') {
 	const input = document.querySelector<HTMLInputElement>('input[type="file"]');
@@ -519,6 +780,19 @@ describe('a photo attached in the chat', () => {
 		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];
 
 		await sendAndLand('Use this photo at the top');
+
+		expect(photoState()).toBe('1600 × 1067, 480 KB');
+	});
+
+	it('stays attached through answers sent from a card, which carry no photo', async () => {
+		await asked();
+		await attach();
+		await resized();
+		await uploaded({ id: 'img1', width: 1600, height: 1067 });
+
+		await press(button('Skip, draft anyway'));
+		await act(async () => held.shift()?.());
+		await settle();
 
 		expect(photoState()).toBe('1600 × 1067, 480 KB');
 	});

@@ -8,10 +8,11 @@ import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import { defaultCampaign } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
 
-// a campaign's editor as the route mounts it: what its first Publish says of the address, the
-// questions an address save comes back with — asked, answered yes with the version, or declined —
-// whether the donation settings sheet stands over Settings or on its own ground, and the notice
-// over a draft the read rule refuses.
+// a campaign's editor as the route mounts it: the opening questions an empty chat is asked, every
+// hand edit reached from Edit by hand or a click in the preview, what its first Publish says of the
+// address, the questions an address save comes back with — asked, answered yes with the version, or
+// declined — whether the donation settings sheet stands over Settings or on its own ground, and the
+// notice over a draft the read rule refuses.
 // the loader and the action are stand-ins, one drawing the fixture below and the other recording
 // each body and answering what the case scripts; what the real ones do is
 // ./_app.admin.campaigns.$pageId.workers.spec.ts's.
@@ -71,7 +72,19 @@ function unpublished(): Loaded {
 	};
 }
 
+/** the opening questions the stand-in chat route asks an empty chat. */
+const OPENING = {
+	id: 'q1',
+	role: 'assistant',
+	text: 'A few questions first.',
+	questions: [{ id: 'mission', kind: 'text', prompt: 'Your mission, in a sentence' }]
+};
+
 let drawn: Loaded;
+/** the page's chat as the stand-in chat route holds it. */
+let chat: unknown[];
+/** what was posted to the chat route. */
+let chatPosted: Record<string, string>[];
 /** what the loader draws in `drawn`'s place over a draft the read rule refuses. */
 let unreadable: Extract<Drawn, { unreadable: true }> | null;
 let posted: Record<string, string>[];
@@ -83,6 +96,8 @@ beforeEach(() => {
 	unreadable = null;
 	posted = [];
 	answers = [];
+	chat = [];
+	chatPosted = [];
 });
 
 function mount(tree: ReactNode) {
@@ -121,10 +136,17 @@ async function screen() {
 			Component: Editor
 		},
 		{
-			// the AI panel is docked from the wide breakpoint and reads the page's chat as the editor
-			// opens; what the real route answers is src/routes/_app.admin.pages.$pageId.chat.ts's.
+			// the editor reads the page's chat as it opens, and asks an empty one its opening
+			// questions; what the real route answers is src/routes/_app.admin.pages.$pageId.chat.ts's.
 			path: '/admin/pages/:pageId/chat',
-			loader: () => ({ turns: [] })
+			loader: () => ({ turns: chat }),
+			action: async ({ request }) => {
+				chatPosted.push(
+					Object.fromEntries([...(await request.formData())].map(([k, v]) => [k, String(v)]))
+				);
+				chat = [OPENING];
+				return { outcome: 'asked', turns: chat };
+			}
 		}
 	]);
 	mount(createElement(Stub, { initialEntries: [PAGE] }));
@@ -174,6 +196,54 @@ async function press(target: HTMLElement) {
 	});
 	await settle();
 }
+
+describe('the AI panel', () => {
+	it('asks an empty chat its opening questions, the card docked beside the preview', async () => {
+		await screen();
+		await settle();
+
+		expect(chatPosted).toEqual([
+			{ intent: 'open', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
+		]);
+		expect(document.querySelector('aside .adm-questions')).not.toBeNull();
+	});
+});
+
+/** a click on the block `id` in the preview, as the framed page posts it. */
+async function clickInPreview(id: string) {
+	const frame = document.querySelector('iframe');
+	await act(async () => {
+		window.dispatchEvent(
+			new MessageEvent('message', {
+				data: { type: BLOCK_MESSAGE, id },
+				origin: window.location.origin,
+				source: frame?.contentWindow ?? null
+			})
+		);
+	});
+	await settle();
+}
+
+describe('every hand edit', () => {
+	it('is reached from Edit by hand, which opens Settings', async () => {
+		await screen();
+
+		await press(button('Edit by hand'));
+
+		expect(card('Settings').open).toBe(true);
+	});
+
+	it('is reached by a click on its block in the preview, which opens that block’s sheet', async () => {
+		await screen();
+		const block = drawn.blocks.find((one) => one.type !== 'donation-box');
+		if (block === undefined) throw new Error('the fixture draws only a donation box');
+
+		await clickInPreview(block.id);
+
+		expect(card(block.label).open).toBe(true);
+		expect(() => card('Settings')).toThrow();
+	});
+});
 
 describe('a first Publish', () => {
 	it('reads the address taken and the one the campaign’s name asked for', async () => {
@@ -285,18 +355,8 @@ describe('the donation settings sheet', () => {
 		await screen();
 		const box = drawn.blocks.find((block) => block.type === 'donation-box');
 		if (box === undefined) throw new Error('the fixture draws no donation box');
-		const frame = document.querySelector('iframe');
 
-		await act(async () => {
-			window.dispatchEvent(
-				new MessageEvent('message', {
-					data: { type: BLOCK_MESSAGE, id: box.id },
-					origin: window.location.origin,
-					source: frame?.contentWindow ?? null
-				})
-			);
-		});
-		await settle();
+		await clickInPreview(box.id);
 
 		expect(() => card('Settings')).toThrow();
 		expect(card('Donation settings').classList.contains('adm-sheet--stacked')).toBe(false);
