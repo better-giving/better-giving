@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CAMPAIGN_TYPES } from './campaign-types';
 import {
 	answerWords,
 	MISSION_QUESTION,
@@ -163,8 +164,8 @@ describe('the starter questions', () => {
 		]);
 	});
 
-	it('of a campaign ask what it is for, who it helps, what gifts pay for, a goal and an end', () => {
-		const starter = starterQuestions('campaign', 'year_end', false);
+	it('of a campaign made before types ask what it is for, who it helps, what gifts pay for, a goal and an end', () => {
+		const starter = starterQuestions('campaign', null, false);
 		expect(starter.map(({ id, kind }) => [id, kind])).toEqual([
 			['purpose', 'text'],
 			['who', 'text'],
@@ -175,8 +176,43 @@ describe('the starter questions', () => {
 		expect(readAsk(starter)).toEqual({ ok: true, questions: starter });
 	});
 
-	it('of a campaign stay at five with the mission first', () => {
+	it('of a campaign made before types stay at five with the mission first', () => {
 		const starter = starterQuestions('campaign', null, true);
 		expect(starter.map(({ id }) => id)).toEqual(['mission', 'purpose', 'who', 'pays-for', 'goal']);
+	});
+
+	it('of an event are its own, in the order the type asks them', () => {
+		const starter = starterQuestions('campaign', 'event', false);
+		expect(starter.map(({ kind, prompt }) => [kind, prompt])).toEqual([
+			['text', 'What’s the event?'],
+			['date', 'When is it?'],
+			['text', 'What will the money raised do?'],
+			['amount', 'Goal']
+		]);
+	});
+
+	it('of a tribute ask in memory or in honour as a choice of the two', () => {
+		const starter = starterQuestions('campaign', 'tribute', false);
+		expect(starter[1]).toMatchObject({
+			kind: 'choice',
+			prompt: 'In memory or in honour?',
+			options: ['In memory', 'In honour']
+		});
+	});
+
+	it('of a typed campaign put the mission first while it is empty, dropping the type’s last to stay at five', () => {
+		const starter = starterQuestions('campaign', 'emergency', true);
+		expect(starter.map(({ prompt }) => prompt)).toEqual([
+			'Your mission, in a sentence',
+			'What happened?',
+			'Who and where are you helping?',
+			'What will gifts pay for?',
+			'Goal'
+		]);
+	});
+
+	it.each(CAMPAIGN_TYPES)('of a %s campaign are on the rule, with the mission first', (type) => {
+		const starter = starterQuestions('campaign', type, true);
+		expect(readAsk(starter)).toEqual({ ok: true, questions: starter });
 	});
 });

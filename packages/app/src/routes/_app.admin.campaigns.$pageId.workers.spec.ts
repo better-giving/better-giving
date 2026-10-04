@@ -570,14 +570,9 @@ describe('the editor', () => {
 		expect(await (await open(pageId)).json()).toMatchObject({ endDate: '2026-12-31' });
 	});
 
-	/** a campaign made from the Campaigns list as `title`, with no "What's it for?". */
-	async function created(title: string): Promise<string> {
-		const made = await createCampaign(db, env, {
-			title,
-			line: '',
-			timeZone: 'UTC',
-			now: Date.now()
-		});
+	/** a campaign made from the Campaigns list as `name`. */
+	async function created(name: string): Promise<string> {
+		const made = await createCampaign(db, { name, campaignType: 'year_end' });
 		return made.pageId;
 	}
 

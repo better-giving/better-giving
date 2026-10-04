@@ -3,18 +3,19 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
 import { Disclosure } from '@better-giving/operator/components/data/Disclosure';
 import { Field } from '@better-giving/operator/components/forms/Field';
+import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
-import { type MouseEvent, type ReactNode, useEffect, useSyncExternalStore } from 'react';
+import { type MouseEvent, type ReactNode, useEffect } from 'react';
 import { data, Form, href, Link, redirect, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
-import { CHAT_PARAM } from '$lib/admin/editor/chat-wiring';
 import {
 	type AdminActionData,
+	boxErrorId,
 	boxProps,
 	recordVersion,
 	resultFor,
@@ -27,6 +28,7 @@ import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, type RejectionStatus, WHICH_FORM } from '$lib/forms/definition';
 import { dayWords } from '$lib/page/end-date';
 import { stateAt } from '$lib/page/ended';
+import { CAMPAIGN_TYPE_DETAILS, CAMPAIGN_TYPES } from '$lib/page/campaign-types';
 import { NEW_CAMPAIGN_SCHEMA } from '$lib/page/new-campaign';
 import {
 	invalid,
@@ -40,14 +42,14 @@ import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
 import { type CampaignListing, createCampaign, readCampaigns } from '$lib/server/pages/campaign';
 import { publishPage } from '$lib/server/pages/publish';
 import { deleteNeverPublishedCampaign, endCampaign, readPage } from '$lib/server/pages/queries';
-import { database, platform } from '../context';
+import { database } from '../context';
 import type { Route } from './+types/_app.admin.campaigns._index';
 
 // the Campaigns list: every campaign with its name, address, state, goal and end date, each linking
 // to its editor, the ended ones in a collapsed group of their own; and New campaign, a dialog on
-// `?new` whose action makes the campaign ($lib/server/pages/campaign.ts) and opens its editor — on
-// its chat when a "What’s it for?" line drafted it, the first turn already answered. the Donation
-// page is no campaign and is not on this list.
+// `?new` whose action makes the campaign from a type and a name ($lib/server/pages/campaign.ts),
+// asking no model, and opens its editor, which asks the type's questions of the empty chat. the
+// Donation page is no campaign and is not on this list.
 //
 // each row has the one press its state allows. End on a live campaign and Delete on one never
 // published each ask first, in a dialog on `?end={id}` or `?delete={id}`; Publish on an ended one
@@ -144,9 +146,6 @@ function noCampaign(press: RowPress, pageId: string): string {
 	return `Nothing was ${DONE[press]}: \`${PAGE_ID}\` ${pageId} names no campaign. It may have been deleted since this list was opened, so reload the page. The Donation page is not a campaign and is never ended, deleted or published from here.`;
 }
 
-/** what a zone-less press — one made before the page ran in a browser — reads a date in. */
-const ZONE_UNKNOWN = 'UTC';
-
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
@@ -218,22 +217,16 @@ export async function action({ context, request }: Route.ActionArgs) {
 
 	async function create(submission: ParsedForm<z.output<typeof NEW_CAMPAIGN_SCHEMA>>) {
 		if (!submission.ok) return invalid(400, submission.reject());
-		const { title, purpose, time_zone } = submission.value;
+		const { type, name } = submission.value;
 
 		let made: Awaited<ReturnType<typeof createCampaign>>;
 		try {
-			made = await createCampaign(db, context.get(platform).env, {
-				title,
-				line: purpose ?? '',
-				timeZone: time_zone ?? ZONE_UNKNOWN,
-				now: Date.now()
-			});
+			made = await createCampaign(db, { name, campaignType: type });
 		} catch (e) {
 			console.error('making a campaign failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
 		}
-		const drafted = (purpose ?? '').trim() !== '';
-		return redirect(drafted ? `${editorOf(made.pageId)}?${CHAT_PARAM}` : editorOf(made.pageId));
+		return redirect(editorOf(made.pageId));
 	}
 
 	/**
@@ -319,19 +312,6 @@ function focusLanded({ pageId }: Landed): void {
 	(shut ?? title ?? document.querySelector<HTMLElement>('h1'))?.focus();
 }
 
-/** the browser's zone, and none while the page is drawn on the server or hydrating. */
-function useTimeZone(): string | null {
-	return useSyncExternalStore(
-		subscribeToNothing,
-		() => Intl.DateTimeFormat().resolvedOptions().timeZone,
-		() => null
-	);
-}
-
-function subscribeToNothing() {
-	return () => {};
-}
-
 /* a campaign as the create card's hidden sample draws it, so the card stands a record's height.
    no link and no heading inside: `CreateCard`'s `ghost` says why. */
 const SAMPLE = (
@@ -404,7 +384,6 @@ function RowPressBoxes({
 
 export default function Campaigns({ loaderData, actionData }: Route.ComponentProps) {
 	const { campaigns, ended, asking, ending, deleting, landed } = loaderData;
-	const zone = useTimeZone();
 	const navigation = useNavigation();
 
 	// keyed to the flash's own object, which is new on the load a press redirected to and null on
@@ -440,7 +419,7 @@ export default function Campaigns({ loaderData, actionData }: Route.ComponentPro
 				</Disclosure>
 			)}
 
-			{asking ? <NewCampaignCard actionData={actionData} zone={zone} /> : null}
+			{asking ? <NewCampaignCard actionData={actionData} /> : null}
 			{ending ? (
 				<RowConfirm
 					form={CAMPAIGN_END}
@@ -640,30 +619,27 @@ function RowConfirm({
  * whole card, as `Dialog` requires.
  */
 function NewCampaignCard({
-	actionData,
-	zone
+	actionData
 }: {
 	readonly actionData: Route.ComponentProps['actionData'];
-	readonly zone: string | null;
 }) {
 	const navigate = useNavigate();
 	const navigation = useNavigation();
 	const [form, fields] = useAdminForm(CAMPAIGN_CREATE, actionData, {
-		defaultValue: { title: '', purpose: '', time_zone: '' }
+		defaultValue: { type: '', name: '' }
 	});
 	// held from the press through the redirect's load, so a second press cannot make a second
-	// campaign while the first — and its first chat turn — is still being written.
+	// campaign while the first is still being written.
 	const creating =
 		navigation.state !== 'idle' &&
 		navigation.formAction?.split('?')[0] === SCREEN &&
 		navigation.formData?.get(WHICH_FORM) === CAMPAIGN_CREATE.id;
-	// the zone is a hidden box, so a refusal of it is said with the form's own.
-	const refusal = form.errors?.[0] ?? fields.time_zone.errors?.[0];
+	const refusal = form.errors?.[0];
+	const typeError = fields.type.errors?.[0];
 
 	return (
 		<Form method="post" preventScrollReset {...getFormProps(form)}>
 			<input {...whichForm(CAMPAIGN_CREATE.id)} />
-			<input type="hidden" name={fields.time_zone.name} value={zone ?? ''} />
 			<Modal
 				title="New campaign"
 				commit="Create"
@@ -680,26 +656,42 @@ function NewCampaignCard({
 				onDismiss={() => navigate(SCREEN, { preventScrollReset: true })}
 			>
 				<div className="adm-stack">
+					<div className="adm-field">
+						<label className="adm-field__label" htmlFor={fields.type.id}>
+							Type
+						</label>
+						<select
+							className="adm-input"
+							id={fields.type.id}
+							name={fields.type.name}
+							defaultValue={fields.type.defaultValue ?? ''}
+							required
+							aria-invalid={typeError === undefined ? undefined : true}
+							aria-describedby={typeError === undefined ? undefined : boxErrorId(fields.type.id)}
+						>
+							<option value="" disabled>
+								Choose a type
+							</option>
+							{CAMPAIGN_TYPES.map((type) => (
+								<option key={type} value={type}>
+									{CAMPAIGN_TYPE_DETAILS[type].label}
+								</option>
+							))}
+						</select>
+						{typeError === undefined ? null : (
+							<FieldMessage id={boxErrorId(fields.type.id)}>
+								<MarkedText text={typeError} />
+							</FieldMessage>
+						)}
+					</div>
 					<Field
 						label="Title"
 						required
 						placeholder="Winter coat drive"
-						{...boxProps(fields.title)}
+						{...boxProps(fields.name)}
 						error={
-							fields.title.errors?.[0] === undefined ? undefined : (
-								<MarkedText text={fields.title.errors[0]} />
-							)
-						}
-					/>
-					<Field
-						as="textarea"
-						label="What’s it for?"
-						optional
-						placeholder="Coats for 300 kids, goal $15k by Dec 31"
-						{...boxProps(fields.purpose)}
-						error={
-							fields.purpose.errors?.[0] === undefined ? undefined : (
-								<MarkedText text={fields.purpose.errors[0]} />
+							fields.name.errors?.[0] === undefined ? undefined : (
+								<MarkedText text={fields.name.errors[0]} />
 							)
 						}
 					/>

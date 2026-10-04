@@ -16,7 +16,7 @@
 import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
 import { FORM_CURRENCY } from '../forms/amounts';
-import type { CampaignType } from './campaign-types';
+import { CAMPAIGN_TYPE_DETAILS, type CampaignType } from './campaign-types';
 import { dayWords } from './end-date';
 import type { PageType } from './keys';
 
@@ -238,7 +238,8 @@ const DONATION_PAGE_STARTER: readonly Question[] = [
 	{ id: 'typical-gift', kind: 'amount', prompt: 'A typical gift' }
 ];
 
-const CAMPAIGN_STARTER: readonly Question[] = [
+/** a campaign made before its type was asked. */
+const UNTYPED_CAMPAIGN_STARTER: readonly Question[] = [
 	{ id: 'purpose', kind: 'text', prompt: 'What is this campaign for?' },
 	{ id: 'who', kind: 'text', prompt: 'Who does it help?' },
 	{ id: 'pays-for', kind: 'text', prompt: 'What will gifts pay for?' },
@@ -248,14 +249,19 @@ const CAMPAIGN_STARTER: readonly Question[] = [
 
 /**
  * the questions a page opens on when no model drafts its own: the mission first while it is empty,
- * then the page's set, `QUESTIONS_MAX` at most. every campaign type asks the same set.
+ * then the page's set — a campaign's its type's — `QUESTIONS_MAX` at most, the set's last dropped.
  */
 export function starterQuestions(
 	type: PageType,
-	_campaignType: CampaignType | null,
+	campaignType: CampaignType | null,
 	missionEmpty: boolean
 ): Question[] {
-	const set = type === 'donation_page' ? DONATION_PAGE_STARTER : CAMPAIGN_STARTER;
+	const set =
+		type === 'donation_page'
+			? DONATION_PAGE_STARTER
+			: campaignType === null
+				? UNTYPED_CAMPAIGN_STARTER
+				: CAMPAIGN_TYPE_DETAILS[campaignType].starter;
 	return [...(missionEmpty ? [MISSION_QUESTION] : []), ...set].slice(0, QUESTIONS_MAX);
 }
 

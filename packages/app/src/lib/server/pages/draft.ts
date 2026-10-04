@@ -14,6 +14,7 @@ import {
 	SAY_MAX
 } from '../../page/accept-reply';
 import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog, switchRules } from '../../page/ai-catalog';
+import { CAMPAIGN_TYPE_DETAILS, type CampaignType } from '../../page/campaign-types';
 import type { Page } from '../../page/catalog';
 import { placedImageIds } from '../../page/illustration';
 import { dayOf, dayWords, endDayOf } from '../../page/end-date';
@@ -52,12 +53,12 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // nothing a turn does reaches a donor before Publish.
 //
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
-// all), its type, name, goal, end date, donation settings and where its donation box opens, with
-// the wording each switch that is on asks for (`switchRules`), the organisation's story and look,
-// the active programs, and what it said so far: each accepted or asking exchange as the operator's
-// message and the reply's `say`, cut at `SAY_MAX`, an ask with its questions beside its `say` and an
-// answers turn as the words it was composed into. an opening ask follows the request an opening is
-// asked with. which model is `generate`'s, never the chat's.
+// all), its type, a campaign's type label, name, goal, end date, donation settings and where its
+// donation box opens, with the wording each switch that is on asks for (`switchRules`), the
+// organisation's story and look, the active programs, and what it said so far: each accepted or
+// asking exchange as the operator's message and the reply's `say`, cut at `SAY_MAX`, an ask with its
+// questions beside its `say` and an answers turn as the words it was composed into. an opening ask
+// follows the request an opening is asked with. which model is `generate`'s, never the chat's.
 //
 // an illustration the reply asks for in a photo's place (`illustrationRequests` in
 // ../../page/accept-reply.ts) is drawn only for a reply `acceptReply` would take: the reply is read
@@ -231,7 +232,7 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 	const missionEmpty = context.story.mission === null;
 	const answer = await generate(env, {
 		system: systemPrompt(context),
-		messages: [{ role: 'user', content: openingRequest(missionEmpty) }],
+		messages: [{ role: 'user', content: openingRequest(missionEmpty, row.campaignType) }],
 		jsonSchema: REPLY_JSON_SCHEMA
 	});
 	const reply = answer.ok
@@ -279,11 +280,19 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 
 const STARTER_SAY = 'A few questions before I draft your page.';
 
-/** the user message an opening is asked with, shown before every opening ask in the history. */
-function openingRequest(missionFirst: boolean) {
-	return missionFirst
-		? 'Before you draft this page, ask me 3 to 4 questions whose answers you need to draft it. My mission is asked separately, so ask nothing about it.'
-		: 'Before you draft this page, ask me 3 to 5 questions whose answers you need to draft it.';
+/**
+ * the user message an opening is asked with, shown before every opening ask in the history. a typed
+ * campaign's names its type, and one of type `other` asks what the campaign is for first.
+ */
+function openingRequest(missionFirst: boolean, campaignType: CampaignType | null) {
+	const count = missionFirst ? '3 to 4' : '3 to 5';
+	const ask =
+		campaignType === null
+			? `Before you draft this page, ask me ${count} questions whose answers you need to draft it.`
+			: campaignType === 'other'
+				? `Before you draft this campaign, of the type "${CAMPAIGN_TYPE_DETAILS.other.label}", ask me ${count} questions whose answers you need to draft it, the first asking what the campaign is for.`
+				: `Before you draft this campaign, of the type "${CAMPAIGN_TYPE_DETAILS[campaignType].label}", ask me ${count} questions whose answers you need to draft a campaign of its type.`;
+	return missionFirst ? `${ask} My mission is asked separately, so ask nothing about it.` : ask;
 }
 
 /** an answers turn as the model reads it. */
@@ -326,7 +335,10 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 	const { current, programs } = context;
 	const answer = await generate(env, {
 		system: systemPrompt(context),
-		messages: [...history(turns).slice(-HISTORY_TURNS), { role: 'user', content: turning.said }],
+		messages: [
+			...history(turns, row.campaignType).slice(-HISTORY_TURNS),
+			{ role: 'user', content: turning.said }
+		],
 		jsonSchema: REPLY_JSON_SCHEMA
 	});
 
@@ -428,7 +440,17 @@ async function promptContext(
 		readActivePrograms(db)
 	]);
 	const name = current.name ?? row.name;
-	return { type: row.type, name, current, story, look, programs, timeZone, now };
+	return {
+		type: row.type,
+		name,
+		campaignType: row.campaignType,
+		current,
+		story,
+		look,
+		programs,
+		timeZone,
+		now
+	};
 }
 
 type NewTurn = Pick<
@@ -585,7 +607,7 @@ function acceptMessage(turn: ChatTurn): AcceptMessage {
  * operator's words and the reply's `say`, an ask with its questions beside. an opening ask, which
  * no operator turn comes before, follows the request it answers.
  */
-function history(turns: readonly ChatTurn[]): ModelMessage[] {
+function history(turns: readonly ChatTurn[], campaignType: CampaignType | null): ModelMessage[] {
 	return turns.flatMap((turn, index) => {
 		if (turn.author !== 'assistant') return [];
 		if (turn.note === 'refused' || turn.note === 'unanswered') return [];
@@ -608,7 +630,7 @@ function history(turns: readonly ChatTurn[]): ModelMessage[] {
 		}
 		if (questions === null) return [];
 		const missionFirst = questions[0]?.id === MISSION_QUESTION.id;
-		return [{ role: 'user' as const, content: openingRequest(missionFirst) }, reply];
+		return [{ role: 'user' as const, content: openingRequest(missionFirst, campaignType) }, reply];
 	});
 }
 
@@ -624,6 +646,8 @@ function withImages(text: string, imageIds: readonly string[]) {
 type PromptContext = {
 	type: PageType;
 	name: string | null;
+	/** null on a campaign made before its type was asked, and on the Donation page. */
+	campaignType: CampaignType | null;
 	current: Page;
 	story: Story;
 	look: OrgLook;
@@ -675,6 +699,7 @@ function replyFormat(type: PageType): string[] {
 function contextLines({
 	type,
 	name,
+	campaignType,
 	current,
 	story,
 	look,
@@ -687,6 +712,9 @@ function contextLines({
 		programs.find((program) => program.id === id)?.name ?? id ?? 'none';
 	return [
 		`- page: ${type === 'campaign' ? `a campaign named "${name ?? ''}"` : 'the Donation page'}`,
+		...(campaignType === null
+			? []
+			: [`- campaign type: ${CAMPAIGN_TYPE_DETAILS[campaignType].label}`]),
 		`- today: ${dayOf(now, timeZone) ?? 'unknown'}, in the operator's time zone ${timeZone}`,
 		`- mission: ${story.mission === null ? '(not written)' : plainText(story.mission)}`,
 		`- vision: ${story.vision === null ? '(not written)' : plainText(story.vision)}`,

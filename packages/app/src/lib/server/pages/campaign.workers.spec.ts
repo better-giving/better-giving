@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CampaignType } from '../../page/campaign-types';
 import { defaultCampaign } from '../../page/defaults';
 import { SLUG_MAX_LENGTH } from '../../page/slug';
 import { createDb, type Db } from '../db/client';
@@ -9,11 +10,10 @@ import { readForms } from '../forms/queries';
 import { createCampaign } from './campaign';
 import { ensureDonationPage } from './donation-page';
 import { readChat } from './draft';
-import { answering, insertPage, SETTINGS } from './page-row.testing';
+import { insertPage, SETTINGS } from './page-row.testing';
 
 // a new campaign against the real D1: the Donation page it copies from, the owned settings row, the
-// page row and its address. the model is the one stand-in, answering as ./page-row.testing.ts's
-// `answering` stubs it.
+// page row, its type and its address.
 
 let db: Db;
 
@@ -30,11 +30,8 @@ beforeEach(async () => {
 	]);
 });
 
-const NOW = Date.parse('2026-09-28T16:00:00Z');
-const ZONE = 'America/New_York';
-
-function create(title: string, line = '', AI: { run: unknown } = { run: () => undefined }) {
-	return createCampaign(db, { ...env, AI }, { title, line, timeZone: ZONE, now: NOW });
+function create(name: string, campaignType: CampaignType = 'year_end') {
+	return createCampaign(db, { name, campaignType });
 }
 
 async function stored(pageId: string) {
@@ -146,50 +143,14 @@ describe('a new campaign’s address', () => {
 	});
 });
 
-describe('what the new campaign is for', () => {
-	it('is sent with the title as the chat’s first message, and the reply drafts the campaign', async () => {
-		const AI = answering({
-			say: 'Drafted your coat drive.',
-			page: { kind: 'merge', doc: {} },
-			set: { goalMinor: 1_500_000, endDate: '2026-12-31' }
-		});
+describe('a new campaign’s type', () => {
+	it('is recorded on its row, its chat left empty for the editor to open, and its draft the clean default', async () => {
+		const { pageId } = await create('Coats for Kids', 'tribute');
 
-		const { pageId } = await create(
-			'Winter coat drive',
-			'coats for 300 kids, goal $15k by Dec 31',
-			AI
-		);
-
-		expect(await readChat(db, pageId)).toMatchObject([
-			{ role: 'operator', text: 'Winter coat drive\ncoats for 300 kids, goal $15k by Dec 31' },
-			{ role: 'assistant' }
-		]);
-		const draft = JSON.parse((await stored(pageId)).draft);
-		expect(draft.goalMinor).toBe(1_500_000);
-		expect(draft.endsAt).toBe(Date.parse('2027-01-01T05:00:00Z') - 1);
-	});
-
-	it('left blank, sends no message and leaves the clean default campaign', async () => {
-		const AI = answering();
-
-		const { pageId } = await create('Winter coat drive', '   ', AI);
-
-		expect(AI.run).not.toHaveBeenCalled();
+		const made = await stored(pageId);
+		expect(made.campaignType).toBe('tribute');
 		expect(await readChat(db, pageId)).toEqual([]);
-		expect(JSON.parse((await stored(pageId)).draft)).toMatchObject({
-			...defaultCampaign(),
-			name: 'Winter coat drive'
-		});
-	});
-
-	it('still makes the campaign when no model answers, and the chat says so', async () => {
-		const AI = answering(new Error('Workers AI is down'), new Error('Workers AI is down'));
-
-		const { pageId } = await create('Winter coat drive', 'coats for 300 kids', AI);
-
-		expect((await stored(pageId)).state).toBe('never_published');
-		const [, answer] = (await readChat(db, pageId)) ?? [];
-		expect(answer?.text).toMatch(/^No model answered, so nothing changed\./);
+		expect(JSON.parse(made.draft)).toMatchObject({ ...defaultCampaign(), name: 'Coats for Kids' });
 	});
 });
 

@@ -1,7 +1,7 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, Outlet, redirect, useActionData, useLoaderData } from 'react-router';
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import Campaigns from './_app.admin.campaigns._index';
 
@@ -224,6 +224,15 @@ function typeInto(box: HTMLInputElement | HTMLTextAreaElement, text: string): vo
 	});
 }
 
+/** chooses `value` in a select the way a pick would, so react hears it. */
+function pick(select: Element, value: string): void {
+	if (!(select instanceof HTMLSelectElement)) throw new Error('not a select');
+	act(() => {
+		select.value = value;
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+	});
+}
+
 function box(within: Element, name: string): HTMLInputElement | HTMLTextAreaElement {
 	const found = within.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
 	if (found === null) throw new Error(`no box named ${name}`);
@@ -283,18 +292,6 @@ describe('the list', () => {
 });
 
 describe('New campaign', () => {
-	const ZONE = 'America/Chicago';
-
-	/** the browser's zone, as the dialog reads it. */
-	function browserIn(zone: string) {
-		const real = Intl.DateTimeFormat.prototype.resolvedOptions;
-		vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockImplementation(function (
-			this: Intl.DateTimeFormat
-		) {
-			return { ...real.call(this), timeZone: zone };
-		});
-	}
-
 	async function opened(): Promise<HTMLDialogElement> {
 		const root = await screen();
 		// the card leading the list; its text carries the hidden sample's too.
@@ -304,54 +301,53 @@ describe('New campaign', () => {
 		return shown('New campaign');
 	}
 
-	it('posts the title alone, and the browser’s zone, when nothing says what it’s for', async () => {
-		browserIn(ZONE);
+	it('posts the type picked and the name, and nothing else', async () => {
 		answers = [{ redirect: `${SCREEN}/pg_new` }];
 		const dialog = await opened();
 
-		typeInto(box(dialog, 'title'), 'Winter coat drive');
+		pick(box(dialog, 'type'), 'tribute');
+		typeInto(box(dialog, 'name'), 'In memory of Ruth');
 		await press(control('Create', dialog));
 
 		expect(posted).toEqual([
-			{
-				[WHICH_FORM]: 'campaign-create',
-				title: 'Winter coat drive',
-				purpose: '',
-				time_zone: ZONE
-			}
+			{ [WHICH_FORM]: 'campaign-create', type: 'tribute', name: 'In memory of Ruth' }
 		]);
 		expect(document.body.textContent).toContain('the editor');
 	});
 
-	it('posts what it’s for beside the title, and the browser’s zone', async () => {
-		browserIn(ZONE);
-		answers = [{ redirect: `${SCREEN}/pg_new?chat` }];
+	it('offers the eight types by their labels, none picked to begin with', async () => {
 		const dialog = await opened();
 
-		typeInto(box(dialog, 'title'), 'Winter coat drive');
-		typeInto(box(dialog, 'purpose'), 'coats for 300 kids, goal $15k by Dec 31');
-		await press(control('Create', dialog));
-
-		expect(posted).toEqual([
-			{
-				[WHICH_FORM]: 'campaign-create',
-				title: 'Winter coat drive',
-				purpose: 'coats for 300 kids, goal $15k by Dec 31',
-				time_zone: ZONE
-			}
+		const type = box(dialog, 'type');
+		if (!(type instanceof HTMLSelectElement)) throw new Error('the type is no select');
+		expect(type.value).toBe('');
+		expect([...type.options].filter(({ value }) => value !== '').map(({ text }) => text)).toEqual([
+			'Year-end appeal',
+			'Emergency response',
+			'Building fund',
+			'Event or fundraiser',
+			'In memory or honour',
+			'Monthly giving drive',
+			'A program or project',
+			'Something else'
 		]);
 	});
 
-	it('refuses a blank title at its box, posting nothing', async () => {
+	it.each([
+		['no type picked', 'type', () => {}],
+		['a blank name', 'name', (dialog: HTMLDialogElement) => pick(box(dialog, 'type'), 'event')]
+	])('refuses %s at its box, posting nothing', async (_, refused, fill) => {
 		const dialog = await opened();
 
-		typeInto(box(dialog, 'title'), '   ');
+		fill(dialog);
+		if (refused === 'type') typeInto(box(dialog, 'name'), 'Winter coat drive');
 		await press(control('Create', dialog));
 
 		expect(posted).toEqual([]);
-		const title = box(dialog, 'title');
-		expect(title.getAttribute('aria-invalid')).toBe('true');
-		const said = document.getElementById(title.getAttribute('aria-describedby') ?? '');
+		const at = box(dialog, refused);
+		expect(document.activeElement).toBe(at);
+		expect(at.getAttribute('aria-invalid')).toBe('true');
+		const said = document.getElementById(at.getAttribute('aria-describedby') ?? '');
 		expect(said?.textContent).toContain('required');
 	});
 });
@@ -484,7 +480,8 @@ describe('a press in flight', () => {
 	])('holds Create %s', async (_, first) => {
 		answers = [first];
 		await screen(`${SCREEN}?new`);
-		typeInto(box(shown('New campaign'), 'title'), 'Winter coat drive');
+		pick(box(shown('New campaign'), 'type'), 'event');
+		typeInto(box(shown('New campaign'), 'name'), 'Winter coat drive');
 
 		const held = await pressedTwice(() => control('Create', shown('New campaign')));
 

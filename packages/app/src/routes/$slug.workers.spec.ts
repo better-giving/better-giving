@@ -668,9 +668,8 @@ describe('a campaign after its editor’s Publish', () => {
 		expect(response.status).toBe(200);
 	}
 
-	/** New campaign's create, with no line for the chat. */
-	const create = (title: string) =>
-		createCampaign(db, env, { title, line: '', timeZone: 'America/New_York', now: Date.now() });
+	/** New campaign's create. */
+	const create = (name: string) => createCampaign(db, { name, campaignType: 'year_end' });
 
 	it('publishes a new campaign from “Winter coat drive” at /winter-coat-drive, gifts going to the program chosen', async () => {
 		const [coats] = await db

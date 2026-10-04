@@ -59,11 +59,7 @@ function post(fields: Record<string, string>, AI: { run: unknown } = answering()
 	);
 }
 
-const CREATE = {
-	title: 'Winter coat drive',
-	purpose: '',
-	time_zone: 'America/New_York'
-};
+const CREATE = { type: 'event', name: 'Winter coat drive' };
 
 type Row = {
 	id: string;
@@ -248,45 +244,42 @@ describe('the Campaigns list', () => {
 });
 
 describe('New campaign', () => {
-	it('makes the campaign and opens its editor', async () => {
-		const response = await post(CREATE);
+	it('makes the campaign of the type picked, asking no model, and opens its editor on an empty chat', async () => {
+		const AI = answering();
+
+		const response = await post(CREATE, AI);
 
 		expect(response.status).toBe(302);
 		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
-		expect(made?.name).toBe('Winter coat drive');
+		expect(made).toMatchObject({ name: 'Winter coat drive', campaignType: 'event' });
 		expect(response.headers.get('Location')).toBe(`${LIST}/${made?.id}`);
+		expect(await readChat(db, made?.id ?? '')).toEqual([]);
+		expect(AI.run).not.toHaveBeenCalled();
 	});
 
-	it('sends what it is for as the first chat message, reading its dates in the browser’s zone', async () => {
-		const AI = answering({
-			say: 'Drafted your coat drive.',
-			page: { kind: 'merge', doc: {} },
-			set: { endDate: '2026-12-31' }
-		});
-
-		await post({ ...CREATE, purpose: 'coats for 300 kids by Dec 31' }, AI);
-
-		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
-		expect(await readChat(db, made?.id ?? '')).toMatchObject([
-			{ role: 'operator', text: 'Winter coat drive\ncoats for 300 kids by Dec 31' },
-			{ role: 'assistant' }
-		]);
-		expect(JSON.parse(made?.draft ?? '{}').endsAt).toBe(Date.parse('2027-01-01T05:00:00Z') - 1);
-	});
-
-	it('opens the editor on its chat when it was made with a line', async () => {
-		const response = await post({ ...CREATE, purpose: 'coats for 300 kids' });
-
-		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
-		expect(response.headers.get('Location')).toBe(`${LIST}/${made?.id}?chat`);
-	});
-
-	it('refuses a blank title at its box, and makes nothing', async () => {
-		const response = await post({ ...CREATE, title: '   ' });
+	it.each([
+		['no type', { name: 'Winter coat drive' }, 'required'],
+		[
+			'a type off the list',
+			{ ...CREATE, type: 'gala' },
+			'"gala" is no campaign type: year_end, emergency, building, event, tribute, monthly, program or other'
+		]
+	])('refuses %s at its box, and makes nothing', async (_, fields, said) => {
+		const response = await post(fields);
 
 		expect(response.status).toBe(400);
 		expect(await response.json()).toMatchObject({
-			form: { id: 'campaign-create', result: { error: { title: ['required'] } } }
+			form: { id: 'campaign-create', result: { error: { type: [said] } } }
+		});
+		expect(await db.select().from(page)).toEqual([]);
+	});
+
+	it('refuses a blank name at its box, and makes nothing', async () => {
+		const response = await post({ ...CREATE, name: '   ' });
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			form: { id: 'campaign-create', result: { error: { name: ['required'] } } }
 		});
 		expect(await db.select().from(page)).toEqual([]);
 	});

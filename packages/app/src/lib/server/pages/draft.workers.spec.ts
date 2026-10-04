@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CampaignType } from '../../page/campaign-types';
 import { type Page, parsePage } from '../../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 import { textDocument } from '../../rich-text/document';
@@ -1239,6 +1240,13 @@ async function writeMission(mission: string | null, vision: string | null = null
 	if (written !== 'written') throw new Error('the fixture story did not save');
 }
 
+/** a campaign of `campaignType`, its chat empty. */
+async function typedCampaign(campaignType: CampaignType) {
+	const pageId = await insertPage(db, 'campaign');
+	await db.update(page).set({ campaignType }).where(eq(page.id, pageId));
+	return pageId;
+}
+
 describe('a page opened with an empty chat', () => {
 	beforeEach(async () => {
 		await env.DB.prepare('delete from org_presentation').run();
@@ -1342,6 +1350,67 @@ describe('a page opened with an empty chat', () => {
 			expect((await stored(pageId)).draft).toEqual(before);
 		}
 	);
+
+	it('of a typed campaign falls back to its type’s starter questions, the mission first', async () => {
+		const pageId = await typedCampaign('building');
+
+		const result = await open(pageId, undefined as never);
+
+		expect(result).toMatchObject({
+			turns: [
+				{
+					note: 'starter',
+					questions: [
+						MISSION,
+						{ prompt: 'What are you building or buying?' },
+						{ prompt: 'Why does it matter to the people you serve?' },
+						{ prompt: 'Goal' },
+						{ prompt: 'End date' }
+					]
+				}
+			]
+		});
+	});
+
+	it('of a typed campaign tells the model its type, and asks for questions a campaign of that type needs', async () => {
+		await writeMission('Warm coats for every child.');
+		const pageId = await typedCampaign('emergency');
+		const AI = answering({ say: 'Questions.', ask: OWN });
+
+		await open(pageId, AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		expect(input.messages[0].content).toContain('- campaign type: Emergency response');
+		expect(input.messages.at(-1).content).toBe(
+			'Before you draft this campaign, of the type "Emergency response", ask me 3 to 5 questions whose answers you need to draft a campaign of its type.'
+		);
+	});
+
+	it('of a campaign of another type asks first what the campaign is', async () => {
+		const pageId = await typedCampaign('other');
+		const AI = answering({ say: 'Questions.', ask: OWN });
+
+		await open(pageId, AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		expect(input.messages[0].content).toContain('- campaign type: Something else');
+		expect(input.messages.at(-1).content).toBe(
+			'Before you draft this campaign, of the type "Something else", ask me 3 to 4 questions whose answers you need to draft it, the first asking what the campaign is for. My mission is asked separately, so ask nothing about it.'
+		);
+	});
+
+	it('of a typed campaign is shown to the model before the answers as the request it was asked with', async () => {
+		const pageId = await typedCampaign('emergency');
+		await open(pageId, answering({ say: 'Questions.', ask: OWN }));
+		const AI = answering({ say: 'Drafted.' });
+
+		await answer(pageId, [{ id: 'who', value: 'Kids' }], AI);
+
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		expect(input.messages[1].content).toBe(
+			'Before you draft this campaign, of the type "Emergency response", ask me 3 to 4 questions whose answers you need to draft a campaign of its type. My mission is asked separately, so ask nothing about it.'
+		);
+	});
 
 	it('of the Donation page falls back to its own starter questions', async () => {
 		await writeMission('Warm coats for every child.');

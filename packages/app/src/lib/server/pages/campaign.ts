@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { NEW_FORM } from '../../forms/new-form';
+import type { CampaignType } from '../../page/campaign-types';
 import type { Page as PageDocument } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import { endDayOf } from '../../page/end-date';
@@ -13,19 +14,20 @@ import { formInputValuesFrom, type ParsedForm, parseFormInput } from '../forms/f
 import { ownedFormInsert, readForm } from '../forms/queries';
 import { readDocument } from './document';
 import { ensureDonationPage } from './donation-page';
-import { draftTurn } from './draft';
 import { SLUG_ATTEMPTS } from './queries';
 
 // a campaign's reads and its making. New campaign makes one page and the settings row it owns in
 // one `batch()`:
 // - the settings are the Donation page's live row copied (made first where there is none yet,
-//   ./donation-page.ts), with the program left for the campaign to choose — by the chat from what
-//   it is for, by hand, or at the first publish — and the row not live, so it takes no gift before
-//   that publish and `deleteNeverPublishedCampaign` (./queries.ts) can still take it away. the
-//   draft carries the same settings, since publish is what copies a draft's onto the row.
+//   ./donation-page.ts), with the program left for the campaign to choose — by the chat, by hand,
+//   or at the first publish — and the row not live, so it takes no gift before that publish and
+//   `deleteNeverPublishedCampaign` (./queries.ts) can still take it away. the draft carries the
+//   same settings, since publish is what copies a draft's onto the row.
 // - the page is the clean default campaign (`defaultCampaign` in ../../page/defaults.ts) under
-//   the title, never published, at the address its name suggests or the first free `-2`, `-3`.
-// - with a line saying what it is for, the title and that line are the chat's first turn.
+//   the name, of the type picked, never published, at the address its name suggests or the first
+//   free `-2`, `-3`.
+// - its chat is left empty and no model is asked: the editor opens an empty chat on the type's
+//   questions (`openTurn` in ./draft.ts), and the first draft comes from their answers.
 
 /** a campaign that answers at its address: `page_name_check` holds every campaign to a name. */
 export type ServedCampaign = Page & {
@@ -117,21 +119,10 @@ function publishedEnd(id: string, published: string | null): CampaignListing['en
 	return parsed.ok ? endOf(parsed.page) : null;
 }
 
-export type NewCampaign = {
-	title: string;
-	/** what the campaign is for; blank sends no turn. */
-	line: string;
-	/** the IANA zone of the browser that asked, which a date in the line is a day in. */
-	timeZone: string;
-	now: number;
-};
+export type NewCampaign = { name: string; campaignType: CampaignType };
 
-/** makes a campaign from New campaign's title and line, and names its page. */
-export async function createCampaign(
-	db: Db,
-	env: unknown,
-	request: NewCampaign
-): Promise<{ pageId: string }> {
+/** makes a campaign from New campaign's name and type, and names its page. */
+export async function createCampaign(db: Db, request: NewCampaign): Promise<{ pageId: string }> {
 	const donationPage = await ensureDonationPage(db);
 	const copied = await readForm(db, donationPage.formId);
 	if (copied === null) {
@@ -139,7 +130,7 @@ export async function createCampaign(
 	}
 	const settings = parseFormInput({
 		...formInputValuesFrom(copied),
-		name: request.title.slice(0, MAX_FORM_NAME),
+		name: request.name.slice(0, MAX_FORM_NAME),
 		status: NEW_FORM.status,
 		program_mode: NEW_FORM.program_mode,
 		program_id: NEW_FORM.program_id
@@ -151,7 +142,7 @@ export async function createCampaign(
 	}
 	const draft: PageDocument = {
 		...defaultCampaign(),
-		name: request.title,
+		name: request.name,
 		settings: {
 			revenueAccountId: copied.revenueAccountId,
 			minMinor: copied.minMinor,
@@ -164,26 +155,11 @@ export async function createCampaign(
 		}
 	};
 	const pageId = await insertCampaign(db, {
-		name: request.title,
+		name: request.name,
+		campaignType: request.campaignType,
 		settings: settings.value,
 		draft: JSON.stringify(draft)
 	});
-	const line = request.line.trim();
-	if (line === '') return { pageId };
-	// the campaign is made whatever the turn does: a model that did not answer is a turn saying so,
-	// and a turn that threw leaves the editor opening on the clean default rather than a second
-	// campaign made by pressing Create again.
-	try {
-		await draftTurn(db, env, {
-			pageId,
-			message: `${request.title}\n${line}`,
-			imageIds: [],
-			timeZone: request.timeZone,
-			now: request.now
-		});
-	} catch (e) {
-		console.error(`the first chat turn on campaign ${pageId} failed:`, e);
-	}
 	return { pageId };
 }
 
@@ -194,7 +170,7 @@ export async function createCampaign(
  */
 async function insertCampaign(
 	db: Db,
-	campaign: { name: string; settings: ParsedForm; draft: string }
+	campaign: NewCampaign & { settings: ParsedForm; draft: string }
 ): Promise<string> {
 	for (let attempt = 1; ; attempt += 1) {
 		const held = await db.select({ slug: page.slug }).from(page).where(isNotNull(page.slug));
@@ -207,6 +183,7 @@ async function insertCampaign(
 					.values({
 						type: 'campaign',
 						name: campaign.name,
+						campaignType: campaign.campaignType,
 						slug: freeSlug(campaign.name, new Set(held.map((row) => row.slug))),
 						state: 'never_published',
 						formId: owned.id,
