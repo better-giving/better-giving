@@ -2,10 +2,12 @@
 -- chat each is made in, and the photos they show. five new tables and one added column:
 -- `org_presentation`, the one row of the organisation's story, look, sharing and logo, each beside
 -- the version it replaced; `page`, the donation page or a campaign, owning one `form` row as its
--- donation settings and holding its draft, published and last published documents; `chat_turn`,
--- each page's chat in order, with a note on an assistant turn the reply went wrong on; `image`,
--- what is known about one image; and `image_bytes`, its bytes, in a table of their own so that no
--- rebuild of another table copies them. `program.image_id` is a cause's photo.
+-- donation settings and holding its draft, published and last published documents, and a
+-- campaign its kind; `chat_turn`, each page's chat in order, with a note on an assistant turn the
+-- reply went wrong on or the fixed opening questions stood in for, the questions an assistant turn
+-- asked and the answers an operator turn gave; `image`, what is known about one image; and
+-- `image_bytes`, its bytes, in a table of their own so that no rebuild of another table copies
+-- them. `program.image_id` is a cause's photo.
 -- `src/lib/server/db/schema.ts` argues each column beside it, `src/lib/page/keys.ts` names the
 -- document keys its checks read, and `src/lib/server/images/bytes.ts` is the one module that reads
 -- or writes the bytes.
@@ -24,7 +26,10 @@
 -- the image's.
 --
 -- one donation page is `page_one_donation_page_idx`, a unique index over `type` for that type
--- alone; a campaign's slug is unique among the slugs held, by `page_slug_idx`.
+-- alone; a campaign's slug is unique among the slugs held, by `page_slug_idx`. a campaign's kind is
+-- one of `src/lib/page/campaign-types.ts`'s, or null, and the donation page has none. `questions`
+-- and `answers` are each a JSON array where set, `questions` only on an assistant turn and never
+-- empty, `answers` only on an operator's; what a question and an answer hold is the app's parse.
 -- `image_bytes_length_check` stops a blob at 1,900,000 bytes, under D1's 2,000,000-byte ceiling on
 -- a row by enough for the id and the record header beside it.
 --
@@ -41,12 +46,16 @@ CREATE TABLE `chat_turn` (
 	`image_ids` text DEFAULT '[]' NOT NULL,
 	`created_at` integer NOT NULL,
 	`note` text,
+	`questions` text,
+	`answers` text,
 	FOREIGN KEY (`page_id`) REFERENCES `page`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "chat_turn_author_check" CHECK("chat_turn"."author" in ('operator', 'assistant')),
-	CONSTRAINT "chat_turn_note_check" CHECK("chat_turn"."note" is null or ("chat_turn"."author" = 'assistant' and "chat_turn"."note" in ('refused', 'fell-back', 'unanswered'))),
+	CONSTRAINT "chat_turn_note_check" CHECK("chat_turn"."note" is null or ("chat_turn"."author" = 'assistant' and "chat_turn"."note" in ('refused', 'fell-back', 'unanswered', 'starter'))),
 	CONSTRAINT "chat_turn_model_check" CHECK(("chat_turn"."model" is not null) = ("chat_turn"."author" = 'assistant') and ("chat_turn"."model" is null or trim("chat_turn"."model", char(32, 9, 10, 11, 12, 13, 160)) <> '')),
 	CONSTRAINT "chat_turn_image_ids_array_check" CHECK(json_valid("chat_turn"."image_ids") and json_type("chat_turn"."image_ids") = 'array'),
-	CONSTRAINT "chat_turn_text_check" CHECK(trim("chat_turn"."text", char(32, 9, 10, 11, 12, 13, 160)) <> '' or json_array_length("chat_turn"."image_ids") > 0)
+	CONSTRAINT "chat_turn_text_check" CHECK(trim("chat_turn"."text", char(32, 9, 10, 11, 12, 13, 160)) <> '' or json_array_length("chat_turn"."image_ids") > 0),
+	CONSTRAINT "chat_turn_questions_check" CHECK("chat_turn"."questions" is null or ("chat_turn"."author" = 'assistant' and json_valid("chat_turn"."questions") and json_type("chat_turn"."questions") = 'array' and json_array_length("chat_turn"."questions") > 0)),
+	CONSTRAINT "chat_turn_answers_check" CHECK("chat_turn"."answers" is null or ("chat_turn"."author" = 'operator' and json_valid("chat_turn"."answers") and json_type("chat_turn"."answers") = 'array'))
 ) STRICT;
 --> statement-breakpoint
 CREATE UNIQUE INDEX `chat_turn_page_seq_idx` ON `chat_turn` (`page_id`,`seq`);--> statement-breakpoint
@@ -109,6 +118,7 @@ CREATE TABLE `page` (
 	`editor_visited_at` integer,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
+	`campaign_type` text,
 	FOREIGN KEY (`form_id`) REFERENCES `form`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "page_type_check" CHECK("page"."type" in ('donation_page', 'campaign')),
 	CONSTRAINT "page_state_check" CHECK("page"."state" in ('never_published', 'live', 'ended')),
@@ -124,7 +134,8 @@ CREATE TABLE `page` (
 	CONSTRAINT "page_published_look_check" CHECK(json_extract("page"."published", '$.look') is null or (json_type("page"."published", '$.look') = 'object' and (json_extract("page"."published", '$.look.shade') is null or json_extract("page"."published", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract("page"."published", '$.look.corner') is null or json_extract("page"."published", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract("page"."published", '$.look.brandColour') is null or json_extract("page"."published", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))),
 	CONSTRAINT "page_last_published_look_check" CHECK(json_extract("page"."last_published", '$.look') is null or (json_type("page"."last_published", '$.look') = 'object' and (json_extract("page"."last_published", '$.look.shade') is null or json_extract("page"."last_published", '$.look.shade') in ('light', 'warm', 'cool')) and (json_extract("page"."last_published", '$.look.corner') is null or json_extract("page"."last_published", '$.look.corner') in ('square', 'soft', 'round')) and (json_extract("page"."last_published", '$.look.brandColour') is null or json_extract("page"."last_published", '$.look.brandColour') glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))),
 	CONSTRAINT "page_campaign_only_settings_check" CHECK("page"."type" <> 'donation_page' or (json_extract("page"."draft", '$.goalMinor') is null and json_extract("page"."draft", '$.endsAt') is null and json_extract("page"."published", '$.goalMinor') is null and json_extract("page"."published", '$.endsAt') is null and json_extract("page"."last_published", '$.goalMinor') is null and json_extract("page"."last_published", '$.endsAt') is null)),
-	CONSTRAINT "page_editor_visited_check" CHECK("page"."editor_visited_at" is null or "page"."type" = 'donation_page')
+	CONSTRAINT "page_editor_visited_check" CHECK("page"."editor_visited_at" is null or "page"."type" = 'donation_page'),
+	CONSTRAINT "page_campaign_type_check" CHECK("page"."campaign_type" is null or ("page"."type" = 'campaign' and "page"."campaign_type" in ('year_end', 'emergency', 'building', 'event', 'tribute', 'monthly', 'program', 'other')))
 ) STRICT;
 --> statement-breakpoint
 CREATE UNIQUE INDEX `page_form_id_idx` ON `page` (`form_id`);--> statement-breakpoint

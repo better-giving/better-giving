@@ -19,6 +19,7 @@ import { CONTACT_KINDS, type ContactKind } from '../../contacts/kinds';
 // `RECURRING_INTERVALS`, which is the wire's frequency vocabulary minus `one_time`.
 import type { Frequency } from '@better-giving/form/v1';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
+import { CAMPAIGN_TYPES, type CampaignType } from '../../page/campaign-types';
 import {
 	CHAT_NOTES,
 	type ChatNote,
@@ -100,7 +101,9 @@ import type { PostableAccountId } from './postable';
 //             (../../page/keys.ts), since the page catalog reads the keys the checks here do,
 //             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
 //             (../../page/catalog.ts), and `PAGE_STATES` because ../../page/ended.ts reads
-//             whether a page has ended. `CHAT_NOTES` was born there, for the chat's components.
+//             whether a page has ended. `CHAT_NOTES` was born there, for the chat's components,
+//             and `CAMPAIGN_TYPES` beside it (../../page/campaign-types.ts), for the screen a
+//             campaign's kind is picked on.
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
@@ -3270,7 +3273,9 @@ const pageLookCheck = (doc: SQLiteColumn) => {
  * **a campaign** is named, and holds a slug from creation, unique among the slugs held — a
  * never-published campaign's included. an ended campaign keeps its slug until another campaign
  * takes it, which sets the ended one's to null in the same write; it is the one campaign that may
- * hold none. the slug's spelling, and the routes it may not shadow, are the parse's.
+ * hold none. the slug's spelling, and the routes it may not shadow, are the parse's. its
+ * `campaign_type` is one of `CAMPAIGN_TYPES`, or null on a campaign made before its kind was asked;
+ * the donation page holds none.
  *
  * **a page that has been live is never deleted**: a gift may point at its owned row. ending is
  * `state`, and there is no `archived_at`. the one delete is a never-published campaign's, with its
@@ -3295,7 +3300,8 @@ export const page = sqliteTable(
 		lastPublished: text('last_published'),
 		editorVisitedAt: at('editor_visited_at'),
 		createdAt: createdAt(),
-		updatedAt: updatedAt()
+		updatedAt: updatedAt(),
+		campaignType: text('campaign_type').$type<CampaignType>()
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
@@ -3342,6 +3348,10 @@ export const page = sqliteTable(
 			'page_editor_visited_check',
 			sql`${t.editorVisitedAt} is null or ${t.type} = 'donation_page'`
 		),
+		check(
+			'page_campaign_type_check',
+			sql`${t.campaignType} is null or (${t.type} = 'campaign' and ${enumCheck(t.campaignType, CAMPAIGN_TYPES)})`
+		),
 		uniqueIndex('page_form_id_idx').on(t.formId),
 		uniqueIndex('page_slug_idx').on(t.slug).where(sql`${t.slug} is not null`),
 		uniqueIndex('page_one_donation_page_idx').on(t.type).where(sql`${t.type} = 'donation_page'`)
@@ -3364,6 +3374,12 @@ export type ChatAuthor = (typeof CHAT_AUTHORS)[number];
  * wrong on, null otherwise, and an operator's turn has none. it is a column of its own because
  * `text` is what the model writes.
  *
+ * `questions` is the JSON array of the questions an assistant turn asked, and `answers` the JSON
+ * array of the answers an operator turn gave to them; each is null on a turn that neither asks nor
+ * answers, and always null on the other author's. the database holds each to being an array, and
+ * `questions` to holding at least one, since an ask asks something while every question may be
+ * skipped; the shape of a question and of an answer is the parse's.
+ *
  * `page_id` is `NO ACTION`, like every domain key here (rule 2 at the top of this file): a cascade
  * would fire during any rebuild of `page` and empty every chat. deleting a page deletes its turns
  * first, in the same `batch()` — ../pages/queries.ts.
@@ -3381,7 +3397,9 @@ export const chatTurn = sqliteTable(
 		model: text('model'),
 		imageIds: text('image_ids').notNull().default('[]'),
 		createdAt: createdAt(),
-		note: text('note').$type<ChatNote>()
+		note: text('note').$type<ChatNote>(),
+		questions: text('questions'),
+		answers: text('answers')
 		// append new columns below this line — see rule 1 at the top of this file.
 	},
 	(t) => [
@@ -3398,6 +3416,14 @@ export const chatTurn = sqliteTable(
 		// malformed JSON.
 		check('chat_turn_image_ids_array_check', jsonArray(t.imageIds)),
 		check('chat_turn_text_check', sql`${notBlank(t.text)} or json_array_length(${t.imageIds}) > 0`),
+		check(
+			'chat_turn_questions_check',
+			sql`${t.questions} is null or (${t.author} = 'assistant' and ${jsonArray(t.questions)} and json_array_length(${t.questions}) > 0)`
+		),
+		check(
+			'chat_turn_answers_check',
+			sql`${t.answers} is null or (${t.author} = 'operator' and ${jsonArray(t.answers)})`
+		),
 		uniqueIndex('chat_turn_page_seq_idx').on(t.pageId, t.seq)
 	]
 );

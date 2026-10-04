@@ -49,6 +49,7 @@ type PageRow = {
 	published: string | null;
 	last_published: string | null;
 	editor_visited_at: number | null;
+	campaign_type: string | null;
 };
 
 const DONATION_PAGE: PageRow = {
@@ -59,7 +60,8 @@ const DONATION_PAGE: PageRow = {
 	draft: '{"blocks":[]}',
 	published: '{"blocks":[]}',
 	last_published: null,
-	editor_visited_at: null
+	editor_visited_at: null,
+	campaign_type: null
 };
 
 let pageSequence = 0;
@@ -69,8 +71,8 @@ async function insertPage(row: PageRow): Promise<string> {
 	const id = `019fc400-0000-7000-8000-${String(pageSequence).padStart(12, '0')}`;
 	await env.DB.prepare(
 		`insert into page (id, type, name, slug, state, form_id, draft, published, last_published,
-		                   editor_visited_at, created_at, updated_at)
-		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`
+		                   editor_visited_at, campaign_type, created_at, updated_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`
 	)
 		.bind(
 			id,
@@ -82,7 +84,8 @@ async function insertPage(row: PageRow): Promise<string> {
 			row.draft,
 			row.published,
 			row.last_published,
-			row.editor_visited_at
+			row.editor_visited_at,
+			row.campaign_type
 		)
 		.run();
 	return id;
@@ -118,7 +121,8 @@ const CAMPAIGN: PageRow = {
 	draft: '{"blocks":[],"goalMinor":1500000}',
 	published: null,
 	last_published: null,
-	editor_visited_at: null
+	editor_visited_at: null,
+	campaign_type: null
 };
 
 describe('a page is the Donation page or a campaign, and no other kind', () => {
@@ -322,6 +326,34 @@ describe('the mission is asked for once, on the Donation page', () => {
 	});
 });
 
+describe("a campaign's type is one of the list, and the Donation page has none", () => {
+	it('refuses a type on the Donation page', async () => {
+		const message = await refusedAsDonationPage({ ...DONATION_PAGE, campaign_type: 'year_end' });
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_campaign_type_check');
+	});
+
+	it.each([['year-end'], ['Year_end'], ['gala'], ['']])('refuses the type %j', async (type) => {
+		const message = await rejection(() =>
+			insertPage({ ...CAMPAIGN, slug: 'type-probe', campaign_type: type })
+		);
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('page_campaign_type_check');
+	});
+
+	it.each([
+		['tribute', 'type-tribute'],
+		['other', 'type-other'],
+		[null, 'type-none']
+	])('accepts a campaign of the type %j', async (type, slug) => {
+		const id = await insertPage({ ...CAMPAIGN, slug, campaign_type: type });
+		const row = await env.DB.prepare(`select campaign_type from page where id = ?`)
+			.bind(id)
+			.first();
+		expect(row).toEqual({ campaign_type: type });
+	});
+});
+
 describe('every page owns its own donation-settings row', () => {
 	it('refuses a second page naming a settings row another page owns', async () => {
 		const owned = await env.DB.prepare(`select form_id from page where type = 'donation_page'`)
@@ -348,6 +380,8 @@ type TurnRow = {
 	model: string | null;
 	image_ids: string;
 	note: string | null;
+	questions: string | null;
+	answers: string | null;
 };
 
 const OPERATOR_TURN: TurnRow = {
@@ -356,7 +390,9 @@ const OPERATOR_TURN: TurnRow = {
 	text: 'coats for 300 kids, goal $15k by Dec 31',
 	model: null,
 	image_ids: '[]',
-	note: null
+	note: null,
+	questions: null,
+	answers: null
 };
 
 const ASSISTANT_TURN: TurnRow = {
@@ -366,13 +402,17 @@ const ASSISTANT_TURN: TurnRow = {
 	model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
 };
 
+const QUESTIONS = '[{"id":"goal","kind":"amount","prompt":"How much are you raising?"}]';
+const ANSWERS = '[{"id":"goal","value":1500000}]';
+
 let turnSequence = 0;
 
 async function insertTurn(pageId: string, row: TurnRow): Promise<void> {
 	turnSequence += 1;
 	await env.DB.prepare(
-		`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, note, created_at)
-		 values (?, ?, ?, ?, ?, ?, ?, ?, 0)`
+		`insert into chat_turn (id, page_id, seq, author, text, model, image_ids, note, questions,
+		                        answers, created_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
 	)
 		.bind(
 			`019fc500-0000-7000-8000-${String(turnSequence).padStart(12, '0')}`,
@@ -382,7 +422,9 @@ async function insertTurn(pageId: string, row: TurnRow): Promise<void> {
 			row.text,
 			row.model,
 			row.image_ids,
-			row.note
+			row.note,
+			row.questions,
+			row.answers
 		)
 		.run();
 }
@@ -445,6 +487,7 @@ describe('the chat, a page at a time and in order', () => {
 		['refused', 10],
 		['fell-back', 11],
 		['unanswered', 12],
+		['starter', 14],
 		[null, 13]
 	])('accepts an assistant turn noted %j', async (note, seq) => {
 		await insertTurn(pageId, { ...ASSISTANT_TURN, seq, note });
@@ -463,6 +506,49 @@ describe('the chat, a page at a time and in order', () => {
 		const message = await rejection(() => insertTurn(pageId, turn));
 		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
 		expect(message).toContain('chat_turn_image_ids_array_check');
+	});
+
+	it('refuses questions on a turn the operator wrote', async () => {
+		const turn = { ...OPERATOR_TURN, seq: 2, questions: QUESTIONS };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_questions_check');
+	});
+
+	it('refuses answers on a turn the assistant wrote', async () => {
+		const turn = { ...ASSISTANT_TURN, seq: 2, answers: ANSWERS };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain('chat_turn_answers_check');
+	});
+
+	it.each([
+		['questions', 'not json', ASSISTANT_TURN],
+		['questions', '{"id":"goal"}', ASSISTANT_TURN],
+		['questions', 'null', ASSISTANT_TURN],
+		['questions', '[]', ASSISTANT_TURN],
+		['answers', '{"goal":1500000}', OPERATOR_TURN],
+		['answers', '"none"', OPERATOR_TURN],
+		['answers', '[{"id":', OPERATOR_TURN]
+	] as const)('refuses %s held as %j', async (column, value, author) => {
+		const turn = { ...author, seq: 2, [column]: value };
+		const message = await rejection(() => insertTurn(pageId, turn));
+		expect(message).toContain(SQLITE_CONSTRAINT_CHECK);
+		expect(message).toContain(`chat_turn_${column}_check`);
+	});
+
+	it.each([
+		['questions an assistant asked', { ...ASSISTANT_TURN, seq: 20, questions: QUESTIONS }],
+		['answers the operator gave', { ...OPERATOR_TURN, seq: 21, answers: ANSWERS }],
+		['an answers turn with every question skipped', { ...OPERATOR_TURN, seq: 22, answers: '[]' }]
+	])('accepts %s', async (_, turn) => {
+		await insertTurn(pageId, turn);
+		const row = await env.DB.prepare(
+			`select questions, answers from chat_turn where page_id = ? and seq = ?`
+		)
+			.bind(pageId, turn.seq)
+			.first();
+		expect(row).toEqual({ questions: turn.questions, answers: turn.answers });
 	});
 
 	it('refuses a turn with no words and no photo', async () => {

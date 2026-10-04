@@ -350,6 +350,20 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "questions": {
+          "name": "questions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "answers": {
+          "name": "answers",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -386,7 +400,7 @@
         },
         "chat_turn_note_check": {
           "name": "chat_turn_note_check",
-          "value": "\"chat_turn\".\"note\" is null or (\"chat_turn\".\"author\" = 'assistant' and \"chat_turn\".\"note\" in ('refused', 'fell-back', 'unanswered'))"
+          "value": "\"chat_turn\".\"note\" is null or (\"chat_turn\".\"author\" = 'assistant' and \"chat_turn\".\"note\" in ('refused', 'fell-back', 'unanswered', 'starter'))"
         },
         "chat_turn_model_check": {
           "name": "chat_turn_model_check",
@@ -399,6 +413,14 @@
         "chat_turn_text_check": {
           "name": "chat_turn_text_check",
           "value": "trim(\"chat_turn\".\"text\", char(32, 9, 10, 11, 12, 13, 160)) <> '' or json_array_length(\"chat_turn\".\"image_ids\") > 0"
+        },
+        "chat_turn_questions_check": {
+          "name": "chat_turn_questions_check",
+          "value": "\"chat_turn\".\"questions\" is null or (\"chat_turn\".\"author\" = 'assistant' and json_valid(\"chat_turn\".\"questions\") and json_type(\"chat_turn\".\"questions\") = 'array' and json_array_length(\"chat_turn\".\"questions\") > 0)"
+        },
+        "chat_turn_answers_check": {
+          "name": "chat_turn_answers_check",
+          "value": "\"chat_turn\".\"answers\" is null or (\"chat_turn\".\"author\" = 'operator' and json_valid(\"chat_turn\".\"answers\") and json_type(\"chat_turn\".\"answers\") = 'array')"
         }
       }
     },
@@ -1992,6 +2014,13 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "campaign_type": {
+          "name": "campaign_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -2096,6 +2125,10 @@
         "page_editor_visited_check": {
           "name": "page_editor_visited_check",
           "value": "\"page\".\"editor_visited_at\" is null or \"page\".\"type\" = 'donation_page'"
+        },
+        "page_campaign_type_check": {
+          "name": "page_campaign_type_check",
+          "value": "\"page\".\"campaign_type\" is null or (\"page\".\"type\" = 'campaign' and \"page\".\"campaign_type\" in ('year_end', 'emergency', 'building', 'event', 'tribute', 'monthly', 'program', 'other'))"
         }
       }
     },

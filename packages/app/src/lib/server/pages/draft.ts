@@ -99,7 +99,7 @@ export type ChatEntry = {
 	role: 'operator' | 'assistant';
 	text: string;
 	imageIds: string[];
-	note?: 'fell-back' | 'refused';
+	note?: Exclude<ChatNote, 'unanswered'>;
 };
 
 export type TurnResult =
@@ -263,7 +263,9 @@ function turnStatement(db: Db, pageId: string, turn: NewTurn, when: SQL) {
 					model: sql<string | null>`${turn.model}`.as('model'),
 					imageIds: sql<string>`${JSON.stringify(turn.imageIds)}`.as('image_ids'),
 					createdAt: sql<number>`${Date.now()}`.as('created_at'),
-					note: sql<ChatNote | null>`${turn.note}`.as('note')
+					note: sql<ChatNote | null>`${turn.note}`.as('note'),
+					questions: sql<string | null>`null`.as('questions'),
+					answers: sql<string | null>`null`.as('answers')
 				})
 				.from(page)
 				.where(when)
