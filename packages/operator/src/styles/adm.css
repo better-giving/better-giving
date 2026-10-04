@@ -6243,7 +6243,7 @@
 	   the bar — which is right for a page's end and wrong for anything standing on the bar.
 
 	   `--_bar-height` is the bar as it is drawn, and it is what the More sheet stands on
-	   (`.adm-sheet` below): contents shorter than the floor make the tab the floor exactly, and
+	   (`.adm-moresheet` below): contents shorter than the floor make the tab the floor exactly, and
 	   `.adm-rail` adds its rule above the tabs and the platform's inset under them. a sheet on the
 	   reserve instead stands clear of the bar by the overstatement, with the page showing through
 	   the gap.

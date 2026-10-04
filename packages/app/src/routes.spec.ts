@@ -840,7 +840,7 @@ describe('where middleware is mounted', () => {
 		);
 	});
 
-	// the preview is the one exception above, and what it mounts is the layout's own session gate
+	// the preview is one of the exceptions above, and what it mounts is the layout's own session gate
 	// and nothing else — a gate of its own would be a second one to keep true.
 	it('is the session gate alone on the preview, the one the protected layout mounts first', () => {
 		expect(readFromDisk(PROTECTED_LAYOUT) ?? '').toMatch(

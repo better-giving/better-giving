@@ -315,7 +315,10 @@ describe('what the tighter buckets count against', () => {
 		['a quote submission', quoteRateLimitKey]
 	] as const;
 
-	/** every key built on the attributed caller: the tight two, and the two view keys on the `/64`. */
+	/**
+	 * the keys built on the attributed caller: the tight two, and the two view keys on the `/64`.
+	 * the read API's caller key is one too, and its cases are its own block below.
+	 */
 	const ATTRIBUTED = [
 		...TIGHT,
 		['a photo view', imageRateLimitKey],

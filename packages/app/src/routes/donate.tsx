@@ -83,8 +83,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
  * page republished meanwhile reaches the donor on their next load.
  *
  * the resume stamp is a search parameter and so re-reads nothing either. the card scrubs it with
- * `history.replaceState`, out of react router's sight, so a re-read from the stamped address the
- * router still holds would answer `resuming: false` under the takeover the flow is showing.
+ * `history.replaceState`, out of react router's sight, so a navigation off the stamped address the
+ * router still holds would re-read without the stamp and answer `resuming: false` under the
+ * takeover the flow is showing.
  */
 export function shouldRevalidate(_asked: ShouldRevalidateFunctionArgs): boolean {
 	return false;

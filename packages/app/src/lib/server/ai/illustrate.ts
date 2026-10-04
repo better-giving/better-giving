@@ -7,7 +7,7 @@ import { aiBinding, isLocalStandIn } from './generate';
 // the one way this deployment asks a model for a picture, stored as an `illustration` image.
 //
 // the model is `MODEL`, a Workers AI model billed in neurons against the account's own Workers AI
-// (https://developers.cloudflare.com/workers-ai/platform/pricing/).
+// allocation (https://developers.cloudflare.com/workers-ai/platform/pricing/).
 // it is fixed here: `AI_MODEL` is the console's choice of chat model and has no say over this one.
 // the call goes through AI Gateway's `default` gateway, as ./generate.ts's does.
 //

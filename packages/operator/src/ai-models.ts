@@ -8,8 +8,8 @@
 // that package's config_test.go holds to this list, ids and billing in order.
 //
 // every model is called through the Workers AI binding and AI Gateway's `default` gateway, the
-// one gateway that creates itself on first use. the first entry is the default, on Workers AI, and is what
-// an unset `AI_MODEL` means. the others are billed to the account's Cloudflare credits through
+// one gateway that creates itself on first use. the first entry is the default, on Workers AI:
+// what an unset `AI_MODEL` means. the others are billed to the account's Cloudflare credits through
 // AI Gateway's unified billing, so no provider key is stored anywhere
 // (https://developers.cloudflare.com/ai-gateway/features/unified-billing/). what a failed call to
 // one of them is answered with, and why, is `generate`'s header.
