@@ -14,7 +14,7 @@ import { shareImage } from '$lib/page/image-src';
 import { checkSlug } from '$lib/page/slug';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
-import { readOrgLogo, readOrgLook, readOrgProfile } from '$lib/server/org/queries';
+import { readOrgProfile, readOrgProfileLogo } from '$lib/server/org/queries';
 import { readServedCampaign } from '$lib/server/pages/campaign';
 import { readDocument } from '$lib/server/pages/document';
 import { donorLook, loadPageView, refusedPage } from '$lib/server/pages/view';
@@ -66,19 +66,18 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const campaign = await readServedCampaign(db, address.slug, now);
 	if (campaign === null) return refusedPage();
 	if (campaign.state === 'ended') {
-		const [profile, orgLook, orgLogo] = await Promise.all([
-			readOrgProfile(db),
-			readOrgLook(db),
-			readOrgLogo(db)
-		]);
+		const [profile, logo] = await Promise.all([readOrgProfile(db), readOrgProfileLogo(db)]);
 		const published = readDocument(campaign, 'published', campaign.published);
 		return data(
 			{
 				kind: 'ended',
 				name: campaign.name,
 				orgName: profile?.legalName ?? null,
-				look: donorLook(published.ok ? published.page.look : undefined, orgLook.look.brandColour),
-				logo: orgLogo.logo
+				look: donorLook(
+					published.ok ? published.page.look : undefined,
+					profile?.brandColour ?? null
+				),
+				logo
 			} as const,
 			{ headers: { 'cache-control': 'no-store' } }
 		);

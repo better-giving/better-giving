@@ -14,22 +14,14 @@ import { NO_FORM, RESUMING_HEADING, STEP_HEADINGS } from '$lib/donate/copy';
 import { shownStep } from '$lib/donate/shown-step.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { defaultDonationPage } from '$lib/page/defaults';
-import { parseRichText } from '$lib/rich-text/document';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { createDb } from '$lib/server/db/client';
 import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { createImage } from '$lib/server/images/queries';
-import type { OrgLook } from '$lib/server/org/presentation';
-import {
-	readOrgLogo,
-	readOrgLook,
-	readOrgStory,
-	updateOrgLogo,
-	updateOrgLook,
-	updateOrgStory
-} from '$lib/server/org/queries';
+import { setOrgProfileLogo } from '$lib/server/org/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
+import { saveProfile } from '$lib/server/org/profile.testing';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
@@ -69,7 +61,6 @@ beforeEach(async () => {
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from program'),
-		env.DB.prepare('delete from org_presentation'),
 		env.DB.prepare('delete from org_profile')
 	]);
 	await writeOrgRow(env.DB, { tax_id: '12-3456789' });
@@ -143,22 +134,6 @@ function block(html: string, type: string): string {
 	return found?.[0] ?? '';
 }
 
-async function writeMission(text: string): Promise<void> {
-	const { version } = await readOrgStory(db);
-	const mission = parseRichText({
-		type: 'doc',
-		content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
-	});
-	if (!mission.ok) throw new Error(`the fixture mission did not parse: ${mission.message}`);
-	const written = await updateOrgStory(db, version, { mission: mission.doc, vision: null });
-	if (written !== 'written') throw new Error('the fixture mission was not written');
-}
-
-async function saveOrgLook(look: OrgLook): Promise<void> {
-	const { version } = await readOrgLook(db);
-	expect(await updateOrgLook(db, version, look)).not.toBe('stale');
-}
-
 async function activePrograms(...names: string[]): Promise<void> {
 	for (const name of names) await db.insert(program).values({ name });
 }
@@ -172,7 +147,7 @@ async function donationPageRows(): Promise<number> {
 
 describe('GET /donate on a fresh deployment', () => {
 	it('draws the default page, the mission in About us and the active programs in the chooser', async () => {
-		await writeMission(MISSION);
+		await saveProfile(db, { mission: MISSION });
 		await activePrograms('Food bank', 'Winter shelter');
 
 		const answered = await visit();
@@ -193,6 +168,40 @@ describe('GET /donate on a fresh deployment', () => {
 		const chooser = block(markup((await visit()).data), 'program-chooser');
 		expect(chooser).toContain('Food bank');
 		expect(chooser).toContain('Winter shelter');
+	});
+});
+
+describe('the organisation’s mission and vision on /donate', () => {
+	it('are the profile’s, drawn in About us', async () => {
+		await saveProfile(db, { mission: MISSION, vision: 'No family on Elm Street goes hungry.' });
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org).toMatchObject({
+			mission: MISSION,
+			vision: 'No family on Elm Street goes hungry.'
+		});
+		const about = block(markup(answered.data), 'about-us');
+		expect(about).toContain(MISSION);
+		expect(about).toContain('No family on Elm Street goes hungry.');
+	});
+
+	it('leave a vision the profile holds none of out', async () => {
+		await saveProfile(db, { mission: MISSION });
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org).toMatchObject({ mission: MISSION, vision: null });
+		expect(block(markup(answered.data), 'about-us')).not.toContain('Our vision');
+	});
+
+	it('draw no About us where the profile holds neither', async () => {
+		await saveProfile(db);
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org).toMatchObject({ mission: null, vision: null });
+		expect(block(markup(answered.data), 'about-us')).toBe('');
 	});
 });
 
@@ -274,7 +283,7 @@ describe('the organisation’s logo on /donate', () => {
 			{ kind: 'photo', contentType: 'image/png', width: 640, height: 160, alt: null },
 			new Uint8Array([1])
 		);
-		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, id)).toHaveProperty('version');
+		expect(await setOrgProfileLogo(db, id)).toBe('written');
 
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
@@ -369,57 +378,34 @@ describe('the share buttons /donate draws', () => {
 	});
 });
 
-describe('the organisation’s sharing on /donate', () => {
-	async function share(sharing: unknown): Promise<void> {
-		await env.DB.prepare(
-			`insert into org_presentation (id, sharing, created_at, updated_at) values ('default', ?, 0, 0)`
-		)
-			.bind(JSON.stringify(sharing))
-			.run();
-	}
-
-	it('lists its social links, and shares the page’s title rather than the row’s message', async () => {
-		await share({
-			message: 'Every meal counts this winter.',
-			links: [{ label: 'Instagram', href: 'https://instagram.com/hopefoundation' }]
-		});
-		const answered = await visit();
-		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.view.sharing.message).toBe('Donate to Hope Foundation');
-		expect(answered.data.view.org.info.links).toEqual([
-			{ label: 'Instagram', href: 'https://instagram.com/hopefoundation' }
+describe('the organisation’s social links on /donate', () => {
+	it('are the profile’s, in its order, in the org info block', async () => {
+		await saveProfile(db, {}, [
+			'https://instagram.com/hopefoundation',
+			'https://facebook.com/hope'
 		]);
-	});
 
-	// a `channels` key in the row is read past: which share buttons stand is each page's own.
-	it('reads a row still holding share channels, and draws the page’s buttons', async () => {
-		await share({ channels: ['whatsapp', 'x'], message: 'Every meal counts this winter.' });
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.view.sharing).toEqual({
-			channels: ['facebook', 'email', 'copy-link'],
-			message: 'Donate to Hope Foundation',
-			url: `${OWN}/donate`
-		});
-	});
-
-	// a link is typed by a person and drawn as an `href`, so anything but http(s) never reaches one.
-	it('draws no social link that is not an http(s) address', async () => {
-		await share({
-			links: [
-				{ label: 'Site', href: 'javascript:alert(1)' },
-				{ label: 'Facebook', href: 'https://facebook.com/hope' }
-			]
-		});
-		const answered = await visit();
-		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.view.org.info.links).toEqual([
-			{ label: 'Facebook', href: 'https://facebook.com/hope' }
+		expect(answered.data.view.org.info.socialLinks).toEqual([
+			{ platform: 'instagram', href: 'https://instagram.com/hopefoundation' },
+			{ platform: 'facebook', href: 'https://facebook.com/hope' }
 		]);
+		const info = block(markup(answered.data), 'org-info');
+		expect(info.indexOf('instagram.com/hopefoundation')).toBeLessThan(
+			info.indexOf('facebook.com/hope')
+		);
 	});
 
-	it('shares the page’s own message where it holds one', async () => {
-		await share({ message: 'Every meal counts this winter.' });
+	it('are none where the profile holds none', async () => {
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org.info.socialLinks).toEqual([]);
+	});
+});
+
+describe('the share message /donate sends', () => {
+	it('is the page’s own where it holds one', async () => {
 		await visit();
 		const row = await env.DB.prepare(
 			`select published from page where type = 'donation_page'`
@@ -433,13 +419,6 @@ describe('the organisation’s sharing on /donate', () => {
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.sharing.message).toBe('Warm a family tonight.');
-	});
-
-	it('reads a part it does not hold, or holds off the rule, as the default', async () => {
-		await share({ message: 7 });
-		const answered = await visit();
-		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
-		expect(answered.data.view.sharing.message).toBe('Donate to Hope Foundation');
 	});
 });
 
@@ -455,7 +434,7 @@ function seeds(html: string) {
 }
 
 describe('the look /donate is drawn in', () => {
-	it('is the form’s own where neither the Organisation nor the page holds one', async () => {
+	it('is the form’s own where neither the profile nor the page holds one', async () => {
 		expect(seeds(markup((await visit()).data))).toEqual({
 			shade: 'light',
 			corner: 'soft',
@@ -463,8 +442,8 @@ describe('the look /donate is drawn in', () => {
 		});
 	});
 
-	it('is light and soft in the Organisation’s brand colour while the page holds no look of its own, whatever the Organisation’s shade and corners', async () => {
-		await saveOrgLook({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+	it('is light and soft in the profile’s brand colour while the page holds no look of its own', async () => {
+		await saveProfile(db, { brand_colour: '#1d6b4f' });
 		expect(seeds(markup((await visit()).data))).toEqual({
 			shade: 'light',
 			corner: 'soft',
@@ -472,13 +451,13 @@ describe('the look /donate is drawn in', () => {
 		});
 	});
 
-	it('is the page’s own shade and corners, in the Organisation’s brand colour', async () => {
+	it('is the page’s own shade and corners, in the profile’s brand colour', async () => {
 		await visit();
 		await env.DB.prepare(`update page set published = ? where type = 'donation_page'`)
 			.bind(JSON.stringify({ ...defaultDonationPage(), look: { shade: 'cool', corner: 'square' } }))
 			.run();
 
-		await saveOrgLook({ shade: 'warm', corner: 'round', brandColour: '#1d6b4f' });
+		await saveProfile(db, { brand_colour: '#1d6b4f' });
 
 		expect(seeds(markup((await visit()).data))).toEqual({
 			shade: 'cool',
@@ -773,12 +752,7 @@ describe('/donate after the editor’s presses', () => {
 	});
 
 	it('draws the current default, light and soft and sharing its title, after Reset', async () => {
-		const ORG_LOOK = { brandColour: '#225588', shade: 'cool', corner: 'square' };
-		await env.DB.prepare(
-			`insert into org_presentation (id, look, sharing, created_at, updated_at) values ('default', ?, ?, 0, 0)`
-		)
-			.bind(JSON.stringify(ORG_LOOK), JSON.stringify({ message: 'Every meal counts this winter.' }))
-			.run();
+		await saveProfile(db, { brand_colour: '#225588' });
 		await visit();
 		const [row] = await db.select().from(page);
 		if (!row) throw new Error('there is no Donation page to write');
@@ -796,14 +770,18 @@ describe('/donate after the editor’s presses', () => {
 			})
 			.where(eq(page.id, row.id));
 		await press('page-publish');
-		expect((await drawn()).look).toEqual({ ...ORG_LOOK, shade: 'warm', corner: 'round' });
+		expect((await drawn()).look).toEqual({
+			brandColour: '#225588',
+			shade: 'warm',
+			corner: 'round'
+		});
 
 		await press('page-reset');
 
 		const view = await drawn();
 		expect(view.page.blocks).toEqual(defaultDonationPage().blocks);
 		expect(view.page.palette).toBe(defaultDonationPage().palette);
-		expect(view.look).toEqual({ ...ORG_LOOK, shade: 'light', corner: 'soft' });
+		expect(view.look).toEqual({ brandColour: '#225588', shade: 'light', corner: 'soft' });
 		expect(view.sharing.message).toBe('Donate to Hope Foundation');
 	});
 

@@ -1,7 +1,10 @@
+import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
+import { BrandMark } from './brand-mark';
 import type { BlockOf, OrgInfo } from './types';
 
 // who the gift is made to, as the organisation's legal details state it: `footer` closes the page,
-// `card` stands among the blocks.
+// `card` stands among the blocks. each social link is its platform's mark alone, named for the
+// platform.
 
 export function OrgInfoBlock({
 	block,
@@ -28,11 +31,18 @@ export function OrgInfoBlock({
 			</p>
 		);
 	const links =
-		info.links.length === 0 ? null : (
+		info.socialLinks.length === 0 ? null : (
 			<p className="page-org-links">
-				{info.links.map((link) => (
-					<a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer">
-						{link.label}
+				{info.socialLinks.map((link) => (
+					<a
+						key={link.href}
+						className="page-org-social"
+						href={link.href}
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label={SOCIAL_PLATFORM_NAMES[link.platform]}
+					>
+						<BrandMark brand={link.platform} className="page-org-mark" />
 					</a>
 				))}
 			</p>

@@ -4,7 +4,7 @@ import type { Block, Page } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
 import type { Background, Corner, Layout, PageType, Shade } from '../page/keys';
 import { BLOCK_MESSAGE, type BlockMessage } from '../page/preview-message';
-import { isEmptyDocument, type RichTextDocument } from '../rich-text/document';
+import { isEmptyDocument } from '../rich-text/document';
 import { AboutUsBlock } from './blocks/about-us';
 import { FaqBlock } from './blocks/faq';
 import { GoalBarBlock } from './blocks/goal-bar';
@@ -47,6 +47,8 @@ import { PageRoot } from './page-root';
 // the masthead stands above every block and names the organisation. with a logo, a logo at least
 // twice as wide as it is tall stands in for the name and carries it as its alt, and a narrower one
 // stands beside the name and says nothing of its own; the stored image's width and height decide.
+// with none, a badge of the name's initials stands beside the name, in the page's brand fill and
+// corner (./page.css), and like a narrower logo says nothing of its own.
 // a hero or image block marked as an AI illustration is captioned so, and a program's photo stands
 // on its chooser option. every image arrives by stored image id, drawn from the deployment's own
 // image route and never from an address a page carries.
@@ -249,7 +251,10 @@ export function Masthead({
 	if (logo === null) {
 		return (
 			<header className="page-mast">
-				<div className="page-in">
+				<div className="page-in page-mast-in">
+					<span className="page-mast-badge" aria-hidden="true">
+						{initials(name)}
+					</span>
 					<p className="page-mast-name">{name}</p>
 				</div>
 			</header>
@@ -280,14 +285,27 @@ export function Masthead({
 	);
 }
 
+/**
+ * the first letter of each of the name's first two words, upper-cased, a leading "The" passed over
+ * where a word follows it: "The Hope Fund" is `HF`, "Kiva" is `K`. a word opening on no letter or
+ * digit, an `&` or a dash, is not counted.
+ */
+export function initials(name: string): string {
+	const words = name.split(/\s+/).filter((word) => word !== '');
+	const named = words.length > 1 && words[0]?.toLowerCase() === 'the' ? words.slice(1) : words;
+	return named
+		.flatMap((word) => /^[\p{L}\p{N}]/u.exec(word)?.[0] ?? [])
+		.slice(0, 2)
+		.join('')
+		.toLocaleUpperCase();
+}
+
 /** the cover's hero and the title laid over it: the first two blocks drawn, in that order. */
 function coverOf(body: readonly Block[]) {
 	const [hero, title] = body;
 	if (hero?.type !== 'hero' || title?.type !== 'title') return null;
 	return { hero, title };
 }
-
-const hasWords = (doc: RichTextDocument | null) => doc !== null && !isEmptyDocument(doc);
 
 /** a block with nothing to show leaves itself out. */
 function isDrawn(block: Block, props: PageViewProps): boolean {
@@ -307,7 +325,7 @@ function isDrawn(block: Block, props: PageViewProps): boolean {
 		case 'story':
 			return !isEmptyDocument(block.body);
 		case 'about-us':
-			return hasWords(props.org.mission) || hasWords(props.org.vision);
+			return props.org.mission !== null || props.org.vision !== null;
 		case 'share':
 			return props.sharing.channels.length > 0;
 		case 'hero':
@@ -338,13 +356,7 @@ function content(
 		case 'faq':
 			return <FaqBlock block={block} domId={domId} />;
 		case 'about-us':
-			return (
-				<AboutUsBlock
-					block={block}
-					mission={hasWords(props.org.mission) ? props.org.mission : null}
-					vision={hasWords(props.org.vision) ? props.org.vision : null}
-				/>
-			);
+			return <AboutUsBlock block={block} mission={props.org.mission} vision={props.org.vision} />;
 		case 'org-info':
 			return <OrgInfoBlock block={block} info={props.org.info} />;
 		case 'share':

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { SHARE_CHANNEL_LABELS, type ShareChannel, shareHref } from '../../page/share';
+import { BrandMark } from './brand-mark';
 import { Glyph } from './glyph';
 import type { BlockOf, PageSharing } from './types';
 
@@ -12,14 +13,7 @@ import type { BlockOf, PageSharing } from './types';
 // second press puts back the words the region already holds, and a region handed what it holds is
 // announced by nobody.
 //
-// the networks' marks are lettered stand-ins: no set in this repository carries brand marks.
-
-const STAND_INS: Record<Exclude<ShareChannel, 'email' | 'copy-link'>, string> = {
-	facebook: 'f',
-	whatsapp: 'w',
-	linkedin: 'in',
-	x: 'x'
-};
+// a network's mark is ./brand-mark.tsx's; Email and Copy link draw the form's own glyphs.
 
 const ACTIONS: Record<Exclude<ShareChannel, 'copy-link'>, string> = {
 	facebook: 'Share on Facebook',
@@ -102,9 +96,7 @@ export function ShareBlock({
 							{channel === 'email' ? (
 								<Glyph name="mail" className="page-share-mark" />
 							) : (
-								<span className="page-share-mark page-share-stand-in" aria-hidden="true">
-									{STAND_INS[channel]}
-								</span>
+								<BrandMark brand={channel} className="page-share-mark" />
 							)}
 							{icons ? null : <span>{SHARE_CHANNEL_LABELS[channel]}</span>}
 						</a>

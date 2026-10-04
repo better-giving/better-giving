@@ -64,6 +64,7 @@ catalog:
   '@json-render/core': 0.21.0
   '@react-router/dev': 8.3.0
   '@react-router/fs-routes': 8.3.0
+  '@tabler/icons-react': 3.48.0
   '@tiptap/core': 3.31.3
   '@tiptap/extension-bold': 3.31.3
   '@tiptap/extension-document': 3.31.3

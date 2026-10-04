@@ -124,7 +124,7 @@ async function donationPage(config: FormConfig) {
 						ein: '84-2913377',
 						addressLines: ['40 Elm Street', 'Easton, PA 18042'],
 						email: null,
-						links: []
+						socialLinks: []
 					}
 				}}
 				look={{ brandColour: null, shade: 'warm', corner: 'round' }}

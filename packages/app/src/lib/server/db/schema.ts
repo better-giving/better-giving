@@ -2131,8 +2131,8 @@ export const recurringPlan = sqliteTable(
 
 /**
  * the organization's own identity — the fundraiser's side of a receipt — and the mission, vision,
- * brand colour, social links and logo the console states beside it. the story, look and sharing a
- * donor page reads are `org_presentation`'s.
+ * brand colour, social links and logo the console states beside it, which every donor page and a
+ * page's chat are drawn from.
  *
  * this is receipt content, never a credential and never something the app is constructed from:
  * nothing fails to boot because it is unset. the deploy-time secrets rule is untouched — no Stripe
@@ -3194,15 +3194,10 @@ const lookFields = (doc: SQLiteColumn, at: readonly string[]) => {
 const lookCheck = (doc: SQLiteColumn) => sql`${jsonObject(doc)} and ${lookFields(doc, [])}`;
 
 /**
- * the organisation as its donor pages present it — its story (mission and an optional vision),
- * its look (brand colour, shade, corner) and its sharing (a share message and its social links).
- * a donor page reads the story, the brand colour and the social links; its shade, corners, share
- * message and share buttons are its own (`donorLook` in ../pages/view.ts), so the look's shade and
- * corner and the sharing's message reach no page.
- *
- * not `org_profile`, which is the legal identity a receipt carries and the console's to edit. this
- * row is the dashboard's organisation page, and every page reads it when drawn, so a save of what
- * a page reads reaches every page at once.
+ * the organisation as the dashboard's organisation page holds it — its story (mission and an
+ * optional vision), its look (brand colour, shade, corner) and its sharing (a share message and its
+ * social links). no other screen reads it: a donor page and a page's chat are drawn from
+ * `org_profile`, the console's.
  *
  * one row, ever — `org_presentation_id_check`, as on `org_profile` — and none is seeded: absent,
  * each part reads as our defaults. the first save of any part writes the row, the other two at

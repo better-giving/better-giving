@@ -905,7 +905,7 @@ describe('the preview frame', () => {
 						ein: null,
 						addressLines: ['40 Elm Street', 'Easton, PA 18042'],
 						email: null,
-						links: []
+						socialLinks: []
 					}
 				}}
 				look={{ brandColour: '#1d6b4f', shade: 'warm', corner: 'round' }}

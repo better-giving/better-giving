@@ -5,7 +5,7 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
-import { readOrgStory } from '$lib/server/org/queries';
+import { readOrgProfile } from '$lib/server/org/queries';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -34,8 +34,7 @@ beforeEach(async () => {
 	await env.DB.batch([
 		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
-		env.DB.prepare('delete from form'),
-		env.DB.prepare('delete from org_presentation')
+		env.DB.prepare('delete from form')
 	]);
 });
 
@@ -249,7 +248,7 @@ describe('the mission', () => {
 
 			expect(response.status).toBe(400);
 			expect(await response.text()).toContain('names no form on this screen');
-			expect((await readOrgStory(db)).story.mission).toBeNull();
+			expect((await readOrgProfile(db))?.mission).toBeNull();
 		}
 	);
 });

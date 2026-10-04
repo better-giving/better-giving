@@ -82,7 +82,7 @@ function props(type: PageType, shown: Page, over: Partial<PageViewProps> = {}): 
 			name: ORG,
 			mission: null,
 			vision: null,
-			info: { legalName: ORG, ein: null, addressLines: [], email: null, links: [] }
+			info: { legalName: ORG, ein: null, addressLines: [], email: null, socialLinks: [] }
 		},
 		look: { brandColour: '#1d6b4f', shade: 'warm', corner: 'soft' },
 		sharing: { channels: [], message: '', url: 'https://give.example.org/donate' },
@@ -116,9 +116,10 @@ describe('the logo atop the page', () => {
 			'.page-mast'
 		);
 
-	it('none: the name alone, as the masthead has always drawn it', () => {
+	it('none: the name, beside the badge of its initials', () => {
 		const mast = masthead(null);
 		expect(mast?.querySelector('img')).toBeNull();
+		expect(mast?.querySelector('.page-mast-badge')?.getAttribute('aria-hidden')).toBe('true');
 		expect(mast?.querySelector('.page-mast-name')?.textContent).toBe(ORG);
 	});
 
@@ -178,9 +179,10 @@ describe('the logo atop the page', () => {
 			expect(mast?.textContent).toBe('');
 		});
 
-		it('none: the name alone, as the ended screen has always drawn it', () => {
+		it('none: the name, beside the badge of its initials', () => {
 			const mast = ended(null);
 			expect(mast?.querySelector('img')).toBeNull();
+			expect(mast?.querySelector('.page-mast-badge')?.getAttribute('aria-hidden')).toBe('true');
 			expect(mast?.querySelector('.page-mast-name')?.textContent).toBe(ORG);
 		});
 	});

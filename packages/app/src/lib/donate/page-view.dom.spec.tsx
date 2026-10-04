@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -6,7 +8,7 @@ import { defaultCampaign, defaultDonationPage } from '../page/defaults';
 import { LAYOUTS, type Layout, PAGE_TYPES, type PageType } from '../page/keys';
 import { BLOCK_MESSAGE } from '../page/preview-message';
 import type { RichTextDocument } from '../rich-text/document';
-import { PageView, type PageViewProps } from './page-view';
+import { initials, PageView, type PageViewProps } from './page-view';
 
 // the page's renderer, mounted: which blocks draw and which leave themselves out, where each stands
 // in each layout, and that the donation box is always there, once, outside every block. the page is
@@ -20,7 +22,6 @@ const words = (text: string): RichTextDocument => ({
 	type: 'doc',
 	content: [{ type: 'paragraph', content: [{ type: 'text', text }] }]
 });
-const blank = (): RichTextDocument => ({ type: 'doc', content: [{ type: 'paragraph' }] });
 
 /** one block of each type and variant, holding what it draws. */
 function blockOf(type: Block['type'], variant: string | null, id: string): unknown {
@@ -124,14 +125,14 @@ function props(type: PageType, page: Page, over: Partial<PageViewProps> = {}): P
 		pageName: type === 'campaign' ? 'Winter coat drive' : null,
 		org: {
 			name: 'Northside Neighbors',
-			mission: words('No family on the north side goes without food or warmth.'),
-			vision: words('A north side where every neighbor has what they need.'),
+			mission: 'No family on the north side goes without food or warmth.',
+			vision: 'A north side where every neighbor has what they need.',
 			info: {
 				legalName: 'Northside Neighbors',
 				ein: '84-2913377',
 				addressLines: ['40 Elm Street', 'Easton, PA 18042', 'United States'],
 				email: 'hello@northsideneighbors.org',
-				links: [{ label: 'Instagram', href: 'https://instagram.com/northside' }]
+				socialLinks: [{ platform: 'instagram', href: 'https://instagram.com/northside' }]
 			}
 		},
 		look: { brandColour: '#1d6b4f', shade: 'warm', corner: 'round' },
@@ -384,11 +385,11 @@ describe('a block with nothing to show leaves itself out', () => {
 		expect(drawn(root)).not.toContain('faq');
 	});
 
-	it('leaves about-us out when the mission and the vision are both empty', () => {
+	it('leaves about-us out when the organisation has written neither a mission nor a vision', () => {
 		const org = props('donation_page', donation()).org;
 		const none = mount(
 			<PageView
-				{...props('donation_page', donation(), { org: { ...org, mission: null, vision: blank() } })}
+				{...props('donation_page', donation(), { org: { ...org, mission: null, vision: null } })}
 			/>
 		);
 		expect(drawn(none)).not.toContain('about-us');
@@ -403,6 +404,61 @@ describe('a block with nothing to show leaves itself out', () => {
 		const sharing = { channels: [], message: '', url: 'https://give.example.org/donate' };
 		const root = mount(<PageView {...props('donation_page', donation(), { sharing })} />);
 		expect(drawn(root)).not.toContain('share');
+	});
+});
+
+describe('the masthead with no logo', () => {
+	const masthead = (name: string, brandColour: string | null) => {
+		const base = props('donation_page', defaultDonationPage());
+		const root = mount(
+			<PageView
+				{...base}
+				org={{ ...base.org, name }}
+				logo={null}
+				look={{ ...base.look, brandColour }}
+			/>
+		);
+		const badge = root.querySelector<HTMLElement>('.page-mast-badge');
+		return { root, badge };
+	};
+
+	it.each([
+		['Hope Foundation', 'HF'],
+		['The Hope Fund', 'HF'],
+		['Kiva', 'K'],
+		['the north side food & coat bank', 'NS'],
+		['The', 'T'],
+		['  Elm   Street Neighbors ', 'ES']
+	])('%s: the badge reads %s', (name, letters) => {
+		expect(initials(name)).toBe(letters);
+		expect(masthead(name, '#1d6b4f').badge?.textContent).toBe(letters);
+	});
+
+	it('says nothing of its own beside the name, which names the organisation', () => {
+		const { root, badge } = masthead('Hope Foundation', '#1d6b4f');
+		expect(badge?.getAttribute('aria-hidden')).toBe('true');
+		expect(badge?.hasAttribute('role')).toBe(false);
+		expect(badge?.hasAttribute('aria-label')).toBe(false);
+		expect(root.querySelector('.page-mast img')).toBeNull();
+		expect(root.querySelector('.page-mast-name')?.textContent).toBe('Hope Foundation');
+	});
+
+	// the fill is the stylesheet's to paint, and happy-dom resolves no custom property: the badge is
+	// held to standing under the root that seeds the brand colour, and the sheet to filling it so.
+	it('stands on the brand colour the page root seeds', () => {
+		const { badge } = masthead('Hope Foundation', '#1d6b4f');
+		const seeded = badge?.closest<HTMLElement>('[data-donate-root]');
+		expect(seeded?.style.getPropertyValue('--donate-primary')).toBe('#1d6b4f');
+		const sheet = readFileSync(join(import.meta.dirname, 'page.css'), 'utf8');
+		const rule = /\.page-mast-badge\s*\{([^}]*)\}/.exec(sheet)?.[1] ?? '';
+		expect(rule).toMatch(/background:\s*var\(--_p\);/);
+		expect(rule).toMatch(/color:\s*var\(--_on-p\);/);
+	});
+
+	it('seeds no brand colour where the organisation has none', () => {
+		const { badge } = masthead('Hope Foundation', null);
+		const root = badge?.closest<HTMLElement>('[data-donate-root]');
+		expect(root?.style.getPropertyValue('--donate-primary')).toBe('');
 	});
 });
 

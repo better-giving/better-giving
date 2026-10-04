@@ -46,7 +46,6 @@ import {
 	readAsk,
 	starterQuestions
 } from '../../page/questions';
-import { plainText, textDocument } from '../../rich-text/document';
 import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
 import { illustrate } from '../ai/illustrate';
 import type { Db } from '../db/client';
@@ -54,13 +53,7 @@ import { type ChatTurn, chatTurn, type Page as PageRow, page } from '../db/schem
 import { sqliteResultCode } from '../db/rejection';
 import { firstMissingImage } from '../images/queries';
 import { type Filing, lookUpFiling } from '../nonprofits/filing';
-import {
-	missionWhileEmptyStatement,
-	readOrgLook,
-	readOrgProfile,
-	readOrgStory
-} from '../org/queries';
-import type { Story } from '../org/presentation';
+import { missionWhileEmptyStatement, readOrgProfile } from '../org/queries';
 import { type ProgramOption, readActivePrograms } from '../programs/queries';
 import { readableDraft } from './document';
 import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
@@ -76,16 +69,16 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
 // all), its type, a campaign's type label, name, goal, end date, donation settings and where its
 // donation box opens, with the wording each switch that is on asks for (`switchRules`), its shade,
-// corners, share buttons and share message, the organisation's story and brand colour, the active
-// programs, and what it said so far: each accepted or asking exchange as the operator's message
-// and the reply's `say`, cut at `SAY_MAX`, an ask with its questions beside its `say` and an
-// answers turn as the words it was composed into. an opening ask follows the request an opening is
+// corners, share buttons and share message, the profile's mission, vision and brand colour, the
+// active programs, and what it said so far: each accepted or asking exchange as the operator's
+// message and the reply's `say`, cut at `SAY_MAX`, an ask with its questions beside its `say` and
+// an answers turn as the words it was composed into. an opening ask follows the request an opening is
 // asked with. which model is `generate`'s, never the chat's.
 //
 // an opening, and the answers turn to it, look the organisation's stored EIN up in the IRS
 // nonprofit API (../nonprofits/filing.ts) and tell the model the latest filing's activity, program
 // descriptions and notes in a section of their own, as data and never as instructions, with no
-// figure from it to be written on the page. while the Organisation's mission is empty, the
+// figure from it to be written on the page. while the profile's mission is empty, the
 // filing's mission prefills `MISSION_QUESTION`, on the model's opening and the starter questions
 // alike. no other turn looks anything up, nothing looked up is stored but what the operator
 // answers, and a lookup that answers nothing leaves the turn as it is with no EIN stored.
@@ -220,7 +213,7 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
  * is `answerWords` and whose `answers` are the answers read, then the model's reply as any turn's,
  * except that it may not ask again, and told the filing where the questions were the opening's. a
  * reply refused or unanswered writes no turn, and is answered with the words its turn would have
- * said. the mission question answered writes the Organisation's mission while none is stored and
+ * said. the mission question answered writes the profile's mission while none is stored and
  * the questions are still the chat's last turn, whatever the reply: in the same `batch()` as the
  * turns where they land, and on its own where none does.
  */
@@ -263,7 +256,7 @@ export async function answerTurn(
  * turn before it. a chat holding any turn is answered as it stands, and nothing is written; the
  * insert itself holds that, so two opens at once write one turn.
  *
- * while the Organisation's mission is empty, `MISSION_QUESTION` comes first and a question of the
+ * while the profile's mission is empty, `MISSION_QUESTION` comes first and a question of the
  * model's under its id is dropped, `QUESTIONS_MAX` in all; once it holds one, the model's questions
  * stand as asked, one under that id included. no model answering, a reply refused or
  * read as anything but an ask, or an ask holding nothing past the mission, opens on
@@ -276,7 +269,7 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 	const turns = await turnsOf(db, row.id);
 	if (turns.length > 0) return { ok: true, outcome: 'unchanged', turns: chatEntries(turns) };
 	const context = await promptContext(db, row, request, true);
-	const missionEmpty = context.story.mission === null;
+	const missionEmpty = context.mission === null;
 	const mission = missionQuestion(context.filing);
 	const prefilled = (questions: readonly Question[]) =>
 		questions.map((question) => (question === MISSION_QUESTION ? mission : question));
@@ -356,12 +349,6 @@ function missionQuestion(filing: Filing | null): Question {
 	return (read.ok && read.questions[0]) || MISSION_QUESTION;
 }
 
-/** the organisation's latest filing, looked up by its stored EIN; null where none answers. */
-async function ownFiling(db: Db): Promise<Filing | null> {
-	const profile = await readOrgProfile(db);
-	return lookUpFiling(profile?.taxId ?? null);
-}
-
 /** an answers turn as the model reads it. */
 function answersMessage(words: string) {
 	return `My answers to your questions:\n${words}`;
@@ -376,7 +363,7 @@ function missionAnswered(questions: readonly Question[], answers: readonly Answe
 			prompt === MISSION_QUESTION.prompt
 	);
 	const answer = answers.find(({ id }) => id === MISSION_QUESTION.id);
-	return asked && typeof answer?.value === 'string' ? textDocument(answer.value) : null;
+	return asked && typeof answer?.value === 'string' ? answer.value : null;
 }
 
 type Turning = {
@@ -534,20 +521,17 @@ async function promptContext(
 	lookUp: boolean
 ): Promise<PromptContext> {
 	const current = readableDraft(row);
-	const [{ story }, { look: orgLook }, programs, filing] = await Promise.all([
-		readOrgStory(db),
-		readOrgLook(db),
-		readActivePrograms(db),
-		lookUp ? ownFiling(db) : null
-	]);
+	const [profile, programs] = await Promise.all([readOrgProfile(db), readActivePrograms(db)]);
+	const filing = lookUp ? await lookUpFiling(profile?.taxId ?? null) : null;
 	const name = current.name ?? row.name;
 	return {
 		type: row.type,
 		name,
 		campaignType: row.campaignType,
 		current,
-		story,
-		brandColour: orgLook.brandColour,
+		mission: profile?.mission ?? null,
+		vision: profile?.vision ?? null,
+		brandColour: profile?.brandColour ?? null,
 		programs,
 		filing,
 		timeZone,
@@ -763,7 +747,9 @@ type PromptContext = {
 	/** null on a campaign made before its type was asked, and on the Donation page. */
 	campaignType: CampaignType | null;
 	current: Page;
-	story: Story;
+	/** the organisation's, plain text as typed, or null for none. */
+	mission: string | null;
+	vision: string | null;
 	/** the organisation's, lowercase `#rrggbb`, or null for none. */
 	brandColour: string | null;
 	programs: readonly ProgramOption[];
@@ -826,7 +812,8 @@ function contextLines({
 	name,
 	campaignType,
 	current,
-	story,
+	mission,
+	vision,
 	brandColour,
 	programs,
 	timeZone,
@@ -841,8 +828,8 @@ function contextLines({
 			? []
 			: [`- campaign type: ${CAMPAIGN_TYPE_DETAILS[campaignType].label}`]),
 		`- today: ${dayOf(now, timeZone) ?? 'unknown'}, in the operator's time zone ${timeZone}`,
-		`- mission: ${story.mission === null ? '(not written)' : plainText(story.mission)}`,
-		`- vision: ${story.vision === null ? '(not written)' : plainText(story.vision)}`,
+		`- mission: ${mission ?? '(not written)'}`,
+		`- vision: ${vision ?? '(not written)'}`,
 		`- look: ${current.look?.shade ?? DEFAULT_SHADE} shade, ${current.look?.corner ?? DEFAULT_CORNER} corners, brand colour ${brandColour ?? 'none'}`,
 		...(type === 'campaign'
 			? [

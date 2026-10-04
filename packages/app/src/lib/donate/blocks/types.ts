@@ -1,6 +1,6 @@
+import type { SocialLink } from '@better-giving/operator/console/org';
 import type { Block } from '../../page/catalog';
 import type { ShareChannel } from '../../page/share';
-import type { RichTextDocument } from '../../rich-text/document';
 
 // what the page's blocks are handed beside their own stored values: the organisation, its
 // sharing, the campaign's goal and the programs, each read by the route and passed down.
@@ -16,15 +16,16 @@ export type OrgInfo = {
 	/** the postal address, a line each, the country last. */
 	readonly addressLines: readonly string[];
 	readonly email: string | null;
-	/** the organisation's social links, in the Organisation page's order. */
-	readonly links: readonly { readonly label: string; readonly href: string }[];
+	/** the organisation's social links, in the order the console holds them. */
+	readonly socialLinks: readonly SocialLink[];
 };
 
 export type PageOrg = {
-	/** the name the masthead and the Donation page's title greet a donor with. */
+	/** the name the masthead and the Donation page's title greet a donor with, and the masthead's initials without a logo. */
 	readonly name: string;
-	readonly mission: RichTextDocument | null;
-	readonly vision: RichTextDocument | null;
+	/** plain text, a blank line between paragraphs; null where the organisation has written none. */
+	readonly mission: string | null;
+	readonly vision: string | null;
 	readonly info: OrgInfo;
 };
 

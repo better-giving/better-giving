@@ -4,13 +4,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { CampaignType } from '../../page/campaign-types';
 import { type Page, parsePage } from '../../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
-import { textDocument } from '../../rich-text/document';
 import { createDb, type Db } from '../db/client';
 import { createImage } from '../images/queries';
 import { jpegHeader } from '../images/headers.testing';
 import { chatTurn, form, image, page } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
-import { readOrgLook, readOrgStory, updateOrgLook, updateOrgStory } from '../org/queries';
+import { readOrgProfile } from '../org/queries';
+import { saveProfile } from '../org/profile.testing';
 import { draftIllustrations, editorDraft } from './blocks';
 import { readCampaigns } from './campaign';
 import { answerTurn, draftTurn, openTurn, readChat } from './draft';
@@ -474,14 +474,12 @@ describe('what the model is told', () => {
 		);
 	});
 
-	async function toldOf(draft: Page) {
-		const { version } = await readOrgLook(db);
-		const look = { shade: 'cool', corner: 'square', brandColour: '#6b2d8a' } as const;
-		expect(await updateOrgLook(db, version, look)).not.toBe('stale');
+	async function toldOf(draft: Page, profile: Parameters<typeof saveProfile>[1] = {}) {
+		await saveProfile(db, { brand_colour: '#6b2d8a', ...profile });
 		const pageId = await insertPage(db, 'campaign', draft);
 		const AI = answering({ say: 'Warmer.' });
 		await turn(pageId, 'warmer colours', AI);
-		await env.DB.prepare('delete from org_presentation').run();
+		await env.DB.prepare('delete from org_profile').run();
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		const [system] = input.messages;
 		return system.content as string;
@@ -498,7 +496,17 @@ describe('what the model is told', () => {
 		expect(told).toContain('- share message: "Keep a neighbour warm."\n');
 	});
 
-	it('tells a light, soft look and no share message where the page has none, whatever the organisation’s look', async () => {
+	it('tells the profile’s mission and vision as they were typed', async () => {
+		const told = await toldOf(handEdited(), {
+			mission: 'Warm coats for every child.',
+			vision: 'A warm town.'
+		});
+
+		expect(told).toContain('- mission: Warm coats for every child.\n');
+		expect(told).toContain('- vision: A warm town.\n');
+	});
+
+	it('tells a light, soft look and no share message where the page has none', async () => {
 		const told = await toldOf(handEdited());
 
 		expect(told).toContain('- look: light shade, soft corners, brand colour #6b2d8a\n');
@@ -1519,12 +1527,15 @@ function open(pageId: string, AI: { run: unknown }) {
 }
 
 async function writeMission(mission: string | null, vision: string | null = null) {
-	const { version } = await readOrgStory(db);
-	const written = await updateOrgStory(db, version, {
-		mission: mission === null ? null : textDocument(mission),
-		vision: vision === null ? null : textDocument(vision)
+	await saveProfile(db, {
+		...(mission === null ? {} : { mission }),
+		...(vision === null ? {} : { vision })
 	});
-	if (written !== 'written') throw new Error('the fixture story did not save');
+}
+
+/** the profile's mission, null where it holds none. */
+async function profileMission() {
+	return (await readOrgProfile(db))?.mission ?? null;
 }
 
 /** a campaign of `campaignType`, its chat empty. */
@@ -1536,7 +1547,7 @@ async function typedCampaign(campaignType: CampaignType) {
 
 describe('a page opened with an empty chat', () => {
 	beforeEach(async () => {
-		await env.DB.prepare('delete from org_presentation').run();
+		await env.DB.prepare('delete from org_profile').run();
 	});
 
 	it('is asked the model’s questions in one assistant turn, the mission first while it is empty', async () => {
@@ -1784,7 +1795,8 @@ describe('a page opened with turns in its chat', () => {
 
 describe('the mission answered', () => {
 	beforeEach(async () => {
-		await env.DB.prepare('delete from org_presentation').run();
+		await env.DB.prepare('delete from org_profile').run();
+		await saveProfile(db);
 	});
 
 	async function opened() {
@@ -1803,20 +1815,9 @@ describe('the mission answered', () => {
 			answering({ say: 'Drafted.' })
 		);
 
-		expect((await readOrgStory(db)).story).toEqual({
-			mission: textDocument('Warm coats for every child.'),
-			vision: textDocument('A warm town.')
-		});
-	});
-
-	it('is written where no story was ever saved', async () => {
-		const pageId = await opened();
-
-		await answer(pageId, [{ id: 'mission', value: 'Warm coats.' }], answering({ say: 'Drafted.' }));
-
-		expect((await readOrgStory(db)).story).toEqual({
-			mission: textDocument('Warm coats.'),
-			vision: null
+		expect(await readOrgProfile(db)).toMatchObject({
+			mission: 'Warm coats for every child.',
+			vision: 'A warm town.'
 		});
 	});
 
@@ -1830,7 +1831,7 @@ describe('the mission answered', () => {
 		);
 
 		expect(result).toMatchObject({ ok: false, reason: 'unanswered' });
-		expect((await readOrgStory(db)).story.mission).toEqual(textDocument('Warm coats.'));
+		expect(await profileMission()).toBe('Warm coats.');
 		expect(await chat(pageId)).toHaveLength(1);
 	});
 
@@ -1844,7 +1845,7 @@ describe('the mission answered', () => {
 		);
 
 		expect(result).toMatchObject({ ok: false, reason: 'refused' });
-		expect((await readOrgStory(db)).story.mission).toEqual(textDocument('Warm coats.'));
+		expect(await profileMission()).toBe('Warm coats.');
 	});
 
 	it('never writes over a mission saved since it was asked', async () => {
@@ -1853,7 +1854,7 @@ describe('the mission answered', () => {
 
 		await answer(pageId, [{ id: 'mission', value: 'Warm coats.' }], answering({ say: 'Drafted.' }));
 
-		expect((await readOrgStory(db)).story.mission).toEqual(textDocument('Saved by hand.'));
+		expect(await profileMission()).toBe('Saved by hand.');
 	});
 
 	it('blank writes nothing', async () => {
@@ -1861,7 +1862,7 @@ describe('the mission answered', () => {
 
 		await answer(pageId, [{ id: 'mission', value: '   ' }], answering({ say: 'Drafted.' }));
 
-		expect((await readOrgStory(db)).story.mission).toBeNull();
+		expect(await profileMission()).toBeNull();
 	});
 
 	it('in a turn that lands nothing writes nothing', async () => {
@@ -1882,7 +1883,7 @@ describe('the mission answered', () => {
 			ok: false,
 			reason: 'stale'
 		});
-		expect((await readOrgStory(db)).story.mission).toBeNull();
+		expect(await profileMission()).toBeNull();
 	});
 });
 
@@ -1919,7 +1920,6 @@ async function onRecord(body: unknown = ON_RECORD, status = 200) {
 
 describe('a page opened with a 990 on record', () => {
 	beforeEach(async () => {
-		await env.DB.prepare('delete from org_presentation').run();
 		await env.DB.prepare('delete from org_profile').run();
 	});
 

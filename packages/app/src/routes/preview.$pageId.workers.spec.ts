@@ -20,7 +20,7 @@ import { draftTurn } from '$lib/server/pages/draft';
 import { answering } from '$lib/server/pages/page-row.testing';
 import { readPage } from '$lib/server/pages/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { readOrgLogo, updateOrgLogo } from '$lib/server/org/queries';
+import { setOrgProfileLogo } from '$lib/server/org/queries';
 import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
 import { mountRoutes } from '../route-request.testing';
@@ -68,7 +68,6 @@ beforeEach(async () => {
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from program'),
-		env.DB.prepare('delete from org_presentation'),
 		env.DB.prepare('delete from org_profile')
 	]);
 	await writeOrgRow(env.DB, { tax_id: '12-3456789' });
@@ -301,9 +300,7 @@ describe('the organisation’s logo and the program photos in a preview', () => 
 				new Uint8Array([1])
 			);
 		const logo = await stored(640, 160);
-		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, logo)).toHaveProperty(
-			'version'
-		);
+		expect(await setOrgProfileLogo(db, logo)).toBe('written');
 		const photo = await stored(1600, 1067);
 		const [food] = await db
 			.insert(program)

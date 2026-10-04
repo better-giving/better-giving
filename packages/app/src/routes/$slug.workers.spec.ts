@@ -26,7 +26,8 @@ import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.tes
 import { endAsItStands } from '$lib/server/pages/page-row.testing';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { readOrgLogo, readOrgLook, updateOrgLogo, updateOrgLook } from '$lib/server/org/queries';
+import { saveProfile } from '$lib/server/org/profile.testing';
+import { setOrgProfileLogo } from '$lib/server/org/queries';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
@@ -68,7 +69,6 @@ beforeEach(async () => {
 		env.DB.prepare('delete from donation'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
-		env.DB.prepare('delete from org_presentation'),
 		env.DB.prepare('delete from org_profile')
 	]);
 	await writeOrgRow(env.DB, { tax_id: '12-3456789' });
@@ -243,8 +243,42 @@ function seeds(html: string) {
 	};
 }
 
+describe('the organisation’s mission and vision on a published campaign', () => {
+	const withAboutUs = {
+		...defaultCampaign(),
+		blocks: [
+			...defaultCampaign().blocks,
+			{ id: 'about', type: 'about-us', variant: 'stacked', background: 'none' }
+		]
+	};
+
+	it('are the profile’s, drawn in About us', async () => {
+		await campaign({ published: withAboutUs });
+		await saveProfile(db, { mission: 'Warm coats for every child.', vision: 'A warm town.' });
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org).toMatchObject({
+			mission: 'Warm coats for every child.',
+			vision: 'A warm town.'
+		});
+		const about = block(markup(answered.data), 'about-us');
+		expect(about).toContain('Warm coats for every child.');
+		expect(about).toContain('A warm town.');
+	});
+
+	it('draw no About us where the profile holds neither', async () => {
+		await campaign({ published: withAboutUs });
+
+		const answered = await visit();
+		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
+		expect(answered.data.view.org).toMatchObject({ mission: null, vision: null });
+		expect(block(markup(answered.data), 'about-us')).toBe('');
+	});
+});
+
 describe('the look a published campaign is drawn in', () => {
-	it('is its own shade and corners, light and soft where it holds none, in the Organisation’s brand colour', async () => {
+	it('is its own shade and corners, light and soft where it holds none, in the profile’s brand colour', async () => {
 		const own = { shade: 'cool', corner: 'square' } as const;
 		await campaign();
 		await campaign({
@@ -253,9 +287,7 @@ describe('the look a published campaign is drawn in', () => {
 			published: { ...defaultCampaign(), look: own }
 		});
 
-		const { version } = await readOrgLook(db);
-		const saved = { shade: 'warm', corner: 'round', brandColour: '#1d6b4f' } as const;
-		expect(await updateOrgLook(db, version, saved)).not.toBe('stale');
+		await saveProfile(db, { brand_colour: '#1d6b4f' });
 
 		expect(seeds(markup((await visit()).data))).toEqual({
 			shade: 'light',
@@ -268,15 +300,13 @@ describe('the look a published campaign is drawn in', () => {
 		});
 	});
 
-	it('is its own on the ended screen too, never the Organisation’s shade and corners', async () => {
+	it('is its own on the ended screen too, in the profile’s brand colour', async () => {
 		await endedCampaign({
 			published: { ...defaultCampaign(), look: { shade: 'cool', corner: 'square' } }
 		});
 		await endedCampaign({ name: 'Spring fun run', slug: 'spring-fun-run' });
 
-		const { version } = await readOrgLook(db);
-		const saved = { shade: 'warm', corner: 'round', brandColour: '#1d6b4f' } as const;
-		expect(await updateOrgLook(db, version, saved)).not.toBe('stale');
+		await saveProfile(db, { brand_colour: '#1d6b4f' });
 
 		expect(seeds(markup((await visit()).data))).toEqual({
 			shade: 'cool',
@@ -304,7 +334,7 @@ describe('the organisation’s logo atop a published campaign', () => {
 			{ kind: 'photo', contentType: 'image/png', width: 200, height: 200, alt: null },
 			new Uint8Array([1])
 		);
-		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, id)).toHaveProperty('version');
+		expect(await setOrgProfileLogo(db, id)).toBe('written');
 
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
@@ -421,7 +451,7 @@ describe('an ended campaign at its address', () => {
 			{ kind: 'photo', contentType: 'image/png', width: 200, height: 200, alt: null },
 			new Uint8Array([1])
 		);
-		expect(await updateOrgLogo(db, (await readOrgLogo(db)).version, id)).toHaveProperty('version');
+		expect(await setOrgProfileLogo(db, id)).toBe('written');
 		const mast = masthead(markup((await visit()).data));
 		expect(mast).toContain(`src="/image/${id}"`);
 		expect(mast).toContain('width="200"');

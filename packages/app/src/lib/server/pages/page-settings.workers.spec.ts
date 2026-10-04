@@ -42,8 +42,7 @@ beforeEach(async () => {
 	await env.DB.batch([
 		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
-		env.DB.prepare('delete from form'),
-		env.DB.prepare('delete from org_presentation')
+		env.DB.prepare('delete from form')
 	]);
 });
 

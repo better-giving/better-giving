@@ -55,6 +55,7 @@
 		"@conform-to/zod": "catalog:",
 		"@json-render/core": "catalog:",
 		"@paypal/paypal-server-sdk": "2.5.0",
+		"@tabler/icons-react": "catalog:",
 		"@tiptap/core": "catalog:",
 		"@tiptap/extension-bold": "catalog:",
 		"@tiptap/extension-document": "catalog:",

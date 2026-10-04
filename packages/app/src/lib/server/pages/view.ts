@@ -15,14 +15,7 @@ import type { FormRecord } from '../forms/form-input';
 import { readPublishedConfig, renderableConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
 import { illustrationsAmong } from '../images/queries';
-import type { OrgSharing } from '../org/presentation';
-import {
-	readOrgLogo,
-	readOrgLook,
-	readOrgProfile,
-	readOrgSharing,
-	readOrgStory
-} from '../org/queries';
+import { readOrgProfile, readOrgProfileLogo } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { createPaymentProviders } from '../payments/factory';
 import { readActiveProgramPhotos } from '../programs/queries';
@@ -52,8 +45,8 @@ import { pageGoal } from './goal';
 //
 // a page draws its own shade, corners and share message, the defaults where it holds none
 // (`donorLook`, and its title for the message), and so moves them only at Publish with the rest of
-// its document. the organisation's story, brand colour, social links and logo are read live on
-// every draw, so a save on the dashboard's organisation page reaches every page at once, the
+// its document. the organisation's mission, vision, brand colour, social links and logo are its
+// profile's, read live on every draw, so a save in the console reaches every page at once, the
 // preview included. so are the programs' photos, handed beside the served config for the programs
 // its chooser offers and never on its `v1` options, and so is a campaign's raised figure
 // (./goal.ts), a sum over the books that is never cached. which of its pictures an AI drew is read
@@ -106,42 +99,37 @@ export async function loadPageView(
 	const origin = new URL(request.url).origin;
 	const processors = createPaymentProviders(env);
 	const parsed = readDocument(source, preview ? 'draft' : 'published', source.document);
-	const [served, story, orgLook, orgSharing, profile, illustrations, orgLogo, photos] =
-		await Promise.all([
-			readPublishedConfig(
-				db,
-				source.formId,
-				env,
-				() => cachedCadences(processors, origin),
-				() => cachedRails(processors, origin),
-				() => cachedCoins(processors, origin),
-				preview
-					? {
-							now,
-							drafted: (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined)
-						}
-					: { now }
-			),
-			readOrgStory(db),
-			readOrgLook(db),
-			readOrgSharing(db),
-			readOrgProfile(db),
-			illustrationsAmong(db, parsed.ok ? placedImageIds(parsed.page) : []),
-			readOrgLogo(db),
-			readActiveProgramPhotos(db)
-		]);
+	const [served, profile, illustrations, logo, photos] = await Promise.all([
+		readPublishedConfig(
+			db,
+			source.formId,
+			env,
+			() => cachedCadences(processors, origin),
+			() => cachedRails(processors, origin),
+			() => cachedCoins(processors, origin),
+			preview
+				? {
+						now,
+						drafted: (form) => asPublished(form, parsed.ok ? parsed.page.settings : undefined)
+					}
+				: { now }
+		),
+		readOrgProfile(db),
+		illustrationsAmong(db, parsed.ok ? placedImageIds(parsed.page) : []),
+		readOrgProfileLogo(db),
+		readActiveProgramPhotos(db)
+	]);
 	const result = renderableConfig(served);
 	// the served config alone reaches the page: `result.form` carries `allowed_origins`, the sites
 	// this organisation's forms may be used on, which a document served to anyone is no place for.
 	if (!result.ok) return { kind: 'refused' };
 	const { config } = result;
 
-	const { brandColour } = orgLook.look;
+	const brandColour = profile?.brandColour ?? null;
 	if (!parsed.ok) return { kind: 'plain', config, look: donorLook(undefined, brandColour) };
 	const { page } = parsed;
 	// the name the document was drafted with, so a rename reaches donors at Publish.
 	const pageName = page.name ?? source.name;
-	const { sharing } = orgSharing;
 	const orgName = config.orgLegalName;
 	const firstTitle = page.blocks.find((block) => block.type === 'title');
 	const goal = await pageGoal(db, source.formId, page, config.locale);
@@ -154,11 +142,11 @@ export async function loadPageView(
 			pageName,
 			org: {
 				name: orgName,
-				mission: story.story.mission,
-				vision: story.story.vision,
-				info: orgInfo(config, profile, sharing)
+				mission: profile?.mission ?? null,
+				vision: profile?.vision ?? null,
+				info: orgInfo(config, profile)
 			},
-			logo: orgLogo.logo,
+			logo,
 			programPhotos: chooserPhotos(config, photos),
 			look: donorLook(page.look, brandColour),
 			sharing: {
@@ -243,17 +231,17 @@ function chooserPhotos(
 }
 
 /**
- * the identity the org-info block states, and the social links the organisation's sharing lists.
- * the EIN is the served config's, which the ladder has already refused without. `org_profile`
- * holds no donor-facing email — its `notification_email` is operational — so none is drawn.
+ * the identity and the social links the org-info block states. the EIN is the served config's,
+ * which the ladder has already refused without. `org_profile` holds no donor-facing email — its
+ * `notification_email` is operational — so none is drawn.
  */
-function orgInfo(config: FormConfig, profile: OrgProfile | null, sharing: OrgSharing): OrgInfo {
+function orgInfo(config: FormConfig, profile: OrgProfile | null): OrgInfo {
 	return {
 		legalName: config.orgLegalName,
 		ein: config.ein,
 		addressLines: profile === null ? [] : addressLines(profile),
 		email: null,
-		links: sharing.links
+		socialLinks: profile?.socialLinks ?? []
 	};
 }
 

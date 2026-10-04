@@ -373,7 +373,12 @@ body {
    nothing of its own (./page-view.tsx decides which, off the stored image's width and height). it
    is one row tall, `--_row-min`, the height of the card's own rows, on every shade and at every
    width, and it is drawn whole, never cropped. it keeps its own pixels, so a logo on a white ground
-   shows that ground on a warm or cool page: nothing here paints behind it. */
+   shows that ground on a warm or cool page: nothing here paints behind it.
+   with no logo, the badge of the name's initials stands where a narrower one would, a row square:
+   the brand fill under the one ink the form draws on it, `--_on-p` on `--_p`, 4.79:1 at the fill
+   band's worst corner (packages/form/src/styles/tokens.css), and the corner of the page's other
+   row-high boxes, the share presses. a page with no brand colour fills it with the form's
+   registered grey. */
 .page-mast-in {
 	display: flex;
 	align-items: center;
@@ -387,6 +392,18 @@ body {
 	inline-size: auto;
 	max-inline-size: 100%;
 	object-fit: contain;
+}
+
+.page-mast-badge {
+	display: grid;
+	flex: none;
+	place-items: center;
+	inline-size: var(--_row-min);
+	block-size: var(--_row-min);
+	background: var(--_p);
+	color: var(--_on-p);
+	border-radius: var(--_r-in);
+	font-weight: var(--_w-bold);
 }
 
 .page-mast-name:has(> .page-mast-logo) {
@@ -509,7 +526,7 @@ body {
 	color: var(--page-quiet);
 }
 
-/* rich text inside a block: paragraphs and lists a step apart. */
+/* rich text, and the plain text about-us draws, inside a block: paragraphs and lists a step apart. */
 :is(
 	.page-prose,
 	.page-story-lead,
@@ -810,10 +827,23 @@ body {
 	display: block;
 }
 
+/* a platform's mark alone, the link's box padded out past it to a fingertip's target and the row
+   pulled back by the same step, so the first mark's edge lines up with the words above it. */
 .page-org-links {
 	display: flex;
 	flex-wrap: wrap;
-	column-gap: var(--_sp4);
+	margin-inline: calc(-1 * var(--_sp2));
+}
+
+.page-org-social {
+	display: inline-grid;
+	place-items: center;
+	padding: var(--_sp2);
+}
+
+.page-org-mark {
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
 }
 
 .page-org[data-variant='footer'] {
@@ -904,16 +934,6 @@ body {
 	flex: none;
 	inline-size: var(--_glyph-beside);
 	block-size: var(--_glyph-beside);
-}
-
-.page-share-stand-in {
-	display: inline-grid;
-	place-items: center;
-	font-size: var(--_t-xs);
-	font-weight: var(--_w-bold);
-	line-height: 1;
-	border: 1.5px solid currentColor; /* raw-length-ok: the lettered stand-in's frame, a shape */
-	border-radius: var(--_r-in);
 }
 
 /* the shown wording stands at the cell's start, its mark's gap away like every channel's label;
