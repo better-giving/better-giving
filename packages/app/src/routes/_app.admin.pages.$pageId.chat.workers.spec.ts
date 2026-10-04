@@ -171,3 +171,135 @@ it('sends a turn from someone signed out to sign in, and asks no model', async (
 	]);
 	expect(AI.run).not.toHaveBeenCalled();
 });
+
+const ASK = { say: 'A few questions.', ask: [{ id: 'goal', kind: 'amount', prompt: 'Your goal' }] };
+const ZONE = 'America/New_York';
+
+describe('a page’s opening, posted as intent open', () => {
+	it('is answered with the one assistant turn holding its questions', async () => {
+		const pageId = await insertPage(db, 'campaign');
+
+		const response = await post(pageId, { intent: 'open', timeZone: ZONE }, answering(ASK));
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			outcome: 'asked',
+			turns: [
+				{
+					role: 'assistant',
+					questions: expect.arrayContaining([expect.objectContaining({ id: 'goal' })])
+				}
+			]
+		});
+	});
+
+	it('of a chat with turns answers them all, unchanged', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await post(pageId, TURN);
+
+		const response = await post(pageId, { intent: 'open', timeZone: ZONE });
+
+		expect(await response.json()).toMatchObject({
+			outcome: 'unchanged',
+			turns: [{ role: 'operator' }, { role: 'assistant' }]
+		});
+	});
+});
+
+describe('answers, posted as intent answers', () => {
+	async function asked() {
+		const pageId = await insertPage(db, 'campaign');
+		await post(pageId, { intent: 'open', timeZone: ZONE }, answering(ASK));
+		return pageId;
+	}
+
+	it('are answered with the operator turn in words and the reply, which the chat then reads', async () => {
+		const pageId = await asked();
+
+		const response = await post(pageId, {
+			intent: 'answers',
+			answers: JSON.stringify([{ id: 'goal', value: 5000 }]),
+			timeZone: ZONE
+		});
+
+		expect(response.status).toBe(200);
+		const answered = {
+			role: 'operator',
+			text: 'Your goal — $50',
+			answers: [{ id: 'goal', prompt: 'Your goal', words: '$50' }]
+		};
+		expect(await response.json()).toMatchObject({
+			outcome: 'accepted',
+			turns: [answered, { role: 'assistant' }]
+		});
+		const read = await request(
+			new Request(`${ORIGIN}/admin/pages/${pageId}/chat`, { headers: { cookie: session } }),
+			{ env: bindings }
+		);
+		expect(await read.json()).toMatchObject({
+			turns: [
+				{
+					role: 'assistant',
+					questions: expect.arrayContaining([expect.objectContaining({ id: 'goal' })])
+				},
+				answered,
+				{ role: 'assistant' }
+			]
+		});
+	});
+
+	it('to questions already answered are a 409 marked answered', async () => {
+		const pageId = await asked();
+		const fields = { intent: 'answers', answers: '[]', timeZone: ZONE };
+		await post(pageId, fields);
+		const AI = answering(TWO_TONE);
+
+		const response = await post(pageId, fields, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			409,
+			{ error: expect.stringContaining('answered already'), reason: 'answered' }
+		]);
+		expect(AI.run).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[
+			'an answer to no question asked',
+			{ answers: '[{"id":"colour","value":"red"}]' },
+			'answers.0: "colour" is no question asked'
+		],
+		['an amount of nothing', { answers: '[{"id":"goal","value":0}]' }, 'answers.0.value: '],
+		['no answers box', {}, 'answers is a JSON array'],
+		['answers that are not JSON', { answers: 'goal=50' }, 'answers is a JSON array']
+	])('are a 400 naming the box, for %s, and ask no model', async (_, fields, error) => {
+		const pageId = await asked();
+		const AI = answering(TWO_TONE);
+
+		const response = await post(pageId, { intent: 'answers', timeZone: ZONE, ...fields }, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			400,
+			{ error: expect.stringContaining(error) }
+		]);
+		expect(AI.run).not.toHaveBeenCalled();
+	});
+});
+
+it.each([
+	[
+		'an unknown intent',
+		{ intent: 'publish', timeZone: ZONE },
+		'intent is message, answers or open, not "publish"'
+	],
+	['an opening with no time zone', { intent: 'open' }, 'timeZone is required']
+])('refuses %s with a 400 naming the box', async (_, fields, error) => {
+	const pageId = await insertPage(db, 'campaign');
+
+	const response = await post(pageId, fields);
+
+	expect([response.status, await response.json()]).toEqual([
+		400,
+		{ error: expect.stringContaining(error) }
+	]);
+});

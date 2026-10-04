@@ -1,7 +1,15 @@
 import { data } from 'react-router';
 import { z } from 'zod';
 import { isTimeZone } from '$lib/page/end-date';
-import { draftTurn, MESSAGE_MAX, readChat, TURN_IMAGES_MAX } from '$lib/server/pages/draft';
+import {
+	answerTurn,
+	draftTurn,
+	MESSAGE_MAX,
+	openTurn,
+	readChat,
+	TURN_IMAGES_MAX,
+	type TurnResult
+} from '$lib/server/pages/draft';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 
@@ -10,14 +18,20 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 // protected layout by its name, so anyone signed in may draft; `published` is never touched here,
 // and what a turn does is $lib/server/pages/draft.ts's.
 //
-// a turn posts three boxes, each required: `message`, `imageIds` (a JSON array of stored image ids,
-// `[]` for none) and `timeZone` (the browser's IANA zone, which an end date is a day in). a turn the
-// edge refuses is a 400 whose `error` names the box.
+// a turn posts an `intent` box, and the boxes that intent takes, each required:
+// - `message`, or no `intent`: `message`, `imageIds` (a JSON array of stored image ids, `[]` for
+//   none) and `timeZone` (the browser's IANA zone, which an end date is a day in).
+// - `answers`: `answers`, a JSON array of `{ id, value }` answering the questions the chat's last
+//   turn asked, `[]` to skip them all, and `timeZone`.
+// - `open`: `timeZone`. the editor posts it on opening a page; a chat with any turn is answered as
+//   it stands, outcome `unchanged`, and nothing is written.
+// a turn the edge refuses is a 400 whose `error` names the box, an answer by its index.
 //
-// two answers carry a `reason` beside `error` for the editor to word its own line from: `stale`
-// on the 409 a save made while the model answered earns, and `failed` on the 500 a turn that threw
-// is caught into — caught, because a fetcher's thrown error lands on the editor's error boundary
-// and takes the editor with it.
+// three answers carry a `reason` beside `error` for the editor to word its own line from: `stale`
+// on the 409 a save made while the model answered earns, `answered` on the 409 for answers to
+// questions already answered, or to a chat whose last turn asks nothing, and `failed` on the 500 a
+// turn that threw is caught into — caught, because a fetcher's thrown error lands on the editor's
+// error boundary and takes the editor with it.
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const turns = await readChat(context.get(database), params.pageId);
@@ -25,7 +39,13 @@ export async function loader({ context, params }: Route.LoaderArgs) {
 	return { turns };
 }
 
-const turnInput = z
+const timeZone = z
+	.string({ error: 'timeZone is required: the browser’s IANA time zone' })
+	.refine(isTimeZone, {
+		error: (issue) => `timeZone "${String(issue.input)}" is not an IANA time zone`
+	});
+
+const messageInput = z
 	.object({
 		message: z
 			.string({ error: 'message is required; send "" with a photo and no words' })
@@ -36,47 +56,77 @@ const turnInput = z
 				error: 'imageIds is a JSON array of image ids, "[]" for none'
 			})
 			.max(TURN_IMAGES_MAX, { error: `imageIds holds at most ${TURN_IMAGES_MAX} photos` }),
-		timeZone: z
-			.string({ error: 'timeZone is required: the browser’s IANA time zone' })
-			.refine(isTimeZone, {
-				error: (issue) => `timeZone "${String(issue.input)}" is not an IANA time zone`
-			})
+		timeZone
 	})
 	.refine(({ message, imageIds }) => message !== '' || imageIds.length > 0, {
 		error: 'message is blank and no photo is attached; a turn carries words or a photo'
 	});
 
+// what each answer holds is read against the questions asked, in $lib/server/pages/draft.ts.
+const answersInput = z.object({
+	answers: z.array(z.unknown(), {
+		error: 'answers is a JSON array of {id, value}, "[]" for none'
+	}),
+	timeZone
+});
+
+const openInput = z.object({ timeZone });
+
 export async function action({ context, params, request }: Route.ActionArgs) {
 	const body = await request.formData();
-	const parsed = turnInput.safeParse({
-		message: body.get('message') ?? undefined,
-		imageIds: jsonOf(body.get('imageIds')),
-		timeZone: body.get('timeZone') ?? undefined
-	});
-	if (!parsed.success) {
-		return data({ error: parsed.error.issues[0]?.message ?? 'the turn is malformed' }, 400);
+	const db = context.get(database);
+	const { env } = context.get(platform);
+	const pageId = params.pageId;
+	const zone = body.get('timeZone') ?? undefined;
+	const intent = body.get('intent') ?? 'message';
+
+	let turn: () => Promise<TurnResult>;
+	if (intent === 'message') {
+		const parsed = messageInput.safeParse({
+			message: body.get('message') ?? undefined,
+			imageIds: jsonOf(body.get('imageIds')),
+			timeZone: zone
+		});
+		if (!parsed.success) return refused(parsed.error);
+		turn = () => draftTurn(db, env, { pageId, ...parsed.data, now: Date.now() });
+	} else if (intent === 'answers') {
+		const parsed = answersInput.safeParse({ answers: jsonOf(body.get('answers')), timeZone: zone });
+		if (!parsed.success) return refused(parsed.error);
+		turn = () => answerTurn(db, env, { pageId, ...parsed.data, now: Date.now() });
+	} else if (intent === 'open') {
+		const parsed = openInput.safeParse({ timeZone: zone });
+		if (!parsed.success) return refused(parsed.error);
+		turn = () => openTurn(db, env, { pageId, ...parsed.data, now: Date.now() });
+	} else {
+		return data({ error: `intent is message, answers or open, not "${String(intent)}"` }, 400);
 	}
 
-	let result: Awaited<ReturnType<typeof draftTurn>>;
+	let result: TurnResult;
 	try {
-		result = await draftTurn(context.get(database), context.get(platform).env, {
-			pageId: params.pageId,
-			...parsed.data,
-			now: Date.now()
-		});
+		result = await turn();
 	} catch (e) {
-		console.error(`a chat turn on page ${params.pageId} failed:`, e);
+		console.error(`a chat turn on page ${pageId} failed:`, e);
 		return data(
-			{ error: `the turn on page "${params.pageId}" failed; send it again`, reason: 'failed' },
+			{ error: `the turn on page "${pageId}" failed; send it again`, reason: 'failed' },
 			500
 		);
 	}
 	if (result.ok) return { outcome: result.outcome, turns: result.turns };
 	switch (result.reason) {
 		case 'not_found':
-			return data({ error: `no page has the id "${params.pageId}"` }, 404);
+			return data({ error: `no page has the id "${pageId}"` }, 404);
 		case 'unknown_image':
 			return data({ error: `imageIds names "${result.imageId}", which is no stored image` }, 400);
+		case 'invalid_answers':
+			return data({ error: result.error }, 400);
+		case 'answered':
+			return data(
+				{
+					error: `the questions on page "${pageId}" were answered already, and its chat asks none now; reload the chat`,
+					reason: 'answered'
+				},
+				409
+			);
 		case 'stale':
 			return data(
 				{
@@ -87,6 +137,10 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 				409
 			);
 	}
+}
+
+function refused(error: z.ZodError) {
+	return data({ error: error.issues[0]?.message ?? 'the turn is malformed' }, 400);
 }
 
 /** a box's JSON, or the box itself where it holds none, for the schema to refuse by name. */

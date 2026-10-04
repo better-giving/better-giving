@@ -373,6 +373,7 @@ describe('what a reply sets', () => {
 		);
 		expect(result).toEqual({
 			ok: true,
+			kind: 'drafted',
 			say: 'Renamed it, set a $5,000 goal ending 31 December, pinned it to Coats and suggested $30 and $60.',
 			draft: {
 				...campaign(),
@@ -615,7 +616,9 @@ describe('an impact figure', () => {
 	});
 	const operator = (text: string) => ({ author: 'operator' as const, text });
 	const tiersOf = (result: ReturnType<typeof accept>) =>
-		result.ok ? result.draft.blocks.find((block) => block.type === 'impact-tiers') : undefined;
+		'draft' in result
+			? result.draft.blocks.find((block) => block.type === 'impact-tiers')
+			: undefined;
 
 	it('is kept when the operator stated it, and dropped and noted when nobody did', () => {
 		const result = accept(addTiers([2500, 7500]), {
@@ -825,7 +828,7 @@ describe('a figure in the words', () => {
 		const result = accept(lede('Every $25 feeds 40 children for a week.'), {
 			messages: [operator('twenty-five dollars, so $25, feeds 40 children')]
 		});
-		expect(result.ok && result.draft.blocks[1]).toMatchObject({
+		expect('draft' in result && result.draft.blocks[1]).toMatchObject({
 			lede: 'Every $25 feeds 40 children for a week.'
 		});
 	});
@@ -1030,7 +1033,7 @@ describe('a link', () => {
 			ok: true,
 			dropped: [{ what: 'link', href: 'https://evil.example/pay', text: 'donate on our site' }]
 		});
-		const story = result.ok ? result.draft.blocks[3] : undefined;
+		const story = 'draft' in result ? result.draft.blocks[3] : undefined;
 		expect(story).toMatchObject({
 			body: {
 				content: [
@@ -1067,7 +1070,7 @@ describe('a link', () => {
 			ok: true,
 			dropped: [{ what: 'link', href: 'https://harbour.org/report?ref=ai' }]
 		});
-		const story = result.ok ? result.draft.blocks[3] : undefined;
+		const story = 'draft' in result ? result.draft.blocks[3] : undefined;
 		expect(story).toMatchObject({
 			body: { content: [{ content: [{ text: 'our report', marks: [{ type: 'bold' }] }] }] }
 		});
@@ -1096,7 +1099,7 @@ describe('an image', () => {
 
 	it('attached in this chat lands where the reply places it', () => {
 		const result = accept(inHero(mine), { attached: [mine] });
-		expect(result.ok && result.draft.blocks[0]).toEqual({
+		expect('draft' in result && result.draft.blocks[0]).toEqual({
 			id: 'hero',
 			type: 'hero',
 			variant: 'framed',
@@ -1147,7 +1150,10 @@ describe('an image', () => {
 			},
 			{ current }
 		);
-		expect(moved.ok && moved.draft.blocks[4]).toMatchObject({ type: 'image', imageId: mine });
+		expect('draft' in moved && moved.draft.blocks[4]).toMatchObject({
+			type: 'image',
+			imageId: mine
+		});
 	});
 
 	it('named by an address instead of an id is refused, attached or not', () => {
@@ -1201,7 +1207,7 @@ describe('an illustration a reply asks for', () => {
 		]);
 		if (!asked.ok) return;
 		const result = accept(asked.place([drawn, null]), { attached: [drawn] });
-		expect(result.ok && result.draft.blocks.slice(0, 2)).toMatchObject([
+		expect('draft' in result && result.draft.blocks.slice(0, 2)).toMatchObject([
 			{ type: 'hero', imageId: drawn },
 			{ type: 'image', imageId: null }
 		]);
@@ -1216,7 +1222,7 @@ describe('an illustration a reply asks for', () => {
 		expect(asked.ok && asked.requests.map(({ description }) => description)).toEqual(['a van']);
 		if (!asked.ok) return;
 		const result = accept(asked.place([drawn]), { attached: [drawn] });
-		expect(result.ok && result.draft.blocks.at(-1)).toMatchObject({
+		expect('draft' in result && result.draft.blocks.at(-1)).toMatchObject({
 			type: 'image',
 			imageId: drawn
 		});
@@ -1326,6 +1332,61 @@ describe('an illustration a reply asks for', () => {
 		expect(accept(reply)).toMatchObject({
 			ok: false,
 			reason: expect.stringContaining('blocks.0.props.imageId: ')
+		});
+	});
+});
+
+describe('a reply that asks', () => {
+	const ask = [
+		{ id: 'goal', kind: 'amount', prompt: 'Your goal' },
+		{ id: 'ends', kind: 'date', prompt: 'When does it end?' }
+	];
+
+	it('is asked: its say and its questions, and no draft', () => {
+		expect(accept({ say: 'Two quick questions.', ask })).toEqual({
+			ok: true,
+			kind: 'asked',
+			say: 'Two quick questions.',
+			questions: ask
+		});
+	});
+
+	it.each([
+		['a page edit', { page: { kind: 'merge', doc: { palette: 'duo' } } }],
+		['a value set', { set: { goalMinor: 1_500_000 } }]
+	])('is refused beside %s, current handed back unchanged', (_, beside) => {
+		const current = campaign();
+		expect(accept({ say: 'Asking.', ask, ...beside }, { current })).toEqual({
+			ok: false,
+			reason: 'a reply that asks never also changes the page',
+			current
+		});
+	});
+
+	it('is refused in reply to answers, which it changes the page from instead', () => {
+		const current = campaign();
+		expect(accept({ say: 'One more.', ask }, { current, answering: true })).toEqual({
+			ok: false,
+			reason: 'a reply to answers changes the page from them and never asks again',
+			current
+		});
+	});
+
+	it.each([
+		['six questions', [...ask, ...['a', 'b', 'c', 'd'].map((id) => ({ ...ask[0], id }))], 'ask: '],
+		['a duplicate id', [ask[0], ask[0]], 'ask: '],
+		[
+			'one option',
+			[{ id: 'who', kind: 'choice', prompt: 'Who?', options: ['Kids'] }],
+			'ask.0.options: '
+		],
+		['markup', [{ ...ask[0], prompt: '<b>Goal</b>' }], 'ask.0.prompt: '],
+		['a link', [{ ...ask[0], hint: 'like https://example.org' }], 'ask.0.hint: '],
+		['a web address', [{ ...ask[0], hint: 'like www.example.org' }], 'ask.0.hint: ']
+	])('is refused for %s, naming where', (_, questions, reason) => {
+		expect(accept({ say: 'Asking.', ask: questions })).toMatchObject({
+			ok: false,
+			reason: expect.stringContaining(reason)
 		});
 	});
 });

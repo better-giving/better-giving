@@ -1,4 +1,5 @@
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, type SQL, sql } from 'drizzle-orm';
+import type { RichTextDocument } from '$lib/rich-text/document';
 import type { Db } from '../db/client';
 import { image, orgPresentation, orgProfile, type OrgProfile } from '../db/schema';
 import { firstMissingImage, illustrationsAmong } from '../images/queries';
@@ -34,9 +35,9 @@ import {
 // with `newContactRow` / `contactInsertStatement`. `Db` has no `transaction` (D1 has none —
 // see ../db/client.ts), so a single `batch()` is the only atomic unit there is.
 //
-// there is no statement half here and that is a statement about the tables, not an omission:
-// each row here is saved on its own from a screen of its own, and there is nothing it could need
-// to be atomic with. add the split the day something does.
+// one write has a statement half: the mission an operator answered in a page's chat lands in the
+// same `batch()` as the chat turn holding the answer (`missionWhileEmptyStatement`, called from
+// ../pages/draft.ts). every other row here is saved on its own from a screen of its own.
 //
 // ---------------------------------------------------------------------------
 // why no seeded row, and why the save is therefore an upsert.
@@ -196,6 +197,44 @@ export async function updateOrgStory(db: Db, seen: string, story: Story): Promis
 		})
 		.returning({ id: orgPresentation.id });
 	return row ? 'written' : 'stale';
+}
+
+/**
+ * a statement for the caller's `batch()` writing `mission` as the story's mission while none is
+ * stored, the vision as it stands, and only where `when` holds as the statement runs. the story it
+ * replaces is kept for Undo, as a save keeps it.
+ */
+export function missionWhileEmptyStatement(db: Db, mission: RichTextDocument, when: SQL) {
+	const now = Date.now();
+	const first = { mission, vision: null };
+	return db
+		.insert(orgPresentation)
+		.select((qb) =>
+			qb
+				.select({
+					id: sql<string>`${ORG_PRESENTATION_ID}`.as('id'),
+					story: sql<string>`${storedStory(first)}`.as('story'),
+					look: sql<string>`${NO_LOOK}`.as('look'),
+					sharing: sql<string>`${NO_SHARING}`.as('sharing'),
+					storyPrevious: sql<string>`${NO_STORY}`.as('story_previous'),
+					lookPrevious: sql<null>`null`.as('look_previous'),
+					sharingPrevious: sql<null>`null`.as('sharing_previous'),
+					createdAt: sql<number>`${now}`.as('created_at'),
+					updatedAt: sql<number>`${now}`.as('updated_at'),
+					logoImageId: sql<null>`null`.as('logo_image_id'),
+					logoImageIdPrevious: sql<null>`null`.as('logo_image_id_previous')
+				})
+				.from(sql`(select 1)`)
+				.where(when)
+		)
+		.onConflictDoUpdate({
+			target: orgPresentation.id,
+			set: {
+				story: sql`json_set(${orgPresentation.story}, '$.mission', json(${JSON.stringify(mission)}))`,
+				storyPrevious: sql`${orgPresentation.story}`
+			},
+			setWhere: sql`json_extract(${orgPresentation.story}, '$.mission') is null`
+		});
 }
 
 /**

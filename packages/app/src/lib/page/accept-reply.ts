@@ -20,6 +20,11 @@
 // did. a rename is from the draft's own name where it holds one, and from the dashboard's
 // otherwise.
 //
+// a reply may instead be `{ say, ask }`: up to `QUESTIONS_MAX` questions for the operator, read by
+// ./questions.ts's rule, and handed back as asked with no draft at all. an `ask` beside `page` or
+// `set` refuses the reply, since a reply that asks never also changes the page, and so does any
+// `ask` where the caller says the turn answers questions: one round of questions, then a draft.
+//
 // the model's answer is text nobody checked, so its size is bounded before anything reads it
 // (`readReply`, which $lib/server/pages/draft.ts reads a reply through too): the text at
 // `REPLY_BYTES_MAX`, its nesting before the schema walks it, a patch at `OPS_MAX`
@@ -82,6 +87,7 @@ import { endDayOf, endOfDay } from './end-date';
 import { HEADING_MAX, type Page, parsePage } from './catalog';
 import { PAGE_KEYS, type PageType } from './keys';
 import { applyPatch, deeperThan, mergePatch, outOfBounds, pointer } from './json-patch';
+import { askSchema, type Question } from './questions';
 
 /** a reply's text, measured before it is parsed at all. */
 export const REPLY_BYTES_MAX = 64 * 1024;
@@ -132,7 +138,8 @@ const replySchema = z.strictObject({
 						: undefined
 			}
 		)
-		.optional()
+		.optional(),
+	ask: askSchema.optional()
 });
 
 /** the reply's shape as JSON Schema, for a model's JSON mode; this door checks it again whatever. */
@@ -173,6 +180,8 @@ export type AcceptInput = {
 	timeZone: string;
 	/** the instant the reply is accepted at; an end date on a day already over is refused. */
 	now: number;
+	/** the turn answers the questions the chat asked, so the reply may not ask again. */
+	answering?: boolean;
 };
 
 export type Change =
@@ -198,14 +207,17 @@ export type Dropped =
 
 export type Accepted = {
 	ok: true;
+	kind: 'drafted';
 	draft: Page;
 	say: string;
 	changes: Change[];
 	dropped: Dropped[];
 };
+/** a reply that asks the operator questions in place of changing the page. */
+export type Asked = { ok: true; kind: 'asked'; say: string; questions: Question[] };
 export type Refused = { ok: false; reason: string; current: Page };
 
-export function acceptReply(input: AcceptInput): Accepted | Refused {
+export function acceptReply(input: AcceptInput): Accepted | Asked | Refused {
 	try {
 		return accept(input);
 	} catch (error) {
@@ -214,7 +226,7 @@ export function acceptReply(input: AcceptInput): Accepted | Refused {
 	}
 }
 
-function accept(input: AcceptInput): Accepted | Refused {
+function accept(input: AcceptInput): Accepted | Asked | Refused {
 	const { type, current } = input;
 	const refuse = (reason: string): Refused => ({ ok: false, reason, current });
 
@@ -223,6 +235,15 @@ function accept(input: AcceptInput): Accepted | Refused {
 	const parsed = replySchema.safeParse(read.json);
 	if (!parsed.success) return refuse(issueText(parsed.error.issues));
 	const reply = parsed.data;
+	if (reply.ask !== undefined) {
+		if (reply.page !== undefined || reply.set !== undefined) {
+			return refuse('a reply that asks never also changes the page');
+		}
+		if (input.answering === true) {
+			return refuse('a reply to answers changes the page from them and never asks again');
+		}
+		return { ok: true, kind: 'asked', say: reply.say, questions: reply.ask };
+	}
 
 	let draft: unknown = draftFromPage(current);
 	if (reply.page?.kind === 'patch') {
@@ -319,6 +340,7 @@ function accept(input: AcceptInput): Accepted | Refused {
 
 	return {
 		ok: true,
+		kind: 'drafted',
 		draft: checked.page,
 		say: reply.say,
 		changes: set.changes,
