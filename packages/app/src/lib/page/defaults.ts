@@ -3,13 +3,13 @@
 // fresh page looks like is an edit here and nowhere else.
 //
 // each is a page `parsePage` accepts for its own type, held by ./defaults.spec.ts. the look is
-// absent, so both draw in the organisation's own. a block with nothing to show yet — the campaign's
-// hero with no photo, its goal bar with no goal, its story with a blank body — is placed anyway and
-// leaves itself out at render until it has content. both title headings are empty, which draws the
-// campaign's name, and on the donation page "Donate to" the organisation's name as it stands when
-// the page is drawn (`BLOCK_DATA.title` in ./catalog.ts, `titleHeading` in ../donate/page-view.tsx)
-// — so a page made before set-up named the organisation, or before a rename, greets donors by
-// today's name.
+// absent, so both draw ./keys.ts's `DEFAULT_SHADE` and `DEFAULT_CORNER`. a block with nothing to
+// show yet — the campaign's hero with no photo, its goal bar with no goal, its story with a blank
+// body — is placed anyway and leaves itself out at render until it has content. both title
+// headings are empty, which draws the campaign's name, and on the donation page "Donate to" the
+// organisation's name as it stands when the page is drawn (`BLOCK_DATA.title` in ./catalog.ts,
+// `titleHeading` in ../donate/page-view.tsx) — so a page made before set-up named the
+// organisation, or before a rename, greets donors by today's name.
 //
 // a fresh object per call: the editor changes what it is handed.
 import type { Page } from './catalog';

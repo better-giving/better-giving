@@ -39,7 +39,6 @@ function unpublished(): Loaded {
 		// a frame on a path would be fetched from a server nothing here runs.
 		preview: 'about:blank',
 		chat: '/admin/pages/p1/chat',
-		shareMessage: null,
 		goalMinor: null,
 		endDate: null,
 		blocks: editorBlocks(DRAFT, 'USD', new Set()),
@@ -59,11 +58,6 @@ function unpublished(): Loaded {
 			summary: 'No program',
 			switches: { open_on_monthly: false, dedication_on: false },
 			monthlyOffered: true
-		},
-		pageSettings: {
-			look: { source: 'organisation' },
-			organisationLook: { shade: 'light', corner: 'soft', brandColour: null },
-			organisationShareMessage: null
 		},
 		name: 'Winter coat drive',
 		address: '/winter-coat-drive-2',

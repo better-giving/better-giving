@@ -3998,37 +3998,6 @@
 		line-height: var(--admin-aside-lh);
 	}
 
-	/* ---------- the order list ------------------------------------------------------------
-
-	   a set whose order is part of the answer: each row a tick box and the two presses that move
-	   it, Move up and Move down, on one line. the order is changed by those presses and never by a
-	   drag, so a row is as reachable from the keyboard as the box in it.
-
-	   ruled rather than gapped: a rule above the list and one under every row, so the order reads
-	   as one column of places rather than as a group of choices, and a row moved stands in a slot
-	   that was already drawn. the rows abut for `.adm-checkgroup`'s reason above — a row is the
-	   touch target tall, which is the step a reader sees between two names.
-
-	   the box takes the line's remainder, so the two presses hold one right-hand edge down the
-	   list whatever each name runs to. they are the quiet rank, stated at the call site, because
-	   they repeat on every row. */
-	.adm-orderlist {
-		display: grid;
-		border-block-start: var(--admin-rule);
-	}
-
-	.adm-orderrow {
-		display: flex;
-		align-items: center;
-		gap: var(--admin-space-4);
-		min-block-size: var(--admin-touch-min);
-		border-block-end: var(--admin-rule);
-	}
-
-	.adm-orderrow > .adm-check {
-		flex: 1;
-	}
-
 	/* ---------- the code chip -----------------------------------------------------------
 
 	   a literal drawn as a thing rather than said in a sentence: the whole of a value cell,

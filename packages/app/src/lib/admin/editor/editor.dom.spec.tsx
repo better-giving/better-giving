@@ -116,8 +116,6 @@ describe('the Settings sheet opened from Edit by hand', () => {
 						layouts={[{ value: 'box-right', label: 'Box on the right' }]}
 						layout="box-right"
 						onLayout={() => {}}
-						look={null}
-						shareMessage={null}
 						donationSettings="Donor chooses"
 						onOpen={() => {}}
 					/>
@@ -254,26 +252,17 @@ describe('the settings sheet', () => {
 				layouts={[{ value: 'box-right', label: 'Box on the right' }]}
 				layout="box-right"
 				onLayout={() => {}}
-				look={<p>Colour</p>}
-				shareMessage={null}
 				donationSettings="Donor chooses"
 				onOpen={() => {}}
 			/>
 		);
-		expect(headings(root)).toEqual([
-			'Blocks',
-			'Layout',
-			'Look',
-			'Goal and end date',
-			'Sharing and gifts'
-		]);
+		expect(headings(root)).toEqual(['Blocks', 'Layout', 'Goal and end date', 'Gifts']);
 		expect(rows(root)).toEqual([
 			'NameWinter coat drive',
 			'Address/winter-coat-drive',
 			'StoryLast winter…',
 			'GoalNone',
 			'End dateNone',
-			'Share messageThe Organisation’s',
 			'Donation settingsDonor chooses'
 		]);
 	});
@@ -300,15 +289,15 @@ describe('the settings sheet', () => {
 			<SettingsSheet
 				onDismiss={() => {}}
 				campaign={{ name: 'Winter coat drive', address: '/winter-coat-drive' }}
-				shareMessage="Help us keep 400 children warm this winter."
+				donationSettings="Donor chooses"
 				onOpen={onOpen}
 			/>
 		);
-		expect(headings(root)).toEqual(['Sharing and gifts']);
+		expect(headings(root)).toEqual(['Gifts']);
 		expect(rows(root)).toEqual([
 			'NameWinter coat drive',
 			'Address/winter-coat-drive',
-			'Share messageHelp us keep 400 children warm this winter.'
+			'Donation settingsDonor chooses'
 		]);
 		act(() => button(root, 'Address/winter-coat-drive').click());
 		expect(onOpen).toHaveBeenCalledWith('address');

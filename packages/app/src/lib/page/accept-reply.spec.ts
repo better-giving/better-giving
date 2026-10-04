@@ -13,7 +13,7 @@ import {
 } from './accept-reply';
 import { MAX_SUGGESTED_AMOUNTS, TOO_MANY_SUGGESTED_AMOUNTS } from '../forms/amounts';
 import { draftFromPage } from './ai-catalog';
-import { ALT_MAX, GOAL_MINOR_MAX, type Page } from './catalog';
+import { ALT_MAX, GOAL_MINOR_MAX, type Page, SHARE_MESSAGE_MAX } from './catalog';
 import { defaultCampaign, defaultDonationPage } from './defaults';
 
 // node pool, no database, no model: a reply is the text a model would answer with, and every case
@@ -374,7 +374,7 @@ describe('what a reply never changes', () => {
 		const result = accept({ say: 'Changed it.', set: { [key]: value } }, { current });
 		expect(result).toEqual({
 			ok: false,
-			reason: `set: a reply sets only name, goalMinor, endDate, programId, suggestedAmounts and shareChannels, not "${key}"`,
+			reason: `set: a reply sets only corner, endDate, goalMinor, name, programId, shade, shareChannels, shareMessage and suggestedAmounts, not "${key}"`,
 			current
 		});
 	});
@@ -736,6 +736,112 @@ describe('what a reply sets', () => {
 			const current = campaign();
 			const result = accept({ say: 'Done.', set: { shareChannels } }, { current });
 			expect(result).toEqual({ ok: false, reason, current });
+		});
+	});
+
+	describe('the look', () => {
+		it('sets the shade, keeping the corners the page drew, and returns the change', () => {
+			const result = accept({ say: 'Warmer now.', set: { shade: 'warm' } });
+			expect(result).toMatchObject({
+				ok: true,
+				draft: { look: { shade: 'warm', corner: 'soft' } },
+				changes: [{ field: 'shade', from: 'light', to: 'warm' }]
+			});
+		});
+
+		it('sets the corners, keeping the page’s own shade, on the Donation page too', () => {
+			const current: Page = { ...defaultDonationPage(), look: { shade: 'cool', corner: 'square' } };
+			const result = accept(
+				{ say: 'Rounder now.', set: { corner: 'round' } },
+				{ type: 'donation_page', current, name: null }
+			);
+			expect(result).toMatchObject({
+				ok: true,
+				draft: { look: { shade: 'cool', corner: 'round' } },
+				changes: [{ field: 'corner', from: 'square', to: 'round' }]
+			});
+		});
+
+		it.each([
+			[
+				'the defaults, on a page with no look of its own',
+				undefined,
+				{ shade: 'light', corner: 'soft' }
+			],
+			[
+				'its own look, echoed',
+				{ shade: 'warm', corner: 'round' },
+				{ shade: 'warm', corner: 'round' }
+			]
+		] as const)('changes nothing where the page already draws %s', (_, look, set) => {
+			const before: Page = look === undefined ? campaign() : { ...campaign(), look };
+			const result = accept({ say: 'As it was.', set }, { current: structuredClone(before) });
+			expect(result).toMatchObject({ ok: true, changes: [] });
+			expect(result.ok && result.kind === 'drafted' && result.draft.look).toEqual(before.look);
+		});
+
+		it.each([
+			[{ shade: 'dark' }, 'set.shade: "dark" is not a shade; a shade is light, warm or cool'],
+			[{ corner: 'pill' }, 'set.corner: "pill" is not a corner; a corner is square, soft or round']
+		])('refuses %j, naming it and the presets, and hands current back', (set, reason) => {
+			const current = campaign();
+			const result = accept({ say: 'Done.', set }, { current });
+			expect(result).toEqual({ ok: false, reason, current });
+		});
+	});
+
+	describe('the share message', () => {
+		const shareMessage = (result: ReturnType<typeof accept>) =>
+			result.ok && result.kind === 'drafted' ? result.draft.shareMessage : 'refused';
+
+		it('sets the words a donor shares the page with, trimmed, and returns the change', () => {
+			const result = accept({ say: 'Set.', set: { shareMessage: '  Keep a neighbour warm. ' } });
+			expect(result).toMatchObject({
+				ok: true,
+				changes: [{ field: 'shareMessage', from: null, to: 'Keep a neighbour warm.' }]
+			});
+			expect(shareMessage(result)).toBe('Keep a neighbour warm.');
+		});
+
+		it('takes null as none, on the Donation page too', () => {
+			const current = { ...defaultDonationPage(), shareMessage: 'Give today.' };
+			const result = accept(
+				{ say: 'Cleared.', set: { shareMessage: null } },
+				{ type: 'donation_page', current, name: null }
+			);
+			expect(result).toMatchObject({
+				ok: true,
+				changes: [{ field: 'shareMessage', from: 'Give today.', to: null }]
+			});
+			expect(result.ok && result.kind === 'drafted' && result.draft).not.toHaveProperty(
+				'shareMessage'
+			);
+		});
+
+		it.each([
+			[
+				'words past the cap',
+				'x'.repeat(SHARE_MESSAGE_MAX + 1),
+				`set.shareMessage: a share message holds at most ${SHARE_MESSAGE_MAX} characters`
+			],
+			['no words', '   ', 'set.shareMessage: a share message holds words, or is null for none'],
+			[
+				'a figure the operator never wrote',
+				'$40 keeps a child warm all winter.',
+				'set.shareMessage: "$40" is not a figure the operator wrote in the chat or one the page already shows'
+			]
+		])('refuses %s and hands current back', (_, words, reason) => {
+			const current = campaign();
+			const result = accept({ say: 'Set.', set: { shareMessage: words } }, { current });
+			expect(result).toEqual({ ok: false, reason, current });
+		});
+
+		it('takes a figure the operator wrote, said of what it does', () => {
+			const result = accept(
+				{ say: 'Set.', set: { shareMessage: '$40 keeps a child warm all winter.' } },
+				{ messages: [{ author: 'operator', text: '$40 keeps a child warm all winter.' }] }
+			);
+			expect(shareMessage(result)).toBe('$40 keeps a child warm all winter.');
 		});
 	});
 });

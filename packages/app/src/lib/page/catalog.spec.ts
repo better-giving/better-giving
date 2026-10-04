@@ -350,7 +350,7 @@ describe('what a page carries beside its blocks', () => {
 			goalMinor: 5_000_000,
 			endsAt,
 			endsZone: 'America/New_York',
-			look: { shade: 'warm', corner: 'round', brandColour: '#1f6feb' },
+			look: { shade: 'warm', corner: 'round' },
 			shareMessage: 'I just gave to clean water. Join me?'
 		});
 		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
@@ -390,13 +390,6 @@ describe('what a page carries beside its blocks', () => {
 		});
 	});
 
-	it('reads a null look as the organisation’s', () => {
-		expect(parsePage('campaign', page([box], { look: null }))).toEqual({
-			ok: true,
-			page: page([box], { look: null })
-		});
-	});
-
 	it('refuses a partial look, naming the key it lacks', () => {
 		expect(parsePage('campaign', page([box], { look: { shade: 'warm' } }))).toMatchObject({
 			ok: false,
@@ -418,17 +411,18 @@ describe('what a page carries beside its blocks', () => {
 	});
 
 	it.each([
-		[{ shade: 'warm', corner: 'round', brandColour: 'red' }, ['look', 'brandColour']],
-		[{ shade: 'dusk', corner: 'round', brandColour: '#1f6feb' }, ['look', 'shade']],
-		[{ shade: 'warm', corner: 'pill', brandColour: '#1f6feb' }, ['look', 'corner']],
-		[{ shade: 'warm', corner: 'round', brandColour: '#1F6FEB' }, ['look', 'brandColour']]
+		[{ shade: 'dusk', corner: 'round' }, ['look', 'shade']],
+		[{ shade: 'warm', corner: 'pill' }, ['look', 'corner']]
 	])('refuses the look %j off its closed sets', (look, path) => {
 		expect(parsePage('campaign', page([box], { look }))).toMatchObject({ ok: false, path });
 	});
 
-	it('accepts a look of the page’s own with no brand colour, as the Organisation’s may be', () => {
-		const input = page([box], { look: { shade: 'cool', corner: 'square', brandColour: null } });
-		expect(parsePage('campaign', input)).toEqual({ ok: true, page: input });
+	it('refuses a brand colour on the page’s look, which is the organisation’s', () => {
+		const look = { shade: 'cool', corner: 'square', brandColour: '#1f6feb' };
+		expect(parsePage('campaign', page([box], { look }))).toMatchObject({
+			ok: false,
+			path: ['look']
+		});
 	});
 
 	it('refuses a share message over its length', () => {

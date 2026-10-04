@@ -5,7 +5,7 @@ import type { PageWithCardProps } from '../../donate/page-with-card';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
 import { type MarkedPage, markIllustrations, placedImageIds } from '../../page/illustration';
-import type { PageType } from '../../page/keys';
+import { DEFAULT_CORNER, DEFAULT_SHADE, type PageType } from '../../page/keys';
 import { SHARE_CHANNELS_DEFAULT } from '../../page/share';
 import type { Db } from '../db/client';
 import type { OrgProfile } from '../db/schema';
@@ -50,13 +50,15 @@ import { pageGoal } from './goal';
 // now refuses, draws the plain page — the donation box alone — so a page broken by a narrowed rule
 // still takes gifts while somebody repairs it.
 //
-// the organisation's story, look, sharing and logo are read live on every draw, so a save on the
-// dashboard's organisation page reaches every page at once, the preview included. so are the
-// programs' photos, handed beside the served config for the programs its chooser offers and never
-// on its `v1` options, and so is a campaign's raised figure (./goal.ts), a sum over the books that
-// is never cached. which of its pictures an AI drew is read on every draw too, by their kinds
-// (`illustrationsAmong` in ../images/queries.ts), so a photo put in one's place clears the mark on
-// the next.
+// a page draws its own shade, corners and share message, the defaults where it holds none
+// (`donorLook`, and its title for the message), and so moves them only at Publish with the rest of
+// its document. the organisation's story, brand colour, social links and logo are read live on
+// every draw, so a save on the dashboard's organisation page reaches every page at once, the
+// preview included. so are the programs' photos, handed beside the served config for the programs
+// its chooser offers and never on its `v1` options, and so is a campaign's raised figure
+// (./goal.ts), a sum over the books that is never cached. which of its pictures an AI drew is read
+// on every draw too, by their kinds (`illustrationsAmong` in ../images/queries.ts), so a photo put
+// in one's place clears the mark on the next.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
 export type PageSource = {
@@ -134,7 +136,8 @@ export async function loadPageView(
 	if (!result.ok) return { kind: 'refused' };
 	const { config } = result;
 
-	if (!parsed.ok) return { kind: 'plain', config, look: orgLook.look };
+	const { brandColour } = orgLook.look;
+	if (!parsed.ok) return { kind: 'plain', config, look: donorLook(undefined, brandColour) };
 	const { page } = parsed;
 	// the name the document was drafted with, so a rename reaches donors at Publish.
 	const pageName = page.name ?? source.name;
@@ -157,12 +160,11 @@ export async function loadPageView(
 			},
 			logo: orgLogo.logo,
 			programPhotos: chooserPhotos(config, photos),
-			look: page.look ?? orgLook.look,
+			look: donorLook(page.look, brandColour),
 			sharing: {
 				channels: page.shareChannels ?? SHARE_CHANNELS_DEFAULT,
 				message:
 					page.shareMessage ??
-					sharing.message ??
 					titleHeading(firstTitle?.heading ?? '', {
 						type: source.type,
 						pageName,
@@ -176,6 +178,18 @@ export async function loadPageView(
 			preview,
 			...openingOf(page.switches)
 		}
+	};
+}
+
+/**
+ * what a donor page is drawn in: its own shade and corners, `DEFAULT_SHADE` and `DEFAULT_CORNER`
+ * where it holds none, and the organisation's brand colour.
+ */
+export function donorLook(own: Page['look'], brandColour: string | null): PageLook {
+	return {
+		shade: own?.shade ?? DEFAULT_SHADE,
+		corner: own?.corner ?? DEFAULT_CORNER,
+		brandColour
 	};
 }
 

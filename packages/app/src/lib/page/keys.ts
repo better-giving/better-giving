@@ -25,13 +25,17 @@ export const PAGE_KEYS = {
 	/** the IANA name of that time zone, which the page words the day in. present exactly when `endsAt` is. */
 	endsZone: 'endsZone',
 	/**
-	 * the page's own look; absent or null means the organisation's. the database checks a look's keys
-	 * one by one, each where present, and ./catalog.ts's parse refuses a look missing any of them.
+	 * the page's own shade and corners, set through its editor's chat; absent draws `DEFAULT_SHADE`
+	 * and `DEFAULT_CORNER`. the database checks a look's keys one by one, each where present, and
+	 * ./catalog.ts's parse refuses a look missing either.
 	 */
 	look: 'look'
 } as const;
 
-/** keys of a look — the organisation's (`org_presentation.look`) and a page's own alike. */
+/**
+ * keys of a look: the organisation's (`org_presentation.look`) holds all three, and a page's own its
+ * shade and corner alone, since the brand colour is the organisation's.
+ */
 export const LOOK_KEYS = {
 	/** lowercase `#rrggbb`. */
 	brandColour: 'brandColour',
@@ -57,6 +61,10 @@ export type Shade = (typeof SHADES)[number];
 
 export const CORNERS = ['square', 'soft', 'round'] as const;
 export type Corner = (typeof CORNERS)[number];
+
+/** what a look holding no shade or corner of its own draws. */
+export const DEFAULT_SHADE: Shade = 'light';
+export const DEFAULT_CORNER: Corner = 'soft';
 
 /** a page's mood: how its section grounds relate to the brand colour. */
 export const PALETTES = ['plain', 'tint', 'duo', 'bright', 'bold'] as const;

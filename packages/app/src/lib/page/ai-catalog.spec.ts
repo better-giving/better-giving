@@ -139,7 +139,7 @@ describe('a draft becoming a page', () => {
 	it('keeps what the operator owns from the page it redrafts, whatever the draft says', () => {
 		const onto = {
 			...defaultCampaign(),
-			look: { shade: 'cool' as const, corner: 'square' as const, brandColour: '#1f6feb' },
+			look: { shade: 'cool' as const, corner: 'square' as const },
 			shareMessage: 'Join me',
 			switches: { openOnMonthly: true, dedicationOn: false },
 			goalMinor: 5_000_000,

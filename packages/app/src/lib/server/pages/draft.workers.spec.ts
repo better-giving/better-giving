@@ -10,7 +10,7 @@ import { createImage } from '../images/queries';
 import { jpegHeader } from '../images/headers.testing';
 import { chatTurn, form, image, page } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
-import { readOrgStory, updateOrgStory } from '../org/queries';
+import { readOrgLook, readOrgStory, updateOrgLook, updateOrgStory } from '../org/queries';
 import { draftIllustrations, editorDraft } from './blocks';
 import { readCampaigns } from './campaign';
 import { answerTurn, draftTurn, openTurn, readChat } from './draft';
@@ -257,6 +257,52 @@ describe('a page’s share buttons', () => {
 	});
 });
 
+describe('a page’s look and share message', () => {
+	it.each(['campaign', 'donation_page'] as const)(
+		'change on the %s through the reply’s set, and the reply names each',
+		async (type) => {
+			const fresh = type === 'campaign' ? defaultCampaign() : defaultDonationPage();
+			const pageId = await insertPage(db, type, { ...fresh, settings: SETTINGS });
+
+			await turn(
+				pageId,
+				'warmer and rounder, and share it as "Keep a neighbour warm."',
+				answering({
+					say: 'Done.',
+					set: { corner: 'round', shade: 'warm', shareMessage: 'Keep a neighbour warm.' }
+				})
+			);
+
+			const { draft } = await stored(pageId);
+			expect([draft.look, draft.shareMessage]).toEqual([
+				{ shade: 'warm', corner: 'round' },
+				'Keep a neighbour warm.'
+			]);
+			const [, answer] = await chat(pageId);
+			expect(answer?.text).toBe(
+				'Done.\nShade: warm. Corners: round. Share message: “Keep a neighbour warm.”'
+			);
+		}
+	);
+
+	it('comes off on "no share message", and the reply says so', async () => {
+		const pageId = await insertPage(db, 'campaign', {
+			...defaultCampaign(),
+			shareMessage: 'Give today.'
+		});
+
+		await turn(
+			pageId,
+			'no share message',
+			answering({ say: 'Done.', set: { shareMessage: null } })
+		);
+
+		expect((await stored(pageId)).draft).not.toHaveProperty('shareMessage');
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe('Done.\nShare message taken off.');
+	});
+});
+
 describe('a campaign’s name', () => {
 	it('changes on "call it Coats for Kids", and the reply names it', async () => {
 		const pageId = await insertPage(db, 'campaign');
@@ -428,6 +474,37 @@ describe('what the model is told', () => {
 		);
 	});
 
+	async function toldOf(draft: Page) {
+		const { version } = await readOrgLook(db);
+		const look = { shade: 'cool', corner: 'square', brandColour: '#6b2d8a' } as const;
+		expect(await updateOrgLook(db, version, look)).not.toBe('stale');
+		const pageId = await insertPage(db, 'campaign', draft);
+		const AI = answering({ say: 'Warmer.' });
+		await turn(pageId, 'warmer colours', AI);
+		await env.DB.prepare('delete from org_presentation').run();
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		const [system] = input.messages;
+		return system.content as string;
+	}
+
+	it('tells the page’s own look and share message, with the organisation’s brand colour', async () => {
+		const told = await toldOf({
+			...handEdited(),
+			look: { shade: 'warm', corner: 'round' },
+			shareMessage: 'Keep a neighbour warm.'
+		});
+
+		expect(told).toContain('- look: warm shade, round corners, brand colour #6b2d8a\n');
+		expect(told).toContain('- share message: "Keep a neighbour warm."\n');
+	});
+
+	it('tells a light, soft look and no share message where the page has none, whatever the organisation’s look', async () => {
+		const told = await toldOf(handEdited());
+
+		expect(told).toContain('- look: light shade, soft corners, brand colour #6b2d8a\n');
+		expect(told).toContain('- share message: none, so the page shares its title and link\n');
+	});
+
 	const MONTHLY_WORDING =
 		'- the donation box opens on a monthly gift: the story may invite a monthly gift; say what an amount does only as the operator said it, never as what it does every month unless they said so';
 	const DEDICATION_WORDING =
@@ -542,8 +619,10 @@ describe('what the model is told', () => {
 			- say: one or two sentences to the operator saying what you changed, naming each value you set; when you ask, one sentence leading into the questions.
 			- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.
 			- a patch path starts at /layout, /palette or /blocks; set is not part of the page, so no path starts at /set: a setting goes in set alone, and a reply that changes only settings has {"kind": "patch", "ops": []} as its page. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...} changes one value; {"op": "add", "path": "/blocks/-", "value": {a whole block}} adds a block after the last; {"op": "add", "path": "/blocks/2", "value": {a whole block}} adds one before the third.
-			- set: only what the operator asked for, of {"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...], "shareChannels": [...]}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.
+			- set: only what the operator asked for, of {"corner": ..., "endDate": "YYYY-MM-DD", "goalMinor": ..., "name": ..., "programId": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.
 			- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of facebook (Facebook), whatsapp (WhatsApp), email (Email), copy-link (Copy link), linkedin (LinkedIn) or x (X); [] takes them all off.
+			- shade and corner: the page’s look, set only when the operator asks, and either may be set alone. shade is light, warm or cool: "warmer" asks for warm, "cooler" for cool, "plainer" or "neutral" for light. corner is square, soft or round: "rounder" asks for round, "sharper" or "squarer" for square, "softer" for soft. Every shade is a pale ground, so a darker or more colourful page is the palette’s to change, never the shade’s.
+			- shareMessage: the words a donor shares the page with, at most one or two sentences. Leave it out of set to keep the message as it is; null takes it off, so the page shares its title and link, and is only for when the operator asked for no share message. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.
 			- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.
 			- write an amount in the words only from a figure the operator stated in the chat or one the page already shows.
 			- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.
@@ -563,6 +642,7 @@ describe('what the model is told', () => {
 			- donation settings: minimum $5, maximum $1,000, suggested amounts $25, $50, program none
 			- donation box: Open on monthly off, Dedication on by default off
 			- share buttons, in order: Facebook, Email, Copy link
+			- share message: none, so the page shares its title and link
 			- active programs: none
 
 			THE PAGE AS IT STANDS, hand edits included:

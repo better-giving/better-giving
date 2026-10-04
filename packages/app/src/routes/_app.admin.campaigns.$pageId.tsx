@@ -9,12 +9,7 @@ import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
-import {
-	EndDateSettingsSheet,
-	GoalSettingsSheet,
-	PageLookSettings,
-	ShareMessageSettingsSheet
-} from '$lib/admin/editor/page-settings';
+import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { type FirstPublish, usePublishPresses } from '$lib/admin/editor/publish-wiring';
@@ -28,10 +23,7 @@ import { HEADING_MAX } from '$lib/page/catalog';
 import {
 	PAGE_END_DATE_FORM_ID,
 	PAGE_GOAL_FORM_ID,
-	PAGE_LOOK_FORM_ID,
-	PAGE_SETTING_FORM_IDS,
-	PAGE_SHARE_FORM_ID,
-	type PageSettingsSeed
+	PAGE_SETTING_FORM_IDS
 } from '$lib/page/page-settings-form';
 import {
 	DISCARD_FORM_ID,
@@ -53,7 +45,7 @@ import {
 	unreadableEditor
 } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
-import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
+import { savePageSetting } from '$lib/server/pages/page-settings';
 import {
 	addressAsked,
 	type NameWrite,
@@ -91,8 +83,8 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
-// so are the look, the goal, the end date and the share message
-// ($lib/server/pages/page-settings.ts).
+// so are the goal and the end date ($lib/server/pages/page-settings.ts). the shade, corners and
+// share message are set only through the chat ($lib/page/accept-reply.ts).
 //
 // **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
@@ -167,7 +159,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const db = context.get(database);
 	let row: Page | null;
 	let settings: SettingsSeed;
-	let pageSettings: PageSettingsSeed;
 	let asked: string | null;
 	let illustrations: ReadonlySet<string>;
 	try {
@@ -186,9 +177,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const unreadable = unreadableEditor(row, now);
 	if (unreadable !== null) return { ...unreadable, ...named };
 	try {
-		[settings, pageSettings, asked, illustrations] = await Promise.all([
+		[settings, asked, illustrations] = await Promise.all([
 			readEditorSettings(db, context.get(platform).env, row, new URL(request.url).origin),
-			readPageSettings(db, row),
 			addressAsked(db, row),
 			draftIllustrations(db, row)
 		]);
@@ -201,7 +191,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 		...editorDraft(row, settings.currency, illustrations),
 		...named,
 		settings,
-		pageSettings,
 		asked: asked === null ? null : `/${asked}`
 	};
 }
@@ -248,10 +237,8 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 				body,
 				gone(params.pageId)
 			);
-		case PAGE_LOOK_FORM_ID:
 		case PAGE_GOAL_FORM_ID:
 		case PAGE_END_DATE_FORM_ID:
-		case PAGE_SHARE_FORM_ID:
 			return savePageSetting(
 				context.get(database),
 				{ id: params.pageId, type: 'campaign' },
@@ -573,8 +560,6 @@ function DraftEditor({
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
 					{...layoutPick.sheet}
-					look={<PageLookSettings seed={loaderData.pageSettings} version={version} />}
-					shareMessage={loaderData.shareMessage}
 					donationSettings={donationSettings.summary}
 					onOpen={setOpened}
 				/>
@@ -611,15 +596,6 @@ function DraftEditor({
 			{opened === 'end-date' ? (
 				<EndDateSettingsSheet
 					endDate={loaderData.endDate}
-					version={version}
-					onDismiss={() => setOpened(null)}
-					onSaved={() => setOpened(null)}
-				/>
-			) : null}
-			{opened === 'share-message' ? (
-				<ShareMessageSettingsSheet
-					own={loaderData.shareMessage}
-					seed={loaderData.pageSettings}
 					version={version}
 					onDismiss={() => setOpened(null)}
 					onSaved={() => setOpened(null)}

@@ -8,8 +8,8 @@ import { PickRefusal, PicturePicker, type PictureOption } from './pictures';
 
 // the Settings sheet: everything about a page that is not a chat, one list. rows that hold a typed
 // value open a sheet of their own stacked over this one (./done-sheet.tsx argues their one Done);
-// the layout pictures and the look apply the moment they are picked, here, with nothing to finish.
-// a refused layout pick is reported under the pictures, in a region there whenever they are.
+// the layout pictures apply the moment they are picked, here, with nothing to finish. a refused
+// layout pick is reported under the pictures, in a region there whenever they are.
 //
 // the block list is the keyboard's way to a block: a click on a block in the preview opens the same
 // block's sheet (./preview-frame.tsx), and a row here is that click for a reader who cannot point.
@@ -21,13 +21,7 @@ import { PickRefusal, PicturePicker, type PictureOption } from './pictures';
 // all, and the rows that open a sheet of their own take `onOpen` as soon as one of them is drawn.
 
 /** a row that opens a sheet of its own. */
-export type SettingsRow =
-	| 'name'
-	| 'address'
-	| 'goal'
-	| 'end-date'
-	| 'share-message'
-	| 'donation-settings';
+export type SettingsRow = 'name' | 'address' | 'goal' | 'end-date' | 'donation-settings';
 
 type OpenRowProps = {
 	readonly label: string;
@@ -130,8 +124,6 @@ type OpenRows =
 	| {
 			/** a campaign's own four; absent on the Donation page. */
 			readonly campaign?: CampaignSettings | undefined;
-			/** the page's own share message, or null while it takes the Organisation's. */
-			readonly shareMessage?: string | null | undefined;
 			/** what the page's donation settings come to — `One program · Winter coats`. */
 			readonly donationSettings?: string | undefined;
 			/** a row that opens a sheet of its own was pressed. */
@@ -139,15 +131,12 @@ type OpenRows =
 	  }
 	| {
 			readonly campaign?: undefined;
-			readonly shareMessage?: undefined;
 			readonly donationSettings?: undefined;
 			readonly onOpen?: undefined;
 	  };
 
 type SettingsSheetProps = {
 	readonly onDismiss: () => void;
-	/** the look controls, which apply on pick as the pictures do. */
-	readonly look?: ReactNode;
 } & BlocksGroup &
 	LayoutGroup &
 	OpenRows;
@@ -161,14 +150,11 @@ export function SettingsSheet({
 	layout,
 	onLayout,
 	layoutRefusal,
-	look,
-	shareMessage,
 	donationSettings,
 	onOpen
 }: SettingsSheetProps) {
 	const campaignTop = campaign?.name !== undefined || campaign?.address !== undefined;
 	const campaignDates = campaign?.goalMinor !== undefined || campaign?.endDate !== undefined;
-	const sharing = shareMessage !== undefined || donationSettings !== undefined;
 	return (
 		<Sheet title="Settings" tall onDismiss={onDismiss}>
 			{campaign && campaignTop ? (
@@ -201,7 +187,6 @@ export function SettingsSheet({
 					<PickRefusal refusal={layoutRefusal} />
 				</Part>
 			) : null}
-			{look === undefined || look === null ? null : <Part title="Look">{look}</Part>}
 			{campaign && campaignDates ? (
 				<Part title="Goal and end date">
 					<div className="adm-openrow-list">
@@ -228,24 +213,14 @@ export function SettingsSheet({
 					</div>
 				</Part>
 			) : null}
-			{onOpen && sharing ? (
-				<Part title="Sharing and gifts">
+			{onOpen && donationSettings !== undefined ? (
+				<Part title="Gifts">
 					<div className="adm-openrow-list">
-						{shareMessage === undefined ? null : (
-							<OpenRow
-								label="Share message"
-								value={shareMessage ?? 'The Organisation’s'}
-								unset={shareMessage === null}
-								onOpen={() => onOpen('share-message')}
-							/>
-						)}
-						{donationSettings === undefined ? null : (
-							<OpenRow
-								label="Donation settings"
-								value={donationSettings}
-								onOpen={() => onOpen('donation-settings')}
-							/>
-						)}
+						<OpenRow
+							label="Donation settings"
+							value={donationSettings}
+							onOpen={() => onOpen('donation-settings')}
+						/>
 					</div>
 				</Part>
 			) : null}

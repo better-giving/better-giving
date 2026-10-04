@@ -16,10 +16,10 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 // a campaign has none: nothing here takes a page to name, and a campaign's editor names no such form.
 //
 // a Reset puts the current default Donation page (`defaultDonationPage` in ../../page/defaults.ts)
-// in the draft and the live page alike, so both take the Organisation's look and share message
-// and the default share buttons;
-// clears `last_published`, so Undo has nothing to put back; and empties the page's chat — in one
-// `batch()` guarded on the version the editor was drawn at, as ./publish.ts's presses are.
+// in the draft and the live page alike, so both hold no look, share message or share buttons of
+// their own and draw the defaults (`donorLook` in ./view.ts); clears `last_published`, so Undo has
+// nothing to put back; and empties the page's chat — in one `batch()` guarded on the version the
+// editor was drawn at, as ./publish.ts's presses are.
 // - the live donation settings stay: the owned settings row is not written, and the document
 //   carries the live page's two switches and, where the live page carries settings of its own, that
 //   row's, so a settings or switch change not yet published goes with the draft. a live page with

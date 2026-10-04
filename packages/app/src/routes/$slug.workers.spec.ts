@@ -244,8 +244,8 @@ function seeds(html: string) {
 }
 
 describe('the look a published campaign is drawn in', () => {
-	it('moves with a save of the Organisation’s, unless the campaign holds its own', async () => {
-		const own = { shade: 'cool', corner: 'square', brandColour: '#6b2d8a' } as const;
+	it('is its own shade and corners, light and soft where it holds none, in the Organisation’s brand colour', async () => {
+		const own = { shade: 'cool', corner: 'square' } as const;
 		await campaign();
 		await campaign({
 			name: 'Spring fun run',
@@ -257,8 +257,37 @@ describe('the look a published campaign is drawn in', () => {
 		const saved = { shade: 'warm', corner: 'round', brandColour: '#1d6b4f' } as const;
 		expect(await updateOrgLook(db, version, saved)).not.toBe('stale');
 
-		expect(seeds(markup((await visit()).data))).toEqual(saved);
-		expect(seeds(markup((await visit('/spring-fun-run')).data))).toEqual(own);
+		expect(seeds(markup((await visit()).data))).toEqual({
+			shade: 'light',
+			corner: 'soft',
+			brandColour: '#1d6b4f'
+		});
+		expect(seeds(markup((await visit('/spring-fun-run')).data))).toEqual({
+			...own,
+			brandColour: '#1d6b4f'
+		});
+	});
+
+	it('is its own on the ended screen too, never the Organisation’s shade and corners', async () => {
+		await endedCampaign({
+			published: { ...defaultCampaign(), look: { shade: 'cool', corner: 'square' } }
+		});
+		await endedCampaign({ name: 'Spring fun run', slug: 'spring-fun-run' });
+
+		const { version } = await readOrgLook(db);
+		const saved = { shade: 'warm', corner: 'round', brandColour: '#1d6b4f' } as const;
+		expect(await updateOrgLook(db, version, saved)).not.toBe('stale');
+
+		expect(seeds(markup((await visit()).data))).toEqual({
+			shade: 'cool',
+			corner: 'square',
+			brandColour: '#1d6b4f'
+		});
+		expect(seeds(markup((await visit('/spring-fun-run')).data))).toEqual({
+			shade: 'light',
+			corner: 'soft',
+			brandColour: '#1d6b4f'
+		});
 	});
 });
 

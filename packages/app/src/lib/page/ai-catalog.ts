@@ -217,9 +217,9 @@ function prompt({ catalog, options, formatZodType }: PromptContext<DraftCatalog>
 
 /**
  * the model's draft as a page of `type`, put onto `onto` — the page being redrafted, or a default
- * for a first draft — so the operator's look, switches, goal, end date, share message and settings
- * stay theirs. the draft brings the layout, the palette and the blocks, and the result is
- * `parsePage`'s.
+ * for a first draft, with what the reply's `set` changed — so the look, switches, goal, end date,
+ * share message and buttons and settings stay as `onto` holds them. the draft brings the layout,
+ * the palette and the blocks, and the result is `parsePage`'s.
  */
 export function pageFromDraft(
 	type: PageType,

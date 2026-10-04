@@ -58,8 +58,6 @@ type EditorFrame = {
 
 export type EditorPage = EditorFrame & {
 	readonly unreadable: false;
-	/** the draft's own share message, or null while it takes the Organisation's. */
-	readonly shareMessage: string | null;
 	readonly goalMinor: number | null;
 	/** the day the draft's end closes, `YYYY-MM-DD`, in the zone it was chosen in. */
 	readonly endDate: string | null;
@@ -87,7 +85,6 @@ export function editorPage(row: Page, now: number): EditorPage {
 	return {
 		...editorFrame(row, now),
 		unreadable: false,
-		shareMessage: draft.shareMessage ?? null,
 		goalMinor: draft.goalMinor ?? null,
 		endDate: endDayOf(draft)
 	};

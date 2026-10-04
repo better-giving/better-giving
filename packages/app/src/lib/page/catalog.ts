@@ -35,6 +35,7 @@ import {
 } from './keys';
 import { isTimeZone } from './end-date';
 import { draftSettings } from './settings';
+import { listed, oneOf } from './refusal';
 import { SHARE_CHANNELS } from './share';
 
 export { BACKGROUNDS, LAYOUTS, PALETTES };
@@ -159,11 +160,7 @@ const blockId = z.string().regex(new RegExp(`^[A-Za-z0-9_-]{1,${ID_MAX}}$`), {
 
 const look = z.strictObject({
 	[LOOK_KEYS.shade]: oneOf(SHADES, 'a shade', 'a look is'),
-	[LOOK_KEYS.corner]: oneOf(CORNERS, 'a corner', 'a look is'),
-	[LOOK_KEYS.brandColour]: z
-		.string()
-		.regex(/^#[0-9a-f]{6}$/, { error: 'a brand colour is a lowercase #rrggbb, or null for none' })
-		.nullable()
+	[LOOK_KEYS.corner]: oneOf(CORNERS, 'a corner', 'a look is')
 });
 
 type Names = readonly [string, ...string[]];
@@ -263,7 +260,7 @@ const pageDocument = (type: PageType) =>
 		.strictObject({
 			layout: oneOf(LAYOUTS, 'a layout', 'a page is laid out'),
 			palette: oneOf(PALETTES, 'a palette', 'a page takes'),
-			[PAGE_KEYS.look]: look.nullable().optional(),
+			[PAGE_KEYS.look]: look.optional(),
 			shareMessage: z
 				.string()
 				.max(SHARE_MESSAGE_MAX, {
@@ -406,23 +403,6 @@ export function parsePage(type: PageType, input: unknown): { ok: true; page: Pag
 
 function blockName(index: number, id: string | null) {
 	return id === null ? `block ${index + 1}` : `block ${index + 1} (id "${id}")`;
-}
-
-/** a name from `names`, refused as `"x" is not <what>; <offered> a, b or c`. */
-function oneOf<const T extends Names>(names: T, what: string, offered: string) {
-	return z.enum(names, {
-		error: (issue) => `${shown(issue.input)} is not ${what}; ${offered} ${listed(names, 'or')}`
-	});
-}
-
-function listed(names: readonly string[], joiner: 'and' | 'or' = 'and') {
-	return names.length < 2
-		? names.join('')
-		: `${names.slice(0, -1).join(', ')} ${joiner} ${names.at(-1)}`;
-}
-
-function shown(input: unknown) {
-	return input === undefined ? 'nothing' : JSON.stringify(input);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -3162,12 +3162,14 @@ const lookCheck = (doc: SQLiteColumn) => sql`${jsonObject(doc)} and ${lookFields
 
 /**
  * the organisation as its donor pages present it — its story (mission and an optional vision),
- * its look (brand colour, shade, corner) and its sharing (share channels in their order, a default
- * share message, its social links).
+ * its look (brand colour, shade, corner) and its sharing (a share message and its social links).
+ * a donor page reads the story, the brand colour and the social links; its shade, corners, share
+ * message and share buttons are its own (`donorLook` in ../pages/view.ts), so the look's shade and
+ * corner and the sharing's message reach no page.
  *
  * not `org_profile`, which is the legal identity a receipt carries and the console's to edit. this
- * row is the dashboard's organisation page, and every page reads it when drawn, so a save reaches
- * every page that uses the organisation's story, look or sharing at once.
+ * row is the dashboard's organisation page, and every page reads it when drawn, so a save of what
+ * a page reads reaches every page at once.
  *
  * one row, ever — `org_presentation_id_check`, as on `org_profile` — and none is seeded: absent,
  * each part reads as our defaults. the first save of any part writes the row, the other two at
@@ -3229,8 +3231,10 @@ const noCampaignSettings = (doc: SQLiteColumn) =>
 	sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.goalMinor)}) is null and json_extract(${doc}, ${jsonPath(PAGE_KEYS.endsAt)}) is null`;
 
 /**
- * check body for a page document's own look: absent or null, meaning the organisation's, or an
- * object `lookFields` accepts. a null document extracts null and passes.
+ * check body for a page document's own look: absent or null, or an object `lookFields` accepts. a
+ * null document extracts null and passes. the page rule is narrower — a look is a shade and a
+ * corner, never null and never a brand colour — and absent draws `DEFAULT_SHADE` and
+ * `DEFAULT_CORNER` ($lib/page/keys.ts).
  */
 const pageLookCheck = (doc: SQLiteColumn) => {
 	const look = jsonPath(PAGE_KEYS.look);

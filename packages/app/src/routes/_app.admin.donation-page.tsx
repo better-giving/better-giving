@@ -4,7 +4,6 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { PageLookSettings, ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
@@ -14,10 +13,7 @@ import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
 import {
 	PAGE_END_DATE_FORM_ID,
 	PAGE_GOAL_FORM_ID,
-	PAGE_LOOK_FORM_ID,
-	PAGE_SETTING_FORM_IDS,
-	PAGE_SHARE_FORM_ID,
-	type PageSettingsSeed
+	PAGE_SETTING_FORM_IDS
 } from '$lib/page/page-settings-form';
 import {
 	DISCARD_FORM_ID,
@@ -39,7 +35,7 @@ import {
 	unreadableEditor
 } from '$lib/server/pages/editor';
 import { answerPublishPress } from '$lib/server/pages/publish';
-import { readPageSettings, savePageSetting } from '$lib/server/pages/page-settings';
+import { savePageSetting } from '$lib/server/pages/page-settings';
 import { answerResetPress, hasEditsToReset } from '$lib/server/pages/reset';
 import { database, platform } from '../context';
 import type { BareHandle } from './_app';
@@ -57,10 +53,11 @@ import type { Route } from './+types/_app.admin.donation-page';
 // than a 404, as /donate answers before anyone has opened it.
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
-// only at Publish, as a campaign's are ($lib/server/pages/editor.ts). so are the look and the share
-// message ($lib/server/pages/page-settings.ts); a goal and an end date are a campaign's alone, and
-// this action refuses them. until a Publish carries donation settings, the program follows the
-// active programs ($lib/server/pages/donation-page.ts).
+// only at Publish, as a campaign's are ($lib/server/pages/editor.ts). a goal and an end date are a
+// campaign's alone, and this action refuses them ($lib/server/pages/page-settings.ts); the shade,
+// corners and share message are set only through the chat ($lib/page/accept-reply.ts). until a
+// Publish carries donation settings, the program follows the active programs
+// ($lib/server/pages/donation-page.ts).
 //
 // **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
 // in the preview's place, with Discard changes where the live page reads and Reset to default
@@ -98,7 +95,6 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	let row: Page;
 	let settings: SettingsSeed;
-	let pageSettings: PageSettingsSeed;
 	let edited: boolean;
 	let illustrations: ReadonlySet<string>;
 	const now = Date.now();
@@ -107,9 +103,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		const unreadable = unreadableEditor(row, now);
 		// a draft the rule refuses is itself an edit Reset puts back (`hasEditsToReset`).
 		if (unreadable !== null) return { ...unreadable, hasEdits: true };
-		[settings, pageSettings, edited, illustrations] = await Promise.all([
+		[settings, edited, illustrations] = await Promise.all([
 			readEditorSettings(db, env, row, new URL(request.url).origin),
-			readPageSettings(db, row),
 			hasEditsToReset(db, row),
 			draftIllustrations(db, row)
 		]);
@@ -121,7 +116,6 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		...editorPage(row, now),
 		...editorDraft(row, settings.currency, illustrations),
 		settings,
-		pageSettings,
 		hasEdits: edited
 	};
 }
@@ -140,10 +134,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 			return answerPublishPress(db, { type: 'donation_page' }, body, NO_DONATION_PAGE);
 		case RESET_FORM_ID:
 			return answerResetPress(db, body, NO_DONATION_PAGE);
-		case PAGE_LOOK_FORM_ID:
 		case PAGE_GOAL_FORM_ID:
 		case PAGE_END_DATE_FORM_ID:
-		case PAGE_SHARE_FORM_ID:
 			return savePageSetting(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
 		default:
 			return saveBlockForm(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
@@ -218,7 +210,6 @@ function DraftEditor({
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setDonationSettings(true) : setBlockId(id);
-	const [shareMessage, setShareMessage] = useState(false);
 	const chat = useEditorChat(loaderData.chat);
 
 	return (
@@ -255,12 +246,9 @@ function DraftEditor({
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
 					{...layoutPick.sheet}
-					look={<PageLookSettings seed={loaderData.pageSettings} version={version} />}
-					shareMessage={loaderData.shareMessage}
 					donationSettings={loaderData.settings.summary}
 					onOpen={(row) => {
 						if (row === 'donation-settings') setDonationSettings(true);
-						if (row === 'share-message') setShareMessage(true);
 					}}
 				/>
 			) : null}
@@ -274,15 +262,6 @@ function DraftEditor({
 					stacked={settings}
 				/>
 			)}
-			{shareMessage ? (
-				<ShareMessageSettingsSheet
-					own={loaderData.shareMessage}
-					seed={loaderData.pageSettings}
-					version={version}
-					onDismiss={() => setShareMessage(false)}
-					onSaved={() => setShareMessage(false)}
-				/>
-			) : null}
 			{donationSettings ? (
 				<DonationSettingsSheet
 					seed={loaderData.settings}

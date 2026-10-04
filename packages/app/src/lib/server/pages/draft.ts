@@ -17,8 +17,16 @@ import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog, switchRules } from '../.
 import { CAMPAIGN_TYPE_DETAILS, type CampaignType } from '../../page/campaign-types';
 import type { Page } from '../../page/catalog';
 import { placedImageIds } from '../../page/illustration';
+import { listed } from '../../page/refusal';
 import { dayOf, dayWords, endDayOf } from '../../page/end-date';
-import type { ChatNote, PageType } from '../../page/keys';
+import {
+	type ChatNote,
+	CORNERS,
+	DEFAULT_CORNER,
+	DEFAULT_SHADE,
+	type PageType,
+	SHADES
+} from '../../page/keys';
 import { SWITCH_LABELS } from '../../page/settings-form';
 import {
 	SHARE_CHANNEL_LABELS,
@@ -52,7 +60,7 @@ import {
 	readOrgProfile,
 	readOrgStory
 } from '../org/queries';
-import type { OrgLook, Story } from '../org/presentation';
+import type { Story } from '../org/presentation';
 import { type ProgramOption, readActivePrograms } from '../programs/queries';
 import { readableDraft } from './document';
 import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
@@ -67,11 +75,12 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 //
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
 // all), its type, a campaign's type label, name, goal, end date, donation settings and where its
-// donation box opens, with the wording each switch that is on asks for (`switchRules`), the
-// organisation's story and look, the active programs, and what it said so far: each accepted or
-// asking exchange as the operator's message and the reply's `say`, cut at `SAY_MAX`, an ask with its
-// questions beside its `say` and an answers turn as the words it was composed into. an opening ask
-// follows the request an opening is asked with. which model is `generate`'s, never the chat's.
+// donation box opens, with the wording each switch that is on asks for (`switchRules`), its shade,
+// corners, share buttons and share message, the organisation's story and brand colour, the active
+// programs, and what it said so far: each accepted or asking exchange as the operator's message
+// and the reply's `say`, cut at `SAY_MAX`, an ask with its questions beside its `say` and an
+// answers turn as the words it was composed into. an opening ask follows the request an opening is
+// asked with. which model is `generate`'s, never the chat's.
 //
 // an opening, and the answers turn to it, look the organisation's stored EIN up in the IRS
 // nonprofit API (../nonprofits/filing.ts) and tell the model the latest filing's activity, program
@@ -525,7 +534,7 @@ async function promptContext(
 	lookUp: boolean
 ): Promise<PromptContext> {
 	const current = readableDraft(row);
-	const [{ story }, { look }, programs, filing] = await Promise.all([
+	const [{ story }, { look: orgLook }, programs, filing] = await Promise.all([
 		readOrgStory(db),
 		readOrgLook(db),
 		readActivePrograms(db),
@@ -538,7 +547,7 @@ async function promptContext(
 		campaignType: row.campaignType,
 		current,
 		story,
-		look,
+		brandColour: orgLook.brandColour,
 		programs,
 		filing,
 		timeZone,
@@ -755,7 +764,8 @@ type PromptContext = {
 	campaignType: CampaignType | null;
 	current: Page;
 	story: Story;
-	look: OrgLook;
+	/** the organisation's, lowercase `#rrggbb`, or null for none. */
+	brandColour: string | null;
 	programs: readonly ProgramOption[];
 	/** the organisation's latest filing, on an opening and the answers to it alone. */
 	filing: Filing | null;
@@ -781,8 +791,8 @@ function systemPrompt(context: PromptContext): string {
 function replyFormat(type: PageType): string[] {
 	const settable =
 		type === 'campaign'
-			? '{"name": ..., "goalMinor": ..., "endDate": "YYYY-MM-DD", "programId": ..., "suggestedAmounts": [...], "shareChannels": [...]}'
-			: '{"programId": ..., "suggestedAmounts": [...], "shareChannels": [...]}';
+			? '{"corner": ..., "endDate": "YYYY-MM-DD", "goalMinor": ..., "name": ..., "programId": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}'
+			: '{"corner": ..., "programId": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}';
 	const channels = SHARE_CHANNELS.map((channel) => `${channel} (${SHARE_CHANNEL_LABELS[channel]})`);
 	return [
 		'REPLY:',
@@ -794,6 +804,8 @@ function replyFormat(type: PageType): string[] {
 		'- a patch path starts at /layout, /palette or /blocks; set is not part of the page, so no path starts at /set: a setting goes in set alone, and a reply that changes only settings has {"kind": "patch", "ops": []} as its page. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...} changes one value; {"op": "add", "path": "/blocks/-", "value": {a whole block}} adds a block after the last; {"op": "add", "path": "/blocks/2", "value": {a whole block}} adds one before the third.',
 		`- set: only what the operator asked for, of ${settable}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.`,
 		`- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of ${channels.slice(0, -1).join(', ')} or ${channels.at(-1)}; [] takes them all off.`,
+		`- shade and corner: the page’s look, set only when the operator asks, and either may be set alone. shade is ${listed(SHADES, 'or')}: "warmer" asks for warm, "cooler" for cool, "plainer" or "neutral" for light. corner is ${listed(CORNERS, 'or')}: "rounder" asks for round, "sharper" or "squarer" for square, "softer" for soft. Every shade is a pale ground, so a darker or more colourful page is the palette’s to change, never the shade’s.`,
+		'- shareMessage: the words a donor shares the page with, at most one or two sentences. Leave it out of set to keep the message as it is; null takes it off, so the page shares its title and link, and is only for when the operator asked for no share message. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.',
 		...(type === 'campaign'
 			? []
 			: [
@@ -815,7 +827,7 @@ function contextLines({
 	campaignType,
 	current,
 	story,
-	look,
+	brandColour,
 	programs,
 	timeZone,
 	now
@@ -831,7 +843,7 @@ function contextLines({
 		`- today: ${dayOf(now, timeZone) ?? 'unknown'}, in the operator's time zone ${timeZone}`,
 		`- mission: ${story.mission === null ? '(not written)' : plainText(story.mission)}`,
 		`- vision: ${story.vision === null ? '(not written)' : plainText(story.vision)}`,
-		`- look: ${look.shade} shade, ${look.corner} corners, brand colour ${look.brandColour ?? 'none'}`,
+		`- look: ${current.look?.shade ?? DEFAULT_SHADE} shade, ${current.look?.corner ?? DEFAULT_CORNER} corners, brand colour ${brandColour ?? 'none'}`,
 		...(type === 'campaign'
 			? [
 					`- goal: ${current.goalMinor === undefined ? 'none' : money(current.goalMinor)}`,
@@ -843,6 +855,7 @@ function contextLines({
 			: `- donation settings: minimum ${settings.minMinor === null ? 'none' : money(settings.minMinor)}, maximum ${settings.maxMinor === null ? 'none' : money(settings.maxMinor)}, suggested amounts ${settings.suggestedAmounts.map(money).join(', ') || 'none'}, program ${settings.programMode === 'pinned' ? `pinned to ${programName(settings.programId)}` : settings.programMode === 'choice' ? 'chosen by each donor' : 'none'}`,
 		`- donation box: ${SWITCH_LABELS.open_on_monthly} ${onOff(current.switches.openOnMonthly)}, ${SWITCH_LABELS.dedication_on} ${onOff(current.switches.dedicationOn)}`,
 		`- share buttons, in order: ${shareLabels(current.shareChannels ?? SHARE_CHANNELS_DEFAULT) || 'none'}`,
+		`- share message: ${current.shareMessage === undefined ? 'none, so the page shares its title and link' : JSON.stringify(current.shareMessage)}`,
 		`- active programs: ${programs.map(({ id, name }) => `${id} (${name})`).join(', ') || 'none'}`
 	];
 }
@@ -945,6 +958,12 @@ function changeWords(change: Change, programs: readonly ProgramOption[]): string
 			return change.to.length === 0
 				? 'Share buttons taken off.'
 				: `Share buttons: ${shareLabels(change.to)}.`;
+		case 'shade':
+			return `Shade: ${change.to}.`;
+		case 'corner':
+			return `Corners: ${change.to}.`;
+		case 'shareMessage':
+			return change.to === null ? 'Share message taken off.' : `Share message: “${change.to}”`;
 	}
 }
 

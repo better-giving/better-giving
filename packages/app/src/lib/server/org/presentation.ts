@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { SHARE_MESSAGE_MAX } from '$lib/page/catalog';
-import { CORNERS, type Corner, SHADES, type Shade } from '$lib/page/keys';
+import {
+	CORNERS,
+	type Corner,
+	DEFAULT_CORNER,
+	DEFAULT_SHADE,
+	SHADES,
+	type Shade
+} from '$lib/page/keys';
+import { listed } from '$lib/page/refusal';
 import { SOCIAL_LINKS_MAX } from '$lib/page/share';
 import { isEmptyDocument, parseRichText, type RichTextDocument } from '$lib/rich-text/document';
 
@@ -112,7 +120,8 @@ function storedPart(held: unknown, part: Part): RichTextDocument | null {
 // ---------------------------------------------------------------------------
 // the look — a shade and a corner from their closed sets, and a brand colour or none.
 //
-// a look is saved whole, every key stated, so what a page reads is what the operator saw picked.
+// a donor page reads its brand colour alone: its shade and corners are each page's own
+// (`PAGE_KEYS.look` in `$lib/page/keys.ts`). a look is saved whole, every key stated.
 // `{}`, the column default, and any key missing from an older row read as `DEFAULT_LOOK`'s, which
 // is the donation form's own look: light, soft, and its grey where no brand colour is set.
 // `org_presentation_look_check` holds the stored keys to the same sets and the colour to a
@@ -136,7 +145,7 @@ type LookValues = {
 /** what the look column holds for a deployment that has never saved one — the column default. */
 export const NO_LOOK = '{}';
 
-const DEFAULT_LOOK: OrgLook = { shade: 'light', corner: 'soft', brandColour: null };
+const DEFAULT_LOOK: OrgLook = { shade: DEFAULT_SHADE, corner: DEFAULT_CORNER, brandColour: null };
 
 const BRAND_COLOUR = /^#[0-9a-f]{6}$/;
 
@@ -154,10 +163,10 @@ export function lookInput(
 	}
 	const errors: Partial<Record<keyof OrgLook, string>> = {};
 	if (!isOneOf(SHADES, shade)) {
-		errors.shade = `${shown(shade)} is not a shade; a shade is ${listed(SHADES)}`;
+		errors.shade = `${shown(shade)} is not a shade; a shade is ${listed(SHADES, 'or')}`;
 	}
 	if (!isOneOf(CORNERS, corner)) {
-		errors.corner = `${shown(corner)} is not a corner; a corner is ${listed(CORNERS)}`;
+		errors.corner = `${shown(corner)} is not a corner; a corner is ${listed(CORNERS, 'or')}`;
 	}
 	if (!colourIsOne) {
 		errors.brandColour = `${shown(brandColour)} is not a brand colour; a brand colour is a lowercase #rrggbb, or blank for none`;
@@ -167,10 +176,6 @@ export function lookInput(
 
 function isOneOf<const T extends readonly string[]>(names: T, value: unknown): value is T[number] {
 	return typeof value === 'string' && names.includes(value);
-}
-
-function listed(names: readonly string[]): string {
-	return `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
 }
 
 function shown(value: string | undefined): string {
@@ -217,9 +222,9 @@ export async function partVersion(stored: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// the sharing — the organisation's default share message and its social links. which share
-// buttons a page draws, and in what order, is the page's own (`shareChannels` in
-// `$lib/page/catalog.ts`), and a `channels` key a row still holds is read past.
+// the sharing — the organisation's social links, and a message no donor page reads: each page's
+// share message, and which share buttons it draws in what order, are its own (`shareMessage` and
+// `shareChannels` in `$lib/page/catalog.ts`), and a `channels` key a row still holds is read past.
 //
 // one rule both ways: the pieces below refuse a save and filter a read alike.
 //
@@ -238,7 +243,7 @@ export async function partVersion(stored: string): Promise<string> {
 export const NO_SHARING = '{}';
 
 export type OrgSharing = {
-	/** the default share message, or `null` where none is written. */
+	/** the message the Organisation page saves, which no donor page reads; `null` where none is written. */
 	readonly message: string | null;
 	readonly links: readonly { readonly label: string; readonly href: string }[];
 };

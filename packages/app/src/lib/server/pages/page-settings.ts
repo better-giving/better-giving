@@ -1,65 +1,29 @@
 import { z } from 'zod';
 import { defineForm } from '../../forms/definition';
-import { GOAL_MINOR_MAX, SHARE_MESSAGE_MAX } from '../../page/catalog';
+import { GOAL_MINOR_MAX } from '../../page/catalog';
 import { dayWords, endOfDay, isTimeZone } from '../../page/end-date';
 import {
 	PAGE_END_DATE_FORM_ID,
 	PAGE_GOAL_FORM_ID,
-	PAGE_LOOK_FORM_ID,
-	PAGE_SHARE_FORM_ID,
-	type PageSettingFormId,
-	type PageSettingsSeed,
-	SETTING_SOURCES
+	type PageSettingFormId
 } from '../../page/page-settings-form';
 import { invalid, type ParsedForm, parseForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
-import type { Page } from '../db/schema';
-import { lookInput } from '../org/presentation';
-import { readOrgLook, readOrgSharing } from '../org/queries';
-import { readableDraft } from './document';
 import { type DraftKeys, type SettingsTarget, updateDraftKeys } from './queries';
 
-// the Settings sheet's look, goal, end date and share message, for both editors: each press parsed
-// here and written to the draft alone (`updateDraftKeys` in ./queries.ts) against the version the
-// editor was drawn at, so the live page moves only at Publish.
+// the Settings sheet's goal and end date, for both editors: each press parsed here and written to
+// the draft alone (`updateDraftKeys` in ./queries.ts) against the version the editor was drawn at,
+// so the live page moves only at Publish. a page's look and share message are its own and set only
+// through its editor's chat (../../page/accept-reply.ts).
 //
-// **the look** is the Organisation's, which removes the page's own, or one of the page's own stored
-// whole — shade, corner and brand colour together, under the Organisation page's rule
-// (`lookInput` in ../org/presentation.ts), so a shade or corner off its closed set is refused naming
-// it. **the goal** is minor units in the page's currency, and an emptied box removes it. **the end
+// **the goal** is minor units in the page's currency, and an emptied box removes it. **the end
 // date** is a day and the IANA zone of the browser that chose it: the draft stores the day's end in
 // that zone (`endOfDay` in ../../page/end-date.ts) beside the zone, both or neither, and a day
-// already over is refused naming it. the goal and the end date are a campaign's alone, and the
-// Donation page refuses them. **the share message** is the Organisation's, which removes the page's
-// own, or words of the page's own.
+// already over is refused naming it. both are a campaign's alone, and the Donation page refuses
+// them.
 //
 // a press drawn before any other write to the page — a chat turn, a rename, another setting — is
 // refused at 409 rather than putting back what that write moved.
-
-/** the look and share message sheets' seed: the draft's own, beside the Organisation's. */
-export async function readPageSettings(db: Db, row: Page): Promise<PageSettingsSeed> {
-	const draft = readableDraft(row);
-	const [{ look: organisationLook }, { sharing }] = await Promise.all([
-		readOrgLook(db),
-		readOrgSharing(db)
-	]);
-	const own = draft.look;
-	return {
-		look: own ? { source: 'custom', ...own } : { source: 'organisation' },
-		organisationLook,
-		organisationShareMessage: sharing.message
-	};
-}
-
-const LOOK_EDIT = defineForm({
-	id: PAGE_LOOK_FORM_ID,
-	schema: z.object({
-		look: z.enum(SETTING_SOURCES, `a look is ${SETTING_SOURCES.join(' or ')}`),
-		shade: z.string().optional(),
-		corner: z.string().optional(),
-		brand_colour: z.string().optional()
-	})
-});
 
 const GOAL_EDIT = defineForm({
 	id: PAGE_GOAL_FORM_ID,
@@ -71,14 +35,6 @@ const END_DATE_EDIT = defineForm({
 	schema: z.object({
 		end_date: z.string().trim().optional(),
 		time_zone: z.string().trim().optional()
-	})
-});
-
-const SHARE_EDIT = defineForm({
-	id: PAGE_SHARE_FORM_ID,
-	schema: z.object({
-		share_message: z.enum(SETTING_SOURCES, `a share message is ${SETTING_SOURCES.join(' or ')}`),
-		message: z.string().trim().optional()
 	})
 });
 
@@ -111,20 +67,6 @@ function refusedBoxes(submission: ParsedForm<unknown>, boxes: Record<string, str
 		Object.entries(boxes).map(([box, sentence]) => [box, [sentence]])
 	);
 	return { ok: false, refusal: invalid(400, submission.reject({ fieldErrors })) };
-}
-
-function readLook(body: FormData): Read {
-	const submission = parseForm(body, LOOK_EDIT);
-	if (!submission.ok) return unparsed(submission);
-	const { look, shade, corner, brand_colour } = submission.value;
-	if (look === 'organisation') return taken(submission, { look: undefined });
-	const read = lookInput({ shade, corner, brandColour: brand_colour });
-	if (read.ok) return taken(submission, { look: read.look });
-	const { brandColour, ...refused } = read.errors;
-	return refusedBoxes(submission, {
-		...refused,
-		...(brandColour === undefined ? {} : { brand_colour: brandColour })
-	});
 }
 
 function readGoal(body: FormData, target: SettingsTarget): Read {
@@ -169,20 +111,6 @@ function readEndDate(body: FormData, target: SettingsTarget): Read {
 	return taken(submission, { endsAt: ends.endsAt, endsZone: zone });
 }
 
-function readShareMessage(body: FormData): Read {
-	const submission = parseForm(body, SHARE_EDIT);
-	if (!submission.ok) return unparsed(submission);
-	const { share_message: source, message } = submission.value;
-	if (source === 'organisation') return taken(submission, { shareMessage: undefined });
-	if (message === undefined || message === '') {
-		return refusedBoxes(submission, { message: 'required, or pick the Organisation’s' });
-	}
-	if (message.length > SHARE_MESSAGE_MAX) {
-		return refusedBoxes(submission, { message: `at most ${SHARE_MESSAGE_MAX} characters` });
-	}
-	return taken(submission, { shareMessage: message });
-}
-
 /** the Donation page's refusal of what only a campaign carries, in ../../page/catalog.ts's words. */
 function campaignsOnly(submission: ParsedForm<unknown>, what: string): Read {
 	return {
@@ -198,19 +126,15 @@ function campaignsOnly(submission: ParsedForm<unknown>, what: string): Read {
 
 function read(form: PageSettingFormId, body: FormData, target: SettingsTarget): Read {
 	switch (form) {
-		case PAGE_LOOK_FORM_ID:
-			return readLook(body);
 		case PAGE_GOAL_FORM_ID:
 			return readGoal(body, target);
 		case PAGE_END_DATE_FORM_ID:
 			return readEndDate(body, target);
-		case PAGE_SHARE_FORM_ID:
-			return readShareMessage(body);
 	}
 }
 
 /**
- * one of the four presses, for the page `target` names. `gone` is what a press on a page that is
+ * one of the two presses, for the page `target` names. `gone` is what a press on a page that is
  * not there is told.
  */
 export async function savePageSetting(

@@ -56,7 +56,8 @@ export function PlainPage({
 
 /**
  * a page whose stored document is missing or fails the read rule: its donation box alone, in the
- * organisation's look, so a gift can still be made while the page is repaired.
+ * default shade and corners and the organisation's brand colour (`donorLook` in
+ * $lib/server/pages/view.ts), so a gift can still be made while the page is repaired.
  */
 export function PlainDonationPage({
 	config,
@@ -78,8 +79,8 @@ export function PlainDonationPage({
 /**
  * an ended campaign's address: the organisation's name over the page as /donate draws it, then the
  * campaign's name, that it has ended, and the way on to /donate — at the page's reading measure,
- * in the organisation's look, with no donation box. a deployment with no organisation name yet
- * draws no masthead, logo or not.
+ * in the campaign's own published look (`donorLook` in $lib/server/pages/view.ts), with no
+ * donation box. a deployment with no organisation name yet draws no masthead, logo or not.
  */
 export function EndedCampaignPage({
 	name,

@@ -53,7 +53,7 @@ const EDITED: PageDocument = {
 	...defaultDonationPage(),
 	palette: 'bold',
 	layout: 'banner',
-	look: { brandColour: '#aa3300', shade: 'warm', corner: 'round' },
+	look: { shade: 'warm', corner: 'round' },
 	shareMessage: 'Keep Elm Street warm.',
 	blocks: defaultDonationPage().blocks.filter((block) => block.type !== 'about-us'),
 	settings: SETTINGS

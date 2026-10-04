@@ -2,14 +2,8 @@ import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { SHARE_MESSAGE_MAX } from '$lib/page/catalog';
-import { defaultDonationPage } from '$lib/page/defaults';
-import {
-	PAGE_END_DATE_FORM_ID,
-	PAGE_GOAL_FORM_ID,
-	PAGE_LOOK_FORM_ID,
-	PAGE_SHARE_FORM_ID
-} from '$lib/page/page-settings-form';
+import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
+import { PAGE_END_DATE_FORM_ID, PAGE_GOAL_FORM_ID } from '$lib/page/page-settings-form';
 import { createDb, type Db } from '$lib/server/db/client';
 import { page } from '$lib/server/db/schema';
 import { insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
@@ -20,7 +14,7 @@ import * as layout from '../../../routes/_app';
 import * as campaignEditor from '../../../routes/_app.admin.campaigns.$pageId';
 import * as donationEditor from '../../../routes/_app.admin.donation-page';
 
-// the Settings sheet's look, goal, end date and share message, posted to both editors' actions as
+// the Settings sheet's goal and end date, posted to both editors' actions as
 // the sheets post them. a workers spec because each press writes a page's draft; the chain is
 // mounted for ../../../route-request.testing.ts's reason: the session gate is a `middleware` on
 // ../../../routes/_app.tsx.
@@ -95,67 +89,24 @@ beforeEach(async () => {
 	bindings = await finishedDeployment();
 });
 
-describe('the look', () => {
-	it('stores a custom look whole on the draft', async () => {
-		const pageId = await insertPage(db, 'campaign');
-
-		const response = await post(pageId, PAGE_LOOK_FORM_ID, CUSTOM);
-
-		expect(response.status).toBe(200);
-		expect((await draftOf(pageId)).look).toEqual({
-			shade: 'warm',
-			corner: 'round',
-			brandColour: '#1d6b4f'
-		});
-	});
-
-	it('stores a look with no brand colour as none', async () => {
-		const pageId = await insertPage(db, 'campaign');
-
-		const response = await post(pageId, PAGE_LOOK_FORM_ID, { ...CUSTOM, brand_colour: '' });
-
-		expect(response.status).toBe(200);
-		expect((await draftOf(pageId)).look).toEqual({
-			shade: 'warm',
-			corner: 'round',
-			brandColour: null
-		});
-	});
-
-	it('drops the page’s own look when it goes back to the Organisation’s', async () => {
-		const pageId = await insertPage(db, 'campaign');
-		await post(pageId, PAGE_LOOK_FORM_ID, CUSTOM);
-
-		const response = await post(pageId, PAGE_LOOK_FORM_ID, {
-			look: 'organisation',
-			shade: '',
-			corner: '',
-			brand_colour: ''
-		});
-
-		expect(response.status).toBe(200);
-		expect(await draftOf(pageId)).not.toHaveProperty('look');
-	});
-
+describe('the look and the share message', () => {
+	// each is the page's own and set only through its editor's chat ($lib/page/accept-reply.ts).
 	it.each([
-		['shade', 'dusk', '"dusk" is not a shade; a shade is light, warm or cool'],
-		['corner', 'pill', '"pill" is not a corner; a corner is square, soft or round']
-	])(
-		'refuses an off-list %s naming it, keeps what was sent and writes nothing',
-		async (box, value, sentence) => {
-			const pageId = await insertPage(db, 'campaign');
+		['page-look', 'campaign', CUSTOM],
+		['page-look', 'donation_page', CUSTOM],
+		['page-share-message', 'campaign', { share_message: 'custom', message: 'Join me?' }],
+		['page-share-message', 'donation_page', { share_message: 'custom', message: 'Join me?' }]
+	] as const)(
+		'a press of %s on the %s editor is refused, writing nothing',
+		async (form, type, fields) => {
+			const pageId = type === 'campaign' ? await insertPage(db, 'campaign') : await donationPage();
 			const before = await stored(pageId);
 
-			const response = await post(pageId, PAGE_LOOK_FORM_ID, { ...CUSTOM, [box]: value });
+			const response = await post(pageId, form, fields);
 
 			expect(response.status).toBe(400);
-			expect(await response.json()).toMatchObject({
-				form: {
-					id: PAGE_LOOK_FORM_ID,
-					result: { initialValue: { [box]: value }, error: { [box]: [sentence] } }
-				}
-			});
-			expect((await stored(pageId)).draft).toBe(before.draft);
+			expect(await response.text()).toMatch(/names no form on this screen/);
+			expect(await stored(pageId)).toEqual(before);
 		}
 	);
 });
@@ -288,59 +239,14 @@ describe('the end date', () => {
 	});
 });
 
-describe('the share message', () => {
-	it('stores the page’s own, trimmed, on the Donation page as on a campaign', async () => {
-		const pageId = await donationPage();
-
-		const response = await post(pageId, PAGE_SHARE_FORM_ID, {
-			share_message: 'custom',
-			message: '  I just gave. Join me?  '
-		});
-
-		expect(response.status).toBe(200);
-		expect((await draftOf(pageId)).shareMessage).toBe('I just gave. Join me?');
-	});
-
-	it('drops the page’s own when it goes back to the Organisation’s', async () => {
-		const pageId = await insertPage(db, 'campaign');
-		await post(pageId, PAGE_SHARE_FORM_ID, { share_message: 'custom', message: 'Join me?' });
-
-		const response = await post(pageId, PAGE_SHARE_FORM_ID, {
-			share_message: 'organisation',
-			message: ''
-		});
-
-		expect(response.status).toBe(200);
-		expect(await draftOf(pageId)).not.toHaveProperty('shareMessage');
-	});
-
-	it.each([
-		['  ', 'required, or pick the Organisation’s'],
-		['x'.repeat(SHARE_MESSAGE_MAX + 1), `at most ${SHARE_MESSAGE_MAX} characters`]
-	])('refuses a message of %j, keeping it, and writes nothing', async (message, sentence) => {
-		const pageId = await insertPage(db, 'campaign');
-		const before = await stored(pageId);
-
-		const response = await post(pageId, PAGE_SHARE_FORM_ID, { share_message: 'custom', message });
-
-		expect(response.status).toBe(400);
-		expect(await response.json()).toMatchObject({
-			form: { id: PAGE_SHARE_FORM_ID, result: { error: { message: [sentence] } } }
-		});
-		expect((await stored(pageId)).draft).toBe(before.draft);
-	});
-});
-
 describe('a press drawn before another save', () => {
 	it.each([
-		[PAGE_LOOK_FORM_ID, CUSTOM],
 		[PAGE_GOAL_FORM_ID, { goal_minor: '5000000' }],
-		[PAGE_END_DATE_FORM_ID, { end_date: '2099-12-31', time_zone: 'America/New_York' }],
-		[PAGE_SHARE_FORM_ID, { share_message: 'custom', message: 'Join me?' }]
+		[PAGE_END_DATE_FORM_ID, { end_date: '2099-12-31', time_zone: 'America/New_York' }]
 	])('%s is refused at 409 and writes nothing', async (form, fields) => {
 		const pageId = await insertPage(db, 'campaign');
 		const drawn = (await stored(pageId)).updatedAt.getTime();
-		await post(pageId, PAGE_SHARE_FORM_ID, { share_message: 'custom', message: 'Earlier save' });
+		await post(pageId, PAGE_GOAL_FORM_ID, { goal_minor: '100000' });
 		const before = await stored(pageId);
 
 		const response = await post(pageId, form, fields, drawn);
@@ -363,26 +269,17 @@ describe('what the editor is drawn with', () => {
 		return response.json();
 	}
 
-	it('follows the Organisation’s look and message until the page has its own', async () => {
-		const pageId = await insertPage(db, 'campaign');
-
-		expect(await open(pageId)).toMatchObject({
-			pageSettings: {
-				look: { source: 'organisation' },
-				organisationLook: { shade: 'light', corner: 'soft', brandColour: null },
-				organisationShareMessage: null
-			}
+	it('draws no look or share message of the page’s to edit by hand', async () => {
+		const pageId = await insertPage(db, 'campaign', {
+			...defaultCampaign(),
+			look: { shade: 'warm', corner: 'round' },
+			shareMessage: 'Join me?'
 		});
-	});
 
-	it('reads the page’s own look back as it was picked', async () => {
-		const pageId = await insertPage(db, 'campaign');
-		await post(pageId, PAGE_LOOK_FORM_ID, CUSTOM);
+		const drawn = await open(pageId);
 
-		expect(await open(pageId)).toMatchObject({
-			pageSettings: {
-				look: { source: 'custom', shade: 'warm', corner: 'round', brandColour: '#1d6b4f' }
-			}
-		});
+		expect(drawn).toMatchObject({ unreadable: false, goalMinor: null });
+		expect(Object.keys(drawn)).not.toEqual(expect.arrayContaining(['pageSettings']));
+		expect(Object.keys(drawn)).not.toEqual(expect.arrayContaining(['shareMessage']));
 	});
 });

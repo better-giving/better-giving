@@ -455,9 +455,7 @@ export async function updateDraftSettings(
 }
 
 /** a page document's keys the Settings sheet sets one at a time; `undefined` removes a key. */
-export type DraftKeys = Partial<
-	Pick<PageDocument, 'look' | 'goalMinor' | 'endsAt' | 'endsZone' | 'shareMessage'>
->;
+export type DraftKeys = Partial<Pick<PageDocument, 'goalMinor' | 'endsAt' | 'endsZone'>>;
 
 /**
  * sets or removes top-level keys of a page's draft while the page is still the version it was drawn
