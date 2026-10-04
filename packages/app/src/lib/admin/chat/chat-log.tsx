@@ -7,7 +7,7 @@ import {
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import type { ChatMessage, ChatWaiting } from './ai-panel';
+import type { ChatMessage } from './ai-panel';
 import { type CardAnswer, QuestionCard, STARTER_NOTE } from './question-card';
 
 const FELL_BACK = 'Your chosen model didn’t answer, so the default model wrote this reply.';
@@ -144,7 +144,6 @@ export function liveAsk(messages: readonly ChatMessage[]): ChatMessage | null {
 export function ChatLog({
 	messages,
 	running,
-	waiting,
 	opening,
 	imageSrc,
 	onAnswer,
@@ -152,7 +151,6 @@ export function ChatLog({
 }: {
 	messages: readonly ChatMessage[];
 	running: boolean;
-	waiting: ChatWaiting | undefined;
 	/** the opening questions are being read; `messages` is empty until they land. */
 	opening: boolean;
 	imageSrc: (imageId: string) => string;
@@ -167,13 +165,7 @@ export function ChatLog({
 	const byId = new Map(messages.map((m) => [m.id, m]));
 	const asking = liveAsk(messages)?.id;
 	const round = messages[0]?.id === asking ? 'opening' : 'follow-up';
-	const writing = opening
-		? 'Reading your page'
-		: !running
-			? ''
-			: waiting === undefined
-				? 'Writing a reply'
-				: 'Writing the first draft';
+	const writing = opening ? 'Reading your page' : running ? 'Writing a reply' : '';
 
 	const log = useRef<HTMLDivElement>(null);
 	const newest = messages.at(-1)?.id;
@@ -197,14 +189,6 @@ export function ChatLog({
 	return (
 		<>
 			<ThreadPrimitive.Viewport ref={log} className="adm-chat__log" autoScroll={false}>
-				{waiting === undefined ? null : (
-					<div className="adm-chat__turn">
-						<div className="adm-chat__mine">
-							<strong>{waiting.title}</strong>
-							<span>{waiting.purpose}</span>
-						</div>
-					</div>
-				)}
 				<ThreadPrimitive.Messages>{turn}</ThreadPrimitive.Messages>
 				{writing === '' ? null : (
 					<div className="adm-chat__turn" aria-hidden="true">

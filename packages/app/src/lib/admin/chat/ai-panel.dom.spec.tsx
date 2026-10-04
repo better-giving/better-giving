@@ -128,20 +128,15 @@ describe('the AI panel', () => {
 		expect(log.textContent).not.toContain('warm shade');
 	});
 
-	it('opens a new campaign on its title and "What\'s it for?" line, drafting', () => {
+	it('opens an empty chat that is not being asked on an empty log, saying nothing', () => {
 		const { host } = mount(
-			props({
-				messages: [],
-				waiting: { title: 'Winter coat drive', purpose: 'Coats for 300 kids, goal $15k by Dec 31' }
-			})
+			// @ts-expect-error a new campaign's waiting line is no prop: creation drafts nothing.
+			props({ messages: [], waiting: { title: 'Winter coat drive', purpose: 'Coats' } })
 		);
-		const first = one(host, '.adm-chat__mine');
 
-		expect(first.querySelector('strong')?.textContent).toBe('Winter coat drive');
-		expect(first.textContent).toContain('Coats for 300 kids, goal $15k by Dec 31');
-		expect(one(host, '[role="status"]').textContent).toBe('Writing the first draft');
-		expect(send(host).getAttribute('aria-disabled')).toBe('true');
-		expect(host.querySelector('.adm-chat__suggestions')).toBeNull();
+		expect(one(host, '.adm-chat__log').textContent).toBe('');
+		expect(host.querySelector('.adm-chat__mine')).toBeNull();
+		expect(one(host, '[role="status"]').textContent).toBe('');
 	});
 
 	it("draws a reply's backticked spans as code, and an operator's backticks as typed", () => {

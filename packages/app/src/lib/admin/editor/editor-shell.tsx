@@ -88,10 +88,10 @@ export function ChatOpening() {
 
 /**
  * stands where an AI sheet nobody's press opened was, and hands the focus to the bar's AI press as
- * the sheet goes. a sheet opened on arrival (`?chat`, ./chat-wiring.tsx) was put up with the focus
- * on the document, which is where its own return would leave it. it mounts in the commit that takes
- * the sheet down, so its effect runs after the sheet's cleanup has let go of the page. from the wide
- * breakpoint there is no AI press and no sheet, and it hands the focus nowhere.
+ * the sheet goes. a sheet opened on arrival (an empty chat's, ./chat-wiring.tsx) was put up with
+ * the focus on the document, which is where its own return would leave it. it mounts in the commit
+ * that takes the sheet down, so its effect runs after the sheet's cleanup has let go of the page.
+ * from the wide breakpoint there is no AI press and no sheet, and it hands the focus nowhere.
  */
 export function ChatClosed() {
 	const entry = useContext(AiEntry);

@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { useFetcher, useSearchParams } from 'react-router';
+import { useFetcher } from 'react-router';
 import { describeResized, type Resized } from '$lib/images/resize';
 import { imageSrc } from '$lib/page/image-src';
 import { AttachControl, attachRefusal } from '../chat/attach-control';
@@ -29,8 +29,9 @@ import { useWide } from './wide';
 // browser's zone, once per editor visit, so a chat a Reset or a Discard empties later is not asked
 // again until the editor is opened anew. the panel reads `opening` until the asked turn lands with
 // the revalidation that follows the post; an opening the route could not answer ends it and is said
-// where a refused send is. below the wide breakpoint the arrival also opens the sheet, as `?chat`
-// does, and hands the focus back the same way when it is closed.
+// where a refused send is. below the wide breakpoint the arrival also opens the sheet, and closing
+// that sheet hands the focus to the AI press (`ChatClosed`): no press opened it, so it has no opener
+// of its own to hand it back to.
 //
 // a turn is the three boxes that route takes: the words, the photos as a JSON array, and the
 // browser's zone, which an end date the operator names is a day in. while it runs the words stand
@@ -65,12 +66,6 @@ import { useWide } from './wide';
 // in `imageIds` itself. an upload's answer is taken only while its photo is still `uploading`, so
 // one landing after Remove or after a new pick is dropped. the photo stays attached through a send
 // nothing was stored from, so the resend carries it, and goes once a turn carrying it lands.
-//
-// `?chat` opens it on arrival. the create action lands a campaign made with a "What's it for?"
-// line there, its first turn already answered (`createCampaign` in $lib/server/pages/campaign.ts
-// runs it before the redirect). closing drops the flag, so a reload opens the editor bare, and
-// hands the focus to the AI press (`ChatClosed`): no press opened that sheet, so it has no opener
-// of its own to hand it back to.
 
 const SUGGESTIONS = ['Tell donors what each amount buys', 'Add a FAQ', 'Shorten the story'];
 
@@ -83,9 +78,6 @@ const drafted = (turns: readonly ChatMessage[]) =>
 		(turn) =>
 			turn.role === 'assistant' && (turn.questions?.length ?? 0) === 0 && turn.note !== 'refused'
 	);
-
-/** the search param that opens the chat on arrival. */
-export const CHAT_PARAM = 'chat';
 
 /** what the chat route's loader answers. */
 type History = { readonly turns: readonly ChatMessage[] };
@@ -171,11 +163,10 @@ export function useEditorChat(url: string): {
 	panel: ReactNode;
 	sheet: ReactNode;
 } {
-	const [params, setParams] = useSearchParams();
 	const wide = useWide();
-	const [open, setOpen] = useState(() => params.has(CHAT_PARAM));
+	const [open, setOpen] = useState(false);
 	/** the sheet up, or last up, is one the arrival opened, rather than one an AI press did. */
-	const [openedOnArrival, setOpenedOnArrival] = useState(open);
+	const [openedOnArrival, setOpenedOnArrival] = useState(false);
 	const history = useFetcher<History>();
 	const turn = useFetcher<TurnAnswer>();
 	const opener = useFetcher<TurnAnswer>();
@@ -300,18 +291,7 @@ export function useEditorChat(url: string): {
 		);
 	};
 
-	const dismiss = () => {
-		setOpen(false);
-		if (params.has(CHAT_PARAM)) {
-			setParams(
-				(next) => {
-					next.delete(CHAT_PARAM);
-					return next;
-				},
-				{ replace: true, preventScrollReset: true }
-			);
-		}
-	};
+	const dismiss = () => setOpen(false);
 
 	const running = turn.state !== 'idle';
 	const sheet = wide ? null : !open ? (

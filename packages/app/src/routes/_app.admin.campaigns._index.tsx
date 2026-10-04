@@ -2,8 +2,8 @@ import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
 import { Disclosure } from '@better-giving/operator/components/data/Disclosure';
+import { ChoiceChips } from '@better-giving/operator/components/forms/ChoiceChips';
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Mark } from '@better-giving/operator/components/status/Mark';
@@ -15,7 +15,6 @@ import { data, Form, href, Link, redirect, useNavigate, useNavigation } from 're
 import { z } from 'zod';
 import {
 	type AdminActionData,
-	boxErrorId,
 	boxProps,
 	recordVersion,
 	resultFor,
@@ -656,38 +655,23 @@ function NewCampaignCard({
 				onDismiss={() => navigate(SCREEN, { preventScrollReset: true })}
 			>
 				<div className="adm-stack">
-					<div className="adm-field">
-						<label className="adm-field__label" htmlFor={fields.type.id}>
-							Type
-						</label>
-						<select
-							className="adm-input"
-							id={fields.type.id}
-							name={fields.type.name}
-							defaultValue={fields.type.defaultValue ?? ''}
-							required
-							aria-invalid={typeError === undefined ? undefined : true}
-							aria-describedby={typeError === undefined ? undefined : boxErrorId(fields.type.id)}
-						>
-							<option value="" disabled>
-								Choose a type
-							</option>
-							{CAMPAIGN_TYPES.map((type) => (
-								<option key={type} value={type}>
-									{CAMPAIGN_TYPE_DETAILS[type].label}
-								</option>
-							))}
-						</select>
-						{typeError === undefined ? null : (
-							<FieldMessage id={boxErrorId(fields.type.id)}>
-								<MarkedText text={typeError} />
-							</FieldMessage>
-						)}
-					</div>
+					<ChoiceChips
+						id={fields.type.id}
+						name={fields.type.name}
+						legend="What kind of campaign?"
+						cards
+						options={CAMPAIGN_TYPES.map((type) => ({
+							value: type,
+							label: CAMPAIGN_TYPE_DETAILS[type].label,
+							description: CAMPAIGN_TYPE_DETAILS[type].description,
+							defaultChecked: fields.type.defaultValue === type
+						}))}
+						error={typeError === undefined ? undefined : <MarkedText text={typeError} />}
+					/>
 					<Field
-						label="Title"
+						label="Name"
 						required
-						placeholder="Winter coat drive"
+						hint="Donors see this as the page’s title. You can change it later."
 						{...boxProps(fields.name)}
 						error={
 							fields.name.errors?.[0] === undefined ? undefined : (

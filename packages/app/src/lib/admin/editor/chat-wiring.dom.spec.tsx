@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, data, useLoaderData, useLocation } from 'react-router';
+import { createRoutesStub, data, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Resized } from '$lib/images/resize';
 import type { ChatMessage } from '../chat/ai-panel';
@@ -114,7 +114,6 @@ function mount(tree: ReactNode): HTMLElement {
 function Editor() {
 	const { version } = useLoaderData<{ version: number }>();
 	const chat = useEditorChat(CHAT);
-	const search = useLocation().search;
 	return (
 		<EditorShell
 			bar={
@@ -128,12 +127,7 @@ function Editor() {
 					onAi={chat.open}
 				/>
 			}
-			preview={
-				<>
-					<output>{version}</output>
-					<samp>{search}</samp>
-				</>
-			}
+			preview={<output>{version}</output>}
 			panel={chat.panel}
 		>
 			{chat.sheet}
@@ -350,36 +344,6 @@ describe('the editor’s chat', () => {
 		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
 	});
 
-	it('opens on arrival at ?chat, as a campaign made with a line is', async () => {
-		screen(`${PAGE}?chat`);
-		await settle();
-
-		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
-	});
-
-	it('closes to the editor’s own address, so a reload does not open it again', async () => {
-		const root = screen(`${PAGE}?chat`);
-		await settle();
-
-		await press(button('Close'));
-		await settle();
-
-		expect(document.querySelector('.adm-chat__log')).toBeNull();
-		expect(root.querySelector('samp')?.textContent).toBe('');
-	});
-
-	it('hands the focus to the AI press when the sheet ?chat opened is closed', async () => {
-		screen(`${PAGE}?chat`);
-		await settle();
-		expect(document.activeElement?.closest('dialog')).not.toBeNull();
-
-		await press(button('Close'));
-		await settle();
-
-		expect(document.querySelector('dialog')).toBeNull();
-		expect(document.activeElement).toBe(button('AI'));
-	});
-
 	it('gives a send back to the box when the page was saved while it was answered', async () => {
 		await opened();
 		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];
@@ -449,13 +413,19 @@ const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const questionCard = () => document.querySelector<HTMLFormElement>('.adm-questions');
 
 describe('a chat with turns', () => {
-	it('is asked nothing on arrival, and below the wide breakpoint opens nothing', async () => {
-		screen();
-		await settle();
+	it.each([
+		['at the editor’s address', PAGE],
+		['at `?chat`, which nothing opens the chat on', `${PAGE}?chat`]
+	])(
+		'is asked nothing on arrival %s, and below the wide breakpoint opens nothing',
+		async (_, at) => {
+			screen(at);
+			await settle();
 
-		expect(posted).toEqual([]);
-		expect(document.querySelector('dialog')).toBeNull();
-	});
+			expect(posted).toEqual([]);
+			expect(document.querySelector('dialog')).toBeNull();
+		}
+	);
 });
 
 describe('an empty chat', () => {

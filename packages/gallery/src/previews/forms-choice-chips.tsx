@@ -1,9 +1,10 @@
 import { ChoiceChips } from '@better-giving/operator/components/forms/ChoiceChips';
 
 /*
- * the chips as the editor's questions draw them: one of a few short answers, several of them, and
- * the Other chip with its box — open in the third specimen, which is the state a press reaches and
- * a page at rest never shows.
+ * the chips as the editor's questions draw them: one of a few short answers, several of them, each
+ * chip's tick box saying so, and the Other chip with its box — open in the third specimen, which is
+ * the state a press reaches and a page at rest never shows. then the cards New campaign draws its
+ * kinds as, one taken and one pinned under the pointer, and the same cards refused.
  *
  * the pointer states are pinned per chip: `hover` on the chip and `focus` on the control inside it,
  * whose ring the chip draws. the taken chip is the platform's own `checked`, set here with
@@ -51,6 +52,52 @@ export default function FormsChoiceChipsPreview() {
 					defaultChecked: true,
 					defaultValue: 'A video of last winter’s handout'
 				}}
+			/>
+			<ChoiceChips
+				id="forms-chips-kind"
+				name="kind"
+				legend="What kind of campaign?"
+				cards
+				options={[
+					{
+						value: 'year_end',
+						label: 'Year-end appeal',
+						description: 'The giving-season ask'
+					},
+					{
+						value: 'emergency',
+						label: 'Emergency response',
+						description: 'A crisis, right now',
+						defaultChecked: true
+					},
+					{
+						value: 'building',
+						label: 'Building fund',
+						description: 'A place, a roof, a van',
+						state: 'hover'
+					},
+					{
+						value: 'event',
+						label: 'Event or fundraiser',
+						description: 'A run, a gala, a bake sale',
+						state: 'focus'
+					}
+				]}
+			/>
+			<ChoiceChips
+				id="forms-chips-kind-refused"
+				name="kind-refused"
+				legend="What kind of campaign?"
+				cards
+				error="required"
+				options={[
+					{
+						value: 'tribute',
+						label: 'In memory or honour',
+						description: 'Gifts in someone’s name'
+					},
+					{ value: 'monthly', label: 'Monthly giving drive', description: 'Grow regular donors' }
+				]}
 			/>
 		</div>
 	);

@@ -74,12 +74,6 @@ export interface ChatUnsent {
 	readonly reason: string;
 }
 
-/** a new campaign's first draft being written from its title and "What's it for?" line. */
-export interface ChatWaiting {
-	readonly title: string;
-	readonly purpose: string;
-}
-
 export interface AiPanelProps {
 	readonly messages: readonly ChatMessage[];
 	readonly isRunning: boolean;
@@ -93,8 +87,6 @@ export interface AiPanelProps {
 	readonly suggestions: readonly string[];
 	/** the url a stored photo is served at. */
 	readonly imageSrc: (imageId: string) => string;
-	/** set while a new campaign's first draft is written; `messages` is empty until it lands. */
-	readonly waiting?: ChatWaiting | undefined;
 	/** set while the opening questions are being asked for; `messages` is empty until they land. */
 	readonly opening?: boolean | undefined;
 	readonly attachment?: ChatAttachment | undefined;
@@ -131,7 +123,7 @@ const textOf = (message: AppendMessage) =>
    `onSend`, every card's answers through `onAnswer`. the runtime's provider stands outside the
    column and the sheet because their body and foot are two slots, and both read the one thread.
 
-   a reply is being written while `isRunning`, `waiting` or `opening` is set. Send is held and the
+   a reply is being written while `isRunning` or `opening` is set. Send is held and the
    suggestions go, and that is all: the box keeps its words and its focus, which is why nothing here
    hands the runtime `isDisabled`. a live question card is held while `isRunning` and free words go
    beside it, which is what the box's placeholder says while one is up.
@@ -155,7 +147,6 @@ function Shown({
 	onDismiss,
 	suggestions,
 	imageSrc,
-	waiting,
 	opening = false,
 	attachment,
 	attach,
@@ -163,7 +154,7 @@ function Shown({
 	wide
 }: AiPanelProps & { readonly wide: boolean }) {
 	const heading = useId();
-	const running = isRunning || waiting !== undefined || opening;
+	const running = isRunning || opening;
 	const imageIds = attachment?.state === 'ready' ? [attachment.imageId] : [];
 	const [landed, setLanded] = useState(unsent);
 	const [reason, setReason] = useState(unsent?.reason ?? '');
@@ -185,7 +176,6 @@ function Shown({
 		<ChatLog
 			messages={messages}
 			running={running}
-			waiting={waiting}
 			opening={opening}
 			imageSrc={imageSrc}
 			onAnswer={(answers) => {

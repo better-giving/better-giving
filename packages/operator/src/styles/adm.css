@@ -3728,11 +3728,31 @@
 
 	   the focused chip takes the ring off the control inside it, for `.adm-check--boxed`'s reason.
 	   the Other box under them is `.adm-input`, as wide as a short answer and no wider.
+
+	   a chip taking one of several answers draws a tick box before its words, the mark's own
+	   square: an empty edge at rest and the primary pair once taken. a chip taking the one answer
+	   draws none, so the two kinds of question part before anything is pressed.
+
+	   cards are the same chips laid in a grid, each its label over the line saying what it is for,
+	   in `.adm-check__sub`'s ink, which reads on the taken card's tint as it does on a taken boxed
+	   row. one across on a phone and two from the middle width, where the dialog's measure has
+	   room for two lines of words side by side and no more.
 	   packages/operator/src/components/forms/ChoiceChips.jsx writes all of it. */
 	.adm-choicechips {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--admin-space-3);
+	}
+
+	.adm-choicechips--cards {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	@media (min-width: 44rem) {
+		.adm-choicechips--cards {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
 	}
 
 	/* `position` is the containing block the control inside is taken out of the flow against, so a
@@ -3752,6 +3772,40 @@
 		border-radius: var(--admin-radius);
 		cursor: pointer;
 		transition: var(--admin-transition-state);
+		gap: var(--admin-space-3);
+	}
+
+	/* a card's line is read at the hint's size and the body's weight, so the card's own weight
+	   goes back to the group's and the label alone keeps the control's. */
+	.adm-choicechips--cards > .adm-choicechip {
+		display: grid;
+		align-content: start;
+		gap: var(--admin-space-2);
+		padding: var(--admin-space-5);
+		font-weight: inherit;
+	}
+
+	.adm-choicechips--cards .adm-choicechip__label {
+		font-weight: var(--admin-control-weight);
+	}
+
+	.adm-choicechip__desc {
+		font-size: var(--admin-hint-size);
+		line-height: var(--admin-hint-lh);
+		color: var(--admin-ink-2);
+	}
+
+	.adm-choicechip__tick {
+		color: transparent;
+		background: var(--admin-field-bg);
+		border: var(--admin-border-width) solid var(--admin-control-border);
+		border-radius: var(--admin-radius);
+	}
+
+	.adm-choicechip:has(input:checked) > .adm-choicechip__tick {
+		color: var(--admin-primary-ink);
+		background: var(--admin-primary-bg);
+		border-color: var(--admin-primary-bg);
 	}
 
 	.adm-choicechip:hover,
@@ -5540,8 +5594,8 @@
 		gap: var(--admin-space-8);
 	}
 
-	/* a line break in a turn's words is kept: a campaign's first turn is its title and its purpose
-	   on two lines, and an operator's message keeps the lines it was typed in. */
+	/* a line break in a turn's words is kept: an operator's message keeps the lines it was typed
+	   in. */
 	.adm-chat__turn {
 		display: grid;
 		gap: var(--admin-space-3);

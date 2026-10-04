@@ -5,7 +5,7 @@ import { type CardQuestion, QuestionCard, type QuestionCardProps } from './quest
 
 // what the question card sends for what was picked and typed: one choice, several, Other with its
 // words and without them, words prefilled and cleared, an amount read into minor units or refused at
-// its box, a date; the skip press; the presses held while answers are on their way; the starter
+// its box, a date; the tick that marks a question taking several answers; the skip press; the presses held while answers are on their way; the starter
 // note; and the presses' words for each round.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -126,6 +126,17 @@ describe('the question card', () => {
 		await press(button(host, 'Draft my page'));
 
 		expect(onSubmit).toHaveBeenCalledWith([]);
+	});
+
+	it('draws a tick in every chip of a question taking several answers, and none in one taking one', () => {
+		const { host } = mount(props());
+		const ticks = (legend: string) =>
+			[...host.querySelectorAll('fieldset')]
+				.find((one) => one.querySelector('legend')?.textContent === legend)
+				?.querySelectorAll('.adm-choicechip__tick').length;
+
+		expect(ticks('Which ways to give should stand out?')).toBe(4);
+		expect(ticks('Who do your gifts mostly help?')).toBe(0);
 	});
 
 	it('sends the choice picked and every choice ticked, in the questions’ order', async () => {

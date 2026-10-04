@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { Mark } from '../status/Mark.jsx';
+import { FieldMessage } from './FieldMessage.jsx';
 
 /**
  * @import { ReactNode } from 'react'
@@ -13,6 +15,9 @@ import { useRef, useState } from 'react';
  * @typedef {object} ChoiceChip
  * @property {string} value
  * @property {ReactNode} label
+ * @property {ReactNode} [description] the line under the label on a card (`cards` on the group),
+ *   saying what the choice is for. it describes the control rather than naming it, for
+ *   ./CheckboxGroup.jsx's reason: a name that is a sentence is one a voice user cannot say.
  * @property {boolean | undefined} [defaultChecked]
  * @property {PointerState | undefined} [state] the state pinned on the chip without a pointer, which
  *   is what a specimen wants and no screen does. `focus` lands on the control inside the chip and
@@ -42,11 +47,17 @@ import { useRef, useState } from 'react';
  * @typedef {object} ChoiceChipsProps
  * @property {string} id
  * @property {string} name the name every chip submits under.
- * @property {'radio' | 'checkbox' | undefined} [type] one of the chips, or any of them. drawn the
- *   same either way; what changes is what the browser submits and what the keyboard does inside
- *   the group — arrows move between radios, Tab between checkboxes.
+ * @property {'radio' | 'checkbox' | undefined} [type] one of the chips, or any of them. a checkbox
+ *   chip draws a tick box before its words, empty until it is taken, so a question taking several
+ *   answers reads as one before anything is pressed; a radio chip draws none. the browser submits
+ *   and the keyboard walks the two differently — arrows move between radios, Tab between
+ *   checkboxes.
  * @property {ReactNode} legend the question the chips answer.
  * @property {ReactNode} [hint]
+ * @property {ReactNode} [error] the group's refusal, never a single chip's.
+ * @property {boolean | undefined} [cards] each choice drawn as a card in a grid, its label over its
+ *   `description`, rather than as a chip in a wrapping row. what earns it is a choice whose words
+ *   alone do not say what it is for.
  * @property {readonly ChoiceChip[]} options
  * @property {ChoiceOther | undefined} [other] opts the group into the Other chip and its box.
  */
@@ -59,16 +70,31 @@ import { useRef, useState } from 'react';
 
    the hint describes each control rather than the fieldset, for ./CheckboxGroup.jsx's reason: a
    fieldset's own description is read on entering the group and again on the control landed on.
+   the refusal is the group's and so is every control's, for that file's reason too: any chip fixes
+   it, and none of them is the wrong one.
 
    the Other box opens on the render the chip is taken in and the focus stays on the chip: the
    arrow keys walking a radio group would otherwise be pulled out of it on passing Other. Tab is
    the next step into the box, which stands straight after the chips. */
 /** @param {ChoiceChipsProps} props */
-export function ChoiceChips({ id, name, type = 'radio', legend, hint, options, other }) {
+export function ChoiceChips({
+	id,
+	name,
+	type = 'radio',
+	legend,
+	hint,
+	error,
+	cards = false,
+	options,
+	other
+}) {
 	const otherChip = useRef(/** @type {HTMLInputElement | null} */ (null));
 	const [otherOpen, setOtherOpen] = useState(other?.defaultChecked ?? false);
 	const hintId = hint ? `${id}-hint` : undefined;
+	const errorId = error ? `${id}-err` : undefined;
+	const groupLines = [hintId, errorId].filter(Boolean).join(' ') || undefined;
 	const otherText = `${id}-other-text`;
+	const tick = type === 'checkbox' ? <Mark name="check" className="adm-choicechip__tick" /> : null;
 
 	return (
 		<fieldset
@@ -81,20 +107,34 @@ export function ChoiceChips({ id, name, type = 'radio', legend, hint, options, o
 					{hint}
 				</p>
 			) : null}
-			<div className="adm-choicechips">
-				{options.map(({ value, label, defaultChecked, state }) => (
-					<label key={value} className={`adm-choicechip${state === 'hover' ? ' is-hover' : ''}`}>
-						<input
-							type={type}
-							name={name}
-							value={value}
-							defaultChecked={defaultChecked}
-							className={state === 'focus' ? 'adm-vh is-focus' : 'adm-vh'}
-							aria-describedby={hintId}
-						/>
-						<span>{label}</span>
-					</label>
-				))}
+			<div className={cards ? 'adm-choicechips adm-choicechips--cards' : 'adm-choicechips'}>
+				{options.map(({ value, label, description, defaultChecked, state }, at) => {
+					const words = `${id}-${at}`;
+					const line = description ? `${words}-desc` : undefined;
+					return (
+						<label key={value} className={`adm-choicechip${state === 'hover' ? ' is-hover' : ''}`}>
+							<input
+								type={type}
+								name={name}
+								value={value}
+								defaultChecked={defaultChecked}
+								className={state === 'focus' ? 'adm-vh is-focus' : 'adm-vh'}
+								aria-invalid={errorId ? 'true' : undefined}
+								aria-labelledby={line ? words : undefined}
+								aria-describedby={[groupLines, line].filter(Boolean).join(' ') || undefined}
+							/>
+							{tick}
+							<span className="adm-choicechip__label" id={line ? words : undefined}>
+								{label}
+							</span>
+							{description ? (
+								<span className="adm-choicechip__desc" id={line}>
+									{description}
+								</span>
+							) : null}
+						</label>
+					);
+				})}
 				{other ? (
 					<label className="adm-choicechip">
 						<input
@@ -104,8 +144,10 @@ export function ChoiceChips({ id, name, type = 'radio', legend, hint, options, o
 							value={other.value ?? ''}
 							defaultChecked={other.defaultChecked}
 							className="adm-vh"
-							aria-describedby={hintId}
+							aria-invalid={errorId ? 'true' : undefined}
+							aria-describedby={groupLines}
 						/>
+						{tick}
 						<span id={otherText}>{other.label ?? 'Other'}</span>
 					</label>
 				) : null}
@@ -121,6 +163,7 @@ export function ChoiceChips({ id, name, type = 'radio', legend, hint, options, o
 					autoComplete="off"
 				/>
 			) : null}
+			{error ? <FieldMessage id={errorId}>{error}</FieldMessage> : null}
 		</fieldset>
 	);
 }
