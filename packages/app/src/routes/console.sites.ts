@@ -95,7 +95,7 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	// the write's answer is the report, so the console never holds a second view of the deployment
 	// — the saved list is a member of it, and a console reading it back separately could draw the
 	// list it has just written from a stale answer.
-	return consoleJson(await consoleReport(db, context.get(consoleSession)));
+	return consoleJson(await consoleReport(db, context.get(consoleSession), request.url));
 }
 
 /** the read this address does not answer. `GET /console` is the report. */

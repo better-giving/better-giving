@@ -13,7 +13,7 @@ import {
 	watchEin
 } from './ein-lookup';
 
-// when the Legal details fold asks the IRS list about the EIN box, and what it says and fills when
+// when the Organisation details fold asks the IRS list about the EIN box, and what it says and fills when
 // the answer lands. the watch is plain typescript handed the box's text, so every case here is the
 // fold's own reading with no dom (../../vite.config.ts pins `node`).
 
@@ -26,7 +26,8 @@ const ORGANISATION: NonprofitOrganisation = {
 	postal_code: '92501',
 	deductible: true,
 	revokedOn: '',
-	website: 'https://riversidefood.org'
+	website: 'https://riversidefood.org',
+	mission: 'Food for every family in Riverside County.'
 };
 
 const EMPTY: NonprofitOrganisation = {
@@ -38,7 +39,8 @@ const EMPTY: NonprofitOrganisation = {
 	postal_code: '',
 	deductible: false,
 	revokedOn: '',
-	website: ''
+	website: '',
+	mission: ''
 };
 
 const found = (over: Partial<NonprofitOrganisation> = {}): NonprofitLookup => ({
@@ -253,7 +255,8 @@ describe('what the answer says and fills', () => {
 			city: 'Riverside',
 			region: 'California',
 			postal_code: '92502',
-			country: 'USA'
+			country: 'USA',
+			mission: 'Feeding Riverside.'
 		});
 		await settled();
 
@@ -303,12 +306,15 @@ describe('the boxes a found organisation fills', () => {
 			city: 'Riverside',
 			region: 'CA',
 			postal_code: '92501',
-			country: 'United States'
+			country: 'United States',
+			mission: 'Food for every family in Riverside County.'
 		});
 	});
 
 	it('leaves a box alone where the list holds nothing for it', () => {
-		expect(foundBoxes({ ...ORGANISATION, postal_code: '', address_line1: '' }, {}, {})).toEqual({
+		expect(
+			foundBoxes({ ...ORGANISATION, postal_code: '', address_line1: '', mission: '' }, {}, {})
+		).toEqual({
 			legal_name: 'Riverside Community Food Bank',
 			city: 'Riverside',
 			region: 'CA',
@@ -329,6 +335,13 @@ describe('the boxes a found organisation fills', () => {
 		expect(
 			foundBoxes(ORGANISATION, { legal_name: '' }, { legal_name: 'Riverside Food Bank Inc' })
 		).not.toHaveProperty('legal_name');
+	});
+
+	it('leaves a mission typed since the lookup went out', () => {
+		const typed = foundBoxes(ORGANISATION, { mission: '' }, { mission: 'Feeding Riverside.' });
+
+		expect(typed).not.toHaveProperty('mission');
+		expect(typed).toHaveProperty('legal_name');
 	});
 
 	it('leaves a Country box holding anything as it is, even one held since before', () => {

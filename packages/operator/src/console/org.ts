@@ -10,7 +10,7 @@
 //
 // **what a value may be is next door in ./org-rules.ts, and a rule about one of these fields is
 // stated there and nowhere else.** those rules are here in the leaf rather than on either side of
-// the wire because two surfaces apply them to the same nine values: the deployment parses every
+// the wire because two surfaces apply them to the same values: the deployment parses every
 // profile it is sent, and the console applies the same rules in front of the person typing so that
 // a name over its cap or a value that is not an EIN is answered at the box rather than after a
 // round trip. a copy on either side would be a second opinion about whether a receipt may be
@@ -47,7 +47,10 @@ export const ORG_PROFILE_FIELDS = [
 	'region',
 	'postal_code',
 	'country',
-	'notification_email'
+	'notification_email',
+	'mission',
+	'vision',
+	'brand_colour'
 ] as const;
 
 export type OrgProfileField = (typeof ORG_PROFILE_FIELDS)[number];
@@ -61,3 +64,31 @@ export type OrgProfileField = (typeof ORG_PROFILE_FIELDS)[number];
  * every box regardless — an absent key is an empty box, not a box with no seed.
  */
 export type OrgProfileValues = Partial<Record<OrgProfileField, string>>;
+
+/** the platforms a social link may be on; a stored link names its own (`org_profile.social_links`). */
+export const SOCIAL_PLATFORMS = [
+	'facebook',
+	'instagram',
+	'youtube',
+	'linkedin',
+	'tiktok',
+	'x'
+] as const;
+
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
+/** one of the organisation's social links, as stored and as the console reading carries it. */
+export type SocialLink = { readonly platform: SocialPlatform; readonly href: string };
+
+/** the organisation's logo as the console reading carries it: the image's id and where it is served. */
+export type OrgLogo = { readonly id: string; readonly url: string };
+
+/**
+ * the profile as the console reading carries it: a string per box, absent where the deployment
+ * holds nothing, and beside them the links as stored and the logo. `url` is absolute on the
+ * deployment's own origin, so a console draws it without knowing where the deployment answers.
+ */
+export type OrgReading = OrgProfileValues & {
+	readonly social_links: readonly SocialLink[];
+	readonly logo: OrgLogo | null;
+};

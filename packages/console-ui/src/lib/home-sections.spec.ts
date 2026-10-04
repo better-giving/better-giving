@@ -34,7 +34,8 @@ const ORG = {
 	address_line1: '1 High Street',
 	city: 'Leeds',
 	country: 'United Kingdom',
-	notification_email: 'gifts@example.org'
+	notification_email: 'gifts@example.org',
+	mission: 'Books for every school in Leeds.'
 };
 
 /** a deployment with every value set, one site listed and a whole organisation stored. */
@@ -250,6 +251,13 @@ describe('the six sections', () => {
 	it('read an identity whose optional boxes are blank as done', () => {
 		const { notification_email: _, ...identity } = ORG;
 		expect(stateOf(reading({ org: identity }), 'organisation')).toBe('ready');
+	});
+
+	// the save takes a blank mission, and it is still wanted: it is what a donor page says the
+	// organisation is for, and the box carries no `(optional)` marker (`ORG_FIELDS` in ./org-fields.ts).
+	it('read an identity with no mission as not done', () => {
+		const { mission: _, ...identity } = ORG;
+		expect(stateOf(reading({ org: identity }), 'organisation')).toBe('todo');
 	});
 
 	// alerts that reach nobody are a deployment nobody is watching: a receipt that failed and a

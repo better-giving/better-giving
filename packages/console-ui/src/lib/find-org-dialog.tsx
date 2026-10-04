@@ -7,7 +7,7 @@ import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 import { SEARCH_MOST, type SearchState, type SearchWatch, watchSearch } from './org-search';
 
 // "Find your organisation": one box over the IRS list by name or EIN, the matches under it, and a
-// pick that fills the Legal details fold (./org-fold.tsx, which opens this and answers the pick).
+// pick that fills the Organisation details fold (./org-fold.tsx, which opens this and answers the pick).
 //
 // **the dialog is the operator `Modal` and the box is ark's combobox, each left to do its own
 // job.** the card's lift, its focus on opening and the focus handed back on closing are

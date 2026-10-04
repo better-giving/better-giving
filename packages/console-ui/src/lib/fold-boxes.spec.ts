@@ -1,0 +1,97 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { NonprofitOrganisation } from '../api/types';
+import { foundBoxes } from './ein-lookup';
+import { heldBoxes, putBoxes } from './fold-boxes';
+
+// the Organisation fold's reach into its own boxes, which the IRS lookup's fill runs through
+// (`found` in ./org-fold.tsx). ../../vite.config.ts pins `node` and there is no dom, so the two
+// element classes the reach tells a box by are stood in for, and a form's controls are a lookup by
+// name — which is the whole of what the fold hands it.
+
+class Box extends EventTarget {
+	value = '';
+	/** every input event the box was made to fire, which is what both form layers count. */
+	said = 0;
+	constructor(value = '') {
+		super();
+		this.value = value;
+		this.addEventListener('input', () => {
+			this.said += 1;
+		});
+	}
+}
+class Input extends Box {}
+class TextArea extends Box {}
+
+/** a form's controls, as `elements` hands them over. */
+const controls = (boxes: Record<string, Box>) =>
+	({ namedItem: (name: string) => boxes[name] ?? null }) as unknown as HTMLFormControlsCollection;
+
+/** the organisation the list answers with, holding a mission. */
+const ORGANISATION: NonprofitOrganisation = {
+	ein: '12-3456789',
+	name: 'Riverside Community Food Bank',
+	address_line1: '400 Mill Road',
+	city: 'Riverside',
+	region: 'CA',
+	postal_code: '92501',
+	deductible: true,
+	revokedOn: '',
+	website: 'riversidefoodbank.org',
+	mission: 'Food for every family in Riverside County.'
+};
+
+/** the fill as the fold makes it: the boxes as they were asked over, against the boxes now. */
+function fill(form: HTMLFormControlsCollection, before: ReturnType<typeof heldBoxes>): number {
+	return putBoxes(form, foundBoxes(ORGANISATION, before, heldBoxes(form, ['mission', 'city'])));
+}
+
+describe('the lookup’s fill, reaching the boxes', () => {
+	it('puts the filing’s mission into the mission’s textarea and makes it say so', () => {
+		vi.stubGlobal('HTMLInputElement', Input);
+		vi.stubGlobal('HTMLTextAreaElement', TextArea);
+		const mission = new TextArea();
+		const form = controls({ mission, city: new Input() });
+
+		fill(form, heldBoxes(form, ['mission', 'city']));
+
+		expect(mission.value).toBe('Food for every family in Riverside County.');
+		expect(mission.said).toBe(1);
+	});
+
+	it('leaves a mission typed after the lookup went out', () => {
+		vi.stubGlobal('HTMLInputElement', Input);
+		vi.stubGlobal('HTMLTextAreaElement', TextArea);
+		const mission = new TextArea();
+		const city = new Input();
+		const form = controls({ mission, city });
+		const before = heldBoxes(form, ['mission', 'city']);
+
+		mission.value = 'Feeding Riverside.';
+		fill(form, before);
+
+		expect(mission.value).toBe('Feeding Riverside.');
+		expect(mission.said).toBe(0);
+		expect(city.value).toBe('Riverside');
+	});
+
+	it('reads a typed mission out of its textarea', () => {
+		vi.stubGlobal('HTMLInputElement', Input);
+		vi.stubGlobal('HTMLTextAreaElement', TextArea);
+		const form = controls({ mission: new TextArea('Feeding Riverside.') });
+
+		expect(heldBoxes(form, ['mission', 'vision'])).toEqual({
+			mission: 'Feeding Riverside.',
+			vision: ''
+		});
+	});
+
+	it('puts nothing into a control that is not a box', () => {
+		vi.stubGlobal('HTMLInputElement', Input);
+		vi.stubGlobal('HTMLTextAreaElement', TextArea);
+		const notABox = new Box();
+
+		expect(putBoxes(controls({ mission: notABox }), { mission: 'x' })).toBe(0);
+		expect(notABox.value).toBe('');
+	});
+});

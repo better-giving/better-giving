@@ -94,7 +94,7 @@ describe('the rail', () => {
 		const groups = railGroups(rows(), processorLinks(new Set()), LOGOS, INTEGRATIONS);
 		expect(cells(groups)).toEqual([
 			'Dashboard password → /password',
-			'Legal details → /organisation',
+			'Organisation details → /organisation',
 			'Stripe → /payments/stripe',
 			'PayPal → /payments/paypal',
 			'Chariot → /payments/chariot',

@@ -4,7 +4,7 @@ import { z } from 'zod';
 // EIN's shape and the one spelling it is stored in — the whole of it, in the one module every
 // surface reads them from.
 //
-// **the rules are here because two surfaces apply them to the same nine values.** the deployment
+// **the rules are here because two surfaces apply them to the same values.** the deployment
 // parses every profile it is sent (`packages/app/src/lib/server/org/org-input.ts`) and the console
 // applies them in front of the person typing, at the boxes ./org.ts names
 // (`packages/console-ui/src/lib/org-fold.tsx`). a copy in the console would be the cheaper answer
@@ -25,8 +25,8 @@ import { z } from 'zod';
 // zod here, where ../origins.ts and ../admin-password.ts are plain typescript, and the two shapes
 // are not in tension. those are sequences: each check answers a question the next one depends on
 // and the first failure is the only message worth showing, which each of them argues on itself.
-// this is nine independent boxes, and every offending one has to be reported at once — a profile
-// that named one problem per press is how nine boxes take nine presses.
+// these are independent boxes, and every offending one has to be reported at once — a profile
+// that named one problem per press would take as many presses as it has problems.
 //
 // this package is a leaf and imports nothing of the app's, which is what makes it the only place
 // both ends can reach, and it is what `packages/app/form-rules.spec.ts` requires of a schema the
@@ -53,6 +53,10 @@ export const MAX_ADDRESS_LINE = 200;
 export const MAX_LOCALITY = 100;
 export const MAX_POSTAL_CODE = 20;
 export const MAX_EMAIL = 320;
+/** a mission or a vision: a paragraph or a few, never a page. */
+export const MAX_STATEMENT = 2000;
+/** one social link's address, measured trimmed — far past any profile's, short of a pasted page. */
+export const MAX_SOCIAL_LINK = 2000;
 /**
  * deliberately weak: something, `@`, something, no whitespace. lifted from
  * `packages/app/src/lib/contacts/input-schema.ts`, and the reasoning is that file's.
@@ -97,6 +101,12 @@ export const einAsTyped = (value: string): string => {
 	const digits = value.replace(/\D/g, '').slice(0, 9);
 	return digits.length <= 2 ? digits : `${digits.slice(0, 2)}-${digits.slice(2)}`;
 };
+
+/** a brand colour as it may be typed: `#` and six hex digits, either case. */
+export const BRAND_COLOUR = /^#[0-9a-f]{6}$/i;
+
+/** what a brand colour that is not one gets: the shape, with an example to copy. */
+export const MALFORMED_BRAND_COLOUR = 'A `#` and six hex digits, like `#1f6feb`.';
 
 /**
  * the sentence a box the save refuses blank gets, and it is one word: the box it is drawn under
@@ -168,7 +178,7 @@ export const ORG_PROFILE_FIELD_RULES = {
 	// being required and having a format are two different questions, and this field answers
 	// both — it must not be empty, and what is in it must be an EIN.
 	//
-	// the one rule here that rewrites what it stores, and the one with no cap: nine digits is the
+	// one of two rules here that rewrite what they store, and the one with no cap: nine digits is the
 	// whole of what it may be. the transform sits behind a pipe, so an input that raised any issue
 	// above never reaches it and what it is handed is always a value `EIN` accepted.
 	tax_id: z
@@ -190,5 +200,18 @@ export const ORG_PROFILE_FIELD_RULES = {
 	country: bounded(MAX_LOCALITY, REQUIRED).min(1, { error: REQUIRED }),
 	notification_email: bounded(MAX_EMAIL).refine((value) => value === '' || EMAIL.test(value), {
 		error: 'Not an email address.'
-	})
+	}),
+	// what the organisation is for and what it wants the world to become, as a donor page tells it.
+	// line breaks are kept: a paragraph break is the one piece of shape plain text has.
+	mission: bounded(MAX_STATEMENT),
+	vision: bounded(MAX_STATEMENT),
+	// stored lowercase, so two spellings of one colour are one value — rewritten by the deployment
+	// as `tax_id` is, and read ahead of a press for its issues only.
+	brand_colour: z
+		.string()
+		.trim()
+		.refine((value) => value === '' || BRAND_COLOUR.test(value), {
+			error: MALFORMED_BRAND_COLOUR
+		})
+		.transform((value) => value.toLowerCase())
 } as const;

@@ -8,8 +8,9 @@ import {
 } from './replace-photo';
 
 // what a placed photo's replace press does: its name and its box's, what it refuses, and how it
-// reports the upload the route runs. the resize itself is ../../images/resize.spec.ts's; happy-dom
-// decodes no image, so every pick here is one the control refuses before a decode.
+// reports the upload the route runs. the resize itself is
+// `packages/operator/src/images/resize.spec.ts`'s; happy-dom decodes no image, so every pick here
+// is one the control refuses before a decode.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

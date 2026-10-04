@@ -44,7 +44,7 @@ const redCross = `{
 	"name": "American National Red Cross",
 	"address": {"street": "431 18th St NW", "city": "Washington", "state": "DC", "zip": "20006-5310"},
 	"status": {"deductible": true, "revoked": false, "revocation_date": null, "reinstatement_date": null},
-	"filing": {"website": "https://www.redcross.org", "mission": "not read by this console"},
+	"filing": {"website": "https://www.redcross.org", "mission": "\n  Prevents and alleviates human suffering in the face of emergencies.  "},
 	"notes": []
 }`
 
@@ -93,9 +93,27 @@ func TestAFoundOrganisationIsAnsweredWithItsLegalDetails(t *testing.T) {
 		Deductible:   true,
 		RevokedOn:    "",
 		Website:      "https://www.redcross.org",
+		Mission:      "Prevents and alleviates human suffering in the face of emergencies.",
 	}}
 	if looked != want {
 		t.Errorf("looked up %+v, want %+v", looked, want)
+	}
+}
+
+// a filing that states no mission, or states one blank, fills the box with nothing rather than with
+// whitespace an operator would have to find and clear.
+func TestAFilingWithNoMissionAnswersAnEmptyOne(t *testing.T) {
+	for _, filing := range []string{`{}`, `{"mission": null}`, `{"mission": " \n\t "}`} {
+		body := strings.Replace(redCross,
+			`{"website": "https://www.redcross.org", "mission": "\n  Prevents and alleviates human suffering in the face of emergencies.  "}`,
+			filing, 1)
+		client, _ := upstream(t, says(http.StatusOK, body))
+
+		looked := client.LookUp(t.Context(), "53-0196605")
+
+		if looked.State != Found || looked.Organisation.Mission != "" {
+			t.Errorf("a filing of %s looked up %+v, want found with no mission", filing, looked)
+		}
 	}
 }
 

@@ -4,8 +4,8 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { AttachControl, type AttachControlProps, attachRefusal } from './attach-control';
 
 // what the attach press does: its name, what it opens, what it refuses, and what it reports. the
-// resize itself is ../../images/resize.spec.ts's; happy-dom decodes no image, so every pick here is
-// one the control refuses before a decode.
+// resize itself is `packages/operator/src/images/resize.spec.ts`'s; happy-dom decodes no image, so
+// every pick here is one the control refuses before a decode.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

@@ -3,6 +3,7 @@ package deployment
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/better-giving/console/internal/cf"
@@ -30,25 +31,57 @@ func TestAProfileTheDeploymentStoredIsASave(t *testing.T) {
 		"session": map[string]any{"expiresAt": "2026-08-19T12:00:00.000Z"},
 	}})
 
-	write := SaveOrg(context.Background(), post, map[string]string{"legal_name": "  Example  "})
+	write := SaveOrg(context.Background(), post, map[string]string{"legal_name": "  Example  "},
+		[]string{" https://instagram.com/example ", ""})
 	if write.Kind != OrgSaved {
 		t.Fatalf("write %+v", write)
 	}
 	if press.path != OrgPath {
 		t.Fatalf("posted to %q", press.path)
 	}
-	// the whole profile under `org`, as it was typed: the trim and every other rule are the
-	// deployment's, and a console that sent its own reading would store a value nobody typed.
+	// the whole profile under `org` and the links beside it, as they were typed: the trim, the
+	// skipped blank and every other rule are the deployment's, and a console that sent its own
+	// reading would store a value nobody typed.
 	body, _ := press.body.(map[string]any)
 	values, _ := body["org"].(map[string]string)
-	if len(body) != 1 || values["legal_name"] != "  Example  " {
+	links, _ := body["social_links"].([]string)
+	if len(body) != 2 || values["legal_name"] != "  Example  " ||
+		!slices.Equal(links, []string{" https://instagram.com/example ", ""}) {
 		t.Fatalf("posted %v", press.body)
+	}
+}
+
+// no links is a list stated empty, never null: the deployment reads the profile whole, and a list
+// it was not handed is one it stores as cleared.
+func TestAProfileNamingNoLinksPostsAnEmptyList(t *testing.T) {
+	post, press := posting(cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: map[string]any{}})
+	SaveOrg(context.Background(), post, map[string]string{}, nil)
+	body, _ := press.body.(map[string]any)
+	links, listed := body["social_links"].([]string)
+	if !listed || links == nil || len(links) != 0 {
+		t.Fatalf("posted %#v", press.body)
+	}
+}
+
+// the links and the logo are refused under keys of their own beside the field names, and each is a
+// box this console draws a sentence under.
+func TestARefusalOfTheLinksOrTheLogoIsDrawnAtItsOwnBox(t *testing.T) {
+	post, _ := posting(cf.Answer{Kind: cf.Answered, Status: http.StatusUnprocessableEntity, Body: map[string]any{
+		"errors": map[string]any{
+			"social_links": "https://example.org/hounds is not a Facebook, Instagram, YouTube, LinkedIn, TikTok or X address.",
+			"logo":         "That file is not a photo.",
+			"brand_colour": "Give a colour as # and six hex digits.",
+		},
+	}})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
+	if write.Kind != OrgRefused || len(write.Errors) != 3 || write.Unread != 0 {
+		t.Fatalf("write %+v", write)
 	}
 }
 
 func TestAProfileAnsweredWithSomethingElseIsNoSave(t *testing.T) {
 	post, _ := posting(cf.Answer{Kind: cf.Answered, Status: http.StatusOK, Body: map[string]any{"ok": true}})
-	write := SaveOrg(context.Background(), post, map[string]string{})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
 	if write.Kind != OrgUnwritten || write.Read.Kind != NoReportUnreadable {
 		t.Fatalf("write %+v", write)
 	}
@@ -70,7 +103,7 @@ func TestARefusedProfileComesBackKeyedByFieldWithBothSentences(t *testing.T) {
 		},
 	}})
 
-	write := SaveOrg(context.Background(), post, map[string]string{})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
 	if write.Kind != OrgRefused {
 		t.Fatalf("write %+v", write)
 	}
@@ -90,7 +123,7 @@ func TestARefusalCarryingNeitherSentenceIsStillARefusal(t *testing.T) {
 	post, _ := posting(cf.Answer{Kind: cf.Answered, Status: http.StatusUnprocessableEntity, Body: map[string]any{
 		"errors": map[string]any{},
 	}})
-	write := SaveOrg(context.Background(), post, map[string]string{})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
 	if write.Kind != OrgRefused || write.Message != nil || write.Fix != nil || len(write.Errors) != 0 {
 		t.Fatalf("write %+v", write)
 	}
@@ -102,7 +135,7 @@ func TestA422CarryingNoKeysIsTheReadsOwnAnswer(t *testing.T) {
 	post, _ := posting(cf.Answer{Kind: cf.Answered, Status: http.StatusUnprocessableEntity, Body: map[string]any{
 		"message": "No.",
 	}})
-	write := SaveOrg(context.Background(), post, map[string]string{})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
 	if write.Kind != OrgUnwritten || write.Read.Kind != NoReportUnreadable {
 		t.Fatalf("write %+v", write)
 	}
@@ -114,7 +147,7 @@ func TestAProfileWriteCarriesTheDeploymentsOwnRefusalWhole(t *testing.T) {
 	post, _ := posting(cf.Answer{Kind: cf.Answered, Status: http.StatusUnauthorized, Body: map[string]any{
 		"error": "session_mismatch", "message": "Another console.", "fix": "Connect again.",
 	}})
-	write := SaveOrg(context.Background(), post, map[string]string{})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
 	if write.Kind != OrgUnwritten || write.Read.Kind != NoReportRefused {
 		t.Fatalf("write %+v", write)
 	}
@@ -127,7 +160,7 @@ func TestAProfileWriteCarriesTheDeploymentsOwnRefusalWhole(t *testing.T) {
 // is in is that this console has not connected, which is a different sentence from anything the
 // deployment would say.
 func TestAProfileWriteWithNoSessionMakesNoRequestAtAll(t *testing.T) {
-	write := SaveOrg(context.Background(), nil, map[string]string{"legal_name": "Example"})
+	write := SaveOrg(context.Background(), nil, map[string]string{"legal_name": "Example"}, nil)
 	if write.Kind != OrgUnwritten || write.Read.Kind != NoSession {
 		t.Fatalf("write %+v", write)
 	}
@@ -146,7 +179,7 @@ func TestASavedProfileComesBackOffTheWriteItself(t *testing.T) {
 		},
 	}})
 
-	write := SaveOrg(context.Background(), post, map[string]string{})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
 	if write.Kind != OrgSaved {
 		t.Fatalf("write %+v", write)
 	}
@@ -162,7 +195,7 @@ func TestARefusedProfileCarriesNoProfileBack(t *testing.T) {
 	post, _ := posting(cf.Answer{Kind: cf.Answered, Status: http.StatusUnprocessableEntity, Body: map[string]any{
 		"errors": map[string]any{"legal_name": "Give the organisation's legal name."},
 	}})
-	write := SaveOrg(context.Background(), post, map[string]string{})
+	write := SaveOrg(context.Background(), post, map[string]string{}, nil)
 	if write.Kind != OrgRefused || write.Org != nil {
 		t.Fatalf("write %+v", write)
 	}

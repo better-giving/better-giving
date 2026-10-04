@@ -203,7 +203,7 @@ export function SitesFold({ sites, donatePage, list, busy, pending }: SitesFoldP
 		return () => fold.removeEventListener('toggle', shut);
 	}, [element, reset]);
 
-	/* the website the IRS list holds for the organisation the Legal details fold last found
+	/* the website the IRS list holds for the organisation the Organisation details fold last found
 	   (./found-organisation.ts), offered as the first site while there is none: stored nowhere and
 	   typed nowhere yet. the press is the form's own insert, holding the host, so nothing is saved
 	   until Save. it goes with the row it adds, so focus is put in that row's box once it lands —

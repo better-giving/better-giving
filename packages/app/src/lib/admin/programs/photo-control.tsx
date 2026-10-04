@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import type { Resized } from '$lib/images/resize';
+import type { Resized } from '@better-giving/operator/images/resize';
 import { imageSrc } from '$lib/page/image-src';
 import { ReplacePhotoControl, type ReplacePhotoControlProps } from '../editor/replace-photo';
 

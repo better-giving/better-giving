@@ -4,13 +4,16 @@
    browser code only — it decodes and draws with the page's own canvas, so nothing on the server
    ever holds the photo at the size the camera took it.
 
-   the chat's attach press (../admin/chat/attach-control.tsx) and a placed photo's replace press
-   (../admin/editor/replace-photo.tsx) run it; the route they report to posts what it returns. */
+   every operator screen that posts a photo runs it — the dashboard's (the chat's attach press in
+   `packages/app/src/lib/admin/chat/attach-control.tsx`, a placed photo's replace press in
+   `packages/app/src/lib/admin/editor/replace-photo.tsx`) and the console's — and the route each
+   reports to posts what it returns. */
 
 /**
- * the most one image's bytes may weigh: `IMAGE_BYTES_MAX` in ../server/db/schema.ts, which argues
- * the number. restated rather than imported, because that module is the server's schema and this
- * one ships to the browser; ./resize.spec.ts holds the two equal.
+ * the most one image's bytes may weigh: `IMAGE_BYTES_MAX` in
+ * `packages/app/src/lib/server/db/schema.ts`, which argues the number. restated rather than
+ * imported, because this package is a leaf and imports nothing of the app's;
+ * `packages/app/src/lib/server/images/upload-max.spec.ts` holds the two equal.
  */
 export const IMAGE_UPLOAD_MAX = 1_900_000;
 

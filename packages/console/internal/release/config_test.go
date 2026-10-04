@@ -399,6 +399,28 @@ func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
 	}
 }
 
+// the most a logo upload may carry, against the deployment's own intake, so the binary never
+// refuses a photo the deployment would store nor carries one it would refuse.
+func TestTheLogoCapIsTheDeploymentsUploadCap(t *testing.T) {
+	photo := regexp.MustCompile(`export const IMAGE_BYTES_MAX = ([\d_]+);`).
+		FindStringSubmatch(read(t, "packages/app/src/lib/server/db/schema.ts"))
+	upload := regexp.MustCompile(`export const UPLOAD_MAX = IMAGE_BYTES_MAX \+ ([\d_]+);`).
+		FindStringSubmatch(read(t, "packages/app/src/lib/server/images/intake.ts"))
+	if photo == nil || upload == nil {
+		t.Fatalf("the cap is no longer stated as IMAGE_BYTES_MAX plus a literal: %q, %q", photo, upload)
+	}
+	figure := func(literal string) int {
+		value, err := strconv.Atoi(strings.ReplaceAll(literal, "_", ""))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	if stated := figure(photo[1]) + figure(upload[1]); stated != LogoUploadMax {
+		t.Errorf("the deployment's UPLOAD_MAX is %d and this binary holds %d", stated, LogoUploadMax)
+	}
+}
+
 // the endpoint's spelling, against the module both ends of it read.
 //
 // Gated the way DeployVars is: the console registers the endpoint and the deployment serves it, so

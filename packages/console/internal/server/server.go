@@ -107,8 +107,9 @@ func New(options Options) http.Handler {
 	}
 	surface := options.Surface
 	// the same surface held to a longer deadline, for the errands the deployment answers only once
-	// a third party has (./errands.go). a case that binds one binds both: what it answers with is
-	// already immediate, so a second deadline over it would be one nothing ever waits out.
+	// a third party has and the logo's upload (./errands.go). a case that binds one binds both: what
+	// it answers with is already immediate, so a second deadline over it would be one nothing ever
+	// waits out.
 	patient := deployment.PatientCalls
 	if surface == nil {
 		surface = deployment.Calls
@@ -153,6 +154,7 @@ func New(options Options) http.Handler {
 	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records, surface,
 		presses)
 	errandRoutes(routes, doors, patientDoors)
+	logoRoutes(routes, surfaceSend(options.Records, surface), surfaceSend(options.Records, patient))
 	widgetRoutes(routes, options.Flow, reads, sends, options.Accounts)
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
 		presses)
@@ -227,10 +229,10 @@ func Listen(handler http.Handler, port int) *http.Server {
 }
 
 // how long an answer may take once its request has arrived: the longest any press here is bound to
-// by its own deadlines — a connect, an errand the deployment answers once a third party has, and a
-// write of the values — and slack past that for the answer itself to be written. the NOWPayments
-// press is counted by none of the three: it is two reads at cf.ReadTimeout in front of a write,
-// which stays under the connect's bound.
+// by its own deadlines — a connect, an errand the deployment answers once a third party has or the
+// logo's upload, and a write of the values — and slack past that for the answer itself to be
+// written. the NOWPayments press is counted by none of the three: it is two reads at cf.ReadTimeout
+// in front of a write, which stays under the connect's bound.
 //
 // **derived, never typed.** an answer cut off by this deadline is a press that finished on the
 // deployment and reads as a failure on the page, and a connect pressed again on that reading mints

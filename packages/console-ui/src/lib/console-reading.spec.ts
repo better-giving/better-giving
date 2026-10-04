@@ -4,7 +4,7 @@ import type { HomeReading } from '../api/types';
 // how often the console's reading reaches the binary: once per navigation, however many loaders
 // ask. the client is replaced so a read is a count rather than a loopback call.
 
-const read = vi.hoisted(() => ({ count: 0 }));
+const read = vi.hoisted(() => ({ count: 0, org: null as unknown }));
 
 vi.mock('../api/client', () => ({
 	homeShape: async () => {
@@ -25,7 +25,7 @@ vi.mock('../api/client', () => ({
 			values: { vars: { kind: 'read', vars: [] } },
 			sites: [],
 			donatePage: 'https://a.example/donate',
-			org: null,
+			org: read.org,
 			holdsStripeKey: false,
 			retired: true
 		}) as HomeReading,
@@ -39,6 +39,7 @@ const navigation = () => new Request('http://localhost/password');
 describe('the console reading', () => {
 	beforeEach(() => {
 		read.count = 0;
+		read.org = null;
 	});
 
 	it('is read once for every loader of one navigation', async () => {
@@ -67,6 +68,32 @@ describe('the console reading', () => {
 		expect(Object.keys(reading).sort()).toEqual(
 			['donatePage', 'face', 'processors', 'sections', 'sites', 'stored', 'values'].sort()
 		);
+	});
+
+	it('carries the links and the logo the deployment holds beside the boxes', async () => {
+		// the Organisation fold draws both off this reading (`storedOrg` in ./org-form.ts).
+		read.org = {
+			legal_name: 'Riverbank Trust',
+			social_links: [{ platform: 'linkedin', href: 'https://www.linkedin.com/company/riverbank' }],
+			logo: { id: 'img_9', url: 'https://a.example/image/img_9' }
+		};
+
+		const { stored } = (await readConsole(navigation())).reading;
+
+		expect(stored.legal_name).toBe('Riverbank Trust');
+		expect(stored.social_links).toEqual([
+			{ platform: 'linkedin', href: 'https://www.linkedin.com/company/riverbank' }
+		]);
+		expect(stored.logo).toEqual({ id: 'img_9', url: 'https://a.example/image/img_9' });
+	});
+
+	it('carries no links and no logo where the deployment holds none', async () => {
+		read.org = { legal_name: 'Riverbank Trust', social_links: [], logo: null };
+
+		const { stored } = (await readConsole(navigation())).reading;
+
+		expect(stored.social_links).toEqual([]);
+		expect(stored.logo).toBeNull();
 	});
 });
 

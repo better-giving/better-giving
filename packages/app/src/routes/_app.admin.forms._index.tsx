@@ -199,7 +199,7 @@ const SAMPLE = (
 // the status ledger is on the screens under `new` and `[id]`, which are the ones that refuse a
 // write while a blocker stands, and the card that leads the list is a plain link that is never
 // switched off — a second telling here would be a second place to read the same thing, and the
-// place an operator would have to act is the console's Legal details fold either way
+// place an operator would have to act is the console's Organisation details fold either way
 // (`packages/console-ui/src/lib/org-fold.tsx`), which is not on this deployment at all.
 //
 // that reaches the wording of a value as well as the presence of a block, and it is the rule a

@@ -80,6 +80,11 @@ function orgProfile(overrides: Partial<OrgProfile> = {}): OrgProfile {
 		country: 'US',
 		notificationEmail: 'ops@acme.org',
 		deductibilityStatement: 'No goods or services were provided in exchange for this gift.',
+		mission: null,
+		vision: null,
+		brandColour: null,
+		socialLinks: [],
+		logoImageId: null,
 		createdAt: new Date(0),
 		updatedAt: new Date(0),
 		...overrides

@@ -3,6 +3,7 @@ package deployment
 import (
 	"context"
 	"net/http"
+	"slices"
 
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/release"
@@ -33,6 +34,10 @@ import (
 
 // OrgPath is the path on a deployment that stores an organisation's profile.
 const OrgPath = "/console/org"
+
+// OrgLogoPath is the path on a deployment that puts the organisation's logo on, by POST, and takes
+// it off, by DELETE.
+const OrgLogoPath = "/console/org/logo"
 
 // OrgWriteKind is how one write of the profile ended.
 type OrgWriteKind string
@@ -79,11 +84,37 @@ type OrgWrite struct {
 // without a network. A nil writer is its own answer rather than a request made with no credential:
 // the state an operator is in is that this console has not connected, which is a different sentence
 // from anything the deployment would say.
-func SaveOrg(ctx context.Context, post cf.Post, values map[string]string) OrgWrite {
+//
+// The links are the addresses as typed, blanks included: which platform each is and whether a blank
+// is skipped are the deployment's to decide, like every other rule here.
+func SaveOrg(ctx context.Context, post cf.Post, values map[string]string, links []string) OrgWrite {
 	if post == nil {
 		return unsaved(NoReport{Kind: NoSession})
 	}
-	return readOrgWrite(post(ctx, OrgPath, map[string]any{"org": values}))
+	if links == nil {
+		links = []string{}
+	}
+	return readOrgWrite(post(ctx, OrgPath, map[string]any{"org": values, "social_links": links}))
+}
+
+// SaveLogo puts the logo on, or says why it did not.
+//
+// The body is the browser's own multipart post under the type it came with, forwarded unread: the
+// photo's size, type and pixels are the deployment's intake to judge, and its refusal is keyed at
+// `logo` like any other box's.
+func SaveLogo(ctx context.Context, send cf.Send, contentType string, body []byte) OrgWrite {
+	if send == nil {
+		return unsaved(NoReport{Kind: NoSession})
+	}
+	return readOrgWrite(send(ctx, http.MethodPost, OrgLogoPath, cf.Encoded{Type: contentType, Bytes: body}))
+}
+
+// DropLogo takes the logo off, or says why it did not.
+func DropLogo(ctx context.Context, send cf.Send) OrgWrite {
+	if send == nil {
+		return unsaved(NoReport{Kind: NoSession})
+	}
+	return readOrgWrite(send(ctx, http.MethodDelete, OrgLogoPath, nil))
 }
 
 // what the deployment answered a write with, read.
@@ -131,14 +162,10 @@ func fieldErrors(answer cf.Answer) (OrgWrite, bool) {
 	return refused, true
 }
 
-// whether this console has a box that sentence could be printed under.
+// whether this console has a box that sentence could be printed under: one per field, the list of
+// links and the logo.
 func drawn(field string) bool {
-	for _, one := range release.OrgProfileFields {
-		if one == field {
-			return true
-		}
-	}
-	return false
+	return field == "social_links" || field == "logo" || slices.Contains(release.OrgProfileFields, field)
 }
 
 func unsaved(read NoReport) OrgWrite {

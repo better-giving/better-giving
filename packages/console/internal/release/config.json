@@ -26,12 +26,13 @@
 		"0020_webhook_delivery_recent_index.sql",
 		"0021_list_walk_indexes.sql",
 		"0022_webhook_delivery_owed_index.sql",
-		"0023_donor_pages_images_and_chat.sql"
+		"0023_donor_pages_images_and_chat.sql",
+		"0024_org_profile_story_brand_and_logo.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "c2edbc8551538ab17e8e8573dc88eebe45167d8e"
+	"commit": "866b74b7aa2d6c3c3594b340fa71483b83276ce0"
 }

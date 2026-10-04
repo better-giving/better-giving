@@ -275,6 +275,8 @@ const CONSOLE_ROUTE_FILES: readonly string[] = [
 	'routes/console.sites.ts',
 	// the organisation's legal identity, written whole.
 	'routes/console.org.ts',
+	// the organisation's logo, put on from a posted photo or taken off.
+	'routes/console.org.logo.ts',
 	// a test message, sent over this deployment's own transport with its own SMTP credentials.
 	// no row moves, so it answers with a report of the press rather than with the deployment's.
 	'routes/console.test-email.ts',

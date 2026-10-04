@@ -242,8 +242,9 @@ func ModelByID(id string) (AIModel, bool) {
 // **the order is the source's**, because it is the order a screen draws a row in and a console
 // listing them differently sends an operator looking for a row where the document does not put it.
 var (
-	// OrgProfileFields is the organisation's legal identity: the field names, which are also the
-	// keys a refusal is drawn under and the columns a save states.
+	// OrgProfileFields is the organisation's profile, its legal identity and the words and colour it
+	// is presented in: the field names, which are also the keys a refusal is drawn under and the
+	// columns a save states.
 	OrgProfileFields = []string{
 		"legal_name",
 		"tax_id",
@@ -254,6 +255,9 @@ var (
 		"postal_code",
 		"country",
 		"notification_email",
+		"mission",
+		"vision",
+		"brand_colour",
 	}
 	// TestSendOutcomes is what a test message did.
 	TestSendOutcomes = []string{"sent", "failed"}
@@ -308,6 +312,12 @@ const StripeProcessor = "stripe"
 //
 // Held to that list by ./config_test.go for the reason StripeProcessor is.
 const PaypalProcessor = "paypal"
+
+// LogoUploadMax is the most a logo upload may carry in bytes: the deployment's own `UPLOAD_MAX` in
+// packages/app/src/lib/server/images/intake.ts, the photo's `IMAGE_BYTES_MAX` and the multipart
+// framing round it. a body past it is one the deployment refuses, so the console refuses it before
+// it travels. held to that module by ./config_test.go.
+const LogoUploadMax = 1_900_000 + 65_536
 
 // what the deployment's webhook endpoint is: the path it answers on, the version its deliveries are
 // serialised in, and everything it subscribes to.

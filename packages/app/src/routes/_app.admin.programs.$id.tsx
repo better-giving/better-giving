@@ -36,7 +36,7 @@ import {
 } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
 import { PROGRAM_TEXT_FIELDS, type ProgramInputValues } from '$lib/programs/fields';
-import type { Resized } from '$lib/images/resize';
+import type { Resized } from '@better-giving/operator/images/resize';
 import { PROGRAM_EDIT_FORM } from '$lib/programs/input-schema';
 import { PROGRAM_STATUS_LABELS } from '$lib/programs/statuses';
 import { redactPublicId } from '$lib/redact';

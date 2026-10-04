@@ -4,7 +4,7 @@ import { useFetcher } from 'react-router';
 import { RichTextEditor } from '$lib/admin/rich-text/rich-text-editor';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import type { Resized } from '$lib/images/resize';
+import type { Resized } from '@better-giving/operator/images/resize';
 import { BLOCK_FORMS, type BlockText, type EditorBlock } from '$lib/page/block-edit';
 import { imageSrc } from '$lib/page/image-src';
 import { AffixedField } from './affixed-field';

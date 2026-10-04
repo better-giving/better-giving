@@ -18,6 +18,8 @@ import { CONTACT_KINDS, type ContactKind } from '../../contacts/kinds';
 // its own permanent rule, so no back-edge into this file is possible either. see
 // `RECURRING_INTERVALS`, which is the wire's frequency vocabulary minus `one_time`.
 import type { Frequency } from '@better-giving/form/v1';
+// type-only, from a module that imports nothing.
+import type { SocialLink } from '@better-giving/operator/console/org';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
 import { CAMPAIGN_TYPES, type CampaignType } from '../../page/campaign-types';
 import {
@@ -2128,8 +2130,9 @@ export const recurringPlan = sqliteTable(
 );
 
 /**
- * the organization's own identity — the fundraiser's side of a receipt. what a donor page says about
- * the organisation — its story, look and sharing — is `org_presentation`'s.
+ * the organization's own identity — the fundraiser's side of a receipt — and the mission, vision,
+ * brand colour, social links and logo the console states beside it. the story, look and sharing a
+ * donor page reads are `org_presentation`'s.
  *
  * this is receipt content, never a credential and never something the app is constructed from:
  * nothing fails to boot because it is unset. the deploy-time secrets rule is untouched — no Stripe
@@ -2245,7 +2248,29 @@ export const orgProfile = sqliteTable(
 		 * hard-nulls a config that omits it, which is the embed refusing a config no deployment of
 		 * this repository serves.
 		 */
-		deductibilityStatement: text('deductibility_statement')
+		deductibilityStatement: text('deductibility_statement'),
+
+		/** plain text with its line breaks; null for none. */
+		mission: text('mission'),
+		/** plain text with its line breaks; null for none. */
+		vision: text('vision'),
+		/** `#rrggbb`, lowercase, so one colour has one spelling; null for none. */
+		brandColour: text('brand_colour'),
+		/**
+		 * a JSON array of `{ platform, href }`, at most one per platform, in the order typed. the
+		 * check holds it to an array; a check cannot read inside one (sqlite allows no subquery in
+		 * a check), so the platform and the address are the parse's (`ParsedOrgProfile` in
+		 * ../org/org-input.ts).
+		 */
+		socialLinks: text('social_links', { mode: 'json' })
+			.$type<readonly SocialLink[]>()
+			.notNull()
+			.default([]),
+		/**
+		 * an `image` of kind `photo`, null for none. no `_previous`: a replaced or removed logo is
+		 * freed where nothing else names it (`setOrgProfileLogo` in ../org/queries.ts).
+		 */
+		logoImageId: text('logo_image_id').references(() => image.id)
 	},
 	(t) => [
 		// the singleton constraint. `auth_signing_key_id_check` is the precedent.
@@ -2268,7 +2293,15 @@ export const orgProfile = sqliteTable(
 		check(
 			'org_profile_deductibility_statement_not_blank_check',
 			optionalNotBlank(t.deductibilityStatement)
-		)
+		),
+		check('org_profile_mission_not_blank_check', optionalNotBlank(t.mission)),
+		check('org_profile_vision_not_blank_check', optionalNotBlank(t.vision)),
+		// glob is case-sensitive and matches the whole value, so an upper-case digit is refused.
+		check(
+			'org_profile_brand_colour_check',
+			sql`${t.brandColour} is null or ${t.brandColour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'`
+		),
+		check('org_profile_social_links_array_check', jsonArray(t.socialLinks))
 	]
 );
 

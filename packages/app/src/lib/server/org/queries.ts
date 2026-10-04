@@ -2,6 +2,7 @@ import { and, eq, isNotNull, type SQL, sql } from 'drizzle-orm';
 import type { RichTextDocument } from '$lib/rich-text/document';
 import type { Db } from '../db/client';
 import { image, orgPresentation, orgProfile, type OrgProfile } from '../db/schema';
+import { freeImageStatements } from '../images/free';
 import { firstMissingImage, illustrationsAmong } from '../images/queries';
 import type { ParsedOrgProfile } from './org-input';
 import {
@@ -93,11 +94,13 @@ export async function readOrgProfile(db: Db): Promise<OrgProfile | null> {
  * yesterday's value quietly surviving because the key was absent from the set. `ParsedOrgProfile`
  * is total over those columns, so there is no "unspecified" to confuse with "cleared".
  *
- * `deductibility_statement` is deliberately not among them, and that is the one column this
+ * `deductibility_statement` is deliberately not among them, and it is one of two columns this
  * function preserves rather than states: nothing posts it (./org-input.ts), a fork writes it on
  * its own deployment and ./deductibility.ts is what reads it — so naming it in the set would clear
  * a fork's own wording on the next identity save. its absence from `set` is what leaves it alone,
- * and an INSERT here leaves it null, which reads as the standard wording.
+ * and an INSERT here leaves it null, which reads as the standard wording. the other is
+ * `logo_image_id`, which has writes of its own (`setOrgProfileLogo` below) because a logo it
+ * replaces is freed with it.
  *
  * `created_at` is left out of the update on purpose — it is the system time of the first
  * save and an upsert that refreshed it would erase when this deployment was set up.
@@ -125,7 +128,11 @@ export async function saveOrgProfile(db: Db, input: ParsedOrgProfile): Promise<O
 		region: input.region,
 		postalCode: input.postalCode,
 		country: input.country,
-		notificationEmail: input.notificationEmail
+		notificationEmail: input.notificationEmail,
+		mission: input.mission,
+		vision: input.vision,
+		brandColour: input.brandColour,
+		socialLinks: input.socialLinks
 	};
 
 	const [row] = await db
@@ -141,6 +148,56 @@ export async function saveOrgProfile(db: Db, input: ParsedOrgProfile): Promise<O
 		throw new Error('upserting into `org_profile` returned no row');
 	}
 	return row;
+}
+
+// ---------------------------------------------------------------------------
+// the profile's logo, `org_profile.logo_image_id`: set to a stored photo or taken off, and the logo
+// it replaces freed in the same `batch()` where nothing else names it (../images/free.ts). no undo:
+// a freed image is gone.
+//
+// the write is compare-and-set on the logo it read, so the logo it frees is the one it replaced; a
+// write landing between the two answers `stale`.
+// ---------------------------------------------------------------------------
+
+/**
+ * what a profile logo write answers: it landed, the logo moved since it was read, or the id refused
+ * — `no-profile` where no profile is saved for it to sit on, `unknown` where no image has the id,
+ * `illustration` where the image is not a photo.
+ */
+export type ProfileLogoWrite = 'written' | 'stale' | 'no-profile' | 'unknown' | 'illustration';
+
+/** set the profile's logo to the stored photo `imageId`, freeing the one it replaces. */
+export async function setOrgProfileLogo(db: Db, imageId: string): Promise<ProfileLogoWrite> {
+	if ((await firstMissingImage(db, [imageId])) !== null) return 'unknown';
+	if ((await illustrationsAmong(db, [imageId])).has(imageId)) return 'illustration';
+	return writeProfileLogo(db, imageId);
+}
+
+/** take the profile's logo off, freeing it. no profile has no logo, so that is `written` too. */
+export async function removeOrgProfileLogo(db: Db): Promise<'written' | 'stale'> {
+	const written = await writeProfileLogo(db, null);
+	return written === 'no-profile' ? 'written' : written;
+}
+
+async function writeProfileLogo(
+	db: Db,
+	next: string | null
+): Promise<'written' | 'stale' | 'no-profile'> {
+	const [row] = await db
+		.select({ logo: orgProfile.logoImageId })
+		.from(orgProfile)
+		.where(eq(orgProfile.id, ORG_PROFILE_ID));
+	if (!row) return 'no-profile';
+	const write = db
+		.update(orgProfile)
+		.set({ logoImageId: next })
+		.where(and(eq(orgProfile.id, ORG_PROFILE_ID), sql`${orgProfile.logoImageId} is ${row.logo}`))
+		.returning({ id: orgProfile.id });
+	if (row.logo === null || row.logo === next) {
+		return (await write).length > 0 ? 'written' : 'stale';
+	}
+	const [written] = await db.batch([write, ...freeImageStatements(db, row.logo)]);
+	return written.length > 0 ? 'written' : 'stale';
 }
 
 // ---------------------------------------------------------------------------

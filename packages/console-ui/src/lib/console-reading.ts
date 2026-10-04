@@ -3,7 +3,7 @@ import { consoleVersion, homeReading, homeShape, writesAnswered } from '../api/c
 import type { VarsRead } from '../api/types';
 import { type CloudflareGate, cloudflareGate, valuesGate } from './cloudflare-gate';
 import { heldNames, readSections } from './home-sections';
-import { orgBoxes } from './org-fields';
+import { storedProfile } from './org-fields';
 import { processorLinks } from './processor-links';
 
 // every reading the console's pages are a function of, taken once per navigation.
@@ -111,7 +111,7 @@ async function takeReading() {
 			face: read.face,
 			sections: readSections(read),
 			// the seed both pages that edit the profile read.
-			stored: orgBoxes(read.org),
+			stored: storedProfile(read.org),
 			// the deploy-time values as cloudflare answered for them: the pages draw the rows and the
 			// boxes out of the same answer the rail's statuses were read from.
 			values: read.values,

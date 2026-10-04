@@ -35,14 +35,15 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 		return badBody('The request body is not JSON.');
 	}
 
-	const submitted = orgValues(body);
+	const submitted = orgSubmission(body);
 	if (submitted === null)
 		return badBody(
-			'The request body carries no `org` object of string fields. Every field is submitted ' +
-				'together, and a field left out is stored as cleared.'
+			'The request body carries no `org` object of string fields, or a `social_links` that is ' +
+				'not a list of strings. Every field is submitted together, and a field left out is ' +
+				'stored as cleared.'
 		);
 
-	const parsed = parseOrgProfile(submitted);
+	const parsed = parseOrgProfile(submitted.values, submitted.socialLinks);
 	if (!parsed.ok)
 		return consoleJson(
 			{
@@ -66,7 +67,7 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 
 	// the write's answer is the report: the saved profile is a member of it, so a console that read
 	// it back separately could draw the boxes it has just filled in from a stale answer.
-	return consoleJson(await consoleReport(db, context.get(consoleSession)));
+	return consoleJson(await consoleReport(db, context.get(consoleSession), request.url));
 }
 
 /** the read this address does not answer. `GET /console` is the report. */
@@ -75,18 +76,23 @@ export function loader({ request }: Route.LoaderArgs): Response {
 }
 
 /**
- * the submitted profile, or `null` when the body does not carry one.
+ * the submitted profile and its social links as typed, or `null` when the body does not carry them.
  *
  * every field has to be a string, because that is what `OrgProfileFormValues` is: the parser's
  * whole contract is over what a form yields, and a number reaching it would be a value no box
- * could have produced and no rule there is written against.
+ * could have produced and no rule there is written against. the links are a list of strings for
+ * the same reason, and an absent list is none, as an absent field is a cleared one.
  */
-function orgValues(body: unknown): OrgProfileFormValues | null {
+function orgSubmission(
+	body: unknown
+): { values: OrgProfileFormValues; socialLinks: readonly string[] } | null {
 	if (typeof body !== 'object' || body === null) return null;
-	const org = (body as Record<string, unknown>).org;
+	const { org, social_links: socialLinks = [] } = body as Record<string, unknown>;
 	if (typeof org !== 'object' || org === null || Array.isArray(org)) return null;
 	if (!Object.values(org).every((value) => typeof value === 'string')) return null;
-	return org as OrgProfileFormValues;
+	if (!Array.isArray(socialLinks) || !socialLinks.every((link) => typeof link === 'string'))
+		return null;
+	return { values: org as OrgProfileFormValues, socialLinks };
 }
 
 function badBody(message: string): Response {
@@ -94,7 +100,7 @@ function badBody(message: string): Response {
 		{
 			error: 'bad_body',
 			message,
-			fix: 'Send `{ "org": { "legal_name": "…", … } }` — the whole profile, as JSON.'
+			fix: 'Send `{ "org": { "legal_name": "…", … }, "social_links": ["…"] }` — the whole profile, as JSON.'
 		},
 		400
 	);

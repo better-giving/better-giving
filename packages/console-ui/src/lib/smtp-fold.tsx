@@ -1032,7 +1032,7 @@ function MailPort(): ReactNode {
  * shorter than a way to go and find them.
  *
  * the second paragraph is the reason the note is on this box and not on the four beside it. an
- * address on this console is a street address on the Legal details row and a mailbox on the
+ * address on this console is a street address on the Organisation details row and a mailbox on the
  * Notifications row, so the word alone settles nothing — and an operator who reads this one as the
  * place mail reaches them has typed their own inbox into what every donor's receipt is from.
  */

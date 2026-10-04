@@ -84,7 +84,7 @@ type ReportRead struct {
 
 	// Sites is every site this deployment's forms may be used on, in the operator's own order.
 	Sites []string `json:"sites"`
-	// Org is the organisation's legal identity as the deployment holds it, or nil where nobody has
+	// Org is the organisation's profile as the deployment holds it, or nil where nobody has
 	// saved one. It is carried through rather than read: what a value may be is the deployment's,
 	// and a console that restated one would be a second opinion about it.
 	Org any `json:"org"`
@@ -104,24 +104,25 @@ type ReportRead struct {
 // function and never a token. One binding for reads and writes alike, because the errands write
 // through the same door a reading reads through.
 func Calls(origin, token string) cf.Send {
-	return cf.JSONSendWithin(origin, surfaceHeaders(token), cf.ReadTimeout)
+	return cf.ForwardingSendWithin(origin, surfaceHeaders(token), cf.ReadTimeout)
 }
 
 // PatientTimeout is how long an errand the deployment answers only once a third party has may take
-// before it counts as unreachable.
+// before it counts as unreachable, and the logo's upload with them.
 //
 // far past the bound a read takes (cf.ReadTimeout), because what the deployment does before it
-// answers one of these is a round trip of its own: ../server/errands.go names the three errands
-// this bounds and argues what a cut on the disconnect would leave behind.
+// answers one of these is a round trip of its own, and the logo is up to two megabytes over the
+// operator's own connection: ../server/errands.go names the errands this bounds and argues what a
+// cut on the disconnect would leave behind.
 const PatientTimeout = time.Minute
 
-// PatientCalls is that same binding held to the longer deadline above, for the errands the
-// deployment answers only once a third party has.
+// PatientCalls is that same binding held to the longer deadline above, for the errands that
+// deadline names.
 //
 // The bound belongs to the call rather than to the client, which is internal/cf's arrangement and
 // its header's argument: one of these errands is not a read.
 func PatientCalls(origin, token string) cf.Send {
-	return cf.JSONSendWithin(origin, surfaceHeaders(token), PatientTimeout)
+	return cf.ForwardingSendWithin(origin, surfaceHeaders(token), PatientTimeout)
 }
 
 // the session, as every call to that surface carries it: in a header, and on no url.

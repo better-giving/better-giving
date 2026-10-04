@@ -1,7 +1,13 @@
 import { IDENTITY_FOLD, NOTIFICATIONS_FOLD } from '@better-giving/operator/setup-folds';
-import { ORG_PROFILE_FIELDS, type OrgProfileField } from '@better-giving/operator/console/org';
+import {
+	ORG_PROFILE_FIELDS,
+	type OrgLogo,
+	type OrgProfileField,
+	type SocialLink
+} from '@better-giving/operator/console/org';
+import type { OrgWrite } from '../api/types';
 
-// what each box of the organisation's legal identity is called on a console screen, and what a
+// what each box of the organisation's profile is called on a console screen, and what a
 // press posts.
 //
 // **the boxes and the reading of what they held are one module, and nothing about a credential is
@@ -20,11 +26,13 @@ import { ORG_PROFILE_FIELDS, type OrgProfileField } from '@better-giving/operato
 // `(optional)` marker never claims more than those rules allow: a marked box is one the save takes
 // empty, so a marker over a box the save refuses blank is a screen calling a required box optional.
 //
-// **it is the narrower question that decides the marker, and one field answers the two
+// **it is the narrower question that decides the marker, and two fields answer the two
 // differently.** the save stores a profile holding no notification address and a deployment left
-// that way is still unfinished: alerts nobody addressed reach the logs and no person. so that box
-// carries no marker, {@link orgRequired} reads it as wanted, and the save refuses nothing. a box
-// is marked where blank is a finished answer and nowhere else.
+// that way is still unfinished: alerts nobody addressed reach the logs and no person. it stores one
+// holding no mission too, and a donor page with nothing to say about what the organisation is for
+// is unfinished in the same way. so neither box carries a marker, {@link orgRequired} reads both as
+// wanted, and the save refuses nothing. a box is marked where blank is a finished answer and
+// nowhere else.
 //
 // **a placeholder demonstrates the shape and never states the rule.** what a box may hold is those
 // same rules', so an example here is one they would take and nothing more — the EIN's is written in
@@ -56,6 +64,38 @@ import { ORG_PROFILE_FIELDS, type OrgProfileField } from '@better-giving/operato
  */
 export const ORG_INTENT = 'org:save';
 export const NOTIFICATIONS_INTENT = 'notifications:save';
+
+/**
+ * what the logo's two presses post. each is a write of its own rather than a box of the profile's
+ * save: the photo goes to the deployment as an upload (`uploadOrgLogo` in ../api/client.ts), and
+ * putting it on or taking it off stores nothing else.
+ */
+export const ORG_LOGO_INTENT = 'org:logo';
+export const ORG_LOGO_REMOVE_INTENT = 'org:logo-remove';
+
+/**
+ * which of the Organisation page's presses an answer is to: the profile's save, or either logo
+ * press. all three answer in the profile's shape, so without the tag a logo that landed would read
+ * as the save landing — its button saying Saved and its boxes put back.
+ */
+export type OrgPressKind = 'profile' | 'logo';
+
+/** what the Organisation page's action answers a press with. */
+export type OrgPressAnswer = { readonly write: OrgWrite; readonly press: OrgPressKind };
+
+/** the box the logo press posts its photo under. */
+export const LOGO_FILE = 'file';
+
+/**
+ * the list field every link row belongs to, which is also the key the deployment refuses the list
+ * under — one sentence for the first address refused (`readSocialLinks` in
+ * `@better-giving/operator/console/social-links`). a row submits under its position,
+ * `social_links[0]`, as conform spells a list.
+ */
+export const SOCIAL_LINKS_FIELD = 'social_links';
+
+/** the key a refusal of the photo comes back under, from the deployment and from this console alike. */
+export const LOGO_FIELD = 'logo';
 
 /** how one box is drawn and what it says under its own label. */
 export type OrgFieldCopy = {
@@ -93,7 +133,7 @@ export type OrgFieldCopy = {
 	readonly figures?: true;
 };
 
-/** the nine boxes, keyed by the field the wire and the refusal both name. */
+/** the twelve boxes, keyed by the field the wire and the refusal both name. */
 export const ORG_FIELDS: Record<OrgProfileField, OrgFieldCopy> = {
 	legal_name: {
 		label: 'Registered name',
@@ -141,8 +181,24 @@ export const ORG_FIELDS: Record<OrgProfileField, OrgFieldCopy> = {
 		// the address is for (`JOB_NOTES` in `@better-giving/operator/setup-folds`), and a box
 		// with a paragraph over it is the row read a second time on the way to the box.
 		placeholder: 'alerts@better.giving'
-	}
+	},
+	mission: {
+		label: 'Mission',
+		placeholder: 'Help every nonprofit take gifts on forms it owns.',
+		prose: true
+	},
+	vision: {
+		label: 'Vision',
+		placeholder: 'A world where giving costs the giver nothing extra.',
+		optional: true,
+		prose: true
+	},
+	brand_colour: { label: 'Brand colour', placeholder: '#1f6feb', optional: true }
 };
+
+/** what the two parts of the profile that are not a single box are called on the screen. */
+export const SOCIAL_LINKS_LABEL = 'Social links';
+export const LOGO_LABEL = 'Logo';
 
 /**
  * the box the Notifications fold draws, which is where this deployment reaches the operator.
@@ -160,7 +216,7 @@ export const ORG_FIELDS: Record<OrgProfileField, OrgFieldCopy> = {
  */
 export const NOTIFICATION_BOXES: readonly OrgProfileField[] = ['notification_email'];
 
-/** the rest, which is the organisation's own identity and what the Legal details fold draws. */
+/** the rest, which is the organisation's own identity and what the Organisation details fold draws. */
 export const IDENTITY_BOXES: readonly OrgProfileField[] = ORG_PROFILE_FIELDS.filter(
 	(field) => !NOTIFICATION_BOXES.includes(field)
 );
@@ -175,9 +231,31 @@ export const IDENTITY_BOXES: readonly OrgProfileField[] = ORG_PROFILE_FIELDS.fil
  */
 export { IDENTITY_FOLD, NOTIFICATIONS_FOLD };
 
-/** which of the two draws the box for one field. */
-export const boxFold = (field: OrgProfileField): string =>
-	NOTIFICATION_BOXES.includes(field) ? NOTIFICATIONS_FOLD : IDENTITY_FOLD;
+/**
+ * which of the two draws the box for one key of a refusal. the links and the logo are the
+ * Organisation fold's, as every box but the notification address is.
+ */
+export const boxFold = (key: string): string =>
+	(NOTIFICATION_BOXES as readonly string[]).includes(key) ? NOTIFICATIONS_FOLD : IDENTITY_FOLD;
+
+/**
+ * every key a refusal may carry that the Organisation fold draws: its boxes, the links and the
+ * logo. the deployment and this console refuse the links and the photo under keys of their own
+ * ({@link SOCIAL_LINKS_FIELD}, {@link LOGO_FIELD}), so a fold cutting a refusal down to its boxes
+ * alone would read both as another fold's.
+ */
+export const ORGANISATION_KEYS: readonly string[] = [
+	...IDENTITY_BOXES,
+	SOCIAL_LINKS_FIELD,
+	LOGO_FIELD
+];
+
+/** what a refusal's key is called on the screen, which is the label it is drawn under. */
+export const refusalLabel = (key: string): string => {
+	if (key === SOCIAL_LINKS_FIELD) return SOCIAL_LINKS_LABEL;
+	if (key === LOGO_FIELD) return LOGO_LABEL;
+	return ORG_FIELDS[key as OrgProfileField].label;
+};
 
 /**
  * what a fold posts hidden, given the boxes it draws: every other field of the profile.
@@ -195,8 +273,8 @@ export const carriedBoxes = (drawn: readonly OrgProfileField[]): readonly OrgPro
  *
  * one list rather than two: a row asking whether a fold is finished asks exactly what the label
  * says, so a box is marked `(optional)` where and only where a blank one leaves nothing outstanding.
- * what it is not is a reading of the save — the notification address is stored blank and is still
- * wanted, and the header holds why.
+ * what it is not is a reading of the save — the notification address and the mission are stored
+ * blank and are still wanted, and the header holds why.
  */
 export const orgRequired = (field: OrgProfileField): boolean => ORG_FIELDS[field].optional !== true;
 
@@ -210,7 +288,7 @@ export const orgRequired = (field: OrgProfileField): boolean => ORG_FIELDS[field
 export type OrgBoxes = Record<OrgProfileField, string>;
 
 /**
- * the ten, spelled out in the one place this console spells them out.
+ * the twelve, spelled out in the one place this console spells them out.
  *
  * one field per line rather than a walk over the wire's list, for the reason `toFormValues` in
  * `packages/app/src/lib/server/org/form-values.ts` spells its own out: a field added to the wire
@@ -227,7 +305,10 @@ export function stated(value: (field: OrgProfileField) => string): OrgBoxes {
 		region: value('region'),
 		postal_code: value('postal_code'),
 		country: value('country'),
-		notification_email: value('notification_email')
+		notification_email: value('notification_email'),
+		mission: value('mission'),
+		vision: value('vision'),
+		brand_colour: value('brand_colour')
 	};
 }
 
@@ -243,8 +324,48 @@ export function orgBoxes(org: unknown): OrgBoxes {
 	return stated((field) => (typeof held[field] === 'string' ? held[field] : ''));
 }
 
+/**
+ * the profile as the Organisation fold draws it: every box, and beside them the links as stored and
+ * the logo.
+ *
+ * the links are the deployment's own reading of what was typed — the platform recognised and the
+ * address re-spelled — so a row is seeded with the `href` it stored, never with what was posted.
+ */
+export type StoredOrg = OrgBoxes & {
+	readonly social_links: readonly SocialLink[];
+	readonly logo: OrgLogo | null;
+};
+
+/**
+ * the profile the deployment reported, as the fold draws it.
+ *
+ * read the way {@link orgBoxes} reads a box: a link or a logo in a shape no deployment writes is
+ * drawn as none, since posting it back is not this console's to do.
+ */
+export function storedProfile(org: unknown): StoredOrg {
+	const held = isRecord(org) ? org : {};
+	const links = Array.isArray(held.social_links) ? held.social_links : [];
+	return {
+		...orgBoxes(held),
+		social_links: links.filter(isLink),
+		logo: isLogo(held.logo) ? held.logo : null
+	};
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isLink = (value: unknown): value is SocialLink =>
+	isRecord(value) && typeof value.platform === 'string' && typeof value.href === 'string';
+
+const isLogo = (value: unknown): value is OrgLogo =>
+	isRecord(value) && typeof value.id === 'string' && typeof value.url === 'string';
+
+/** whether a control on a form is one of the link rows, by the name it submits under. */
+const LINK_ROW = new RegExp(`^${SOCIAL_LINKS_FIELD}\\[\\d+\\]$`);
+
+/** what one profile press sends: every box, and the link rows as typed. */
+export type OrgPress = { readonly values: OrgBoxes; readonly socialLinks: string[] };
 
 /**
  * what a press asked for, read off the submitted form.
@@ -252,14 +373,21 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * every box goes out with every press, empty ones included, because that is what the endpoint
  * reads: a field absent from the body is stored as cleared. a box the body did not carry at all is
  * an empty one for the same reason — the alternative is a save that silently leaves a field alone
- * on a screen that showed it.
+ * on a screen that showed it. the links are read the same way: a form holding no link row stores
+ * none, so a fold that does not draw them carries the stored ones hidden.
  *
  * nothing is trimmed and nothing is refused here. the rules belong to the deployment, and a console
- * that refused a value the deployment would take is a box nobody can save.
+ * that refused a value the deployment would take is a box nobody can save. a blank link row goes as
+ * it is, and the deployment skips it.
  */
-export function orgEdits(posted: FormData): OrgBoxes {
-	return stated((field) => {
+export function orgEdits(posted: FormData): OrgPress {
+	const values = stated((field) => {
 		const typed = posted.get(field);
 		return typeof typed === 'string' ? typed : '';
 	});
+	// a form's entries arrive in the order the controls stand in the document.
+	const socialLinks = [...posted]
+		.filter(([name]) => LINK_ROW.test(name))
+		.map(([, row]) => (typeof row === 'string' ? row : ''));
+	return { values, socialLinks };
 }

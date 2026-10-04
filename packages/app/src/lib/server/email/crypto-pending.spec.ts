@@ -19,7 +19,12 @@ const ORG: OrgProfile = {
 	notificationEmail: 'staff@example.org',
 	createdAt: new Date('2026-01-01T00:00:00Z'),
 	updatedAt: new Date('2026-01-01T00:00:00Z'),
-	deductibilityStatement: null
+	deductibilityStatement: null,
+	mission: null,
+	vision: null,
+	brandColour: null,
+	socialLinks: [],
+	logoImageId: null
 };
 
 function input(overrides: Partial<CryptoPendingInput> = {}): CryptoPendingInput {

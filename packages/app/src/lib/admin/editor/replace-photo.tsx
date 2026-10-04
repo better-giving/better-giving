@@ -3,7 +3,7 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useEffect, useId, useRef } from 'react';
-import type { Resized, ResizeRefusal } from '$lib/images/resize';
+import type { Resized, ResizeRefusal } from '@better-giving/operator/images/resize';
 import { usePhotoPicker } from '../photo-picker';
 
 /** the box that describes the photo, or none for an image whose words stand beside it. */

@@ -65,10 +65,11 @@ const (
 	SearchUnavailable SearchState = "unavailable"
 )
 
-// Organisation is one organisation's legal details as the Legal details fold fills them, under the
-// names it gives its boxes (packages/console-ui/src/lib/org-fields.ts) where it fills one. EIN is
-// the nine digits with no dash; RevokedOn is the `YYYY-MM-DD` its tax-exempt status was revoked on,
-// empty where it is not revoked or was reinstated since. every field is empty unless Found.
+// Organisation is one organisation's legal details as the Organisation details fold fills them,
+// under the names it gives its boxes (packages/console-ui/src/lib/org-fields.ts) where it fills
+// one. EIN is the nine digits with no dash; RevokedOn is the `YYYY-MM-DD` its tax-exempt status was
+// revoked on, empty where it is not revoked or was reinstated since; Mission is what the latest
+// filing states, trimmed. every field is empty unless Found.
 type Organisation struct {
 	EIN          string `json:"ein"`
 	Name         string `json:"name"`
@@ -79,6 +80,7 @@ type Organisation struct {
 	Deductible   bool   `json:"deductible"`
 	RevokedOn    string `json:"revokedOn"`
 	Website      string `json:"website"`
+	Mission      string `json:"mission"`
 }
 
 // Lookup is one lookup by EIN.
@@ -194,6 +196,7 @@ type upstreamOrganisation struct {
 	Status upstreamStatus `json:"status"`
 	Filing struct {
 		Website *string `json:"website"`
+		Mission *string `json:"mission"`
 	} `json:"filing"`
 }
 
@@ -242,6 +245,7 @@ func (c *Client) lookUp(ctx context.Context, ein string) Lookup {
 		Deductible:   read.Status.Deductible,
 		RevokedOn:    read.Status.revokedOn(),
 		Website:      orEmpty(read.Filing.Website),
+		Mission:      strings.TrimSpace(orEmpty(read.Filing.Mission)),
 	}}
 }
 

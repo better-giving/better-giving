@@ -37,7 +37,7 @@ const lines: SetupLine[] = [
 	{ id: 'password', label: 'Dashboard password', state: 'ready', word: 'Configured', note: null },
 	{
 		id: 'organisation',
-		label: 'Legal details',
+		label: 'Organisation details',
 		state: 'todo',
 		word: 'Incomplete',
 		note: 'No donation form is served until your organisation’s details are saved.'
@@ -56,7 +56,7 @@ function screen(): HTMLElement {
 it('draws a line for every job it was handed', () => {
 	const root = screen();
 	const labels = [...root.querySelectorAll('h2')].map((one) => one.textContent);
-	expect(labels).toEqual(['Dashboard password', 'Legal details', 'Donation processor']);
+	expect(labels).toEqual(['Dashboard password', 'Organisation details', 'Donation processor']);
 });
 
 it('says what is outstanding and says nothing under a job that is done', () => {

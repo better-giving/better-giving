@@ -12,6 +12,7 @@ import type {
 	NowpaymentsListing,
 	NowpaymentsPress,
 	NowpaymentsSaved,
+	OrgRefused,
 	OrgWrite,
 	PaymentsRead,
 	PaypalRunRead,
@@ -35,6 +36,7 @@ import type {
 	QuickbooksBacklogLine,
 	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
+import { LOGO_FIELD } from '../lib/org-fields';
 
 // the console's own process, reached from the page it serves.
 //
@@ -81,7 +83,7 @@ export class ConsoleRefused extends Error {
 	}
 }
 
-/** one request to the local process, held among the writes out while a `POST` is unanswered. */
+/** one request to the local process, held among the writes out while a write is unanswered. */
 function call(path: string, init: RequestInit): Promise<Response> {
 	const answer = fetch(`/api${path}`, init).catch((cause: unknown) => {
 		// an abandoned reading rejects the same way, and it is the router's to drop rather than a
@@ -89,7 +91,7 @@ function call(path: string, init: RequestInit): Promise<Response> {
 		if (init.signal?.aborted) throw cause;
 		throw new ConsoleUnreachable(`/api${path} could not be reached`, { cause });
 	});
-	if (init.method !== 'POST') return answer;
+	if (init.method === 'GET') return answer;
 	writesOut.add(answer);
 	const answered = () => writesOut.delete(answer);
 	answer.then(answered, answered);
@@ -105,7 +107,11 @@ export async function writesAnswered(): Promise<void> {
  * one call to the local process, answered as json or thrown. `signal` is a loader's request's, so a
  * reading the router abandoned is not asked for.
  */
-async function ask<T>(path: string, method: 'GET' | 'POST', signal?: AbortSignal): Promise<T> {
+async function ask<T>(
+	path: string,
+	method: 'GET' | 'POST' | 'DELETE',
+	signal?: AbortSignal
+): Promise<T> {
 	const answer = await call(path, {
 		method,
 		headers: { accept: 'application/json' },
@@ -232,12 +238,51 @@ export const connect = (): Promise<Connection> => ask('/session', 'POST');
  * stores the organisation's profile, whole, from whichever of the two folds pressed.
  *
  * every box goes with every press, empty ones included, because that is what the endpoint reads: a
- * field left out of the body is stored as cleared. what a value may be is the deployment's rule and
- * is not read here — a refusal comes back keyed by field, and each sentence is drawn under the box
- * it is about.
+ * field left out of the body is stored as cleared, and so is a link left out of the list. what a
+ * value may be is the deployment's rule and is not read here — a refusal comes back keyed by field,
+ * the links under `social_links`, and each sentence is drawn where it is about.
  */
-export const saveOrgProfile = (values: Record<string, string>): Promise<OrgWrite> =>
-	post('/deployment/org', { values });
+export const saveOrgProfile = (
+	values: Record<string, string>,
+	socialLinks: readonly string[]
+): Promise<OrgWrite> => post('/deployment/org', { values, social_links: socialLinks });
+
+/** a photo turned down, in the shape a refusal of the profile comes back in, keyed at the logo. */
+export const logoRefused = (sentence: string): OrgRefused => ({
+	kind: 'refused',
+	message: null,
+	fix: null,
+	errors: { [LOGO_FIELD]: sentence },
+	unread: 0
+});
+
+/**
+ * puts the organisation's logo on: the photo, already resized, posted as multipart under `file` for
+ * the binary to forward unread (`packages/console/internal/deployment/org.go`'s `SaveLogo`).
+ *
+ * the binary turns down a body over the deployment's upload cap (413) and one it could not read
+ * (400) before the deployment hears of it, so neither carries a keyed map; each is answered as a
+ * refusal at the logo in the binary's own sentence, so the fold draws one shape wherever the photo
+ * was turned down.
+ */
+export async function uploadOrgLogo(file: Blob): Promise<OrgWrite> {
+	const body = new FormData();
+	body.set('file', file);
+	const answer = await call('/deployment/org/logo', {
+		method: 'POST',
+		headers: { accept: 'application/json' },
+		body
+	});
+	const read = await parsed(answer);
+	if (answer.status === 413 || answer.status === 400) {
+		return logoRefused(refused(read, answer.status).message);
+	}
+	if (!answer.ok) throw refused(read, answer.status);
+	return read as OrgWrite;
+}
+
+/** takes the organisation's logo off. there is one, so the address names it and nothing is sent. */
+export const removeOrgLogo = (): Promise<OrgWrite> => ask('/deployment/org/logo', 'DELETE');
 
 /**
  * asks the deployment to send a test message to the address typed beside the button.

@@ -1,4 +1,3 @@
-import { IMAGE_BYTES_MAX } from '$lib/server/db/schema';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	describeResized,
@@ -13,12 +12,8 @@ import {
 } from './resize';
 
 // the arithmetic and the order of encodes, in node, with the decode and the canvas stood in for.
-// what a real browser writes for a real 12 MB photo is measured outside the suite: this app has no
+// what a real browser writes for a real 12 MB photo is measured outside the suite: this package has no
 // browser pool.
-
-it('posts no more than the database will hold', () => {
-	expect(IMAGE_UPLOAD_MAX).toBe(IMAGE_BYTES_MAX);
-});
 
 describe('the size a photo is drawn at', () => {
 	it.each([

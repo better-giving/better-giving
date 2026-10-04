@@ -1,10 +1,12 @@
 import { parseWithZod } from '@conform-to/zod/v4';
 import { ORG_PROFILE_FIELDS } from '@better-giving/operator/console/org';
 import {
+	MALFORMED_BRAND_COLOUR,
 	MALFORMED_TAX_ID,
 	ORG_PROFILE_FIELD_RULES,
 	REQUIRED
 } from '@better-giving/operator/console/org-rules';
+import { readSocialLinks } from '@better-giving/operator/console/social-links';
 import { fieldErrorsFrom } from '@better-giving/operator/zod-issues';
 import { describe, expect, it } from 'vitest';
 import {
@@ -12,13 +14,16 @@ import {
 	IDENTITY_FOLD,
 	NOTIFICATIONS_FOLD,
 	NOTIFICATION_BOXES,
+	ORGANISATION_KEYS,
+	SOCIAL_LINKS_FIELD,
 	boxFold,
 	carriedBoxes,
-	orgRequired
+	orgRequired,
+	refusalLabel
 } from './org-fields';
 import { NOTIFICATIONS_FORM, ORG_FORM, foldErrors, listed, seedFor, storedOrg } from './org-form';
 import type { OrgWrite } from '../api/types';
-import type { OrgBoxes } from './org-fields';
+import type { OrgBoxes, StoredOrg } from './org-fields';
 
 // what the two folds that edit the profile read off what the deployment reported: what each seeds
 // its boxes from, which of a refusal's sentences belongs to which fold, and what the identity
@@ -37,14 +42,20 @@ const BLANK: OrgBoxes = {
 	region: '',
 	postal_code: '',
 	country: '',
-	notification_email: ''
+	notification_email: '',
+	mission: '',
+	vision: '',
+	brand_colour: ''
 };
+
+/** the same profile as the Organisation fold is handed it: no links, and no logo. */
+const BARE: StoredOrg = { ...BLANK, social_links: [], logo: null };
 
 describe('what a fold seeds its boxes with', () => {
 	it('holds every box the identity form states, at what the deployment holds', () => {
-		const stored = { ...BLANK, legal_name: 'Hope Foundation', city: 'Portland' };
+		const stored = { ...BARE, legal_name: 'Hope Foundation', city: 'Portland' };
 
-		// exactly the eight, because the seed is the one side of the reading the button is armed off
+		// exactly the boxes it draws, because the seed is the one side of the reading the button is armed off
 		// (./use-console-form.ts): a key for a box the form does not state reads as changed forever,
 		// and a box with no key sits under a button that never arms.
 		expect(seedFor(ORG_FORM, stored)).toEqual({
@@ -55,14 +66,33 @@ describe('what a fold seeds its boxes with', () => {
 			city: 'Portland',
 			region: '',
 			postal_code: '',
-			country: ''
+			country: '',
+			mission: '',
+			vision: '',
+			brand_colour: '',
+			social_links: []
 		});
+	});
+
+	it('seeds a link row per stored link, at the address the deployment stored', () => {
+		const stored: StoredOrg = {
+			...BARE,
+			social_links: [
+				{ platform: 'instagram', href: 'https://instagram.com/hope' },
+				{ platform: 'x', href: 'https://x.com/hope' }
+			]
+		};
+
+		expect(seedFor(ORG_FORM, stored).social_links).toEqual([
+			'https://instagram.com/hope',
+			'https://x.com/hope'
+		]);
 	});
 
 	it('leaves the notification address out of the identity fold and carries nothing else into its own', () => {
 		// the ninth is drawn by the other fold and posted hidden by this one, and neither seed holds
 		// the other's boxes.
-		const stored = { ...BLANK, legal_name: 'Hope Foundation', notification_email: 'a@example.org' };
+		const stored = { ...BARE, legal_name: 'Hope Foundation', notification_email: 'a@example.org' };
 
 		expect(seedFor(ORG_FORM, stored).notification_email).toBeUndefined();
 		expect(seedFor(NOTIFICATIONS_FORM, stored)).toEqual({ notification_email: 'a@example.org' });
@@ -85,6 +115,20 @@ describe('which of a refusal’s sentences one fold draws', () => {
 
 		expect(foldErrors(errors, IDENTITY_BOXES)).toEqual({ legal_name: 'Add it.' });
 		expect(foldErrors(errors, NOTIFICATION_BOXES)).toEqual({ notification_email: 'Add it.' });
+	});
+
+	it('keeps the links and the logo for the Organisation fold, and neither for the other', () => {
+		const errors = refused({
+			social_links:
+				'hope.example is not a Facebook, Instagram, YouTube, LinkedIn, TikTok or X address.',
+			logo: 'That image is too large even after resizing. Choose a smaller one.'
+		});
+
+		expect(Object.keys(foldErrors(errors, ORGANISATION_KEYS) ?? {}).sort()).toEqual([
+			'logo',
+			'social_links'
+		]);
+		expect(foldErrors(errors, NOTIFICATION_BOXES)).toEqual({});
 	});
 
 	it('draws nothing at a box for a press that was refused over another fold alone', () => {
@@ -111,6 +155,15 @@ describe('which fold draws which box', () => {
 		expect(boxFold('notification_email')).toBe(NOTIFICATIONS_FOLD);
 	});
 
+	it('names every key a refusal can carry in the words the screen draws it under', () => {
+		// a refusal over another fold's box is named by its label (`OrgWriteOutcome` in
+		// ./org-write.tsx), and the links and the logo are keys the deployment refuses under too.
+		expect(refusalLabel('legal_name')).toBe('Registered name');
+		expect(refusalLabel('mission')).toBe('Mission');
+		expect(refusalLabel('social_links')).toBe('Social links');
+		expect(refusalLabel('logo')).toBe('Logo');
+	});
+
 	it('carries every box a fold does not draw', () => {
 		// the deployment stores a profile whole, so a field left out of a body is one it clears.
 		for (const drawn of [IDENTITY_BOXES, NOTIFICATION_BOXES]) {
@@ -135,7 +188,7 @@ describe('a list a person reads', () => {
 });
 
 describe('what the boxes are seeded from', () => {
-	const reading: OrgBoxes = { ...BLANK, legal_name: 'Hope Foundation' };
+	const reading: StoredOrg = { ...BARE, legal_name: 'Hope Foundation' };
 
 	it('takes the profile a press stored over the reading the page arrived with', () => {
 		// the reading taken after a press commits a render later than the answer does, so boxes
@@ -147,6 +200,27 @@ describe('what the boxes are seeded from', () => {
 
 		expect(storedOrg(reading, write).notification_email).toBe('alerts@example.org');
 		expect(storedOrg(reading, write).legal_name).toBe('Hope Foundation');
+	});
+
+	it('takes the links and the logo a write stored', () => {
+		// a logo press answers the profile it stored like the save does, and the fold draws the logo
+		// off that answer in the render it lands in.
+		const write: OrgWrite = {
+			kind: 'saved',
+			org: {
+				legal_name: 'Hope Foundation',
+				social_links: [{ platform: 'youtube', href: 'https://youtu.be/hope' }],
+				logo: { id: 'img_1', url: 'https://hope.example/image/img_1' }
+			}
+		};
+
+		expect(storedOrg(reading, write).social_links).toEqual([
+			{ platform: 'youtube', href: 'https://youtu.be/hope' }
+		]);
+		expect(storedOrg(reading, write).logo).toEqual({
+			id: 'img_1',
+			url: 'https://hope.example/image/img_1'
+		});
 	});
 
 	it('keeps the reading where the press stored nothing', () => {
@@ -197,11 +271,28 @@ describe('what the identity fold answers at its own press', () => {
 		country: 'United States'
 	};
 
-	it('runs the rules the deployment runs, over the eight boxes it draws', () => {
-		// the ninth is carried hidden at what is stored, so a sentence about it here would be one
-		// keyed to a box this form has none of — focus into a panel nobody has open.
-		expect(Object.keys(ORG_FORM.schema.shape).sort()).toEqual([...IDENTITY_BOXES].sort());
+	it('runs the rules the deployment runs, over the boxes it draws and the links', () => {
+		// the notification address is carried hidden at what is stored, so a sentence about it here
+		// would be one keyed to a box this form has none of — focus into a panel nobody has open.
+		expect(Object.keys(ORG_FORM.schema.shape).sort()).toEqual(
+			[...IDENTITY_BOXES, SOCIAL_LINKS_FIELD].sort()
+		);
 		expect(Object.keys(ORG_FORM.schema.shape)).not.toContain('notification_email');
+	});
+
+	it('names a brand colour that is not a hex colour', () => {
+		expect(refusals({ ...filled, brand_colour: 'blue' })).toEqual({
+			brand_colour: MALFORMED_BRAND_COLOUR
+		});
+		// either case: the deployment stores it lowercased, and that rewrite is the deployment's.
+		expect(refusals({ ...filled, brand_colour: '#1F6FEB' })).toEqual({});
+	});
+
+	it('says how far over its limit a mission or a vision is', () => {
+		expect(refusals({ ...filled, mission: 'a'.repeat(2001), vision: 'b'.repeat(2001) })).toEqual({
+			mission: 'This is 2001 characters, over the 2000-character limit.',
+			vision: 'This is 2001 characters, over the 2000-character limit.'
+		});
 	});
 
 	it('says nothing about a profile the deployment would store', () => {
@@ -320,6 +411,51 @@ describe('what the identity fold answers at its own press', () => {
 				leaf.success ? {} : { [field]: leaf.error.issues.map((issue) => issue.message) }
 			);
 		}
+	});
+});
+
+describe('what the Organisation fold says about its links at its own press', () => {
+	const whole = {
+		legal_name: 'Hope Foundation',
+		tax_id: '12-3456789',
+		address_line1: '123 Example Street',
+		city: 'Anytown',
+		country: 'United States'
+	};
+
+	/** the fold's boxes with the link rows as the browser posts them, through the seam's own pass. */
+	const submitted = (rows: readonly string[]) => {
+		const body = new FormData();
+		for (const [field, value] of Object.entries(whole)) body.set(field, value);
+		for (const [at, row] of rows.entries()) body.set(`${SOCIAL_LINKS_FIELD}[${at}]`, row);
+		return parseWithZod(body, { schema: ORG_FORM.schema });
+	};
+
+	it('takes addresses on the six platforms, with and without a scheme, and rows left blank', () => {
+		expect(submitted(['instagram.com/hope', '', 'https://www.youtube.com/@hope']).status).toBe(
+			'success'
+		);
+		expect(submitted([]).status).toBe('success');
+		expect(submitted(['']).status).toBe('success');
+	});
+
+	it('refuses an address on another site in the sentence the deployment sends, keyed to the list', () => {
+		const read = readSocialLinks(['instagram.com/hope', 'hope.example/blog']);
+		if (read.ok) throw new Error('the leaf took an address on another site');
+
+		const submission = submitted(['instagram.com/hope', 'hope.example/blog']);
+
+		expect(submission.status === 'error' ? submission.error : {}).toEqual({
+			[SOCIAL_LINKS_FIELD]: [read.error]
+		});
+	});
+
+	it('refuses a second address on one platform', () => {
+		const submission = submitted(['x.com/hope', 'twitter.com/hope']);
+
+		expect(submission.status === 'error' ? submission.error : {}).toEqual({
+			[SOCIAL_LINKS_FIELD]: ['X is listed twice. Keep one X address.']
+		});
 	});
 });
 

@@ -2,15 +2,24 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import type { NonprofitLookup, NonprofitSearch } from '../api/types';
-import { orgBoxes } from './org-fields';
+import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
+import {
+	LOGO_FILE,
+	ORG_LOGO_INTENT,
+	ORG_LOGO_REMOVE_INTENT,
+	type OrgPressKind,
+	type StoredOrg,
+	storedProfile
+} from './org-fields';
 import { OrgFold } from './org-fold';
 
-// the Legal details fold as drawn, around the IRS list. ../../vite.config.ts pins `node` and there
-// is no dom, so what is read here is the first draw; when the list is asked and what an answer
-// fills are ./ein-lookup.spec.ts's, and the dialog's states are ./find-org-dialog.spec.ts's.
+// the Organisation fold as drawn, around the IRS list. ../../vite.config.ts pins `node` and there
+// is no dom, so what is read here is the first draw: what each form would post is read off the
+// controls it draws. when the list is asked and what an answer fills are ./ein-lookup.spec.ts's,
+// reaching the boxes is ./fold-boxes.spec.ts's, and the dialog's states are
+// ./find-org-dialog.spec.ts's.
 
-const STORED = orgBoxes({
+const STORED = storedProfile({
 	legal_name: 'Riverside Community Food Bank',
 	tax_id: '12-3456789',
 	address_line1: '400 Mill Road',
@@ -19,7 +28,12 @@ const STORED = orgBoxes({
 	country: 'United States'
 });
 
-function drawn(stored: ReturnType<typeof orgBoxes>, lookups = true) {
+function drawn(
+	stored: StoredOrg,
+	lookups = true,
+	write: OrgWrite | null = null,
+	press: OrgPressKind | null = null
+) {
 	const lookUp = vi.fn(
 		async (): Promise<NonprofitLookup> => ({
 			state: 'unavailable',
@@ -32,7 +46,8 @@ function drawn(stored: ReturnType<typeof orgBoxes>, lookups = true) {
 				postal_code: '',
 				deductible: false,
 				revokedOn: '',
-				website: ''
+				website: '',
+				mission: ''
 			}
 		})
 	);
@@ -45,7 +60,8 @@ function drawn(stored: ReturnType<typeof orgBoxes>, lookups = true) {
 			Component: () =>
 				createElement(OrgFold, {
 					stored,
-					write: null,
+					write,
+					press,
 					busy: false,
 					pending: false,
 					lookups,
@@ -65,7 +81,7 @@ const einBox = (markup: string): string => {
 	return tag as string;
 };
 
-describe('the Legal details fold', () => {
+describe('the Organisation details fold', () => {
 	it('asks the list nothing when it is drawn holding a stored EIN', () => {
 		const { lookUp, search } = drawn(STORED);
 
@@ -90,19 +106,19 @@ describe('the Legal details fold', () => {
 	});
 
 	it('opens on the find dialog for a fresh set-up', () => {
-		const { markup } = drawn(orgBoxes({}));
+		const { markup } = drawn(storedProfile({}));
 
 		expect(markup).toContain('Find your organisation</h2>');
 	});
 
 	it('opens on a fresh set-up whatever notification address is stored', () => {
-		const { markup } = drawn(orgBoxes({ notification_email: 'alerts@example.org' }));
+		const { markup } = drawn(storedProfile({ notification_email: 'alerts@example.org' }));
 
 		expect(markup).toContain('Find your organisation</h2>');
 	});
 
 	it('opens on the plain form where any of the identity is stored', () => {
-		const { markup } = drawn(orgBoxes({ city: 'Riverside' }));
+		const { markup } = drawn(storedProfile({ city: 'Riverside' }));
 
 		expect(markup).not.toContain('<dialog');
 	});
@@ -121,7 +137,7 @@ describe('the Legal details fold', () => {
 		});
 
 		it('opens a fresh set-up on the plain form', () => {
-			expect(drawn(orgBoxes({}), false).markup).not.toContain('<dialog');
+			expect(drawn(storedProfile({}), false).markup).not.toContain('<dialog');
 		});
 
 		it('stands no region for a note the list will never give', () => {
@@ -131,5 +147,193 @@ describe('the Legal details fold', () => {
 		it('still spells the EIN as it is typed, on a number pad', () => {
 			expect(einBox(drawn(STORED, false).markup)).toContain('inputMode="numeric"');
 		});
+	});
+});
+
+/** the profile as a deployment holding the widened organisation reports it. */
+const WIDENED = storedProfile({
+	...STORED,
+	notification_email: 'alerts@riverside.org',
+	mission: 'Food for every family in Riverside County.',
+	vision: 'No family in Riverside goes hungry.',
+	brand_colour: '#2f6b3a',
+	social_links: [
+		{ platform: 'facebook', href: 'https://www.facebook.com/riversidefoodbank' },
+		{ platform: 'instagram', href: 'https://www.instagram.com/riversidefoodbank' }
+	],
+	logo: { id: 'img_1', url: 'https://give.riverside.org/images/img_1' }
+});
+
+/** one form's markup, from its opening tag to its close, found by its id. */
+const formNamed = (markup: string, id: string): string => {
+	const found = markup.match(new RegExp(`<form[^>]*id="${id}"[^>]*>(?:(?!</form>).)*</form>`, 's'));
+	expect(found).not.toBeNull();
+	return (found as RegExpMatchArray)[0];
+};
+
+/** every control a form's markup would post, as `name=value`, in document order. */
+const posted = (form: string): string[] =>
+	[...form.matchAll(/<(input|textarea)\b([^>]*)>(?:([^<]*)<\/textarea>)?/g)].flatMap((tag) => {
+		const attributes = tag[2] ?? '';
+		const name = attributes.match(/\bname="([^"]*)"/)?.[1];
+		if (name === undefined || /\bdisabled=""/.test(attributes)) return [];
+		const value =
+			tag[1] === 'textarea' ? (tag[3] ?? '') : (attributes.match(/\bvalue="([^"]*)"/)?.[1] ?? '');
+		return [`${name}=${value.replaceAll('&amp;', '&')}`];
+	});
+
+describe('the Organisation fold’s save', () => {
+	const profile = () => posted(formNamed(drawn(WIDENED).markup, 'org'));
+
+	it('posts every stored link at the address the deployment stored, in order', () => {
+		expect(profile().filter((entry) => entry.startsWith('social_links'))).toEqual([
+			'social_links[0]=https://www.facebook.com/riversidefoodbank',
+			'social_links[1]=https://www.instagram.com/riversidefoodbank'
+		]);
+	});
+
+	it('posts the mission, the vision and the brand colour at what is stored', () => {
+		expect(profile()).toEqual(
+			expect.arrayContaining([
+				'mission=Food for every family in Riverside County.',
+				'vision=No family in Riverside goes hungry.',
+				'brand_colour=#2f6b3a'
+			])
+		);
+	});
+
+	it('carries the notification address it does not draw', () => {
+		expect(profile()).toContain('notification_email=alerts@riverside.org');
+	});
+
+	it('posts no photo and no logo intent, which are the logo’s own press', () => {
+		expect(profile().some((entry) => entry.startsWith(`${LOGO_FILE}=`))).toBe(false);
+		expect(profile()).not.toContain(`intent=${ORG_LOGO_INTENT}`);
+	});
+
+	it('draws the mission and the vision as paragraphs', () => {
+		const { markup } = drawn(WIDENED);
+
+		expect(markup).toMatch(/<textarea[^>]*name="mission"/);
+		expect(markup).toMatch(/<textarea[^>]*name="vision"/);
+	});
+
+	it('names the platform the deployment recognised beside each stored link', () => {
+		const { markup } = drawn(WIDENED);
+
+		expect(markup).toContain('id="org-social_links[0]-hint">Facebook</p>');
+		expect(markup).toContain('id="org-social_links[1]-hint">Instagram</p>');
+	});
+});
+
+describe('the logo’s presses', () => {
+	it('sends a chosen photo as multipart, under the logo intent and the file box', () => {
+		const upload = formNamed(drawn(WIDENED).markup, 'org-logo-upload');
+
+		// server markup keeps react's spelling of the attribute; html reads it case-blind.
+		expect(upload).toMatch(/^<form[^>]*enctype="multipart\/form-data"/i);
+		expect(upload).toMatch(/^<form[^>]*method="post"/);
+		expect(upload).toMatch(new RegExp(`<input[^>]*type="file"[^>]*name="${LOGO_FILE}"`));
+		expect(posted(upload)).toEqual([`intent=${ORG_LOGO_INTENT}`, `${LOGO_FILE}=`]);
+	});
+
+	it('takes the logo off through a form of its own, which posts its intent and no photo', () => {
+		const { markup } = drawn(WIDENED);
+		const press = markup.match(/<button[^>]*aria-label="Remove the logo"[^>]*>/)?.[0];
+		const remove = formNamed(markup, 'org-logo-remove');
+
+		expect(press).toContain('form="org-logo-remove"');
+		expect(press).toContain('name="intent"');
+		expect(press).toContain(`value="${ORG_LOGO_REMOVE_INTENT}"`);
+		expect(press).toContain('type="submit"');
+		expect(posted(remove)).toEqual([]);
+	});
+
+	it('draws the stored logo and offers to replace it', () => {
+		const { markup } = drawn(WIDENED);
+
+		expect(markup).toContain('src="https://give.riverside.org/images/img_1"');
+		expect(markup).toContain('Replace logo');
+	});
+
+	it('offers to add one, and no Remove, where none is stored', () => {
+		const { markup } = drawn(STORED);
+
+		expect(markup).toContain('Add logo');
+		expect(markup).not.toContain('Remove the logo');
+	});
+});
+
+describe('a refusal keyed to a part that is not a box', () => {
+	const refused = (errors: Record<string, string>): OrgWrite => ({
+		kind: 'refused',
+		message: 'The profile was not saved.',
+		fix: null,
+		errors,
+		unread: 0
+	});
+
+	it('draws the logo’s sentence under the logo and points its press at it', () => {
+		const { markup } = drawn(
+			WIDENED,
+			true,
+			refused({ logo: 'That file isn’t an image. Choose a PNG, JPEG or WebP.' }),
+			'logo'
+		);
+		const upload = formNamed(markup, 'org-logo-upload');
+
+		expect(upload).toContain('id="org-logo-err"');
+		expect(upload).toContain('That file isn’t an image.');
+		expect(upload).toMatch(/<button[^>]*aria-describedby="org-logo-err"/);
+		expect(formNamed(markup, 'org')).not.toContain('That file isn’t an image.');
+	});
+
+	it('draws the links’ sentence at the group, describing every row', () => {
+		const sentence =
+			'https://myspace.com/riverside is not a Facebook, Instagram, YouTube, LinkedIn, TikTok or X address.';
+		const { markup } = drawn(WIDENED, true, refused({ social_links: sentence }), 'profile');
+
+		expect(markup).toContain('id="org-social_links-err"');
+		expect(markup).toContain('https://myspace.com/riverside is not a Facebook');
+		const row = markup.match(/<input[^>]*name="social_links\[0\]"[^>]*>/)?.[0];
+		expect(row).toMatch(/aria-describedby="[^"]*org-social_links-err/);
+	});
+});
+
+describe('an answer, by the press it is to', () => {
+	const saved: OrgWrite = { kind: 'saved', org: { ...WIDENED, logo: null } };
+	const refusedName: OrgWrite = {
+		kind: 'refused',
+		message: null,
+		fix: null,
+		errors: { legal_name: 'Add the name the organisation is registered under.' },
+		unread: 0
+	};
+	const saveButton = (markup: string) =>
+		markup.match(/<button[^>]*value="org:save"[^>]*>(?:(?!<\/button>).)*<\/button>/s)?.[0] ?? '';
+
+	// a profile answer that lands is what puts the boxes back to what is stored; a logo answer
+	// reaching the profile form would do the same over whatever was typed and not yet saved.
+	it('lands no profile save on a logo that landed, so the boxes stay as typed', () => {
+		const { markup } = drawn(WIDENED, true, saved, 'logo');
+
+		expect(saveButton(markup)).toContain('Save details');
+		expect(saveButton(markup)).not.toContain('Saved');
+	});
+
+	it('lands the profile save on its own answer', () => {
+		expect(saveButton(drawn(WIDENED, true, saved, 'profile').markup)).toContain('Saved');
+	});
+
+	it('marks no box over a refusal that answered the logo', () => {
+		const { markup } = drawn(WIDENED, true, refusedName, 'logo');
+
+		expect(markup).not.toContain('Add the name the organisation is registered under.');
+	});
+
+	it('marks the box over a refusal that answered the profile', () => {
+		const { markup } = drawn(WIDENED, true, refusedName, 'profile');
+
+		expect(markup).toContain('Add the name the organisation is registered under.');
 	});
 });

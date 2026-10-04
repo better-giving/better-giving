@@ -15,7 +15,11 @@ import {
 	searchNonprofits,
 	startChariotSetup,
 	readPayments,
-	startStripeSetup
+	removeOrgLogo,
+	saveOrgProfile,
+	startStripeSetup,
+	uploadOrgLogo,
+	writesAnswered
 } from './client';
 
 // what the page does with each way the binary answers a press.
@@ -163,6 +167,79 @@ describe('the press that stores nowpayments from the three boxes', () => {
 		answering(400, { error: 'the api key slot holds nothing, or a value with space around it' });
 
 		await expect(saveNowpayments(press)).rejects.toThrow('api key slot');
+	});
+});
+
+describe("the organisation's profile and its logo", () => {
+	const saved = { kind: 'saved', errors: {}, org: { legal_name: 'Hope Foundation' } };
+
+	it('posts every box and the link rows as typed, and answers the write', async () => {
+		const calls = recording(saved);
+
+		await expect(
+			saveOrgProfile({ legal_name: 'Hope Foundation' }, ['instagram.com/hope', ''])
+		).resolves.toEqual(saved);
+		expect(calls[0]?.[0]).toBe('/api/deployment/org');
+		expect(JSON.parse(String(calls[0]?.[1]?.body))).toEqual({
+			values: { legal_name: 'Hope Foundation' },
+			social_links: ['instagram.com/hope', '']
+		});
+	});
+
+	it('posts the photo as multipart under `file`, and answers the write', async () => {
+		const calls = recording(saved);
+		const photo = new Blob(['webp bytes'], { type: 'image/webp' });
+
+		await expect(uploadOrgLogo(photo)).resolves.toEqual(saved);
+		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
+		expect(calls[0]?.[1]?.method).toBe('POST');
+		const body = calls[0]?.[1]?.body;
+		if (!(body instanceof FormData)) throw new Error('the photo was not posted as a form');
+		const file = body.get('file');
+		expect(file).toBeInstanceOf(Blob);
+		expect(await (file as Blob).text()).toBe('webp bytes');
+	});
+
+	it('answers a photo the binary would not carry as a refusal at the logo, in its words', async () => {
+		// the binary turns these down before the deployment hears of them, so there is no keyed map —
+		// and the fold draws one shape of refusal wherever it came from.
+		for (const status of [413, 400]) {
+			answering(status, { error: 'the logo upload is over 1965536 bytes' });
+
+			await expect(uploadOrgLogo(new Blob(['x']))).resolves.toEqual({
+				kind: 'refused',
+				message: null,
+				fix: null,
+				errors: { logo: 'the logo upload is over 1965536 bytes' },
+				unread: 0
+			});
+		}
+	});
+
+	it('takes the logo off with a DELETE and no body, and answers the write', async () => {
+		const calls = recording(saved);
+
+		await expect(removeOrgLogo()).resolves.toEqual(saved);
+		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
+		expect(calls[0]?.[1]?.method).toBe('DELETE');
+		expect(calls[0]?.[1]?.body).toBeUndefined();
+	});
+
+	it('holds the removal among the writes out until the binary answers it', async () => {
+		// a reading waits on the writes out (../lib/console-reading.ts), so a removal missing from
+		// them is a reading taken before the logo came off.
+		let answer: (response: Response) => void = () => {};
+		vi.stubGlobal('fetch', () => new Promise<Response>((done) => (answer = done)));
+		let waited = false;
+
+		const removal = removeOrgLogo();
+		const reading = writesAnswered().then(() => (waited = true));
+		await Promise.resolve();
+		expect(waited).toBe(false);
+
+		answer(new Response(JSON.stringify(saved), { status: 200 }));
+		await Promise.all([removal, reading]);
+		expect(waited).toBe(true);
 	});
 });
 

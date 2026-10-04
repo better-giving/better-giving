@@ -140,14 +140,56 @@ func JSONSend(base string, headers map[string]string) Send {
 // ten seconds a screen's read is held to is what a migration file outlasts, and a call cut there
 // reports a stop on a file the database may go on to land.
 func JSONSendWithin(base string, headers map[string]string, within time.Duration) Send {
+	return sendWithin(base, headers, within, asJSON)
+}
+
+// Encoded is a body somebody else already wrote, sent as its bytes under the type it came with.
+//
+// What a deployment's logo errand forwards: the browser's multipart body, whose boundary is named in
+// its type, so re-encoding it would be a second spelling of a body nothing here reads.
+type Encoded struct {
+	Type  string
+	Bytes []byte
+}
+
+// ForwardingSendWithin is JSONSendWithin's call, except that an Encoded body goes up as its own
+// bytes under its own type. Every other body is json.
+//
+// It is how a deployment's own console surface is bound, because one errand on it forwards a body
+// this binary did not write.
+func ForwardingSendWithin(base string, headers map[string]string, within time.Duration) Send {
+	return sendWithin(base, headers, within, func(body any) (io.Reader, string, error) {
+		if given, encoded := body.(Encoded); encoded {
+			return bytes.NewReader(given.Bytes), given.Type, nil
+		}
+		return asJSON(body)
+	})
+}
+
+// a body as json, and the type it declares.
+func asJSON(body any) (io.Reader, string, error) {
+	written, err := json.Marshal(body)
+	if err != nil {
+		return nil, "", err
+	}
+	return bytes.NewReader(written), "application/json", nil
+}
+
+func sendWithin(
+	base string,
+	headers map[string]string,
+	within time.Duration,
+	encode func(body any) (io.Reader, string, error),
+) Send {
 	return func(ctx context.Context, method, path string, body any) Answer {
 		var reader io.Reader
+		var declared string
 		if body != nil {
-			written, err := json.Marshal(body)
+			var err error
+			reader, declared, err = encode(body)
 			if err != nil {
 				return Answer{Kind: Unreachable, Detail: err.Error()}
 			}
-			reader = bytes.NewReader(written)
 		}
 
 		bound, stop := context.WithTimeout(ctx, within)
@@ -158,7 +200,7 @@ func JSONSendWithin(base string, headers map[string]string, within time.Duration
 			return Answer{Kind: Unreachable, Detail: err.Error()}
 		}
 		if body != nil {
-			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Content-Type", declared)
 		}
 		for name, value := range headers {
 			request.Header.Set(name, value)

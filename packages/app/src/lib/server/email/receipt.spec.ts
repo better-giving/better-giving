@@ -24,7 +24,12 @@ const ORG: OrgProfile = {
 	// set because this fixture stands for a fully configured org, not because the receipt reads
 	// it: the quid-pro-quo disclosure is derived from `GoodsOrServices` per gift, while this column
 	// is the standing line the embedded form shows before a gift exists.
-	deductibilityStatement: 'No goods or services were provided in exchange for this gift.'
+	deductibilityStatement: 'No goods or services were provided in exchange for this gift.',
+	mission: null,
+	vision: null,
+	brandColour: null,
+	socialLinks: [],
+	logoImageId: null
 };
 
 const CONTRIBUTION: ReceiptContribution = {

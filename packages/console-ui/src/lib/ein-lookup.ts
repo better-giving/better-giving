@@ -2,7 +2,7 @@ import { EIN, einAsPrinted, einAsTyped } from '@better-giving/operator/console/o
 import type { NonprofitLookup, NonprofitMatch, NonprofitOrganisation } from '../api/types';
 import type { IdentityField } from './org-form';
 
-// when the Legal details fold asks the IRS list about the number in its EIN box, and what it says
+// when the Organisation details fold asks the IRS list about the number in its EIN box, and what it says
 // and fills when the answer lands. ./org-fold.tsx hands this the box's text at every change and
 // draws what comes back; nothing here touches a document, so ./ein-lookup.spec.ts reads all of it.
 //
@@ -97,13 +97,13 @@ const countryFor = (held: string): Filled => (held === '' ? { country: US_COUNTR
 export type HeldBoxes = Readonly<Partial<Record<IdentityField, string>>>;
 
 /**
- * the boxes a found organisation puts a value in: its name, the address the list holds, and the
- * country. `before` is the boxes as they stood when the lookup went out and `now` as they stand as
- * it lands: a box is filled only while it still holds what it held then, or is empty — so a box
- * typed in while the lookup was out keeps what was typed, and a save that landed meanwhile is not
- * undone. the Country box is filled only while it is empty, whatever it held before. a field the
- * list holds nothing for is left out, and the suite and the EIN that was looked up are never a
- * lookup's to write.
+ * the boxes a found organisation puts a value in: its name, the address the list holds, the
+ * country, and the mission its latest filing states. `before` is the boxes as they stood when the
+ * lookup went out and `now` as they stand as it lands: a box is filled only while it still holds
+ * what it held then, or is empty — so a box typed in while the lookup was out keeps what was
+ * typed, and a save that landed meanwhile is not undone. the Country box is filled only while it
+ * is empty, whatever it held before. a field the list holds nothing for is left out, and the suite
+ * and the EIN that was looked up are never a lookup's to write.
  */
 export function foundBoxes(
 	organisation: NonprofitOrganisation,
@@ -116,7 +116,8 @@ export function foundBoxes(
 		city: organisation.city,
 		region: organisation.region,
 		postal_code: organisation.postal_code,
-		country: US_COUNTRY
+		country: US_COUNTRY,
+		mission: organisation.mission
 	});
 	const open = (field: IdentityField): boolean => {
 		const standing = now[field] ?? '';
@@ -130,8 +131,8 @@ export function foundBoxes(
 /**
  * the boxes a match taken from the find dialog fills before its whole record is in: its number,
  * its name, the city and state it is listed under, and the country where the Country box is
- * empty. the street and the postal code are not in a match, so the lookup a pick runs is what
- * brings them.
+ * empty. the street, the postal code and the mission are not in a match, so the lookup a pick runs
+ * is what brings them.
  */
 export const matchBoxes = (match: NonprofitMatch, country: string): Filled =>
 	filled({

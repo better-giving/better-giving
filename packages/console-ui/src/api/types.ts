@@ -1369,12 +1369,12 @@ export type NonprofitSearch = {
 };
 
 /**
- * one organisation as the IRS nonprofit API holds it, under the names the Legal details fold gives
+ * one organisation as the IRS nonprofit API holds it, under the names the Organisation details fold gives
  * the boxes it fills (`ORG_FIELDS` in ../lib/org-fields.ts) where it fills one.
  *
  * `ein` is the nine digits with no dash, which is not the spelling `tax_id` is stored in — the fold
- * spells it. `deductible` is the IRS listing gifts to it as tax-deductible; `revokedOn` and
- * `website` are `''` where there is none.
+ * spells it. `deductible` is the IRS listing gifts to it as tax-deductible; `mission` is what its
+ * latest filing states, trimmed; `revokedOn`, `website` and `mission` are `''` where there is none.
  */
 export type NonprofitOrganisation = {
 	ein: string;
@@ -1386,6 +1386,7 @@ export type NonprofitOrganisation = {
 	deductible: boolean;
 	revokedOn: string;
 	website: string;
+	mission: string;
 };
 
 /**

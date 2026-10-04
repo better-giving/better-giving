@@ -2,7 +2,11 @@ package server
 
 import (
 	"context"
+	"errors"
+	"io"
+	"mime"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/better-giving/console/internal/cf"
@@ -12,11 +16,11 @@ import (
 	"github.com/better-giving/console/internal/state"
 )
 
-// the errands this console proxies to the deployment: the organisation's legal identity and where
-// it reaches the operator, the test send, the payments reading, the repeating-gifts standing and
-// the press that provisions it, where the books stand and every press over that connection, the
-// site list, the press that registers the hostnames a donor is drawn wallet buttons on, and the
-// press that repairs the deployment's own Stripe endpoint.
+// the errands this console proxies to the deployment: the organisation's legal identity, how it is
+// presented, its logo and where it reaches the operator, the test send, the payments reading, the
+// repeating-gifts standing and the press that provisions it, where the books stand and every press
+// over that connection, the site list, the press that registers the hostnames a donor is drawn
+// wallet buttons on, and the press that repairs the deployment's own Stripe endpoint.
 //
 // **the deployment is the authority for every one of them.** what a value may be, what a send did,
 // what the processor account holds and whether a site may be dropped are decided inside the worker,
@@ -36,9 +40,11 @@ import (
 // bearer nobody filled in.
 
 // the org fold posts a profile whole: every box, every time, because the endpoint stores a field
-// left out of the body as cleared.
+// left out of the body as cleared. the links are that same rule over a list, so a press naming none
+// states it empty.
 type orgPress struct {
-	Values map[string]string `json:"values"`
+	Values      map[string]string `json:"values"`
+	SocialLinks []string          `json:"social_links"`
 }
 
 type sitesPress struct {
@@ -60,17 +66,29 @@ type testEmailPress struct {
 // It is bound twice over, once per deadline: the read of the books always goes through the longer
 // of the two, and ./waitsOnIntuit is which presses do.
 func surfaceDoors(records state.Store, surface func(origin, token string) cf.Send) func() (cf.Get, cf.Post) {
+	held := surfaceSend(records, surface)
 	return func() (cf.Get, cf.Post) {
-		mine := session.Held(records, release.Baked.Name, time.Now())
-		if mine == nil {
+		send := held()
+		if send == nil {
 			return nil, nil
 		}
-		send := surface(mine.Origin, mine.Token)
 		return func(ctx context.Context, path string) cf.Answer {
 				return send(ctx, http.MethodGet, path, nil)
 			}, func(ctx context.Context, path string, body any) cf.Answer {
 				return send(ctx, http.MethodPost, path, body)
 			}
+	}
+}
+
+// surfaceSend is that same session bound to the whole call, for the errands that are neither a read
+// nor a json post, and nil where it holds none.
+func surfaceSend(records state.Store, surface func(origin, token string) cf.Send) func() cf.Send {
+	return func() cf.Send {
+		mine := session.Held(records, release.Baked.Name, time.Now())
+		if mine == nil {
+			return nil
+		}
+		return surface(mine.Origin, mine.Token)
 	}
 }
 
@@ -105,7 +123,7 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 			}
 		}
 		_, post := held()
-		answer(w, http.StatusOK, deployment.SaveOrg(r.Context(), post, posted.Values))
+		answer(w, http.StatusOK, deployment.SaveOrg(r.Context(), post, posted.Values, posted.SocialLinks))
 	})
 
 	// asks the deployment to send a test message to the address typed beside the button.
@@ -221,5 +239,51 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 		}
 		_, post := held()
 		answer(w, http.StatusOK, deployment.SaveSites(r.Context(), post, posted.Sites))
+	})
+}
+
+// the organisation's logo, put on and taken off. each answers the write the profile's own press
+// does, so a refusal of the photo is drawn at the logo the way a field's is drawn at its box.
+func logoRoutes(routes *http.ServeMux, held, patient func() cf.Send) {
+
+	// puts the logo on, forwarding the browser's multipart body as it arrived.
+	//
+	// what is checked here is that it is a form at all and no longer than the deployment reads; the
+	// photo inside it is the deployment's intake to judge, by its bytes.
+	//
+	// through the longer door: what travels is up to two megabytes over the operator's own
+	// connection, and a call cut at a read's deadline would say nothing was found out about a photo
+	// the deployment may well have stored.
+	routes.HandleFunc("POST /api/deployment/org/logo", func(w http.ResponseWriter, r *http.Request) {
+		kind := r.Header.Get("Content-Type")
+		media, parameters, err := mime.ParseMediaType(kind)
+		if err != nil || media != "multipart/form-data" || parameters["boundary"] == "" {
+			answer(w, http.StatusBadRequest, map[string]string{
+				"error": "this console forwards a logo posted as multipart/form-data, and this was " +
+					strconv.Quote(kind),
+			})
+			return
+		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, release.LogoUploadMax))
+		if err != nil {
+			var over *http.MaxBytesError
+			if errors.As(err, &over) {
+				answer(w, http.StatusRequestEntityTooLarge, map[string]string{
+					"error": "the logo upload is over " + strconv.Itoa(release.LogoUploadMax) +
+						" bytes, the most the deployment stores; choose a smaller photo",
+				})
+				return
+			}
+			answer(w, http.StatusBadRequest, map[string]string{
+				"error": "this console could not read the logo posted",
+			})
+			return
+		}
+		answer(w, http.StatusOK, deployment.SaveLogo(r.Context(), patient(), kind, body))
+	})
+
+	// takes the logo off. it carries no body: there is one logo, and the address names it.
+	routes.HandleFunc("DELETE /api/deployment/org/logo", func(w http.ResponseWriter, r *http.Request) {
+		answer(w, http.StatusOK, deployment.DropLogo(r.Context(), held()))
 	})
 }

@@ -71,12 +71,13 @@ const redCross = `{
 	"name": "American National Red Cross",
 	"address": {"street": "431 18th St NW", "city": "Washington", "state": "DC", "zip": "20006-5310"},
 	"status": {"deductible": true, "revoked": true, "revocation_date": "2019-05-15", "reinstatement_date": null},
-	"filing": {"website": null}
+	"filing": {"website": null, "mission": " Disaster relief. "}
 }`
 
 // the organisation's members, every one of them written whatever the state.
 var organisationFields = []string{
-	"address_line1", "city", "deductible", "ein", "name", "postal_code", "region", "revokedOn", "website",
+	"address_line1", "city", "deductible", "ein", "mission", "name", "postal_code", "region", "revokedOn",
+	"website",
 }
 
 func TestALookedUpOrganisationIsAnsweredWithEveryFieldOfTheFill(t *testing.T) {
@@ -97,6 +98,7 @@ func TestALookedUpOrganisationIsAnsweredWithEveryFieldOfTheFill(t *testing.T) {
 		"deductible":    true,
 		"revokedOn":     "2019-05-15",
 		"website":       "",
+		"mission":       "Disaster relief.",
 	}
 	if got, _ := body["organisation"].(map[string]any); !maps.Equal(got, want) {
 		t.Errorf("organisation = %v, want %v", got, want)

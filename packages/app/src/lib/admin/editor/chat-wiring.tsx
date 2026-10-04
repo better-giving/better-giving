@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useFetcher } from 'react-router';
-import { describeResized, type Resized } from '$lib/images/resize';
+import { describeResized, type Resized } from '@better-giving/operator/images/resize';
 import { imageSrc } from '$lib/page/image-src';
 import { AttachControl, attachRefusal } from '../chat/attach-control';
 import {

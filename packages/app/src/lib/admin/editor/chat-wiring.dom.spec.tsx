@@ -2,7 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import type { Resized } from '$lib/images/resize';
+import type { Resized } from '@better-giving/operator/images/resize';
 import type { ChatMessage } from '../chat/ai-panel';
 import { useEditorChat } from './chat-wiring';
 import { EditorShell } from './editor-shell';
@@ -11,8 +11,8 @@ import { PublishBar } from './publish-bar';
 // happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
 // `resizes` until the case hands it a result.
 const resizes: ((result: Resized) => void)[] = [];
-vi.mock('$lib/images/resize', async (actual) => ({
-	...(await actual<typeof import('$lib/images/resize')>()),
+vi.mock('@better-giving/operator/images/resize', async (actual) => ({
+	...(await actual<typeof import('@better-giving/operator/images/resize')>()),
 	resizeImage: () => new Promise<Resized>((resolve) => resizes.push(resolve))
 }));
 

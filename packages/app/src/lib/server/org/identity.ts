@@ -25,7 +25,7 @@ import type { OrgProfile } from '../db/schema';
  * ../forms/published-config.ts names the columns instead, because what reads that one is an agent
  * holding a 4xx body rather than an operator looking for an input.
  *
- * both boxes are the Legal details fold's (`packages/console-ui/src/lib/org-fold.tsx`), which is
+ * both boxes are the Organisation details fold's (`packages/console-ui/src/lib/org-fold.tsx`), which is
  * the one screen an operator fills either of them in on.
  *
  * `ein` is `tax_id` here: the column keeps its jurisdiction-neutral name and the screens do not,

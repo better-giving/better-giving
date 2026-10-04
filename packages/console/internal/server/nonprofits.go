@@ -8,7 +8,7 @@ import (
 	"github.com/better-giving/console/internal/nonprofits"
 )
 
-// finding the organisation in the IRS nonprofit API, for the Legal details fold to fill from.
+// finding the organisation in the IRS nonprofit API, for the Organisation details fold to fill from.
 //
 // **two reads, and the only two doors that spend the API.** nothing on load, nothing at start-up and
 // no other route asks it: the API is sized for set-up, so it is asked when the operator asks and at

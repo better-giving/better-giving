@@ -3,12 +3,18 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import type { ReactNode } from 'react';
 import { Form } from 'react-router';
-import { NOTIFICATIONS_INTENT, NOTIFICATION_BOXES, ORG_FIELDS, carriedBoxes } from './org-fields';
+import {
+	NOTIFICATIONS_INTENT,
+	NOTIFICATION_BOXES,
+	ORG_FIELDS,
+	SOCIAL_LINKS_FIELD,
+	carriedBoxes
+} from './org-fields';
 import { NOTIFICATIONS_FORM, foldErrors, seedFor } from './org-form';
 import { useConsoleForm } from './use-console-form';
 import { OrgWriteOutcome } from './org-write';
 import type { OrgWrite } from '../api/types';
-import type { OrgBoxes } from './org-fields';
+import type { StoredOrg } from './org-fields';
 
 // where this deployment reaches the operator, which is one address and one press.
 //
@@ -17,10 +23,12 @@ import type { OrgBoxes } from './org-fields';
 // identity a gift is asked for under. an address the deployment writes *to* is a third thing, and a
 // screen that files it under either one asks an operator to look for it where it is not.
 //
-// **it is a column of the organisation's profile and is stored the way the other eight are.** the
-// deployment reads a profile whole, so this form carries those eight hidden at exactly what is held
-// (./org-fields.ts's `carriedBoxes`) and posts an intent of its own, which is what its page's action
-// reads the press by (../routes/_sections.notifications.tsx).
+// **it is a column of the organisation's profile and is stored the way the rest of it is.** the
+// deployment reads a profile whole, so this form carries every other box and every stored social
+// link hidden at exactly what is held (./org-fields.ts's `carriedBoxes`) and posts an intent of its
+// own, which is what its page's action reads the press by (../routes/_sections.notifications.tsx).
+// a link is carried at the address the deployment stored, under the row name the Organisation fold
+// posts it by, so a press here reads back the list it found. the logo is no part of this press.
 //
 // **the identity has to be stored before anything here can be**: the profile is stored whole, so a
 // press made over a deployment holding no identity is refused over boxes that are not on this
@@ -51,7 +59,7 @@ import type { OrgBoxes } from './org-fields';
 
 export type NotificationsFoldProps = {
 	/** the profile as the deployment holds it, which is what the box is seeded and read against. */
-	stored: OrgBoxes;
+	stored: StoredOrg;
 	/** how the last press in this fold went, or `null` where none has been made. */
 	write: OrgWrite | null;
 	/** something else on the page is writing, which holds every control on it closed. */
@@ -77,7 +85,7 @@ export function NotificationsFold({
 		// fold's boxes would send focus into a shut panel (./org-form.ts's `foldErrors`).
 		refused: foldErrors(write, NOTIFICATION_BOXES),
 		/* the one box this form states, at what the deployment holds: only a typed address is a change
-		   and a form nobody has touched has nothing to send. the eight the press carries hidden are in
+		   and a form nobody has touched has nothing to send. the boxes the press carries hidden are in
 		   no seed here — this form states none of them, so they count toward nothing
 		   (./use-console-form.ts) — and they arrive at what is stored anyway. */
 		defaultValue: seedFor(NOTIFICATIONS_FORM, stored),
@@ -97,10 +105,20 @@ export function NotificationsFold({
 
 	return (
 		<Form {...form.mount} className="adm-stack" method="post" preventScrollReset>
-			{/* the eight boxes the identity fold draws, carried at what the deployment holds: the
-			    profile is stored whole, so a field left out of the body is one it stores as cleared. */}
+			{/* the boxes and the links the Organisation fold draws, carried at what the deployment
+			    holds: the profile is stored whole, so a field left out of the body is one it stores as
+			    cleared. */}
 			{carriedBoxes(NOTIFICATION_BOXES).map((field) => (
 				<input key={field} type="hidden" name={field} value={stored[field]} readOnly />
+			))}
+			{stored.social_links.map((link, at) => (
+				<input
+					key={link.href}
+					type="hidden"
+					name={`${SOCIAL_LINKS_FIELD}[${at}]`}
+					value={link.href}
+					readOnly
+				/>
 			))}
 
 			<Field

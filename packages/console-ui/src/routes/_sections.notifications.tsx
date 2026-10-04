@@ -31,7 +31,8 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	await forgetReadings();
 	const posted = await request.formData();
 	if (posted.get('intent') === NOTIFICATIONS_INTENT) {
-		return { write: await saveOrgProfile(orgEdits(posted)) };
+		const press = orgEdits(posted);
+		return { write: await saveOrgProfile(press.values, press.socialLinks) };
 	}
 	return { unknown: true as const };
 }

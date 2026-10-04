@@ -1,5 +1,5 @@
 import { type ChangeEvent, useEffect, useRef, useState } from 'react';
-import { type Resized, resizeImage } from '$lib/images/resize';
+import { type Resized, resizeImage } from '@better-giving/operator/images/resize';
 
 /**
  * the device's own file picker behind a press, and the resize of whatever it hands back.

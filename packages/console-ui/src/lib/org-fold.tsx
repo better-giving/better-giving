@@ -1,9 +1,25 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { einAsPrinted } from '@better-giving/operator/console/org-rules';
+import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
+import {
+	type RepeatingRow,
+	RepeatingRows
+} from '@better-giving/operator/components/forms/RepeatingRows';
+import { SOCIAL_PLATFORMS } from '@better-giving/operator/console/org';
+import { BRAND_COLOUR, einAsPrinted } from '@better-giving/operator/console/org-rules';
+import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { type FormEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
+import {
+	type ChangeEvent,
+	type FormEvent,
+	type MouseEvent,
+	type ReactNode,
+	useEffect,
+	useEffectEvent,
+	useRef,
+	useState
+} from 'react';
 import { Form } from 'react-router';
 import {
 	type EinNote,
@@ -17,8 +33,24 @@ import {
 	watchEin
 } from './ein-lookup';
 import { FindOrgDialog } from './find-org-dialog';
+import { heldBoxes, putBoxes } from './fold-boxes';
 import { rememberWebsite } from './found-organisation';
-import { IDENTITY_BOXES, ORG_FIELDS, ORG_INTENT, carriedBoxes } from './org-fields';
+import {
+	IDENTITY_BOXES,
+	LOGO_FIELD,
+	LOGO_FILE,
+	LOGO_LABEL,
+	ORGANISATION_KEYS,
+	ORG_FIELDS,
+	ORG_INTENT,
+	ORG_LOGO_INTENT,
+	ORG_LOGO_REMOVE_INTENT,
+	SOCIAL_LINKS_FIELD,
+	SOCIAL_LINKS_LABEL,
+	type OrgPressKind,
+	type StoredOrg,
+	carriedBoxes
+} from './org-fields';
 import { ORG_FORM, foldErrors, seedFor, type IdentityField } from './org-form';
 import { useConsoleForm } from './use-console-form';
 import { OrgWriteOutcome } from './org-write';
@@ -29,10 +61,10 @@ import type {
 	NonprofitSearch,
 	OrgWrite
 } from '../api/types';
-import type { OrgBoxes } from './org-fields';
 
-// the legal identity this deployment asks for gifts under, read and edited on the organisation page
-// (../routes/_sections.organisation.tsx).
+// the organisation this deployment asks for gifts under — its legal identity and address, what
+// donor pages tell about it, its brand colour, its social links and its logo — read and edited on the
+// organisation page (../routes/_sections.organisation.tsx).
 //
 // **it is a row on the deployment and this fold names no database.** the values are read out of the
 // report the deployment answers with and written back to its own endpoint over the console session
@@ -43,7 +75,7 @@ import type { OrgBoxes } from './org-fields';
 // **nothing here states a rule of its own, and the rules it runs are the deployment's own.** what a
 // profile field may hold is `ORG_PROFILE_FIELD_RULES` in
 // `@better-giving/operator/console/org-rules`, stated there because two surfaces apply it to the
-// same values: the worker parses every profile it is sent and this fold mounts the same eight rules
+// same values: the worker parses every profile it is sent and this fold mounts the same rules
 // through the seam (./org-form.ts's `ORG_FORM`, ./use-console-form.ts). a copy here would be the
 // cheaper answer and is exactly how the two come to disagree — one end taking eight digits for an
 // EIN and the other refusing the save is an operator told a value is fine and then told it is not,
@@ -78,7 +110,7 @@ import type { OrgBoxes } from './org-fields';
 //
 // **this press carries the boxes it does not draw, at exactly what is stored.** the deployment
 // reads the profile whole, so a field left out of the body is one it stores as cleared — and one of
-// the nine is drawn elsewhere, the notification address by ./notifications-fold.tsx. it rides along
+// its boxes is drawn elsewhere, the notification address by ./notifications-fold.tsx. it rides along
 // hidden and nothing about it changes here, and it is left out of the rules this form runs for the
 // same reason — a sentence keyed to a box this form does not draw sends focus into a shut panel.
 // the deployment stores a profile holding no notification address (`notification_email` in
@@ -94,11 +126,21 @@ import type { OrgBoxes } from './org-fields';
 // the page, and a quiet press beside Save opens it at any time. the list is reached through the two
 // calls the page hands in, so this names no address and no binary route.
 //
-// **a value put into a box is made to say it changed.** a value written to an element fires no
-// event, and both layers that read this form count the events its boxes fire — conform's, and the
-// one that arms the button — so a box filled silently would hold an organisation under a button
-// nothing could press. `CoinPicker` in `@better-giving/operator/components/forms/` does the same for
-// its own hidden box and says the same.
+// **a value put into a box is made to say it changed**, and the mission is a textarea the fill has
+// to reach as well as the inputs — ./fold-boxes.ts holds both.
+//
+// **the links are rows of the same press, the logo is a press of its own.** a link row submits as
+// conform spells a list (`SOCIAL_LINKS_FIELD` in ./org-fields.ts) and is added and dropped in the
+// browser; the list's refusal is one sentence, keyed to the list and drawn at the group. a stored
+// row names the platform the deployment recognised until the row is typed in, since what it names is
+// the stored address and not the typed one. the logo is chosen and sent at once, as an upload of its
+// own beside the profile form — a photo is not a box, and holding it until Save would be a file
+// nobody can see waiting under a button that says nothing about it.
+//
+// **an answer is the profile's or the logo's by the tag the page hands beside it** (`press`,
+// `OrgPressKind` in ./org-fields.ts). all three presses answer in the profile's shape, and a logo
+// landing read as the profile's would put the boxes back to what is stored with whatever was typed
+// in them since. a refusal keyed to the logo is drawn at the logo whichever press it answered.
 //
 // it is a component and not a screen: ../routes/_sections.organisation.tsx mounts it and answers its
 // press, and everything about which section this is — its label, its tone, the word on its rail cell
@@ -106,12 +148,17 @@ import type { OrgBoxes } from './org-fields';
 
 export type OrgFoldProps = {
 	/** the profile as the deployment holds it, which is what the boxes are seeded and read against. */
-	stored: OrgBoxes;
-	/** how the last press went, or `null` where none has been made. */
+	stored: StoredOrg;
+	/** how the last press on this page went, or `null` where none has been made. */
 	write: OrgWrite | null;
+	/** which press `write` answers, or `null` where none has been made. */
+	press: OrgPressKind | null;
 	/** something else on the page is writing, which holds every control on it closed. */
 	busy: boolean;
+	/** the profile's own press is in flight. */
 	pending: boolean;
+	/** a press putting the logo on or taking it off is in flight. */
+	logoPending?: boolean;
 	/**
 	 * whether this console was built able to ask the IRS list. where it was not, the fold is the
 	 * plain form: no find press, no dialog, no lookup and no note.
@@ -123,32 +170,73 @@ export type OrgFoldProps = {
 	search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
 };
 
+/**
+ * the most rows the link list draws: one per platform, since a platform listed twice is refused
+ * (`readSocialLinks` in `@better-giving/operator/console/social-links`).
+ */
+const MAX_LINK_ROWS = SOCIAL_PLATFORMS.length;
+
+/** the keys of a refusal the profile press answers at its own boxes; the logo's is drawn at the logo. */
+const PROFILE_KEYS: readonly string[] = [...IDENTITY_BOXES, SOCIAL_LINKS_FIELD];
+
+/**
+ * the list and every row it can hold, as one refusal: the list's sentence is about whichever row was
+ * refused, so typing in any of them ends it (`together` in ./use-console-form.ts).
+ */
+const LINKS_TOGETHER: readonly string[] = [
+	SOCIAL_LINKS_FIELD,
+	...Array.from({ length: MAX_LINK_ROWS }, (_, at) => `${SOCIAL_LINKS_FIELD}[${at}]`)
+];
+
+/** the group the link rows are drawn in, named the way the seam names a box of this form. */
+const LINKS_GROUP = `${ORG_FORM.id}-${SOCIAL_LINKS_FIELD}`;
+const LINKS_CAP = `${LINKS_GROUP}-cap`;
+
+/** the two logo forms, apart from the profile's: a photo goes as an upload and a removal as nothing. */
+const LOGO_UPLOAD_FORM = `${ORG_FORM.id}-logo-upload`;
+const LOGO_REMOVE_FORM = `${ORG_FORM.id}-logo-remove`;
+const LOGO_REFUSAL = `${ORG_FORM.id}-logo-err`;
+
+/** the six platforms as the group's hint lists them: `Facebook, …, TikTok or X`. */
+const PLATFORMS_LISTED = (() => {
+	const names = SOCIAL_PLATFORMS.map((platform) => SOCIAL_PLATFORM_NAMES[platform]);
+	return `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
+})();
+
+const NONE: readonly string[] = [];
+
 /** a fresh set-up: nothing about the organisation's identity has been saved yet. */
-const unset = (stored: OrgBoxes): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
+const unset = (stored: StoredOrg): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
 
 export function OrgFold({
 	stored,
 	write,
+	press,
 	busy,
 	pending,
+	logoPending = false,
 	lookups,
 	lookUp,
 	search
 }: OrgFoldProps): ReactNode {
-	/** whether the last press left the deployment holding this profile, which is what a save reports. */
-	const landed = write?.kind === 'saved';
+	const profileWrite = press === 'profile' ? write : null;
+	const logoWrite = press === 'logo' ? write : null;
+
+	/** whether the last profile press left the deployment holding this profile. */
+	const landed = profileWrite?.kind === 'saved';
 
 	const form = useConsoleForm(ORG_FORM, {
-		report: write,
+		report: profileWrite,
 		landed,
-		// the deployment's own answer, cut down to the boxes this fold draws: a key for the other
-		// fold's box would send focus into a shut panel (./org-form.ts's `foldErrors`).
-		refused: foldErrors(write, IDENTITY_BOXES),
-		/* the eight boxes at what the deployment holds, which is what the press is read against: a
-		   form nobody has touched would otherwise offer to save the deployment back to itself, and a
-		   form put back the way it was would go on offering it. the ninth is carried hidden and is in
-		   no seed here — the form does not state it, so it counts toward nothing
-		   (./use-console-form.ts). */
+		// the deployment's own answer, cut down to what this form draws: a key for the other fold's
+		// box would send focus into a shut panel (./org-form.ts's `foldErrors`), and the logo's is
+		// drawn at the logo, which no keystroke here answers.
+		refused: foldErrors(profileWrite, PROFILE_KEYS),
+		together: LINKS_TOGETHER,
+		/* the boxes and the link rows at what the deployment holds, which is what the press is read
+		   against: a form nobody has touched would otherwise offer to save the deployment back to
+		   itself. the notification address is carried hidden and is in no seed here — the form does
+		   not state it, so it counts toward nothing (./use-console-form.ts). */
 		defaultValue: seedFor(ORG_FORM, stored),
 		/* the boxes go back on the answer itself rather than on a reading after it, which is what the
 		   seed makes right: it is the profile the press stored (`storedOrg` in ./org-form.ts), so at
@@ -169,30 +257,12 @@ export function OrgFold({
 	const [note, setNote] = useState<EinNote>(SILENT_NOTE);
 	const findPress = useRef<HTMLButtonElement>(null);
 
-	/** the identity boxes as they stand, which is not what was stored once they have been typed in. */
-	const held = (): HeldBoxes => {
-		const elements = form.mount.ref.current?.elements;
-		return Object.fromEntries(
-			IDENTITY_BOXES.map((field) => {
-				const element = elements?.namedItem(field);
-				return [field, element instanceof HTMLInputElement ? element.value : ''];
-			})
-		);
-	};
+	/** the boxes as they stand, which is not what was stored once they have been typed in. */
+	const held = (): HeldBoxes => heldBoxes(form.mount.ref.current?.elements, IDENTITY_BOXES);
 
 	/** boxes given values, each made to say so; answers how many took one. */
-	const put = (boxes: Partial<Record<IdentityField, string>>): number => {
-		const elements = form.mount.ref.current?.elements;
-		let took = 0;
-		for (const [field, value] of Object.entries(boxes)) {
-			const element = elements?.namedItem(field);
-			if (!(element instanceof HTMLInputElement)) continue;
-			element.value = value;
-			element.dispatchEvent(new Event('input', { bubbles: true }));
-			took += 1;
-		}
-		return took;
-	};
+	const put = (boxes: Partial<Record<IdentityField, string>>): number =>
+		putBoxes(form.mount.ref.current?.elements, boxes);
 
 	/* what a found organisation leaves behind: its values in the boxes still holding what they held
 	   when it was asked for, and its website for the Sites fold. effect events, so the watch made
@@ -219,7 +289,7 @@ export function OrgFold({
 	   answer is given up on the render the landed save arrives in. */
 	useEffect(() => {
 		if (landed) watch.current?.stop();
-	}, [landed, write]);
+	}, [landed, profileWrite]);
 
 	/** the EIN box as typed: spelled as it is typed, and handed to the watch. */
 	const einTyped = (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -252,16 +322,30 @@ export function OrgFold({
 		watch.current?.typed(einAsPrinted(match.ein), stored.tax_id, true);
 	};
 
+	/* the brand colour's well stands beside its box and follows it: a hex typed in the box shows in
+	   the well, and a colour picked in the well is written into the box the way typing it would be.
+	   the box is what posts; the well has no name. */
+	const well = useRef<HTMLInputElement>(null);
+	const [wellEmpty, setWellEmpty] = useState(() => !BRAND_COLOUR.test(stored.brand_colour));
+	const brandTyped = (typed: string) => {
+		const hex = BRAND_COLOUR.test(typed);
+		setWellEmpty(!hex);
+		if (hex && well.current !== null) well.current.value = typed.toLowerCase();
+	};
+	const wellPicked = (event: ChangeEvent<HTMLInputElement>) => {
+		put({ brand_colour: event.currentTarget.value });
+	};
+
 	/** one box, drawn from what this fold calls it and what the deployment holds in it. */
-	const box = (field: IdentityField) => {
+	const box = (field: IdentityField, beside?: ReactNode) => {
 		const copy = ORG_FIELDS[field];
 		/* the id, the name, the one message under it and the lift that ends the far end's sentence
 		   when this box is typed in — one composition, in the seam, for every fold at once
 		   (./use-console-form.ts). */
 		const bound = form.box(form.fields[field]);
 		/* the EIN box spells itself as it is typed and is the one the list is asked about, and the
-		   note on what it said stands under it. */
-		const ein =
+		   note on what it said stands under it. the brand colour's box moves the well beside it. */
+		const typing =
 			field === 'tax_id'
 				? {
 						inputMode: 'numeric' as const,
@@ -271,12 +355,20 @@ export function OrgFold({
 							einTyped(event);
 						}
 					}
-				: { onInput: bound.onInput };
+				: field === 'brand_colour'
+					? {
+							spellCheck: false,
+							onInput: (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+								bound.onInput?.();
+								brandTyped(event.currentTarget.value);
+							}
+						}
+					: { onInput: bound.onInput };
 		return (
 			<Field
 				id={bound.id}
 				name={bound.name}
-				{...ein}
+				{...typing}
 				label={copy.label}
 				optional={copy.optional}
 				// the example the box stands on while it is empty. a box seeded from the profile is full
@@ -289,6 +381,7 @@ export function OrgFold({
 				as={copy.prose ? 'textarea' : 'input'}
 				rows={copy.prose ? 3 : undefined}
 				autoComplete={copy.autoComplete}
+				beside={beside}
 				/* seeded from the profile rather than from the form layer's own reading of it: conform
 				   takes its default once, at the mount, and this fold's boxes are put back by its own
 				   landed write — so a box seeded from that reading would be reset to the profile the
@@ -306,6 +399,101 @@ export function OrgFold({
 			/>
 		);
 	};
+
+	/* the link rows, added and dropped by the form's own intents (./use-console-form.ts's `list`). */
+	const links = form.fields[SOCIAL_LINKS_FIELD];
+	const linkRows = links.getFieldList();
+	const linkControls = form.list(links.name);
+	/* the list's one sentence — the far end's or this console's own reading of the rows — keyed to
+	   the list and drawn at the group, which describes every row that carries none of its own. */
+	const linksSaid = form.box({ name: links.name, errors: links.errors }).error;
+
+	/* the rows typed in since the list was stored, which no longer hold the address the platform
+	   name beside them was recognised from. forgotten when a different list is stored. */
+	const storedLinks = stored.social_links.map((link) => link.href).join('\n');
+	const [edited, setEdited] = useState<{ over: string; rows: readonly string[] }>({
+		over: storedLinks,
+		rows: NONE
+	});
+	const editedRows = edited.over === storedLinks ? edited.rows : NONE;
+	const typedIn = (row: string) =>
+		setEdited((was) => {
+			const rows = was.over === storedLinks ? was.rows : NONE;
+			return rows.includes(row) ? was : { over: storedLinks, rows: [...rows, row] };
+		});
+
+	/* an Add pressed at the cap is held, with the sentence saying why standing while those rows are
+	   the rows on screen — the giving amounts' cap in packages/app/src/lib/admin/forms/giving-fields.tsx
+	   is the same press. */
+	const identities = linkRows.map((row) => row.key ?? row.name).join('\n');
+	const [heldOver, setHeldOver] = useState<string | null>(null);
+	const capped = heldOver === identities;
+	const addLink = {
+		...linkControls.add,
+		onClick: (event: MouseEvent<HTMLButtonElement>) => {
+			if (linkRows.length < MAX_LINK_ROWS) return;
+			event.preventDefault();
+			setHeldOver(identities);
+		},
+		...(capped ? { 'aria-describedby': LINKS_CAP } : {})
+	};
+
+	const linkRow = (row: (typeof linkRows)[number], at: number): RepeatingRow => {
+		const bound = form.box(row);
+		const identity = row.key ?? bound.id;
+		const platform = editedRows.includes(identity)
+			? undefined
+			: stored.social_links.find((link) => link.href === bound.defaultValue)?.platform;
+		const hint = platform === undefined ? undefined : SOCIAL_PLATFORM_NAMES[platform];
+		/* composed here rather than by the group, because a stored row carries a hint of its own:
+		   the group's hint, the row's platform, and the row's sentence or else the list's. */
+		const describedBy = [
+			`${LINKS_GROUP}-hint`,
+			hint === undefined ? null : `${bound.id}-hint`,
+			bound.error !== undefined
+				? `${bound.id}-err`
+				: linksSaid !== undefined
+					? `${LINKS_GROUP}-err`
+					: null
+		]
+			.filter(Boolean)
+			.join(' ');
+		return {
+			id: bound.id,
+			key: identity,
+			name: bound.name,
+			defaultValue: bound.defaultValue,
+			inputMode: 'url',
+			hint,
+			'aria-describedby': describedBy,
+			onInput: () => {
+				bound.onInput?.();
+				typedIn(identity);
+			},
+			error: bound.error === undefined ? undefined : <MarkedText text={bound.error} />,
+			remove: linkControls.remove(at)
+		};
+	};
+
+	/* the logo: the photo the deployment holds, the press that chooses a new one and sends it at
+	   once, and Remove. the file box is the press's and is opened by it, cleared first so the same
+	   photo chosen again after a refusal is still a choice. */
+	const logo = stored.logo;
+	const logoForm = useRef<HTMLFormElement>(null);
+	const fileBox = useRef<HTMLInputElement>(null);
+	const choosePress = useRef<HTMLButtonElement>(null);
+	const logoAnswer = logoWrite ?? profileWrite;
+	const logoRefused = logoAnswer?.kind === 'refused' ? logoAnswer.errors[LOGO_FIELD] : undefined;
+
+	/* a removal that landed takes Remove with it, so focus goes to the press that adds one. keyed to
+	   the logo going, so a fold opened with none takes nothing. */
+	const logoId = logo?.id ?? null;
+	const shownLogo = useRef(logoId);
+	useEffect(() => {
+		const was = shownLogo.current;
+		shownLogo.current = logoId;
+		if (was !== null && logoId === null) choosePress.current?.focus();
+	}, [logoId]);
 
 	return (
 		<>
@@ -336,6 +524,43 @@ export function OrgFold({
 					</div>
 				</fieldset>
 
+				{box('mission')}
+				{box('vision')}
+				{box(
+					'brand_colour',
+					<input
+						ref={well}
+						type="color"
+						className="adm-swatch adm-swatch--well"
+						aria-label="Pick the brand colour"
+						defaultValue={
+							BRAND_COLOUR.test(stored.brand_colour) ? stored.brand_colour.toLowerCase() : undefined
+						}
+						data-empty={wellEmpty || undefined}
+						disabled={busy}
+						onChange={wellPicked}
+					/>
+				)}
+
+				<RepeatingRows
+					id={LINKS_GROUP}
+					legend={SOCIAL_LINKS_LABEL}
+					rowLabel="Link"
+					hint={`One address for each platform: ${PLATFORMS_LISTED}.`}
+					describedBy={capped ? LINKS_CAP : undefined}
+					addLabel="Add a link"
+					placeholder="https://www.instagram.com/yourorganisation"
+					disabled={busy}
+					add={addLink}
+					error={linksSaid === undefined ? undefined : <MarkedText text={linksSaid} />}
+					rows={linkRows.map(linkRow)}
+				/>
+				{capped ? (
+					<FieldMessage id={LINKS_CAP}>
+						{MAX_LINK_ROWS} links at most, one for each platform.
+					</FieldMessage>
+				) : null}
+
 				<div className="adm-actions">
 					<SaveButton
 						name="intent"
@@ -361,8 +586,85 @@ export function OrgFold({
 					) : null}
 				</div>
 
-				{busy ? null : <OrgWriteOutcome write={write} drawn={IDENTITY_BOXES} />}
+				{busy ? null : <OrgWriteOutcome write={profileWrite} drawn={ORGANISATION_KEYS} />}
 			</Form>
+
+			<fieldset className="adm-fieldset">
+				<legend className="adm-fieldset__legend">{LOGO_LABEL}</legend>
+				{logo === null ? (
+					<p className="adm-hint">
+						Until you add one, donor pages show your initials in your brand colour.
+					</p>
+				) : null}
+				<Form
+					ref={logoForm}
+					id={LOGO_UPLOAD_FORM}
+					className="adm-placed"
+					method="post"
+					encType="multipart/form-data"
+					preventScrollReset
+				>
+					<input type="hidden" name="intent" value={ORG_LOGO_INTENT} readOnly />
+					{logo === null ? null : (
+						<img
+							className="adm-placed__art adm-placed__art--whole"
+							src={logo.url}
+							alt="Your logo"
+						/>
+					)}
+					<div className="adm-actions">
+						<Button
+							ref={choosePress}
+							type="button"
+							mark="image-up"
+							aria-busy={logoPending || undefined}
+							aria-disabled={busy || undefined}
+							aria-describedby={logoRefused === undefined || busy ? undefined : LOGO_REFUSAL}
+							onClick={() => {
+								if (busy || fileBox.current === null) return;
+								fileBox.current.value = '';
+								fileBox.current.click();
+							}}
+						>
+							{logoPending ? 'Saving' : logo === null ? 'Add logo' : 'Replace logo'}
+						</Button>
+						{logo === null || busy ? null : (
+							// it submits the empty form beside this one, so a removal posts no photo.
+							<Button
+								type="submit"
+								form={LOGO_REMOVE_FORM}
+								name="intent"
+								value={ORG_LOGO_REMOVE_INTENT}
+								variant="quiet"
+								mark="trash-2"
+								aria-label="Remove the logo"
+							>
+								Remove
+							</Button>
+						)}
+						{/* chosen is sent: a photo is put on by choosing it, as the press says. */}
+						<input
+							ref={fileBox}
+							type="file"
+							name={LOGO_FILE}
+							accept="image/*"
+							hidden
+							disabled={busy}
+							onChange={(event) => {
+								if (event.currentTarget.files?.length) logoForm.current?.requestSubmit();
+							}}
+						/>
+					</div>
+					{logoRefused === undefined || busy ? null : (
+						<FieldMessage id={LOGO_REFUSAL}>
+							<MarkedText text={logoRefused} />
+						</FieldMessage>
+					)}
+					{busy ? null : <OrgWriteOutcome write={logoWrite} drawn={ORGANISATION_KEYS} />}
+				</Form>
+				<Form id={LOGO_REMOVE_FORM} method="post" preventScrollReset />
+			</fieldset>
+
 			{/* outside the form, so Enter in its box can never be the form's own submit. */}
 			{finding ? (
 				<FindOrgDialog

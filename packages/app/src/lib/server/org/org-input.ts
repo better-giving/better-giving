@@ -1,5 +1,10 @@
-import { ORG_PROFILE_FIELDS, type OrgProfileField } from '@better-giving/operator/console/org';
+import {
+	ORG_PROFILE_FIELDS,
+	type OrgProfileField,
+	type SocialLink
+} from '@better-giving/operator/console/org';
 import { ORG_PROFILE_FIELD_RULES } from '@better-giving/operator/console/org-rules';
+import { readSocialLinks } from '@better-giving/operator/console/social-links';
 import { fieldErrorsFrom } from '@better-giving/operator/zod-issues';
 import { z } from 'zod';
 
@@ -16,13 +21,15 @@ import { z } from 'zod';
 // trim, blank becomes `null`, the length caps, the fields that must be filled in, the
 // email pattern — so all of them are zod schemas and nothing is left as a hand-written check
 // underneath. they are stated in `@better-giving/operator/console/org-rules` rather than here,
-// along with what is deliberately not checked and why, because the console's Legal details fold
+// along with what is deliberately not checked and why, because the console's Organisation details fold
 // runs the same rules in the browser in front of the person typing — and that package is a leaf
 // this app and the console can both reach, where `$lib/server/**` is closed to a component
 // (`packages/app/form-rules.spec.ts`). what this file adds to them is `.nullable()`.
 // `contacts/contact-input.ts` keeps a block of plain typescript below its schemas for the rules
 // that read more than one field at a time; there are none of those here, which is why the whole
-// of `parseOrgProfile` is a parse and a mint.
+// of `parseOrgProfile` is a parse, a reading of the social links and a mint. the links are the one
+// list, read in order and refused at the first bad box, by `readSocialLinks` in
+// `@better-giving/operator/console/social-links` for the same both-ends reason.
 //
 // error identity is carried by the object key. the schema's keys are the form field names, so
 // `issue.path[0]` already is an `OrgProfileField` and the map a form renders is built by
@@ -54,11 +61,13 @@ export { ORG_PROFILE_FIELDS, type OrgProfileField };
  * screen, and an error map is one of the places it would otherwise walk straight back on.
  * nothing is lost, since the field name is right here in the key.
  *
+ * the list of social links is one key, `social_links`, for the first link refused.
+ *
  * a whole-request failure — the database being unreachable — is not one of these. it
  * belongs to no field, and pinning it on one tells the operator to edit something that is
  * fine; the form action carries it separately.
  */
-export type OrgProfileFieldErrors = Partial<Record<OrgProfileField, string>>;
+export type OrgProfileFieldErrors = Partial<Record<OrgProfileField | 'social_links', string>>;
 
 /**
  * an org profile whose blanks are already `null` and whose five required fields are known to be
@@ -73,9 +82,10 @@ export type OrgProfileFieldErrors = Partial<Record<OrgProfileField, string>>;
  *
  * `deductibilityStatement` is not here and no screen posts one: `org_profile`'s column is a fork's
  * to write and ./deductibility.ts is what reads it, so a profile save leaves it exactly as it
- * found it (`saveOrgProfile` in ./queries.ts). the fields are otherwise `org_profile`'s writable
- * columns and no more — `id` is the singleton literal ./queries.ts writes, and
- * `created_at`/`updated_at` belong to the column defaults.
+ * found it (`saveOrgProfile` in ./queries.ts), and neither is `logoImageId`, which has writes of its
+ * own there. the fields are otherwise `org_profile`'s writable columns and no more — `id` is the
+ * singleton literal ./queries.ts writes, and `created_at`/`updated_at` belong to the column
+ * defaults.
  *
  * the brand is what makes `parseOrgProfile` hard to skip. without it this is a structural
  * type, so `saveOrgProfile(db, { legalName: '', ... })` type-checks and the "the row's
@@ -107,6 +117,12 @@ export type ParsedOrgProfile = {
 	readonly postalCode: string | null;
 	readonly country: string;
 	readonly notificationEmail: string | null;
+	readonly mission: string | null;
+	readonly vision: string | null;
+	/** lowercase `#rrggbb`. */
+	readonly brandColour: string | null;
+	/** at most one per platform, in the order typed. */
+	readonly socialLinks: readonly SocialLink[];
 } & { readonly __parsed: unique symbol };
 
 export type OrgProfileParseResult =
@@ -154,7 +170,10 @@ const CLEAN_FIELDS = z.object({
 	region: cleanText,
 	postal_code: cleanText,
 	country: cleanText,
-	notification_email: cleanText
+	notification_email: cleanText,
+	mission: cleanText,
+	vision: cleanText,
+	brand_colour: cleanText
 });
 
 /**
@@ -163,7 +182,7 @@ const CLEAN_FIELDS = z.object({
  *
  * the keys are the form field names, which is what makes `issue.path[0]` an error key with
  * nothing to translate. every rule is `ORG_PROFILE_FIELD_RULES` in
- * `@better-giving/operator/console/org-rules`, which the console's Legal details fold runs too —
+ * `@better-giving/operator/console/org-rules`, which the console's Organisation details fold runs too —
  * the only thing this stage adds is `.nullable()`, because a blank is already `null` by the time
  * it runs where a submitted box is `''`.
  *
@@ -187,20 +206,34 @@ const FIELD_LIMITS = z.object({
 	region: ORG_PROFILE_FIELD_RULES.region.nullable(),
 	postal_code: ORG_PROFILE_FIELD_RULES.postal_code.nullable(),
 	country: ORG_PROFILE_FIELD_RULES.country,
-	notification_email: ORG_PROFILE_FIELD_RULES.notification_email.nullable()
+	notification_email: ORG_PROFILE_FIELD_RULES.notification_email.nullable(),
+	mission: ORG_PROFILE_FIELD_RULES.mission.nullable(),
+	vision: ORG_PROFILE_FIELD_RULES.vision.nullable(),
+	brand_colour: ORG_PROFILE_FIELD_RULES.brand_colour.nullable()
 });
 
 /**
- * validates a submitted org profile.
+ * validates a submitted org profile, and its social links as the boxes were typed — read by
+ * `readSocialLinks` in `@better-giving/operator/console/social-links`, the same reading the console
+ * gives them. the list is stated on every call, because none sent is none stored.
  *
  * returns every field error at once rather than the first: a form that reports one problem
- * per round trip is how a ten-field save takes ten submissions.
+ * per round trip is how a ten-field save takes ten submissions. the links are one more key on
+ * that map, `social_links`, carrying the first link refused.
  */
-export function parseOrgProfile(values: OrgProfileFormValues): OrgProfileParseResult {
+export function parseOrgProfile(
+	values: OrgProfileFormValues,
+	socialLinks: readonly string[]
+): OrgProfileParseResult {
 	const clean = CLEAN_FIELDS.parse(values);
 	const limits = FIELD_LIMITS.safeParse(clean);
-	if (!limits.success) {
-		return { ok: false, errors: fieldErrorsFrom(limits.error, ORG_PROFILE_FIELDS) };
+	const links = readSocialLinks(socialLinks);
+	if (!limits.success || !links.ok) {
+		const errors: OrgProfileFieldErrors = limits.success
+			? {}
+			: fieldErrorsFrom(limits.error, ORG_PROFILE_FIELDS);
+		if (!links.ok) errors.social_links = links.error;
+		return { ok: false, errors };
 	}
 
 	return {
@@ -226,7 +259,11 @@ export function parseOrgProfile(values: OrgProfileFormValues): OrgProfileParseRe
 			region: limits.data.region,
 			postalCode: limits.data.postal_code,
 			country: limits.data.country,
-			notificationEmail: limits.data.notification_email
+			notificationEmail: limits.data.notification_email,
+			mission: limits.data.mission,
+			vision: limits.data.vision,
+			brandColour: limits.data.brand_colour,
+			socialLinks: links.links
 		} as unknown as ParsedOrgProfile
 	};
 }

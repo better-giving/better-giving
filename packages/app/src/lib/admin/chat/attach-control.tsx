@@ -1,5 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import type { Resized, ResizeRefusal } from '$lib/images/resize';
+import type { Resized, ResizeRefusal } from '@better-giving/operator/images/resize';
 import { usePhotoPicker } from '../photo-picker';
 
 export interface AttachControlProps {

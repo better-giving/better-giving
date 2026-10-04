@@ -1,8 +1,9 @@
 import type { OrgProfileField } from '@better-giving/operator/console/org';
 import { ORG_PROFILE_FIELD_RULES } from '@better-giving/operator/console/org-rules';
+import { readSocialLinks } from '@better-giving/operator/console/social-links';
 import { z } from 'zod';
 import type { OrgWrite } from '../api/types';
-import { orgBoxes, type OrgBoxes } from './org-fields';
+import { SOCIAL_LINKS_FIELD, storedProfile, type StoredOrg } from './org-fields';
 import type { StatedForm } from './use-console-form';
 
 // what the two folds that edit the profile do with what the deployment reported: what each seeds
@@ -17,13 +18,14 @@ import type { StatedForm } from './use-console-form';
 //
 // **it states no rule about what may be stored and mounts the ones both surfaces read.** what a
 // profile field may hold is `ORG_PROFILE_FIELD_RULES` in
-// `@better-giving/operator/console/org-rules`, and the two forms below are the nine of them split
-// the way the folds are — {@link ORG_FORM}'s eight and {@link NOTIFICATIONS_FORM}'s one — each
-// handed whole to ./use-console-form.ts. the rules are in one module because two surfaces apply
-// them to the same values: a copy here would be the cheaper answer and is exactly how the two come
-// to disagree — one end taking eight digits for an EIN and the other
-// refusing the save is an operator told a value is fine and then told it is not, with nothing on
-// either screen saying which half was right.
+// `@better-giving/operator/console/org-rules`, and the two forms below are the twelve of them split
+// the way the folds are — {@link ORG_FORM}'s eleven and {@link NOTIFICATIONS_FORM}'s one — each
+// handed whole to ./use-console-form.ts. the links are read by `readSocialLinks` in
+// `@better-giving/operator/console/social-links`, the reading the deployment stores them by. the
+// rules are in one module because two surfaces apply them to the same values: a copy here would be
+// the cheaper answer and is exactly how the two come to disagree — one end taking eight digits for
+// an EIN and the other refusing the save is an operator told a value is fine and then told it is
+// not, with nothing on either screen saying which half was right.
 //
 // **the deployment stays the authority.** `/console/org` is reachable by anything holding a console
 // session, so the worker parses every profile it is sent whatever asked it to; the console reading
@@ -39,14 +41,20 @@ import type { StatedForm } from './use-console-form';
  * one an operator can edit under a button that never arms.
  *
  * the keys come off the schema's own shape rather than being written out again, which is what keeps
- * the two in step: a box added to a form is seeded by that addition alone.
+ * the two in step: a box added to a form is seeded by that addition alone. the link rows are seeded
+ * at the address each stored link holds, one row per link.
  */
 export const seedFor = <S extends z.ZodObject>(
 	form: StatedForm<S>,
-	stored: OrgBoxes
-): Record<string, string> =>
+	stored: StoredOrg
+): Record<string, string | string[]> =>
 	Object.fromEntries(
-		Object.keys(form.schema.shape).map((box) => [box, stored[box as OrgProfileField] ?? ''])
+		Object.keys(form.schema.shape).map((box) => [
+			box,
+			box === SOCIAL_LINKS_FIELD
+				? stored.social_links.map((link) => link.href)
+				: (stored[box as OrgProfileField] ?? '')
+		])
 	);
 
 /**
@@ -64,8 +72,8 @@ export const seedFor = <S extends z.ZodObject>(
  * console answers a save with a report naming no profile at all, which seeded from would be a save
  * that landed wiping every box on the screen.
  */
-export const storedOrg = (reading: OrgBoxes, write: OrgWrite | null): OrgBoxes =>
-	write?.kind === 'saved' && isProfile(write.org) ? orgBoxes(write.org) : reading;
+export const storedOrg = (reading: StoredOrg, write: OrgWrite | null): StoredOrg =>
+	write?.kind === 'saved' && isProfile(write.org) ? storedProfile(write.org) : reading;
 
 const isProfile = (value: unknown): value is Record<string, unknown> =>
 	typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -76,13 +84,14 @@ const isProfile = (value: unknown): value is Record<string, unknown> =>
  *
  * conform hands `undefined` for a box holding nothing — every empty string is dropped before the
  * schema sees it (`parseWithZod` in `@conform-to/zod/v4`) — so a rule mounted on a box answers an
- * emptied one with the string check rather than with its own sentence. three of the eight take a
- * blank and state nothing about one (`address_line2`, `region` and `postal_code` in
- * `@better-giving/operator/console/org-rules`), which is the whole of that arm for them: emptying
- * one and pressing was refused "expected string, received undefined" over a save the deployment
- * would have taken. the other five reach the same arm and say the right word for the wrong reason.
+ * emptied one with the string check rather than with its own sentence. six of the eleven take a
+ * blank and state nothing about one (`address_line2`, `region`, `postal_code`, `mission`,
+ * `vision` and `brand_colour` in `@better-giving/operator/console/org-rules`), which is the whole
+ * of that arm for them: emptying one and pressing was refused "expected string, received
+ * undefined" over a save the deployment would have taken. the other five reach the same arm and
+ * say the right word for the wrong reason.
  *
- * so no box carries a rule and {@link ORG_FORM} runs all eight over the empty string a box stood
+ * so no box carries a rule and {@link ORG_FORM} runs all eleven over the empty string a box stood
  * for. putting that string back in front of the rule is not the other way out: the rewrite reaches
  * through a pipe, which {@link NOTIFICATIONS_FORM} states. {@link notificationBox} below is the
  * same reading, and so are ./stripe-keys.ts's `heldKey` and ./smtp-fold-state.ts's `heldValue`.
@@ -90,12 +99,12 @@ const isProfile = (value: unknown): value is Record<string, unknown> =>
 const identityBox = z.string().optional();
 
 /**
- * the eight boxes the identity fold draws.
+ * the eleven boxes the Organisation fold draws.
  *
- * one field per line rather than the nine filtered down, for `stated` in ./org-fields.ts's reason:
- * the eight are read here rather than derived from what the ninth is not. which rule each of them
- * runs is {@link ORG_FORM}'s walk, and a box named here that the leaf states no rule for is a
- * compile error there; a profile field no box here draws is ./org-form.spec.ts's.
+ * one field per line rather than the twelve filtered down, for `stated` in ./org-fields.ts's
+ * reason: the eleven are read here rather than derived from what the twelfth is not. which rule
+ * each of them runs is {@link ORG_FORM}'s walk, and a box named here that the leaf states no rule
+ * for is a compile error there; a profile field no box here draws is ./org-form.spec.ts's.
  */
 const identityBoxes = z.object({
 	legal_name: identityBox,
@@ -105,23 +114,37 @@ const identityBoxes = z.object({
 	city: identityBox,
 	region: identityBox,
 	postal_code: identityBox,
-	country: identityBox
+	country: identityBox,
+	mission: identityBox,
+	vision: identityBox,
+	brand_colour: identityBox
 });
 
-/** one of the eight, which is what the fold's own box helper takes. */
+/** one of the eleven, which is what the fold's own box helper takes. */
 export type IdentityField = keyof typeof identityBoxes.shape;
 
 /**
- * the identity fold's form: what its `<Form>` is called, and the rules its press runs first.
+ * the boxes and the link rows, which one press stores together.
  *
- * **the eight boxes it draws and not the profile's nine.** the ninth is carried hidden at exactly
+ * a row is `.optional()` for {@link identityBox}'s reason — conform drops an empty row before the
+ * schema sees it, and a blank row is one the deployment skips — and the list is, because a form
+ * whose rows were all removed posts no list at all.
+ */
+const organisationBoxes = identityBoxes.extend({
+	[SOCIAL_LINKS_FIELD]: z.array(z.string().optional()).optional()
+});
+
+/**
+ * the Organisation fold's form: what its `<Form>` is called, and the rules its press runs first.
+ *
+ * **the eleven boxes it draws and not the profile's twelve.** the twelfth is carried hidden at exactly
  * what the deployment holds (`carriedBoxes` in ./org-fields.ts), so a sentence raised over it here
  * would be one keyed to a box this form has none of — focus into a panel nobody has open, which is
  * a press answered by nothing moving. `foldErrors` below cuts the deployment's own answer down
  * along the same line, and the notification address is judged by the fold that draws it.
  *
  * **the rules are run over the boxes rather than mounted on them** ({@link identityBox}), and one
- * walk runs all eight: what a box may hold is the leaf's to say for every one of them alike, so a
+ * walk runs all eleven: what a box may hold is the leaf's to say for every one of them alike, so a
  * rule that later loses its `.min(1)` is a box that takes a blank rather than a box refused in
  * zod's words.
  *
@@ -139,15 +162,21 @@ export type IdentityField = keyof typeof identityBoxes.shape;
  * the id is the form's, and every box id on the fold is composed off it by the seam — so `org` is
  * also the prefix a refusal's key is found by.
  */
-export const ORG_FORM: StatedForm<typeof identityBoxes> = {
+export const ORG_FORM: StatedForm<typeof organisationBoxes> = {
 	id: 'org',
-	schema: identityBoxes.superRefine((held, ctx) => {
+	schema: organisationBoxes.superRefine((held, ctx) => {
 		for (const field of Object.keys(identityBoxes.shape) as IdentityField[]) {
 			const read = ORG_PROFILE_FIELD_RULES[field].safeParse(held[field] ?? '');
 			if (read.success) continue;
 			for (const issue of read.error.issues) {
 				ctx.addIssue({ code: 'custom', message: issue.message, path: [field] });
 			}
+		}
+		// keyed to the list and not a row: the deployment refuses the list under the same one key, so
+		// a sentence from either end is drawn in the same place.
+		const links = readSocialLinks((held[SOCIAL_LINKS_FIELD] ?? []).map((row) => row ?? ''));
+		if (!links.ok) {
+			ctx.addIssue({ code: 'custom', message: links.error, path: [SOCIAL_LINKS_FIELD] });
 		}
 	})
 };
@@ -172,7 +201,7 @@ const notificationBox = z.object({ notification_email: z.string().optional() });
 /**
  * the notifications fold's form: what its `<Form>` is called, and the rule its press runs first.
  *
- * **the one box it draws and not the profile's nine.** the other eight are carried hidden at
+ * **the one box it draws and not the profile's twelve.** the other eleven are carried hidden at
  * exactly what the deployment holds (`carriedBoxes` in ./org-fields.ts), so a sentence raised over
  * one of them here would be keyed to a box this form has none of — focus into a panel nobody has
  * open, which is a press answered by nothing moving. `foldErrors` below cuts the deployment's own
@@ -218,12 +247,10 @@ export const NOTIFICATIONS_FORM: StatedForm<typeof notificationBox> = {
  */
 export const foldErrors = (
 	write: OrgWrite | null,
-	drawn: readonly OrgProfileField[]
+	drawn: readonly string[]
 ): Record<string, string> | null => {
 	if (write?.kind !== 'refused') return null;
-	return Object.fromEntries(
-		Object.entries(write.errors).filter(([field]) => drawn.includes(field as OrgProfileField))
-	);
+	return Object.fromEntries(Object.entries(write.errors).filter(([key]) => drawn.includes(key)));
 };
 
 /** "a, b and c" — a list a person reads. */

@@ -1,13 +1,17 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,6 +41,10 @@ type errand struct {
 	path   string
 	bearer string
 	body   map[string]any
+	// raw and kind are the body as it arrived and the type it arrived under, for the one errand
+	// that forwards a body this console did not write.
+	raw  []byte
+	kind string
 }
 
 // an answer the deployment sends under a status of its own, where the status is what decides the
@@ -52,12 +60,14 @@ func deployed(t *testing.T, answers map[string]any) (*httptest.Server, func() []
 	asked := []errand{}
 	var recording sync.Mutex
 	surface := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.Unmarshal(raw, &body)
 		recording.Lock()
 		asked = append(asked, errand{
 			method: r.Method, path: r.URL.Path,
 			bearer: r.Header.Get("Authorization"), body: body,
+			raw: raw, kind: r.Header.Get("Content-Type"),
 		})
 		recording.Unlock()
 
@@ -169,6 +179,192 @@ func TestTheProfileIsPostedWholeOverTheSession(t *testing.T) {
 	held, _ := calls[0].body["org"].(map[string]any)
 	if held["legal_name"] != "Hound Haven" || held["city"] != "Leeds" {
 		t.Fatalf("posted %v", calls[0].body)
+	}
+}
+
+// the social links travel beside the values as the addresses typed, and the words and colour the
+// organisation is presented in travel among the values.
+func TestTheSocialLinksAndThePresentationTravelWithTheProfile(t *testing.T) {
+	handler, asked := errands(t, map[string]any{"POST /console/org": reported()}, "here")
+
+	status, answer := press(t, handler, "/api/deployment/org", `{
+		"values":{"legal_name":"Hound Haven","mission":"Every hound homed.","vision":"",
+			"brand_colour":"#AA3300"},
+		"social_links":["https://instagram.com/houndhaven",""]
+	}`)
+	if status != http.StatusOK || answer["kind"] != "saved" {
+		t.Fatalf("%d %v", status, answer)
+	}
+	want := map[string]any{
+		"org": map[string]any{
+			"legal_name": "Hound Haven", "mission": "Every hound homed.", "vision": "",
+			"brand_colour": "#AA3300",
+		},
+		"social_links": []any{"https://instagram.com/houndhaven", ""},
+	}
+	calls := asked()
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0].body, want) {
+		t.Fatalf("the deployment was asked %v", calls)
+	}
+}
+
+// a press naming no links states the list empty rather than null, because the profile is posted
+// whole and the deployment reads a list it was not handed as cleared.
+func TestAPressNamingNoLinksStatesTheListEmpty(t *testing.T) {
+	for _, body := range []string{`{"values":{}}`, `{"values":{},"social_links":null}`} {
+		handler, asked := errands(t, map[string]any{"POST /console/org": reported()}, "here")
+		press(t, handler, "/api/deployment/org", body)
+		calls := asked()
+		if len(calls) != 1 || !reflect.DeepEqual(calls[0].body["social_links"], []any{}) {
+			t.Fatalf("%s reached the deployment as %v", body, calls)
+		}
+	}
+}
+
+// a logo posted the way the browser posts one: the photo in `file`, under the boundary the body's
+// own type names.
+func logoBody(t *testing.T, photo []byte) (string, []byte) {
+	t.Helper()
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	part, err := form.CreateFormFile("file", "logo.webp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(photo); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return form.FormDataContentType(), body.Bytes()
+}
+
+// one call to the logo errand, the way the page makes it.
+func logoPress(t *testing.T, handler http.Handler, method, kind string, body io.Reader) (int, map[string]any) {
+	t.Helper()
+	request := httptest.NewRequest(method, "/api/deployment/org/logo", body)
+	request.Host = loopback
+	if kind != "" {
+		request.Header.Set("Content-Type", kind)
+	}
+	recorded := httptest.NewRecorder()
+	handler.ServeHTTP(recorded, request)
+	var answer map[string]any
+	if err := json.Unmarshal(recorded.Body.Bytes(), &answer); err != nil {
+		t.Fatalf("answered %q", recorded.Body.String())
+	}
+	return recorded.Code, answer
+}
+
+// the logo goes up as the bytes the browser sent under the type it sent them with, over the session:
+// the boundary is named in that type, so a body re-spelled here is one the deployment cannot split.
+func TestTheLogoIsForwardedByteForByteUnderItsOwnType(t *testing.T) {
+	handler, asked := errands(t, map[string]any{"POST /console/org/logo": reported()}, "here")
+	kind, body := logoBody(t, []byte("RIFF\x00\x00\x00\x00WEBPVP8 "))
+
+	status, answer := logoPress(t, handler, http.MethodPost, kind, bytes.NewReader(body))
+	if status != http.StatusOK || answer["kind"] != "saved" || answer["org"] == nil {
+		t.Fatalf("%d %v", status, answer)
+	}
+	calls := asked()
+	if len(calls) != 1 || calls[0].method != http.MethodPost || calls[0].path != "/console/org/logo" {
+		t.Fatalf("the deployment was asked %v", calls)
+	}
+	if calls[0].kind != kind || !bytes.Equal(calls[0].raw, body) {
+		t.Fatalf("forwarded %q under %q", calls[0].raw, calls[0].kind)
+	}
+	if calls[0].bearer != "Bearer "+errandToken {
+		t.Fatalf("the session did not travel: %q", calls[0].bearer)
+	}
+}
+
+// a body up to the deployment's own cap is forwarded, and one byte past it is refused here, whether
+// the request declared its length or not, so a photo the deployment would refuse is never carried.
+func TestALogoPastTheDeploymentsCapIsRefusedBeforeItIsAsked(t *testing.T) {
+	handler, asked := errands(t, map[string]any{"POST /console/org/logo": reported()}, "here")
+	kind := "multipart/form-data; boundary=b"
+
+	if status, answer := logoPress(t, handler, http.MethodPost, kind,
+		bytes.NewReader(make([]byte, release.LogoUploadMax))); status != http.StatusOK {
+		t.Fatalf("a body at the cap answered %d %v", status, answer)
+	}
+	for name, past := range map[string]io.Reader{
+		"declared":   bytes.NewReader(make([]byte, release.LogoUploadMax+1)),
+		"undeclared": io.MultiReader(bytes.NewReader(make([]byte, release.LogoUploadMax+1))),
+	} {
+		status, answer := logoPress(t, handler, http.MethodPost, kind, past)
+		if status != http.StatusRequestEntityTooLarge || answer["error"] == nil {
+			t.Errorf("a body past the cap, %s, answered %d %v", name, status, answer)
+		}
+	}
+	if calls := asked(); len(calls) != 1 {
+		t.Fatalf("the deployment was asked %d times", len(calls))
+	}
+}
+
+// a body that is not a form is no logo press, and the deployment is not asked about it.
+func TestALogoPressThatIsNotAFormIsRefused(t *testing.T) {
+	handler, asked := errands(t, map[string]any{"POST /console/org/logo": reported()}, "here")
+	for _, kind := range []string{"", "application/json", "multipart/form-data"} {
+		status, answer := logoPress(t, handler, http.MethodPost, kind, strings.NewReader(`{}`))
+		if status != http.StatusBadRequest || answer["error"] == nil {
+			t.Errorf("%q answered %d %v", kind, status, answer)
+		}
+	}
+	if len(asked()) != 0 {
+		t.Fatalf("the deployment was asked %v", asked())
+	}
+}
+
+// taking the logo off is its own address, carrying nothing, and answers the same write a save does.
+func TestTheLogoIsTakenOffAtItsOwnAddress(t *testing.T) {
+	handler, asked := errands(t, map[string]any{"DELETE /console/org/logo": reported()}, "here")
+
+	status, answer := logoPress(t, handler, http.MethodDelete, "", nil)
+	if status != http.StatusOK || answer["kind"] != "saved" {
+		t.Fatalf("%d %v", status, answer)
+	}
+	calls := asked()
+	if len(calls) != 1 || calls[0].method != http.MethodDelete || calls[0].path != "/console/org/logo" ||
+		len(calls[0].raw) != 0 || calls[0].bearer != "Bearer "+errandToken {
+		t.Fatalf("the deployment was asked %v", calls)
+	}
+}
+
+// a photo the deployment turned down comes back as a refusal keyed at the logo, carrying its words.
+func TestARefusedLogoComesBackAtTheLogo(t *testing.T) {
+	handler, _ := errands(t, map[string]any{
+		"POST /console/org/logo": refusal{http.StatusUnprocessableEntity, map[string]any{
+			"error": "org_refused", "message": "The logo was not stored.", "fix": "Choose a photo.",
+			"errors": map[string]any{"logo": "That file is not a photo."},
+		}},
+	}, "here")
+	kind, body := logoBody(t, []byte("not a photo"))
+
+	status, answer := logoPress(t, handler, http.MethodPost, kind, bytes.NewReader(body))
+	keyed, _ := answer["errors"].(map[string]any)
+	if status != http.StatusOK || answer["kind"] != "refused" || keyed["logo"] != "That file is not a photo." {
+		t.Fatalf("%d %v", status, answer)
+	}
+}
+
+// with no session, neither logo errand makes a request at all.
+func TestTheLogoErrandsWithNoSessionMakeNoRequest(t *testing.T) {
+	handler, asked := errands(t, map[string]any{}, "")
+	kind, body := logoBody(t, []byte("RIFF"))
+
+	for method, sent := range map[string]io.Reader{
+		http.MethodPost: bytes.NewReader(body), http.MethodDelete: nil,
+	} {
+		status, answer := logoPress(t, handler, method, kind, sent)
+		read, _ := answer["read"].(map[string]any)
+		if status != http.StatusOK || read["kind"] != "no-session" {
+			t.Errorf("%s answered %d %v", method, status, answer)
+		}
+	}
+	if len(asked()) != 0 {
+		t.Fatalf("the deployment was asked %v", asked())
 	}
 }
 
@@ -477,14 +673,16 @@ func TestNoErrandReachesZapier(t *testing.T) {
 // refused rather than sent on.
 func TestABodyThisConsoleWillNotActOnIsRefused(t *testing.T) {
 	handler, asked := errands(t, map[string]any{}, "here")
-	for path, body := range map[string]string{
-		"/api/deployment/org":        `{"whatever":1}`,
-		"/api/deployment/sites":      `{"sites":"one"}`,
-		"/api/deployment/test-email": `not json`,
-		"/api/deployment/quickbooks": `{"whatever":1}`,
+	for _, pressed := range []struct{ path, body string }{
+		{"/api/deployment/org", `{"whatever":1}`},
+		{"/api/deployment/org", `{"values":{},"social_links":"https://x.com/houndhaven"}`},
+		{"/api/deployment/org", `{"values":{},"social_links":["https://x.com/houndhaven",1]}`},
+		{"/api/deployment/sites", `{"sites":"one"}`},
+		{"/api/deployment/test-email", `not json`},
+		{"/api/deployment/quickbooks", `{"whatever":1}`},
 	} {
-		if status, _ := press(t, handler, path, body); status != http.StatusBadRequest {
-			t.Errorf("%s answered %d", path, status)
+		if status, _ := press(t, handler, pressed.path, pressed.body); status != http.StatusBadRequest {
+			t.Errorf("%s %s answered %d", pressed.path, pressed.body, status)
 		}
 	}
 	if len(asked()) != 0 {

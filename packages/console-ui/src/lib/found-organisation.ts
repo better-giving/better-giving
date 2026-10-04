@@ -1,6 +1,6 @@
 import { hostOf, readOriginRows } from '@better-giving/operator/origins';
 
-// the website the IRS list holds for the organisation the Legal details fold last found, kept for
+// the website the IRS list holds for the organisation the Organisation details fold last found, kept for
 // the console's run so the Sites fold (./sites-fold.tsx) can offer it as the first site.
 //
 // **it is a memory of this process and nothing stores it.** the two folds are on different pages
