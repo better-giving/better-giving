@@ -1,15 +1,15 @@
 import { type ReactNode, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
-import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { editorBlocks } from '$lib/page/block-edit';
 import { BLOCK_TYPES, type Block, type Page } from '$lib/page/catalog';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
 import { PageView } from '$lib/donate/page-view';
-import { ChatSheet } from '../chat/chat-sheet';
+import { AiPanel } from '../chat/ai-panel';
 import { AddressSheet } from './address-sheet';
 import { BlockSheet } from './block-sheet';
-import { EditorEntries, EditorShell } from './editor-shell';
+import { EditorShell } from './editor-shell';
 import { GoalSheet } from './goal-sheet';
 import { InPlaceName } from './in-place-name';
 import { PicturePicker } from './pictures';
@@ -17,11 +17,12 @@ import { PreviewFrame } from './preview-frame';
 import { PublishBar } from './publish-bar';
 import { SettingsSheet } from './settings-sheet';
 
-// the editor's parts, mounted so what a reader meets is looked at: the sheet each floating entry
-// opens and the ways out of it, the groups Settings draws only when handed, the names a picture and
-// the name box carry and a drawing for every variant the catalog offers, where Reset to default and
-// Open are offered and which presses the bar draws without a handler, the address's save and its
-// refusal at Save, the goal's figure in and out, and which messages the preview frame listens to.
+// the editor's parts, mounted so what a reader meets is looked at: the sheet each bar press opens
+// and the ways out of it, the AI panel docked or a sheet by width, the groups Settings draws only
+// when handed, the names a picture and the name box carry and a drawing for every variant the
+// catalog offers, what More holds and when, which presses the bar draws without a handler and
+// which below the wide breakpoint alone, the address's save and its refusal at Save, the goal's
+// figure in and out, and which messages the preview frame listens to.
 // a class is read only to find a part, such as whether a picture holds a drawing, and never to ask
 // how anything looks — how the editor looks is left to a person looking at it.
 //
@@ -71,15 +72,42 @@ function button(root: Element, name: string): HTMLButtonElement {
 	return found;
 }
 
-describe('a sheet opened from a floating entry', () => {
+/** the editor at the wide breakpoint or below it, as ./wide.ts reads it. */
+function atWidth(wide: boolean) {
+	vi.spyOn(window, 'matchMedia').mockImplementation(
+		(media) =>
+			({
+				matches: wide,
+				media,
+				addEventListener: () => {},
+				removeEventListener: () => {}
+			}) as unknown as MediaQueryList
+	);
+}
+
+beforeEach(() => atWidth(true));
+
+/** the bar as an editor draws it over a live Donation page, with the presses that open sheets. */
+function Bar({ onEditByHand, onAi }: { onEditByHand: () => void; onAi: () => void }) {
+	return (
+		<PublishBar
+			closeHref="/admin"
+			page={{ kind: 'donation' }}
+			state="live"
+			publishing={false}
+			republished={false}
+			undoing={false}
+			onEditByHand={onEditByHand}
+			onAi={onAi}
+		/>
+	);
+}
+
+describe('the Settings sheet opened from Edit by hand', () => {
 	function Editor() {
 		const [open, setOpen] = useState(false);
 		return (
-			<EditorShell
-				bar={null}
-				preview={null}
-				entries={<EditorEntries onChat={() => {}} onSettings={() => setOpen(true)} />}
-			>
+			<EditorShell bar={<Bar onEditByHand={() => setOpen(true)} onAi={() => {}} />} preview={null}>
 				{open ? (
 					<SettingsSheet
 						onDismiss={() => setOpen(false)}
@@ -99,30 +127,31 @@ describe('a sheet opened from a floating entry', () => {
 	}
 
 	function opened(root: HTMLElement): { entry: HTMLButtonElement; sheet: HTMLDialogElement } {
-		const entry = button(root, 'Settings');
+		const entry = button(root, 'Edit by hand');
 		entry.focus();
 		act(() => entry.click());
 		const sheet = root.querySelector('dialog');
-		if (sheet === null) throw new Error('the entry opened no sheet');
+		if (sheet === null) throw new Error('the press opened no sheet');
 		return { entry, sheet };
 	}
 
 	it('is shown as a modal and takes the focus', () => {
-		const { sheet } = opened(mount(<Editor />));
+		const { entry, sheet } = opened(routed(<Editor />));
+		expect(entry.getAttribute('aria-haspopup')).toBe('dialog');
 		expect(sheet.open).toBe(true);
 		expect(document.activeElement).toBe(sheet);
 	});
 
-	it('goes on Escape and hands the focus back to the entry', () => {
-		const root = mount(<Editor />);
+	it('goes on Escape and hands the focus back to Edit by hand', () => {
+		const root = routed(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => sheet.dispatchEvent(new Event('cancel', { cancelable: true })));
 		expect(root.querySelector('dialog')).toBeNull();
 		expect(document.activeElement).toBe(entry);
 	});
 
-	it('goes on its X and hands the focus back to the entry', () => {
-		const root = mount(<Editor />);
+	it('goes on its X and hands the focus back to Edit by hand', () => {
+		const root = routed(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => button(sheet, 'Close').click());
 		expect(root.querySelector('dialog')).toBeNull();
@@ -130,55 +159,69 @@ describe('a sheet opened from a floating entry', () => {
 	});
 });
 
-describe('the chat sheet opened from its floating entry', () => {
+describe('the AI panel in the editor', () => {
 	function Editor() {
 		const [open, setOpen] = useState(false);
 		return (
 			<EditorShell
-				bar={null}
+				bar={<Bar onEditByHand={() => {}} onAi={() => setOpen(true)} />}
 				preview={null}
-				entries={<EditorEntries onChat={() => setOpen(true)} onSettings={() => {}} />}
-			>
-				{open ? (
-					<ChatSheet
+				panel={
+					<AiPanel
 						messages={[]}
 						isRunning={false}
 						onSend={() => {}}
+						onAnswer={() => {}}
+						open={open}
 						onDismiss={() => setOpen(false)}
 						suggestions={['Add a FAQ']}
 						imageSrc={(id) => `/image/${id}`}
 					/>
-				) : null}
-			</EditorShell>
+				}
+			/>
 		);
 	}
 
 	function opened(root: HTMLElement): { entry: HTMLButtonElement; sheet: HTMLDialogElement } {
-		const entry = button(root, 'Chat');
+		const entry = button(root, 'AI');
 		entry.focus();
 		act(() => entry.click());
 		const sheet = root.querySelector('dialog');
-		if (sheet === null) throw new Error('the entry opened no sheet');
+		if (sheet === null) throw new Error('the press opened no sheet');
 		return { entry, sheet };
 	}
 
-	it('is shown as a modal holding the chat, with the focus inside it', () => {
-		const { sheet } = opened(mount(<Editor />));
+	it('stands docked beside the preview from the wide breakpoint, with no AI press', () => {
+		const root = routed(<Editor />);
+		const body = root.querySelector('.adm-editor__body');
+		expect(body?.querySelector(':scope > main')).not.toBeNull();
+		expect(body?.querySelector(':scope > aside textarea')).not.toBeNull();
+		expect(root.querySelector('dialog')).toBeNull();
+		expect(() => button(root, 'AI')).toThrow();
+	});
+
+	it('is a modal below it, opened from the AI press, with the focus inside it', () => {
+		atWidth(false);
+		const root = routed(<Editor />);
+		expect(root.querySelector('aside')).toBeNull();
+		const { sheet } = opened(root);
 		expect(sheet.open).toBe(true);
 		expect(sheet.querySelector('textarea')).not.toBeNull();
 		expect(sheet.contains(document.activeElement)).toBe(true);
 	});
 
-	it('goes on its X and hands the focus back to Chat', () => {
-		const root = mount(<Editor />);
+	it('goes on its X and hands the focus back to the AI press', () => {
+		atWidth(false);
+		const root = routed(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => button(sheet, 'Close').click());
 		expect(root.querySelector('dialog')).toBeNull();
 		expect(document.activeElement).toBe(entry);
 	});
 
-	it('goes on Escape and hands the focus back to Chat', () => {
-		const root = mount(<Editor />);
+	it('goes on Escape and hands the focus back to the AI press', () => {
+		atWidth(false);
+		const root = routed(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => sheet.dispatchEvent(new Event('cancel', { cancelable: true })));
 		expect(root.querySelector('dialog')).toBeNull();
@@ -496,8 +539,84 @@ describe('the publish bar', () => {
 			reset={reset === undefined ? undefined : { ...reset, onReset: () => {} }}
 		/>
 	);
+	/** the bar's presses and More's lines, each by the name a reader meets it by. */
 	const names = (root: HTMLElement) =>
-		[...root.querySelectorAll('button')].map((one) => one.textContent?.trim());
+		[...root.querySelectorAll('button, [role="menuitem"]')].map(
+			(one) => one.getAttribute('aria-label') ?? one.textContent?.trim()
+		);
+	const lines = (root: HTMLElement) =>
+		[...root.querySelectorAll('[role="menuitem"]')].map((one) => one.textContent?.trim());
+
+	it('offers Edit by hand, opening a sheet, and More holding the page’s other presses', () => {
+		const onEditByHand = vi.fn();
+		const root = routed(
+			<PublishBar
+				closeHref="/admin"
+				page={{ kind: 'donation' }}
+				state="changed"
+				livePath="/donate"
+				publishing={false}
+				republished={false}
+				undoing={false}
+				onDiscard={() => {}}
+				reset={{ hasEdits: true, onReset: () => {} }}
+				onEditByHand={onEditByHand}
+			/>
+		);
+		const edit = button(root, 'Edit by hand');
+		expect(edit.getAttribute('aria-haspopup')).toBe('dialog');
+		act(() => edit.click());
+		expect(onEditByHand).toHaveBeenCalledOnce();
+
+		expect(button(root, 'More').getAttribute('aria-haspopup')).toBe('menu');
+		expect(lines(root)).toEqual([
+			'Open /donate (opens in a new tab)',
+			'Reset to default',
+			'Discard changes'
+		]);
+	});
+
+	it('holds only the lines whose press can act in More, and draws no More holding none', () => {
+		const campaign = (state: 'unpublished' | 'live') => (
+			<PublishBar
+				closeHref="/admin/campaigns"
+				page={{ kind: 'campaign', name: 'Winter coat drive', onRename: () => {} }}
+				state={state}
+				livePath="/winter-coat-drive"
+				publishing={false}
+				republished={false}
+				undoing={false}
+				onDiscard={() => {}}
+			/>
+		);
+		expect(lines(routed(campaign('live')))).toEqual([
+			'Open /winter-coat-drive (opens in a new tab)'
+		]);
+		expect(names(routed(campaign('unpublished')))).not.toContain('More');
+	});
+
+	it('offers the AI press below the wide breakpoint alone, where the panel is a sheet', () => {
+		const onAi = vi.fn();
+		const at = () =>
+			routed(
+				<PublishBar
+					closeHref="/admin"
+					page={{ kind: 'donation' }}
+					state="live"
+					publishing={false}
+					republished={false}
+					undoing={false}
+					onAi={onAi}
+				/>
+			);
+		expect(names(at())).not.toContain('AI');
+
+		atWidth(false);
+		const ai = button(at(), 'AI');
+		expect(ai.getAttribute('aria-haspopup')).toBe('dialog');
+		act(() => ai.click());
+		expect(onAi).toHaveBeenCalledOnce();
+	});
 
 	it('offers Reset to default only once the page has edits', () => {
 		expect(names(routed(bar({ hasEdits: false })))).not.toContain('Reset to default');

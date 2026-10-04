@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, useLoaderData, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { Resized } from '$lib/images/resize';
-import type { ChatMessage } from '../chat/chat-sheet';
+import type { ChatMessage } from '../chat/ai-panel';
 import { useEditorChat } from './chat-wiring';
-import { EditorEntries, EditorShell } from './editor-shell';
+import { EditorShell } from './editor-shell';
+import { PublishBar } from './publish-bar';
 
 // happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
 // `resizes` until the case hands it a result.
@@ -42,7 +43,23 @@ let uploadsHeld: ((answer: { body: unknown; status: number }) => void)[];
 /** while set, each read of the chat waits here until the case lets it land. */
 let historyHeld: (() => void)[] | null;
 
+/** the editor at the wide breakpoint or below it, as ./wide.ts reads it. */
+function atWidth(wide: boolean) {
+	vi.spyOn(window, 'matchMedia').mockImplementation(
+		(media) =>
+			({
+				matches: wide,
+				media,
+				addEventListener: () => {},
+				removeEventListener: () => {}
+			}) as unknown as MediaQueryList
+	);
+}
+
 beforeEach(() => {
+	// below the wide breakpoint, where the panel is a sheet the bar's AI press opens; the docked
+	// column's own case says so.
+	atWidth(false);
 	stored = [
 		{ id: 't1', role: 'operator', text: 'Make it warmer' },
 		{ id: 't2', role: 'assistant', text: 'I moved the page to the warm shade.' }
@@ -69,21 +86,31 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** an editor as the two editor routes mount the chat: its Chat entry and the sheet. */
+/** an editor as the two editor routes mount the chat: the bar's AI press and the panel. */
 function Editor() {
 	const { version } = useLoaderData<{ version: number }>();
 	const chat = useEditorChat(CHAT);
 	const search = useLocation().search;
 	return (
 		<EditorShell
-			bar={null}
+			bar={
+				<PublishBar
+					closeHref="/admin"
+					page={{ kind: 'donation' }}
+					state="live"
+					publishing={false}
+					republished={false}
+					undoing={false}
+					onAi={chat.open}
+				/>
+			}
 			preview={
 				<>
 					<output>{version}</output>
 					<samp>{search}</samp>
 				</>
 			}
-			entries={<EditorEntries onChat={chat.open} onSettings={() => {}} />}
+			panel={chat.panel}
 		>
 			{chat.sheet}
 		</EditorShell>
@@ -173,7 +200,7 @@ function type(words: string) {
 async function opened(entry = PAGE): Promise<HTMLElement> {
 	const root = screen(entry);
 	await settle();
-	await press(button('Chat'));
+	await press(button('AI'));
 	await settle();
 	return root;
 }
@@ -199,17 +226,17 @@ describe('the editor’s chat', () => {
 		await settle();
 		expect(document.querySelector('.adm-chat__log')).toBeNull();
 
-		await press(button('Chat'));
+		await press(button('AI'));
 		await settle();
 
 		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
 	});
 
-	it('holds the Chat entry busy from its press until the sheet is up', async () => {
+	it('holds the AI press busy from its press until the sheet is up', async () => {
 		historyHeld = [];
 		screen();
 		await settle();
-		const entry = button('Chat');
+		const entry = button('AI');
 		expect(entry.hasAttribute('aria-busy')).toBe(false);
 
 		await press(entry);
@@ -277,6 +304,16 @@ describe('the editor’s chat', () => {
 		expect(button('Send').getAttribute('aria-disabled')).toBeNull();
 	});
 
+	it('stands docked from the wide breakpoint, on the chat read without a press', async () => {
+		atWidth(true);
+		screen();
+		await settle();
+
+		expect(document.querySelector('aside .adm-chat__log')).not.toBeNull();
+		expect(document.querySelector('dialog')).toBeNull();
+		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
+	});
+
 	it('opens on arrival at ?chat, as a campaign made with a line is', async () => {
 		screen(`${PAGE}?chat`);
 		await settle();
@@ -295,7 +332,7 @@ describe('the editor’s chat', () => {
 		expect(root.querySelector('samp')?.textContent).toBe('');
 	});
 
-	it('hands the focus to Chat when the sheet ?chat opened is closed', async () => {
+	it('hands the focus to the AI press when the sheet ?chat opened is closed', async () => {
 		screen(`${PAGE}?chat`);
 		await settle();
 		expect(document.activeElement?.closest('dialog')).not.toBeNull();
@@ -304,7 +341,7 @@ describe('the editor’s chat', () => {
 		await settle();
 
 		expect(document.querySelector('dialog')).toBeNull();
-		expect(document.activeElement).toBe(button('Chat'));
+		expect(document.activeElement).toBe(button('AI'));
 	});
 
 	it('gives a send back to the box when the page was saved while it was answered', async () => {
@@ -363,7 +400,7 @@ describe('the editor’s chat', () => {
 		await sendAndLand('Add a FAQ about coat sizes');
 
 		await press(button('Close'));
-		await press(button('Chat'));
+		await press(button('AI'));
 		await settle();
 
 		expect(refusalShown()).toBe('');

@@ -10,7 +10,7 @@ import {
 	useId,
 	useRef
 } from 'react';
-import type { ChatAttachment, ChatUnsent } from './chat-sheet';
+import type { ChatAttachment, ChatUnsent } from './ai-panel';
 
 function stateOf(attachment: ChatAttachment) {
 	switch (attachment.state) {
@@ -66,13 +66,13 @@ function Attachment({
 	);
 }
 
-/* the sheet's foot: suggestions, the photo on its way, and the box with its Send.
+/* the panel's foot: suggestions, the photo on its way, and the box with its Send.
 
    while a reply is written the box keeps its words and its focus and Send is held with
    `aria-disabled`, so the press the operator is standing on is not taken out from under them. the
    runtime's own Send button would go natively `disabled`, and its own send refuses a photo with no
    words — this photo is the attach control's, not a runtime attachment — so the press and the
-   submit are drawn here and send through the thread's `append`, which reaches the sheet's `onNew`.
+   submit are drawn here and send through the thread's `append`, which reaches the panel's `onNew`.
 
    a suggestion sends its own words and leaves a draft in the box alone. the suggestions go while a
    reply is written, so the press puts the focus in the box before it sends, which is where the
@@ -88,7 +88,8 @@ export function ChatComposer({
 	attachment,
 	attach,
 	unsent,
-	reason
+	reason,
+	placeholder
 }: {
 	running: boolean;
 	suggestions: readonly string[];
@@ -98,6 +99,8 @@ export function ChatComposer({
 	unsent: ChatUnsent | undefined;
 	/** why the last send was refused, or empty once another send leaves. */
 	reason: string;
+	/** what the empty box says it is for. */
+	placeholder: string;
 }) {
 	const aui = useAui();
 	const text = useAuiState((s) => s.composer.text).trim();
@@ -161,7 +164,7 @@ export function ChatComposer({
 					ref={input}
 					className="adm-composer__input"
 					aria-label="Message"
-					placeholder="Ask for a change"
+					placeholder={placeholder}
 					aria-describedby={reason === '' ? undefined : reasonId}
 					onKeyDown={holdEnter}
 				/>

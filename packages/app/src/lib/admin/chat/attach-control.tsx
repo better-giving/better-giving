@@ -11,9 +11,9 @@ export interface AttachControlProps {
 	readonly onResized: (result: Resized) => void;
 }
 
-/* the chat's Attach photo press, drawn at the start of the composer's row through `ChatSheet`'s
+/* the chat's Attach photo press, drawn at the start of the composer's row through `AiPanel`'s
    `attach` slot. it opens the device's picker, resizes what comes back and reports; the attachment
-   row the operator then sees is ./chat-sheet.tsx's, drawn from what the route makes of the report.
+   row the operator then sees is ./ai-panel.tsx's, drawn from what the route makes of the report.
 
    held with `aria-disabled` rather than `disabled`, so a press the operator is standing on keeps
    their focus while a reply is written. */

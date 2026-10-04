@@ -13,7 +13,7 @@ import {
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// `appendChild` rather than `append`: see ../chat/chat-sheet.dom.spec.tsx's `mount`.
+// `appendChild` rather than `append`: see ../chat/ai-panel.dom.spec.tsx's `mount`.
 function mount(node: ReactElement) {
 	const host = document.createElement('div');
 	document.body.appendChild(host);

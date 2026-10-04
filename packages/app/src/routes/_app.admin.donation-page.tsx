@@ -6,7 +6,7 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { MissionAsk } from '$lib/admin/editor/confirms';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
-import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
+import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { PageLookSettings, ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
@@ -324,6 +324,11 @@ function DraftEditor({
 					state={state}
 					livePath="/donate"
 					{...presses.bar}
+					onEditByHand={() => {
+						layoutPick.startClean();
+						setSettings(true);
+					}}
+					onAi={chat.open}
 				/>
 			}
 			preview={
@@ -334,15 +339,7 @@ function DraftEditor({
 					onBlockClick={openBlockSheet}
 				/>
 			}
-			entries={
-				<EditorEntries
-					onChat={chat.open}
-					onSettings={() => {
-						layoutPick.startClean();
-						setSettings(true);
-					}}
-				/>
-			}
+			panel={chat.panel}
 		>
 			{chat.sheet}
 			{settings ? (

@@ -4,19 +4,23 @@ import { describeResized, type Resized } from '$lib/images/resize';
 import { imageSrc } from '$lib/page/image-src';
 import { AttachControl, attachRefusal } from '../chat/attach-control';
 import {
+	AiPanel,
 	type ChatAttachment,
 	type ChatMessage,
 	type ChatSend,
-	ChatSheet,
 	type ChatUnsent
-} from '../chat/chat-sheet';
+} from '../chat/ai-panel';
 import { ChatClosed, ChatOpening } from './editor-shell';
 import { postPhoto, type UploadAnswer } from './photo-upload';
+import { useWide } from './wide';
 
-// the Chat sheet as both editors mount it: `open` for the Chat entry, and the sheet while it is
-// open. the chat is the page's chat route's (src/routes/_app.admin.pages.$pageId.chat.ts), asked
-// by two fetchers — one loading the chat as the sheet opens, one posting each turn — both held by
-// the editor rather than the sheet, so a turn sent and closed on still lands.
+// the AI panel as both editors mount it: `panel` for the shell's slot beside the preview, `open`
+// for the bar's AI press, and `sheet` for what stands in the sheet's place below the wide breakpoint
+// while it is on its way or once it went. the chat is the page's chat route's
+// (src/routes/_app.admin.pages.$pageId.chat.ts), asked by two fetchers — one loading the chat as
+// the panel is first shown, one posting each turn — both held by the editor rather than the panel,
+// so a turn sent and closed on still lands. from the wide breakpoint the panel is docked and shown
+// from the start; below it, from the AI press.
 //
 // a turn is the three boxes that route takes: the words, the photos as a JSON array, and the
 // browser's zone, which an end date the operator names is a day in. while it runs the words stand
@@ -31,10 +35,10 @@ import { postPhoto, type UploadAnswer } from './photo-upload';
 // lands, because the fetcher's answer outlives the sheet; it is cleared by the next send, so a
 // refusal repeated word for word still reads as a new one, and by reopening the sheet.
 //
-// the sheet mounts once the chat has loaded rather than on an empty log: the log takes the chat it
+// the panel mounts once the chat has loaded rather than on an empty log: the log takes the chat it
 // opens on as already read ($lib/admin/chat/chat-log.tsx), and would speak the whole history as it
-// arrived. until then `ChatOpening` stands in its place and holds the Chat entry busy
-// (./editor-shell.tsx).
+// arrived. until then, below the wide breakpoint, `ChatOpening` stands in the sheet's place and
+// holds the AI press busy (./editor-shell.tsx).
 //
 // a photo is attached by the sheet's attach press, which resizes it in the browser and reports
 // here; the resized photo is posted at once to the images route (./photo-upload.ts) by a third
@@ -46,7 +50,7 @@ import { postPhoto, type UploadAnswer } from './photo-upload';
 // `?chat` opens it on arrival. the create action lands a campaign made with a "What's it for?"
 // line there, its first turn already answered (`createCampaign` in $lib/server/pages/campaign.ts
 // runs it before the redirect). closing drops the flag, so a reload opens the editor bare, and
-// hands the focus to the Chat entry (`ChatClosed`): no press opened that sheet, so it has no opener
+// hands the focus to the AI press (`ChatClosed`): no press opened that sheet, so it has no opener
 // of its own to hand it back to.
 
 const SUGGESTIONS = ['Tell donors what each amount buys', 'Add a FAQ', 'Shorten the story'];
@@ -110,10 +114,15 @@ function inFlight(
 	];
 }
 
-export function useEditorChat(url: string): { open: () => void; sheet: ReactNode } {
+export function useEditorChat(url: string): {
+	open: () => void;
+	panel: ReactNode;
+	sheet: ReactNode;
+} {
 	const [params, setParams] = useSearchParams();
+	const wide = useWide();
 	const [open, setOpen] = useState(() => params.has(CHAT_PARAM));
-	/** the sheet up, or last up, is the one `?chat` opened, rather than one a Chat press did. */
+	/** the sheet up, or last up, is the one `?chat` opened, rather than one an AI press did. */
 	const [openedOnArrival, setOpenedOnArrival] = useState(open);
 	const history = useFetcher<History>();
 	const turn = useFetcher<TurnAnswer>();
@@ -176,10 +185,11 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 		postPhoto(upload, result.blob);
 	};
 
+	const shown = open || wide;
 	const { load } = history;
 	useEffect(() => {
-		if (open) load(url);
-	}, [open, load, url]);
+		if (shown) load(url);
+	}, [shown, load, url]);
 
 	const send = ({ text, imageIds }: ChatSend) => {
 		setSentText(text);
@@ -208,25 +218,29 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 	};
 
 	const running = turn.state !== 'idle';
-	const sheet = !open ? (
+	const sheet = wide ? null : !open ? (
 		openedOnArrival ? (
 			<ChatClosed />
 		) : null
 	) : history.data === undefined ? (
 		<ChatOpening />
-	) : (
-		<ChatSheet
-			messages={inFlight(history.data.turns, turn.formData)}
-			isRunning={running}
-			onSend={send}
-			onDismiss={dismiss}
-			suggestions={SUGGESTIONS}
-			imageSrc={imageSrc}
-			unsent={unsent}
-			attachment={photo && { ...photo, onRemove: remove }}
-			attach={({ held }) => <AttachControl held={held} onPicked={picked} onResized={resized} />}
-		/>
-	);
+	) : null;
+	const panel =
+		history.data === undefined ? null : (
+			<AiPanel
+				messages={inFlight(history.data.turns, turn.formData)}
+				isRunning={running}
+				onSend={send}
+				onAnswer={() => {}}
+				open={open}
+				onDismiss={dismiss}
+				suggestions={SUGGESTIONS}
+				imageSrc={imageSrc}
+				unsent={unsent}
+				attachment={photo && { ...photo, onRemove: remove }}
+				attach={({ held }) => <AttachControl held={held} onPicked={picked} onResized={resized} />}
+			/>
+		);
 
 	return {
 		open: () => {
@@ -234,6 +248,7 @@ export function useEditorChat(url: string): { open: () => void; sheet: ReactNode
 			setOpenedOnArrival(false);
 			setOpen(true);
 		},
+		panel,
 		sheet
 	};
 }

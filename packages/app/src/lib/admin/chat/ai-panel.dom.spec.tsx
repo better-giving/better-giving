@@ -1,11 +1,14 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { type ChatMessage, ChatSheet, type ChatSheetProps } from './chat-sheet';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { AiPanel, type AiPanelProps, type ChatMessage } from './ai-panel';
+import type { CardQuestion } from './question-card';
 
-// what the chat sheet does rather than how it looks: which region speaks a reply, which reply
-// carries the refused line, what a new campaign's sheet opens on and what a later turn says while
-// it is written, where the focus is after a press, and what a press sends. the look is the
+// what the AI panel does rather than how it looks: which region speaks a reply, which reply
+// carries the refused line, what a new campaign's panel opens on and what a later turn says while
+// it is written, where the focus is after a press, and what a press sends; an operator turn that
+// answered drawn as its answers, the question card under the asked turn that is the chat's last
+// and under no earlier one, and the panel docked or a sheet by the width it is at. the look is the
 // design's and is read on a screen, not here.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
@@ -18,11 +21,28 @@ const HISTORY: ChatMessage[] = [
 
 const SUGGESTIONS = ['Tell donors what each amount buys', 'Add a FAQ', 'Shorten the story'];
 
-function props(over: Partial<ChatSheetProps> = {}): ChatSheetProps {
+/** the editor at the wide breakpoint or below it, as ../editor/wide.ts reads it. */
+function atWidth(wide: boolean) {
+	vi.spyOn(window, 'matchMedia').mockImplementation(
+		(media) =>
+			({
+				matches: wide,
+				media,
+				addEventListener: () => {},
+				removeEventListener: () => {}
+			}) as unknown as MediaQueryList
+	);
+}
+
+beforeEach(() => atWidth(true));
+
+function props(over: Partial<AiPanelProps> = {}): AiPanelProps {
 	return {
 		messages: HISTORY,
 		isRunning: false,
 		onSend: () => {},
+		onAnswer: () => {},
+		open: true,
 		onDismiss: () => {},
 		suggestions: SUGGESTIONS,
 		imageSrc: (id) => `/images/${id}`,
@@ -31,24 +51,24 @@ function props(over: Partial<ChatSheetProps> = {}): ChatSheetProps {
 }
 
 /**
- * mounts the sheet into a document that lives as long as the case, and hands back a way to draw it
+ * mounts the panel into a document that lives as long as the case, and hands back a way to draw it
  * again with other props, as the route does when its fetcher moves.
  *
  * `appendChild` rather than `append`: worker-configuration.d.ts declares HTMLRewriter's `Element`,
  * which merges into the DOM's and brings an `append(content, options)` that wins here.
  */
-function mount(first: ChatSheetProps) {
+function mount(first: AiPanelProps) {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const root = createRoot(host);
-	act(() => root.render(<ChatSheet {...first} />));
+	act(() => root.render(<AiPanel {...first} />));
 	onTestFinished(() => {
 		act(() => root.unmount());
 		host.remove();
 	});
 	return {
 		host,
-		redraw: (next: ChatSheetProps) => act(() => root.render(<ChatSheet {...next} />))
+		redraw: (next: AiPanelProps) => act(() => root.render(<AiPanel {...next} />))
 	};
 }
 
@@ -79,7 +99,7 @@ async function press(button: HTMLElement) {
 	});
 }
 
-describe('the chat sheet', () => {
+describe('the AI panel', () => {
 	it('speaks a reply that arrives through role="log", and not the history it opened on', () => {
 		const { host, redraw } = mount(props());
 		const log = one(host, '[role="log"]');
@@ -269,5 +289,157 @@ describe('the chat sheet', () => {
 			expect(region.textContent).toBe('');
 			expect(box(host).hasAttribute('aria-describedby')).toBe(false);
 		});
+	});
+});
+
+describe('the AI panel by width', () => {
+	it('is a column docked beside the preview from the wide breakpoint, named AI, with no way out', () => {
+		const { host } = mount(props({ open: false }));
+		const panel = one(host, 'aside');
+
+		expect(document.getElementById(panel.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(
+			'AI'
+		);
+		expect(host.querySelector('dialog')).toBeNull();
+		expect(panel.querySelector('button[aria-label="Close"]')).toBeNull();
+		expect(panel.querySelector('textarea')).not.toBeNull();
+	});
+
+	it('is a sheet named AI below it, drawn only while open, and dismissed by its X', () => {
+		atWidth(false);
+		const onDismiss = vi.fn();
+		const { host, redraw } = mount(props({ open: false, onDismiss }));
+		expect(host.querySelector('aside')).toBeNull();
+		expect(host.querySelector('dialog')).toBeNull();
+
+		redraw(props({ open: true, onDismiss }));
+		const sheet = one<HTMLDialogElement>(host, 'dialog');
+		expect(sheet.querySelector('h2')?.textContent).toBe('AI');
+		act(() => one<HTMLButtonElement>(sheet, 'button[aria-label="Close"]').click());
+		expect(onDismiss).toHaveBeenCalledOnce();
+	});
+});
+
+const ASKED: CardQuestion[] = [
+	{ id: 'who', kind: 'choice', prompt: 'Who do your gifts mostly help?', options: ['Children'] }
+];
+
+describe('the log', () => {
+	const asked = (id: string): ChatMessage => ({
+		id,
+		role: 'assistant',
+		text: 'Before I draft your page, a few quick questions.',
+		questions: ASKED
+	});
+	const cards = (host: HTMLElement) => host.querySelectorAll('.adm-questions');
+	const presses = (host: HTMLElement) =>
+		[...host.querySelectorAll('.adm-questions button')].map((b) => b.textContent);
+	const placeholder = (host: HTMLElement) => box(host).getAttribute('placeholder');
+
+	it('draws an answered turn as its answers, each prompt labelling its words', () => {
+		const { host } = mount(
+			props({
+				messages: [
+					asked('a1'),
+					{
+						id: 'o1',
+						role: 'operator',
+						text: 'Who do your gifts mostly help? — Children',
+						answers: [
+							{ id: 'who', prompt: 'Who do your gifts mostly help?', words: 'Children' },
+							{ id: 'gift', prompt: 'A typical gift', words: '$50' }
+						]
+					}
+				]
+			})
+		);
+		const summary = one(host, '.adm-answers');
+
+		expect(summary.querySelector('.adm-answers__title')?.textContent).toBe('Your answers');
+		expect([...summary.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual([
+			'Who do your gifts mostly help?',
+			'A typical gift'
+		]);
+		expect([...summary.querySelectorAll('dd')].map((dd) => dd.textContent)).toEqual([
+			'Children',
+			'$50'
+		]);
+		expect(host.textContent).not.toContain('— Children');
+	});
+
+	it('draws a turn that answered nothing as its words', () => {
+		const { host } = mount(
+			props({
+				messages: [
+					asked('a1'),
+					{ id: 'o1', role: 'operator', text: 'Skipped the questions.', answers: [] }
+				]
+			})
+		);
+
+		expect(host.querySelector('.adm-answers')).toBeNull();
+		expect(one(host, '.adm-chat__mine').textContent).toBe('Skipped the questions.');
+	});
+
+	it('puts the card under the asked turn that is the chat’s last, as the opening round', () => {
+		const { host } = mount(props({ messages: [asked('a1')] }));
+
+		expect(cards(host)).toHaveLength(1);
+		expect(presses(host)).toEqual(['Draft my page', 'Skip, draft anyway']);
+		expect(placeholder(host)).toBe('Or tell me in your own words');
+	});
+
+	it('asks a later round as a follow-up', () => {
+		const { host } = mount(props({ messages: [...HISTORY, asked('a2')] }));
+
+		expect(presses(host)).toEqual(['Update the page', 'Just do your best']);
+	});
+
+	it('draws an asked turn no longer the last as its words alone', () => {
+		const { host } = mount(
+			props({
+				messages: [asked('a1'), { id: 'o1', role: 'operator', text: 'Just make it warm' }]
+			})
+		);
+
+		expect(cards(host)).toHaveLength(0);
+		expect(host.textContent).toContain('Before I draft your page, a few quick questions.');
+		expect(placeholder(host)).toBe('Ask for a change');
+	});
+
+	it('hands a card’s answers on, and holds the card while they are on their way', async () => {
+		const onAnswer = vi.fn();
+		const { host, redraw } = mount(props({ messages: [asked('a1')], onAnswer }));
+		const skip = [...host.querySelectorAll<HTMLButtonElement>('.adm-questions button')].find(
+			(b) => b.textContent === 'Skip, draft anyway'
+		);
+		if (skip === undefined) throw new Error('no skip press');
+
+		await press(skip);
+		expect(onAnswer).toHaveBeenCalledWith([]);
+
+		redraw(props({ messages: [asked('a1')], onAnswer, isRunning: true }));
+		expect(skip.getAttribute('aria-disabled')).toBe('true');
+		expect(document.activeElement).toBe(skip);
+	});
+
+	it('marks the usual questions the AI did not answer for', () => {
+		const { host } = mount(props({ messages: [{ ...asked('a1'), note: 'starter' }] }));
+
+		expect(one(host, '.adm-questions').textContent).toContain('The AI isn’t answering right now');
+	});
+
+	it('says the opening questions are being read while they are', () => {
+		const { host, redraw } = mount(props({ messages: [], opening: true }));
+		const status = one(host, '[role="status"]');
+
+		expect(status.textContent).toBe('Reading your page');
+		expect(send(host).getAttribute('aria-disabled')).toBe('true');
+
+		redraw(props({ messages: [asked('a1')], opening: false }));
+		expect(status.textContent).toBe('');
+		expect(one(host, '[role="log"]').textContent).toContain(
+			'Before I draft your page, a few quick questions.'
+		);
 	});
 });

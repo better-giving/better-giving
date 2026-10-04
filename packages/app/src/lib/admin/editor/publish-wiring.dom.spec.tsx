@@ -120,6 +120,23 @@ async function press(target: HTMLElement) {
 	await settle();
 }
 
+/** a line of the bar's More menu, chosen: the menu opened by its press, and the line pressed. */
+async function fromMore(name: string) {
+	await press(button('More', bar()));
+	const line = [...bar().querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+		(one) => one.textContent?.trim() === name
+	);
+	if (line === undefined) throw new Error(`More holds no ${name}`);
+	// the machine runs the line it has highlighted, and a mouse highlights the line it moves onto —
+	// once the page knows a pointer is in use, which a key pressed in an earlier case unsettles.
+	await act(async () => {
+		line.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+		line.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+	});
+	await act(async () => line.click());
+	await settle();
+}
+
 describe('Publish', () => {
 	it('republishes at once, and offers Undo while the page is what went live', async () => {
 		answers = [
@@ -279,7 +296,7 @@ describe('Discard changes', () => {
 		answers = [{ body: { discarded: true }, leaves: { version: 2, state: 'live' } }];
 		await screen();
 
-		await press(button('Discard changes', bar()));
+		await fromMore('Discard changes');
 		expect(posted).toEqual([]);
 		const asked = dialog();
 		if (asked === null) throw new Error('no confirm was put up');
@@ -293,7 +310,7 @@ describe('Discard changes', () => {
 	it('hands the focus to the state it left, its own press gone', async () => {
 		answers = [{ body: { discarded: true }, leaves: { version: 2, state: 'live' } }];
 		await screen();
-		await press(button('Discard changes', bar()));
+		await fromMore('Discard changes');
 
 		await press(button('Discard changes', dialog() ?? document));
 
@@ -304,7 +321,8 @@ describe('Discard changes', () => {
 });
 
 describe('Reset to default', () => {
-	const buttons = () => [...bar().querySelectorAll('button')].map((b) => b.textContent?.trim());
+	const buttons = () =>
+		[...bar().querySelectorAll('button, [role="menuitem"]')].map((b) => b.textContent?.trim());
 
 	it('is offered only while the page has edits', async () => {
 		drawn = { ...drawn, hasEdits: false };
@@ -318,7 +336,7 @@ describe('Reset to default', () => {
 		answers = [{ body: { reset: true }, leaves: { version: 2, state: 'live', hasEdits: false } }];
 		await screen();
 
-		await press(button('Reset to default', bar()));
+		await fromMore('Reset to default');
 		expect(posted).toEqual([]);
 		const asked = dialog();
 		if (asked === null) throw new Error('no confirm was put up');
@@ -343,7 +361,7 @@ describe('Reset to default', () => {
 			}
 		];
 		await screen();
-		await press(button('Reset to default', bar()));
+		await fromMore('Reset to default');
 
 		await press(button('Reset to default', dialog() ?? document));
 

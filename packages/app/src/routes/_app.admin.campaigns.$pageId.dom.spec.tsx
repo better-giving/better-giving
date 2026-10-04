@@ -119,6 +119,12 @@ async function screen() {
 			},
 			HydrateFallback: () => null,
 			Component: Editor
+		},
+		{
+			// the AI panel is docked from the wide breakpoint and reads the page's chat as the editor
+			// opens; what the real route answers is src/routes/_app.admin.pages.$pageId.chat.ts's.
+			path: '/admin/pages/:pageId/chat',
+			loader: () => ({ turns: [] })
 		}
 	]);
 	mount(createElement(Stub, { initialEntries: [PAGE] }));
@@ -135,6 +141,12 @@ function button(name: string, within: Element | Document = document): HTMLButton
 	if (found === undefined) throw new Error(`no ${name} button`);
 	return found;
 }
+
+/** the lines the bar's More menu holds, open or not. */
+const moreLines = () =>
+	[...document.querySelectorAll('.adm-publishbar [role="menuitem"]')].map((one) =>
+		one.textContent?.trim()
+	);
 
 /** the card whose heading reads `title`. */
 function card(title: string | RegExp): HTMLDialogElement {
@@ -188,7 +200,7 @@ describe('an address save that comes back with a question', () => {
 
 	/** Settings, its Address row, `slug` typed and saved. */
 	async function saveAddress(slug: string) {
-		await press(button('Settings'));
+		await press(button('Edit by hand'));
 		await press(settingsRow('Address'));
 		const sheet = card('Address');
 		const box = sheet.querySelector('input');
@@ -262,7 +274,7 @@ describe('an address save that comes back with a question', () => {
 describe('the donation settings sheet', () => {
 	it('stacks over Settings when opened from its Donation settings row', async () => {
 		await screen();
-		await press(button('Settings'));
+		await press(button('Edit by hand'));
 
 		await press(settingsRow('Donation settings'));
 
@@ -312,7 +324,7 @@ describe('a draft the page rule refuses', () => {
 		expect(notice?.textContent).toContain('This draft can’t be read');
 		expect(notice?.textContent).toContain('Discard changes to go back to the live page.');
 		expect(document.querySelector('iframe')).toBe(null);
-		expect(() => button('Discard changes')).not.toThrow();
+		expect(moreLines()).toContain('Discard changes');
 	});
 
 	it('offers no Discard changes where the live page cannot be read either', async () => {
@@ -322,6 +334,6 @@ describe('a draft the page rule refuses', () => {
 		expect(document.querySelector('.adm-banner')?.textContent).toContain(
 			'there is no live page to go back to'
 		);
-		expect(() => button('Discard changes')).toThrow();
+		expect(moreLines()).not.toContain('Discard changes');
 	});
 });

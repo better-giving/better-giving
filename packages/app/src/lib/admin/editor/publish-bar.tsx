@@ -1,17 +1,26 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
+import { Menu, type MenuItem } from '@better-giving/operator/components/controls/Menu';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { type Ref, useId } from 'react';
 import { RouterLink } from '../router-link';
+import { useAiEntry } from './editor-shell';
 import { InPlaceName } from './in-place-name';
+import { useWide } from './wide';
 
 // the bar across the top of the editor: the way out, the page's name and where it stands, and the
-// presses that act on the whole page — Open, Reset to default, Discard changes, Publish.
+// presses that act on the whole page — Edit by hand, AI below the wide breakpoint, a More menu, and
+// Publish.
 //
 // the editor's `h1` is here, naming the page being edited, and read by a screen reader only: the
 // name the bar shows is the heading's words already, and a campaign's is a box to rename it in,
 // which a heading cannot hold. the Donation page's drawn word is hidden from a screen reader for
 // that reason, so the name is not read twice.
+//
+// Edit by hand opens the Settings sheet, which holds everything the page is edited by. AI opens
+// the AI sheet, and is drawn only below the wide breakpoint (./wide.ts): from there the panel is
+// docked beside the preview and always open. it is busy from its press until the sheet is up
+// (`useAiEntry` in ./editor-shell.tsx), held with `aria-disabled` so the focus stays on it.
 //
 // **Publish reports at itself.** it is `SaveButton`, so a press in flight holds its focus and draws
 // its dots, and a republish reads "Published" with Undo beside it for as long as the caller says the
@@ -23,15 +32,19 @@ import { InPlaceName } from './in-place-name';
 // page before it has anything to say (`.adm-publishbar__report` holds no room while empty), and the
 // control that was pressed is described by it. a refused rename marks the name box as well.
 //
-// Reset to default is the Donation page's alone and is drawn only once the page has edits; Discard
-// changes only while the draft differs from what is live; Open only while something is live. so a
-// Reset or a Discard that lands takes its own press away, as an Undo that lands does, and the caller
-// puts the focus on the state word instead (`statusRef`), which reads the state the press left.
+// **More holds the presses an operator reaches for now and then**, each line drawn only while it
+// can act: Open while something is live, a link to the live page in a new tab; Reset to default,
+// the Donation page's alone, once the page has edits; Discard changes while the draft differs from
+// what is live. a menu with no line to hold is not drawn. a line closes the menu as it runs, and
+// the menu hands the focus back to More; a Reset or a Discard that lands takes its own line away,
+// and the caller puts the focus on the state word instead (`statusRef`), which reads the state the
+// press left.
 //
-// **nothing pressable does nothing.** a caller with no handler for Undo or Discard changes gets no
-// such press drawn. Publish is the bar's one press that is always there, so without `onPublish` it
-// is drawn held — `aria-disabled`, the press turned away — and described by `publishHeld`, which
-// stands in the report region beside any refusal.
+// **nothing pressable does nothing.** a caller with no handler for Edit by hand, AI, Undo or
+// Discard changes gets no such press drawn — the editor over a draft it cannot read has neither
+// Settings nor a chat to open. Publish is the bar's one press that is always there, so without
+// `onPublish` it is drawn held — `aria-disabled`, the press turned away — and described by
+// `publishHeld`, which stands in the report region beside any refusal.
 
 /** where the page stands against what donors see. */
 export type PublishState =
@@ -77,13 +90,17 @@ type PublishBarPage =
 			readonly onRename: (name: string) => void;
 	  };
 
-type PublishBarProps = {
+export type PublishBarProps = {
 	/** where the X goes: the dashboard or the Campaigns list. */
 	readonly closeHref: string;
+	/** opens the Settings sheet. absent: no Edit by hand is drawn. */
+	readonly onEditByHand?: (() => void) | undefined;
+	/** opens the AI sheet, below the wide breakpoint. absent: no AI is drawn. */
+	readonly onAi?: (() => void) | undefined;
 	/** the Donation page, which has no name to edit, or a campaign and its name. */
 	readonly page: PublishBarPage;
 	readonly state: PublishState;
-	/** the live page's address — `/donate`, `/winter-coat-drive` — drawn as Open while it is live. */
+	/** the live page's address — `/donate`, `/winter-coat-drive` — More's Open while it is live. */
 	readonly livePath?: string | undefined;
 	/** a Publish is in flight. */
 	readonly publishing: boolean;
@@ -97,7 +114,7 @@ type PublishBarProps = {
 	readonly undoing: boolean;
 	/** absent: no Undo is drawn. */
 	readonly onUndo?: (() => void) | undefined;
-	/** absent: no Discard changes is drawn. */
+	/** absent: More holds no Discard changes. */
 	readonly onDiscard?: (() => void) | undefined;
 	/** the Donation page's Reset to default. absent on a campaign, which has none. */
 	readonly reset?: { readonly hasEdits: boolean; readonly onReset: () => void } | undefined;
@@ -109,6 +126,8 @@ type PublishBarProps = {
 
 export function PublishBar({
 	closeHref,
+	onEditByHand,
+	onAi,
 	page,
 	state,
 	livePath,
@@ -130,6 +149,13 @@ export function PublishBar({
 	const heldReason = held && publishHeld ? publishHeld : null;
 	const { word, tone } = STATE_WORDS[state];
 	const live = state === 'changed' || state === 'live';
+	const wide = useWide();
+	const ai = useAiEntry();
+	const more: MenuItem[] = [];
+	if (live && livePath) more.push({ label: `Open ${livePath}`, href: livePath, newTab: true });
+	if (reset?.hasEdits) more.push({ label: 'Reset to default', onSelect: reset.onReset });
+	if (state === 'changed' && onDiscard)
+		more.push({ label: 'Discard changes', onSelect: onDiscard });
 
 	return (
 		<header className="adm-publishbar">
@@ -164,43 +190,27 @@ export function PublishBar({
 					<StatusWord tone={tone}>{word}</StatusWord>
 				</span>
 				<div className="adm-publishbar__quiet">
-					{live && livePath ? (
-						<Button
-							as="a"
-							href={livePath}
-							target="_blank"
-							rel="noopener"
-							variant="quiet"
-							size="sm"
-							markAfter="arrow-up-right"
-						>
-							Open {livePath}
-							<span className="adm-vh"> (opens in a new tab)</span>
+					{onEditByHand ? (
+						<Button type="button" mark="pencil" aria-haspopup="dialog" onClick={onEditByHand}>
+							Edit by hand
 						</Button>
 					) : null}
-					{reset?.hasEdits ? (
+					{wide || !onAi ? null : (
 						<Button
+							ref={ai.ref}
 							type="button"
-							variant="quiet"
-							size="sm"
-							mark="undo-2"
+							mark="sparkles"
 							aria-haspopup="dialog"
-							onClick={reset.onReset}
+							aria-busy={ai.opening || undefined}
+							aria-disabled={ai.opening || undefined}
+							onClick={() => {
+								if (!ai.opening) onAi();
+							}}
 						>
-							Reset to default
+							AI
 						</Button>
-					) : null}
-					{state === 'changed' && onDiscard ? (
-						<Button
-							type="button"
-							variant="quiet"
-							size="sm"
-							aria-haspopup="dialog"
-							onClick={onDiscard}
-						>
-							Discard changes
-						</Button>
-					) : null}
+					)}
+					{more.length === 0 ? null : <Menu label="More" items={more} />}
 				</div>
 				<div className="adm-publishbar__done">
 					<SaveButton

@@ -7,7 +7,7 @@ import { AddressSheet } from '$lib/admin/editor/address-sheet';
 import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
-import { EditorEntries, EditorShell } from '$lib/admin/editor/editor-shell';
+import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
 import {
 	EndDateSettingsSheet,
@@ -539,6 +539,11 @@ function DraftEditor({
 					state={state}
 					livePath={address ?? undefined}
 					{...presses.bar}
+					onEditByHand={() => {
+						layoutPick.startClean();
+						setSettings(true);
+					}}
+					onAi={chat.open}
 					report={presses.bar.report ?? naming.barReport}
 				/>
 			}
@@ -550,15 +555,7 @@ function DraftEditor({
 					onBlockClick={openBlockSheet}
 				/>
 			}
-			entries={
-				<EditorEntries
-					onChat={chat.open}
-					onSettings={() => {
-						layoutPick.startClean();
-						setSettings(true);
-					}}
-				/>
-			}
+			panel={chat.panel}
 		>
 			{chat.sheet}
 			{settings && opened !== 'address' ? (
