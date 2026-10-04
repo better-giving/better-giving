@@ -19,7 +19,7 @@ const STORED = orgBoxes({
 	country: 'United States'
 });
 
-function drawn(stored: ReturnType<typeof orgBoxes>) {
+function drawn(stored: ReturnType<typeof orgBoxes>, lookups = true) {
 	const lookUp = vi.fn(
 		async (): Promise<NonprofitLookup> => ({
 			state: 'unavailable',
@@ -43,7 +43,15 @@ function drawn(stored: ReturnType<typeof orgBoxes>) {
 		{
 			path: '/',
 			Component: () =>
-				createElement(OrgFold, { stored, write: null, busy: false, pending: false, lookUp, search })
+				createElement(OrgFold, {
+					stored,
+					write: null,
+					busy: false,
+					pending: false,
+					lookups,
+					lookUp,
+					search
+				})
 		}
 	]);
 	const markup = renderToStaticMarkup(createElement(RouterProvider, { router }));
@@ -105,5 +113,23 @@ describe('the Legal details fold', () => {
 
 		expect(press).toContain('type="button"');
 		expect(press).toContain('adm-btn--quiet');
+	});
+
+	describe('on a console built with no address for the IRS list', () => {
+		it('draws no press that opens the find dialog', () => {
+			expect(drawn(STORED, false).markup).not.toContain('Find your organisation');
+		});
+
+		it('opens a fresh set-up on the plain form', () => {
+			expect(drawn(orgBoxes({}), false).markup).not.toContain('<dialog');
+		});
+
+		it('stands no region for a note the list will never give', () => {
+			expect(drawn(STORED, false).markup).not.toContain('id="org-tax_id-status"');
+		});
+
+		it('still spells the EIN as it is typed, on a number pad', () => {
+			expect(einBox(drawn(STORED, false).markup)).toContain('inputMode="numeric"');
+		});
 	});
 });

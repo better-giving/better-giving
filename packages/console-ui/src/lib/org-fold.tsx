@@ -1,11 +1,21 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { einAsPrinted, einAsTyped } from '@better-giving/operator/console/org-rules';
+import { einAsPrinted } from '@better-giving/operator/console/org-rules';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { type FormEvent, type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Form } from 'react-router';
-import { type EinWatch, einCaret, foundBoxes, matchBoxes, watchEin } from './ein-lookup';
+import {
+	type EinNote,
+	type EinWatch,
+	FILLED,
+	type HeldBoxes,
+	SILENT_NOTE,
+	einEdit,
+	foundBoxes,
+	matchBoxes,
+	watchEin
+} from './ein-lookup';
 import { FindOrgDialog } from './find-org-dialog';
 import { rememberWebsite } from './found-organisation';
 import { IDENTITY_BOXES, ORG_FIELDS, ORG_INTENT, carriedBoxes } from './org-fields';
@@ -102,6 +112,11 @@ export type OrgFoldProps = {
 	/** something else on the page is writing, which holds every control on it closed. */
 	busy: boolean;
 	pending: boolean;
+	/**
+	 * whether this console was built able to ask the IRS list. where it was not, the fold is the
+	 * plain form: no find press, no dialog, no lookup and no note.
+	 */
+	lookups: boolean;
 	/** one organisation from the IRS list by EIN. a throw reads as the list being unavailable. */
 	lookUp: (ein: string, signal: AbortSignal) => Promise<NonprofitLookup>;
 	/** organisations from the IRS list by name or EIN, for the find dialog. */
@@ -111,7 +126,15 @@ export type OrgFoldProps = {
 /** a fresh set-up: nothing about the organisation's identity has been saved yet. */
 const unset = (stored: OrgBoxes): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
 
-export function OrgFold({ stored, write, busy, pending, lookUp, search }: OrgFoldProps): ReactNode {
+export function OrgFold({
+	stored,
+	write,
+	busy,
+	pending,
+	lookups,
+	lookUp,
+	search
+}: OrgFoldProps): ReactNode {
 	/** whether the last press left the deployment holding this profile, which is what a save reports. */
 	const landed = write?.kind === 'saved';
 
@@ -137,43 +160,53 @@ export function OrgFold({ stored, write, busy, pending, lookUp, search }: OrgFol
 	});
 
 	/* the find dialog is up from the first draw on a fresh set-up, and from a press after that. read
-	   once, at the mount, which is the visit to the page: a save landing does not put it back up. */
-	const [finding, setFinding] = useState(() => unset(stored));
+	   once, at the mount, which is the visit to the page: a save landing does not put it back up. a
+	   console that cannot ask the list never draws it. */
+	const [finding, setFinding] = useState(() => lookups && unset(stored));
 	/** a match was taken, which renames the press that opens the dialog. */
 	const [picked, setPicked] = useState(false);
-	/** what the list said about the number in the EIN box, `''` for nothing. */
-	const [note, setNote] = useState('');
+	/** what the region under the EIN box holds: the list's note, and a fill said to a reader. */
+	const [note, setNote] = useState<EinNote>(SILENT_NOTE);
 	const findPress = useRef<HTMLButtonElement>(null);
 
-	/** what one box holds as it stands, which is not what was stored once it has been typed in. */
-	const held = (field: IdentityField): string => {
-		const element = form.mount.ref.current?.elements.namedItem(field);
-		return element instanceof HTMLInputElement ? element.value : '';
+	/** the identity boxes as they stand, which is not what was stored once they have been typed in. */
+	const held = (): HeldBoxes => {
+		const elements = form.mount.ref.current?.elements;
+		return Object.fromEntries(
+			IDENTITY_BOXES.map((field) => {
+				const element = elements?.namedItem(field);
+				return [field, element instanceof HTMLInputElement ? element.value : ''];
+			})
+		);
 	};
 
-	/** boxes given values, each made to say so. */
-	const put = (boxes: Partial<Record<IdentityField, string>>) => {
+	/** boxes given values, each made to say so; answers how many took one. */
+	const put = (boxes: Partial<Record<IdentityField, string>>): number => {
 		const elements = form.mount.ref.current?.elements;
+		let took = 0;
 		for (const [field, value] of Object.entries(boxes)) {
 			const element = elements?.namedItem(field);
 			if (!(element instanceof HTMLInputElement)) continue;
 			element.value = value;
 			element.dispatchEvent(new Event('input', { bubbles: true }));
+			took += 1;
 		}
+		return took;
 	};
 
-	/* what a found organisation leaves behind: its values in the boxes, and its website for the Sites
-	   fold. an effect event, so the watch made once per mount fills the form standing when the answer
-	   lands. */
-	const found = useEffectEvent((organisation: NonprofitOrganisation) => {
+	/* what a found organisation leaves behind: its values in the boxes still holding what they held
+	   when it was asked for, and its website for the Sites fold. effect events, so the watch made
+	   once per mount reads and fills the form standing when it calls. */
+	const found = useEffectEvent((organisation: NonprofitOrganisation, before: HeldBoxes) => {
 		rememberWebsite(organisation.website);
-		put(foundBoxes(organisation, held('country')));
+		return put(foundBoxes(organisation, before, held())) > 0;
 	});
+	const holding = useEffectEvent(held);
 
 	/* the watch over the EIN box, made once per mount and handed the box's text at every change. */
 	const watch = useRef<EinWatch | null>(null);
 	useEffect(() => {
-		const watching = watchEin({ lookUp, onNote: setNote, onFound: found });
+		const watching = watchEin({ lookUp, held: holding, onNote: setNote, onFound: found });
 		watch.current = watching;
 		return () => {
 			watching.stop();
@@ -181,25 +214,41 @@ export function OrgFold({ stored, write, busy, pending, lookUp, search }: OrgFol
 		};
 	}, [lookUp]);
 
+	/* a save that landed while a lookup was out has put the boxes at what is now stored, and an
+	   answer filling them after it would arm the press again over values nobody saw arrive. so the
+	   answer is given up on the render the landed save arrives in. */
+	useEffect(() => {
+		if (landed) watch.current?.stop();
+	}, [landed, write]);
+
 	/** the EIN box as typed: spelled as it is typed, and handed to the watch. */
 	const einTyped = (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
 		const element = event.currentTarget;
 		const typed = element.value;
-		const shown = einAsTyped(typed);
-		if (shown !== typed) {
+		const kind = 'inputType' in event.nativeEvent ? event.nativeEvent.inputType : '';
+		const edit = einEdit(
+			typed,
+			element.selectionStart ?? typed.length,
+			kind === 'deleteContentForward'
+				? 'forward'
+				: kind === 'deleteContentBackward'
+					? 'backward'
+					: null
+		);
+		if (edit.shown !== typed) {
 			// written back with the caret where the operator was typing rather than at the end.
-			const caret = einCaret(typed, element.selectionStart ?? typed.length, shown);
-			element.value = shown;
-			element.setSelectionRange(caret, caret);
+			element.value = edit.shown;
+			element.setSelectionRange(edit.caret, edit.caret);
 		}
-		watch.current?.typed(shown, stored.tax_id);
+		if (lookups) watch.current?.typed(edit.shown, stored.tax_id);
 	};
 
 	/** a match taken: its number in the EIN box, what it carries in the boxes, and its whole record asked for. */
 	const pick = (match: NonprofitMatch) => {
 		setFinding(false);
 		setPicked(true);
-		put(matchBoxes(match, held('country')));
+		// said for the boxes the match itself fills; the lookup that follows says again for its own.
+		if (put(matchBoxes(match, held().country ?? '')) > 0) setNote({ shown: '', said: FILLED });
 		watch.current?.typed(einAsPrinted(match.ein), stored.tax_id, true);
 	};
 
@@ -216,7 +265,7 @@ export function OrgFold({ stored, write, busy, pending, lookUp, search }: OrgFol
 			field === 'tax_id'
 				? {
 						inputMode: 'numeric' as const,
-						status: note,
+						...(lookups ? { status: note.shown, statusSaid: note.said } : {}),
 						onInput: (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
 							bound.onInput?.();
 							einTyped(event);
@@ -296,18 +345,20 @@ export function OrgFold({ stored, write, busy, pending, lookUp, search }: OrgFol
 						doneLabel="Saved"
 					/>
 					{/* closed with the boxes, since a pick fills them; closed as the field's own presses are,
-				    so a reader standing on it keeps the focus. */}
-					<Button
-						ref={findPress}
-						type="button"
-						variant="quiet"
-						aria-disabled={busy || undefined}
-						onClick={() => {
-							if (!busy) setFinding(true);
-						}}
-					>
-						{picked ? 'Pick a different organisation' : 'Find your organisation'}
-					</Button>
+					    so a reader standing on it keeps the focus. */}
+					{lookups ? (
+						<Button
+							ref={findPress}
+							type="button"
+							variant="quiet"
+							aria-disabled={busy || undefined}
+							onClick={() => {
+								if (!busy) setFinding(true);
+							}}
+						>
+							{picked ? 'Pick a different organisation' : 'Find your organisation'}
+						</Button>
+					) : null}
 				</div>
 
 				{busy ? null : <OrgWriteOutcome write={write} drawn={IDENTITY_BOXES} />}

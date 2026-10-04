@@ -108,6 +108,15 @@ describe('the find dialog', () => {
 		expect(row).not.toContain('adm-state');
 	});
 
+	it('says how many matches arrived, so a reader knows the list changed', () => {
+		expect(said(drawn({ kind: 'matches', matches: MATCHES }))).toBe('3 matches.');
+		expect(said(drawn({ kind: 'matches', matches: [match({})] }))).toBe('1 match.');
+	});
+
+	it('holds no more characters in its box than the binary takes in a query', () => {
+		expect(drawn({ kind: 'idle' })).toMatch(/<input[^>]*role="combobox"[^>]*maxLength="200"/);
+	});
+
 	it('badges a match not listed as tax-deductible', () => {
 		const row = option(drawn({ kind: 'matches', matches: MATCHES }), 'Riverside Food Network');
 

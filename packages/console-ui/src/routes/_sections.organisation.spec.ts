@@ -11,11 +11,20 @@ import type { OrgWrite } from '../api/types';
 // client is replaced so the answer is whichever one the case sets, and the layout's reading is a
 // count.
 
-const binary = vi.hoisted(() => ({ shellReads: 0, answer: null as unknown }));
+const binary = vi.hoisted(() => ({
+	shellReads: 0,
+	statusReads: 0,
+	built: true,
+	answer: null as unknown
+}));
 
 vi.mock('../api/client', async (original) => ({
 	...(await original<Record<string, unknown>>()),
-	saveOrgProfile: async () => binary.answer
+	saveOrgProfile: async () => binary.answer,
+	nonprofitsStatus: async () => {
+		binary.statusReads += 1;
+		return { built: binary.built };
+	}
 }));
 
 const { ORG_INTENT, orgBoxes } = await import('../lib/org-fields');
@@ -40,6 +49,8 @@ const SAVED: OrgWrite = { kind: 'saved', org: { ...STORED, legal_name: 'Riverban
 
 beforeEach(() => {
 	binary.shellReads = 0;
+	binary.statusReads = 0;
+	binary.built = true;
 	binary.answer = REFUSED;
 });
 
@@ -62,6 +73,7 @@ async function open() {
 							{
 								id: PAGE_ID,
 								path: PAGE,
+								loader: organisation.clientLoader,
 								action: organisation.clientAction as never,
 								shouldRevalidate: organisation.shouldRevalidate,
 								Component: UNSAFE_withComponentProps(organisation.default as never)
@@ -149,6 +161,44 @@ describe('the organisation page, on the render a landed save arrives in', () => 
 			expect(navigation).toBe('loading');
 			expect(legalName(page)).toMatch(/\sdisabled=/);
 			expect(binary.shellReads).toBe(before + 1);
+		} finally {
+			router.dispose();
+		}
+	});
+});
+
+describe('whether the page can ask the IRS list', () => {
+	it('is read once for the visit, and not again after a save lands', async () => {
+		binary.answer = SAVED;
+		const router = await open();
+		try {
+			await saved(router);
+
+			expect(binary.statusReads).toBe(1);
+		} finally {
+			router.dispose();
+		}
+	});
+
+	it('draws the plain form where the console was built with no address for the list', async () => {
+		binary.built = false;
+		const router = await open();
+		try {
+			const page = renderToString(createElement(RouterProvider, { router }));
+
+			expect(page).toContain(`id="${ORG_FORM.id}-legal_name"`);
+			expect(page).not.toContain('Find your organisation');
+		} finally {
+			router.dispose();
+		}
+	});
+
+	it('offers the find press where it was', async () => {
+		const router = await open();
+		try {
+			const page = renderToString(createElement(RouterProvider, { router }));
+
+			expect(page).toContain('Find your organisation');
 		} finally {
 			router.dispose();
 		}

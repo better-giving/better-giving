@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitLookup, NonprofitOrganisation } from '../api/types';
 import {
+	FILLED,
 	LOOKUP_UNANSWERED,
 	NOT_DEDUCTIBLE,
 	NOT_LISTED,
 	US_COUNTRY,
-	einCaret,
+	einEdit,
 	foundBoxes,
 	matchBoxes,
 	revokedNote,
@@ -45,17 +46,34 @@ const found = (over: Partial<NonprofitOrganisation> = {}): NonprofitLookup => ({
 	organisation: { ...ORGANISATION, ...over }
 });
 
-/** a watch over a stub that answers `answer`, and what it said and filled. */
-function watched(answer: () => Promise<NonprofitLookup>) {
+/**
+ * a watch over a stub that answers `answer`, and what it said and filled. `boxes` stands in for the
+ * identity boxes as they are on the screen, which a case changes while a lookup is out; the stand-in
+ * for the fold's fill writes what it is handed into them, and reports whether it wrote anything.
+ */
+function watched(answer: () => Promise<NonprofitLookup>, boxes: Record<string, string> = {}) {
 	const lookUp = vi.fn((_ein: string, _signal: AbortSignal) => answer());
-	const notes: string[] = [];
+	const notes: { shown: string; said: string }[] = [];
 	const fills: NonprofitOrganisation[] = [];
 	const watch = watchEin({
 		lookUp,
+		held: () => ({ ...boxes }),
 		onNote: (note) => notes.push(note),
-		onFound: (organisation) => fills.push(organisation)
+		onFound: (organisation, before) => {
+			fills.push(organisation);
+			const fill = foundBoxes(organisation, before, boxes);
+			Object.assign(boxes, fill);
+			return Object.keys(fill).length > 0;
+		}
 	});
-	return { watch, lookUp, notes, fills, note: () => notes.at(-1) ?? '' };
+	return {
+		watch,
+		lookUp,
+		fills,
+		boxes,
+		note: () => notes.at(-1)?.shown ?? '',
+		said: () => notes.at(-1)?.said ?? ''
+	};
 }
 
 /** lets every settled promise run its handlers. */
@@ -204,6 +222,56 @@ describe('what the answer says and fills', () => {
 		expect(fills).toEqual([]);
 	});
 
+	it('asks again for a number the list could not answer for, once the box comes back to it', async () => {
+		const { watch, lookUp } = watched(async () => ({ state: 'unavailable', organisation: EMPTY }));
+		watch.typed('12-3456789', '');
+		await settled();
+		watch.typed('12-345678', '');
+		watch.typed('12-3456789', '');
+		await settled();
+
+		expect(lookUp).toHaveBeenCalledTimes(2);
+	});
+
+	it('says to a reader that the boxes were filled, beside whatever note applies', async () => {
+		const { watch, said, note } = watched(async () => found({ deductible: false }));
+		watch.typed('12-3456789', '');
+		await settled();
+
+		expect(said()).toBe(FILLED);
+		expect(FILLED).toBe('Filled from the IRS list.');
+		expect(note()).toBe(NOT_DEDUCTIBLE);
+	});
+
+	it('says nothing was filled where every box had been typed in since the lookup went out', async () => {
+		const boxes: Record<string, string> = {};
+		const { watch, said } = watched(async () => found(), boxes);
+		watch.typed('12-3456789', '');
+		Object.assign(boxes, {
+			legal_name: 'Riverside Food Bank Inc',
+			address_line1: '1 Elm Street',
+			city: 'Riverside',
+			region: 'California',
+			postal_code: '92502',
+			country: 'USA'
+		});
+		await settled();
+
+		expect(said()).toBe('');
+	});
+
+	it('leaves a box typed in after the lookup went out as it was typed', async () => {
+		const boxes: Record<string, string> = { legal_name: '', city: 'Old Town' };
+		const { watch } = watched(async () => found(), boxes);
+		watch.typed('12-3456789', '');
+		boxes.legal_name = 'Riverside Food Bank Inc';
+		await settled();
+
+		expect(boxes.legal_name).toBe('Riverside Food Bank Inc');
+		// untouched since the lookup went out, so the list's value replaces it.
+		expect(boxes.city).toBe('Riverside');
+	});
+
 	it('takes the note down the moment the box changes, and puts it back for the same number', async () => {
 		const { watch, note } = watched(async () => found({ deductible: false }));
 		watch.typed('12-3456789', '');
@@ -229,7 +297,7 @@ const RIVERSIDE_MATCH = {
 
 describe('the boxes a found organisation fills', () => {
 	it('fills the name, the address it holds, and an empty Country box', () => {
-		expect(foundBoxes(ORGANISATION, '')).toEqual({
+		expect(foundBoxes(ORGANISATION, {}, {})).toEqual({
 			legal_name: 'Riverside Community Food Bank',
 			address_line1: '400 Mill Road',
 			city: 'Riverside',
@@ -240,7 +308,7 @@ describe('the boxes a found organisation fills', () => {
 	});
 
 	it('leaves a box alone where the list holds nothing for it', () => {
-		expect(foundBoxes({ ...ORGANISATION, postal_code: '', address_line1: '' }, '')).toEqual({
+		expect(foundBoxes({ ...ORGANISATION, postal_code: '', address_line1: '' }, {}, {})).toEqual({
 			legal_name: 'Riverside Community Food Bank',
 			city: 'Riverside',
 			region: 'CA',
@@ -248,8 +316,25 @@ describe('the boxes a found organisation fills', () => {
 		});
 	});
 
-	it('leaves a Country box holding anything as it is', () => {
-		expect(foundBoxes(ORGANISATION, 'USA')).not.toHaveProperty('country');
+	it('replaces a box still holding what it held when the lookup went out', () => {
+		const before = { legal_name: 'Old Name', city: 'Old Town' };
+
+		expect(foundBoxes(ORGANISATION, before, before)).toMatchObject({
+			legal_name: 'Riverside Community Food Bank',
+			city: 'Riverside'
+		});
+	});
+
+	it('leaves a box typed in since the lookup went out', () => {
+		expect(
+			foundBoxes(ORGANISATION, { legal_name: '' }, { legal_name: 'Riverside Food Bank Inc' })
+		).not.toHaveProperty('legal_name');
+	});
+
+	it('leaves a Country box holding anything as it is, even one held since before', () => {
+		expect(foundBoxes(ORGANISATION, { country: 'USA' }, { country: 'USA' })).not.toHaveProperty(
+			'country'
+		);
 	});
 });
 
@@ -277,30 +362,42 @@ describe('the boxes a match taken from the find dialog fills', () => {
 	});
 });
 
-describe('where the caret stands after the EIN box is re-spelled', () => {
-	it('stays after the digit just typed when the dash arrives', () => {
+describe('the EIN box re-spelled as it is typed', () => {
+	it('keeps the caret after the digit just typed when the dash arrives', () => {
 		// `123|` re-spelled `12-3|`: three digits before the caret, so it stands after the third.
-		expect(einCaret('123', 3, '12-3')).toBe(4);
+		expect(einEdit('123', 3, null)).toEqual({ shown: '12-3', caret: 4 });
 	});
 
-	it('stays where the operator was typing in the middle of the number', () => {
-		// a digit typed after the first: `19|2-3456789` reads `192345678…`, re-spelled `19-2345678`,
-		// and the caret stays after the second digit rather than jumping to the end.
-		expect(einCaret('192-3456789', 2, '19-2345678')).toBe(2);
-		expect(einCaret('12-93456789', 4, '12-9345678')).toBe(4);
+	it('keeps the caret where the operator was typing in the middle of the number', () => {
+		// a digit typed after the first: `19|2-3456789`, re-spelled `19-2345678`.
+		expect(einEdit('192-3456789', 2, null)).toEqual({ shown: '19-2345678', caret: 2 });
+		expect(einEdit('12-93456789', 4, null)).toEqual({ shown: '12-9345678', caret: 4 });
 	});
 
 	it('steps past the dash when the caret sat after the second digit', () => {
-		// a third digit typed straight after `12`: `123|456789` → `12-3|456789`.
-		expect(einCaret('123456789', 3, '12-3456789')).toBe(4);
+		expect(einEdit('123456789', 3, null)).toEqual({ shown: '12-3456789', caret: 4 });
 	});
 
-	it('stays put where a letter typed was dropped', () => {
-		expect(einCaret('12-34a', 6, '12-34')).toBe(5);
+	it('keeps the caret in place where a letter typed was dropped', () => {
+		expect(einEdit('12-34a', 6, null)).toEqual({ shown: '12-34', caret: 5 });
 	});
 
-	it('stands at the start where no digit is before it', () => {
-		expect(einCaret('x12-3456789', 1, '12-3456789')).toBe(0);
+	it('puts the caret at the start where no digit is before it', () => {
+		expect(einEdit('x12-3456789', 1, null)).toEqual({ shown: '12-3456789', caret: 0 });
+	});
+
+	it('deletes the digit after the dash when Delete took only the dash', () => {
+		// `12|-3456789`, Delete: the box reads `123456789` with the caret at 2.
+		expect(einEdit('123456789', 2, 'forward')).toEqual({ shown: '12-456789', caret: 2 });
+	});
+
+	it('deletes the digit before the dash when Backspace took only the dash', () => {
+		// `12-|3456789`, Backspace: the box reads `123456789` with the caret at 2.
+		expect(einEdit('123456789', 2, 'backward')).toEqual({ shown: '13-456789', caret: 1 });
+	});
+
+	it('leaves a deletion that took a digit as it is', () => {
+		expect(einEdit('12-356789', 5, 'forward')).toEqual({ shown: '12-356789', caret: 5 });
 	});
 });
 

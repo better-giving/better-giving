@@ -430,6 +430,34 @@ describe('a field that reports what was found about its value', () => {
 		expect(describedBy(root)).toEqual(['org-tax_id-status']);
 	});
 
+	it('tells a reader alone what the caller says beside the fact, in the same region', () => {
+		// a lookup that filled other boxes: news to someone whose cursor never moved, and a sentence
+		// the screen does not draw.
+		const root = render(Field, {
+			id: 'org-tax_id',
+			label: 'EIN',
+			status: 'Not on the IRS list.',
+			statusSaid: 'Filled from the IRS list.'
+		});
+		const region = root.querySelector('[role="status"]');
+
+		expect(region?.textContent).toBe('Filled from the IRS list.Not on the IRS list.');
+		expect(region?.querySelector('.adm-vh')?.textContent).toBe('Filled from the IRS list.');
+	});
+
+	it('draws no mark where the region holds only what a reader is told', () => {
+		const root = render(Field, {
+			id: 'org-tax_id',
+			label: 'EIN',
+			status: '',
+			statusSaid: 'Filled from the IRS list.'
+		});
+		const region = root.querySelector('[role="status"]');
+
+		expect(region?.textContent).toBe('Filled from the IRS list.');
+		expect(region?.querySelector('svg')).toBeNull();
+	});
+
 	it('draws no region where the caller has nothing to report', () => {
 		const root = render(Field, { id: 'org-legal_name', label: 'Registered name' });
 

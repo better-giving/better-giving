@@ -1,9 +1,7 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { FOLD_LABELS } from '@better-giving/operator/setup-folds';
-import type { ShouldRevalidateFunctionArgs } from 'react-router';
-import { lookUpNonprofit, saveOrgProfile, searchNonprofits } from '../api/client';
+import { lookUpNonprofit, nonprofitsStatus, saveOrgProfile, searchNonprofits } from '../api/client';
 import { watchPress } from '../lib/console-reading';
-import { consoleRereads } from '../lib/dialog-params';
 import { ORG_INTENT, orgEdits } from '../lib/org-fields';
 import { OrgFold } from '../lib/org-fold';
 import { storedOrg } from '../lib/org-form';
@@ -15,10 +13,25 @@ import type { Route } from './+types/_sections.organisation';
 // /organisation — the legal identity this deployment asks for gifts under, drawn by
 // ../lib/org-fold.tsx. ./_sections.notifications.tsx edits the same stored profile.
 //
-// every reading is the sections layout's (./_sections.tsx); the press is this page's.
+// every reading is the sections layout's (./_sections.tsx) but one, and the press is this page's.
+// the one is whether this console can ask the IRS list at all, which asks the list nothing.
 
 export function meta(): Route.MetaDescriptors {
 	return [{ title: `${FOLD_LABELS.organisation} · ${TITLE}` }];
+}
+
+/**
+ * whether the IRS list can be asked, read once per visit: the binary answers it from how it was
+ * built, so a read after a press would read the same thing. a binary that does not answer is one
+ * whose lookups would not answer either, so it reads as one that cannot ask.
+ */
+export async function clientLoader() {
+	return {
+		lookups: await nonprofitsStatus().then(
+			(status) => status.built,
+			() => false
+		)
+	};
 }
 
 /**
@@ -37,11 +50,17 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	return { unknown: true as const };
 }
 
-export function shouldRevalidate(args: ShouldRevalidateFunctionArgs): boolean {
-	return consoleRereads(args);
+// this page's own reading is the build's and never changes after a press; the profile is the
+// layout's, read again by its own rule.
+export function shouldRevalidate(): boolean {
+	return false;
 }
 
-export default function OrganisationPage({ actionData, matches }: Route.ComponentProps) {
+export default function OrganisationPage({
+	actionData,
+	loaderData,
+	matches
+}: Route.ComponentProps) {
 	const shell = matches[1].loaderData;
 	const { intent, busy } = usePress();
 	const write = actionData && 'write' in actionData ? actionData.write : null;
@@ -55,6 +74,7 @@ export default function OrganisationPage({ actionData, matches }: Route.Componen
 				write={write}
 				busy={busy}
 				pending={intent === ORG_INTENT}
+				lookups={loaderData.lookups}
 				lookUp={lookUpNonprofit}
 				search={searchNonprofits}
 			/>

@@ -4,7 +4,7 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 import { einAsPrinted } from '@better-giving/operator/console/org-rules';
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import type { NonprofitMatch, NonprofitSearch } from '../api/types';
-import { type SearchState, type SearchWatch, watchSearch } from './org-search';
+import { SEARCH_MOST, type SearchState, type SearchWatch, watchSearch } from './org-search';
 
 // "Find your organisation": one box over the IRS list by name or EIN, the matches under it, and a
 // pick that fills the Legal details fold (./org-fold.tsx, which opens this and answers the pick).
@@ -33,14 +33,24 @@ export const SEARCH_UNANSWERED = "Couldn't search the IRS list. Type the details
 export const NOT_DEDUCTIBLE_BADGE = 'Not listed as tax-deductible';
 export const REVOKED_BADGE = 'Status revoked';
 
-/** what the region under the box says in each state; the matches speak for themselves. */
-const SAID: Record<SearchState['kind'], string> = {
-	idle: '',
-	searching: SEARCHING,
-	matches: '',
-	none: NO_MATCHES,
-	unavailable: SEARCH_UNANSWERED
-};
+/**
+ * what the region under the box says in each state. the matches are counted rather than left to the
+ * list: the listbox opening is a change of attribute on the box, which a reader is not told about.
+ */
+function said(state: SearchState): string {
+	switch (state.kind) {
+		case 'idle':
+			return '';
+		case 'searching':
+			return SEARCHING;
+		case 'matches':
+			return state.matches.length === 1 ? '1 match.' : `${state.matches.length} matches.`;
+		case 'none':
+			return NO_MATCHES;
+		case 'unavailable':
+			return SEARCH_UNANSWERED;
+	}
+}
 
 const NO_MATCH: readonly NonprofitMatch[] = [];
 
@@ -139,6 +149,7 @@ export function FindOrgCard({
 				<Combobox.Control>
 					<Combobox.Input
 						className="adm-input"
+						maxLength={SEARCH_MOST}
 						onKeyDown={(event) => {
 							if (event.key === 'Escape') onClose();
 						}}
@@ -160,7 +171,7 @@ export function FindOrgCard({
 					))}
 				</Combobox.Content>
 				<p className="adm-hint adm-findorg__said" role="status">
-					{SAID[state.kind]}
+					{said(state)}
 				</p>
 			</Combobox.Root>
 		</Modal>

@@ -11,11 +11,19 @@ import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 // the console's run — a query typed again, in this dialog or the next one, asks nothing. the
 // binary remembers its own answers as well (`packages/console/internal/nonprofits`).
 //
-// **a list that does not answer is remembered by nobody.** it spent nothing of the API's, so the
-// same query asks again the next time it settles, and set-up goes on by hand meanwhile.
+// **a list that does not answer is remembered by nobody**, so the same query asks again the next
+// time it settles, and set-up goes on by hand meanwhile.
+//
+// **a query is measured in characters as the binary measures it**, in code points and not utf-16
+// units (`packages/console/internal/server/nonprofits.go` counts runes), so a query this sends is
+// never one the binary refuses for its length: the floor is counted here and the cap is the box's
+// own `maxLength`, which cannot hold more code points than units.
 
 /** the fewest characters a query is sent with; the binary refuses fewer. */
 export const SEARCH_FLOOR = 3;
+
+/** the most characters a query may hold; the binary refuses more. */
+export const SEARCH_MOST = 200;
 
 /** how long the typing has to pause before a query is sent. */
 export const SEARCH_PAUSE_MS = 400;
@@ -87,7 +95,7 @@ export function watchSearch({ search, onState, memory = RUN }: SearchWatchOption
 			asking.control.abort();
 			asking = null;
 		}
-		if (key.length < SEARCH_FLOOR) {
+		if ([...key].length < SEARCH_FLOOR) {
 			onState(IDLE);
 			return;
 		}

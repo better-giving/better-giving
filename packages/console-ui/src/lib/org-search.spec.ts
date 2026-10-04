@@ -42,6 +42,15 @@ describe('when the list is searched', () => {
 		expect(state()).toEqual({ kind: 'idle' });
 	});
 
+	it('counts characters as the binary does, so two of them with an emoji ask nothing', async () => {
+		// one astral character is two utf-16 units and one rune; the binary refuses under three runes.
+		const { watch, search } = watched(ok);
+		watch.typed('a😀');
+		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS * 2);
+
+		expect(search).not.toHaveBeenCalled();
+	});
+
 	it('waits for a pause in the typing, then asks once', async () => {
 		const { watch, search } = watched(ok);
 		watch.typed('riv');

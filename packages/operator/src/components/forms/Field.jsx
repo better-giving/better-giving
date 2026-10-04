@@ -28,6 +28,9 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   render, because a region arriving with its words is an insertion a reader may never be told
  *   about. it is not a refusal and marks nothing on the box. it takes the row `needed` takes, so a
  *   field states one or the other.
+ * @property {string | undefined} [statusSaid] words the same region says to a reader alone, ahead of
+ *   `status` — what changed elsewhere on the screen because of the value, which the screen shows by
+ *   the change itself. drawn only inside a region `status` has put up.
  * @property {ReactNode} [beside] a control that acts on what is in the box, put on the box's own
  *   row rather than under it — one destination and one send, instead of a press below a column of
  *   boxes. the row is `.adm-actions`, which is what makes the box take the line's remainder and the
@@ -109,6 +112,7 @@ export function Field({
 	error,
 	needed,
 	status,
+	statusSaid,
 	beside,
 	masked,
 	revealLabel = 'Show the value',
@@ -283,10 +287,12 @@ export function Field({
 						</FieldMessage>
 					) : null}
 					{/* the standing row's look on an element that is a region rather than a message: the
-					    mark and the words only while there are words, so the empty region holds no room
-					    (`.adm-field > .adm-field__needed:empty` in packages/operator/src/styles/adm.css). */}
+					    mark and the words only while there are words to see, so a region holding nothing
+					    on the screen holds no room (`.adm-field > .adm-field__needed` in
+					    packages/operator/src/styles/adm.css). */}
 					{status === undefined ? null : (
 						<p className="adm-field__needed" id={`${id}-status`} role="status">
+							{statusSaid ? <span className="adm-vh">{statusSaid}</span> : null}
 							{status ? (
 								<>
 									<Mark name="triangle-alert" />

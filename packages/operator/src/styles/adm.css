@@ -2026,10 +2026,11 @@
 		grid-row: 5;
 	}
 
-	/* the same row drawn as a region with nothing in it yet (`status` in
+	/* the same row drawn as a region with nothing on the screen in it (`status` and `statusSaid` in
 	   packages/operator/src/components/forms/Field.jsx): it is on the page so that its first words
-	   are a change a reader is told about, and it holds no room until it has some. */
-	.adm-field > .adm-field__needed:empty {
+	   are a change a reader is told about, and it holds no room until it has words to see — the
+	   words it holds for a reader alone are out of the flow. */
+	.adm-field > .adm-field__needed:not(:has(> :not(.adm-vh))) {
 		margin-block-start: 0;
 	}
 
