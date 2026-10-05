@@ -293,14 +293,15 @@ export function RepeatingRows({
 							}
 							{...rest}
 						/>
-						{/* the visible word is the same on every row, which is right beside the box it
-						    acts on and useless in a list of controls read out of context — so each says
-						    which row it drops to a reader and nothing extra on the screen. */}
+						{/* a mark and no word, standing beside the box it drops and the box's own height
+						    (`.adm-rows__remove` in ../../styles/adm.css). the mark is the same on every
+						    row, so the name is what says which row it drops to a reader out of context. */}
 						{remove === undefined ? null : (
 							<Button
 								variant="quiet"
 								size="sm"
-								mark="trash-2"
+								mark="x"
+								className="adm-rows__remove"
 								type="submit"
 								disabled={disabled}
 								aria-label={`Remove ${rowLabel} ${i + 1}`}
@@ -309,9 +310,7 @@ export function RepeatingRows({
 									remove.onClick?.(event);
 									if (!event.defaultPrevented) owe('remove', i);
 								}}
-							>
-								Remove
-							</Button>
+							/>
 						)}
 					</div>
 				))}

@@ -500,4 +500,18 @@
 		aspect-ratio: 1 / 1;
 		background-image: url('./brand/xero.png');
 	}
+
+	/* a network's own mark — packages/operator/src/components/status/BrandMark.jsx, an image of
+	   the network's file — on an operator screen. its own class rather than `.adm-brand`, because
+	   it is held to LinkedIn's 21px minimum and a company's logo above is not: the height is
+	   `--admin-brand-mark-size`, and the width follows the file. `flex: none` because a mark is
+	   never what gives width back. */
+	/* carried-ok: .adm-brand-mark — handed to BrandMark.jsx as its `className`, and worn by
+	   packages/gallery/src/previews/status-brand-mark.tsx, which
+	   packages/app/src/lib/admin/styles/conformance.spec.ts does not read. */
+	.adm-brand-mark {
+		display: inline-block;
+		block-size: var(--admin-brand-mark-size);
+		flex: none;
+	}
 }

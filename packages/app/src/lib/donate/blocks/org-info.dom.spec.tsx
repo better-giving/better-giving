@@ -1,3 +1,4 @@
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { SOCIAL_PLATFORMS, type SocialLink } from '@better-giving/operator/console/org';
 import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
 import { act, type ReactNode } from 'react';
@@ -6,8 +7,9 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { OrgInfoBlock } from './org-info';
 import type { BlockOf, OrgInfo } from './types';
 
-// the org-info block's social links, mounted in both variants: each is its platform's mark, named
-// for the platform and the new tab it opens in, and opens the address the organisation stored.
+// the org-info block's social links, mounted in both variants: each is its platform's own official
+// file, named for the platform and the new tab it opens in, and opens the address the organisation
+// stored.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,6 +23,13 @@ function mount(node: ReactNode) {
 		host.remove();
 	});
 	return host;
+}
+
+/** the file packages/operator draws for a network, which is the one the block has to draw. */
+function fileOf(platform: Parameters<typeof BrandMark>[0]['platform']) {
+	return mount(<BrandMark platform={platform} className="page-org-mark" />)
+		.querySelector('img')
+		?.getAttribute('src');
 }
 
 const HREFS: Record<SocialLink['platform'], string> = {
@@ -61,10 +70,11 @@ describe.each(['footer', 'card'] as const)('org info, %s', (variant) => {
 			);
 			expect(link?.getAttribute('target')).toBe('_blank');
 			expect(link?.textContent).toBe('');
-			const mark = link?.querySelector('svg');
-			expect(mark?.getAttribute('class')).toContain(`tabler-icon-brand-${platform}`);
+			const mark = link?.querySelector('img');
+			expect(mark?.getAttribute('src')).toBe(fileOf(platform));
+			expect(mark?.getAttribute('alt')).toBe('');
 			expect(mark?.getAttribute('aria-hidden')).toBe('true');
-			expect(mark?.getAttribute('stroke')).toBe('currentColor');
+			expect(mark?.getAttribute('class')).toBe('page-org-mark');
 		}
 	);
 

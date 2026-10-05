@@ -76,6 +76,7 @@
 		"./components/shell/TopBar": "./src/components/shell/TopBar.jsx",
 		"./components/status/Banner": "./src/components/status/Banner.jsx",
 		"./components/status/Brand": "./src/components/status/Brand.jsx",
+		"./components/status/BrandMark": "./src/components/status/BrandMark.jsx",
 		"./components/status/LedgerSkeleton": "./src/components/status/LedgerSkeleton.jsx",
 		"./components/status/Mark": "./src/components/status/Mark.jsx",
 		"./components/status/ProgressBar": "./src/components/status/ProgressBar.jsx",

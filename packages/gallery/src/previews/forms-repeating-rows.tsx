@@ -9,6 +9,9 @@ import type { RowControl } from '@better-giving/operator/components/forms/Repeat
  * blank, and without one it is a legend, a hint and an Add button standing over nothing — which is
  * what a screen forgetting the note actually ships, and it looks deliberate.
  *
+ * every Remove is the `x` mark and no word, a square as tall as the box beside it, and is named to a
+ * reader for the row it drops — so the rows here read as boxes with a quiet mark down their edge.
+ *
  * the list of one is here because a group that has to keep one row is a rule this component does not
  * hold: the caller states no Remove for that row and the trailing track is left empty.
  *
