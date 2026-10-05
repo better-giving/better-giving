@@ -74,7 +74,10 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 		} satisfies OrgPressAnswer;
 	}
 	if (intent === ORG_LOGO_INTENT) {
-		return { write: await putLogo(posted.get(LOGO_FILE)), press: 'logo' } satisfies OrgPressAnswer;
+		return {
+			write: await putLogo(posted.get(LOGO_FILE), request.signal),
+			press: 'logo'
+		} satisfies OrgPressAnswer;
 	}
 	if (intent === ORG_LOGO_REMOVE_INTENT) {
 		return { write: await removeOrgLogo(), press: 'logo' } satisfies OrgPressAnswer;
