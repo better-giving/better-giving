@@ -167,6 +167,10 @@ body {
 	--page-cover-run: 5rem;
 	--page-cover-end: 2rem;
 
+	/* the drawn height of a third-party brand mark, held to LinkedIn's 21px minimum: 1.4 × the
+	   card's clamped root, whose 15px floor makes it 21px. */
+	--page-brand-mark: calc(var(--_root-size) * 1.4);
+
 	--page-ground: var(--_n2);
 	--page-quiet: var(--_n10);
 	--page-track: var(--_n4);
@@ -834,7 +838,7 @@ body {
 .page-org-links {
 	display: flex;
 	flex-wrap: wrap;
-	margin-inline: calc((var(--_glyph-beside) - var(--_row-min)) / 2);
+	margin-inline: calc((var(--page-brand-mark) - var(--_row-min)) / 2);
 }
 
 .page-org-social {
@@ -845,7 +849,7 @@ body {
 }
 
 .page-org-mark {
-	block-size: var(--_glyph-beside);
+	block-size: var(--page-brand-mark);
 }
 
 .page-org[data-variant='footer'] {
@@ -938,11 +942,11 @@ body {
 	block-size: var(--_glyph-beside);
 }
 
-/* a network's own mark beside its channel's words: the glyphs' height, and the width its file's own
-   shape gives it. */
+/* a network's own mark beside its channel's words: a brand mark's height, and the width its file's
+   own shape gives it. */
 .page-share-brand {
 	flex: none;
-	block-size: var(--_glyph-beside);
+	block-size: var(--page-brand-mark);
 }
 
 /* the shown wording stands at the cell's start, its mark's gap away like every channel's label;

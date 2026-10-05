@@ -988,6 +988,9 @@
 		--admin-mark-size-lg: 1.25rem;
 		--admin-mark-gutter: 1.75rem;
 
+		/* the drawn height of a third-party brand mark, held to LinkedIn's 21px minimum. */
+		--admin-brand-mark-size: 1.3125rem;
+
 		/* a photo's thumbnail beside its name, on its way into the chat: a picture read at a glance,
 		   as tall as the row floor so the attachment is one row. a size of its own rather than the
 		   floor's name, because a picture does not follow a finger's target if that one moves. */

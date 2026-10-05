@@ -7841,10 +7841,10 @@
 		min-inline-size: 0;
 	}
 
-	/* raw-length-ok: the logo is sized to the text it stands with rather than to `--admin-mark-size`,
-	   which is an icon in a control and is taller than the letters here. stated in `em` so it
-	   follows whatever size the block's text is set at, and cut under the cap height of that
-	   text: the picture is solid ink edge to edge and a capital letter is not, so one
+	/* raw-length-ok: the logo is sized to the text it stands with rather than to
+	   `--admin-brand-mark-size`, which `.adm-brand` gives it and is taller than the letters here.
+	   stated in `em` so it follows whatever size the block's text is set at, and cut under the cap
+	   height of that text: the picture is solid ink edge to edge and a capital letter is not, so one
 	   drawn at the cap height reads as the larger of the two, and a wide mark drawn that size takes
 	   the line the name is read on. what the logo says is whose account the name is held with, and
 	   the name is what is read — so it is drawn under the letters it stands in front of.
