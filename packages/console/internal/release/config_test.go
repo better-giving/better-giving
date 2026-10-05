@@ -404,6 +404,24 @@ func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
 	}
 }
 
+// the two keys a profile refusal comes back under beside the fields, against the module the
+// deployment refuses under them from: a key renamed there and not here is a refusal this binary
+// draws under no box.
+func TestTheRefusalKeysBesideTheFieldsAreTheOnesItStates(t *testing.T) {
+	source := read(t, "packages/operator/src/console/org.ts")
+	for _, one := range []struct {
+		constant string
+		held     string
+	}{
+		{"SOCIAL_LINKS_FIELD", SocialLinksField},
+		{"LOGO_FIELD", LogoField},
+	} {
+		if stated := quoted(t, source, one.constant); stated != one.held {
+			t.Errorf("%s states %q and this binary holds %q", one.constant, stated, one.held)
+		}
+	}
+}
+
 // the most a logo upload may carry, against the deployment's own intake, so the binary never
 // refuses a photo the deployment would store nor carries one it would refuse.
 func TestTheLogoCapIsTheDeploymentsUploadCap(t *testing.T) {

@@ -165,7 +165,8 @@ func fieldErrors(answer cf.Answer) (OrgWrite, bool) {
 // whether this console has a box that sentence could be printed under: one per field, the list of
 // links and the logo.
 func drawn(field string) bool {
-	return field == "social_links" || field == "logo" || slices.Contains(release.OrgProfileFields, field)
+	return field == release.SocialLinksField || field == release.LogoField ||
+		slices.Contains(release.OrgProfileFields, field)
 }
 
 func unsaved(read NoReport) OrgWrite {
