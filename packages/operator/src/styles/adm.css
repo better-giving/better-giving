@@ -5445,8 +5445,8 @@
 	/* ---------- the brand colour's well ---------------------------------------------------
 
 	   packages/console-ui/src/lib/org-fold.tsx writes these on the brand colour's `<input
-	   type="color">`. the colour it holds fills it edge to edge inside a step of padding, and it hugs
-	   its own width in the field it stands in; its focus ring is ./base.css's `:focus-visible`. */
+	   type="color">`. the colour it holds fills it edge to edge inside a step of padding; its focus
+	   ring is ./base.css's `:focus-visible`. */
 	.adm-swatch {
 		display: inline-flex;
 		align-items: center;
@@ -5471,10 +5471,23 @@
 		border-color: var(--admin-control-border-hover);
 	}
 
+	/* the well stands on its box's row (`beside` in packages/operator/src/components/forms/Field.jsx),
+	   a square exactly the box's height: the row aligns its items to the box's top, so a well of the
+	   box's height is centred on the box. a well taller than the box reads as a control that missed
+	   the line, the rule `.adm-field > .adm-actions > .adm-btn` states for a press. */
 	.adm-swatch--well {
-		justify-self: start;
-		min-inline-size: var(--admin-space-12);
+		flex: none;
+		inline-size: var(--admin-field-height);
+		block-size: var(--admin-field-height);
+		min-inline-size: 0;
+		min-block-size: 0;
 		padding: var(--admin-space-2);
+	}
+
+	/* and it stays right of the box at the 375px floor: a hex is seven characters, so the box gives
+	   width back rather than the row putting the well under it. */
+	.adm-field > .adm-actions:has(> .adm-swatch--well) {
+		flex-wrap: nowrap;
 	}
 
 	.adm-swatch--well::-webkit-color-swatch-wrapper {
