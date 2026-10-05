@@ -430,7 +430,14 @@ describe('the masthead with no logo', () => {
 		['The', 'T'],
 		['  Elm   Street Neighbors ', 'ES'],
 		['1% for the Planet', 'FT'],
-		['e\u0301lan Vital', 'E\u0301V']
+		['e\u0301lan Vital', 'E\u0301V'],
+		['\u00dftra\u00dfe Hilfe', 'SH'],
+		['\ufb01rst Aid', 'FA'],
+		['\u0627\u0644\u0647\u0644\u0627\u0644', '\u0647'],
+		['\u0627\u0644', '\u0627'],
+		['\u062c\u0645\u0639\u064a\u0629 \u0627\u0644\u0628\u0631', '\u062c\u200c\u0628'],
+		['Hope \u062c\u0645\u0639\u064a\u0629', 'H\u062c'],
+		['The 1%', 'T']
 	])('%s: the badge reads %s', (name, letters) => {
 		expect(initials(name)).toBe(letters);
 		expect(masthead(name, '#1d6b4f').badge?.textContent).toBe(letters);

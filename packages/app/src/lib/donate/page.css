@@ -827,18 +827,20 @@ body {
 	display: block;
 }
 
-/* a platform's mark alone, the link's box padded out past it to a fingertip's target and the row
-   pulled back by the same step, so the first mark's edge lines up with the words above it. */
+/* a platform's mark alone, centred in a `--_row-min` square like the icon-only share press, and the
+   row pulled back by the slack between the square and the mark, so the first mark's edge lines up
+   with the words above it. */
 .page-org-links {
 	display: flex;
 	flex-wrap: wrap;
-	margin-inline: calc(-1 * var(--_sp2));
+	margin-inline: calc((var(--_glyph-beside) - var(--_row-min)) / 2);
 }
 
 .page-org-social {
 	display: inline-grid;
 	place-items: center;
-	padding: var(--_sp2);
+	min-inline-size: var(--_row-min);
+	min-block-size: var(--_row-min);
 }
 
 .page-org-mark {

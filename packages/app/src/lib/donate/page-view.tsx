@@ -289,20 +289,54 @@ export function Masthead({
 }
 
 /**
- * the first letter of each of the name's first two words, upper-cased, a leading "The" passed over
- * where a word follows it: "The Hope Fund" is `HF`, "Kiva" is `K`. a word holding no letter, an `&`,
- * a dash or a `1%`, is not counted, and a name with none is `''`, which draws no badge. a letter
- * keeps its combining marks, so a decomposed accent survives. upper-cased with no locale, so the
- * server's render and a Turkish-locale browser's hydration read the same `I`.
+ * one initial for each of the name's first two words, a leading "The" passed over where a word
+ * follows it: "The Hope Fund" is `HF`, "Kiva" is `K`. a word's initial is the grapheme its first
+ * letter starts, upper-cased with no locale and cut back to one grapheme, so `ß` is `S`, `ﬁ` is `F`,
+ * a decomposed accent keeps its mark, and the server's render and a Turkish-locale browser's
+ * hydration read the same `I`. a word's leading Arabic article `ال` is passed over where the word
+ * runs past it, and two Arabic-script initials stand apart with a zero-width non-joiner between, so
+ * they read as two letters rather than one joined word. a word holding no letter, an `&`, a dash or
+ * a `1%`, is not counted; with no word counted the first letter anywhere in the name stands alone,
+ * so "The 1%" is `T`, and a name with no letter is `''`, which draws no badge.
  */
 export function initials(name: string): string {
 	const words = name.split(/\s+/).filter((word) => word !== '');
 	const named = words.length > 1 && words[0]?.toLowerCase() === 'the' ? words.slice(1) : words;
-	return named
-		.flatMap((word) => /\p{L}\p{M}*/u.exec(word)?.[0] ?? [])
+	const [first, second] = named
+		.flatMap((word) => firstLetter(withoutArticle(word)) ?? [])
 		.slice(0, 2)
-		.join('')
-		.toUpperCase();
+		.map(upperInitial);
+	if (first === undefined) {
+		const anywhere = firstLetter(name);
+		return anywhere === null ? '' : upperInitial(anywhere);
+	}
+	if (second === undefined) return first;
+	return ARABIC_SCRIPT.test(first) && ARABIC_SCRIPT.test(second)
+		? `${first}${ZERO_WIDTH_NON_JOINER}${second}`
+		: `${first}${second}`;
+}
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const ARABIC_ARTICLE = '\u0627\u0644';
+const ARABIC_SCRIPT = /^\p{Script=Arabic}/u;
+const ZERO_WIDTH_NON_JOINER = '\u200C';
+
+function withoutArticle(word: string): string {
+	return word.startsWith(ARABIC_ARTICLE) && word.length > ARABIC_ARTICLE.length
+		? word.slice(ARABIC_ARTICLE.length)
+		: word;
+}
+
+function firstLetter(text: string): string | null {
+	for (const { segment } of graphemes.segment(text)) {
+		if (/^\p{L}/u.test(segment)) return segment;
+	}
+	return null;
+}
+
+function upperInitial(grapheme: string): string {
+	const [upper] = graphemes.segment(grapheme.toUpperCase());
+	return upper?.segment ?? '';
 }
 
 /** the cover's hero and the title laid over it: the first two blocks drawn, in that order. */

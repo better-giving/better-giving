@@ -15,6 +15,7 @@ import {
 	type FormEvent,
 	type MouseEvent,
 	type ReactNode,
+	type SubmitEvent,
 	useEffect,
 	useEffectEvent,
 	useRef,
@@ -197,6 +198,9 @@ const LOGO_UPLOAD_FORM = `${ORG_FORM.id}-logo-upload`;
 const LOGO_REMOVE_FORM = `${ORG_FORM.id}-logo-remove`;
 const LOGO_REFUSAL = `${ORG_FORM.id}-logo-err`;
 
+/** the words an empty colour well is described by. */
+const WELL_EMPTY = `${ORG_FORM.id}-brand_colour-empty`;
+
 /** the six platforms as the group's hint lists them: `Facebook, …, TikTok or X`. */
 const PLATFORMS_LISTED = (() => {
 	const names = SOCIAL_PLATFORMS.map((platform) => SOCIAL_PLATFORM_NAMES[platform]);
@@ -264,9 +268,10 @@ export function OrgFold({
 	const put = (boxes: Partial<Record<IdentityField, string>>): number =>
 		putBoxes(form.mount.ref.current?.elements, boxes);
 
-	/* what a found organisation leaves behind: its values in the boxes still holding what they held
-	   when it was asked for, and its website for the Sites fold. effect events, so the watch made
-	   once per mount reads and fills the form standing when it calls. */
+	/* what a found organisation leaves behind: its values in the boxes that are empty or still hold
+	   what an earlier fill put there, the Country box only while it is empty (`foundBoxes` in
+	   ./ein-lookup.ts), and its website for the Sites fold. effect events, so the watch made once per
+	   mount reads and fills the form standing when it calls. */
 	const found = useEffectEvent((organisation: NonprofitOrganisation, before: HeldBoxes) => {
 		rememberWebsite(organisation.website);
 		return put(foundBoxes(organisation, before, held())) > 0;
@@ -284,12 +289,17 @@ export function OrgFold({
 		};
 	}, [lookUp]);
 
-	/* a save that landed while a lookup was out has put the boxes at what is now stored, and an
-	   answer filling them after it would arm the press again over values nobody saw arrive. so the
-	   answer is given up on the render the landed save arrives in. */
+	/* an answer landing while the profile press is out waits for it (./ein-lookup.ts). the watch is
+	   told the press went out at the submit the form lets through, and that it is over on the render
+	   its answer arrives in — landed, refused or unwritten — after the seam's reset, an effect
+	   declared before this one, has put the boxes back at what it stored. */
+	const profilePressed = (event: SubmitEvent<HTMLFormElement>) => {
+		form.mount.onSubmit(event);
+		if (!event.defaultPrevented) watch.current?.saving();
+	};
 	useEffect(() => {
-		if (landed) watch.current?.stop();
-	}, [landed, profileWrite]);
+		if (profileWrite !== null) watch.current?.afterSave();
+	}, [profileWrite]);
 
 	/** the EIN box as typed: spelled as it is typed, and handed to the watch. */
 	const einTyped = (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -326,6 +336,8 @@ export function OrgFold({
 	   the well, and a colour picked in the well is written into the box the way typing it would be.
 	   the box is what posts; the well has no name. */
 	const well = useRef<HTMLInputElement>(null);
+	/* a colour input always holds a colour, black where none was given, so an empty well is
+	   described as empty in words the screen does not draw. */
 	const [wellEmpty, setWellEmpty] = useState(() => !BRAND_COLOUR.test(stored.brand_colour));
 	const brandTyped = (typed: string) => {
 		const hex = BRAND_COLOUR.test(typed);
@@ -370,6 +382,7 @@ export function OrgFold({
 				name={bound.name}
 				{...typing}
 				label={copy.label}
+				hint={copy.hint}
 				optional={copy.optional}
 				// the example the box stands on while it is empty. a box seeded from the profile is full
 				// and shows none of it, which is what makes the placeholder a reading as well as a shape:
@@ -497,7 +510,13 @@ export function OrgFold({
 
 	return (
 		<>
-			<Form {...form.mount} className="adm-stack" method="post" preventScrollReset>
+			<Form
+				{...form.mount}
+				onSubmit={profilePressed}
+				className="adm-stack"
+				method="post"
+				preventScrollReset
+			>
 				{/* the boxes this fold does not draw, carried at exactly what the deployment holds: the
 			    profile is stored whole, so a field left out of the body is one it stores as cleared. */}
 				{carriedBoxes(IDENTITY_BOXES).map((field) => (
@@ -528,18 +547,28 @@ export function OrgFold({
 				{box('vision')}
 				{box(
 					'brand_colour',
-					<input
-						ref={well}
-						type="color"
-						className="adm-swatch adm-swatch--well"
-						aria-label="Pick the brand colour"
-						defaultValue={
-							BRAND_COLOUR.test(stored.brand_colour) ? stored.brand_colour.toLowerCase() : undefined
-						}
-						data-empty={wellEmpty || undefined}
-						disabled={busy}
-						onChange={wellPicked}
-					/>
+					<>
+						<input
+							ref={well}
+							type="color"
+							className="adm-swatch adm-swatch--well"
+							aria-label="Pick the brand colour"
+							aria-describedby={wellEmpty ? WELL_EMPTY : undefined}
+							defaultValue={
+								BRAND_COLOUR.test(stored.brand_colour)
+									? stored.brand_colour.toLowerCase()
+									: undefined
+							}
+							data-empty={wellEmpty || undefined}
+							disabled={busy}
+							onChange={wellPicked}
+						/>
+						{wellEmpty ? (
+							<span id={WELL_EMPTY} className="adm-vh">
+								No colour set
+							</span>
+						) : null}
+					</>
 				)}
 
 				<RepeatingRows
@@ -591,11 +620,6 @@ export function OrgFold({
 
 			<fieldset className="adm-fieldset">
 				<legend className="adm-fieldset__legend">{LOGO_LABEL}</legend>
-				{logo === null ? (
-					<p className="adm-hint">
-						Until you add one, donor pages show your initials in your brand colour.
-					</p>
-				) : null}
 				<Form
 					ref={logoForm}
 					id={LOGO_UPLOAD_FORM}
@@ -628,8 +652,10 @@ export function OrgFold({
 						>
 							{logoPending ? 'Saving' : logo === null ? 'Add logo' : 'Replace logo'}
 						</Button>
-						{logo === null || busy ? null : (
-							// it submits the empty form beside this one, so a removal posts no photo.
+						{logo === null ? null : (
+							/* it submits the empty form beside this one, so a removal posts no photo. closed
+							   by `aria-disabled` while the page writes, as the press beside it is, so a reader
+							   standing on it keeps the focus. */
 							<Button
 								type="submit"
 								form={LOGO_REMOVE_FORM}
@@ -638,6 +664,10 @@ export function OrgFold({
 								variant="quiet"
 								mark="trash-2"
 								aria-label="Remove the logo"
+								aria-disabled={busy || undefined}
+								onClick={(event: MouseEvent<HTMLButtonElement>) => {
+									if (busy) event.preventDefault();
+								}}
 							>
 								Remove
 							</Button>

@@ -7,7 +7,7 @@ import { OrgInfoBlock } from './org-info';
 import type { BlockOf, OrgInfo } from './types';
 
 // the org-info block's social links, mounted in both variants: each is its platform's mark, named
-// for the platform, opening the address the organisation stored.
+// for the platform and the new tab it opens in, and opens the address the organisation stored.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -50,23 +50,33 @@ const block = (variant: 'footer' | 'card'): BlockOf<'org-info'> => ({
 describe.each(['footer', 'card'] as const)('org info, %s', (variant) => {
 	const links = SOCIAL_PLATFORMS.map((platform) => ({ platform, href: HREFS[platform] }));
 
-	it.each(SOCIAL_PLATFORMS)('draws %s as its mark, named for the platform', (platform) => {
-		const host = mount(<OrgInfoBlock block={block(variant)} info={info(links)} />);
-		const link = host.querySelector<HTMLAnchorElement>(`a[href="${HREFS[platform]}"]`);
+	it.each(SOCIAL_PLATFORMS)(
+		'draws %s as its mark, named for the platform and the new tab',
+		(platform) => {
+			const host = mount(<OrgInfoBlock block={block(variant)} info={info(links)} />);
+			const link = host.querySelector<HTMLAnchorElement>(`a[href="${HREFS[platform]}"]`);
 
-		expect(link?.getAttribute('aria-label')).toBe(SOCIAL_PLATFORM_NAMES[platform]);
-		expect(link?.textContent).toBe('');
-		const mark = link?.querySelector('svg');
-		expect(mark?.getAttribute('class')).toContain(`tabler-icon-brand-${platform}`);
-		expect(mark?.getAttribute('aria-hidden')).toBe('true');
-		expect(mark?.getAttribute('stroke')).toBe('currentColor');
-	});
+			expect(link?.getAttribute('aria-label')).toBe(
+				`${SOCIAL_PLATFORM_NAMES[platform]}, opens in a new tab`
+			);
+			expect(link?.getAttribute('target')).toBe('_blank');
+			expect(link?.textContent).toBe('');
+			const mark = link?.querySelector('svg');
+			expect(mark?.getAttribute('class')).toContain(`tabler-icon-brand-${platform}`);
+			expect(mark?.getAttribute('aria-hidden')).toBe('true');
+			expect(mark?.getAttribute('stroke')).toBe('currentColor');
+		}
+	);
 
 	it('keeps the links in the order the organisation holds them', () => {
 		const host = mount(<OrgInfoBlock block={block(variant)} info={info([...links].reverse())} />);
 		expect(
 			[...host.querySelectorAll('.page-org-links a')].map((a) => a.getAttribute('aria-label'))
-		).toEqual(['X', 'TikTok', 'LinkedIn', 'YouTube', 'Instagram', 'Facebook']);
+		).toEqual(
+			['X', 'TikTok', 'LinkedIn', 'YouTube', 'Instagram', 'Facebook'].map(
+				(name) => `${name}, opens in a new tab`
+			)
+		);
 	});
 
 	it('draws no row of links with none stored', () => {
