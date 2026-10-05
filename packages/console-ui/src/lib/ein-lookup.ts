@@ -22,8 +22,10 @@ import type { IdentityField } from './org-form';
 // and the same number typed again asks again — the binary forgets such an answer for the same
 // reason.
 //
-// **a box typed in while a lookup is out keeps what was typed.** the boxes are read as they stand
-// when the lookup goes out, and the answer fills only a box still holding that, or an empty one.
+// **a lookup never writes over the operator.** an answer fills a box only while it is empty, or
+// still holds exactly what an earlier fill put there — a mission or an address typed before the
+// number, or after it, stays as typed whatever the list says. the record of what the fills wrote is
+// the watch's own, one per fold on the page, and nothing on the screen draws it.
 
 /** what a number not listed as eligible for tax-deductible gifts says under the box. */
 export const NOT_DEDUCTIBLE = 'Not listed as eligible for tax-deductible gifts.';
@@ -98,16 +100,15 @@ export type HeldBoxes = Readonly<Partial<Record<IdentityField, string>>>;
 
 /**
  * the boxes a found organisation puts a value in: its name, the address the list holds, the
- * country, and the mission its latest filing states. `before` is the boxes as they stood when the
- * lookup went out and `now` as they stand as it lands: a box is filled only while it still holds
- * what it held then, or is empty — so a box typed in while the lookup was out keeps what was
- * typed, and a save that landed meanwhile is not undone. the Country box is filled only while it
- * is empty, whatever it held before. a field the list holds nothing for is left out, and the suite
- * and the EIN that was looked up are never a lookup's to write.
+ * country, and the mission its latest filing states. `wrote` is what earlier fills put in the boxes
+ * and `now` the boxes as they stand as the answer lands: a box is filled only while it is empty or
+ * still holds what a fill wrote there, so anything the operator typed is kept. the Country box is
+ * filled only while it is empty. a field the list holds nothing for is left out, and the suite and
+ * the EIN that was looked up are never a lookup's to write.
  */
 export function foundBoxes(
 	organisation: NonprofitOrganisation,
-	before: HeldBoxes,
+	wrote: HeldBoxes,
 	now: HeldBoxes
 ): Filled {
 	const offered: Filled = filled({
@@ -121,7 +122,7 @@ export function foundBoxes(
 	});
 	const open = (field: IdentityField): boolean => {
 		const standing = now[field] ?? '';
-		return standing === '' || (field !== 'country' && standing === (before[field] ?? ''));
+		return standing === '' || (field !== 'country' && standing === wrote[field]);
 	};
 	return Object.fromEntries(
 		Object.entries(offered).filter(([field]) => open(field as IdentityField))
@@ -140,10 +141,20 @@ export const matchBoxes = (match: NonprofitMatch, country: string): Filled =>
 		city: match.city,
 		region: match.state,
 		...countryFor(country),
-		// last, because the EIN box is what sends the lookup out, and the boxes it reads as they
-		// stood should already hold the match.
 		tax_id: einAsPrinted(match.ein)
 	});
+
+/** the boxes a match fills that hold the found organisation's own value for them. */
+function stillMatched(organisation: NonprofitOrganisation, now: HeldBoxes): Filled {
+	const listed: Filled = filled({
+		legal_name: organisation.name,
+		city: organisation.city,
+		region: organisation.region
+	});
+	return Object.fromEntries(
+		Object.entries(listed).filter(([field, value]) => now[field as IdentityField] === value)
+	);
+}
 
 /** after as many digits as stood before `caret` in `typed`, as a place in `shown`. */
 function caretAfter(typed: string, caret: number, shown: string): number {
@@ -189,15 +200,16 @@ export const SILENT_NOTE: EinNote = { shown: '', said: '' };
 /** what the fold hands the watch, once. */
 export type EinWatchOptions = {
 	readonly lookUp: (ein: string, signal: AbortSignal) => Promise<NonprofitLookup>;
-	/** the identity boxes as they stand, read as a lookup goes out. */
+	/** the identity boxes as they stand, read as an answer lands. */
 	readonly held: () => HeldBoxes;
 	/** the region under the box. said at every change of the box. */
 	readonly onNote: (note: EinNote) => void;
 	/**
-	 * an organisation the list holds, with the boxes as they stood when it was asked for. answers
-	 * whether any box took a value, which is what decides whether the fill is said.
+	 * an organisation the list holds, with what earlier fills wrote: the fold puts
+	 * `foundBoxes(organisation, wrote, held())`, which is the fill the watch records. answers whether
+	 * any box took a value, which is what decides whether the fill is said.
 	 */
-	readonly onFound: (organisation: NonprofitOrganisation, before: HeldBoxes) => boolean;
+	readonly onFound: (organisation: NonprofitOrganisation, wrote: HeldBoxes) => boolean;
 };
 
 export type EinWatch = {
@@ -211,12 +223,32 @@ export type EinWatch = {
 };
 
 export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): EinWatch {
-	let asking: { readonly digits: string; readonly control: AbortController } | null = null;
+	/** the lookup out, and whether a pick wants it: the pick's own call can come after it went out. */
+	let asking: {
+		readonly digits: string;
+		readonly control: AbortController;
+		picked: boolean;
+	} | null = null;
 	let last: { readonly digits: string; readonly read: Read } | null = null;
+	/** what the fills so far put in the boxes, box by box. */
+	let wrote: Filled = {};
+
+	/**
+	 * a found organisation put into the boxes, and the record kept of it: the boxes `onFound` puts,
+	 * and after a pick the boxes the match put (`matchBoxes`), which still hold this organisation's
+	 * own values where the operator has not typed over them.
+	 */
+	const fill = (found: NonprofitOrganisation, picked: boolean): boolean => {
+		const boxes = foundBoxes(found, wrote, held());
+		const took = onFound(found, wrote);
+		if (took) wrote = { ...wrote, ...boxes };
+		if (picked) wrote = { ...wrote, ...stillMatched(found, held()) };
+		return took;
+	};
 
 	/** the note an answer says, and the fill it is said beside where one was made. */
-	const land = (answer: Read, before: HeldBoxes) => {
-		const filledAny = answer.found !== null && onFound(answer.found, before);
+	const land = (answer: Read, picked: boolean) => {
+		const filledAny = answer.found !== null && fill(answer.found, picked);
 		onNote({ shown: answer.note, said: filledAny ? FILLED : '' });
 	};
 
@@ -231,23 +263,26 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 			onNote(SILENT_NOTE);
 			return;
 		}
-		if (asking !== null) return;
+		if (asking !== null) {
+			asking.picked ||= picked;
+			return;
+		}
 		if (last?.digits === digits) {
-			if (picked) land(last.read, held());
+			if (picked) land(last.read, true);
 			else onNote({ shown: last.read.note, said: '' });
 			return;
 		}
 		onNote(SILENT_NOTE);
-		const before = held();
 		const control = new AbortController();
-		asking = { digits, control };
+		const out = { digits, control, picked };
+		asking = out;
 		lookUp(value, control.signal)
 			.then(read, () => UNANSWERED)
 			.then((answer) => {
 				if (control.signal.aborted) return;
 				asking = null;
 				if (answer !== UNANSWERED) last = { digits, read: answer };
-				land(answer, before);
+				land(answer, out.picked);
 			});
 	};
 

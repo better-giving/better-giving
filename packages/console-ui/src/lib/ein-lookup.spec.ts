@@ -61,9 +61,9 @@ function watched(answer: () => Promise<NonprofitLookup>, boxes: Record<string, s
 		lookUp,
 		held: () => ({ ...boxes }),
 		onNote: (note) => notes.push(note),
-		onFound: (organisation, before) => {
+		onFound: (organisation, wrote) => {
 			fills.push(organisation);
-			const fill = foundBoxes(organisation, before, boxes);
+			const fill = foundBoxes(organisation, wrote, boxes);
 			Object.assign(boxes, fill);
 			return Object.keys(fill).length > 0;
 		}
@@ -263,16 +263,58 @@ describe('what the answer says and fills', () => {
 		expect(said()).toBe('');
 	});
 
-	it('leaves a box typed in after the lookup went out as it was typed', async () => {
-		const boxes: Record<string, string> = { legal_name: '', city: 'Old Town' };
+	it('leaves a box typed in after the lookup went out as it was typed, and fills an empty one', async () => {
+		const boxes: Record<string, string> = { legal_name: '', city: '' };
 		const { watch } = watched(async () => found(), boxes);
 		watch.typed('12-3456789', '');
 		boxes.legal_name = 'Riverside Food Bank Inc';
 		await settled();
 
 		expect(boxes.legal_name).toBe('Riverside Food Bank Inc');
-		// untouched since the lookup went out, so the list's value replaces it.
 		expect(boxes.city).toBe('Riverside');
+	});
+
+	it('leaves a mission the operator typed before the lookup went out', async () => {
+		const boxes: Record<string, string> = { mission: 'Feeding Riverside.' };
+		const { watch } = watched(async () => found(), boxes);
+		watch.typed('12-3456789', '');
+		await settled();
+
+		expect(boxes.mission).toBe('Feeding Riverside.');
+	});
+
+	it('replaces what an earlier fill wrote with the next answer, and keeps what was typed over it', async () => {
+		const boxes: Record<string, string> = {};
+		const answers = [
+			found(),
+			found({ name: 'Lakeside Pantry', city: 'Lakeside', mission: 'Meals for Lakeside.' })
+		];
+		const { watch } = watched(async () => answers.shift() ?? found(), boxes);
+		watch.typed('12-3456789', '');
+		await settled();
+		boxes.city = 'Riverside Heights';
+		watch.typed('98-7654321', '');
+		await settled();
+
+		expect(boxes.legal_name).toBe('Lakeside Pantry');
+		expect(boxes.mission).toBe('Meals for Lakeside.');
+		expect(boxes.city).toBe('Riverside Heights');
+	});
+
+	it('counts the name a pick wrote as a fill, so the next number replaces it', async () => {
+		const boxes: Record<string, string> = {};
+		const answers = [found(), found({ name: 'Lakeside Pantry', city: 'Lakeside' })];
+		const { watch } = watched(async () => answers.shift() ?? found(), boxes);
+		Object.assign(boxes, matchBoxes(RIVERSIDE_MATCH, ''));
+		// the EIN box the match filled says it changed, then the pick asks for the record.
+		watch.typed('12-3456789', '');
+		watch.typed('12-3456789', '', true);
+		await settled();
+		watch.typed('98-7654321', '');
+		await settled();
+
+		expect(boxes.legal_name).toBe('Lakeside Pantry');
+		expect(boxes.city).toBe('Lakeside');
 	});
 
 	it('takes the note down the moment the box changes, and puts it back for the same number', async () => {
@@ -322,23 +364,27 @@ describe('the boxes a found organisation fills', () => {
 		});
 	});
 
-	it('replaces a box still holding what it held when the lookup went out', () => {
-		const before = { legal_name: 'Old Name', city: 'Old Town' };
+	it('replaces a box still holding what an earlier fill wrote', () => {
+		const wrote = { legal_name: 'Old Name', city: 'Old Town' };
 
-		expect(foundBoxes(ORGANISATION, before, before)).toMatchObject({
+		expect(foundBoxes(ORGANISATION, wrote, wrote)).toMatchObject({
 			legal_name: 'Riverside Community Food Bank',
 			city: 'Riverside'
 		});
 	});
 
-	it('leaves a box typed in since the lookup went out', () => {
+	it('leaves a box holding anything no fill wrote', () => {
 		expect(
-			foundBoxes(ORGANISATION, { legal_name: '' }, { legal_name: 'Riverside Food Bank Inc' })
+			foundBoxes(ORGANISATION, {}, { legal_name: 'Riverside Food Bank Inc' })
 		).not.toHaveProperty('legal_name');
 	});
 
-	it('leaves a mission typed since the lookup went out', () => {
-		const typed = foundBoxes(ORGANISATION, { mission: '' }, { mission: 'Feeding Riverside.' });
+	it('leaves a mission typed over what a fill wrote', () => {
+		const typed = foundBoxes(
+			ORGANISATION,
+			{ mission: 'Food for all.' },
+			{ mission: 'Feeding Riverside.' }
+		);
 
 		expect(typed).not.toHaveProperty('mission');
 		expect(typed).toHaveProperty('legal_name');
