@@ -6,7 +6,7 @@
 // receipt is printed under, so the source is the build's to name. a test builds a client on its own
 // upstream with At. the deployment reads the same API for its page AI, and
 // `packages/app/src/lib/server/nonprofits/filing.ts` holds its copy of the address and the shape:
-// the two change together.
+// the two change together, and ../release/config_test.go holds them equal.
 //
 // **every failure is an answer, and `unavailable` is all of them.** no address, no route, a timeout,
 // a status other than 200 or 404, a body past answerBytes or in a shape decoded nowhere below — the
