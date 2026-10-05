@@ -112,6 +112,11 @@ export type OrgFieldCopy = {
 	 */
 	readonly placeholder: string;
 	/**
+	 * what the box takes, under its label, where the shape matters and the placeholder is the only
+	 * other place it shows: a box seeded from the profile is full and shows no placeholder.
+	 */
+	readonly hint?: string;
+	/**
 	 * what a browser may fill this box from.
 	 *
 	 * stated only where the token is about the organisation. the EIN has none, and the
@@ -193,7 +198,12 @@ export const ORG_FIELDS: Record<OrgProfileField, OrgFieldCopy> = {
 		optional: true,
 		prose: true
 	},
-	brand_colour: { label: 'Brand colour', placeholder: '#1f6feb', optional: true }
+	brand_colour: {
+		label: 'Brand colour',
+		placeholder: '#1f6feb',
+		hint: 'A # and six hex digits, like #1f6feb.',
+		optional: true
+	}
 };
 
 /** what the two parts of the profile that are not a single box are called on the screen. */
