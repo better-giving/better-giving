@@ -1,3 +1,5 @@
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
+import type { SocialPlatform } from '@better-giving/operator/console/org';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -5,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
 import {
 	LOGO_FILE,
+	ORG_INTENT,
 	ORG_LOGO_INTENT,
 	ORG_LOGO_REMOVE_INTENT,
 	type OrgPressKind,
@@ -213,6 +216,24 @@ describe('the Organisation fold’s save', () => {
 		expect(profile()).not.toContain(`intent=${ORG_LOGO_INTENT}`);
 	});
 
+	// the step between groups is wider than the one between two fields (the squint test,
+	// packages/operator/src/styles/squint.spec.ts), so the profile reads as its groups.
+	it('stands the profile in its groups: identity, story, look, links, and the press', () => {
+		const form = formNamed(drawn(WIDENED).markup, 'org');
+
+		expect(form).toMatch(/^<form[^>]*class="adm-groups"/);
+		const order = [
+			'name="tax_id"',
+			'name="mission"',
+			'name="brand_colour"',
+			'social_links[0]',
+			`value="${ORG_INTENT}"`
+		];
+		const at = order.map((mark) => form.indexOf(mark));
+		expect(at.every((place) => place !== -1)).toBe(true);
+		expect([...at].sort((a, b) => a - b)).toEqual(at);
+	});
+
 	it('draws the mission and the vision as paragraphs', () => {
 		const { markup } = drawn(WIDENED);
 
@@ -243,11 +264,57 @@ describe('the Organisation fold’s save', () => {
 		expect(set).not.toContain('No colour set');
 	});
 
-	it('names the platform the deployment recognised beside each stored link', () => {
-		const { markup } = drawn(WIDENED);
+	/** a network's mark as the operator's own part draws it: its `<img>`, without the preload react
+	    puts in front of an image drawn at the root. */
+	const markOf = (platform: SocialPlatform) =>
+		renderToStaticMarkup(createElement(BrandMark, { platform, className: 'adm-brand-mark' })).match(
+			/<img[^>]*>/
+		)?.[0] ?? '<no mark>';
 
-		expect(markup).toContain('id="org-social_links[0]-hint">Facebook</p>');
-		expect(markup).toContain('id="org-social_links[1]-hint">Instagram</p>');
+	/** the box a link row draws, and the slot at its start, by the row's position. */
+	const linkRow = (markup: string, at: number) => {
+		const row = markup.match(
+			new RegExp(
+				`<div class="adm-leadwrap"><span class="adm-leadwrap__lead" aria-hidden="true">((?:(?!</span><input).)*)</span><input[^>]*name="social_links\\[${at}\\]"[^>]*>`,
+				's'
+			)
+		);
+		expect(row).not.toBeNull();
+		return { slot: row?.[1] ?? '', box: row?.[0].match(/<input[^>]*>/)?.[0] ?? '' };
+	};
+
+	it('stands the mark of the network each link’s address is read as inside its box', () => {
+		const { markup } = drawn(WIDENED);
+		const [facebook, instagram] = [linkRow(markup, 0), linkRow(markup, 1)];
+
+		expect(facebook.slot).toContain(markOf('facebook'));
+		expect(instagram.slot).toContain(markOf('instagram'));
+	});
+
+	// the mark says the platform on the screen, so the name is drawn to a reader alone and the box
+	// is described by it.
+	it('names the platform to a reader alone, and describes the box by it', () => {
+		const { markup } = drawn(WIDENED);
+		const { slot, box } = linkRow(markup, 0);
+
+		expect(slot).toContain('<span id="org-social_links[0]-hint" class="adm-vh">Facebook</span>');
+		expect(box).toMatch(/aria-describedby="[^"]*org-social_links\[0\]-hint/);
+		expect(markup).not.toContain('<p class="adm-hint" id="org-social_links[0]-hint"');
+	});
+
+	it('stands the globe in a box whose address no network is read from, and names no platform', () => {
+		const { markup } = drawn(
+			storedProfile({
+				...WIDENED,
+				social_links: [{ platform: 'facebook', href: 'https://riverside.org/news' }]
+			})
+		);
+		const { slot, box } = linkRow(markup, 0);
+
+		expect(slot).toContain('lucide-globe');
+		expect(slot).not.toContain('adm-brand-mark');
+		expect(slot).not.toContain('adm-vh');
+		expect(box).not.toContain('org-social_links[0]-hint');
 	});
 });
 
@@ -274,11 +341,35 @@ describe('the logo’s presses', () => {
 		expect(posted(remove)).toEqual([]);
 	});
 
-	it('draws the stored logo and offers to replace it', () => {
-		const { markup } = drawn(WIDENED);
+	/** the square the logo is drawn in, which is the press that chooses one. */
+	const square = (markup: string): string => {
+		const found = markup.match(
+			/<button[^>]*class="adm-logo__square"[^>]*>(?:(?!<\/button>).)*<\/button>/s
+		);
+		expect(found).not.toBeNull();
+		return found?.[0] ?? '';
+	};
 
-		expect(markup).toContain('src="https://give.riverside.org/images/img_1"');
-		expect(markup).toContain('Replace logo');
+	it('draws the stored logo as the square that replaces it, named for that', () => {
+		const shown = square(drawn(WIDENED).markup);
+
+		expect(shown).toMatch(/^<button type="button"/);
+		expect(shown).toContain('src="https://give.riverside.org/images/img_1"');
+		expect(shown).toContain('<span class="adm-vh">Replace logo</span>');
+	});
+
+	it('stands the crop and the removal on the square’s corner, each a mark named for what it does', () => {
+		const { markup } = drawn(WIDENED);
+		const corner = markup.match(/<div class="adm-logo__presses">(?:(?!<\/div>).)*<\/div>/s)?.[0];
+		const crop = corner?.match(/<button[^>]*aria-label="Crop the logo"[^>]*>/)?.[0];
+
+		expect(crop).toContain('type="button"');
+		expect(crop).not.toContain('form=');
+		expect(corner).toContain('aria-label="Remove the logo"');
+		expect(corner).toContain('lucide-crop');
+		expect(corner).toContain('lucide-trash-2');
+		// no row of presses under the square.
+		expect(formNamed(markup, 'org-logo-upload')).not.toContain('adm-actions');
 	});
 
 	// a press taken off the page while it holds focus drops a reader to the document; closed by
@@ -292,11 +383,30 @@ describe('the logo’s presses', () => {
 		expect(press).toContain('form="org-logo-remove"');
 	});
 
-	it('offers to add one, and no Remove, where none is stored', () => {
+	it('offers to add one in the empty square, and no press beside it, where none is stored', () => {
 		const { markup } = drawn(STORED);
+		const shown = square(markup);
 
-		expect(markup).toContain('Add logo');
+		expect(shown).toContain('lucide-image-up');
+		expect(shown).toContain('<span>Add logo</span>');
+		expect(markup).not.toContain('adm-logo__presses');
 		expect(markup).not.toContain('Remove the logo');
+		expect(markup).not.toContain('Crop the logo');
+	});
+
+	it('reads Saving on the square while a logo press is out, and keeps it focusable', () => {
+		const shown = square(
+			drawn(WIDENED, true, null, null, { busy: true, logoPending: true }).markup
+		);
+
+		expect(shown).toContain('aria-busy="true"');
+		expect(shown).toContain('aria-disabled="true"');
+		expect(shown).not.toMatch(/\bdisabled=""/);
+		expect(shown).toContain('<span>Saving</span>');
+	});
+
+	it('draws no crop before an image is chosen', () => {
+		expect(drawn(WIDENED).markup).not.toContain('<dialog');
 	});
 });
 

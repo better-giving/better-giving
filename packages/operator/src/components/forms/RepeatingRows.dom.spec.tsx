@@ -536,3 +536,61 @@ describe('the Remove beside a row', () => {
 		expect(remove.get('inline-size')).toBe(box);
 	});
 });
+
+describe('a mark at the start of a row’s box', () => {
+	const css = sheet('adm.css');
+
+	/** two rows, the first stating a mark and the second stating none. */
+	const LED: readonly RepeatingRow[] = [
+		{
+			id: 'origins-0',
+			key: 'riverbank',
+			defaultValue: 'riverbank.org',
+			remove: drop('riverbank'),
+			lead: <img className="led" alt="" />
+		},
+		{ id: 'origins-1', key: 'shop', defaultValue: 'shop.riverbank.org', remove: drop('shop') }
+	];
+
+	it('stands inside the box of the row that states one, out of the tree, and in no other row', () => {
+		const root = render(Bound, { rows: LED });
+		const [first, second] = [...root.querySelectorAll('.adm-rows__row')];
+
+		const slot = first?.querySelector('.adm-leadwrap > .adm-leadwrap__lead');
+		expect(slot?.getAttribute('aria-hidden')).toBe('true');
+		expect(slot?.querySelector('img.led')).not.toBe(null);
+		// the box is the wrapper's, so the mark is inside the box's own edge rather than beside it.
+		expect(first?.querySelector('.adm-leadwrap > input')?.id).toBe('origins-0');
+		expect(second?.querySelector('.adm-leadwrap')).toBe(null);
+	});
+
+	it('reserves the slot where the row states it empty, so nothing moves when a mark arrives', () => {
+		const root = render(Bound, {
+			rows: [{ id: 'origins-0', key: 'riverbank', defaultValue: 'riverbank.org', lead: null }]
+		});
+
+		expect(root.querySelector('.adm-leadwrap > .adm-leadwrap__lead')?.childElementCount).toBe(0);
+		expect(root.querySelector('.adm-leadwrap > input')).not.toBe(null);
+	});
+
+	it('posts what the box holds and nothing of the mark’s', () => {
+		const root = render(Bound, { rows: LED });
+
+		expect(submitted(root)).toEqual([
+			'allowed_origins=riverbank.org',
+			'allowed_origins=shop.riverbank.org'
+		]);
+	});
+
+	it('pads the box past the slot, from the box’s own inline padding', () => {
+		const slot = ruleOf(css, '.adm-leadwrap__lead');
+		const box = ruleOf(css, '.adm-leadwrap .adm-input');
+
+		expect(slot.get('inset-inline-start')).toBe('var(--admin-space-4)');
+		expect(slot.get('inline-size')).toBe('var(--admin-space-9)');
+		expect(slot.get('pointer-events')).toBe('none');
+		expect(box.get('padding-inline-start')).toBe(
+			'calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3))'
+		);
+	});
+});

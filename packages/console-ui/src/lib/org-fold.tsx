@@ -6,12 +6,18 @@ import {
 	type RepeatingRow,
 	RepeatingRows
 } from '@better-giving/operator/components/forms/RepeatingRows';
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
+import { Mark } from '@better-giving/operator/components/status/Mark';
 import { SOCIAL_PLATFORMS } from '@better-giving/operator/console/org';
 import { BRAND_COLOUR, einAsPrinted } from '@better-giving/operator/console/org-rules';
-import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
+import {
+	SOCIAL_PLATFORM_NAMES,
+	readSocialLink
+} from '@better-giving/operator/console/social-links';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import {
 	type ChangeEvent,
+	type DragEvent,
 	type FormEvent,
 	type MouseEvent,
 	type ReactNode,
@@ -34,12 +40,16 @@ import {
 	watchEin
 } from './ein-lookup';
 import { FindOrgDialog } from './find-org-dialog';
+import { droppedFile } from './logo-crop';
+import { type CropImage, LogoCropDialog } from './logo-crop-dialog';
 import { heldBoxes, putBoxes } from './fold-boxes';
 import { rememberWebsite } from './found-organisation';
 import {
 	IDENTITY_BOXES,
 	LOGO_FIELD,
 	LOGO_FILE,
+	LOGO_FROM_FILE,
+	LOGO_FROM_STORED,
 	LOGO_LABEL,
 	ORGANISATION_KEYS,
 	ORG_FIELDS,
@@ -132,11 +142,14 @@ import type {
 //
 // **the links are rows of the same press, the logo is a press of its own.** a link row submits as
 // conform spells a list (`SOCIAL_LINKS_FIELD` in ./org-fields.ts) and is added and dropped in the
-// browser; the list's refusal is one sentence, keyed to the list and drawn at the group. a stored
-// row names the platform the deployment recognised until the row is typed in, since what it names is
-// the stored address and not the typed one. the logo is chosen and sent at once, as an upload of its
+// browser; the list's refusal is one sentence, keyed to the list and drawn at the group. each row
+// carries the mark of the network its address is read as, read as it is typed by the same reading
+// the deployment stores it by (`readSocialLink` in `@better-giving/operator/console/social-links`),
+// so the mark a row shows is the platform a save would store it under. the logo is a press of its
 // own beside the profile form — a photo is not a box, and holding it until Save would be a file
-// nobody can see waiting under a button that says nothing about it.
+// nobody can see waiting under a button that says nothing about it. the logo's square is that
+// press: a photo chosen or dropped on it, and the crop pressed on its corner, open the crop
+// (./logo-crop-dialog.tsx), and the crop's own Save is what sends.
 //
 // **an answer is the profile's or the logo's by the tag the page hands beside it** (`press`,
 // `OrgPressKind` in ./org-fields.ts). all three presses answer in the profile's shape, and a logo
@@ -207,7 +220,7 @@ const PLATFORMS_LISTED = (() => {
 	return `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
 })();
 
-const NONE: readonly string[] = [];
+const NO_TYPING: Readonly<Record<string, string>> = {};
 
 /** a fresh set-up: nothing about the organisation's identity has been saved yet. */
 const unset = (stored: StoredOrg): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
@@ -421,19 +434,19 @@ export function OrgFold({
 	   the list and drawn at the group, which describes every row that carries none of its own. */
 	const linksSaid = form.box({ name: links.name, errors: links.errors }).error;
 
-	/* the rows typed in since the list was stored, which no longer hold the address the platform
-	   name beside them was recognised from. forgotten when a different list is stored. */
+	/* what each row holds as it is typed, by the row's identity, which is what its mark is read
+	   from. forgotten when a different list is stored, since the boxes are put back at that list. */
 	const storedLinks = stored.social_links.map((link) => link.href).join('\n');
-	const [edited, setEdited] = useState<{ over: string; rows: readonly string[] }>({
-		over: storedLinks,
-		rows: NONE
-	});
-	const editedRows = edited.over === storedLinks ? edited.rows : NONE;
-	const typedIn = (row: string) =>
-		setEdited((was) => {
-			const rows = was.over === storedLinks ? was.rows : NONE;
-			return rows.includes(row) ? was : { over: storedLinks, rows: [...rows, row] };
-		});
+	const [typedLinks, setTypedLinks] = useState<{
+		over: string;
+		rows: Readonly<Record<string, string>>;
+	}>({ over: storedLinks, rows: {} });
+	const typedRows = typedLinks.over === storedLinks ? typedLinks.rows : NO_TYPING;
+	const typedIn = (row: string, text: string) =>
+		setTypedLinks((was) => ({
+			over: storedLinks,
+			rows: { ...(was.over === storedLinks ? was.rows : NO_TYPING), [row]: text }
+		}));
 
 	/* an Add pressed at the cap is held, with the sentence saying why standing while those rows are
 	   the rows on screen — the giving amounts' cap in packages/app/src/lib/admin/forms/giving-fields.tsx
@@ -454,15 +467,17 @@ export function OrgFold({
 	const linkRow = (row: (typeof linkRows)[number], at: number): RepeatingRow => {
 		const bound = form.box(row);
 		const identity = row.key ?? bound.id;
-		const platform = editedRows.includes(identity)
-			? undefined
-			: stored.social_links.find((link) => link.href === bound.defaultValue)?.platform;
-		const hint = platform === undefined ? undefined : SOCIAL_PLATFORM_NAMES[platform];
-		/* composed here rather than by the group, because a stored row carries a hint of its own:
-		   the group's hint, the row's platform, and the row's sentence or else the list's. */
+		/* the platform the row's address is read as, by the deployment's own reading of one
+		   (`readSocialLink`), as it stands in the box: typed, or stored. */
+		const read = readSocialLink(typedRows[identity] ?? bound.defaultValue ?? '');
+		const platform = read.ok ? read.link.platform : undefined;
+		const named = `${bound.id}-hint`;
+		/* composed here rather than by the group, because a row the platform is read from carries a
+		   name of its own: the group's hint, the row's platform, and the row's sentence or else the
+		   list's. */
 		const describedBy = [
 			`${LINKS_GROUP}-hint`,
-			hint === undefined ? null : `${bound.id}-hint`,
+			platform === undefined ? null : named,
 			bound.error !== undefined
 				? `${bound.id}-err`
 				: linksSaid !== undefined
@@ -477,24 +492,37 @@ export function OrgFold({
 			name: bound.name,
 			defaultValue: bound.defaultValue,
 			inputMode: 'url',
-			hint,
+			/* the network's mark, or the globe where the address is no network's or the box is empty.
+			   the slot is out of the tree, and the platform's name stands in it for the box to be
+			   described by, since the mark is what says it on the screen. */
+			lead:
+				platform === undefined ? (
+					<Mark name="globe" />
+				) : (
+					<>
+						<BrandMark platform={platform} className="adm-brand-mark" />
+						<span id={named} className="adm-vh">
+							{SOCIAL_PLATFORM_NAMES[platform]}
+						</span>
+					</>
+				),
 			'aria-describedby': describedBy,
-			onInput: () => {
+			onInput: (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
 				bound.onInput?.();
-				typedIn(identity);
+				typedIn(identity, event.currentTarget.value);
 			},
 			error: bound.error === undefined ? undefined : <MarkedText text={bound.error} />,
 			remove: linkControls.remove(at)
 		};
 	};
 
-	/* the logo: the photo the deployment holds, the press that chooses a new one and sends it at
-	   once, and Remove. the file box is the press's and is opened by it, cleared first so the same
-	   photo chosen again after a refusal is still a choice. */
+	/* the logo: the square that shows it and chooses a new one, and the two presses on its corner
+	   that crop it again and take it off. the file box is the square's and is opened by it, cleared
+	   first so the same photo chosen again after a refusal is still a choice. */
 	const logo = stored.logo;
-	const logoForm = useRef<HTMLFormElement>(null);
 	const fileBox = useRef<HTMLInputElement>(null);
 	const choosePress = useRef<HTMLButtonElement>(null);
+	const cropPress = useRef<HTMLButtonElement>(null);
 	const logoAnswer = logoWrite ?? profileWrite;
 	const logoRefused = logoAnswer?.kind === 'refused' ? logoAnswer.errors[LOGO_FIELD] : undefined;
 
@@ -508,12 +536,46 @@ export function OrgFold({
 		if (was !== null && logoId === null) choosePress.current?.focus();
 	}, [logoId]);
 
+	/* the image a crop is open on, and nothing is sent until its Save: a file chosen or dropped, or
+	   the stored logo. keyed by the opening, so each image is a card of its own. */
+	const [cropping, setCropping] = useState<{ key: number; image: CropImage } | null>(null);
+	const openings = useRef(0);
+	const crop = (image: CropImage) => {
+		openings.current += 1;
+		setCropping({ key: openings.current, image });
+	};
+	/* a dropped file is put in the file box, one file alone, which is what a save of its crop posts. */
+	const dropped = (file: File) => {
+		const box = fileBox.current;
+		if (box === null) return;
+		const one = new DataTransfer();
+		one.items.add(file);
+		box.files = one.files;
+		crop({ from: LOGO_FROM_FILE, file });
+	};
+	const cancelCrop = () => {
+		setCropping(null);
+		if (fileBox.current !== null) fileBox.current.value = '';
+	};
+
+	/* a file dragged over the square is taken by it, and the square says so. a drop while the page
+	   writes is still held here, so the browser never opens the file in place of the console. */
+	const [dragging, setDragging] = useState(false);
+	const carriesFiles = (event: DragEvent<HTMLElement>) =>
+		event.dataTransfer.types.includes('Files');
+	const dragOver = (event: DragEvent<HTMLElement>) => {
+		if (!carriesFiles(event)) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = busy ? 'none' : 'copy';
+		if (!busy) setDragging(true);
+	};
+
 	return (
 		<>
 			<Form
 				{...form.mount}
 				onSubmit={profilePressed}
-				className="adm-stack"
+				className="adm-groups"
 				method="post"
 				preventScrollReset
 			>
@@ -522,29 +584,37 @@ export function OrgFold({
 				{carriedBoxes(IDENTITY_BOXES).map((field) => (
 					<input key={field} type="hidden" name={field} value={stored[field]} readOnly />
 				))}
-				<div className="adm-pair adm-pair--side">
-					{box('tax_id')}
-					{box('legal_name')}
+				{/* the profile in its groups, which stand apart by the group step rather than the step
+				    between two fields: who the organisation is, what it says about itself, how it
+				    looks, where else it is, and then the press. */}
+				<div className="adm-stack">
+					<div className="adm-pair adm-pair--side">
+						{box('tax_id')}
+						{box('legal_name')}
+					</div>
+
+					<fieldset className="adm-fieldset">
+						<legend className="adm-fieldset__legend">Address on receipts</legend>
+						<div className="adm-pair adm-pair--side">
+							{box('address_line1')}
+							{box('address_line2')}
+						</div>
+						<div className="adm-pair adm-pair--side">
+							{box('city')}
+							{box('region')}
+						</div>
+						<div className="adm-pair adm-pair--side">
+							{box('postal_code')}
+							{box('country')}
+						</div>
+					</fieldset>
 				</div>
 
-				<fieldset className="adm-fieldset">
-					<legend className="adm-fieldset__legend">Address on receipts</legend>
-					<div className="adm-pair adm-pair--side">
-						{box('address_line1')}
-						{box('address_line2')}
-					</div>
-					<div className="adm-pair adm-pair--side">
-						{box('city')}
-						{box('region')}
-					</div>
-					<div className="adm-pair adm-pair--side">
-						{box('postal_code')}
-						{box('country')}
-					</div>
-				</fieldset>
+				<div className="adm-stack">
+					{box('mission')}
+					{box('vision')}
+				</div>
 
-				{box('mission')}
-				{box('vision')}
 				{box(
 					'brand_colour',
 					<>
@@ -571,76 +641,78 @@ export function OrgFold({
 					</>
 				)}
 
-				<RepeatingRows
-					id={LINKS_GROUP}
-					legend={SOCIAL_LINKS_LABEL}
-					rowLabel="Link"
-					hint={`One address for each platform: ${PLATFORMS_LISTED}.`}
-					describedBy={capped ? LINKS_CAP : undefined}
-					addLabel="Add a link"
-					placeholder="https://www.instagram.com/yourorganisation"
-					disabled={busy}
-					add={addLink}
-					error={linksSaid === undefined ? undefined : <MarkedText text={linksSaid} />}
-					rows={linkRows.map(linkRow)}
-				/>
-				{capped ? (
-					<FieldMessage id={LINKS_CAP}>
-						{MAX_LINK_ROWS} links at most, one for each platform.
-					</FieldMessage>
-				) : null}
-
-				<div className="adm-actions">
-					<SaveButton
-						name="intent"
-						value={ORG_INTENT}
-						state={form.state}
-						label="Save details"
-						doneLabel="Saved"
+				<div className="adm-stack">
+					<RepeatingRows
+						id={LINKS_GROUP}
+						legend={SOCIAL_LINKS_LABEL}
+						rowLabel="Link"
+						hint={`One address for each platform: ${PLATFORMS_LISTED}.`}
+						describedBy={capped ? LINKS_CAP : undefined}
+						addLabel="Add a link"
+						placeholder="https://www.instagram.com/yourorganisation"
+						disabled={busy}
+						add={addLink}
+						error={linksSaid === undefined ? undefined : <MarkedText text={linksSaid} />}
+						rows={linkRows.map(linkRow)}
 					/>
-					{/* closed with the boxes, since a pick fills them; closed as the field's own presses are,
-					    so a reader standing on it keeps the focus. */}
-					{lookups ? (
-						<Button
-							ref={findPress}
-							type="button"
-							variant="quiet"
-							aria-disabled={busy || undefined}
-							onClick={() => {
-								if (!busy) setFinding(true);
-							}}
-						>
-							{picked ? 'Pick a different organisation' : 'Find your organisation'}
-						</Button>
+					{capped ? (
+						<FieldMessage id={LINKS_CAP}>
+							{MAX_LINK_ROWS} links at most, one for each platform.
+						</FieldMessage>
 					) : null}
 				</div>
 
-				{busy ? null : <OrgWriteOutcome write={profileWrite} drawn={ORGANISATION_KEYS} />}
+				<div className="adm-stack">
+					<div className="adm-actions">
+						<SaveButton
+							name="intent"
+							value={ORG_INTENT}
+							state={form.state}
+							label="Save details"
+							doneLabel="Saved"
+						/>
+						{/* closed with the boxes, since a pick fills them; closed as the field's own presses are,
+					    so a reader standing on it keeps the focus. */}
+						{lookups ? (
+							<Button
+								ref={findPress}
+								type="button"
+								variant="quiet"
+								aria-disabled={busy || undefined}
+								onClick={() => {
+									if (!busy) setFinding(true);
+								}}
+							>
+								{picked ? 'Pick a different organisation' : 'Find your organisation'}
+							</Button>
+						) : null}
+					</div>
+
+					{busy ? null : <OrgWriteOutcome write={profileWrite} drawn={ORGANISATION_KEYS} />}
+				</div>
 			</Form>
 
 			<fieldset className="adm-fieldset">
 				<legend className="adm-fieldset__legend">{LOGO_LABEL}</legend>
+				{/* the crop's Save submits this form from inside the card, and that submit takes the card down. */}
 				<Form
-					ref={logoForm}
 					id={LOGO_UPLOAD_FORM}
-					className="adm-placed"
+					className="adm-logo"
 					method="post"
 					encType="multipart/form-data"
 					preventScrollReset
+					onSubmit={() => setCropping(null)}
 				>
 					<input type="hidden" name="intent" value={ORG_LOGO_INTENT} readOnly />
-					{logo === null ? null : (
-						<img
-							className="adm-placed__art adm-placed__art--whole"
-							src={logo.url}
-							alt="Your logo"
-						/>
-					)}
-					<div className="adm-actions">
-						<Button
+					<div className="adm-logo__frame">
+						{/* the square is the press that chooses: a press or a file dropped on it opens the
+						    crop, and nothing is sent until that is saved. closed by `aria-disabled` while
+						    the page writes, so a reader standing on it keeps the focus. */}
+						<button
 							ref={choosePress}
 							type="button"
-							mark="image-up"
+							className="adm-logo__square"
+							data-dragging={dragging || undefined}
 							aria-busy={logoPending || undefined}
 							aria-disabled={busy || undefined}
 							aria-describedby={logoRefused === undefined || busy ? undefined : LOGO_REFUSAL}
@@ -649,42 +721,77 @@ export function OrgFold({
 								fileBox.current.value = '';
 								fileBox.current.click();
 							}}
-						>
-							{logoPending ? 'Saving' : logo === null ? 'Add logo' : 'Replace logo'}
-						</Button>
-						{logo === null ? null : (
-							/* it submits the empty form beside this one, so a removal posts no photo. closed
-							   by `aria-disabled` while the page writes, as the press beside it is, so a reader
-							   standing on it keeps the focus. */
-							<Button
-								type="submit"
-								form={LOGO_REMOVE_FORM}
-								name="intent"
-								value={ORG_LOGO_REMOVE_INTENT}
-								variant="quiet"
-								mark="trash-2"
-								aria-label="Remove the logo"
-								aria-disabled={busy || undefined}
-								onClick={(event: MouseEvent<HTMLButtonElement>) => {
-									if (busy) event.preventDefault();
-								}}
-							>
-								Remove
-							</Button>
-						)}
-						{/* chosen is sent: a photo is put on by choosing it, as the press says. */}
-						<input
-							ref={fileBox}
-							type="file"
-							name={LOGO_FILE}
-							accept="image/*"
-							hidden
-							disabled={busy}
-							onChange={(event) => {
-								if (event.currentTarget.files?.length) logoForm.current?.requestSubmit();
+							onDragEnter={dragOver}
+							onDragOver={dragOver}
+							onDragLeave={(event) => {
+								if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+									setDragging(false);
+								}
 							}}
-						/>
+							onDrop={(event) => {
+								if (!carriesFiles(event)) return;
+								event.preventDefault();
+								setDragging(false);
+								const file = droppedFile(event.dataTransfer.files);
+								if (!busy && file !== null) dropped(file);
+							}}
+						>
+							{logo === null || logoPending ? (
+								<>
+									<Mark name="image-up" />
+									<span>{logoPending ? 'Saving' : 'Add logo'}</span>
+								</>
+							) : (
+								<>
+									<img className="adm-logo__art" src={logo.url} alt="" />
+									<span className="adm-vh">Replace logo</span>
+								</>
+							)}
+						</button>
+						{logo === null ? null : (
+							<div className="adm-logo__presses">
+								<Button
+									ref={cropPress}
+									type="button"
+									size="sm"
+									mark="crop"
+									aria-label="Crop the logo"
+									aria-disabled={busy || undefined}
+									onClick={() => {
+										if (!busy) crop({ from: LOGO_FROM_STORED, url: logo.url });
+									}}
+								/>
+								{/* it submits the empty form beside this one, so a removal posts no photo. */}
+								<Button
+									type="submit"
+									form={LOGO_REMOVE_FORM}
+									name="intent"
+									value={ORG_LOGO_REMOVE_INTENT}
+									size="sm"
+									mark="trash-2"
+									aria-label="Remove the logo"
+									aria-disabled={busy || undefined}
+									onClick={(event: MouseEvent<HTMLButtonElement>) => {
+										if (busy) event.preventDefault();
+									}}
+								/>
+							</div>
+						)}
 					</div>
+					{/* the photo a crop of a chosen one posts. closed under a crop of the stored logo,
+					    which posts no photo. */}
+					<input
+						ref={fileBox}
+						type="file"
+						name={LOGO_FILE}
+						accept="image/*"
+						hidden
+						disabled={busy || cropping?.image.from === LOGO_FROM_STORED}
+						onChange={(event) => {
+							const file = event.currentTarget.files?.[0];
+							if (file !== undefined) crop({ from: LOGO_FROM_FILE, file });
+						}}
+					/>
 					{logoRefused === undefined || busy ? null : (
 						<FieldMessage id={LOGO_REFUSAL}>
 							<MarkedText text={logoRefused} />
@@ -694,6 +801,16 @@ export function OrgFold({
 				</Form>
 				<Form id={LOGO_REMOVE_FORM} method="post" preventScrollReset />
 			</fieldset>
+
+			{cropping === null ? null : (
+				<LogoCropDialog
+					key={cropping.key}
+					image={cropping.image}
+					form={LOGO_UPLOAD_FORM}
+					onCancel={cancelCrop}
+					fallbackFocus={cropping.image.from === LOGO_FROM_STORED ? cropPress : choosePress}
+				/>
+			)}
 
 			{/* outside the form, so Enter in its box can never be the form's own submit. */}
 			{finding ? (

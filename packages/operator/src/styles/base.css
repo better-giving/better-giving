@@ -506,8 +506,9 @@
 	   it is held to LinkedIn's 21px minimum and a company's logo above is not: the height is
 	   `--admin-brand-mark-size`, and the width follows the file. `flex: none` because a mark is
 	   never what gives width back. */
-	/* carried-ok: .adm-brand-mark — handed to BrandMark.jsx as its `className`, and worn by
-	   packages/gallery/src/previews/status-brand-mark.tsx, which
+	/* carried-ok: .adm-brand-mark — handed to BrandMark.jsx as its `className`: worn by the social
+	   link boxes in packages/console-ui/src/lib/org-fold.tsx, and by
+	   packages/gallery/src/previews/status-brand-mark.tsx and forms-repeating-rows.tsx, which
 	   packages/app/src/lib/admin/styles/conformance.spec.ts does not read. */
 	.adm-brand-mark {
 		display: inline-block;

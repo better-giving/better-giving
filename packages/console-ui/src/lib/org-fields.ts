@@ -89,6 +89,70 @@ export type OrgPressAnswer = { readonly write: OrgWrite; readonly press: OrgPres
 export const LOGO_FILE = 'file';
 
 /**
+ * which image a logo press crops, posted with every logo press: {@link LOGO_FROM_FILE}, the photo
+ * in {@link LOGO_FILE}, or {@link LOGO_FROM_STORED}, the logo the deployment holds now — read back
+ * from it rather than from anything this page kept, so an edge an earlier crop took off stays off.
+ */
+export const LOGO_SOURCE = 'logo_source';
+export const LOGO_FROM_FILE = 'file';
+export const LOGO_FROM_STORED = 'stored';
+
+/**
+ * the square a logo press keeps, in three boxes posted with every logo press: its top-left corner
+ * and its side, in the chosen image's own pixels — as decoded the right way up, which is the
+ * `naturalWidth` and `naturalHeight` an `<img>` of it reports. each is a whole number written in
+ * plain digits; anything else reads as no square at all.
+ *
+ * a side rather than a width and a height, so a square is the only shape a press can post.
+ */
+export const LOGO_CROP_X = 'crop_x';
+export const LOGO_CROP_Y = 'crop_y';
+export const LOGO_CROP_SIZE = 'crop_size';
+
+/** the square a logo is cropped to, in the source image's own pixels. */
+export type CropSquare = { readonly x: number; readonly y: number; readonly size: number };
+
+/** the image a logo press crops: the photo the operator chose, or the logo stored now. */
+export type LogoSource =
+	| { readonly from: typeof LOGO_FROM_FILE; readonly file: FormDataEntryValue | null }
+	| { readonly from: typeof LOGO_FROM_STORED };
+
+/**
+ * what one logo press asked for. `null` is a box that did not arrive or arrived holding no answer
+ * the press could have meant, which the crop refuses at the logo (`putLogo` in ./org-logo.ts)
+ * rather than filling in: a square nobody drew is a crop nobody chose.
+ */
+export type LogoPress = { readonly source: LogoSource | null; readonly crop: CropSquare | null };
+
+const WHOLE_PIXELS = /^-?\d+$/;
+
+/** one of the square's boxes, as the whole number it holds, or `null`. */
+function pixels(posted: FormData, name: string): number | null {
+	const held = posted.get(name);
+	if (typeof held !== 'string' || !WHOLE_PIXELS.test(held)) return null;
+	const value = Number(held);
+	return Number.isSafeInteger(value) ? value : null;
+}
+
+/**
+ * a logo press, read off the submitted form. nothing is refused here: a corner off the image or a
+ * side too small is the crop's to judge, against the image it decoded.
+ */
+export function logoPress(posted: FormData): LogoPress {
+	const from = posted.get(LOGO_SOURCE);
+	const source: LogoSource | null =
+		from === LOGO_FROM_FILE
+			? { from, file: posted.get(LOGO_FILE) }
+			: from === LOGO_FROM_STORED
+				? { from }
+				: null;
+	const x = pixels(posted, LOGO_CROP_X);
+	const y = pixels(posted, LOGO_CROP_Y);
+	const size = pixels(posted, LOGO_CROP_SIZE);
+	return { source, crop: x === null || y === null || size === null ? null : { x, y, size } };
+}
+
+/**
  * `SOCIAL_LINKS_FIELD` is the list field every link row belongs to, which is also the key the
  * deployment refuses the list under — one sentence for the first address refused (`readSocialLinks`
  * in `@better-giving/operator/console/social-links`). a row submits under its position,
