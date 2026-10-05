@@ -32,7 +32,8 @@ import (
 // state the fold draws at the control that was pressed, so a status carrying it would make the
 // page's own reading a failure to recover from. the codes here are for the presses that never
 // reached the deployment at all: a body this console will not act on, and a name it does not draw
-// a box for.
+// a box for. the one exception is the read of the logo's bytes, whose answer is the bytes
+// themselves, so it states its own statuses (./logoRoutes).
 //
 // **the session is read here and reaches no answer.** it is closed over by the reader and the
 // writer internal/deployment is handed, which is internal/cf's arrangement for every credential
@@ -89,6 +90,19 @@ func surfaceSend(records state.Store, surface func(origin, token string) cf.Send
 			return nil
 		}
 		return surface(mine.Origin, mine.Token)
+	}
+}
+
+// surfacePhotos is the image address of the deployment this console holds a session on, or nil
+// where it holds none. the session's origin is read and its token is not: that address asks for
+// none.
+func surfacePhotos(records state.Store) func() cf.Fetch {
+	return func() cf.Fetch {
+		mine := session.Held(records, release.Baked.Name, time.Now())
+		if mine == nil {
+			return nil
+		}
+		return deployment.Images(mine.Origin)
 	}
 }
 
@@ -242,9 +256,13 @@ func errandRoutes(routes *http.ServeMux, held, patient func() (cf.Get, cf.Post))
 	})
 }
 
-// the organisation's logo, put on and taken off. each answers the write the profile's own press
-// does, so a refusal of the photo is drawn at the logo the way a field's is drawn at its box.
-func logoRoutes(routes *http.ServeMux, held, patient func() cf.Send) {
+// the organisation's logo, put on, taken off and read back. the two writes answer the write the
+// profile's own press does, so a refusal of the photo is drawn at the logo the way a field's is
+// drawn at its box.
+//
+// photos is the deployment's image address, bound to the origin the session was minted on, or nil
+// where this console holds none.
+func logoRoutes(routes *http.ServeMux, held, patient func() cf.Send, photos func() cf.Fetch) {
 
 	// puts the logo on, forwarding the browser's multipart body as it arrived.
 	//
@@ -280,6 +298,34 @@ func logoRoutes(routes *http.ServeMux, held, patient func() cf.Send) {
 			return
 		}
 		answer(w, http.StatusOK, deployment.SaveLogo(r.Context(), patient(), kind, body))
+	})
+
+	// hands over the logo the deployment holds now, as its bytes, so the cropper can re-crop it: the
+	// deployment's image address is another origin and answers with no cors, so a page here could
+	// draw it but never read it.
+	//
+	// **the bytes are the one answer, so every other answer is a status.** a 404 is a profile
+	// holding no logo; anything this console could not find out answers 502 carrying the reading's
+	// own refusal, whose kind says which — no-session included, which asks nothing at all.
+	routes.HandleFunc("GET /api/deployment/org/logo", func(w http.ResponseWriter, r *http.Request) {
+		read := deployment.ReadLogo(r.Context(), held(), photos())
+		switch read.Kind {
+		case deployment.LogoNone:
+			answer(w, http.StatusNotFound, map[string]string{"error": "this deployment holds no logo"})
+		case deployment.LogoUnread:
+			answer(w, http.StatusBadGateway, read.Read)
+		default:
+			said := w.Header()
+			said.Set("Content-Type", read.Type)
+			// the logo changes under this one address, and a re-crop of a cached one is a crop of
+			// the logo the operator already replaced.
+			said.Set("Cache-Control", "no-store")
+			// served on the origin that answers every press, so a photo opened on its own runs
+			// nothing.
+			said.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(read.Bytes)
+		}
 	})
 
 	// takes the logo off. it carries no body: there is one logo, and the address names it.

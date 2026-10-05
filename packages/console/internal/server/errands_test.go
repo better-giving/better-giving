@@ -54,6 +54,12 @@ type refusal struct {
 	body   map[string]any
 }
 
+// an answer the deployment sends as bytes under a type of its own, which is how it serves a photo.
+type photo struct {
+	kind  string
+	bytes []byte
+}
+
 // a deployment answering each path whatever a case bound it to, and remembering what it was asked.
 func deployed(t *testing.T, answers map[string]any) (*httptest.Server, func() []errand) {
 	t.Helper()
@@ -79,6 +85,11 @@ func deployed(t *testing.T, answers map[string]any) (*httptest.Server, func() []
 		if under, coded := held.(refusal); coded {
 			w.WriteHeader(under.status)
 			_ = json.NewEncoder(w).Encode(under.body)
+			return
+		}
+		if served, raw := held.(photo); raw {
+			w.Header().Set("Content-Type", served.kind)
+			_, _ = w.Write(served.bytes)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(held)
@@ -365,6 +376,150 @@ func TestTheLogoErrandsWithNoSessionMakeNoRequest(t *testing.T) {
 	}
 	if len(asked()) != 0 {
 		t.Fatalf("the deployment was asked %v", asked())
+	}
+}
+
+// the deployment's report, naming the logo it holds under `id`.
+func holdingLogo(id string) map[string]any {
+	report := reported()
+	report["org"] = map[string]any{
+		"legal_name": "Hound Haven",
+		"logo":       map[string]any{"id": id, "url": "https://hound-haven.org/image/" + id},
+	}
+	return report
+}
+
+// one read of the logo, the way the cropper makes it.
+func logoRead(handler http.Handler) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodGet, "/api/deployment/org/logo", nil)
+	request.Host = loopback
+	recorded := httptest.NewRecorder()
+	handler.ServeHTTP(recorded, request)
+	return recorded
+}
+
+// the logo the reading names is handed over on this console's own origin as the bytes the
+// deployment served, under the type it served them with. the image address is ungated, so the
+// session rides the reading and never the photo.
+func TestTheLogoTheDeploymentHoldsIsHandedOverAsItsBytes(t *testing.T) {
+	webp := []byte("RIFF\x00\x00\x00\x00WEBPVP8 ")
+	handler, asked := errands(t, map[string]any{
+		"GET /console":     holdingLogo("img-1"),
+		"GET /image/img-1": photo{"image/webp", webp},
+	}, "here")
+
+	recorded := logoRead(handler)
+	if recorded.Code != http.StatusOK || recorded.Header().Get("Content-Type") != "image/webp" ||
+		!bytes.Equal(recorded.Body.Bytes(), webp) {
+		t.Fatalf("%d %q %q", recorded.Code, recorded.Header().Get("Content-Type"), recorded.Body.Bytes())
+	}
+	calls := asked()
+	if len(calls) != 2 || calls[0].path != "/console" || calls[1].path != "/image/img-1" {
+		t.Fatalf("the deployment was asked %v", calls)
+	}
+	if calls[0].bearer != "Bearer "+errandToken || calls[1].bearer != "" {
+		t.Fatalf("the session travelled as %q and %q", calls[0].bearer, calls[1].bearer)
+	}
+}
+
+// what a read of the logo that handed over no bytes said, decoded.
+func logoRefusal(t *testing.T, recorded *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var said map[string]any
+	if err := json.Unmarshal(recorded.Body.Bytes(), &said); err != nil {
+		t.Fatalf("answered %d %q", recorded.Code, recorded.Body.String())
+	}
+	return said
+}
+
+// a profile holding no logo, none at all, and a logo taken off between the reading and the read of
+// its bytes are each a 404 in the console's own refusal.
+func TestNoLogoIsANotFound(t *testing.T) {
+	bare := reported()
+	none := reported()
+	none["org"] = nil
+	for name, answers := range map[string]map[string]any{
+		"no logo":    {"GET /console": bare},
+		"no profile": {"GET /console": none},
+		"taken off":  {"GET /console": holdingLogo("img-1")},
+	} {
+		handler, _ := errands(t, answers, "here")
+		recorded := logoRead(handler)
+		if said := logoRefusal(t, recorded); recorded.Code != http.StatusNotFound || said["error"] == nil {
+			t.Errorf("%s answered %d %v", name, recorded.Code, said)
+		}
+	}
+}
+
+// bytes past the most the deployment stores, or under a type that is not a photo, are not handed
+// over on this console's origin. at the cap they are.
+func TestALogoPastTheCapOrNotAPhotoIsRefused(t *testing.T) {
+	for name, served := range map[string]photo{
+		"past the cap": {"image/png", make([]byte, release.LogoUploadMax+1)},
+		"not a photo":  {"text/html; charset=utf-8", []byte("<script></script>")},
+		"untyped":      {"", []byte("RIFF")},
+	} {
+		handler, _ := errands(t, map[string]any{
+			"GET /console": holdingLogo("img-1"), "GET /image/img-1": served,
+		}, "here")
+		recorded := logoRead(handler)
+		if said := logoRefusal(t, recorded); recorded.Code != http.StatusBadGateway ||
+			said["kind"] != "unreadable" || said["detail"] == "" {
+			t.Errorf("%s answered %d %v", name, recorded.Code, said)
+		}
+	}
+
+	handler, _ := errands(t, map[string]any{
+		"GET /console":     holdingLogo("img-1"),
+		"GET /image/img-1": photo{"image/png", make([]byte, release.LogoUploadMax)},
+	}, "here")
+	if recorded := logoRead(handler); recorded.Code != http.StatusOK ||
+		recorded.Body.Len() != release.LogoUploadMax {
+		t.Fatalf("a logo at the cap answered %d with %d bytes", recorded.Code, recorded.Body.Len())
+	}
+}
+
+// with no session the read asks nothing, and says so the way every errand does.
+func TestTheLogoReadWithNoSessionMakesNoRequest(t *testing.T) {
+	handler, asked := errands(t, map[string]any{}, "")
+	recorded := logoRead(handler)
+	if said := logoRefusal(t, recorded); recorded.Code != http.StatusBadGateway || said["kind"] != "no-session" {
+		t.Fatalf("answered %d %v", recorded.Code, said)
+	}
+	if len(asked()) != 0 {
+		t.Fatalf("the deployment was asked %v", asked())
+	}
+}
+
+// a deployment that refused the session, or the photo, comes back in its own words, and one nobody
+// reached as unreachable.
+func TestALogoReadTheDeploymentDidNotAnswerCarriesHowItWent(t *testing.T) {
+	for name, held := range map[string]struct {
+		answers map[string]any
+		kind    string
+	}{
+		"session refused": {map[string]any{"GET /console": refusal{http.StatusUnauthorized, map[string]any{
+			"error": "session_refused", "message": "Not this session.", "fix": "Connect again.",
+		}}}, "refused"},
+		"photo refused": {map[string]any{
+			"GET /console": holdingLogo("img-1"),
+			"GET /image/img-1": refusal{http.StatusTooManyRequests, map[string]any{
+				"error": "rate_limited", "message": "Too many reads.", "fix": "Wait a minute.",
+			}},
+		}, "unreadable"},
+	} {
+		handler, _ := errands(t, held.answers, "here")
+		recorded := logoRead(handler)
+		if said := logoRefusal(t, recorded); recorded.Code != http.StatusBadGateway ||
+			said["kind"] != held.kind || said["fix"] == nil {
+			t.Errorf("%s answered %d %v", name, recorded.Code, said)
+		}
+	}
+
+	nowhere, _ := errands(t, map[string]any{}, "http://127.0.0.1:1")
+	recorded := logoRead(nowhere)
+	if said := logoRefusal(t, recorded); recorded.Code != http.StatusBadGateway || said["kind"] != "unreachable" {
+		t.Fatalf("answered %d %v", recorded.Code, said)
 	}
 }
 
