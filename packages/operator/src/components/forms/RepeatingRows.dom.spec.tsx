@@ -1,5 +1,6 @@
 import { act, type FormEvent, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ruleOf, rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { mount, render } from '../render.testing';
 import { type RepeatingRow, type RowControl, RepeatingRows } from './RepeatingRows.jsx';
 
@@ -501,5 +502,37 @@ describe('where focus lands after a row is added or dropped', () => {
 
 		expect(inputs(root)).toHaveLength(2);
 		expect(document.activeElement?.textContent).toBe('Add another');
+	});
+});
+
+describe('the Remove beside a row', () => {
+	// happy-dom lays nothing out, so the height is read as the sheet states it: the press and the
+	// box it stands beside are given the same token, and that is the whole of the claim.
+	const css = sheet('adm.css');
+
+	it('is the x mark and no word, named for the row it drops', () => {
+		const root = render(Bound, { rows: SITES });
+		const removes = [...root.querySelectorAll<HTMLButtonElement>('.adm-rows__row button')];
+
+		expect(removes.map((button) => button.textContent)).toEqual(['', '']);
+		expect(removes.map((button) => button.getAttribute('aria-label'))).toEqual([
+			'Remove Allowed origins 1',
+			'Remove Allowed origins 2'
+		]);
+		for (const button of removes) {
+			expect(button.classList.contains('adm-rows__remove')).toBe(true);
+			expect(button.querySelector('svg')?.getAttribute('class')).toContain('lucide-x');
+		}
+	});
+
+	it('is as tall as the box beside it, and as wide', () => {
+		const remove = ruleOf(css, '.adm-rows__row > .adm-rows__remove');
+		const box = rulesIn(css)
+			.find(({ selector }) => selector.split(', ').includes('.adm-input'))
+			?.stated.get('min-block-size');
+
+		expect(box).toBe('var(--admin-field-height)');
+		expect(remove.get('min-block-size')).toBe(box);
+		expect(remove.get('inline-size')).toBe(box);
 	});
 });

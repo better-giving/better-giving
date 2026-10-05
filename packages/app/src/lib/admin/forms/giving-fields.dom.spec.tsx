@@ -340,8 +340,11 @@ it('gives the bounds no named field but the two boxes', () => {
 const PRESSES = { rows: [row(0), row(1)] };
 
 function presses(within: Element) {
-	return [...within.querySelectorAll('button')].filter((one) =>
-		/^(Add an amount|Remove)$/.test(one.textContent?.trim() ?? '')
+	// Add reads its words, and Remove is its mark alone and named for its row to a reader.
+	return [...within.querySelectorAll('button')].filter(
+		(one) =>
+			one.textContent?.trim() === 'Add an amount' ||
+			/^Remove /.test(one.getAttribute('aria-label') ?? '')
 	);
 }
 

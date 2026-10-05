@@ -3936,13 +3936,13 @@
 	   row whose control is not a Remove — a locked row's status word — keeps its box on the same
 	   edge as the boxes under it.
 
-	   the trailing side is one track and whatever stands there is a mark and then a word inside it,
-	   read as one thing: the Remove is a mark and a word, a locked row's status is a mark and a
-	   word, and each is the row's single trailing item rather than a pair spread over a track
-	   apiece — a word placed in a track of its own lands past the width of the presses beside it,
-	   which is a word a hand's breadth from the mark it belongs to. so the step between the mark and
-	   the word is the button's own label step (`.adm-btn__label` above), and a status set that way
-	   reads the way `trash-2 Remove` does. the item is set at the start of its track, because the
+	   the trailing side is one track and whatever stands there is the row's single trailing item:
+	   the Remove is a mark alone (`.adm-rows__remove` below), and a locked row's status is a mark
+	   and a word read as one thing rather than a pair spread over a track apiece — a word placed in
+	   a track of its own lands past the width of the presses beside it, which is a word a hand's
+	   breadth from the mark it belongs to. so the step between the status's mark and its word is
+	   the button's own label step (`.adm-btn__label` above). the item is set at the start of its
+	   track, because the
 	   control's rank centres it and a control centred in a track sized by a longer one beside it is
 	   off its column by half the difference. and what stands there starts one line-width in whether
 	   or not it draws that line: a control's border is inside its box, so a status with none would
@@ -3996,6 +3996,23 @@
 		font-size: var(--admin-aside-size);
 		font-weight: var(--admin-aside-weight);
 		line-height: var(--admin-aside-lh);
+	}
+
+	/* the Remove beside a row's box: the `x` mark and no word, in a square as tall as the box. it is
+	   the box's height rather than the small control's, because a press shorter than the thing it
+	   drops reads as a control that missed the line — the rule `.adm-field > .adm-actions > .adm-btn`
+	   below states for a press on a field's own row. it stands level with the box's top rather than
+	   centred on the row, because a row carrying its own sentence is taller than its box and the
+	   press belongs to the box. square and at the start of its track, so a locked row's wider status
+	   above it does not stretch it. the row scopes it so it outweighs the trailing track's own rule
+	   above. */
+	.adm-rows__row > .adm-rows__remove {
+		align-self: start;
+		justify-self: start;
+		inline-size: var(--admin-field-height);
+		min-block-size: var(--admin-field-height);
+		padding-inline: 0;
+		justify-content: center;
 	}
 
 	/* ---------- the code chip -----------------------------------------------------------
