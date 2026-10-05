@@ -341,11 +341,35 @@ describe('the logo’s presses', () => {
 		expect(posted(remove)).toEqual([]);
 	});
 
-	it('draws the stored logo and offers to replace it', () => {
-		const { markup } = drawn(WIDENED);
+	/** the square the logo is drawn in, which is the press that chooses one. */
+	const square = (markup: string): string => {
+		const found = markup.match(
+			/<button[^>]*class="adm-logo__square"[^>]*>(?:(?!<\/button>).)*<\/button>/s
+		);
+		expect(found).not.toBeNull();
+		return found?.[0] ?? '';
+	};
 
-		expect(markup).toContain('src="https://give.riverside.org/images/img_1"');
-		expect(markup).toContain('Replace logo');
+	it('draws the stored logo as the square that replaces it, named for that', () => {
+		const shown = square(drawn(WIDENED).markup);
+
+		expect(shown).toMatch(/^<button type="button"/);
+		expect(shown).toContain('src="https://give.riverside.org/images/img_1"');
+		expect(shown).toContain('<span class="adm-vh">Replace logo</span>');
+	});
+
+	it('stands the crop and the removal on the square’s corner, each a mark named for what it does', () => {
+		const { markup } = drawn(WIDENED);
+		const corner = markup.match(/<div class="adm-logo__presses">(?:(?!<\/div>).)*<\/div>/s)?.[0];
+		const crop = corner?.match(/<button[^>]*aria-label="Crop the logo"[^>]*>/)?.[0];
+
+		expect(crop).toContain('type="button"');
+		expect(crop).not.toContain('form=');
+		expect(corner).toContain('aria-label="Remove the logo"');
+		expect(corner).toContain('lucide-crop');
+		expect(corner).toContain('lucide-trash-2');
+		// no row of presses under the square.
+		expect(formNamed(markup, 'org-logo-upload')).not.toContain('adm-actions');
 	});
 
 	// a press taken off the page while it holds focus drops a reader to the document; closed by
@@ -359,11 +383,30 @@ describe('the logo’s presses', () => {
 		expect(press).toContain('form="org-logo-remove"');
 	});
 
-	it('offers to add one, and no Remove, where none is stored', () => {
+	it('offers to add one in the empty square, and no press beside it, where none is stored', () => {
 		const { markup } = drawn(STORED);
+		const shown = square(markup);
 
-		expect(markup).toContain('Add logo');
+		expect(shown).toContain('lucide-image-up');
+		expect(shown).toContain('<span>Add logo</span>');
+		expect(markup).not.toContain('adm-logo__presses');
 		expect(markup).not.toContain('Remove the logo');
+		expect(markup).not.toContain('Crop the logo');
+	});
+
+	it('reads Saving on the square while a logo press is out, and keeps it focusable', () => {
+		const shown = square(
+			drawn(WIDENED, true, null, null, { busy: true, logoPending: true }).markup
+		);
+
+		expect(shown).toContain('aria-busy="true"');
+		expect(shown).toContain('aria-disabled="true"');
+		expect(shown).not.toMatch(/\bdisabled=""/);
+		expect(shown).toContain('<span>Saving</span>');
+	});
+
+	it('draws no crop before an image is chosen', () => {
+		expect(drawn(WIDENED).markup).not.toContain('<dialog');
 	});
 });
 

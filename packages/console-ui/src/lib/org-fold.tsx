@@ -17,6 +17,7 @@ import {
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import {
 	type ChangeEvent,
+	type DragEvent,
 	type FormEvent,
 	type MouseEvent,
 	type ReactNode,
@@ -39,12 +40,16 @@ import {
 	watchEin
 } from './ein-lookup';
 import { FindOrgDialog } from './find-org-dialog';
+import { droppedFile } from './logo-crop';
+import { type CropImage, LogoCropDialog } from './logo-crop-dialog';
 import { heldBoxes, putBoxes } from './fold-boxes';
 import { rememberWebsite } from './found-organisation';
 import {
 	IDENTITY_BOXES,
 	LOGO_FIELD,
 	LOGO_FILE,
+	LOGO_FROM_FILE,
+	LOGO_FROM_STORED,
 	LOGO_LABEL,
 	ORGANISATION_KEYS,
 	ORG_FIELDS,
@@ -142,7 +147,9 @@ import type {
 // the deployment stores it by (`readSocialLink` in `@better-giving/operator/console/social-links`),
 // so the mark a row shows is the platform a save would store it under. the logo is a press of its
 // own beside the profile form — a photo is not a box, and holding it until Save would be a file
-// nobody can see waiting under a button that says nothing about it.
+// nobody can see waiting under a button that says nothing about it. the logo's square is that
+// press: a photo chosen or dropped on it, and the crop pressed on its corner, open the crop
+// (./logo-crop-dialog.tsx), and the crop's own Save is what sends.
 //
 // **an answer is the profile's or the logo's by the tag the page hands beside it** (`press`,
 // `OrgPressKind` in ./org-fields.ts). all three presses answer in the profile's shape, and a logo
@@ -509,13 +516,13 @@ export function OrgFold({
 		};
 	};
 
-	/* the logo: the photo the deployment holds, the press that chooses a new one and sends it at
-	   once, and Remove. the file box is the press's and is opened by it, cleared first so the same
-	   photo chosen again after a refusal is still a choice. */
+	/* the logo: the square that shows it and chooses a new one, and the two presses on its corner
+	   that crop it again and take it off. the file box is the square's and is opened by it, cleared
+	   first so the same photo chosen again after a refusal is still a choice. */
 	const logo = stored.logo;
-	const logoForm = useRef<HTMLFormElement>(null);
 	const fileBox = useRef<HTMLInputElement>(null);
 	const choosePress = useRef<HTMLButtonElement>(null);
+	const cropPress = useRef<HTMLButtonElement>(null);
 	const logoAnswer = logoWrite ?? profileWrite;
 	const logoRefused = logoAnswer?.kind === 'refused' ? logoAnswer.errors[LOGO_FIELD] : undefined;
 
@@ -528,6 +535,40 @@ export function OrgFold({
 		shownLogo.current = logoId;
 		if (was !== null && logoId === null) choosePress.current?.focus();
 	}, [logoId]);
+
+	/* the image a crop is open on, and nothing is sent until its Save: a file chosen or dropped, or
+	   the stored logo. keyed by the opening, so each image is a card of its own. */
+	const [cropping, setCropping] = useState<{ key: number; image: CropImage } | null>(null);
+	const openings = useRef(0);
+	const crop = (image: CropImage) => {
+		openings.current += 1;
+		setCropping({ key: openings.current, image });
+	};
+	/* a dropped file is put in the file box, one file alone, which is what a save of its crop posts. */
+	const dropped = (file: File) => {
+		const box = fileBox.current;
+		if (box === null) return;
+		const one = new DataTransfer();
+		one.items.add(file);
+		box.files = one.files;
+		crop({ from: LOGO_FROM_FILE, file });
+	};
+	const cancelCrop = () => {
+		setCropping(null);
+		if (fileBox.current !== null) fileBox.current.value = '';
+	};
+
+	/* a file dragged over the square is taken by it, and the square says so. a drop while the page
+	   writes is still held here, so the browser never opens the file in place of the console. */
+	const [dragging, setDragging] = useState(false);
+	const carriesFiles = (event: DragEvent<HTMLElement>) =>
+		event.dataTransfer.types.includes('Files');
+	const dragOver = (event: DragEvent<HTMLElement>) => {
+		if (!carriesFiles(event)) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = busy ? 'none' : 'copy';
+		if (!busy) setDragging(true);
+	};
 
 	return (
 		<>
@@ -653,27 +694,25 @@ export function OrgFold({
 
 			<fieldset className="adm-fieldset">
 				<legend className="adm-fieldset__legend">{LOGO_LABEL}</legend>
+				{/* the crop's Save submits this form from inside the card, and that submit takes the card down. */}
 				<Form
-					ref={logoForm}
 					id={LOGO_UPLOAD_FORM}
-					className="adm-placed"
+					className="adm-logo"
 					method="post"
 					encType="multipart/form-data"
 					preventScrollReset
+					onSubmit={() => setCropping(null)}
 				>
 					<input type="hidden" name="intent" value={ORG_LOGO_INTENT} readOnly />
-					{logo === null ? null : (
-						<img
-							className="adm-placed__art adm-placed__art--whole"
-							src={logo.url}
-							alt="Your logo"
-						/>
-					)}
-					<div className="adm-actions">
-						<Button
+					<div className="adm-logo__frame">
+						{/* the square is the press that chooses: a press or a file dropped on it opens the
+						    crop, and nothing is sent until that is saved. closed by `aria-disabled` while
+						    the page writes, so a reader standing on it keeps the focus. */}
+						<button
 							ref={choosePress}
 							type="button"
-							mark="image-up"
+							className="adm-logo__square"
+							data-dragging={dragging || undefined}
 							aria-busy={logoPending || undefined}
 							aria-disabled={busy || undefined}
 							aria-describedby={logoRefused === undefined || busy ? undefined : LOGO_REFUSAL}
@@ -682,42 +721,77 @@ export function OrgFold({
 								fileBox.current.value = '';
 								fileBox.current.click();
 							}}
-						>
-							{logoPending ? 'Saving' : logo === null ? 'Add logo' : 'Replace logo'}
-						</Button>
-						{logo === null ? null : (
-							/* it submits the empty form beside this one, so a removal posts no photo. closed
-							   by `aria-disabled` while the page writes, as the press beside it is, so a reader
-							   standing on it keeps the focus. */
-							<Button
-								type="submit"
-								form={LOGO_REMOVE_FORM}
-								name="intent"
-								value={ORG_LOGO_REMOVE_INTENT}
-								variant="quiet"
-								mark="trash-2"
-								aria-label="Remove the logo"
-								aria-disabled={busy || undefined}
-								onClick={(event: MouseEvent<HTMLButtonElement>) => {
-									if (busy) event.preventDefault();
-								}}
-							>
-								Remove
-							</Button>
-						)}
-						{/* chosen is sent: a photo is put on by choosing it, as the press says. */}
-						<input
-							ref={fileBox}
-							type="file"
-							name={LOGO_FILE}
-							accept="image/*"
-							hidden
-							disabled={busy}
-							onChange={(event) => {
-								if (event.currentTarget.files?.length) logoForm.current?.requestSubmit();
+							onDragEnter={dragOver}
+							onDragOver={dragOver}
+							onDragLeave={(event) => {
+								if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+									setDragging(false);
+								}
 							}}
-						/>
+							onDrop={(event) => {
+								if (!carriesFiles(event)) return;
+								event.preventDefault();
+								setDragging(false);
+								const file = droppedFile(event.dataTransfer.files);
+								if (!busy && file !== null) dropped(file);
+							}}
+						>
+							{logo === null || logoPending ? (
+								<>
+									<Mark name="image-up" />
+									<span>{logoPending ? 'Saving' : 'Add logo'}</span>
+								</>
+							) : (
+								<>
+									<img className="adm-logo__art" src={logo.url} alt="" />
+									<span className="adm-vh">Replace logo</span>
+								</>
+							)}
+						</button>
+						{logo === null ? null : (
+							<div className="adm-logo__presses">
+								<Button
+									ref={cropPress}
+									type="button"
+									size="sm"
+									mark="crop"
+									aria-label="Crop the logo"
+									aria-disabled={busy || undefined}
+									onClick={() => {
+										if (!busy) crop({ from: LOGO_FROM_STORED, url: logo.url });
+									}}
+								/>
+								{/* it submits the empty form beside this one, so a removal posts no photo. */}
+								<Button
+									type="submit"
+									form={LOGO_REMOVE_FORM}
+									name="intent"
+									value={ORG_LOGO_REMOVE_INTENT}
+									size="sm"
+									mark="trash-2"
+									aria-label="Remove the logo"
+									aria-disabled={busy || undefined}
+									onClick={(event: MouseEvent<HTMLButtonElement>) => {
+										if (busy) event.preventDefault();
+									}}
+								/>
+							</div>
+						)}
 					</div>
+					{/* the photo a crop of a chosen one posts. closed under a crop of the stored logo,
+					    which posts no photo. */}
+					<input
+						ref={fileBox}
+						type="file"
+						name={LOGO_FILE}
+						accept="image/*"
+						hidden
+						disabled={busy || cropping?.image.from === LOGO_FROM_STORED}
+						onChange={(event) => {
+							const file = event.currentTarget.files?.[0];
+							if (file !== undefined) crop({ from: LOGO_FROM_FILE, file });
+						}}
+					/>
 					{logoRefused === undefined || busy ? null : (
 						<FieldMessage id={LOGO_REFUSAL}>
 							<MarkedText text={logoRefused} />
@@ -727,6 +801,16 @@ export function OrgFold({
 				</Form>
 				<Form id={LOGO_REMOVE_FORM} method="post" preventScrollReset />
 			</fieldset>
+
+			{cropping === null ? null : (
+				<LogoCropDialog
+					key={cropping.key}
+					image={cropping.image}
+					form={LOGO_UPLOAD_FORM}
+					onCancel={cancelCrop}
+					fallbackFocus={cropping.image.from === LOGO_FROM_STORED ? cropPress : choosePress}
+				/>
+			)}
 
 			{/* outside the form, so Enter in its box can never be the form's own submit. */}
 			{finding ? (

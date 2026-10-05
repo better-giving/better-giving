@@ -6358,9 +6358,9 @@
 
 	/* ---------- a placed photo -----------------------------------------------------------
 
-	   a photo on the page, in its block's edit sheet, the organisation's logo, a program's photo: the
-	   picture, the press that replaces it, and what that press last reported. the picture is cropped
-	   to the one frame whatever its shape, and the fill stands there until it has loaded. */
+	   a photo on the page, in its block's edit sheet, a program's photo: the picture, the press that
+	   replaces it, and what that press last reported. the picture is cropped to the one frame
+	   whatever its shape, and the fill stands there until it has loaded. */
 	.adm-placed {
 		display: grid;
 		gap: var(--admin-space-4);
@@ -6374,18 +6374,165 @@
 		border-radius: var(--admin-radius);
 	}
 
-	/* a logo is never cropped: the frame keeps its ratio and fill, and the art sits inside it whole,
-	   off the frame's edge by the part's inner step. */
-	.adm-placed__art--whole {
-		max-inline-size: var(--admin-measure-panel);
-		object-fit: contain;
-		padding: var(--admin-space-5);
-	}
-
 	/* a program's photo, cropped square as the donation page's program chooser crops it. */
 	.adm-placed__art--square {
 		aspect-ratio: 1;
 		max-inline-size: var(--admin-measure-rail);
+	}
+
+	/* ---------- the organisation's logo ---------------------------------------------------
+
+	   packages/console-ui/src/lib/org-fold.tsx draws it: one square that is the logo and the press
+	   that replaces it, the two presses on its corner that crop it again and take it off, and what
+	   the last press reported under it. the square is the size a program's photo is drawn at
+	   (`.adm-placed__art--square` above), and the art stands in it whole — a logo is cropped by its
+	   own crop and never by its frame — off the edge by the part's inner step.
+
+	   with no logo the square holds the mark and the word that say what a press does, and its edge is
+	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. a file dragged
+	   over it draws the edge in the ring's ink on the accent's tint, because the square is what will
+	   take it. */
+	.adm-logo {
+		display: grid;
+		justify-items: start;
+		gap: var(--admin-space-3);
+	}
+
+	.adm-logo__frame {
+		position: relative;
+		inline-size: min(100%, var(--admin-measure-rail));
+	}
+
+	.adm-logo__square {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--admin-space-3);
+		inline-size: 100%;
+		aspect-ratio: 1;
+		padding: var(--admin-space-5);
+		font-size: var(--admin-control-size);
+		font-weight: var(--admin-control-weight);
+		line-height: var(--admin-control-lh);
+		color: var(--admin-ink-2);
+		background: var(--admin-surface-fill);
+		border: var(--admin-border-width) dashed var(--admin-control-border);
+		border-radius: var(--admin-radius);
+		cursor: pointer;
+		transition: var(--admin-transition-state);
+	}
+
+	.adm-logo__square:has(> .adm-logo__art) {
+		border-style: solid;
+	}
+
+	.adm-logo__square:hover,
+	.adm-logo__square.is-hover {
+		border-color: var(--admin-control-border-hover);
+		color: var(--admin-ink);
+	}
+
+	.adm-logo__square:active,
+	.adm-logo__square.is-active {
+		border-color: var(--admin-control-border-active);
+	}
+
+	.adm-logo__square[data-dragging] {
+		color: var(--admin-accent-ink);
+		background: var(--admin-accent-tint);
+		border-color: var(--admin-focus-ring);
+	}
+
+	/* closed while the page writes, by `aria-disabled` so a reader standing on it keeps the focus. */
+	.adm-logo__square[aria-disabled='true'] {
+		color: var(--admin-ink-disabled);
+		border-color: var(--admin-control-border-disabled);
+		cursor: not-allowed;
+	}
+
+	/* the logo fills what the square has inside its padding and is drawn whole in it. */
+	.adm-logo__art {
+		flex: 1 1 0;
+		min-block-size: 0;
+		inline-size: 100%;
+		object-fit: contain;
+	}
+
+	/* the two presses on the square's corner, each the small control's square with a mark and no
+	   word, standing on the logo in the control's own ground. each is aimed at as a touch target:
+	   the `::before` below is the press's own box grown to `--admin-touch-min` about its centre, the
+	   gap between the two is exactly what the two growths take, so the targets meet and never
+	   overlap, and the corner inset is half of one growth, so a target reaches the square's edge and
+	   no further. */
+	.adm-logo__presses {
+		position: absolute;
+		inset-block-start: var(--admin-space-4);
+		inset-inline-end: var(--admin-space-4);
+		display: flex;
+		gap: calc(var(--admin-touch-min) - var(--admin-control-height-sm));
+	}
+
+	.adm-logo__presses > .adm-btn {
+		inline-size: var(--admin-control-height-sm);
+		padding-inline: 0;
+	}
+
+	.adm-logo__presses > .adm-btn::before {
+		content: '';
+		position: absolute;
+		inset: calc((var(--admin-control-height-sm) - var(--admin-touch-min)) / 2);
+	}
+
+	/* the crop the logo dialog draws (packages/console-ui/src/lib/logo-crop-dialog.tsx): the image
+	   whole, at its own shape, with the square over it. the box the square is dragged in is the
+	   image's own box — the crop converts between the two by that alone — so the box hugs the image
+	   and the image is capped rather than stretched: no wider than the card, and no taller than a
+	   panel is wide, so a tall image leaves the card's presses in view. outside the square the image
+	   lies under the dialog's own ground, which is what says what is being kept. */
+	.adm-cropper {
+		display: grid;
+		justify-items: center;
+	}
+
+	.adm-cropper__viewport {
+		max-inline-size: 100%;
+		background: var(--admin-surface-fill);
+	}
+
+	.adm-cropper__image {
+		display: block;
+		max-inline-size: 100%;
+		max-block-size: var(--admin-measure-panel);
+	}
+
+	.adm-cropper__selection {
+		border: var(--admin-border-width-strong) solid var(--admin-surface);
+		/* raw-length-ok: the spread is past the longest side of any image, which no step is. */
+		box-shadow: 0 0 0 100vmax var(--admin-scrim);
+		cursor: move;
+	}
+
+	/* the corners are drawn as grips and the edges are grabbed without one. the machine places each
+	   and sizes the edges along their side; what is stated here is how far a grip reaches across. */
+	.adm-cropper__handle:is(
+		[data-position='nw'],
+		[data-position='ne'],
+		[data-position='sw'],
+		[data-position='se']
+	) {
+		inline-size: var(--admin-space-6);
+		block-size: var(--admin-space-6);
+		background: var(--admin-surface);
+		border: var(--admin-hairline);
+	}
+
+	.adm-cropper__handle:is([data-position='n'], [data-position='s']) {
+		block-size: var(--admin-space-6);
+	}
+
+	.adm-cropper__handle:is([data-position='e'], [data-position='w']) {
+		inline-size: var(--admin-space-6);
 	}
 
 	/* ---------- rich text -------------------------------------------------------------
