@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { applyD1Migrations, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { parsePage } from '../../page/catalog';
+import type { PageType } from '../../page/keys';
 import { findKeyByPresented } from '../integrations/keys';
 import { post, postingStatements } from '../ledger/posting';
 import { HELD_UNTIL } from '../webhooks/events';
@@ -26,8 +28,9 @@ import { createDb } from './client';
 // for it; a squash into one file leaves nothing to stop short of, and the first assertion says so.
 // `api_key` is one: `seedApiKeys` writes it in front of the file that rebuilds it, and
 // `webhook_delivery` another, which `seedWebhookDeliveries` writes in front of 0019 and
-// `seedPausedBacklog` in front of 0022, and `org_presentation` a third, which `seedOrgPresentation`
-// writes in front of 0025.
+// `seedPausedBacklog` in front of 0022, `org_presentation` a third, which `seedOrgPresentation`
+// writes in front of 0025, and `page` a fourth, which `seedLegacyLooks` writes in front of 0026 on
+// the forms `seed` wrote for it.
 
 const CONTACT_ID = '019fb300-0000-7000-8000-000000000001';
 const FORM_ID = 'frm_migrationprobe';
@@ -62,6 +65,13 @@ const ORG_PRESENTATION_DROPPED_BY = '0025_org_presentation_dropped.sql';
 const ORG_PRESENTATION_DROP = env.TEST_MIGRATIONS.findIndex(
 	(m) => m.name === ORG_PRESENTATION_DROPPED_BY
 );
+const PAGE_LOOK_REPAIRED_BY = '0026_page_look_legacy_keys.sql';
+const PAGE_LOOK_REPAIR = env.TEST_MIGRATIONS.findIndex((m) => m.name === PAGE_LOOK_REPAIRED_BY);
+const LEGACY_LOOK_FORMS = ['frm_legacylookcampaign', 'frm_legacylookdonate'] as const;
+const LEGACY_LOOK_CAMPAIGN = '019fb300-0000-7000-8000-000000000301';
+const LEGACY_LOOK_DONATION_PAGE = '019fb300-0000-7000-8000-000000000302';
+const LEGACY_LOOK_UPDATED_AT = 1_790_000_000_500;
+
 const LOGO_IMAGES = [
 	'019fb300-0000-7000-8000-000000000201',
 	'019fb300-0000-7000-8000-000000000202'
@@ -117,9 +127,18 @@ async function seed() {
 		db()
 			.prepare(
 				`insert into form (id, name, revenue_account_id, currency, created_at, updated_at)
-				 values (?, 'probe', ?, 'USD', 0, 0)`
+				 values (?, 'probe', ?, 'USD', 0, 0),
+				        (?, 'campaign page', ?, 'USD', 0, 0),
+				        (?, 'donation page', ?, 'USD', 0, 0)`
 			)
-			.bind(FORM_ID, POSTING_ACCOUNTS.donationsDeductible.id),
+			.bind(
+				FORM_ID,
+				POSTING_ACCOUNTS.donationsDeductible.id,
+				LEGACY_LOOK_FORMS[0],
+				POSTING_ACCOUNTS.donationsDeductible.id,
+				LEGACY_LOOK_FORMS[1],
+				POSTING_ACCOUNTS.donationsDeductible.id
+			),
 		db()
 			.prepare(
 				`insert into recurring_plan
@@ -314,6 +333,61 @@ async function seedOrgPresentation() {
 	]);
 }
 
+/** a page document as the settings sheet in front of 0024 saved it, around the look it was given. */
+const legacyDocument = (look: unknown, rest: Record<string, unknown> = {}) => ({
+	layout: 'box-right',
+	palette: 'tint',
+	look,
+	shareMessage: 'Give warmth this winter',
+	switches: { openOnMonthly: false, dedicationOn: true },
+	blocks: [{ id: 'donate', type: 'donation-box', background: 'none' }],
+	...rest
+});
+
+const LEGACY_LOOK_DOCUMENTS = {
+	campaign: {
+		draft: legacyDocument(
+			{ shade: 'warm', corner: 'round', brandColour: '#1a6b4f' },
+			{ goalMinor: 500_000 }
+		),
+		published: legacyDocument({ shade: 'cool', corner: 'soft', brandColour: null }),
+		last_published: legacyDocument({ shade: 'light', corner: 'square', brandColour: '#123abc' })
+	},
+	donationPage: {
+		draft: legacyDocument(null),
+		published: legacyDocument({ shade: 'warm', corner: 'soft', brandColour: null })
+	}
+} as const;
+
+/**
+ * a live campaign whose three documents each carry `brandColour`, as a hex or null, beside the
+ * donation page with a null look in its draft and no undo copy.
+ */
+async function seedLegacyLooks() {
+	const { campaign, donationPage } = LEGACY_LOOK_DOCUMENTS;
+	await db()
+		.prepare(
+			`insert into page
+			   (id, type, name, slug, state, form_id, draft, published, last_published, created_at, updated_at)
+			 values (?, 'campaign', 'Winter coat drive', 'legacy-look', 'live', ?, ?, ?, ?, 0, ?),
+			        (?, 'donation_page', null, null, 'live', ?, ?, ?, null, 0, ?)`
+		)
+		.bind(
+			LEGACY_LOOK_CAMPAIGN,
+			LEGACY_LOOK_FORMS[0],
+			JSON.stringify(campaign.draft),
+			JSON.stringify(campaign.published),
+			JSON.stringify(campaign.last_published),
+			LEGACY_LOOK_UPDATED_AT,
+			LEGACY_LOOK_DONATION_PAGE,
+			LEGACY_LOOK_FORMS[1],
+			JSON.stringify(donationPage.draft),
+			JSON.stringify(donationPage.published),
+			LEGACY_LOOK_UPDATED_AT
+		)
+		.run();
+}
+
 /**
  * a journal entry for a delivery row to hang off, posted through `post()`: ../ledger/sole-writer.spec.ts
  * refuses a direct write to the ledger tables anywhere outside the ledger module.
@@ -348,6 +422,7 @@ let migrated:
 			webhookDeliveriesBefore: Row[];
 			pausedBacklogBefore: Row[];
 			orgPresentationBefore: Row[];
+			pagesBefore: Row[];
 			atApiKeyMove: Map<string, Row[]>;
 			recopy: { error: string | null; zapierRows: Row[] };
 			after: Map<string, Row[]>;
@@ -408,6 +483,10 @@ function migrateOverSeed() {
 		await seedOrgPresentation();
 		const orgPresentationBefore = (await db().prepare('select * from org_presentation').all<Row>())
 			.results;
+		await applyD1Migrations(db(), chain.slice(0, PAGE_LOOK_REPAIR));
+		await seedLegacyLooks();
+		const pagesBefore = (await db().prepare('select * from page order by rowid').all<Row>())
+			.results;
 		await applyD1Migrations(db(), chain);
 		const overSeed = (await recorded()).slice(underSeed.length);
 		return {
@@ -416,6 +495,7 @@ function migrateOverSeed() {
 			webhookDeliveriesBefore,
 			pausedBacklogBefore,
 			orgPresentationBefore,
+			pagesBefore,
 			atApiKeyMove,
 			recopy,
 			after: await snapshot(),
@@ -930,4 +1010,82 @@ describe('0025 drops org_presentation', () => {
 			expect(after.get('image_bytes')?.map((r) => r.image_id)).toEqual([...LOGO_IMAGES]);
 		}
 	);
+});
+
+// what 0026 is for: a look the settings sheet in front of 0024 saved carries `brandColour`, and a
+// look the earlier rule took may be null, and the page rule refuses both on read.
+describe('0026 reads a page whose look the earlier settings sheet saved', () => {
+	let after: Map<string, Row[]>;
+	let pagesBefore: Row[];
+	let overSeed: string[];
+	const stored = (id: string) => after.get('page')?.find((r) => r.id === id);
+	const read = (row: Row | undefined, column: 'draft' | 'published' | 'last_published') => {
+		const text = row?.[column];
+		if (typeof text !== 'string') throw new Error(`page ${String(row?.id)} has no ${column}`);
+		return parsePage(row?.type as PageType, JSON.parse(text));
+	};
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		({ after, pagesBefore, overSeed } = await migrateOverSeed());
+	});
+
+	it('is in the chain', () => {
+		expect(env.TEST_MIGRATIONS.map((m) => m.name)).toContain(PAGE_LOOK_REPAIRED_BY);
+	});
+
+	it.skipIf(nowhereToStop)('applies over pages the page rule refuses', () => {
+		expect(overSeed).toContain(PAGE_LOOK_REPAIRED_BY);
+		for (const row of pagesBefore) {
+			expect(
+				read(row, 'draft'),
+				`the seed's ${String(row.type)} draft reads, so 0026 has nothing to repair`
+			).toMatchObject({ ok: false, path: ['look'] });
+		}
+	});
+
+	it.skipIf(nowhereToStop)(
+		"reads all three of a campaign's documents, each keeping its shade and corner",
+		() => {
+			const campaign = stored(LEGACY_LOOK_CAMPAIGN);
+			const { draft, published, last_published } = LEGACY_LOOK_DOCUMENTS.campaign;
+			expect(read(campaign, 'draft')).toEqual({
+				ok: true,
+				page: { ...draft, look: { shade: 'warm', corner: 'round' } }
+			});
+			expect(read(campaign, 'published')).toEqual({
+				ok: true,
+				page: { ...published, look: { shade: 'cool', corner: 'soft' } }
+			});
+			expect(read(campaign, 'last_published')).toEqual({
+				ok: true,
+				page: { ...last_published, look: { shade: 'light', corner: 'square' } }
+			});
+		}
+	);
+
+	it.skipIf(nowhereToStop)(
+		"reads a null look as none of the page's own, and leaves a null column null",
+		() => {
+			const donationPage = stored(LEGACY_LOOK_DONATION_PAGE);
+			const { look, ...draft } = LEGACY_LOOK_DOCUMENTS.donationPage.draft;
+			expect(look).toBeNull();
+			expect(read(donationPage, 'draft')).toEqual({ ok: true, page: draft });
+			expect(read(donationPage, 'published')).toEqual({
+				ok: true,
+				page: {
+					...LEGACY_LOOK_DOCUMENTS.donationPage.published,
+					look: { shade: 'warm', corner: 'soft' }
+				}
+			});
+			expect(donationPage?.last_published).toBeNull();
+		}
+	);
+
+	it.skipIf(nowhereToStop)("leaves the editor's version where it was", () => {
+		expect(after.get('page')?.map((r) => [r.id, r.updated_at])).toEqual([
+			[LEGACY_LOOK_CAMPAIGN, LEGACY_LOOK_UPDATED_AT],
+			[LEGACY_LOOK_DONATION_PAGE, LEGACY_LOOK_UPDATED_AT]
+		]);
+	});
 });

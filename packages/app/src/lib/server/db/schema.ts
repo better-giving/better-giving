@@ -3189,8 +3189,9 @@ const noCampaignSettings = (doc: SQLiteColumn) =>
  */
 const pageLookCheck = (doc: SQLiteColumn) => {
 	const look = jsonPath(PAGE_KEYS.look);
-	// no page document writes a brand colour and the catalog's parse refuses one
-	// ($lib/page/catalog.ts); the arm stays because dropping it rebuilds `page`.
+	// no page document holds a brand colour: none is written, the catalog's parse refuses one
+	// ($lib/page/catalog.ts), and migrations/0026 removed those stored before it. the arm stays
+	// because dropping it rebuilds `page`.
 	const colour = sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.look, LOOK_KEYS.brandColour)})`;
 	return sql`json_extract(${doc}, ${look}) is null or (json_type(${doc}, ${look}) = 'object' and ${jsonKeyIn(doc, jsonPath(PAGE_KEYS.look, LOOK_KEYS.shade), SHADES)} and ${jsonKeyIn(doc, jsonPath(PAGE_KEYS.look, LOOK_KEYS.corner), CORNERS)} and (${colour} is null or ${colour} glob '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'))`;
 };
