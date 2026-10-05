@@ -32,7 +32,8 @@ function drawn(
 	stored: StoredOrg,
 	lookups = true,
 	write: OrgWrite | null = null,
-	press: OrgPressKind | null = null
+	press: OrgPressKind | null = null,
+	writing: { readonly busy?: boolean; readonly logoPending?: boolean } = {}
 ) {
 	const lookUp = vi.fn(
 		async (): Promise<NonprofitLookup> => ({
@@ -62,8 +63,9 @@ function drawn(
 					stored,
 					write,
 					press,
-					busy: false,
+					busy: writing.busy ?? false,
 					pending: false,
+					logoPending: writing.logoPending ?? false,
 					lookups,
 					lookUp,
 					search
@@ -218,6 +220,29 @@ describe('the Organisation fold’s save', () => {
 		expect(markup).toMatch(/<textarea[^>]*name="vision"/);
 	});
 
+	it('describes the brand colour box by the hint stating its format', () => {
+		const { markup } = drawn(WIDENED);
+		const colourBox = markup.match(/<input[^>]*name="brand_colour"[^>]*>/)?.[0];
+
+		expect(markup).toContain(
+			'id="org-brand_colour-hint">A # and six hex digits, like #1f6feb.</p>'
+		);
+		expect(colourBox).toMatch(/aria-describedby="[^"]*org-brand_colour-hint/);
+	});
+
+	it('describes the colour well as empty to a reader where no colour is stored', () => {
+		const well = (markup: string) => markup.match(/<input[^>]*type="color"[^>]*>/)?.[0] ?? '';
+		const empty = drawn(STORED).markup;
+		const set = drawn(WIDENED).markup;
+
+		expect(well(empty)).toContain('aria-describedby="org-brand_colour-empty"');
+		expect(empty).toContain(
+			'<span id="org-brand_colour-empty" class="adm-vh">No colour set</span>'
+		);
+		expect(well(set)).not.toContain('aria-describedby');
+		expect(set).not.toContain('No colour set');
+	});
+
 	it('names the platform the deployment recognised beside each stored link', () => {
 		const { markup } = drawn(WIDENED);
 
@@ -254,6 +279,17 @@ describe('the logo’s presses', () => {
 
 		expect(markup).toContain('src="https://give.riverside.org/images/img_1"');
 		expect(markup).toContain('Replace logo');
+	});
+
+	// a press taken off the page while it holds focus drops a reader to the document; closed by
+	// `aria-disabled` it stays focusable, and its own click handler turns a second press away.
+	it('keeps Remove on the page, focusable and closed, while a removal is pending', () => {
+		const { markup } = drawn(WIDENED, true, null, null, { busy: true, logoPending: true });
+		const press = markup.match(/<button[^>]*aria-label="Remove the logo"[^>]*>/)?.[0];
+
+		expect(press).toContain('aria-disabled="true"');
+		expect(press).not.toMatch(/\bdisabled=""/);
+		expect(press).toContain('form="org-logo-remove"');
 	});
 
 	it('offers to add one, and no Remove, where none is stored', () => {
