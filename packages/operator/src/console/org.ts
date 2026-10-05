@@ -56,6 +56,14 @@ export const ORG_PROFILE_FIELDS = [
 export type OrgProfileField = (typeof ORG_PROFILE_FIELDS)[number];
 
 /**
+ * the two keys a refusal comes back under that `ORG_PROFILE_FIELDS` does not name: the list of
+ * social links, refused under one key for the first link refused, and the logo, which is posted to
+ * an address of its own.
+ */
+export const SOCIAL_LINKS_FIELD = 'social_links';
+export const LOGO_FIELD = 'logo';
+
+/**
  * the profile as it crosses the wire: one string per field, absent where the deployment holds
  * nothing.
  *

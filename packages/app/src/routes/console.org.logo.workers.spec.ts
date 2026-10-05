@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { OrgReading } from '@better-giving/operator/console/org';
 import {
 	CONSOLE_SESSION_SECONDS,
@@ -10,6 +10,8 @@ import {
 import { createDb, type Db } from '$lib/server/db/client';
 import { IMAGE_BYTES_MAX, image } from '$lib/server/db/schema';
 import { pngHeader } from '$lib/server/images/headers.testing';
+import { createImage } from '$lib/server/images/queries';
+import { setOrgProfileLogo } from '$lib/server/org/queries';
 import { mountRoutes } from '../route-request.testing';
 import * as org from './console.org';
 import * as logo from './console.org.logo';
@@ -19,23 +21,8 @@ import * as surface from './console';
 // logo it replaces is freed. mounted through the surface's own layout, which is what puts the
 // credential check in front of it (../route-request.testing.ts).
 //
-// the logo write is stood in for in the cases no single request can provoke: a write landing
-// between its read and its own, and D1 failing under it.
-
-const race = vi.hoisted(() => ({ stale: false, throws: false }));
-
-vi.mock('$lib/server/org/queries', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/server/org/queries')>();
-	return {
-		...actual,
-		setOrgProfileLogo: async (...args: Parameters<typeof actual.setOrgProfileLogo>) => {
-			if (race.throws) throw new Error('D1 is unreachable');
-			return race.stale ? 'stale' : actual.setOrgProfileLogo(...args);
-		},
-		removeOrgProfileLogo: async (...args: Parameters<typeof actual.removeOrgProfileLogo>) =>
-			race.stale ? 'stale' : actual.removeOrgProfileLogo(...args)
-	};
-});
+// the two cases no single request provokes are provoked on D1 itself: a write landing between the
+// logo's read and the request's own write (`racedBy`), and D1 refusing that write (a trigger).
 
 const OWN = 'https://give.example.workers.dev';
 const TOKEN = formatConsoleToken(
@@ -54,17 +41,55 @@ const bindings = new Proxy(env, {
 	get: (target, property) => (property === 'CONSOLE_TOKEN' ? TOKEN : Reflect.get(target, property))
 }) as Env;
 
-function remove(): Promise<Response> {
+/**
+ * the bindings with `competing` run on D1 just before the request's first `batch()`: after the
+ * logo's read and before the request's own write, since that write is the one batch it sends.
+ */
+function racedBy(competing: () => Promise<unknown>): Env {
+	let raced = false;
+	const DB = new Proxy(env.DB, {
+		get(target, property) {
+			if (property === 'batch') {
+				return async (statements: D1PreparedStatement[]) => {
+					if (!raced) {
+						raced = true;
+						await competing();
+					}
+					return target.batch(statements);
+				};
+			}
+			const value = Reflect.get(target, property);
+			return typeof value === 'function' ? value.bind(target) : value;
+		}
+	});
+	return new Proxy(bindings, {
+		get: (target, property) => (property === 'DB' ? DB : Reflect.get(target, property))
+	});
+}
+
+/** another writer putting a logo of its own on, stored outside the request under test. */
+async function anotherLogo(): Promise<string> {
+	const theirs = createDb(env.DB);
+	const id = await createImage(
+		theirs,
+		{ kind: 'photo', contentType: 'image/png', width: 100, height: 100, alt: null },
+		pngHeader(100, 100)
+	);
+	expect(await setOrgProfileLogo(theirs, id)).toBe('written');
+	return id;
+}
+
+function remove(on: Env = bindings): Promise<Response> {
 	return routes(
 		new Request(`${OWN}/console/org/logo`, {
 			method: 'DELETE',
 			headers: { authorization: `Bearer ${TOKEN}` }
 		}),
-		{ env: bindings }
+		{ env: on }
 	);
 }
 
-function upload(file: Blob | string): Promise<Response> {
+function upload(file: Blob | string, on: Env = bindings): Promise<Response> {
 	const body = new FormData();
 	body.set('file', file);
 	return routes(
@@ -73,7 +98,7 @@ function upload(file: Blob | string): Promise<Response> {
 			headers: { authorization: `Bearer ${TOKEN}` },
 			body
 		}),
-		{ env: bindings }
+		{ env: on }
 	);
 }
 
@@ -98,8 +123,6 @@ async function logoRefusal(response: Response): Promise<string | undefined> {
 }
 
 beforeEach(async () => {
-	race.stale = false;
-	race.throws = false;
 	db = createDb(env.DB);
 	await env.DB.prepare('delete from org_profile').run();
 	await env.DB.prepare(
@@ -143,11 +166,20 @@ describe('a logo replaced or taken off', () => {
 		expect(await kept(id)).toBe(false);
 	});
 
-	it('refuses a DELETE that lost a race, keyed at the logo', async () => {
-		race.stale = true;
-		expect(await logoRefusal(await remove())).toBe(
+	it('refuses a DELETE that lost a race, keyed at the logo, and frees nothing of the winner’s', async () => {
+		await upload(png());
+		let theirs = '';
+
+		const response = await remove(
+			racedBy(async () => {
+				theirs = await anotherLogo();
+			})
+		);
+
+		expect(await logoRefusal(response)).toBe(
 			'The logo changed while this was sent. Send it again.'
 		);
+		expect(await kept(theirs)).toBe(true);
 	});
 });
 
@@ -186,22 +218,58 @@ describe('a logo the console refuses at the logo box', () => {
 		expect(await db.$count(image)).toBe(before);
 	});
 
-	it('asks for it again when the logo changed while it was sent, and keeps no image', async () => {
+	it('asks for it again when the logo changed while it was sent, and frees only its own upload', async () => {
+		const replaced = (await orgOf(await upload(png()))).logo?.id ?? '';
 		const before = await db.$count(image);
-		race.stale = true;
+		let theirs = '';
 
-		expect(await logoRefusal(await upload(png()))).toBe(
+		const response = await upload(
+			png(300, 300),
+			racedBy(async () => {
+				theirs = await anotherLogo();
+			})
+		);
+
+		expect(await logoRefusal(response)).toBe(
 			'The logo changed while this was sent. Send it again.'
 		);
+		expect(await kept(theirs)).toBe(true);
+		expect(await kept(replaced)).toBe(false);
 		expect(await db.$count(image)).toBe(before);
 	});
 });
 
-it('keeps no image when putting the logo on throws', async () => {
-	const before = await db.$count(image);
-	race.throws = true;
+describe('a logo D1 refuses mid-write', () => {
+	/** runs `send` with every write putting a logo on refused, the image rows ahead of it included. */
+	async function refusingTheLogo(send: () => Promise<Response>): Promise<Response> {
+		await env.DB.prepare(
+			`create trigger refuse_logo before update on org_profile
+			 when new.logo_image_id is not null
+			 begin select raise(abort, 'logo refused'); end`
+		).run();
+		try {
+			return await send();
+		} finally {
+			await env.DB.prepare('drop trigger refuse_logo').run();
+		}
+	}
 
-	await upload(png()).catch(() => undefined);
+	it('leaves no image row behind', async () => {
+		const before = await db.$count(image);
 
-	expect(await db.$count(image)).toBe(before);
+		await refusingTheLogo(() => upload(png()));
+
+		expect(await db.$count(image)).toBe(before);
+	});
+
+	it('answers the console’s JSON 500 rather than a thrown error', async () => {
+		const response = await refusingTheLogo(() => upload(png()));
+
+		expect(response.status).toBe(500);
+		expect(await response.json()).toEqual({
+			error: 'logo_not_stored',
+			message: 'the logo was not stored; send it again',
+			fix: 'Send the logo again.'
+		});
+	});
 });

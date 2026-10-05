@@ -51,8 +51,9 @@ export type SocialLinkReading =
  * one typed address read as a link on one of the six platforms, or the sentence refusing it.
  *
  * the scheme is added where the address carries none (`youtu.be/…` is a link anyone would paste),
- * so what is stored is always an http(s) address; one that names any other scheme is refused,
- * never rewritten.
+ * and what is stored is always `https:` with no user, password or port: `http:` is rewritten and
+ * the other three dropped, since a donor page draws the link as typed. an address naming any other
+ * scheme is refused, never rewritten.
  */
 export function readSocialLink(typed: string): SocialLinkReading {
 	const address = typed.trim();
@@ -83,7 +84,12 @@ const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:(?![0-9])/;
 function webAddress(address: string): URL | null {
 	try {
 		const url = new URL(SCHEME.test(address) ? address : `https://${address}`);
-		return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+		if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+		url.protocol = 'https:';
+		url.username = '';
+		url.password = '';
+		url.port = '';
+		return url;
 	} catch {
 		return null;
 	}

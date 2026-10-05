@@ -2268,7 +2268,7 @@ export const orgProfile = sqliteTable(
 			.default([]),
 		/**
 		 * an `image` of kind `photo`, null for none. no `_previous`: a replaced or removed logo is
-		 * freed where nothing else names it (`setOrgProfileLogo` in ../org/queries.ts).
+		 * freed where nothing else names it, by the logo writes in ../org/queries.ts.
 		 */
 		logoImageId: text('logo_image_id').references(() => image.id)
 	},

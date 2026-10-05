@@ -1,6 +1,6 @@
 import { IMAGE_BYTES_MAX } from '../db/schema';
 import type { Db } from '../db/client';
-import { createImage } from './queries';
+import { type NewImageStatements, newImageStatements } from './queries';
 import { sniffImage } from './sniff';
 
 // a photo posted as `multipart/form-data` with the photo in `file`, stored — the one intake every
@@ -22,6 +22,10 @@ import { sniffImage } from './sniff';
 //
 // the body is read once, here, for the route that owns it (CLAUDE.md → Bans → Runtime). each
 // refusal's `error` names the limit; what status it answers is the route's.
+//
+// `takePostedPhoto` stores the photo on its own. `readPostedPhoto` stores nothing and hands back the
+// statements that would, for a route whose write names the photo to put them in the same `batch()`,
+// so the photo lands only with that write.
 
 /**
  * the most a whole post may be: the photo's cap plus 64 KiB of room for the boundary lines and part
@@ -37,25 +41,37 @@ export const UPLOAD_MAX = IMAGE_BYTES_MAX + 65_536;
  */
 const SIDE_MAX = 4096;
 
-/**
- * a photo stored, or why not: `too-large` over a size bound, `refused` for a body that is no photo
- * this takes, `failed` where the store threw.
- */
+/** why a post is no photo this takes: `too-large` over a size bound, `refused` for anything else. */
+type PhotoRefusal = {
+	readonly ok: false;
+	readonly refusal: 'too-large' | 'refused';
+	readonly error: string;
+};
+
+/** a posted photo checked and not yet stored: its id, its size and the statements storing it. */
+export type PostedPhoto =
+	| {
+			readonly ok: true;
+			readonly id: string;
+			readonly width: number;
+			readonly height: number;
+			readonly statements: NewImageStatements;
+	  }
+	| PhotoRefusal;
+
+/** a photo stored, or why not: a refusal, or `failed` where the store threw. */
 export type PhotoIntake =
 	| { readonly ok: true; readonly id: string; readonly width: number; readonly height: number }
-	| {
-			readonly ok: false;
-			readonly refusal: 'too-large' | 'refused' | 'failed';
-			readonly error: string;
-	  };
+	| PhotoRefusal
+	| { readonly ok: false; readonly refusal: 'failed'; readonly error: string };
 
-const tooLarge = (what: string): PhotoIntake => ({
+const tooLarge = (what: string): PhotoRefusal => ({
 	ok: false,
 	refusal: 'too-large',
 	error: `${what}; a photo is at most ${IMAGE_BYTES_MAX} bytes (${(IMAGE_BYTES_MAX / 1_000_000).toFixed(1)} MB) once resized`
 });
 
-const refused = (error: string): PhotoIntake => ({ ok: false, refusal: 'refused', error });
+const refused = (error: string): PhotoRefusal => ({ ok: false, refusal: 'refused', error });
 
 /** the body's bytes, or null once it runs past `max` — the rest is never read. */
 async function readUpTo(body: ReadableStream<Uint8Array> | null, max: number) {
@@ -81,8 +97,8 @@ async function readUpTo(body: ReadableStream<Uint8Array> | null, max: number) {
 	return bytes;
 }
 
-/** the photo `request` posts in `file`, stored as a `photo` with no alt text. */
-export async function takePostedPhoto(db: Db, request: Request): Promise<PhotoIntake> {
+/** the photo `request` posts in `file`, checked, with the statements storing it as a `photo`. */
+export async function readPostedPhoto(db: Db, request: Request): Promise<PostedPhoto> {
 	const declared = Number(request.headers.get('content-length'));
 	if (declared > UPLOAD_MAX) return tooLarge(`the upload is ${declared} bytes`);
 	const body = await readUpTo(request.body, UPLOAD_MAX);
@@ -114,9 +130,21 @@ export async function takePostedPhoto(db: Db, request: Request): Promise<PhotoIn
 		);
 	}
 
+	const { id, statements } = newImageStatements(
+		db,
+		{ kind: 'photo', ...sniffed, alt: null },
+		bytes
+	);
+	return { ok: true, id, width: sniffed.width, height: sniffed.height, statements };
+}
+
+/** the photo `request` posts in `file`, stored as a `photo` with no alt text. */
+export async function takePostedPhoto(db: Db, request: Request): Promise<PhotoIntake> {
+	const photo = await readPostedPhoto(db, request);
+	if (!photo.ok) return photo;
 	try {
-		const id = await createImage(db, { kind: 'photo', ...sniffed, alt: null }, bytes);
-		return { ok: true, id, width: sniffed.width, height: sniffed.height };
+		await db.batch(photo.statements);
+		return { ok: true, id: photo.id, width: photo.width, height: photo.height };
 	} catch (e) {
 		console.error('storing a posted photo failed:', e);
 		return { ok: false, refusal: 'failed', error: 'the photo was not stored; post it again' };

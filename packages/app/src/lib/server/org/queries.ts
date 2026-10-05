@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { image, orgProfile, type OrgProfile } from '../db/schema';
 import { freeImageStatements } from '../images/free';
-import { firstMissingImage, illustrationsAmong } from '../images/queries';
+import { firstMissingImage, illustrationsAmong, type NewImageStatements } from '../images/queries';
 import type { ParsedOrgProfile } from './org-input';
 
 // every read and write of `org_profile`, so the table object never leaves this module — the same
@@ -78,7 +78,7 @@ export async function readOrgProfile(db: Db): Promise<OrgProfile | null> {
  * its own deployment and ./deductibility.ts is what reads it — so naming it in the set would clear
  * a fork's own wording on the next identity save. its absence from `set` is what leaves it alone,
  * and an INSERT here leaves it null, which reads as the standard wording. the other is
- * `logo_image_id`, which has writes of its own (`setOrgProfileLogo` below) because a logo it
+ * `logo_image_id`, which has writes of its own (the logo writes below) because a logo it
  * replaces is freed with it.
  *
  * `created_at` is left out of the update on purpose — it is the system time of the first
@@ -165,6 +165,27 @@ export async function setOrgProfileLogo(db: Db, imageId: string): Promise<Profil
 	return writeProfileLogo(db, imageId);
 }
 
+/**
+ * store a new photo and put it on as the profile's logo, in one `batch()` with the guarded write
+ * and the frees: the logo it replaces, and the new photo itself, which nothing names unless the
+ * write landed. so a stale write or a failed batch leaves no photo behind, and `no-profile` is
+ * answered before anything is written.
+ */
+export async function putNewOrgProfileLogo(
+	db: Db,
+	photo: { readonly id: string; readonly statements: NewImageStatements }
+): Promise<'written' | 'stale' | 'no-profile'> {
+	const read = await readLogo(db);
+	if (!read) return 'no-profile';
+	const [, , written] = await db.batch([
+		...photo.statements,
+		logoWrite(db, read.logo, photo.id),
+		...freeImageStatements(db, photo.id),
+		...(read.logo === null ? [] : freeImageStatements(db, read.logo))
+	]);
+	return written.length > 0 ? 'written' : 'stale';
+}
+
 /** take the profile's logo off, freeing it. no profile has no logo, so that is `written` too. */
 export async function removeOrgProfileLogo(db: Db): Promise<'written' | 'stale'> {
 	const written = await writeProfileLogo(db, null);
@@ -175,19 +196,30 @@ async function writeProfileLogo(
 	db: Db,
 	next: string | null
 ): Promise<'written' | 'stale' | 'no-profile'> {
+	const read = await readLogo(db);
+	if (!read) return 'no-profile';
+	const write = logoWrite(db, read.logo, next);
+	if (read.logo === null || read.logo === next) {
+		return (await write).length > 0 ? 'written' : 'stale';
+	}
+	const [written] = await db.batch([write, ...freeImageStatements(db, read.logo)]);
+	return written.length > 0 ? 'written' : 'stale';
+}
+
+/** the logo a write compares against; undefined where no profile is saved. */
+async function readLogo(db: Db): Promise<{ readonly logo: string | null } | undefined> {
 	const [row] = await db
 		.select({ logo: orgProfile.logoImageId })
 		.from(orgProfile)
 		.where(eq(orgProfile.id, ORG_PROFILE_ID));
-	if (!row) return 'no-profile';
-	const write = db
+	return row;
+}
+
+/** the logo set to `next` where it is still `read`, returning a row only where it landed. */
+function logoWrite(db: Db, read: string | null, next: string | null) {
+	return db
 		.update(orgProfile)
 		.set({ logoImageId: next })
-		.where(and(eq(orgProfile.id, ORG_PROFILE_ID), sql`${orgProfile.logoImageId} is ${row.logo}`))
+		.where(and(eq(orgProfile.id, ORG_PROFILE_ID), sql`${orgProfile.logoImageId} is ${read}`))
 		.returning({ id: orgProfile.id });
-	if (row.logo === null || row.logo === next) {
-		return (await write).length > 0 ? 'written' : 'stale';
-	}
-	const [written] = await db.batch([write, ...freeImageStatements(db, row.logo)]);
-	return written.length > 0 ? 'written' : 'stale';
 }

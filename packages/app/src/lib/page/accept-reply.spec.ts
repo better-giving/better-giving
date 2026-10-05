@@ -803,19 +803,14 @@ describe('what a reply sets', () => {
 			expect(shareMessage(result)).toBe('Keep a neighbour warm.');
 		});
 
-		it('takes null as none, on the Donation page too', () => {
+		it('keeps the message the page has where the reply sets null, on the Donation page too', () => {
 			const current = { ...defaultDonationPage(), shareMessage: 'Give today.' };
 			const result = accept(
 				{ say: 'Cleared.', set: { shareMessage: null } },
 				{ type: 'donation_page', current, name: null }
 			);
-			expect(result).toMatchObject({
-				ok: true,
-				changes: [{ field: 'shareMessage', from: 'Give today.', to: null }]
-			});
-			expect(result.ok && result.kind === 'drafted' && result.draft).not.toHaveProperty(
-				'shareMessage'
-			);
+			expect(result).toMatchObject({ ok: true, changes: [] });
+			expect(shareMessage(result)).toBe('Give today.');
 		});
 
 		it.each([
@@ -824,7 +819,7 @@ describe('what a reply sets', () => {
 				'x'.repeat(SHARE_MESSAGE_MAX + 1),
 				`set.shareMessage: a share message holds at most ${SHARE_MESSAGE_MAX} characters`
 			],
-			['no words', '   ', 'set.shareMessage: a share message holds words, or is null for none'],
+			['no words', '   ', 'set.shareMessage: a share message holds words, or is null to keep it'],
 			[
 				'a figure the operator never wrote',
 				'$40 keeps a child warm all winter.',
@@ -1304,6 +1299,33 @@ describe('a link', () => {
 				]
 			}
 		});
+	});
+
+	it.each([
+		['https://evil.example/pay', 'Give at https://evil.example/pay today.'],
+		['www.evil.example', 'Give at www.evil.example!'],
+		['https://harbour.org/report?ref=ai', 'Read https://harbour.org/report?ref=ai.']
+	])(
+		'in a share message the AI sets refuses %s, which the page does not link',
+		(address, words) => {
+			const current = withStory();
+			const result = accept({ say: 'Set.', set: { shareMessage: words } }, { current });
+			expect(result).toEqual({
+				ok: false,
+				reason: `set.shareMessage: "${address}" is not a link the page already holds`,
+				current
+			});
+		}
+	);
+
+	it('in a share message the AI sets is kept where the page already links it', () => {
+		const result = accept(
+			{ say: 'Set.', set: { shareMessage: 'Read https://harbour.org/report.' } },
+			{ current: withStory() }
+		);
+		expect(result.ok && result.kind === 'drafted' && result.draft.shareMessage).toBe(
+			'Read https://harbour.org/report.'
+		);
 	});
 
 	it('changed to a new address loses its link, as a new one would', () => {

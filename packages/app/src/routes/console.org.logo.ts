@@ -1,12 +1,8 @@
+import { LOGO_FIELD } from '@better-giving/operator/console/org';
 import { consoleReport } from '$lib/server/console/report';
 import { consoleJson, consoleMethodNotAllowed } from '$lib/server/console/surface';
-import { freeImageStatements } from '$lib/server/images/free';
-import { takePostedPhoto } from '$lib/server/images/intake';
-import {
-	type ProfileLogoWrite,
-	removeOrgProfileLogo,
-	setOrgProfileLogo
-} from '$lib/server/org/queries';
+import { readPostedPhoto } from '$lib/server/images/intake';
+import { putNewOrgProfileLogo, removeOrgProfileLogo } from '$lib/server/org/queries';
 import { consoleSession, database } from '../context';
 import type { Route } from './+types/console.org.logo';
 
@@ -14,15 +10,16 @@ import type { Route } from './+types/console.org.logo';
 // on ./console.ts like every route on this surface.
 //
 // the post is the photo the console resized and forwarded unread, as `multipart/form-data` with
-// the photo in `file`, taken by the same intake the dashboard's photos are
-// ($lib/server/images/intake.ts) so the bounds are written once. the logo it replaces is freed in
-// the write that replaces it (`setOrgProfileLogo` in $lib/server/org/queries.ts).
+// the photo in `file`, checked by the same intake the dashboard's photos are
+// ($lib/server/images/intake.ts) so the bounds are written once. the photo is stored in the one
+// `batch()` that puts it on and frees the logo it replaces (`putNewOrgProfileLogo` in
+// $lib/server/org/queries.ts), so an upload refused or failed leaves no image behind.
 //
 // every refusal is the console's 422 with the sentence at `errors.logo`, a size bound's included:
 // that is the one answer the console draws under the logo box, and any other status reads to it as
-// a write that never landed. a photo stored and then not put on — refused, or the write throwing —
-// is freed before the answer, so no upload that failed leaves an image behind. success answers the
-// report, as ./console.org.ts does.
+// a write that never landed. a write that throws is the console's shaped 500 (`notStored`), never a
+// thrown error, which react router would answer with a body the console cannot read. success
+// answers the report, as ./console.org.ts does.
 
 export async function action({ context, request }: Route.ActionArgs): Promise<Response> {
 	if (request.method !== 'POST' && request.method !== 'DELETE') {
@@ -33,20 +30,14 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 		const removed = await removeOrgProfileLogo(db);
 		if (removed === 'stale') return refused(STALE);
 	} else {
-		const taken = await takePostedPhoto(db, request);
-		if (!taken.ok) {
-			if (taken.refusal === 'failed') return notStored(taken.error);
-			return refused(taken.error);
-		}
-		let set: ProfileLogoWrite | null = null;
-		try {
-			set = await setOrgProfileLogo(db, taken.id);
-		} finally {
-			if (set !== 'written') await db.batch(freeImageStatements(db, taken.id));
-		}
-		if (set !== 'written') {
-			return refused(set === 'no-profile' ? NO_PROFILE : set === 'stale' ? STALE : NOT_PUT_ON);
-		}
+		const photo = await readPostedPhoto(db, request);
+		if (!photo.ok) return refused(photo.error);
+		const put = await putNewOrgProfileLogo(db, photo).catch((e: unknown) => {
+			console.error('putting the logo on failed:', e);
+			return 'failed' as const;
+		});
+		if (put === 'failed') return notStored('the logo was not stored; send it again');
+		if (put !== 'written') return refused(put === 'no-profile' ? NO_PROFILE : STALE);
 	}
 	return consoleJson(await consoleReport(db, context.get(consoleSession), request.url));
 }
@@ -60,8 +51,6 @@ const ALLOW = 'POST, DELETE';
 
 const NO_PROFILE = 'Save the organisation’s legal name first, then add the logo.';
 const STALE = 'The logo changed while this was sent. Send it again.';
-/** the photo just stored was no photo to put on: not reachable from the intake, answered anyway. */
-const NOT_PUT_ON = 'The logo was not put on. Send it again.';
 
 function refused(sentence: string): Response {
 	return consoleJson(
@@ -69,7 +58,7 @@ function refused(sentence: string): Response {
 			error: 'logo_refused',
 			message: `The logo was not changed: ${sentence}`,
 			fix: 'Fix what `errors.logo` names and send the logo again.',
-			errors: { logo: sentence }
+			errors: { [LOGO_FIELD]: sentence }
 		},
 		422
 	);

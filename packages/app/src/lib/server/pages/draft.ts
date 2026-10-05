@@ -766,7 +766,7 @@ function replyFormat(type: PageType): string[] {
 		`- set: only what the operator asked for, of ${settable}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.`,
 		`- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of ${channels.slice(0, -1).join(', ')} or ${channels.at(-1)}; [] takes them all off.`,
 		`- shade and corner: the page’s look, set only when the operator asks, and either may be set alone. shade is ${listed(SHADES, 'or')}: "warmer" asks for warm, "cooler" for cool, "plainer" or "neutral" for light. corner is ${listed(CORNERS, 'or')}: "rounder" asks for round, "sharper" or "squarer" for square, "softer" for soft. Every shade is a pale ground, so a darker or more colourful page is the palette’s to change, never the shade’s.`,
-		'- shareMessage: the words a donor shares the page with, at most one or two sentences. Leave it out of set to keep the message as it is; null takes it off, so the page shares its title and link, and is only for when the operator asked for no share message. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.',
+		'- shareMessage: the words a donor shares the page with, at most one or two sentences, holding no web address the page does not already link: a share carries the page’s own link. Leave it out of set, or null, to keep the message as it is; a share message is never taken off here, so when asked to, change nothing and say so. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.',
 		...(type === 'campaign'
 			? []
 			: [
@@ -925,7 +925,7 @@ function changeWords(change: Change, programs: readonly ProgramOption[]): string
 		case 'corner':
 			return `Corners: ${change.to}.`;
 		case 'shareMessage':
-			return change.to === null ? 'Share message taken off.' : `Share message: “${change.to}”`;
+			return `Share message: “${change.to}”`;
 	}
 }
 

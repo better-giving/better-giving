@@ -8,15 +8,30 @@ import { putBytes } from './bytes';
 export type ImageMetadata = Pick<NewImage, 'kind' | 'contentType' | 'width' | 'height' | 'alt'>;
 
 /**
+ * a new image's id and the two statements storing it, its metadata and its bytes, for a caller's
+ * `batch()` — the same batch as the write that names it, so the image lands only with that write.
+ */
+export function newImageStatements(db: Db, meta: ImageMetadata, bytes: Uint8Array) {
+	const id = uuidv7();
+	return {
+		id,
+		statements: [
+			db.insert(image).values({ ...meta, id, byteSize: bytes.byteLength }),
+			putBytes(db, id, bytes, meta.contentType)
+		] as const
+	};
+}
+
+/** the statements storing one new image, ahead of any that name it in the same `batch()`. */
+export type NewImageStatements = ReturnType<typeof newImageStatements>['statements'];
+
+/**
  * writes a new image's metadata and its bytes in one `batch()`, so neither lands without the
  * other, and returns its id. a blob past `IMAGE_BYTES_MAX` fails the batch whole.
  */
 export async function createImage(db: Db, meta: ImageMetadata, bytes: Uint8Array): Promise<string> {
-	const id = uuidv7();
-	await db.batch([
-		db.insert(image).values({ ...meta, id, byteSize: bytes.byteLength }),
-		putBytes(db, id, bytes, meta.contentType)
-	]);
+	const { id, statements } = newImageStatements(db, meta, bytes);
+	await db.batch(statements);
 	return id;
 }
 

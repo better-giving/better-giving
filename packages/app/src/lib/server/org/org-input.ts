@@ -1,6 +1,7 @@
 import {
 	ORG_PROFILE_FIELDS,
 	type OrgProfileField,
+	SOCIAL_LINKS_FIELD,
 	type SocialLink
 } from '@better-giving/operator/console/org';
 import { ORG_PROFILE_FIELD_RULES } from '@better-giving/operator/console/org-rules';
@@ -61,13 +62,15 @@ export { ORG_PROFILE_FIELDS, type OrgProfileField };
  * screen, and an error map is one of the places it would otherwise walk straight back on.
  * nothing is lost, since the field name is right here in the key.
  *
- * the list of social links is one key, `social_links`, for the first link refused.
+ * the list of social links is one key, `SOCIAL_LINKS_FIELD`, for the first link refused.
  *
  * a whole-request failure — the database being unreachable — is not one of these. it
  * belongs to no field, and pinning it on one tells the operator to edit something that is
  * fine; the form action carries it separately.
  */
-export type OrgProfileFieldErrors = Partial<Record<OrgProfileField | 'social_links', string>>;
+export type OrgProfileFieldErrors = Partial<
+	Record<OrgProfileField | typeof SOCIAL_LINKS_FIELD, string>
+>;
 
 /**
  * an org profile whose blanks are already `null` and whose five required fields are known to be
@@ -219,7 +222,7 @@ const FIELD_LIMITS = z.object({
  *
  * returns every field error at once rather than the first: a form that reports one problem
  * per round trip is how a ten-field save takes ten submissions. the links are one more key on
- * that map, `social_links`, carrying the first link refused.
+ * that map, `SOCIAL_LINKS_FIELD`, carrying the first link refused.
  */
 export function parseOrgProfile(
 	values: OrgProfileFormValues,
@@ -232,7 +235,7 @@ export function parseOrgProfile(
 		const errors: OrgProfileFieldErrors = limits.success
 			? {}
 			: fieldErrorsFrom(limits.error, ORG_PROFILE_FIELDS);
-		if (!links.ok) errors.social_links = links.error;
+		if (!links.ok) errors[SOCIAL_LINKS_FIELD] = links.error;
 		return { ok: false, errors };
 	}
 
