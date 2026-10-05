@@ -5,15 +5,17 @@ import { saveOrgProfile } from '$lib/server/org/queries';
 import { consoleSession, database } from '../context';
 import type { Route } from './+types/console.org';
 
-// the organisation's legal identity, written over the wire.
+// the organisation's profile, written over the wire: its legal identity, mission, vision, brand
+// colour and social links. the logo is posted on its own, to ./console.org.logo.ts.
 //
 // a mutation and specified as one, on the same surface and behind the same check as the report:
 // row mutation authorised by proof of account ownership. the check is the `middleware` on
 // ./console.ts and this file makes no decision about who may write — see the header there.
 //
 // it is a singleton about this deployment and it is not merely receipt content: two of its fields
-// gate serving a donation form at all, and the rest is what a receipt is printed from. that is why
-// it rides this surface — it is a row, and this is where a console writes one.
+// gate serving a donation form at all, and others are what a receipt is printed from and what the
+// donor pages say of the organisation. that is why it rides this surface — it is a row, and this is
+// where a console writes one.
 //
 // the schemas and the queries do not move and are not restated here. `parseOrgProfile`
 // ($lib/server/org/org-input.ts) is the whole of what a profile may be, stated once against

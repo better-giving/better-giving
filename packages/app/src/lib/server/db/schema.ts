@@ -109,8 +109,10 @@ import type { PostableAccountId } from './postable';
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
-//             which arrived by `ADD COLUMN` on a table with children, where a check is
-//             the rebuild rule 2 below describes. `TRIBUTE_KINDS` is the donation form's
+//             which arrived by `ADD COLUMN` on a table with children, where drizzle-kit
+//             generates a check as the rebuild rule 2 below describes. a hand-written
+//             `ADD COLUMN ... CHECK` adds one in place, as migrations/0024 does.
+//             `TRIBUTE_KINDS` is the donation form's
 //             own — `@better-giving/form/v1` — and is not imported here: the parse
 //             boundaries are the whole of the constraint, and the column says so at its
 //             own site.

@@ -50,8 +50,8 @@ const answerBytes = 256 << 10
 const mostMatches = 10
 
 // MissionMax is the longest mission the organisation's profile saves: `MAX_STATEMENT` in
-// packages/operator/src/console/org-rules.ts, which ../release/config_test.go holds this to, and
-// counted the way that rule's `.max` counts a string — in UTF-16 code units.
+// packages/operator/src/console/org-rules.ts, which ../release/config_test.go holds this to. it is
+// counted the way that rule's `.max` counts a string, in UTF-16 code units.
 const MissionMax = 2000
 
 // LookupState is how one lookup by EIN went.

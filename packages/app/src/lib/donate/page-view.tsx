@@ -75,7 +75,10 @@ export type PageViewProps = {
 	readonly org: PageOrg;
 	/** the organisation's logo, atop the page; null or absent where it has none. */
 	readonly logo?: PageLogo | null | undefined;
-	/** the look the page is drawn in: its own, or the organisation's. */
+	/**
+	 * the look the page is drawn in: its own shade and corners, or the defaults, and the
+	 * organisation's brand colour.
+	 */
 	readonly look: PageLook;
 	readonly sharing: PageSharing;
 	/** a campaign's goal; null where it has none, and on the Donation page. */

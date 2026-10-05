@@ -11,9 +11,9 @@ import {
 
 // a network's mark, from @tabler/icons-react's brand set, drawn in `currentColor` at its source's
 // stroke. every brand a donor page names is mapped here and nowhere else: the organisation's
-// platforms, `SOCIAL_PLATFORMS` (./org-info.tsx), and the share channels that are a network
-// (./share.tsx). it always stands where something else names the network, so it is hidden from a
-// screen reader.
+// platforms, `SOCIAL_PLATFORMS` (`@better-giving/operator/console/org`), and the share channels
+// that are a network (./share.tsx). it always stands where something else names the network, so it
+// is hidden from a screen reader.
 
 export type Brand = SocialPlatform | 'whatsapp';
 

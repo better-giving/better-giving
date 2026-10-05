@@ -32,7 +32,7 @@ export type PageOrg = {
 export type PageSharing = {
 	/** the channels to offer, in the order the buttons stand. */
 	readonly channels: readonly ShareChannel[];
-	/** the page's own share message, or the organisation's; empty sends the address alone. */
+	/** the page's own share message, or else the page's title; empty sends the address alone. */
 	readonly message: string;
 	/** the page's public address. */
 	readonly url: string;

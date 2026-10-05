@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
-// what the organisation's legal identity may hold — the caps, which boxes refuse a blank, the
-// EIN's shape and the one spelling it is stored in — the whole of it, in the one module every
-// surface reads them from.
+// what the organisation's profile may hold, its legal identity, mission, vision and brand colour —
+// the caps, which boxes refuse a blank, the EIN's shape and the brand colour's, and the one spelling
+// each is stored in — the whole of it, in the one module every surface reads them from. which
+// platform a social link is on is ./social-links.ts's.
 //
 // **the rules are here because two surfaces apply them to the same values.** the deployment
 // parses every profile it is sent (`packages/app/src/lib/server/org/org-input.ts`) and the console

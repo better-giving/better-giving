@@ -4,7 +4,7 @@ import type { BlockOf, OrgInfo } from './types';
 
 // who the gift is made to, as the organisation's legal details state it: `footer` closes the page,
 // `card` stands among the blocks. each social link is its platform's mark alone, opening in a new
-// tab, and its name says both: the platform, then ", opens in a new tab".
+// tab, and its name says both.
 
 export function OrgInfoBlock({
 	block,

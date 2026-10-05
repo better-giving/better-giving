@@ -291,8 +291,8 @@ export function OrgFold({
 
 	/* an answer landing while the profile press is out waits for it (./ein-lookup.ts). the watch is
 	   told the press went out at the submit the form lets through, and that it is over on the render
-	   its answer arrives in — landed, refused or unwritten — after the seam's reset, an effect
-	   declared before this one, has put the boxes back at what it stored. */
+	   its answer arrives in — landed, refused or unwritten — and where it landed, after the seam's
+	   reset, an effect declared before this one, has put the boxes back at what it stored. */
 	const profilePressed = (event: SubmitEvent<HTMLFormElement>) => {
 		form.mount.onSubmit(event);
 		if (!event.defaultPrevented) watch.current?.saving();

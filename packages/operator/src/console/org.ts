@@ -1,5 +1,5 @@
-// the organisation's legal identity as the console surface carries it, named once for both ends of
-// the wire.
+// the organisation's profile as the console surface carries it, its legal identity beside its
+// mission, vision, brand colour, social links and logo, named once for both ends of the wire.
 //
 // it is here for the reason ./token.ts is here, and it arrived the same way: a console surface
 // started rendering a profile, so the shape moved out of the app rather than being copied into the

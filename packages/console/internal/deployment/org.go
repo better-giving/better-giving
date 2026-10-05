@@ -9,7 +9,8 @@ import (
 	"github.com/better-giving/console/internal/release"
 )
 
-// the organisation's legal identity, as this console writes it back.
+// the organisation's profile, as this console writes it back: its legal identity, mission, vision,
+// brand colour, social links and logo.
 //
 // **the deployment is the authority and this states no rule of its own.** what a value may be — the
 // caps, which boxes refuse a blank, what an email has to look like — is decided inside the worker

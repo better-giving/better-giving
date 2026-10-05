@@ -7,9 +7,10 @@ import { deleteBytes } from './bytes';
 //
 // the guard is each statement's own `where not exists`, never a read ahead of the write, so a
 // reference written between a caller's read and its `batch()` keeps the image rather than racing
-// the delete. a holder of an image id added to the schema is added to `unreferenced` below, or an
-// image it names can be freed from under it — a key column refuses the metadata row's delete,
-// but nothing refuses the bytes', and a JSON holder refuses neither.
+// the delete. a holder of an image id added to the schema is added to `unreferenced` below. a key
+// column left out refuses the metadata row's delete, and since both deletes ride the caller's one
+// `batch()`, that fails the caller's whole write. a JSON holder left out refuses neither, so the
+// image it names is freed from under it, bytes and all.
 
 /**
  * no row names `id`: no cause's photo, the profile's logo, no page document and no chat turn's
