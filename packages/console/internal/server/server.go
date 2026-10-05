@@ -154,7 +154,8 @@ func New(options Options) http.Handler {
 	sessionRoutes(routes, options.Flow, reads, patches, options.Accounts, options.Records, surface,
 		presses)
 	errandRoutes(routes, doors, patientDoors)
-	logoRoutes(routes, surfaceSend(options.Records, surface), surfaceSend(options.Records, patient))
+	logoRoutes(routes, surfaceSend(options.Records, surface), surfaceSend(options.Records, patient),
+		surfacePhotos(options.Records))
 	widgetRoutes(routes, options.Flow, reads, sends, options.Accounts)
 	stripeRoutes(routes, options.Flow, reads, patches, settings, options.Accounts, doors, processor,
 		presses)

@@ -2,15 +2,19 @@ package deployment
 
 import (
 	"context"
+	"mime"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/better-giving/console/internal/cf"
 	"github.com/better-giving/console/internal/release"
 )
 
 // the organisation's profile, as this console writes it back: its legal identity, mission, vision,
-// brand colour, social links and logo.
+// brand colour, social links and logo — and the logo read back as its bytes, for the cropper.
 //
 // **the deployment is the authority and this states no rule of its own.** what a value may be — the
 // caps, which boxes refuse a blank, what an email has to look like — is decided inside the worker
@@ -116,6 +120,97 @@ func DropLogo(ctx context.Context, send cf.Send) OrgWrite {
 		return unsaved(NoReport{Kind: NoSession})
 	}
 	return readOrgWrite(send(ctx, http.MethodDelete, OrgLogoPath, nil))
+}
+
+// ImagePath is the path on a deployment that serves one image's bytes, by its id. it is ungated:
+// knowing the id is the permission (packages/app/src/routes/image.$id.ts).
+func ImagePath(id string) string { return "/image/" + url.PathEscape(id) }
+
+// Images is how a read of a deployment's image bytes is bound: at its origin, held to a read's
+// deadline, and carrying no session, because the address it reads asks for none.
+func Images(origin string) cf.Fetch { return cf.BytesGetWithin(origin, cf.ReadTimeout) }
+
+// LogoReadKind is how one read of the logo's bytes ended.
+type LogoReadKind string
+
+const (
+	// LogoHeld is the bytes, which is the only kind carrying any.
+	LogoHeld LogoReadKind = "held"
+	// LogoNone is a profile holding no logo, or one whose logo was taken off between the reading
+	// and the read of its bytes.
+	LogoNone LogoReadKind = "none"
+	// LogoUnread is no answer about the logo either way, and Read says which way.
+	LogoUnread LogoReadKind = "unread"
+)
+
+// LogoRead is the logo's bytes under the type the deployment served them with, or why there are
+// none.
+type LogoRead struct {
+	Kind  LogoReadKind
+	Type  string
+	Bytes []byte
+	Read  *NoReport
+}
+
+// ReadLogo is the logo the deployment holds now, found the way the fold finds it: by the id its
+// reading names, and then the bytes at that id's address.
+//
+// The bytes are held to the most an upload may carry and to an image type, because they are served
+// again on this console's own origin: a body past what the deployment stores, or one that is not a
+// photo, is not the logo it stored.
+func ReadLogo(ctx context.Context, send cf.Send, fetch cf.Fetch) LogoRead {
+	if send == nil || fetch == nil {
+		return unreadLogo(NoReport{Kind: NoSession})
+	}
+	read := readReport(send(ctx, http.MethodGet, ConsolePath, nil))
+	if read.Kind != Reported {
+		return unreadLogo(read.NoReport)
+	}
+	org, _ := read.Org.(map[string]any)
+	if org["logo"] == nil {
+		return LogoRead{Kind: LogoNone}
+	}
+	logo, _ := org["logo"].(map[string]any)
+	id, _ := logo["id"].(string)
+	if id == "" {
+		return unreadLogo(NoReport{
+			Kind:   NoReportUnreadable,
+			Detail: "This deployment names a logo with no id",
+		})
+	}
+
+	fetched := fetch(ctx, ImagePath(id), release.LogoUploadMax)
+	switch {
+	case fetched.Kind == cf.Unreachable:
+		return unreadLogo(NoReport{Kind: NoReportUnreachable, Detail: fetched.Detail})
+	case fetched.Status == http.StatusNotFound:
+		return LogoRead{Kind: LogoNone}
+	case fetched.Status < 200 || fetched.Status > 299:
+		body, _ := fetched.Body.(map[string]any)
+		return unreadLogo(unreadable(fetched.Answer, body).NoReport)
+	case fetched.Over:
+		return unreadLogo(NoReport{
+			Kind:   NoReportUnreadable,
+			Detail: "This deployment's logo is over " + strconv.Itoa(release.LogoUploadMax) + " bytes, the most it stores",
+			Status: fetched.Status,
+		})
+	case !isImage(fetched.Type):
+		return unreadLogo(NoReport{
+			Kind:   NoReportUnreadable,
+			Detail: "This deployment answered " + strconv.Quote(fetched.Type) + " where its logo was expected",
+			Status: fetched.Status,
+		})
+	}
+	return LogoRead{Kind: LogoHeld, Type: fetched.Type, Bytes: fetched.Bytes}
+}
+
+func isImage(kind string) bool {
+	media, _, err := mime.ParseMediaType(kind)
+	return err == nil && strings.HasPrefix(media, "image/")
+}
+
+func unreadLogo(read NoReport) LogoRead {
+	return LogoRead{Kind: LogoUnread, Read: &read}
 }
 
 // what the deployment answered a write with, read.
