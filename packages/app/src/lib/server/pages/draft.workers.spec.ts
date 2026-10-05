@@ -285,7 +285,7 @@ describe('a page’s look and share message', () => {
 		}
 	);
 
-	it('comes off on "no share message", and the reply says so', async () => {
+	it('stays on "no share message": a reply setting null changes nothing', async () => {
 		const pageId = await insertPage(db, 'campaign', {
 			...defaultCampaign(),
 			shareMessage: 'Give today.'
@@ -297,9 +297,9 @@ describe('a page’s look and share message', () => {
 			answering({ say: 'Done.', set: { shareMessage: null } })
 		);
 
-		expect((await stored(pageId)).draft).not.toHaveProperty('shareMessage');
+		expect((await stored(pageId)).draft).toHaveProperty('shareMessage', 'Give today.');
 		const [, answer] = await chat(pageId);
-		expect(answer?.text).toBe('Done.\nShare message taken off.');
+		expect(answer?.text).toBe('Done.');
 	});
 });
 
@@ -630,7 +630,7 @@ describe('what the model is told', () => {
 			- set: only what the operator asked for, of {"corner": ..., "endDate": "YYYY-MM-DD", "goalMinor": ..., "name": ..., "programId": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.
 			- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of facebook (Facebook), whatsapp (WhatsApp), email (Email), copy-link (Copy link), linkedin (LinkedIn) or x (X); [] takes them all off.
 			- shade and corner: the page’s look, set only when the operator asks, and either may be set alone. shade is light, warm or cool: "warmer" asks for warm, "cooler" for cool, "plainer" or "neutral" for light. corner is square, soft or round: "rounder" asks for round, "sharper" or "squarer" for square, "softer" for soft. Every shade is a pale ground, so a darker or more colourful page is the palette’s to change, never the shade’s.
-			- shareMessage: the words a donor shares the page with, at most one or two sentences. Leave it out of set to keep the message as it is; null takes it off, so the page shares its title and link, and is only for when the operator asked for no share message. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.
+			- shareMessage: the words a donor shares the page with, at most one or two sentences, holding no web address the page does not already link: a share carries the page’s own link. Leave it out of set, or null, to keep the message as it is; a share message is never taken off here, so when asked to, change nothing and say so. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.
 			- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.
 			- write an amount in the words only from a figure the operator stated in the chat or one the page already shows.
 			- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.

@@ -157,7 +157,7 @@ const SETTABLE = {
 	shareMessage: z
 		.string()
 		.trim()
-		.min(1, { error: 'a share message holds words, or is null for none' })
+		.min(1, { error: 'a share message holds words, or is null to keep it' })
 		.max(SHARE_MESSAGE_MAX, {
 			error: `a share message holds at most ${SHARE_MESSAGE_MAX} characters`
 		})
@@ -258,8 +258,8 @@ export type Change =
 	/** `from` is what the page drew, ./keys.ts's default where it had no look of its own. */
 	| { field: 'shade'; from: Shade; to: Shade }
 	| { field: 'corner'; from: Corner; to: Corner }
-	/** null is none: the page shares its title and address. */
-	| { field: 'shareMessage'; from: string | null; to: string | null };
+	/** `from` is null where the page had none, and shared its title and address. */
+	| { field: 'shareMessage'; from: string | null; to: string };
 
 export type Dropped =
 	| {
@@ -370,9 +370,7 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 	const worded = [
 		...(set.renamed === undefined ? [] : [{ where: 'set.name', texts: [set.renamed] }]),
 		...set.changes.flatMap((change) =>
-			change.field === 'shareMessage' && change.to !== null
-				? [{ where: 'set.shareMessage', texts: [change.to] }]
-				: []
+			change.field === 'shareMessage' ? [{ where: 'set.shareMessage', texts: [change.to] }] : []
 		),
 		...blocks.map((block, index) => ({
 			where: `block ${index + 1} (id "${block.id}")`,
@@ -401,6 +399,15 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 	}
 
 	const known = new Set(hrefsIn(current));
+	for (const change of set.changes) {
+		if (change.field !== 'shareMessage') continue;
+		const unknown = webAddressesIn(change.to).find(
+			(address) => !known.has(address) && !known.has(`https://${address}`)
+		);
+		if (unknown !== undefined) {
+			return refuse(`set.shareMessage: "${unknown}" is not a link the page already holds`);
+		}
+	}
 	const unlinked = withoutLinks({ ...page.page, blocks }, (href, text) => {
 		if (known.has(href)) return false;
 		dropped.push({ what: 'link', href, text });
@@ -692,7 +699,7 @@ function settle(
 			}
 		}
 	}
-	let onto: Page = { ...current };
+	const onto: Page = { ...current };
 	const changes: Change[] = [];
 	const named = current.name ?? name;
 	const renamed = set.name !== undefined && set.name !== named ? set.name : undefined;
@@ -757,10 +764,15 @@ function settle(
 		}
 		if (look.shade !== drawn.shade || look.corner !== drawn.corner) onto.look = look;
 	}
-	if (set.shareMessage !== undefined && set.shareMessage !== (current.shareMessage ?? null)) {
-		const { shareMessage: from = null, ...rest } = onto;
-		changes.push({ field: 'shareMessage', from, to: set.shareMessage });
-		onto = set.shareMessage === null ? rest : { ...rest, shareMessage: set.shareMessage };
+	// null keeps the message: a model in JSON mode fills every key, and the AI never clears one.
+	const { shareMessage } = set;
+	if (
+		shareMessage !== undefined &&
+		shareMessage !== null &&
+		shareMessage !== current.shareMessage
+	) {
+		changes.push({ field: 'shareMessage', from: current.shareMessage ?? null, to: shareMessage });
+		onto.shareMessage = shareMessage;
 	}
 	if (set.programId === undefined && set.suggestedAmounts === undefined) {
 		return { ok: true, onto, renamed, changes };
@@ -861,6 +873,14 @@ function hrefsIn(value: unknown): string[] {
 		? value.marks.filter(isLinkMark).map(({ attrs }) => attrs.href)
 		: [];
 	return [...own, ...Object.values(value).flatMap(hrefsIn)];
+}
+
+/**
+ * each web address written into plain text, as written: one with a scheme or a `www.` one, up to
+ * the next space, with the punctuation closing its sentence left off.
+ */
+function webAddressesIn(text: string): string[] {
+	return text.match(/\b(?:https?:\/\/|www\.)[^\s<>"]*[^\s<>".,;:!?)'’”]/gi) ?? [];
 }
 
 /** `value` with each link mark `strip` answers true for taken off its text, the text kept. */
