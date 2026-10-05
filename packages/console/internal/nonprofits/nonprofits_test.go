@@ -2,6 +2,7 @@ package nonprofits
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -113,6 +114,37 @@ func TestAFilingWithNoMissionAnswersAnEmptyOne(t *testing.T) {
 
 		if looked.State != Found || looked.Organisation.Mission != "" {
 			t.Errorf("a filing of %s looked up %+v, want found with no mission", filing, looked)
+		}
+	}
+}
+
+// a filing's mission past the profile's cap is cut to it, so the box it fills saves: the cap is
+// counted in UTF-16 code units, as the profile rule's `.max` counts a string, and a cut never
+// leaves half of a character that takes two.
+func TestAMissionOverTheCapIsCutToIt(t *testing.T) {
+	for _, one := range []struct {
+		said string
+		want string
+	}{
+		{strings.Repeat("a", 2000), strings.Repeat("a", 2000)},
+		{strings.Repeat("a", 2001), strings.Repeat("a", 2000)},
+		// two bytes each and one code unit each: two thousand of them are at the cap, not past it.
+		{strings.Repeat("é", 2000), strings.Repeat("é", 2000)},
+		// two code units each: the thousandth ends at the cap and the next does not fit.
+		{strings.Repeat("😀", 1001), strings.Repeat("😀", 1000)},
+		{strings.Repeat("a", 1999) + "😀", strings.Repeat("a", 1999)},
+		{strings.Repeat("a", 1999) + " b", strings.Repeat("a", 1999)},
+	} {
+		said, _ := json.Marshal(one.said)
+		body := strings.Replace(redCross,
+			`"\n  Prevents and alleviates human suffering in the face of emergencies.  "`, string(said), 1)
+		client, _ := upstream(t, says(http.StatusOK, body))
+
+		looked := client.LookUp(t.Context(), "53-0196605")
+
+		if looked.State != Found || looked.Organisation.Mission != one.want {
+			t.Errorf("a mission of %d characters looked up as %d, want %d",
+				len([]rune(one.said)), len([]rune(looked.Organisation.Mission)), len([]rune(one.want)))
 		}
 	}
 }

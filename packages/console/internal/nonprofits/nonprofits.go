@@ -32,6 +32,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 )
 
 // API is where the IRS nonprofit API answers. empty is no address: every call answers `unavailable`
@@ -47,6 +48,11 @@ const answerBytes = 256 << 10
 
 // the most matches one search keeps, in the API's order.
 const mostMatches = 10
+
+// MissionMax is the longest mission the organisation's profile saves: `MAX_STATEMENT` in
+// packages/operator/src/console/org-rules.ts, which ../release/config_test.go holds this to, and
+// counted the way that rule's `.max` counts a string — in UTF-16 code units.
+const MissionMax = 2000
 
 // LookupState is how one lookup by EIN went.
 type LookupState string
@@ -69,7 +75,8 @@ const (
 // under the names it gives its boxes (packages/console-ui/src/lib/org-fields.ts) where it fills
 // one. EIN is the nine digits with no dash; RevokedOn is the `YYYY-MM-DD` its tax-exempt status was
 // revoked on, empty where it is not revoked or was reinstated since; Mission is what the latest
-// filing states, trimmed. every field is empty unless Found.
+// filing states, trimmed and cut to MissionMax so the box it fills saves. every field is empty
+// unless Found.
 type Organisation struct {
 	EIN          string `json:"ein"`
 	Name         string `json:"name"`
@@ -245,7 +252,7 @@ func (c *Client) lookUp(ctx context.Context, ein string) Lookup {
 		Deductible:   read.Status.Deductible,
 		RevokedOn:    read.Status.revokedOn(),
 		Website:      orEmpty(read.Filing.Website),
-		Mission:      strings.TrimSpace(orEmpty(read.Filing.Mission)),
+		Mission:      cut(strings.TrimSpace(orEmpty(read.Filing.Mission)), MissionMax),
 	}}
 }
 
@@ -321,6 +328,19 @@ func day(said *string) (time.Time, bool) {
 	}
 	read, err := time.Parse(time.DateOnly, *said)
 	return read, err == nil
+}
+
+// said cut to at most limit UTF-16 code units at a character's edge, with the space a cut ends on
+// trimmed; said within the limit is returned as it came.
+func cut(said string, limit int) string {
+	units := 0
+	for at, r := range said {
+		units += utf16.RuneLen(r)
+		if units > limit {
+			return strings.TrimSpace(said[:at])
+		}
+	}
+	return said
 }
 
 func orEmpty(said *string) string {

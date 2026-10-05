@@ -544,6 +544,16 @@ func counted(t *testing.T, source, constant string) int {
 	return value
 }
 
+// the longest mission a filing fills, against the profile rule that refuses a longer one: a cap
+// raised there and not here cuts a mission the profile would save, and one lowered there and not
+// here fills a box that then refuses to save.
+func TestAFilledMissionIsOneTheProfileSaves(t *testing.T) {
+	source := read(t, "packages/operator/src/console/org-rules.ts")
+	if stated := counted(t, source, "MAX_STATEMENT"); stated != nonprofits.MissionMax {
+		t.Errorf("MAX_STATEMENT states %d and this binary cuts a mission at %d", stated, nonprofits.MissionMax)
+	}
+}
+
 // the account the run's press names is one the wire names: a processor spelled differently here is
 // a press the deployment refuses for a name no processor answers to, and a run that would report
 // the account it just stored a key for as one nobody could act on.
