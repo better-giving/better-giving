@@ -9,7 +9,7 @@ import {
 } from '../api/client';
 import { watchPress } from '../lib/console-reading';
 import {
-	LOGO_FILE,
+	logoPress,
 	ORG_INTENT,
 	ORG_LOGO_INTENT,
 	ORG_LOGO_REMOVE_INTENT,
@@ -57,9 +57,10 @@ export async function clientLoader() {
  * hidden fields at what the deployment holds (../lib/org-fields.ts's `carriedBoxes`), which is why
  * one reading of the body serves both pages.
  *
- * the logo is a write of its own and answers in the profile's shape, so the boxes and the logo are
- * re-seeded off whichever press landed last (`storedOrg` in ../lib/org-form.ts), and each answer
- * says which press it is to.
+ * the logo press crops the image it names — the file chosen, or the logo stored now — to the square
+ * it posts (../lib/org-logo.ts). the logo is a write of its own and answers in the profile's shape,
+ * so the boxes and the logo are re-seeded off whichever press landed last (`storedOrg` in
+ * ../lib/org-form.ts), and each answer says which press it is to.
  */
 export async function clientAction({ request }: Route.ClientActionArgs) {
 	watchPress(request);
@@ -75,7 +76,7 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 	}
 	if (intent === ORG_LOGO_INTENT) {
 		return {
-			write: await putLogo(posted.get(LOGO_FILE), request.signal),
+			write: await putLogo(logoPress(posted), request.signal),
 			press: 'logo'
 		} satisfies OrgPressAnswer;
 	}

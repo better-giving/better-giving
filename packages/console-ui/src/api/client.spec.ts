@@ -9,6 +9,7 @@ import {
 	nonprofitsStatus,
 	pressQuickbooks,
 	readAiModel,
+	readOrgLogo,
 	readQuickbooks,
 	repairWebhook,
 	saveNowpayments,
@@ -223,6 +224,41 @@ describe("the organisation's profile and its logo", () => {
 		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
 		expect(calls[0]?.[1]?.method).toBe('DELETE');
 		expect(calls[0]?.[1]?.body).toBeUndefined();
+	});
+
+	it('reads the stored logo as the bytes the binary answered', async () => {
+		const calls: [string, RequestInit | undefined][] = [];
+		vi.stubGlobal('fetch', (path: string, init: RequestInit | undefined) => {
+			calls.push([path, init]);
+			return Promise.resolve(
+				new Response('webp bytes', { status: 200, headers: { 'content-type': 'image/webp' } })
+			);
+		});
+		const pressed = new AbortController().signal;
+
+		const stored = await readOrgLogo(pressed);
+
+		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
+		expect(calls[0]?.[1]?.method).toBe('GET');
+		expect(calls[0]?.[1]?.signal).toBe(pressed);
+		expect(stored?.type).toBe('image/webp');
+		expect(await stored?.text()).toBe('webp bytes');
+	});
+
+	it('reads no stored logo where the binary answers 404', async () => {
+		answering(404, { error: 'the organisation has no logo' });
+
+		await expect(readOrgLogo(new AbortController().signal)).resolves.toBeNull();
+	});
+
+	it("throws any other refusal of the stored logo, in the binary's words", async () => {
+		answering(502, { error: 'the deployment did not answer' });
+
+		await expect(readOrgLogo(new AbortController().signal)).rejects.toMatchObject({
+			name: 'ConsoleRefused',
+			status: 502,
+			message: 'the deployment did not answer'
+		});
 	});
 
 	it('holds the removal among the writes out until the binary answers it', async () => {
