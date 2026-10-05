@@ -1,3 +1,4 @@
+import { LOGO_FIELD } from '@better-giving/operator/console/org';
 import { consoleReport } from '$lib/server/console/report';
 import { consoleJson, consoleMethodNotAllowed } from '$lib/server/console/surface';
 import { readPostedPhoto } from '$lib/server/images/intake';
@@ -57,7 +58,7 @@ function refused(sentence: string): Response {
 			error: 'logo_refused',
 			message: `The logo was not changed: ${sentence}`,
 			fix: 'Fix what `errors.logo` names and send the logo again.',
-			errors: { logo: sentence }
+			errors: { [LOGO_FIELD]: sentence }
 		},
 		422
 	);
