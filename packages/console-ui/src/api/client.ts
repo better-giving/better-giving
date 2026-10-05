@@ -281,6 +281,19 @@ export async function uploadOrgLogo(file: Blob): Promise<OrgWrite> {
 	return read as OrgWrite;
 }
 
+/**
+ * the stored logo's own bytes, as the deployment serves them, or `null` where the organisation has
+ * none (404) — what a re-crop draws from, so an edge an earlier crop took off stays off.
+ *
+ * `pressed` is the press's request signal: a press the router abandoned asks for nothing more.
+ */
+export async function readOrgLogo(pressed: AbortSignal): Promise<Blob | null> {
+	const answer = await call('/deployment/org/logo', { method: 'GET', signal: pressed });
+	if (answer.status === 404) return null;
+	if (!answer.ok) throw refused(await parsed(answer), answer.status);
+	return answer.blob();
+}
+
 /** takes the organisation's logo off. there is one, so the address names it and nothing is sent. */
 export const removeOrgLogo = (): Promise<OrgWrite> => ask('/deployment/org/logo', 'DELETE');
 
