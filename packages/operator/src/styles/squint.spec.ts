@@ -5,6 +5,8 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // fields, between two groups — three tiers, each wider than the one inside it. a label reads as its
 // own box's only while the step down to that box is shorter than the step down to the next field's
 // label, and a group reads as one only while the step out of it is longer than any step inside it.
+// under the three is a fourth: the sentence under a label or a group's name stands closer to it than
+// the box does, so the two read as one head.
 //
 // every step is read off the sheet as it is written and resolved through ./tokens.css, so a step
 // moved in one rule and not in another fails here rather than on a screen nobody squinted at. the
@@ -35,9 +37,21 @@ function stated(selector: string, property: string): number {
 	return length(rule?.stated.get(property));
 }
 
+const hints = {
+	'a field': length(
+		ruleOf(css, '.adm-field > .adm-field__label + .adm-hint').get('margin-block-start')
+	),
+	'a group': length(
+		ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + .adm-hint').get('margin-block-start')
+	)
+};
+
 const inside = [
 	length(ruleOf(css, '.adm-field > * + *').get('margin-block-start')),
-	length(ruleOf(css, '.adm-field > .adm-field__label + .adm-hint').get('margin-block-start'))
+	length(ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + *').get('margin-block-start')),
+	length(
+		ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + .adm-hint + *').get('margin-block-start')
+	)
 ];
 
 const between = {
@@ -61,6 +75,16 @@ const groups = {
 };
 
 describe('the squint test on every operator form', () => {
+	it('stands a sentence nearer its label than the label stands to its box', () => {
+		for (const [where, gap] of Object.entries(hints)) {
+			expect(gap, `the sentence under ${where}'s name`).toBeLessThan(Math.min(...inside));
+		}
+	});
+
+	it('stands a head one step off what it names, with a sentence under it or without', () => {
+		expect(new Set(inside).size).toBe(1);
+	});
+
 	it('stands a label nearest its own box', () => {
 		for (const [where, gap] of Object.entries(between)) {
 			expect(gap, `two fields in ${where}`).toBeGreaterThan(Math.max(...inside));
