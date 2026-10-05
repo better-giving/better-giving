@@ -1,6 +1,9 @@
 package release
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -8,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/better-giving/console/internal/nonprofits"
 )
 
 // the committed config against the files it was baked out of.
@@ -399,6 +404,24 @@ func TestTheAnswersTheDeploymentSendsAreTheOnesItStates(t *testing.T) {
 	}
 }
 
+// the two keys a profile refusal comes back under beside the fields, against the module the
+// deployment refuses under them from: a key renamed there and not here is a refusal this binary
+// draws under no box.
+func TestTheRefusalKeysBesideTheFieldsAreTheOnesItStates(t *testing.T) {
+	source := read(t, "packages/operator/src/console/org.ts")
+	for _, one := range []struct {
+		constant string
+		held     string
+	}{
+		{"SOCIAL_LINKS_FIELD", SocialLinksField},
+		{"LOGO_FIELD", LogoField},
+	} {
+		if stated := quoted(t, source, one.constant); stated != one.held {
+			t.Errorf("%s states %q and this binary holds %q", one.constant, stated, one.held)
+		}
+	}
+}
+
 // the most a logo upload may carry, against the deployment's own intake, so the binary never
 // refuses a photo the deployment would store nor carries one it would refuse.
 func TestTheLogoCapIsTheDeploymentsUploadCap(t *testing.T) {
@@ -539,6 +562,16 @@ func counted(t *testing.T, source, constant string) int {
 	return value
 }
 
+// the longest mission a filing fills, against the profile rule that refuses a longer one: a cap
+// raised there and not here cuts a mission the profile would save, and one lowered there and not
+// here fills a box that then refuses to save.
+func TestAFilledMissionIsOneTheProfileSaves(t *testing.T) {
+	source := read(t, "packages/operator/src/console/org-rules.ts")
+	if stated := counted(t, source, "MAX_STATEMENT"); stated != nonprofits.MissionMax {
+		t.Errorf("MAX_STATEMENT states %d and this binary cuts a mission at %d", stated, nonprofits.MissionMax)
+	}
+}
+
 // the account the run's press names is one the wire names: a processor spelled differently here is
 // a press the deployment refuses for a name no processor answers to, and a run that would report
 // the account it just stored a key for as one nobody could act on.
@@ -574,4 +607,120 @@ func TestTheModelsAreTheOnesBothEndsRead(t *testing.T) {
 	if !slices.Equal(stated, AIModels) {
 		t.Errorf("AI_MODELS states %v and this binary holds %v", stated, AIModels)
 	}
+}
+
+// the IRS nonprofit API as the console reads it, against the deployment's reader of the same API.
+//
+// internal/nonprofits and packages/app/src/lib/server/nonprofits/filing.ts each hold the address,
+// the path a lookup by EIN asks and the shape of its answer, and every failure of either answers
+// nothing to anyone — so one copy changed alone is a fill or a page AI gone quiet, and only this
+// says so. the shape is held by serving the console a body made of the members filing.ts decodes:
+// one the console reads under another name fills nothing.
+func TestTheNonprofitAPIIsTheOneTheDeploymentReads(t *testing.T) {
+	source := read(t, "packages/app/src/lib/server/nonprofits/filing.ts")
+
+	address := regexp.MustCompile(`export const API\s*=\s*'([^']*)'`).FindStringSubmatch(source)
+	if address == nil {
+		t.Fatal("filing.ts states no API")
+	}
+	if address[1] != nonprofits.API {
+		t.Errorf("filing.ts asks %q and this binary asks %q", address[1], nonprofits.API)
+	}
+
+	asked := regexp.MustCompile("answerOf\\(`\\$\\{api\\}([^`]*)`\\)").FindStringSubmatch(source)
+	if asked == nil {
+		t.Fatal("filing.ts asks no `${api}…` path")
+	}
+	const ein = "530196605"
+	path := strings.ReplaceAll(asked[1], "${ein}", ein)
+
+	// each member both readers decode, under its dotted path, and what the console fills from it.
+	served := map[string]string{
+		"ein":            ein,
+		"name":           "American National Red Cross",
+		"filing.mission": "Prevents and alleviates human suffering in the face of emergencies.",
+	}
+	decoded := decodedPaths(t, source, "upstreamOrganisation")
+	for member := range served {
+		if !slices.Contains(decoded, member) {
+			t.Errorf("filing.ts decodes no %q, which this binary reads: it decodes %v", member, decoded)
+		}
+	}
+
+	reached := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case reached <- r.URL.RequestURI():
+		default:
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(nested(served))
+	}))
+	t.Cleanup(upstream.Close)
+
+	looked := nonprofits.At(upstream.URL).LookUp(t.Context(), ein)
+
+	select {
+	case asked := <-reached:
+		if asked != path {
+			t.Errorf("this binary asked %q and filing.ts asks %q", asked, path)
+		}
+	default:
+		t.Errorf("this binary asked nothing, and filing.ts asks %q", path)
+	}
+	if looked.State != nonprofits.Found ||
+		looked.Organisation.Name != served["name"] ||
+		looked.Organisation.Mission != served["filing.mission"] {
+		t.Errorf("a body in filing.ts's shape looked up %+v, want found with its name and mission", looked)
+	}
+}
+
+// the dotted path of every member a zod `z.object` in that module decodes, read off its text: an
+// object nested under a member, directly or as an array's element, adds a step.
+func decodedPaths(t *testing.T, source, schema string) []string {
+	t.Helper()
+	at := regexp.MustCompile(`const ` + schema + `\s*=`).FindStringIndex(source)
+	if at == nil {
+		t.Fatalf("no %s is stated", schema)
+	}
+	token := regexp.MustCompile(`\.object\(\{|\}\)|([A-Za-z_]\w*)\s*:`)
+	paths := []string{}
+	steps := []string{}
+	member := ""
+	for _, found := range token.FindAllStringSubmatch(source[at[1]:], -1) {
+		switch {
+		case found[0] == ".object({":
+			steps = append(steps, member)
+		case found[0] == "})":
+			steps = steps[:len(steps)-1]
+			if len(steps) == 0 {
+				return paths
+			}
+		default:
+			member = found[1]
+			// the first step is the schema itself, which no member is named under.
+			paths = append(paths, strings.Join(append(slices.Clone(steps[1:]), member), "."))
+		}
+	}
+	t.Fatalf("%s never closes", schema)
+	return nil
+}
+
+// dotted paths as the json object they name.
+func nested(flat map[string]string) map[string]any {
+	whole := map[string]any{}
+	for path, value := range flat {
+		at := whole
+		steps := strings.Split(path, ".")
+		for _, step := range steps[:len(steps)-1] {
+			inner, ok := at[step].(map[string]any)
+			if !ok {
+				inner = map[string]any{}
+				at[step] = inner
+			}
+			at = inner
+		}
+		at[steps[len(steps)-1]] = value
+	}
+	return whole
 }

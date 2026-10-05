@@ -299,6 +299,16 @@ var (
 	WalletHostStandings = []string{"drawing", "wallet_inactive", "switched_off", "unregistered"}
 )
 
+// the two keys a profile refusal comes back under that OrgProfileFields does not name, from
+// packages/operator/src/console/org.ts and held to it by ./config_test.go: a key renamed there and
+// not here is a refusal drawn under no box.
+const (
+	// SocialLinksField is the list of social links, refused under one key for the first link refused.
+	SocialLinksField = "social_links"
+	// LogoField is the logo, which is posted to an address of its own.
+	LogoField = "logo"
+)
+
 // StripeProcessor is what the processor list above calls the account this binary sets up, and is
 // what the run's own press names when it asks a deployment about that account alone.
 //
