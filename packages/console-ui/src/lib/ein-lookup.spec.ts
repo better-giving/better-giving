@@ -331,6 +331,27 @@ describe('what the answer says and fills', () => {
 	});
 });
 
+describe('an answer landing while a profile save is out', () => {
+	it('fills nothing until the save has reset the boxes, then fills them by the same rule', async () => {
+		const boxes: Record<string, string> = { legal_name: 'Riverside Food Bank Inc' };
+		const { watch, said } = watched(async () => found(), boxes);
+		watch.typed('12-3456789', '');
+		watch.saving();
+		await settled();
+
+		expect(boxes.mission).toBeUndefined();
+		expect(said()).toBe('');
+
+		// the save's reset: the boxes back at the profile it stored.
+		Object.assign(boxes, { legal_name: 'Riverside Food Bank Inc', mission: '' });
+		watch.afterSave();
+
+		expect(boxes.mission).toBe('Food for every family in Riverside County.');
+		expect(boxes.legal_name).toBe('Riverside Food Bank Inc');
+		expect(said()).toBe(FILLED);
+	});
+});
+
 const RIVERSIDE_MATCH = {
 	ein: '123456789',
 	name: 'Riverside Community Food Bank',

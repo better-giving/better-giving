@@ -26,6 +26,11 @@ import type { IdentityField } from './org-form';
 // still holds exactly what an earlier fill put there — a mission or an address typed before the
 // number, or after it, stays as typed whatever the list says. the record of what the fills wrote is
 // the watch's own, one per fold on the page, and nothing on the screen draws it.
+//
+// **an answer landing while a profile save is out waits for the save.** the save's answer puts the
+// boxes back at the profile it stored, which would take a fill made under it away unseen, and the
+// number in the box is then the stored one, which is never asked about again. so the answer is held,
+// note and fill, and lands by the same rule once the fold says the save is over and its boxes reset.
 
 /** what a number not listed as eligible for tax-deductible gifts says under the box. */
 export const NOT_DEDUCTIBLE = 'Not listed as eligible for tax-deductible gifts.';
@@ -218,6 +223,13 @@ export type EinWatch = {
 	 * the find dialog, which wants the organisation's whole record whatever is stored.
 	 */
 	readonly typed: (value: string, stored: string, picked?: boolean) => void;
+	/** a profile save went out: an answer landing from now waits for {@link EinWatch.afterSave}. */
+	readonly saving: () => void;
+	/**
+	 * the save is answered, and where it landed the boxes are reset to what it stored: an answer that
+	 * waited lands now, against the boxes as they stand.
+	 */
+	readonly afterSave: () => void;
 	/** gives up a lookup in flight, for a fold taken off the page. */
 	readonly stop: () => void;
 };
@@ -232,6 +244,9 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 	let last: { readonly digits: string; readonly read: Read } | null = null;
 	/** what the fills so far put in the boxes, box by box. */
 	let wrote: Filled = {};
+	let saveOut = false;
+	/** an answer that landed while a save was out. */
+	let waiting: { readonly answer: Read; readonly picked: boolean } | null = null;
 
 	/**
 	 * a found organisation put into the boxes, and the record kept of it: the boxes `onFound` puts,
@@ -248,6 +263,10 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 
 	/** the note an answer says, and the fill it is said beside where one was made. */
 	const land = (answer: Read, picked: boolean) => {
+		if (saveOut) {
+			waiting = { answer, picked };
+			return;
+		}
 		const filledAny = answer.found !== null && fill(answer.found, picked);
 		onNote({ shown: answer.note, said: filledAny ? FILLED : '' });
 	};
@@ -288,6 +307,15 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 
 	return {
 		typed,
+		saving: () => {
+			saveOut = true;
+		},
+		afterSave: () => {
+			saveOut = false;
+			const landed = waiting;
+			waiting = null;
+			if (landed !== null) land(landed.answer, landed.picked);
+		},
 		stop: () => {
 			asking?.control.abort();
 			asking = null;
