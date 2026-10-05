@@ -3,8 +3,8 @@ import { BrandMark } from './brand-mark';
 import type { BlockOf, OrgInfo } from './types';
 
 // who the gift is made to, as the organisation's legal details state it: `footer` closes the page,
-// `card` stands among the blocks. each social link is its platform's mark alone, named for the
-// platform.
+// `card` stands among the blocks. each social link is its platform's mark alone, opening in a new
+// tab, and its name says both: the platform, then ", opens in a new tab".
 
 export function OrgInfoBlock({
 	block,
@@ -40,7 +40,7 @@ export function OrgInfoBlock({
 						href={link.href}
 						target="_blank"
 						rel="noopener noreferrer"
-						aria-label={SOCIAL_PLATFORM_NAMES[link.platform]}
+						aria-label={`${SOCIAL_PLATFORM_NAMES[link.platform]}, opens in a new tab`}
 					>
 						<BrandMark brand={link.platform} className="page-org-mark" />
 					</a>
