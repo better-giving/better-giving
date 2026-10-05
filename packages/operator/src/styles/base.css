@@ -465,11 +465,11 @@
 	   it is resolved against this sheet, so every surface that imports it emits the file into its
 	   own output and none of them has to serve a public directory holding a second copy.
 
-	   the height is `--admin-brand-mark-size` and the width follows the picture. each
-	   `aspect-ratio` is that file's own pixel dimensions rather than a value from ./tokens.css, and
-	   no token could hold one: it is a fact about a binary somebody else drew, and squaring
-	   Cloudflare's 246 × 111 wordmark would squash it. the two `1 / 1`s beside it are their files'
-	   shape as well, not a default a square-looking logo falls back to. what
+	   the height is the mark box's and the width follows the picture. each `aspect-ratio` is that
+	   file's own pixel dimensions rather than a value from ./tokens.css, and no token could hold
+	   one: it is a fact about a binary somebody else drew, and squaring Cloudflare's 246 × 111
+	   wordmark would squash it. the two `1 / 1`s beside it are their files' shape as well, not a
+	   default a square-looking logo falls back to. what
 	   packages/operator/src/components/status/Brand.jsx says about the trademarks is the rest of
 	   these rules' reason for existing.
 
@@ -479,7 +479,7 @@
 	   brand. */
 	.adm-brand {
 		display: inline-block;
-		block-size: var(--admin-brand-mark-size);
+		block-size: var(--admin-mark-size);
 		background-repeat: no-repeat;
 		background-position: center;
 		background-size: contain;
@@ -499,5 +499,19 @@
 	.adm-brand--xero {
 		aspect-ratio: 1 / 1;
 		background-image: url('./brand/xero.png');
+	}
+
+	/* a network's own mark — packages/operator/src/components/status/BrandMark.jsx, an image of
+	   the network's file — on an operator screen. its own class rather than `.adm-brand`, because
+	   it is held to LinkedIn's 21px minimum and a company's logo above is not: the height is
+	   `--admin-brand-mark-size`, and the width follows the file. `flex: none` because a mark is
+	   never what gives width back. */
+	/* carried-ok: .adm-brand-mark — handed to BrandMark.jsx as its `className`, and worn by
+	   packages/gallery/src/previews/status-brand-mark.tsx, which
+	   packages/app/src/lib/admin/styles/conformance.spec.ts does not read. */
+	.adm-brand-mark {
+		display: inline-block;
+		block-size: var(--admin-brand-mark-size);
+		flex: none;
 	}
 }

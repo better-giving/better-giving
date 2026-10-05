@@ -8,8 +8,8 @@ import {
  * every network's mark, read off `BRAND_MARK_PLATFORMS` so a network added there arrives here
  * without a line in this file.
  *
- * each stands in `.adm-brand`, the box packages/operator/src/styles/base.css gives a company's own
- * mark on an operator screen: the box sets the height and the file sets the width, so YouTube's,
+ * each wears `.adm-brand-mark`, which packages/operator/src/styles/base.css draws at
+ * `--admin-brand-mark-size`: the class sets the height and the file sets the width, so YouTube's,
  * TikTok's and X's marks run to their own shapes beside the square ones. each is beside the
  * network's name, which is how a mark always stands — it is out of the tree, and the words are what
  * a reader is told.
@@ -22,7 +22,7 @@ export default function StatusBrandMarkPreview() {
 		<div className="adm-stack">
 			{BRAND_MARK_PLATFORMS.map((platform) => (
 				<p key={platform}>
-					<BrandMark platform={platform} className="adm-brand" /> {NAMES[platform]}
+					<BrandMark platform={platform} className="adm-brand-mark" /> {NAMES[platform]}
 				</p>
 			))}
 		</div>

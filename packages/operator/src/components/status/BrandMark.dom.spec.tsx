@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { SOCIAL_PLATFORMS } from '../../console/org';
+import { ruleOf, sheet } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { BRAND_MARK_PLATFORMS, BrandMark } from './BrandMark.jsx';
 
@@ -35,19 +36,19 @@ describe('a network mark mounted into a document', () => {
 	it.each(BRAND_MARK_PLATFORMS)(
 		'draws %s as an image out of the tree, wearing the caller’s class',
 		(platform) => {
-			const mark = drawn(render(BrandMark, { platform, className: 'adm-brand' }));
+			const mark = drawn(render(BrandMark, { platform, className: 'adm-brand-mark' }));
 
 			expect(mark.tagName.toLowerCase()).toBe('img');
 			expect(mark.getAttribute('alt')).toBe('');
 			expect(mark.getAttribute('aria-hidden')).toBe('true');
-			expect(mark.getAttribute('class')).toBe('adm-brand');
+			expect(mark.getAttribute('class')).toBe('adm-brand-mark');
 			expect(mark.getAttribute('src')).toBeTruthy();
 		}
 	);
 
 	it('draws no two platforms from the same file', () => {
 		const files = BRAND_MARK_PLATFORMS.map((platform) =>
-			drawn(render(BrandMark, { platform, className: 'adm-brand' })).getAttribute('src')
+			drawn(render(BrandMark, { platform, className: 'adm-brand-mark' })).getAttribute('src')
 		);
 
 		expect(new Set(files).size).toBe(BRAND_MARK_PLATFORMS.length);
@@ -74,5 +75,14 @@ describe('the file a mark is drawn from', () => {
 			'x.svg',
 			'youtube.svg'
 		]);
+	});
+});
+
+describe('a network mark on an operator screen', () => {
+	it('is drawn at the brand-mark height, which no company logo shares', () => {
+		const base = sheet('base.css');
+
+		expect(ruleOf(base, '.adm-brand-mark').get('block-size')).toBe('var(--admin-brand-mark-size)');
+		expect(ruleOf(base, '.adm-brand').get('block-size')).toBe('var(--admin-mark-size)');
 	});
 });
