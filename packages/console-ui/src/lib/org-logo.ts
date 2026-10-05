@@ -4,7 +4,7 @@ import {
 	resizeImage
 } from '@better-giving/operator/images/resize';
 import { logoRefused, readOrgLogo, uploadOrgLogo } from '../api/client';
-import type { OrgWrite } from '../api/types';
+import type { NoReport, OrgWrite } from '../api/types';
 import type { CropSquare, LogoPress, LogoSource } from './org-fields';
 
 // what the logo press does with the image it names: the square the operator kept, drawn here, in
@@ -86,9 +86,12 @@ async function cropped(source: Blob, crop: CropSquare): Promise<File | LogoRefus
 
 /**
  * the bytes a press crops: the file the operator chose, or the logo the deployment holds now, read
- * back from it.
+ * back from it — or the binary's report of why that read did not land.
  */
-async function sourceImage(source: LogoSource, pressed: AbortSignal): Promise<Blob | LogoRefusal> {
+async function sourceImage(
+	source: LogoSource,
+	pressed: AbortSignal
+): Promise<Blob | LogoRefusal | NoReport> {
 	if (source.from === 'stored') return (await readOrgLogo(pressed)) ?? 'no-stored-logo';
 	return source.file instanceof File ? source.file : 'not-an-image';
 }
@@ -109,6 +112,7 @@ export async function putLogo(press: LogoPress, pressed: AbortSignal): Promise<O
 	if (source === null) return logoRefused(LOGO_REFUSED['no-source']);
 	const image = await sourceImage(source, pressed);
 	if (typeof image === 'string') return logoRefused(LOGO_REFUSED[image]);
+	if (!(image instanceof Blob)) return { kind: 'unwritten', read: image };
 	const square = await cropped(image, crop);
 	if (typeof square === 'string') return logoRefused(LOGO_REFUSED[square]);
 	const resized = await resizeImage(square);

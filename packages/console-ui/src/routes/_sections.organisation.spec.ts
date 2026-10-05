@@ -3,7 +3,7 @@ import { renderToString } from 'react-dom/server';
 import type { DataRouter } from 'react-router';
 import { createMemoryRouter, RouterProvider, UNSAFE_withComponentProps } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OrgWrite } from '../api/types';
+import type { NoReport, OrgWrite } from '../api/types';
 
 // the organisation page's save, through a router: what the screen draws on the render the answer
 // lands in. that render is the one the seam's focus move runs on (../lib/use-console-form.ts), so a
@@ -22,8 +22,8 @@ const binary = vi.hoisted(() => ({
 	resized: null as unknown,
 	/** what happens on the page while the resize runs. */
 	whileResizing: null as (() => void) | null,
-	/** the logo the deployment holds, as the binary answers its bytes. */
-	stored: null as Blob | null
+	/** the logo the deployment holds, as the binary answers its bytes, or why it could not read it. */
+	stored: null as Blob | null | NoReport
 }));
 
 vi.mock('../api/client', async (original) => ({
@@ -420,6 +420,7 @@ describe('the logo presses', () => {
 		binary.answer = LOGO_SAVED;
 		const router = await open();
 		try {
+			const before = binary.shellReads;
 			await saved(router, recropping());
 
 			expect(binary.calls.map(([name]) => name)).toEqual([
@@ -433,6 +434,27 @@ describe('the logo presses', () => {
 			expect(binary.calls[2]).toEqual(['drawImage', 100, 0, 400, 400, 0, 0, 400, 400]);
 			expect(binary.calls[4]?.[1]).toBe(drawn);
 			expect(answered(router)).toEqual({ write: LOGO_SAVED, press: 'logo' });
+			expect(binary.shellReads).toBe(before + 1);
+		} finally {
+			router.dispose();
+		}
+	});
+
+	it('answers a re-crop whose read of the stored logo did not land as unwritten at the logo', async () => {
+		const read: NoReport = {
+			kind: 'refused',
+			error: 'session_refused',
+			message: 'Not this session.',
+			fix: 'Connect again.'
+		};
+		binary.stored = read;
+		const router = await open();
+		try {
+			await saved(router, recropping());
+
+			expect(binary.calls.map(([name]) => name)).toEqual(['readOrgLogo']);
+			expect(router.state.errors).toBeNull();
+			expect(answered(router)).toEqual({ write: { kind: 'unwritten', read }, press: 'logo' });
 		} finally {
 			router.dispose();
 		}
