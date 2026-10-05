@@ -1,6 +1,6 @@
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { useEffect, useRef, useState } from 'react';
 import { SHARE_CHANNEL_LABELS, type ShareChannel, shareHref } from '../../page/share';
-import { BrandMark } from './brand-mark';
 import { Glyph } from './glyph';
 import type { BlockOf, PageSharing } from './types';
 
@@ -13,7 +13,8 @@ import type { BlockOf, PageSharing } from './types';
 // second press puts back the words the region already holds, and a region handed what it holds is
 // announced by nobody.
 //
-// a network's mark is ./brand-mark.tsx's; Email and Copy link draw the form's own glyphs.
+// a network's mark is that network's own file (packages/operator's BrandMark.jsx), sized by its
+// height; Email and Copy link draw the form's own glyphs.
 
 const ACTIONS: Record<Exclude<ShareChannel, 'copy-link'>, string> = {
 	facebook: 'Share on Facebook',
@@ -96,7 +97,7 @@ export function ShareBlock({
 							{channel === 'email' ? (
 								<Glyph name="mail" className="page-share-mark" />
 							) : (
-								<BrandMark brand={channel} className="page-share-mark" />
+								<BrandMark platform={channel} className="page-share-brand" />
 							)}
 							{icons ? null : <span>{SHARE_CHANNEL_LABELS[channel]}</span>}
 						</a>

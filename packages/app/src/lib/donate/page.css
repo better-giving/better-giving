@@ -828,8 +828,9 @@ body {
 }
 
 /* a platform's mark alone, centred in a `--_row-min` square like the icon-only share press, and the
-   row pulled back by the slack between the square and the mark, so the first mark's edge lines up
-   with the words above it. */
+   row pulled back by the slack between the square and a square mark, so a square first mark's edge
+   lines up with the words above it. the mark is the network's own file and is sized by its height
+   alone, so a mark that is not square keeps its own shape. */
 .page-org-links {
 	display: flex;
 	flex-wrap: wrap;
@@ -844,7 +845,6 @@ body {
 }
 
 .page-org-mark {
-	inline-size: var(--_glyph-beside);
 	block-size: var(--_glyph-beside);
 }
 
@@ -935,6 +935,13 @@ body {
 .page-share-mark {
 	flex: none;
 	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+}
+
+/* a network's own mark beside its channel's words: the glyphs' height, and the width its file's own
+   shape gives it. */
+.page-share-brand {
+	flex: none;
 	block-size: var(--_glyph-beside);
 }
 

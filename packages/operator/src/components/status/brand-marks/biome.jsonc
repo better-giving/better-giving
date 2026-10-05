@@ -1,0 +1,11 @@
+{
+	// each svg here is a network's own published file and ../BrandMark.jsx draws it byte for byte,
+	// so the network owns the bytes: biome formats none of them and lints none of them — its
+	// `noSvgWithoutTitle` asks for a title the file does not carry, and the mark is out of the tree
+	// at the `<img>` that draws it.
+	"root": false,
+	"extends": "//",
+	"files": {
+		"includes": ["**", "!**/*.svg"]
+	}
+}

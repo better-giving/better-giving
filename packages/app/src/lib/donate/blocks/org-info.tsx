@@ -1,5 +1,5 @@
 import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
-import { BrandMark } from './brand-mark';
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import type { BlockOf, OrgInfo } from './types';
 
 // who the gift is made to, as the organisation's legal details state it: `footer` closes the page,
@@ -42,7 +42,7 @@ export function OrgInfoBlock({
 						rel="noopener noreferrer"
 						aria-label={`${SOCIAL_PLATFORM_NAMES[link.platform]}, opens in a new tab`}
 					>
-						<BrandMark brand={link.platform} className="page-org-mark" />
+						<BrandMark platform={link.platform} className="page-org-mark" />
 					</a>
 				))}
 			</p>
