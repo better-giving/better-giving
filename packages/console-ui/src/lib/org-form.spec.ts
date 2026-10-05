@@ -431,12 +431,33 @@ describe('what the Organisation fold says about its links at its own press', () 
 		return parseWithZod(body, { schema: ORG_FORM.schema });
 	};
 
-	it('takes addresses on the six platforms, with and without a scheme, and rows left blank', () => {
-		expect(submitted(['instagram.com/hope', '', 'https://www.youtube.com/@hope']).status).toBe(
+	it('takes addresses on the six platforms, with and without a scheme, and no rows at all', () => {
+		expect(submitted(['instagram.com/hope', 'https://www.youtube.com/@hope']).status).toBe(
 			'success'
 		);
 		expect(submitted([]).status).toBe('success');
-		expect(submitted(['']).status).toBe('success');
+	});
+
+	it('marks a lone blank row under its own box', () => {
+		const submission = submitted(['']);
+
+		expect(submission.status === 'error' ? submission.error : {}).toEqual({
+			[`${SOCIAL_LINKS_FIELD}[0]`]: [REQUIRED]
+		});
+	});
+
+	it('marks the blank row among good ones, and only that row', () => {
+		const submission = submitted(['instagram.com/hope', '   ', 'https://www.youtube.com/@hope']);
+
+		expect(submission.status === 'error' ? submission.error : {}).toEqual({
+			[`${SOCIAL_LINKS_FIELD}[1]`]: [REQUIRED]
+		});
+	});
+
+	it('marks nothing where every row holds an address', () => {
+		const submission = submitted(['instagram.com/hope', 'x.com/hope', 'facebook.com/hope']);
+
+		expect(submission.status).toBe('success');
 	});
 
 	it('refuses an address on another site in the sentence the deployment sends, keyed to the list', () => {

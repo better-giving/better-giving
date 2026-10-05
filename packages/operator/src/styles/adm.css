@@ -1960,7 +1960,8 @@
 	   one clearly wider than the tier inside it, so a label reads as its own box's before anything
 	   on the screen is read.
 	     - inside a field — a label, its sentence, its box and a message under the box —
-	       `--admin-space-3`, and a label's sentence `--admin-space-2` under it (`.adm-field` below).
+	       `--admin-space-3`, and a label's sentence `--admin-space-1` under it (`.adm-field` below),
+	       as a group's sentence stands under its name (`.adm-fieldset` below).
 	     - between one field and the next, `--admin-space-6`, whatever holds the two: the stack's
 	       own gap, a group's step (`.adm-fieldset > * + *`), a pair's gap (`.adm-pair`), and a
 	       field on a tight stack (`.adm-stack--tight > .adm-field + *`).
@@ -2002,7 +2003,7 @@
 	   only where a label is above it. a field named some other way draws none, and its sentence is
 	   then the first part of the field with nothing above it to belong to. */
 	.adm-field > .adm-field__label + .adm-hint {
-		margin-block-start: var(--admin-space-2);
+		margin-block-start: var(--admin-space-1);
 	}
 
 	/* the label hugs its own words: a grid item fills the track it is placed in, and a label wider
@@ -3494,6 +3495,14 @@
 		pointer-events: none;
 	}
 
+	/* a glyph in the slot is drawn at the network marks' height rather than a mark's own size, so a
+	   row whose address is no network's stands its globe as tall as the network marks in the rows
+	   beside it. */
+	.adm-leadwrap__lead > .adm-mark {
+		inline-size: var(--admin-brand-mark-size);
+		block-size: var(--admin-brand-mark-size);
+	}
+
 	.adm-leadwrap .adm-input {
 		padding-inline-start: calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3));
 	}
@@ -3533,8 +3542,10 @@
 	   label floating between two boxes. the narrower is under the legend, whatever follows it: the
 	   legend is the group's heading and stands as close to what it names as a label does to its own
 	   box, and a legend stood off at the group's own step reads as one more item of the run rather
-	   than the name over it. a sentence under the legend takes the same close step, because the two
-	   are one head, and what follows that sentence stands off at the group's step again. */
+	   than the name over it. a sentence under the legend stands closer still, at the step a label's
+	   own sentence takes, because the two are one head; and what follows that sentence stands the
+	   close step under it, so a head stands off what it names by one step with a sentence or
+	   without. */
 	/* the column's floor is zero: an implicit track sizes to its widest item's min-content, so one
 	   unbroken word inside — a search echoed back — would widen the group, and the page, past the
 	   viewport. that same floor is the fieldset's own min-content, so its user-agent
@@ -3549,6 +3560,14 @@
 	}
 
 	.adm-fieldset > .adm-fieldset__legend + * {
+		margin-block-start: var(--admin-space-3);
+	}
+
+	.adm-fieldset > .adm-fieldset__legend + .adm-hint {
+		margin-block-start: var(--admin-space-1);
+	}
+
+	.adm-fieldset > .adm-fieldset__legend + .adm-hint + * {
 		margin-block-start: var(--admin-space-3);
 	}
 
@@ -4001,11 +4020,16 @@
 	   everything in the group spans every track and a row is what divides its own span again, so
 	   what is not a row — the empty note, the Add — stands one under the next. left to be placed
 	   one cell at a time they pair off instead: a group drawing a note over an Add would put the
-	   button beside the sentence. */
+	   button beside the sentence.
+
+	   the step between a box and its trailing track is `--admin-space-2`, the step the brand colour's
+	   well stands off its own box by (`.adm-field > .adm-actions:has(> .adm-swatch--well)` below):
+	   what stands there acts on that box alone, so it is set against the box rather than a row's
+	   step away from it. */
 	.adm-rows {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
-		gap: var(--admin-space-4);
+		gap: var(--admin-space-4) var(--admin-space-2);
 	}
 
 	.adm-rows > * {
@@ -5480,8 +5504,8 @@
 	/* ---------- the brand colour's well ---------------------------------------------------
 
 	   packages/console-ui/src/lib/org-fold.tsx writes these on the brand colour's `<input
-	   type="color">`. the colour it holds fills it edge to edge inside a step of padding; its focus
-	   ring is ./base.css's `:focus-visible`. */
+	   type="color">`. the colour it holds fills it edge to edge inside its border; its focus ring is
+	   ./base.css's `:focus-visible`. */
 	.adm-swatch {
 		display: inline-flex;
 		align-items: center;
@@ -5516,27 +5540,32 @@
 		block-size: var(--admin-field-height);
 		min-inline-size: 0;
 		min-block-size: 0;
-		padding: var(--admin-space-2);
+		padding: 0;
 	}
 
 	/* and it stays right of the box at the 375px floor: a hex is seven characters, so the box gives
-	   width back rather than the row putting the well under it. */
+	   width back rather than the row putting the well under it. it stands off the box by
+	   `--admin-space-2` rather than the row's own step, because it is the box's pair rather than a
+	   press of its own — the step a repeating row's Remove stands off its box by (`.adm-rows`). */
 	.adm-field > .adm-actions:has(> .adm-swatch--well) {
 		flex-wrap: nowrap;
+		gap: var(--admin-space-2);
 	}
 
 	.adm-swatch--well::-webkit-color-swatch-wrapper {
 		padding: 0;
 	}
 
+	/* the swatch is rounded to the well's inner edge, the radius less the border it stands inside,
+	   so a colour filling the well leaves no corner of it past that edge. */
 	.adm-swatch--well::-webkit-color-swatch {
 		border: 0;
-		border-radius: var(--admin-radius-0);
+		border-radius: calc(var(--admin-radius) - var(--admin-border-width));
 	}
 
 	.adm-swatch--well::-moz-color-swatch {
 		border: 0;
-		border-radius: var(--admin-radius-0);
+		border-radius: calc(var(--admin-radius) - var(--admin-border-width));
 	}
 
 	/* no brand colour set: the well draws its own ground and no fill, since a native picker always
@@ -6385,8 +6414,10 @@
 	   packages/console-ui/src/lib/org-fold.tsx draws it: one square that is the logo and the press
 	   that replaces it, the two presses on its corner that crop it again and take it off, and what
 	   the last press reported under it. the square is the size a program's photo is drawn at
-	   (`.adm-placed__art--square` above), and the art stands in it whole — a logo is cropped by its
-	   own crop and never by its frame — off the edge by the part's inner step.
+	   (`.adm-placed__art--square` above), and the art fills it edge to edge and stands in it whole —
+	   a logo is cropped by its own crop and never by its frame, so an older logo that is not square
+	   is drawn whole across the square's width or its height. only the empty square keeps an inner
+	   step, which is the room its mark and its word stand in.
 
 	   with no logo the square holds the mark and the word that say what a press does, and its edge is
 	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. a file dragged
@@ -6423,7 +6454,10 @@
 		transition: var(--admin-transition-state);
 	}
 
+	/* clipped to its own corner, so the art's square corners stay inside the rounded edge. */
 	.adm-logo__square:has(> .adm-logo__art) {
+		padding: 0;
+		overflow: hidden;
 		border-style: solid;
 	}
 
@@ -6451,7 +6485,7 @@
 		cursor: not-allowed;
 	}
 
-	/* the logo fills what the square has inside its padding and is drawn whole in it. */
+	/* the logo fills the square inside its border and is drawn whole in it. */
 	.adm-logo__art {
 		flex: 1 1 0;
 		min-block-size: 0;

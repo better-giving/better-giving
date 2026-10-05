@@ -1,5 +1,5 @@
 import type { OrgProfileField } from '@better-giving/operator/console/org';
-import { ORG_PROFILE_FIELD_RULES } from '@better-giving/operator/console/org-rules';
+import { ORG_PROFILE_FIELD_RULES, REQUIRED } from '@better-giving/operator/console/org-rules';
 import { readSocialLinks } from '@better-giving/operator/console/social-links';
 import { z } from 'zod';
 import type { OrgWrite } from '../api/types';
@@ -127,8 +127,9 @@ export type IdentityField = keyof typeof identityBoxes.shape;
  * the boxes and the link rows, which one press stores together.
  *
  * a row is `.optional()` for {@link identityBox}'s reason — conform drops an empty row before the
- * schema sees it, and a blank row is one the deployment skips — and the list is, because a form
- * whose rows were all removed posts no list at all.
+ * schema sees it, so a bare string would refuse a blank row in zod's words rather than in
+ * {@link ORG_FORM}'s — and the list is, because a form whose rows were all removed posts no list at
+ * all.
  */
 const organisationBoxes = identityBoxes.extend({
 	[SOCIAL_LINKS_FIELD]: z.array(z.string().optional()).optional()
@@ -172,9 +173,17 @@ export const ORG_FORM: StatedForm<typeof organisationBoxes> = {
 				ctx.addIssue({ code: 'custom', message: issue.message, path: [field] });
 			}
 		}
+		// a blank row is marked under its own box before the list is read: `readSocialLinks` skips
+		// one, as the deployment does, and this form refuses it — every box a form states must arrive
+		// (CLAUDE.md → Bans → Forms). ./sites.ts marks a blank site row the same way.
+		const rows = (held[SOCIAL_LINKS_FIELD] ?? []).map((row) => row ?? '');
+		rows.forEach((row, at) => {
+			if (row.trim().length > 0) return;
+			ctx.addIssue({ code: 'custom', message: REQUIRED, path: [SOCIAL_LINKS_FIELD, at] });
+		});
 		// keyed to the list and not a row: the deployment refuses the list under the same one key, so
 		// a sentence from either end is drawn in the same place.
-		const links = readSocialLinks((held[SOCIAL_LINKS_FIELD] ?? []).map((row) => row ?? ''));
+		const links = readSocialLinks(rows);
 		if (!links.ok) {
 			ctx.addIssue({ code: 'custom', message: links.error, path: [SOCIAL_LINKS_FIELD] });
 		}
