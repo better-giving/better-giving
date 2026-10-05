@@ -36,6 +36,19 @@ describe('a social link as typed', () => {
 			link: { platform: 'youtube', href: 'https://youtu.be/dQw4w9WgXcQ' }
 		});
 	});
+
+	it.each([
+		['http://facebook.com/hope', 'https://facebook.com/hope'],
+		['https://x:y@facebook.com/hope', 'https://facebook.com/hope'],
+		['https://facebook.com:8443/hope', 'https://facebook.com/hope'],
+		[
+			'http://me@www.instagram.com:8080/hope?igsh=1#top',
+			'https://www.instagram.com/hope?igsh=1#top'
+		]
+	])('stores %s as %s: https, with no user, password or port', (typed, href) => {
+		const read = readSocialLink(typed);
+		expect(read.ok && read.link.href).toBe(href);
+	});
 });
 
 describe('a social link refused', () => {
