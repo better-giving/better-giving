@@ -36,7 +36,7 @@ import type {
 	QuickbooksBacklogLine,
 	QuickbooksStartAtSide
 } from '@better-giving/operator/console/quickbooks';
-import { LOGO_FIELD } from '../lib/org-fields';
+import { LOGO_FIELD } from '@better-giving/operator/console/org';
 
 // the console's own process, reached from the page it serves.
 //

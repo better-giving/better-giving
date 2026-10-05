@@ -19,7 +19,9 @@ const binary = vi.hoisted(() => ({
 	/** each call the page made of the binary, in order, with what it was handed. */
 	calls: [] as [string, ...unknown[]][],
 	/** what the resize answers, which stands for the browser's canvas. */
-	resized: null as unknown
+	resized: null as unknown,
+	/** what happens on the page while the resize runs. */
+	whileResizing: null as (() => void) | null
 }));
 
 vi.mock('../api/client', async (original) => ({
@@ -47,6 +49,7 @@ vi.mock('@better-giving/operator/images/resize', async (original) => ({
 	...(await original<Record<string, unknown>>()),
 	resizeImage: async (file: File) => {
 		binary.calls.push(['resizeImage', file]);
+		binary.whileResizing?.();
 		return binary.resized;
 	}
 }));
@@ -79,6 +82,7 @@ beforeEach(() => {
 	binary.answer = REFUSED;
 	binary.calls = [];
 	binary.resized = null;
+	binary.whileResizing = null;
 });
 
 /**
@@ -340,6 +344,25 @@ describe('the logo presses', () => {
 				unread: 0
 			}
 		});
+	});
+
+	it('uploads nothing for a press the router abandoned while the photo was resizing', async () => {
+		binary.resized = { ok: true, blob: new Blob(['resized']), width: 400, height: 400 };
+		const leaving = new AbortController();
+		binary.whileResizing = () => leaving.abort();
+		const posted = pressing(ORG_LOGO_INTENT);
+		posted.set(LOGO_FILE, photo());
+
+		const answer = organisation.clientAction({
+			request: new Request(`http://localhost${PAGE}`, {
+				method: 'POST',
+				body: posted,
+				signal: leaving.signal
+			})
+		} as never);
+
+		await expect(answer).rejects.toMatchObject({ name: 'AbortError' });
+		expect(binary.calls.map(([name]) => name)).toEqual(['resizeImage']);
 	});
 
 	it('takes the logo off and reads the deployment again', async () => {

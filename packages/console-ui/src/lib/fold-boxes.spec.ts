@@ -41,9 +41,9 @@ const ORGANISATION: NonprofitOrganisation = {
 	mission: 'Food for every family in Riverside County.'
 };
 
-/** the fill as the fold makes it: the boxes as they were asked over, against the boxes now. */
-function fill(form: HTMLFormControlsCollection, before: ReturnType<typeof heldBoxes>): number {
-	return putBoxes(form, foundBoxes(ORGANISATION, before, heldBoxes(form, ['mission', 'city'])));
+/** the fill as the fold makes it, where no fill has written a box yet, against the boxes now. */
+function fill(form: HTMLFormControlsCollection): number {
+	return putBoxes(form, foundBoxes(ORGANISATION, {}, heldBoxes(form, ['mission', 'city'])));
 }
 
 describe('the lookup’s fill, reaching the boxes', () => {
@@ -53,22 +53,21 @@ describe('the lookup’s fill, reaching the boxes', () => {
 		const mission = new TextArea();
 		const form = controls({ mission, city: new Input() });
 
-		fill(form, heldBoxes(form, ['mission', 'city']));
+		fill(form);
 
 		expect(mission.value).toBe('Food for every family in Riverside County.');
 		expect(mission.said).toBe(1);
 	});
 
-	it('leaves a mission typed after the lookup went out', () => {
+	it('leaves a typed mission', () => {
 		vi.stubGlobal('HTMLInputElement', Input);
 		vi.stubGlobal('HTMLTextAreaElement', TextArea);
 		const mission = new TextArea();
 		const city = new Input();
 		const form = controls({ mission, city });
-		const before = heldBoxes(form, ['mission', 'city']);
 
 		mission.value = 'Feeding Riverside.';
-		fill(form, before);
+		fill(form);
 
 		expect(mission.value).toBe('Feeding Riverside.');
 		expect(mission.said).toBe(0);

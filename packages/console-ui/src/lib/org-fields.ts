@@ -1,8 +1,10 @@
 import { IDENTITY_FOLD, NOTIFICATIONS_FOLD } from '@better-giving/operator/setup-folds';
 import {
+	LOGO_FIELD,
 	ORG_PROFILE_FIELDS,
 	type OrgLogo,
 	type OrgProfileField,
+	SOCIAL_LINKS_FIELD,
 	type SocialLink
 } from '@better-giving/operator/console/org';
 import type { OrgWrite } from '../api/types';
@@ -87,15 +89,13 @@ export type OrgPressAnswer = { readonly write: OrgWrite; readonly press: OrgPres
 export const LOGO_FILE = 'file';
 
 /**
- * the list field every link row belongs to, which is also the key the deployment refuses the list
- * under — one sentence for the first address refused (`readSocialLinks` in
- * `@better-giving/operator/console/social-links`). a row submits under its position,
- * `social_links[0]`, as conform spells a list.
+ * `SOCIAL_LINKS_FIELD` is the list field every link row belongs to, which is also the key the
+ * deployment refuses the list under — one sentence for the first address refused (`readSocialLinks`
+ * in `@better-giving/operator/console/social-links`). a row submits under its position,
+ * `social_links[0]`, as conform spells a list. `LOGO_FIELD` is the key a refusal of the photo comes
+ * back under, from the deployment and from this console alike.
  */
-export const SOCIAL_LINKS_FIELD = 'social_links';
-
-/** the key a refusal of the photo comes back under, from the deployment and from this console alike. */
-export const LOGO_FIELD = 'logo';
+export { LOGO_FIELD, SOCIAL_LINKS_FIELD };
 
 /** how one box is drawn and what it says under its own label. */
 export type OrgFieldCopy = {
@@ -111,6 +111,11 @@ export type OrgFieldCopy = {
 	 * box nobody typed in is read as the empty string it holds.
 	 */
 	readonly placeholder: string;
+	/**
+	 * what the box takes, under its label, where the shape matters and the placeholder is the only
+	 * other place it shows: a box seeded from the profile is full and shows no placeholder.
+	 */
+	readonly hint?: string;
 	/**
 	 * what a browser may fill this box from.
 	 *
@@ -193,7 +198,12 @@ export const ORG_FIELDS: Record<OrgProfileField, OrgFieldCopy> = {
 		optional: true,
 		prose: true
 	},
-	brand_colour: { label: 'Brand colour', placeholder: '#1f6feb', optional: true }
+	brand_colour: {
+		label: 'Brand colour',
+		placeholder: '#1f6feb',
+		hint: 'A # and six hex digits, like #1f6feb.',
+		optional: true
+	}
 };
 
 /** what the two parts of the profile that are not a single box are called on the screen. */
