@@ -534,7 +534,7 @@ export function OrgFold({
 			<Form
 				{...form.mount}
 				onSubmit={profilePressed}
-				className="adm-stack"
+				className="adm-groups"
 				method="post"
 				preventScrollReset
 			>
@@ -543,29 +543,37 @@ export function OrgFold({
 				{carriedBoxes(IDENTITY_BOXES).map((field) => (
 					<input key={field} type="hidden" name={field} value={stored[field]} readOnly />
 				))}
-				<div className="adm-pair adm-pair--side">
-					{box('tax_id')}
-					{box('legal_name')}
+				{/* the profile in its groups, which stand apart by the group step rather than the step
+				    between two fields: who the organisation is, what it says about itself, how it
+				    looks, where else it is, and then the press. */}
+				<div className="adm-stack">
+					<div className="adm-pair adm-pair--side">
+						{box('tax_id')}
+						{box('legal_name')}
+					</div>
+
+					<fieldset className="adm-fieldset">
+						<legend className="adm-fieldset__legend">Address on receipts</legend>
+						<div className="adm-pair adm-pair--side">
+							{box('address_line1')}
+							{box('address_line2')}
+						</div>
+						<div className="adm-pair adm-pair--side">
+							{box('city')}
+							{box('region')}
+						</div>
+						<div className="adm-pair adm-pair--side">
+							{box('postal_code')}
+							{box('country')}
+						</div>
+					</fieldset>
 				</div>
 
-				<fieldset className="adm-fieldset">
-					<legend className="adm-fieldset__legend">Address on receipts</legend>
-					<div className="adm-pair adm-pair--side">
-						{box('address_line1')}
-						{box('address_line2')}
-					</div>
-					<div className="adm-pair adm-pair--side">
-						{box('city')}
-						{box('region')}
-					</div>
-					<div className="adm-pair adm-pair--side">
-						{box('postal_code')}
-						{box('country')}
-					</div>
-				</fieldset>
+				<div className="adm-stack">
+					{box('mission')}
+					{box('vision')}
+				</div>
 
-				{box('mission')}
-				{box('vision')}
 				{box(
 					'brand_colour',
 					<>
@@ -592,51 +600,55 @@ export function OrgFold({
 					</>
 				)}
 
-				<RepeatingRows
-					id={LINKS_GROUP}
-					legend={SOCIAL_LINKS_LABEL}
-					rowLabel="Link"
-					hint={`One address for each platform: ${PLATFORMS_LISTED}.`}
-					describedBy={capped ? LINKS_CAP : undefined}
-					addLabel="Add a link"
-					placeholder="https://www.instagram.com/yourorganisation"
-					disabled={busy}
-					add={addLink}
-					error={linksSaid === undefined ? undefined : <MarkedText text={linksSaid} />}
-					rows={linkRows.map(linkRow)}
-				/>
-				{capped ? (
-					<FieldMessage id={LINKS_CAP}>
-						{MAX_LINK_ROWS} links at most, one for each platform.
-					</FieldMessage>
-				) : null}
-
-				<div className="adm-actions">
-					<SaveButton
-						name="intent"
-						value={ORG_INTENT}
-						state={form.state}
-						label="Save details"
-						doneLabel="Saved"
+				<div className="adm-stack">
+					<RepeatingRows
+						id={LINKS_GROUP}
+						legend={SOCIAL_LINKS_LABEL}
+						rowLabel="Link"
+						hint={`One address for each platform: ${PLATFORMS_LISTED}.`}
+						describedBy={capped ? LINKS_CAP : undefined}
+						addLabel="Add a link"
+						placeholder="https://www.instagram.com/yourorganisation"
+						disabled={busy}
+						add={addLink}
+						error={linksSaid === undefined ? undefined : <MarkedText text={linksSaid} />}
+						rows={linkRows.map(linkRow)}
 					/>
-					{/* closed with the boxes, since a pick fills them; closed as the field's own presses are,
-					    so a reader standing on it keeps the focus. */}
-					{lookups ? (
-						<Button
-							ref={findPress}
-							type="button"
-							variant="quiet"
-							aria-disabled={busy || undefined}
-							onClick={() => {
-								if (!busy) setFinding(true);
-							}}
-						>
-							{picked ? 'Pick a different organisation' : 'Find your organisation'}
-						</Button>
+					{capped ? (
+						<FieldMessage id={LINKS_CAP}>
+							{MAX_LINK_ROWS} links at most, one for each platform.
+						</FieldMessage>
 					) : null}
 				</div>
 
-				{busy ? null : <OrgWriteOutcome write={profileWrite} drawn={ORGANISATION_KEYS} />}
+				<div className="adm-stack">
+					<div className="adm-actions">
+						<SaveButton
+							name="intent"
+							value={ORG_INTENT}
+							state={form.state}
+							label="Save details"
+							doneLabel="Saved"
+						/>
+						{/* closed with the boxes, since a pick fills them; closed as the field's own presses are,
+					    so a reader standing on it keeps the focus. */}
+						{lookups ? (
+							<Button
+								ref={findPress}
+								type="button"
+								variant="quiet"
+								aria-disabled={busy || undefined}
+								onClick={() => {
+									if (!busy) setFinding(true);
+								}}
+							>
+								{picked ? 'Pick a different organisation' : 'Find your organisation'}
+							</Button>
+						) : null}
+					</div>
+
+					{busy ? null : <OrgWriteOutcome write={profileWrite} drawn={ORGANISATION_KEYS} />}
+				</div>
 			</Form>
 
 			<fieldset className="adm-fieldset">

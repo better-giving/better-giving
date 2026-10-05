@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
 import {
 	LOGO_FILE,
+	ORG_INTENT,
 	ORG_LOGO_INTENT,
 	ORG_LOGO_REMOVE_INTENT,
 	type OrgPressKind,
@@ -213,6 +214,24 @@ describe('the Organisation fold’s save', () => {
 	it('posts no photo and no logo intent, which are the logo’s own press', () => {
 		expect(profile().some((entry) => entry.startsWith(`${LOGO_FILE}=`))).toBe(false);
 		expect(profile()).not.toContain(`intent=${ORG_LOGO_INTENT}`);
+	});
+
+	// the step between groups is wider than the one between two fields (the squint test,
+	// packages/operator/src/styles/squint.spec.ts), so the profile reads as its groups.
+	it('stands the profile in its groups: identity, story, look, links, and the press', () => {
+		const form = formNamed(drawn(WIDENED).markup, 'org');
+
+		expect(form).toMatch(/^<form[^>]*class="adm-groups"/);
+		const order = [
+			'name="tax_id"',
+			'name="mission"',
+			'name="brand_colour"',
+			'social_links[0]',
+			`value="${ORG_INTENT}"`
+		];
+		const at = order.map((mark) => form.indexOf(mark));
+		expect(at.every((place) => place !== -1)).toBe(true);
+		expect([...at].sort((a, b) => a - b)).toEqual(at);
 	});
 
 	it('draws the mission and the vision as paragraphs', () => {
