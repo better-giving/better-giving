@@ -1,3 +1,5 @@
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
+import type { SocialPlatform } from '@better-giving/operator/console/org';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -243,11 +245,57 @@ describe('the Organisation fold’s save', () => {
 		expect(set).not.toContain('No colour set');
 	});
 
-	it('names the platform the deployment recognised beside each stored link', () => {
-		const { markup } = drawn(WIDENED);
+	/** a network's mark as the operator's own part draws it: its `<img>`, without the preload react
+	    puts in front of an image drawn at the root. */
+	const markOf = (platform: SocialPlatform) =>
+		renderToStaticMarkup(createElement(BrandMark, { platform, className: 'adm-brand-mark' })).match(
+			/<img[^>]*>/
+		)?.[0] ?? '<no mark>';
 
-		expect(markup).toContain('id="org-social_links[0]-hint">Facebook</p>');
-		expect(markup).toContain('id="org-social_links[1]-hint">Instagram</p>');
+	/** the box a link row draws, and the slot at its start, by the row's position. */
+	const linkRow = (markup: string, at: number) => {
+		const row = markup.match(
+			new RegExp(
+				`<div class="adm-leadwrap"><span class="adm-leadwrap__lead" aria-hidden="true">((?:(?!</span><input).)*)</span><input[^>]*name="social_links\\[${at}\\]"[^>]*>`,
+				's'
+			)
+		);
+		expect(row).not.toBeNull();
+		return { slot: row?.[1] ?? '', box: row?.[0].match(/<input[^>]*>/)?.[0] ?? '' };
+	};
+
+	it('stands the mark of the network each link’s address is read as inside its box', () => {
+		const { markup } = drawn(WIDENED);
+		const [facebook, instagram] = [linkRow(markup, 0), linkRow(markup, 1)];
+
+		expect(facebook.slot).toContain(markOf('facebook'));
+		expect(instagram.slot).toContain(markOf('instagram'));
+	});
+
+	// the mark says the platform on the screen, so the name is drawn to a reader alone and the box
+	// is described by it.
+	it('names the platform to a reader alone, and describes the box by it', () => {
+		const { markup } = drawn(WIDENED);
+		const { slot, box } = linkRow(markup, 0);
+
+		expect(slot).toContain('<span id="org-social_links[0]-hint" class="adm-vh">Facebook</span>');
+		expect(box).toMatch(/aria-describedby="[^"]*org-social_links\[0\]-hint/);
+		expect(markup).not.toContain('<p class="adm-hint" id="org-social_links[0]-hint"');
+	});
+
+	it('stands the globe in a box whose address no network is read from, and names no platform', () => {
+		const { markup } = drawn(
+			storedProfile({
+				...WIDENED,
+				social_links: [{ platform: 'facebook', href: 'https://riverside.org/news' }]
+			})
+		);
+		const { slot, box } = linkRow(markup, 0);
+
+		expect(slot).toContain('lucide-globe');
+		expect(slot).not.toContain('adm-brand-mark');
+		expect(slot).not.toContain('adm-vh');
+		expect(box).not.toContain('org-social_links[0]-hint');
 	});
 });
 

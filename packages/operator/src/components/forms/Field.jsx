@@ -53,6 +53,11 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   read-only box holding a credential somebody pastes elsewhere: copied from the box, the value
  *   need never be shown to be taken. it stands in the same place the masked press does and for the
  *   same reason, and the two share one trailing cluster. an input's alone, as `masked` is.
+ * @property {ReactNode} [lead] a mark inside the box at its start, saying what the value is read as
+ *   — a network's mark in front of an address on it. the box reserves the slot whenever this is not
+ *   `undefined`, `null` included, so text typed into the box never moves as the mark arrives,
+ *   changes or goes. it is decorative and out of the tree: what it says is said in words the box is
+ *   described by. an input's alone, as `masked` is.
  * @property {string | undefined} [copyLabel] the copy control's accessible name, where a bare Copy
  *   would not say what of.
  * @property {Ref<HTMLButtonElement> | undefined} [copyRef] the copy control's button, for a caller
@@ -115,6 +120,7 @@ export function Field({
 	statusSaid,
 	beside,
 	masked,
+	lead,
 	revealLabel = 'Show the value',
 	hideLabel = 'Hide the value',
 	copyable,
@@ -180,7 +186,7 @@ export function Field({
 	   is what places them and reserves the room. one press stands in the wrapper on its own; two
 	   stand in `.adm-maskwrap__presses`, the copy first so the reveal keeps the trailing end it has
 	   on every other masked box. a box with no press draws no wrapper. */
-	const inBox = (/** @type {ReactNode} */ box) =>
+	const withPresses = (/** @type {ReactNode} */ box) =>
 		reveal === null && copy === null ? (
 			box
 		) : (
@@ -194,6 +200,19 @@ export function Field({
 						{reveal}
 					</div>
 				)}
+			</div>
+		);
+	/* the leading mark stands in a wrapper of its own around everything above, which reserves its
+	   slot inside the box (`.adm-leadwrap` in packages/operator/src/styles/adm.css). */
+	const inBox = (/** @type {ReactNode} */ box) =>
+		lead === undefined || as === 'textarea' ? (
+			withPresses(box)
+		) : (
+			<div className="adm-leadwrap">
+				<span className="adm-leadwrap__lead" aria-hidden="true">
+					{lead}
+				</span>
+				{withPresses(box)}
 			</div>
 		);
 	/* the box, alone on its row or sharing it. what shares it is wrapped rather than placed beside

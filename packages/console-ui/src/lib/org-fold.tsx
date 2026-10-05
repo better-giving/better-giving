@@ -6,9 +6,14 @@ import {
 	type RepeatingRow,
 	RepeatingRows
 } from '@better-giving/operator/components/forms/RepeatingRows';
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
+import { Mark } from '@better-giving/operator/components/status/Mark';
 import { SOCIAL_PLATFORMS } from '@better-giving/operator/console/org';
 import { BRAND_COLOUR, einAsPrinted } from '@better-giving/operator/console/org-rules';
-import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
+import {
+	SOCIAL_PLATFORM_NAMES,
+	readSocialLink
+} from '@better-giving/operator/console/social-links';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import {
 	type ChangeEvent,
@@ -132,9 +137,10 @@ import type {
 //
 // **the links are rows of the same press, the logo is a press of its own.** a link row submits as
 // conform spells a list (`SOCIAL_LINKS_FIELD` in ./org-fields.ts) and is added and dropped in the
-// browser; the list's refusal is one sentence, keyed to the list and drawn at the group. a stored
-// row names the platform the deployment recognised until the row is typed in, since what it names is
-// the stored address and not the typed one. the logo is chosen and sent at once, as an upload of its
+// browser; the list's refusal is one sentence, keyed to the list and drawn at the group. each row
+// carries the mark of the network its address is read as, read as it is typed by the same reading
+// the deployment stores it by (`readSocialLink` in `@better-giving/operator/console/social-links`),
+// so the mark a row shows is the platform a save would store it under. the logo is a press of its
 // own beside the profile form — a photo is not a box, and holding it until Save would be a file
 // nobody can see waiting under a button that says nothing about it.
 //
@@ -207,7 +213,7 @@ const PLATFORMS_LISTED = (() => {
 	return `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
 })();
 
-const NONE: readonly string[] = [];
+const NO_TYPING: Readonly<Record<string, string>> = {};
 
 /** a fresh set-up: nothing about the organisation's identity has been saved yet. */
 const unset = (stored: StoredOrg): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
@@ -421,19 +427,19 @@ export function OrgFold({
 	   the list and drawn at the group, which describes every row that carries none of its own. */
 	const linksSaid = form.box({ name: links.name, errors: links.errors }).error;
 
-	/* the rows typed in since the list was stored, which no longer hold the address the platform
-	   name beside them was recognised from. forgotten when a different list is stored. */
+	/* what each row holds as it is typed, by the row's identity, which is what its mark is read
+	   from. forgotten when a different list is stored, since the boxes are put back at that list. */
 	const storedLinks = stored.social_links.map((link) => link.href).join('\n');
-	const [edited, setEdited] = useState<{ over: string; rows: readonly string[] }>({
-		over: storedLinks,
-		rows: NONE
-	});
-	const editedRows = edited.over === storedLinks ? edited.rows : NONE;
-	const typedIn = (row: string) =>
-		setEdited((was) => {
-			const rows = was.over === storedLinks ? was.rows : NONE;
-			return rows.includes(row) ? was : { over: storedLinks, rows: [...rows, row] };
-		});
+	const [typedLinks, setTypedLinks] = useState<{
+		over: string;
+		rows: Readonly<Record<string, string>>;
+	}>({ over: storedLinks, rows: {} });
+	const typedRows = typedLinks.over === storedLinks ? typedLinks.rows : NO_TYPING;
+	const typedIn = (row: string, text: string) =>
+		setTypedLinks((was) => ({
+			over: storedLinks,
+			rows: { ...(was.over === storedLinks ? was.rows : NO_TYPING), [row]: text }
+		}));
 
 	/* an Add pressed at the cap is held, with the sentence saying why standing while those rows are
 	   the rows on screen — the giving amounts' cap in packages/app/src/lib/admin/forms/giving-fields.tsx
@@ -454,15 +460,17 @@ export function OrgFold({
 	const linkRow = (row: (typeof linkRows)[number], at: number): RepeatingRow => {
 		const bound = form.box(row);
 		const identity = row.key ?? bound.id;
-		const platform = editedRows.includes(identity)
-			? undefined
-			: stored.social_links.find((link) => link.href === bound.defaultValue)?.platform;
-		const hint = platform === undefined ? undefined : SOCIAL_PLATFORM_NAMES[platform];
-		/* composed here rather than by the group, because a stored row carries a hint of its own:
-		   the group's hint, the row's platform, and the row's sentence or else the list's. */
+		/* the platform the row's address is read as, by the deployment's own reading of one
+		   (`readSocialLink`), as it stands in the box: typed, or stored. */
+		const read = readSocialLink(typedRows[identity] ?? bound.defaultValue ?? '');
+		const platform = read.ok ? read.link.platform : undefined;
+		const named = `${bound.id}-hint`;
+		/* composed here rather than by the group, because a row the platform is read from carries a
+		   name of its own: the group's hint, the row's platform, and the row's sentence or else the
+		   list's. */
 		const describedBy = [
 			`${LINKS_GROUP}-hint`,
-			hint === undefined ? null : `${bound.id}-hint`,
+			platform === undefined ? null : named,
 			bound.error !== undefined
 				? `${bound.id}-err`
 				: linksSaid !== undefined
@@ -477,11 +485,24 @@ export function OrgFold({
 			name: bound.name,
 			defaultValue: bound.defaultValue,
 			inputMode: 'url',
-			hint,
+			/* the network's mark, or the globe where the address is no network's or the box is empty.
+			   the slot is out of the tree, and the platform's name stands in it for the box to be
+			   described by, since the mark is what says it on the screen. */
+			lead:
+				platform === undefined ? (
+					<Mark name="globe" />
+				) : (
+					<>
+						<BrandMark platform={platform} className="adm-brand-mark" />
+						<span id={named} className="adm-vh">
+							{SOCIAL_PLATFORM_NAMES[platform]}
+						</span>
+					</>
+				),
 			'aria-describedby': describedBy,
-			onInput: () => {
+			onInput: (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
 				bound.onInput?.();
-				typedIn(identity);
+				typedIn(identity, event.currentTarget.value);
 			},
 			error: bound.error === undefined ? undefined : <MarkedText text={bound.error} />,
 			remove: linkControls.remove(at)

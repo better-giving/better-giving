@@ -2026,7 +2026,8 @@
 	   than left to fall where it lands: auto-placement would put the pair in the hint's row on a
 	   field that draws no hint, which is the row a neighbouring field in a `.adm-pair--side` keeps
 	   for one. */
-	.adm-field > :is(.adm-input, .adm-textarea, .adm-selectwrap, .adm-maskwrap, .adm-actions) {
+	.adm-field
+	> :is(.adm-input, .adm-textarea, .adm-selectwrap, .adm-maskwrap, .adm-leadwrap, .adm-actions) {
 		grid-row: 3;
 	}
 
@@ -3461,6 +3462,40 @@
 	   those words, so new words are a new measurement. */
 	.adm-maskwrap:has(> .adm-maskwrap__presses) > .adm-input {
 		padding-inline-end: calc(var(--admin-space-9) * 4 + var(--admin-space-7));
+	}
+
+	/* a mark inside a box at its start (`lead` in packages/operator/src/components/forms/Field.jsx):
+	   the wrapper positions it and the box reserves the slot, for the masked press's reason above.
+	   the slot is reserved whether or not a mark stands in it, so a value never moves as one
+	   arrives or changes.
+
+	   the slot is `--admin-space-9` wide, which holds the widest network mark at
+	   `--admin-brand-mark-size` (YouTube's, about 1.9rem), and a mark is centred in it so marks of
+	   different widths down a column of rows share one centre. it starts at the box's own inline
+	   padding and the text a label step after it. it takes no press: a pointer on the mark puts the
+	   caret in the box. the ink is the muted one, which is what a mark drawn from this system's own
+	   glyphs is in; a network's own mark is an image and keeps its colours. */
+	.adm-leadwrap {
+		position: relative;
+		display: block;
+		inline-size: 100%;
+	}
+
+	.adm-leadwrap__lead {
+		position: absolute;
+		inset-inline-start: var(--admin-space-4);
+		inset-block-start: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		inline-size: var(--admin-space-9);
+		color: var(--admin-ink-muted);
+		pointer-events: none;
+	}
+
+	.adm-leadwrap .adm-input {
+		padding-inline-start: calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3));
 	}
 
 	.adm-field__error {
@@ -7999,7 +8034,7 @@
 	   at the `inline-size: 100%` above would take the whole line on its own and put the press under
 	   it at every width. a masked box is on the row as its wrapper, for the reason
 	   `.adm-selectwrap` is — what stands in the row is what the box is inside of. */
-	.adm-actions > :is(.adm-input, .adm-textarea, .adm-maskwrap, .adm-field__boxcol) {
+	.adm-actions > :is(.adm-input, .adm-textarea, .adm-maskwrap, .adm-leadwrap, .adm-field__boxcol) {
 		flex: 1 1 var(--admin-measure-panel);
 		min-inline-size: 0;
 	}

@@ -1,6 +1,8 @@
 import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
 import { RepeatingRows } from '@better-giving/operator/components/forms/RepeatingRows';
 import type { RowControl } from '@better-giving/operator/components/forms/RepeatingRows';
+import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
+import { Mark } from '@better-giving/operator/components/status/Mark';
 
 /*
  * a list of boxes and the controls that add and drop one, at every length it can be.
@@ -33,6 +35,11 @@ import type { RowControl } from '@better-giving/operator/components/forms/Repeat
  * press posts is the rows under it and nothing else. what stands where its Remove would is a mark
  * and a word the caller hands over bare, and it is a status rather than a control: the group is
  * what stands the two of them in the trailing track as one item, on the presses' own step.
+ *
+ * the group with a mark at the start of each box is the one whose rows say what each holds: a
+ * network's own mark in front of an address on it, and the muted globe in front of one no network
+ * is read from, the empty row included. the slot is the box's whichever stands in it, so the
+ * addresses start on one edge down the column — YouTube's wide mark and X's narrow one alike.
  *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the
@@ -235,6 +242,44 @@ export default function FormsRepeatingRowsPreview() {
 						key: 'fixed-1',
 						defaultValue: 'https://riverside-shelter.org',
 						remove: drop(0)
+					}
+				]}
+			/>
+			<RepeatingRows
+				id="forms-rows-lead"
+				legend="Social links"
+				rowLabel="Link"
+				add={add}
+				addLabel="Add a link"
+				placeholder="https://www.instagram.com/yourorganisation"
+				rows={[
+					{
+						id: 'forms-rows-lead-1',
+						key: 'lead-1',
+						defaultValue: 'https://www.youtube.com/@riversideshelter',
+						lead: <BrandMark platform="youtube" className="adm-brand-mark" />,
+						remove: drop(0)
+					},
+					{
+						id: 'forms-rows-lead-2',
+						key: 'lead-2',
+						defaultValue: 'https://x.com/riversideshelter',
+						lead: <BrandMark platform="x" className="adm-brand-mark" />,
+						remove: drop(1)
+					},
+					{
+						id: 'forms-rows-lead-3',
+						key: 'lead-3',
+						defaultValue: 'https://riverside-shelter.org/news',
+						lead: <Mark name="globe" />,
+						remove: drop(2)
+					},
+					{
+						id: 'forms-rows-lead-4',
+						key: 'lead-4',
+						defaultValue: '',
+						lead: <Mark name="globe" />,
+						remove: drop(3)
 					}
 				]}
 			/>
