@@ -5,9 +5,9 @@ import { image, imageBytes, type ImageContentType } from '../db/schema';
 // the one module that reads or writes an image's bytes, gated by ./sole-bytes-owner.spec.ts.
 //
 // `BytesPort` is the seam an object store replaces: moving the bytes to R2 is a second adapter of
-// this interface, a copy of `image_bytes` into it, and `createImage` in ./queries.ts putting the
-// bytes before its metadata insert instead of batching `putBytes` beside it — every image URL names
-// an id, never a location, and `image` holds the metadata in D1 either way. the bytes are in D1
+// this interface, a copy of `image_bytes` into it, and `newImageStatements` in ./queries.ts putting
+// the bytes before its metadata insert instead of batching `putBytes` beside it — every image URL
+// names an id, never a location, and `image` holds the metadata in D1 either way. the bytes are in D1
 // because R2 needs a card-gated checkout on the account, and a worker config naming an R2 bucket
 // fails its whole deploy on an account without one (./no-object-store.config.spec.ts).
 //
@@ -16,9 +16,9 @@ import { image, imageBytes, type ImageContentType } from '../db/schema';
 // what lets a reader cache an image by id forever — an id it holds names the same bytes or none.
 //
 // the D1 adapter's two writes are statements for a caller's `batch()`, so neither lands without the
-// metadata row's own write. `putBytes` is `createImage`'s in ./queries.ts; it names its content type
-// and is refused unless the metadata row says the same, so bytes are never filed under a type their
-// image does not claim. `deleteBytes` is `freeImageStatements`' in ./free.ts, under the condition
+// metadata row's own write. `putBytes` is `newImageStatements`' in ./queries.ts; it names its content
+// type and is refused unless the metadata row says the same, so bytes are never filed under a type
+// their image does not claim. `deleteBytes` is `freeImageStatements`' in ./free.ts, under the condition
 // the metadata row's delete carries.
 
 /** an image's bytes, stored once under the image's id. */
