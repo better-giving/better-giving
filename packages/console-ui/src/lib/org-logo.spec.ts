@@ -1,6 +1,6 @@
 import { LONG_SIDE_MAX } from '@better-giving/operator/images/resize';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OrgWrite } from '../api/types';
+import type { NoReport, OrgWrite } from '../api/types';
 import type { LogoPress } from './org-fields';
 
 // the logo press's crop: which square of which image is drawn, handed to the resize and uploaded,
@@ -13,8 +13,8 @@ const seen = vi.hoisted(() => ({
 	calls: [] as [string, ...unknown[]][],
 	/** the size the decoder reports for whatever it is handed. */
 	decoded: { width: 800, height: 600 } as { width: number; height: number } | 'fails',
-	/** the stored logo the binary answers, or none. */
-	stored: null as Blob | null,
+	/** the stored logo the binary answers, none, or why it could not read one. */
+	stored: null as Blob | null | NoReport,
 	/** what the resize answers. */
 	resized: null as unknown,
 	/** what happens while the resize runs. */
@@ -298,6 +298,17 @@ describe('a logo cropped again from the one stored', () => {
 		await expect(putLogo(recropping({ x: 0, y: 0, size: 400 }), pressing())).resolves.toEqual(
 			refusal(LOGO_REFUSED['no-stored-logo'])
 		);
+		expect(called()).toEqual(['readOrgLogo']);
+	});
+
+	it('answers a stored logo the binary could not read as unwritten, and uploads nothing', async () => {
+		const read: NoReport = { kind: 'no-session' };
+		seen.stored = read;
+
+		await expect(putLogo(recropping({ x: 0, y: 0, size: 400 }), pressing())).resolves.toEqual({
+			kind: 'unwritten',
+			read
+		});
 		expect(called()).toEqual(['readOrgLogo']);
 	});
 

@@ -9,6 +9,7 @@ import type {
 	NonprofitLookup,
 	NonprofitSearch,
 	NonprofitsStatus,
+	NoReport,
 	NowpaymentsListing,
 	NowpaymentsPress,
 	NowpaymentsSaved,
@@ -281,17 +282,46 @@ export async function uploadOrgLogo(file: Blob): Promise<OrgWrite> {
 	return read as OrgWrite;
 }
 
+const NO_REPORT_KINDS: ReadonlySet<unknown> = new Set<NoReport['kind']>([
+	'refused',
+	'no-session',
+	'no-surface',
+	'unreachable',
+	'unreadable'
+]);
+
+const isNoReport = (body: unknown): body is NoReport =>
+	typeof body === 'object' &&
+	body !== null &&
+	NO_REPORT_KINDS.has((body as { kind?: unknown }).kind);
+
+/**
+ * the binary's 404 at an `/api` path it routes nowhere (`packages/console/internal/server/server.go`),
+ * told apart by its sentence, which `errands_test.go` pins; the logo's own 404 carries one nothing
+ * pins.
+ */
+const unrouted = (body: unknown): boolean =>
+	typeof body === 'object' &&
+	body !== null &&
+	(body as { error?: unknown }).error === 'no such endpoint';
+
 /**
  * the stored logo's own bytes, as the deployment serves them, or `null` where the organisation has
- * none (404) — what a re-crop draws from, so an edge an earlier crop took off stays off.
+ * none (404) — what a re-crop draws from, so an edge an earlier crop took off stays off — or the
+ * binary's 502: the reading's own {@link NoReport}, which the deployment's state between the page's
+ * reading and the press can produce, so it comes back as the value every org write answers it as.
  *
  * `pressed` is the press's request signal: a press the router abandoned asks for nothing more.
  */
-export async function readOrgLogo(pressed: AbortSignal): Promise<Blob | null> {
+export async function readOrgLogo(pressed: AbortSignal): Promise<Blob | null | NoReport> {
 	const answer = await call('/deployment/org/logo', { method: 'GET', signal: pressed });
-	if (answer.status === 404) return null;
-	if (!answer.ok) throw refused(await parsed(answer), answer.status);
-	return answer.blob();
+	if (answer.ok) return answer.blob();
+	const read = await parsed(answer);
+	// `parsed` takes an abandoned body read for a body that is not json.
+	pressed.throwIfAborted();
+	if (answer.status === 404 && !unrouted(read)) return null;
+	if (answer.status === 502 && isNoReport(read)) return read;
+	throw refused(read, answer.status);
 }
 
 /** takes the organisation's logo off. there is one, so the address names it and nothing is sent. */

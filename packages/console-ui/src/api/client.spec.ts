@@ -241,24 +241,80 @@ describe("the organisation's profile and its logo", () => {
 		expect(calls[0]?.[0]).toBe('/api/deployment/org/logo');
 		expect(calls[0]?.[1]?.method).toBe('GET');
 		expect(calls[0]?.[1]?.signal).toBe(pressed);
-		expect(stored?.type).toBe('image/webp');
-		expect(await stored?.text()).toBe('webp bytes');
+		expect(stored).toBeInstanceOf(Blob);
+		expect((stored as Blob).type).toBe('image/webp');
+		expect(await (stored as Blob).text()).toBe('webp bytes');
 	});
 
 	it('reads no stored logo where the binary answers 404', async () => {
-		answering(404, { error: 'the organisation has no logo' });
+		answering(404, { error: 'this deployment holds no logo' });
 
 		await expect(readOrgLogo(new AbortController().signal)).resolves.toBeNull();
 	});
 
-	it("throws any other refusal of the stored logo, in the binary's words", async () => {
-		answering(502, { error: 'the deployment did not answer' });
+	it('throws the 404 of a binary that serves no logo read at all', async () => {
+		// the binary's answer at an `/api` path it has no route for (internal/server/server.go).
+		answering(404, { error: 'no such endpoint' });
 
 		await expect(readOrgLogo(new AbortController().signal)).rejects.toMatchObject({
 			name: 'ConsoleRefused',
-			status: 502,
-			message: 'the deployment did not answer'
+			status: 404,
+			message: 'no such endpoint'
 		});
+	});
+
+	// the 502 bodies `GET /api/deployment/org/logo` writes (packages/console/internal/server/errands.go),
+	// one per way its reading did not land, as `errands_test.go` provokes them.
+	it.each([
+		{ kind: 'no-session', error: null, message: null, fix: null, detail: '' },
+		{
+			kind: 'refused',
+			error: 'session_refused',
+			message: 'Not this session.',
+			fix: 'Connect again.',
+			detail: ''
+		},
+		{
+			kind: 'unreachable',
+			error: null,
+			message: null,
+			fix: null,
+			detail: 'dial tcp 127.0.0.1:1: connect: connection refused'
+		},
+		{
+			kind: 'unreadable',
+			error: 'rate_limited',
+			message: null,
+			fix: 'Wait a minute.',
+			detail: 'Too many reads.',
+			status: 429
+		}
+	])('answers a stored logo the binary could not read ($kind) as its report', async (report) => {
+		answering(502, report);
+
+		await expect(readOrgLogo(new AbortController().signal)).resolves.toEqual(report);
+	});
+
+	it('throws a refusal of the stored logo that carries no report', async () => {
+		answering(502, { error: 'upstream' });
+
+		await expect(readOrgLogo(new AbortController().signal)).rejects.toMatchObject({
+			name: 'ConsoleRefused',
+			status: 502
+		});
+	});
+
+	it('throws the abort of a press abandoned while a refusal was being read', async () => {
+		const leaving = new AbortController();
+		const body = new ReadableStream({
+			pull(stream) {
+				leaving.abort();
+				stream.error(leaving.signal.reason);
+			}
+		});
+		vi.stubGlobal('fetch', () => Promise.resolve(new Response(body, { status: 502 })));
+
+		await expect(readOrgLogo(leaving.signal)).rejects.toMatchObject({ name: 'AbortError' });
 	});
 
 	it('holds the removal among the writes out until the binary answers it', async () => {
