@@ -25,7 +25,8 @@ import {
 
 // the finder: one box over the IRS list by name or EIN, a Search press beside it, and the matches
 // under it — what the Organisation details fold (./org-fold.tsx) draws alone on a fresh set-up, and
-// above its form when "Pick a different organisation" is pressed. the fold locks in what it finds.
+// above its form when "Pick a different organisation" is pressed. the fold locks in the number a
+// press or a pick hands it.
 //
 // **the box is ark's combobox, held open while there are matches and run with no layer of its
 // own.** the listbox roles, `aria-activedescendant`, the arrow keys and Enter on a match are the
@@ -46,7 +47,7 @@ export const FINDER_ID = 'org-find';
 export const FINDER_LABEL = 'Name or EIN';
 export const SEARCH_LABEL = 'Search';
 export const NO_MATCHES = 'No matches.';
-export const SEARCH_UNANSWERED = "Couldn't search the IRS list.";
+export const SEARCH_UNANSWERED = "Couldn't search the IRS list. Search by EIN instead.";
 export const NOT_DEDUCTIBLE_BADGE = 'Not listed as tax-deductible';
 
 /** what an EIN looks like part-typed: digits, dashes and spaces, with a digit among them. */
@@ -98,8 +99,8 @@ export function OrgFinder({ lookups, search, lockIn, closed, onClose }: OrgFinde
 		};
 	}, [search, lookups]);
 
-	/* the finder is opened to be typed in: on a fresh set-up it is the whole screen, and after it is
-	   what the press that opened it asked for. */
+	/* the finder is opened to be typed in: on a fresh set-up it is the whole screen, and above the
+	   form it is what the press that opened it asked for. */
 	useEffect(() => {
 		box.current?.focus();
 	}, []);

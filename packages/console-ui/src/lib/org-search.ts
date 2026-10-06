@@ -8,7 +8,7 @@ import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 // **the list's limits are why nothing is asked but at a press.** the API is keyless for set-up: a
 // request a minute and five a day, and the binary waits out a per-minute limit itself, so a press
 // can take a minute to answer. so typing asks nothing at all; Search or Enter asks once, a second
-// press while one is out is held rather than queued, and a search answer is remembered for the
+// press while one is out asks nothing, and a search answer is remembered for the
 // console's run — a query pressed again, in this finder or the next one, asks nothing. the binary
 // remembers its own answers as well (`packages/console/internal/nonprofits`).
 //

@@ -16,7 +16,7 @@ const MATCH: NonprofitMatch = {
 	revokedOn: ''
 };
 
-/** a promise left out, which is a press the list has not answered yet. */
+/** a promise that never settles: a press the list has not answered yet. */
 const never = <T>() => new Promise<T>(() => {});
 
 /** lets every settled promise run its handlers. */
