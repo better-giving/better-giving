@@ -372,15 +372,15 @@
 	   a control drawn smaller than `--admin-touch-min` is still aimed at at that floor: a transparent
 	   `::before`, `--admin-touch-min` square and centred on the control, out of flow, so the drawn
 	   size and the row it stands in stay what they were. a control joins this list rather than
-	   growing a target of its own. the holder is `position: relative`, as `.adm-btn` and
-	   `.adm-markbtn` already are.
+	   growing a target of its own. the holder is `position: relative`, as `.adm-btn`, `.adm-markbtn`
+	   and `.adm-wellwrap` are.
 
 	   the box is sized outright and centred off `100%`: an absolute box is placed against the
 	   holder's padding box, which a bordered control draws inside its border, so a size stated
 	   outright is the one that comes out at the floor whatever the border, and the padding box's
 	   centre is the border box's.
 
-	   a target reaches past the drawn edge by half the floor less the drawn size, and whatever
+	   a target's reach past the drawn edge is half the floor less the drawn size, and whatever
 	   stands beside one is set at least that far off it, so no target lies over another control: the
 	   logo's two presses meet and never overlap (`.adm-logo__presses`), and a row's Remove and the
 	   brand colour's well each stand further off their box than their target reaches. the distances
@@ -3608,8 +3608,8 @@
 		margin-block-start: 0;
 	}
 
-	/* the sentence is the head then, alone, and what follows it stands the head's close step under
-	   it whether the legend over it is drawn or not. */
+	/* what follows a legend's sentence stands the head's close step under it, whether the legend
+	   over it is drawn or not: under a hidden legend the sentence is the whole head. */
 	.adm-fieldset > .adm-fieldset__legend + .adm-hint + *,
 	.adm-fieldset > legend.adm-vh + .adm-hint + * {
 		margin-block-start: var(--admin-space-3);
@@ -6546,9 +6546,8 @@
 	/* the two presses on the square's corner, each the small control's square with a mark and no
 	   word, standing on the logo in the control's own ground. each is aimed at as a touch target,
 	   `--admin-touch-min` square about its centre (a target past the drawn edge, under the buttons):
-	   the gap between the two is exactly what the two growths take, so the targets meet and
-	   never overlap, and the corner inset is half of one growth, so a target reaches the square's
-	   edge and no further. */
+	   the gap between the two is exactly their two reaches, so the targets meet and never overlap,
+	   and the corner inset is one reach, so a target reaches the square's edge and no further. */
 	.adm-logo__presses {
 		position: absolute;
 		inset-block-start: var(--admin-space-4);
@@ -6602,7 +6601,8 @@
 	}
 
 	/* the corners are drawn as grips and the edges are grabbed without one. the machine places each
-	   and sizes the edges along their side; what is stated here is how far a grip reaches across. */
+	   and sizes the edges along their side; what is stated here is a grip's drawn size and an
+	   edge's thickness. */
 	.adm-cropper__handle:is(
 		[data-position='nw'],
 		[data-position='ne'],
