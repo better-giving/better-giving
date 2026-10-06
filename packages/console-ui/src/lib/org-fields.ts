@@ -103,7 +103,7 @@ export const LOGO_FROM_STORED = 'stored';
  * `naturalWidth` and `naturalHeight` an `<img>` of it reports. each is a whole number written in
  * plain digits; anything else reads as no square at all.
  *
- * a side rather than a width and a height, so a square is the only shape a press can post.
+ * one side for both, so a square is the only shape a press can post.
  */
 export const LOGO_CROP_X = 'crop_x';
 export const LOGO_CROP_Y = 'crop_y';
