@@ -6579,6 +6579,16 @@
 		cursor: move;
 	}
 
+	/* the square is the cropper's one tab stop. the scrim is its own shadow and outranks the ring
+	   ./base.css draws as one, and the square meets the image's edge, where the viewport clips
+	   anything drawn outside it. so its ring is the outline, inset over its own edge, as
+	   `.adm-editor__frame`'s is: an outline paints above the element's shadow and border. */
+	.adm-cropper__selection:focus-visible,
+	.adm-cropper__selection.is-focus {
+		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
+		outline-offset: calc(var(--admin-focus-width) * -1);
+	}
+
 	/* the corners are drawn as grips and the edges are grabbed without one. the machine places each
 	   and sizes the edges along their side; what is stated here is how far a grip reaches across. */
 	.adm-cropper__handle:is(
