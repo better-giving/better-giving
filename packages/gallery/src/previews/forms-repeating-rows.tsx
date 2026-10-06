@@ -3,6 +3,7 @@ import { RepeatingRows } from '@better-giving/operator/components/forms/Repeatin
 import type { RowControl } from '@better-giving/operator/components/forms/RepeatingRows';
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { Mark } from '@better-giving/operator/components/status/Mark';
+import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
 
 /*
  * a list of boxes and the controls that add and drop one, at every length it can be.
@@ -39,7 +40,8 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
  * the group with a mark at the start of each box is the one whose rows say what each holds: a
  * network's own mark in front of an address on it, and the muted globe in front of one no network
  * is read from, the empty row included. the slot is the box's whichever stands in it, so the
- * addresses start on one edge down the column — YouTube's wide mark and X's narrow one alike.
+ * addresses start on one edge down the column — YouTube's wide mark and X's narrow one alike. a
+ * network's mark carries its name for the box to be described by, and the globe carries none.
  *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the
@@ -257,28 +259,34 @@ export default function FormsRepeatingRowsPreview() {
 						id: 'forms-rows-lead-1',
 						key: 'lead-1',
 						defaultValue: 'https://www.youtube.com/@riversideshelter',
-						lead: <BrandMark platform="youtube" className="adm-brand-mark" />,
+						lead: {
+							mark: <BrandMark platform="youtube" className="adm-brand-mark" />,
+							said: SOCIAL_PLATFORM_NAMES.youtube
+						},
 						remove: drop(0)
 					},
 					{
 						id: 'forms-rows-lead-2',
 						key: 'lead-2',
 						defaultValue: 'https://x.com/riversideshelter',
-						lead: <BrandMark platform="x" className="adm-brand-mark" />,
+						lead: {
+							mark: <BrandMark platform="x" className="adm-brand-mark" />,
+							said: SOCIAL_PLATFORM_NAMES.x
+						},
 						remove: drop(1)
 					},
 					{
 						id: 'forms-rows-lead-3',
 						key: 'lead-3',
 						defaultValue: 'https://riverside-shelter.org/news',
-						lead: <Mark name="globe" />,
+						lead: { mark: <Mark name="globe" /> },
 						remove: drop(2)
 					},
 					{
 						id: 'forms-rows-lead-4',
 						key: 'lead-4',
 						defaultValue: '',
-						lead: <Mark name="globe" />,
+						lead: { mark: <Mark name="globe" /> },
 						remove: drop(3)
 					}
 				]}

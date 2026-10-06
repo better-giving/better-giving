@@ -6,7 +6,8 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // own box's only while the step down to that box is shorter than the step down to the next field's
 // label, and a group reads as one only while the step out of it is longer than any step inside it.
 // under the three is a fourth: the sentence under a label or a group's name stands closer to it than
-// the box does, so the two read as one head.
+// the box does, so the two read as one head. a group whose name is drawn to a reader alone keeps the
+// sentence as its whole head, and what follows it takes the same step.
 //
 // every step is read off the sheet as it is written and resolved through ./tokens.css, so a step
 // moved in one rule and not in another fails here rather than on a screen nobody squinted at. the
@@ -46,13 +47,21 @@ const hints = {
 	)
 };
 
-const inside = [
-	length(ruleOf(css, '.adm-field > * + *').get('margin-block-start')),
-	length(ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + *').get('margin-block-start')),
-	length(
-		ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + .adm-hint + *').get('margin-block-start')
+const inside = {
+	'a field': length(ruleOf(css, '.adm-field > * + *').get('margin-block-start')),
+	'a group': length(
+		ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + *').get('margin-block-start')
+	),
+	'a group with a sentence': stated(
+		'.adm-fieldset > .adm-fieldset__legend + .adm-hint + *',
+		'margin-block-start'
+	),
+	'a group with a sentence and a hidden name': stated(
+		'.adm-fieldset > legend.adm-vh + .adm-hint + *',
+		'margin-block-start'
 	)
-];
+};
+const heads = Object.values(inside);
 
 const between = {
 	'a stack': length(ruleOf(css, '.adm-stack').get('gap')),
@@ -77,17 +86,19 @@ const groups = {
 describe('the squint test on every operator form', () => {
 	it('stands a sentence nearer its label than the label stands to its box', () => {
 		for (const [where, gap] of Object.entries(hints)) {
-			expect(gap, `the sentence under ${where}'s name`).toBeLessThan(Math.min(...inside));
+			expect(gap, `the sentence under ${where}'s name`).toBeLessThan(Math.min(...heads));
 		}
 	});
 
 	it('stands a head one step off what it names, with a sentence under it or without', () => {
-		expect(new Set(inside).size).toBe(1);
+		for (const [where, gap] of Object.entries(inside)) {
+			expect(gap, where).toBe(inside['a field']);
+		}
 	});
 
 	it('stands a label nearest its own box', () => {
 		for (const [where, gap] of Object.entries(between)) {
-			expect(gap, `two fields in ${where}`).toBeGreaterThan(Math.max(...inside));
+			expect(gap, `two fields in ${where}`).toBeGreaterThan(Math.max(...heads));
 		}
 	});
 
@@ -98,7 +109,7 @@ describe('the squint test on every operator form', () => {
 	it('stands two fields at least twice as far apart as a label from its box', () => {
 		// "clearly larger": a rung or two up the scale is a difference a squint loses.
 		for (const gap of Object.values(between)) {
-			expect(gap).toBeGreaterThanOrEqual(2 * Math.max(...inside));
+			expect(gap).toBeGreaterThanOrEqual(2 * Math.max(...heads));
 		}
 	});
 

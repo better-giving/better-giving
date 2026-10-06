@@ -53,11 +53,10 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   read-only box holding a credential somebody pastes elsewhere: copied from the box, the value
  *   need never be shown to be taken. it stands in the same place the masked press does and for the
  *   same reason, and the two share one trailing cluster. an input's alone, as `masked` is.
- * @property {ReactNode} [lead] a mark inside the box at its start, saying what the value is read as
- *   — a network's mark in front of an address on it. the box reserves the slot whenever this is not
- *   `undefined`, `null` included, so text typed into the box never moves as the mark arrives,
- *   changes or goes. it is decorative and out of the tree: what it says is said in words the box is
- *   described by. an input's alone, as `masked` is.
+ * @property {FieldLead | undefined} [lead] a mark inside the box at its start, saying what the value
+ *   is read as — a network's mark in front of an address on it. the box reserves the slot whenever
+ *   this is stated, a `null` mark included, so text typed into the box never moves as the mark
+ *   arrives, changes or goes. an input's alone, as `masked` is.
  * @property {string | undefined} [copyLabel] the copy control's accessible name, where a bare Copy
  *   would not say what of.
  * @property {Ref<HTMLButtonElement> | undefined} [copyRef] the copy control's button, for a caller
@@ -70,6 +69,16 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   which is what a specimen wants and no screen does. unavailable is not one of them:
  *   packages/operator/src/styles/adm.css draws `.adm-input:disabled` with no twin beside it, so
  *   a box that cannot be used takes the platform's own `disabled` through the rest.
+ */
+
+/**
+ * the mark is drawn out of the tree and `said` is what it says, in words the box is described by:
+ * drawn to a reader alone, outside the hidden mark, and named `${id}-lead`. a mark that says
+ * nothing a reader needs — a glyph standing for no reading at all — states no words.
+ *
+ * @typedef {object} FieldLead
+ * @property {ReactNode} mark
+ * @property {string | undefined} [said]
  */
 
 /**
@@ -92,9 +101,11 @@ import { FieldMessage } from './FieldMessage.jsx';
 /**
  * the rest reaches whichever box `as` names.
  *
- * three of a caller's own arrive as the platform's attributes rather than as props of this field's,
+ * four of a caller's own arrive as the platform's attributes rather than as props of this field's,
  * and each is taken in rather than replaced: `className` is added to the class list this field
- * composes, `aria-invalid` marks the box refused alongside whatever message it holds, and the
+ * composes, `aria-invalid` marks the box refused alongside whatever message it holds,
+ * `aria-describedby` names the blocks the caller draws in place of the ones this field would (a
+ * repeating row's hint and refusal are its group's) with the lead's words still added to it, and the
  * starting value is `defaultValue` — or `value` with a handler beside it, which this field has no
  * opinion about either way.
  *
@@ -133,6 +144,7 @@ export function Field({
 	state,
 	className,
 	'aria-invalid': stated,
+	'aria-describedby': describedByStated,
 	...rest
 }) {
 	const Tag = as === 'textarea' ? 'textarea' : 'input';
@@ -204,14 +216,21 @@ export function Field({
 		);
 	/* the leading mark stands in a wrapper of its own around everything above, which reserves its
 	   slot inside the box (`.adm-leadwrap` in packages/operator/src/styles/adm.css). */
+	const leading = lead === undefined || as === 'textarea' ? undefined : lead;
+	const leadSaid = leading?.said ? `${id}-lead` : null;
 	const inBox = (/** @type {ReactNode} */ box) =>
-		lead === undefined || as === 'textarea' ? (
+		leading === undefined ? (
 			withPresses(box)
 		) : (
 			<div className="adm-leadwrap">
 				<span className="adm-leadwrap__lead" aria-hidden="true">
-					{lead}
+					{leading.mark}
 				</span>
+				{leadSaid ? (
+					<span className="adm-vh" id={leadSaid}>
+						{leading.said}
+					</span>
+				) : null}
 				{withPresses(box)}
 			</div>
 		);
@@ -247,12 +266,19 @@ export function Field({
 	// one box: a fieldset draws a pair's message once and marks both boxes from out here, since
 	// either box fixes the pair and neither one is the wrong one.
 	const refused = error ? true : stated === true || stated === 'true';
+	// the lead's words first, as the mark they stand for is the first thing in the box.
 	const describedBy =
 		[
-			hint ? `${id}-hint` : null,
-			error ? `${id}-err` : null,
-			needed ? `${id}-need` : null,
-			status ? `${id}-status` : null
+			leadSaid,
+			describedByStated ??
+				[
+					hint ? `${id}-hint` : null,
+					error ? `${id}-err` : null,
+					needed ? `${id}-need` : null,
+					status ? `${id}-status` : null
+				]
+					.filter(Boolean)
+					.join(' ')
 		]
 			.filter(Boolean)
 			.join(' ') || undefined;

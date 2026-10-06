@@ -367,6 +367,39 @@
 		font-size: var(--admin-control-size-sm);
 	}
 
+	/* ---------- a target past the drawn edge -------------------------------------------------
+
+	   a control drawn smaller than `--admin-touch-min` is still aimed at at that floor: a transparent
+	   `::before`, `--admin-touch-min` square and centred on the control, out of flow, so the drawn
+	   size and the row it stands in stay what they were. a control joins this list rather than
+	   growing a target of its own. the holder is `position: relative`, as `.adm-btn` and
+	   `.adm-markbtn` already are.
+
+	   the box is sized outright and centred off `100%`: an absolute box is placed against the
+	   holder's padding box, which a bordered control draws inside its border, so a size stated
+	   outright is the one that comes out at the floor whatever the border, and the padding box's
+	   centre is the border box's.
+
+	   a target reaches past the drawn edge by half the floor less the drawn size, and whatever
+	   stands beside one is set at least that far off it, so no target lies over another control: the
+	   logo's two presses meet and never overlap (`.adm-logo__presses`), and a row's Remove and the
+	   brand colour's well each stand further off their box than their target reaches. the distances
+	   are held by ./touch-geometry.spec.ts.
+
+	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
+	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
+	.adm-markbtn::before,
+	.adm-logo__presses > .adm-btn::before,
+	.adm-rows__row > .adm-rows__remove::before,
+	.adm-wellwrap::before {
+		content: '';
+		position: absolute;
+		inline-size: var(--admin-touch-min);
+		block-size: var(--admin-touch-min);
+		inset-block-start: calc((100% - var(--admin-touch-min)) / 2);
+		inset-inline-start: calc((100% - var(--admin-touch-min)) / 2);
+	}
+
 	/* ---------- a press in flight -------------------------------------------------------
 
 	   a button that is working draws three pulsing dots over its own label, and the label stays
@@ -3568,15 +3601,18 @@
 		margin-block-start: var(--admin-space-1);
 	}
 
-	.adm-fieldset > .adm-fieldset__legend + .adm-hint + * {
-		margin-block-start: var(--admin-space-3);
-	}
-
 	/* a legend drawn to a reader only takes no space (`.adm-vh` in ./base.css), so the step the
 	   rule above gives every child after the first would open at the top of the group with nothing
 	   above it. what follows a legend nobody sees is the first thing anybody sees. */
 	.adm-fieldset > .adm-vh + * {
 		margin-block-start: 0;
+	}
+
+	/* the sentence is the head then, alone, and what follows it stands the head's close step under
+	   it whether the legend over it is drawn or not. */
+	.adm-fieldset > .adm-fieldset__legend + .adm-hint + *,
+	.adm-fieldset > legend.adm-vh + .adm-hint + * {
+		margin-block-start: var(--admin-space-3);
 	}
 
 	/* a group standing among other questions is moated, and the moat is what tells a reader where
@@ -4024,7 +4060,7 @@
 	   button beside the sentence.
 
 	   the step between a box and its trailing track is `--admin-space-2`, the step the brand colour's
-	   well stands off its own box by (`.adm-field > .adm-actions:has(> .adm-swatch--well)` below):
+	   well stands off its own box by (`.adm-field > .adm-actions:has(> .adm-wellwrap)` below):
 	   what stands there acts on that box alone, so it is set against the box rather than a row's
 	   step away from it. */
 	.adm-rows {
@@ -4812,10 +4848,10 @@
 	   reports open in the ink hover is drawn in, and `aria-expanded` is what says which one is
 	   open — a mark that changed only under a pointer would be a state a touch reader never sees.
 
-	   the trigger hugs its mark and the finger's floor is drawn over it out of flow, so a line
-	   stays as tall as its own ink whatever marks it carries. it takes no box: two marks on
-	   one line, each inside its own, read as a pair of chips rather than as two things to
-	   press.
+	   the trigger hugs its mark and the finger's floor is drawn over it out of flow (a target past
+	   the drawn edge, under the buttons), so a line stays as tall as its own ink whatever marks it
+	   carries. it takes no box: two marks on one line, each inside its own, read as a pair of chips
+	   rather than as two things to press.
 
 	   `vertical-align: middle` is the whole of the centring, and it answers the case this rule is
 	   written for: a trigger standing in a heading or in a running sentence, which is inline. the
@@ -4838,15 +4874,6 @@
 		background: none;
 		color: inherit;
 		cursor: pointer;
-	}
-
-	.adm-markbtn::before {
-		content: '';
-		position: absolute;
-		inline-size: var(--admin-touch-min);
-		block-size: var(--admin-touch-min);
-		inset-block-start: calc((100% - var(--admin-touch-min)) / 2);
-		inset-inline-start: calc((100% - var(--admin-touch-min)) / 2);
 	}
 
 	.adm-setting__label [aria-expanded] .adm-mark {
@@ -5531,6 +5558,15 @@
 		border-color: var(--admin-control-border-hover);
 	}
 
+	/* closed while the page writes, on the control's own disabled rungs; a colour the well holds
+	   stays drawn, since it is the value and not the control. */
+	.adm-swatch:disabled {
+		background: var(--admin-control-bg-disabled);
+		border-color: var(--admin-control-border-disabled);
+		color: var(--admin-control-ink-disabled);
+		cursor: not-allowed;
+	}
+
 	/* the well stands on its box's row (`beside` in packages/operator/src/components/forms/Field.jsx),
 	   a square exactly the box's height: the row aligns its items to the box's top, so a well of the
 	   box's height is centred on the box. a well taller than the box reads as a control that missed
@@ -5548,9 +5584,17 @@
 	   width back rather than the row putting the well under it. it stands off the box by
 	   `--admin-space-2` rather than the row's own step, because it is the box's pair rather than a
 	   press of its own — the step a repeating row's Remove stands off its box by (`.adm-rows`). */
-	.adm-field > .adm-actions:has(> .adm-swatch--well) {
+	.adm-field > .adm-actions:has(> .adm-wellwrap) {
 		flex-wrap: nowrap;
 		gap: var(--admin-space-2);
+	}
+
+	/* the label round the well, which carries its target (a target past the drawn edge, under the
+	   buttons). it hugs the well and gives no width back. */
+	.adm-wellwrap {
+		position: relative;
+		display: flex;
+		flex: none;
 	}
 
 	.adm-swatch--well::-webkit-color-swatch-wrapper {
@@ -6500,11 +6544,11 @@
 	}
 
 	/* the two presses on the square's corner, each the small control's square with a mark and no
-	   word, standing on the logo in the control's own ground. each is aimed at as a touch target:
-	   the `::before` below is the press's own box grown to `--admin-touch-min` about its centre, the
-	   gap between the two is exactly what the two growths take, so the targets meet and never
-	   overlap, and the corner inset is half of one growth, so a target reaches the square's edge and
-	   no further. */
+	   word, standing on the logo in the control's own ground. each is aimed at as a touch target,
+	   `--admin-touch-min` square about its centre (a target past the drawn edge, under the buttons):
+	   the gap between the two is exactly what the two growths take, so the targets meet and
+	   never overlap, and the corner inset is half of one growth, so a target reaches the square's
+	   edge and no further. */
 	.adm-logo__presses {
 		position: absolute;
 		inset-block-start: var(--admin-space-4);
@@ -6516,12 +6560,6 @@
 	.adm-logo__presses > .adm-btn {
 		inline-size: var(--admin-control-height-sm);
 		padding-inline: 0;
-	}
-
-	.adm-logo__presses > .adm-btn::before {
-		content: '';
-		position: absolute;
-		inset: calc((var(--admin-control-height-sm) - var(--admin-touch-min)) / 2);
 	}
 
 	/* the crop the logo dialog draws (packages/console-ui/src/lib/logo-crop-dialog.tsx): the image
@@ -6553,6 +6591,16 @@
 		cursor: move;
 	}
 
+	/* the square is the cropper's one tab stop. the scrim is its own shadow and outranks the ring
+	   ./base.css draws as one, and the square meets the image's edge, where the viewport clips
+	   anything drawn outside it. so its ring is the outline, inset over its own edge, as
+	   `.adm-editor__frame`'s is: an outline paints above the element's shadow and border. */
+	.adm-cropper__selection:focus-visible,
+	.adm-cropper__selection.is-focus {
+		outline: var(--admin-focus-width) solid var(--admin-focus-ring);
+		outline-offset: calc(var(--admin-focus-width) * -1);
+	}
+
 	/* the corners are drawn as grips and the edges are grabbed without one. the machine places each
 	   and sizes the edges along their side; what is stated here is how far a grip reaches across. */
 	.adm-cropper__handle:is(
@@ -6565,6 +6613,8 @@
 		block-size: var(--admin-space-6);
 		background: var(--admin-surface);
 		border: var(--admin-hairline);
+		/* the corner's target stands over the two edges' where they meet (`::before` below). */
+		z-index: 1;
 	}
 
 	.adm-cropper__handle:is([data-position='n'], [data-position='s']) {
@@ -6573,6 +6623,42 @@
 
 	.adm-cropper__handle:is([data-position='e'], [data-position='w']) {
 		inline-size: var(--admin-space-6);
+	}
+
+	/* each handle is grabbed by more than it draws: a `::before` reaching `--admin-space-8` either
+	   side of the corner or edge it moves, which is 2.5.8's 24px
+	   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html). the machine centres a
+	   handle on the square's edge and sets the viewport's `overflow: hidden` inline, so on a square
+	   touching the image's edge — as the largest square on any image does — the half outside is
+	   clipped, and the half inside is that 24px on its own. the reach is centred off
+	   `50%` of the handle, which a grip's border leaves on the same centre.
+
+	   the reaches overlap where an edge meets a corner, and the corner stands over the two edges:
+	   the machine draws the eight in an order that interleaves them, so without it an edge drawn
+	   later would take a press aimed at the corner's grip. a square narrower than twice the reach is
+	   handle all through, and moves from the keyboard. */
+	.adm-cropper__handle::before {
+		content: '';
+		position: absolute;
+	}
+
+	.adm-cropper__handle:is(
+		[data-position='nw'],
+		[data-position='ne'],
+		[data-position='sw'],
+		[data-position='se']
+	)::before {
+		inset: calc(50% - var(--admin-space-8));
+	}
+
+	.adm-cropper__handle:is([data-position='n'], [data-position='s'])::before {
+		inset-block: calc(50% - var(--admin-space-8));
+		inset-inline: 0;
+	}
+
+	.adm-cropper__handle:is([data-position='e'], [data-position='w'])::before {
+		inset-inline: calc(50% - var(--admin-space-8));
+		inset-block: 0;
 	}
 
 	/* ---------- rich text -------------------------------------------------------------
