@@ -19,8 +19,9 @@ import { answering, defaultModelReply, insertPage, SETTINGS } from './page-row.t
 // a workers spec because every turn reads a page and its chat and writes them back. the model is
 // one stand-in: a binding whose `run` answers with the text given, as ../ai/generate.spec.ts
 // stubs it, so what is asserted is what reaches the page and the chat from a known reply. the IRS
-// nonprofit API is the other: the lookup asks `upstream.at` in place of its built-in address, which
-// is empty — as the built-in one is — until a case sets it and stubs `fetch` to answer there.
+// nonprofit API is the other: the lookup asks `upstream.at` in place of its built-in address, and
+// while that is empty it finds nothing and asks no one, until a case sets it and stubs `fetch` to
+// answer there — no spec reaches the live API.
 
 const upstream = vi.hoisted(() => ({ at: '' }));
 
@@ -28,7 +29,8 @@ vi.mock(import('../nonprofits/filing'), async (importOriginal) => {
 	const real = await importOriginal();
 	return {
 		...real,
-		lookUpFiling: (taxId: string | null) => real.lookUpFiling(taxId, upstream.at)
+		lookUpFiling: async (taxId: string | null) =>
+			upstream.at === '' ? null : real.lookUpFiling(taxId, upstream.at)
 	};
 });
 
@@ -1844,20 +1846,21 @@ describe('the mission answered', () => {
 /** an organisation with a 990 on record, as the IRS nonprofit API answers it, figures and all. */
 const ON_RECORD = {
 	ein: '123456789',
-	name: 'Hope Foundation',
-	status: { deductible: true, revoked: false, revocation_date: null, reinstatement_date: null },
-	filing: {
-		form_type: '990',
-		tax_year: 2024,
-		website: 'hope.example',
-		mission: 'Warm coats for every child in Springfield.',
-		activity: 'Collects and hands out winter coats through the city’s schools.',
-		programs: [
-			{ description: 'Coat drive', expense: 182345, grants: 40321, revenue: 9876 },
-			{ description: 'School coat closets', expense: 61234, grants: 0, revenue: 0 }
-		],
-		finances: { total_revenue: 912345, total_expenses: 876543, total_assets: 1234567 }
-	},
+	name: 'HOPE FOUNDATION',
+	address: { street: '1 Main St', city: 'Springfield', state: 'IL', zip: '62701' },
+	is501c3: true,
+	deductible: true,
+	revoked: false,
+	revocationDate: null,
+	reinstatementDate: null,
+	mission: 'Warm coats for every child in Springfield.',
+	activitySummary: 'Collects and hands out winter coats through the city’s schools.',
+	programs: [
+		{ description: 'Coat drive', expense: 182345, grants: 40321, revenue: 9876 },
+		{ description: 'School coat closets', expense: 61234, grants: 0, revenue: 0 }
+	],
+	finances: { revenue: 912345, expenses: 876543, assets: 1234567, taxYear: 2024 },
+	website: 'hope.example',
 	notes: ['Program figures are from Part III']
 };
 
@@ -1895,7 +1898,7 @@ describe('a page opened with a 990 on record', () => {
 			]
 		});
 		expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
-			'https://irs.test/v1/organizations/123456789'
+			'https://irs.test/v1/orgs/123456789'
 		]);
 	});
 
@@ -2010,7 +2013,7 @@ describe('a page opened with a 990 on record', () => {
 	it('leaves the mission unfilled where the filing’s holds a web address', async () => {
 		await onRecord({
 			...ON_RECORD,
-			filing: { ...ON_RECORD.filing, mission: 'Coats for kids. See www.hope.example.' }
+			mission: 'Coats for kids. See www.hope.example.'
 		});
 		const pageId = await insertPage(db, 'campaign');
 
@@ -2021,9 +2024,11 @@ describe('a page opened with a 990 on record', () => {
 	});
 
 	it.each([
-		['not found', { error: 'not_found' }, 404],
+		['not found', { type: 'about:blank', status: 404, code: 'not_found' }, 404],
+		['its limit reached', { type: 'about:blank', status: 429, code: 'daily_quota_exceeded' }, 429],
+		['unavailable', { type: 'about:blank', status: 503, code: 'data_unavailable' }, 503],
 		['an error', ON_RECORD, 500],
-		['another shape', { ein: '123456789', name: 'Hope Foundation', notes: 'none' }, 200],
+		['another shape', { ...ON_RECORD, notes: 'none' }, 200],
 		['no answer at all', new TypeError('network connection lost'), 200]
 	])('opens on an API answering %s exactly as with no EIN stored', async (_, body, status) => {
 		const pageId = await insertPage(db, 'campaign');
