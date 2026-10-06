@@ -425,7 +425,7 @@ func pause(ctx context.Context, d time.Duration) bool {
 //
 // **an ask, once made, belongs to the run rather than to the caller that made it.** the API counts a
 // request it received whether or not anyone waits for the answer, and the find box drops its call
-// whenever the operator types on — so the ask runs on its own, bounded by `within` alone, and what it
+// whenever the operator types on — so the ask runs on its own, bounded by AskBound alone, and what it
 // finds out is kept for whoever asks next. a caller arriving while the same key is being asked waits
 // on that ask rather than making a second; any caller that gives up is answered `missed` alone, and
 // changes nothing for the others or for what is kept. an answer `ask` says not to keep is forgotten
