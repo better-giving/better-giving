@@ -707,11 +707,14 @@ export function OrgFold({
 					<div className="adm-logo__frame">
 						{/* the square is the press that chooses: a press or a file dropped on it opens the
 						    crop, and nothing is sent until that is saved. closed by `aria-disabled` while
-						    the page writes, so a reader standing on it keeps the focus. */}
+						    the page writes, so a reader standing on it keeps the focus. `data-logo` says a
+						    logo is held — drawn, or under a press that is saving — which the sheet keeps
+						    the square's logo edge by while the art makes way for the word. */}
 						<button
 							ref={choosePress}
 							type="button"
 							className="adm-logo__square"
+							data-logo={logo === null ? undefined : logoPending ? 'saving' : 'shown'}
 							data-dragging={dragging || undefined}
 							aria-busy={logoPending || undefined}
 							aria-disabled={busy || undefined}

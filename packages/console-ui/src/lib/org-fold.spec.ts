@@ -405,6 +405,19 @@ describe('the logo’s presses', () => {
 		expect(shown).toContain('<span>Saving</span>');
 	});
 
+	// the sheet draws the logo's solid edge off this, so a logo held under a saving press keeps it
+	// while the word stands where the art was.
+	it('says the square holds a logo, drawn or saving, and holds none where none is stored', () => {
+		const held = (markup: string) =>
+			square(markup).match(/^<button[^>]*\bdata-logo="([^"]*)"/)?.[1];
+
+		expect(held(drawn(WIDENED).markup)).toBe('shown');
+		expect(held(drawn(WIDENED, true, null, null, { busy: true, logoPending: true }).markup)).toBe(
+			'saving'
+		);
+		expect(held(drawn(STORED).markup)).toBe(undefined);
+	});
+
 	it('draws no crop before an image is chosen', () => {
 		expect(drawn(WIDENED).markup).not.toContain('<dialog');
 	});

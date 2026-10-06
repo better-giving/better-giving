@@ -34,15 +34,18 @@ import { describe, expect, it } from 'vitest';
 // two messages: the operator presses, nothing on the control says it may not be pressed again, and
 // the second press starts a second navigation. that is the hole this half was written for.
 //
-// **what a press is here is three shapes.** `SaveButton`
+// **what a press is here is four shapes.** `SaveButton`
 // (`@better-giving/operator/components/controls/SaveButton`); a `.adm-save` drawn by hand (the one
-// twin in ./lib/smtp-fold.tsx, whose own comment says why it is not the shared button); and a
+// twin in ./lib/smtp-fold.tsx, whose own comment says why it is not the shared button); a
 // `Button` that says it is carrying an errand — one stating `aria-busy` and a closing attribute,
 // whether at its own tag or in the `*Props` object a card hands the button it draws
-// (`dangerProps` on `Modal`, `@better-giving/operator/behaviour/Dialog`). those are every control on
-// this console that carries a write. a link, a disclosure toggle and the Add and Remove inside
-// `RepeatingRows` are not presses by this reading and are not swept: the first two carry no write at
-// all, and the last two are closed as a group by the sweep above.
+// (`dangerProps` on `Modal`, `@better-giving/operator/behaviour/Dialog`); and a `<button>` drawn by
+// hand in a `Button`'s place, told by the class it wears (`STANDS_IN`), and read as a `Button`
+// press whatever it states — so one that stops stating its closing attribute is caught rather than
+// passed over. those are every control on this console that carries a write. a link, a disclosure
+// toggle and the Add and Remove inside `RepeatingRows` are not presses by this reading and are not
+// swept: the first two carry no write at all, and the last two are closed as a group by the sweep
+// above.
 //
 // a `Button` stating `aria-busy` and no closing attribute at all is not read here: it is a press
 // nothing closes, which is a hole beside this one rather than this one. a props object reached
@@ -140,6 +143,13 @@ const HAND_DRAWN = 'adm-save';
 
 /** the shared button a press is drawn with where it is neither of the two above. */
 const BUTTON = 'Button';
+
+/**
+ * the classes of a press drawn by hand where the shared button cannot draw it, each read as a
+ * `Button` press: the logo's square in ./lib/org-fold.tsx, which is the logo itself as well as the
+ * press that replaces it.
+ */
+const STANDS_IN = ['adm-logo__square'];
 
 /** the attribute naming the props a card hands the button it draws, as `dangerProps` on `Modal`. */
 const HANDED_PROPS = /Props$/;
@@ -372,12 +382,19 @@ const carriesErrand = (site: Site): boolean =>
 const isHandDrawn = (tag: Tag): boolean =>
 	tag.name === 'button' && (attribute(tag.node, 'className')?.getText() ?? '').includes(HAND_DRAWN);
 
-/** every press written in these files, in any of the three shapes. */
+/** whether one tag is a `<button>` standing in a `Button`'s place, by the class it wears. */
+const standsIn = (tag: Tag): boolean => {
+	const worn = attribute(tag.node, 'className')?.getText() ?? '';
+	return tag.name === 'button' && STANDS_IN.some((name) => worn.includes(name));
+};
+
+/** every press written in these files, in any of the four shapes. */
 function pressSites(files: readonly string[]): Site[] {
 	const found: Site[] = [];
 	for (const tag of tags(files)) {
 		if (tag.name === PRESS) found.push(tagSite(tag, 'shared'));
 		else if (isHandDrawn(tag)) found.push(tagSite(tag, 'hand-drawn'));
+		else if (standsIn(tag)) found.push(tagSite(tag, 'button'));
 		else if (tag.name === BUTTON) {
 			const site = tagSite(tag, 'button');
 			if (carriesErrand(site)) found.push(site);
@@ -475,9 +492,10 @@ describe('every press is closed while its own press is in flight', () => {
 	});
 
 	it('reads the Button presses drawn outside the shared button', () => {
-		// the three files known to hold a `Button` press, each named, because a press that stops
-		// stating `aria-busy` leaves this sweep without failing it — and then a native `disabled` put
-		// back on it is read by nothing.
+		// the files known to hold a `Button` press, each named, because a press that stops stating
+		// `aria-busy` leaves this sweep without failing it — and then a native `disabled` put back on
+		// it is read by nothing. ./lib/org-fold.tsx's is the press standing in a `Button`'s place, and
+		// a class it stops wearing leaves the sweep the same way.
 		const at = (file: string) =>
 			drawnPresses(screens).filter(
 				(press) => press.kind === 'button' && press.where.startsWith(`${file}:`)
@@ -485,6 +503,7 @@ describe('every press is closed while its own press is in flight', () => {
 		expect(at('src/lib/recurring-block.tsx')).toBeGreaterThanOrEqual(1);
 		expect(at('src/lib/stripe-section.tsx')).toBeGreaterThanOrEqual(1);
 		expect(at('src/lib/withheld-values.tsx')).toBeGreaterThanOrEqual(2);
+		expect(at('src/lib/org-fold.tsx')).toBeGreaterThanOrEqual(1);
 	});
 
 	it('draws no press but the shared button closed by `disabled`, which drops the focus on it', () => {
