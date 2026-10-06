@@ -6,21 +6,26 @@
 // one fixed address, and nothing reads another: no env var, binding or record points a deployment
 // elsewhere. a spec passes its own upstream as `api`.
 //
+// keyless: no key is sent and none is configured, so a lookup spends the small keyless allowance
+// the API keeps per calling address (https://nonprofits.better.giving). a refusal of any code, a
+// 429 included, is answered like any other failure below: no retry and no wait on `Retry-After`,
+// because an opening waits on this lookup.
+//
 // only words are decoded — the mission, the activity, each program's description and the notes —
 // and never a figure: a program's expense, grants or revenue and the filing's finances are left in
 // the body unread, so none can reach a prompt and from there a page. each is one line of plain
 // text, cut at its cap, the mission at the answer cap of the question it prefills.
 //
-// every failure answers null and none throws: no address, no EIN or not one, no answer within
-// `WITHIN_MS`, a status other than 200, a body past `ANSWER_BYTES`, one in a shape not decoded
-// below, or one about another number. a lookup is context for an opening, and the opening goes on
+// every failure answers null and none throws: no EIN or not one, no answer within `WITHIN_MS`, a
+// status other than 200, a body past `ANSWER_BYTES`, one in a shape not decoded below, or one about
+// another number or naming nobody. a lookup is context for an opening, and the opening goes on
 // without it. nothing is remembered between lookups and nothing is stored.
 //
 // the request goes out on the runtime's global `fetch`, and nothing here is built from a binding.
 import { z } from 'zod';
 
-/** where the IRS nonprofit API answers. empty is no address: every lookup answers nothing. */
-export const API = '';
+/** where the IRS nonprofit API answers. */
+export const API = 'https://nonprofits.better.giving';
 
 /** the latest filing's words, each one line of plain text; an empty list where none were found. */
 export type Filing = {
@@ -30,24 +35,20 @@ export type Filing = {
 	notes: string[];
 };
 
-const text = z.string().nullable().optional();
+const text = z.string().nullable();
 
-/** `GET {API}/v1/organizations/{ein}`, as this deployment reads it; no other member is read. */
+/**
+ * `GET {API}/v1/orgs/{ein}`, as this deployment reads it; no other member is read. a fact the IRS
+ * files do not hold is null, and a filing not on record is a null mission and activity and no
+ * programs, with `notes` saying why.
+ */
 const upstreamOrganisation = z.object({
 	ein: z.string(),
-	name: z.string(),
-	filing: z
-		.object({
-			mission: text,
-			activity: text,
-			programs: z
-				.array(z.object({ description: text }))
-				.nullable()
-				.optional()
-		})
-		.nullable()
-		.optional(),
-	notes: z.array(z.string()).nullable().optional()
+	name: text,
+	mission: text,
+	activitySummary: text,
+	programs: z.array(z.object({ description: text })),
+	notes: z.array(z.string())
 });
 
 /** the answer cap on "Your mission, in a sentence" in ../../page/questions.ts, which it prefills. */
@@ -70,22 +71,22 @@ export async function lookUpFiling(
 	api: string = API
 ): Promise<Filing | null> {
 	const ein = taxId === null ? null : einOf(taxId);
-	if (api === '' || ein === null) return null;
+	if (ein === null) return null;
 	try {
-		const body = await answerOf(`${api}/v1/organizations/${ein}`);
+		const body = await answerOf(`${api}/v1/orgs/${ein}`);
 		if (body === null) return null;
 		const read = upstreamOrganisation.safeParse(JSON.parse(body));
 		if (!read.success) return null;
-		const { filing, notes } = read.data;
+		const { name, mission, activitySummary, programs, notes } = read.data;
 		// an answer about another number, or about nobody, fills nothing.
-		if (einOf(read.data.ein) !== ein || read.data.name.trim() === '') return null;
+		if (einOf(read.data.ein) !== ein || name === null || name.trim() === '') return null;
 		return {
-			mission: words(filing?.mission, MISSION_MAX),
-			activity: words(filing?.activity, ACTIVITY_MAX),
-			programs: (filing?.programs ?? [])
+			mission: words(mission, MISSION_MAX),
+			activity: words(activitySummary, ACTIVITY_MAX),
+			programs: programs
 				.flatMap(({ description }) => words(description, PROGRAM_MAX) ?? [])
 				.slice(0, PROGRAMS_MAX),
-			notes: (notes ?? []).flatMap((note) => words(note, NOTE_MAX) ?? []).slice(0, NOTES_MAX)
+			notes: notes.flatMap((note) => words(note, NOTE_MAX) ?? []).slice(0, NOTES_MAX)
 		};
 	} catch {
 		return null;
@@ -126,8 +127,8 @@ async function answerOf(url: string): Promise<string | null> {
  * `said` as one line of text: a control character that is space is a space and any other is
  * dropped, every run of space is one, and it is cut at `max`. null where no words are left.
  */
-function words(said: string | null | undefined, max: number): string | null {
-	if (said == null) return null;
+function words(said: string | null, max: number): string | null {
+	if (said === null) return null;
 	const line = said
 		.replace(/\p{Cc}/gu, (control) => (/\s/.test(control) ? ' ' : ''))
 		.replace(/\s+/g, ' ')

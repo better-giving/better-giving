@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { API, lookUpFiling } from './filing';
+import { lookUpFiling } from './filing';
 
 // the IRS nonprofit API is the one boundary stood in for: a global `fetch` stub answering with the
 // bodies given, as ../api/turnstile.spec.ts stubs siteverify.
 
 const UPSTREAM = 'https://irs.test';
-const EIN = '12-3456789';
+const EIN = '53-0196605';
 
 function answering(...responses: (Response | Error)[]) {
 	const stub = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => {
@@ -19,14 +19,6 @@ function answering(...responses: (Response | Error)[]) {
 }
 
 describe('a lookup that asks nothing', () => {
-	it('is every lookup while the built-in address is empty', async () => {
-		const fetch = answering();
-
-		expect(API).toBe('');
-		expect(await lookUpFiling(EIN)).toBeNull();
-		expect(fetch).not.toHaveBeenCalled();
-	});
-
 	it.each([
 		['no EIN stored', null],
 		['a number short of nine digits', '12-345678'],
@@ -40,33 +32,55 @@ describe('a lookup that asks nothing', () => {
 	});
 });
 
-/** an organisation as the API answers one, every fact the lookup is documented to return. */
-function organisation(filing: object = {}, extra: object = {}) {
+/** where a fact was read from, as the API cites it. */
+const released = {
+	file: 'https://www.irs.gov/pub/irs-soi/eo1.csv',
+	releasedAt: '2026-08-12T00:00:00Z',
+	fetchedAt: '2026-09-01T06:00:00Z'
+};
+const cited = {
+	file: 'https://apps.irs.gov/pub/epostcard/990/xml/2026/2026_TEOS_XML_03A.zip',
+	releasedAt: '2026-04-30T00:00:00Z',
+	fetchedAt: '2026-09-01T06:00:00Z',
+	objectId: '202601239349300135',
+	taxYear: 2024,
+	formType: '990'
+};
+
+/** `GET /v1/orgs/{ein}` as the API answers it: every member it documents, figures and all. */
+function organisation(extra: object = {}) {
 	return {
-		ein: '123456789',
-		name: 'Warm Coats Fund',
-		address: { street: '1 Main St', city: 'Springfield', state: 'IL', zip: '62701' },
-		status: { deductible: true, revoked: false, revocation_date: null, reinstatement_date: null },
-		filing: {
-			form_type: '990',
-			tax_year: 2024,
-			website: 'warmcoats.org',
-			mission: 'Warm coats for every child in Springfield.',
-			activity: 'Collects and hands out winter coats through 14 schools.',
-			programs: [
-				{ description: 'Coat drive', expense: 182000, grants: 40000, revenue: 9000 },
-				{ description: 'School closets', expense: 61000, grants: 0, revenue: 0 }
-			],
-			finances: {
-				total_revenue: 912345,
-				total_expenses: 876543,
-				total_assets: 1234567,
-				tax_year: 2024
-			},
-			...filing
+		ein: '530196605',
+		name: 'AMERICAN NATIONAL RED CROSS',
+		address: { street: '431 18TH ST NW', city: 'WASHINGTON', state: 'DC', zip: '20006-5310' },
+		is501c3: true,
+		deductible: true,
+		revoked: false,
+		revocationDate: null,
+		reinstatementDate: null,
+		mission: 'Prevents and alleviates human suffering in the face of emergencies.',
+		activitySummary: 'Disaster relief, blood services and preparedness training nationwide.',
+		programs: [
+			{ description: 'Biomedical services', expense: 1834567, grants: 0, revenue: 2012345 },
+			{ description: 'Domestic disaster services', expense: 912345, grants: 40321, revenue: 0 }
+		],
+		finances: { revenue: 3123456, expenses: 3012345, assets: 4123456, taxYear: 2024 },
+		website: 'www.redcross.org',
+		notes: [],
+		provenance: {
+			name: released,
+			address: released,
+			is501c3: released,
+			deductible: released,
+			revoked: released,
+			revocationDate: null,
+			reinstatementDate: null,
+			mission: cited,
+			activitySummary: cited,
+			programs: cited,
+			finances: cited,
+			website: cited
 		},
-		notes: ['Mission is on Schedule O, not extracted'],
-		provenance: { mission: { file: 'index_2025.csv', released: '2025-06-01' } },
 		...extra
 	};
 }
@@ -78,35 +92,65 @@ const found = (body: unknown, status = 200) =>
 	});
 
 describe('a lookup of a filing on record', () => {
+	it('asks the live API by default, keyless', async () => {
+		const fetch = answering(found(organisation()));
+
+		await lookUpFiling(EIN);
+
+		const [url, init] = fetch.mock.calls[0] ?? [];
+		expect(url).toBe('https://nonprofits.better.giving/v1/orgs/530196605');
+		expect(new Headers(init?.headers).has('authorization')).toBe(false);
+	});
+
 	it('asks for the nine digits and answers its text facts alone', async () => {
 		const fetch = answering(found(organisation()));
 
 		const filing = await lookUpFiling(EIN, UPSTREAM);
 
-		expect(fetch.mock.calls[0]?.[0]).toBe('https://irs.test/v1/organizations/123456789');
+		expect(fetch.mock.calls[0]?.[0]).toBe('https://irs.test/v1/orgs/530196605');
 		expect(filing).toStrictEqual({
-			mission: 'Warm coats for every child in Springfield.',
-			activity: 'Collects and hands out winter coats through 14 schools.',
-			programs: ['Coat drive', 'School closets'],
-			notes: ['Mission is on Schedule O, not extracted']
+			mission: 'Prevents and alleviates human suffering in the face of emergencies.',
+			activity: 'Disaster relief, blood services and preparedness training nationwide.',
+			programs: ['Biomedical services', 'Domestic disaster services'],
+			notes: []
 		});
 	});
 });
 
+/** an RFC 9457 refusal, as the API sends every error. */
+const problem = (status: number, code: string, headers: Record<string, string> = {}) =>
+	new Response(
+		JSON.stringify({ type: 'about:blank', title: 'Refused', status, detail: 'Try later.', code }),
+		{ status, headers: { ...headers, 'content-type': 'application/problem+json' } }
+	);
+
 describe('a lookup that finds nothing to use', () => {
 	it.each([
-		['not found', () => found({ error: 'not_found' }, 404)],
+		['not found', () => problem(404, 'not_found')],
+		[
+			'the per-minute limit',
+			() => problem(429, 'per_minute_limit_exceeded', { 'retry-after': '60' })
+		],
+		['the daily quota', () => problem(429, 'daily_quota_exceeded', { 'retry-after': '6900' })],
+		[
+			'the service at its daily limit',
+			() => problem(429, 'service_daily_limit_reached', { 'retry-after': '6900' })
+		],
+		['its data unavailable', () => problem(503, 'data_unavailable')],
+		['its keys unavailable', () => problem(503, 'auth_unavailable')],
 		['an error', () => found(organisation(), 500)],
 		['a body that is no JSON', () => found('<html>busy</html>')],
-		['a body in another shape', () => found({ ein: '123456789', name: 'Fund', notes: 'none' })],
-		['an answer about another number', () => found(organisation({}, { ein: '987654321' }))],
-		['an answer naming nobody', () => found(organisation({}, { name: ' ' }))],
-		['a body past the cap', () => found(organisation({ activity: 'x'.repeat(300_000) }))],
+		['a body in another shape', () => found({ ...organisation(), notes: 'none' })],
+		['an answer about another number', () => found(organisation({ ein: '987654321' }))],
+		['an answer naming nobody', () => found(organisation({ name: ' ' }))],
+		['an answer with no name on record', () => found(organisation({ name: null }))],
+		['a body past the cap', () => found(organisation({ activitySummary: 'x'.repeat(300_000) }))],
 		['no answer at all', () => new TypeError('network connection lost')]
-	])('answers nothing for %s', async (_, response) => {
-		answering(response());
+	])('answers nothing for %s, asking once and waiting on nothing', async (_, response) => {
+		const fetch = answering(response());
 
 		expect(await lookUpFiling(EIN, UPSTREAM)).toBeNull();
+		expect(fetch).toHaveBeenCalledOnce();
 	});
 
 	it('gives up on an API that never answers', async () => {
@@ -129,38 +173,39 @@ describe('the facts a filing answers', () => {
 	it('are trimmed, their control characters dropped and their space runs one space', async () => {
 		answering(
 			found(
-				organisation(
-					{
-						mission: '  Warm coats\u0000 for\u0007 every\n\tchild.  ',
-						activity: 'Hands out\r\ncoats.\u001b[31m',
-						programs: [{ description: '\u0085Coat drive ' }]
-					},
-					{ notes: [' 990-N filer:\u0000 no mission on record '] }
-				)
+				organisation({
+					mission: '  Prevents\u0000 and\u0007 alleviates\n\thuman suffering.  ',
+					activitySummary: 'Disaster\r\nrelief.\u001b[31m',
+					programs: [
+						{ description: '\u0085Biomedical services ', expense: 1, grants: 0, revenue: 0 }
+					],
+					notes: [' 990-EZ has no\u0000 activity summary ']
+				})
 			)
 		);
 
 		expect(await lookUpFiling(EIN, UPSTREAM)).toStrictEqual({
-			mission: 'Warm coats for every child.',
-			activity: 'Hands out coats.[31m',
-			programs: ['Coat drive'],
-			notes: ['990-N filer: no mission on record']
+			mission: 'Prevents and alleviates human suffering.',
+			activity: 'Disaster relief.[31m',
+			programs: ['Biomedical services'],
+			notes: ['990-EZ has no activity summary']
 		});
 	});
 
 	it('are cut at their caps, three programs and five notes at most', async () => {
 		answering(
 			found(
-				organisation(
-					{
-						mission: 'm'.repeat(401),
-						activity: 'a'.repeat(1001),
-						programs: ['one', 'two', 'three', 'four'].map((name) => ({
-							description: `${name} ${'p'.repeat(600)}`
-						}))
-					},
-					{ notes: ['1', '2', '3', '4', '5', '6'].map((n) => `${n}${'n'.repeat(250)}`) }
-				)
+				organisation({
+					mission: 'm'.repeat(401),
+					activitySummary: 'a'.repeat(1001),
+					programs: ['one', 'two', 'three', 'four'].map((name) => ({
+						description: `${name} ${'p'.repeat(600)}`,
+						expense: null,
+						grants: null,
+						revenue: null
+					})),
+					notes: ['1', '2', '3', '4', '5', '6'].map((n) => `${n}${'n'.repeat(250)}`)
+				})
 			)
 		);
 
@@ -177,35 +222,49 @@ describe('the facts a filing answers', () => {
 	});
 
 	it('leave out a program with no words, and a fact of blank words is none', async () => {
+		const program = { expense: 0, grants: 0, revenue: 0 };
 		answering(
 			found(
-				organisation(
-					{
-						mission: ' \u0000 ',
-						activity: null,
-						programs: [{ description: null }, { description: '  ' }, { description: 'Coat drive' }]
-					},
-					{ notes: ['', 'Mission is on Schedule O'] }
-				)
+				organisation({
+					mission: ' \u0000 ',
+					activitySummary: null,
+					programs: [
+						{ ...program, description: null },
+						{ ...program, description: '  ' },
+						{ ...program, description: 'Biomedical services' }
+					],
+					notes: ['', '990-EZ has no activity summary']
+				})
 			)
 		);
 
 		expect(await lookUpFiling(EIN, UPSTREAM)).toStrictEqual({
 			mission: null,
 			activity: null,
-			programs: ['Coat drive'],
-			notes: ['Mission is on Schedule O']
+			programs: ['Biomedical services'],
+			notes: ['990-EZ has no activity summary']
 		});
 	});
 
-	it('are none where the filing is not on record', async () => {
-		answering(found({ ...organisation(), filing: null, notes: null }));
+	it('are the notes alone where the IRS holds no mission, activity or program', async () => {
+		answering(
+			found(
+				organisation({
+					mission: null,
+					activitySummary: null,
+					programs: [],
+					finances: null,
+					website: null,
+					notes: ['990-N filer: no mission on record', 'no website on record']
+				})
+			)
+		);
 
 		expect(await lookUpFiling(EIN, UPSTREAM)).toStrictEqual({
 			mission: null,
 			activity: null,
 			programs: [],
-			notes: []
+			notes: ['990-N filer: no mission on record', 'no website on record']
 		});
 	});
 });

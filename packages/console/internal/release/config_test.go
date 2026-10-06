@@ -636,9 +636,9 @@ func TestTheNonprofitAPIIsTheOneTheDeploymentReads(t *testing.T) {
 
 	// each member both readers decode, under its dotted path, and what the console fills from it.
 	served := map[string]string{
-		"ein":            ein,
-		"name":           "American National Red Cross",
-		"filing.mission": "Prevents and alleviates human suffering in the face of emergencies.",
+		"ein":     ein,
+		"name":    "American National Red Cross",
+		"mission": "Prevents and alleviates human suffering in the face of emergencies.",
 	}
 	decoded := decodedPaths(t, source, "upstreamOrganisation")
 	for member := range served {
@@ -670,7 +670,7 @@ func TestTheNonprofitAPIIsTheOneTheDeploymentReads(t *testing.T) {
 	}
 	if looked.State != nonprofits.Found ||
 		looked.Organisation.Name != served["name"] ||
-		looked.Organisation.Mission != served["filing.mission"] {
+		looked.Organisation.Mission != served["mission"] {
 		t.Errorf("a body in filing.ts's shape looked up %+v, want found with its name and mission", looked)
 	}
 }
