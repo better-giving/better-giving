@@ -40,7 +40,7 @@ import {
 	watchEin
 } from './ein-lookup';
 import { FindOrgDialog } from './find-org-dialog';
-import { droppedFile } from './logo-crop';
+import { droppedFile, LOGO_ACCEPT } from './logo-crop';
 import { type CropImage, LogoCropDialog } from './logo-crop-dialog';
 import { heldBoxes, putBoxes } from './fold-boxes';
 import { rememberWebsite } from './found-organisation';
@@ -544,7 +544,8 @@ export function OrgFold({
 		openings.current += 1;
 		setCropping({ key: openings.current, image });
 	};
-	/* a dropped file is put in the file box, one file alone, which is what a save of its crop posts. */
+	/* a file dropped on the logo or on its open crop is put in the file box, one file alone, which is
+	   what a save of its crop posts. */
 	const dropped = (file: File) => {
 		const box = fileBox.current;
 		if (box === null) return;
@@ -707,11 +708,14 @@ export function OrgFold({
 					<div className="adm-logo__frame">
 						{/* the square is the press that chooses: a press or a file dropped on it opens the
 						    crop, and nothing is sent until that is saved. closed by `aria-disabled` while
-						    the page writes, so a reader standing on it keeps the focus. */}
+						    the page writes, so a reader standing on it keeps the focus. `data-logo` says a
+						    logo is held — drawn, or under a press that is saving — which the sheet keeps
+						    the square's logo edge by while the art makes way for the word. */}
 						<button
 							ref={choosePress}
 							type="button"
 							className="adm-logo__square"
+							data-logo={logo === null ? undefined : logoPending ? 'saving' : 'shown'}
 							data-dragging={dragging || undefined}
 							aria-busy={logoPending || undefined}
 							aria-disabled={busy || undefined}
@@ -784,7 +788,7 @@ export function OrgFold({
 						ref={fileBox}
 						type="file"
 						name={LOGO_FILE}
-						accept="image/*"
+						accept={LOGO_ACCEPT}
 						hidden
 						disabled={busy || cropping?.image.from === LOGO_FROM_STORED}
 						onChange={(event) => {
@@ -808,6 +812,7 @@ export function OrgFold({
 					image={cropping.image}
 					form={LOGO_UPLOAD_FORM}
 					onCancel={cancelCrop}
+					onSwap={dropped}
 					fallbackFocus={cropping.image.from === LOGO_FROM_STORED ? cropPress : choosePress}
 				/>
 			)}

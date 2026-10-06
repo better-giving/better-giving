@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	CANCEL_CROP,
 	CROP_TITLE,
+	type CropImage,
 	LogoCropCard,
 	type LogoCropCardProps,
+	LogoCropDialog,
 	SAVE_LOGO
 } from './logo-crop-dialog';
 import {
@@ -19,8 +21,9 @@ import {
 } from './org-fields';
 import { LOGO_REFUSED } from './org-logo';
 
-// the logo's crop card as drawn in each state. ../../vite.config.ts pins `node` and there is no
-// dom, so what a save posts is read off the boxes the card draws into the logo form; the
+// the logo's crop card as drawn in each state, and the dialog's first draw around it.
+// ../../vite.config.ts pins `node` and there is no dom, so what a save posts is read off the boxes
+// the card draws into the logo form, and what the cropper says off the markup the server draws; the
 // arithmetic of the square is ./logo-crop.spec.ts's, and the cropper's drag is ark's.
 
 const FORM = 'org-logo-upload';
@@ -33,6 +36,7 @@ function drawn(over: Partial<LogoCropCardProps>): string {
 			square: { x: 120, y: 0, size: 640 },
 			refusal: null,
 			onCancel: () => {},
+			onSwap: () => {},
 			...over
 		})
 	);
@@ -127,5 +131,59 @@ describe('the logo’s crop card', () => {
 		expect(posted(markup)).toEqual([`${LOGO_SOURCE}=${LOGO_FROM_FILE}`]);
 		expect(press(markup, SAVE_LOGO)).toContain('aria-disabled="true"');
 		expect(markup).not.toContain('-crop-err');
+	});
+});
+
+describe('the logo’s crop, as it opens', () => {
+	function opened(image: CropImage): string {
+		return renderToStaticMarkup(
+			createElement(LogoCropDialog, {
+				image,
+				form: FORM,
+				onCancel: () => {},
+				onSwap: () => {}
+			})
+		);
+	}
+	const file = (name: string, type: string): CropImage => ({
+		from: LOGO_FROM_FILE,
+		file: new File(['x'], name, { type })
+	});
+
+	it.each([
+		['an SVG', 'logo.svg', 'image/svg+xml'],
+		['a GIF', 'logo.gif', 'image/gif'],
+		['a file with no type', 'logo', '']
+	])('refuses %s before any cropping, with Save closed', (_, name, type) => {
+		const markup = opened(file(name, type));
+
+		expect(markup).toContain(LOGO_REFUSED['not-an-image']);
+		expect(press(markup, SAVE_LOGO)).toContain('aria-disabled="true"');
+		expect(markup).not.toContain('adm-cropper');
+	});
+
+	it('refuses nothing as a PNG opens', () => {
+		expect(opened(file('logo.png', 'image/png'))).not.toContain('-crop-err');
+	});
+
+	/** the cropper's square, as the machine draws it for a reader. */
+	const selection = (markup: string): string => {
+		const found = markup.match(/<div[^>]*class="adm-cropper__selection"[^>]*>/);
+		expect(found).not.toBeNull();
+		return found?.[0] ?? '';
+	};
+
+	it('names a square and says nothing of zoom to a reader', () => {
+		const markup = opened({
+			from: LOGO_FROM_STORED,
+			url: 'https://give.riverside.org/images/img_1'
+		});
+		const square = selection(markup);
+
+		expect(square).toMatch(/aria-label="[^"]*[Ss]quare[^"]*"/);
+		expect(square).toMatch(/aria-description="[^"]*arrow keys[^"]*Alt[^"]*"/);
+		// the machine's own words are for a rectangle that zooms.
+		const said = [...markup.matchAll(/\baria-[a-z]+="([^"]*)"/g)].map(([, words = '']) => words);
+		expect(said.filter((words) => /rectangle|zoom/i.test(words))).toEqual([]);
 	});
 });

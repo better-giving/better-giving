@@ -1,4 +1,8 @@
-import { ImageCropper, useImageCropper } from '@ark-ui/react/image-cropper';
+import {
+	ImageCropper,
+	type UseImageCropperProps,
+	useImageCropper
+} from '@ark-ui/react/image-cropper';
 import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
@@ -11,7 +15,18 @@ import {
 	useRef,
 	useState
 } from 'react';
-import { centredSquare, cropRefusal, naturalSquare, type Size, shownMinimum } from './logo-crop';
+import {
+	centredSquare,
+	cropRefusal,
+	droppedFile,
+	NUDGE,
+	naturalSquare,
+	type Size,
+	shownMinimum,
+	squareResize,
+	takesLogo,
+	unloaded
+} from './logo-crop';
 import {
 	type CropSquare,
 	LOGO_CROP_SIZE,
@@ -29,10 +44,14 @@ import { LOGO_REFUSED, type LogoRefusal } from './org-logo';
 //
 // **the dialog is the operator `Modal` and the crop is ark's image cropper, each left to do its own
 // job.** the card's lift, its focus on opening and the focus handed back on closing are
-// `@better-giving/operator/behaviour/Dialog`'s; the square's drag, its handles, its arrow keys and
-// what it says to a reader are the machine's. what is written here is the shape of the square —
-// one to one, opening on the largest centred one, and never under `LOGO_CROP_MIN` of the image's
-// own pixels — and what a save posts.
+// `@better-giving/operator/behaviour/Dialog`'s; the square's drag, its handles and the arrow keys
+// that move it are the machine's. what is written here is the shape of the square — one to one,
+// opening on the largest centred one, and never under `LOGO_CROP_MIN` of the image's own pixels —
+// what a save posts, and two things the machine would otherwise get wrong for this square: the
+// words it says to a reader, which are written for a rectangle that zooms, and its Alt+arrow
+// resize, which moves one side alone. that press is turned into a change of the whole side
+// (`squareResize` in ./logo-crop.ts) and handed back through `resize`, which holds the one to one
+// a drag of a grip is held to.
 //
 // **a save posts the square, never the image.** the boxes are `LOGO_SOURCE` and the three
 // `LOGO_CROP_*` (./org-fields.ts), drawn here and owned by the logo form through their `form`
@@ -42,8 +61,14 @@ import { LOGO_REFUSED, type LogoRefusal } from './org-logo';
 // stored logo and keeps nothing of it.
 //
 // **an image the square cannot keep a logo from opens anyway, with the save closed and the sentence
-// the press would refuse it with.** a file that is no image and an image too small say so here,
-// before anything is sent, in `LOGO_REFUSED`'s own words.
+// the press would refuse it with.** a file of a type a logo is not taken in (`takesLogo` in
+// ./logo-crop.ts) says so as the card opens, before it is drawn; an image too small, a file that
+// would not open and a stored logo that would not load say so once the image has been tried. each
+// in `LOGO_REFUSED`'s own words, before anything is sent.
+//
+// **a file dropped anywhere on the open card replaces the image under the crop**, through
+// `onSwap`, when it is of a type a logo is taken in; anything else dropped there is ignored. the
+// card takes every drop either way, so the browser never opens a file in the console's place.
 
 export const CROP_TITLE = 'Crop the logo';
 export const SAVE_LOGO = 'Save logo';
@@ -60,6 +85,8 @@ export type LogoCropDialogProps = {
 	readonly form: string;
 	/** Cancel, Escape and a press on the ground: close with nothing posted. */
 	readonly onCancel: () => void;
+	/** a file of a type a logo is taken in, dropped on the open card: crop it in this one's place. */
+	readonly onSwap: (file: File) => void;
 	/** where focus lands when nothing pressed opened the card — a file dropped on the logo. */
 	readonly fallbackFocus?: RefObject<HTMLElement | null> | undefined;
 };
@@ -68,14 +95,56 @@ export type LogoCropDialogProps = {
 const measured = (size: Size): boolean => size.width > 0 && size.height > 0;
 
 /**
- * what an image that would not open is refused as, in the words the press would use: a file typed
- * as something other than an image, or typed as nothing, is no image, and one typed as an image
- * could not be read (`decoded` in ./org-logo.ts).
+ * what the cropper says to a reader: a square, moved with the arrow keys and resized with Alt and
+ * the arrow keys, never zoomed, and where it stands in the image's own pixels — the figures a save
+ * posts and `LOGO_REFUSED['crop-too-small']` counts in.
  */
-const unopened = (image: CropImage): LogoRefusal =>
-	image.from === LOGO_FROM_FILE && !image.file.type.startsWith('image/')
-		? 'not-an-image'
-		: 'unreadable';
+const cropWords = (
+	measures: { shown: Size; natural: Size } | null
+): NonNullable<UseImageCropperProps['translations']> => ({
+	rootLabel: 'Logo image',
+	previewLoading: 'Loading the image',
+	previewDescription: () => 'The square over the image is the part kept as the logo.',
+	selectionLabel: () => 'Square kept as the logo',
+	selectionInstructions:
+		'Move the square with the arrow keys. Hold Alt with the arrow keys to make it larger or smaller.',
+	selectionValueText: (crop) => {
+		if (measures === null) return 'Loading the image';
+		const kept = naturalSquare(crop, measures.shown, measures.natural);
+		return `${kept.size} pixels across, ${kept.x} from the left and ${kept.y} from the top`;
+	}
+});
+
+/**
+ * every drop on the card taken by it, the ground around it included: while the card is up a drop
+ * anywhere lands on its `dialog`, the ground being that element's own `::backdrop`. the operator
+ * `Modal` hands no element out, so the card is found from an element drawn inside it.
+ */
+function useDropsOnCard(inside: RefObject<HTMLElement | null>, onSwap: (file: File) => void): void {
+	const swap = useEffectEvent(onSwap);
+	useEffect(() => {
+		const card = inside.current?.closest('dialog');
+		if (card === null || card === undefined) return;
+		const over = (event: DragEvent) => {
+			event.preventDefault();
+			if (event.dataTransfer === null) return;
+			event.dataTransfer.dropEffect = event.dataTransfer.types.includes('Files') ? 'copy' : 'none';
+		};
+		const drop = (event: DragEvent) => {
+			event.preventDefault();
+			const file = droppedFile(event.dataTransfer?.files);
+			if (file !== null && takesLogo(file)) swap(file);
+		};
+		card.addEventListener('dragenter', over);
+		card.addEventListener('dragover', over);
+		card.addEventListener('drop', drop);
+		return () => {
+			card.removeEventListener('dragenter', over);
+			card.removeEventListener('dragover', over);
+			card.removeEventListener('drop', drop);
+		};
+	}, [inside]);
+}
 
 /** the address an image is drawn from: a file's own object url for as long as the card is up. */
 function useImageSource(image: CropImage): string | null {
@@ -94,10 +163,13 @@ export function LogoCropDialog({
 	image,
 	form,
 	onCancel,
+	onSwap,
 	fallbackFocus
 }: LogoCropDialogProps): ReactNode {
 	const src = useImageSource(image);
 	const [failed, setFailed] = useState<LogoRefusal | null>(null);
+	const refused: LogoRefusal | null =
+		image.from === LOGO_FROM_FILE && !takesLogo(image.file) ? 'not-an-image' : failed;
 	/* the two measures the square's limits are stated from, as the last render's machine reported
 	   them: the limits are props of the machine, so they are read from a render before its own. */
 	const [measures, setMeasures] = useState<{ shown: Size; natural: Size } | null>(null);
@@ -107,6 +179,10 @@ export function LogoCropDialog({
 		// the image is drawn whole and at its own scale, which is what ./logo-crop.ts converts by.
 		minZoom: 1,
 		maxZoom: 1,
+		nudgeStep: NUDGE.step,
+		nudgeStepShift: NUDGE.shift,
+		nudgeStepCtrl: NUDGE.ctrl,
+		translations: cropWords(measures),
 		...(measures === null
 			? {}
 			: {
@@ -151,20 +227,30 @@ export function LogoCropDialog({
 			source={image.from}
 			form={form}
 			square={square}
-			refusal={cropRefusal(natural, failed)}
+			refusal={cropRefusal(natural, refused)}
 			onCancel={onCancel}
+			onSwap={onSwap}
 			fallbackFocus={fallbackFocus}
 		>
-			{src === null || failed !== null ? null : (
+			{src === null || refused !== null ? null : (
 				<ImageCropper.RootProvider value={cropper} className="adm-cropper">
 					<ImageCropper.Viewport className="adm-cropper__viewport">
 						<ImageCropper.Image
 							className="adm-cropper__image"
 							src={src}
 							alt=""
-							onError={() => setFailed(unopened(image))}
+							onError={() => setFailed(unloaded(image.from))}
 						/>
-						<ImageCropper.Selection className="adm-cropper__selection">
+						<ImageCropper.Selection
+							className="adm-cropper__selection"
+							// runs before the machine's own handler, which passes over a press already taken.
+							onKeyDown={(event) => {
+								const change = squareResize(event);
+								if (change === null) return;
+								event.preventDefault();
+								cropper.resize('se', change);
+							}}
+						>
 							{ImageCropper.handles.map((position) => (
 								<ImageCropper.Handle
 									key={position}
@@ -197,10 +283,13 @@ export function LogoCropCard({
 	square,
 	refusal,
 	onCancel,
+	onSwap,
 	fallbackFocus,
 	children
 }: LogoCropCardProps): ReactNode {
 	const said = `${form}-crop-err`;
+	const inside = useRef<HTMLInputElement>(null);
+	useDropsOnCard(inside, onSwap);
 	/* closed by `aria-disabled`, so a reader standing on it keeps the focus, and turned away in its
 	   own handler: over an image it cannot save, and until there is a square to post. */
 	const closed = refusal !== null || square === null;
@@ -228,7 +317,7 @@ export function LogoCropCard({
 					<MarkedText text={LOGO_REFUSED[refusal]} />
 				</FieldMessage>
 			)}
-			<input type="hidden" form={form} name={LOGO_SOURCE} value={source} readOnly />
+			<input ref={inside} type="hidden" form={form} name={LOGO_SOURCE} value={source} readOnly />
 			{square === null ? null : (
 				<>
 					<input type="hidden" form={form} name={LOGO_CROP_X} value={square.x} readOnly />

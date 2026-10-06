@@ -1,13 +1,59 @@
-import type { CropSquare } from './org-fields';
+import { type CropSquare, LOGO_FROM_FILE, type LogoSource } from './org-fields';
 import { LOGO_CROP_MIN, type LogoRefusal } from './org-logo';
 
 // the arithmetic between the square an operator drags over a logo on the screen and the square the
 // press posts (./logo-crop-dialog.tsx draws the one, ./org-fields.ts's `LOGO_CROP_*` boxes carry
-// the other, and ./org-logo.ts's `putLogo` crops by it).
+// the other, and ./org-logo.ts's `putLogo` crops by it), and which files a crop takes at all.
 //
 // **the image is drawn whole, at no zoom, filling the box the square is dragged in.** so a point on
 // the screen and a pixel of the image are one scale apart on each axis, and that scale is the whole
 // of the conversion: the cropper's own geometry is in the box's pixels, the post is in the image's.
+//
+// **the square stays square from the keyboard as well as from a pointer.** the cropper holds a drag
+// of a grip to one to one, but its own Alt+arrow resize moves one side alone, so the dialog turns
+// that press into a change of the whole side (`squareResize` below) before the cropper reads it.
+
+/**
+ * the types a logo is taken in, which `LOGO_REFUSED['not-an-image']` (./org-logo.ts) names. an SVG
+ * is none of them — a drawing has no pixels of its own to keep a square of — and is refused when
+ * the card opens, before any square is chosen.
+ */
+export const LOGO_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp'];
+
+/** the file chooser's `accept`, which offers only those. */
+export const LOGO_ACCEPT = LOGO_TYPES.join(',');
+
+/** whether a file chosen or dropped is one a logo is taken in, by the type the browser gives it. */
+export const takesLogo = (file: Blob): boolean => LOGO_TYPES.includes(file.type);
+
+/**
+ * how far one arrow press moves or resizes the square, in the box's pixels: alone, with Shift, and
+ * with Ctrl or ⌘. the dialog hands the same steps to the cropper, so a move and a resize step alike.
+ */
+export const NUDGE = { step: 1, shift: 10, ctrl: 50 } as const;
+
+/** the keys and modifiers of one key press, as a keyboard event carries them. */
+export type KeyPress = Pick<KeyboardEvent, 'key' | 'altKey' | 'shiftKey' | 'ctrlKey' | 'metaKey'>;
+
+/** which way each arrow takes the square's side under Alt: right and down grow it. */
+const GROWS: ReadonlyMap<string, 1 | -1> = new Map([
+	['ArrowRight', 1],
+	['ArrowDown', 1],
+	['ArrowLeft', -1],
+	['ArrowUp', -1]
+]);
+
+/**
+ * the change in the square's side an Alt+arrow press asks for, in the box's pixels, or `null` for
+ * any other press — a bare arrow moves the square and is the cropper's own. the cropper would grow
+ * the width alone for Alt+→ and the height alone for Alt+↓; this is the one change made to both.
+ */
+export function squareResize(press: KeyPress): number | null {
+	const way = press.altKey ? GROWS.get(press.key) : undefined;
+	if (way === undefined) return null;
+	if (press.ctrlKey || press.metaKey) return way * NUDGE.ctrl;
+	return way * (press.shiftKey ? NUDGE.shift : NUDGE.step);
+}
 
 /** a width and a height, in whichever pixels the caller is speaking in. */
 export type Size = { readonly width: number; readonly height: number };
@@ -63,9 +109,18 @@ export function cropRefusal(natural: Size | null, failed: LogoRefusal | null): L
 }
 
 /**
- * the one file a drop puts on the logo: the first one dropped, whatever its type — a file that is
- * not an image is refused in the crop, in the words the press would refuse it in, rather than
- * dropped on the floor here.
+ * what an image that would not draw in the crop is refused as: a file the operator chose, of a type
+ * a logo is taken in, could not be read; the stored logo could not be fetched, and nothing was
+ * chosen to choose again.
+ */
+export const unloaded = (from: LogoSource['from']): LogoRefusal =>
+	from === LOGO_FROM_FILE ? 'unreadable' : 'stored-unloaded';
+
+/**
+ * the one file a drop carries: the first one dropped, whatever its type. dropped on the logo, a
+ * file of a type the logo is not taken in opens the crop refused, in the words the press would
+ * refuse it in, rather than being dropped on the floor; dropped on the open crop, only one it takes
+ * ({@link takesLogo}) replaces the image there.
  */
 export function droppedFile(files: ArrayLike<File> | null | undefined): File | null {
 	return files?.[0] ?? null;

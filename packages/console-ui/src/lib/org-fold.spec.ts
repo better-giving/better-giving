@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
+import { takesLogo } from './logo-crop';
 import {
 	LOGO_FILE,
 	ORG_INTENT,
@@ -329,6 +330,16 @@ describe('the logo’s presses', () => {
 		expect(posted(upload)).toEqual([`intent=${ORG_LOGO_INTENT}`, `${LOGO_FILE}=`]);
 	});
 
+	it('offers in the file chooser only the types the crop takes', () => {
+		const box = formNamed(drawn(WIDENED).markup, 'org-logo-upload').match(
+			/<input[^>]*type="file"[^>]*>/
+		)?.[0];
+		const offered = box?.match(/\baccept="([^"]*)"/)?.[1]?.split(',') ?? [];
+
+		expect(offered.length).toBeGreaterThan(0);
+		expect(offered.filter((type) => !takesLogo(new File([], 'logo', { type })))).toEqual([]);
+	});
+
 	it('takes the logo off through a form of its own, which posts its intent and no photo', () => {
 		const { markup } = drawn(WIDENED);
 		const press = markup.match(/<button[^>]*aria-label="Remove the logo"[^>]*>/)?.[0];
@@ -403,6 +414,19 @@ describe('the logo’s presses', () => {
 		expect(shown).toContain('aria-disabled="true"');
 		expect(shown).not.toMatch(/\bdisabled=""/);
 		expect(shown).toContain('<span>Saving</span>');
+	});
+
+	// the sheet draws the logo's solid edge off this, so a logo held under a saving press keeps it
+	// while the word stands where the art was.
+	it('says the square holds a logo, drawn or saving, and holds none where none is stored', () => {
+		const held = (markup: string) =>
+			square(markup).match(/^<button[^>]*\bdata-logo="([^"]*)"/)?.[1];
+
+		expect(held(drawn(WIDENED).markup)).toBe('shown');
+		expect(held(drawn(WIDENED, true, null, null, { busy: true, logoPending: true }).markup)).toBe(
+			'saving'
+		);
+		expect(held(drawn(STORED).markup)).toBe(undefined);
 	});
 
 	it('draws no crop before an image is chosen', () => {

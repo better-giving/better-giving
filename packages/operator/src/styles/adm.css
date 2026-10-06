@@ -6416,13 +6416,15 @@
 	   the last press reported under it. the square is the size a program's photo is drawn at
 	   (`.adm-placed__art--square` above), and the art fills it edge to edge and stands in it whole —
 	   a logo is cropped by its own crop and never by its frame, so an older logo that is not square
-	   is drawn whole across the square's width or its height. only the empty square keeps an inner
-	   step, which is the room its mark and its word stand in.
+	   is drawn whole across the square's width or its height. only a square showing the mark and the
+	   word keeps an inner step, which is the room they stand in.
 
 	   with no logo the square holds the mark and the word that say what a press does, and its edge is
-	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. a file dragged
-	   over it draws the edge in the ring's ink on the accent's tint, because the square is what will
-	   take it. */
+	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. one holding a
+	   logo keeps its solid edge while a press on it saves, though the word stands in for the art
+	   then: what it holds is stated by `data-logo`, which the fold sets, and never read off the art
+	   being drawn. a file dragged over it draws the edge in the ring's ink on the accent's tint,
+	   because the square is what will take it. */
 	.adm-logo {
 		display: grid;
 		justify-items: start;
@@ -6455,10 +6457,13 @@
 	}
 
 	/* clipped to its own corner, so the art's square corners stay inside the rounded edge. */
-	.adm-logo__square:has(> .adm-logo__art) {
-		padding: 0;
+	.adm-logo__square[data-logo] {
 		overflow: hidden;
 		border-style: solid;
+	}
+
+	.adm-logo__square[data-logo='shown'] {
+		padding: 0;
 	}
 
 	.adm-logo__square:hover,
