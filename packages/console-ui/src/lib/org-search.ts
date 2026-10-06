@@ -1,18 +1,23 @@
+import { EIN, einAsPrinted } from '@better-giving/operator/console/org-rules';
 import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 
-// when the find dialog (./find-org-dialog.tsx) asks the IRS list for organisations by name or EIN,
-// and what it shows while it does. the dialog hands this the box's text at every change and draws
-// the state that comes back; nothing here touches a document, so ./org-search.spec.ts reads all of
-// it against a clock it moves.
+// what the finder (./org-finder.tsx) asks the IRS list when it is pressed, and what it shows while
+// it does. the finder hands this the box's text at a press and a match at a pick, and draws the
+// view that comes back; nothing here touches a document, so ./org-search.spec.ts reads all of it.
 //
-// **the list's limits are why a search waits.** the API is for set-up and is not generous, so a
-// query is asked only once it holds three characters and the typing has paused, one request per
-// query that settled, a request for a query typed past is given up, and an answer is remembered for
-// the console's run — a query typed again, in this dialog or the next one, asks nothing. the
-// binary remembers its own answers as well (`packages/console/internal/nonprofits`).
+// **the list's limits are why nothing is asked but at a press.** the API is keyless for set-up: a
+// request a minute and five a day, and the binary waits out a per-minute limit itself, so a press
+// can take a minute to answer. so typing asks nothing at all; Search or Enter asks once, a second
+// press while one is out is held rather than queued, and a search answer is remembered for the
+// console's run — a query pressed again, in this finder or the next one, asks nothing. the binary
+// remembers its own answers as well (`packages/console/internal/nonprofits`).
 //
-// **a list that does not answer is remembered by nobody**, so the same query asks again the next
-// time it settles, and set-up goes on by hand meanwhile.
+// **a whole EIN is looked up, never searched**, and so is a match picked off the list: the lookup
+// is what carries the address, the mission and the revocation a search does not. the lookup is the
+// fold's to make (`lockIn`), because what it answers is the number the screen locks in.
+//
+// **a list that does not answer is remembered by nobody**, so the same query asks again at the
+// next press.
 //
 // **a query is measured in characters as the binary measures it**, in code points and not utf-16
 // units (`packages/console/internal/server/nonprofits.go` counts runes), so a query this sends is
@@ -25,95 +30,134 @@ export const SEARCH_FLOOR = 3;
 /** the most characters a query may hold; the binary refuses more. */
 export const SEARCH_MOST = 200;
 
-/** how long the typing has to pause before a query is sent. */
-export const SEARCH_PAUSE_MS = 400;
-
-/** what the dialog shows under the box. */
+/** what the finder shows under its box. */
 export type SearchState =
 	| { readonly kind: 'idle' }
-	| { readonly kind: 'searching' }
 	| { readonly kind: 'matches'; readonly matches: readonly NonprofitMatch[] }
 	| { readonly kind: 'none' }
 	| { readonly kind: 'unavailable' };
+
+/** the finder as drawn: whether a press is out, and what the last search showed. */
+export type FinderView = { readonly out: boolean; readonly found: SearchState };
+
+export const IDLE_VIEW: FinderView = { out: false, found: { kind: 'idle' } };
+
+/** what a press asks for: a lookup, a search, or nothing at all. */
+export type FinderAsk =
+	| { readonly kind: 'lookup'; readonly ein: string }
+	| { readonly kind: 'search'; readonly query: string; readonly key: string }
+	| null;
+
+/** a query as two queries are compared: `Riverside  food ` asks what `riverside food` asked. */
+const keyOf = (query: string): string => query.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * what a press on `text` asks. a whole EIN is a lookup in its stored spelling; anything else of at
+ * least {@link SEARCH_FLOOR} characters is a search, on a console able to ask the list.
+ */
+export function finderAsk(text: string, lookups: boolean): FinderAsk {
+	const query = text.trim();
+	if (EIN.test(query)) return { kind: 'lookup', ein: einAsPrinted(query) };
+	const key = keyOf(query);
+	if (!lookups || [...key].length < SEARCH_FLOOR) return null;
+	return { kind: 'search', query, key };
+}
 
 /** the answers kept for the run, keyed by the query as it is compared. */
 export type SearchMemory = Map<string, readonly NonprofitMatch[]>;
 
 const RUN: SearchMemory = new Map();
 
-const IDLE: SearchState = { kind: 'idle' };
 const UNAVAILABLE: SearchState = { kind: 'unavailable' };
 
 const shown = (matches: readonly NonprofitMatch[]): SearchState =>
 	matches.length === 0 ? { kind: 'none' } : { kind: 'matches', matches };
 
-/** a query as two queries are compared: `Riverside  food ` asks what `riverside food` asked. */
-const keyOf = (query: string): string => query.trim().replace(/\s+/g, ' ').toLowerCase();
-
-export type SearchWatchOptions = {
+export type FinderWatchOptions = {
 	readonly search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
-	readonly onState: (state: SearchState) => void;
+	/** a whole EIN to look up and lock in; settles once it has, or once `signal` gives it up. */
+	readonly lockIn: (ein: string, signal: AbortSignal) => Promise<void>;
+	/** whether this console can ask the list at all; where it cannot, a name asks nothing. */
+	readonly lookups: boolean;
+	readonly onView: (view: FinderView) => void;
 	/** where answers are kept, which is the run's own unless a caller states one. */
 	readonly memory?: SearchMemory;
 };
 
-export type SearchWatch = {
-	/** the box now holds `query`. */
-	readonly typed: (query: string) => void;
-	/** gives up the pause and any search in flight, for a dialog taken off the page. */
+export type FinderWatch = {
+	/** Search or Enter, over what the box holds. */
+	readonly press: (text: string) => void;
+	/** a match taken off the list. */
+	readonly pick: (match: NonprofitMatch) => void;
+	/** gives up a press in flight, for a finder taken off the page. */
 	readonly stop: () => void;
 };
 
-export function watchSearch({ search, onState, memory = RUN }: SearchWatchOptions): SearchWatch {
-	let pause: ReturnType<typeof setTimeout> | undefined;
-	let asking: { readonly key: string; readonly control: AbortController } | null = null;
+export function watchFinder({
+	search,
+	lockIn,
+	lookups,
+	onView,
+	memory = RUN
+}: FinderWatchOptions): FinderWatch {
+	let out: AbortController | null = null;
+	let found: SearchState = IDLE_VIEW.found;
 
-	const ask = (key: string, query: string) => {
+	/** one request out, with the view busy until it settles; `null` leaves the list as it was. */
+	const run = (work: (signal: AbortSignal) => Promise<SearchState | null>) => {
 		const control = new AbortController();
-		asking = { key, control };
-		onState({ kind: 'searching' });
-		search(query, control.signal)
-			.then(
+		out = control;
+		onView({ out: true, found });
+		work(control.signal).then((next) => {
+			if (control.signal.aborted) return;
+			out = null;
+			if (next !== null) found = next;
+			onView({ out: false, found });
+		});
+	};
+
+	const lookUp = (ein: string) =>
+		run((signal) =>
+			lockIn(ein, signal).then(
+				() => null,
+				() => null
+			)
+		);
+
+	const press = (text: string) => {
+		if (out !== null) return;
+		const ask = finderAsk(text, lookups);
+		if (ask === null) return;
+		if (ask.kind === 'lookup') {
+			lookUp(ask.ein);
+			return;
+		}
+		const remembered = memory.get(ask.key);
+		if (remembered !== undefined) {
+			found = shown(remembered);
+			onView({ out: false, found });
+			return;
+		}
+		run((signal) =>
+			search(ask.query, signal).then(
 				(answer) => {
 					if (answer.state !== 'ok') return UNAVAILABLE;
-					memory.set(key, answer.matches);
+					memory.set(ask.key, answer.matches);
 					return shown(answer.matches);
 				},
 				() => UNAVAILABLE
 			)
-			.then((state) => {
-				if (control.signal.aborted) return;
-				asking = null;
-				onState(state);
-			});
-	};
-
-	const typed = (query: string) => {
-		clearTimeout(pause);
-		const key = keyOf(query);
-		if (asking !== null && asking.key !== key) {
-			asking.control.abort();
-			asking = null;
-		}
-		if ([...key].length < SEARCH_FLOOR) {
-			onState(IDLE);
-			return;
-		}
-		const remembered = memory.get(key);
-		if (remembered !== undefined) {
-			onState(shown(remembered));
-			return;
-		}
-		if (asking !== null) return;
-		pause = setTimeout(() => ask(key, query.trim()), SEARCH_PAUSE_MS);
+		);
 	};
 
 	return {
-		typed,
+		press,
+		pick: (match) => {
+			if (out === null) lookUp(einAsPrinted(match.ein));
+		},
 		stop: () => {
-			clearTimeout(pause);
-			asking?.control.abort();
-			asking = null;
+			out?.abort();
+			out = null;
 		}
 	};
 }

@@ -20,8 +20,9 @@ import { OrgFold } from './org-fold';
 // the Organisation fold as drawn, around the IRS list. ../../vite.config.ts pins `node` and there
 // is no dom, so what is read here is the first draw: what each form would post is read off the
 // controls it draws. when the list is asked and what an answer fills are ./ein-lookup.spec.ts's,
-// reaching the boxes is ./fold-boxes.spec.ts's, and the dialog's states are
-// ./find-org-dialog.spec.ts's.
+// what a press in the finder asks is ./org-search.spec.ts's, reaching the boxes and where focus
+// goes once a number is locked in are ./fold-boxes.spec.ts's, and the finder's states are
+// ./org-finder.spec.ts's.
 
 const STORED = storedProfile({
 	legal_name: 'Riverside Community Food Bank',
@@ -111,39 +112,65 @@ describe('the Organisation details fold', () => {
 		expect(einBox(markup)).not.toContain('aria-describedby');
 	});
 
-	it('opens on the find dialog for a fresh set-up', () => {
+	it('opens on the finder alone for a fresh set-up: no box, no link, no logo and no Save', () => {
 		const { markup } = drawn(storedProfile({}));
 
-		expect(markup).toContain('Find your organisation</h2>');
+		expect(markup).toMatch(/^<search id="org-find"><form/);
+		expect(markup).toContain('>Name or EIN</label>');
+		expect(markup).not.toContain('name="tax_id"');
+		expect(markup).not.toContain('social_links');
+		expect(markup).not.toContain('adm-logo');
+		expect(markup).not.toContain('Save details');
+		expect(markup).not.toContain('Pick a different organisation');
 	});
 
-	it('opens on a fresh set-up whatever notification address is stored', () => {
+	it('asks the list nothing as the finder is drawn', () => {
+		const { lookUp, search } = drawn(storedProfile({}));
+
+		expect(lookUp).not.toHaveBeenCalled();
+		expect(search).not.toHaveBeenCalled();
+	});
+
+	it('opens on the finder whatever notification address is stored', () => {
 		const { markup } = drawn(storedProfile({ notification_email: 'alerts@example.org' }));
 
-		expect(markup).toContain('Find your organisation</h2>');
+		expect(markup).toMatch(/^<search id="org-find">/);
+		expect(markup).not.toContain('Save details');
 	});
 
-	it('opens on the plain form where any of the identity is stored', () => {
+	it('opens on the whole form, and no finder, where any of the identity is stored', () => {
 		const { markup } = drawn(storedProfile({ city: 'Riverside' }));
 
-		expect(markup).not.toContain('<dialog');
+		expect(markup).not.toContain('id="org-find"');
+		expect(markup).toContain('name="tax_id"');
+		expect(markup).toContain('Save details');
+		expect(markup).toContain('adm-logo');
 	});
 
-	it('offers the dialog at any time from a quiet press beside Save', () => {
+	it('offers the finder from a quiet press beside Save, shut until it is pressed', () => {
 		const { markup } = drawn(STORED);
-		const press = markup.match(/<button[^>]*>(?:(?!<\/button>).)*Find your organisation/s)?.[0];
+		const press =
+			markup.match(/<button[^>]*>(?:(?!<\/button>).)*Pick a different organisation/s)?.[0] ?? '';
 
 		expect(press).toContain('type="button"');
 		expect(press).toContain('adm-btn--quiet');
+		expect(press).toContain('aria-expanded="false"');
+		expect(markup).not.toContain('id="org-find"');
+		expect(markup).not.toContain('Find your organisation');
 	});
 
 	describe('on a console built with no address for the IRS list', () => {
-		it('draws no press that opens the find dialog', () => {
-			expect(drawn(STORED, false).markup).not.toContain('Find your organisation');
+		it('draws no press that opens the finder', () => {
+			expect(drawn(STORED, false).markup).not.toContain('Pick a different organisation');
 		});
 
-		it('opens a fresh set-up on the plain form', () => {
-			expect(drawn(storedProfile({}), false).markup).not.toContain('<dialog');
+		it('still opens a fresh set-up on the finder alone, and asks nothing as it is drawn', () => {
+			const { markup, lookUp, search } = drawn(storedProfile({}), false);
+
+			expect(markup).toMatch(/^<search id="org-find">/);
+			expect(markup).not.toContain('name="tax_id"');
+			expect(lookUp).not.toHaveBeenCalled();
+			expect(search).not.toHaveBeenCalled();
 		});
 
 		it('stands no region for a note the list will never give', () => {

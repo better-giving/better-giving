@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitMatch, NonprofitSearch } from '../api/types';
-import { SEARCH_PAUSE_MS, type SearchState, watchSearch } from './org-search';
+import { type FinderView, finderAsk, SEARCH_FLOOR, watchFinder } from './org-search';
 
-// when the find dialog asks the IRS list, and what it shows while it does. the watch is plain
-// typescript handed the box's text, so the pause and the memory are read here against a clock this
-// file moves (../../vite.config.ts pins `node` and no dom).
+// what the finder asks the IRS list at a press, and what it shows while it does. the watch is
+// plain typescript handed the box's text at a press, so every case here is the finder's own
+// reading with no dom (../../vite.config.ts pins `node`). what an answer fills once a number is
+// locked in is ./ein-lookup.spec.ts's.
 
 const MATCH: NonprofitMatch = {
 	ein: '123456789',
@@ -15,145 +16,227 @@ const MATCH: NonprofitMatch = {
 	revokedOn: ''
 };
 
-function watched(answer: () => Promise<NonprofitSearch>) {
+/** a promise left out, which is a press the list has not answered yet. */
+const never = <T>() => new Promise<T>(() => {});
+
+/** lets every settled promise run its handlers. */
+const settled = () => new Promise((done) => setTimeout(done, 0));
+
+function watched(
+	answer: () => Promise<NonprofitSearch>,
+	{
+		lookups = true,
+		locking = async () => {}
+	}: {
+		lookups?: boolean;
+		locking?: () => Promise<void>;
+	} = {}
+) {
 	const search = vi.fn((_query: string, _signal: AbortSignal) => answer());
-	const states: SearchState[] = [];
-	const watch = watchSearch({ search, onState: (state) => states.push(state), memory: new Map() });
-	return { watch, search, state: () => states.at(-1) };
+	const lockIn = vi.fn((_ein: string, _signal: AbortSignal) => locking());
+	const views: FinderView[] = [];
+	const watch = watchFinder({
+		search,
+		lockIn,
+		lookups,
+		onView: (view) => views.push(view),
+		memory: new Map()
+	});
+	return { watch, search, lockIn, view: () => views.at(-1) };
 }
 
 const ok = async (): Promise<NonprofitSearch> => ({ state: 'ok', matches: [MATCH] });
 
-beforeEach(() => {
-	vi.useFakeTimers();
-});
-
-afterEach(() => {
-	vi.useRealTimers();
-});
-
-describe('when the list is searched', () => {
-	it('asks nothing for fewer than three characters', async () => {
-		const { watch, search, state } = watched(ok);
-		watch.typed('ri');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS * 2);
-
-		expect(search).not.toHaveBeenCalled();
-		expect(state()).toEqual({ kind: 'idle' });
+describe('what a press asks', () => {
+	it('looks a whole EIN up, in its stored spelling, typed with or without the dash', () => {
+		expect(finderAsk('12-3456789', true)).toEqual({ kind: 'lookup', ein: '12-3456789' });
+		expect(finderAsk(' 123456789 ', true)).toEqual({ kind: 'lookup', ein: '12-3456789' });
 	});
 
-	it('counts characters as the binary does, so two of them with an emoji ask nothing', async () => {
+	it('searches anything else of three characters or more', () => {
+		expect(finderAsk('riv', true)).toMatchObject({ kind: 'search', query: 'riv' });
+		expect(finderAsk('12-345678', true)).toMatchObject({ kind: 'search', query: '12-345678' });
+	});
+
+	it('asks nothing for one or two characters, which the binary refuses', () => {
+		expect(SEARCH_FLOOR).toBe(3);
+		expect(finderAsk('r', true)).toBeNull();
+		expect(finderAsk(' ri ', true)).toBeNull();
+	});
+
+	it('counts characters as the binary does, so two of them with an emoji ask nothing', () => {
 		// one astral character is two utf-16 units and one rune; the binary refuses under three runes.
-		const { watch, search } = watched(ok);
-		watch.typed('a😀');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS * 2);
+		expect(finderAsk('a😀', true)).toBeNull();
+	});
 
+	it('still looks a whole EIN up where the console cannot ask the list, and searches nothing', () => {
+		expect(finderAsk('12-3456789', false)).toEqual({ kind: 'lookup', ein: '12-3456789' });
+		expect(finderAsk('riverside', false)).toBeNull();
+	});
+});
+
+describe('a press', () => {
+	it('searches once for a name, and locks nothing in', async () => {
+		const { watch, search, lockIn } = watched(ok);
+		watch.press('riverside');
+		await settled();
+
+		expect(search).toHaveBeenCalledTimes(1);
+		expect(search.mock.calls[0]?.[0]).toBe('riverside');
+		expect(lockIn).not.toHaveBeenCalled();
+	});
+
+	it('locks a whole EIN in once, and searches nothing', async () => {
+		const { watch, search, lockIn } = watched(ok);
+		watch.press('12-3456789');
+		await settled();
+
+		expect(lockIn).toHaveBeenCalledTimes(1);
+		expect(lockIn.mock.calls[0]?.[0]).toBe('12-3456789');
 		expect(search).not.toHaveBeenCalled();
 	});
 
-	it('waits for a pause in the typing, then asks once', async () => {
-		const { watch, search } = watched(ok);
-		watch.typed('riv');
-		watch.typed('rive');
-		watch.typed('river');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS - 1);
+	it('asks nothing for a one-character name', async () => {
+		const { watch, search, lockIn, view } = watched(ok);
+		watch.press('r');
+		await settled();
 
 		expect(search).not.toHaveBeenCalled();
-
-		await vi.advanceTimersByTimeAsync(1);
-
-		expect(search).toHaveBeenCalledTimes(1);
-		expect(search.mock.calls[0]?.[0]).toBe('river');
+		expect(lockIn).not.toHaveBeenCalled();
+		expect(view()).toBeUndefined();
 	});
 
-	it('asks nothing for a query it already has the answer to', async () => {
-		const { watch, search, state } = watched(ok);
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
-		watch.typed('riversid');
-		watch.typed('Riverside ');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+	it('is busy while the list is asked, with the list it had still showing', async () => {
+		const answers: (() => Promise<NonprofitSearch>)[] = [ok, never];
+		const { watch, view } = watched(() => (answers.shift() ?? never)());
+		watch.press('riverside');
+		await settled();
+		watch.press('riverside food');
 
-		expect(search).toHaveBeenCalledTimes(1);
-		expect(state()).toEqual({ kind: 'matches', matches: [MATCH] });
+		expect(view()).toEqual({ out: true, found: { kind: 'matches', matches: [MATCH] } });
 	});
 
-	it('remembers an answer across two dialogs sharing one memory', async () => {
+	it('holds a second press while the first is out', async () => {
+		const { watch, search, lockIn } = watched(never);
+		watch.press('riverside');
+		watch.press('riverside food');
+		watch.press('12-3456789');
+		watch.pick(MATCH);
+
+		expect(search).toHaveBeenCalledTimes(1);
+		expect(lockIn).not.toHaveBeenCalled();
+	});
+
+	it('takes a press again once the first has answered', async () => {
+		const { watch, search } = watched(ok);
+		watch.press('riverside');
+		await settled();
+		watch.press('lakeside');
+		await settled();
+
+		expect(search).toHaveBeenCalledTimes(2);
+	});
+
+	it('is busy until the number it locks in has landed', async () => {
+		let land = () => {};
+		const { watch, view } = watched(ok, {
+			locking: () =>
+				new Promise<void>((done) => {
+					land = done;
+				})
+		});
+		watch.press('12-3456789');
+
+		expect(view()?.out).toBe(true);
+
+		land();
+		await settled();
+
+		expect(view()?.out).toBe(false);
+	});
+
+	it('asks nothing for a query it already has the answer to, however it is spaced', async () => {
+		const { watch, search, view } = watched(ok);
+		watch.press('riverside food');
+		await settled();
+		watch.press('  Riverside   Food ');
+		await settled();
+
+		expect(search).toHaveBeenCalledTimes(1);
+		expect(view()).toEqual({ out: false, found: { kind: 'matches', matches: [MATCH] } });
+	});
+
+	it('remembers an answer across two finders sharing one memory', async () => {
 		const memory = new Map();
 		const search = vi.fn(ok);
-		watchSearch({ search, onState: () => {}, memory }).typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
-		watchSearch({ search, onState: () => {}, memory }).typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+		const finder = () =>
+			watchFinder({ search, lockIn: async () => {}, lookups: true, onView: () => {}, memory });
+		finder().press('riverside');
+		await settled();
+		finder().press('riverside');
+		await settled();
 
 		expect(search).toHaveBeenCalledTimes(1);
 	});
 
-	it('gives up a search in flight once the query moves on', async () => {
-		const { watch, search } = watched(() => new Promise(() => {}));
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
-		watch.typed('riverside food');
+	it('gives up a press in flight when the finder is taken down', () => {
+		const { watch, search } = watched(never);
+		watch.press('riverside');
+		watch.stop();
 
 		expect(search.mock.calls[0]?.[1].aborted).toBe(true);
 	});
+});
 
-	it('says it is searching while the list is asked', async () => {
-		const { watch, state } = watched(() => new Promise(() => {}));
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+describe('a pick', () => {
+	it('locks in the EIN of the match taken, in its stored spelling', async () => {
+		const { watch, lockIn, search } = watched(ok);
+		watch.pick(MATCH);
+		await settled();
 
-		expect(state()).toEqual({ kind: 'searching' });
+		expect(lockIn).toHaveBeenCalledTimes(1);
+		expect(lockIn.mock.calls[0]?.[0]).toBe('12-3456789');
+		expect(search).not.toHaveBeenCalled();
 	});
 });
 
 describe('what a search shows', () => {
 	it('shows the matches', async () => {
-		const { watch, state } = watched(ok);
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+		const { watch, view } = watched(ok);
+		watch.press('riverside');
+		await settled();
 
-		expect(state()).toEqual({ kind: 'matches', matches: [MATCH] });
+		expect(view()).toEqual({ out: false, found: { kind: 'matches', matches: [MATCH] } });
 	});
 
 	it('says there are none', async () => {
-		const { watch, state } = watched(async () => ({ state: 'ok', matches: [] }));
-		watch.typed('zzzz');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+		const { watch, view } = watched(async () => ({ state: 'ok', matches: [] }));
+		watch.press('zzzz');
+		await settled();
 
-		expect(state()).toEqual({ kind: 'none' });
+		expect(view()?.found).toEqual({ kind: 'none' });
 	});
 
-	it('says the list could not be searched, and asks again for the same query later', async () => {
-		const { watch, search, state } = watched(async () => ({ state: 'unavailable', matches: [] }));
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+	it('says the list could not be searched, and asks again at the next press', async () => {
+		const { watch, search, view } = watched(async () => ({ state: 'unavailable', matches: [] }));
+		watch.press('riverside');
+		await settled();
 
-		expect(state()).toEqual({ kind: 'unavailable' });
+		expect(view()?.found).toEqual({ kind: 'unavailable' });
 
-		watch.typed('riversid');
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+		watch.press('riverside');
+		await settled();
 
 		expect(search).toHaveBeenCalledTimes(2);
 	});
 
 	it('reads a search that throws as the list being unavailable', async () => {
-		const { watch, state } = watched(async () => {
+		const { watch, view } = watched(async () => {
 			throw new Error('the binary is not answering');
 		});
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+		watch.press('riverside');
+		await settled();
 
-		expect(state()).toEqual({ kind: 'unavailable' });
-	});
-
-	it('goes back to waiting when the query is cut below three characters', async () => {
-		const { watch, state } = watched(ok);
-		watch.typed('riverside');
-		await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
-		watch.typed('ri');
-
-		expect(state()).toEqual({ kind: 'idle' });
+		expect(view()?.found).toEqual({ kind: 'unavailable' });
 	});
 });

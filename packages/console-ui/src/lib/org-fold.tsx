@@ -9,7 +9,7 @@ import {
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { SOCIAL_PLATFORMS } from '@better-giving/operator/console/org';
-import { BRAND_COLOUR, einAsPrinted } from '@better-giving/operator/console/org-rules';
+import { BRAND_COLOUR } from '@better-giving/operator/console/org-rules';
 import {
 	SOCIAL_PLATFORM_NAMES,
 	readSocialLink
@@ -30,19 +30,16 @@ import {
 import { Form } from 'react-router';
 import {
 	type EinNote,
+	type EinRead,
 	type EinWatch,
-	FILLED,
 	type HeldBoxes,
 	SILENT_NOTE,
-	einEdit,
 	foundBoxes,
-	matchBoxes,
 	watchEin
 } from './ein-lookup';
-import { FindOrgDialog } from './find-org-dialog';
 import { droppedFile, LOGO_ACCEPT } from './logo-crop';
 import { type CropImage, LogoCropDialog } from './logo-crop-dialog';
-import { heldBoxes, putBoxes } from './fold-boxes';
+import { firstNeeded, heldBoxes, putBoxes, spellEin } from './fold-boxes';
 import { rememberWebsite } from './found-organisation';
 import {
 	IDENTITY_BOXES,
@@ -62,12 +59,12 @@ import {
 	type StoredOrg,
 	carriedBoxes
 } from './org-fields';
+import { FINDER_ID, OrgFinder } from './org-finder';
 import { ORG_FORM, foldErrors, seedFor, type IdentityField } from './org-form';
 import { useConsoleForm } from './use-console-form';
 import { OrgWriteOutcome } from './org-write';
 import type {
 	NonprofitLookup,
-	NonprofitMatch,
 	NonprofitOrganisation,
 	NonprofitSearch,
 	OrgWrite
@@ -128,14 +125,20 @@ import type {
 // `ORG_PROFILE_FIELD_RULES`, refused blank by nothing), so an identity saved first is an identity
 // saved.
 //
+// **a fresh set-up — every identity box empty — draws the finder and nothing else** (./org-finder.tsx):
+// no box, no link, no logo and no Save, until an EIN is locked in. a whole EIN pressed in the finder,
+// or a match picked off its list, is looked up, and whatever the lookup answers — found, not listed,
+// or not answered — locks the number in: the whole screen appears with the number in the EIN box, the
+// note under it, and focus on the first required box still empty, or on Save where none is. a console
+// that cannot ask the list locks a whole EIN in at once and asks nothing. from then on the finder
+// collapses into "Pick a different organisation" beside Save, which opens it above the form.
+//
 // **the IRS list fills the boxes and never saves them.** a whole EIN typed into its box is looked up
-// once (./ein-lookup.ts says when), and the find dialog (./find-org-dialog.tsx) looks an
-// organisation up by name; either way a found organisation's values go into the boxes the way typing
-// them would, so the press is armed over them and Save stores them like any edit. what the list says
-// about the number stands under the EIN box in a region drawn before it speaks, and goes when the box
-// changes. the dialog opens itself on a fresh set-up — every identity box empty — once per visit to
-// the page, and a quiet press beside Save opens it at any time. the list is reached through the two
-// calls the page hands in, so this names no address and no binary route.
+// once (./ein-lookup.ts says when), and so is a number the finder locks in; either way a found
+// organisation's values go into the boxes the way typing them would, so the press is armed over them
+// and Save stores them like any edit. what the list says about the number stands under the EIN box
+// in a region drawn before it speaks, and goes when the box changes. the list is reached through the
+// two calls the page hands in, so this names no address and no binary route.
 //
 // **a value put into a box is made to say it changed**, and the mission is a textarea the fill has
 // to reach as well as the inputs — ./fold-boxes.ts holds both.
@@ -174,13 +177,14 @@ export type OrgFoldProps = {
 	/** a press putting the logo on or taking it off is in flight. */
 	logoPending?: boolean;
 	/**
-	 * whether this console was built able to ask the IRS list. where it was not, the fold is the
-	 * plain form: no find press, no dialog, no lookup and no note.
+	 * whether this console was built able to ask the IRS list. where it was not, a fresh set-up's
+	 * finder locks a whole EIN in without asking, and the form has no find press, no lookup and no
+	 * note.
 	 */
 	lookups: boolean;
 	/** one organisation from the IRS list by EIN. a throw reads as the list being unavailable. */
 	lookUp: (ein: string, signal: AbortSignal) => Promise<NonprofitLookup>;
-	/** organisations from the IRS list by name or EIN, for the find dialog. */
+	/** organisations from the IRS list by name or EIN, for the finder. */
 	search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
 };
 
@@ -225,6 +229,9 @@ const NO_TYPING: Readonly<Record<string, string>> = {};
 /** a fresh set-up: nothing about the organisation's identity has been saved yet. */
 const unset = (stored: StoredOrg): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
 
+/** a number the finder locked in, with the list's answer about it, or none where none was asked. */
+type Landing = { readonly ein: string; readonly answer: EinRead | null };
+
 export function OrgFold({
 	stored,
 	write,
@@ -264,15 +271,17 @@ export function OrgFold({
 		pending
 	});
 
-	/* the find dialog is up from the first draw on a fresh set-up, and from a press after that. read
-	   once, at the mount, which is the visit to the page: a save landing does not put it back up. a
-	   console that cannot ask the list never draws it. */
-	const [finding, setFinding] = useState(() => lookups && unset(stored));
-	/** a match was taken, which renames the press that opens the dialog. */
-	const [picked, setPicked] = useState(false);
+	/* whether an EIN is locked in, which is what draws the form. read once, at the mount, which is
+	   the visit to the page: a save landing never takes the form away again. */
+	const [locked, setLocked] = useState(() => !unset(stored));
+	/** the finder is open above the form, from the press beside Save. */
+	const [finding, setFinding] = useState(false);
+	/** the number the finder locked in last, which the form takes once it is on the page. */
+	const [landing, setLanding] = useState<Landing | null>(null);
 	/** what the region under the EIN box holds: the list's note, and a fill said to a reader. */
 	const [note, setNote] = useState<EinNote>(SILENT_NOTE);
 	const findPress = useRef<HTMLButtonElement>(null);
+	const savePress = useRef<HTMLButtonElement>(null);
 
 	/** the boxes as they stand, which is not what was stored once they have been typed in. */
 	const held = (): HeldBoxes => heldBoxes(form.mount.ref.current?.elements, IDENTITY_BOXES);
@@ -316,34 +325,35 @@ export function OrgFold({
 
 	/** the EIN box as typed: spelled as it is typed, and handed to the watch. */
 	const einTyped = (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-		const element = event.currentTarget;
-		const typed = element.value;
-		const kind = 'inputType' in event.nativeEvent ? event.nativeEvent.inputType : '';
-		const edit = einEdit(
-			typed,
-			element.selectionStart ?? typed.length,
-			kind === 'deleteContentForward'
-				? 'forward'
-				: kind === 'deleteContentBackward'
-					? 'backward'
-					: null
-		);
-		if (edit.shown !== typed) {
-			// written back with the caret where the operator was typing rather than at the end.
-			element.value = edit.shown;
-			element.setSelectionRange(edit.caret, edit.caret);
-		}
-		if (lookups) watch.current?.typed(edit.shown, stored.tax_id);
+		const shown = spellEin(event.currentTarget, event.nativeEvent);
+		if (lookups) watch.current?.typed(shown, stored.tax_id);
 	};
 
-	/** a match taken: its number in the EIN box, what it carries in the boxes, and its whole record asked for. */
-	const pick = (match: NonprofitMatch) => {
+	/* the finder's number, asked about where the list can be, and locked in whatever it answered. a
+	   finder shut while the lookup is out locks nothing in. */
+	const lockIn = async (ein: string, signal: AbortSignal) => {
+		const answer = lookups && watch.current !== null ? await watch.current.ask(ein, signal) : null;
+		if (signal.aborted) return;
+		setLocked(true);
 		setFinding(false);
-		setPicked(true);
-		// said for the boxes the match itself fills; the lookup that follows says again for its own.
-		if (put(matchBoxes(match, held().country ?? '')) > 0) setNote({ shown: '', said: FILLED });
-		watch.current?.typed(einAsPrinted(match.ein), stored.tax_id, true);
+		setLanding({ ein, answer });
 	};
+
+	/* a number locked in, put to the form drawn for it: the note and the fill first, so the number put
+	   in the EIN box after them is one the watch already holds and asks nothing about, and then focus
+	   on the first box the operator still owes, or on Save. keyed to the landing, so a page opened on
+	   a stored profile moves nothing. */
+	const takeLanding = useEffectEvent((at: Landing) => {
+		watch.current?.lockIn(at.ein, at.answer);
+		put({ tax_id: at.ein });
+		const needed = firstNeeded(held());
+		const owed = needed === null ? null : form.mount.ref.current?.elements.namedItem(needed);
+		if (owed instanceof HTMLElement) owed.focus();
+		else savePress.current?.focus();
+	});
+	useEffect(() => {
+		if (landing !== null) takeLanding(landing);
+	}, [landing]);
 
 	/* the brand colour's well stands beside its box and follows it: a hex typed in the box shows in
 	   the well, and a colour picked in the well is written into the box the way typing it would be.
@@ -571,8 +581,20 @@ export function OrgFold({
 		if (!busy) setDragging(true);
 	};
 
+	const finder = (onClose?: () => void) => (
+		<OrgFinder lookups={lookups} search={search} lockIn={lockIn} closed={busy} onClose={onClose} />
+	);
+
+	if (!locked) return finder();
+
 	return (
 		<>
+			{finding
+				? finder(() => {
+						setFinding(false);
+						findPress.current?.focus();
+					})
+				: null}
 			<Form
 				{...form.mount}
 				onSubmit={profilePressed}
@@ -666,25 +688,29 @@ export function OrgFold({
 				<div className="adm-stack">
 					<div className="adm-actions">
 						<SaveButton
+							ref={savePress}
 							name="intent"
 							value={ORG_INTENT}
 							state={form.state}
 							label="Save details"
 							doneLabel="Saved"
 						/>
-						{/* closed with the boxes, since a pick fills them; closed as the field's own presses are,
-					    so a reader standing on it keeps the focus. */}
+						{/* opens and closes the finder above the form. closed with the boxes, since a lock-in
+						    fills them; closed as the field's own presses are, so a reader standing on it
+						    keeps the focus. */}
 						{lookups ? (
 							<Button
 								ref={findPress}
 								type="button"
 								variant="quiet"
+								aria-expanded={finding}
+								aria-controls={finding ? FINDER_ID : undefined}
 								aria-disabled={busy || undefined}
 								onClick={() => {
-									if (!busy) setFinding(true);
+									if (!busy) setFinding((open) => !open);
 								}}
 							>
-								{picked ? 'Pick a different organisation' : 'Find your organisation'}
+								Pick a different organisation
 							</Button>
 						) : null}
 					</div>
@@ -816,16 +842,6 @@ export function OrgFold({
 					fallbackFocus={cropping.image.from === LOGO_FROM_STORED ? cropPress : choosePress}
 				/>
 			)}
-
-			{/* outside the form, so Enter in its box can never be the form's own submit. */}
-			{finding ? (
-				<FindOrgDialog
-					search={search}
-					onPick={pick}
-					onClose={() => setFinding(false)}
-					fallbackFocus={findPress}
-				/>
-			) : null}
 		</>
 	);
 }

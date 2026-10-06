@@ -2696,13 +2696,14 @@
 
 	/* ---------- the organisation finder ---------------------------------------------
 
-	   the box an organisation is searched for by name or EIN, and the IRS list's matches under it
-	   (packages/console-ui/src/lib/find-org-dialog.tsx). the machine is ark's combobox, as the coin
-	   picker's is, but the list stands in the card's own flow rather than floating over what follows:
-	   the card is the box's whole context and the two ways out under the list stay in view.
+	   the box an organisation is searched for by name or EIN, its Search press on the box's own row
+	   (`.adm-actions`), and the IRS list's matches under it (packages/console-ui/src/lib/org-finder.tsx).
+	   the machine is ark's combobox, as the coin picker's is, but the list stands in the screen's own
+	   flow rather than floating over what follows: on a fresh set-up the finder is the whole screen,
+	   and above the form the matches push the form down rather than covering its first boxes.
 
-	   the label, the box and the region saying how the search went stand one field step apart, as
-	   the parts of a `.adm-field` do. */
+	   the label, the box's row and the region saying how the search went stand one field step apart,
+	   as the parts of a `.adm-field` do. */
 	.adm-findorg {
 		display: grid;
 		gap: var(--admin-space-3);
@@ -2716,7 +2717,7 @@
 
 	/* the matches. ruled as a box of its own, the height of four and a half rows at the row's floor
 	   for `.adm-coinlist`'s reason — a longer list shows half of its fifth row — and no shadow: it
-	   is part of the card, not a layer over it. */
+	   is part of the screen, not a layer over it. */
 	.adm-findlist {
 		display: grid;
 		align-content: start;
