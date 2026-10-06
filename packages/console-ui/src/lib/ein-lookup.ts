@@ -1,10 +1,11 @@
-import { EIN, einAsPrinted, einAsTyped } from '@better-giving/operator/console/org-rules';
-import type { NonprofitLookup, NonprofitMatch, NonprofitOrganisation } from '../api/types';
+import { EIN, einAsTyped } from '@better-giving/operator/console/org-rules';
+import type { NonprofitLookup, NonprofitOrganisation } from '../api/types';
 import type { IdentityField } from './org-form';
 
 // when the Organisation details fold asks the IRS list about the number in its EIN box, and what it says
-// and fills when the answer lands. ./org-fold.tsx hands this the box's text at every change and
-// draws what comes back; nothing here touches a document, so ./ein-lookup.spec.ts reads all of it.
+// and fills when the answer lands. ./org-fold.tsx hands this the box's text at every change, and
+// the number the finder (./org-finder.tsx) locked in with the answer it was given, and draws what
+// comes back; nothing here touches a document, so ./ein-lookup.spec.ts reads all of it.
 //
 // **the list's limits are the reason for every rule about when it is asked.** the API is for set-up
 // and is not generous, so a number is asked about once it is whole, and only where it is not the
@@ -25,7 +26,9 @@ import type { IdentityField } from './org-form';
 // **a lookup never writes over the operator.** an answer fills a box only while it is empty, or
 // still holds exactly what an earlier fill put there — a mission or an address typed before the
 // number, or after it, stays as typed whatever the list says. the record of what the fills wrote is
-// the watch's own, one per fold on the page, and nothing on the screen draws it.
+// the watch's own, one per fold on the page, and nothing on the screen draws it. the one exception
+// is a number locked in from the finder, which is the operator choosing an organisation: its name,
+// city and state replace the ones standing, and every other box keeps this rule.
 //
 // **an answer landing while a profile save is out waits for the save.** the save's answer puts the
 // boxes back at the profile it stored, which would take a fill made under it away unseen, and the
@@ -40,7 +43,7 @@ export const NOT_LISTED = 'Not on the IRS list.';
 
 /**
  * what a fill says to a reader, in the same region as the note: six boxes changing under a cursor
- * that did not move is otherwise news to nobody using one. drawn for a reader alone — a pick and a
+ * that did not move is otherwise news to nobody using one. drawn for a reader alone — a lock-in and a
  * found number fill the boxes with no words on the screen about it.
  */
 export const FILLED = 'Filled from the IRS list.';
@@ -61,15 +64,15 @@ export const revokedNote = (on: string): string =>
 	`Tax-exempt status revoked ${DAY_WORDS.format(new Date(on))}.`;
 
 /** an answer as the fold uses it: the one note it says, and the organisation where one was found. */
-type Read = { readonly note: string; readonly found: NonprofitOrganisation | null };
+export type EinRead = { readonly note: string; readonly found: NonprofitOrganisation | null };
 
-const UNANSWERED: Read = { note: LOOKUP_UNANSWERED, found: null };
+const UNANSWERED: EinRead = { note: LOOKUP_UNANSWERED, found: null };
 
 /**
  * the one note an answer says. revoked outranks not deductible, because a revocation is why an
  * organisation drops off the deductible list and the date is the fact worth having.
  */
-function read(answer: NonprofitLookup): Read {
+function read(answer: NonprofitLookup): EinRead {
 	if (answer.state === 'unavailable') return UNANSWERED;
 	if (answer.state === 'not_found') return { note: NOT_LISTED, found: null };
 	const organisation = answer.organisation;
@@ -96,9 +99,6 @@ const filled = (boxes: Filled): Filled =>
  * in ./org-fields.ts). the column is free text, so nothing else reads it.
  */
 export const US_COUNTRY = 'United States';
-
-/** the country an answer puts in the box: the list's own where the box is empty, else nothing. */
-const countryFor = (held: string): Filled => (held === '' ? { country: US_COUNTRY } : {});
 
 /** the identity boxes as they stand, by name. */
 export type HeldBoxes = Readonly<Partial<Record<IdentityField, string>>>;
@@ -135,31 +135,11 @@ export function foundBoxes(
 }
 
 /**
- * the boxes a match taken from the find dialog fills before its whole record is in: its number,
- * its name, the city and state it is listed under, and the country where the Country box is
- * empty. the street, the postal code and the mission are not in a match, so the lookup a pick runs
- * is what brings them.
+ * the boxes a lock-in takes whatever they hold: the finder's answer is a choice of organisation, so
+ * its name and where it is listed replace the ones standing, and every other box is filled by
+ * {@link foundBoxes}'s own rule.
  */
-export const matchBoxes = (match: NonprofitMatch, country: string): Filled =>
-	filled({
-		legal_name: match.name,
-		city: match.city,
-		region: match.state,
-		...countryFor(country),
-		tax_id: einAsPrinted(match.ein)
-	});
-
-/** the boxes a match fills that hold the found organisation's own value for them. */
-function stillMatched(organisation: NonprofitOrganisation, now: HeldBoxes): Filled {
-	const listed: Filled = filled({
-		legal_name: organisation.name,
-		city: organisation.city,
-		region: organisation.region
-	});
-	return Object.fromEntries(
-		Object.entries(listed).filter(([field, value]) => now[field as IdentityField] === value)
-	);
-}
+const CHOSEN: readonly IdentityField[] = ['legal_name', 'city', 'region'];
 
 /** after as many digits as stood before `caret` in `typed`, as a place in `shown`. */
 function caretAfter(typed: string, caret: number, shown: string): number {
@@ -218,11 +198,20 @@ export type EinWatchOptions = {
 };
 
 export type EinWatch = {
+	/** the box now holds `value`, and the deployment holds `stored`. */
+	readonly typed: (value: string, stored: string) => void;
 	/**
-	 * the box now holds `value`, and the deployment holds `stored`. `picked` is a match taken from
-	 * the find dialog, which wants the organisation's whole record whatever is stored.
+	 * the list's answer about `value`, asked with the finder's `signal`: the one this watch already
+	 * holds for that number, or the list's. a lookup that throws reads as unanswered. it lands
+	 * nothing — the fold locks the number in with it once the boxes are on the page.
 	 */
-	readonly typed: (value: string, stored: string, picked?: boolean) => void;
+	readonly ask: (value: string, signal: AbortSignal) => Promise<EinRead>;
+	/**
+	 * the finder locked `value` in with `answer`, or with none where this console cannot ask the
+	 * list: said and filled as a choice of organisation ({@link CHOSEN}), and the box holding that
+	 * number is one nothing asks about again until it changes.
+	 */
+	readonly lockIn: (value: string, answer: EinRead | null) => void;
 	/** a profile save went out: an answer landing from now waits for {@link EinWatch.afterSave}. */
 	readonly saving: () => void;
 	/**
@@ -235,78 +224,95 @@ export type EinWatch = {
 };
 
 export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): EinWatch {
-	/** the lookup out, and whether a pick wants it: the pick's own call can come after it went out. */
-	let asking: {
-		readonly digits: string;
-		readonly control: AbortController;
-		picked: boolean;
-	} | null = null;
-	let last: { readonly digits: string; readonly read: Read } | null = null;
+	let asking: { readonly digits: string; readonly control: AbortController } | null = null;
+	let last: { readonly digits: string; readonly read: EinRead } | null = null;
+	/** the whole number the box was last said to hold, so a call saying it again changes nothing. */
+	let holding: string | null = null;
 	/** what the fills so far put in the boxes, box by box. */
 	let wrote: Filled = {};
 	let saveOut = false;
 	/** an answer that landed while a save was out. */
-	let waiting: { readonly answer: Read; readonly picked: boolean } | null = null;
+	let waiting: { readonly answer: EinRead; readonly chosen: boolean } | null = null;
 
 	/**
-	 * a found organisation put into the boxes, and the record kept of it: the boxes `onFound` puts,
-	 * and after a pick the boxes the match put (`matchBoxes`), which still hold this organisation's
-	 * own values where the operator has not typed over them.
+	 * a found organisation put into the boxes, and the record kept of it. a choice of organisation
+	 * reads {@link CHOSEN} as an earlier fill's, so the found values replace whatever stands there.
 	 */
-	const fill = (found: NonprofitOrganisation, picked: boolean): boolean => {
-		const boxes = foundBoxes(found, wrote, held());
-		const took = onFound(found, wrote);
+	const fill = (found: NonprofitOrganisation, chosen: boolean): boolean => {
+		const now = held();
+		const before: Filled = chosen
+			? { ...wrote, ...Object.fromEntries(CHOSEN.map((field) => [field, now[field] ?? ''])) }
+			: wrote;
+		const boxes = foundBoxes(found, before, now);
+		const took = onFound(found, before);
 		if (took) wrote = { ...wrote, ...boxes };
-		if (picked) wrote = { ...wrote, ...stillMatched(found, held()) };
 		return took;
 	};
 
 	/** the note an answer says, and the fill it is said beside where one was made. */
-	const land = (answer: Read, picked: boolean) => {
+	const land = (answer: EinRead, chosen: boolean) => {
 		if (saveOut) {
-			waiting = { answer, picked };
+			waiting = { answer, chosen };
 			return;
 		}
-		const filledAny = answer.found !== null && fill(answer.found, picked);
+		const filledAny = answer.found !== null && fill(answer.found, chosen);
 		onNote({ shown: answer.note, said: filledAny ? FILLED : '' });
 	};
 
-	const typed = (value: string, stored: string, picked = false) => {
+	const typed = (value: string, stored: string) => {
 		const digits = EIN.test(value) ? digitsOf(value) : null;
+		const unchanged = digits !== null && digits === holding;
+		holding = digits;
+		if (unchanged) return;
 		// an answer about a number the box no longer holds is one nothing would be told about.
 		if (asking !== null && asking.digits !== digits) {
 			asking.control.abort();
 			asking = null;
 		}
-		if (digits === null || (!picked && digits === digitsOf(stored))) {
+		if (digits === null || digits === digitsOf(stored)) {
 			onNote(SILENT_NOTE);
 			return;
 		}
-		if (asking !== null) {
-			asking.picked ||= picked;
-			return;
-		}
+		if (asking !== null) return;
 		if (last?.digits === digits) {
-			if (picked) land(last.read, true);
-			else onNote({ shown: last.read.note, said: '' });
+			onNote({ shown: last.read.note, said: '' });
 			return;
 		}
 		onNote(SILENT_NOTE);
 		const control = new AbortController();
-		const out = { digits, control, picked };
-		asking = out;
+		asking = { digits, control };
 		lookUp(value, control.signal)
 			.then(read, () => UNANSWERED)
 			.then((answer) => {
 				if (control.signal.aborted) return;
 				asking = null;
 				if (answer !== UNANSWERED) last = { digits, read: answer };
-				land(answer, out.picked);
+				land(answer, false);
 			});
+	};
+
+	const ask = (value: string, signal: AbortSignal): Promise<EinRead> =>
+		last?.digits === digitsOf(value)
+			? Promise.resolve(last.read)
+			: lookUp(value, signal).then(read, () => UNANSWERED);
+
+	const lockIn = (value: string, answer: EinRead | null) => {
+		asking?.control.abort();
+		asking = null;
+		const digits = digitsOf(value);
+		holding = digits;
+		if (answer === null) {
+			onNote(SILENT_NOTE);
+			return;
+		}
+		if (answer !== UNANSWERED) last = { digits, read: answer };
+		land(answer, true);
 	};
 
 	return {
 		typed,
+		ask,
+		lockIn,
 		saving: () => {
 			saveOut = true;
 		},
@@ -314,7 +320,7 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 			saveOut = false;
 			const landed = waiting;
 			waiting = null;
-			if (landed !== null) land(landed.answer, landed.picked);
+			if (landed !== null) land(landed.answer, landed.chosen);
 		},
 		stop: () => {
 			asking?.control.abort();

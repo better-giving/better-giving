@@ -8,14 +8,14 @@ import {
 	US_COUNTRY,
 	einEdit,
 	foundBoxes,
-	matchBoxes,
 	revokedNote,
 	watchEin
 } from './ein-lookup';
 
 // when the Organisation details fold asks the IRS list about the EIN box, and what it says and fills when
-// the answer lands. the watch is plain typescript handed the box's text, so every case here is the
-// fold's own reading with no dom (../../vite.config.ts pins `node`).
+// the answer lands, typed or locked in from the finder. the watch is plain typescript handed the
+// box's text, so every case here is the fold's own reading with no dom (../../vite.config.ts pins
+// `node`).
 
 const ORGANISATION: NonprofitOrganisation = {
 	ein: '123456789',
@@ -137,23 +137,14 @@ describe('when the EIN box is looked up', () => {
 		expect(lookUp).toHaveBeenCalledTimes(2);
 	});
 
-	it('asks again for a pick of the number the deployment holds, since a pick wants the record', async () => {
-		const { watch, lookUp, fills } = watched(async () => found());
-		watch.typed('12-3456789', '12-3456789', true);
-		await settled();
-
-		expect(lookUp).toHaveBeenCalledTimes(1);
-		expect(fills).toHaveLength(1);
-	});
-
-	it('fills again from the answer it has for a pick of the number it last asked about', async () => {
-		const { watch, lookUp, fills } = watched(async () => found());
+	it('asks nothing when the box is said again to hold the number it holds', async () => {
+		const { watch, lookUp } = watched(async () => ({ state: 'unavailable', organisation: EMPTY }));
 		watch.typed('12-3456789', '');
 		await settled();
-		watch.typed('12-3456789', '', true);
+		watch.typed('12-3456789', '');
+		await settled();
 
 		expect(lookUp).toHaveBeenCalledTimes(1);
-		expect(fills).toHaveLength(2);
 	});
 });
 
@@ -301,22 +292,6 @@ describe('what the answer says and fills', () => {
 		expect(boxes.city).toBe('Riverside Heights');
 	});
 
-	it('counts the name a pick wrote as a fill, so the next number replaces it', async () => {
-		const boxes: Record<string, string> = {};
-		const answers = [found(), found({ name: 'Lakeside Pantry', city: 'Lakeside' })];
-		const { watch } = watched(async () => answers.shift() ?? found(), boxes);
-		Object.assign(boxes, matchBoxes(RIVERSIDE_MATCH, ''));
-		// the EIN box the match filled says it changed, then the pick asks for the record.
-		watch.typed('12-3456789', '');
-		watch.typed('12-3456789', '', true);
-		await settled();
-		watch.typed('98-7654321', '');
-		await settled();
-
-		expect(boxes.legal_name).toBe('Lakeside Pantry');
-		expect(boxes.city).toBe('Lakeside');
-	});
-
 	it('takes the note down the moment the box changes, and puts it back for the same number', async () => {
 		const { watch, note } = watched(async () => found({ deductible: false }));
 		watch.typed('12-3456789', '');
@@ -352,14 +327,153 @@ describe('an answer landing while a profile save is out', () => {
 	});
 });
 
-const RIVERSIDE_MATCH = {
-	ein: '123456789',
-	name: 'Riverside Community Food Bank',
-	city: 'Riverside',
-	state: 'CA',
-	deductible: true,
-	revokedOn: ''
-};
+const unavailable = async (): Promise<NonprofitLookup> => ({
+	state: 'unavailable',
+	organisation: EMPTY
+});
+
+describe('what the finder asks before it locks a number in', () => {
+	it('asks the list once for a number it holds no answer for', async () => {
+		const { watch, lookUp } = watched(async () => found());
+		const answer = await watch.ask('12-3456789', new AbortController().signal);
+
+		expect(lookUp).toHaveBeenCalledTimes(1);
+		expect(answer.found).toEqual(ORGANISATION);
+	});
+
+	it('asks nothing for the number it last had an answer for', async () => {
+		const { watch, lookUp } = watched(async () => found());
+		watch.typed('12-3456789', '');
+		await settled();
+		const answer = await watch.ask('123456789', new AbortController().signal);
+
+		expect(lookUp).toHaveBeenCalledTimes(1);
+		expect(answer.found).toEqual(ORGANISATION);
+	});
+
+	it('reads a lookup that throws as unanswered, and lands nothing by asking', async () => {
+		const { watch, fills, note } = watched(async () => {
+			throw new Error('the binary is not answering');
+		});
+		const answer = await watch.ask('12-3456789', new AbortController().signal);
+
+		expect(answer.note).toBe(LOOKUP_UNANSWERED);
+		expect(fills).toEqual([]);
+		expect(note()).toBe('');
+	});
+});
+
+describe('a number locked in from the finder', () => {
+	/** the answer the finder was given, asked through the watch the fold locks it in with. */
+	async function lockedIn(
+		answer: () => Promise<NonprofitLookup>,
+		boxes: Record<string, string> = {}
+	) {
+		const seen = watched(answer, boxes);
+		const read = await seen.watch.ask('12-3456789', new AbortController().signal);
+		seen.watch.lockIn('12-3456789', read);
+		return seen;
+	}
+
+	it('fills a found organisation and says the fill, with no note for one in good standing', async () => {
+		const { boxes, note, said } = await lockedIn(async () => found());
+
+		expect(boxes).toMatchObject({ legal_name: 'Riverside Community Food Bank', city: 'Riverside' });
+		expect(note()).toBe('');
+		expect(said()).toBe(FILLED);
+	});
+
+	it('fills one not listed as deductible, and says so', async () => {
+		const { boxes, note } = await lockedIn(async () => found({ deductible: false }));
+
+		expect(boxes.legal_name).toBe('Riverside Community Food Bank');
+		expect(note()).toBe(NOT_DEDUCTIBLE);
+	});
+
+	it('fills one revoked, and says when', async () => {
+		const { note } = await lockedIn(async () => found({ revokedOn: '2023-05-15' }));
+
+		expect(note()).toBe('Tax-exempt status revoked May 15, 2023.');
+	});
+
+	it('fills nothing for a number not on the list, and says so', async () => {
+		const { boxes, note, fills } = await lockedIn(async () => ({
+			state: 'not_found',
+			organisation: EMPTY
+		}));
+
+		expect(fills).toEqual([]);
+		expect(boxes).toEqual({});
+		expect(note()).toBe(NOT_LISTED);
+	});
+
+	it('fills nothing where the list did not answer, and says so', async () => {
+		const { boxes, note } = await lockedIn(unavailable);
+
+		expect(boxes).toEqual({});
+		expect(note()).toBe(LOOKUP_UNANSWERED);
+	});
+
+	it('says nothing and fills nothing on a console that cannot ask the list', () => {
+		const { watch, lookUp, fills, note } = watched(async () => found());
+		watch.lockIn('12-3456789', null);
+
+		expect(lookUp).not.toHaveBeenCalled();
+		expect(fills).toEqual([]);
+		expect(note()).toBe('');
+	});
+
+	it('takes the name, city and state of the organisation chosen over the ones standing', async () => {
+		const { boxes } = await lockedIn(async () => found(), {
+			legal_name: 'Lakeside Pantry',
+			city: 'Lakeside',
+			region: 'MI',
+			address_line1: '9 Shore Drive'
+		});
+
+		expect(boxes).toMatchObject({
+			legal_name: 'Riverside Community Food Bank',
+			city: 'Riverside',
+			region: 'CA',
+			address_line1: '9 Shore Drive'
+		});
+	});
+
+	it('asks nothing when the number it locked in is then put in the EIN box', async () => {
+		const { watch, lookUp } = await lockedIn(unavailable);
+		watch.typed('12-3456789', '');
+		await settled();
+
+		expect(lookUp).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps the note when the number it locked in is then put in the EIN box', async () => {
+		const { watch, note, said } = await lockedIn(async () => found({ deductible: false }));
+		watch.typed('12-3456789', '');
+
+		expect(note()).toBe(NOT_DEDUCTIBLE);
+		expect(said()).toBe(FILLED);
+	});
+
+	it('asks again once the box moves off a number the list did not answer for and back', async () => {
+		const { watch, lookUp } = await lockedIn(unavailable);
+		watch.typed('12-345678', '');
+		watch.typed('12-3456789', '');
+		await settled();
+
+		expect(lookUp).toHaveBeenCalledTimes(2);
+	});
+
+	it('counts what it filled as a fill, so the next number typed replaces it', async () => {
+		const answers = [found(), found({ name: 'Lakeside Pantry', city: 'Lakeside' })];
+		const { watch, boxes } = await lockedIn(async () => answers.shift() ?? found());
+		watch.typed('98-7654321', '');
+		await settled();
+
+		expect(boxes.legal_name).toBe('Lakeside Pantry');
+		expect(boxes.city).toBe('Lakeside');
+	});
+});
 
 describe('the boxes a found organisation fills', () => {
 	it('fills the name, the address it holds, and an empty Country box', () => {
@@ -415,30 +529,6 @@ describe('the boxes a found organisation fills', () => {
 		expect(foundBoxes(ORGANISATION, { country: 'USA' }, { country: 'USA' })).not.toHaveProperty(
 			'country'
 		);
-	});
-});
-
-describe('the boxes a match taken from the find dialog fills', () => {
-	it('fills its number as stored, its name, its city and state, and an empty Country box', () => {
-		expect(matchBoxes(RIVERSIDE_MATCH, '')).toEqual({
-			tax_id: '12-3456789',
-			legal_name: 'Riverside Community Food Bank',
-			city: 'Riverside',
-			region: 'CA',
-			country: 'United States'
-		});
-	});
-
-	it('leaves the city and state alone where the list holds none', () => {
-		expect(matchBoxes({ ...RIVERSIDE_MATCH, city: '', state: '' }, '')).toEqual({
-			tax_id: '12-3456789',
-			legal_name: 'Riverside Community Food Bank',
-			country: US_COUNTRY
-		});
-	});
-
-	it('leaves a Country box holding anything as it is', () => {
-		expect(matchBoxes(RIVERSIDE_MATCH, 'United States of America')).not.toHaveProperty('country');
 	});
 });
 

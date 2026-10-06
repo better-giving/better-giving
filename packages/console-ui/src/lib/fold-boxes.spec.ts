@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitOrganisation } from '../api/types';
 import { foundBoxes } from './ein-lookup';
-import { heldBoxes, putBoxes } from './fold-boxes';
+import { firstNeeded, heldBoxes, putBoxes } from './fold-boxes';
 
 // the Organisation fold's reach into its own boxes, which the IRS lookup's fill runs through
 // (`found` in ./org-fold.tsx). ../../vite.config.ts pins `node` and there is no dom, so the two
@@ -92,5 +92,41 @@ describe('the lookup’s fill, reaching the boxes', () => {
 
 		expect(putBoxes(controls({ mission: notABox }), { mission: 'x' })).toBe(0);
 		expect(notABox.value).toBe('');
+	});
+});
+
+describe('where focus goes once a number is locked in', () => {
+	const LOCKED = { tax_id: '12-3456789' };
+
+	it('is the first required box still empty, in the order the fold draws them', () => {
+		expect(firstNeeded(LOCKED)).toBe('legal_name');
+		expect(
+			firstNeeded({ ...LOCKED, legal_name: 'Riverside Community Food Bank', city: 'Riverside' })
+		).toBe('address_line1');
+	});
+
+	it('passes over a box marked optional', () => {
+		expect(
+			firstNeeded({
+				...LOCKED,
+				legal_name: 'Riverside Community Food Bank',
+				address_line1: '400 Mill Road',
+				city: 'Riverside',
+				country: 'United States'
+			})
+		).toBe('mission');
+	});
+
+	it('is nothing, which is Save, where every required box holds something', () => {
+		expect(
+			firstNeeded({
+				...LOCKED,
+				legal_name: 'Riverside Community Food Bank',
+				address_line1: '400 Mill Road',
+				city: 'Riverside',
+				country: 'United States',
+				mission: 'Food for every family in Riverside County.'
+			})
+		).toBeNull();
 	});
 });

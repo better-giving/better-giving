@@ -1,8 +1,12 @@
-import type { HeldBoxes } from './ein-lookup';
+import type { OrgProfileField } from '@better-giving/operator/console/org';
+import { einEdit, type HeldBoxes } from './ein-lookup';
+import { IDENTITY_BOXES, orgRequired } from './org-fields';
 import type { IdentityField } from './org-form';
 
 // what the Organisation fold's boxes hold as they stand, and how a found value is put into one —
-// for ./org-fold.tsx's IRS lookup, which fills boxes the operator may have typed in since it asked.
+// for ./org-fold.tsx's IRS lookup, which fills boxes the operator may have typed in since it asked —
+// and how an EIN is spelled as it is typed, in the fold's EIN box and in the finder's
+// (./org-finder.tsx).
 //
 // **a box is an input or a textarea**, and the mission is the second: a fill that read inputs alone
 // would take a typed mission for an empty box and write over it, and would never reach an empty one.
@@ -43,4 +47,37 @@ export function putBoxes(
 		took += 1;
 	}
 	return took;
+}
+
+/**
+ * the first box the operator still owes as the boxes stand: a required one, empty, in the order the
+ * fold draws them, or `null` where every required box holds something. the EIN box is first on the
+ * screen and second in that list, which reads the same wherever a number has just been put in it.
+ */
+export const firstNeeded = (
+	held: Readonly<Partial<Record<string, string>>>
+): OrgProfileField | null =>
+	IDENTITY_BOXES.find((field) => orgRequired(field) && (held[field] ?? '') === '') ?? null;
+
+/**
+ * an EIN being typed, spelled in its box as it is typed (`einEdit` in ./ein-lookup.ts), with the
+ * caret left where the operator was typing rather than at the end. answers what the box now holds.
+ */
+export function spellEin(element: Box, typing: Event): string {
+	const typed = element.value;
+	const kind = typing instanceof InputEvent ? typing.inputType : '';
+	const edit = einEdit(
+		typed,
+		element.selectionStart ?? typed.length,
+		kind === 'deleteContentForward'
+			? 'forward'
+			: kind === 'deleteContentBackward'
+				? 'backward'
+				: null
+	);
+	if (edit.shown !== typed) {
+		element.value = edit.shown;
+		element.setSelectionRange(edit.caret, edit.caret);
+	}
+	return edit.shown;
 }

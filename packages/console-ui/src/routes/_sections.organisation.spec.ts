@@ -260,7 +260,7 @@ describe('whether the page can ask the IRS list', () => {
 			const page = renderToString(createElement(RouterProvider, { router }));
 
 			expect(page).toContain(`id="${ORG_FORM.id}-legal_name"`);
-			expect(page).not.toContain('Find your organisation');
+			expect(page).not.toContain('Pick a different organisation');
 		} finally {
 			router.dispose();
 		}
@@ -271,7 +271,7 @@ describe('whether the page can ask the IRS list', () => {
 		try {
 			const page = renderToString(createElement(RouterProvider, { router }));
 
-			expect(page).toContain('Find your organisation');
+			expect(page).toContain('Pick a different organisation');
 		} finally {
 			router.dispose();
 		}
