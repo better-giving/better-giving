@@ -641,21 +641,25 @@ export function OrgFold({
 				{box(
 					'brand_colour',
 					<>
-						<input
-							ref={well}
-							type="color"
-							className="adm-swatch adm-swatch--well"
-							aria-label="Pick the brand colour"
-							aria-describedby={wellEmpty ? WELL_EMPTY : undefined}
-							defaultValue={
-								BRAND_COLOUR.test(stored.brand_colour)
-									? stored.brand_colour.toLowerCase()
-									: undefined
-							}
-							data-empty={wellEmpty || undefined}
-							disabled={busy}
-							onChange={wellPicked}
-						/>
+						{/* the label carries the well's target (`.adm-wellwrap` in
+						    packages/operator/src/styles/adm.css); the well's name is its own `aria-label`. */}
+						<label className="adm-wellwrap">
+							<input
+								ref={well}
+								type="color"
+								className="adm-swatch adm-swatch--well"
+								aria-label="Pick the brand colour"
+								aria-describedby={wellEmpty ? WELL_EMPTY : undefined}
+								defaultValue={
+									BRAND_COLOUR.test(stored.brand_colour)
+										? stored.brand_colour.toLowerCase()
+										: undefined
+								}
+								data-empty={wellEmpty || undefined}
+								disabled={busy}
+								onChange={wellPicked}
+							/>
+						</label>
 						{wellEmpty ? (
 							<span id={WELL_EMPTY} className="adm-vh">
 								No colour set

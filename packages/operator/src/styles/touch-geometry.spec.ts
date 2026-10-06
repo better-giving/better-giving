@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ruleOf, sheet } from './sheet-rule.testing';
+import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // where a finger lands on the phone's own furniture: a row takes the row's floor, and the More
 // sheet stands on the bar rather than above it.
@@ -13,6 +13,10 @@ import { ruleOf, sheet } from './sheet-rule.testing';
 // overstates the bar on purpose, and a sheet standing on it leaves a strip of the page showing
 // between the two. so the footing is read here term by term against what the bar draws: the tab's
 // floor, the rule over the tabs, and the platform's inset under them.
+//
+// **a control drawn under the floor is aimed at at it, and its target lies over nothing else.** the
+// pool lays nothing out, so where a target reaches is the arithmetic of the tokens its rule and its
+// neighbours' rules spend.
 
 const css = sheet('adm.css');
 const tokens = sheet('tokens.css');
@@ -37,16 +41,21 @@ describe("a row a finger aims at takes the row's floor", () => {
 	});
 });
 
+/** a length ./tokens.css states in rem, as css pixels. */
+const px = (token: string) => {
+	const stated = tokens.match(new RegExp(`${token}:\\s*([\\d.]+)rem\\s*;`))?.[1];
+	if (stated === undefined) throw new Error(`${token} is not a rem length in ./tokens.css`);
+	return Number.parseFloat(stated) * 16;
+};
+
+/** what a rule states, found by a selector anywhere in its list. */
+const listed = (selector: string) =>
+	rulesIn(css).find(({ selector: list }) => list.split(', ').includes(selector))?.stated ??
+	new Map<string, string>();
+
 describe("the range slider's thumb is drawn small and aimed at at the floor", () => {
 	const thumb = ruleOf(css, '.adm-range__thumb');
 	const target = ruleOf(css, '.adm-range__thumb::before');
-
-	/** a length ./tokens.css states in rem, as css pixels. */
-	const px = (token: string) => {
-		const stated = tokens.match(new RegExp(`${token}:\\s*([\\d.]+)rem\\s*;`))?.[1];
-		if (stated === undefined) throw new Error(`${token} is not a rem length in ./tokens.css`);
-		return Number.parseFloat(stated) * 16;
-	};
 
 	it("keeps the thumb drawn at its own size, which clears 2.5.8's 24px across", () => {
 		expect(thumb.get('inline-size')).toBe('var(--admin-space-8)');
@@ -119,5 +128,97 @@ describe('the More sheet stands on the bar', () => {
 			'--admin-border-width',
 			'env(safe-area-inset-bottom)'
 		]);
+	});
+});
+
+describe('a control drawn under the floor takes a target at it', () => {
+	/** how far a target `--admin-touch-min` square reaches past a control drawn at `drawn`. */
+	const reach = (drawn: string) => (px('--admin-touch-min') - px(drawn)) / 2;
+
+	/** the one token a single-term value spends. */
+	const token = (value: string | undefined) => {
+		const [only, ...more] = terms(value);
+		if (only === undefined || more.length > 0) throw new Error(`not one token: ${value}`);
+		return only;
+	};
+
+	it.each([
+		['.adm-markbtn::before'],
+		['.adm-logo__presses > .adm-btn::before'],
+		['.adm-rows__row > .adm-rows__remove::before'],
+		['.adm-wellwrap::before']
+	])('%s is the floor square, centred on the border box', (selector) => {
+		const target = listed(selector);
+
+		expect(target.get('content')).toBe("''");
+		expect(target.get('position')).toBe('absolute');
+		expect(target.get('inline-size')).toBe('var(--admin-touch-min)');
+		expect(target.get('block-size')).toBe('var(--admin-touch-min)');
+		// centred off the padding box's `100%`, which a border leaves on the border box's centre.
+		for (const side of ['inset-block-start', 'inset-inline-start']) {
+			expect(target.get(side)).toBe('calc((100% - var(--admin-touch-min)) / 2)');
+		}
+		expect(target.get('inset')).toBeUndefined();
+	});
+
+	it("meets the logo's other press and reaches the square's edge, and no further", () => {
+		const presses = ruleOf(css, '.adm-logo__presses');
+		const press = token(ruleOf(css, '.adm-logo__presses > .adm-btn').get('inline-size'));
+
+		expect(presses.get('gap')).toBe(
+			'calc(var(--admin-touch-min) - var(--admin-control-height-sm))'
+		);
+		expect(press).toBe('--admin-control-height-sm');
+		expect(px(token(presses.get('inset-block-start')))).toBe(reach(press));
+		expect(px(token(presses.get('inset-inline-end')))).toBe(reach(press));
+	});
+
+	it("stops a row's Remove short of its box and of the Remove on the next row", () => {
+		const [rowStep, boxStep] = terms(ruleOf(css, '.adm-rows').get('gap'));
+		const drawn = token(ruleOf(css, '.adm-rows__row > .adm-rows__remove').get('inline-size'));
+
+		expect(reach(drawn)).toBeGreaterThan(0);
+		expect(reach(drawn)).toBeLessThan(px(boxStep ?? ''));
+		expect(2 * reach(drawn)).toBeLessThan(px(rowStep ?? ''));
+	});
+
+	it("stops the brand colour's well short of its box", () => {
+		const drawn = token(ruleOf(css, '.adm-swatch--well').get('inline-size'));
+		const step = token(ruleOf(css, '.adm-field > .adm-actions:has(> .adm-wellwrap)').get('gap'));
+
+		expect(reach(drawn)).toBeGreaterThan(0);
+		expect(reach(drawn)).toBeLessThan(px(step));
+	});
+});
+
+describe("a crop handle keeps 2.5.8's 24px inside the square", () => {
+	// the viewport clips what lies past the image, so a handle on a square at the image's edge keeps
+	// only the half of its target inside the square: the reach on that side is the whole target.
+	const CORNERS =
+		".adm-cropper__handle:is( [data-position='nw'], [data-position='ne'], [data-position='sw'], [data-position='se'] )";
+
+	it.each([
+		['a corner', `${CORNERS}::before`, 'inset'],
+		[
+			'the top and bottom edges',
+			".adm-cropper__handle:is([data-position='n'], [data-position='s'])::before",
+			'inset-block'
+		],
+		[
+			'the side edges',
+			".adm-cropper__handle:is([data-position='e'], [data-position='w'])::before",
+			'inset-inline'
+		]
+	])('%s', (_, selector, property) => {
+		const target = rulesIn(css).find((rule) => rule.selector === selector)?.stated;
+
+		expect(target?.get(property)).toBe('calc(50% - var(--admin-space-8))');
+		expect(px('--admin-space-8')).toBeGreaterThanOrEqual(24);
+	});
+
+	it('stands a corner over the edges its target overlaps', () => {
+		const corner = rulesIn(css).find((rule) => rule.selector === CORNERS)?.stated;
+
+		expect(corner?.get('z-index')).toBe('1');
 	});
 });
