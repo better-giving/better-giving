@@ -3601,15 +3601,18 @@
 		margin-block-start: var(--admin-space-1);
 	}
 
-	.adm-fieldset > .adm-fieldset__legend + .adm-hint + * {
-		margin-block-start: var(--admin-space-3);
-	}
-
 	/* a legend drawn to a reader only takes no space (`.adm-vh` in ./base.css), so the step the
 	   rule above gives every child after the first would open at the top of the group with nothing
 	   above it. what follows a legend nobody sees is the first thing anybody sees. */
 	.adm-fieldset > .adm-vh + * {
 		margin-block-start: 0;
+	}
+
+	/* the sentence is the head then, alone, and what follows it stands the head's close step under
+	   it whether the legend over it is drawn or not. */
+	.adm-fieldset > .adm-fieldset__legend + .adm-hint + *,
+	.adm-fieldset > legend.adm-vh + .adm-hint + * {
+		margin-block-start: var(--admin-space-3);
 	}
 
 	/* a group standing among other questions is moated, and the moat is what tells a reader where
