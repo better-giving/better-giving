@@ -8,9 +8,16 @@
 // `packages/app/src/lib/server/nonprofits/filing.ts` holds its copy of the address and the shape:
 // the two change together, and ../release/config_test.go holds them equal.
 //
-// **every failure is an answer, and `unavailable` is all of them.** no address, no route, a timeout,
-// a status other than 200 or 404, a body past answerBytes or in a shape decoded nowhere below — the
-// fold leaves the boxes as typed and set-up goes on by hand, so none of these is an error to anyone.
+// **keyless.** no key is sent and none is configured, so the console spends the allowance the API
+// keeps per calling address — one request a minute and five a day (https://nonprofits.better.giving).
+// a refusal for the minute is the one the console waits out: once, for the `Retry-After` it names
+// and at most longestWait, and then asked again. any other refusal, or a second one, is answered.
+//
+// **every failure is an answer, and `unavailable` is all of them.** no route, a timeout, a refusal
+// for the day or for the service, the API saying its data is unavailable, a second refusal for the
+// minute, any status but 200 or a 404 coded `not_found`, a body past answerBytes or in a shape
+// decoded nowhere below — the fold leaves the boxes as typed and set-up goes on by hand, so none of
+// these is an error to anyone.
 //
 // **what was found out is remembered for the run, and what was not is not.** the API is sized for
 // set-up rather than for a box asking per keystroke, so one console run asks it once per EIN and
@@ -29,18 +36,25 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf16"
 )
 
-// API is where the IRS nonprofit API answers. empty is no address: every call answers `unavailable`
-// and makes no request.
-const API = ""
+// API is where the IRS nonprofit API answers.
+const API = "https://nonprofits.better.giving"
 
 // how long one request may take before the API counts as not answering: a box waits on it.
 const within = 5 * time.Second
+
+// the longest `Retry-After` waited out before a per-minute refusal is asked again.
+const longestWait = time.Minute
+
+// AskBound is how long one lookup or search may take: a request, the one wait a per-minute refusal
+// is given, and the request after it. ../server's write timeout covers it.
+const AskBound = within + longestWait + within
 
 // the most of one answer read, past which it is no answer: a lookup is one organisation and a search
 // at most a page of them.
@@ -97,7 +111,8 @@ type Lookup struct {
 }
 
 // Match is one organisation a search listed, in the fields a pick is made by. State is the US
-// state, as Organisation's Region is.
+// state, as Organisation's Region is. RevokedOn is empty on every match of a name search, whose
+// answer carries no revocation; the lookup a pick makes says it.
 type Match struct {
 	EIN        string `json:"ein"`
 	Name       string `json:"name"`
@@ -116,11 +131,13 @@ type Search struct {
 // Client asks the API and remembers what it found out, for as long as it lives — which is one
 // console run, because the server builds one. it is safe for concurrent handlers.
 type Client struct {
-	base     string
-	http     *http.Client
-	within   time.Duration
-	lookups  memory[Lookup]
-	searches memory[Search]
+	base      string
+	http      *http.Client
+	within    time.Duration
+	askWithin time.Duration
+	wait      func(context.Context, time.Duration) bool
+	lookups   memory[Lookup]
+	searches  memory[Search]
 }
 
 // New is a client on API.
@@ -129,11 +146,13 @@ func New() *Client { return At(API) }
 // At is a client on another address, which is a test upstream everywhere but New.
 func At(base string) *Client {
 	return &Client{
-		base:     strings.TrimSuffix(base, "/"),
-		http:     &http.Client{},
-		within:   within,
-		lookups:  memory[Lookup]{kept: map[string]*recalled[Lookup]{}},
-		searches: memory[Search]{kept: map[string]*recalled[Search]{}},
+		base:      strings.TrimSuffix(base, "/"),
+		http:      &http.Client{},
+		within:    within,
+		askWithin: AskBound,
+		wait:      pause,
+		lookups:   memory[Lookup]{kept: map[string]*recalled[Lookup]{}},
+		searches:  memory[Search]{kept: map[string]*recalled[Search]{}},
 	}
 }
 
@@ -190,7 +209,8 @@ func (c *Client) Search(ctx context.Context, typed string) Search {
 	})
 }
 
-// `GET {API}/v1/organizations/{ein}`, as this console reads it.
+// `GET {API}/v1/orgs/{ein}`, as this console reads it. a fact the IRS files do not hold is null,
+// which decodes as empty or false.
 type upstreamOrganisation struct {
 	EIN     string `json:"ein"`
 	Name    string `json:"name"`
@@ -200,47 +220,44 @@ type upstreamOrganisation struct {
 		State  string `json:"state"`
 		Zip    string `json:"zip"`
 	} `json:"address"`
-	Status upstreamStatus `json:"status"`
-	Filing struct {
-		Website *string `json:"website"`
-		Mission *string `json:"mission"`
-	} `json:"filing"`
+	Deductible     bool   `json:"deductible"`
+	Revoked        bool   `json:"revoked"`
+	RevocationDate string `json:"revocationDate"`
+	Website        string `json:"website"`
+	Mission        string `json:"mission"`
 }
 
-// `GET {API}/v1/organizations?q=`, as this console reads it.
+// `GET {API}/v1/search?q=&limit=`, as this console reads it. a result carries no revocation.
 type upstreamMatches struct {
 	Results []struct {
-		EIN    string         `json:"ein"`
-		Name   string         `json:"name"`
-		City   string         `json:"city"`
-		State  string         `json:"state"`
-		Status upstreamStatus `json:"status"`
+		EIN        string `json:"ein"`
+		Name       string `json:"name"`
+		City       string `json:"city"`
+		State      string `json:"state"`
+		Deductible bool   `json:"deductible"`
 	} `json:"results"`
 }
 
-type upstreamStatus struct {
-	Deductible        bool    `json:"deductible"`
-	Revoked           bool    `json:"revoked"`
-	RevocationDate    *string `json:"revocation_date"`
-	ReinstatementDate *string `json:"reinstatement_date"`
-}
-
 func (c *Client) lookUp(ctx context.Context, ein string) Lookup {
-	status, body := c.get(ctx, "/v1/organizations/"+ein)
-	switch status {
-	case http.StatusOK:
-	case http.StatusNotFound:
+	said := c.ask(ctx, "/v1/orgs/"+ein)
+	switch {
+	case said.status == http.StatusOK:
+	case said.code == "not_found":
 		return Lookup{State: NotFound}
 	default:
 		return Lookup{State: Unavailable}
 	}
 	var read upstreamOrganisation
-	if json.Unmarshal(body, &read) != nil {
+	if json.Unmarshal(said.body, &read) != nil {
 		return Lookup{State: Unavailable}
 	}
-	// an answer about another number, or about nobody, fills nothing.
-	if said, _ := EIN(read.EIN); said != ein || strings.TrimSpace(read.Name) == "" {
+	// an answer about another number fills nothing.
+	if answered, _ := EIN(read.EIN); answered != ein {
 		return Lookup{State: Unavailable}
+	}
+	// a record that names nobody is no organisation to fill from, as filing.ts reads it.
+	if strings.TrimSpace(read.Name) == "" {
+		return Lookup{State: NotFound}
 	}
 	return Lookup{State: Found, Organisation: Organisation{
 		EIN:          ein,
@@ -249,10 +266,10 @@ func (c *Client) lookUp(ctx context.Context, ein string) Lookup {
 		City:         read.Address.City,
 		Region:       read.Address.State,
 		PostalCode:   read.Address.Zip,
-		Deductible:   read.Status.Deductible,
-		RevokedOn:    read.Status.revokedOn(),
-		Website:      orEmpty(read.Filing.Website),
-		Mission:      cut(strings.TrimSpace(orEmpty(read.Filing.Mission)), MissionMax),
+		Deductible:   read.Deductible,
+		RevokedOn:    read.revokedOn(),
+		Website:      read.Website,
+		Mission:      cut(strings.TrimSpace(read.Mission), MissionMax),
 	}}
 }
 
@@ -278,12 +295,12 @@ func (c *Client) searchEIN(ctx context.Context, ein string) Search {
 
 func (c *Client) search(ctx context.Context, query string) Search {
 	unavailable := Search{State: SearchUnavailable, Matches: []Match{}}
-	status, body := c.get(ctx, "/v1/organizations?q="+url.QueryEscape(query))
-	if status != http.StatusOK {
+	said := c.ask(ctx, "/v1/search?q="+url.QueryEscape(query)+"&limit="+strconv.Itoa(mostMatches))
+	if said.status != http.StatusOK {
 		return unavailable
 	}
 	var read upstreamMatches
-	if json.Unmarshal(body, &read) != nil || read.Results == nil {
+	if json.Unmarshal(said.body, &read) != nil || read.Results == nil {
 		return unavailable
 	}
 	matches := []Match{}
@@ -298,8 +315,7 @@ func (c *Client) search(ctx context.Context, query string) Search {
 			Name:       one.Name,
 			City:       one.City,
 			State:      one.State,
-			Deductible: one.Status.Deductible,
-			RevokedOn:  one.Status.revokedOn(),
+			Deductible: one.Deductible,
 		})
 		if len(matches) == mostMatches {
 			break
@@ -308,26 +324,13 @@ func (c *Client) search(ctx context.Context, query string) Search {
 	return Search{State: Listed, Matches: matches}
 }
 
-// the revocation date where the status is revoked and no later reinstatement undid it — a
-// reinstatement after the revocation is not revoked whichever way the API left the flag. a revocation
-// with no readable date is no revocation this console can show.
-func (status upstreamStatus) revokedOn() string {
-	revoked, readable := day(status.RevocationDate)
-	if !status.Revoked || !readable {
+// the revocation date where the API says revoked, which is its reading of revoked and not
+// reinstated since. a revocation with no readable date is no revocation this console can show.
+func (read upstreamOrganisation) revokedOn() string {
+	if _, err := time.Parse(time.DateOnly, read.RevocationDate); !read.Revoked || err != nil {
 		return ""
 	}
-	if reinstated, ok := day(status.ReinstatementDate); ok && reinstated.After(revoked) {
-		return ""
-	}
-	return *status.RevocationDate
-}
-
-func day(said *string) (time.Time, bool) {
-	if said == nil {
-		return time.Time{}, false
-	}
-	read, err := time.Parse(time.DateOnly, *said)
-	return read, err == nil
+	return read.RevocationDate
 }
 
 // said cut to at most limit UTF-16 code units at a character's edge, with the space a cut ends on
@@ -343,32 +346,79 @@ func cut(said string, limit int) string {
 	return said
 }
 
-func orEmpty(said *string) string {
-	if said == nil {
-		return ""
-	}
-	return *said
+// one answer of the API's: its status and body, and the `code` a refusal's problem json carries.
+// status 0 is no answer to read.
+type answer struct {
+	status     int
+	body       []byte
+	code       string
+	retryAfter time.Duration
 }
 
-// one read, answered with its status and body, or status 0 where there was no answer to read.
-func (c *Client) get(ctx context.Context, path string) (int, []byte) {
+// a read, and where the API refuses it for the minute, the one wait it names and one read more.
+func (c *Client) ask(ctx context.Context, path string) answer {
+	ctx, stop := context.WithTimeout(ctx, c.askWithin)
+	defer stop()
+	said := c.get(ctx, path)
+	if said.code != "per_minute_limit_exceeded" {
+		return said
+	}
+	if !c.wait(ctx, said.retryAfter) {
+		return answer{}
+	}
+	return c.get(ctx, path)
+}
+
+func (c *Client) get(ctx context.Context, path string) answer {
 	bound, stop := context.WithTimeout(ctx, c.within)
 	defer stop()
 	request, err := http.NewRequestWithContext(bound, http.MethodGet, c.base+path, nil)
 	if err != nil {
-		return 0, nil
+		return answer{}
 	}
 	request.Header.Set("Accept", "application/json")
 	response, err := c.http.Do(request)
 	if err != nil {
-		return 0, nil
+		return answer{}
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, answerBytes+1))
 	if err != nil || len(body) > answerBytes {
-		return 0, nil
+		return answer{}
 	}
-	return response.StatusCode, body
+	said := answer{status: response.StatusCode, body: body}
+	if said.status != http.StatusOK {
+		var problem struct {
+			Code string `json:"code"`
+		}
+		if json.Unmarshal(body, &problem) == nil {
+			said.code = problem.Code
+		}
+		said.retryAfter = waitOf(response.Header.Get("Retry-After"))
+	}
+	return said
+}
+
+// the wait a `Retry-After` in whole seconds names, at most longestWait, which is also the wait a
+// value in no other spelling is given.
+func waitOf(header string) time.Duration {
+	seconds, err := strconv.Atoi(header)
+	if err != nil || seconds < 0 || seconds > int(longestWait/time.Second) {
+		return longestWait
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// d slept, or false where ctx ended first.
+func pause(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // what one console run found out, by key.

@@ -38,8 +38,7 @@ func nonprofitAPI(t *testing.T, status int, body string) (*nonprofits.Client, fu
 	}
 }
 
-// a console finding organisations through `lookups`, or through the address it was built with
-// where that is nil.
+// a console finding organisations through `lookups`. nil is the live API, which no test here asks.
 func finding(t *testing.T, lookups *nonprofits.Client) http.Handler {
 	t.Helper()
 	flow := oauth.New(oauth.Options{Store: state.At(t.TempDir())})
@@ -66,12 +65,19 @@ func found(t *testing.T, console http.Handler, path string) (int, map[string]any
 	return answer.Code, read
 }
 
+// GET /v1/orgs/530196605 in the API's shape, with the members this console does not read left out.
 const redCross = `{
 	"ein": "530196605",
 	"name": "American National Red Cross",
 	"address": {"street": "431 18th St NW", "city": "Washington", "state": "DC", "zip": "20006-5310"},
-	"status": {"deductible": true, "revoked": true, "revocation_date": "2019-05-15", "reinstatement_date": null},
-	"filing": {"website": null, "mission": " Disaster relief. "}
+	"is501c3": true,
+	"deductible": true,
+	"revoked": true,
+	"revocationDate": "2019-05-15",
+	"reinstatementDate": null,
+	"mission": " Disaster relief. ",
+	"website": null,
+	"notes": []
 }`
 
 // the organisation's members, every one of them written whatever the state.
@@ -103,7 +109,7 @@ func TestALookedUpOrganisationIsAnsweredWithEveryFieldOfTheFill(t *testing.T) {
 	if got, _ := body["organisation"].(map[string]any); !maps.Equal(got, want) {
 		t.Errorf("organisation = %v, want %v", got, want)
 	}
-	if got := asked(); !slices.Equal(got, []string{"/v1/organizations/530196605"}) {
+	if got := asked(); !slices.Equal(got, []string{"/v1/orgs/530196605"}) {
 		t.Errorf("asked %q, want one lookup by the EIN's digits", got)
 	}
 }
@@ -114,10 +120,15 @@ func TestALookupThatFoundNothingStillWritesEveryFieldEmpty(t *testing.T) {
 		api    *nonprofits.Client
 		answer string
 	}{
-		{"unknown", func() *nonprofits.Client { api, _ := nonprofitAPI(t, http.StatusNotFound, `{}`); return api }(), "not_found"},
-		{"failing", func() *nonprofits.Client { api, _ := nonprofitAPI(t, http.StatusBadGateway, ``); return api }(), "unavailable"},
-		// a console built with no address, which is every console until the API has one.
-		{"no address", nil, "unavailable"},
+		{"unknown", func() *nonprofits.Client {
+			api, _ := nonprofitAPI(t, http.StatusNotFound, `{"status": 404, "code": "not_found"}`)
+			return api
+		}(), "not_found"},
+		{"failing", func() *nonprofits.Client {
+			api, _ := nonprofitAPI(t, http.StatusServiceUnavailable, `{"status": 503, "code": "data_unavailable"}`)
+			return api
+		}(), "unavailable"},
+		{"no address", nonprofits.At(""), "unavailable"},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			status, body := found(t, finding(t, one.api), "/api/nonprofits/530196605")
@@ -153,8 +164,8 @@ func TestALookupOfSomethingThatIsNotAnEINIsRefusedNamingIt(t *testing.T) {
 }
 
 func TestASearchIsAnsweredWithItsMatches(t *testing.T) {
-	api, asked := nonprofitAPI(t, http.StatusOK, `{"results": [{"ein": "530196605", "name": "Red Cross",
-		"city": "Washington", "state": "DC", "status": {"deductible": true, "revoked": false}}]}`)
+	api, asked := nonprofitAPI(t, http.StatusOK, `{"query": "red cross", "limit": 10, "results": [{"ein": "530196605",
+		"name": "Red Cross", "city": "Washington", "state": "DC", "is501c3": true, "deductible": true}]}`)
 
 	status, body := found(t, finding(t, api), "/api/nonprofits/search?q=Red+Cross")
 
@@ -165,13 +176,15 @@ func TestASearchIsAnsweredWithItsMatches(t *testing.T) {
 	if status != http.StatusOK || !jsonEqual(body, want) {
 		t.Errorf("%d %v, want %v", status, body, want)
 	}
-	if got := asked(); !slices.Equal(got, []string{"/v1/organizations?q=red+cross"}) {
+	if got := asked(); !slices.Equal(got, []string{"/v1/search?q=red+cross&limit=10"}) {
 		t.Errorf("asked %q, want one search", got)
 	}
 }
 
 func TestASearchThatCouldNotBeMadeListsNothingRatherThanNull(t *testing.T) {
-	status, body := found(t, finding(t, nil), "/api/nonprofits/search?q=red+cross")
+	api, _ := nonprofitAPI(t, http.StatusTooManyRequests, `{"status": 429, "code": "daily_quota_exceeded"}`)
+
+	status, body := found(t, finding(t, api), "/api/nonprofits/search?q=red+cross")
 
 	want := map[string]any{"state": "unavailable", "matches": []any{}}
 	if status != http.StatusOK || !jsonEqual(body, want) {
@@ -222,7 +235,7 @@ func TestASearchForAnEINIsALookupByIt(t *testing.T) {
 	if status != http.StatusOK || body["state"] != "ok" || len(matches) != 1 {
 		t.Fatalf("%d %v, want one match", status, body)
 	}
-	if got := asked(); !slices.Equal(got, []string{"/v1/organizations/530196605"}) {
+	if got := asked(); !slices.Equal(got, []string{"/v1/orgs/530196605"}) {
 		t.Errorf("asked %q, want the lookup by EIN", got)
 	}
 }
