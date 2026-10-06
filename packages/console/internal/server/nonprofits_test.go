@@ -65,7 +65,7 @@ func found(t *testing.T, console http.Handler, path string) (int, map[string]any
 	return answer.Code, read
 }
 
-// GET /v1/orgs/530196605 in the API's shape, with the members this console does not read left out.
+// GET /v1/orgs/530196605 in the API's shape, less its activity, programs, finances and provenance.
 const redCross = `{
 	"ein": "530196605",
 	"name": "American National Red Cross",
