@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { centredSquare, cropRefusal, droppedFile, naturalSquare, shownMinimum } from './logo-crop';
+import {
+	centredSquare,
+	cropRefusal,
+	droppedFile,
+	type KeyPress,
+	NUDGE,
+	naturalSquare,
+	shownMinimum,
+	squareResize,
+	takesLogo,
+	unloaded
+} from './logo-crop';
+import { LOGO_FROM_FILE, LOGO_FROM_STORED } from './org-fields';
 import { LOGO_CROP_MIN } from './org-logo';
 
 // the arithmetic between the square dragged on the screen and the square a logo press posts. the
@@ -72,6 +84,62 @@ describe('the square a press posts', () => {
 		expect(naturalSquare({ x: 0, y: 0, width: least, height: least }, shown, natural).size).toBe(
 			LOGO_CROP_MIN
 		);
+	});
+});
+
+describe('a resize from the keyboard', () => {
+	const press = (key: string, held: Partial<KeyPress> = {}): KeyPress => ({
+		key,
+		altKey: true,
+		shiftKey: false,
+		ctrlKey: false,
+		metaKey: false,
+		...held
+	});
+
+	// the cropper's own Alt+arrow moves one side: Alt+↓ would draw 250 × 251 out of a 250 square.
+	it('grows the whole side for Alt with the arrow the cropper would grow one side by', () => {
+		expect(squareResize(press('ArrowDown'))).toBe(NUDGE.step);
+		expect(squareResize(press('ArrowRight'))).toBe(NUDGE.step);
+	});
+
+	it('shrinks the whole side for Alt with the arrow the cropper would shrink one side by', () => {
+		expect(squareResize(press('ArrowUp'))).toBe(-NUDGE.step);
+		expect(squareResize(press('ArrowLeft'))).toBe(-NUDGE.step);
+	});
+
+	it('takes the cropper’s longer steps under Shift and under Ctrl or ⌘', () => {
+		expect(squareResize(press('ArrowDown', { shiftKey: true }))).toBe(NUDGE.shift);
+		expect(squareResize(press('ArrowUp', { ctrlKey: true }))).toBe(-NUDGE.ctrl);
+		expect(squareResize(press('ArrowRight', { metaKey: true, shiftKey: true }))).toBe(NUDGE.ctrl);
+	});
+
+	it('leaves a bare arrow, which moves the square, and any other key to the cropper', () => {
+		expect(squareResize(press('ArrowDown', { altKey: false }))).toBe(null);
+		expect(squareResize(press('+'))).toBe(null);
+	});
+});
+
+describe('the files a logo is taken in', () => {
+	const typed = (type: string) => new File(['x'], 'logo', { type });
+
+	it.each(['image/png', 'image/jpeg', 'image/webp'])('takes %s', (type) => {
+		expect(takesLogo(typed(type))).toBe(true);
+	});
+
+	it.each(['image/svg+xml', 'image/gif', 'application/pdf', ''])('refuses %s', (type) => {
+		expect(takesLogo(typed(type))).toBe(false);
+	});
+});
+
+describe('an image that would not draw in the crop', () => {
+	it('is a chosen file that could not be read', () => {
+		expect(unloaded(LOGO_FROM_FILE)).toBe('unreadable');
+	});
+
+	// the operator chose nothing, so the chosen file's sentence would send them to choose it again.
+	it('is the stored logo, which could not be loaded, for the stored source', () => {
+		expect(unloaded(LOGO_FROM_STORED)).toBe('stored-unloaded');
 	});
 });
 

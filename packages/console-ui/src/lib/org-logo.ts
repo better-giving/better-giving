@@ -21,16 +21,20 @@ import type { CropSquare, LogoPress, LogoSource } from './org-fields';
  */
 export const LOGO_CROP_MIN = 88;
 
-/** each way a logo press is turned down at the logo: by the crop, or by the resize after it. */
+/**
+ * each way a logo is turned down: by the crop card before anything is sent
+ * (./logo-crop-dialog.tsx), and at the logo by the crop or by the resize after it.
+ */
 export type LogoRefusal =
 	| ResizeRefusal
 	| 'no-source'
 	| 'no-crop'
 	| 'crop-too-small'
 	| 'crop-outside'
-	| 'no-stored-logo';
+	| 'no-stored-logo'
+	| 'stored-unloaded';
 
-/** what each refusal says at the logo. */
+/** what each refusal says, at the logo or in the crop card. */
 export const LOGO_REFUSED: Readonly<Record<LogoRefusal, string>> = {
 	'not-an-image': 'That file isn’t an image. Choose a PNG, JPEG or WebP.',
 	unreadable:
@@ -40,7 +44,8 @@ export const LOGO_REFUSED: Readonly<Record<LogoRefusal, string>> = {
 	'no-crop': 'Choose the square of the image to keep as the logo.',
 	'crop-too-small': `That square is too small to show clearly. Keep a square at least ${LOGO_CROP_MIN} pixels across, or choose a larger image.`,
 	'crop-outside': 'That square runs past the edge of the image. Move it inside the image.',
-	'no-stored-logo': 'There’s no logo to crop any more. Choose an image instead.'
+	'no-stored-logo': 'There’s no logo to crop any more. Choose an image instead.',
+	'stored-unloaded': 'The logo couldn’t be loaded. Try again in a moment.'
 };
 
 /** whether `crop` lies wholly inside an image of `width` × `height`. */

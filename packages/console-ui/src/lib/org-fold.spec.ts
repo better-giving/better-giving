@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
+import { takesLogo } from './logo-crop';
 import {
 	LOGO_FILE,
 	ORG_INTENT,
@@ -327,6 +328,16 @@ describe('the logo’s presses', () => {
 		expect(upload).toMatch(/^<form[^>]*method="post"/);
 		expect(upload).toMatch(new RegExp(`<input[^>]*type="file"[^>]*name="${LOGO_FILE}"`));
 		expect(posted(upload)).toEqual([`intent=${ORG_LOGO_INTENT}`, `${LOGO_FILE}=`]);
+	});
+
+	it('offers in the file chooser only the types the crop takes', () => {
+		const box = formNamed(drawn(WIDENED).markup, 'org-logo-upload').match(
+			/<input[^>]*type="file"[^>]*>/
+		)?.[0];
+		const offered = box?.match(/\baccept="([^"]*)"/)?.[1]?.split(',') ?? [];
+
+		expect(offered.length).toBeGreaterThan(0);
+		expect(offered.filter((type) => !takesLogo(new File([], 'logo', { type })))).toEqual([]);
 	});
 
 	it('takes the logo off through a form of its own, which posts its intent and no photo', () => {
