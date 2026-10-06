@@ -5558,6 +5558,15 @@
 		border-color: var(--admin-control-border-hover);
 	}
 
+	/* closed while the page writes, on the control's own disabled rungs; a colour the well holds
+	   stays drawn, since it is the value and not the control. */
+	.adm-swatch:disabled {
+		background: var(--admin-control-bg-disabled);
+		border-color: var(--admin-control-border-disabled);
+		color: var(--admin-control-ink-disabled);
+		cursor: not-allowed;
+	}
+
 	/* the well stands on its box's row (`beside` in packages/operator/src/components/forms/Field.jsx),
 	   a square exactly the box's height: the row aligns its items to the box's top, so a well of the
 	   box's height is centred on the box. a well taller than the box reads as a control that missed
