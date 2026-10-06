@@ -3,10 +3,10 @@ import { einEdit, type HeldBoxes } from './ein-lookup';
 import { IDENTITY_BOXES, orgRequired } from './org-fields';
 import type { IdentityField } from './org-form';
 
-// what the Organisation fold's boxes hold as they stand, and how a found value is put into one —
-// for ./org-fold.tsx's IRS lookup, which fills boxes the operator may have typed in since it asked —
-// and how an EIN is spelled as it is typed, in the fold's EIN box and in the finder's
-// (./org-finder.tsx).
+// what the Organisation fold's boxes hold as they stand, how a found value is put into one, and
+// which required box is still empty after it — for ./org-fold.tsx's IRS lookup, which fills boxes
+// the operator may have typed in since it asked — and how an EIN is spelled as it is typed, in the
+// fold's EIN box and in the finder's (./org-finder.tsx).
 //
 // **a box is an input or a textarea**, and the mission is the second: a fill that read inputs alone
 // would take a typed mission for an empty box and write over it, and would never reach an empty one.
@@ -50,9 +50,9 @@ export function putBoxes(
 }
 
 /**
- * the first box the operator still owes as the boxes stand: a required one, empty, in the order the
- * fold draws them, or `null` where every required box holds something. the EIN box is first on the
- * screen and second in that list, which reads the same wherever a number has just been put in it.
+ * the first box the operator still owes as the boxes stand: a required one, empty, in the profile's
+ * order, or `null` where every required box holds something. that order is the fold's but for the
+ * EIN box, first on the screen and second here, which comes to the same once a number is in it.
  */
 export const firstNeeded = (
 	held: Readonly<Partial<Record<string, string>>>

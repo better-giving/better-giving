@@ -142,6 +142,6 @@ describe('the finder', () => {
 
 	it('says the list could not be searched', () => {
 		expect(said(drawn({ out: false, found: { kind: 'unavailable' } }))).toBe(SEARCH_UNANSWERED);
-		expect(SEARCH_UNANSWERED).toBe("Couldn't search the IRS list.");
+		expect(SEARCH_UNANSWERED).toBe("Couldn't search the IRS list. Search by EIN instead.");
 	});
 });

@@ -43,8 +43,8 @@ export const NOT_LISTED = 'Not on the IRS list.';
 
 /**
  * what a fill says to a reader, in the same region as the note: six boxes changing under a cursor
- * that did not move is otherwise news to nobody using one. drawn for a reader alone — a lock-in and a
- * found number fill the boxes with no words on the screen about it.
+ * that did not move is otherwise news to nobody using one. drawn for a reader alone — a number
+ * locked in and a number typed both fill the boxes with no words on the screen about it.
  */
 export const FILLED = 'Filled from the IRS list.';
 
