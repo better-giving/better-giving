@@ -5,9 +5,10 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // fields, between two groups — three tiers, each wider than the one inside it. a label reads as its
 // own box's only while the step down to that box is shorter than the step down to the next field's
 // label, and a group reads as one only while the step out of it is longer than any step inside it.
-// under the three is a fourth: the sentence under a label or a group's name stands closer to it than
-// the box does, so the two read as one head. a group whose name is drawn to a reader alone keeps the
-// sentence as its whole head, and what follows it takes the same step.
+// under the three is a fourth: the sentence under a label or a group's name stands closer to that
+// name than the head stands to what it names, so the two read as one head. a group whose name is
+// drawn to a reader alone keeps the sentence as its whole head, and what follows it stands the same
+// step under it as under a drawn head.
 //
 // every step is read off the sheet as it is written and resolved through ./tokens.css, so a step
 // moved in one rule and not in another fails here rather than on a screen nobody squinted at. the
