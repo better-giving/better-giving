@@ -278,7 +278,7 @@ export function RepeatingRows({
 						    group draws two of the blocks it would name: the standing hint is the group's
 						    and reaches every row, and the group's own sentence reaches only a row that
 						    has none of its own. the row's own message is the field's and is named the way
-						    the field names it. */}
+						    the field names it, and a row's `lead` adds its own words to the list there. */}
 						<Field
 							id={row}
 							name={name}

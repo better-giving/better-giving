@@ -1,5 +1,9 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { act, type FormEvent, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SOCIAL_PLATFORMS } from '../../console/org';
 import { ruleOf, rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { mount, render } from '../render.testing';
 import { type RepeatingRow, type RowControl, RepeatingRows } from './RepeatingRows.jsx';
@@ -538,16 +542,14 @@ describe('the Remove beside a row', () => {
 });
 
 describe('a mark at the start of a row’s box', () => {
-	const css = sheet('adm.css');
-
-	/** two rows, the first stating a mark and the second stating none. */
+	/** two rows, the first stating a mark and its words and the second stating none. */
 	const LED: readonly RepeatingRow[] = [
 		{
 			id: 'origins-0',
 			key: 'riverbank',
 			defaultValue: 'riverbank.org',
 			remove: drop('riverbank'),
-			lead: <img className="led" alt="" />
+			lead: { mark: <img className="led" alt="" />, said: 'Riverbank' }
 		},
 		{ id: 'origins-1', key: 'shop', defaultValue: 'shop.riverbank.org', remove: drop('shop') }
 	];
@@ -566,31 +568,78 @@ describe('a mark at the start of a row’s box', () => {
 
 	it('reserves the slot where the row states it empty, so nothing moves when a mark arrives', () => {
 		const root = render(Bound, {
-			rows: [{ id: 'origins-0', key: 'riverbank', defaultValue: 'riverbank.org', lead: null }]
+			rows: [
+				{ id: 'origins-0', key: 'riverbank', defaultValue: 'riverbank.org', lead: { mark: null } }
+			]
 		});
 
 		expect(root.querySelector('.adm-leadwrap > .adm-leadwrap__lead')?.childElementCount).toBe(0);
 		expect(root.querySelector('.adm-leadwrap > input')).not.toBe(null);
 	});
 
-	it('posts what the box holds and nothing of the mark’s', () => {
-		const root = render(Bound, { rows: LED });
+	it('describes the box by the mark’s words, outside the hidden slot, beside the group’s own', () => {
+		const root = render(Bound, { rows: LED, error: 'Two of these are the same site.' });
+		const [first, second] = [...root.querySelectorAll('input')];
+		const described = (box: Element | undefined) =>
+			(box?.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean);
 
-		expect(submitted(root)).toEqual([
-			'allowed_origins=riverbank.org',
-			'allowed_origins=shop.riverbank.org'
-		]);
+		expect(described(first)).toEqual(['origins-0-lead', 'origins-err']);
+		const words = root.querySelector('#origins-0-lead');
+		expect(words?.textContent).toBe('Riverbank');
+		expect(words?.closest('[aria-hidden="true"]')).toBe(null);
+		// a row whose lead states no words is described by the group alone.
+		expect(described(second)).toEqual(['origins-err']);
 	});
 
-	it('pads the box past the slot, from the box’s own inline padding', () => {
-		const slot = ruleOf(css, '.adm-leadwrap__lead');
-		const box = ruleOf(css, '.adm-leadwrap .adm-input');
+	it('draws a mark with no words and names no description for it', () => {
+		const root = render(Bound, {
+			rows: [
+				{
+					id: 'origins-0',
+					key: 'riverbank',
+					defaultValue: 'riverbank.org',
+					lead: { mark: <img className="led" alt="" /> }
+				}
+			]
+		});
 
-		expect(slot.get('inset-inline-start')).toBe('var(--admin-space-4)');
-		expect(slot.get('inline-size')).toBe('var(--admin-space-9)');
-		expect(slot.get('pointer-events')).toBe('none');
-		expect(box.get('padding-inline-start')).toBe(
-			'calc(var(--admin-space-4) + var(--admin-space-9) + var(--admin-space-3))'
+		expect(root.querySelector('img.led')).not.toBe(null);
+		expect(root.querySelector('#origins-0-lead')).toBe(null);
+		expect(root.querySelector('input')?.hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	// happy-dom lays nothing out, so the claim is the arithmetic of the tokens: a mark is drawn at
+	// `--admin-brand-mark-size` tall and as wide as its file's own shape, and the slot has to hold the
+	// widest of the networks a link row reads.
+	it('is at least as wide as the widest network’s mark', () => {
+		const tokens = sheet('tokens.css');
+		const rem = (value: string | undefined) => {
+			const name = value?.match(/^var\((--[\w-]+)\)$/)?.[1];
+			const stated = tokens.match(new RegExp(`${name}:\\s*([\\d.]+)rem\\s*;`))?.[1];
+			if (name === undefined || stated === undefined) throw new Error(`not a rem token: ${value}`);
+			return Number.parseFloat(stated);
+		};
+		const marks = join(dirname(fileURLToPath(import.meta.url)), '../status/brand-marks');
+		/** a mark's width over its height, as the `<img>` drawing its file takes it. */
+		const shape = (platform: string) => {
+			const svg = join(marks, `${platform}.svg`);
+			if (!existsSync(svg)) {
+				// a png's IHDR chunk: the width, then the height, from byte 16.
+				const png = readFileSync(join(marks, `${platform}.png`));
+				return png.readUInt32BE(16) / png.readUInt32BE(20);
+			}
+			const [, width, height] =
+				readFileSync(svg, 'utf8').match(/<svg[^>]*\swidth="([\d.]+)"[^>]*\sheight="([\d.]+)"/) ??
+				[];
+			return Number(width) / Number(height);
+		};
+		const css = sheet('adm.css');
+		const height = rem(ruleOf(sheet('base.css'), '.adm-brand-mark').get('block-size'));
+		const widest = Math.max(...SOCIAL_PLATFORMS.map((platform) => height * shape(platform)));
+
+		expect(widest).toBeGreaterThan(height);
+		expect(rem(ruleOf(css, '.adm-leadwrap__lead').get('inline-size'))).toBeGreaterThanOrEqual(
+			widest
 		);
 	});
 });

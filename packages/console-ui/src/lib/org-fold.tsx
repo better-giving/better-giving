@@ -481,42 +481,22 @@ export function OrgFold({
 		   (`readSocialLink`), as it stands in the box: typed, or stored. */
 		const read = readSocialLink(typedRows[identity] ?? bound.defaultValue ?? '');
 		const platform = read.ok ? read.link.platform : undefined;
-		const named = `${bound.id}-hint`;
-		/* composed here rather than by the group, because a row the platform is read from carries a
-		   name of its own: the group's hint, the row's platform, and the row's sentence or else the
-		   list's. */
-		const describedBy = [
-			`${LINKS_GROUP}-hint`,
-			platform === undefined ? null : named,
-			bound.error !== undefined
-				? `${bound.id}-err`
-				: linksSaid !== undefined
-					? `${LINKS_GROUP}-err`
-					: null
-		]
-			.filter(Boolean)
-			.join(' ');
 		return {
 			id: bound.id,
 			key: identity,
 			name: bound.name,
 			defaultValue: bound.defaultValue,
 			inputMode: 'url',
-			/* the network's mark, or the globe where the address is no network's or the box is empty.
-			   the slot is out of the tree, and the platform's name stands in it for the box to be
-			   described by, since the mark is what says it on the screen. */
+			/* the network's mark and its name, which the box is described by since the mark is what
+			   says it on the screen; or the globe, which says no network is read from the address and
+			   has no words of its own. */
 			lead:
-				platform === undefined ? (
-					<Mark name="globe" />
-				) : (
-					<>
-						<BrandMark platform={platform} className="adm-brand-mark" />
-						<span id={named} className="adm-vh">
-							{SOCIAL_PLATFORM_NAMES[platform]}
-						</span>
-					</>
-				),
-			'aria-describedby': describedBy,
+				platform === undefined
+					? { mark: <Mark name="globe" /> }
+					: {
+							mark: <BrandMark platform={platform} className="adm-brand-mark" />,
+							said: SOCIAL_PLATFORM_NAMES[platform]
+						},
 			onInput: (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
 				bound.onInput?.();
 				typedIn(identity, event.currentTarget.value);

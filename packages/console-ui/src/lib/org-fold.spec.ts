@@ -299,16 +299,21 @@ describe('the Organisation fold’s save', () => {
 			/<img[^>]*>/
 		)?.[0] ?? '<no mark>';
 
-	/** the box a link row draws, and the slot at its start, by the row's position. */
+	/** the box a link row draws, the slot at its start and the words drawn beside the slot, by the
+	    row's position. */
 	const linkRow = (markup: string, at: number) => {
 		const row = markup.match(
 			new RegExp(
-				`<div class="adm-leadwrap"><span class="adm-leadwrap__lead" aria-hidden="true">((?:(?!</span><input).)*)</span><input[^>]*name="social_links\\[${at}\\]"[^>]*>`,
+				`<div class="adm-leadwrap"><span class="adm-leadwrap__lead" aria-hidden="true">(.*?)</span>(<span class="adm-vh"[^>]*>[^<]*</span>)?<input[^>]*name="social_links\\[${at}\\]"[^>]*>`,
 				's'
 			)
 		);
 		expect(row).not.toBeNull();
-		return { slot: row?.[1] ?? '', box: row?.[0].match(/<input[^>]*>/)?.[0] ?? '' };
+		return {
+			slot: row?.[1] ?? '',
+			said: row?.[2] ?? '',
+			box: row?.[0].match(/<input[^>]*>/)?.[0] ?? ''
+		};
 	};
 
 	it('stands the mark of the network each link’s address is read as inside its box', () => {
@@ -319,15 +324,15 @@ describe('the Organisation fold’s save', () => {
 		expect(instagram.slot).toContain(markOf('instagram'));
 	});
 
-	// the mark says the platform on the screen, so the name is drawn to a reader alone and the box
-	// is described by it.
+	// the mark says the platform on the screen, so the name is drawn to a reader alone, outside the
+	// slot that is out of the tree, and the box is described by it.
 	it('names the platform to a reader alone, and describes the box by it', () => {
 		const { markup } = drawn(WIDENED);
-		const { slot, box } = linkRow(markup, 0);
+		const { slot, said, box } = linkRow(markup, 0);
 
-		expect(slot).toContain('<span id="org-social_links[0]-hint" class="adm-vh">Facebook</span>');
-		expect(box).toMatch(/aria-describedby="[^"]*org-social_links\[0\]-hint/);
-		expect(markup).not.toContain('<p class="adm-hint" id="org-social_links[0]-hint"');
+		expect(said).toBe('<span class="adm-vh" id="org-social_links[0]-lead">Facebook</span>');
+		expect(slot).not.toContain('Facebook');
+		expect(box).toMatch(/aria-describedby="[^"]*org-social_links\[0\]-lead/);
 	});
 
 	it('stands the globe in a box whose address no network is read from, and names no platform', () => {
@@ -337,12 +342,12 @@ describe('the Organisation fold’s save', () => {
 				social_links: [{ platform: 'facebook', href: 'https://riverside.org/news' }]
 			})
 		);
-		const { slot, box } = linkRow(markup, 0);
+		const { slot, said, box } = linkRow(markup, 0);
 
 		expect(slot).toContain('lucide-globe');
 		expect(slot).not.toContain('adm-brand-mark');
-		expect(slot).not.toContain('adm-vh');
-		expect(box).not.toContain('org-social_links[0]-hint');
+		expect(said).toBe('');
+		expect(box).not.toContain('org-social_links[0]-lead');
 	});
 });
 
