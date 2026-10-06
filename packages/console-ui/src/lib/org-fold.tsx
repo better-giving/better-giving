@@ -775,7 +775,9 @@ export function OrgFold({
 										if (!busy) crop({ from: LOGO_FROM_STORED, url: logo.url });
 									}}
 								/>
-								{/* it submits the empty form beside this one, so a removal posts no photo. */}
+								{/* it submits the empty form beside this one, so a removal posts no photo. closed
+								    by `aria-disabled` while the page writes, as the square is, so a reader
+								    standing on it keeps the focus. */}
 								<Button
 									type="submit"
 									form={LOGO_REMOVE_FORM}

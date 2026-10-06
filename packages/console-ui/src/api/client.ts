@@ -644,9 +644,10 @@ export const levelWidget = (sites: readonly string[]): Promise<WidgetLevel> =>
  * is answered as the one organisation it names.
  *
  * **every search is one request the API is charged for**, the first time it is made in a run — the
- * binary remembers the rest (`packages/console/internal/nonprofits`). so the box asks once its query
- * has settled and holds at least three characters, which the binary refuses under and this throws.
- * `signal` is the box's own, so a query typed past is not waited on.
+ * binary remembers the rest (`packages/console/internal/nonprofits`). so the finder asks only at a
+ * press, Search or Enter, never while typing, and only over at least three characters, which the
+ * binary refuses under and this throws. `signal` is the finder's own, so a finder taken off the
+ * page is not waited on.
  */
 export const searchNonprofits = (query: string, signal?: AbortSignal): Promise<NonprofitSearch> =>
 	ask(`/nonprofits/search?q=${encodeURIComponent(query)}`, 'GET', signal);
