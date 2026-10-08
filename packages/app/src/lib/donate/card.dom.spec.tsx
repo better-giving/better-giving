@@ -15,10 +15,11 @@ import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/tur
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
-import { act, createRef, StrictMode } from 'react';
+import { act, createRef, StrictMode, Suspense } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import type { DonateAnnouncerProps } from './announce';
 import { DonateCard } from './card';
 import { Choice, type ChoiceProps } from './choice';
 import * as copy from './copy';
@@ -50,6 +51,19 @@ vi.mock('./choice', async (importOriginal) => {
 		return <actual.Choice {...props} />;
 	}
 	return { ...actual, Choice: Recorded };
+});
+
+// a promise the card's region suspends on while it is set, which is how a spec has react throw a
+// render of the card away: the region is drawn by every render of the card, after the card's own body
+// has run, and a render that suspends is discarded without a commit.
+const regionHeld = vi.hoisted(() => ({ on: null as Promise<void> | null }));
+vi.mock('./announce', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./announce')>();
+	function Held(props: DonateAnnouncerProps) {
+		if (regionHeld.on !== null) throw regionHeld.on;
+		return <actual.DonateAnnouncer {...props} />;
+	}
+	return { ...actual, DonateAnnouncer: Held };
 });
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
@@ -210,7 +224,10 @@ const CHALLENGE: ChallengeSeam = {
 async function card(
 	config: FormConfig = CONFIG,
 	answers: Answers = {},
-	{ strict = false }: { readonly strict?: boolean } = {}
+	{
+		strict = false,
+		boundary = false
+	}: { readonly strict?: boolean; readonly boundary?: boolean } = {}
 ) {
 	const payment = paymentProvider(answers);
 	const paypal = paypalProvider();
@@ -230,10 +247,12 @@ async function card(
 			}}
 		/>
 	);
+	// a boundary to suspend into, for the spec that has react discard a render (`regionHeld`).
+	const bounded = boundary ? <Suspense fallback={null}>{drawn}</Suspense> : drawn;
 	act(() => {
 		// react-router's default client entry hydrates under `<StrictMode>`, which runs every effect
 		// twice on a development mount.
-		mounted.render(strict ? <StrictMode>{drawn}</StrictMode> : drawn);
+		mounted.render(strict ? <StrictMode>{bounded}</StrictMode> : bounded);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -1771,9 +1790,12 @@ describe('a crypto gift', () => {
 	}
 
 	/** the review step of a one-time gift with the crypto option open. */
-	async function onCrypto(quote: () => Response = () => json(USDT)) {
+	async function onCrypto(
+		quote: () => Response = () => json(USDT),
+		drawn: Parameters<typeof card>[2] = {}
+	) {
 		const server = deployment(quote);
-		const { root } = await card(CRYPTO);
+		const { root } = await card(CRYPTO, {}, drawn);
 		walkToGive(root);
 		const head = row(root, 'Crypto');
 		if (head === null) throw new Error('no crypto option on the review step');
@@ -1791,8 +1813,8 @@ describe('a crypto gift', () => {
 	}
 
 	/** the address screen, for a USDT gift. */
-	async function atAddress() {
-		const reached = await onCrypto();
+	async function atAddress(drawn: Parameters<typeof card>[2] = {}) {
+		const reached = await onCrypto(undefined, drawn);
 		await pick(reached.root, 'USDT');
 		await donate(reached.root);
 		return reached;
@@ -1801,6 +1823,28 @@ describe('a crypto gift', () => {
 	async function tick(ms: number): Promise<void> {
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(ms);
+		});
+	}
+
+	/**
+	 * `during` run with every render of the card thrown away, and then the render that commits.
+	 *
+	 * the card's boundary shows its empty fallback meanwhile, so nothing the card renders inside is
+	 * committed — what the region says after is what the commits before and after decided.
+	 */
+	async function held(during: () => Promise<void>): Promise<void> {
+		let release: () => void = () => {};
+		regionHeld.on = new Promise<void>((settle) => {
+			release = settle;
+		});
+		onTestFinished(() => {
+			regionHeld.on = null;
+		});
+		await during();
+		await act(async () => {
+			regionHeld.on = null;
+			release();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
 		});
 	}
 
@@ -2097,6 +2141,56 @@ describe('a crypto gift', () => {
 		await tick(DEPOSIT_POLL_MS * 2);
 
 		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+	});
+
+	// the heading a Copy was pressed under went away and came back, which is a new address screen and
+	// not the one the press was made on. the wait between the two is a render react throws away here,
+	// so its sentence is never on the region and spends nothing: the heading leaving is what does.
+	it('says a Copy once, and not again on the address screen a different coin returns to', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		const { root } = await atAddress({ boundary: true });
+		await act(async () => {
+			one(root, '.deposit [aria-label="Copy address"]').click();
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		expect(said(root)).toBe('Address copied.');
+		press(one(root, '.takeover > .foot > button[part~="action-quiet"]'));
+		expect(screen(root).className).toContain('step-give');
+		expect(said(root)).toBe('');
+
+		await held(async () => {
+			await donate(root);
+		});
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
+		expect(said(root)).toBe('');
+	});
+
+	// a render react throws away is one nobody heard, so what the region says is decided by the
+	// render that commits: here the first render of the closed address is suspended with the caret
+	// still on a Copy, and the one that commits finds it on the host page.
+	it('decides a retitled heading on the render that commits, not on one react discards', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { root } = await atAddress({ boundary: true });
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		act(() => {
+			one(root, '.deposit [aria-label="Copy address"]').focus();
+		});
+
+		await held(async () => {
+			await tick(1000);
+			act(() => {
+				elsewhere.focus();
+			});
+		});
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
 		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
 	});
 

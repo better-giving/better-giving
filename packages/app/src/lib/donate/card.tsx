@@ -513,14 +513,29 @@ function CheckoutCard({
 		screen.current.shown === 'takeover' &&
 		shown === 'amount';
 	/**
+	 * what the region was left holding by the last commit, which is the only render a donor heard.
+	 *
+	 * every sentence that is kept past the snapshot it arrived on is kept here, and only the effect
+	 * after a commit writes it: a render react throws away — strict mode's second pass, a suspended
+	 * render, one a newer snapshot overtook — neither keeps a sentence nor spends one.
+	 */
+	const kept = useRef<{
+		/** the Copy the region has moved on from, which is not said again. */
+		outsaid: typeof shot;
+		retitle: { on: string | null; words: string };
+		handed: { on: Screen | null; words: string };
+	}>({ outsaid: null, retitle: { on: null, words: '' }, handed: { on: null, words: '' } });
+
+	/**
 	 * that move said out loud to a caret on the host page, which the move leaves where it is. kept
 	 * while the amount step stands, the way `retitle` is kept by its heading, because the commit that
 	 * draws the step is what makes `unresumed` false on the next render.
 	 */
-	const handed = useRef<{ on: Screen | null; words: string }>({ on: null, words: '' });
-	if (unresumed) {
-		handed.current = { on: shown, words: caretOnPage ? `${copy.STEP_HEADINGS[0]}.` : '' };
-	} else if (handed.current.on !== shown) handed.current = { on: null, words: '' };
+	const handed = unresumed
+		? { on: shown, words: caretOnPage ? `${copy.STEP_HEADINGS[0]}.` : '' }
+		: kept.current.handed.on === shown
+			? kept.current.handed
+			: { on: null, words: '' };
 
 	/**
 	 * a takeover's heading replaced, said out loud wherever no caret move reads it.
@@ -532,22 +547,23 @@ function CheckoutCard({
 	 * was read for rather than the snapshot: the commit that draws the new heading is what makes the
 	 * next render's comparison come out equal, and the address screen's reading loop is a new
 	 * snapshot every few seconds with nothing to say — one landing in the same instant the address
-	 * closes would otherwise empty the sentence as it is written. a sentence the region moved on
-	 * from is emptied where `words` is chosen below.
+	 * closes would otherwise empty the sentence as it is written. decided afresh by every render
+	 * until a commit keeps it, so the caret it is decided by is the one the committed render read; a
+	 * sentence the region moved on from is emptied by the commit after `words` is chosen below.
 	 */
 	const heard = withinTakeover ? takeover.heading : null;
-	const retitle = useRef<{ on: string | null; words: string }>({ on: null, words: '' });
-	if (retitle.current.on !== heard) {
-		retitle.current = {
-			on: heard,
-			words:
-				withinTakeover &&
-				takeover.heading !== screen.current.heading &&
-				(caret === headings.takeover.current || !caretInTakeover)
-					? `${takeover.heading}.`
-					: ''
-		};
-	}
+	const retitle =
+		kept.current.retitle.on === heard
+			? kept.current.retitle
+			: {
+					on: heard,
+					words:
+						withinTakeover &&
+						takeover.heading !== screen.current.heading &&
+						(caret === headings.takeover.current || !caretInTakeover)
+							? `${takeover.heading}.`
+							: ''
+				};
 
 	useEffect(() => {
 		const before = screen.current;
@@ -851,11 +867,9 @@ function CheckoutCard({
 	// ── what is said out loud ────────────────────────────────────────────────────────────────────
 
 	const spent = shot !== null && shot.at === snapshot ? shot.kind : null;
-	/** the Copy sentence the region moved on from, which is not said again when what replaced it clears. */
-	const outsaid = useRef<typeof shot>(null);
 	const copied =
 		shot?.kind === 'copy' &&
-		shot !== outsaid.current &&
+		shot !== kept.current.outsaid &&
 		shot.on === takeover.heading &&
 		takeover.deposit !== null
 			? (shot.words ?? '')
@@ -904,7 +918,7 @@ function CheckoutCard({
 	//
 	// the Copy's sentence, the retitled heading's and the handed step's keep one rule: a live-region
 	// sentence stays until the heading it announces changes or another sentence replaces it; a new
-	// snapshot alone never clears it. each is spent below once another has taken its place.
+	// snapshot alone never clears it. each is spent by the commit that said something else.
 	const words =
 		takeover.announce !== ''
 			? takeover.announce
@@ -922,14 +936,20 @@ function CheckoutCard({
 									? copied
 									: busy
 										? workingWords(api.state)
-										: handed.current.words !== ''
-											? handed.current.words
-											: retitle.current.words;
-	if (words !== '') {
-		if (words !== copied && shot?.kind === 'copy') outsaid.current = shot;
-		if (words !== retitle.current.words) retitle.current.words = '';
-		if (words !== handed.current.words) handed.current.words = '';
-	}
+										: handed.words !== ''
+											? handed.words
+											: retitle.words;
+	useEffect(() => {
+		const replaced = (by: string) => words !== '' && words !== by;
+		kept.current = {
+			// a Copy is kept by the heading it was pressed under, so a commit drawing another one spends
+			// it as surely as a sentence replacing it does: the screen it comes back to is a new one.
+			outsaid:
+				shot?.kind === 'copy' && (copied === '' || replaced(copied)) ? shot : kept.current.outsaid,
+			retitle: replaced(retitle.words) ? { on: retitle.on, words: '' } : retitle,
+			handed: replaced(handed.words) ? { on: handed.on, words: '' } : handed
+		};
+	});
 
 	const receipt =
 		reading === null ? null : <Receipt reading={reading} onFee={() => onFee()} feeRef={feeBox} />;
