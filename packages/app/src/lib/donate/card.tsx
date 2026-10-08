@@ -368,6 +368,8 @@ function CheckoutCard({
 		total: { step: State['step'] | null; figure: string };
 		/** a `News` the region is holding for the screen it was said on, or nothing. */
 		news: (News & { on: Screen }) | null;
+		/** the last press a commit answered, as `nonce` counts them. */
+		again: number;
 	}>({
 		outsaid: null,
 		retitle: { on: null, words: '' },
@@ -375,7 +377,8 @@ function CheckoutCard({
 		decline: { words: '', on: null },
 		offer: '',
 		total: { step: null, figure: '' },
-		news: null
+		news: null,
+		again: 0
 	});
 
 	/**
@@ -534,13 +537,20 @@ function CheckoutCard({
 		screen.current.shown === 'takeover' &&
 		shown === 'amount';
 	/**
+	 * a press asking for its sentence to be said again, until a commit answers it. a repeat re-says only
+	 * what that press chose, so a sentence kept from before it — the handed step, a `News` — is spent
+	 * here: said again beside the refusal the press put somewhere else, it is old news read as the
+	 * press's answer.
+	 */
+	const repeating = nonce !== kept.current.again;
+	/**
 	 * that move said out loud to a caret on the host page, which the move leaves where it is. kept
 	 * while the amount step stands, the way `retitle` is kept by its heading, because the commit that
 	 * draws the step is what makes `unresumed` false on the next render.
 	 */
 	const handed = unresumed
 		? { on: shown, words: caretOnPage ? `${copy.STEP_HEADINGS[0]}.` : '' }
-		: kept.current.handed.on === shown
+		: !repeating && kept.current.handed.on === shown
 			? kept.current.handed
 			: { on: null, words: '' };
 
@@ -901,15 +911,17 @@ function CheckoutCard({
 
 	const busy = api.continueButton['aria-busy'];
 	// the takeover's own words first: a screen that has taken the whole card is not one a numbered step
-	// is still asking anything on. a total that moved on the review step stands ahead of that step's
-	// refusal on the commit it moved on: the refusal was said on the press and stays on the payment
-	// box's description, and the figure that moved is said nowhere else. a heading said in place of a
-	// caret move last — the step a tokenless return was handed, or a retitled takeover: a screen's own
+	// is still asking anything on. the review step's refusal stands ahead of every `News`, a moved
+	// total included, as `standing` in @better-giving/form's views.ts ranks it: it is a thing the donor
+	// was asked for and has not done, and a sentence written over it would have the next render write
+	// it back and say it again with nobody having pressed anything. a heading said in place of a caret
+	// move last — the step a tokenless return was handed, or a retitled takeover: a screen's own
 	// sentence and the wait's both say more than its heading does.
 	//
 	// the Copy's sentence, the retitled heading's, the handed step's and every `News` keep one rule: a
 	// live-region sentence stays until the heading it announces changes or another sentence replaces
-	// it — and a `News`, until what it `restating` names moves; a new snapshot alone never clears it.
+	// it — and a `News`, until what it `restating` names moves or a press asks for a repeat
+	// (`repeating`); a new snapshot alone never clears it.
 	// the provider's fields and the challenge widget report whenever they finish, and the address
 	// screen's reading loop every few seconds, each with nothing to say. each is spent by the commit
 	// that said something else. a sentence said while something stands — the amount step's refusal,
@@ -925,7 +937,7 @@ function CheckoutCard({
 						? { words: copy.MADE_ONE_TIME }
 						: null;
 	const restated = { total: reading?.words ?? '', fields: detailsRefusal };
-	const prior = kept.current.news;
+	const prior = repeating ? null : kept.current.news;
 	const news =
 		prior !== null &&
 		prior.on === shown &&
@@ -937,21 +949,19 @@ function CheckoutCard({
 			? takeover.announce
 			: askedFor !== ''
 				? askedFor
-				: arrived?.restating === 'total'
-					? arrived.words
-					: refusedPayment
-						? copy.PAYMENT_PROBLEM
-						: arrived !== null
-							? arrived.words
-							: copied !== ''
-								? copied
-								: busy
-									? workingWords(api.state)
-									: news !== null
-										? news.words
-										: handed.words !== ''
-											? handed.words
-											: retitle.words;
+				: refusedPayment
+					? copy.PAYMENT_PROBLEM
+					: arrived !== null
+						? arrived.words
+						: copied !== ''
+							? copied
+							: busy
+								? workingWords(api.state)
+								: news !== null
+									? news.words
+									: handed.words !== ''
+										? handed.words
+										: retitle.words;
 	useEffect(() => {
 		const replaced = (by: string) => words !== '' && words !== by;
 		kept.current = {
@@ -969,7 +979,8 @@ function CheckoutCard({
 					? { ...arrived, on: shown }
 					: news === null || replaced(news.words)
 						? null
-						: news
+						: news,
+			again: nonce
 		};
 	});
 

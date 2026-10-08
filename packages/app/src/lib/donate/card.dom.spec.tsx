@@ -150,6 +150,12 @@ function paymentProvider(answers: Answers = {}) {
 				}
 			});
 		},
+		/** the element group reporting with no rail chosen, which a picker still collapsed does. */
+		idle: () => {
+			act(() => {
+				for (const handler of [...change]) handler({ collapsed: true, empty: true });
+			});
+		},
 		/** the element group saying its fields will not come up. */
 		fail: () => {
 			act(() => {
@@ -330,6 +336,11 @@ function type(box: HTMLInputElement, value: string): void {
 /** what the card is saying out loud. */
 function said(root: HTMLElement): string {
 	return one(root, '[role="status"]').textContent ?? '';
+}
+
+/** a task's turn, which is how long the region takes to write a sentence it said again. */
+async function settled(): Promise<void> {
+	await act(() => new Promise<void>((settle) => setTimeout(settle, 0)));
 }
 
 /**
@@ -1057,19 +1068,26 @@ it('decides a moved total on the render that commits, not on one react discards'
 	expect(said(root)).toBe(`Total today is ${after}.`);
 });
 
-// a refused press has been heard, and the box keeps the refusal as its description; a total that
-// moved after it is news the region would otherwise never carry, because the figure is silent.
-it('says a total moved under a standing refusal on the card’s region', async () => {
-	const { root } = await card();
+// the refusal is a thing the donor was asked for and has not done, so it holds the region ahead of a
+// total that moved under it, as the element's does: a total written over it is the ask disappearing,
+// and the next render writing it back says it again with nobody having pressed anything.
+it('keeps a standing refusal on the region through a total that moved under it, said once', async () => {
+	const { root, payment } = await card();
 	walkToGive(root);
 	press(one(root, 'button[part~="submit"]'));
 	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
-	const total = one(root, 'output.figure');
+	const region = one(root, '[role="status"]');
+	const written: string[] = [];
+	const watch = new MutationObserver(() => written.push(region.textContent ?? ''));
+	watch.observe(region, { childList: true, characterData: true, subtree: true });
+	onTestFinished(() => watch.disconnect());
 
 	press(input(root, '.fee-decision input[type="checkbox"]'));
+	payment.idle();
+	await settled();
 
-	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
-	expect(total.getAttribute('aria-live')).toBe('off');
+	expect(written).toEqual([]);
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
 	expect(one(root, '#payment-problem').hidden).toBe(false);
 });
 
@@ -1886,6 +1904,30 @@ describe('a resume drawn before the flow starts', () => {
 		expect(document.activeElement).toBe(elsewhere);
 		expect(said(host)).toBe(`${copy.STEP_HEADINGS[0]}.`);
 	});
+
+	// the press chose no sentence for the region — the note's refusal is on the box the caret is sent
+	// to — so the step it was handed is not said a second time beside it.
+	it('says the amount step no second time on a Continue refused for the note alone', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+		await hydrated(host, true);
+		expect(said(host)).toBe(`${copy.STEP_HEADINGS[0]}.`);
+		press(one(host, '.tiles > label:nth-of-type(2)'));
+		press(input(host, '.disclosure.note input[type="checkbox"]'));
+
+		press(one(host, CONTINUE));
+		await settled();
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(one(host, '#note-problem').hidden).toBe(false);
+		expect(said(host)).toBe('');
+	});
 });
 
 describe('a crypto gift', () => {
@@ -2074,6 +2116,42 @@ describe('a crypto gift', () => {
 		expect(coins(root).activeElement).toBe(combobox(root));
 		expect(one(root, '#payment-problem').hidden).toBe(true);
 		expect(server.reads).toBe(0);
+	});
+
+	// the coin list states its own refusal where the caret lands, and the press chose nothing for the
+	// region: a sentence it was holding from before the press is not said a second time beside it.
+	it('says a kept total no second time on a press with no coin picked', async () => {
+		const { root } = await onCrypto();
+		press(input(root, '.row.fee [part~="checkbox"]'));
+		const total = one(root, 'output.figure').textContent;
+		expect(said(root)).toBe(`Total today is ${total}.`);
+
+		await donate(root);
+		await settled();
+
+		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REQUIRED);
+		expect(said(root)).toBe('');
+	});
+
+	it('says the gift being one-time no second time on a press with no coin picked', async () => {
+		deployment(() => json(USDT));
+		const { root, payment } = await card(CRYPTO);
+		press(one(root, '.segment > label:nth-of-type(2)'));
+		walkToGive(root);
+		// no fee, so the crypto rail moves no figure and the one-time sentence is still held.
+		press(input(root, '.fee-decision input[type="checkbox"]'));
+		payment.fail();
+		press(one(root, '.step-give .attention + [part~="action"]'));
+		const head = row(root, 'Crypto');
+		if (head === null) throw new Error('no crypto option on the one-time gift');
+		press(head);
+		expect(said(root)).toBe('This is now a one-time gift.');
+
+		await donate(root);
+		await settled();
+
+		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REQUIRED);
+		expect(said(root)).toBe('');
 	});
 
 	it('shows where and how much to send, with the caret on the heading', async () => {
