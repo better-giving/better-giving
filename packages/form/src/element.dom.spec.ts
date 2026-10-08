@@ -4827,7 +4827,7 @@ describe('the stylesheets', () => {
 	// thought of walks straight past — `svh` beside the `dvh` these sheets already write, `vmin`,
 	// `cqw`, `pt` — and no such list ever closes. a list of what to let past does close, and
 	// anything outside it fails until somebody says why it should not.
-	const NUMBERED = /(?<![\w.#])-?\d*\.?\d+(%|[a-zA-Z]+)(?![\w-])/g;
+	const NUMBERED = /(?<![\w.#-])-?\d*\.?\d+(%|[a-zA-Z]+)(?![\w-])/g;
 	// `%`, `fr`, `cqi` and `lh` are each a share of something the rule already has — the box's own
 	// width, the grid's free space, the line's own height — rather than a size taken off a scale,
 	// which ./styles/parts.css's header states from the other side. `deg` is an angle and `s` and
@@ -4844,7 +4844,7 @@ describe('the stylesheets', () => {
 	// (./styles/tokens.css re-points `--_dur-*` under `reduce`), so a literal one is a rule that
 	// goes on moving for a reader who asked for none — which is a decision nobody gets to take at
 	// a single rule.
-	const DURATION = /(?<![\w.#])-?\d*\.?\d+m?s(?![\w-])/g;
+	const DURATION = /(?<![\w.#-])-?\d*\.?\d+m?s(?![\w-])/g;
 
 	const rawDurations = (name: string, sheet: string) =>
 		blanked(sheet)
@@ -4897,6 +4897,12 @@ describe('the stylesheets', () => {
 	// every absence below is checked against a non-empty string first. vitest replaces a CSS
 	// import with `''` unless `css: true` is set on the pool, and an assertion that a stylesheet
 	// contains no colour literal passes perfectly against nothing at all.
+	it('reads no length or duration inside a hyphenated name, and still reads a negative one', () => {
+		const sheet = '.a { gap: var(--gap-1px); transition: var(--fade-2s); margin: -4px; }';
+		expect(rawLengths('sheet', sheet)).toEqual([`sheet:1 -4px — ${sheet}`]);
+		expect(rawDurations('sheet', sheet)).toEqual([]);
+	});
+
 	it('is scanning the stylesheets rather than four empty strings', async () => {
 		expect(still.length).toBeGreaterThan(1000);
 		expect(moving.length).toBeGreaterThan(500);
