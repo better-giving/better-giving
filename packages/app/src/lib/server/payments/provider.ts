@@ -1600,9 +1600,10 @@ export type RecurringGift = {
 	 * what the donor's browser confirms this gift's first collection with, opaque here as
 	 * `Intent.paymentToken` is and named the same for the same reason.
 	 *
-	 * it is the same kind of value the one-off path already hands a browser, so a donation form
-	 * confirms a repeating gift with exactly the code that confirms a single one and no second way
-	 * of confirming exists anywhere in this app.
+	 * it travels in the same field the one-off path hands a browser, and the form's confirm step is
+	 * the same one; what differs is the window the processor's own client opens with it — PayPal
+	 * approves a subscription in a session of its own (`pressSession` in
+	 * packages/form/src/embed/paypal.ts).
 	 *
 	 * never stored and never logged: it authorises the collection it belongs to, and a commitment is
 	 * already identified by `providerGiftId`.

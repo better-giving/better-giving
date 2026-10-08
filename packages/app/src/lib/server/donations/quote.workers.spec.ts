@@ -666,8 +666,8 @@ describe('mintQuote() — a repeating gift', () => {
 	it('answers with the token the browser confirms and the server’s own numbers', async () => {
 		const result = await mint(deps(), { frequency: 'monthly' });
 
-		// the same shape the one-off branch answers with, carrying the same kind of value: a donation
-		// form confirms a repeating gift with exactly the code that confirms a single one
+		// the same shape the one-off branch answers with, the token in the same field: a donation form
+		// confirms a repeating gift at the same step it confirms a single one
 		// (`RecurringGift.paymentToken` in ../payments/provider.ts).
 		expect(result.ok).toBe(true);
 		expect(result.ok && result.quote).toEqual({

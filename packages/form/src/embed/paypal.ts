@@ -20,9 +20,13 @@
 // check and the served `venmo-payments` bundle carries none, the installed types carry none, and
 // PayPal's published guidance says nothing either way. settling it needs a real app switch on a
 // physical handset against a live account, which nothing in this repository can do. so the PayPal
-// rail's return is wired (`claimReturn` below) and a Venmo return arriving through neither
-// callback is `indeterminate` — a re-read rather than a second charge — and that is the safe
-// direction rather than a working one.
+// rail's return on a one-time gift is wired (`claimReturn` below) and a Venmo return arriving
+// through neither callback is `indeterminate` — a re-read rather than a second charge — and that is
+// the safe direction rather than a working one.
+//
+// **a return from PayPal's subscription window is not picked up either.** the sessions a return is
+// claimed on are the one-time sessions made at mount, so a repeating gift's window that leaves the
+// page and comes back lands on `indeterminate` the same way a Venmo return does.
 //
 // **the script's address is the whole of which PayPal this page talks to.** the core is loaded from
 // `Provider.sdkUrl` on this adapter's own entry in the served config, or from `PAYPAL_CORE_URL`
@@ -40,6 +44,7 @@ import type { CheckoutPorts, ConfirmOutcome } from '../ports';
 import {
 	PAYPAL_SDK_PATH,
 	type FormConfig,
+	type Frequency,
 	type PaymentMethod,
 	type Quote,
 	type QuoteRequest
@@ -70,6 +75,11 @@ const PROVIDER_NAME = 'paypal';
  * `createInstance` answering, and the eligibility read answering. none of the three names itself
  * when it stalls — a core script that fires neither `load` nor `error` leaves the wait on it pending
  * for the life of the page, and a donor is left in front of a box that says nothing.
+ *
+ * the eligibility read for a repeating gift is not one of the three: it is sent behind the buttons
+ * rather than ahead of them and gets a window of this length of its own, whose expiry costs
+ * PayPal's row on a repeating gift and a line in the console, never the button
+ * (`readRepeatEligibility`).
  */
 export const MOUNT_DEADLINE_MS = 30_000;
 
@@ -127,12 +137,14 @@ export type Termination =
  *
  * the two mistakes are not symmetric and that is what decides every unnamed case. a wrong
  * `unfinished` or a wrong `indeterminate` costs a donor a press or a re-read; a wrong `declined`
- * puts a Retry in front of them, and that press mints a **second order** against one the server is
- * about to capture from the approval PayPal already delivered.
+ * puts a Retry in front of them, and that press mints a **second order** — or a second subscription
+ * — beside one PayPal already holds the payer's approval for.
  *
- * approval is `processing` and never `succeeded`: the browser never captures on this rail — the
- * server captures during the reconciliation read the `CHECKOUT.ORDER.APPROVED` delivery drives —
- * so a thank-you said here would be a claim this end cannot back.
+ * approval is `processing` and never `succeeded`: the browser never collects on this rail — a
+ * one-time order is captured by the server during the reconciliation read the
+ * `CHECKOUT.ORDER.APPROVED` delivery drives, and a subscription's charges are PayPal's own, which
+ * the server learns of from their deliveries — so a thank-you said here would be a claim this end
+ * cannot back.
  *
  * `redirecting`, `awaiting_microdeposits` and `verification_expired` are unreachable: the approval
  * is a window this page keeps control of, there is no microdeposit flow and no verification
@@ -231,6 +243,7 @@ export type PaypalSdkLike = {
 	findEligibleMethods(options: Record<string, unknown>): Promise<EligibilityLike>;
 	createPayPalOneTimePaymentSession?(options: SessionOptionsLike): PaypalSessionLike;
 	createVenmoOneTimePaymentSession?(options: SessionOptionsLike): PaypalSessionLike;
+	createPayPalSubscriptionPaymentSession?(options: SessionOptionsLike): PaypalSessionLike;
 };
 
 /** PayPal's answer to which methods this buyer, this account and this currency can pay with. */
@@ -238,10 +251,16 @@ export type EligibilityLike = { isEligible(method: string): boolean };
 
 /** the callbacks one payment session is built with, all four of which this module passes. */
 export type SessionOptionsLike = {
-	onApprove(data: { orderId?: string }): Promise<void>;
+	onApprove(data: { orderId?: string; subscriptionId?: string }): Promise<void>;
 	onCancel(data: { orderId?: string }): void;
 	onError(data: { code?: string; message?: string }): void;
 };
+
+/**
+ * what a window is handed to approve: an order for a gift made once, a subscription for one that
+ * repeats. the server's `paymentToken` is one or the other, as the gift's cadence decides.
+ */
+type Approval = { readonly orderId: string } | { readonly subscriptionId: string };
 
 /**
  * as much of one payment session as this module uses.
@@ -251,10 +270,7 @@ export type SessionOptionsLike = {
  * the same. that absence is the whole of why Venmo's return is untested — see this file's header.
  */
 export type PaypalSessionLike = {
-	start(
-		presentation: { presentationMode: 'auto' },
-		order: Promise<{ orderId: string }>
-	): Promise<unknown>;
+	start(presentation: { presentationMode: 'auto' }, approval: Promise<Approval>): Promise<unknown>;
 	destroy(): void;
 	cancel(): void;
 	hasReturned?(): boolean;
@@ -476,11 +492,25 @@ function report(what: string, reason: unknown): void {
 /** what the console is told about a page that could not be given a PayPal button. */
 const UNBUTTONED = 'a donation form could not draw its PayPal button';
 
+/** what the console is told when PayPal's row is kept off repeating gifts, whichever way it came to be. */
+const UNREPEATABLE =
+	'a donation form is not offering PayPal on a repeating gift, because it could not learn that PayPal can start one here';
+
 /** which SDK component each rail's session comes from, so only the asked-for bundles are fetched. */
 const COMPONENTS: Readonly<Record<PaypalRail, string>> = Object.freeze({
 	paypal: 'paypal-payments',
 	venmo: 'venmo-payments'
 });
+
+/**
+ * the SDK component a repeating gift on the `paypal` rail is approved in.
+ *
+ * the server mints a PayPal subscription for a repeating gift (`createRecurringGift` in
+ * `packages/app/src/lib/server/payments/paypal.ts`), and its id is no order: only this component's
+ * subscription session can open a window on it. Venmo has no such session, which is why
+ * `venmoIsOffered` in ../checkout.machine.ts keeps that rail to the one-time gift.
+ */
+const SUBSCRIPTION_COMPONENT = 'paypal-subscriptions';
 
 /** the custom element each rail is pressed on, registered globally by the served core. */
 const BUTTON_TAGS: Readonly<Record<PaypalRail, 'paypal-button' | 'venmo-button'>> = Object.freeze({
@@ -626,10 +656,10 @@ function sharedInstance(
  * the buttons are the rail picker and nothing more: a press reports which rail the donor chose. the
  * approval window is opened by the Donate press that follows, in that press's own task, by
  * `quoting` below — the quote port is called inside the press, and `quoteThrough` in ./surface.ts
- * tells this surface before anything is awaited. the order handed to `start()` is still being
- * minted at that moment, which is PayPal's documented shape: nothing may be awaited between the
- * press and `start()`, or the popup is blocked for want of a transient activation. `confirm` hands
- * that window its order once the flow reaches a confirmation.
+ * tells this surface before anything is awaited. the order or subscription handed to `start()` is
+ * still being minted at that moment, which is PayPal's documented shape: nothing may be awaited
+ * between the press and `start()`, or the popup is blocked for want of a transient activation.
+ * `confirm` hands that window its token once the flow reaches a confirmation.
  *
  * `onUnavailable` is called at most once and says the button is not coming up. the four routes to
  * it are the ones `NO_BUTTON` names.
@@ -643,6 +673,16 @@ export function createPaymentSurface(
 ): PaypalPaymentSurface {
 	/** the rails on offer that this processor settles, and never the whole offered list. */
 	const rails = config.paymentMethods.filter(isPaypalRail);
+	/**
+	 * whether a PayPal press may have to approve a repeating gift, which is a subscription rather
+	 * than an order and opens in a session only `SUBSCRIPTION_COMPONENT` carries.
+	 *
+	 * read off the config rather than off the cadence the donor commits to, because the component
+	 * has to be on the instance before the press: a later `createInstance` is an `await` the press
+	 * cannot spend. a form offering the one-time gift alone never downloads it, and a form whose
+	 * component would not load stops asking for it (`startWithoutRepeats`).
+	 */
+	let subscribes = rails.includes('paypal') && config.frequencies.some(repeats);
 	/**
 	 * the client id for this file's own processor, off a config that may name several.
 	 *
@@ -675,30 +715,47 @@ export function createPaymentSurface(
 	const standing = new Map<PaypalRail, Row>();
 	/** whether the flow offers Venmo, which it does until a reading says otherwise. */
 	let venmoOffered = true;
+	/** whether the gift the donor last committed to repeats, which nothing has said until `cadence`. */
+	let committedRepeat = false;
+	/** whether PayPal will start a subscription for this buyer, as its own eligibility read says. */
+	let paypalRepeats = false;
+
+	/**
+	 * whether a rail's row stands on the gift as committed: Venmo while the flow offers it, PayPal on
+	 * a repeating gift only where it can start one — the way a rail ineligible outright is never drawn.
+	 */
+	function offered(rail: PaypalRail): boolean {
+		if (rail === 'venmo') return venmoOffered;
+		return !committedRepeat || paypalRepeats;
+	}
 	/** the rail this adapter last reported a press on, which is the only one it may take back. */
 	let pressed: PaypalRail | null = null;
 
 	/**
 	 * every button in its row or out of it, as the offer stands.
 	 *
-	 * appended on its way back in, which keeps the served order because Venmo is the only rail that
-	 * comes and goes and it is listed last (`PAYPAL_RAILS` in ./rails.ts). a Venmo press is taken back
-	 * with its row, so a donor who pressed Venmo and then picked a repeating cadence is not left
-	 * holding a rail no window can approve.
+	 * rows are only ever appended, so a rail coming back in has every row standing after it in the
+	 * served order (`PAYPAL_RAILS` in ./rails.ts) drawn again behind it: both rails come and go —
+	 * Venmo with the flow's offer, PayPal with a repeating gift it cannot start. a press is taken
+	 * back with its row, so a donor who pressed a rail and then picked a cadence it cannot approve is
+	 * not left holding it.
 	 */
 	function place(): void {
+		let appended = false;
 		for (const [rail, button] of buttons) {
-			const wanted = !stopped && (rail !== 'venmo' || venmoOffered);
+			const wanted = !stopped && offered(rail);
 			const row = standing.get(rail);
-			if (wanted && row === undefined) {
-				standing.set(rail, rowList.draw(ROW_NAMES[rail], rail, button));
-			} else if (!wanted && row !== undefined) {
+			if (row !== undefined && (!wanted || appended)) {
 				rowList.erase(row);
 				standing.delete(rail);
-				if (pressed === rail) {
+				if (!wanted && pressed === rail) {
 					pressed = null;
 					onRail(null);
 				}
+			}
+			if (wanted && !standing.has(rail)) {
+				standing.set(rail, rowList.draw(ROW_NAMES[rail], rail, button));
+				appended = true;
 			}
 		}
 	}
@@ -739,10 +796,10 @@ export function createPaymentSurface(
 	 * an attempt, armed. its `answer` takes one signal from PayPal — the first one only.
 	 *
 	 * **first past the post is how an approval comes to dominate everything after it.** everything
-	 * once the payer has pressed Pay Now is ambiguous by construction: PayPal has marked the order
-	 * approved and the message home can still be lost, so an error arriving behind that approval
-	 * says nothing about the money. answered a second time it would become a decline, and the Retry
-	 * on that screen mints a second order against one the server is about to capture.
+	 * once the payer has pressed Pay Now is ambiguous by construction: PayPal has marked the order or
+	 * subscription approved and the message home can still be lost, so an error arriving behind that
+	 * approval says nothing about the money. answered a second time it would become a decline, and
+	 * the Retry on that screen mints a second one beside the one PayPal already holds approved.
 	 *
 	 * so every later signal is dropped rather than merged — which covers the ordinary orderings too:
 	 * PayPal fires its completion callback behind its own cancel, and an attempt already answered
@@ -792,6 +849,23 @@ export function createPaymentSurface(
 		return create?.call(sdk, signals);
 	}
 
+	/**
+	 * the session a press opens its window on: the rail's own for a gift made once, PayPal's
+	 * subscription session for one that repeats — and nothing for a repeat on Venmo, which has no
+	 * session a subscription can be approved in (`SUBSCRIPTION_COMPONENT`).
+	 */
+	function pressSession(
+		sdk: PaypalSdkLike,
+		rail: PaypalRail,
+		repeating: boolean,
+		signals: SessionOptionsLike
+	): PaypalSessionLike | undefined {
+		if (!repeating) return createSession(sdk, rail, signals);
+		return rail === 'paypal'
+			? sdk.createPayPalSubscriptionPaymentSession?.call(sdk, signals)
+			: undefined;
+	}
+
 	/** a `start()` or `resume()` rejection, as much of it as the mapping reads. */
 	function thrownTermination(thrown: unknown): Termination {
 		const code = read(thrown, 'code');
@@ -833,6 +907,83 @@ export function createPaymentSurface(
 	/** every listener this surface took out, dropped in one call whatever order `stop` is reached in. */
 	const letGo = new AbortController();
 
+	/**
+	 * whether PayPal will start a subscription for this buyer, read as a flow of its own: a buyer it
+	 * takes a one-time gift from may not be one it starts a subscription for.
+	 *
+	 * sent once the one-time read has answered, so whatever answer the core holds for its instance is
+	 * the one-time one wherever the one-time rows read it, and never awaited by the build, so a
+	 * repeat's answer can neither hold the buttons back nor take the one-time gift's down. until it
+	 * answers PayPal's row stays off a repeating gift — a window that cannot approve is the donor's
+	 * dead end at the last step — and an answer that does not come, refused or still out at a
+	 * `MOUNT_DEADLINE_MS` of its own, is said once in the console of the page the form is embedded
+	 * in. an answer arriving after its deadline still counts.
+	 */
+	function readRepeatEligibility(sdk: PaypalSdkLike): void {
+		let said = false;
+		const unanswered = (reason: unknown): void => {
+			if (said || stopped) return;
+			said = true;
+			report(UNREPEATABLE, reason);
+		};
+		const disarmRepeat = delay(
+			() => unanswered('PayPal never answered whether it can start one'),
+			MOUNT_DEADLINE_MS
+		);
+		sdk
+			.findEligibleMethods({ currencyCode: config.currency, paymentFlow: 'RECURRING_PAYMENT' })
+			.then(
+				(answer) => {
+					disarmRepeat();
+					paypalRepeats = answer.isEligible(FUNDING.paypal);
+					place();
+				},
+				(thrown: unknown) => {
+					disarmRepeat();
+					unanswered(thrown);
+				}
+			);
+	}
+
+	/** what `createInstance` is asked for: each offered rail's component, and the subscription one. */
+	function instanceOptions(clientId: string) {
+		const components = rails.flatMap((rail) =>
+			rail === 'paypal' && subscribes
+				? [COMPONENTS[rail], SUBSCRIPTION_COMPONENT]
+				: [COMPONENTS[rail]]
+		);
+		return { clientId, components: [...new Set(components)], locale: config.locale };
+	}
+
+	/**
+	 * the SDK started once more without the subscription component, where a start asking for it
+	 * failed — or nothing, with the donor told, where that cannot help.
+	 *
+	 * the served core loads every component it is asked for together and refuses the instance whole
+	 * when any one script fails, so a subscription bundle that would not load would take PayPal and
+	 * Venmo off the form for the one-time donor too. the second start costs the repeat alone: PayPal
+	 * stays off repeating gifts, as it does where the repeat's eligibility could not be read, and the
+	 * console says why. it runs in the build and never in a press, which may await nothing.
+	 */
+	async function startWithoutRepeats(
+		namespace: PaypalNamespaceLike,
+		clientId: string,
+		thrown: unknown
+	): Promise<PaypalSdkLike | null> {
+		if (!subscribes) {
+			unavailable(noButtonFix(named(thrown)));
+			return null;
+		}
+		subscribes = false;
+		report(UNREPEATABLE, thrown);
+		try {
+			return await sharedInstance(load, namespace, instanceOptions(clientId));
+		} catch (again) {
+			unavailable(noButtonFix(named(again)));
+			return null;
+		}
+	}
+
 	async function build(): Promise<Live | null> {
 		if (abandoned) {
 			unavailable(
@@ -844,8 +995,6 @@ export function createPaymentSurface(
 			unavailable(noButtonFix(`the served config names no ${PROVIDER_NAME} processor to start it`));
 			return null;
 		}
-
-		const components = [...new Set(rails.map((rail) => COMPONENTS[rail]))];
 
 		let namespace: PaypalNamespaceLike | null;
 		try {
@@ -865,10 +1014,11 @@ export function createPaymentSurface(
 
 		let sdk: PaypalSdkLike;
 		try {
-			sdk = await sharedInstance(load, namespace, { clientId, components, locale: config.locale });
+			sdk = await sharedInstance(load, namespace, instanceOptions(clientId));
 		} catch (thrown) {
-			unavailable(noButtonFix(named(thrown)));
-			return null;
+			const restarted = await startWithoutRepeats(namespace, clientId, thrown);
+			if (restarted === null) return null;
+			sdk = restarted;
 		}
 		if (stopped) return null;
 
@@ -884,6 +1034,7 @@ export function createPaymentSurface(
 			return null;
 		}
 		if (stopped) return null;
+		if (subscribes) readRepeatEligibility(sdk);
 
 		const drawn = rails.filter((rail) => eligible.isEligible(FUNDING[rail]));
 		if (drawn.length === 0) {
@@ -984,10 +1135,12 @@ export function createPaymentSurface(
 	 * is — the callbacks the session was built with fire, and the outcome lands on `last` for the
 	 * resume port to answer with.
 	 *
-	 * it covers the PayPal rail alone, and the Venmo rail is why this file's header says what it
-	 * says: the served Venmo bundle carries no such check and neither do its types, so a Venmo
-	 * app-switch return arrives through neither callback and `resume` below answers it as an answer
-	 * nobody has — a re-read rather than a second charge.
+	 * it covers a one-time gift on the PayPal rail alone, and the other two returns are why this
+	 * file's header says what it says: the served Venmo bundle carries no such check and neither do
+	 * its types, and the sessions it is asked of are the one-time sessions made at mount, never a
+	 * subscription session. a Venmo app-switch return and a return from a repeating gift's window
+	 * both arrive through neither callback, and `resume` below answers them as an answer nobody has
+	 * — a re-read rather than a second charge.
 	 */
 	async function claimReturn(session: PaypalSessionLike): Promise<void> {
 		if (session.hasReturned?.() !== true || session.resume === undefined) return;
@@ -1010,25 +1163,31 @@ export function createPaymentSurface(
 	type PressWindow = { readonly session: PaypalSessionLike; readonly attempt: Attempt };
 
 	/**
-	 * PayPal's window on a session of its own, handed `order` — or nothing where the rail is not drawn.
+	 * PayPal's window on a session of its own, handed `approval` — or nothing where the rail is not
+	 * drawn, or the started SDK carries no session for the gift's cadence.
 	 *
 	 * the session's callbacks and `start()`'s own settling answer this window's attempt alone. it is
 	 * synchronous from end to end, and reads `live` rather than awaiting it, because it runs inside a
 	 * press and an `await` of anything unsettled spends that press's transient activation.
 	 */
-	function openWindow(rail: PaypalRail, order: Promise<{ orderId: string }>): PressWindow | null {
+	function openWindow(
+		rail: PaypalRail,
+		repeating: boolean,
+		approval: Promise<Approval>
+	): PressWindow | null {
 		if (live === null || !live.sessions.has(rail)) return null;
 		// one window at a time: whatever an earlier press left — finished or not — is let go of first.
 		for (const earlier of [...pressSessions]) retire(earlier);
 		const attempt = begin();
-		const session = createSession(
+		const session = pressSession(
 			live.sdk,
 			rail,
+			repeating,
 			signalsTo(() => attempt)
 		);
 		if (session === undefined) return null;
 		pressSessions.add(session);
-		session.start({ presentationMode: 'auto' }, order).then(
+		session.start({ presentationMode: 'auto' }, approval).then(
 			() => attempt.answer({ kind: 'silent' }),
 			(thrown: unknown) => attempt.answer(thrownTermination(thrown))
 		);
@@ -1051,7 +1210,8 @@ export function createPaymentSurface(
 	}
 
 	/**
-	 * the window the last Donate press opened, while its order is still the press's to hand over.
+	 * the window the last Donate press opened, while its order or subscription is still the press's to
+	 * hand over.
 	 *
 	 * claimed by `confirm` in the quote's own task wherever the total is the one the donor was shown.
 	 * everywhere else the flow has walked away from it, and it is abandoned.
@@ -1059,13 +1219,13 @@ export function createPaymentSurface(
 	let opened:
 		| (PressWindow & {
 				readonly rail: PaypalRail;
-				readonly release: (order: { orderId: string }) => void;
+				readonly release: (paymentToken: string) => void;
 				readonly refuse: (reason: unknown) => void;
 		  })
 		| null = null;
 
 	/**
-	 * the waiting window let go of: its order refused and its session retired.
+	 * the waiting window let go of: what it waits on refused, and its session retired.
 	 *
 	 * every way the flow can leave a press without confirming it reaches here — a quote that failed,
 	 * one that landed and was not confirmed in its own task (a corrected total, a 2xx the flow refuses,
@@ -1083,32 +1243,36 @@ export function createPaymentSurface(
 	}
 
 	/**
-	 * PayPal's window, opened inside the donor's Donate press on an order still being minted.
+	 * PayPal's window, opened inside the donor's Donate press on an order or subscription still being
+	 * minted — an order for a gift made once, a subscription for one that repeats.
 	 *
-	 * PayPal's documented shape: `start()` is called synchronously in the press and handed the order
-	 * as a pending promise, because a popup is opened on the press's transient activation and an
-	 * `await` of the quote's round trip spends it — Safari's lasts about a second.
+	 * PayPal's documented shape: `start()` is called synchronously in the press and handed what it
+	 * approves as a pending promise, because a popup is opened on the press's transient activation
+	 * and an `await` of the quote's round trip spends it — Safari's lasts about a second.
 	 *
-	 * the order is handed over by `confirm` alone, never by the quote's answer: the flow reaches a
+	 * the token is handed over by `confirm` alone, never by the quote's answer: the flow reaches a
 	 * confirmation in the quote's own task wherever the total is the one the donor was shown, and a
 	 * window still waiting a task later is one the flow did not go on to confirm — the correction
-	 * screen among them, which must never stand behind an approvable order.
+	 * screen among them, which must never stand behind anything approvable.
 	 */
 	function quoting(request: QuoteRequest, minted: Promise<Quote>): void {
 		abandon(new Error('a later press superseded this PayPal window'));
 		if (!isPaypalRail(request.method)) return;
 		const rail = request.method;
+		// the cadence the quote was asked on rather than the one `cadence` last carried: it is the
+		// one the server minted this press's token for.
+		const repeating = repeats(request.frequency);
 
-		let release: (order: { orderId: string }) => void = () => {};
+		let release: (paymentToken: string) => void = () => {};
 		let refuse: (reason: unknown) => void = () => {};
-		const order = new Promise<{ orderId: string }>((resolve, reject) => {
-			release = resolve;
+		const approval = new Promise<Approval>((resolve, reject) => {
+			release = (paymentToken) => resolve(approvalOf(paymentToken, repeating));
 			refuse = reject;
 		});
-		// PayPal is handed `order` itself; this only keeps a refusal it never subscribed to — its own
-		// `start()` having already ended — off the host page's unhandled rejections.
-		order.catch(() => {});
-		const opening = openWindow(rail, order);
+		// PayPal is handed `approval` itself; this only keeps a refusal it never subscribed to — its
+		// own `start()` having already ended — off the host page's unhandled rejections.
+		approval.catch(() => {});
+		const opening = openWindow(rail, repeating, approval);
 		if (opening === null) return;
 		const press = { ...opening, rail, release, refuse };
 		opened = press;
@@ -1117,7 +1281,8 @@ export function createPaymentSurface(
 			// junction and the confirmation it reaches — runs ahead of it.
 			() =>
 				setTimeout(() => {
-					if (opened === press) abandon(new Error('the flow did not confirm this order'));
+					if (opened === press)
+						abandon(new Error('the flow did not confirm what this window was opened on'));
 				}, 0),
 			(thrown: unknown) => {
 				if (opened === press) abandon(thrown);
@@ -1133,17 +1298,22 @@ export function createPaymentSurface(
 		if (press !== null && press.rail === method) {
 			opened = null;
 			// a window that already ended — closed, refused, blocked — is never handed an approvable
-			// order; its own ending is the answer.
+			// order or subscription; its own ending is the answer.
 			if (press.attempt.answered()) press.refuse(new Error('this PayPal window had already ended'));
-			else press.release({ orderId: paymentToken });
+			else press.release(paymentToken);
 			return settled(press.attempt);
 		}
 
-		// no window waiting on this order — the correction screen's Confirm above all, whose press
+		// no window waiting on this token — the correction screen's Confirm above all, whose press
 		// carries an activation of its own and calls this port inside it, so a window opened here on
-		// the order already in hand is not blocked; any other caller opens without one.
+		// the order or subscription already in hand is not blocked; any other caller opens without
+		// one. the port is handed no cadence, so the one `cadence` last carried says which it is.
 		const opening = isPaypalRail(method)
-			? openWindow(method, Promise.resolve({ orderId: paymentToken }))
+			? openWindow(
+					method,
+					committedRepeat,
+					Promise.resolve(approvalOf(paymentToken, committedRepeat))
+				)
 			: null;
 		if (opening === null) {
 			report(UNCONFIRMED, `nothing on this form can settle a gift on the ${method} rail`);
@@ -1167,9 +1337,9 @@ export function createPaymentSurface(
 	}
 
 	/**
-	 * what became of the order this page last sent to PayPal.
+	 * what became of the order or subscription this page last sent to PayPal.
 	 *
-	 * the browser holds no read of a PayPal order — there is no client-side call a client id can
+	 * the browser holds no read of either — there is no client-side call a client id can
 	 * make for one — so what this answers with is what PayPal's own callbacks already said on this
 	 * page load, and nothing at all where they said nothing. that is the safe direction: the machine
 	 * answers an answer nobody has by stopping rather than by offering the form again.
@@ -1190,13 +1360,19 @@ export function createPaymentSurface(
 			return returned;
 		},
 		// the total is the server's and it is on the review screen the donor already read; PayPal's
-		// own window states the figure off the order the server minted, and this button carries no
+		// own window states the figure off the order or subscription the server minted, and this
+		// button carries no
 		// figure of its own to correct.
 		quoted() {},
-		// which of these rails a repeat may be collected on is the flow's answer, carried by
-		// `offerVenmo` below — the served config lists rails without regard to cadence. a shape asked
-		// of the SDK here would be a second place that decision is made.
-		cadence() {},
+		// what the cadence decides here is PayPal's alone: whether its row stands on a repeat it
+		// cannot start, and which session a window opens on where no press says (`confirm`). Venmo on
+		// a repeat is the flow's answer, carried by `offerVenmo` below.
+		cadence(frequency) {
+			// nothing committed is nothing to say: the screens after a confirmation carry no cadence.
+			if (frequency === undefined) return;
+			committedRepeat = repeats(frequency);
+			place();
+		},
 		offerVenmo(offered) {
 			venmoOffered = offered;
 			place();
@@ -1230,6 +1406,16 @@ export function createPaymentSurface(
 			});
 		}
 	};
+}
+
+/** whether a gift on this cadence repeats, which is what makes its token a subscription. */
+function repeats(frequency: Frequency): boolean {
+	return frequency !== 'one_time';
+}
+
+/** the server's token as the window for the gift's cadence takes it. */
+function approvalOf(paymentToken: string, repeating: boolean): Approval {
+	return repeating ? { subscriptionId: paymentToken } : { orderId: paymentToken };
 }
 
 /** what the console is told about a gift that never reached the rail. */

@@ -2046,9 +2046,9 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 						// providerCustomerId` in ./provider.ts), which is where `recurring_plan` takes it.
 						providerCustomerId: result.subscriber?.payerId ?? '',
 						state: recurringState(result.status),
-						// the subscription's own id, which is what PayPal's browser SDK resolves an
-						// approval from — so a repeating gift is confirmed by exactly the code that
-						// confirms a single one (`confirm` in packages/form/src/embed/paypal.ts).
+						// the subscription's own id, which is no order: the embed hands it to PayPal's
+						// subscription session as `{ subscriptionId }` rather than to the one-time
+						// session's `{ orderId }` (`pressSession` in packages/form/src/embed/paypal.ts).
 						paymentToken: result.id,
 						startedAt: at(result.startTime ?? result.createTime)
 					}
@@ -2242,8 +2242,10 @@ const PLAN_INTERVALS: Readonly<Record<RecurringInterval, IntervalUnit>> = Object
  * the two that are a reading rather than a translation:
  *
  *   `APPROVED` is `pending` and not `active`. the donor pressed the button in PayPal's window and
- *   nothing has been collected: PayPal moves it to `ACTIVE` when the first charge lands, and
- *   ../donations/collect.ts opens the commitment's row from that charge rather than from approval.
+ *   nothing has been collected: `APPROVED` is the state a subscription created to wait for an
+ *   activate call holds, and `createRecurringGift` creates none that way — PayPal activates its
+ *   subscriptions on approval. either way ../donations/collect.ts opens the commitment's row from
+ *   the first charge rather than from approval.
  *
  *   `SUSPENDED` is `lapsed` and not `ended`. PayPal suspends a commitment when its own retries run
  *   out inside a cycle (https://developer.paypal.com/docs/subscriptions/customize/failed-payments/),

@@ -544,10 +544,9 @@ function coinAsShown(
 /**
  * the repeating half: the donor written, the commitment created at the processor, then the gift.
  *
- * it answers the same `Quote` the single branch does, carrying the same kind of token — a donation
- * form confirms a repeating gift with exactly the code that confirms a one-off one, and no second
- * way of confirming exists anywhere in this app (`RecurringGift.paymentToken` in
- * ../payments/provider.ts).
+ * it answers the same `Quote` the single branch does, the token in the same field — a donation form
+ * confirms a repeating gift at the same step it confirms a one-off one, in whichever window the
+ * processor's client opens for it (`RecurringGift.paymentToken` in ../payments/provider.ts).
  *
  * both figures are the server's, and the fee is the one the donor was already shown: a repeating
  * gift they chose to cover the fee on collects the grossed-up total every interval, which is the
