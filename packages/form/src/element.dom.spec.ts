@@ -2809,17 +2809,45 @@ describe('the review step', () => {
 		expect(card.text('[role="status"]')).toBe('');
 	});
 
-	// the sentence belongs to the press that asked for it and to no patch after it. carried, the
-	// total would be read out again on the next thing that happened to the card — here, the provider
-	// reporting the donor moved to another rail.
-	it('does not carry the total onto the next patch', async () => {
+	// the provider reports its rail on its own schedule rather than the donor's, so a reading with
+	// nothing to say can land in the instant the total is said. the sentence stays until the heading
+	// changes or another replaces it.
+	it('keeps the total it said through a reading that changes nothing it states', async () => {
 		const card = await atReview();
 		press(card.find('.row.fee [part~="checkbox"]'));
 		await settle();
 
+		card.rail('card');
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe('Total today is $25.00.');
+	});
+
+	it('stops saying the total once the donor goes back a step', async () => {
+		const card = await atReview();
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+
+		dot(card, 2).click();
+		await settle();
+
+		expect(card.find('.step-details').hidden).toBe(false);
+		expect(card.text('[role="status"]')).toBe('');
+	});
+
+	// and no longer than the figure it names: a rail that reprices the total has left the sentence
+	// stating a total the card no longer charges, and the figure itself says the new one.
+	it('drops the total it said once a rail reprices it', async () => {
+		const card = await atReview();
+		press(card.find('.row.fee [part~="checkbox"]'));
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+		expect(card.text('[role="status"]')).toBe('Total today is $26.06.');
+
 		card.rail('ach');
 		await settle();
 
+		expect(card.find('[part~="submit"]').textContent).not.toContain('$26.06');
 		expect(card.text('[role="status"]')).toBe('');
 	});
 
@@ -3767,6 +3795,23 @@ describe('the details step’s refusals', () => {
 		);
 		// and the words on the card stay the field's own, with no label repeated beside its box.
 		expect(card.text('#first-name-problem')).toBe('required');
+	});
+
+	// the challenge widget hands its token over whenever it finishes, which is as likely to be the
+	// instant the refusal is said as any other — and a reading that changes no field is no reason to
+	// stop saying it.
+	it('keeps saying the refusal through a reading that changes no field it named', async () => {
+		const card = await atDetailsStep();
+		proceed(card);
+		proceed(card);
+		await settle();
+
+		card.token('tok_from_the_widget');
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe(
+			'Email: required for your receipt; First name: required; Last name: required'
+		);
 	});
 
 	// and it stops saying it the moment the donor does anything but press again. a region reading
@@ -5708,6 +5753,35 @@ describe('where a payment provider paints', () => {
 			expect(shows(card, '.step-give .attention')).toBe('');
 			expect(card.find('[part~="payment"]').closest('.group')?.hasAttribute('hidden')).toBe(false);
 			expect(card.find('[part~="submit"]').hidden).toBe(false);
+		});
+
+		// the offer arrives whenever the processors fail and nothing moves the caret to it, so the
+		// region is its one channel — and a reading landing a moment later says nothing to replace it.
+		it('keeps saying the offer through a reading that has nothing to say', async () => {
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'daf'] });
+			card.repeatingUnavailable();
+			await settle();
+			expect(card.text('[role="status"]')).toBe(OFFER);
+
+			card.token('tok_from_the_widget');
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe(OFFER);
+		});
+
+		// the press hands the provider's fields a new cadence, and the provider reports its rail on its
+		// own schedule — a reading that can land as the sentence is said, with nothing of its own.
+		it('keeps saying the gift is one-time through a reading that has nothing to say', async () => {
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'daf'] });
+			card.repeatingUnavailable();
+			makeOneTime(card).click();
+			await settle();
+			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
+
+			card.rail('card');
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
 		});
 
 		it('offers the crypto option once the gift is made one-time', async () => {
