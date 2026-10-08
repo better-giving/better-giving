@@ -119,7 +119,12 @@ func digitsOnly(expiry string) bool {
 // otherwise.
 //
 // An expiry further out than a deployment accepts from now is no session either: the deployment
-// would refuse it as `console_clock_ahead`, so it is read as none.
+// would refuse it as `console_clock_ahead`, so it is read as none. A session ending at `now` is
+// still one, as it is to the deployment (`consoleAccess` in
+// packages/app/src/lib/server/console/access.ts refuses only an expiry before its now).
+//
+// `now` is this machine's clock and the deployment reads its own, so with the two apart the
+// answers here and there can differ: a session read here can still be refused there.
 //
 // Every way the record could be wrong lands on the same nil, which is the state the screen already
 // draws: no session, and a control that mints one.
@@ -137,7 +142,7 @@ func Held(store state.Store, workerName string, now time.Time) *Session {
 	}
 	expiresAt, ok := Parse(held.Token)
 	latest := now.Add((sessionSeconds + clockSkewSeconds) * time.Second)
-	if !ok || !expiresAt.After(now) || expiresAt.After(latest) {
+	if !ok || expiresAt.Before(now) || expiresAt.After(latest) {
 		return nil
 	}
 	return &Session{
