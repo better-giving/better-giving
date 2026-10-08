@@ -4551,6 +4551,12 @@
 		margin-block-end: calc(var(--admin-space-4) - var(--admin-space-6));
 	}
 
+	/* the closer stack's gap is `--admin-space-4` itself, so the step above would cancel it and set
+	   the sentence flush on its plane. there the line keeps one rung under the gap instead. */
+	.adm-stack--tight > .adm-tablelead {
+		margin-block-end: calc(var(--admin-space-3) - var(--admin-space-4));
+	}
+
 	.adm-section > .adm-tablelead {
 		margin-block-end: calc(var(--admin-space-4) - var(--admin-space-5));
 	}

@@ -28,7 +28,7 @@ const px = (value: string | undefined) => {
 };
 
 // the containers a screen stands a heading and a counted table in, one after the other.
-describe.each(['.adm-stack', '.adm-section'])(
+describe.each(['.adm-stack', '.adm-stack--tight', '.adm-section'])(
 	'a counted table under a heading in %s',
 	(container) => {
 		const gap = px(ruleOf(css, container).get('gap'));
