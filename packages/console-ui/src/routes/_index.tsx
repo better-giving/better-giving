@@ -16,7 +16,14 @@ import { ConsoleRefused, ConsoleUnreachable, closeConsole, connect } from '../ap
 import type { Blocked, Connection, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
 import { firstUnfinishedPage } from '../lib/console-pages';
-import { drawsReading, gatedPage, handOver, readConsole, watchPress } from '../lib/console-reading';
+import {
+	drawsReading,
+	gatedBy,
+	gatedPage,
+	handOver,
+	readConsole,
+	watchPress
+} from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
 import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
@@ -674,9 +681,15 @@ export function ConnectOutcome({
  * drawn in its own words, printed rather than marked for ../lib/said.tsx's reason. anything else
  * threw on this side of the call, so a reload is the one way out this page has.
  *
+ * **a gate is handed on rather than drawn.** a page under ./_sections.tsx that reads the deployment
+ * for itself meets the same gate the layout does, and its own boundary catches it first whenever the
+ * layout's reading was kept; thrown again from here it reaches the layout's boundary, which draws it
+ * as the whole screen (`notReady` in ../lib/console-reading.ts).
+ *
  * exported for every boundary under ./_sections.tsx, which already reach this module for `TITLE`.
  */
 export function ConsoleFailure({ error }: { error: unknown }): ReactNode {
+	if (gatedBy(error) !== null) throw error;
 	if (error instanceof ConsoleUnreachable) return <ConsoleStopped />;
 	if (error instanceof ConsoleRefused) {
 		return (

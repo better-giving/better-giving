@@ -120,7 +120,8 @@ async function open(at = '/quickbooks') {
 								path: '/quickbooks',
 								loader: quickbooks.clientLoader as never,
 								action: quickbooks.clientAction as never,
-								shouldRevalidate: quickbooks.shouldRevalidate
+								shouldRevalidate: quickbooks.shouldRevalidate,
+								ErrorBoundary: quickbooks.ErrorBoundary as never
 							},
 							{
 								path: '/password',
@@ -202,6 +203,34 @@ describe('a page that reads for itself, gated', () => {
 			expect(rushed).toBe(true);
 		} finally {
 			watch();
+			off();
+			router.dispose();
+		}
+	});
+});
+
+describe('a page that reads for itself, gated under a layout it kept', () => {
+	it('hands the gate on rather than drawing it as its own failure', async () => {
+		binary.ready = true;
+		const { router, off } = await open('/password');
+		try {
+			binary.ready = false;
+			binary.log = [];
+			await router.navigate('/quickbooks');
+			expect(binary.log).toEqual(['read']);
+			expect(gatedBy(router.state.errors?.[BOOKS])).not.toBeNull();
+
+			// the layout's boundary catching what the page's hands on is react's, and this pool has no
+			// DOM to mount one in: `renderToString` runs no boundary over a throw while drawing, so the
+			// gate reaching past the page's boundary is the render throwing it.
+			let drawn: unknown;
+			try {
+				drawn = renderToString(createElement(RouterProvider, { router }));
+			} catch (thrown) {
+				drawn = thrown;
+			}
+			expect(gatedBy(drawn)?.gate.title).toBe('Cloudflare didn’t answer');
+		} finally {
 			off();
 			router.dispose();
 		}
