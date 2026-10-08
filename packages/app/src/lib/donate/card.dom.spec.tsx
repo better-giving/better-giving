@@ -206,13 +206,30 @@ function openFund(root: HTMLElement): StubConnect {
 	return button;
 }
 
+/** the callback the card last handed the challenge widget, which is what a token arrives through. */
+const widget = { answer: (_token: string): void => {} };
+
 const CHALLENGE: ChallengeSeam = {
 	load: async () => {
-		const api: TurnstileLike = { render: () => 'widget-1', reset: () => {}, remove: () => {} };
+		const api: TurnstileLike = {
+			render: (_node, options) => {
+				widget.answer = options.callback ?? (() => {});
+				return 'widget-1';
+			},
+			reset: () => {},
+			remove: () => {}
+		};
 		return api;
 	},
 	delay: () => () => {}
 };
+
+/** the challenge widget minting a token, which it does on its own schedule rather than a donor's. */
+function token(value: string): void {
+	act(() => {
+		widget.answer(value);
+	});
+}
 
 /**
  * a card on a page, with both providers answered from plain objects.
@@ -313,6 +330,28 @@ function type(box: HTMLInputElement, value: string): void {
 /** what the card is saying out loud. */
 function said(root: HTMLElement): string {
 	return one(root, '[role="status"]').textContent ?? '';
+}
+
+/**
+ * `during` run with every render of the card thrown away, and then the render that commits.
+ *
+ * the card's boundary shows its empty fallback meanwhile, so nothing the card renders inside is
+ * committed — what the region says after is what the commits before and after decided.
+ */
+async function held(during: () => Promise<void>): Promise<void> {
+	let release: () => void = () => {};
+	regionHeld.on = new Promise<void>((settle) => {
+		release = settle;
+	});
+	onTestFinished(() => {
+		regionHeld.on = null;
+	});
+	await during();
+	await act(async () => {
+		regionHeld.on = null;
+		release();
+		for (let at = 0; at < 20; at += 1) await Promise.resolve();
+	});
 }
 
 const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
@@ -832,6 +871,54 @@ it('names each refused field when a press leaves the caret where it was', async 
 	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
 });
 
+describe('the refused fields, said where the press left the caret', () => {
+	const REFUSAL = 'Email: required for your receipt; First name: required';
+
+	/** the details step refused with the caret on the email box, which the press leaves it on. */
+	async function refused() {
+		const reached = await card();
+		press(one(reached.root, '.tiles > label:nth-of-type(2)'));
+		press(one(reached.root, CONTINUE));
+		type(input(reached.root, '#last-name'), 'Lovelace');
+		act(() => {
+			input(reached.root, '#email').focus();
+		});
+		press(one(reached.root, CONTINUE));
+		expect(said(reached.root)).toBe(REFUSAL);
+		return reached;
+	}
+
+	// the challenge widget and the provider's fields both report on their own schedule, so a reading
+	// that changes no field can land in the instant the refusal is said.
+	it('keeps naming them through a reading that changes none of them', async () => {
+		const { root, payment } = await refused();
+
+		token('tok_from_the_widget');
+		payment.pick('card');
+
+		expect(said(root)).toBe(REFUSAL);
+	});
+
+	// a region reading out the fields still to fill in while the donor is typing one is talking over
+	// them, and the sentence under the box says the rest.
+	it('stops naming them once the donor edits one it named', async () => {
+		const { root } = await refused();
+
+		type(input(root, '#first-name'), 'Ada');
+
+		expect(said(root)).toBe('');
+	});
+
+	it('stops naming them once the donor goes back a step', async () => {
+		const { root } = await refused();
+
+		press(every(root, '.step-details .step-dot')[0] as HTMLElement);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(said(root)).toBe('');
+	});
+});
+
 it('says which of the two rules an address broke', async () => {
 	const { root } = await card();
 
@@ -904,6 +991,70 @@ it('says nothing about the total when a rail pick leaves it where it was', async
 
 	expect(one(root, 'output.figure').textContent).toBe(total);
 	expect(said(root)).toBe('');
+});
+
+// the provider reports its rail on its own schedule and the widget its token on its own, so a reading
+// with nothing to say can land in the instant the total is said. the sentence stays until the step
+// changes, another replaces it, or the total it names does.
+it('keeps saying the total through a reading that changes nothing it states', async () => {
+	const { root, payment } = await card();
+	walkToGive(root);
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	const total = one(root, 'output.figure').textContent;
+	expect(said(root)).toBe(`Total today is ${total}.`);
+
+	token('tok_from_the_widget');
+	payment.pick('card');
+
+	expect(one(root, 'output.figure').textContent).toBe(total);
+	expect(said(root)).toBe(`Total today is ${total}.`);
+});
+
+it('says a total a rail repriced in place of the one it said before', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	// off and back on, so the total said is one with a fee in it for the bank's rules to reprice.
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	const before = one(root, 'output.figure').textContent;
+	expect(said(root)).toBe(`Total today is ${before}.`);
+
+	payment.pick('us_bank_account');
+
+	const after = one(root, 'output.figure').textContent;
+	expect(after).not.toBe(before);
+	expect(said(root)).toBe(`Total today is ${after}.`);
+});
+
+it('stops saying the total once the donor goes back a step', async () => {
+	const { root } = await card();
+	walkToGive(root);
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	expect(said(root)).not.toBe('');
+
+	press(every(root, '.step-give .step-dot')[1] as HTMLElement);
+
+	expect(screen(root).className).toContain('step-details');
+	expect(said(root)).toBe('');
+});
+
+// a render react throws away is one nobody heard: here the fee decision's render is discarded and a
+// reading overtakes it, so the render that commits is the first to set the figure against the one the
+// donor was last shown.
+it('decides a moved total on the render that commits, not on one react discards', async () => {
+	const { root, payment } = await card(CONFIG, {}, { boundary: true });
+	walkToGive(root);
+	const before = one(root, 'output.figure').textContent;
+
+	await held(async () => {
+		press(input(root, '.fee-decision input[type="checkbox"]'));
+		payment.pick('card');
+	});
+
+	const after = one(root, 'output.figure').textContent;
+	expect(after).not.toBe(before);
+	expect(said(root)).toBe(`Total today is ${after}.`);
 });
 
 // a refused press has been heard, and the box keeps the refusal as its description; a total that
@@ -1202,6 +1353,50 @@ describe('a repeating gift no processor still up can take', () => {
 		expect(paymentGroup(root).hidden).toBe(false);
 		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
 		expect(said(root)).not.toBe(OFFER);
+	});
+
+	// the offer arrives whenever the processors fail and nothing moves the caret to it, so the region
+	// is its one channel — and a reading landing a moment later says nothing to replace it.
+	it('keeps saying the offer through a reading that has nothing to say', async () => {
+		const { root } = await atReview();
+		expect(said(root)).toBe(OFFER);
+
+		token('tok_from_the_widget');
+
+		expect(said(root)).toBe(OFFER);
+	});
+
+	it('stops saying the offer once the donor goes back a step', async () => {
+		const { root } = await atReview();
+		expect(said(root)).toBe(OFFER);
+
+		press(every(root, '.step-give .step-dot')[1] as HTMLElement);
+
+		expect(screen(root).className).toContain('step-details');
+		expect(said(root)).toBe('');
+	});
+
+	// the press hands the provider's fields a new cadence, and the widget and the provider report on
+	// their own schedule — a reading that can land as the sentence is said, with nothing of its own.
+	it('keeps saying the gift is one-time through a reading that has nothing to say', async () => {
+		const { root } = await atReview();
+		press(makeOneTime(root));
+		expect(said(root)).toBe('This is now a one-time gift.');
+
+		token('tok_from_the_widget');
+
+		expect(said(root)).toBe('This is now a one-time gift.');
+	});
+
+	it('stops saying the gift is one-time once the donor goes back a step', async () => {
+		const { root } = await atReview();
+		press(makeOneTime(root));
+		expect(said(root)).toBe('This is now a one-time gift.');
+
+		press(every(root, '.step-give .step-dot')[1] as HTMLElement);
+
+		expect(screen(root).className).toContain('step-details');
+		expect(said(root)).toBe('');
 	});
 });
 
@@ -1823,28 +2018,6 @@ describe('a crypto gift', () => {
 	async function tick(ms: number): Promise<void> {
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(ms);
-		});
-	}
-
-	/**
-	 * `during` run with every render of the card thrown away, and then the render that commits.
-	 *
-	 * the card's boundary shows its empty fallback meanwhile, so nothing the card renders inside is
-	 * committed — what the region says after is what the commits before and after decided.
-	 */
-	async function held(during: () => Promise<void>): Promise<void> {
-		let release: () => void = () => {};
-		regionHeld.on = new Promise<void>((settle) => {
-			release = settle;
-		});
-		onTestFinished(() => {
-			regionHeld.on = null;
-		});
-		await during();
-		await act(async () => {
-			regionHeld.on = null;
-			release();
-			for (let at = 0; at < 20; at += 1) await Promise.resolve();
 		});
 	}
 
