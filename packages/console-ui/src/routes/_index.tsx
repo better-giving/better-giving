@@ -649,7 +649,18 @@ export function ConnectOutcome({
 				</>
 			);
 		case 'unkept':
-			return <FieldMessage>Nothing was connected. This is what Cloudflare said:</FieldMessage>;
+			// the session is live on the deployment and the write that failed is this machine's own
+			// record of it, so cloudflare's name stays off it and the way out is the folder the error
+			// names — the sentence the terminal says it in (packages/console/internal/terminal/connect.go).
+			return (
+				<>
+					<FieldMessage>
+						This deployment holds the console's session, but this machine couldn't write it down.
+						Make the folder named below writable, then connect again.
+					</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
 		default:
 			return connected.kind satisfies never;
 	}

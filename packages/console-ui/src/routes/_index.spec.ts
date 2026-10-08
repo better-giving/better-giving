@@ -105,3 +105,32 @@ describe('a connect press the deployment refused for this machine’s clock', ()
 		expect(drawn).not.toContain('adm-cmd');
 	});
 });
+
+describe('a connect press whose session this machine could not write down', () => {
+	const connection: Connection = {
+		kind: 'unkept',
+		expiresAt: '',
+		origin: 'https://example.workers.dev',
+		detail: 'open /home/op/.config/better-giving/session.json: permission denied',
+		message: null,
+		fix: null
+	};
+	const drawn = renderToStaticMarkup(
+		createElement(home.ConnectOutcome, {
+			connected: connection,
+			workerName: 'better-giving',
+			accountName: 'Example'
+		})
+	);
+	const read = drawn.replace(/<[^>]+>/g, '');
+
+	it('says the deployment holds the session and the folder is the way out', () => {
+		expect(read).toContain('This deployment holds the console');
+		expect(read).toContain('Make the folder named below writable');
+	});
+
+	it('shows the error that names the folder, and keeps cloudflare out of it', () => {
+		expect(drawn).toContain('session.json: permission denied');
+		expect(read).not.toContain('Cloudflare');
+	});
+});
