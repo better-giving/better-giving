@@ -310,6 +310,20 @@ describe('the reservation a host page holds before the element upgrades', () => 
 	it('is recorded in the published manifest', () => {
 		expect(element?.description).toContain(':not(:defined)');
 		expect(element?.description).toContain(RESERVED_MIN_HEIGHT);
+		expect(element?.description).toContain('the same number `.loading` carries');
+		expect(element?.description).not.toContain('`:host` carries');
+	});
+
+	// a host page's style-src is written against that list, so a writer it leaves out is one an
+	// integrator was never told about.
+	it('names every module that writes inline style text', () => {
+		const src = new URL('./', import.meta.url);
+		const writers = readdirSync(src, { recursive: true, encoding: 'utf8' })
+			.filter((file) => file.endsWith('.ts') && !file.includes('.spec.'))
+			.filter((file) => /\.style\.cssText\s*=/.test(readFileSync(new URL(file, src), 'utf8')))
+			.filter((file) => file !== 'element.ts');
+		expect(writers.length).toBeGreaterThan(0);
+		for (const file of writers) expect(element?.description).toContain(`packages/form/src/${file}`);
 	});
 
 	// README.md and DEPLOY.md are held to this reservation in scripts/embed-snippet.spec.ts, not
