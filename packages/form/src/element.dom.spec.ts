@@ -2851,6 +2851,26 @@ describe('the review step', () => {
 		expect(card.text('[role="status"]')).toBe('');
 	});
 
+	// a press re-says what it chose, and a total kept from before it does not change what that is.
+	it('says the refusal a press chose again after a total it was keeping', async () => {
+		const card = await atReview();
+		card.rail(null);
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+		expect(card.text('[role="status"]')).toMatch(/^Total today is /);
+		card.find('[part~="submit"]').click();
+		await settle();
+		expect(card.text('[role="status"]')).toBe('Please select payment method');
+
+		card.find('[part~="submit"]').click();
+
+		expect(card.text('[role="status"]')).toBe('');
+
+		await settle();
+
+		expect(card.text('[role="status"]')).toBe('Please select payment method');
+	});
+
 	// the box is a form control inside the card's form, so Enter on it implicitly submits — and the
 	// default button on this step is the one that spends the money. a checkbox is operated with
 	// Space, so the keystroke has nothing to do here and everything to do on the control it reaches.
@@ -5801,6 +5821,25 @@ describe('where a payment provider paints', () => {
 			expect(cryptoOffers.at(-1)).toBe(true);
 		});
 
+		// a Donate press with no coin picked is answered by the coin list, where the caret lands; the
+		// sentence the offer's press said is not that answer and is not read out again beside it.
+		it('says nothing it was keeping on a crypto press with no coin picked', async () => {
+			const coins = [
+				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+			];
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'crypto'], coins });
+			card.repeatingUnavailable();
+			makeOneTime(card).click();
+			card.rail('crypto');
+			await settle();
+			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
+
+			card.find('[part~="submit"]').click();
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe('');
+		});
+
 		it('names the cadence the donor chose', async () => {
 			const card = await mount({ config: { ...CONFIG, paymentMethods: ['card', 'daf'] } });
 			press(card.all('[part~="frequency-option"] input')[2] as HTMLElement);
@@ -6260,6 +6299,20 @@ describe('a crypto gift', () => {
 		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('required');
 		expect(coins(card).activeElement).toBe(combobox(card));
 		expect(card.find('#payment-problem').hidden).toBe(true);
+	});
+
+	// the coin list states its own refusal where the caret lands, and the region says nothing that
+	// press chose — so the total a fee flip said before it is not the press's answer to read out again.
+	it('says no total it was keeping on a press with no coin picked', async () => {
+		const card = await onCrypto();
+		press(card.find('.row.fee [part~="checkbox"]'));
+		await settle();
+		expect(region(card)).toMatch(/^Total today is /);
+
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(region(card)).toBe('');
 	});
 
 	it('shows what is being sent and where, in the order a donor reads it', async () => {

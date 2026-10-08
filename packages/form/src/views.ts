@@ -1137,9 +1137,9 @@ export function createCard(
 	/**
 	 * whether the sentence this patch writes is one a press has just asked for again.
 	 *
-	 * the review step's refusal is the only one, and a second press is why: the words do not change,
-	 * so nothing about them says a donor pressed again. set by the press and spent by the patch it
-	 * asked for — see the Donate handler below and `say` above.
+	 * a refusal said again on a second press is why: the words do not change, so nothing about them
+	 * says a donor pressed again. set by the Continue and Donate handlers below and spent by the
+	 * patch they asked for — see `say` above.
 	 */
 	let repeated = false;
 	/**
@@ -1185,13 +1185,13 @@ export function createCard(
 	 *
 	 * the sentences a moment says are kept this way — the retitled heading, a Copy's outcome, and on
 	 * the numbered steps each `News` in `update` below: each stays until the heading it was said
-	 * under changes, another sentence replaces it or what it `restating` names moves, and a new
-	 * snapshot alone never clears it. a sentence the card says while something stands — a refusal
-	 * still unanswered, the wait — is said again by every patch and needs no keeping. the address
-	 * screen's reading loop is a new snapshot every few seconds with nothing to say, and the
-	 * provider's fields and the challenge widget report whenever they finish; one landing in the
-	 * same instant would otherwise empty the sentence as it is written. `say` in `update` below is
-	 * where it is spent.
+	 * under changes, another sentence replaces it, what it `restating` names moves or a press asks
+	 * for a repeat (`repeated`), and a new snapshot alone never clears it. a sentence the card says
+	 * while something stands — a refusal still unanswered, the wait — is said again by every patch
+	 * and needs no keeping. the address screen's reading loop is a new snapshot every few seconds
+	 * with nothing to say, and the provider's fields and the challenge widget report whenever they
+	 * finish; one landing in the same instant would otherwise empty the sentence as it is written.
+	 * `say` in `update` below is where it is spent.
 	 */
 	let held: (News & { on: string }) | null = null;
 	/** whether the last patch drew the offer of a one-time gift, which is what tells it arriving. */
@@ -3048,8 +3048,11 @@ export function createCard(
 			standing !== '' ? standing : news !== null ? news.words : busy ? workingWords(api.state) : '';
 		const heading = headings[step].textContent ?? '';
 		const restated = { total: totalWords, fields: missingFields };
+		// a press asking for a repeat re-says only what it chose. a sentence kept from before it is
+		// spent here: said again beside the refusal the press put somewhere else — the coin list's —
+		// it is old news read out as the press's answer.
 		if (standing === '' && news !== null) held = { ...news, on: heading };
-		else if (spoken !== '') held = null;
+		else if (spoken !== '' || repeated) held = null;
 		else if (retitled) held = { words: `${screen.heading}.`, on: heading };
 		else if (
 			held?.on !== heading ||
