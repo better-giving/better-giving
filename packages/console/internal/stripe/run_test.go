@@ -116,10 +116,12 @@ func TestARunThatStoppedStaysUntilTheNextPressClearsIt(t *testing.T) {
 		}
 	}
 
+	// the run the press started, as `Start` answers it. a reading taken after it would race the
+	// chain, which against these fakes can end before the next line runs.
 	afresh := working()
-	runs.Start(context.Background(), errand(), afresh.bound())
-	if reading := runs.Read(); reading == nil || reading.Kind != "running" {
-		t.Errorf("reading = %+v, want the press that cleared it", reading)
+	cleared, _ := runs.Start(context.Background(), errand(), afresh.bound())
+	if cleared.Kind != "running" {
+		t.Errorf("started = %+v, want the press that cleared it", cleared)
 	}
 	settle(t, runs)
 	if landed := runs.Read(); landed == nil || landed.Outcome.Kind != Done {
