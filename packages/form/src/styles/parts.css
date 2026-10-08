@@ -190,16 +190,23 @@ textarea[part~='field'] {
 
 /*
  * the two widths the list reads below are zag's own names, written inline on the positioner once zag
- * has measured the box, and the list is on screen for a frame or more before that. until then the
- * positioner inherits them, and an unprefixed custom property reaches through the shadow root from
- * whatever the host page set — so they are cut off at the positioner's parent, where nothing but
- * zag's inline write can put them back. a page rule matching the element itself outranks a `:host`
- * rule, which is why the cut is not made there.
+ * has measured the box, and the list is on screen for a frame or more before that. so are the three
+ * that zag's inline positioner style reads (`z-index: var(--z-index)`, `translate3d(var(--x), var(--y), 0)`),
+ * which zag writes only while a list is open and placed and takes back off on close. until then the
+ * positioner inherits all five, and an unprefixed custom property reaches through the shadow root
+ * from whatever the host page set — so they are cut off at the positioner's parent, where nothing
+ * but zag's inline write can put them back. `initial` leaves each unset, so a style reading one is
+ * the property's own initial value (`z-index: auto`, `transform: none`), as on a page that names
+ * none of them. a page rule matching the element itself outranks a `:host` rule, which is why the
+ * cut is not made there.
  */
 :has(> [data-scope='select'][data-part='positioner']),
 :has(> [data-scope='combobox'][data-part='positioner']) {
 	--reference-width: initial;
 	--available-width: initial;
+	--z-index: initial;
+	--x: initial;
+	--y: initial;
 }
 
 /*
