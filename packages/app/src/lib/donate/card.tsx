@@ -55,9 +55,11 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     lands in is out of `hidden`. the one first paint that takes it is a second gift's, and only
 //     where the caret was inside the card when Back to start was pressed: that press remounts the
 //     card under the caret, so the rebuilt card puts it on its first heading — and a caret the
-//     donor had already taken elsewhere on the page is left there. one takeover replacing another
-//     is no screen change and can hide that control too, so it is taken back to the heading from
-//     inside the takeover.
+//     donor had already taken elsewhere on the page is left there. a stamped return with no token
+//     is the other: the route drew the resume's takeover and the live flow starts on the amount
+//     step, so the step's heading takes the caret unless the donor put it on the host page, where
+//     the region says it instead. one takeover replacing another is no screen change and can hide
+//     that control too, so it is taken back to the heading from inside the takeover.
 //   - what is said out loud, on one channel, decided in one place.
 //
 // the two mount nodes are the card's and the checkout's between them: this file renders them and
@@ -143,7 +145,8 @@ export type DonateCardProps = {
 	 *
 	 * true draws the resume's takeover from the first paint, server and hydration alike, and the live
 	 * flow carries on from it once it has claimed the token. it says nothing about the token itself:
-	 * a stamp that arrived without one hands the donor the amount step as soon as the flow starts.
+	 * a stamp that arrived without one hands the donor the amount step as soon as the flow starts,
+	 * which the card treats as a move off the takeover rather than a first paint.
 	 */
 	readonly resuming?: boolean;
 };
@@ -495,6 +498,29 @@ function CheckoutCard({
 	const caret = typeof document === 'undefined' ? null : document.activeElement;
 	const caretInTakeover = caret !== null && takeoverSection.current?.contains(caret) === true;
 	const withinTakeover = shown === 'takeover' && screen.current.shown === 'takeover';
+	/** a caret the donor put on the host page, which no move of the card's takes from them. */
+	const caretOnPage =
+		caret !== null && caret !== document.body && cardNode.current?.contains(caret) !== true;
+	/**
+	 * the live flow's first snapshot leaving the resume's takeover the first paint drew: the route saw
+	 * the stamp and the flow had no token behind it to claim, so it starts where a fresh card does.
+	 * the donor was shown and told "Finishing your gift", so this is a screen change and not a first
+	 * paint, whatever `painted` says.
+	 */
+	const unresumed =
+		live !== null &&
+		!screen.current.painted &&
+		screen.current.shown === 'takeover' &&
+		shown === 'amount';
+	/**
+	 * that move said out loud to a caret on the host page, which the move leaves where it is. kept
+	 * while the amount step stands, the way `retitle` is kept by its heading, because the commit that
+	 * draws the step is what makes `unresumed` false on the next render.
+	 */
+	const handed = useRef<{ on: Screen | null; words: string }>({ on: null, words: '' });
+	if (unresumed) {
+		handed.current = { on: shown, words: caretOnPage ? `${copy.STEP_HEADINGS[0]}.` : '' };
+	} else if (handed.current.on !== shown) handed.current = { on: null, words: '' };
 
 	/**
 	 * a takeover's heading replaced, said out loud wherever no caret move reads it.
@@ -539,8 +565,9 @@ function CheckoutCard({
 		};
 		// never on the flow's first paint: a donor returning from their bank boots straight onto a
 		// takeover, and a card that took focus as it rendered would move the caret on a page nobody
-		// asked it to.
-		const advanced = before.painted && shown !== before.shown;
+		// asked it to. a takeover that first paint drew and the live flow left (`unresumed`) is a
+		// screen change the donor was told about, and moves a caret that is not on the host page.
+		const advanced = (before.painted && shown !== before.shown) || (unresumed && !caretOnPage);
 		// one takeover replacing another can take the control holding the caret with it: Give and
 		// Authorize go to a wait that paints no primary, and the address block leaves with whatever
 		// Copy held it. taken back only from inside the takeover — a resume's outcome replaces the
@@ -871,12 +898,13 @@ function CheckoutCard({
 	// the takeover's own words first: a screen that has taken the whole card is not one a numbered step
 	// is still asking anything on. a total that moved on the review step stands ahead of that step's
 	// refusal on the commit it moved on: the refusal was said on the press and stays on the payment
-	// box's description, and the figure that moved is said nowhere else. the retitled heading last: a
-	// screen's own sentence and the wait's both say more than its heading does.
+	// box's description, and the figure that moved is said nowhere else. a heading said in place of a
+	// caret move last — the step a tokenless return was handed, or a retitled takeover: a screen's own
+	// sentence and the wait's both say more than its heading does.
 	//
-	// the Copy's sentence and the retitled heading's keep one rule: a live-region sentence stays
-	// until the heading it announces changes or another sentence replaces it; a new snapshot alone
-	// never clears it. each is spent below once another has taken its place.
+	// the Copy's sentence, the retitled heading's and the handed step's keep one rule: a live-region
+	// sentence stays until the heading it announces changes or another sentence replaces it; a new
+	// snapshot alone never clears it. each is spent below once another has taken its place.
 	const words =
 		takeover.announce !== ''
 			? takeover.announce
@@ -894,10 +922,13 @@ function CheckoutCard({
 									? copied
 									: busy
 										? workingWords(api.state)
-										: retitle.current.words;
+										: handed.current.words !== ''
+											? handed.current.words
+											: retitle.current.words;
 	if (words !== '') {
 		if (words !== copied && shot?.kind === 'copy') outsaid.current = shot;
 		if (words !== retitle.current.words) retitle.current.words = '';
+		if (words !== handed.current.words) handed.current.words = '';
 	}
 
 	const receipt =

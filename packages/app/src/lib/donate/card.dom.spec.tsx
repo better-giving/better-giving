@@ -1627,6 +1627,51 @@ describe('a resume drawn before the flow starts', () => {
 
 		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
 	});
+
+	// the takeover the donor was told about is gone, so the caret is put on the heading of the step
+	// that replaced it, and arriving there reads it: the region saying it too is the heading twice.
+	it('puts the caret on the amount step’s heading where the stamped return had no token', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		const held = one(screen(host), ':scope > h2');
+		held.focus();
+
+		await hydrated(host, true);
+
+		const heading = one(screen(host), 'h2');
+		expect(heading.textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(heading);
+		expect(said(host)).toBe('');
+	});
+
+	it('puts the caret on the amount step’s heading from the page body', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		expect(document.activeElement).toBe(document.body);
+
+		await hydrated(host, true);
+
+		expect(document.activeElement).toBe(one(screen(host), 'h2'));
+	});
+
+	// a caret the donor put on the host page is theirs, so the region is what tells them the screen
+	// changed.
+	it('says the amount step to a caret on the host page, and leaves the caret there', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+
+		await hydrated(host, true);
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(host)).toBe(`${copy.STEP_HEADINGS[0]}.`);
+	});
 });
 
 describe('a crypto gift', () => {
