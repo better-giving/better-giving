@@ -35,7 +35,7 @@
 						{
 							"name": "bg-donate:unavailable",
 							"type": { "text": "CustomEvent<{ message: string, fix: string | null }>" },
-							"description": "The element painted the card saying the form cannot be rendered in place of a form: the `form` attribute is missing, the configuration read was refused or failed, the configuration could not be read, or it did not arrive within 30 seconds. `detail.message` is the sentence on the card and `detail.fix` the fix painted under it, addressed to whoever embedded the form, or `null` where the card shows none. Dispatched each time that card is painted, including after a Try again that failed again."
+							"description": "The element painted the card saying the form cannot be rendered in place of a form: the `form` attribute is still missing once the task that put the element on the page has finished, the configuration read was refused or failed, the configuration could not be read, or it did not arrive within 30 seconds. `detail.message` is the sentence on the card and `detail.fix` the fix painted under it, addressed to whoever embedded the form, or `null` where the card shows none. Dispatched each time that card is painted, including after a Try again that failed again."
 						},
 						{
 							"name": "bg-donate:success",

@@ -6721,6 +6721,29 @@ describe('the events a host page hears', () => {
 		return details;
 	}
 
+	/** an element on a tag of its own, built the way a host's script builds it: named nothing yet. */
+	function unnamed(): HTMLElement {
+		const tag = `${DONATE_FORM_TAG}-unnamed-${(tags += 1)}`;
+		defineDonateForm(
+			{
+				loadConfig: async () => CONFIG,
+				checkout: (config) => ({
+					input: { config, ports: PORTS },
+					cadence: () => {},
+					offerFund: () => {},
+					offerCrypto: () => {},
+					offerVenmo: () => {},
+					rows: () => {},
+					repeatingUnavailable: () => {},
+					stop: () => {}
+				}),
+				challenge: () => ({ reset: () => {}, stop: () => {} })
+			},
+			tag
+		);
+		return document.createElement(tag);
+	}
+
 	it('says the form is ready, once, with the form it is for', async () => {
 		const ready = heard('bg-donate:ready');
 		const card = await mount();
@@ -6751,6 +6774,53 @@ describe('the events a host page hears', () => {
 			}
 		]);
 		expect(ready).toEqual([]);
+	});
+
+	// a host that builds the element from script may put it on the page before it names the form,
+	// and both in one task paints nothing in between — so there was no card for the host to hear of.
+	it('says nothing unavailable for a form named in the task it was put on the page', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		const ready = heard('bg-donate:ready');
+		const host = unnamed();
+		document.body.appendChild(host);
+		host.setAttribute('form', 'frm_a8x2k9');
+		await settle();
+
+		expect(unavailable).toEqual([]);
+		expect(ready).toEqual([{ formId: 'frm_a8x2k9' }]);
+	});
+
+	it('says it once for an element the host put on the page and never named', async () => {
+		const unavailable = heard('bg-donate:unavailable');
+		document.body.appendChild(unnamed());
+		await settle();
+		await settle();
+
+		expect(unavailable).toEqual([
+			{
+				message: 'This donation form was not told which form to render.',
+				fix: `Set the form attribute on <${DONATE_FORM_TAG}> to the id of the form to render.`
+			}
+		]);
+	});
+
+	// listened for on the element, because one off the page is no longer under the document.
+	it('says nothing for an element taken off the page in the task it arrived in', async () => {
+		const host = unnamed();
+		const unavailable: unknown[] = [];
+		host.addEventListener('bg-donate:unavailable', (event) => {
+			unavailable.push((event as CustomEvent).detail);
+		});
+		document.body.appendChild(host);
+		host.remove();
+		await settle();
+
+		expect(unavailable).toEqual([]);
+
+		document.body.appendChild(host);
+		await settle();
+
+		expect(unavailable).toHaveLength(1);
 	});
 
 	it('says what it painted when the configuration read was refused', async () => {

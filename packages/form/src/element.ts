@@ -556,6 +556,18 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		/** the cancel for the deadline over the read in flight, or nothing while none is armed. */
 		#deadline: (() => void) | null = null;
 		/**
+		 * the cancel for the card that says no form was named, while it waits out the task it was
+		 * asked for in.
+		 *
+		 * a host building this element from script may append it and name the form a line later, and
+		 * nothing paints between two lines of one task — so a card put up at the append would be a
+		 * card no donor saw, and the host would hear `bg-donate:unavailable` for it on every load. the
+		 * card waits a task instead, and any boot that replaces this one in the meantime is a boot
+		 * for a named form, which takes it down in `#stop`. a task rather than a microtask, because a
+		 * host's own `await` between the two lines drains its microtasks inside the same task.
+		 */
+		#unnamed: (() => void) | null = null;
+		/**
 		 * the form id a live boot is for, or nothing while none is live.
 		 *
 		 * this is what makes a boot a decision about the form the attributes name rather than a
@@ -949,8 +961,9 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		}
 
 		/**
-		 * a wait, off the window this element is actually in. two things take one: the deadline over
-		 * the configuration read, and the teardown `#leaving` above defers by a task.
+		 * a wait, off the window this element is actually in. the deadline over the configuration read
+		 * takes one, and so does every wait of a task here: the teardown `#leaving` above defers, the
+		 * card `#unnamed` above holds back and the first sentence `#announce` above writes.
 		 *
 		 * `ownerDocument.defaultView` rather than the ambient `setTimeout`, for the reason `sheetsFor`
 		 * above reads its `CSSStyleSheet` off a document and `defaultDelay` in ./embed/stripe.ts reads
@@ -973,10 +986,16 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 
 		async #boot(formId: string): Promise<void> {
 			if (formId.length === 0) {
-				this.#showUnavailable(
-					'This donation form was not told which form to render.',
-					`Set the form attribute on <${DONATE_FORM_TAG}> to the id of the form to render.`
-				);
+				this.#unnamed = this.#delay(() => {
+					this.#unnamed = null;
+					// off the page by now is a departure whose teardown (`#leaving` above) is still a task
+					// away, and there is nobody to show the card to.
+					if (!this.isConnected) return;
+					this.#showUnavailable(
+						'This donation form was not told which form to render.',
+						`Set the form attribute on <${DONATE_FORM_TAG}> to the id of the form to render.`
+					);
+				}, 0);
 				return;
 			}
 
@@ -1277,6 +1296,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			this.#reattachCard = null;
 			letGo?.();
 			this.#disarm();
+			this.#unnamed?.();
+			this.#unnamed = null;
 			this.#reading?.abort();
 			this.#reading = null;
 			this.#subscription?.unsubscribe();
