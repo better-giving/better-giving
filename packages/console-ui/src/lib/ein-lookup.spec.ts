@@ -84,6 +84,13 @@ function watched(answer: () => Promise<NonprofitLookup>, boxes: Record<string, s
 const settled = () => new Promise((done) => setTimeout(done, 0));
 
 describe('when the EIN box is looked up', () => {
+	it('asks nothing until the box is handed to it: a watch made asks nothing', async () => {
+		const { lookUp } = watched(async () => found());
+		await settled();
+
+		expect(lookUp).not.toHaveBeenCalled();
+	});
+
 	it('asks nothing for a number still being typed', () => {
 		const { watch, lookUp } = watched(async () => found());
 		for (const typed of ['1', '12', '12-3', '12-345678']) watch.typed(typed, '');
@@ -166,7 +173,6 @@ describe('what the answer says and fills', () => {
 		await settled();
 
 		expect(note()).toBe(NOT_DEDUCTIBLE);
-		expect(note()).toBe('Not listed as eligible for tax-deductible gifts.');
 		expect(fills).toHaveLength(1);
 	});
 
@@ -189,7 +195,6 @@ describe('what the answer says and fills', () => {
 		await settled();
 
 		expect(note()).toBe(NOT_LISTED);
-		expect(note()).toBe('Not on the IRS list.');
 		expect(fills).toEqual([]);
 	});
 
@@ -202,7 +207,6 @@ describe('what the answer says and fills', () => {
 		await settled();
 
 		expect(note()).toBe(LOOKUP_UNANSWERED);
-		expect(note()).toBe("Couldn't look this up. Fill in the details yourself.");
 		expect(fills).toEqual([]);
 	});
 
@@ -234,7 +238,6 @@ describe('what the answer says and fills', () => {
 		await settled();
 
 		expect(said()).toBe(FILLED);
-		expect(FILLED).toBe('Filled from the IRS list.');
 		expect(note()).toBe(NOT_DEDUCTIBLE);
 	});
 

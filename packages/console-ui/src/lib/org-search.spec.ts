@@ -94,6 +94,13 @@ describe('what a press asks', () => {
 });
 
 describe('a press', () => {
+	it('is the only thing that asks: a watch made asks nothing', async () => {
+		const { search, lockIn, view } = watched(ok);
+		await settled();
+
+		expect([search.mock.calls.length, lockIn.mock.calls.length, view()]).toEqual([0, 0, undefined]);
+	});
+
 	it('searches once for a name, and locks nothing in', async () => {
 		const { watch, search, lockIn } = watched(ok);
 		watch.press('riverside');
