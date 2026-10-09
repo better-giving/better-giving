@@ -33,9 +33,12 @@
 //
 // a reply may instead be `{ say, ask }`: up to `QUESTIONS_MAX` questions for the operator, read by
 // ./questions.ts's rule, and handed back as asked with no draft at all. an `ask` beside `page` or
-// `set` refuses the reply, since a reply that asks never also changes the page, and so does any
-// `ask` where the caller says the turn answers questions: one round of questions, then a draft. an
-// `ask` that is `[]` or `null` is read as none.
+// `set` refuses the reply, since a reply that asks never also changes the page. where the caller
+// says the turn answers questions, it names their round, counted from the chat's first: answers to
+// round 1 may be followed by one more round, and any `ask` in reply to a later round's answers
+// refuses the reply — so a page is drafted after two rounds at most, and the answers to any ask
+// after the first draft are followed by a draft. that refusal alone is marked `askedAgain`, for the
+// caller to tell it from the rest. an `ask` that is `[]` or `null` is read as none.
 //
 // the model's answer is text nobody checked, so its size is bounded before anything reads it
 // (`readReply`, which $lib/server/pages/draft.ts reads a reply through too): the text at
@@ -239,8 +242,11 @@ export type AcceptInput = {
 	timeZone: string;
 	/** the instant the reply is accepted at; an end date on a day already over is refused. */
 	now: number;
-	/** the turn answers the questions the chat asked, so the reply may not ask again. */
-	answering?: boolean;
+	/**
+	 * the round of questions the turn answers, counted from the chat's first, 1 for it; absent
+	 * where the turn answers none. a reply to any round past the first may not ask.
+	 */
+	answering?: number;
 };
 
 export type Change =
@@ -281,7 +287,13 @@ export type Accepted = {
 };
 /** a reply that asks the operator questions in place of changing the page. */
 export type Asked = { ok: true; kind: 'asked'; say: string; questions: Question[] };
-export type Refused = { ok: false; reason: string; current: Page };
+export type Refused = {
+	ok: false;
+	reason: string;
+	current: Page;
+	/** set where the reply asked on a turn answering a round past the first; on no other refusal. */
+	askedAgain?: true;
+};
 
 export function acceptReply(input: AcceptInput): Accepted | Asked | Refused {
 	try {
@@ -305,8 +317,13 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 		if (reply.page !== undefined || reply.set !== undefined) {
 			return refuse('a reply that asks never also changes the page');
 		}
-		if (input.answering === true) {
-			return refuse('a reply to answers changes the page from them and never asks again');
+		if (input.answering !== undefined && input.answering > 1) {
+			return {
+				...refuse(
+					'a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
+				),
+				askedAgain: true
+			};
 		}
 		return { ok: true, kind: 'asked', say: reply.say, questions: reply.ask };
 	}

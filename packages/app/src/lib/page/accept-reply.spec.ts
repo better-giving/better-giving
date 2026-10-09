@@ -1651,14 +1651,28 @@ describe('a reply that asks', () => {
 		).toMatchObject({ ok: true, kind: 'drafted', draft: { palette: 'duo' } });
 	});
 
-	it('is refused in reply to answers, which it changes the page from instead', () => {
-		const current = campaign();
-		expect(accept({ say: 'One more.', ask }, { current, answering: true })).toEqual({
-			ok: false,
-			reason: 'a reply to answers changes the page from them and never asks again',
-			current
+	it('is taken in reply to answers to the chat’s first round of questions', () => {
+		expect(accept({ say: 'One more.', ask }, { answering: 1 })).toEqual({
+			ok: true,
+			kind: 'asked',
+			say: 'One more.',
+			questions: ask
 		});
 	});
+
+	it.each([2, 3])(
+		'is refused in reply to answers to round %i, which it changes the page from instead',
+		(round) => {
+			const current = campaign();
+			expect(accept({ say: 'One more.', ask }, { current, answering: round })).toEqual({
+				ok: false,
+				reason:
+					'a reply to answers past the chat’s first round of questions changes the page from them and never asks again',
+				current,
+				askedAgain: true
+			});
+		}
+	);
 
 	it.each([
 		['six questions', [...ask, ...['a', 'b', 'c', 'd'].map((id) => ({ ...ask[0], id }))], 'ask: '],

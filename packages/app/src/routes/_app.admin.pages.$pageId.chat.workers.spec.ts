@@ -327,21 +327,37 @@ describe('answers, posted as intent answers', () => {
 		expect([resent.status, await resent.json()]).toMatchObject([200, { outcome: 'accepted' }]);
 	});
 
-	it('whose reply asks again are a 422 marked refused, saying why', async () => {
+	it('whose reply is refused are a 422 marked refused, saying why', async () => {
 		const pageId = await asked();
 
 		const response = await post(
 			pageId,
 			{ intent: 'answers', answers: '[]', timeZone: ZONE },
-			answering(ASK)
+			answering('not a reply')
+		);
+
+		expect([response.status, await response.json()]).toEqual([
+			422,
+			{ error: expect.stringMatching(/^I couldn’t apply that: /), reason: 'refused' }
+		]);
+	});
+
+	it('to a second round whose reply asks, and asks again when asked once more, are a 422 marked refused_again, saying why', async () => {
+		const pageId = await asked();
+		await post(pageId, { intent: 'answers', answers: '[]', timeZone: ZONE }, answering(ASK));
+
+		const response = await post(
+			pageId,
+			{ intent: 'answers', answers: '[]', timeZone: ZONE },
+			answering(ASK, ASK)
 		);
 
 		expect([response.status, await response.json()]).toEqual([
 			422,
 			{
 				error:
-					'I couldn’t apply that: a reply to answers changes the page from them and never asks again',
-				reason: 'refused'
+					'I couldn’t apply that: a reply to answers past the chat’s first round of questions changes the page from them and never asks again',
+				reason: 'refused_again'
 			}
 		]);
 	});
