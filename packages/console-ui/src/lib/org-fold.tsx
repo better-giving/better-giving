@@ -34,7 +34,6 @@ import {
 	type EinWatch,
 	type HeldBoxes,
 	SILENT_NOTE,
-	foundBoxes,
 	watchEin
 } from './ein-lookup';
 import { droppedFile, LOGO_ACCEPT } from './logo-crop';
@@ -65,6 +64,7 @@ import { useConsoleForm } from './use-console-form';
 import { OrgWriteOutcome } from './org-write';
 import type {
 	NonprofitLookup,
+	NonprofitMatch,
 	NonprofitOrganisation,
 	NonprofitSearch,
 	OrgWrite
@@ -136,7 +136,8 @@ import type {
 // **the IRS list fills the boxes and never saves them.** a whole EIN typed into its box is looked up
 // once (./ein-lookup.ts says when), and so is a number the finder locks in; either way a found
 // organisation's values go into the boxes the way typing them would, so the press is armed over them
-// and Save stores them like any edit. what the list says about the number stands under the EIN box
+// and Save stores them like any edit. a number locked in replaces the whole legal identity, emptying
+// what the answer holds nothing for; a typed one fills around what the operator typed. what the list says about the number stands under the EIN box
 // in a region drawn before it speaks, and goes when the box changes. the list is reached through the
 // two calls the page hands in, so this names no address and no binary route.
 //
@@ -229,8 +230,15 @@ const NO_TYPING: Readonly<Record<string, string>> = {};
 /** a fresh set-up: nothing about the organisation's identity has been saved yet. */
 const unset = (stored: StoredOrg): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
 
-/** a number the finder locked in, with the list's answer about it, or none where none was asked. */
-type Landing = { readonly ein: string; readonly answer: EinRead | null };
+/**
+ * a number the finder locked in, with the list's answer about it, or none where none was asked, and
+ * the match it was picked as, or none where it was typed.
+ */
+type Landing = {
+	readonly ein: string;
+	readonly answer: EinRead | null;
+	readonly match: NonprofitMatch | null;
+};
 
 export function OrgFold({
 	stored,
@@ -290,20 +298,21 @@ export function OrgFold({
 	const put = (boxes: Partial<Record<IdentityField, string>>): number =>
 		putBoxes(form.mount.ref.current?.elements, boxes);
 
-	/* what a found organisation leaves behind: its values in the boxes that are empty or still hold
-	   what an earlier fill put there, the Country box only while it is empty (`foundBoxes` in
-	   ./ein-lookup.ts), and its website for the Sites fold. effect events, so the watch made once per
-	   mount reads and fills the form standing when it calls. */
-	const found = useEffectEvent((organisation: NonprofitOrganisation, before: HeldBoxes) => {
-		rememberWebsite(organisation.website);
-		return put(foundBoxes(organisation, before, held())) > 0;
-	});
+	/* the boxes the watch decided on (./ein-lookup.ts says which), put as they are, and a found
+	   organisation's website kept for the Sites fold. effect events, so the watch made once per mount
+	   reads and fills the form standing when it calls. */
+	const filled = useEffectEvent(
+		(boxes: Partial<Record<IdentityField, string>>, organisation: NonprofitOrganisation | null) => {
+			if (organisation !== null) rememberWebsite(organisation.website);
+			return put(boxes);
+		}
+	);
 	const holding = useEffectEvent(held);
 
 	/* the watch over the EIN box, made once per mount and handed the box's text at every change. */
 	const watch = useRef<EinWatch | null>(null);
 	useEffect(() => {
-		const watching = watchEin({ lookUp, held: holding, onNote: setNote, onFound: found });
+		const watching = watchEin({ lookUp, held: holding, onNote: setNote, onFill: filled });
 		watch.current = watching;
 		return () => {
 			watching.stop();
@@ -331,21 +340,19 @@ export function OrgFold({
 
 	/* the finder's number, asked about where the list can be, and locked in whatever it answered. a
 	   finder shut while the lookup is out locks nothing in. */
-	const lockIn = async (ein: string, signal: AbortSignal) => {
+	const lockIn = async (ein: string, signal: AbortSignal, match: NonprofitMatch | null) => {
 		const answer = lookups && watch.current !== null ? await watch.current.ask(ein, signal) : null;
 		if (signal.aborted) return;
 		setLocked(true);
 		setFinding(false);
-		setLanding({ ein, answer });
+		setLanding({ ein, answer, match });
 	};
 
-	/* a number locked in, put to the form drawn for it: the note and the fill first, so the number put
-	   in the EIN box after them is one the watch already holds and asks nothing about, and then focus
-	   on the first box the operator still owes, or on Save. keyed to the landing, so a page opened on
-	   a stored profile moves nothing. */
+	/* a number locked in, put to the form drawn for it — the EIN, the whole legal identity and the
+	   note, by the watch in one fill — and then focus on the first box the operator still owes, or on
+	   Save. keyed to the landing, so a page opened on a stored profile moves nothing. */
 	const takeLanding = useEffectEvent((at: Landing) => {
-		watch.current?.lockIn(at.ein, at.answer);
-		put({ tax_id: at.ein });
+		watch.current?.lockIn(at.ein, at.answer, at.match);
 		const needed = firstNeeded(held());
 		const owed = needed === null ? null : form.mount.ref.current?.elements.namedItem(needed);
 		if (owed instanceof HTMLElement) owed.focus();

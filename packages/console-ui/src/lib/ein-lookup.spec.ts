@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { NonprofitLookup, NonprofitOrganisation } from '../api/types';
+import type { NonprofitLookup, NonprofitMatch, NonprofitOrganisation } from '../api/types';
 import {
 	FILLED,
 	LOOKUP_UNANSWERED,
@@ -9,6 +9,7 @@ import {
 	einEdit,
 	foundBoxes,
 	revokedNote,
+	type EinWatch,
 	watchEin
 } from './ein-lookup';
 
@@ -51,21 +52,22 @@ const found = (over: Partial<NonprofitOrganisation> = {}): NonprofitLookup => ({
 /**
  * a watch over a stub that answers `answer`, and what it said and filled. `boxes` stands in for the
  * identity boxes as they are on the screen, which a case changes while a lookup is out; the stand-in
- * for the fold's fill writes what it is handed into them, and reports whether it wrote anything.
+ * for the fold's put writes what it is handed into them and reports how many it wrote, and an EIN
+ * put is handed back to the watch as typed, as the box's own input event is in ./org-fold.tsx.
  */
 function watched(answer: () => Promise<NonprofitLookup>, boxes: Record<string, string> = {}) {
 	const lookUp = vi.fn((_ein: string, _signal: AbortSignal) => answer());
 	const notes: { shown: string; said: string }[] = [];
 	const fills: NonprofitOrganisation[] = [];
-	const watch = watchEin({
+	const watch: EinWatch = watchEin({
 		lookUp,
 		held: () => ({ ...boxes }),
 		onNote: (note) => notes.push(note),
-		onFound: (organisation, wrote) => {
-			fills.push(organisation);
-			const fill = foundBoxes(organisation, wrote, boxes);
+		onFill: (fill, organisation) => {
+			if (organisation !== null) fills.push(organisation);
 			Object.assign(boxes, fill);
-			return Object.keys(fill).length > 0;
+			if (fill.tax_id !== undefined) watch.typed(fill.tax_id, '');
+			return Object.keys(fill).length;
 		}
 	});
 	return {
@@ -364,23 +366,72 @@ describe('what the finder asks before it locks a number in', () => {
 });
 
 describe('a number locked in from the finder', () => {
+	/** the match a pick hands the lock-in: what the finder's list held about the organisation. */
+	const PICKED: NonprofitMatch = {
+		ein: '123456789',
+		name: 'Riverside Community Food Bank',
+		city: 'Riverside',
+		state: 'CA',
+		deductible: true,
+		revokedOn: ''
+	};
+
+	/** an organisation already in the boxes, stored or locked in before, with what no lock-in reaches. */
+	const STANDING = {
+		tax_id: '98-7654321',
+		legal_name: 'Lakeside Pantry',
+		address_line1: '9 Shore Drive',
+		address_line2: 'Suite 4',
+		city: 'Lakeside',
+		region: 'MI',
+		postal_code: '49116',
+		country: 'United States',
+		mission: 'Meals for Lakeside.',
+		vision: 'No one hungry on the lake.',
+		brand_colour: '#1d4ed8'
+	};
+
 	/** the answer the finder was given, asked through the watch the fold locks it in with. */
 	async function lockedIn(
 		answer: () => Promise<NonprofitLookup>,
-		boxes: Record<string, string> = {}
+		{
+			boxes = {},
+			match = null
+		}: { boxes?: Record<string, string>; match?: NonprofitMatch | null } = {}
 	) {
 		const seen = watched(answer, boxes);
 		const read = await seen.watch.ask('12-3456789', new AbortController().signal);
-		seen.watch.lockIn('12-3456789', read);
+		seen.watch.lockIn('12-3456789', read, match);
 		return seen;
 	}
 
-	it('fills a found organisation and says the fill, with no note for one in good standing', async () => {
-		const { boxes, note, said } = await lockedIn(async () => found());
+	it('replaces every identity box with the organisation found, and says the fill', async () => {
+		const { boxes, note, said } = await lockedIn(async () => found(), {
+			boxes: { ...STANDING }
+		});
 
-		expect(boxes).toMatchObject({ legal_name: 'Riverside Community Food Bank', city: 'Riverside' });
+		expect(boxes).toEqual({
+			...STANDING,
+			tax_id: '12-3456789',
+			legal_name: 'Riverside Community Food Bank',
+			address_line1: '400 Mill Road',
+			address_line2: '',
+			city: 'Riverside',
+			region: 'CA',
+			postal_code: '92501',
+			country: US_COUNTRY,
+			mission: 'Food for every family in Riverside County.'
+		});
 		expect(note()).toBe('');
 		expect(said()).toBe(FILLED);
+	});
+
+	it('empties a box the organisation found holds nothing for, rather than keep the one before', async () => {
+		const { boxes } = await lockedIn(async () => found({ mission: '', postal_code: '' }), {
+			boxes: { ...STANDING }
+		});
+
+		expect([boxes.mission, boxes.postal_code]).toEqual(['', '']);
 	});
 
 	it('fills one not listed as deductible, and says so', async () => {
@@ -393,63 +444,82 @@ describe('a number locked in from the finder', () => {
 	it('fills one revoked, and says when', async () => {
 		const { note } = await lockedIn(async () => found({ revokedOn: '2023-05-15' }));
 
-		expect(note()).toBe('Tax-exempt status revoked May 15, 2023.');
+		expect(note()).toBe(revokedNote('2023-05-15'));
 	});
 
-	it('fills nothing for a number not on the list, and says so', async () => {
-		const { boxes, note, fills } = await lockedIn(async () => ({
-			state: 'not_found',
-			organisation: EMPTY
-		}));
-
-		expect(fills).toEqual([]);
-		expect(boxes).toEqual({});
-		expect(note()).toBe(NOT_LISTED);
+	const notListed = async (): Promise<NonprofitLookup> => ({
+		state: 'not_found',
+		organisation: EMPTY
 	});
+	for (const [kind, answer, says] of [
+		['not on the list', notListed, NOT_LISTED],
+		['not answered', unavailable, LOOKUP_UNANSWERED]
+	] as const) {
+		it(`fills the pick's name, city and state for one ${kind}, and empties the rest of the identity`, async () => {
+			const { boxes, note, said } = await lockedIn(answer, {
+				boxes: { ...STANDING },
+				match: PICKED
+			});
 
-	it('fills nothing where the list did not answer, and says so', async () => {
-		const { boxes, note } = await lockedIn(unavailable);
+			expect(boxes).toEqual({
+				...STANDING,
+				tax_id: '12-3456789',
+				legal_name: 'Riverside Community Food Bank',
+				address_line1: '',
+				address_line2: '',
+				city: 'Riverside',
+				region: 'CA',
+				postal_code: '',
+				country: '',
+				mission: ''
+			});
+			expect(note()).toBe(says);
+			expect(said()).toBe(FILLED);
+		});
 
-		expect(boxes).toEqual({});
-		expect(note()).toBe(LOOKUP_UNANSWERED);
-	});
+		it(`empties the identity and keeps the EIN for a number typed and ${kind}`, async () => {
+			const { boxes, note, said, fills } = await lockedIn(answer, { boxes: { ...STANDING } });
 
-	it('says nothing and fills nothing on a console that cannot ask the list', () => {
-		const { watch, lookUp, fills, note } = watched(async () => found());
-		watch.lockIn('12-3456789', null);
+			expect(boxes).toEqual({
+				...STANDING,
+				tax_id: '12-3456789',
+				legal_name: '',
+				address_line1: '',
+				address_line2: '',
+				city: '',
+				region: '',
+				postal_code: '',
+				country: '',
+				mission: ''
+			});
+			expect(fills).toEqual([]);
+			expect(note()).toBe(says);
+			expect(said()).toBe('');
+		});
+	}
+
+	it('puts the EIN and empties the identity, asking nothing, on a console that cannot ask the list', () => {
+		const { watch, lookUp, boxes, note } = watched(async () => found(), { ...STANDING });
+		watch.lockIn('12-3456789', null, null);
 
 		expect(lookUp).not.toHaveBeenCalled();
-		expect(fills).toEqual([]);
+		expect([boxes.tax_id, boxes.legal_name, boxes.vision]).toEqual([
+			'12-3456789',
+			'',
+			STANDING.vision
+		]);
 		expect(note()).toBe('');
 	});
 
-	it('takes the name, city and state of the organisation chosen over the ones standing', async () => {
-		const { boxes } = await lockedIn(async () => found(), {
-			legal_name: 'Lakeside Pantry',
-			city: 'Lakeside',
-			region: 'MI',
-			address_line1: '9 Shore Drive'
-		});
+	it('asks nothing when it puts the number it locked in into the EIN box', async () => {
+		const { lookUp, boxes } = await lockedIn(unavailable);
 
-		expect(boxes).toMatchObject({
-			legal_name: 'Riverside Community Food Bank',
-			city: 'Riverside',
-			region: 'CA',
-			address_line1: '9 Shore Drive'
-		});
-	});
-
-	it('asks nothing when the number it locked in is then put in the EIN box', async () => {
-		const { watch, lookUp } = await lockedIn(unavailable);
-		watch.typed('12-3456789', '');
-		await settled();
-
+		expect(boxes.tax_id).toBe('12-3456789');
 		expect(lookUp).toHaveBeenCalledTimes(1);
 	});
 
-	it('keeps the note when the number it locked in is then put in the EIN box', async () => {
-		const { watch, note, said } = await lockedIn(async () => found({ deductible: false }));
-		watch.typed('12-3456789', '');
+	it('keeps the note when it puts the number it locked in into the EIN box', async () => {
+		const { note, said } = await lockedIn(async () => found({ deductible: false }));
 
 		expect(note()).toBe(NOT_DEDUCTIBLE);
 		expect(said()).toBe(FILLED);
@@ -472,6 +542,22 @@ describe('a number locked in from the finder', () => {
 
 		expect(boxes.legal_name).toBe('Lakeside Pantry');
 		expect(boxes.city).toBe('Lakeside');
+	});
+
+	it('waits for a profile save that is out, EIN and fill together', async () => {
+		const seen = watched(async () => found(), { ...STANDING });
+		const read = await seen.watch.ask('12-3456789', new AbortController().signal);
+		seen.watch.saving();
+		seen.watch.lockIn('12-3456789', read, null);
+
+		expect(seen.boxes.tax_id).toBe(STANDING.tax_id);
+
+		seen.watch.afterSave();
+
+		expect([seen.boxes.tax_id, seen.boxes.legal_name]).toEqual([
+			'12-3456789',
+			'Riverside Community Food Bank'
+		]);
 	});
 });
 

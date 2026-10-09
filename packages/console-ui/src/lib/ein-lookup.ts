@@ -1,5 +1,5 @@
 import { EIN, einAsTyped } from '@better-giving/operator/console/org-rules';
-import type { NonprofitLookup, NonprofitOrganisation } from '../api/types';
+import type { NonprofitLookup, NonprofitMatch, NonprofitOrganisation } from '../api/types';
 import type { IdentityField } from './org-form';
 
 // when the Organisation details fold asks the IRS list about the number in its EIN box, and what it says
@@ -26,9 +26,15 @@ import type { IdentityField } from './org-form';
 // **a lookup never writes over the operator.** an answer fills a box only while it is empty, or
 // still holds exactly what an earlier fill put there — a mission or an address typed before the
 // number, or after it, stays as typed whatever the list says. the record of what the fills wrote is
-// the watch's own, one per fold on the page, and nothing on the screen draws it. the one exception
-// is a number locked in from the finder, which is the operator choosing an organisation: its name,
-// city and state replace the ones standing, and every other box keeps this rule.
+// the watch's own, one per fold on the page, and nothing on the screen draws it.
+//
+// **a number locked in from the finder is the one exception: it replaces the whole legal identity**
+// (`lockedBoxes`). it is the operator choosing an organisation, so every identity box takes what
+// the answer holds and is emptied where it holds nothing — a box left standing would be the
+// organisation chosen before, saved under this one's number. the vision, the brand colour, the
+// links, the logo and the notification address are the operator's and no lock-in reaches them.
+// the watch puts the EIN in the same fill, after it holds the number, so the box's own change asks
+// nothing.
 //
 // **an answer landing while a profile save is out waits for the save.** the save's answer puts the
 // boxes back at the profile it stored, which would take a fill made under it away unseen, and the
@@ -134,12 +140,45 @@ export function foundBoxes(
 	);
 }
 
+/** the legal identity, which a lock-in writes whole; the EIN is put beside it. */
+const LOCKED: readonly IdentityField[] = [
+	'legal_name',
+	'address_line1',
+	'address_line2',
+	'city',
+	'region',
+	'postal_code',
+	'country',
+	'mission'
+];
+
 /**
- * the boxes a lock-in takes whatever they hold: the finder's answer is a choice of organisation, so
- * its name and where it is listed replace the ones standing, and every other box is filled by
- * {@link foundBoxes}'s own rule.
+ * every box a lock-in writes: the EIN, and the legal identity from the organisation the list found,
+ * or, where it found none, from the match picked off the finder's list — its name, city and state.
+ * a box the source holds nothing for is emptied. `answer` is `null` where this console cannot ask.
  */
-const CHOSEN: readonly IdentityField[] = ['legal_name', 'city', 'region'];
+export function lockedBoxes(
+	ein: string,
+	answer: EinRead | null,
+	match: NonprofitMatch | null
+): Filled {
+	const found = answer?.found ?? null;
+	const from: Filled =
+		found !== null
+			? {
+					legal_name: found.name,
+					address_line1: found.address_line1,
+					city: found.city,
+					region: found.region,
+					postal_code: found.postal_code,
+					country: US_COUNTRY,
+					mission: found.mission
+				}
+			: match !== null
+				? { legal_name: match.name, city: match.city, region: match.state }
+				: {};
+	return { tax_id: ein, ...Object.fromEntries(LOCKED.map((field) => [field, from[field] ?? ''])) };
+}
 
 /** after as many digits as stood before `caret` in `typed`, as a place in `shown`. */
 function caretAfter(typed: string, caret: number, shown: string): number {
@@ -190,11 +229,11 @@ export type EinWatchOptions = {
 	/** the region under the box. said at every change of the box. */
 	readonly onNote: (note: EinNote) => void;
 	/**
-	 * an organisation the list holds, with what earlier fills wrote: the fold puts
-	 * `foundBoxes(organisation, wrote, held())`, which is the fill the watch records. answers whether
-	 * any box took a value, which is what decides whether the fill is said.
+	 * boxes to put, each made to say it changed, and the organisation the list found where they
+	 * came from one. these are the boxes the watch decided on and records as written; answers how
+	 * many took a value.
 	 */
-	readonly onFound: (organisation: NonprofitOrganisation, wrote: HeldBoxes) => boolean;
+	readonly onFill: (boxes: Filled, found: NonprofitOrganisation | null) => number;
 };
 
 export type EinWatch = {
@@ -208,10 +247,11 @@ export type EinWatch = {
 	readonly ask: (value: string, signal: AbortSignal) => Promise<EinRead>;
 	/**
 	 * the finder locked `value` in with `answer`, or with none where this console cannot ask the
-	 * list: said and filled as a choice of organisation ({@link CHOSEN}), and the box holding that
+	 * list, and `match` where it was picked off the finder's list: the EIN and the whole legal
+	 * identity put in one fill ({@link lockedBoxes}) and the note said, and the box holding that
 	 * number is one nothing asks about again until it changes.
 	 */
-	readonly lockIn: (value: string, answer: EinRead | null) => void;
+	readonly lockIn: (value: string, answer: EinRead | null, match: NonprofitMatch | null) => void;
 	/** a profile save went out: an answer landing from now waits for {@link EinWatch.afterSave}. */
 	readonly saving: () => void;
 	/**
@@ -223,7 +263,7 @@ export type EinWatch = {
 	readonly stop: () => void;
 };
 
-export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): EinWatch {
+export function watchEin({ lookUp, held, onNote, onFill }: EinWatchOptions): EinWatch {
 	let asking: { readonly digits: string; readonly control: AbortController } | null = null;
 	let last: { readonly digits: string; readonly read: EinRead } | null = null;
 	/** the whole number the box was last said to hold, so a call saying it again changes nothing. */
@@ -231,33 +271,25 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 	/** what the fills so far put in the boxes, box by box. */
 	let wrote: Filled = {};
 	let saveOut = false;
-	/** an answer that landed while a save was out. */
-	let waiting: { readonly answer: EinRead; readonly chosen: boolean } | null = null;
+	/** an answer that landed while a save was out, to land once it is over. */
+	let waiting: (() => void) | null = null;
 
-	/**
-	 * a found organisation put into the boxes, and the record kept of it. a choice of organisation
-	 * reads {@link CHOSEN} as an earlier fill's, so the found values replace whatever stands there.
-	 */
-	const fill = (found: NonprofitOrganisation, chosen: boolean): boolean => {
-		const now = held();
-		const before: Filled = chosen
-			? { ...wrote, ...Object.fromEntries(CHOSEN.map((field) => [field, now[field] ?? ''])) }
-			: wrote;
-		const boxes = foundBoxes(found, before, now);
-		const took = onFound(found, before);
-		if (took) wrote = { ...wrote, ...boxes };
-		return took;
+	const landOrWait = (landing: () => void) => {
+		if (saveOut) waiting = landing;
+		else landing();
 	};
 
-	/** the note an answer says, and the fill it is said beside where one was made. */
-	const land = (answer: EinRead, chosen: boolean) => {
-		if (saveOut) {
-			waiting = { answer, chosen };
-			return;
-		}
-		const filledAny = answer.found !== null && fill(answer.found, chosen);
-		onNote({ shown: answer.note, said: filledAny ? FILLED : '' });
-	};
+	/** a typed number's answer: its note, and the fill by {@link foundBoxes}'s rule where one was found. */
+	const land = (answer: EinRead) =>
+		landOrWait(() => {
+			let took = 0;
+			if (answer.found !== null) {
+				const boxes = foundBoxes(answer.found, wrote, held());
+				took = onFill(boxes, answer.found);
+				if (took > 0) wrote = { ...wrote, ...boxes };
+			}
+			onNote({ shown: answer.note, said: took > 0 ? FILLED : '' });
+		});
 
 	const typed = (value: string, stored: string) => {
 		const digits = EIN.test(value) ? digitsOf(value) : null;
@@ -287,7 +319,7 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 				if (control.signal.aborted) return;
 				asking = null;
 				if (answer !== UNANSWERED) last = { digits, read: answer };
-				land(answer, false);
+				land(answer);
 			});
 	};
 
@@ -296,17 +328,20 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 			? Promise.resolve(last.read)
 			: lookUp(value, signal).then(read, () => UNANSWERED);
 
-	const lockIn = (value: string, answer: EinRead | null) => {
+	const lockIn = (value: string, answer: EinRead | null, match: NonprofitMatch | null) => {
 		asking?.control.abort();
 		asking = null;
 		const digits = digitsOf(value);
-		holding = digits;
-		if (answer === null) {
-			onNote(SILENT_NOTE);
-			return;
-		}
-		if (answer !== UNANSWERED) last = { digits, read: answer };
-		land(answer, true);
+		if (answer !== null && answer !== UNANSWERED) last = { digits, read: answer };
+		landOrWait(() => {
+			// held before the put, so the EIN box saying it changed is a number already held.
+			holding = digits;
+			const boxes = lockedBoxes(value, answer, match);
+			onFill(boxes, answer?.found ?? null);
+			wrote = boxes;
+			const filledAny = LOCKED.some((field) => boxes[field] !== '');
+			onNote({ shown: answer?.note ?? '', said: filledAny ? FILLED : '' });
+		});
 	};
 
 	return {
@@ -318,9 +353,9 @@ export function watchEin({ lookUp, held, onNote, onFound }: EinWatchOptions): Ei
 		},
 		afterSave: () => {
 			saveOut = false;
-			const landed = waiting;
+			const landing = waiting;
 			waiting = null;
-			if (landed !== null) land(landed.answer, landed.chosen);
+			landing?.();
 		},
 		stop: () => {
 			asking?.control.abort();

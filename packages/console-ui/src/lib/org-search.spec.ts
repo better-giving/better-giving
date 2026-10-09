@@ -33,7 +33,9 @@ function watched(
 	} = {}
 ) {
 	const search = vi.fn((_query: string, _signal: AbortSignal) => answer());
-	const lockIn = vi.fn((_ein: string, _signal: AbortSignal) => locking());
+	const lockIn = vi.fn((_ein: string, _signal: AbortSignal, _match: NonprofitMatch | null) =>
+		locking()
+	);
 	const views: FinderView[] = [];
 	const watch = watchFinder({
 		search,
@@ -86,13 +88,13 @@ describe('a press', () => {
 		expect(lockIn).not.toHaveBeenCalled();
 	});
 
-	it('locks a whole EIN in once, and searches nothing', async () => {
+	it('locks a whole EIN in once, as typed and no match, and searches nothing', async () => {
 		const { watch, search, lockIn } = watched(ok);
 		watch.press('12-3456789');
 		await settled();
 
 		expect(lockIn).toHaveBeenCalledTimes(1);
-		expect(lockIn.mock.calls[0]?.[0]).toBe('12-3456789');
+		expect([lockIn.mock.calls[0]?.[0], lockIn.mock.calls[0]?.[2]]).toEqual(['12-3456789', null]);
 		expect(search).not.toHaveBeenCalled();
 	});
 
@@ -189,13 +191,13 @@ describe('a press', () => {
 });
 
 describe('a pick', () => {
-	it('locks in the EIN of the match taken, in its stored spelling', async () => {
+	it('locks in the EIN of the match taken, in its stored spelling, with the match', async () => {
 		const { watch, lockIn, search } = watched(ok);
 		watch.pick(MATCH);
 		await settled();
 
 		expect(lockIn).toHaveBeenCalledTimes(1);
-		expect(lockIn.mock.calls[0]?.[0]).toBe('12-3456789');
+		expect([lockIn.mock.calls[0]?.[0], lockIn.mock.calls[0]?.[2]]).toEqual(['12-3456789', MATCH]);
 		expect(search).not.toHaveBeenCalled();
 	});
 });

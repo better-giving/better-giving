@@ -76,8 +76,15 @@ export type OrgFinderProps = {
 	/** whether this console can ask the IRS list; where it cannot, only a whole EIN does anything. */
 	readonly lookups: boolean;
 	readonly search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
-	/** a whole EIN, in its stored spelling, to look up and lock in; settles once it has. */
-	readonly lockIn: (ein: string, signal: AbortSignal) => Promise<void>;
+	/**
+	 * a whole EIN, in its stored spelling, to look up and lock in, with the match it was picked as or
+	 * `null` for one typed; settles once it has.
+	 */
+	readonly lockIn: (
+		ein: string,
+		signal: AbortSignal,
+		match: NonprofitMatch | null
+	) => Promise<void>;
 	/** the page is writing, which holds a press and a pick. */
 	readonly closed: boolean;
 	/** Escape in the box, where there is a form under the finder to go back to. */

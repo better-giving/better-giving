@@ -75,8 +75,15 @@ const shown = (matches: readonly NonprofitMatch[]): SearchState =>
 
 export type FinderWatchOptions = {
 	readonly search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
-	/** a whole EIN to look up and lock in; settles once it has, or once `signal` gives it up. */
-	readonly lockIn: (ein: string, signal: AbortSignal) => Promise<void>;
+	/**
+	 * a whole EIN to look up and lock in, with the match it was picked as, or `null` for one typed;
+	 * settles once it has, or once `signal` gives it up.
+	 */
+	readonly lockIn: (
+		ein: string,
+		signal: AbortSignal,
+		match: NonprofitMatch | null
+	) => Promise<void>;
 	/** whether this console can ask the list at all; where it cannot, a name asks nothing. */
 	readonly lookups: boolean;
 	readonly onView: (view: FinderView) => void;
@@ -116,9 +123,9 @@ export function watchFinder({
 		});
 	};
 
-	const lookUp = (ein: string) =>
+	const lookUp = (ein: string, match: NonprofitMatch | null) =>
 		run((signal) =>
-			lockIn(ein, signal).then(
+			lockIn(ein, signal, match).then(
 				() => null,
 				() => null
 			)
@@ -129,7 +136,7 @@ export function watchFinder({
 		const ask = finderAsk(text, lookups);
 		if (ask === null) return;
 		if (ask.kind === 'lookup') {
-			lookUp(ask.ein);
+			lookUp(ask.ein, null);
 			return;
 		}
 		const remembered = memory.get(ask.key);
@@ -153,7 +160,7 @@ export function watchFinder({
 	return {
 		press,
 		pick: (match) => {
-			if (out === null) lookUp(einAsPrinted(match.ein));
+			if (out === null) lookUp(einAsPrinted(match.ein), match);
 		},
 		stop: () => {
 			out?.abort();
