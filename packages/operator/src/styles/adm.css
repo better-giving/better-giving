@@ -2079,15 +2079,15 @@
 		margin-inline-start: auto;
 	}
 
-	/* the press that writes the box draws its mark and no word, in the small control's square. */
+	/* the press that writes the box draws its mark and a word, a small quiet button never narrower
+	   than the floor, so its target need reach past it in the block axis alone. */
 	.adm-field__press {
-		inline-size: var(--admin-control-height-sm);
-		padding-inline: 0;
+		min-inline-size: var(--admin-touch-min);
 	}
 
-	/* its target (a target past the drawn edge, under the buttons) would reach further under the
-	   head than the step down to the box, so it ends at that step instead and reaches up toward the
-	   field above, which stands a field's step off. */
+	/* its target (a target past the drawn edge, under the buttons) spans the press edge to edge, and
+	   would reach further under the head than the step down to the box, so it ends at that step
+	   instead and reaches up toward the field above, which stands a field's step off. */
 	.adm-field__head .adm-field__press::before {
 		inset-block-start: calc(
 			100% +
@@ -2095,6 +2095,8 @@
 			var(--admin-space-3) -
 			var(--admin-touch-min)
 		);
+		inset-inline-start: calc(-1 * var(--admin-border-width));
+		inline-size: calc(100% + 2 * var(--admin-border-width));
 	}
 
 	.adm-field > .adm-hint {

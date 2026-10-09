@@ -10,8 +10,9 @@ import {
 } from '../rich-text/rich-text-editor';
 
 // a text box the AI can write, in a block's sheet and in a campaign's Name sheet: every box
-// $lib/page/suggest-fields.ts names. the press is Write with AI, drawn as its mark alone at the end
-// of the box's label row (`labelAside` on the field), and it asks the page's suggest route
+// $lib/page/suggest-fields.ts names. the press is Write with AI, drawn as its mark and the word
+// Write at the end of the box's label row (`labelAside` on the field) — the name starts with the
+// word, so a reader saying what they see says its name — and it asks the page's suggest route
 // (src/routes/_app.admin.pages.$pageId.suggest.ts) for that one box with the words it holds now.
 // it is a plain `fetch`, so nothing on the editor is read again when it lands: the ask writes
 // nothing.
@@ -147,7 +148,9 @@ function useSuggest<S>(
 					onClick={() => {
 						if (!asking) void write();
 					}}
-				/>
+				>
+					Write
+				</Button>
 			</>
 		),
 		status: said,

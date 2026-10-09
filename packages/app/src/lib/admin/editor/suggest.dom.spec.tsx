@@ -210,7 +210,7 @@ describe('Write with AI', () => {
 		['a question and its rich answer', () => sheet(faq), ['Question', 'Answer']],
 		['a photo, on its description', () => sheet(hero), ['Describe the photo']],
 		['a campaign’s name', nameSheet, ['Name']]
-	])('stands at the end of the label row of every box the AI can write on %s', (_, open, boxes) => {
+	])('stands at the end of the label row of every box the AI can write on %s, reading Write', (_, open, boxes) => {
 		const root = open();
 		const carrying = [...root.querySelectorAll('.adm-field')].filter((one) => writePress(one));
 
@@ -218,7 +218,10 @@ describe('Write with AI', () => {
 			carrying.map((one) => one.querySelector('.adm-field__label')?.firstChild?.textContent?.trim())
 		).toEqual(boxes);
 		expect(root.querySelectorAll('button[aria-label="Write with AI"]')).toHaveLength(boxes.length);
-		for (const one of carrying) expect(writePress(one)?.classList).toContain('adm-field__press');
+		for (const one of carrying) {
+			expect(writePress(one)?.classList).toContain('adm-field__press');
+			expect(writePress(one)?.textContent).toBe('Write');
+		}
 	});
 
 	it.each([
@@ -400,6 +403,7 @@ describe('Write with AI', () => {
 		const out = writePress(box);
 		expect(out?.getAttribute('aria-busy')).toBe('true');
 		expect(out?.getAttribute('aria-disabled')).toBe('true');
+		expect(out?.textContent).toBe('Write');
 		expect(document.activeElement).toBe(out);
 		await press(out);
 		expect(asked).toHaveLength(1);
