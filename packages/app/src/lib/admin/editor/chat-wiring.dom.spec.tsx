@@ -477,22 +477,25 @@ describe('an empty chat', () => {
 	it.each([
 		['from the wide breakpoint', true],
 		['below it', false]
-	])('on a drafted page is asked nothing %s, the panel opening on the box alone', async (_, wide) => {
-		loadedDrafted = true;
-		atWidth(wide);
-		screen();
-		await settle();
-		expect(document.querySelector('dialog')).toBeNull();
+	])(
+		'on a drafted page is asked nothing %s, the panel opening on the box alone',
+		async (_, wide) => {
+			loadedDrafted = true;
+			atWidth(wide);
+			screen();
+			await settle();
+			expect(document.querySelector('dialog')).toBeNull();
 
-		if (!wide) await press(button('AI'));
-		await settle();
+			if (!wide) await press(button('AI'));
+			await settle();
 
-		expect(posted).toEqual([]);
-		expect(document.querySelector('.adm-chat__waiting')).toBeNull();
-		expect(questionCard()).toBeNull();
-		expect(turnsShown()).toEqual([]);
-		expect(document.querySelector('textarea')).not.toBeNull();
-	});
+			expect(posted).toEqual([]);
+			expect(document.querySelector('.adm-chat__waiting')).toBeNull();
+			expect(questionCard()).toBeNull();
+			expect(turnsShown()).toEqual([]);
+			expect(document.querySelector('textarea')).not.toBeNull();
+		}
+	);
 });
 
 /** a page never drafted with an empty chat, at the wide breakpoint, its opening questions landed. */
