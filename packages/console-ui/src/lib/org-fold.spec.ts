@@ -299,12 +299,12 @@ describe('the Organisation fold’s save', () => {
 			/<img[^>]*>/
 		)?.[0] ?? '<no mark>';
 
-	/** the box a link row draws, the slot at its start and the words drawn beside the slot, by the
-	    row's position. */
+	/** the box a link row draws, the mark at its start and the words drawn inside the slot after
+	    it, by the row's position. */
 	const linkRow = (markup: string, at: number) => {
 		const row = markup.match(
 			new RegExp(
-				`<div class="adm-leadwrap"><span class="adm-leadwrap__lead" aria-hidden="true">(.*?)</span>(<span class="adm-vh"[^>]*>[^<]*</span>)?<input[^>]*name="social_links\\[${at}\\]"[^>]*>`,
+				`<div class="adm-leadwrap"><span class="adm-leadwrap__lead" aria-hidden="true">(.*?)(<span hidden=""[^>]*>[^<]*</span>)?</span><input[^>]*name="social_links\\[${at}\\]"[^>]*>`,
 				's'
 			)
 		);
@@ -324,13 +324,13 @@ describe('the Organisation fold’s save', () => {
 		expect(instagram.slot).toContain(markOf('instagram'));
 	});
 
-	// the mark says the platform on the screen, so the name is drawn to a reader alone, outside the
-	// slot that is out of the tree, and the box is described by it.
+	// the mark says the platform on the screen, so the name is drawn hidden inside the slot that is
+	// out of the tree, and the box is described by it: a description reads hidden words it names.
 	it('names the platform to a reader alone, and describes the box by it', () => {
 		const { markup } = drawn(WIDENED);
 		const { slot, said, box } = linkRow(markup, 0);
 
-		expect(said).toBe('<span class="adm-vh" id="org-social_links[0]-lead">Facebook</span>');
+		expect(said).toBe('<span hidden="" id="org-social_links[0]-lead">Facebook</span>');
 		expect(slot).not.toContain('Facebook');
 		expect(box).toMatch(/aria-describedby="[^"]*org-social_links\[0\]-lead/);
 	});

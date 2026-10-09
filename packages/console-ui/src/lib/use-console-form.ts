@@ -97,9 +97,9 @@ import { refusalStanding } from './refusal-standing';
 // `id` it was handed — `${id}-err` is the message it draws — and renders every element it names.
 // `getInputProps` composes one too, out of conform's `errorId`, and names an element it expects the
 // *screen* to have rendered; no screen here renders one. spread its props onto that field and
-// conform's wins through the component's `...rest`, so the control points at an id nothing on the
-// page answers to: it renders, it hydrates, it looks right, and a reader following the description
-// finds nothing.
+// conform's id joins the field's own, so the control points at an id nothing on the page answers
+// to: it renders, it hydrates, it looks right, and a reader following the description finds
+// nothing.
 //
 // what a fold loses with them is nothing it had. `aria-invalid` is the field's own off the message
 // it holds, the value is {@link ConsoleForm.box}'s below, and the constraint attributes

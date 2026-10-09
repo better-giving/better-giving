@@ -408,6 +408,85 @@ describe('a field mounted into a document', () => {
 	});
 });
 
+describe('what a box is described by', () => {
+	it('takes in the blocks a caller draws after its own, in the order each is drawn', () => {
+		// a pair's refusal is drawn by the group, once, and the box still has its own hint and its own
+		// refusal to be read beside it: a caller's ids standing in for the field's would drop both.
+		const root = render(Field, {
+			id: 'min-minor',
+			label: 'Smallest gift',
+			hint: 'In dollars.',
+			error: 'Write a number.',
+			needed: 'The form shows this first.',
+			'aria-describedby': 'pair-err pair-note'
+		});
+
+		expect(describedBy(root)).toEqual([
+			'min-minor-hint',
+			'min-minor-err',
+			'min-minor-need',
+			'pair-err',
+			'pair-note'
+		]);
+	});
+
+	it('names an id once, where it first stands', () => {
+		const root = render(Field, {
+			id: 'min-minor',
+			label: 'Smallest gift',
+			error: 'Write a number.',
+			'aria-describedby': 'min-minor-err pair-err'
+		});
+
+		expect(describedBy(root)).toEqual(['min-minor-err', 'pair-err']);
+	});
+
+	it('reads a caller’s explicit undefined as nothing said, and keeps its own', () => {
+		// a caller composing a list that came out empty hands `undefined` with the key present; the
+		// field's own blocks still describe the box.
+		const root = render(Field, {
+			id: 'org-name',
+			label: 'Registered name',
+			hint: 'As the IRS has it.',
+			'aria-describedby': undefined
+		});
+
+		expect(describedBy(root)).toEqual(['org-name-hint']);
+	});
+
+	it('describes the box by its lead’s words first, drawn once, inside the mark out of the tree', () => {
+		const root = render(Field, {
+			id: 'link-0',
+			'aria-label': 'Link 1',
+			hint: 'An address on the network.',
+			lead: { mark: <img className="led" alt="" />, said: 'Riverbank' },
+			'aria-describedby': 'links-err'
+		});
+		const slot = root.querySelector('.adm-leadwrap > .adm-leadwrap__lead');
+		const words = root.querySelector('#link-0-lead');
+
+		expect(describedBy(root)).toEqual(['link-0-lead', 'link-0-hint', 'links-err']);
+		expect(words?.textContent).toBe('Riverbank');
+		// inside the hidden mark, so browse mode does not read it as loose text before the box reads
+		// it again; a description still reads hidden words it names directly (accname 1.2, step 2A).
+		expect(slot?.getAttribute('aria-hidden')).toBe('true');
+		expect(slot?.contains(words)).toBe(true);
+		expect(words instanceof HTMLElement && words.hidden).toBe(true);
+	});
+
+	it('names no words for a lead that states none', () => {
+		const root = render(Field, {
+			id: 'link-0',
+			'aria-label': 'Link 1',
+			lead: { mark: <img className="led" alt="" /> }
+		});
+
+		expect(root.querySelector('img.led')).not.toBeNull();
+		expect(root.querySelector('#link-0-lead')).toBeNull();
+		expect(describedBy(root)).toEqual([]);
+	});
+});
+
 describe('a field that reports what was found about its value', () => {
 	it('stands its status region under the box before it has anything to say', () => {
 		// a region that arrives holding its words is an insertion rather than a change, and a reader
