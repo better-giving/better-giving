@@ -166,7 +166,7 @@ export function OrgFinder({ lookups, search, lockIn, closed, onClose }: OrgFinde
 
 export type OrgFinderCardProps = {
 	readonly view: FinderView;
-	/** whether this console can ask the list, which is what the box is labelled for. */
+	/** whether this console can ask the list, which decides the box's label. */
 	readonly lookups: boolean;
 	/** whether matches are drawn as an open list rather than counted alone. */
 	readonly listed: boolean;

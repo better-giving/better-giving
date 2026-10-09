@@ -21,7 +21,7 @@ import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 // **a list that does not answer is remembered by nobody**, so the same query asks again at the
 // next press.
 //
-// **every press is answered in the view.** a search empties the list and the words under the box
+// **every press is answered in the view.** a search empties the list and puts its wait under the box
 // while it is out, so the count that comes back is new words to a reader even when it repeats; a
 // remembered answer arrives the same way, on a later task than the press, so the two are never
 // drawn in one render. a lookup keeps the list it was picked from, held. a press that asks nothing
@@ -80,7 +80,8 @@ const WHOLE_EIN = /^\d{9}$/;
 
 /**
  * what a press on `text` asks. a whole EIN is a lookup in its stored spelling; anything else of at
- * least {@link SEARCH_FLOOR} characters is a search, on a console able to ask the list.
+ * least {@link SEARCH_FLOOR} characters is a search, on a console able to ask the list; anything
+ * left is refused, with why.
  */
 export function finderAsk(text: string, lookups: boolean): FinderAsk {
 	const query = text.trim();
