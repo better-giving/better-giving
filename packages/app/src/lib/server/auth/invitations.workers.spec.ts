@@ -2,7 +2,12 @@ import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { authAccount, authMemberInvitation, authUser } from '$lib/server/db/auth-schema';
+import {
+	authAccount,
+	authMemberInvitation,
+	authSession,
+	authUser
+} from '$lib/server/db/auth-schema';
 import type { Auth } from './index';
 import { createAuth } from './index';
 import {
@@ -304,6 +309,43 @@ describe('redeemInvitation', () => {
 		expect(await redeem(revoked.token)).toEqual({ ok: false, reason: 'link' });
 
 		expect(await redeem('ab'.repeat(32))).toEqual({ ok: false, reason: 'link' });
+	});
+
+	/**
+	 * a revoke pressed while the colleague is on the form lands between the liveness read and the
+	 * stamp. the sign-up has already written the account by then, so the revoke only holds if the
+	 * redeem takes that account back out and answers as a revoked link does.
+	 */
+	it('takes the account back out when the link is revoked mid-redeem', async () => {
+		const { token } = await invite('priya@example.org');
+		const [row] = await rowsFor('priya@example.org');
+		if (!row) throw new Error('no invitation row');
+		const revokedMidRedeem: Auth = {
+			...auth,
+			api: {
+				...auth.api,
+				signUpEmail: (async (...args: Parameters<Auth['api']['signUpEmail']>) => {
+					const signedUp = await auth.api.signUpEmail(...args);
+					await revokeInvitation(db, { id: row.id, now: NOW });
+					return signedUp;
+				}) as Auth['api']['signUpEmail']
+			}
+		};
+
+		const result = await redeemInvitation(db, revokedMidRedeem, {
+			token,
+			name: 'Priya',
+			password: PASSWORD,
+			headers: new Headers({ origin: ORIGIN }),
+			now: NOW
+		});
+
+		expect(result).toEqual({ ok: false, reason: 'link' });
+		expect(await db.select().from(authUser)).toHaveLength(0);
+		expect(await db.select().from(authAccount)).toHaveLength(0);
+		expect(await db.select().from(authSession)).toHaveLength(0);
+		const [after] = await rowsFor('priya@example.org');
+		expect(after?.acceptedAt).toBeNull();
 	});
 
 	it('creates nothing when the link is dead', async () => {

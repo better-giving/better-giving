@@ -165,6 +165,41 @@ describe('removeMember', () => {
 		expect(await auth.api.getSession({ headers: new Headers({ cookie }) })).toBeNull();
 	});
 
+	/**
+	 * a member can still hold a live link: a redeem that wrote the account and never reached its
+	 * stamp leaves one behind (./invitations.ts). removing them has to end it, or the link makes
+	 * the account again for as long as it has left to run.
+	 */
+	it('revokes a live invitation at the removed member’s address', async () => {
+		const invited = await inviteMember(db, {
+			email: 'priya@example.org',
+			now: NOW,
+			invitedBy: null
+		});
+		if (!invited.ok) throw new Error('expected an invitation');
+		const id = '019fb1c4-0000-7000-8000-00000000dead';
+		await db.insert(authUser).values({
+			id,
+			name: 'Priya',
+			email: 'priya@example.org',
+			emailVerified: true,
+			createdAt: NOW,
+			updatedAt: NOW
+		});
+
+		expect(await removeMember(db, { id, now: NOW })).toEqual({ ok: true, removed: 'member' });
+
+		const redeemed = await redeemInvitation(db, auth, {
+			token: invited.token,
+			name: 'Priya',
+			password: PASSWORD,
+			headers: new Headers({ origin: ORIGIN }),
+			now: NOW
+		});
+		expect(redeemed).toEqual({ ok: false, reason: 'link' });
+		expect(await db.select().from(authUser)).toEqual([]);
+	});
+
 	it('revokes a pending invitation instead of deleting a member', async () => {
 		const invited = await inviteMember(db, {
 			email: 'ana@example.org',

@@ -3,7 +3,13 @@ import { asc, eq, ne } from 'drizzle-orm';
 import type { Db } from '$lib/server/db/client';
 import { authMemberInvitation, authUser } from '$lib/server/db/auth-schema';
 import type { Auth } from './index';
-import { isAddress, liveInvitations, normaliseEmail, revokeInvitation } from './invitations';
+import {
+	isAddress,
+	liveInvitations,
+	normaliseEmail,
+	revokeInvitation,
+	revokeInvitationsOfUser
+} from './invitations';
 import { deleteResetLinks } from './reset-links';
 import { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 
@@ -95,6 +101,10 @@ export type RemoveResult =
  * that is why the removal is a delete and not a flag: a flag would need every read path to
  * remember it.
  *
+ * **a live invitation at their address is revoked in the same `batch()`.** a member can hold one —
+ * a redeem that wrote the account and never reached its stamp leaves it behind (./invitations.ts)
+ * — and left live it would make the account again for as long as it had to run.
+ *
  * **the deployer is refused by name.** `STAFF_USER_ID` is a constant, so this is a comparison
  * rather than a query, and the row cannot be reached through the list either — `listMembers`
  * excludes it. both, because a route that took an id from a form is a route that can be posted an
@@ -106,10 +116,10 @@ export async function removeMember(
 ): Promise<RemoveResult> {
 	if (input.id === STAFF_USER_ID) return { ok: false, reason: 'staff' };
 
-	const deleted = await db
-		.delete(authUser)
-		.where(eq(authUser.id, input.id))
-		.returning({ id: authUser.id });
+	const [, deleted] = await db.batch([
+		revokeInvitationsOfUser(db, { userId: input.id, now: input.now }),
+		db.delete(authUser).where(eq(authUser.id, input.id)).returning({ id: authUser.id })
+	]);
 	if (deleted.length > 0) return { ok: true, removed: 'member' };
 
 	const revoked = await revokeInvitation(db, { id: input.id, now: input.now });

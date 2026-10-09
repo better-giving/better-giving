@@ -1,6 +1,6 @@
 import { MIN_ADMIN_PASSWORD_LENGTH } from '@better-giving/operator/admin-password';
 import { APIError } from 'better-auth/api';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import * as z from 'zod';
 import type { Db } from '$lib/server/db/client';
 import {
@@ -191,6 +191,29 @@ export async function revokeInvitation(
 	return revoked.length > 0;
 }
 
+/**
+ * the statement that revokes every live invitation at a user's address, unexecuted, so that
+ * `removeMember` in ./members.ts runs it in the `batch()` that deletes the user. it reads the
+ * address off the `auth_user` row, so it has to come before the delete in that batch.
+ */
+export function revokeInvitationsOfUser(
+	db: Db,
+	input: { readonly userId: string; readonly now: Date }
+) {
+	return db
+		.update(authMemberInvitation)
+		.set({ revokedAt: input.now })
+		.where(
+			and(
+				inArray(
+					authMemberInvitation.email,
+					db.select({ email: authUser.email }).from(authUser).where(eq(authUser.id, input.userId))
+				),
+				liveInvitations(input.now)
+			)
+		);
+}
+
 export type RedeemResult =
 	| {
 			readonly ok: true;
@@ -224,8 +247,11 @@ export type RedeemResult =
  * account behind it is a colleague locked out of a link that will never work again, needing
  * somebody else to press a button.
  *
- * the stamp is guarded on the invitation still being unaccepted, so two presses of the same button
- * cannot make the second one look like a fresh acceptance.
+ * **the stamp is guarded on the invitation still being unaccepted and unrevoked, and a stamp that
+ * matched nothing takes the account back out.** the liveness read and the stamp are two round trips
+ * with the sign-up between them, so a revoke pressed while the colleague is on the form can land in
+ * that window. the account is deleted and the answer is `link`, the one a link revoked a moment
+ * earlier gets, so a revoke holds however late in the redeem it is pressed.
  *
  * `email_verified` is written true in that same `batch()`. better-auth's sign-up writes false and
  * has no reason to know better; here the address was proven before the account existed, because
@@ -267,7 +293,7 @@ export async function redeemInvitation(
 		return signUpRefusal(e);
 	}
 
-	await db.batch([
+	const [stamped] = await db.batch([
 		db
 			.update(authMemberInvitation)
 			.set({ acceptedAt: input.now })
@@ -277,12 +303,21 @@ export async function redeemInvitation(
 					isNull(authMemberInvitation.acceptedAt),
 					isNull(authMemberInvitation.revokedAt)
 				)
-			),
+			)
+			.returning({ id: authMemberInvitation.id }),
 		db
 			.update(authUser)
 			.set({ emailVerified: true, updatedAt: input.now })
 			.where(eq(authUser.id, created.id))
 	]);
+
+	if (stamped.length === 0) {
+		// the session and the credential go with the user, by cascade (`db/auth-schema.ts`), so the
+		// cookies minted above resolve nothing even if they were sent.
+		await db.delete(authUser).where(eq(authUser.id, created.id));
+		console.warn('an invitation could not be redeemed: revoked or used while it was redeemed');
+		return { ok: false, reason: 'link' };
+	}
 
 	return { ok: true, cookies, user: created };
 }
