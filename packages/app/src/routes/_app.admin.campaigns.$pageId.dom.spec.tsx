@@ -204,7 +204,7 @@ describe('the AI panel', () => {
 		expect(document.querySelector('[role="complementary"] .adm-questions')).not.toBeNull();
 	});
 
-	it('asks a page never drafted its opening questions alone, with no preview and no Edit by hand', async () => {
+	it('asks a page never drafted its opening questions alone, with no preview and no Edit', async () => {
 		drawn = { ...unpublished(), drafted: false };
 
 		await screen();
@@ -212,7 +212,7 @@ describe('the AI panel', () => {
 
 		expect(document.querySelector('iframe')).toBeNull();
 		expect(document.querySelector('[role="main"].adm-aipanel .adm-questions')).not.toBeNull();
-		expect(() => button('Edit by hand')).toThrow('no Edit by hand button');
+		expect(() => button('Edit')).toThrow('no Edit button');
 	});
 });
 
