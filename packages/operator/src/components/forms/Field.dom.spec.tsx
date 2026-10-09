@@ -468,7 +468,8 @@ describe('what a box is described by', () => {
 		expect(describedBy(root)).toEqual(['link-0-lead', 'link-0-hint', 'links-err']);
 		expect(words?.textContent).toBe('Riverbank');
 		// inside the hidden mark, so browse mode does not read it as loose text before the box reads
-		// it again; a description still reads hidden words it names directly (accname 1.2, step 2A).
+		// it again; a description still reads hidden words it names directly
+		// (https://www.w3.org/TR/accname-1.2/, step 2A).
 		expect(slot?.getAttribute('aria-hidden')).toBe('true');
 		expect(slot?.contains(words)).toBe(true);
 		expect(words instanceof HTMLElement && words.hidden).toBe(true);

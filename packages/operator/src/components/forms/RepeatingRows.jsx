@@ -277,8 +277,8 @@ export function RepeatingRows({
 						    the field names what it draws — the row's own sentence, a `lead`'s words — and
 						    the group's two blocks join them: the standing hint reaches every row, and the
 						    group's own sentence reaches only a row that has none of its own. a row's own
-						    `aria-describedby` goes in ahead of the group's, which is why the composed
-						    list is stated after the rest rather than overwritten by it. */}
+						    `aria-describedby` goes in ahead of the group's, so the composed list is stated
+						    after `{...rest}`, which would otherwise overwrite it. */}
 						<Field
 							id={row}
 							name={name}

@@ -17,8 +17,8 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // **a control drawn under the floor is aimed at at it, and its target lies over nothing else.** the
 // pool lays nothing out, so where a target reaches is the arithmetic of the tokens its rule and its
 // neighbours' rules spend. the members are read off the shared rule's own list, and each is named
-// here with the rule that positions it and the neighbours it stands off, so a member joining the
-// list without both fails rather than passes.
+// here with its holder and the neighbours it stands off, so a member joining the list without both
+// fails.
 
 const css = sheet('adm.css');
 const base = sheet('base.css');
@@ -261,9 +261,9 @@ const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
 const LOCKED_TRIGGER = '.adm-rows__row > :not(.adm-field) > .adm-markbtn';
 
 const MEMBERS: Record<string, Member> = {
-	// a press-to-open trigger hugs its mark. the neighbour is the one row that carries it beside a
-	// box: a locked row's status, one column step, the trailing item's border and its padding off
-	// the box, over the next row's Remove.
+	// a press-to-open trigger hugs its mark. its neighbours are where the one row carrying it beside
+	// a box puts it: in a locked row's status, one column step, the trailing item's border and its
+	// padding off the box, and over the next row's Remove.
 	'.adm-markbtn': {
 		holder: '.adm-markbtn',
 		drawn: () => {
