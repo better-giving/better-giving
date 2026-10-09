@@ -20,9 +20,9 @@ import (
 //
 // **a read that could not be made is an answer and never a refusal**: `unavailable` at 200, so the
 // fold leaves the boxes as typed and set-up goes on without it. a 400 names the value and the box it
-// came from: a query under searchFewest or past searchMost, counted in runes, one the API would
-// refuse or cut — no word in it, or more than searchWords, as searchWordsOf reads them — or a path
-// that is no EIN. a refusal of the API's would read as `unavailable`, which says the API is down.
+// came from: a query under searchFewest or past searchMost, counted in runes, one with no letter or
+// digit, which the API refuses as holding no word, or a path that is no EIN. a refusal of the API's
+// would read as `unavailable`, which says the API is down.
 //
 // every field of `organisation` is written in every state, empty unless found
 // (packages/console-ui/src/api/types.ts' header).
@@ -34,10 +34,6 @@ const searchFewest = 3
 // the most, past which nothing typed is a name: the longest legal names on the IRS lists are well
 // under it.
 const searchMost = 200
-
-// the most words a search is made on: the API searches the first 8 and drops the rest, so a ninth
-// would be typed for nothing.
-const searchWords = 8
 
 func nonprofitRoutes(routes *http.ServeMux, lookups *nonprofits.Client) {
 	routes.HandleFunc("GET /api/nonprofits/status", func(w http.ResponseWriter, _ *http.Request) {
@@ -52,15 +48,9 @@ func nonprofitRoutes(routes *http.ServeMux, lookups *nonprofits.Client) {
 				typed, length)})
 			return
 		}
-		switch words := searchWordsOf(typed); {
-		case words == 0:
+		if !strings.ContainsFunc(typed, isWordRune) {
 			answer(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf(
 				"the search box needs a letter or a digit, and %q has none", typed)})
-			return
-		case words > searchWords:
-			answer(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf(
-				"the search box takes at most %d words, and %q is %d: type a few distinctive words of the name",
-				searchWords, typed, words)})
 			return
 		}
 		answer(w, http.StatusOK, lookups.Search(r.Context(), typed))
@@ -76,30 +66,5 @@ func nonprofitRoutes(routes *http.ServeMux, lookups *nonprofits.Client) {
 	})
 }
 
-// how many words the API reads in typed (https://nonprofits.better.giving: punctuation is ignored and
-// at most 8 words are used): runs of letters and digits, with apostrophes dropped first and each word
-// counted once whatever its case. an accent typed apart from its letter stays in the word, as the
-// API's NFC composes the two before it reads them.
-func searchWordsOf(typed string) int {
-	seen := map[string]bool{}
-	var word strings.Builder
-	end := func() {
-		if word.Len() > 0 {
-			seen[strings.ToLower(word.String())] = true
-			word.Reset()
-		}
-	}
-	for _, r := range typed {
-		switch {
-		case r == '\'' || r == '\u2019':
-		case unicode.IsLetter(r) || unicode.IsNumber(r):
-			word.WriteRune(r)
-		case unicode.IsMark(r) && word.Len() > 0:
-			word.WriteRune(r)
-		default:
-			end()
-		}
-	}
-	end()
-	return len(seen)
-}
+// whether r is in a word as the API reads one (https://nonprofits.better.giving): a letter or a digit.
+func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }

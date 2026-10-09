@@ -246,30 +246,19 @@ func TestASearchWithNoLetterOrDigitIsRefusedNamingTheBox(t *testing.T) {
 	}
 }
 
-// words as the API reads them: runs of letters and digits, apostrophes dropped, each once whatever
-// its case.
-func TestASearchOfMoreThanEightWordsIsRefusedNamingTheBox(t *testing.T) {
+// the API searches the first 8 words and drops the rest, so a longer query is its to read.
+func TestASearchOfMoreThanEightWordsIsAskedAsTyped(t *testing.T) {
 	api, asked := nonprofitAPI(t, http.StatusOK, `{"results": []}`)
-	console := finding(t, api)
-	nine := "one two three four five six seven eight nine"
 
-	status, body := found(t, console, "/api/nonprofits/search?q="+url.QueryEscape(nine))
+	status, body := found(t, finding(t, api),
+		"/api/nonprofits/search?q="+url.QueryEscape("one two three four five six seven eight nine"))
 
-	said, _ := body["error"].(string)
-	if status != http.StatusBadRequest || !strings.Contains(said, "search box") || len(asked()) != 0 {
-		t.Errorf("%d %v and asked %q, want 400 naming the search box and nothing asked", status, body, asked())
+	if status != http.StatusOK || body["state"] != "ok" {
+		t.Errorf("%d %v, want it asked and answered", status, body)
 	}
-	for _, eight := range []string{
-		"The Board of Trustees of the Leland Stanford Junior University",
-		"one two three four five six seven eight one-two",
-		"St. Jude Children's Research Hospital of Memphis, Tennessee",
-	} {
-		if status, body := found(t, console, "/api/nonprofits/search?q="+url.QueryEscape(eight)); status != http.StatusOK {
-			t.Errorf("%q: %d %v, want it asked", eight, status, body)
-		}
-	}
-	if got := asked(); len(got) != 3 {
-		t.Errorf("asked %q, want the three searches of eight words or fewer", got)
+	if got := asked(); !slices.Equal(got,
+		[]string{"/v1/search?q=one+two+three+four+five+six+seven+eight+nine&limit=10"}) {
+		t.Errorf("asked %q, want the nine words sent as typed", got)
 	}
 }
 
