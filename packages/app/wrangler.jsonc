@@ -86,10 +86,11 @@
 	// Paid the CPU row is the one selected by the interval, thirty seconds under an hour and fifteen
 	// minutes at an hour or longer (https://developers.cloudflare.com/workers/platform/limits/,
 	// "CPU time").
-	// every expression above is under an hour, so every run has thirty seconds of CPU. fifteen
-	// minutes is the figure on the Duration table, which carries no interval condition and is
-	// therefore the easy one to reach for; it binds every run, and it is the higher of this
-	// schedule's two limits.
+	// the thirty-minute and the minute expressions are under an hour, so their runs have thirty
+	// seconds of CPU; each of the refund notices' two fires once an hour, so their runs have fifteen
+	// minutes. fifteen minutes is the figure on the Duration table, which carries no interval
+	// condition and is therefore the easy one to reach for; it binds every run, and for the two
+	// under an hour it is the higher of their two limits.
 	//
 	// what makes that worth stating here rather than beside a run is how the ceiling is enforced: the
 	// invocation is terminated as `exceededCpu` mid-flight, so nothing the run was part way through
@@ -120,8 +121,14 @@
 	// top-level and only top-level: wrangler runs `triggers` through its `inheritable` helper, so the
 	// `test` environment below carries the same schedule without repeating it — unlike the bindings,
 	// which it has to. an environment declaring `triggers` of its own replaces this one outright.
+	//
+	// no comma list: the refund notices' half hour is two expressions. `controller.cron` is this
+	// string character for character
+	// (https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/), but nothing
+	// documents how the schedules API hands a list back, and the console compares what it reads
+	// there against these (`Unscheduled` in packages/console/internal/deploy/upload.go).
 	"triggers": {
-		"crons": ["*/30 * * * *", "15,45 * * * *", "* * * * *"]
+		"crons": ["*/30 * * * *", "15 * * * *", "45 * * * *", "* * * * *"]
 	},
 
 	"d1_databases": [
@@ -162,10 +169,11 @@
 	],
 
 	// the four buckets this app charges: the whole public surface, the one endpoint on it that
-	// takes money, the staff sign-in and its password reset, and each key on the read API. CLAUDE.md names rate limiting
-	// as one of the things an endpoint on `/api/v1` owes before it ships; the sign-in is not on that
-	// surface and is here because it compares a single deploy-time var for anyone who asks, and
-	// the read API's is here because a key reads donor records as fast as it is answered.
+	// takes money, the staff sign-in and its password reset, and each key on the read API.
+	// CLAUDE.md names rate limiting as one of the things an endpoint on `/api/v1` owes before it
+	// ships; the sign-in is not on that surface and is here because it compares a single
+	// deploy-time var for anyone who asks, and the read API's is here because a key reads donor
+	// records as fast as it is answered.
 	//
 	// this deployment answers anonymous writes on three paths, not one: `POST /api/v1/forms/:id/
 	// donations`, the sign-in, and `POST /api/stripe/webhook`. the webhook is the one with no

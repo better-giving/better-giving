@@ -153,16 +153,19 @@ describe('which run an expression reaches', () => {
 		expect(sendDueEntries).not.toHaveBeenCalled();
 	});
 
-	it('sends the refund notices still owed every half hour, from the run’s own time', async () => {
-		await fires('15,45 * * * *');
+	it.each(['15 * * * *', '45 * * * *'])(
+		'sends the refund notices still owed on %s, from the run’s own time',
+		async (cron) => {
+			await fires(cron);
 
-		expect(sendOwedRefundNotices).toHaveBeenCalledWith(
-			{ db: expect.anything(), email: expect.anything() },
-			SCHEDULED_AT
-		);
-		expect(readPendingCryptoGifts).not.toHaveBeenCalled();
-		expect(sendDueEntries).not.toHaveBeenCalled();
-	});
+			expect(sendOwedRefundNotices).toHaveBeenCalledWith(
+				{ db: expect.anything(), email: expect.anything() },
+				SCHEDULED_AT
+			);
+			expect(readPendingCryptoGifts).not.toHaveBeenCalled();
+			expect(sendDueEntries).not.toHaveBeenCalled();
+		}
+	);
 
 	it('sends what the books, the Zaps and the destinations are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');

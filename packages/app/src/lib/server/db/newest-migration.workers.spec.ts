@@ -823,13 +823,13 @@ describe('0023 owes no notice on a refund already written', () => {
 	});
 
 	it.skipIf(nowhereToStop)('leaves every payment already written owing nothing', () => {
-		expect(payments.map((r) => [r.id, r.notice_owed_since])).toEqual([
-			['p-card', null],
-			['p-refund', null],
-			['p-venmo', null],
-			['p-daf', null],
-			['p-cash', null],
-			['p-unknown', null]
+		expect(payments.map((r) => [r.id, r.notice_owed_since, r.notice_maybe_sent_at])).toEqual([
+			['p-card', null, null],
+			['p-refund', null, null],
+			['p-venmo', null, null],
+			['p-daf', null, null],
+			['p-cash', null, null],
+			['p-unknown', null, null]
 		]);
 	});
 });

@@ -30,9 +30,10 @@
 	],
 	"crons": [
 		"*/30 * * * *",
-		"15,45 * * * *",
+		"15 * * * *",
+		"45 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "e8fcfd66660d04c89eadab1403092f97ab5d7c00"
+	"commit": "a0f259ef7ab659a8edf8f5dfa1f16ff9e754b4f1"
 }

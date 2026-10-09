@@ -60,8 +60,8 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 			now
 		),
 
-	'15,45 * * * *': (env, now) =>
-		sendOwedRefundNotices({ db: requestDb(env), email: createEmailProvider(env) }, now),
+	'15 * * * *': (env, now) => owedRefundNotices(env, now),
+	'45 * * * *': (env, now) => owedRefundNotices(env, now),
 
 	'* * * * *': (env, now) => {
 		// the three jobs below run in one invocation and spend its connections, subrequests and D1
@@ -100,6 +100,10 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 		]);
 	}
 };
+
+function owedRefundNotices(env: Env, now: Date): Promise<void> {
+	return sendOwedRefundNotices({ db: requestDb(env), email: createEmailProvider(env) }, now);
+}
 
 /**
  * the methods react router's server runtime routes: any other it answers with its own 405 before
