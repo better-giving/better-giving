@@ -34,7 +34,6 @@ import {
 	type EinWatch,
 	type HeldBoxes,
 	SILENT_NOTE,
-	foundBoxes,
 	watchEin
 } from './ein-lookup';
 import { droppedFile, LOGO_ACCEPT } from './logo-crop';
@@ -65,6 +64,7 @@ import { useConsoleForm } from './use-console-form';
 import { OrgWriteOutcome } from './org-write';
 import type {
 	NonprofitLookup,
+	NonprofitMatch,
 	NonprofitOrganisation,
 	NonprofitSearch,
 	OrgWrite
@@ -129,16 +129,19 @@ import type {
 // no box, no link, no logo and no Save, until an EIN is locked in. a whole EIN pressed in the finder,
 // or a match picked off its list, is looked up, and whatever the lookup answers — found, not listed,
 // or not answered — locks the number in: the whole screen appears with the number in the EIN box, the
-// note under it, and focus on the first required box still empty, or on Save where none is. a console
-// that cannot ask the list locks a whole EIN in at once and asks nothing. from then on the finder
-// collapses into "Pick a different organisation" beside Save, which opens it above the form.
+// note under it, and focus on the EIN box where there is a note, or else on the first required box
+// still empty, or on Save where none is. a console that cannot ask the list locks a whole EIN in at
+// once and asks nothing. from then on the finder collapses into "Pick a different organisation"
+// beside Save, which opens it above the form, and Save is held while the finder's lookup is out.
 //
 // **the IRS list fills the boxes and never saves them.** a whole EIN typed into its box is looked up
 // once (./ein-lookup.ts says when), and so is a number the finder locks in; either way a found
 // organisation's values go into the boxes the way typing them would, so the press is armed over them
-// and Save stores them like any edit. what the list says about the number stands under the EIN box
-// in a region drawn before it speaks, and goes when the box changes. the list is reached through the
-// two calls the page hands in, so this names no address and no binary route.
+// and Save stores them like any edit. a number locked in replaces the whole legal identity, emptying
+// what the answer holds nothing for; a typed one fills around what the operator typed. what the list
+// says about the number stands under the EIN box in a region drawn before it speaks, and goes when
+// the box changes. the list is reached through the two calls the page hands in, so this names no
+// address and no binary route.
 //
 // **a value put into a box is made to say it changed**, and the mission is a textarea the fill has
 // to reach as well as the inputs — ./fold-boxes.ts holds both.
@@ -229,8 +232,15 @@ const NO_TYPING: Readonly<Record<string, string>> = {};
 /** a fresh set-up: nothing about the organisation's identity has been saved yet. */
 const unset = (stored: StoredOrg): boolean => IDENTITY_BOXES.every((field) => stored[field] === '');
 
-/** a number the finder locked in, with the list's answer about it, or none where none was asked. */
-type Landing = { readonly ein: string; readonly answer: EinRead | null };
+/**
+ * a number the finder locked in, with the list's answer about it, or none where none was asked, and
+ * the match it was picked as, or none where it was typed.
+ */
+type Landing = {
+	readonly ein: string;
+	readonly answer: EinRead | null;
+	readonly match: NonprofitMatch | null;
+};
 
 export function OrgFold({
 	stored,
@@ -278,6 +288,11 @@ export function OrgFold({
 	const [finding, setFinding] = useState(false);
 	/** the number the finder locked in last, which the form takes once it is on the page. */
 	const [landing, setLanding] = useState<Landing | null>(null);
+	/** the finder's lookup in flight above the form, which holds Save: a save under it would store
+	    the organisation it is about to replace. */
+	const [lookupOut, setLookupOut] = useState<AbortSignal | null>(null);
+	/** a lock-in the watch has put, which focus follows once the note it says is drawn. */
+	const [arrived, setArrived] = useState<{ readonly noted: boolean } | null>(null);
 	/** what the region under the EIN box holds: the list's note, and a fill said to a reader. */
 	const [note, setNote] = useState<EinNote>(SILENT_NOTE);
 	const findPress = useRef<HTMLButtonElement>(null);
@@ -290,20 +305,21 @@ export function OrgFold({
 	const put = (boxes: Partial<Record<IdentityField, string>>): number =>
 		putBoxes(form.mount.ref.current?.elements, boxes);
 
-	/* what a found organisation leaves behind: its values in the boxes that are empty or still hold
-	   what an earlier fill put there, the Country box only while it is empty (`foundBoxes` in
-	   ./ein-lookup.ts), and its website for the Sites fold. effect events, so the watch made once per
-	   mount reads and fills the form standing when it calls. */
-	const found = useEffectEvent((organisation: NonprofitOrganisation, before: HeldBoxes) => {
-		rememberWebsite(organisation.website);
-		return put(foundBoxes(organisation, before, held())) > 0;
-	});
+	/* the boxes the watch decided on (./ein-lookup.ts says which), put as they are, and a found
+	   organisation's website kept for the Sites fold. effect events, so the watch made once per mount
+	   reads and fills the form standing when it calls. */
+	const filled = useEffectEvent(
+		(boxes: Partial<Record<IdentityField, string>>, organisation: NonprofitOrganisation | null) => {
+			if (organisation !== null) rememberWebsite(organisation.website);
+			return put(boxes);
+		}
+	);
 	const holding = useEffectEvent(held);
 
 	/* the watch over the EIN box, made once per mount and handed the box's text at every change. */
 	const watch = useRef<EinWatch | null>(null);
 	useEffect(() => {
-		const watching = watchEin({ lookUp, held: holding, onNote: setNote, onFound: found });
+		const watching = watchEin({ lookUp, held: holding, onNote: setNote, onFill: filled });
 		watch.current = watching;
 		return () => {
 			watching.stop();
@@ -331,29 +347,51 @@ export function OrgFold({
 
 	/* the finder's number, asked about where the list can be, and locked in whatever it answered. a
 	   finder shut while the lookup is out locks nothing in. */
-	const lockIn = async (ein: string, signal: AbortSignal) => {
-		const answer = lookups && watch.current !== null ? await watch.current.ask(ein, signal) : null;
-		if (signal.aborted) return;
-		setLocked(true);
-		setFinding(false);
-		setLanding({ ein, answer });
+	const lockIn = async (ein: string, signal: AbortSignal, match: NonprofitMatch | null) => {
+		setLookupOut(signal);
+		try {
+			const answer =
+				lookups && watch.current !== null ? await watch.current.ask(ein, signal) : null;
+			if (signal.aborted) return;
+			setLocked(true);
+			setFinding(false);
+			setLanding({ ein, answer, match });
+		} finally {
+			setLookupOut((out) => (out === signal ? null : out));
+		}
 	};
 
-	/* a number locked in, put to the form drawn for it: the note and the fill first, so the number put
-	   in the EIN box after them is one the watch already holds and asks nothing about, and then focus
-	   on the first box the operator still owes, or on Save. keyed to the landing, so a page opened on
-	   a stored profile moves nothing. */
+	/** the finder shut from above the form, giving up whatever it had out. */
+	const shutFinder = () => {
+		setFinding(false);
+		setLookupOut(null);
+	};
+
+	/* a number locked in, put to the form drawn for it — the EIN, the whole legal identity and the
+	   note, by the watch in one fill. keyed to the landing, so a page opened on a stored profile
+	   moves nothing. */
 	const takeLanding = useEffectEvent((at: Landing) => {
-		watch.current?.lockIn(at.ein, at.answer);
-		put({ tax_id: at.ein });
-		const needed = firstNeeded(held());
-		const owed = needed === null ? null : form.mount.ref.current?.elements.namedItem(needed);
-		if (owed instanceof HTMLElement) owed.focus();
-		else savePress.current?.focus();
+		watch.current?.lockIn(at.ein, at.answer, at.match);
+		setArrived({ noted: (at.answer?.note ?? '') !== '' });
 	});
 	useEffect(() => {
 		if (landing !== null) takeLanding(landing);
 	}, [landing]);
+
+	/* focus once the lock-in is drawn: on the EIN box where the list said something about the number,
+	   so the note is read as the box's description — on a fresh set-up its region arrives with the
+	   form, too late to be heard as it speaks — and otherwise on the first box the operator still
+	   owes, or on Save. a box closed while the page writes takes no focus, and Save takes it. */
+	const focusArrival = useEffectEvent((at: { readonly noted: boolean }) => {
+		const target = at.noted ? 'tax_id' : firstNeeded(held());
+		const box = target === null ? null : form.mount.ref.current?.elements.namedItem(target);
+		if ((box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement) && !box.disabled) {
+			box.focus();
+		} else savePress.current?.focus();
+	});
+	useEffect(() => {
+		if (arrived !== null) focusArrival(arrived);
+	}, [arrived]);
 
 	/* the brand colour's well stands beside its box and follows it: a hex typed in the box shows in
 	   the well, and a colour picked in the well is written into the box the way typing it would be.
@@ -571,7 +609,7 @@ export function OrgFold({
 		<>
 			{finding
 				? finder(() => {
-						setFinding(false);
+						shutFinder();
 						findPress.current?.focus();
 					})
 				: null}
@@ -676,6 +714,7 @@ export function OrgFold({
 							name="intent"
 							value={ORG_INTENT}
 							state={form.state}
+							disabled={lookupOut !== null}
 							label="Save details"
 							doneLabel="Saved"
 						/>
@@ -691,7 +730,9 @@ export function OrgFold({
 								aria-controls={finding ? FINDER_ID : undefined}
 								aria-disabled={busy || undefined}
 								onClick={() => {
-									if (!busy) setFinding((open) => !open);
+									if (busy) return;
+									if (finding) shutFinder();
+									else setFinding(true);
 								}}
 							>
 								Pick a different organisation

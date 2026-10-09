@@ -3,7 +3,6 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { einAsPrinted } from '@better-giving/operator/console/org-rules';
 import {
-	type FormEvent,
 	type ReactNode,
 	type RefObject,
 	useEffect,
@@ -13,13 +12,12 @@ import {
 	useState
 } from 'react';
 import type { NonprofitMatch, NonprofitSearch } from '../api/types';
-import { spellEin } from './fold-boxes';
 import {
 	type FinderView,
 	type FinderWatch,
 	IDLE_VIEW,
+	SEARCH_FLOOR,
 	SEARCH_MOST,
-	type SearchState,
 	watchFinder
 } from './org-search';
 
@@ -28,16 +26,28 @@ import {
 // above its form when "Pick a different organisation" is pressed. the fold locks in the number a
 // press or a pick hands it.
 //
-// **the box is ark's combobox, held open while there are matches and run with no layer of its
-// own.** the listbox roles, `aria-activedescendant`, the arrow keys and Enter on a match are the
-// machine's; the list stands in the screen's flow rather than floated over the form under it. the
-// machine is told a typed value is the operator's own (`allowCustomValue`), so Enter over no match
-// and a blur keep what was typed, and Enter over no match falls through to this form's own submit,
-// which is the press.
+// **the box is ark's combobox, held open while there are matches to show and run with no layer
+// of its own.** the listbox roles, `aria-activedescendant`, the arrow keys and Enter on a match are
+// the machine's; the list stands in the screen's flow rather than floated over the form under it.
+// the machine is told a typed value is the operator's own (`allowCustomValue`), so Enter over no
+// match and a blur keep what was typed, and Enter over no match falls through to this form's own
+// submit, which is the press.
 //
-// **nothing is asked while typing.** a press is Search or Enter, and when it asks, and what, is
-// ./org-search.ts's. a box holding nothing but digits, dashes and spaces is spelled as an EIN as it
-// is typed, the way the fold's own EIN box is.
+// **the machine moves focus into the box whenever the list opens or shuts** (`setInitialFocus`
+// and `setFinalFocus` in the machine under `@ark-ui/react/combobox`), so the list opens on an
+// answer only while focus is still inside the finder, and otherwise waits for the box to be
+// focused; it is shut only by a new search, which a press inside the finder made. an answer can
+// take a minute, and the operator may be anywhere on the page by then.
+//
+// **a pick is the finder's to take or turn away, so the machine records none** — its `value` is
+// held empty. a pick made while a request is out or the page writes is turned away before anything
+// marks it selected, and the same match can always be picked again; the options say they are closed
+// for as long as a pick would be turned away.
+//
+// **nothing is asked while typing, and what is typed stays as typed.** a press is Search or Enter,
+// and when it asks, and what, is ./org-search.ts's: a name may open with digits ("100 Black Men of
+// America"), so the box is never re-spelled as an EIN, and the press reads a number out of it
+// instead. the box's text is the machine's `inputValue`, held here, never written into the element.
 //
 // **the list is the IRS list's answer, unfiltered here**, in the API's order. a search carries no
 // revocation, so the one badge a match can carry is not being listed as tax-deductible; the
@@ -45,19 +55,28 @@ import {
 
 export const FINDER_ID = 'org-find';
 export const FINDER_LABEL = 'Name or EIN';
+/** the box's label on a console that cannot ask the list, where only a whole EIN does anything. */
+export const EIN_LABEL = 'EIN';
 export const SEARCH_LABEL = 'Search';
 export const NO_MATCHES = 'No matches.';
 export const SEARCH_UNANSWERED = "Couldn't search the IRS list. Search by EIN instead.";
 export const NOT_DEDUCTIBLE_BADGE = 'Not listed as tax-deductible';
-
-/** what an EIN looks like part-typed: digits, dashes and spaces, with a digit among them. */
-const EIN_TYPING = /^[\d\s-]*\d[\d\s-]*$/;
+export const SEARCHING = 'Searching…';
+export const LOOKING_UP = 'Looking up…';
+export const TOO_SHORT = `Type at least ${SEARCH_FLOOR} characters.`;
+export const EIN_ONLY = 'Type the 9-digit EIN.';
 
 /**
- * what the region under the box says. the matches are counted rather than left to the list: the
- * listbox opening is a change of attribute on the box, which a reader is not told about.
+ * what the region under the box says: the wait while a request is out, why a press asked nothing,
+ * or what the last search found. the matches are counted rather than left to the list: the listbox
+ * opening is a change of attribute on the box, which a reader is not told about.
  */
-function said(state: SearchState): string {
+function said(view: FinderView): string {
+	if (view.out === 'search') return SEARCHING;
+	if (view.out === 'lookup') return LOOKING_UP;
+	if (view.refused === 'short') return TOO_SHORT;
+	if (view.refused === 'not-ein') return EIN_ONLY;
+	const state = view.found;
 	switch (state.kind) {
 		case 'idle':
 			return '';
@@ -72,12 +91,22 @@ function said(state: SearchState): string {
 
 const NO_MATCH: readonly NonprofitMatch[] = [];
 
+/** the machine's selection, which is never anything: see the header. */
+const NO_VALUE: string[] = [];
+
 export type OrgFinderProps = {
 	/** whether this console can ask the IRS list; where it cannot, only a whole EIN does anything. */
 	readonly lookups: boolean;
 	readonly search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
-	/** a whole EIN, in its stored spelling, to look up and lock in; settles once it has. */
-	readonly lockIn: (ein: string, signal: AbortSignal) => Promise<void>;
+	/**
+	 * a whole EIN, in its stored spelling, to look up and lock in, with the match it was picked as or
+	 * `null` for one typed; settles once it has.
+	 */
+	readonly lockIn: (
+		ein: string,
+		signal: AbortSignal,
+		match: NonprofitMatch | null
+	) => Promise<void>;
 	/** the page is writing, which holds a press and a pick. */
 	readonly closed: boolean;
 	/** Escape in the box, where there is a form under the finder to go back to. */
@@ -86,12 +115,20 @@ export type OrgFinderProps = {
 
 export function OrgFinder({ lookups, search, lockIn, closed, onClose }: OrgFinderProps): ReactNode {
 	const [view, setView] = useState<FinderView>(IDLE_VIEW);
+	const [typed, setTyped] = useState('');
+	/** whether matches are drawn as an open list: decided as each answer lands, by where focus is. */
+	const [listed, setListed] = useState(false);
 	const box = useRef<HTMLInputElement>(null);
+	const finder = useRef<HTMLElement>(null);
 	const locking = useEffectEvent(lockIn);
+	const viewed = useEffectEvent((next: FinderView) => {
+		setView(next);
+		if (next.out === null) setListed(finder.current?.contains(document.activeElement) ?? false);
+	});
 
 	const watch = useRef<FinderWatch | null>(null);
 	useEffect(() => {
-		const watching = watchFinder({ search, lockIn: locking, lookups, onView: setView });
+		const watching = watchFinder({ search, lockIn: locking, lookups, onView: viewed });
 		watch.current = watching;
 		return () => {
 			watching.stop();
@@ -108,9 +145,15 @@ export function OrgFinder({ lookups, search, lockIn, closed, onClose }: OrgFinde
 	return (
 		<OrgFinderCard
 			view={view}
+			lookups={lookups}
+			listed={listed}
+			finder={finder}
 			box={box}
+			typed={typed}
+			onType={setTyped}
+			onBoxFocus={() => setListed(true)}
 			onPress={() => {
-				if (!closed) watch.current?.press(box.current?.value ?? '');
+				if (!closed) watch.current?.press(typed);
 			}}
 			onPick={(match) => {
 				if (!closed) watch.current?.pick(match);
@@ -123,8 +166,17 @@ export function OrgFinder({ lookups, search, lockIn, closed, onClose }: OrgFinde
 
 export type OrgFinderCardProps = {
 	readonly view: FinderView;
+	/** whether this console can ask the list, which is what the box is labelled for. */
+	readonly lookups: boolean;
+	/** whether matches are drawn as an open list rather than counted alone. */
+	readonly listed: boolean;
 	readonly closed: boolean;
+	readonly finder?: RefObject<HTMLElement | null> | undefined;
 	readonly box?: RefObject<HTMLInputElement | null> | undefined;
+	/** what the box holds, as typed. */
+	readonly typed: string;
+	readonly onType: (typed: string) => void;
+	readonly onBoxFocus?: (() => void) | undefined;
 	readonly onPress: () => void;
 	readonly onPick: (match: NonprofitMatch) => void;
 	readonly onClose?: (() => void) | undefined;
@@ -133,26 +185,33 @@ export type OrgFinderCardProps = {
 /** the finder in one view, which is the whole of what it draws. */
 export function OrgFinderCard({
 	view,
+	lookups,
+	listed,
 	closed,
+	finder,
 	box,
+	typed,
+	onType,
+	onBoxFocus,
 	onPress,
 	onPick,
 	onClose
 }: OrgFinderCardProps): ReactNode {
 	const matches = view.found.kind === 'matches' ? view.found.matches : NO_MATCH;
+	const held = closed || view.out !== null;
 	const collection = useMemo(
 		() =>
 			createListCollection({
 				items: [...matches],
 				itemToValue: (match) => match.ein,
-				itemToString: (match) => match.name
+				itemToString: (match) => match.name,
+				isItemDisabled: () => held
 			}),
-		[matches]
+		[matches, held]
 	);
-	const held = closed || view.out;
 
 	return (
-		<search id={FINDER_ID}>
+		<search id={FINDER_ID} ref={finder}>
 			<form
 				noValidate
 				onSubmit={(event) => {
@@ -163,16 +222,21 @@ export function OrgFinderCard({
 				<Combobox.Root
 					className="adm-findorg"
 					collection={collection}
-					open={matches.length > 0}
+					open={listed && matches.length > 0}
 					disableLayer
 					allowCustomValue
 					selectionBehavior="preserve"
+					value={NO_VALUE}
+					inputValue={typed}
+					onInputValueChange={(details) => onType(details.inputValue)}
 					onValueChange={(details) => {
 						const match = details.items[0];
 						if (match !== undefined) onPick(match);
 					}}
 				>
-					<Combobox.Label className="adm-field__label">{FINDER_LABEL}</Combobox.Label>
+					<Combobox.Label className="adm-field__label">
+						{lookups ? FINDER_LABEL : EIN_LABEL}
+					</Combobox.Label>
 					{/* the box and the press that acts on it on one row, which wraps at the floor. */}
 					<Combobox.Control className="adm-actions">
 						<Combobox.Input
@@ -180,11 +244,7 @@ export function OrgFinderCard({
 							className="adm-input"
 							maxLength={SEARCH_MOST}
 							autoComplete="off"
-							onInput={(event: FormEvent<HTMLInputElement>) => {
-								if (EIN_TYPING.test(event.currentTarget.value)) {
-									spellEin(event.currentTarget, event.nativeEvent);
-								}
-							}}
+							onFocus={onBoxFocus}
 							onKeyDown={(event) => {
 								if (event.key === 'Escape') onClose?.();
 							}}
@@ -193,7 +253,7 @@ export function OrgFinderCard({
 					    through a wait that can run to a minute. */}
 						<Button
 							type="submit"
-							aria-busy={view.out || undefined}
+							aria-busy={view.out !== null || undefined}
 							aria-disabled={held || undefined}
 							onClick={(event) => {
 								if (held) event.preventDefault();
@@ -220,7 +280,7 @@ export function OrgFinderCard({
 						))}
 					</Combobox.Content>
 					<p className="adm-hint adm-findorg__said" role="status">
-						{said(view.found)}
+						{said(view)}
 					</p>
 				</Combobox.Root>
 			</form>

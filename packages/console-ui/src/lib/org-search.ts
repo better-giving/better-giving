@@ -1,4 +1,4 @@
-import { EIN, einAsPrinted } from '@better-giving/operator/console/org-rules';
+import { einAsPrinted } from '@better-giving/operator/console/org-rules';
 import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 
 // what the finder (./org-finder.tsx) asks the IRS list when it is pressed, and what it shows while
@@ -14,17 +14,28 @@ import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 //
 // **a whole EIN is looked up, never searched**, and so is a match picked off the list: the lookup
 // is what carries the address, the mission and the revocation a search does not. the lookup is the
-// fold's to make (`lockIn`), because what it answers is the number the screen locks in.
+// fold's to make (`lockIn`), because what it answers is the number the screen locks in. a press is a
+// whole EIN when it is nine digits once its dashes and spaces are dropped, and anything else is a
+// name, typed digits and all: `211 LA County` is a search.
 //
 // **a list that does not answer is remembered by nobody**, so the same query asks again at the
 // next press.
+//
+// **every press is answered in the view.** a search empties the list and the words under the box
+// while it is out, so the count that comes back is new words to a reader even when it repeats; a
+// remembered answer arrives the same way, on a later task than the press, so the two are never
+// drawn in one render. a lookup keeps the list it was picked from, held. a press that asks nothing
+// says why: too short, or not an EIN on a console that can only look one up.
 //
 // **a query is measured in characters as the binary measures it**, in code points and not utf-16
 // units (`packages/console/internal/server/nonprofits.go` counts runes), so a query this sends is
 // never one the binary refuses for its length: the floor is counted here and the cap is the box's
 // own `maxLength`, which cannot hold more code points than units.
 
-/** the fewest characters a query is sent with; the binary refuses fewer. */
+/**
+ * the fewest characters a query is sent with: `searchFewest` in
+ * packages/console/internal/server/nonprofits.go, which refuses fewer.
+ */
 export const SEARCH_FLOOR = 3;
 
 /** the most characters a query may hold; the binary refuses more. */
@@ -37,19 +48,35 @@ export type SearchState =
 	| { readonly kind: 'none' }
 	| { readonly kind: 'unavailable' };
 
-/** the finder as drawn: whether a press is out, and what the last search showed. */
-export type FinderView = { readonly out: boolean; readonly found: SearchState };
+/**
+ * why a press asked nothing: too few characters to search, or not an EIN where only one is looked
+ * up.
+ */
+export type FinderRefusal = 'short' | 'not-ein';
 
-export const IDLE_VIEW: FinderView = { out: false, found: { kind: 'idle' } };
+/**
+ * the finder as drawn: what is out, what the last search showed, and why the last press asked
+ * nothing, where it did.
+ */
+export type FinderView = {
+	readonly out: 'search' | 'lookup' | null;
+	readonly found: SearchState;
+	readonly refused: FinderRefusal | null;
+};
 
-/** what a press asks for: a lookup, a search, or nothing at all. */
+export const IDLE_VIEW: FinderView = { out: null, found: { kind: 'idle' }, refused: null };
+
+/** what a press asks for: a lookup, a search, or nothing at all, and why. */
 export type FinderAsk =
 	| { readonly kind: 'lookup'; readonly ein: string }
 	| { readonly kind: 'search'; readonly query: string; readonly key: string }
-	| null;
+	| { readonly kind: 'refused'; readonly why: FinderRefusal };
 
 /** a query as two queries are compared: `Riverside  food ` asks what `riverside food` asked. */
 const keyOf = (query: string): string => query.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** nine digits, once a press's dashes and spaces are dropped. */
+const WHOLE_EIN = /^\d{9}$/;
 
 /**
  * what a press on `text` asks. a whole EIN is a lookup in its stored spelling; anything else of at
@@ -57,9 +84,11 @@ const keyOf = (query: string): string => query.trim().replace(/\s+/g, ' ').toLow
  */
 export function finderAsk(text: string, lookups: boolean): FinderAsk {
 	const query = text.trim();
-	if (EIN.test(query)) return { kind: 'lookup', ein: einAsPrinted(query) };
+	const digits = query.replace(/[\s-]/g, '');
+	if (WHOLE_EIN.test(digits)) return { kind: 'lookup', ein: einAsPrinted(digits) };
+	if (!lookups) return { kind: 'refused', why: 'not-ein' };
 	const key = keyOf(query);
-	if (!lookups || [...key].length < SEARCH_FLOOR) return null;
+	if ([...key].length < SEARCH_FLOOR) return { kind: 'refused', why: 'short' };
 	return { kind: 'search', query, key };
 }
 
@@ -75,8 +104,15 @@ const shown = (matches: readonly NonprofitMatch[]): SearchState =>
 
 export type FinderWatchOptions = {
 	readonly search: (query: string, signal: AbortSignal) => Promise<NonprofitSearch>;
-	/** a whole EIN to look up and lock in; settles once it has, or once `signal` gives it up. */
-	readonly lockIn: (ein: string, signal: AbortSignal) => Promise<void>;
+	/**
+	 * a whole EIN to look up and lock in, with the match it was picked as, or `null` for one typed;
+	 * settles once it has, or once `signal` gives it up.
+	 */
+	readonly lockIn: (
+		ein: string,
+		signal: AbortSignal,
+		match: NonprofitMatch | null
+	) => Promise<void>;
 	/** whether this console can ask the list at all; where it cannot, a name asks nothing. */
 	readonly lookups: boolean;
 	readonly onView: (view: FinderView) => void;
@@ -104,21 +140,24 @@ export function watchFinder({
 	let found: SearchState = IDLE_VIEW.found;
 
 	/** one request out, with the view busy until it settles; `null` leaves the list as it was. */
-	const run = (work: (signal: AbortSignal) => Promise<SearchState | null>) => {
+	const run = (
+		kind: 'search' | 'lookup',
+		work: (signal: AbortSignal) => Promise<SearchState | null>
+	) => {
 		const control = new AbortController();
 		out = control;
-		onView({ out: true, found });
+		onView({ out: kind, found, refused: null });
 		work(control.signal).then((next) => {
 			if (control.signal.aborted) return;
 			out = null;
 			if (next !== null) found = next;
-			onView({ out: false, found });
+			onView({ out: null, found, refused: null });
 		});
 	};
 
-	const lookUp = (ein: string) =>
-		run((signal) =>
-			lockIn(ein, signal).then(
+	const lookUp = (ein: string, match: NonprofitMatch | null) =>
+		run('lookup', (signal) =>
+			lockIn(ein, signal, match).then(
 				() => null,
 				() => null
 			)
@@ -127,33 +166,34 @@ export function watchFinder({
 	const press = (text: string) => {
 		if (out !== null) return;
 		const ask = finderAsk(text, lookups);
-		if (ask === null) return;
+		if (ask.kind === 'refused') {
+			onView({ out: null, found, refused: ask.why });
+			return;
+		}
 		if (ask.kind === 'lookup') {
-			lookUp(ask.ein);
+			lookUp(ask.ein, null);
 			return;
 		}
+		found = IDLE_VIEW.found;
 		const remembered = memory.get(ask.key);
-		if (remembered !== undefined) {
-			found = shown(remembered);
-			onView({ out: false, found });
-			return;
-		}
-		run((signal) =>
-			search(ask.query, signal).then(
-				(answer) => {
-					if (answer.state !== 'ok') return UNAVAILABLE;
-					memory.set(ask.key, answer.matches);
-					return shown(answer.matches);
-				},
-				() => UNAVAILABLE
-			)
+		run('search', (signal) =>
+			remembered !== undefined
+				? new Promise<SearchState>((done) => setTimeout(() => done(shown(remembered)), 0))
+				: search(ask.query, signal).then(
+						(answer) => {
+							if (answer.state !== 'ok') return UNAVAILABLE;
+							memory.set(ask.key, answer.matches);
+							return shown(answer.matches);
+						},
+						() => UNAVAILABLE
+					)
 		);
 	};
 
 	return {
 		press,
 		pick: (match) => {
-			if (out === null) lookUp(einAsPrinted(match.ein));
+			if (out === null) lookUp(einAsPrinted(match.ein), match);
 		},
 		stop: () => {
 			out?.abort();

@@ -33,7 +33,9 @@ function watched(
 	} = {}
 ) {
 	const search = vi.fn((_query: string, _signal: AbortSignal) => answer());
-	const lockIn = vi.fn((_ein: string, _signal: AbortSignal) => locking());
+	const lockIn = vi.fn((_ein: string, _signal: AbortSignal, _match: NonprofitMatch | null) =>
+		locking()
+	);
 	const views: FinderView[] = [];
 	const watch = watchFinder({
 		search,
@@ -42,7 +44,7 @@ function watched(
 		onView: (view) => views.push(view),
 		memory: new Map()
 	});
-	return { watch, search, lockIn, view: () => views.at(-1) };
+	return { watch, search, lockIn, views, view: () => views.at(-1) };
 }
 
 const ok = async (): Promise<NonprofitSearch> => ({ state: 'ok', matches: [MATCH] });
@@ -53,29 +55,52 @@ describe('what a press asks', () => {
 		expect(finderAsk(' 123456789 ', true)).toEqual({ kind: 'lookup', ein: '12-3456789' });
 	});
 
+	it('looks up nine digits however they are dashed or spaced', () => {
+		expect(finderAsk('12 345 6789', true)).toEqual({ kind: 'lookup', ein: '12-3456789' });
+	});
+
 	it('searches anything else of three characters or more', () => {
 		expect(finderAsk('riv', true)).toMatchObject({ kind: 'search', query: 'riv' });
 		expect(finderAsk('12-345678', true)).toMatchObject({ kind: 'search', query: '12-345678' });
 	});
 
-	it('asks nothing for one or two characters, which the binary refuses', () => {
-		expect(SEARCH_FLOOR).toBe(3);
-		expect(finderAsk('r', true)).toBeNull();
-		expect(finderAsk(' ri ', true)).toBeNull();
+	it('searches a name that opens with digits as it was typed', () => {
+		for (const name of ['100 Black Men of America', '4-H Council', '211 LA County']) {
+			expect(finderAsk(name, true)).toMatchObject({ kind: 'search', query: name });
+		}
 	});
 
-	it('counts characters as the binary does, so two of them with an emoji ask nothing', () => {
-		// one astral character is two utf-16 units and one rune; the binary refuses under three runes.
-		expect(finderAsk('a😀', true)).toBeNull();
+	it('refuses fewer characters than the binary takes, and searches as many as it does', () => {
+		const under = 'r'.repeat(SEARCH_FLOOR - 1);
+
+		expect(finderAsk(under, true)).toEqual({ kind: 'refused', why: 'short' });
+		expect(finderAsk(` ${under} `, true)).toEqual({ kind: 'refused', why: 'short' });
+		expect(finderAsk(`${under}r`, true)).toMatchObject({ kind: 'search' });
 	});
 
-	it('still looks a whole EIN up where the console cannot ask the list, and searches nothing', () => {
+	it('counts characters as the binary does, so an emoji is one of them', () => {
+		// one astral character is two utf-16 units and one rune, and the binary counts runes.
+		const emoji = '😀';
+		const under = `${'a'.repeat(SEARCH_FLOOR - 2)}${emoji}`;
+
+		expect(finderAsk(under, true)).toEqual({ kind: 'refused', why: 'short' });
+		expect(finderAsk(`a${under}`, true)).toMatchObject({ kind: 'search' });
+	});
+
+	it('still looks a whole EIN up where the console cannot ask the list, and refuses a name', () => {
 		expect(finderAsk('12-3456789', false)).toEqual({ kind: 'lookup', ein: '12-3456789' });
-		expect(finderAsk('riverside', false)).toBeNull();
+		expect(finderAsk('riverside', false)).toEqual({ kind: 'refused', why: 'not-ein' });
 	});
 });
 
 describe('a press', () => {
+	it('is the only thing that asks: a watch made asks nothing', async () => {
+		const { search, lockIn, view } = watched(ok);
+		await settled();
+
+		expect([search.mock.calls.length, lockIn.mock.calls.length, view()]).toEqual([0, 0, undefined]);
+	});
+
 	it('searches once for a name, and locks nothing in', async () => {
 		const { watch, search, lockIn } = watched(ok);
 		watch.press('riverside');
@@ -86,34 +111,56 @@ describe('a press', () => {
 		expect(lockIn).not.toHaveBeenCalled();
 	});
 
-	it('locks a whole EIN in once, and searches nothing', async () => {
+	it('locks a whole EIN in once, as typed and no match, and searches nothing', async () => {
 		const { watch, search, lockIn } = watched(ok);
 		watch.press('12-3456789');
 		await settled();
 
 		expect(lockIn).toHaveBeenCalledTimes(1);
-		expect(lockIn.mock.calls[0]?.[0]).toBe('12-3456789');
+		expect([lockIn.mock.calls[0]?.[0], lockIn.mock.calls[0]?.[2]]).toEqual(['12-3456789', null]);
 		expect(search).not.toHaveBeenCalled();
 	});
 
-	it('asks nothing for a one-character name', async () => {
+	it('asks nothing for a one-character name, and says it is too short', async () => {
 		const { watch, search, lockIn, view } = watched(ok);
 		watch.press('r');
 		await settled();
 
 		expect(search).not.toHaveBeenCalled();
 		expect(lockIn).not.toHaveBeenCalled();
-		expect(view()).toBeUndefined();
+		expect(view()).toEqual({ out: null, found: { kind: 'idle' }, refused: 'short' });
 	});
 
-	it('is busy while the list is asked, with the list it had still showing', async () => {
+	it('asks nothing for a name where the console cannot ask the list, and says to type the EIN', async () => {
+		const { watch, search, view } = watched(ok, { lookups: false });
+		watch.press('riverside');
+		await settled();
+
+		expect(search).not.toHaveBeenCalled();
+		expect(view()?.refused).toBe('not-ein');
+	});
+
+	it('empties the list and what it said while a search is out', async () => {
 		const answers: (() => Promise<NonprofitSearch>)[] = [ok, never];
 		const { watch, view } = watched(() => (answers.shift() ?? never)());
 		watch.press('riverside');
 		await settled();
 		watch.press('riverside food');
 
-		expect(view()).toEqual({ out: true, found: { kind: 'matches', matches: [MATCH] } });
+		expect(view()).toEqual({ out: 'search', found: { kind: 'idle' }, refused: null });
+	});
+
+	it('keeps the list a match was picked from while its lookup is out', async () => {
+		const { watch, view } = watched(ok, { locking: never });
+		watch.press('riverside');
+		await settled();
+		watch.pick(MATCH);
+
+		expect(view()).toEqual({
+			out: 'lookup',
+			found: { kind: 'matches', matches: [MATCH] },
+			refused: null
+		});
 	});
 
 	it('holds a second press while the first is out', async () => {
@@ -147,12 +194,12 @@ describe('a press', () => {
 		});
 		watch.press('12-3456789');
 
-		expect(view()?.out).toBe(true);
+		expect(view()?.out).toBe('lookup');
 
 		land();
 		await settled();
 
-		expect(view()?.out).toBe(false);
+		expect(view()?.out).toBeNull();
 	});
 
 	it('asks nothing for a query it already has the answer to, however it is spaced', async () => {
@@ -163,7 +210,27 @@ describe('a press', () => {
 		await settled();
 
 		expect(search).toHaveBeenCalledTimes(1);
-		expect(view()).toEqual({ out: false, found: { kind: 'matches', matches: [MATCH] } });
+		expect(view()).toEqual({
+			out: null,
+			found: { kind: 'matches', matches: [MATCH] },
+			refused: null
+		});
+	});
+
+	it('empties what it said before a remembered answer, so the same count is new words', async () => {
+		const { watch, views } = watched(ok);
+		watch.press('riverside');
+		await settled();
+		const before = views.length;
+		watch.press('riverside');
+
+		expect(views.slice(before)).toEqual([
+			{ out: 'search', found: { kind: 'idle' }, refused: null }
+		]);
+
+		await settled();
+
+		expect(views.at(-1)?.found).toEqual({ kind: 'matches', matches: [MATCH] });
 	});
 
 	it('remembers an answer across two finders sharing one memory', async () => {
@@ -189,13 +256,13 @@ describe('a press', () => {
 });
 
 describe('a pick', () => {
-	it('locks in the EIN of the match taken, in its stored spelling', async () => {
+	it('locks in the EIN of the match taken, in its stored spelling, with the match', async () => {
 		const { watch, lockIn, search } = watched(ok);
 		watch.pick(MATCH);
 		await settled();
 
 		expect(lockIn).toHaveBeenCalledTimes(1);
-		expect(lockIn.mock.calls[0]?.[0]).toBe('12-3456789');
+		expect([lockIn.mock.calls[0]?.[0], lockIn.mock.calls[0]?.[2]]).toEqual(['12-3456789', MATCH]);
 		expect(search).not.toHaveBeenCalled();
 	});
 });
@@ -206,7 +273,7 @@ describe('what a search shows', () => {
 		watch.press('riverside');
 		await settled();
 
-		expect(view()).toEqual({ out: false, found: { kind: 'matches', matches: [MATCH] } });
+		expect(view()?.found).toEqual({ kind: 'matches', matches: [MATCH] });
 	});
 
 	it('says there are none', async () => {

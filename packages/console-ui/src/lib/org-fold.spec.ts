@@ -3,7 +3,7 @@ import type { SocialPlatform } from '@better-giving/operator/console/org';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
 import { takesLogo } from './logo-crop';
 import {
@@ -19,7 +19,9 @@ import { OrgFold } from './org-fold';
 
 // the Organisation fold as drawn, around the IRS list. ../../vite.config.ts pins `node` and there
 // is no dom, so what is read here is the first draw: what each form would post is read off the
-// controls it draws. when the list is asked and what an answer fills are ./ein-lookup.spec.ts's,
+// controls it draws, and no effect runs, so nothing here can see the list asked. when the list is
+// asked, including that neither watch asks as it is made, and what an answer fills are
+// ./ein-lookup.spec.ts's and ./org-search.spec.ts's,
 // what a press in the finder asks is ./org-search.spec.ts's, reaching the boxes and where focus
 // goes once a number is locked in are ./fold-boxes.spec.ts's, and the finder's states are
 // ./org-finder.spec.ts's.
@@ -40,26 +42,22 @@ function drawn(
 	press: OrgPressKind | null = null,
 	writing: { readonly busy?: boolean; readonly logoPending?: boolean } = {}
 ) {
-	const lookUp = vi.fn(
-		async (): Promise<NonprofitLookup> => ({
-			state: 'unavailable',
-			organisation: {
-				ein: '',
-				name: '',
-				address_line1: '',
-				city: '',
-				region: '',
-				postal_code: '',
-				deductible: false,
-				revokedOn: '',
-				website: '',
-				mission: ''
-			}
-		})
-	);
-	const search = vi.fn(
-		async (): Promise<NonprofitSearch> => ({ state: 'unavailable', matches: [] })
-	);
+	const lookUp = async (): Promise<NonprofitLookup> => ({
+		state: 'unavailable',
+		organisation: {
+			ein: '',
+			name: '',
+			address_line1: '',
+			city: '',
+			region: '',
+			postal_code: '',
+			deductible: false,
+			revokedOn: '',
+			website: '',
+			mission: ''
+		}
+	});
+	const search = async (): Promise<NonprofitSearch> => ({ state: 'unavailable', matches: [] });
 	const router = createMemoryRouter([
 		{
 			path: '/',
@@ -77,8 +75,7 @@ function drawn(
 				})
 		}
 	]);
-	const markup = renderToStaticMarkup(createElement(RouterProvider, { router }));
-	return { markup, lookUp, search };
+	return { markup: renderToStaticMarkup(createElement(RouterProvider, { router })) };
 }
 
 /** the EIN box's own tag. */
@@ -89,13 +86,6 @@ const einBox = (markup: string): string => {
 };
 
 describe('the Organisation details fold', () => {
-	it('asks the list nothing when it is drawn holding a stored EIN', () => {
-		const { lookUp, search } = drawn(STORED);
-
-		expect(lookUp).not.toHaveBeenCalled();
-		expect(search).not.toHaveBeenCalled();
-	});
-
 	it('takes the EIN on a number pad, ahead of the name it fills', () => {
 		const { markup } = drawn(STORED);
 
@@ -122,13 +112,6 @@ describe('the Organisation details fold', () => {
 		expect(markup).not.toContain('adm-logo');
 		expect(markup).not.toContain('Save details');
 		expect(markup).not.toContain('Pick a different organisation');
-	});
-
-	it('asks the list nothing as the finder is drawn', () => {
-		const { lookUp, search } = drawn(storedProfile({}));
-
-		expect(lookUp).not.toHaveBeenCalled();
-		expect(search).not.toHaveBeenCalled();
 	});
 
 	it('opens on the finder whatever notification address is stored', () => {
@@ -164,13 +147,12 @@ describe('the Organisation details fold', () => {
 			expect(drawn(STORED, false).markup).not.toContain('Pick a different organisation');
 		});
 
-		it('still opens a fresh set-up on the finder alone, and asks nothing as it is drawn', () => {
-			const { markup, lookUp, search } = drawn(storedProfile({}), false);
+		it('still opens a fresh set-up on the finder alone, its box labelled for an EIN', () => {
+			const { markup } = drawn(storedProfile({}), false);
 
 			expect(markup).toMatch(/^<search id="org-find">/);
+			expect(markup).toContain('>EIN</label>');
 			expect(markup).not.toContain('name="tax_id"');
-			expect(lookUp).not.toHaveBeenCalled();
-			expect(search).not.toHaveBeenCalled();
 		});
 
 		it('stands no region for a note the list will never give', () => {
