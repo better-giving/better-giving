@@ -123,8 +123,10 @@ func digitsOnly(expiry string) bool {
 // still one, as it is to the deployment (`consoleAccess` in
 // packages/app/src/lib/server/console/access.ts refuses only an expiry before its now).
 //
-// `now` is this machine's clock and the deployment reads its own, so with the two apart the
-// answers here and there can differ: a session read here can still be refused there.
+// `now` is this machine's clock at the reading, and the deployment reads its own when the request
+// arrives, so a session held here can still be refused there — by the two clocks being apart, and
+// by the time the request takes to get there, which takes a session held a moment before its
+// expiry past it.
 //
 // Every way the record could be wrong lands on the same nil, which is the state the screen already
 // draws: no session, and a control that mints one.
