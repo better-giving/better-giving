@@ -19,7 +19,10 @@
 // every failure answers null and none throws: no EIN or not one, no answer within `WITHIN_MS`, a
 // status other than 200, a body past `ANSWER_BYTES`, one in a shape not decoded below, or one about
 // another number or naming nobody. a lookup is context for an opening, and the opening goes on
-// without it. nothing is remembered between lookups and nothing is stored.
+// without it. `WITHIN_MS` runs from the request to the body's last byte. each failed lookup logs
+// one warning saying why — the status and the problem body's `code`, or `timeout`, `network` or
+// `shape` — and never the EIN; no EIN, no lookup and no warning. nothing is remembered between
+// lookups and nothing is stored.
 //
 // the request goes out on the runtime's global `fetch`, and nothing here is built from a binding.
 import { z } from 'zod';
@@ -72,47 +75,86 @@ export async function lookUpFiling(
 ): Promise<Filing | null> {
 	const ein = taxId === null ? null : einOf(taxId);
 	if (ein === null) return null;
+	const answer = await answerOf(`${api}/v1/orgs/${ein}`);
+	const filing = answer.ok ? filingOf(answer.body, ein) : null;
+	if (filing === null) {
+		console.warn('the IRS nonprofit lookup answered nothing:', answer.ok ? 'shape' : answer.why);
+	}
+	return filing;
+}
+
+/** a 200's body as a filing about `ein`; null where it is not one. */
+function filingOf(body: string, ein: string): Filing | null {
+	let json: unknown;
 	try {
-		const body = await answerOf(`${api}/v1/orgs/${ein}`);
-		if (body === null) return null;
-		const read = upstreamOrganisation.safeParse(JSON.parse(body));
-		if (!read.success) return null;
-		const { name, mission, activitySummary, programs, notes } = read.data;
-		// an answer about another number, or about nobody, fills nothing.
-		if (einOf(read.data.ein) !== ein || name === null || name.trim() === '') return null;
-		return {
-			mission: words(mission, MISSION_MAX),
-			activity: words(activitySummary, ACTIVITY_MAX),
-			programs: programs
-				.flatMap(({ description }) => words(description, PROGRAM_MAX) ?? [])
-				.slice(0, PROGRAMS_MAX),
-			notes: notes.flatMap((note) => words(note, NOTE_MAX) ?? []).slice(0, NOTES_MAX)
-		};
+		json = JSON.parse(body);
 	} catch {
 		return null;
 	}
+	const read = upstreamOrganisation.safeParse(json);
+	if (!read.success) return null;
+	const { name, mission, activitySummary, programs, notes } = read.data;
+	// an answer about another number, or about nobody, fills nothing.
+	if (einOf(read.data.ein) !== ein || name === null || name.trim() === '') return null;
+	return {
+		mission: words(mission, MISSION_MAX),
+		activity: words(activitySummary, ACTIVITY_MAX),
+		programs: programs
+			.flatMap(({ description }) => words(description, PROGRAM_MAX) ?? [])
+			.slice(0, PROGRAMS_MAX),
+		notes: notes.flatMap((note) => words(note, NOTE_MAX) ?? []).slice(0, NOTES_MAX)
+	};
 }
 
-/** a 200's body, read whole within `WITHIN_MS` and `ANSWER_BYTES`; null for anything else. */
-async function answerOf(url: string): Promise<string | null> {
+/**
+ * a 200's body, read whole; otherwise why there is none: the status and the problem body's `code`
+ * where it has one, `timeout` past `WITHIN_MS`, `network` where no answer came, and `shape` for a
+ * 200 with no body or one past `ANSWER_BYTES`.
+ */
+async function answerOf(
+	url: string
+): Promise<{ ok: true; body: string } | { ok: false; why: string }> {
 	const signal = AbortSignal.timeout(WITHIN_MS);
-	const response = await fetch(url, { headers: { accept: 'application/json' }, signal });
-	if (response.status !== 200 || response.body === null) {
-		await response.body?.cancel();
-		return null;
+	try {
+		const response = await fetch(url, { headers: { accept: 'application/json' }, signal });
+		const body = await bodyOf(response, signal);
+		if (response.status !== 200) {
+			const code = body === null ? null : problemCode(body);
+			return {
+				ok: false,
+				why: code === null ? `${response.status}` : `${response.status} ${code}`
+			};
+		}
+		return body === null ? { ok: false, why: 'shape' } : { ok: true, body };
+	} catch {
+		return { ok: false, why: signal.aborted ? 'timeout' : 'network' };
 	}
+}
+
+/** `response`'s body within `ANSWER_BYTES`, cancelled when `signal` aborts; null past it or for none. */
+async function bodyOf(response: Response, signal: AbortSignal): Promise<string | null> {
+	if (response.body === null) return null;
 	const reader = response.body.getReader();
+	// the runtime's `fetch` decides whether its signal reaches a body already streaming; this does.
+	const cancel = () => void reader.cancel(signal.reason).catch(() => {});
+	signal.addEventListener('abort', cancel, { once: true });
 	const chunks: Uint8Array[] = [];
 	let size = 0;
-	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		size += value.byteLength;
-		if (size > ANSWER_BYTES) {
-			await reader.cancel();
-			return null;
+	try {
+		for (;;) {
+			signal.throwIfAborted();
+			const { done, value } = await reader.read();
+			signal.throwIfAborted();
+			if (done) break;
+			size += value.byteLength;
+			if (size > ANSWER_BYTES) {
+				await reader.cancel();
+				return null;
+			}
+			chunks.push(value);
 		}
-		chunks.push(value);
+	} finally {
+		signal.removeEventListener('abort', cancel);
 	}
 	const whole = new Uint8Array(size);
 	let at = 0;
@@ -121,6 +163,18 @@ async function answerOf(url: string): Promise<string | null> {
 		at += chunk.byteLength;
 	}
 	return new TextDecoder().decode(whole);
+}
+
+const problem = z.object({ code: z.string().regex(/^[a-z0-9_]{1,64}$/) });
+
+/** an RFC 9457 refusal's `code`, the API's stable name for why; null where the body holds none. */
+function problemCode(body: string): string | null {
+	try {
+		const read = problem.safeParse(JSON.parse(body));
+		return read.success ? read.data.code : null;
+	} catch {
+		return null;
+	}
 }
 
 /**
