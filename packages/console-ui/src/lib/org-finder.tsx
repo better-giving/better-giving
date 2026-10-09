@@ -3,7 +3,6 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { einAsPrinted } from '@better-giving/operator/console/org-rules';
 import {
-	type FormEvent,
 	type ReactNode,
 	type RefObject,
 	useEffect,
@@ -13,7 +12,6 @@ import {
 	useState
 } from 'react';
 import type { NonprofitMatch, NonprofitSearch } from '../api/types';
-import { spellEin } from './fold-boxes';
 import {
 	type FinderView,
 	type FinderWatch,
@@ -35,9 +33,10 @@ import {
 // and a blur keep what was typed, and Enter over no match falls through to this form's own submit,
 // which is the press.
 //
-// **nothing is asked while typing.** a press is Search or Enter, and when it asks, and what, is
-// ./org-search.ts's. a box holding nothing but digits, dashes and spaces is spelled as an EIN as it
-// is typed, the way the fold's own EIN box is.
+// **nothing is asked while typing, and what is typed stays as typed.** a press is Search or Enter,
+// and when it asks, and what, is ./org-search.ts's: a name may open with digits ("100 Black Men of
+// America"), so the box is never re-spelled as an EIN, and the press reads a number out of it
+// instead. the box's text is the machine's `inputValue`, held here, never written into the element.
 //
 // **the list is the IRS list's answer, unfiltered here**, in the API's order. a search carries no
 // revocation, so the one badge a match can carry is not being listed as tax-deductible; the
@@ -49,9 +48,6 @@ export const SEARCH_LABEL = 'Search';
 export const NO_MATCHES = 'No matches.';
 export const SEARCH_UNANSWERED = "Couldn't search the IRS list. Search by EIN instead.";
 export const NOT_DEDUCTIBLE_BADGE = 'Not listed as tax-deductible';
-
-/** what an EIN looks like part-typed: digits, dashes and spaces, with a digit among them. */
-const EIN_TYPING = /^[\d\s-]*\d[\d\s-]*$/;
 
 /**
  * what the region under the box says. the matches are counted rather than left to the list: the
@@ -93,6 +89,7 @@ export type OrgFinderProps = {
 
 export function OrgFinder({ lookups, search, lockIn, closed, onClose }: OrgFinderProps): ReactNode {
 	const [view, setView] = useState<FinderView>(IDLE_VIEW);
+	const [typed, setTyped] = useState('');
 	const box = useRef<HTMLInputElement>(null);
 	const locking = useEffectEvent(lockIn);
 
@@ -116,8 +113,10 @@ export function OrgFinder({ lookups, search, lockIn, closed, onClose }: OrgFinde
 		<OrgFinderCard
 			view={view}
 			box={box}
+			typed={typed}
+			onType={setTyped}
 			onPress={() => {
-				if (!closed) watch.current?.press(box.current?.value ?? '');
+				if (!closed) watch.current?.press(typed);
 			}}
 			onPick={(match) => {
 				if (!closed) watch.current?.pick(match);
@@ -132,6 +131,9 @@ export type OrgFinderCardProps = {
 	readonly view: FinderView;
 	readonly closed: boolean;
 	readonly box?: RefObject<HTMLInputElement | null> | undefined;
+	/** what the box holds, as typed. */
+	readonly typed: string;
+	readonly onType: (typed: string) => void;
 	readonly onPress: () => void;
 	readonly onPick: (match: NonprofitMatch) => void;
 	readonly onClose?: (() => void) | undefined;
@@ -142,6 +144,8 @@ export function OrgFinderCard({
 	view,
 	closed,
 	box,
+	typed,
+	onType,
 	onPress,
 	onPick,
 	onClose
@@ -174,6 +178,8 @@ export function OrgFinderCard({
 					disableLayer
 					allowCustomValue
 					selectionBehavior="preserve"
+					inputValue={typed}
+					onInputValueChange={(details) => onType(details.inputValue)}
 					onValueChange={(details) => {
 						const match = details.items[0];
 						if (match !== undefined) onPick(match);
@@ -187,11 +193,6 @@ export function OrgFinderCard({
 							className="adm-input"
 							maxLength={SEARCH_MOST}
 							autoComplete="off"
-							onInput={(event: FormEvent<HTMLInputElement>) => {
-								if (EIN_TYPING.test(event.currentTarget.value)) {
-									spellEin(event.currentTarget, event.nativeEvent);
-								}
-							}}
 							onKeyDown={(event) => {
 								if (event.key === 'Escape') onClose?.();
 							}}

@@ -5,8 +5,8 @@ import type { IdentityField } from './org-form';
 
 // what the Organisation fold's boxes hold as they stand, how a found value is put into one, and
 // which required box is still empty after it — for ./org-fold.tsx's IRS lookup, which fills boxes
-// the operator may have typed in since it asked — and how an EIN is spelled as it is typed, in the
-// fold's EIN box and in the finder's (./org-finder.tsx).
+// the operator may have typed in since it asked — and how an EIN is spelled as it is typed in the
+// fold's EIN box.
 //
 // **a box is an input or a textarea**, and the mission is the second: a fill that read inputs alone
 // would take a typed mission for an empty box and write over it, and would never reach an empty one.

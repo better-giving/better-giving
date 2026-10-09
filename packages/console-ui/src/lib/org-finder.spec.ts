@@ -38,7 +38,14 @@ const showing = (matches: readonly NonprofitMatch[]): FinderView => ({
 /** the card's markup, with the apostrophes react escapes put back so the copy reads as written. */
 const drawn = (view: FinderView, closed = false): string =>
 	renderToStaticMarkup(
-		createElement(OrgFinderCard, { view, closed, onPress: () => {}, onPick: () => {} })
+		createElement(OrgFinderCard, {
+			view,
+			closed,
+			typed: '',
+			onType: () => {},
+			onPress: () => {},
+			onPick: () => {}
+		})
 	).replaceAll('&#x27;', "'");
 
 /** the Search press, as drawn. */

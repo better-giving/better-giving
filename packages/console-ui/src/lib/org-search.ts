@@ -1,4 +1,4 @@
-import { EIN, einAsPrinted } from '@better-giving/operator/console/org-rules';
+import { einAsPrinted } from '@better-giving/operator/console/org-rules';
 import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 
 // what the finder (./org-finder.tsx) asks the IRS list when it is pressed, and what it shows while
@@ -14,7 +14,9 @@ import type { NonprofitMatch, NonprofitSearch } from '../api/types';
 //
 // **a whole EIN is looked up, never searched**, and so is a match picked off the list: the lookup
 // is what carries the address, the mission and the revocation a search does not. the lookup is the
-// fold's to make (`lockIn`), because what it answers is the number the screen locks in.
+// fold's to make (`lockIn`), because what it answers is the number the screen locks in. a press is a
+// whole EIN when it is nine digits once its dashes and spaces are dropped, and anything else is a
+// name, typed digits and all: `211 LA County` is a search.
 //
 // **a list that does not answer is remembered by nobody**, so the same query asks again at the
 // next press.
@@ -51,13 +53,17 @@ export type FinderAsk =
 /** a query as two queries are compared: `Riverside  food ` asks what `riverside food` asked. */
 const keyOf = (query: string): string => query.trim().replace(/\s+/g, ' ').toLowerCase();
 
+/** nine digits, once a press's dashes and spaces are dropped. */
+const WHOLE_EIN = /^\d{9}$/;
+
 /**
  * what a press on `text` asks. a whole EIN is a lookup in its stored spelling; anything else of at
  * least {@link SEARCH_FLOOR} characters is a search, on a console able to ask the list.
  */
 export function finderAsk(text: string, lookups: boolean): FinderAsk {
 	const query = text.trim();
-	if (EIN.test(query)) return { kind: 'lookup', ein: einAsPrinted(query) };
+	const digits = query.replace(/[\s-]/g, '');
+	if (WHOLE_EIN.test(digits)) return { kind: 'lookup', ein: einAsPrinted(digits) };
 	const key = keyOf(query);
 	if (!lookups || [...key].length < SEARCH_FLOOR) return null;
 	return { kind: 'search', query, key };

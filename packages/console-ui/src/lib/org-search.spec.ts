@@ -55,9 +55,19 @@ describe('what a press asks', () => {
 		expect(finderAsk(' 123456789 ', true)).toEqual({ kind: 'lookup', ein: '12-3456789' });
 	});
 
+	it('looks up nine digits however they are dashed or spaced', () => {
+		expect(finderAsk('12 345 6789', true)).toEqual({ kind: 'lookup', ein: '12-3456789' });
+	});
+
 	it('searches anything else of three characters or more', () => {
 		expect(finderAsk('riv', true)).toMatchObject({ kind: 'search', query: 'riv' });
 		expect(finderAsk('12-345678', true)).toMatchObject({ kind: 'search', query: '12-345678' });
+	});
+
+	it('searches a name that opens with digits as it was typed', () => {
+		for (const name of ['100 Black Men of America', '4-H Council', '211 LA County']) {
+			expect(finderAsk(name, true)).toMatchObject({ kind: 'search', query: name });
+		}
 	});
 
 	it('asks nothing for one or two characters, which the binary refuses', () => {
