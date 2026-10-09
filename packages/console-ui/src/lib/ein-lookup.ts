@@ -157,11 +157,7 @@ const LOCKED: readonly IdentityField[] = [
  * or, where it found none, from the match picked off the finder's list — its name, city and state.
  * a box the source holds nothing for is emptied. `answer` is `null` where this console cannot ask.
  */
-export function lockedBoxes(
-	ein: string,
-	answer: EinRead | null,
-	match: NonprofitMatch | null
-): Filled {
+function lockedBoxes(ein: string, answer: EinRead | null, match: NonprofitMatch | null): Filled {
 	const found = answer?.found ?? null;
 	const from: Filled =
 		found !== null

@@ -132,15 +132,16 @@ import type {
 // note under it, and focus on the EIN box where there is a note, or else on the first required box
 // still empty, or on Save where none is. a console that cannot ask the list locks a whole EIN in at
 // once and asks nothing. from then on the finder collapses into "Pick a different organisation"
-// beside Save, which opens it above the form, and Save is held while a lookup it made is out.
+// beside Save, which opens it above the form, and Save is held while the finder's lookup is out.
 //
 // **the IRS list fills the boxes and never saves them.** a whole EIN typed into its box is looked up
 // once (./ein-lookup.ts says when), and so is a number the finder locks in; either way a found
 // organisation's values go into the boxes the way typing them would, so the press is armed over them
 // and Save stores them like any edit. a number locked in replaces the whole legal identity, emptying
-// what the answer holds nothing for; a typed one fills around what the operator typed. what the list says about the number stands under the EIN box
-// in a region drawn before it speaks, and goes when the box changes. the list is reached through the
-// two calls the page hands in, so this names no address and no binary route.
+// what the answer holds nothing for; a typed one fills around what the operator typed. what the list
+// says about the number stands under the EIN box in a region drawn before it speaks, and goes when
+// the box changes. the list is reached through the two calls the page hands in, so this names no
+// address and no binary route.
 //
 // **a value put into a box is made to say it changed**, and the mission is a textarea the fill has
 // to reach as well as the inputs — ./fold-boxes.ts holds both.
