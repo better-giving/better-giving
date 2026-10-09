@@ -132,12 +132,11 @@ export function ChatOpening() {
 
 /**
  * stands where an AI panel nobody's press opened was, and hands the focus to the bar's AI press as
- * the panel goes: a sheet opened on arrival (an empty chat's, ./chat-wiring.tsx), and the panel that
- * was the whole editor until the first draft landed below the wide breakpoint. either way the focus
- * was left on the document, and only from there is it taken — the operator who went elsewhere while
- * the reply was written stays there. it mounts in the commit that takes the panel down, so its
- * effect runs after a sheet's cleanup has let go of the page. from the wide breakpoint there is no
- * AI press and no sheet, and it hands the focus nowhere.
+ * the panel goes: the panel that was the whole editor until the first draft landed below the wide
+ * breakpoint (./chat-wiring.tsx). the focus was left on the document, and only from there is it
+ * taken — the operator who went elsewhere while the reply was written stays there. it mounts in
+ * the commit that takes the panel down. from the wide breakpoint there is no AI press, and it hands
+ * the focus nowhere.
  */
 export function ChatClosed() {
 	const entry = useContext(AiEntry);

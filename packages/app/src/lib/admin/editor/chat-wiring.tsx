@@ -25,13 +25,12 @@ import { useWide } from './wide';
 // posting each turn and each card's answers. from the wide breakpoint the panel is docked and shown
 // from the start; below it, from the AI press.
 //
-// a chat read empty on arrival is asked its opening questions: one `open` post carrying the
-// browser's zone, once per editor visit, so a chat a Reset or a Discard empties later is not asked
-// again until the editor is opened anew. the panel reads `opening` until the asked turn lands with
-// the revalidation that follows the post; an opening the route could not answer ends it and is said
-// where a refused send is. below the wide breakpoint the arrival also opens the sheet, and closing
-// that sheet hands the focus to the AI press (`ChatClosed`): no press opened it, so it has no opener
-// of its own to hand it back to.
+// a page never drafted whose chat reads empty on arrival is asked its opening questions: one `open`
+// post carrying the browser's zone, once per editor visit, so a chat a Reset or a Discard empties
+// later is not asked again until the editor is opened anew. the panel reads `opening` until the
+// asked turn lands with the revalidation that follows the post; an opening the route could not
+// answer ends it and is said where a refused send is. a drafted page's empty chat is asked nothing:
+// the questions draft a page, and this one has a draft, so its panel opens on the box alone.
 //
 // a turn is the three boxes that route takes: the words, the photos as a JSON array, and the
 // browser's zone, which an end date the operator names is a day in. while it runs the words stand
@@ -66,8 +65,8 @@ import { useWide } from './wide';
 // alone, so the server draws the layout the chat will keep. the turn that first changes the page
 // ends it in the render it lands in. from the wide breakpoint the panel stays where it stood; below
 // it the panel goes, the preview is shown, and a focus left on the document goes to the AI press
-// (`ChatClosed`), as for a sheet the arrival opened. an empty chat is asked its opening questions
-// in the panel, and opens no sheet on arrival.
+// (`ChatClosed`). an empty chat is asked its opening questions in the panel, and opens no sheet on
+// arrival.
 //
 // the panel mounts once the chat has loaded rather than on an empty log: the log takes the chat it
 // opens on as already read ($lib/admin/chat/chat-log.tsx), and would speak the whole history as it
@@ -201,8 +200,9 @@ export function useEditorChat(
 	const wide = useWide();
 	const [open, setOpen] = useState(false);
 	/**
-	 * the panel up, or last up, is one no AI press opened: a sheet the arrival opened, or the panel
-	 * that was the whole editor before the first draft.
+	 * the panel last up is one no AI press opened: the panel that was the whole editor before the
+	 * first draft. closing what stands in its place below the wide breakpoint hands the focus to the
+	 * AI press (`ChatClosed`), since it has no opener of its own to hand it back to.
 	 */
 	const [openedOnArrival, setOpenedOnArrival] = useState(false);
 	const history = useFetcher<History>();
@@ -215,18 +215,12 @@ export function useEditorChat(
 		setOpen(false);
 		setOpenedOnArrival(!undrafted && !wide);
 	}
-	/** the chat read empty on arrival, so this visit asks its opening questions. */
+	/** the page never drafted and its chat read empty on arrival: this visit asks the opening. */
 	const [asksOpening, setAsksOpening] = useState(false);
 	const [arrived, setArrived] = useState(false);
 	if (!arrived && history.data !== undefined) {
 		setArrived(true);
-		if (history.data.turns.length === 0) {
-			setAsksOpening(true);
-			if (!wide && !undrafted) {
-				setOpen(true);
-				setOpenedOnArrival(true);
-			}
-		}
+		if (!drafted && history.data.turns.length === 0) setAsksOpening(true);
 	}
 	/** the last post: a send's words, for the box to take back if nothing is stored from it. */
 	const [sent, setSent] = useState<{ answers: boolean; text: string }>({
