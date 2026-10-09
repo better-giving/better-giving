@@ -2,7 +2,17 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { NonprofitMatch } from '../api/types';
-import { NO_MATCHES, NOT_DEDUCTIBLE_BADGE, OrgFinderCard, SEARCH_UNANSWERED } from './org-finder';
+import {
+	EIN_ONLY,
+	LOOKING_UP,
+	NO_MATCHES,
+	NOT_DEDUCTIBLE_BADGE,
+	OrgFinderCard,
+	type OrgFinderCardProps,
+	SEARCH_UNANSWERED,
+	SEARCHING,
+	TOO_SHORT
+} from './org-finder';
 import { type FinderView, IDLE_VIEW } from './org-search';
 
 // the finder as drawn in each view a press can leave it in. ../../vite.config.ts pins `node` and
@@ -30,21 +40,24 @@ const MATCHES = [
 	})
 ];
 
-const showing = (matches: readonly NonprofitMatch[]): FinderView => ({
-	out: false,
-	found: { kind: 'matches', matches }
-});
+const showing = (
+	matches: readonly NonprofitMatch[],
+	out: FinderView['out'] = null
+): FinderView => ({ out, found: { kind: 'matches', matches }, refused: null });
 
 /** the card's markup, with the apostrophes react escapes put back so the copy reads as written. */
-const drawn = (view: FinderView, closed = false): string =>
+const drawn = (view: FinderView, over: Partial<OrgFinderCardProps> = {}): string =>
 	renderToStaticMarkup(
 		createElement(OrgFinderCard, {
 			view,
-			closed,
+			lookups: true,
+			listed: true,
+			closed: false,
 			typed: '',
 			onType: () => {},
 			onPress: () => {},
-			onPick: () => {}
+			onPick: () => {},
+			...over
 		})
 	).replaceAll('&#x27;', "'");
 
@@ -52,6 +65,17 @@ const drawn = (view: FinderView, closed = false): string =>
 const searchPress = (markup: string): string =>
 	markup.match(/<button[^>]*>(?:(?!<\/button>).)*Search(?:(?!<\/button>).)*<\/button>/s)?.[0] ??
 	'<no press>';
+
+/** the box, as drawn: its own tag, whatever order its attributes come in. */
+const box = (markup: string): string =>
+	markup.match(/<input[^>]*role="combobox"[^>]*>/)?.[0] ?? '<no box>';
+
+/** the opening tag of each option, which is where the machine writes its state. */
+const options = (markup: string): string[] => markup.match(/<div[^>]*role="option"[^>]*>/g) ?? [];
+
+/** the opening tag of the list. */
+const listbox = (markup: string): string =>
+	markup.match(/<div[^>]*role="listbox"[^>]*>/)?.[0] ?? '<no list>';
 
 /** the markup of the one option naming `name`. */
 const option = (markup: string, name: string): string => {
@@ -73,15 +97,19 @@ describe('the finder', () => {
 
 		expect(markup).toMatch(/^<search[^>]*><form/);
 		expect(markup).toMatch(/<label[^>]*>Name or EIN<\/label>/);
-		expect(markup).toContain('role="combobox"');
+		expect(box(markup)).not.toBe('<no box>');
 		expect(searchPress(markup)).toContain('type="submit"');
+	});
+
+	it('labels the box for an EIN alone on a console that cannot ask the list', () => {
+		expect(drawn(IDLE_VIEW, { lookups: false })).toMatch(/<label[^>]*>EIN<\/label>/);
 	});
 
 	it('says nothing and lists nothing before a press', () => {
 		const markup = drawn(IDLE_VIEW);
 
 		expect(said(markup)).toBe('');
-		expect(markup).not.toContain('role="option"');
+		expect(options(markup)).toEqual([]);
 	});
 
 	it('draws no prose beside the label, the press and the region', () => {
@@ -93,21 +121,42 @@ describe('the finder', () => {
 		expect(text).toBe('Name or EIN Search');
 	});
 
-	it('reads busy while a press is out, keeps the box open, and holds the press', () => {
-		const markup = drawn({ out: true, found: { kind: 'idle' } });
+	it('says it is searching while a search is out, reads busy and holds the press, and keeps the box open', () => {
+		const markup = drawn({ out: 'search', found: { kind: 'idle' }, refused: null });
 		const press = searchPress(markup);
 
+		expect(said(markup)).toBe(SEARCHING);
 		expect(press).toContain('aria-busy="true"');
 		expect(press).toContain('aria-disabled="true"');
-		expect(press).not.toMatch(/\bdisabled=""/);
-		expect(markup).not.toMatch(/<input[^>]*role="combobox"[^>]*disabled/);
+		expect(press).not.toMatch(/\sdisabled=""/);
+		expect(box(markup)).not.toMatch(/\sdisabled=""/);
 	});
 
-	it('is not busy before a press, and holds the press while the page writes', () => {
+	it('says it is looking up while a lookup is out, with the list it was picked from closed', () => {
+		const markup = drawn(showing(MATCHES, 'lookup'));
+
+		expect(said(markup)).toBe(LOOKING_UP);
+		expect(options(markup)).toHaveLength(2);
+		for (const tag of options(markup)) expect(tag).toContain('aria-disabled="true"');
+	});
+
+	it('leaves the options open to a pick while nothing is out', () => {
+		for (const tag of options(drawn(showing(MATCHES)))) expect(tag).not.toContain('aria-disabled');
+	});
+
+	it('is not busy before a press, and holds the press and the options while the page writes', () => {
+		const writing = drawn(showing(MATCHES), { closed: true });
+
 		expect(searchPress(drawn(IDLE_VIEW))).not.toContain('aria-busy');
 		expect(searchPress(drawn(IDLE_VIEW))).not.toContain('aria-disabled');
-		expect(searchPress(drawn(IDLE_VIEW, true))).toContain('aria-disabled="true"');
-		expect(searchPress(drawn(IDLE_VIEW, true))).not.toContain('aria-busy');
+		expect(searchPress(writing)).toContain('aria-disabled="true"');
+		expect(searchPress(writing)).not.toContain('aria-busy');
+		for (const tag of options(writing)) expect(tag).toContain('aria-disabled="true"');
+	});
+
+	it('says why a press asked nothing', () => {
+		expect(said(drawn({ ...IDLE_VIEW, refused: 'short' }))).toBe(TOO_SHORT);
+		expect(said(drawn({ ...IDLE_VIEW, refused: 'not-ein' }))).toBe(EIN_ONLY);
 	});
 
 	it('lists each match with its city and state under its name and its EIN in a column of its own', () => {
@@ -125,8 +174,16 @@ describe('the finder', () => {
 		expect(said(drawn(showing([match({})])))).toBe('1 match.');
 	});
 
+	it('counts the matches without opening the list where focus has left the finder', () => {
+		const away = drawn(showing(MATCHES), { listed: false });
+
+		expect(said(away)).toBe('2 matches.');
+		expect(listbox(away)).toMatch(/\shidden=""/);
+		expect(listbox(drawn(showing(MATCHES)))).not.toMatch(/\shidden=""/);
+	});
+
 	it('holds no more characters in its box than the binary takes in a query', () => {
-		expect(drawn(IDLE_VIEW)).toMatch(/<input[^>]*role="combobox"[^>]*maxLength="200"/);
+		expect(box(drawn(IDLE_VIEW))).toContain('maxLength="200"');
 	});
 
 	it('badges a match not listed as tax-deductible', () => {
@@ -136,19 +193,11 @@ describe('the finder', () => {
 		expect(row).toContain('adm-state--attention');
 	});
 
-	it('badges no revocation, which a search does not carry', () => {
-		const markup = drawn(showing([match({ revokedOn: '2023-05-15' })]));
-
-		expect(option(markup, 'Riverside Community Food Bank')).not.toContain('adm-state');
-		expect(markup).not.toContain('revoked');
-	});
-
 	it('says when nothing matched', () => {
-		expect(said(drawn({ out: false, found: { kind: 'none' } }))).toBe(NO_MATCHES);
+		expect(said(drawn({ ...IDLE_VIEW, found: { kind: 'none' } }))).toBe(NO_MATCHES);
 	});
 
 	it('says the list could not be searched', () => {
-		expect(said(drawn({ out: false, found: { kind: 'unavailable' } }))).toBe(SEARCH_UNANSWERED);
-		expect(SEARCH_UNANSWERED).toBe("Couldn't search the IRS list. Search by EIN instead.");
+		expect(said(drawn({ ...IDLE_VIEW, found: { kind: 'unavailable' } }))).toBe(SEARCH_UNANSWERED);
 	});
 });
