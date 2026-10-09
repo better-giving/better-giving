@@ -30,9 +30,10 @@ import type { IdentityField } from './org-form';
 //
 // **a number locked in from the finder is the one exception: it replaces the whole legal identity**
 // (`lockedBoxes`). it is the operator choosing an organisation, so every identity box takes what
-// the answer holds and is emptied where it holds nothing — a box left standing would be the
-// organisation chosen before, saved under this one's number. the vision, the brand colour, the
-// links, the logo and the notification address are the operator's and no lock-in reaches them.
+// the list found, or what the pick held where the list found nothing, and is emptied where that
+// holds nothing — a box left standing would be the organisation chosen before, saved under this
+// one's number. the vision, the brand colour, the links, the logo and the notification address are
+// the operator's and no lock-in reaches them.
 // the watch puts the EIN in the same fill, after it holds the number, so the box's own change asks
 // nothing.
 //
@@ -93,7 +94,7 @@ function read(answer: NonprofitLookup): EinRead {
 
 const digitsOf = (value: string): string => value.replace(/\D/g, '');
 
-/** boxes holding a value, with every box the list holds nothing for left out. */
+/** boxes a fill puts, by name: `''` empties one, and a box left out is left as it stands. */
 type Filled = Partial<Record<IdentityField, string>>;
 
 const filled = (boxes: Filled): Filled =>
