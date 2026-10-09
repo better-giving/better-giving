@@ -11,7 +11,7 @@ import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as layout from './_app';
 import * as suggest from './_app.admin.pages.$pageId.suggest';
 
-// a workers spec because a suggestion reads a page, its chat and the organisation's profile. the
+// a workers spec because a suggestion reads a page and the organisation's profile. the
 // chain is mounted, for ../route-request.testing.ts's reason: the session gate is a `middleware` on
 // ./_app.tsx. no case here looks anything up: a suggestion asks the model alone.
 
@@ -76,6 +76,19 @@ describe('a box the AI is asked to write', () => {
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		const [, retry] = AI.run.mock.calls[1] ?? [];
 		expect(retry.messages.at(-1).content).toContain('a heading holds at most 250 characters');
+	});
+
+	it('lands a figure and what it does, though the operator stated neither', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const AI = answering({ text: '$40 keeps a child warm all winter' });
+
+		const response = await post(pageId, HEADING, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			200,
+			{ ok: true, text: '$40 keeps a child warm all winter' }
+		]);
+		expect(AI.run).toHaveBeenCalledTimes(1);
 	});
 
 	it('lands the words the retry wrote within the bound', async () => {
@@ -246,32 +259,32 @@ describe('what a tier buys', () => {
 	});
 	const BUYS = { block: 'tiers', field: 'tier_buys[0]', current: 'A coat' };
 
-	it('is refused where the operator never said what its amount does', async () => {
+	it('lands though the operator never said what its amount does', async () => {
 		const pageId = await insertPage(db, 'campaign', tiered());
-		const AI = answering({ text: 'A warm winter coat' }, { text: 'A warm winter coat' });
+		const AI = answering({ text: 'A warm winter coat' });
 
 		const response = await post(pageId, BUYS, AI);
-
-		expect(response.status).toBe(422);
-		const [, retry] = AI.run.mock.calls[1] ?? [];
-		expect(retry.messages.at(-1).content).toContain('the operator never said what $25 does');
-	});
-
-	it('lands where the operator said what its amount does in the chat', async () => {
-		const pageId = await insertPage(db, 'campaign', tiered());
-		await db.insert(chatTurn).values({
-			pageId,
-			seq: 1,
-			author: 'operator',
-			text: 'Every $25 buys a warm winter coat for one child.'
-		});
-
-		const response = await post(pageId, BUYS, answering({ text: 'A warm winter coat' }));
 
 		expect([response.status, await response.json()]).toEqual([
 			200,
 			{ ok: true, text: 'A warm winter coat' }
 		]);
+		expect(AI.run).toHaveBeenCalledTimes(1);
+	});
+
+	it('asks again once where the words are over the tier’s bound, then refuses', async () => {
+		const pageId = await insertPage(db, 'campaign', tiered());
+		const long = { text: 'a warm coat '.repeat(15).trim() };
+		const AI = answering(long, long);
+
+		const response = await post(pageId, BUYS, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			422,
+			{ ok: false, reason: 'refused', text: 'Couldn’t write that box. Try again.' }
+		]);
+		const [, retry] = AI.run.mock.calls[1] ?? [];
+		expect(retry.messages.at(-1).content).toContain('what a tier buys is at most 140 characters');
 	});
 
 	it('names a row the block does not hold', async () => {
