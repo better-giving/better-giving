@@ -2,9 +2,11 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -38,7 +40,7 @@ func nonprofitAPI(t *testing.T, status int, body string) (*nonprofits.Client, fu
 	}
 }
 
-// a console finding organisations through `lookups`. nil is the live API, which no test here asks.
+// a console finding organisations through `lookups`. nil is the default a test gets, which asks no API.
 func finding(t *testing.T, lookups *nonprofits.Client) http.Handler {
 	t.Helper()
 	flow := oauth.New(oauth.Options{Store: state.At(t.TempDir())})
@@ -226,6 +228,51 @@ func TestASearchLongerThanAnyNameIsRefusedNamingTheBox(t *testing.T) {
 	}
 }
 
+func TestASearchWithNoLetterOrDigitIsRefusedNamingTheBox(t *testing.T) {
+	api, asked := nonprofitAPI(t, http.StatusOK, `{"results": []}`)
+	console := finding(t, api)
+
+	for _, typed := range []string{"&&&", "---", "!!!", "...", "' ' '", "\u2019\u2019\u2019"} {
+		status, body := found(t, console, "/api/nonprofits/search?q="+url.QueryEscape(typed))
+
+		said, _ := body["error"].(string)
+		if status != http.StatusBadRequest || !strings.Contains(said, "search box") ||
+			!strings.Contains(said, fmt.Sprintf("%q", typed)) {
+			t.Errorf("%q: %d %v, want 400 naming the value and the search box", typed, status, body)
+		}
+	}
+	if got := asked(); len(got) != 0 {
+		t.Errorf("asked %q, want nothing", got)
+	}
+}
+
+// words as the API reads them: runs of letters and digits, apostrophes dropped, each once whatever
+// its case.
+func TestASearchOfMoreThanEightWordsIsRefusedNamingTheBox(t *testing.T) {
+	api, asked := nonprofitAPI(t, http.StatusOK, `{"results": []}`)
+	console := finding(t, api)
+	nine := "one two three four five six seven eight nine"
+
+	status, body := found(t, console, "/api/nonprofits/search?q="+url.QueryEscape(nine))
+
+	said, _ := body["error"].(string)
+	if status != http.StatusBadRequest || !strings.Contains(said, "search box") || len(asked()) != 0 {
+		t.Errorf("%d %v and asked %q, want 400 naming the search box and nothing asked", status, body, asked())
+	}
+	for _, eight := range []string{
+		"The Board of Trustees of the Leland Stanford Junior University",
+		"one two three four five six seven eight one-two",
+		"St. Jude Children's Research Hospital of Memphis, Tennessee",
+	} {
+		if status, body := found(t, console, "/api/nonprofits/search?q="+url.QueryEscape(eight)); status != http.StatusOK {
+			t.Errorf("%q: %d %v, want it asked", eight, status, body)
+		}
+	}
+	if got := asked(); len(got) != 3 {
+		t.Errorf("asked %q, want the three searches of eight words or fewer", got)
+	}
+}
+
 func TestASearchForAnEINIsALookupByIt(t *testing.T) {
 	api, asked := nonprofitAPI(t, http.StatusOK, redCross)
 
@@ -291,5 +338,20 @@ func TestTheStatusSaysWhetherThisConsoleWasBuiltWithTheAPIsAddress(t *testing.T)
 	}
 	if got := asked(); len(got) != 0 {
 		t.Errorf("asked %q, want nothing", got)
+	}
+}
+
+// a server a test builds without naming an API gets one with no address, so no test spends the live
+// API's allowance by reaching a route it did not mean to.
+func TestAServerATestBuildsWithoutAnAPIAsksNone(t *testing.T) {
+	console := finding(t, nil)
+
+	_, status := found(t, console, "/api/nonprofits/status")
+	_, looked := found(t, console, "/api/nonprofits/530196605")
+	_, searched := found(t, console, "/api/nonprofits/search?q=red+cross")
+
+	if status["built"] != false || looked["state"] != "unavailable" || searched["state"] != "unavailable" {
+		t.Errorf("status %v, lookup %v, search %v, want no address and every answer unavailable",
+			status, looked, searched)
 	}
 }
