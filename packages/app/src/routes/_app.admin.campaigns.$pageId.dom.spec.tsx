@@ -8,11 +8,12 @@ import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import { defaultCampaign } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
 
-// a campaign's editor as the route mounts it: the opening questions an empty chat is asked, every
-// hand edit reached from Edit by hand or a click in the preview, what its first Publish says of the
-// address, the questions an address save comes back with — asked, answered yes with the version, or
-// declined — whether the donation settings sheet stands over Settings or on its own ground, and the
-// notice over a draft the read rule refuses.
+// a campaign's editor as the route mounts it: the opening questions an empty chat is asked, alone
+// on a page never drafted and beside the preview on one that has been, every hand edit reached from
+// Edit by hand or a click in the preview, what its first Publish says of the address, the questions
+// an address save comes back with — asked, answered yes with the version, or declined — whether the
+// donation settings sheet stands over Settings or on its own ground, and the notice over a draft the
+// read rule refuses.
 // the loader and the action are stand-ins, one drawing the fixture below and the other recording
 // each body and answering what the case scripts; what the real ones do is
 // ./_app.admin.campaigns.$pageId.workers.spec.ts's.
@@ -36,6 +37,7 @@ function unpublished(): Loaded {
 		unreadable: false,
 		state: 'unpublished',
 		version: 1,
+		drafted: true,
 		// a frame on a path would be fetched from a server nothing here runs.
 		preview: 'about:blank',
 		chat: '/admin/pages/p1/chat',
@@ -201,6 +203,17 @@ describe('the AI panel', () => {
 		]);
 		expect(document.querySelector('[role="complementary"] .adm-questions')).not.toBeNull();
 	});
+
+	it('asks a page never drafted its opening questions alone, with no preview and no Edit by hand', async () => {
+		drawn = { ...unpublished(), drafted: false };
+
+		await screen();
+		await settle();
+
+		expect(document.querySelector('iframe')).toBeNull();
+		expect(document.querySelector('[role="main"].adm-aipanel .adm-questions')).not.toBeNull();
+		expect(() => button('Edit by hand')).toThrow('no Edit by hand button');
+	});
 });
 
 /** a click on the block `id` in the preview, as the framed page posts it. */
@@ -363,6 +376,7 @@ describe('a draft the page rule refuses', () => {
 		discardable,
 		state: 'changed',
 		version: 3,
+		drafted: true,
 		preview: 'about:blank',
 		chat: '/admin/pages/p1/chat',
 		name: 'Winter coat drive',

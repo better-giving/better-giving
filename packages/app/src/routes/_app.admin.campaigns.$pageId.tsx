@@ -39,6 +39,7 @@ import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
 import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import {
+	type EditorPage,
 	editorPage,
 	readEditorSettings,
 	saveDraftSettings,
@@ -161,6 +162,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	let settings: SettingsSeed;
 	let asked: string | null;
 	let illustrations: ReadonlySet<string>;
+	let framed: EditorPage;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
@@ -177,17 +179,18 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const unreadable = unreadableEditor(row, now);
 	if (unreadable !== null) return { ...unreadable, ...named };
 	try {
-		[settings, asked, illustrations] = await Promise.all([
+		[framed, settings, asked, illustrations] = await Promise.all([
+			editorPage(db, row, now),
 			readEditorSettings(db, context.get(platform).env, row, new URL(request.url).origin),
 			addressAsked(db, row),
 			draftIllustrations(db, row)
 		]);
 	} catch (e) {
-		console.error(`loading campaign ${params.pageId}'s settings and pictures failed:`, e);
+		console.error(`loading campaign ${params.pageId}'s editor failed:`, e);
 		loadFailed('This campaign');
 	}
 	return {
-		...editorPage(row, now),
+		...framed,
 		...editorDraft(row, settings.currency, illustrations),
 		...named,
 		settings,
@@ -465,7 +468,7 @@ function DraftEditor({
 				: undefined
 	});
 	const naming = useRename(version);
-	const chat = useEditorChat(loaderData.chat);
+	const chat = useEditorChat(loaderData.chat, loaderData.drafted);
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
 
 	const [settings, setSettings] = useState(false);
@@ -520,6 +523,7 @@ function DraftEditor({
 
 	return (
 		<EditorShell
+			undrafted={chat.undrafted}
 			bar={
 				<PublishBar
 					closeHref="/admin/campaigns"

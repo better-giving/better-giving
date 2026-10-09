@@ -1,11 +1,13 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
-import { form, page } from '$lib/server/db/schema';
+import { chatTurn, form, page } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { readOrgProfile } from '$lib/server/org/queries';
+import { draftTurn, openTurn } from '$lib/server/pages/draft';
+import { answering } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -14,6 +16,14 @@ import * as editor from './_app.admin.donation-page';
 
 // a workers spec because the editor makes the Donation page on first need. the chain is mounted,
 // for ../route-request.testing.ts's reason: the session gate is a `middleware` on ./_app.tsx.
+//
+// the set-up this screen is served on stores an EIN, which a chat's opening looks up: the lookup
+// finds nothing here, so no case reaches the live nonprofit API.
+
+vi.mock(import('$lib/server/nonprofits/filing'), async (importOriginal) => ({
+	...(await importOriginal()),
+	lookUpFiling: async () => null
+}));
 
 const EDITOR = '/admin/donation-page';
 
@@ -543,5 +553,83 @@ describe('Reset to default', () => {
 			'Nothing was changed: this page has been saved since the editor was opened. Reload it, then try again.'
 		]);
 		expect(await donationPage()).toEqual(written);
+	});
+});
+
+describe('whether the page has been drafted', () => {
+	const QUESTION = { id: 'who', kind: 'text', prompt: 'Who do you help?' };
+
+	it('reads not drafted on the Donation page made on first need', async () => {
+		expect(await open()).toMatchObject({ drafted: false });
+	});
+
+	it('reads not drafted after the chat has asked its opening questions alone', async () => {
+		await open();
+		const made = await donationPage();
+		const asked = await openTurn(
+			db,
+			{ ...env, AI: answering({ say: 'First, a question.', ask: [QUESTION] }) },
+			{ pageId: made?.id ?? '', timeZone: 'UTC', now: Date.now(), origin: ORIGIN }
+		);
+		expect(asked).toMatchObject({ ok: true, outcome: 'asked' });
+
+		expect(await open()).toMatchObject({ drafted: false });
+	});
+
+	it('reads drafted once a chat turn has changed the page', async () => {
+		await open();
+		const made = await donationPage();
+		const turned = await draftTurn(
+			db,
+			{
+				...env,
+				AI: answering({ say: 'Two-tone now.', page: { kind: 'merge', doc: { palette: 'duo' } } })
+			},
+			{
+				pageId: made?.id ?? '',
+				message: 'make it two-tone',
+				imageIds: [],
+				timeZone: 'UTC',
+				now: Date.now()
+			}
+		);
+		expect(turned).toMatchObject({ ok: true, outcome: 'accepted' });
+
+		expect(await open()).toMatchObject({ drafted: true });
+	});
+
+	it.each([
+		['fell-back', true],
+		['refused', false],
+		['unanswered', false]
+	] as const)('counts a reply noted %s as drafting the page: %s', async (note, changed) => {
+		await open();
+		const made = await donationPage();
+		await db.insert(chatTurn).values({
+			pageId: made?.id ?? '',
+			seq: 1,
+			author: 'assistant',
+			text: 'A reply.',
+			model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+			note
+		});
+
+		expect(await open()).toMatchObject({ drafted: changed });
+	});
+
+	it('reads drafted once a block is edited by hand', async () => {
+		const { version } = await open();
+		const body = new FormData();
+		body.set(WHICH_FORM, 'block-variant');
+		body.set(RECORD_VERSION, String(version));
+		body.set('block_id', 'about');
+		body.set('variant', 'statement');
+		const saved = await request(
+			new Request(`${ORIGIN}${EDITOR}`, { method: 'POST', headers: { cookie: session }, body }),
+			{ env: bindings }
+		);
+		expect(saved.status).toBe(200);
+
+		expect(await open()).toMatchObject({ drafted: true });
 	});
 });

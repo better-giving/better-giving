@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { createDb, type Db } from '$lib/server/db/client';
 import { form, page, program } from '$lib/server/db/schema';
 import { createCampaign, readServedCampaign } from '$lib/server/pages/campaign';
-import { draftTurn } from '$lib/server/pages/draft';
+import { draftTurn, openTurn } from '$lib/server/pages/draft';
 import { answering, insertPage, SETTINGS } from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
@@ -15,6 +15,14 @@ import * as editor from './_app.admin.campaigns.$pageId';
 
 // a workers spec because the editor reads a page and its presses write one. the chain is mounted,
 // for ../route-request.testing.ts's reason: the session gate is a `middleware` on ./_app.tsx.
+//
+// the set-up this screen is served on stores an EIN, which a chat's opening looks up: the lookup
+// finds nothing here, so no case reaches the live nonprofit API.
+
+vi.mock(import('$lib/server/nonprofits/filing'), async (importOriginal) => ({
+	...(await importOriginal()),
+	lookUpFiling: async () => null
+}));
 
 let db: Db;
 let request: RouteRequester;
@@ -800,5 +808,61 @@ describe('a block’s sheet and the layout pictures', () => {
 		expect(await refused.json()).toMatchObject({
 			form: { result: { error: { layout: [expect.stringContaining('"sideways"')] } } }
 		});
+	});
+});
+
+describe('whether the campaign has been drafted', () => {
+	const drafted = async (pageId: string) =>
+		((await (await open(pageId)).json()) as { drafted: boolean }).drafted;
+
+	const made = async () =>
+		(await createCampaign(db, { name: 'Winter coat drive', campaignType: 'year_end' })).pageId;
+
+	it('reads not drafted on a campaign New campaign has just made', async () => {
+		expect(await drafted(await made())).toBe(false);
+	});
+
+	it('reads not drafted after the chat has asked its opening questions alone', async () => {
+		const pageId = await made();
+		const AI = answering({
+			say: 'First, a question.',
+			ask: [{ id: 'who', kind: 'text', prompt: 'Who do you help?' }]
+		});
+		const asked = await openTurn(
+			db,
+			{ ...env, AI },
+			{ pageId, timeZone: 'UTC', now: Date.now(), origin: ORIGIN }
+		);
+		expect(asked).toMatchObject({ ok: true, outcome: 'asked' });
+
+		expect(await drafted(pageId)).toBe(false);
+	});
+
+	it('reads drafted once a chat turn has changed it, though only its name', async () => {
+		const pageId = await made();
+		const turned = await draftTurn(
+			db,
+			{ ...env, AI: answering({ say: 'Done.', set: { name: 'Coats for Kids' } }) },
+			{ pageId, message: 'call it Coats for Kids', imageIds: [], timeZone: 'UTC', now: Date.now() }
+		);
+		expect(turned).toMatchObject({ ok: true, outcome: 'accepted' });
+
+		expect(await drafted(pageId)).toBe(true);
+	});
+
+	it('reads drafted once a block is edited by hand', async () => {
+		const pageId = await made();
+		const saved = await post(pageId, 'block-variant', { block_id: 'story', variant: 'lede' });
+		expect(saved.status).toBe(200);
+
+		expect(await drafted(pageId)).toBe(true);
+	});
+
+	it('reads not drafted after a rename from the bar alone', async () => {
+		const pageId = await made();
+		const renamed = await post(pageId, 'campaign-name', { name: 'Warm hands winter' });
+		expect(renamed.status).toBe(200);
+
+		expect(await drafted(pageId)).toBe(false);
 	});
 });

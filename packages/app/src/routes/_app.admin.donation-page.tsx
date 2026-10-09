@@ -29,6 +29,7 @@ import type { Page } from '$lib/server/db/schema';
 import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import {
+	type EditorPage,
 	editorPage,
 	readEditorSettings,
 	saveDraftSettings,
@@ -97,13 +98,15 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	let settings: SettingsSeed;
 	let edited: boolean;
 	let illustrations: ReadonlySet<string>;
+	let framed: EditorPage;
 	const now = Date.now();
 	try {
 		row = await ensureDonationPage(db);
 		const unreadable = unreadableEditor(row, now);
 		// a draft the rule refuses is itself an edit Reset puts back (`hasEditsToReset`).
 		if (unreadable !== null) return { ...unreadable, hasEdits: true };
-		[settings, edited, illustrations] = await Promise.all([
+		[framed, settings, edited, illustrations] = await Promise.all([
+			editorPage(db, row, now),
 			readEditorSettings(db, env, row, new URL(request.url).origin),
 			hasEditsToReset(db, row),
 			draftIllustrations(db, row)
@@ -113,7 +116,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		loadFailed('The Donation page');
 	}
 	return {
-		...editorPage(row, now),
+		...framed,
 		...editorDraft(row, settings.currency, illustrations),
 		settings,
 		hasEdits: edited
@@ -210,10 +213,11 @@ function DraftEditor({
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setDonationSettings(true) : setBlockId(id);
-	const chat = useEditorChat(loaderData.chat);
+	const chat = useEditorChat(loaderData.chat, loaderData.drafted);
 
 	return (
 		<EditorShell
+			undrafted={chat.undrafted}
 			bar={
 				<PublishBar
 					closeHref="/admin"
