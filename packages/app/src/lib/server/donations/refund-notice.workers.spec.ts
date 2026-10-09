@@ -213,7 +213,7 @@ describe('sendRefundNotice()', () => {
 		logged.mockRestore();
 
 		expect(mail.sent).toHaveLength(0);
-		expect(lines).toContain('A donor was not told of a refund:');
+		expect(lines).toContain('A donor wasn’t told about their refund:');
 	});
 
 	/** the refund stands whether or not the donor heard of it, so staff are told who was missed. */
@@ -225,9 +225,12 @@ describe('sendRefundNotice()', () => {
 
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
 		const alerted = mail.sent[1];
-		expect(alerted?.subject).toContain('A donor’s refund notice did not send');
+		expect(alerted?.subject).toBe('A donor wasn’t told about their refund');
 		expect(alerted?.text).toContain(REFUND_ID);
 		expect(alerted?.text).toContain('no route to host');
+		const said = alerted?.text.replace(/\s+/g, ' ');
+		expect(said).toContain('It will be sent again automatically for up to a week.');
+		expect(said).toContain('go to SMTP and press Send test email');
 	});
 
 	/**
@@ -249,7 +252,8 @@ describe('sendRefundNotice()', () => {
 		await expect(sendRefundNotice(deps(port), target())).resolves.toBeUndefined();
 
 		expect(sent.map((m) => m.to)).toEqual(['ops@hope.example']);
-		expect(sent[0]?.subject).toContain('A donor’s refund notice could not be attempted');
+		expect(sent[0]?.subject).toBe('A donor wasn’t told about their refund');
+		expect(sent[0]?.text.replace(/\s+/g, ' ')).toContain('failed with an unexpected error');
 		expect(sent[0]?.text).toContain('socket hung up');
 	});
 
@@ -439,7 +443,7 @@ describe('sendOwedRefundNotices()', () => {
 		await sweep(mail.port);
 
 		expect(refusing.sent.map((m) => m.to)).toEqual(['ada@example.org']);
-		expect(lines).toContain('A donor’s refund notice did not send:');
+		expect(lines).toContain('A donor wasn’t told about their refund:');
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
 	});
 
@@ -504,5 +508,10 @@ describe('sendOwedRefundNotices()', () => {
 
 		expect(refused.sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
 		expect(mail.sent).toEqual([]);
+		// no mail setting fixes an address the transport refuses, so staff are sent to the gift.
+		const said = refused.sent[1]?.text.replace(/\s+/g, ' ');
+		expect(said).toContain('It won’t be sent again.');
+		expect(said).toContain('The donor’s email address was refused.');
+		expect(said).not.toContain('SMTP');
 	});
 });

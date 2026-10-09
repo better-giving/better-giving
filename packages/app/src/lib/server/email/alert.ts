@@ -36,6 +36,26 @@ export async function alert(deps: MailDeps, input: adminAlert.AdminAlertData): P
 	await mailOperator(deps, adminAlert.template(input));
 }
 
+/** an alert's action where only the organisation's saved details fix what went wrong. */
+export const FILL_IN_ORG_DETAILS =
+	'Open the console (run `better-giving start`), go to Organisation and fill in what’s missing.';
+
+/** an alert's action where an email did not send. */
+export const TEST_THE_SMTP_SETTINGS =
+	'Open the console (run `better-giving start`), go to SMTP and press Send test email. Fix ' +
+	'whatever the test reports.';
+
+/**
+ * what follows {@link TEST_THE_SMTP_SETTINGS} where the send threw rather than answering: the cause
+ * is in the worker's logs, which the person reading the alert may not be the one able to open.
+ */
+export const SEND_THIS_TO_WHOEVER_SET_IT_UP =
+	' If the test works, send this email to whoever set up your donations app. The cause is in its ' +
+	'logs (Cloudflare dashboard, or `pnpm run logs`).';
+
+/** how an action ends where an email to a donor did not go and nothing sends it again. */
+export const NO_RESEND = ' This email won’t be resent, so contact them yourself if they need it.';
+
 /**
  * one message to the address the console names for operational mail, which every alert goes to.
  * `no_address` where none is saved — `notification_email` is nullable and a fresh deployment has

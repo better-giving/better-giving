@@ -785,8 +785,8 @@ describe('the failure notice', () => {
 		await sendDueEntries(deps(qb.port, mail.port), NOW);
 
 		expect((await row(givenUp)).status).toBe('failed');
-		expect(mail.sent[0]?.text).toContain('Waiting to be sent: 1');
-		expect(mail.sent[0]?.text).toContain('Given up on: 1');
+		expect(mail.sent[0]?.text).toContain('Being retried automatically: 1');
+		expect(mail.sent[0]?.text).toContain('Need you to retry: 1');
 	});
 
 	it('stamps a row without putting off the next attempt on it', async () => {
@@ -884,7 +884,7 @@ describe('the failure notice', () => {
 		await sendDueEntries(deps(provider().port, mail.port), NOW);
 
 		expect(mail.sent).toHaveLength(1);
-		expect(mail.sent[0]?.text).toContain('Waiting to be sent: 1');
+		expect(mail.sent[0]?.text).toContain('Being retried automatically: 1');
 		expect((await row(died)).notifiedAt).not.toBeNull();
 	});
 
@@ -916,7 +916,7 @@ describe('the notice for a run that could not send anything', () => {
 
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('The refresh token was rejected.');
-		expect(mail.sent[0]?.text).toContain('Waiting to be sent: 2');
+		expect(mail.sent[0]?.text).toContain('Gifts waiting: 2');
 		for (const entryGroupId of [first, second]) {
 			// the row the run never reached is stamped with the one it did: what is being reported is
 			// the backlog, not a row.
@@ -1008,7 +1008,7 @@ describe('the notice for a run that could not send anything', () => {
 		await sendDueEntries(deps(qb.port, mail.port), NOW);
 
 		expect(mail.sent).toHaveLength(1);
-		expect(mail.sent[0]?.text).toContain('Oldest has waited: 2 hours');
+		expect(mail.sent[0]?.text).toContain('Oldest waiting for: 2 hours');
 		expect((await row(entryGroupId)).notifiedAt).toEqual(NOW);
 	});
 
@@ -1096,8 +1096,8 @@ describe('the notice for a run that could not send anything', () => {
 		// one sends an operator to the connection and the other to the gifts, so the two may never
 		// read as the same outage.
 		expect(mail.sent.map((message) => message.subject)).toEqual([
-			'Nothing is reaching QuickBooks at all',
-			'QuickBooks would not take some of this deployment’s gifts'
+			'No gifts are syncing to QuickBooks',
+			'Some gifts didn’t sync to QuickBooks'
 		]);
 	});
 });

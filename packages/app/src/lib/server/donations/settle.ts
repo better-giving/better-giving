@@ -15,6 +15,12 @@ import {
 	type Payment,
 	type PaymentMethod
 } from '../db/schema';
+import {
+	FILL_IN_ORG_DETAILS,
+	NO_RESEND,
+	SEND_THIS_TO_WHOEVER_SET_IT_UP,
+	TEST_THE_SMTP_SETTINGS
+} from '../email/alert';
 import type { CryptoReceived } from '../email/receipt';
 import { renderUncollectedNotice } from '../email/uncollected';
 import { findEntryGroup } from '../ledger/queries';
@@ -519,7 +525,7 @@ async function settleTarget(
 			await tellingFault(
 				deps,
 				target,
-				'the message telling the donor nothing was collected',
+				'the email telling the donor their payment didn’t go through',
 				error
 			);
 		}
@@ -538,7 +544,7 @@ async function settleTarget(
 	try {
 		await tellPeople(deps, settled, settlement);
 	} catch (error) {
-		await tellingFault(deps, settled, 'the donor’s receipt and the alert that goes with it', error);
+		await tellingFault(deps, settled, 'the donor’s receipt and your new-gift email', error);
 	}
 	return {
 		ok: true,
@@ -609,13 +615,12 @@ function fallbackFor(
 async function unreadableDelivery(deps: SettleDeps, detail: string): Promise<void> {
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: `A ${processor} delivery verified and could not be read`,
+		headline: `An update from ${processor} couldn’t be read`,
 		body:
-			`${processor} signed a delivery this release cannot read, so nothing was written. ` +
-			'It was answered as received, and a redelivery would read the same, ' +
-			'so a payment it was about may be missing from the books.',
+			`${processor} sent an update this version of the app can’t read, so nothing was ` +
+			'recorded. If it was about a payment, that payment may be missing from your records.',
 		facts: [{ label: 'Reason', value: detail }],
-		action: `Find the delivery in the ${processor} dashboard's webhook log and reconcile any payment it names by hand.`
+		action: `In your ${processor} dashboard, find this update in the webhook log and record any payment it mentions yourself.`
 	});
 }
 
@@ -631,19 +636,19 @@ async function unreadable(
 	}
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: `A ${processor} delivery could not be read and was not acted on`,
+		headline: `A ${processor} payment couldn’t be read`,
 		body:
-			'The delivery verified and the transaction behind it could not be read. Nothing was ' +
-			'written. Repeating the call answers the same way, so this needs a person.',
+			`${processor} reported a payment, but its details couldn’t be read, so nothing was ` +
+			'recorded. If the payment went through, it’s missing from your records.',
 		facts: [
-			{ label: 'Event', value: transaction.eventId },
+			{ label: `${processor} event ID`, value: transaction.eventId },
 			...(transaction.eventType === undefined
 				? []
-				: [{ label: 'Event type', value: transaction.eventType }]),
-			{ label: 'Transaction', value: transaction.providerTxnId },
+				: [{ label: `${processor} event type`, value: transaction.eventType }]),
+			{ label: `${processor} payment ID`, value: transaction.providerTxnId },
 			{ label: 'Reason', value: read.detail }
 		],
-		action: `Find the payment in the ${processor} dashboard and reconcile it by hand.`
+		action: `Find this payment in your ${processor} dashboard. If it went through, record the gift yourself.`
 	});
 	return { ok: true, outcome: 'unactionable', detail: read.detail };
 }
@@ -673,21 +678,18 @@ async function tellingFault(
 ): Promise<void> {
 	try {
 		await alert(deps, {
-			headline: 'A delivery was dealt with and nobody could be told about it',
+			headline: 'Emails about a payment failed to send',
 			body:
-				'A settlement was recorded and the step that writes to people failed outright. What was ' +
-				'written and what was posted are unaffected. The message is what is missing, and the ' +
-				'donor may be owed a receipt.',
+				'A payment was recorded correctly, but the emails that go with it failed with an ' +
+				'unexpected error. Your records are fine; the email named below may not have reached ' +
+				'anyone.',
 			facts: [
-				{ label: 'Payment', value: target.payment.id },
-				{ label: 'Donation', value: target.donation.id },
-				{ label: 'What could not be sent', value: what },
+				{ label: 'Payment ID', value: target.payment.id },
+				{ label: 'Gift ID', value: target.donation.id },
+				{ label: 'Not sent', value: what },
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
-			action:
-				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
-				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-				'checkout).'
+			action: `${TEST_THE_SMTP_SETTINGS}${SEND_THIS_TO_WHOEVER_SET_IT_UP}`
 		});
 	} catch {
 		// nothing to report it to, and nothing on this path may throw.
@@ -1063,23 +1065,22 @@ async function unrecognisable(
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: 'A gift settled and the books could not take it',
+		headline: 'A gift came in but wasn’t recorded',
 		body:
-			'A payment succeeded and nothing was posted, so the books do not have it: either what ' +
-			`${processor} reported about the payment is not something the ledger can hold, or what the ` +
-			'gift is itemized as does not account for the money that moved. The payment record was ' +
-			`corrected with everything ${processor} did report. Nothing was guessed at, and sending ` +
-			'the delivery again reaches the same figures.',
+			`A ${processor} payment went through, but it wasn’t added to your records: either ` +
+			`${processor}’s figures can’t be recorded, or the gift’s breakdown doesn’t add up to the ` +
+			`money received. The payment was updated with what ${processor} reported. No receipt was ` +
+			'sent.',
 		facts: [
-			{ label: 'Payment', value: target.payment.id },
-			{ label: 'Donation', value: target.donation.id },
-			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'Payment ID', value: target.payment.id },
+			{ label: 'Gift ID', value: target.donation.id },
+			{ label: `${processor} payment ID`, value: settlement.providerTxnId },
 			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
-			{ label: 'Problem', value: problem }
+			{ label: 'Why it wasn’t recorded', value: problem }
 		],
 		action:
-			`Open the gift in /admin, check it against the payment in the ${processor} dashboard, and ` +
-			'post it by hand.'
+			`Find the gift on Gifts in your dashboard, compare it with the payment in your ${processor} ` +
+			'dashboard, and record it on the Books page.'
 	});
 
 	return {
@@ -1196,18 +1197,16 @@ async function tellDonorNothingWasCollected(
 
 	if (!rendered.ok) {
 		await alert(deps, {
-			headline: 'A donor could not be told their gift was not collected',
+			headline: 'A donor wasn’t told their payment failed',
 			body:
-				'A payment ended without collecting anything and the donor has not been told. Nothing ' +
-				'was charged and nothing was posted, so no money is unaccounted for. The donor is ' +
-				'simply left thinking the gift went through.',
+				'A donor’s payment didn’t go through, and the email telling them couldn’t be prepared. ' +
+				'No money was taken and your records are fine, but the donor may think they gave.',
 			facts: [
-				{ label: 'Payment', value: target.payment.id },
-				{ label: 'Donation', value: target.donation.id },
+				{ label: 'Payment ID', value: target.payment.id },
+				{ label: 'Gift ID', value: target.donation.id },
 				{ label: 'Reason', value: rendered.detail }
 			],
-			action:
-				'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+			action: `${FILL_IN_ORG_DETAILS}${NO_RESEND}`
 		});
 		return;
 	}
@@ -1215,20 +1214,18 @@ async function tellDonorNothingWasCollected(
 	const sent = await deps.email.send({ to: target.donorEmail, ...rendered.message });
 	if (!sent.ok) {
 		await alert(deps, {
-			headline: 'A donor was not told their gift was not collected',
+			headline: 'A donor wasn’t told their payment failed',
 			body:
-				'A payment ended without collecting anything and the message to the donor did not ' +
-				'send. Nothing was charged and nothing was posted, so the books are unaffected; the ' +
-				'donor is left thinking the gift went through.',
+				'A donor’s payment didn’t go through, and the email telling them failed to send. No ' +
+				'money was taken and your records are fine, but the donor may think they gave.',
 			facts: [
-				{ label: 'Payment', value: target.payment.id },
-				{ label: 'Donation', value: target.donation.id },
-				{ label: 'Reason', value: sent.reason },
-				{ label: 'Detail', value: sent.detail },
-				{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
+				{ label: 'Payment ID', value: target.payment.id },
+				{ label: 'Gift ID', value: target.donation.id },
+				{ label: 'What went wrong', value: sent.detail },
+				{ label: 'May have been delivered anyway', value: sent.indeterminate ? 'yes' : 'no' },
+				{ label: 'Error code', value: sent.reason }
 			],
-			action:
-				'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
+			action: `${TEST_THE_SMTP_SETTINGS}${NO_RESEND}`
 		});
 	}
 }
@@ -1256,20 +1253,18 @@ async function unmatched(
 	const named = settlement.metadata[DONATION_METADATA_KEY] ?? '';
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: `A ${processor} payment settled against no gift in this deployment`,
+		headline: `A ${processor} payment doesn’t match any gift`,
 		body:
-			'A delivery verified and named a transaction with no payment row here, so nothing was ' +
-			'written and nothing was posted. If it succeeded, money moved and the books do not have ' +
-			'it. Sending the delivery again cannot fix this: a payment row is written when a quote ' +
-			'is minted or not at all.',
+			`${processor} reported a payment that doesn’t match any gift in your records, so nothing ` +
+			'was recorded. If its status is succeeded, money came in that your records don’t show.',
 		facts: [
-			{ label: 'Event', value: eventId },
-			{ label: 'Transaction', value: settlement.providerTxnId },
-			{ label: 'Status', value: settlement.status },
+			{ label: `${processor} event ID`, value: eventId },
+			{ label: `${processor} payment ID`, value: settlement.providerTxnId },
+			{ label: `Status at ${processor}`, value: settlement.status },
 			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
-			{ label: 'Donation named by the intent', value: named }
+			{ label: 'Gift ID it names', value: named }
 		],
-		action: `Find this transaction in the ${processor} dashboard and record the gift by hand.`
+		action: `Find this payment in your ${processor} dashboard. If it went through, record the gift yourself.`
 	});
 
 	return {
@@ -1289,24 +1284,26 @@ async function unmatched(
 async function revalued(deps: SettleDeps, target: Target, settlement: Settlement): Promise<void> {
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: `A ${processor} payment was reported again with a different amount received`,
+		headline: `${processor} changed the amount received for a crypto gift`,
 		body:
-			'A payment already in the books was reported again as a different amount of crypto. ' +
-			'Nothing was changed: the books keep what it was posted at.',
+			`${processor} reported a crypto gift again with a different amount received. Nothing was ` +
+			'changed: your records keep the first amount.',
 		facts: [
-			{ label: 'Payment', value: target.payment.id },
-			{ label: 'Donation', value: target.donation.id },
-			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'Payment ID', value: target.payment.id },
+			{ label: 'Gift ID', value: target.donation.id },
+			{ label: `${processor} payment ID`, value: settlement.providerTxnId },
 			{
-				label: 'Posted as',
+				label: 'Recorded as',
 				value: `${target.payment.coinAmount ?? ''} ${target.payment.coin ?? ''}, ${alertMoney(target.payment.amountMinor, target.payment.currency)}`
 			},
 			{
-				label: 'Reported as',
+				label: 'Now reported as',
 				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}, ${alertMoney(settlement.amountMinor, settlement.currency)}`
 			}
 		],
-		action: `Compare the payment in the ${processor} dashboard with the gift in /admin, and correct it by hand if the posted value is wrong.`
+		action:
+			`Compare the payment in your ${processor} dashboard with the gift on Gifts in your dashboard. ` +
+			'If the recorded amount is wrong, post a correction on the Books page.'
 	});
 }
 
@@ -1318,12 +1315,14 @@ async function reportedUnsettled(
 ): Promise<void> {
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: `A ${processor} payment recorded as settled is now reported as ${settlement.status}`,
-		body: 'Nothing was changed: the payment is still recorded as settled until a person corrects it.',
+		headline: `${processor} changed the status of a completed payment`,
+		body:
+			`A payment recorded as complete is now reported by ${processor} as ${settlement.status}. ` +
+			'Nothing was changed: it still counts as received until you correct it.',
 		facts: [
-			{ label: 'Payment', value: target.payment.id },
-			{ label: 'Donation', value: target.donation.id },
-			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'Payment ID', value: target.payment.id },
+			{ label: 'Gift ID', value: target.donation.id },
+			{ label: `${processor} payment ID`, value: settlement.providerTxnId },
 			{ label: 'Now reported as', value: settlement.status },
 			{
 				label: 'Recorded amount',
@@ -1331,8 +1330,8 @@ async function reportedUnsettled(
 			}
 		],
 		action:
-			`Check the payment in the ${processor} dashboard. If the money did go back, post a ` +
-			'correction in /admin/books against whatever the books hold for it.'
+			`Check the payment in your ${processor} dashboard. If the money went back, post a ` +
+			'correction for it on the Books page.'
 	});
 }
 
@@ -1445,12 +1444,7 @@ async function recordRepeatDeposit(
 		try {
 			await tellPeople(deps, target, settlement);
 		} catch (error) {
-			await tellingFault(
-				deps,
-				target,
-				'the donor’s receipt and the alert that goes with it',
-				error
-			);
+			await tellingFault(deps, target, 'the donor’s receipt and your new-gift email', error);
 		}
 	}
 	return {
@@ -1469,22 +1463,21 @@ async function unmatchedDeposit(
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: `A ${processor} deposit arrived for a payment that is not in this deployment`,
+		headline: 'Crypto arrived for a payment that isn’t in your records',
 		body:
-			'Money was sent again to the address of a payment with no record here, so nothing was ' +
-			'written and nothing was posted. Money moved and the books do not have it. Sending the ' +
-			'delivery again cannot fix this.',
+			'Someone sent crypto to the address of an earlier payment that isn’t in your records, so ' +
+			'nothing was recorded. The money came in, but your records don’t show it.',
 		facts: [
-			{ label: 'Event', value: eventId },
-			{ label: 'Transaction', value: settlement.providerTxnId },
-			{ label: 'Sent to the address of', value: repeatOf },
+			{ label: `${processor} event ID`, value: eventId },
+			{ label: `${processor} payment ID`, value: settlement.providerTxnId },
+			{ label: 'Sent to the address of payment', value: repeatOf },
 			{
 				label: 'Received',
 				value: `${settlement.arrival?.coinAmount ?? ''} ${settlement.arrival?.coin ?? ''}`
 			},
 			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) }
 		],
-		action: `Find both payments in the ${processor} dashboard and record the gift by hand.`
+		action: `Find both payments in your ${processor} dashboard and record the gift yourself.`
 	});
 	return {
 		ok: true,
@@ -1502,17 +1495,17 @@ async function unrecordedDeposit(
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await alert(deps, {
-		headline: 'A repeat deposit arrived and the books could not take it',
+		headline: 'A second crypto payment came in but wasn’t recorded',
 		body:
-			'Money was sent again to the address of a gift already given, and nothing was recorded for ' +
-			`it. Sending the delivery again reaches the same figures.`,
+			'Someone sent crypto again to the address of a gift they’d already given, and the new ' +
+			'payment couldn’t be recorded. The money came in, but your records don’t show it.',
 		facts: [
-			{ label: 'First gift', value: first.donation.id },
-			{ label: 'Transaction', value: settlement.providerTxnId },
+			{ label: 'First gift ID', value: first.donation.id },
+			{ label: `${processor} payment ID`, value: settlement.providerTxnId },
 			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
-			{ label: 'Problem', value: problem }
+			{ label: 'Why it wasn’t recorded', value: problem }
 		],
-		action: `Find this payment in the ${processor} dashboard and record the gift by hand.`
+		action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 	});
 	return {
 		ok: true,
@@ -1548,16 +1541,15 @@ async function tellPeople(deps: SettleDeps, target: Target, settlement: Settleme
 		// it in the same answer. so this alert is no guess at a race.
 		const processor = processorLabel(deps);
 		await alert(deps, {
-			headline: 'A settled gift was posted with no processor fee',
+			headline: `A gift was recorded without its ${processor} fee`,
 			body:
-				'The charge is in the books at face value and the fee it was taken out of is not. ' +
-				'Undeposited funds is overstated by that amount until an entry is posted for it. ' +
-				`${processor} published no fee for this payment in the currency the gift was charged ` +
-				'in, which is the only currency the entry could be posted in.',
+				`A gift was recorded at its full amount, but ${processor} didn’t report the fee it took ` +
+				'in the gift’s currency. Until you add the fee, Undeposited Funds shows more than ' +
+				'you’ll actually receive.',
 			facts: [
-				{ label: 'Payment', value: target.payment.id },
-				{ label: 'Donation', value: target.donation.id },
-				{ label: 'Transaction', value: settlement.providerTxnId }
+				{ label: 'Payment ID', value: target.payment.id },
+				{ label: 'Gift ID', value: target.donation.id },
+				{ label: `${processor} payment ID`, value: settlement.providerTxnId }
 			],
 			action: missingFeeCorrection(processor)
 		});

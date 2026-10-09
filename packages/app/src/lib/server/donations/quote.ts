@@ -754,23 +754,22 @@ async function mintGrant(
 			later(
 				deps,
 				alert(deps, {
-					headline:
-						'A donor-advised fund grant may have been created with no gift recorded against it',
+					headline: 'A donor-advised fund grant may be missing its gift',
 					body:
-						'Chariot did not say whether it created the grant, so the donor was asked to try again. ' +
-						'If they did, the gift is recorded and nothing more is needed. If not, the grant may ' +
-						'exist in Chariot, and when the fund pays it this deployment will not know which gift ' +
-						'it is.',
+						'Chariot didn’t confirm whether it created the grant, so the donor was asked to try ' +
+						'again. If they did, the gift is recorded and there’s nothing to do. If not, Chariot ' +
+						'may still have the grant, and when the fund pays it you won’t be able to tell which ' +
+						'gift it’s for.',
 					facts: [
-						{ label: 'Session', value: authorization.id },
+						{ label: 'Chariot session', value: authorization.id },
 						{ label: 'Amount', value: amount },
 						{ label: 'Reason', value: created.detail }
 					],
 					action:
-						'Look for a grant on this session in the Chariot dashboard. If one is there, look in ' +
-						`the dashboard here for a donor-advised fund gift of ${amount} from ${donor}, received ` +
-						`on or after ${receivedOn}. The list shows the newest gifts, and Export reaches older ` +
-						'ones. Record the gift by hand only if no such gift is there.'
+						'Look for a grant on this session in your Chariot dashboard. If there is one, check ' +
+						`Gifts in your dashboard for a donor-advised fund gift of ${amount} from ${donor}, ` +
+						`received on or after ${receivedOn}. Gifts shows the newest gifts; use Export for ` +
+						'older ones. Record the gift yourself only if it isn’t there.'
 				})
 			);
 		}
@@ -842,25 +841,25 @@ async function mintGrant(
 	later(
 		deps,
 		alert(deps, {
-			headline: 'A donor-advised fund grant was created with no gift recorded against it',
+			headline: 'A donor-advised fund grant has no gift recorded',
 			body:
-				'Chariot created the grant and the gift could not be written here, so the donor’s page ' +
-				'said it did not go through. A donor who saw that and tried again made a separate grant ' +
-				'with its own gift, which does not stand for this one. A donor whose page never said so ' +
-				'may have tried again and recorded this grant’s gift after all. Otherwise this grant has ' +
-				'no gift recorded here, and the fund will still pay it.',
+				'Chariot created a grant, but the gift couldn’t be saved, so the donor was told it didn’t ' +
+				'go through. The fund will still pay the grant, so it may arrive with no gift in your ' +
+				'records. If the donor tried again, that made a separate grant with its own gift, which ' +
+				'doesn’t cover this one.',
 			facts: [
-				{ label: 'Grant', value: created.value.providerTxnId },
+				{ label: 'Chariot grant ID', value: created.value.providerTxnId },
 				...(trackingId === undefined ? [] : [{ label: 'Tracking ID', value: trackingId }]),
 				{ label: 'Amount', value: formatMinor(total, 'USD') },
 				{ label: 'Reason', value: written.detail }
 			],
 			action:
 				(trackingId === undefined
-					? 'Find this grant in the Chariot dashboard by the grant ID above and note its tracking ' +
-						'ID. If a gift in the dashboard here shows that tracking ID, it is already recorded. '
-					: `If a gift in the dashboard here shows tracking ID ${trackingId}, it is already recorded. `) +
-				'Otherwise record the gift by hand, unless Chariot shows the grant cancelled.'
+					? 'Find this grant in your Chariot dashboard by the grant ID above and note its ' +
+						'tracking ID. If a gift on Gifts in your dashboard shows that tracking ID, it’s ' +
+						'already recorded. '
+					: `If a gift on Gifts in your dashboard shows tracking ID ${trackingId}, it’s already recorded. `) +
+				'Otherwise, record the gift yourself, unless Chariot shows the grant as cancelled.'
 		})
 	);
 	return refuse(

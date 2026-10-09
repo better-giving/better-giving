@@ -1,3 +1,4 @@
+import { formatDateTime } from '@better-giving/emails';
 import { and, eq, exists, isNull, lt, or, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { type ReversalEntry, reversalWrites, type Writes } from '../books/writes';
@@ -193,19 +194,19 @@ async function nothingMoved(
 	if (reversed?.status !== 'succeeded') return ignored;
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund of a settled gift was reported as moving no money`,
+		headline: `${processor} reported a refund with no money returned`,
 		body:
-			`${processor} reported a refund of a gift that settled here, and read it as having sent ` +
-			'nothing back, so nothing was written: the gift and the donor’s total stand as they were. ' +
-			`${processor} sends nothing further about it.`,
+			`${processor} reported a refund on a completed gift but says no money went back, so ` +
+			`nothing was changed. ${processor} won’t send anything more about it.`,
 		facts: [
-			{ label: 'At the processor', value: read.providerReversalId },
-			{ label: 'Transaction refunded', value: read.reversedTxnId },
-			{ label: 'Donation', value: reversed.donationId }
+			{ label: `${processor} refund or dispute ID`, value: read.providerReversalId },
+			{ label: `${processor} payment ID`, value: read.reversedTxnId },
+			{ label: 'Gift ID', value: reversed.donationId }
 		],
 		action:
-			`Check the refund in the ${processor} dashboard. Where money did go back to the donor, ` +
-			'post a correction in /admin/books for it, out of the account the gift went into, into the fund it was given to.'
+			`Check the refund in your ${processor} dashboard. If money did go back to the donor, post ` +
+			'a correction for it on the Books page: out of the account the gift went into, into the ' +
+			'fund it was given to.'
 	});
 	return {
 		ok: true,
@@ -482,38 +483,38 @@ async function disputeRefused(
 	const stop = await stopPlanOf(deps, reversed.donationId);
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} dispute could not be recorded against its gift`,
+		headline: `A ${processor} dispute couldn’t be recorded`,
 		body: nothingLeft
-			? `A donor’s bank disputed a charge whose gift earlier refunds and disputes had already taken ` +
-				'in full, so nothing was written: the books already hold none of this gift.'
-			: `${processor} reported a dispute the books cannot hold, so nothing was written: the gift ` +
-				'and the donor’s total stand as they were.',
+			? 'A donor’s bank disputed a charge on a gift that earlier refunds or disputes had already ' +
+				'fully taken back, so nothing was recorded.'
+			: `${processor} reported a dispute that can’t be recorded, so nothing was changed: the gift ` +
+				'and the donor’s total still count the money.',
 		facts: [
-			{ label: 'Dispute at the processor', value: reversal.providerReversalId },
-			{ label: 'Transaction disputed', value: reversal.reversedTxnId },
-			{ label: 'Donation', value: reversed.donationId },
-			{ label: 'Problem', value: problem },
+			{ label: `${processor} dispute ID`, value: reversal.providerReversalId },
+			{ label: `${processor} payment ID`, value: reversal.reversedTxnId },
+			{ label: 'Gift ID', value: reversed.donationId },
+			{ label: 'Why it wasn’t recorded', value: problem },
 			{
 				label: 'Dispute fee',
 				value:
 					reversal.feeMinor === null
-						? 'None reported.'
-						: `${alertMoney(reversal.feeMinor, reversal.currency)}, not booked.`
+						? 'None reported'
+						: `${alertMoney(reversal.feeMinor, reversal.currency)} — not recorded`
 			},
 			{
-				label: 'Repeating gift',
+				label: 'Recurring gift',
 				value:
-					stop === null ? 'None: this was a one-time gift.' : stopSentence(stop.outcome, processor)
+					stop === null ? 'None — this was a one-time gift' : stopSentence(stop.outcome, processor)
 			},
 			...(reversal.dashboardUrl === null
 				? []
-				: [{ label: 'The dispute', value: reversal.dashboardUrl }])
+				: [{ label: 'Dispute link', value: reversal.dashboardUrl }])
 		],
 		action: nothingLeft
-			? `Where ${processor} charged a fee for the dispute, post a correction in /admin/books for it: ` +
-				'into processor fees, out of the account the gift went into. Nothing else needs booking.'
-			: `Check the dispute in the ${processor} dashboard and correct the gift in /admin/books by ` +
-				'hand for what it took, with its fee where one was charged.'
+			? `If ${processor} charged a dispute fee, post a correction for it on the Books page: into ` +
+				'processor fees, out of the account the gift went into. Nothing else needs recording.'
+			: `Check the dispute in your ${processor} dashboard and post a correction on the Books page ` +
+				'for what it took, plus any dispute fee.'
 	});
 	return (
 		stopHeldOpen(stop, reversal) ?? {
@@ -760,39 +761,39 @@ async function disputeWithdrew(
 	const money = (figure: number) => alertMoney(figure, reversal.currency);
 	await tellStaff(deps, {
 		headline: lost
-			? `A ${processor} dispute was lost and took back a gift`
-			: `A ${processor} dispute took back a gift`,
+			? `A ${processor} dispute was lost`
+			: `A donor’s bank disputed a ${processor} gift`,
 		body: lost
-			? `A donor’s bank disputed a charge and ${processor} decided it for the donor. The money is ` +
-				'taken off the gift and the donor’s total, and it does not come back.'
-			: `A donor’s bank disputed a charge and ${processor} took the money back while it is ` +
-				'decided. It is taken off the gift and the donor’s total, and it is put back if the ' +
-				'dispute is won.',
+			? `${processor} decided a dispute in the donor’s favour. The money has been taken off the ` +
+				'gift and the donor’s total, and it won’t come back.'
+			: `A donor’s bank disputed a charge, and ${processor} has taken the money back while the ` +
+				'dispute is decided. It’s taken off the gift and the donor’s total for now, and added ' +
+				'back if you win.',
 		facts: [
 			{ label: 'Amount', value: money(withdrawn.amountMinor) },
 			...(withdrawn.reportedMinor > withdrawn.amountMinor
 				? [cappedFact(deps, withdrawn.reportedMinor, reversal.currency)]
 				: []),
 			...(reversal.kind === 'dispute_opened' && reversal.respondBy !== null
-				? [{ label: 'Respond by', value: reversal.respondBy.toISOString() }]
+				? [{ label: 'Respond by', value: formatDateTime(reversal.respondBy) }]
 				: []),
 			...(reversal.dashboardUrl === null
 				? []
-				: [{ label: 'The dispute', value: reversal.dashboardUrl }]),
-			{ label: 'Dispute at the processor', value: reversal.providerReversalId },
+				: [{ label: 'Dispute link', value: reversal.dashboardUrl }]),
+			{ label: `${processor} dispute ID`, value: reversal.providerReversalId },
 			...(reversal.reason === null ? [] : [{ label: 'Reason', value: reversal.reason }]),
-			{ label: 'Donation', value: withdrawn.donationId },
+			{ label: 'Gift ID', value: withdrawn.donationId },
 			{
-				label: 'Repeating gift',
+				label: 'Recurring gift',
 				value:
-					stop === null ? 'None: this was a one-time gift.' : stopSentence(stop.outcome, processor)
+					stop === null ? 'None — this was a one-time gift' : stopSentence(stop.outcome, processor)
 			},
-			...(problem === null ? [] : [{ label: 'Books', value: problem }])
+			...(problem === null ? [] : [{ label: 'Records', value: problem }])
 		],
 		action:
 			reversal.kind === 'dispute_lost'
 				? null
-				: `Answer the dispute in the ${processor} dashboard${reversal.respondBy === null ? '' : ' by the date above'}, with the gift’s receipt and anything showing the donor gave.`
+				: `Answer the dispute in your ${processor} dashboard${reversal.respondBy === null ? '' : ' by the date above'}, with the gift’s receipt and anything showing the donor gave.`
 	});
 }
 
@@ -859,15 +860,15 @@ function stopHeldOpen(stop: PlanStop, reversal: WithdrawalRead): SettleResult | 
 async function planNotStopped(deps: SettleDeps, stop: NonNullable<PlanStop>): Promise<void> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: 'A disputed repeating gift could not be stopped',
+		headline: 'A disputed recurring gift couldn’t be stopped',
 		body:
-			'A donor disputed a charge of their repeating gift, and the gift could not be stopped here, ' +
-			'so the processor may go on charging the card that is disputing it.',
+			'A donor disputed a payment on their recurring gift, and the gift couldn’t be stopped ' +
+			`automatically. ${processor} may keep charging the card that’s disputing it.`,
 		facts: [
-			{ label: 'Repeating gift', value: stop.planId },
+			{ label: 'Recurring gift ID', value: stop.planId },
 			{ label: 'What happened', value: stopSentence(stop.outcome, processor) }
 		],
-		action: `Cancel the subscription in the ${processor} dashboard, then stop the gift at /admin/recurring/${stop.planId}.`
+		action: `Cancel the subscription in your ${processor} dashboard, then stop the gift on Recurring gifts in your dashboard (/admin/recurring/${stop.planId}).`
 	});
 }
 
@@ -875,18 +876,18 @@ async function planNotStopped(deps: SettleDeps, stop: NonNullable<PlanStop>): Pr
 function stopSentence(outcome: StopOutcome, processor: string): string {
 	switch (outcome.outcome) {
 		case 'gone':
-			return 'No repeating gift is recorded here under that id, so there was nothing to stop.';
+			return 'Not in your records, so there was nothing to stop.';
 		case 'already-stopped':
-			return 'It was already stopped.';
+			return 'Already stopped.';
 		case 'nothing-to-stop':
-			return `Stopped. ${processor} held no subscription for it, so nothing was collecting.`;
+			return `Stopped. ${processor} had no subscription for it, so no payments were being taken.`;
 		case 'stopped':
-			return 'Stopped: no further charges will be made.';
+			return 'Stopped. No more payments will be taken.';
 		case 'unrecorded':
-			return `${processor} stopped it, and recording that here failed, so it may still read as collecting.`;
+			return `${processor} stopped it, but your dashboard may still show it as active.`;
 		case 'refused':
 			return outcome.retryable
-				? `${processor} refused to stop it for now: ${outcome.detail} It is tried again when ${processor} sends the dispute again.`
+				? `${processor} couldn’t stop it yet: ${outcome.detail} It will be tried again automatically.`
 				: `Not stopped: ${outcome.detail}`;
 	}
 }
@@ -900,17 +901,17 @@ async function unreadableReversal(
 	if (isRetryable(read.reason)) return { ok: false, reason: 'incomplete', detail: read.detail };
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund or dispute could not be read and was not acted on`,
+		headline: `A ${processor} refund or dispute couldn’t be read`,
 		body:
-			'The delivery verified and the refund or dispute behind it could not be read. Nothing was written, ' +
-			'so a gift may still count money that went back. Repeating the call answers the same way.',
+			`${processor} reported a refund or dispute, but its details couldn’t be read, so nothing ` +
+			'was changed. A gift may still count money that went back to the donor.',
 		facts: [
-			{ label: 'Event', value: event.id },
-			{ label: 'Event type', value: event.type },
-			{ label: 'At the processor', value: event.providerNoticeId },
+			{ label: `${processor} event ID`, value: event.id },
+			{ label: `${processor} event type`, value: event.type },
+			{ label: `${processor} refund or dispute ID`, value: event.providerNoticeId },
 			{ label: 'Reason', value: read.detail }
 		],
-		action: `Find it in the ${processor} dashboard and correct the gift in /admin/books by hand.`
+		action: `Find it in your ${processor} dashboard and correct the gift on the Books page.`
 	});
 	return { ok: true, outcome: 'unactionable', detail: read.detail };
 }
@@ -926,17 +927,16 @@ async function refundRefused(
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund or dispute could not be recorded`,
+		headline: `A ${processor} refund or dispute couldn’t be recorded`,
 		body:
-			`${processor} reported a refund or a dispute, or its outcome, with figures that cannot be recorded, ` +
-			'so nothing was written: the gift and the donor’s total stand as they were. Sending the ' +
-			'delivery again reaches the same figures.',
+			`${processor} reported a refund or dispute, or its outcome, with figures that can’t be ` +
+			'recorded, so nothing was changed: the gift and the donor’s total still count the money.',
 		facts: [
-			{ label: 'At the processor', value: reversal.providerReversalId },
-			{ label: 'Transaction reversed', value: reversal.reversedTxnId },
-			{ label: 'Problem', value: problem }
+			{ label: `${processor} refund or dispute ID`, value: reversal.providerReversalId },
+			{ label: `${processor} payment ID`, value: reversal.reversedTxnId },
+			{ label: 'Why it wasn’t recorded', value: problem }
 		],
-		action: `Find it in the ${processor} dashboard and correct the gift in /admin/books by hand.`
+		action: `Find it in your ${processor} dashboard and correct the gift on the Books page.`
 	});
 	return {
 		ok: true,
@@ -950,10 +950,10 @@ type Fact = Parameters<typeof alert>[1]['facts'][number];
 /** an alert's fact that a withdrawal took less than the processor reported, because less was left. */
 function cappedFact(deps: SettleDeps, reportedMinor: number, currency: string): Fact {
 	return {
-		label: 'Capped',
+		label: 'Limited to what was left',
 		value:
-			`${processorLabel(deps)} reported ${alertMoney(reportedMinor, currency)}, and earlier refunds and ` +
-			'disputes had already taken the rest of the gift, so what this took off the gift is capped at what was left.'
+			`${processorLabel(deps)} reported ${alertMoney(reportedMinor, currency)}, but earlier refunds ` +
+			'and disputes had already taken the rest of the gift, so only what was left was taken off.'
 	};
 }
 
@@ -968,20 +968,21 @@ async function refundCapped(
 ): Promise<void> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund was more than was left of its gift`,
+		headline: `A ${processor} refund was larger than what was left of the gift`,
 		body:
-			`${processor} reported a refund of more than the gift’s earlier refunds and disputes had left ` +
-			'of it here, so it is recorded at what was left and the gift reads refunded in full.',
+			`${processor} reported a refund bigger than what earlier refunds and disputes had left of ` +
+			'the gift. It was recorded at what was left, and the gift now shows as fully refunded.',
 		facts: [
-			{ label: 'Refund', value: refundId },
-			{ label: 'Donation', value: reversed.donationId },
-			{ label: 'Refund at the processor', value: reversal.providerReversalId },
+			{ label: 'Refund ID', value: refundId },
+			{ label: 'Gift ID', value: reversed.donationId },
+			{ label: `${processor} refund ID`, value: reversal.providerReversalId },
 			{ label: 'Amount', value: alertMoney(amountMinor, reversal.currency) },
 			capped
 		],
 		action:
-			`Compare the gift’s refunds and disputes in the ${processor} dashboard with the ones recorded ` +
-			'here. Where more went back to the donor than the gift took in, post a correction in /admin/books for the difference.'
+			`Compare this gift’s refunds and disputes in your ${processor} dashboard with the ones in ` +
+			'your records. If more went back to the donor than the gift brought in, post a correction ' +
+			'for the difference on the Books page.'
 	});
 }
 
@@ -998,22 +999,22 @@ async function refundBeyondDispute(
 	const processor = processorLabel(deps);
 	const money = (figure: number) => alertMoney(figure, withdrawal.currency);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund closed a dispute and was more than the dispute took`,
+		headline: `A ${processor} refund closed a dispute for more than the dispute took`,
 		body:
-			`${processor} reported a refund of a gift whose open dispute held its money, so the refund ` +
-			'closed the dispute as lost. The refund names more than the dispute withdrew, and only what ' +
-			'the dispute withdrew is taken off the gift and the donor’s total.',
+			`${processor} refunded a gift that had an open dispute, which closed the dispute as lost. ` +
+			'The refund is larger than what the dispute took, and only the dispute’s amount was taken ' +
+			'off the gift and the donor’s total.',
 		facts: [
-			{ label: 'Refund at the processor', value: refund.providerReversalId },
-			{ label: 'Dispute at the processor', value: withdrawal.providerTxnId ?? withdrawal.id },
-			{ label: 'Donation', value: withdrawal.donationId },
+			{ label: `${processor} refund ID`, value: refund.providerReversalId },
+			{ label: `${processor} dispute ID`, value: withdrawal.providerTxnId ?? withdrawal.id },
+			{ label: 'Gift ID', value: withdrawal.donationId },
 			{ label: 'The dispute took', value: money(withdrawal.amountMinor) },
-			{ label: 'The refund names', value: money(refundedMinor) },
+			{ label: 'The refund was for', value: money(refundedMinor) },
 			{ label: 'Difference', value: money(refundedMinor - withdrawal.amountMinor) }
 		],
 		action:
-			`Compare the refund and the dispute in the ${processor} dashboard. Where the difference went ` +
-			'back to the donor as well, post a correction in /admin/books for it, out of the account the ' +
+			`Compare the refund and the dispute in your ${processor} dashboard. If the difference also ` +
+			'went back to the donor, post a correction for it on the Books page: out of the account the ' +
 			'gift went into, into the fund it was given to.'
 	});
 }
@@ -1030,19 +1031,20 @@ async function nothingLeftToRefund(
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund found nothing of its gift left to take`,
+		headline: `A ${processor} refund came in for a gift already fully refunded`,
 		body:
-			`${processor} reported a refund of a gift whose earlier refunds and disputes had already taken ` +
-			'the whole of it here, so nothing was written: the books already hold none of this gift.',
+			`${processor} reported a refund on a gift that earlier refunds and disputes had already ` +
+			'taken back in full, so nothing was changed.',
 		facts: [
-			{ label: 'Refund at the processor', value: reversal.providerReversalId },
-			{ label: 'Transaction refunded', value: reversal.reversedTxnId },
-			{ label: 'Donation', value: reversed.donationId },
+			{ label: `${processor} refund ID`, value: reversal.providerReversalId },
+			{ label: `${processor} payment ID`, value: reversal.reversedTxnId },
+			{ label: 'Gift ID', value: reversed.donationId },
 			{ label: 'Amount reported', value: alertMoney(reportedMinor, reversal.currency) }
 		],
 		action:
-			`Compare the gift’s refunds and disputes in the ${processor} dashboard with the ones recorded ` +
-			'here. Where more went back to the donor than the gift took in, post a correction in /admin/books for the difference.'
+			`Compare this gift’s refunds and disputes in your ${processor} dashboard with the ones in ` +
+			'your records. If more went back to the donor than the gift brought in, post a correction ' +
+			'for the difference on the Books page.'
 	});
 	return {
 		ok: true,
@@ -1063,23 +1065,23 @@ async function refundNotPosted(
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: 'A gift was refunded and the books could not take the refund',
+		headline: 'A refund was saved but not added to your Books',
 		body:
-			'The refund is recorded against the gift, so the gift and the donor’s total show it. ' +
-			'Nothing was posted for it, and the problem below says what the books hold of the gift.',
+			'The refund is saved on the gift, so the gift and the donor’s total show it, but it ' +
+			'couldn’t be added to your Books. The reason below says what your Books hold for this gift.',
 		facts: [
-			{ label: 'Refund', value: refundId },
-			{ label: 'Payment refunded', value: reversed.id },
-			{ label: 'Donation', value: reversed.donationId },
-			{ label: 'Refund at the processor', value: reversal.providerReversalId },
+			{ label: 'Refund ID', value: refundId },
+			{ label: 'Payment ID', value: reversed.id },
+			{ label: 'Gift ID', value: reversed.donationId },
+			{ label: `${processor} refund ID`, value: reversal.providerReversalId },
 			{ label: 'Amount', value: alertMoney(amountMinor, reversal.currency) },
 			...(capped === null ? [] : [capped]),
-			{ label: 'Problem', value: problem }
+			{ label: 'Why it wasn’t added', value: problem }
 		],
 		action:
-			`Check the refund in the ${processor} dashboard. Where the books hold this gift, post a ` +
-			'correction in /admin/books for the refunded amount, out of the account the gift went into, ' +
-			'into the fund it was given to.'
+			`Check the refund in your ${processor} dashboard. If your Books hold this gift, post a ` +
+			'correction for the refunded amount on the Books page: out of the account the gift went ' +
+			'into, into the fund it was given to.'
 	});
 	return {
 		ok: true,
@@ -1328,32 +1330,33 @@ async function wonUnheard(
 	const [what, action] =
 		keptMinor === null
 			? [
-					'and nothing was written.',
-					`Check the dispute’s fee in the ${processor} dashboard. Where a fee was charged and not given ` +
-						'back, post a correction in /admin/books for it: into processor fees, out of the account the gift went into.'
+					'and nothing was recorded.',
+					`Check the dispute fee in your ${processor} dashboard. If a fee was charged and not ` +
+						'returned, post a correction for it on the Books page: into processor fees, out of the ' +
+						'account the gift went into.'
 				]
 			: keptMinor === 0
-				? [`and nothing was written: ${processor} kept no fee for it.`, 'Nothing needs booking.']
+				? [`and nothing was recorded: ${processor} kept no dispute fee.`, 'Nothing to do.']
 				: settleUp === null
 					? [
-							'and nothing was written: the books do not hold this gift.',
-							'Where the books hold this gift, post a correction in /admin/books for the fee kept: into ' +
-								'processor fees, out of the account the gift went into.'
+							'and nothing was recorded: this gift isn’t in your Books.',
+							'If this gift is in your Books, post a correction for the fee kept on the Books page: ' +
+								'into processor fees, out of the account the gift went into.'
 						]
-					: [`and the fee ${processor} kept is booked as a processor fee.`, null];
+					: [`and the dispute fee ${processor} kept is recorded as a processor fee.`, null];
 	await tellStaff(deps, {
-		headline: `A ${processor} dispute was opened and won before this deployment heard of it`,
+		headline: `A ${processor} dispute was won before you heard it was opened`,
 		body:
-			`${processor} reported a dispute won whose opening never reached this deployment, so the ` +
-			`books hold neither the money it took nor the money it gave back, ${what} ` +
-			'The gift and the donor’s total stand as they were, which is where a win leaves them.',
+			`${processor} reported a won dispute, but the app never heard it was opened, so your ` +
+			`records hold neither the money it took nor the money it gave back, ${what} The gift and ` +
+			'the donor’s total are unchanged, which is right for a won dispute.',
 		facts: [
-			{ label: 'Dispute at the processor', value: reversal.providerReversalId },
-			{ label: 'Transaction disputed', value: reversal.reversedTxnId },
-			{ label: 'Donation', value: reversed.donationId },
+			{ label: `${processor} dispute ID`, value: reversal.providerReversalId },
+			{ label: `${processor} payment ID`, value: reversal.reversedTxnId },
+			{ label: 'Gift ID', value: reversed.donationId },
 			{
 				label: 'Dispute fee given back',
-				value: returned === null ? 'None given back.' : money(returned)
+				value: returned === null ? 'None' : money(returned)
 			},
 			...(keptMinor === null ? [] : [{ label: 'Dispute fee kept', value: money(keptMinor) }])
 		],
@@ -1385,24 +1388,27 @@ async function closedTheOtherWay(
 	const processor = processorLabel(deps);
 	const [reported, recorded] = reversal.kind === 'dispute_won' ? ['won', 'lost'] : ['lost', 'won'];
 	await tellStaff(deps, {
-		headline: `A ${processor} dispute recorded as ${recorded} was reported ${reported}`,
+		headline: `A ${processor} dispute marked ${recorded} is now reported ${reported}`,
 		body:
-			`${processor} reported a dispute ${reported} that this deployment had already recorded as ${recorded}. ` +
+			`${processor} reported a dispute as ${reported}, but your records already show it as ` +
+			`${recorded}. Nothing was changed: ` +
 			(recorded === 'lost'
-				? 'Nothing was changed: the money stays taken off the gift and the donor’s total.'
-				: 'Nothing was changed: the money stays counted on the gift and the donor’s total.'),
+				? 'the money is still taken off the gift and the donor’s total.'
+				: 'the money still counts on the gift and the donor’s total.'),
 		facts: [
-			{ label: 'Dispute at the processor', value: reversal.providerReversalId },
-			{ label: 'Refund', value: refundRow.id },
-			{ label: 'Donation', value: refundRow.donationId },
+			{ label: `${processor} dispute ID`, value: reversal.providerReversalId },
+			{ label: 'Refund ID', value: refundRow.id },
+			{ label: 'Gift ID', value: refundRow.donationId },
 			{ label: 'Amount', value: alertMoney(refundRow.amountMinor, refundRow.currency) }
 		],
 		action:
 			recorded === 'lost'
-				? `Check the dispute in the ${processor} dashboard. Where the money did come back, post a ` +
-					'correction in /admin/books for it, out of the fund it was given to, into the account the gift went into.'
-				: `Check the dispute in the ${processor} dashboard. Where the money did go, post a ` +
-					'correction in /admin/books for it, out of the account the gift went into, into the fund it was given to.'
+				? `Check the dispute in your ${processor} dashboard. If the money did come back, post a ` +
+					'correction for it on the Books page: out of the fund it was given to, into the account ' +
+					'the gift went into.'
+				: `Check the dispute in your ${processor} dashboard. If the money did go, post a ` +
+					'correction for it on the Books page: out of the account the gift went into, into the ' +
+					'fund it was given to.'
 	});
 	return {
 		ok: true,
@@ -1423,26 +1429,26 @@ async function refundDidNotStand(
 ): Promise<void> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund did not go through`,
+		headline: `A ${processor} refund didn’t go through`,
 		body:
-			'A refund recorded against a gift failed, so the money is the organisation’s again. The gift ' +
-			'and the donor’s total count it again. The donor may already have been told the refund was ' +
-			'on its way, and nothing here tells them otherwise.',
+			'A refund on a gift failed, so the money stays with your organisation and counts on the ' +
+			'gift and the donor’s total again. The donor may already have been told the refund was ' +
+			'coming, and nothing has told them it failed.',
 		facts: [
-			{ label: 'Refund', value: refundRow.id },
-			{ label: 'Donation', value: refundRow.donationId },
-			{ label: 'Refund at the processor', value: reversal.providerReversalId },
+			{ label: 'Refund ID', value: refundRow.id },
+			{ label: 'Gift ID', value: refundRow.donationId },
+			{ label: `${processor} refund ID`, value: reversal.providerReversalId },
 			{ label: 'Amount', value: alertMoney(refundRow.amountMinor, refundRow.currency) },
 			{
 				label: 'Zaps',
 				value:
-					`Zaps on Gift Refunded may already have been told of this refund, as id ${refundRow.id}, ` +
-					'and nothing tells them it did not go through.'
+					`Zaps triggered by Gift Refunded may already have acted on this refund (ID ${refundRow.id}). ` +
+					'Nothing has told them it failed.'
 			}
 		],
 		action:
-			`Check the refund in the ${processor} dashboard, and let the donor know it did not go through. ` +
-			'Where a Zap on Gift Refunded acted on it, undo what it did.'
+			`Check the refund in your ${processor} dashboard and let the donor know it didn’t go ` +
+			'through. If a Zap acted on it, undo what the Zap did.'
 	});
 }
 
@@ -1475,19 +1481,19 @@ async function chargeNeverSettled(
 ): Promise<SettleResult> {
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund or dispute names a charge that never settled here`,
+		headline: `A ${processor} refund or dispute is for a payment that never went through`,
 		body:
-			`${processor} reported a refund or a dispute of a charge this deployment recorded as ` +
-			`${reversed.status}, so the books hold no money of it to take back and nothing was written.`,
+			`${processor} reported a refund or dispute on a payment your records show as ` +
+			`${reversed.status}, so there was no money to take back and nothing was changed.`,
 		facts: [
-			{ label: 'At the processor', value: reversal.providerReversalId },
-			{ label: 'Transaction reversed', value: reversal.reversedTxnId },
-			{ label: 'Donation', value: reversed.donationId },
-			{ label: 'Recorded here as', value: reversed.status }
+			{ label: `${processor} refund or dispute ID`, value: reversal.providerReversalId },
+			{ label: `${processor} payment ID`, value: reversal.reversedTxnId },
+			{ label: 'Gift ID', value: reversed.donationId },
+			{ label: 'Your records show', value: reversed.status }
 		],
 		action:
-			`Check the charge in the ${processor} dashboard. Where it did take the donor’s money, ` +
-			'correct the gift in /admin/books by hand.'
+			`Check the payment in your ${processor} dashboard. If the donor’s money was taken, correct ` +
+			'the gift on the Books page.'
 	});
 	return {
 		ok: true,
@@ -1531,19 +1537,19 @@ async function chargeNotHere(
 	}
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {
-		headline: `A ${processor} refund or dispute names a gift this deployment has no record of`,
+		headline: `A ${processor} refund or dispute is for a gift not in your records`,
 		body:
-			`${processor} reported a refund or a dispute of a charge whose details name a gift, and no ` +
-			'gift here has that id, so nothing was written. It is most often a charge another ' +
-			`deployment took on the same ${processor} account.`,
+			`${processor} reported a refund or dispute on a payment that points to a gift your records ` +
+			'don’t have, so nothing was changed. This usually means another copy of the donations ' +
+			`app, such as a test copy, uses the same ${processor} account.`,
 		facts: [
-			{ label: 'At the processor', value: reversal.providerReversalId },
-			{ label: 'Transaction reversed', value: reversal.reversedTxnId },
-			{ label: 'Gift named', value: named }
+			{ label: `${processor} refund or dispute ID`, value: reversal.providerReversalId },
+			{ label: `${processor} payment ID`, value: reversal.reversedTxnId },
+			{ label: 'Gift ID it names', value: named }
 		],
 		action:
-			`Find the charge in the ${processor} dashboard to see what took it. The books hold no gift ` +
-			'under that id, so nothing here needs correcting.'
+			`Find the payment in your ${processor} dashboard to see where it came from. Your records ` +
+			'don’t have this gift, so there’s nothing to correct.'
 	});
 	return {
 		ok: true,

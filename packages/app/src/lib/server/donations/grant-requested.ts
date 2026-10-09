@@ -1,3 +1,8 @@
+import {
+	FILL_IN_ORG_DETAILS,
+	SEND_THIS_TO_WHOEVER_SET_IT_UP,
+	TEST_THE_SMTP_SETTINGS
+} from '../email/alert';
 import { renderGrantRequested, type GrantNoticeInput } from '../email/grant';
 import { readOrgProfile } from '../org/queries';
 import { alert, type MailDeps } from './delivery';
@@ -31,16 +36,16 @@ export async function sendGrantRequested(
 		const rendered = await renderGrantRequested({ ...target, org: await readOrgProfile(deps.db) });
 		if (!rendered.ok) {
 			await alert(deps, {
-				headline: 'A donor was not told their grant request went to their fund',
+				headline: 'A donor didn’t get their grant confirmation',
 				body:
-					'A donor-advised fund gift was recorded and the donor’s confirmation could not be ' +
-					'written. The grant stands and the gift is recorded; the donor has no email saying so.',
+					'A donor-advised fund gift was recorded, but the email confirming the grant request ' +
+					'couldn’t be prepared. The grant and the gift are fine; the donor just has no email ' +
+					'about it.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
+					{ label: 'Gift ID', value: target.donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: FILL_IN_ORG_DETAILS
 			});
 			return;
 		}
@@ -48,35 +53,31 @@ export async function sendGrantRequested(
 		const sent = await deps.email.send({ to: target.donorEmail, ...rendered.message });
 		if (!sent.ok) {
 			await alert(deps, {
-				headline: 'A donor’s grant request confirmation did not send',
+				headline: 'A donor didn’t get their grant confirmation',
 				body:
-					'A donor-advised fund gift was recorded and the email confirming it to the donor did ' +
-					'not send. The grant stands and the gift is recorded.',
+					'A donor-advised fund gift was recorded, but the email confirming the grant request ' +
+					'failed to send. The grant and the gift are fine.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
-					{ label: 'Reason', value: sent.reason },
-					{ label: 'Detail', value: sent.detail },
-					{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
+					{ label: 'Gift ID', value: target.donationId },
+					{ label: 'What went wrong', value: sent.detail },
+					{ label: 'May have been delivered anyway', value: sent.indeterminate ? 'yes' : 'no' },
+					{ label: 'Error code', value: sent.reason }
 				],
-				action:
-					'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
+				action: TEST_THE_SMTP_SETTINGS
 			});
 		}
 	} catch (error) {
 		try {
 			await alert(deps, {
-				headline: 'A donor’s grant request confirmation could not be attempted',
+				headline: 'A donor didn’t get their grant confirmation',
 				body:
-					'A donor-advised fund gift was recorded and the step that confirms it to the donor ' +
-					'failed outright. The grant stands and the gift is recorded.',
+					'A donor-advised fund gift was recorded, but the email confirming the grant request ' +
+					'failed with an unexpected error. The grant and the gift are fine.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
+					{ label: 'Gift ID', value: target.donationId },
 					{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 				],
-				action:
-					'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
-					'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-					'checkout).'
+				action: `${TEST_THE_SMTP_SETTINGS}${SEND_THIS_TO_WHOEVER_SET_IT_UP}`
 			});
 		} catch {
 			// the alert rides the transport that may be what faulted. nothing on this path may throw.

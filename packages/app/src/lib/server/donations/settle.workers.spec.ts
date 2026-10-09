@@ -1458,7 +1458,7 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 
 	it('keeps a banked gift banked when the operator’s alert throws', async () => {
 		await pendingGift();
-		const mail = brittleMailer((m) => m.subject.includes('no processor fee'));
+		const mail = brittleMailer((m) => m.subject.includes('recorded without its'));
 
 		const result = await settleDelivery(deps({ email: mail.port, provider: noFee() }), DELIVERY);
 
@@ -1468,7 +1468,7 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
 		expect(groups?.n).toBe(1);
-		expect(mail.sent.some((m) => m.subject.includes('nobody could be told'))).toBe(true);
+		expect(mail.sent.some((m) => m.subject.includes('Emails about a payment failed'))).toBe(true);
 	});
 
 	it('answers the delivery when the donor’s message throws', async () => {
@@ -1485,7 +1485,7 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
 		const [row] = await db.select().from(payment);
 		expect(row?.status).toBe('failed');
-		expect(mail.sent.some((m) => m.subject.includes('nobody could be told'))).toBe(true);
+		expect(mail.sent.some((m) => m.subject.includes('Emails about a payment failed'))).toBe(true);
 	});
 
 	it('does not escape when the report itself throws too', async () => {
@@ -1548,8 +1548,8 @@ describe('settleDelivery() — a settled charge whose fee is unknown', () => {
 			DELIVERY
 		);
 
-		const alerted = mail.sent.find((m) => m.subject.includes('no processor fee'));
-		expect(alerted?.text).toContain('/admin/books');
+		const alerted = mail.sent.find((m) => m.subject.includes('recorded without its'));
+		expect(alerted?.text).toContain('on the Books page');
 		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds, into 5200 — Processor Fees');
 		expect(alerted?.text).not.toContain('outside it');
 	});
@@ -1588,7 +1588,7 @@ describe('settleDelivery() — the notice that a gift settled', () => {
 		// the screen the dashboard actually has. the rail calls it Gifts
 		// (src/lib/admin/destinations.ts),
 		// and an instruction naming a screen that is not there is worse than none.
-		expect(notice?.text).toContain('Open Gifts in /admin');
+		expect(notice?.text).toContain('recorded on Gifts in your dashboard');
 		// nothing to do about a gift that worked, which is what `action: null` renders as.
 		expect(notice?.text).not.toContain('What to do');
 	});
@@ -1604,7 +1604,7 @@ describe('settleDelivery() — the notice that a gift settled', () => {
 		const notices = noticesIn(mail.sent);
 		expect(notices).toHaveLength(1);
 		expect(mail.sent).toHaveLength(1);
-		expect(notices[0]?.text).toContain('no email address');
+		expect(notices[0]?.text).toContain('didn’t give an email address');
 		expect(notices[0]?.text).toContain('no receipt was sent');
 	});
 
@@ -1638,7 +1638,7 @@ describe('settleDelivery() — the notice that a gift settled', () => {
 
 	it('answers the delivery the same way when the notice itself faults', async () => {
 		const gift = await pendingGift();
-		const mail = brittleMailer((m) => m.subject.includes('was received'));
+		const mail = brittleMailer((m) => m.subject.includes('You received'));
 
 		const result = await settleDelivery(deps({ email: mail.port }), DELIVERY);
 
@@ -2226,7 +2226,7 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 
 			await settleDelivery(deps({ provider: refunded(), email: mail.port }), DELIVERY);
 
-			expect(mail.sent.filter((m) => m.subject.includes('no processor fee'))).toEqual([]);
+			expect(mail.sent.filter((m) => m.subject.includes('recorded without its'))).toEqual([]);
 		});
 
 		it('still asks for the missing fee of a gift the same read reports standing', async () => {
@@ -2236,7 +2236,7 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			await settleDelivery(deps({ provider: nowpayments(), email: mail.port }), DELIVERY);
 
 			expect(
-				mail.sent.filter((m) => m.subject.includes('no processor fee')).map((m) => m.to)
+				mail.sent.filter((m) => m.subject.includes('recorded without its')).map((m) => m.to)
 			).toEqual(['ops@hope.example']);
 		});
 

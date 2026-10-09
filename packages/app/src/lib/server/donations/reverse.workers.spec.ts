@@ -1092,7 +1092,7 @@ describe('recordReversal() — a refund of more than is left of the gift', () =>
 		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
 		const alerts = staffMail(mail.sent);
 		expect(alerts).toHaveLength(1);
-		expect(alerts[0]?.text).toMatch(/Capped/);
+		expect(alerts[0]?.text).toMatch(/Limited to what was left/);
 		expect(alerts[0]?.text).toContain('USD 60.00');
 		expect(alerts[0]?.text).not.toContain('(minor units)');
 	});
@@ -1329,7 +1329,7 @@ describe('recordReversal() — a dispute opened on a monthly gift', () => {
 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(await planStatus()).toBe('active');
-		const stopAlerts = mail.sent.filter((m) => /could not be stopped/i.test(m.subject));
+		const stopAlerts = mail.sent.filter((m) => /couldn’t be stopped/i.test(m.subject));
 		expect(stopAlerts).toHaveLength(1);
 		expect(stopAlerts[0]?.text).toContain('acct_9');
 	});
@@ -1351,9 +1351,9 @@ describe('recordReversal() — what staff are told when a dispute opens', () => 
 		const text = mail.sent[0]?.text ?? '';
 		expect(text).toContain('USD 40.00');
 		expect(text).not.toContain('(minor units)');
-		expect(text).toContain('2026-09-05');
+		expect(text).toContain('Respond by: September 5, 2026');
 		expect(text).toContain('https://dashboard.stripe.com/disputes/dp_1');
-		expect(text).toContain('Stopped: no further charges');
+		expect(text).toContain('Stopped. No more payments will be taken.');
 	});
 
 	it('answers the dispute delivered again as already posted, and tells nobody twice', async () => {
@@ -1496,7 +1496,7 @@ describe('recordReversal() — a dispute won', () => {
 
 		expect([first.ok, later.ok]).toEqual([true, true]);
 		expect(mail.sent).toHaveLength(2);
-		expect(mail.sent[1]?.text).toMatch(/none given back/i);
+		expect(mail.sent[1]?.text).toContain('Dispute fee given back: None');
 		expect(await refundRows()).toEqual([]);
 	});
 });
@@ -1613,7 +1613,7 @@ describe('recordReversal() — a dispute won with no opening recorded, whose kep
 
 		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
 		expect(await groupCount()).toBe(groups);
-		expect(mail.sent[0]?.text).toMatch(/nothing needs booking/i);
+		expect(mail.sent[0]?.text).toContain('What to do: Nothing to do.');
 	});
 
 	it('books nothing on a gift the books never held, naming the fee to staff to post by hand', async () => {
@@ -1630,7 +1630,7 @@ describe('recordReversal() — a dispute won with no opening recorded, whose kep
 		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
 		expect(await groupCount()).toBe(groups);
 		expect(mail.sent[0]?.text).toContain('USD 15.00');
-		expect(mail.sent[0]?.text).toMatch(/\/admin\/books/);
+		expect(mail.sent[0]?.text).toMatch(/on\s+the\s+Books\s+page/);
 	});
 
 	it('refuses a kept fee that is not a whole number of minor units, writing nothing', async () => {
@@ -2246,7 +2246,7 @@ describe('recordReversal() — a dispute whose after-steps fault', () => {
 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(await planStatus()).toBe('active');
-		expect(mail.sent.filter((m) => /could not be stopped/i.test(m.subject))).toHaveLength(1);
+		expect(mail.sent.filter((m) => /couldn’t be stopped/i.test(m.subject))).toHaveLength(1);
 	});
 });
 
@@ -2398,7 +2398,9 @@ describe('recordReversal() — a dispute of the whole charge after a partial ref
 		expect(await asAdminReads(gift.donationId)).toEqual({ status: 'refunded', given: 0 });
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('USD 70.00');
-		expect(mail.sent[0]?.text).toMatch(/USD 100\.00.*capped at what was left/s);
+		expect(mail.sent[0]?.text).toMatch(
+			/USD 100\.00.*only\s+what\s+was\s+left\s+was\s+taken\s+off/s
+		);
 		expect(mail.sent[0]?.text).not.toContain('(minor units)');
 	});
 
@@ -2465,8 +2467,8 @@ describe('recordReversal() — a dispute the books cannot take, on a monthly gif
 		const text = mail.sent[0]?.text ?? '';
 		expect(text).toContain('USD 15.00');
 		expect(text).not.toContain('(minor units)');
-		expect(text).toContain('Stopped: no further charges will be made.');
-		expect(text).not.toMatch(/correct the gift/i);
+		expect(text).toContain('Stopped. No more payments will be taken.');
+		expect(text).not.toMatch(/for\s+what\s+it\s+took/i);
 	});
 
 	it('still stops the plan of a dispute in another currency than the gift, naming the problem', async () => {

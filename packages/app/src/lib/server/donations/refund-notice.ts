@@ -4,6 +4,11 @@ import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { findPaymentDonor } from '../contacts/queries';
 import { donation, payment } from '../db/schema';
+import {
+	FILL_IN_ORG_DETAILS,
+	SEND_THIS_TO_WHOEVER_SET_IT_UP,
+	TEST_THE_SMTP_SETTINGS
+} from '../email/alert';
 import { renderRefundNotice, type RefundNoticeInput } from '../email/refund-notice';
 import { readOrgProfile } from '../org/queries';
 import { refundStands } from './queries';
@@ -149,8 +154,8 @@ async function attempt(
 	from: 'delivery' | 'run'
 ): Promise<adminAlert.AdminAlertData | null> {
 	const facts = [
-		{ label: 'Donation', value: target.donationId },
-		{ label: 'Refund', value: target.refundId }
+		{ label: 'Gift ID', value: target.donationId },
+		{ label: 'Refund ID', value: target.refundId }
 	];
 	try {
 		const donor = await findPaymentDonor(deps.db, target.giftPaymentId);
@@ -170,13 +175,12 @@ async function attempt(
 		});
 		if (!rendered.ok) {
 			return {
-				headline: 'A donor was not told of a refund',
+				headline: 'A donor wasn’t told about their refund',
 				body:
-					'A refund was recorded and the email telling the donor of it could not be written. ' +
-					`The refund stands, and the donor has no email of it yet. ${RESENT}`,
+					'A refund was recorded, but the email telling the donor couldn’t be prepared. The ' +
+					'refund is fine; the donor just has no email about it.',
 				facts: [...facts, { label: 'Reason', value: rendered.detail }],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: `${FILL_IN_ORG_DETAILS} It will be sent again once that’s fixed.`
 			};
 		}
 
@@ -186,34 +190,34 @@ async function attempt(
 			const final = sent.reason === 'invalid_message' || (from === 'run' && sent.indeterminate);
 			if (final) await settle(deps.db, target.refundId);
 			return {
-				headline: 'A donor’s refund notice did not send',
+				headline: 'A donor wasn’t told about their refund',
 				body:
-					'A refund was recorded and the email telling the donor of it did not send. The ' +
-					`refund stands, and the donor has no email of it yet. ${final ? NOT_RESENT : RESENT}`,
+					'A refund was recorded, but the email telling the donor failed to send. The refund is ' +
+					`fine. ${final ? NOT_RESENT : RESENT}`,
 				facts: [
 					...facts,
-					{ label: 'Reason', value: sent.reason },
-					{ label: 'Detail', value: sent.detail },
-					{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
+					{ label: 'What went wrong', value: sent.detail },
+					{ label: 'May have been delivered anyway', value: sent.indeterminate ? 'yes' : 'no' },
+					{ label: 'Error code', value: sent.reason }
 				],
 				action:
-					'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
+					sent.reason === 'invalid_message'
+						? 'The donor’s email address was refused. Find the gift on Gifts in your dashboard, ' +
+							'check the address there, and let the donor know about their refund yourself.'
+						: TEST_THE_SMTP_SETTINGS
 			};
 		}
 	} catch (error) {
 		return {
-			headline: 'A donor’s refund notice could not be attempted',
+			headline: 'A donor wasn’t told about their refund',
 			body:
-				'A refund was recorded and the step that emails the donor of it failed outright. The ' +
-				`refund stands, and the donor has no email of it yet. ${RESENT}`,
+				'A refund was recorded, but emailing the donor failed with an unexpected error. The ' +
+				`refund is fine. ${RESENT}`,
 			facts: [
 				...facts,
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
-			action:
-				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
-				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-				'checkout).'
+			action: `${TEST_THE_SMTP_SETTINGS}${SEND_THIS_TO_WHOEVER_SET_IT_UP}`
 		};
 	}
 
@@ -228,12 +232,11 @@ async function attempt(
 	return null;
 }
 
-/** how the alert of a notice still owed ends: the run's cadence, and `NOTICE_WINDOW_MS`. */
-const RESENT =
-	'This deployment tries it again every half hour until a week after the refund was recorded.';
+/** how the alert of a notice still owed ends: `sendOwedRefundNotices` sends it again. */
+const RESENT = 'It will be sent again automatically for up to a week.';
 
 /** how the alert of a notice no longer owed ends. */
-const NOT_RESENT = 'This deployment does not try it again.';
+const NOT_RESENT = 'It won’t be sent again.';
 
 /** the refund's notice recorded as owed no longer. */
 async function settle(db: Db, refundId: string): Promise<void> {

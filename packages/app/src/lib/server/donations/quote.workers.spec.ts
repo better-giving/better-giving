@@ -1746,8 +1746,8 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		const action = text.slice(text.indexOf('What to do:'));
 		expect(action).toContain('tracking ID');
 		expect(action).toContain('already recorded');
-		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('by hand'));
-		expect(action).toContain('unless Chariot shows the grant cancelled');
+		expect(action.indexOf('tracking ID')).toBeLessThan(action.indexOf('record the gift yourself'));
+		expect(action).toContain('unless Chariot shows the grant as cancelled');
 		expect(action).not.toContain('on or after');
 		expect(text).not.toContain('Tracking ID:');
 	});
@@ -1763,9 +1763,9 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		const text = (mail.sent[0]?.text ?? '').replace(/\s+/g, ' ');
 		const action = text.slice(text.indexOf('What to do:'));
 		expect(text.slice(0, text.indexOf('What to do:'))).toContain(`Tracking ID: ${TRACKING_ID}`);
-		expect(action).toContain(`shows tracking ID ${TRACKING_ID}, it is already recorded`);
+		expect(action).toContain(`shows tracking ID ${TRACKING_ID}, it’s already recorded`);
 		expect(action).toContain(
-			'Otherwise record the gift by hand, unless Chariot shows the grant cancelled'
+			'Otherwise, record the gift yourself, unless Chariot shows the grant as cancelled'
 		);
 		expect(action).not.toContain('note its tracking ID');
 	});

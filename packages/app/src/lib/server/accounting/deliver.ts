@@ -649,20 +649,21 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 		.limit(1);
 
 	await alert(deps, {
-		headline: 'QuickBooks would not take some of this deployment’s gifts',
+		headline: 'Some gifts didn’t sync to QuickBooks',
 		body:
-			'Journal entries this deployment owes to QuickBooks were refused. The gifts are in this ' +
-			'app’s own books and nothing has been lost. What is waiting is sent again on its own; what ' +
-			'has been given up on is sent only if somebody retries it. This is sent once a day while the ' +
-			'backlog stands, not once per gift.',
+			'QuickBooks turned down some gifts. They’re safe in your donations app; only QuickBooks is ' +
+			'missing them. Gifts being retried are tried again automatically, but if the reason below ' +
+			'asks you to do something, they won’t get through until you do. Gifts that need you stay ' +
+			'out of QuickBooks until you press Try these again. This email repeats once a day while ' +
+			'gifts are stuck, not once per gift.',
 		facts: [
-			{ label: 'Waiting to be sent', value: String(tally.waiting) },
-			{ label: 'Given up on', value: String(tally.givenUp) },
-			{ label: 'Last error', value: latest?.lastError ?? 'none recorded' }
+			{ label: 'Being retried automatically', value: String(tally.waiting) },
+			{ label: 'Need you to retry', value: String(tally.givenUp) },
+			{ label: 'Latest reason', value: latest?.lastError ?? 'none given' }
 		],
 		action:
-			'Open the console (`better-giving start`) and look at what QuickBooks refused. A gift given ' +
-			'up on reaches the books only when it is retried there.'
+			'Open the console (run `better-giving start`) and go to QuickBooks. Fix what the latest ' +
+			'reason says, then press Try these again.'
 	});
 
 	await stamp(deps.db, failing(now), now);
@@ -697,19 +698,20 @@ async function notifyBlocked(
 	if (backlog.reported > 0) return;
 
 	await alert(deps, {
-		headline: 'Nothing is reaching QuickBooks at all',
+		headline: 'No gifts are syncing to QuickBooks',
 		body:
-			'Every gift this deployment owes to QuickBooks is behind one fault, and no journal entry ' +
-			'was sent. Nothing has been lost: the gifts are in this app’s own books and the whole ' +
-			'backlog goes over once the fault is put right. This is sent once a day, not once per run.',
+			'One problem with your QuickBooks connection is holding up every gift. Your gifts are safe ' +
+			'in your donations app, and all of them sync once it’s fixed. This email repeats once a ' +
+			'day until then.',
 		facts: [
 			{ label: 'Reason', value: failure.detail },
-			{ label: 'Waiting to be sent', value: String(backlog.waiting) },
-			{ label: 'Oldest has waited', value: waited(now.getTime() - backlog.oldest) }
+			{ label: 'Gifts waiting', value: String(backlog.waiting) },
+			{ label: 'Oldest waiting for', value: waited(now.getTime() - backlog.oldest) }
 		],
 		action:
-			'Open the console (`better-giving start`) and put the QuickBooks connection right: whether ' +
-			'a company is still connected, and which accounts gifts are posted to.'
+			'Open the console (run `better-giving start`) and go to QuickBooks. Check your company is ' +
+			'still connected and every account is chosen. If the reason says QuickBooks can’t be ' +
+			'reached, there’s nothing to do: gifts sync once it’s back.'
 	});
 
 	await stamp(deps.db, UNFINISHED, now);

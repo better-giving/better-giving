@@ -37,6 +37,7 @@ import {
 	type RecurringGiftNotice,
 	type Settlement
 } from '../payments/provider';
+import { NO_RESEND, SEND_THIS_TO_WHOEVER_SET_IT_UP, TEST_THE_SMTP_SETTINGS } from '../email/alert';
 import { alert, alertMoney, processorLabel, type SettleDeps, type SettleResult } from './delivery';
 import { chargeEntry, feeEntry, missingFeeCorrection, unpostable } from './entries';
 import { sendReceipt, type ReceiptOutcome } from './receipt';
@@ -200,19 +201,20 @@ export async function collectRecurringGift(
 		// into — and the delivery it lands on may be an `invoice.paid` for money already collected.
 		// answered 200 with nothing said, that gift is lost with nobody told.
 		await alert(deps, {
-			headline: 'A delivery about a repeating gift could not be read and was not acted on',
+			headline: `A recurring gift update from ${processor} couldn’t be read`,
 			body:
-				'The delivery verified and the repeating gift behind it could not be read. Nothing was ' +
-				'written. If it was a collection, money moved and the books do not have it. If it was a ' +
-				'failed payment, no money moved and the books are complete: what is lost is the ' +
-				'"Recurring charge failed" event your webhook destinations are owed for that attempt. ' +
-				'Repeating the call answers the same way, so this needs a person.',
+				`${processor} sent an update about a recurring gift that couldn’t be read, so nothing ` +
+				'was recorded. If it was a successful payment, that money isn’t in your records. If it ' +
+				'was a failed payment, your records are fine, but the destinations on your Webhooks page ' +
+				'weren’t told about the failure.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Event type', value: event.type },
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} event type`, value: event.type },
 				{ label: 'Reason', value: read.detail }
 			],
-			action: `Find this subscription in the ${processor} dashboard and reconcile it by hand.`
+			action:
+				`Find this subscription in your ${processor} dashboard and check its latest payment. ` +
+				'If money came in, record the gift yourself.'
 		});
 		return { ok: true, outcome: 'unactionable', detail: read.detail };
 	}
@@ -234,16 +236,16 @@ export async function collectRecurringGift(
 		// all come from a transaction there is none of, and a gift posted from figures nobody read
 		// is worse than a gift a person enters by hand — which is what the alert asks for.
 		await alert(deps, {
-			headline: 'A repeating gift collected money the processor did not carry',
+			headline: `A recurring gift was marked paid outside ${processor}`,
 			body:
-				'A collection under a repeating gift was marked paid with no transaction behind it, ' +
-				`which is how a collection settled outside ${processor} arrives. Nothing was written: ` +
-				'what the gift was worth and what it cost are not on the collection to read.',
+				`A payment on a recurring gift was marked as paid in ${processor} without a ` +
+				`${processor} payment behind it, so there’s no amount or fee to record. Nothing was ` +
+				'recorded.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Repeating gift', value: notice.providerGiftId }
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} subscription ID`, value: notice.providerGiftId }
 			],
-			action: `Find this collection in the ${processor} dashboard and record the gift by hand.`
+			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
@@ -258,17 +260,17 @@ export async function collectRecurringGift(
 	if (!money.ok) {
 		if (isRetryable(money.reason)) return { ok: false, reason: 'incomplete', detail: money.detail };
 		await alert(deps, {
-			headline: 'A collection under a repeating gift could not be read and was not recorded',
+			headline: 'A recurring gift payment couldn’t be read',
 			body:
-				'The delivery verified and the transaction behind it could not be read. Nothing was ' +
-				'written. Repeating the call answers the same way, so this needs a person.',
+				`${processor} reported a payment on a recurring gift, but its details couldn’t be read, ` +
+				'so it isn’t in your records. The money may have come in.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Repeating gift', value: notice.providerGiftId },
-				{ label: 'Transaction', value: notice.providerTxnId },
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} subscription ID`, value: notice.providerGiftId },
+				{ label: `${processor} payment ID`, value: notice.providerTxnId },
 				{ label: 'Reason', value: money.detail }
 			],
-			action: `Find the payment in the ${processor} dashboard and reconcile it by hand.`
+			action: `Find this payment in your ${processor} dashboard. If the money came in, record the gift yourself.`
 		});
 		return { ok: true, outcome: 'unactionable', detail: money.detail };
 	}
@@ -293,18 +295,17 @@ export async function collectRecurringGift(
 	const refused = unpostable(settlement);
 	if (refused !== null) {
 		await alert(deps, {
-			headline: 'A repeating gift collected money the books cannot record',
+			headline: 'A recurring gift payment came in but wasn’t recorded',
 			body:
-				'A collection succeeded and what the processor reported about it is not something the ' +
-				'ledger can hold, so nothing was written. The same figures arrive on every redelivery, ' +
-				'so this needs a person.',
+				`A payment on a recurring gift went through, but the figures ${processor} reported for ` +
+				'it can’t be recorded. The money came in, but it isn’t in your records.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Repeating gift', value: notice.providerGiftId },
-				{ label: 'Transaction', value: settlement.providerTxnId },
-				{ label: 'Problem', value: refused }
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} subscription ID`, value: notice.providerGiftId },
+				{ label: `${processor} payment ID`, value: settlement.providerTxnId },
+				{ label: 'Why it wasn’t recorded', value: refused }
 			],
-			action: `Find this payment in the ${processor} dashboard and record the gift by hand.`
+			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
@@ -638,22 +639,21 @@ async function openCommitment(
 	const named = attribution(notice);
 	if (typeof named === 'string') {
 		await alert(deps, {
-			headline: 'A repeating gift collected money this deployment cannot attribute',
+			headline: 'A recurring gift payment couldn’t be matched to a gift',
 			body:
-				'A collection succeeded under a commitment whose record here could not be opened, so ' +
-				'the money is not in the books. Sending the delivery again cannot fix it: what is ' +
-				`missing is on the commitment at ${processor}, not in this request.`,
+				`A payment on a recurring gift went through, but its ${processor} subscription doesn’t ` +
+				'say which gift it belongs to, so the money isn’t in your records.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Repeating gift', value: notice.providerGiftId },
-				{ label: 'Transaction', value: settlement.providerTxnId },
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} subscription ID`, value: notice.providerGiftId },
+				{ label: `${processor} payment ID`, value: settlement.providerTxnId },
 				{
 					label: 'Amount',
 					value: alertMoney(settlement.amountMinor, settlement.currency)
 				},
-				{ label: 'Problem', value: named }
+				{ label: 'What’s missing', value: named }
 			],
-			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
+			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
@@ -669,23 +669,22 @@ async function openCommitment(
 	const authorized = await findAuthorizedGift(deps.db, named.authorizedGiftId);
 	if (authorized === null) {
 		await alert(deps, {
-			headline: 'A repeating gift collected money against a gift that is not here to claim',
+			headline: 'A recurring gift payment came in for a gift that isn’t in your records',
 			body:
-				'A collection succeeded under a commitment naming a gift this deployment cannot claim: ' +
-				'no such row, or one already attached to another commitment. The donor, the fund and ' +
-				'the cause are all on that row, so there is nothing to record this money against and it ' +
-				'is not in the books.',
+				`A payment on a recurring gift went through, but the gift its ${processor} subscription ` +
+				'points to either isn’t in your records or already belongs to another recurring gift. ' +
+				'With no donor, fund or program to record it against, the money isn’t in your records.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Repeating gift', value: notice.providerGiftId },
-				{ label: 'Gift named by the commitment', value: named.authorizedGiftId },
-				{ label: 'Transaction', value: settlement.providerTxnId },
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} subscription ID`, value: notice.providerGiftId },
+				{ label: 'Gift ID the subscription names', value: named.authorizedGiftId },
+				{ label: `${processor} payment ID`, value: settlement.providerTxnId },
 				{
 					label: 'Amount',
 					value: alertMoney(settlement.amountMinor, settlement.currency)
 				}
 			],
-			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
+			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
@@ -709,18 +708,19 @@ async function openCommitment(
 	if (formId === null || giving === null) {
 		const stated = formId === null ? 'no form at all' : `form ${formId}`;
 		await alert(deps, {
-			headline: 'A repeating gift collected money against a form that is not here',
+			headline: 'A recurring gift payment came in for a form that doesn’t exist',
 			body:
-				'A collection succeeded under a commitment whose gift names a form this deployment does ' +
-				'not have, so there is no fund to post it to and the money is not in the books.',
+				'A payment on a recurring gift went through, but its gift points to a donation form ' +
+				'that isn’t in your dashboard, so there’s no fund to record it against. The money isn’t ' +
+				'in your records.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Repeating gift', value: notice.providerGiftId },
-				{ label: 'Gift named by the commitment', value: gift.id },
-				{ label: 'Form named by the gift', value: formId ?? 'none' },
-				{ label: 'Transaction', value: settlement.providerTxnId }
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} subscription ID`, value: notice.providerGiftId },
+				{ label: 'Gift ID', value: gift.id },
+				{ label: 'Form ID', value: formId ?? 'none' },
+				{ label: `${processor} payment ID`, value: settlement.providerTxnId }
 			],
-			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
+			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
@@ -818,17 +818,17 @@ async function writeAgainstPlan(
 	if (giving === null) {
 		const processor = processorLabel(deps);
 		await alert(deps, {
-			headline: 'A repeating gift collected money against a form that is no longer here',
+			headline: 'A recurring gift payment came in for a form that no longer exists',
 			body:
-				'A collection succeeded under a commitment whose form has gone from this database, so ' +
-				'there is no fund to post it to and the money is not in the books.',
+				'A payment on a recurring gift went through, but the donation form it was set up on no ' +
+				'longer exists, so there’s no fund to record it against. The money isn’t in your records.',
 			facts: [
-				{ label: 'Event', value: event.id },
-				{ label: 'Repeating gift', value: notice.providerGiftId },
-				{ label: 'Form', value: plan.formId },
-				{ label: 'Transaction', value: settlement.providerTxnId }
+				{ label: `${processor} event ID`, value: event.id },
+				{ label: `${processor} subscription ID`, value: notice.providerGiftId },
+				{ label: 'Form ID', value: plan.formId },
+				{ label: `${processor} payment ID`, value: settlement.providerTxnId }
 			],
-			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
+			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
@@ -938,16 +938,15 @@ async function answerTo(
 				// is `1020` overstated again on every collection, with no error anywhere and nothing
 				// but a reconciliation to find it.
 				await alert(deps, {
-					headline: 'A collection under a repeating gift was posted with no processor fee',
+					headline: `A recurring gift was recorded without its ${processor} fee`,
 					body:
-						'The charge is in the books at face value and the fee it was taken out of is not. ' +
-						'Undeposited funds is overstated by that amount until somebody posts it, and it ' +
-						`will happen again on the next collection. ${processor} published no fee for this ` +
-						'payment in the currency the gift was charged in, which is the only currency the ' +
-						'entry could be posted in.',
+						'A recurring gift payment was recorded at its full amount, but ' +
+						`${processor} didn’t report the fee it took in the gift’s currency. Until you add ` +
+						'the fee, Undeposited Funds shows more than you’ll actually receive. Later payments ' +
+						'on this gift may be missing their fee too.',
 					facts: [
-						{ label: 'Repeating gift', value: about.notice.providerGiftId },
-						{ label: 'Transaction', value: about.settlement.providerTxnId }
+						{ label: `${processor} subscription ID`, value: about.notice.providerGiftId },
+						{ label: `${processor} payment ID`, value: about.settlement.providerTxnId }
 					],
 					action: missingFeeCorrection(processor)
 				});
@@ -982,22 +981,21 @@ async function answerTo(
 
 	if (wrote === 'refused') {
 		await alert(deps, {
-			headline: 'A repeating gift collected money the database would not record',
+			headline: 'A recurring gift payment came in but couldn’t be saved',
 			body:
-				'A collection succeeded and the write was refused: something on it is a value these ' +
-				'tables will not hold. The money is not in the books. Sending the delivery again cannot ' +
-				'fix it. The database refuses the same write every time.',
+				'A payment on a recurring gift went through, but saving it failed because something in ' +
+				'it can’t be stored. The money isn’t in your records, and retrying won’t fix it.',
 			facts: [
-				{ label: 'Event', value: about.event.id },
-				{ label: 'Repeating gift', value: about.notice.providerGiftId },
-				{ label: 'Donor and form', value: about.names },
-				{ label: 'Transaction', value: about.settlement.providerTxnId },
+				{ label: `${processor} event ID`, value: about.event.id },
+				{ label: `${processor} subscription ID`, value: about.notice.providerGiftId },
+				{ label: 'Donor and form IDs', value: about.names },
+				{ label: `${processor} payment ID`, value: about.settlement.providerTxnId },
 				{
 					label: 'Amount',
 					value: alertMoney(about.settlement.amountMinor, about.settlement.currency)
 				}
 			],
-			action: `Find this subscription in the ${processor} dashboard and record the gift by hand.`
+			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
@@ -1084,20 +1082,17 @@ async function receiptFault(
 ): Promise<void> {
 	try {
 		await alert(deps, {
-			headline: 'A collection was recorded and its receipt could not be attempted',
+			headline: 'A donor’s receipt wasn’t sent',
 			body:
-				'A collection under a repeating gift is in the books and the step that receipts it ' +
-				'failed outright. The donor has not been told and is owed a receipt; the gift stays on ' +
-				'the unreceipted list until one is sent.',
+				'A recurring gift payment was recorded, but sending its receipt failed with an ' +
+				'unexpected error, so the donor hasn’t received one. The gift itself is safe. Nothing ' +
+				'will resend this receipt automatically.',
 			facts: [
-				{ label: 'Donation', value: charge.donationId },
-				{ label: 'Donor', value: charge.contactId },
+				{ label: 'Gift ID', value: charge.donationId },
+				{ label: 'Donor ID', value: charge.contactId },
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
-			action:
-				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
-				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-				'checkout).'
+			action: `${TEST_THE_SMTP_SETTINGS}${SEND_THIS_TO_WHOEVER_SET_IT_UP}${NO_RESEND}`
 		});
 	} catch {
 		// nothing to report it to, and nothing on this path may throw.

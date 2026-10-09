@@ -1,4 +1,9 @@
 import { renderCryptoPending, type CryptoPendingInput } from '../email/crypto-pending';
+import {
+	FILL_IN_ORG_DETAILS,
+	SEND_THIS_TO_WHOEVER_SET_IT_UP,
+	TEST_THE_SMTP_SETTINGS
+} from '../email/alert';
 import { readOrgProfile } from '../org/queries';
 import { alert, type MailDeps } from './delivery';
 
@@ -31,17 +36,15 @@ export async function sendCryptoPending(
 		const rendered = await renderCryptoPending({ ...target, org: await readOrgProfile(deps.db) });
 		if (!rendered.ok) {
 			await alert(deps, {
-				headline: 'A donor was not sent where to send their crypto gift',
+				headline: 'A donor didn’t get their crypto payment instructions',
 				body:
-					'A crypto gift was recorded and the email telling the donor where to send it could not be ' +
-					'written. The address stands and the donor was shown it on the page; they have no email ' +
-					'of it.',
+					'A donor started a crypto gift, but the email with the address to send it to couldn’t ' +
+					'be prepared. They saw the address on the page but have no copy by email.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
+					{ label: 'Gift ID', value: target.donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: FILL_IN_ORG_DETAILS
 			});
 			return;
 		}
@@ -49,35 +52,31 @@ export async function sendCryptoPending(
 		const sent = await deps.email.send({ to: target.donorEmail, ...rendered.message });
 		if (!sent.ok) {
 			await alert(deps, {
-				headline: 'A donor’s crypto payment instructions did not send',
+				headline: 'A donor didn’t get their crypto payment instructions',
 				body:
-					'A crypto gift was recorded and the email telling the donor where to send it did not ' +
-					'send. The address stands and the donor was shown it on the page.',
+					'A donor started a crypto gift, but the email with the address to send it to failed to ' +
+					'send. They saw the address on the page.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
-					{ label: 'Reason', value: sent.reason },
-					{ label: 'Detail', value: sent.detail },
-					{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
+					{ label: 'Gift ID', value: target.donationId },
+					{ label: 'What went wrong', value: sent.detail },
+					{ label: 'May have been delivered anyway', value: sent.indeterminate ? 'yes' : 'no' },
+					{ label: 'Error code', value: sent.reason }
 				],
-				action:
-					'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
+				action: TEST_THE_SMTP_SETTINGS
 			});
 		}
 	} catch (error) {
 		try {
 			await alert(deps, {
-				headline: 'A donor’s crypto payment instructions could not be attempted',
+				headline: 'A donor didn’t get their crypto payment instructions',
 				body:
-					'A crypto gift was recorded and the step that emails the donor where to send it failed ' +
-					'outright. The address stands and the donor was shown it on the page.',
+					'A donor started a crypto gift, but emailing them the address failed with an unexpected ' +
+					'error. They saw the address on the page.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
+					{ label: 'Gift ID', value: target.donationId },
 					{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 				],
-				action:
-					'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
-					'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-					'checkout).'
+				action: `${TEST_THE_SMTP_SETTINGS}${SEND_THIS_TO_WHOEVER_SET_IT_UP}`
 			});
 		} catch {
 			// the alert rides the transport that may be what faulted. nothing on this path may throw.

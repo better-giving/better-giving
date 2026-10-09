@@ -2,6 +2,12 @@ import type { TributeKind } from '@better-giving/form/v1';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { donation } from '../db/schema';
+import {
+	FILL_IN_ORG_DETAILS,
+	NO_RESEND,
+	SEND_THIS_TO_WHOEVER_SET_IT_UP,
+	TEST_THE_SMTP_SETTINGS
+} from '../email/alert';
 import { renderGrantReceived, type GrantNoticeInput } from '../email/grant';
 import type { RenderedEmail } from '../email/provider';
 import {
@@ -150,13 +156,9 @@ export async function sendReceipt(deps: MailDeps, target: ReceiptTarget): Promis
 	});
 }
 
-/** the refusal that only the organisation's saved details fix. */
-const FILL_IN_ORG_DETAILS =
-	'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.';
-
 /** how every refusal about the gift's own figures ends. */
 const CORRECT_THE_GIFT =
-	'No setting fixes this: the gift’s own record has to be corrected before its receipt can be sent.';
+	'No setting fixes this. The gift’s record needs correcting before a receipt can be sent.';
 
 /**
  * the sentence an operator acts on, one per refusal reason. the refusal of a gift whose figures
@@ -176,21 +178,20 @@ function receiptRefusalAction(
 			return FILL_IN_ORG_DETAILS;
 		case 'goods_or_services_incomplete':
 			return (
-				'This gift is recorded as one where the donor received goods or services, without both a ' +
-				`description of them and their fair market value. ${CORRECT_THE_GIFT}`
+				'This gift says the donor received something in return, but doesn’t say what or what it ' +
+				`was worth. ${CORRECT_THE_GIFT}`
 			);
 		case 'goods_or_services_inconsistent':
 			return (
-				`This gift carries ${money(contribution.nonDeductibleMinor)} recorded as not deductible, ` +
-				'and this deployment records no goods or services against any gift, so its receipt cannot ' +
-				'say what that amount was for. Nothing in this deployment sets that amount and no screen ' +
-				'edits it, so the gift’s record has to be corrected where it was changed before its ' +
-				'receipt can be sent.'
+				`This gift has ${money(contribution.nonDeductibleMinor)} marked as not tax-deductible, ` +
+				'but nothing is recorded as given in return, so the receipt can’t explain it. Nothing in ' +
+				'the app sets that amount, so the gift’s record was changed outside the app and needs ' +
+				'correcting there.'
 			);
 		case 'covered_fee_inconsistent':
 			return (
-				`This gift is recorded with a processing fee of ${money(contribution.coveredFeeMinor)} ` +
-				`against a payment of ${money(contribution.totalMinor)}. ${CORRECT_THE_GIFT}`
+				`This gift records a ${money(contribution.coveredFeeMinor)} processing fee that doesn’t ` +
+				`fit its ${money(contribution.totalMinor)} payment. ${CORRECT_THE_GIFT}`
 			);
 	}
 }
@@ -257,15 +258,16 @@ async function claimAndSend(
 		if (!rendered.ok) {
 			await release(deps.db, donationId);
 			await alert(deps, {
-				headline: `A gift was recorded and its ${noun} could not be written`,
+				headline: `A donor’s ${noun} wasn’t sent`,
 				body:
-					`The gift is in the books. The ${noun} was not sent, and the donor is owed one. The ` +
-					'gift stays on the unreceipted list until this is fixed and it is sent.',
+					`A gift was recorded, but its ${noun} couldn’t be prepared, so the donor hasn’t ` +
+					`received one. The gift itself is safe. Nothing will send this ${noun} ` +
+					'automatically, even after you fix the cause.',
 				facts: [
-					{ label: 'Donation', value: donationId },
+					{ label: 'Gift ID', value: donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action: rendered.action
+				action: `${rendered.action}${NO_RESEND}`
 			});
 			return 'not_sent';
 		}
@@ -277,18 +279,18 @@ async function claimAndSend(
 			// never wrote to.
 			await release(deps.db, donationId);
 			await alert(deps, {
-				headline: `A gift was recorded and its ${noun} did not send`,
+				headline: `A donor’s ${noun} wasn’t sent`,
 				body:
-					'The gift is in the books and the donor has not been told. It stays on the unreceipted ' +
-					'list, so nothing is lost by fixing the mail settings and sending it again.',
+					`A gift was recorded, but the email with its ${noun} failed to send. The gift itself ` +
+					`is safe. Nothing will resend this ${noun} automatically, even after the email ` +
+					'settings are fixed.',
 				facts: [
-					{ label: 'Donation', value: donationId },
-					{ label: 'Reason', value: sent.reason },
-					{ label: 'Detail', value: sent.detail },
-					{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
+					{ label: 'Gift ID', value: donationId },
+					{ label: 'What went wrong', value: sent.detail },
+					{ label: 'May have been delivered anyway', value: sent.indeterminate ? 'yes' : 'no' },
+					{ label: 'Error code', value: sent.reason }
 				],
-				action:
-					'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
+				action: `${TEST_THE_SMTP_SETTINGS}${NO_RESEND}`
 			});
 			return 'not_sent';
 		}
@@ -334,18 +336,16 @@ async function faulted(
 
 	try {
 		await alert(deps, {
-			headline: `A gift was recorded and its ${noun} could not be attempted`,
+			headline: `A donor’s ${noun} wasn’t sent`,
 			body:
-				'The gift is in the books and the step that receipts it failed outright. The donor has ' +
-				`not been told and is owed a ${noun}.`,
+				`A gift was recorded, but sending its ${noun} failed with an unexpected error, so the ` +
+				`donor hasn’t received one. The gift itself is safe. Nothing will resend this ${noun} ` +
+				'automatically.',
 			facts: [
-				{ label: 'Donation', value: donationId },
+				{ label: 'Gift ID', value: donationId },
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
-			action:
-				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
-				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-				'checkout).'
+			action: `${TEST_THE_SMTP_SETTINGS}${SEND_THIS_TO_WHOEVER_SET_IT_UP}${NO_RESEND}`
 		});
 	} catch {
 		// nothing to report it to, and nothing on this path may throw.

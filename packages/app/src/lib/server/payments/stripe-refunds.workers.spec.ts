@@ -768,7 +768,7 @@ describe('a Stripe dispute opened on a settled card gift', () => {
 		const alerts = toStaff();
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0]?.text).toContain('USD 100.00');
-		expect(alerts[0]?.text).toContain(new Date(RESPOND_BY * 1000).toISOString());
+		expect(alerts[0]?.text).toContain('Respond by: September 4, 2026 at 5:33 AM UTC');
 		expect(alerts[0]?.text).toContain('https://dashboard.stripe.com/disputes/du_1');
 	});
 });
@@ -837,7 +837,7 @@ describe('a Stripe dispute opened on one monthly charge', () => {
 			'/v1/subscriptions/sub_1'
 		]);
 		expect(toStaff()).toHaveLength(1);
-		expect(toStaff()[0]?.text).toContain('Stopped: no further charges');
+		expect(toStaff()[0]?.text).toContain('Stopped. No more payments will be taken.');
 	});
 });
 
