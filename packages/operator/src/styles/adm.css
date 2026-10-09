@@ -6485,9 +6485,10 @@
 	   with no logo the square holds the mark and the word that say what a press does, and its edge is
 	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. one holding a
 	   logo keeps its solid edge while a press on it saves, though the word stands in for the art
-	   then: what it holds is stated by `data-logo`, which the fold sets, and never read off the art
-	   being drawn. a file dragged over it draws the edge in the ring's ink on the accent's tint,
-	   because the square is what will take it. */
+	   then, and while the logo is being removed, when the art stays and the word stands under it
+	   in the inner step: what it holds is stated by `data-logo`, which the fold sets, and never
+	   read off the art being drawn. a file dragged over it draws the edge in the ring's ink on the
+	   accent's tint, because the square is what will take it. */
 	.adm-logo {
 		display: grid;
 		justify-items: start;
@@ -6606,6 +6607,11 @@
 		/* raw-length-ok: the spread is past the longest side of any image, which no step is. */
 		box-shadow: 0 0 0 100vmax var(--admin-scrim);
 		cursor: move;
+		/* how far each handle's target reaches into the square, read by `.adm-cropper__handle::before`
+		   below: `--admin-space-8`, or less on a square too small to keep that much clear in the
+		   middle. `--crop-width` is the square's side as drawn, which the machine states on the
+		   cropper's root. */
+		--_handle-reach: min(var(--admin-space-8), (var(--crop-width) - var(--admin-space-8)) / 2);
 	}
 
 	/* the square is the cropper's one tab stop. the scrim is its own shadow and outranks the ring
@@ -6643,18 +6649,24 @@
 		inline-size: var(--admin-space-6);
 	}
 
-	/* each handle is grabbed by more than it draws: a `::before` reaching `--admin-space-8` either
-	   side of the corner or edge it moves, which is 2.5.8's 24px
+	/* each handle is grabbed by more than it draws: a `::before` reaching `--_handle-reach` either
+	   side of the corner or edge it moves. on a square whose side is three reaches or more as drawn
+	   that is `--admin-space-8`, 2.5.8's 24px
 	   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html). the machine centres a
 	   handle on the square's edge and sets the viewport's `overflow: hidden` inline, so on a square
 	   touching the image's edge — as the largest square on any image does — the half outside is
 	   clipped, and the half inside is that 24px on its own. the reach is centred off
 	   `50%` of the handle, which a grip's border leaves on the same centre.
 
+	   a press inside the square and clear of every reach moves it, and a press on a handle never
+	   does, so the reach is cut on a smaller square to keep `--admin-space-8` clear in the middle:
+	   handle reach is traded for a square that can still be dragged, which matters most on a phone,
+	   where no key moves it. under 40px as drawn the grips themselves, `--admin-space-6` across
+	   and centred on the edge, take more of the middle than the reach does.
+
 	   the reaches overlap where an edge meets a corner, and the corner stands over the two edges:
 	   the machine draws the eight in an order that interleaves them, so without it an edge drawn
-	   later would take a press aimed at the corner's grip. a square narrower than twice the reach is
-	   handle all through, and moves from the keyboard. */
+	   later would take a press aimed at the corner's grip. */
 	.adm-cropper__handle::before {
 		content: '';
 		position: absolute;
@@ -6666,16 +6678,16 @@
 		[data-position='sw'],
 		[data-position='se']
 	)::before {
-		inset: calc(50% - var(--admin-space-8));
+		inset: calc(50% - var(--_handle-reach));
 	}
 
 	.adm-cropper__handle:is([data-position='n'], [data-position='s'])::before {
-		inset-block: calc(50% - var(--admin-space-8));
+		inset-block: calc(50% - var(--_handle-reach));
 		inset-inline: 0;
 	}
 
 	.adm-cropper__handle:is([data-position='e'], [data-position='w'])::before {
-		inset-inline: calc(50% - var(--admin-space-8));
+		inset-inline: calc(50% - var(--_handle-reach));
 		inset-block: 0;
 	}
 

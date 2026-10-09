@@ -111,7 +111,13 @@ export default function OrganisationPage({
 				press={actionData && 'press' in actionData ? actionData.press : null}
 				busy={busy}
 				pending={intent === ORG_INTENT}
-				logoPending={intent === ORG_LOGO_INTENT || intent === ORG_LOGO_REMOVE_INTENT}
+				logoPending={
+					intent === ORG_LOGO_INTENT
+						? 'saving'
+						: intent === ORG_LOGO_REMOVE_INTENT
+							? 'removing'
+							: null
+				}
 				lookups={loaderData.lookups}
 				lookUp={lookUpNonprofit}
 				search={searchNonprofits}

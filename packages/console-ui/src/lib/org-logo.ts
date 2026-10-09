@@ -22,11 +22,23 @@ import type { CropSquare, LogoPress, LogoSource } from './org-fields';
 export const LOGO_CROP_MIN = 88;
 
 /**
+ * the types a logo is taken in, which `LOGO_REFUSED['not-a-logo-type']` names. an SVG is none of
+ * them — a drawing has no pixels of its own to keep a square of — and neither is any other image
+ * type, or a file with none: the crop card refuses each as it opens (./logo-crop-dialog.tsx) and
+ * the press refuses each before opening it, in the same words.
+ */
+export const LOGO_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp'];
+
+/** whether a file chosen or dropped is one a logo is taken in, by the type the browser gives it. */
+export const takesLogo = (file: Blob): boolean => LOGO_TYPES.includes(file.type);
+
+/**
  * each way a logo is turned down: by the crop card before anything is sent
  * (./logo-crop-dialog.tsx), and at the logo by the crop or by the resize after it.
  */
 export type LogoRefusal =
 	| ResizeRefusal
+	| 'not-a-logo-type'
 	| 'no-source'
 	| 'no-crop'
 	| 'crop-too-small'
@@ -37,6 +49,8 @@ export type LogoRefusal =
 /** what each refusal says, at the logo or in the crop card. */
 export const LOGO_REFUSED: Readonly<Record<LogoRefusal, string>> = {
 	'not-an-image': 'That file isn’t an image. Choose a PNG, JPEG or WebP.',
+	'not-a-logo-type':
+		'Logos are taken as PNG, JPEG or WebP. Save it as one of those and choose it again.',
 	unreadable:
 		'That image couldn’t be opened here. Save it as a PNG, JPEG or WebP and choose it again.',
 	'too-large-after-resize': 'That image is too large even after resizing. Choose a smaller one.',
@@ -53,16 +67,15 @@ const inside = (crop: CropSquare, width: number, height: number): boolean =>
 	crop.x >= 0 && crop.y >= 0 && crop.x + crop.size <= width && crop.y + crop.size <= height;
 
 /**
- * `source` decoded the right way up, or why not — read as the resize reads a file
- * (`resizeImage` in `@better-giving/operator/images/resize`): one typed as something other than an
- * image is refused unopened, and one with no type at all is given the chance to decode.
+ * `source` decoded the right way up, or `unreadable` where the browser could not open it. a chosen
+ * file reaches here only of a type a logo is taken in ({@link takesLogo}), so one that will not
+ * decode is an image this browser cannot open — the sentence the crop card says of it.
  */
-async function decoded(source: Blob): Promise<ImageBitmap | ResizeRefusal> {
-	if (source.type !== '' && !source.type.startsWith('image/')) return 'not-an-image';
+async function decoded(source: Blob): Promise<ImageBitmap | 'unreadable'> {
 	try {
 		return await createImageBitmap(source, { imageOrientation: 'from-image' });
 	} catch {
-		return source.type === '' ? 'not-an-image' : 'unreadable';
+		return 'unreadable';
 	}
 }
 
@@ -98,7 +111,8 @@ async function sourceImage(
 	pressed: AbortSignal
 ): Promise<Blob | LogoRefusal | NoReport> {
 	if (source.from === 'stored') return (await readOrgLogo(pressed)) ?? 'no-stored-logo';
-	return source.file instanceof File ? source.file : 'not-an-image';
+	if (!(source.file instanceof File)) return 'not-an-image';
+	return takesLogo(source.file) ? source.file : 'not-a-logo-type';
 }
 
 /**

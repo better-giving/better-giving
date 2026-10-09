@@ -166,6 +166,9 @@ import type {
 // press, and everything about which section this is — its label, its tone, the word on its rail cell
 // and what stands between it and its job — is decided in ./home-sections.ts with the others.
 
+/** a logo press in flight, as the square says it: a logo going on, or the one held coming off. */
+export type LogoPending = 'saving' | 'removing';
+
 export type OrgFoldProps = {
 	/** the profile as the deployment holds it, which is what the boxes are seeded and read against. */
 	stored: StoredOrg;
@@ -177,8 +180,8 @@ export type OrgFoldProps = {
 	busy: boolean;
 	/** the profile's own press is in flight. */
 	pending: boolean;
-	/** a press putting the logo on or taking it off is in flight. */
-	logoPending?: boolean;
+	/** which logo press is in flight: one putting a logo on, or one taking it off. */
+	logoPending?: LogoPending | null;
 	/**
 	 * whether this console was built able to ask the IRS list. where it was not, a fresh set-up's
 	 * finder locks a whole EIN in without asking, and the form has no find press, no lookup and no
@@ -248,7 +251,7 @@ export function OrgFold({
 	press,
 	busy,
 	pending,
-	logoPending = false,
+	logoPending = null,
 	lookups,
 	lookUp,
 	search
@@ -760,15 +763,16 @@ export function OrgFold({
 						{/* the square is the press that chooses: a press or a file dropped on it opens the
 						    crop, and nothing is sent until that is saved. closed by `aria-disabled` while
 						    the page writes, so a reader standing on it keeps the focus. `data-logo` says a
-						    logo is held — drawn, or under a press that is saving — which the sheet keeps
-						    the square's logo edge by while the art makes way for the word. */}
+						    logo is held — drawn, under a press that is saving, or under the removal — which
+						    the sheet keeps the square's logo edge by while the word stands in or under the
+						    art. it is busy for a logo going on; a removal is Remove's own, and says so there. */}
 						<button
 							ref={choosePress}
 							type="button"
 							className="adm-logo__square"
-							data-logo={logo === null ? undefined : logoPending ? 'saving' : 'shown'}
+							data-logo={logo === null ? undefined : (logoPending ?? 'shown')}
 							data-dragging={dragging || undefined}
-							aria-busy={logoPending || undefined}
+							aria-busy={logoPending === 'saving' || undefined}
 							aria-disabled={busy || undefined}
 							aria-describedby={logoRefused === undefined || busy ? undefined : LOGO_REFUSAL}
 							onClick={() => {
@@ -791,15 +795,19 @@ export function OrgFold({
 								if (!busy && file !== null) dropped(file);
 							}}
 						>
-							{logo === null || logoPending ? (
+							{logo === null || logoPending === 'saving' ? (
 								<>
 									<Mark name="image-up" />
-									<span>{logoPending ? 'Saving' : 'Add logo'}</span>
+									<span>{logoPending === 'saving' ? 'Saving' : 'Add logo'}</span>
 								</>
 							) : (
 								<>
 									<img className="adm-logo__art" src={logo.url} alt="" />
-									<span className="adm-vh">Replace logo</span>
+									{logoPending === 'removing' ? (
+										<span>Removing</span>
+									) : (
+										<span className="adm-vh">Replace logo</span>
+									)}
 								</>
 							)}
 						</button>
@@ -818,7 +826,7 @@ export function OrgFold({
 								/>
 								{/* it submits the empty form beside this one, so a removal posts no photo. closed
 								    by `aria-disabled` while the page writes, as the square is, so a reader
-								    standing on it keeps the focus. */}
+								    standing on it keeps the focus, and busy while its own removal is out. */}
 								<Button
 									type="submit"
 									form={LOGO_REMOVE_FORM}
@@ -827,6 +835,7 @@ export function OrgFold({
 									size="sm"
 									mark="trash-2"
 									aria-label="Remove the logo"
+									aria-busy={logoPending === 'removing' || undefined}
 									aria-disabled={busy || undefined}
 									onClick={(event: MouseEvent<HTMLButtonElement>) => {
 										if (busy) event.preventDefault();

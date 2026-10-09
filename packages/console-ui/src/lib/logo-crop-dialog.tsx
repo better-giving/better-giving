@@ -19,12 +19,13 @@ import {
 	centredSquare,
 	cropRefusal,
 	droppedFile,
+	dropEffect,
 	NUDGE,
 	naturalSquare,
+	resizeCorner,
 	type Size,
 	shownMinimum,
 	squareResize,
-	takesLogo,
 	unloaded
 } from './logo-crop';
 import {
@@ -36,7 +37,7 @@ import {
 	LOGO_FROM_STORED,
 	LOGO_SOURCE
 } from './org-fields';
-import { LOGO_REFUSED, type LogoRefusal } from './org-logo';
+import { LOGO_REFUSED, type LogoRefusal, takesLogo } from './org-logo';
 
 // the square an operator keeps of a logo, chosen before anything is sent: a file just chosen or
 // dropped on the logo, or the logo stored now, cropped again. ./org-fold.tsx opens it and its logo
@@ -51,7 +52,8 @@ import { LOGO_REFUSED, type LogoRefusal } from './org-logo';
 // words it says to a reader, which are written for a rectangle that zooms, and its Alt+arrow
 // resize, which moves one side alone. that press is turned into a change of the whole side
 // (`squareResize` in ./logo-crop.ts) and handed back through `resize`, which holds the one to one
-// a drag of a grip is held to.
+// a drag of a grip is held to, from a corner with room to grow into (`resizeCorner`). the size and
+// place said to a reader are the square a save posts, worked out once for both.
 //
 // **a save posts the square, never the image.** the boxes are `LOGO_SOURCE` and the three
 // `LOGO_CROP_*` (./org-fields.ts), drawn here and owned by the logo form through their `form`
@@ -62,13 +64,15 @@ import { LOGO_REFUSED, type LogoRefusal } from './org-logo';
 //
 // **an image the square cannot keep a logo from opens anyway, with the save closed and the sentence
 // the press would refuse it with.** a file of a type a logo is not taken in (`takesLogo` in
-// ./logo-crop.ts) says so as the card opens, before it is drawn; an image too small, a file that
+// ./org-logo.ts) says so as the card opens, before it is drawn; an image too small, a file that
 // would not open and a stored logo that would not load say so once the image has been tried. each
 // in `LOGO_REFUSED`'s own words, before anything is sent.
 //
 // **a file dropped anywhere on the open card replaces the image under the crop**, through
-// `onSwap`, when it is of a type a logo is taken in; anything else dropped there is ignored. the
-// card takes every drop either way, so the browser never opens a file in the console's place.
+// `onSwap`, when it is of a type a logo is taken in; a file of any other type shows no copy as it
+// is dragged over (`dropEffect` in ./logo-crop.ts), and anything else is ignored if it is dropped.
+// the card takes every drag and drop either way, so the browser never opens a file in the
+// console's place.
 
 export const CROP_TITLE = 'Crop the logo';
 export const SAVE_LOGO = 'Save logo';
@@ -96,24 +100,27 @@ const measured = (size: Size): boolean => size.width > 0 && size.height > 0;
 
 /**
  * what the cropper says to a reader: a square, moved with the arrow keys and resized with Alt and
- * the arrow keys, never zoomed, and where it stands in the image's own pixels — the figures a save
- * posts and `LOGO_REFUSED['crop-too-small']` counts in.
+ * the arrow keys, and never zoomed. where the square stands is {@link squareWords}.
  */
-const cropWords = (
-	measures: { shown: Size; natural: Size } | null
-): NonNullable<UseImageCropperProps['translations']> => ({
+export const CROP_WORDS: NonNullable<UseImageCropperProps['translations']> = {
 	rootLabel: 'Logo image',
 	previewLoading: 'Loading the image',
 	previewDescription: () => 'The square over the image is the part kept as the logo.',
 	selectionLabel: () => 'Square kept as the logo',
 	selectionInstructions:
-		'Move the square with the arrow keys. Hold Alt with the arrow keys to make it larger or smaller.',
-	selectionValueText: (crop) => {
-		if (measures === null) return 'Loading the image';
-		const kept = naturalSquare(crop, measures.shown, measures.natural);
-		return `${kept.size} pixels across, ${kept.x} from the left and ${kept.y} from the top`;
-	}
-});
+		'Move the square with the arrow keys. Hold Alt (Option on a Mac) with the right or down arrow to make it larger, left or up to make it smaller.'
+};
+
+/**
+ * where the square stands, said to a reader: the square a save posts, in the image's own pixels —
+ * the figures `LOGO_REFUSED['crop-too-small']` counts in. stated on the square in place of the
+ * machine's own value text, which is handed the box's pixels already rounded, so a square worked
+ * out from it could differ from the one posted.
+ */
+export const squareWords = (square: CropSquare | null): string =>
+	square === null
+		? 'Loading the image'
+		: `${square.size} pixels across, ${square.x} from the left and ${square.y} from the top`;
 
 /**
  * every drop on the card taken by it, the ground around it included: while the card is up a drop
@@ -128,7 +135,7 @@ function useDropsOnCard(inside: RefObject<HTMLElement | null>, onSwap: (file: Fi
 		const over = (event: DragEvent) => {
 			event.preventDefault();
 			if (event.dataTransfer === null) return;
-			event.dataTransfer.dropEffect = event.dataTransfer.types.includes('Files') ? 'copy' : 'none';
+			event.dataTransfer.dropEffect = dropEffect(event.dataTransfer);
 		};
 		const drop = (event: DragEvent) => {
 			event.preventDefault();
@@ -169,7 +176,7 @@ export function LogoCropDialog({
 	const src = useImageSource(image);
 	const [failed, setFailed] = useState<LogoRefusal | null>(null);
 	const refused: LogoRefusal | null =
-		image.from === LOGO_FROM_FILE && !takesLogo(image.file) ? 'not-an-image' : failed;
+		image.from === LOGO_FROM_FILE && !takesLogo(image.file) ? 'not-a-logo-type' : failed;
 	/* the two measures the square's limits are stated from, as the last render's machine reported
 	   them: the limits are props of the machine, so they are read from a render before its own. */
 	const [measures, setMeasures] = useState<{ shown: Size; natural: Size } | null>(null);
@@ -182,7 +189,7 @@ export function LogoCropDialog({
 		nudgeStep: NUDGE.step,
 		nudgeStepShift: NUDGE.shift,
 		nudgeStepCtrl: NUDGE.ctrl,
-		translations: cropWords(measures),
+		translations: CROP_WORDS,
 		...(measures === null
 			? {}
 			: {
@@ -243,12 +250,13 @@ export function LogoCropDialog({
 						/>
 						<ImageCropper.Selection
 							className="adm-cropper__selection"
+							aria-valuetext={squareWords(square)}
 							// runs before the machine's own handler, which passes over a press already taken.
 							onKeyDown={(event) => {
 								const change = squareResize(event);
 								if (change === null) return;
 								event.preventDefault();
-								cropper.resize('se', change);
+								cropper.resize(resizeCorner(cropper.crop, cropper.viewportRect, change), change);
 							}}
 						>
 							{ImageCropper.handles.map((position) => (

@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
-import { takesLogo } from './logo-crop';
 import {
 	LOGO_FILE,
 	ORG_INTENT,
@@ -15,7 +14,8 @@ import {
 	type StoredOrg,
 	storedProfile
 } from './org-fields';
-import { OrgFold } from './org-fold';
+import { type LogoPending, OrgFold } from './org-fold';
+import { takesLogo } from './org-logo';
 
 // the Organisation fold as drawn, around the IRS list. ../../vite.config.ts pins `node` and there
 // is no dom, so what is read here is the first draw: what each form would post is read off the
@@ -40,7 +40,7 @@ function drawn(
 	lookups = true,
 	write: OrgWrite | null = null,
 	press: OrgPressKind | null = null,
-	writing: { readonly busy?: boolean; readonly logoPending?: boolean } = {}
+	writing: { readonly busy?: boolean; readonly logoPending?: LogoPending } = {}
 ) {
 	const lookUp = async (): Promise<NonprofitLookup> => ({
 		state: 'unavailable',
@@ -68,7 +68,7 @@ function drawn(
 					press,
 					busy: writing.busy ?? false,
 					pending: false,
-					logoPending: writing.logoPending ?? false,
+					logoPending: writing.logoPending ?? null,
 					lookups,
 					lookUp,
 					search
@@ -400,7 +400,7 @@ describe('the logo’s presses', () => {
 	// a press taken off the page while it holds focus drops a reader to the document; closed by
 	// `aria-disabled` it stays focusable, and its own click handler turns a second press away.
 	it('keeps Remove on the page, focusable and closed, while a removal is pending', () => {
-		const { markup } = drawn(WIDENED, true, null, null, { busy: true, logoPending: true });
+		const { markup } = drawn(WIDENED, true, null, null, { busy: true, logoPending: 'removing' });
 		const press = markup.match(/<button[^>]*aria-label="Remove the logo"[^>]*>/)?.[0];
 
 		expect(press).toContain('aria-disabled="true"');
@@ -419,9 +419,9 @@ describe('the logo’s presses', () => {
 		expect(markup).not.toContain('Crop the logo');
 	});
 
-	it('reads Saving on the square while a logo press is out, and keeps it focusable', () => {
+	it('reads Saving on the square while a logo is going on, and keeps it focusable', () => {
 		const shown = square(
-			drawn(WIDENED, true, null, null, { busy: true, logoPending: true }).markup
+			drawn(WIDENED, true, null, null, { busy: true, logoPending: 'saving' }).markup
 		);
 
 		expect(shown).toContain('aria-busy="true"');
@@ -430,16 +430,39 @@ describe('the logo’s presses', () => {
 		expect(shown).toContain('<span>Saving</span>');
 	});
 
-	// the sheet draws the logo's solid edge off this, so a logo held under a saving press keeps it
-	// while the word stands where the art was.
-	it('says the square holds a logo, drawn or saving, and holds none where none is stored', () => {
+	// the press that took it off is the one that says it is working; the square keeps the logo it
+	// is losing, and says so, rather than reading as a logo going on.
+	it('reads Removing over the logo while it is taken off, with Remove the press that is busy', () => {
+		const { markup } = drawn(WIDENED, true, null, null, { busy: true, logoPending: 'removing' });
+		const shown = square(markup);
+		const remove = markup.match(/<button[^>]*aria-label="Remove the logo"[^>]*>/)?.[0];
+
+		expect(shown).toContain('src="https://give.riverside.org/images/img_1"');
+		expect(shown).toContain('<span>Removing</span>');
+		expect(shown).not.toContain('Saving');
+		expect(shown).not.toContain('aria-busy');
+		expect(remove).toContain('aria-busy="true"');
+	});
+
+	it('says no removal at Remove while a logo is going on', () => {
+		const { markup } = drawn(WIDENED, true, null, null, { busy: true, logoPending: 'saving' });
+
+		expect(markup.match(/<button[^>]*aria-label="Remove the logo"[^>]*>/)?.[0]).not.toContain(
+			'aria-busy'
+		);
+	});
+
+	// the sheet draws the logo's solid edge off this, so a logo held under a press keeps it while
+	// the word stands where the art was, or under it.
+	it('says the square holds a logo, drawn, saving or removing, and holds none where none is stored', () => {
 		const held = (markup: string) =>
 			square(markup).match(/^<button[^>]*\bdata-logo="([^"]*)"/)?.[1];
+		const under = (logoPending: LogoPending) =>
+			held(drawn(WIDENED, true, null, null, { busy: true, logoPending }).markup);
 
 		expect(held(drawn(WIDENED).markup)).toBe('shown');
-		expect(held(drawn(WIDENED, true, null, null, { busy: true, logoPending: true }).markup)).toBe(
-			'saving'
-		);
+		expect(under('saving')).toBe('saving');
+		expect(under('removing')).toBe('removing');
 		expect(held(drawn(STORED).markup)).toBe(undefined);
 	});
 
