@@ -20,11 +20,11 @@ import { useMiddle, useWide } from './wide';
 // **Edit turns the editor's Edit on** (`useEditing` in ./editor-shell.tsx): the preview's blocks
 // are drawn as clickable, each opening its own sheet, and the press reads Done, which turns it off
 // again. it is one press whose words change, so the focus stays on it through both. while it is
-// on, Settings stands beside it and opens the Settings sheet: the page's layout, a campaign's
-// name, address, goal and end date, and the block list, which is the keyboard's way to a block.
-// AI opens the AI sheet, and is drawn only below the wide breakpoint (./wide.ts): from there the panel is
-// docked beside the preview and always open. it is busy from its press until the sheet is up
-// (`useAiEntry` in ./editor-shell.tsx), held with `aria-disabled` so the focus stays on it.
+// on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose block
+// list is the keyboard's way to a block. AI opens the AI sheet, and is drawn only below the wide
+// breakpoint (./wide.ts): from there the panel is docked beside the preview and always open. it is
+// busy from its press until the sheet is up (`useAiEntry` in ./editor-shell.tsx), held with
+// `aria-disabled` so the focus stays on it.
 //
 // **Publish reports at itself.** it is `SaveButton`, so a press in flight holds its focus and draws
 // its dots, and a republish reads "Published" with Undo beside it for as long as the caller says the
@@ -51,9 +51,10 @@ import { useMiddle, useWide } from './wide';
 //
 // **nothing pressable does nothing.** a caller with no handler for Settings, AI, Undo or Discard
 // changes gets no such press drawn, and with no Settings no Edit either — the editor over a draft
-// it cannot read has no blocks to click, nor Settings or a chat to open. Publish is the bar's one press that is always there, so without
-// `onPublish` it is drawn held — `aria-disabled`, the press turned away — and described by
-// `publishHeld`, which stands in the report region beside any refusal.
+// it cannot read has no blocks to click, nor Settings or a chat to open. Publish is the bar's one
+// press that is always there, so without `onPublish` it is drawn held — `aria-disabled`, the press
+// turned away — and described by `publishHeld`, which stands in the report region beside any
+// refusal.
 //
 // **a page never drafted has nothing to edit or publish** (`undrafted` in ./editor-shell.tsx): the
 // bar draws its name, where it stands and More, and no Edit, AI, Publish or Undo, whatever

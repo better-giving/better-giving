@@ -92,8 +92,9 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
-// preview while Edit is on and by its row in Settings' block list alike, and the layout by Settings' pictures; each
-// writes the draft ($lib/server/pages/blocks.ts), as the Donation page's editor does.
+// preview while Edit is on and by its row in Settings' block list alike, and the layout by
+// Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as the Donation page's
+// editor does.
 // the donation box opens Donation settings, which are what it draws.
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the

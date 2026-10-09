@@ -13,8 +13,8 @@ import {
 // $lib/page/suggest-fields.ts names. the press is Write with AI, drawn as its mark alone at the end
 // of the box's label row (`labelAside` on the field), and it asks the page's suggest route
 // (src/routes/_app.admin.pages.$pageId.suggest.ts) for that one box with the words it holds now.
-// it is a plain `fetch` rather than a fetcher: nothing is written, so nothing on the editor is read
-// again when it lands.
+// it is a plain `fetch`, so nothing on the editor is read again when it lands: the ask writes
+// nothing.
 //
 // while the ask is out the press is busy, held with `aria-disabled` so the focus stays on it, and
 // the box stays open to typing. the words that land fill the box in place, and the box reads "AI

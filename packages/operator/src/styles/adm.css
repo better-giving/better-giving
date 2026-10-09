@@ -385,7 +385,8 @@
 	   logo's two presses meet and never overlap (`.adm-logo__presses`), and a row's Remove and the
 	   brand colour's well each stand further off their box than their target reaches. where the
 	   neighbour is closer than the reach, the target is moved off it rather than shrunk under the
-	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`).
+	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`), and the
+	   press at the end of a field's label row (`.adm-field__head`).
 	   ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
 	   neighbours, so a control joining the list is named in that spec too.
 
