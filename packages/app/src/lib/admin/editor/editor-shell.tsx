@@ -17,6 +17,12 @@ import {
 // opens is a sheet, and a sheet or a confirm the route renders is handed in as `children`: each is
 // a modal that lifts itself into the top layer, so where it stands in the tree decides nothing about
 // where it paints.
+//
+// **before the page's first draft there is no page to show**, so the shell is `undrafted`: no
+// preview, the panel alone in the body at a reading width (`alone` in ../chat/ai-panel.tsx), and a
+// bar that draws the page's name, where it stands and More, but nothing that edits or publishes a
+// page not yet made (./publish-bar.tsx reads it with `useUndrafted`). the draft that lands draws the
+// preview in its slot ahead of the panel, which stays mounted where it stood.
 
 type EditorShellProps = {
 	/** the publish bar. */
@@ -27,6 +33,8 @@ type EditorShellProps = {
 	readonly panel?: ReactNode;
 	/** the sheet or confirm that is up, if one is. */
 	readonly children?: ReactNode;
+	/** the page has never been drafted: `preview` is not drawn, and the bar edits nothing. */
+	readonly undrafted?: boolean | undefined;
 };
 
 /** whether the AI sheet is on its way, and the way `ChatOpening` says so. */
@@ -34,24 +42,35 @@ const ChatOpeningFlag = createContext(false);
 const ReportChatOpening = createContext<(opening: boolean) => void>(() => {});
 /** the bar's AI press, for `ChatClosed` to hand the focus to. */
 const AiEntry = createContext<RefObject<HTMLButtonElement | null>>({ current: null });
+const Undrafted = createContext(false);
 
-export function EditorShell({ bar, preview, panel, children }: EditorShellProps) {
+export function EditorShell({
+	bar,
+	preview,
+	panel,
+	children,
+	undrafted = false
+}: EditorShellProps) {
 	const [chatOpening, setChatOpening] = useState(false);
 	const aiEntry = useRef<HTMLButtonElement>(null);
 	return (
 		<ReportChatOpening.Provider value={setChatOpening}>
 			<ChatOpeningFlag.Provider value={chatOpening}>
 				<AiEntry.Provider value={aiEntry}>
-					<div className="adm-editor">
-						{bar}
-						<div className="adm-editor__body">
-							<main className="adm-editor__preview" aria-label="Preview">
-								{preview}
-							</main>
-							{panel}
+					<Undrafted.Provider value={undrafted}>
+						<div className="adm-editor">
+							{bar}
+							<div className="adm-editor__body">
+								{undrafted ? null : (
+									<main className="adm-editor__preview" aria-label="Preview">
+										{preview}
+									</main>
+								)}
+								{panel}
+							</div>
+							{children}
 						</div>
-						{children}
-					</div>
+					</Undrafted.Provider>
 				</AiEntry.Provider>
 			</ChatOpeningFlag.Provider>
 		</ReportChatOpening.Provider>
@@ -71,6 +90,11 @@ export function useAiEntry(): {
 	return { ref: useContext(AiEntry), opening: useContext(ChatOpeningFlag) };
 }
 
+/** whether the page has never been drafted, as the shell was told. */
+export function useUndrafted(): boolean {
+	return useContext(Undrafted);
+}
+
 /**
  * stands where the AI sheet will, from the AI press until the sheet mounts, and holds the press busy
  * for as long as it does. it is handed in as `children` by ./chat-wiring.tsx, which is what knows
@@ -87,16 +111,19 @@ export function ChatOpening() {
 }
 
 /**
- * stands where an AI sheet nobody's press opened was, and hands the focus to the bar's AI press as
- * the sheet goes. a sheet opened on arrival (an empty chat's, ./chat-wiring.tsx) was put up with
- * the focus on the document, which is where its own return would leave it. it mounts in the commit
- * that takes the sheet down, so its effect runs after the sheet's cleanup has let go of the page.
- * from the wide breakpoint there is no AI press and no sheet, and it hands the focus nowhere.
+ * stands where an AI panel nobody's press opened was, and hands the focus to the bar's AI press as
+ * the panel goes: a sheet opened on arrival (an empty chat's, ./chat-wiring.tsx), and the panel that
+ * was the whole editor until the first draft landed below the wide breakpoint. either way the focus
+ * was left on the document, and only from there is it taken — the operator who went elsewhere while
+ * the reply was written stays there. it mounts in the commit that takes the panel down, so its
+ * effect runs after a sheet's cleanup has let go of the page. from the wide breakpoint there is no
+ * AI press and no sheet, and it hands the focus nowhere.
  */
 export function ChatClosed() {
 	const entry = useContext(AiEntry);
 	useEffect(() => {
-		entry.current?.focus();
+		if (document.activeElement === null || document.activeElement === document.body)
+			entry.current?.focus();
 	}, [entry]);
 	return null;
 }

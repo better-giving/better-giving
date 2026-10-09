@@ -84,6 +84,11 @@ export interface AiPanelProps {
 	readonly open: boolean;
 	/** the sheet's X and Escape, below the wide breakpoint. */
 	readonly onDismiss: () => void;
+	/**
+	 * the panel is the whole editor, before the page's first draft: a column at every width, the
+	 * page's main content, and never a sheet. `open` is ignored while it is.
+	 */
+	readonly alone?: boolean | undefined;
 	readonly suggestions: readonly string[];
 	/** the url a stored photo is served at. */
 	readonly imageSrc: (imageId: string) => string;
@@ -120,6 +125,11 @@ const textOf = (message: AppendMessage) =>
    sheet, up while `open` and taken down by `onDismiss`. one body either way, so what the operator
    reads and types in is the same thing in both.
 
+   before the page's first draft it is `alone`: the editor's main content at every width, with no
+   preview beside it. the column is one element in both of its roles, the landmark its role
+   attribute, so the draft that ends `alone` at the wide breakpoint keeps the log and the composer
+   mounted — the reply is spoken, and the focus rule below holds across the switch.
+
    assistant-ui's thread, message and composer primitives draw it, on an external-store runtime
    built from these props — the route owns the history and the run, and every send leaves through
    `onSend`, every card's answers through `onAnswer`. the runtime's provider stands outside the
@@ -145,7 +155,7 @@ export function AiPanel(props: AiPanelProps) {
 	const wide = useWide();
 	// the sheet's state goes with it: a sheet opened again is a sheet drawn afresh, with no refusal
 	// held over from the last time it was up.
-	return wide || props.open ? <Shown {...props} wide={wide} /> : null;
+	return wide || props.open || props.alone ? <Shown {...props} wide={wide} /> : null;
 }
 
 function Shown({
@@ -161,6 +171,7 @@ function Shown({
 	attach,
 	unsent,
 	answerRefusal,
+	alone = false,
 	wide
 }: AiPanelProps & { readonly wide: boolean }) {
 	const heading = useId();
@@ -222,14 +233,18 @@ function Shown({
 
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
-			{wide ? (
-				<aside className="adm-aipanel" aria-labelledby={heading}>
+			{wide || alone ? (
+				<section
+					className={alone ? 'adm-aipanel adm-aipanel--alone' : 'adm-aipanel'}
+					role={alone ? 'main' : 'complementary'}
+					aria-labelledby={heading}
+				>
 					<div className="adm-aipanel__head">
 						<h2 id={heading}>AI</h2>
 					</div>
 					<div className="adm-aipanel__body">{log}</div>
 					<div className="adm-aipanel__foot">{composer}</div>
-				</aside>
+				</section>
 			) : (
 				<Sheet title="AI" tall onDismiss={onDismiss} foot={composer}>
 					{log}

@@ -287,7 +287,7 @@ describe('the AI panel', () => {
 describe('the AI panel by width', () => {
 	it('is a column docked beside the preview from the wide breakpoint, named AI, with no way out', () => {
 		const { host } = mount(props({ open: false }));
-		const panel = one(host, 'aside');
+		const panel = one(host, '[role="complementary"]');
 
 		expect(document.getElementById(panel.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(
 			'AI'
@@ -301,7 +301,7 @@ describe('the AI panel by width', () => {
 		atWidth(false);
 		const onDismiss = vi.fn();
 		const { host, redraw } = mount(props({ open: false, onDismiss }));
-		expect(host.querySelector('aside')).toBeNull();
+		expect(host.querySelector('.adm-aipanel')).toBeNull();
 		expect(host.querySelector('dialog')).toBeNull();
 
 		redraw(props({ open: true, onDismiss }));

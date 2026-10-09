@@ -42,6 +42,8 @@ let uploads: { type: string; size: number }[];
 let uploadsHeld: ((answer: { body: unknown; status: number }) => void)[];
 /** while set, each read of the chat waits here until the case lets it land. */
 let historyHeld: (() => void)[] | null;
+/** what the editor's loader says of the page: drafted, never drafted, or nothing. */
+let loadedDrafted: boolean | undefined;
 
 /** the editor at the wide breakpoint or below it, as ./wide.ts reads it. */
 function atWidth(wide: boolean) {
@@ -71,6 +73,7 @@ beforeEach(() => {
 	uploads = [];
 	uploadsHeld = [];
 	historyHeld = null;
+	loadedDrafted = undefined;
 	resizes.length = 0;
 });
 
@@ -110,10 +113,13 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** an editor as the two editor routes mount the chat: the bar's AI press and the panel. */
+/**
+ * an editor as the two editor routes mount the chat: the bar's AI press and the panel, and the
+ * layout a page never drafted is drawn in.
+ */
 function Editor() {
-	const { version } = useLoaderData<{ version: number }>();
-	const chat = useEditorChat(CHAT);
+	const { version, drafted } = useLoaderData<{ version: number; drafted?: boolean }>();
+	const chat = useEditorChat(CHAT, drafted);
 	return (
 		<EditorShell
 			bar={
@@ -124,11 +130,14 @@ function Editor() {
 					publishing={false}
 					republished={false}
 					undoing={false}
+					onEditByHand={() => {}}
+					onPublish={() => {}}
 					onAi={chat.open}
 				/>
 			}
 			preview={<output>{version}</output>}
 			panel={chat.panel}
+			undrafted={chat.undrafted}
 		>
 			{chat.sheet}
 		</EditorShell>
@@ -141,7 +150,7 @@ function screen(entry = PAGE): HTMLElement {
 			path: '/admin/campaigns/:pageId',
 			loader: () => {
 				editorLoads += 1;
-				return { version: editorLoads };
+				return { version: editorLoads, drafted: loadedDrafted };
 			},
 			HydrateFallback: () => null,
 			Component: Editor
@@ -339,7 +348,7 @@ describe('the editor’s chat', () => {
 		screen();
 		await settle();
 
-		expect(document.querySelector('aside .adm-chat__log')).not.toBeNull();
+		expect(document.querySelector('[role="complementary"] .adm-chat__log')).not.toBeNull();
 		expect(document.querySelector('dialog')).toBeNull();
 		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
 	});
@@ -495,7 +504,7 @@ describe('an empty chat', () => {
 		await act(async () => held.shift()?.());
 		await settle();
 
-		expect(document.querySelector('aside .adm-questions')).not.toBeNull();
+		expect(document.querySelector('[role="complementary"] .adm-questions')).not.toBeNull();
 		expect(document.querySelector('dialog')).toBeNull();
 	});
 });
@@ -843,5 +852,137 @@ describe('a photo attached in the chat', () => {
 		await settle();
 
 		expect(photoState()).toBe('1600 × 1067, 480 KB');
+	});
+});
+
+/** the AI panel, whichever role it stands in. */
+const aiPanel = () => document.querySelector<HTMLElement>('.adm-aipanel');
+/** the preview slot, which the stand-in fills with the editor's version. */
+const previewShown = () => document.querySelector('main.adm-editor__preview output');
+const drawn = (name: string) => {
+	try {
+		button(name);
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+describe('a page never drafted', () => {
+	beforeEach(() => {
+		stored = [];
+		loadedDrafted = false;
+	});
+
+	/** the editor opened on it, its opening questions landed. */
+	async function arrived(wide: boolean) {
+		atWidth(wide);
+		screen();
+		await settle();
+		await act(async () => held.shift()?.());
+		await settle();
+	}
+
+	it.each([
+		['from the wide breakpoint', true],
+		['below it', false]
+	])(
+		'is the questions alone %s: no preview, no sheet, nothing to edit or publish',
+		async (_, wide) => {
+			await arrived(wide);
+
+			expect(previewShown()).toBeNull();
+			expect(document.querySelectorAll('main, [role="main"]')).toHaveLength(1);
+			expect(aiPanel()?.getAttribute('role')).toBe('main');
+			expect(aiPanel()?.querySelector('.adm-questions')).not.toBeNull();
+			expect(document.querySelector('textarea')?.placeholder).toBe('Or tell me in your own words');
+			expect(document.querySelector('dialog')).toBeNull();
+			expect(['Edit by hand', 'AI', 'Publish'].filter(drawn)).toEqual([]);
+			expect(document.querySelector('.adm-publishbar__name')?.textContent).toBe('Donation page');
+			expect(document.querySelector('.adm-publishbar__state')?.textContent).toBe('Live');
+		}
+	);
+
+	it('stays that way while the answers are drafting, the card held', async () => {
+		await arrived(true);
+
+		await press(button('Draft my page'));
+		await settle();
+
+		expect(previewShown()).toBeNull();
+		expect(button('Draft my page').getAttribute('aria-busy')).toBe('true');
+	});
+
+	it('shows the preview beside the same panel once the first draft lands, the focus in its box', async () => {
+		await arrived(true);
+		const panel = aiPanel();
+		answer('mission', 'Warm coats for every child.');
+		await press(button('Draft my page'));
+		await settle();
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(previewShown()).not.toBeNull();
+		expect(aiPanel()).toBe(panel);
+		expect(panel?.getAttribute('role')).toBe('complementary');
+		expect(['Edit by hand', 'Publish'].filter(drawn)).toEqual(['Edit by hand', 'Publish']);
+		expect(document.activeElement).toBe(document.querySelector('textarea'));
+		expect(document.querySelector('[role="log"]')?.lastElementChild?.textContent).toBe(
+			'I drafted your page.'
+		);
+	});
+
+	it('shows the preview below the wide breakpoint once the first draft lands, the focus on the AI press', async () => {
+		await arrived(false);
+
+		await press(button('Skip, draft anyway'));
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(previewShown()).not.toBeNull();
+		expect(aiPanel()).toBeNull();
+		expect(document.querySelector('dialog')).toBeNull();
+		expect(document.activeElement).toBe(button('AI'));
+	});
+
+	it('leaves the focus where the operator took it while the draft was written', async () => {
+		await arrived(false);
+		await press(button('Skip, draft anyway'));
+		const away = document.querySelector<HTMLElement>('[aria-label="Close editor"]');
+		act(() => away?.focus());
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(previewShown()).not.toBeNull();
+		expect(document.activeElement).toBe(away);
+	});
+});
+
+describe('a page already drafted', () => {
+	it.each([
+		['the editor’s loader says so', true, undefined],
+		['the editor’s loader says nothing', undefined, undefined],
+		[
+			'a reply in its chat changed it',
+			false,
+			[
+				{ id: 't1', role: 'operator', text: 'Make it warmer' },
+				{ id: 't2', role: 'assistant', text: 'Warmer now.' }
+			] satisfies ChatMessage[]
+		]
+	])('is the preview beside the panel when %s', async (_, drafted, turns) => {
+		loadedDrafted = drafted;
+		if (turns !== undefined) stored = turns;
+		screen();
+		await settle();
+
+		expect(previewShown()).not.toBeNull();
+		expect(['Edit by hand', 'AI', 'Publish'].filter(drawn)).toEqual([
+			'Edit by hand',
+			'AI',
+			'Publish'
+		]);
 	});
 });

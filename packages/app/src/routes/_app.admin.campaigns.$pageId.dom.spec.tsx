@@ -199,7 +199,7 @@ describe('the AI panel', () => {
 		expect(chatPosted).toEqual([
 			{ intent: 'open', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
 		]);
-		expect(document.querySelector('aside .adm-questions')).not.toBeNull();
+		expect(document.querySelector('[role="complementary"] .adm-questions')).not.toBeNull();
 	});
 });
 

@@ -193,7 +193,7 @@ describe('the AI panel in the editor', () => {
 		const root = routed(<Editor />);
 		const body = root.querySelector('.adm-editor__body');
 		expect(body?.querySelector(':scope > main')).not.toBeNull();
-		expect(body?.querySelector(':scope > aside textarea')).not.toBeNull();
+		expect(body?.querySelector(':scope > [role="complementary"] textarea')).not.toBeNull();
 		expect(root.querySelector('dialog')).toBeNull();
 		expect(() => button(root, 'AI')).toThrow();
 	});
@@ -201,7 +201,7 @@ describe('the AI panel in the editor', () => {
 	it('is a modal below it, opened from the AI press, with the focus inside it', () => {
 		atWidth(false);
 		const root = routed(<Editor />);
-		expect(root.querySelector('aside')).toBeNull();
+		expect(root.querySelector('.adm-aipanel')).toBeNull();
 		const { sheet } = opened(root);
 		expect(sheet.open).toBe(true);
 		expect(sheet.querySelector('textarea')).not.toBeNull();
