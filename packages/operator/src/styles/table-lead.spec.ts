@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ruleOf, sheet } from './sheet-rule.testing';
+import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // the sentence counting a table's rows stands between the heading over the list and the plane
 // under it (../components/data/DataTable.jsx). it is the table's sentence, so it has to read as the
@@ -46,3 +46,23 @@ describe.each(['.adm-stack', '.adm-stack--tight', '.adm-section'])(
 		});
 	}
 );
+
+// every tight stack is also `.adm-stack`, so each pair of rules below is matched by one element at
+// one specificity, and the one later in the sheet is the one drawn. the cases above read each rule
+// alone, and stay green with the tight rule moved above the base one — where the base step would
+// set the caption flush on its plane.
+describe('a counted table on the tight stack', () => {
+	const order = rulesIn(css).map((rule) => rule.selector);
+	const at = (selector: string) => {
+		const index = order.indexOf(selector);
+		if (index === -1) throw new Error(`${selector} is no rule of its own in ./adm.css`);
+		return index;
+	};
+
+	it.each([
+		['.adm-stack', '.adm-stack--tight'],
+		['.adm-stack > .adm-tablelead', '.adm-stack--tight > .adm-tablelead']
+	])('states %s before %s', (base, tight) => {
+		expect(at(tight)).toBeGreaterThan(at(base));
+	});
+});

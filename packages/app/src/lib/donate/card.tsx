@@ -283,6 +283,11 @@ function CheckoutCard({
 
 	/** whether a press has already asked the amount step for a decision it did not have. */
 	const [asked, setAsked] = useState(false);
+	/**
+	 * whether the last such press found the caret already on the box it would send it to, which is
+	 * the one press the region says the amount's refusal for.
+	 */
+	const [askedInPlace, setAskedInPlace] = useState(false);
 	/** the same for the details step, kept apart because the two are refused on different presses. */
 	const [attempted, setAttempted] = useState(false);
 	/** and the same for the one thing the review step can refuse a press for. */
@@ -344,10 +349,15 @@ function CheckoutCard({
 	// disagree wherever a press is refused for anything but the rail, and there the caret would land
 	// on a group with nothing said about why.
 	// a crypto gift's press is refused for its coin rather than its rail, and that is said in the coin
-	// list rather than on the box it stands in.
+	// list rather than on the box it stands in. and an offer of a one-time gift hides the box, so a
+	// refusal naming it is about nothing on screen: the offer is what the step is asking.
 	const onCrypto = api.state.step === 'give' && api.state.method === 'crypto';
 	const refusedPayment =
-		pressed && api.state.step === 'give' && !api.state.payerComplete && !onCrypto;
+		pressed &&
+		api.state.step === 'give' &&
+		!api.state.payerComplete &&
+		!onCrypto &&
+		!api.state.oneTimeInstead;
 
 	/**
 	 * what the last commit left the card holding, which is the only render a donor heard.
@@ -574,7 +584,9 @@ function CheckoutCard({
 			? kept.current.retitle
 			: {
 					on: heard,
+					// never on the flow's first paint, which drew the heading rather than replaced one.
 					words:
+						live !== null &&
 						withinTakeover &&
 						takeover.heading !== screen.current.heading &&
 						(caret === headings.takeover.current || !caretInTakeover)
@@ -706,15 +718,21 @@ function CheckoutCard({
 	 * same test the two below make. what is missing is named on every press rather than on a press
 	 * that changed the words: the sentences do not move between two presses refused for the same
 	 * decisions, and neither does the caret.
+	 *
+	 * which channel the amount's refusal has is asked before the caret moves, as the details step's
+	 * Continue asks it: the entry is described by the sentence while it stands, so a caret arriving
+	 * there reads it, and only a caret already on it — Enter in the box — leaves the region to say it.
 	 */
 	function onAmountContinue(): void {
 		const before = api.state.step;
 		api.continueButton.onClick();
 		const state = now().state;
 		if (before !== 'amount' || state.step !== 'amount') return;
+		const target = firstAmountProblem(state.missing);
 		setAsked(true);
+		setAskedInPlace(target !== null && document.activeElement === target);
 		setNonce((at) => at + 1);
-		focusOn(firstAmountProblem(state.missing));
+		focusOn(target);
 	}
 
 	function onDetailsContinue(): void {
@@ -896,14 +914,13 @@ function CheckoutCard({
 	const detailsSaid = spent === 'details' ? detailsRefusal : '';
 	const bounds = copy.amountProblem(offer, config.minAmountMinor, config.maxAmountMinor);
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
-	// are: the three are mutually exclusive, because a press is refused on the step it was made on.
-	//
-	// the amount step's sentence hangs off a `<fieldset>` and the refused press puts the caret on a
-	// control inside one, where a group's description is not reliably announced from a descendant — so
-	// it is on this channel however the press was made. the details step's is here only for the press
-	// that moved no caret and had no other channel.
+	// are: the two are mutually exclusive, because a press is refused on the step it was made on. each
+	// is here only for the press that moved no caret and had no other channel (`askedInPlace`,
+	// `detailsSaid`).
 	const askedFor = [
-		missingDecisions.includes('amount') ? copy.refusalSaid(copy.AMOUNT, bounds) : '',
+		askedInPlace && missingDecisions.includes('amount')
+			? copy.refusalSaid(copy.AMOUNT, bounds)
+			: '',
 		detailsSaid
 	]
 		.filter((sentence) => sentence !== '')
@@ -916,7 +933,9 @@ function CheckoutCard({
 	// was asked for and has not done, and a sentence written over it would have the next render write
 	// it back and say it again with nobody having pressed anything. a heading said in place of a caret
 	// move last — the step a tokenless return was handed, or a retitled takeover: a screen's own
-	// sentence and the wait's both say more than its heading does.
+	// sentence and the wait's both say more than its heading does. the wait is never said on the flow's
+	// first paint (`live === null`), for the reason the caret is never moved on it: a resume's served
+	// wait is the route's drawing, and the flow that would be waiting has not started.
 	//
 	// the Copy's sentence, the retitled heading's, the handed step's and every `News` keep one rule: a
 	// live-region sentence stays until the heading it announces changes or another sentence replaces
@@ -955,7 +974,7 @@ function CheckoutCard({
 						? arrived.words
 						: copied !== ''
 							? copied
-							: busy
+							: busy && live !== null
 								? workingWords(api.state)
 								: news !== null
 									? news.words
@@ -973,7 +992,12 @@ function CheckoutCard({
 			handed: replaced(handed.words) ? { on: handed.on, words: '' } : handed,
 			decline,
 			offer: oneTimeOffer,
-			total: { step: api.state.step, figure },
+			// a moved total another sentence outranked is deferred rather than spent: the figure kept
+			// stays the one before the move, so the move still reads as one once that sentence clears.
+			total:
+				arrived?.restating === 'total' && words !== arrived.words
+					? kept.current.total
+					: { step: api.state.step, figure },
 			news:
 				arrived !== null && words === arrived.words
 					? { ...arrived, on: shown }

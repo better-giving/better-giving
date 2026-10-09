@@ -54,13 +54,13 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // the cap is kept: once the screen has hydrated, a press while the boxes hold
 // `MAX_SUGGESTED_AMOUNTS` different amounts adds nothing and draws `SUGGESTED_AMOUNTS_HELD` until
 // the rows change. the count is `suggestedEntries`, the one the save takes, read off the boxes at
-// the press — so a blank box or a figure typed twice holds nothing the save would store. every
-// press on a held Add says the sentence again. before hydration Add is the plain intent submit and
-// the row is added, and the save is what refuses the list. a save refused by the cap is
-// answered at Add as well — the bare name is on no box, so conform's failed-submit walk focuses
-// nothing (`report` in @conform-to/dom's form.js matches a box's `name` and never a button), and
-// the group moves focus to Add itself, unless the walk has already moved it to a box some other
-// rule refused.
+// the press — so a blank box, or one amount in two boxes however it is written, holds nothing the
+// save would store. every press on a held Add says the sentence again. before hydration Add is the
+// plain intent submit and the row is added, and the save is what refuses the list. a save refused
+// by the cap is answered at Add as well — the bare name is on no box, so conform's failed-submit
+// walk focuses nothing (`report` in @conform-to/dom's form.js matches a box's `name` and never a
+// button), and the group moves focus to Add itself, unless the walk has already moved it to a box
+// some other rule refused.
 //
 // the bounds carry a slider over their two boxes, and it is the one control here that is not a
 // box: it moves along `BOUND_STOPS` below, writes the stop a thumb lands on into that thumb's box,
@@ -189,15 +189,10 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 	const [heldOver, setHeldOver] = useState<string | null>(null);
 	const capError = heldOver === identities ? SUGGESTED_AMOUNTS_HELD : amounts.errors?.[0];
 
-	// a press on a held Add whose sentence is already on screen. the message is an alert, and an
-	// alert handed the words it is holding is announced by nobody, so it is emptied and the words
-	// written back a task apart — `DonateAnnouncer` in $lib/donate/announce.tsx does the same.
-	const [hushed, setHushed] = useState(false);
-	useEffect(() => {
-		if (!hushed) return;
-		const timer = setTimeout(() => setHushed(false), 0);
-		return () => clearTimeout(timer);
-	}, [hushed]);
+	// the presses held at the cap, which key the message. it is an alert, and an alert handed the
+	// words it is holding is announced by nobody, while one inserted with them is announced — so each
+	// press inserts its own, and the line on screen never goes blank between two.
+	const [heldPresses, setHeldPresses] = useState(0);
 
 	const capErrorId = boxErrorId(amounts.id);
 	const addId = `${amounts.id}-add`;
@@ -210,7 +205,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 			const texts = amounts.rows.map((row) => textIn(form, row.name));
 			if (suggestedEntries(texts).length >= MAX_SUGGESTED_AMOUNTS) {
 				event.preventDefault();
-				if (capError === SUGGESTED_AMOUNTS_HELD) setHushed(true);
+				setHeldPresses((at) => at + 1);
 				setHeldOver(identities);
 				return;
 			}
@@ -474,8 +469,8 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 				/>
 
 				{capError ? (
-					<FieldMessage id={capErrorId}>
-						{hushed ? null : <MarkedText text={capError} />}
+					<FieldMessage key={heldPresses} id={capErrorId}>
+						<MarkedText text={capError} />
 					</FieldMessage>
 				) : null}
 			</div>

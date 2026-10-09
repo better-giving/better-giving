@@ -682,7 +682,15 @@ describe('the way past the presets', () => {
 	});
 });
 
-it('refuses a figure outside the bounds and states them where the caret cannot land', async () => {
+/**
+ * the amount step's refusal as the region says it, with the subject the visible sentence takes from
+ * where it stands.
+ */
+const AMOUNT_REFUSED = 'Amount: between $5 and $5,000';
+
+// the caret lands on the entry, which is described by the sentence while it stands, so arriving there
+// reads it: the region saying it too is the refusal twice.
+it('refuses a figure outside the bounds and states them on the entry the caret lands on', async () => {
 	const { root } = await card();
 
 	press(one(root, '.tiles > label.other'));
@@ -692,12 +700,50 @@ it('refuses a figure outside the bounds and states them where the caret cannot l
 	expect(one(root, '#amount-problem').hidden).toBe(false);
 	expect(one(root, '#amount-problem').textContent).toBe('between $5 and $5,000');
 	expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
-	// the caret lands on a control inside a fieldset, where a group's description is not reliably
-	// announced from a descendant — so the sentence is on the region however the press was made, and
-	// spoken with its subject, which the visible sentence takes from where it stands.
-	expect(said(root)).toBe('Amount: between $5 and $5,000');
+	expect(input(root, '#amount-entry').getAttribute('aria-describedby')).toBe('amount-problem');
 	expect(document.activeElement).toBe(input(root, '#amount-entry'));
+	expect(said(root)).toBe('');
 });
+
+// Enter in the entry presses Continue with the caret already where the press would send it, and
+// focusing the node that holds focus says nothing, so the region is the one channel left.
+it('says the bounds on the region where the caret was already on the entry', async () => {
+	const { root } = await card();
+	press(one(root, '.tiles > label.other'));
+	type(input(root, '#amount-entry'), '1.00');
+	act(() => {
+		input(root, '#amount-entry').focus();
+	});
+
+	press(one(root, CONTINUE));
+
+	expect(document.activeElement).toBe(input(root, '#amount-entry'));
+	expect(said(root)).toBe(AMOUNT_REFUSED);
+});
+
+/**
+ * the positive every "said no second time" check is paired with: a Continue refused twice with the
+ * caret on the entry is said again within the one `settled()` the negative waited, so a re-say that
+ * took longer than that wait fails here rather than leaving the negative passing on silence.
+ */
+async function saidAgainAfterSettling(root: HTMLElement): Promise<void> {
+	if (one(screen(root), 'h2').textContent !== copy.STEP_HEADINGS[0]) {
+		press(every(screen(root), '.step-dot')[0] as HTMLElement);
+	}
+	press(one(root, '.tiles > label.other'));
+	act(() => {
+		input(root, '#amount-entry').focus();
+	});
+	press(one(root, CONTINUE));
+	await settled();
+	expect(said(root)).toBe(AMOUNT_REFUSED);
+
+	press(one(root, CONTINUE));
+	expect(said(root)).toBe('');
+	await settled();
+
+	expect(said(root)).toBe(AMOUNT_REFUSED);
+}
 
 it('describes the entry by the bounds while a missing amount is marked', async () => {
 	const { root } = await card();
@@ -719,12 +765,15 @@ it('names every decision a press was refused for, not the first', async () => {
 
 	press(one(root, '.tiles > label.other'));
 	press(input(root, '.disclosure.note input[type="checkbox"]'));
+	act(() => {
+		input(root, '#amount-entry').focus();
+	});
 	press(one(root, CONTINUE));
 
 	expect(one(root, '#amount-problem').hidden).toBe(false);
 	expect(one(root, '#note-problem').hidden).toBe(false);
 	// the note's sentence is on the control itself, so it is not repeated on the region.
-	expect(said(root)).toBe('Amount: between $5 and $5,000');
+	expect(said(root)).toBe(AMOUNT_REFUSED);
 });
 
 it('marks a dedication the press was refused for and clears it when the block is taken back', async () => {
@@ -1089,6 +1138,28 @@ it('keeps a standing refusal on the region through a total that moved under it, 
 	expect(written).toEqual([]);
 	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
 	expect(one(root, '#payment-problem').hidden).toBe(false);
+
+	// the same wait shows a repeated press saying it again, so the silence above is not the wait
+	// ending before a re-say could land.
+	press(one(root, 'button[part~="submit"]'));
+	expect(said(root)).toBe('');
+	await settled();
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+});
+
+// outranked is deferred rather than dropped: the figure the donor will be charged is said once the
+// refusal standing over it clears, however many commits it waited.
+it('says a total that moved under a standing refusal once the refusal clears', async () => {
+	const { root, payment } = await card();
+	walkToGive(root);
+	press(one(root, 'button[part~="submit"]'));
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+
+	payment.pick('card');
+
+	expect(one(root, '#payment-problem').hidden).toBe(true);
+	expect(said(root)).toBe(`Total today is ${one(root, 'output.figure').textContent}.`);
 });
 
 it('refuses a press with no rail, and says so on the box and on the region', async () => {
@@ -1336,6 +1407,22 @@ describe('a repeating gift no processor still up can take', () => {
 		expect(makeOneTime(root).getAttribute('type')).toBe('button');
 		expect(paymentGroup(root).hidden).toBe(true);
 		expect(one(root, 'button[part~="submit"]').hidden).toBe(true);
+		expect(said(root)).toBe(OFFER);
+	});
+
+	// the box the refusal was about is hidden by the offer, so the refusal has nothing left to name
+	// and the offer is what the step is asking.
+	it('says the offer where a press had been refused for the rail before it', async () => {
+		const { root, payment } = await card(WITH_FUND);
+		press(one(root, '.segment > label:nth-of-type(2)'));
+		walkToGive(root);
+		press(one(root, 'button[part~="submit"]'));
+		expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+
+		payment.fail();
+
+		expect(paymentGroup(root).hidden).toBe(true);
+		expect(one(root, '#payment-problem').hidden).toBe(true);
 		expect(said(root)).toBe(OFFER);
 	});
 
@@ -1780,7 +1867,14 @@ describe('a resume drawn before the flow starts', () => {
 		return host;
 	}
 
-	/** that markup hydrated, with every screen the card showed on the way recorded. */
+	/**
+	 * that markup hydrated, with every screen the card showed on the way recorded, and every sentence
+	 * the region held on the way, however briefly.
+	 *
+	 * a sentence is read off what replaced it — the old value a text edit carries, or the text node a
+	 * write took out — because several commits land between two deliveries of the observer, and the
+	 * region's text by then is only the last of them.
+	 */
 	async function hydrated(host: HTMLElement, resuming: boolean) {
 		const shownOnTheWay: string[] = [];
 		const watch = new MutationObserver(() => {
@@ -1788,6 +1882,27 @@ describe('a resume drawn before the flow starts', () => {
 			shownOnTheWay.push(open.map((section) => section.className).join(' + '));
 		});
 		watch.observe(host, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+		const region = one(host, '[role="status"]');
+		const replaced: string[] = [];
+		const take = (records: MutationRecord[]) => {
+			for (const record of records) {
+				if (record.type === 'characterData') replaced.push(record.oldValue ?? '');
+				for (const node of record.removedNodes) replaced.push(node.textContent ?? '');
+			}
+		};
+		const hear = new MutationObserver(take);
+		hear.observe(region, {
+			childList: true,
+			characterData: true,
+			characterDataOldValue: true,
+			subtree: true
+		});
+		onTestFinished(() => hear.disconnect());
+		/** every sentence the region has held since before hydration, in order. */
+		const spoken = () => {
+			take(hear.takeRecords());
+			return [...replaced, region.textContent ?? ''].filter((words) => words !== '');
+		};
 		const recovered: unknown[] = [];
 		let mounted: ReturnType<typeof hydrateRoot> | null = null;
 		act(() => {
@@ -1808,7 +1923,7 @@ describe('a resume drawn before the flow starts', () => {
 			for (let at = 0; at < 4; at += 1) await Promise.resolve();
 		});
 		watch.disconnect();
-		return { shownOnTheWay, recovered };
+		return { shownOnTheWay, recovered, spoken };
 	}
 
 	it('draws the resume’s takeover in the server render rather than the amount step', () => {
@@ -1855,9 +1970,11 @@ describe('a resume drawn before the flow starts', () => {
 		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
 		const host = served(true);
 
-		await hydrated(host, true);
+		const { spoken } = await hydrated(host, true);
 
 		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		// the resume's wait the first paint drew is no news: the flow behind it never started.
+		expect(spoken()).toEqual([]);
 	});
 
 	// the takeover the donor was told about is gone, so the caret is put on the heading of the step
@@ -1868,12 +1985,13 @@ describe('a resume drawn before the flow starts', () => {
 		const held = one(screen(host), ':scope > h2');
 		held.focus();
 
-		await hydrated(host, true);
+		const { spoken } = await hydrated(host, true);
 
 		const heading = one(screen(host), 'h2');
 		expect(heading.textContent).toBe(copy.STEP_HEADINGS[0]);
 		expect(document.activeElement).toBe(heading);
-		expect(said(host)).toBe('');
+		// on the way as well as at the end: focus or region, never both.
+		expect(spoken()).toEqual([]);
 	});
 
 	it('puts the caret on the amount step’s heading from the page body', async () => {
@@ -1881,9 +1999,10 @@ describe('a resume drawn before the flow starts', () => {
 		const host = served(true);
 		expect(document.activeElement).toBe(document.body);
 
-		await hydrated(host, true);
+		const { spoken } = await hydrated(host, true);
 
 		expect(document.activeElement).toBe(one(screen(host), 'h2'));
+		expect(spoken()).toEqual([]);
 	});
 
 	// a caret the donor put on the host page is theirs, so the region is what tells them the screen
@@ -1898,11 +2017,12 @@ describe('a resume drawn before the flow starts', () => {
 		});
 		elsewhere.focus();
 
-		await hydrated(host, true);
+		const { spoken } = await hydrated(host, true);
 
 		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
 		expect(document.activeElement).toBe(elsewhere);
 		expect(said(host)).toBe(`${copy.STEP_HEADINGS[0]}.`);
+		expect(spoken()).toEqual([`${copy.STEP_HEADINGS[0]}.`]);
 	});
 
 	// the press chose no sentence for the region — the note's refusal is on the box the caret is sent
@@ -1927,6 +2047,7 @@ describe('a resume drawn before the flow starts', () => {
 		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
 		expect(one(host, '#note-problem').hidden).toBe(false);
 		expect(said(host)).toBe('');
+		await saidAgainAfterSettling(host);
 	});
 });
 
@@ -2131,6 +2252,7 @@ describe('a crypto gift', () => {
 
 		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REQUIRED);
 		expect(said(root)).toBe('');
+		await saidAgainAfterSettling(root);
 	});
 
 	it('says the gift being one-time no second time on a press with no coin picked', async () => {
@@ -2152,6 +2274,7 @@ describe('a crypto gift', () => {
 
 		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REQUIRED);
 		expect(said(root)).toBe('');
+		await saidAgainAfterSettling(root);
 	});
 
 	it('shows where and how much to send, with the caret on the heading', async () => {
