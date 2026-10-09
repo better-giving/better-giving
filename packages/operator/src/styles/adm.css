@@ -387,7 +387,7 @@
 	   neighbour is closer than the reach, the target is moved off it rather than shrunk under the
 	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`).
 	   ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
-	   neighbours there, so a control joining it is named in that spec too.
+	   neighbours, so a control joining the list is named in that spec too.
 
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
 	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
@@ -4110,10 +4110,10 @@
 		line-height: var(--admin-aside-lh);
 	}
 
-	/* a press-to-open trigger leading the status hugs a mark, so its target reaches further than
-	   the column step, the trailing item's border and its padding put the mark off the box. the
-	   target starts at the trailing item's own edge instead of centring on the mark, and lies over
-	   the status's word rather than the box. */
+	/* a press-to-open trigger leading the status hugs a mark, so a target centred on it would reach
+	   further toward the box than the column step, the trailing item's border and its padding stand
+	   the mark off it. the target starts at the trailing item's own edge instead, and lies over the
+	   status's word rather than the box. */
 	.adm-rows__row > :not(.adm-field) > .adm-markbtn::before {
 		inset-inline-start: calc(-1 * (var(--admin-border-width) + var(--admin-space-4)));
 	}
@@ -6479,16 +6479,16 @@
 	   the last press reported under it. the square is the size a program's photo is drawn at
 	   (`.adm-placed__art--square` above), and the art fills it edge to edge and stands in it whole —
 	   a logo is cropped by its own crop and never by its frame, so an older logo that is not square
-	   is drawn whole across the square's width or its height. only a square showing the mark and the
-	   word keeps an inner step, which is the room they stand in.
+	   is drawn whole across the square's width or its height. only a square showing a word keeps an
+	   inner step, which is the room it stands in.
 
 	   with no logo the square holds the mark and the word that say what a press does, and its edge is
 	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. one holding a
 	   logo keeps its solid edge while a press on it saves, though the word stands in for the art
-	   then, and while the logo is being removed, when the art stays and the word stands under it
-	   in the inner step: what it holds is stated by `data-logo`, which the fold sets, and never
-	   read off the art being drawn. a file dragged over it draws the edge in the ring's ink on the
-	   accent's tint, because the square is what will take it. */
+	   then, and while the logo is being removed, though the word stands under the art then: what
+	   it holds is stated by `data-logo`, which the fold sets, and never read off the art being
+	   drawn. a file dragged over it draws the edge in the ring's ink on the accent's tint, because
+	   the square is what will take it. */
 	.adm-logo {
 		display: grid;
 		justify-items: start;
@@ -6650,8 +6650,8 @@
 	}
 
 	/* each handle is grabbed by more than it draws: a `::before` reaching `--_handle-reach` either
-	   side of the corner or edge it moves. on a square whose side is three reaches or more as drawn
-	   that is `--admin-space-8`, 2.5.8's 24px
+	   side of the corner or edge it moves. on a square whose side is three times `--admin-space-8` or
+	   more as drawn that is `--admin-space-8`, 2.5.8's 24px
 	   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html). the machine centres a
 	   handle on the square's edge and sets the viewport's `overflow: hidden` inline, so on a square
 	   touching the image's edge — as the largest square on any image does — the half outside is

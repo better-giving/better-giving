@@ -75,7 +75,7 @@ import { FieldMessage } from './FieldMessage.jsx';
  * the mark is drawn out of the tree and `said` is what it says, in words the box is described by:
  * drawn inside the hidden mark and named `${id}-lead`. a description reads hidden words it names
  * directly (https://www.w3.org/TR/accname-1.2/, step 2A), so a reader meets them once, on the box,
- * rather than once as loose text in browse mode and again on the box. a mark that says nothing a
+ * and browse mode does not read them out a second time as loose text. a mark that says nothing a
  * reader needs — a glyph standing for no reading at all — states no words.
  *
  * @typedef {object} FieldLead
@@ -109,11 +109,12 @@ import { FieldMessage } from './FieldMessage.jsx';
  * starting value is `defaultValue` — or `value` with a handler beside it, which this field has no
  * opinion about either way.
  *
- * `aria-describedby` names blocks the caller draws — a group's hint, a pair's refusal — and they
- * join the ones this field names rather than standing in for them: the lead's words, then the
- * field's own hint, refusal, needed note and status in the order they are drawn, then the caller's
- * as stated. an id named twice keeps its first place, and `undefined` states nothing, so the field's
- * own still describe the box. a caller names only the blocks it draws itself.
+ * the fourth, `aria-describedby`, names blocks the caller draws — a group's hint, a pair's
+ * refusal — and they join the ones this field names rather than standing in for them: the lead's
+ * words, then the field's own hint, refusal, needed note and status in the order they are drawn,
+ * then the caller's as stated. an id named twice keeps its first place, and `undefined` states
+ * nothing, so the field's own still describe the box. a caller names only the blocks it draws
+ * itself.
  *
  * @typedef {FieldOwnProps
  *   & (MaskNamesUnstated | MaskNamesStated)

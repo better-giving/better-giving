@@ -444,8 +444,9 @@ export function boxProps(box: Box, options: BoxOptions = {}): BoxProps {
 		// left off where the screen points at nothing, and a spread rather than a key for
 		// `exactOptionalPropertyTypes`.
 		...(options.describedBy === undefined ? {} : { 'aria-describedby': options.describedBy }),
-		// left off unless a screen says so, for the same reason: `Field` writes this one itself off
-		// the message it holds, and a key present and `undefined` would still be the caller's.
+		// a spread for the same reason, and left off unless a screen says so: `Field` writes this
+		// one itself off the message it holds, and a key present and `undefined` would still be the
+		// caller's.
 		...(options.refused === true && error === undefined ? { 'aria-invalid': 'true' as const } : {})
 	};
 }
