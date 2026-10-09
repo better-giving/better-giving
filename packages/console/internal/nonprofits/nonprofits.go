@@ -17,7 +17,7 @@
 // a refusal for the day or for the service closes the client until the `Retry-After` it names,
 // however far: until then nothing is asked, and what memory does not already hold is `unavailable`
 // at once, since the API would refuse it — and would refuse it for the minute first, a minute's wait
-// to learn the same.
+// to learn the same. one naming no `Retry-After` this client reads closes nothing.
 //
 // **every failure is an answer, and `unavailable` is all of them.** no route, a timeout, a refusal
 // for the day or for the service, the API saying its data is unavailable, a second refusal for the
@@ -149,7 +149,7 @@ type Client struct {
 	searches  memory[Search]
 
 	closing sync.Mutex
-	// when the last refusal for the day or the service lifts, under closing.
+	// when every refusal for the day or the service so far has lifted, under closing.
 	closedUntil time.Time
 }
 
@@ -373,8 +373,9 @@ type answer struct {
 	told       bool
 }
 
-// a read, and where the API refuses it for the minute, the one wait it names and one read more —
-// made only while wanted says a caller still waits on it, since it spends the next minute's request.
+// a read, and where the API refuses it for the minute naming a wait of at most longestWait, that
+// wait and one read more — the second read made only while wanted says a caller still waits on it,
+// since it spends the next minute's request.
 func (c *Client) ask(ctx context.Context, path string, wanted func() bool) answer {
 	ctx, stop := context.WithTimeout(ctx, c.askWithin)
 	defer stop()

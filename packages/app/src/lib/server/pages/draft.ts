@@ -80,9 +80,10 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // figure from it to be written on the page. while the profile's mission is empty, the
 // filing's mission prefills `MISSION_QUESTION`, on the model's opening and the starter questions
 // alike. no other turn looks anything up. looked up facts are held in the edge cache for an hour,
-// never in the database, so the answers turn is told the filing its opening fetched without asking
-// the API again (../nonprofits/filing.ts). a lookup that answers nothing leaves the turn as it is
-// with no EIN stored.
+// never in the database, so the answers turn reads the filing its opening fetched rather than
+// asking the API again, wherever the opening's was held in the same data centre
+// (../nonprofits/filing.ts). a lookup that answers nothing leaves the turn as it is with no EIN
+// stored.
 //
 // the mission answered is an answer like any other: it reaches the model in that turn's answers and
 // is kept in the chat alone. no turn writes `org_profile` — the profile is the console's to save,
