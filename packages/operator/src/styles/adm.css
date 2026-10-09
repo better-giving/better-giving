@@ -392,6 +392,7 @@
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
 	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
 	.adm-markbtn::before,
+	.adm-field__press::before,
 	.adm-logo__presses > .adm-btn::before,
 	.adm-rows__row > .adm-rows__remove::before,
 	.adm-wellwrap::before {
@@ -2038,6 +2039,7 @@
 
 	   only where a label is above it. a field named some other way draws none, and its sentence is
 	   then the first part of the field with nothing above it to belong to. */
+	.adm-field > .adm-field__head + .adm-hint,
 	.adm-field > .adm-field__label + .adm-hint {
 		margin-block-start: var(--admin-space-1);
 	}
@@ -2050,6 +2052,48 @@
 	.adm-field > .adm-field__label {
 		grid-row: 1;
 		justify-self: start;
+	}
+
+	/* the label's row with what stands at its end (`labelAside` in
+	   packages/operator/src/components/forms/Field.jsx): the label at the leading edge, a small press
+	   that writes the whole box and the word for where its value came from at the trailing one, the
+	   slab's label row (`.adm-slabhead`) on a field. as tall as the small control, so the label row
+	   is the same height whether the press stands in it alone or with its word. it wraps rather than
+	   squeezing the label, and what wraps stays at the trailing edge. the label inside still hugs its
+	   own words: a flex item is as wide as its content. */
+	.adm-field > .adm-field__head {
+		grid-row: 1;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--admin-space-5);
+		min-block-size: var(--admin-control-height-sm);
+	}
+
+	.adm-field__aside {
+		display: flex;
+		align-items: center;
+		gap: var(--admin-space-4);
+		margin-inline-start: auto;
+	}
+
+	/* the press that writes the box draws its mark and no word, in the small control's square. */
+	.adm-field__press {
+		inline-size: var(--admin-control-height-sm);
+		padding-inline: 0;
+	}
+
+	/* its target (a target past the drawn edge, under the buttons) would reach further under the
+	   head than the step down to the box, so it ends at that step instead and reaches up toward the
+	   field above, which stands a field's step off. */
+	.adm-field__head .adm-field__press::before {
+		inset-block-start: calc(
+			100% +
+			var(--admin-border-width) +
+			var(--admin-space-3) -
+			var(--admin-touch-min)
+		);
 	}
 
 	.adm-field > .adm-hint {

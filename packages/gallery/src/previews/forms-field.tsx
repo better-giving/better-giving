@@ -1,4 +1,6 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 
 /*
  * every combination of the four blocks a field draws around its box — label, hint, error, needed —
@@ -31,6 +33,10 @@ import { Field } from '@better-giving/operator/components/forms/Field';
  * that end too; the box closed, where the press is closed with it; a value long enough to run under
  * the press if the box reserved it no room; and the wrapper standing on a row a caller also put a
  * control on.
+ *
+ * `labelAside` is drawn twice: the press alone at the label row's end, and the press with the word
+ * and the Undo a filled box carries before it, over a hint, where the row's height meets the
+ * sentence's tighter step.
  *
  * the last field's label and hint are long on purpose: string length is a layout constraint, and
  * a label that wraps is what puts the box at a different distance from the one above it.
@@ -234,6 +240,44 @@ export default function FormsFieldPreview() {
 				label="disabled attribute"
 				disabled
 				defaultValue="EUR"
+			/>
+			<Field
+				id="forms-field-aside"
+				label="What it buys"
+				defaultValue="one winter coat"
+				labelAside={
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="sparkles"
+						className="adm-field__press"
+						aria-label="Write with AI"
+					/>
+				}
+			/>
+			<Field
+				id="forms-field-aside-filled"
+				label="Heading"
+				optional
+				hint="Leave it empty to show the page’s name."
+				defaultValue="Keep 300 kids warm this winter"
+				labelAside={
+					<>
+						<StatusWord>AI suggestion</StatusWord>
+						<Button type="button" variant="quiet" size="sm" mark="undo-2">
+							Undo
+						</Button>
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="sparkles"
+							className="adm-field__press"
+							aria-label="Write with AI"
+						/>
+					</>
+				}
 			/>
 			<Field
 				id="forms-field-long"
