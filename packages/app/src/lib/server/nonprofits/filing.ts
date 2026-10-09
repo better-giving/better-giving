@@ -21,8 +21,17 @@
 // another number or naming nobody. a lookup is context for an opening, and the opening goes on
 // without it. `WITHIN_MS` runs from the request to the body's last byte. each failed lookup logs
 // one warning saying why — the status and the problem body's `code`, or `timeout`, `network` or
-// `shape` — and never the EIN; no EIN, no lookup and no warning. nothing is remembered between
-// lookups and nothing is stored.
+// `shape` — and never the EIN; no EIN, no lookup and no warning.
+//
+// a found filing is held in the edge cache (`caches.default`) for `HELD_SECONDS`, an hour, under
+// the EIN on the origin that asked, and a lookup reads it there before it asks the API: an opening
+// and the answers to it share one lookup against a keyless allowance of one a minute. what is held
+// is the `Filing` above and nothing more — public IRS words, no figure and no money — so this is
+// the capability carve-out CLAUDE.md (Bans, Storage) makes for the served form config, and not the
+// number cache it bans. nothing that found no filing is held, so the next lookup asks again. a
+// filing is never written to the database. the store is per data centre and a miss is not a claim,
+// so two openings that race share a lookup only where the first has put its filing, in the same
+// data centre, before the second reads.
 //
 // the request goes out on the runtime's global `fetch`, and nothing here is built from a binding.
 import { z } from 'zod';
@@ -68,19 +77,77 @@ const WITHIN_MS = 3000;
 /** the most of one answer read, past which it is no answer: a lookup is one organisation. */
 const ANSWER_BYTES = 256 * 1024;
 
-/** the latest filing of the organisation `taxId` names, or null where none answers. */
+/** how long a found filing is held at the edge, in seconds. */
+const HELD_SECONDS = 3600;
+
+/**
+ * the address a filing is held under, on the request's own origin, with the EIN after it. a path
+ * no route serves, for the reason ../forms/cadence-cache.ts's `CACHE_PATH` states.
+ */
+const CACHE_PATH = '/__irs-filing/';
+
+/**
+ * the latest filing of the organisation `taxId` names, or null where none answers. `origin` is the
+ * origin the request arrived on, so a held filing sits in the zone that asked for it.
+ */
 export async function lookUpFiling(
 	taxId: string | null,
+	origin: string,
 	api: string = API
 ): Promise<Filing | null> {
 	const ein = taxId === null ? null : einOf(taxId);
 	if (ein === null) return null;
+	const cache = edgeCache();
+	const key = new Request(new URL(CACHE_PATH + ein, origin));
+	const held = cache === null ? null : await heldFiling(cache, key);
+	if (held !== null) return held;
 	const answer = await answerOf(`${api}/v1/orgs/${ein}`);
 	const filing = answer.ok ? filingOf(answer.body, ein) : null;
 	if (filing === null) {
 		console.warn('the IRS nonprofit lookup answered nothing:', answer.ok ? 'shape' : answer.why);
+		return null;
 	}
+	// a put that fails costs the next turn a second lookup, and nothing more.
+	await cache
+		?.put(
+			key,
+			new Response(JSON.stringify(filing), {
+				headers: { 'content-type': 'application/json', 'cache-control': `max-age=${HELD_SECONDS}` }
+			})
+		)
+		.catch(() => {});
 	return filing;
+}
+
+/**
+ * the platform's cache, or `null` where the runtime has none: `vite dev` and the node spec pool run
+ * on node, which has no `caches`, and every lookup there asks the API.
+ */
+function edgeCache(): Cache | null {
+	const store = (globalThis as { caches?: { default?: Cache } }).caches;
+	return store?.default ?? null;
+}
+
+const heldShape = z.strictObject({
+	mission: z.string().nullable(),
+	activity: z.string().nullable(),
+	programs: z.array(z.string()),
+	notes: z.array(z.string())
+});
+
+/**
+ * a held filing, or null for anything that is not one: the store is the zone's, so what comes back
+ * under an address is whatever is there, and a body not in `Filing`'s shape is read past.
+ */
+async function heldFiling(cache: Cache, key: Request): Promise<Filing | null> {
+	try {
+		const hit = await cache.match(key);
+		if (hit === undefined) return null;
+		const read = heldShape.safeParse(await hit.json());
+		return read.success ? read.data : null;
+	} catch {
+		return null;
+	}
 }
 
 /** a 200's body as a filing about `ein`; null where it is not one. */

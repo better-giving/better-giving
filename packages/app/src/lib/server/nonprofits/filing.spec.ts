@@ -5,9 +5,11 @@ import { lookUpFiling } from './filing';
 const WARNING = 'the IRS nonprofit lookup answered nothing:';
 
 // the IRS nonprofit API is the one boundary stood in for: a global `fetch` stub answering with the
-// bodies given, as ../api/turnstile.spec.ts stubs siteverify.
+// bodies given, as ../api/turnstile.spec.ts stubs siteverify. node has no `caches`, so every lookup
+// here asks; ./filing.workers.spec.ts holds what the edge cache keeps.
 
 const UPSTREAM = 'https://irs.test';
+const ORIGIN = 'https://admin.example';
 const EIN = '53-0196605';
 
 function answering(...responses: (Response | Error)[]) {
@@ -31,7 +33,7 @@ describe('a lookup that asks nothing', () => {
 		const fetch = answering(found(organisation()));
 		const warn = vi.spyOn(console, 'warn');
 
-		expect(await lookUpFiling(taxId, UPSTREAM)).toBeNull();
+		expect(await lookUpFiling(taxId, ORIGIN, UPSTREAM)).toBeNull();
 		expect(fetch).not.toHaveBeenCalled();
 		expect(warn).not.toHaveBeenCalled();
 	});
@@ -100,7 +102,7 @@ describe('a lookup of a filing on record', () => {
 	it('asks the live API by default, keyless', async () => {
 		const fetch = answering(found(organisation()));
 
-		await lookUpFiling(EIN);
+		await lookUpFiling(EIN, ORIGIN);
 
 		const [url, init] = fetch.mock.calls[0] ?? [];
 		expect(url).toBe('https://nonprofits.better.giving/v1/orgs/530196605');
@@ -111,7 +113,7 @@ describe('a lookup of a filing on record', () => {
 		const fetch = answering(found(organisation()));
 		const warn = vi.spyOn(console, 'warn');
 
-		const filing = await lookUpFiling(EIN, UPSTREAM);
+		const filing = await lookUpFiling(EIN, ORIGIN, UPSTREAM);
 
 		expect(fetch.mock.calls[0]?.[0]).toBe('https://irs.test/v1/orgs/530196605');
 		expect(warn).not.toHaveBeenCalled();
@@ -175,7 +177,7 @@ describe('a lookup that finds nothing to use', () => {
 			const fetch = answering(response());
 			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-			expect(await lookUpFiling(EIN, UPSTREAM)).toBeNull();
+			expect(await lookUpFiling(EIN, ORIGIN, UPSTREAM)).toBeNull();
 			expect(fetch).toHaveBeenCalledOnce();
 			expect(warn.mock.calls).toStrictEqual([[WARNING, why]]);
 		}
@@ -195,7 +197,7 @@ describe('a lookup that finds nothing to use', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		// nothing resolves this fetch, so the test finishes only on the module's own timeout.
-		expect(await lookUpFiling(EIN, UPSTREAM)).toBeNull();
+		expect(await lookUpFiling(EIN, ORIGIN, UPSTREAM)).toBeNull();
 		expect(warn.mock.calls).toStrictEqual([[WARNING, 'timeout']]);
 	}, 10_000);
 
@@ -210,7 +212,7 @@ describe('a lookup that finds nothing to use', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const started = performance.now();
-		expect(await lookUpFiling(EIN, UPSTREAM)).toBeNull();
+		expect(await lookUpFiling(EIN, ORIGIN, UPSTREAM)).toBeNull();
 		expect(performance.now() - started).toBeLessThan(4000);
 		expect(warn.mock.calls).toStrictEqual([[WARNING, 'timeout']]);
 	}, 10_000);
@@ -231,7 +233,7 @@ describe('the facts a filing answers', () => {
 			)
 		);
 
-		expect(await lookUpFiling(EIN, UPSTREAM)).toStrictEqual({
+		expect(await lookUpFiling(EIN, ORIGIN, UPSTREAM)).toStrictEqual({
 			mission: 'Prevents and alleviates human suffering.',
 			activity: 'Disaster relief.[31m',
 			programs: ['Biomedical services'],
@@ -256,7 +258,7 @@ describe('the facts a filing answers', () => {
 			)
 		);
 
-		const filing = await lookUpFiling(EIN, UPSTREAM);
+		const filing = await lookUpFiling(EIN, ORIGIN, UPSTREAM);
 
 		expect(filing?.mission).toBe('m'.repeat(400));
 		expect(filing?.activity).toBe('a'.repeat(1000));
@@ -285,7 +287,7 @@ describe('the facts a filing answers', () => {
 			)
 		);
 
-		expect(await lookUpFiling(EIN, UPSTREAM)).toStrictEqual({
+		expect(await lookUpFiling(EIN, ORIGIN, UPSTREAM)).toStrictEqual({
 			mission: null,
 			activity: null,
 			programs: ['Biomedical services'],
@@ -307,7 +309,7 @@ describe('the facts a filing answers', () => {
 			)
 		);
 
-		expect(await lookUpFiling(EIN, UPSTREAM)).toStrictEqual({
+		expect(await lookUpFiling(EIN, ORIGIN, UPSTREAM)).toStrictEqual({
 			mission: null,
 			activity: null,
 			programs: [],

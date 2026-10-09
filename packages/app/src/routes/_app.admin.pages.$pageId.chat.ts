@@ -82,6 +82,7 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	const pageId = params.pageId;
 	const zone = body.get('timeZone') ?? undefined;
 	const intent = body.get('intent') ?? 'message';
+	const origin = new URL(request.url).origin;
 
 	let turn: () => Promise<TurnResult>;
 	let resend = 'the message';
@@ -96,12 +97,12 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	} else if (intent === 'answers') {
 		const parsed = answersInput.safeParse({ answers: jsonOf(body.get('answers')), timeZone: zone });
 		if (!parsed.success) return refused(parsed.error);
-		turn = () => answerTurn(db, env, { pageId, ...parsed.data, now: Date.now() });
+		turn = () => answerTurn(db, env, { pageId, ...parsed.data, now: Date.now(), origin });
 		resend = 'the answers';
 	} else if (intent === 'open') {
 		const parsed = openInput.safeParse({ timeZone: zone });
 		if (!parsed.success) return refused(parsed.error);
-		turn = () => openTurn(db, env, { pageId, ...parsed.data, now: Date.now() });
+		turn = () => openTurn(db, env, { pageId, ...parsed.data, now: Date.now(), origin });
 	} else {
 		return data({ error: `intent is message, answers or open, not "${String(intent)}"` }, 400);
 	}
