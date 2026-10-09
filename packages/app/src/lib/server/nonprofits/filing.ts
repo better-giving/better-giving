@@ -120,8 +120,8 @@ export async function lookUpFiling(
 }
 
 /**
- * the platform's cache, or `null` where the runtime has none: `vite dev` and the node spec pool run
- * on node, which has no `caches`, and every lookup there asks the API.
+ * the platform's cache, or `null` where the runtime has none: the node spec pool runs on node,
+ * which has no `caches`, and every lookup there asks the API.
  */
 function edgeCache(): Cache | null {
 	const store = (globalThis as { caches?: { default?: Cache } }).caches;
