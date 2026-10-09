@@ -241,6 +241,32 @@ describe('repeating rows mounted into a document', () => {
 		expect(described(root, said as HTMLInputElement)).toEqual(['Write `https://` first.']);
 	});
 
+	it('describes a row by its own sentence, then its caller’s, then the group’s standing hint', () => {
+		// the field names the row's own sentence; the group adds only what it draws, and a row's own
+		// `aria-describedby` is taken in beside both rather than standing in for them.
+		const root = render(RepeatingRows, {
+			id: 'origins',
+			legend: 'Allowed origins',
+			hint: 'Where the form may load.',
+			add: ADD,
+			rows: [
+				{
+					id: 'origins-0',
+					key: 'a',
+					defaultValue: 'acme.org',
+					error: 'Write `https://` first.',
+					'aria-describedby': 'origins-0-note'
+				}
+			]
+		});
+
+		expect(inputs(root)[0]?.getAttribute('aria-describedby')?.split(' ')).toEqual([
+			'origins-0-err',
+			'origins-0-note',
+			'origins-hint'
+		]);
+	});
+
 	/**
 	 * a group whose name is already the heading a step above it draws that name to a reader and not
 	 * on the screen. dropping `legend` instead is the defect this covers: it takes the name off
@@ -577,7 +603,7 @@ describe('a mark at the start of a row’s box', () => {
 		expect(root.querySelector('.adm-leadwrap > input')).not.toBe(null);
 	});
 
-	it('describes the box by the mark’s words, outside the hidden slot, beside the group’s own', () => {
+	it('describes the box by the mark’s words, inside the hidden slot, beside the group’s own', () => {
 		const root = render(Bound, { rows: LED, error: 'Two of these are the same site.' });
 		const [first, second] = [...root.querySelectorAll('input')];
 		const described = (box: Element | undefined) =>
@@ -586,9 +612,21 @@ describe('a mark at the start of a row’s box', () => {
 		expect(described(first)).toEqual(['origins-0-lead', 'origins-err']);
 		const words = root.querySelector('#origins-0-lead');
 		expect(words?.textContent).toBe('Riverbank');
-		expect(words?.closest('[aria-hidden="true"]')).toBe(null);
+		// read once, through the description: browse mode passes over the slot.
+		expect(words?.closest('.adm-leadwrap__lead')?.getAttribute('aria-hidden')).toBe('true');
 		// a row whose lead states no words is described by the group alone.
 		expect(described(second)).toEqual(['origins-err']);
+	});
+
+	// the lead's words are a string the field draws into the form, beside a box that posts under
+	// the group's name: drawn through anything that posts, they would arrive as a third site.
+	it('posts what the box holds and nothing of the mark’s', () => {
+		const root = render(Bound, { rows: LED });
+
+		expect(submitted(root)).toEqual([
+			'allowed_origins=riverbank.org',
+			'allowed_origins=shop.riverbank.org'
+		]);
 	});
 
 	it('draws a mark with no words and names no description for it', () => {

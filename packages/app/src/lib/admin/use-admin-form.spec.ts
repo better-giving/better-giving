@@ -200,8 +200,8 @@ describe('the description on a box', () => {
 	it('is the library’s, so conform’s never reaches the control', () => {
 		// the defect, rendered. conform composes a description from its own `errorId` and expects
 		// the screen to have drawn that element; the library draws one of its own and names it from
-		// the `id` it was handed. spread conform's props onto the field and conform's wins through
-		// `...rest`, so the control points at an element nothing on the page answers to.
+		// the `id` it was handed. spread conform's props onto the field and conform's id joins the
+		// field's own, so the control points at an element nothing on the page answers to.
 		const html = render(createElement(SpreadScreen, { actionData: refused(NAME.id) }));
 
 		expect(dangling(html)).not.toEqual([]);

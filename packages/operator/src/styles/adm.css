@@ -383,8 +383,11 @@
 	   a target's reach past the drawn edge is half the floor less the drawn size, and whatever
 	   stands beside one is set at least that far off it, so no target lies over another control: the
 	   logo's two presses meet and never overlap (`.adm-logo__presses`), and a row's Remove and the
-	   brand colour's well each stand further off their box than their target reaches. the distances
-	   are held by ./touch-geometry.spec.ts.
+	   brand colour's well each stand further off their box than their target reaches. where the
+	   neighbour is closer than the reach, the target is moved off it rather than shrunk under the
+	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`).
+	   ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
+	   neighbours there, so a control joining it is named in that spec too.
 
 	   an `<input>` draws no `::before`, so the brand colour's well is aimed at through the label
 	   around it (`.adm-wellwrap`): a press on a label is a press on the control inside it. */
@@ -4107,6 +4110,14 @@
 		line-height: var(--admin-aside-lh);
 	}
 
+	/* a press-to-open trigger leading the status hugs a mark, so its target reaches further than
+	   the column step, the trailing item's border and its padding put the mark off the box. the
+	   target starts at the trailing item's own edge instead of centring on the mark, and lies over
+	   the status's word rather than the box. */
+	.adm-rows__row > :not(.adm-field) > .adm-markbtn::before {
+		inset-inline-start: calc(-1 * (var(--admin-border-width) + var(--admin-space-4)));
+	}
+
 	/* the Remove beside a row's box: the `x` mark and no word, in a square as tall as the box. it is
 	   the box's height rather than the small control's, because a press shorter than the thing it
 	   drops reads as a control that missed the line — the rule `.adm-field > .adm-actions > .adm-btn`
@@ -5549,7 +5560,6 @@
 		background: var(--admin-control-bg);
 		border: var(--admin-hairline);
 		border-radius: var(--admin-radius);
-		cursor: pointer;
 		transition: var(--admin-transition-state);
 	}
 
@@ -5564,7 +5574,6 @@
 		background: var(--admin-control-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
 		color: var(--admin-control-ink-disabled);
-		cursor: not-allowed;
 	}
 
 	/* the well stands on its box's row (`beside` in packages/operator/src/components/forms/Field.jsx),
@@ -5590,11 +5599,20 @@
 	}
 
 	/* the label round the well, which carries its target (a target past the drawn edge, under the
-	   buttons). it hugs the well and gives no width back. */
+	   buttons). it hugs the well and gives no width back.
+
+	   the cursor is the label's because the target covers the whole well: a pointer anywhere on it
+	   lands on the label's `::before`, which takes its cursor from the label, so one stated on the
+	   well itself never shows. */
 	.adm-wellwrap {
 		position: relative;
 		display: flex;
 		flex: none;
+		cursor: pointer;
+	}
+
+	.adm-wellwrap:has(> :disabled) {
+		cursor: not-allowed;
 	}
 
 	.adm-swatch--well::-webkit-color-swatch-wrapper {

@@ -274,11 +274,11 @@ export function RepeatingRows({
 						{/* no label on the row: the legend above names the group and the box says which
 						    row it is to a reader, so a label element here would be an empty one.
 
-						    the description is composed here rather than left to the field, because the
-						    group draws two of the blocks it would name: the standing hint is the group's
-						    and reaches every row, and the group's own sentence reaches only a row that
-						    has none of its own. the row's own message is the field's and is named the way
-						    the field names it, and a row's `lead` adds its own words to the list there. */}
+						    the field names what it draws — the row's own sentence, a `lead`'s words — and
+						    the group's two blocks join them: the standing hint reaches every row, and the
+						    group's own sentence reaches only a row that has none of its own. a row's own
+						    `aria-describedby` goes in ahead of the group's, which is why the composed
+						    list is stated after the rest rather than overwritten by it. */}
 						<Field
 							id={row}
 							name={name}
@@ -288,12 +288,12 @@ export function RepeatingRows({
 							error={said}
 							aria-label={`${rowLabel} ${i + 1}`}
 							aria-invalid={error && said === undefined ? 'true' : undefined}
+							{...rest}
 							aria-describedby={
-								[hintId, said === undefined ? groupErrorId : `${row}-err`]
+								[rest['aria-describedby'], hintId, said === undefined ? groupErrorId : null]
 									.filter(Boolean)
 									.join(' ') || undefined
 							}
-							{...rest}
 						/>
 						{/* a mark and no word, standing beside the box it drops and the box's own height
 						    (`.adm-rows__remove` in ../../styles/adm.css). the mark is the same on every

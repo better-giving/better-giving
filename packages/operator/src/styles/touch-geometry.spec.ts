@@ -16,9 +16,12 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 //
 // **a control drawn under the floor is aimed at at it, and its target lies over nothing else.** the
 // pool lays nothing out, so where a target reaches is the arithmetic of the tokens its rule and its
-// neighbours' rules spend.
+// neighbours' rules spend. the members are read off the shared rule's own list, and each is named
+// here with the rule that positions it and the neighbours it stands off, so a member joining the
+// list without both fails rather than passes.
 
 const css = sheet('adm.css');
+const base = sheet('base.css');
 const tokens = sheet('tokens.css');
 
 /** the `var()` names and `env()` calls a value adds up, in the order it spells them. */
@@ -41,17 +44,67 @@ describe("a row a finger aims at takes the row's floor", () => {
 	});
 });
 
-/** a length ./tokens.css states in rem, as css pixels. */
-const px = (token: string) => {
-	const stated = tokens.match(new RegExp(`${token}:\\s*([\\d.]+)rem\\s*;`))?.[1];
-	if (stated === undefined) throw new Error(`${token} is not a rem length in ./tokens.css`);
-	return Number.parseFloat(stated) * 16;
+/** a length ./tokens.css states — in rem at the root's 16px, in px, or as another token — in css pixels. */
+const px = (token: string): number => {
+	const stated = tokens.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1]?.trim() ?? '';
+	const [, figure, unit] = stated.match(/^(\d*\.?\d+)(rem|px)?$/) ?? [];
+	if (figure !== undefined && (unit !== undefined || Number(figure) === 0)) {
+		return Number(figure) * (unit === 'rem' ? 16 : 1);
+	}
+	const alias = stated.match(/^var\((--[\w-]+)\)$/)?.[1];
+	if (alias !== undefined) return px(alias);
+	throw new Error(`${token} is not a length in ./tokens.css: ${stated}`);
 };
 
-/** what a rule states, found by a selector anywhere in its list. */
-const listed = (selector: string) =>
-	rulesIn(css).find(({ selector: list }) => list.split(', ').includes(selector))?.stated ??
-	new Map<string, string>();
+/**
+ * a length a rule spells, in css pixels: tokens, numbers, `+ - * /`, brackets and `calc()`, with
+ * `100%` standing for `percent`. a value spelled any other way throws rather than reading as zero.
+ */
+const evaluate = (value: string | undefined, percent?: number): number => {
+	const source = (value ?? '').trim();
+	const lexer = /\s*(?:var\((--[\w-]+)\)|(\d*\.?\d+)(%|px|rem)?|(calc\(|[-+*/()]))/y;
+	const items: (number | string)[] = [];
+	while (lexer.lastIndex < source.length) {
+		const hit = lexer.exec(source);
+		if (hit === null) throw new Error(`not a length this spec reads: ${source}`);
+		const [, name, figure, unit, operator] = hit;
+		if (name !== undefined) items.push(px(name));
+		else if (figure === undefined) items.push(operator === 'calc(' ? '(' : (operator ?? ''));
+		else if (unit !== '%') items.push(Number(figure) * (unit === 'rem' ? 16 : 1));
+		else if (percent === undefined)
+			throw new Error(`a percentage with nothing to be one of: ${source}`);
+		else items.push((Number(figure) / 100) * percent);
+	}
+	let at = 0;
+	const factor = (): number => {
+		const item = items[at++];
+		if (typeof item === 'number') return item;
+		if (item === '-') return -factor();
+		if (item === '(') {
+			const inner = sum();
+			if (items[at++] !== ')') throw new Error(`an unclosed bracket in: ${source}`);
+			return inner;
+		}
+		throw new Error(`not a length this spec reads: ${source}`);
+	};
+	const product = (): number => {
+		let total = factor();
+		while (items[at] === '*' || items[at] === '/') {
+			total = items[at++] === '*' ? total * factor() : total / factor();
+		}
+		return total;
+	};
+	const sum = (): number => {
+		let total = product();
+		while (items[at] === '+' || items[at] === '-') {
+			total = items[at++] === '+' ? total + product() : total - product();
+		}
+		return total;
+	};
+	const total = sum();
+	if (at !== items.length) throw new Error(`not a length this spec reads: ${source}`);
+	return total;
+};
 
 describe("the range slider's thumb is drawn small and aimed at at the floor", () => {
 	const thumb = ruleOf(css, '.adm-range__thumb');
@@ -131,63 +184,237 @@ describe('the More sheet stands on the bar', () => {
 	});
 });
 
-describe('a control drawn under the floor takes a target at it', () => {
-	/** how far a target `--admin-touch-min` square reaches past a control drawn at `drawn`. */
-	const reach = (drawn: string) => (px('--admin-touch-min') - px(drawn)) / 2;
+/** a length a rule spells, or nothing where it spells one against a box this spec has not got. */
+const lengthOr = (value: string | undefined) => {
+	try {
+		return evaluate(value);
+	} catch {
+		return Number.NaN;
+	}
+};
 
-	/** the one token a single-term value spends. */
-	const token = (value: string | undefined) => {
-		const [only, ...more] = terms(value);
-		if (only === undefined || more.length > 0) throw new Error(`not one token: ${value}`);
-		return only;
-	};
+/** every rule drawing a square at least the floor on a `::before`, and its members without the pseudo. */
+const floorRules = rulesIn(css).filter(
+	({ selector, stated }) =>
+		selector.split(', ').every((member) => member.endsWith('::before')) &&
+		[stated.get('inline-size'), stated.get('block-size')].every(
+			(size) => lengthOr(size) >= px('--admin-touch-min')
+		)
+);
+const members = (floorRules[0]?.selector.split(', ') ?? []).map((member) =>
+	member.replace(/::before$/, '')
+);
 
-	it.each([
-		['.adm-markbtn::before'],
-		['.adm-logo__presses > .adm-btn::before'],
-		['.adm-rows__row > .adm-rows__remove::before'],
-		['.adm-wellwrap::before']
-	])('%s is the floor square, centred on the border box', (selector) => {
-		const target = listed(selector);
+/** a control as drawn: its border box, and the border its target's insets are measured inside. */
+type Drawn = { readonly inline: number; readonly block: number; readonly border: number };
 
-		expect(target.get('content')).toBe("''");
-		expect(target.get('position')).toBe('absolute');
-		expect(target.get('inline-size')).toBe('var(--admin-touch-min)');
-		expect(target.get('block-size')).toBe('var(--admin-touch-min)');
-		// centred off the padding box's `100%`, which a border leaves on the border box's centre.
-		for (const side of ['inset-block-start', 'inset-inline-start']) {
-			expect(target.get(side)).toBe('calc((100% - var(--admin-touch-min)) / 2)');
+/** how big a target is, and how far it reaches past each edge of the control it is drawn on. */
+type Target = {
+	readonly inline: number;
+	readonly block: number;
+	readonly inlineStart: number;
+	readonly inlineEnd: number;
+	readonly blockStart: number;
+	readonly blockEnd: number;
+};
+
+/**
+ * one member of the shared rule: the rule that makes the control the box its target is placed
+ * against, the control as drawn, any rule placing its target differently where it stands, and each
+ * neighbour as what it is, how far the target reaches toward it and the room the control stands
+ * off it by.
+ */
+type Member = {
+	readonly holder: string;
+	readonly drawn: () => Drawn;
+	readonly contexts?: readonly string[];
+	readonly neighbours: () => readonly (readonly [string, number, number])[];
+};
+
+/** the width a border shorthand states, from its first term; none stated is none drawn. */
+const widthOf = (border: string | undefined) =>
+	border === undefined ? 0 : evaluate(border.split(' ')[0]);
+
+const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
+const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
+const LOCKED_TRIGGER = '.adm-rows__row > :not(.adm-field) > .adm-markbtn';
+
+const MEMBERS: Record<string, Member> = {
+	// a press-to-open trigger hugs its mark. the neighbour is the one row that carries it beside a
+	// box: a locked row's status, one column step, the trailing item's border and its padding off
+	// the box, over the next row's Remove.
+	'.adm-markbtn': {
+		holder: '.adm-markbtn',
+		drawn: () => {
+			const mark = evaluate(ruleOf(base, '.adm-mark').get('inline-size'));
+			return {
+				inline: mark,
+				block: mark,
+				border: widthOf(ruleOf(css, '.adm-markbtn').get('border'))
+			};
+		},
+		contexts: [LOCKED_TRIGGER],
+		neighbours: () => {
+			const at = target('.adm-markbtn', LOCKED_TRIGGER);
+			const [rowStep, boxStep] = terms(ruleOf(css, '.adm-rows').get('gap'));
+			const trailing = ruleOf(css, '.adm-rows__row > :not(.adm-field)');
+			const trailingBorder = ruleOf(css, ':where(.adm-rows__row > :not(.adm-field))');
+			// the trigger is centred on a row as tall as the box beside it.
+			const row = evaluate(ruleOf(css, ROW_REMOVE).get('min-block-size'));
+			const mark = evaluate(ruleOf(base, '.adm-mark').get('block-size'));
+			return [
+				[
+					"the locked row's box",
+					at.inlineStart,
+					px(boxStep ?? '') +
+						widthOf(trailingBorder.get('border-inline')) +
+						evaluate(trailing.get('padding-inline'))
+				],
+				[
+					"the next row's Remove",
+					at.blockEnd - (row - mark) / 2 + target(ROW_REMOVE).blockStart,
+					px(rowStep ?? '')
+				]
+			];
 		}
-		expect(target.get('inset')).toBeUndefined();
+	},
+	// the logo's two presses on the square's corner, the small control's square each.
+	'.adm-logo__presses > .adm-btn': {
+		holder: '.adm-btn',
+		drawn: () => ({
+			inline: evaluate(ruleOf(css, '.adm-logo__presses > .adm-btn').get('inline-size')),
+			block: evaluate(ruleOf(css, '.adm-btn--sm').get('min-block-size')),
+			border: BUTTON_BORDER()
+		}),
+		neighbours: () => {
+			const at = target('.adm-logo__presses > .adm-btn');
+			const presses = ruleOf(css, '.adm-logo__presses');
+			return [
+				['the other press', at.inlineEnd + at.inlineStart, evaluate(presses.get('gap'))],
+				["the square's inline edge", at.inlineEnd, evaluate(presses.get('inset-inline-end'))],
+				["the square's block edge", at.blockStart, evaluate(presses.get('inset-block-start'))]
+			];
+		}
+	},
+	// a row's Remove is a button (../components/controls/Button.jsx draws `.adm-btn`), the box's
+	// height and square.
+	[ROW_REMOVE]: {
+		holder: '.adm-btn',
+		drawn: () => {
+			const remove = ruleOf(css, ROW_REMOVE);
+			return {
+				inline: evaluate(remove.get('inline-size')),
+				block: evaluate(remove.get('min-block-size')),
+				border: BUTTON_BORDER()
+			};
+		},
+		neighbours: () => {
+			const at = target(ROW_REMOVE);
+			const [rowStep, boxStep] = terms(ruleOf(css, '.adm-rows').get('gap'));
+			return [
+				['its box', at.inlineStart, px(boxStep ?? '')],
+				["the next row's Remove", at.blockEnd + at.blockStart, px(rowStep ?? '')]
+			];
+		}
+	},
+	// the label round the brand colour's well hugs it, and draws no border of its own.
+	'.adm-wellwrap': {
+		holder: '.adm-wellwrap',
+		drawn: () => {
+			const well = ruleOf(css, '.adm-swatch--well');
+			return {
+				inline: evaluate(well.get('inline-size')),
+				block: evaluate(well.get('block-size')),
+				border: widthOf(ruleOf(css, '.adm-wellwrap').get('border'))
+			};
+		},
+		neighbours: () => [
+			[
+				'its box',
+				target('.adm-wellwrap').inlineStart,
+				evaluate(ruleOf(css, '.adm-field > .adm-actions:has(> .adm-wellwrap)').get('gap'))
+			]
+		]
+	}
+};
+
+/**
+ * the target the shared rule draws on a member, with the rule a context adds over it. an inset is
+ * measured from the holder's padding box, so `100%` is the drawn size less the border and the
+ * border is added back to place the target against the border box.
+ */
+function target(member: string, context?: string): Target {
+	const entry = MEMBERS[member];
+	if (entry === undefined) throw new Error(`${member} is not a member named in this spec`);
+	const drawn = entry.drawn();
+	const stated = new Map([
+		...(floorRules[0]?.stated ?? []),
+		...(context === undefined ? [] : ruleOf(css, `${context}::before`))
+	]);
+	const inline = evaluate(stated.get('inline-size'));
+	const block = evaluate(stated.get('block-size'));
+	const inlineStart =
+		-drawn.border - evaluate(stated.get('inset-inline-start'), drawn.inline - 2 * drawn.border);
+	const blockStart =
+		-drawn.border - evaluate(stated.get('inset-block-start'), drawn.block - 2 * drawn.border);
+	return {
+		inline,
+		block,
+		inlineStart,
+		inlineEnd: inline - drawn.inline - inlineStart,
+		blockStart,
+		blockEnd: block - drawn.block - blockStart
+	};
+}
+
+describe('a control drawn under the floor takes a target at it', () => {
+	// a control joins the list rather than growing a target of its own.
+	it('is drawn by one rule, which every such control shares', () => {
+		expect(floorRules).toHaveLength(1);
+		expect(members.length).toBeGreaterThan(0);
 	});
 
-	it("meets the logo's other press and reaches the square's edge, and no further", () => {
-		const presses = ruleOf(css, '.adm-logo__presses');
-		const press = token(ruleOf(css, '.adm-logo__presses > .adm-btn').get('inline-size'));
-
-		expect(presses.get('gap')).toBe(
-			'calc(var(--admin-touch-min) - var(--admin-control-height-sm))'
-		);
-		expect(press).toBe('--admin-control-height-sm');
-		expect(px(token(presses.get('inset-block-start')))).toBe(reach(press));
-		expect(px(token(presses.get('inset-inline-end')))).toBe(reach(press));
+	it('names every member of that rule here, with its holder and its neighbours', () => {
+		expect([...members].sort()).toEqual(Object.keys(MEMBERS).sort());
 	});
 
-	it("stops a row's Remove short of its box and of the Remove on the next row", () => {
-		const [rowStep, boxStep] = terms(ruleOf(css, '.adm-rows').get('gap'));
-		const drawn = token(ruleOf(css, '.adm-rows__row > .adm-rows__remove').get('inline-size'));
+	// the target is absolute, so a holder that is not positioned hands it to whatever ancestor is,
+	// and it lands somewhere else on the screen as an invisible press. it is a pseudo-element of the
+	// holder, so the pointer it shows is the holder's own.
+	it.each(members)('%s is placed against its own box and shows its pointer', (member) => {
+		const holder = ruleOf(css, MEMBERS[member]?.holder ?? '');
+		const naming = rulesIn(css).filter(({ selector }) => selector.split(', ').includes(member));
 
-		expect(reach(drawn)).toBeGreaterThan(0);
-		expect(reach(drawn)).toBeLessThan(px(boxStep ?? ''));
-		expect(2 * reach(drawn)).toBeLessThan(px(rowStep ?? ''));
+		expect(holder.get('position')).toBe('relative');
+		for (const { stated } of naming) expect(stated.get('position') ?? 'relative').toBe('relative');
+		expect(holder.get('cursor') ?? 'auto').not.toBe('auto');
 	});
 
-	it("stops the brand colour's well short of its box", () => {
-		const drawn = token(ruleOf(css, '.adm-swatch--well').get('inline-size'));
-		const step = token(ruleOf(css, '.adm-field > .adm-actions:has(> .adm-wellwrap)').get('gap'));
+	it.each(members)('%s reaches the floor and covers the whole control', (member) => {
+		const contexts = MEMBERS[member]?.contexts ?? [];
+		for (const at of [target(member), ...contexts.map((context) => target(member, context))]) {
+			expect(at.inline).toBeGreaterThanOrEqual(px('--admin-touch-min'));
+			expect(at.block).toBeGreaterThanOrEqual(px('--admin-touch-min'));
+			for (const reach of [at.inlineStart, at.inlineEnd, at.blockStart, at.blockEnd]) {
+				expect(reach).toBeGreaterThanOrEqual(0);
+			}
+		}
+	});
 
-		expect(reach(drawn)).toBeGreaterThan(0);
-		expect(reach(drawn)).toBeLessThan(px(step));
+	it.each(members)('%s lies over nothing beside it', (member) => {
+		const neighbours = MEMBERS[member]?.neighbours() ?? [];
+
+		expect(neighbours.length).toBeGreaterThan(0);
+		for (const [what, reach, room] of neighbours) {
+			expect(reach, `${member} toward ${what}`).toBeLessThanOrEqual(room);
+		}
+	});
+
+	it('shows the closed pointer over a closed well, on the label a pointer lands on', () => {
+		const closed = ruleOf(css, '.adm-wellwrap:has(> :disabled)').get('cursor');
+
+		expect(closed).toBeDefined();
+		expect(closed).not.toBe(ruleOf(css, '.adm-wellwrap').get('cursor'));
 	});
 });
 

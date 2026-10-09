@@ -37,9 +37,9 @@ import {
 // both compute one. `Field` composes its own from the `id` it was handed — `${id}-err` is the
 // message it draws — and renders every element it names. conform's `getInputProps` composes one
 // too, out of its `errorId`, and names an element it expects the *screen* to have rendered; no
-// screen in this app renders one. spread conform's props onto `Field` and conform's wins through
-// that component's `...rest`, so the control points at an id nothing on the page answers to. it
-// renders, it hydrates, it looks right, and a reader following the description finds nothing.
+// screen in this app renders one. spread conform's props onto `Field` and conform's id joins the
+// field's own, so the control points at an id nothing on the page answers to. it renders, it
+// hydrates, it looks right, and a reader following the description finds nothing.
 //
 // so conform's aria attributes never reach a control. what a screen loses with them is nothing it
 // had: `aria-invalid` is `Field`'s off the same message, the value is `boxProps`' below, and the
@@ -385,13 +385,10 @@ type BoxOptions = {
 	 * an element describing this box that the field itself does not draw.
 	 *
 	 * one case, and it is a fieldset's: a message about a pair of boxes belongs to neither of them,
-	 * so it is rendered once by the group and both boxes point at it. it is taken *in* rather than
-	 * replacing — a box carrying a rule it broke and a pair rule it broke has two things said about
-	 * it, and a description naming one of them is the other one lost.
-	 *
-	 * what it cannot see is a `hint` or a `needed` on the same field, which `Field` names from its
-	 * own id and this composition would drop. no screen carries both; one that needs to is a
-	 * widening of this option rather than an `aria-describedby` written at a screen.
+	 * so it is rendered once by the group and both boxes point at it. it goes over as the platform's
+	 * own `aria-describedby`, which `Field` takes in beside the blocks it names itself rather than in
+	 * place of them — a box carrying a rule it broke and a pair rule it broke has two things said
+	 * about it, and a description naming one of them is the other one lost.
 	 */
 	readonly describedBy?: string;
 	/**
@@ -438,19 +435,15 @@ type BoxProps = {
  */
 export function boxProps(box: Box, options: BoxOptions = {}): BoxProps {
 	const error = box.errors?.[0];
-	const described = [error === undefined ? null : boxErrorId(box.id), options.describedBy]
-		.filter((token): token is string => typeof token === 'string')
-		.join(' ');
 
 	return {
 		id: box.id,
 		name: box.name,
 		defaultValue: box.defaultValue,
 		error,
-		// the key is left off rather than set to `undefined` where the screen points at nothing:
-		// absent, `Field` composes its own and names the hint and the needed note it draws too.
-		// `exactOptionalPropertyTypes` is why it is a spread rather than a key.
-		...(options.describedBy === undefined ? {} : { 'aria-describedby': described }),
+		// left off where the screen points at nothing, and a spread rather than a key for
+		// `exactOptionalPropertyTypes`.
+		...(options.describedBy === undefined ? {} : { 'aria-describedby': options.describedBy }),
 		// left off unless a screen says so, for the same reason: `Field` writes this one itself off
 		// the message it holds, and a key present and `undefined` would still be the caller's.
 		...(options.refused === true && error === undefined ? { 'aria-invalid': 'true' as const } : {})

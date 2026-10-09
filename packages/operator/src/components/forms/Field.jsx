@@ -73,8 +73,10 @@ import { FieldMessage } from './FieldMessage.jsx';
 
 /**
  * the mark is drawn out of the tree and `said` is what it says, in words the box is described by:
- * drawn to a reader alone, outside the hidden mark, and named `${id}-lead`. a mark that says
- * nothing a reader needs — a glyph standing for no reading at all — states no words.
+ * drawn inside the hidden mark and named `${id}-lead`. a description reads hidden words it names
+ * directly (https://www.w3.org/TR/accname-1.2/, step 2A), so a reader meets them once, on the box,
+ * rather than once as loose text in browse mode and again on the box. a mark that says nothing a
+ * reader needs — a glyph standing for no reading at all — states no words.
  *
  * @typedef {object} FieldLead
  * @property {ReactNode} mark
@@ -103,11 +105,15 @@ import { FieldMessage } from './FieldMessage.jsx';
  *
  * four of a caller's own arrive as the platform's attributes rather than as props of this field's,
  * and each is taken in rather than replaced: `className` is added to the class list this field
- * composes, `aria-invalid` marks the box refused alongside whatever message it holds,
- * `aria-describedby` names the blocks the caller draws in place of the ones this field would (a
- * repeating row's hint and refusal are its group's) with the lead's words still added to it, and the
+ * composes, `aria-invalid` marks the box refused alongside whatever message it holds, and the
  * starting value is `defaultValue` — or `value` with a handler beside it, which this field has no
  * opinion about either way.
+ *
+ * `aria-describedby` names blocks the caller draws — a group's hint, a pair's refusal — and they
+ * join the ones this field names rather than standing in for them: the lead's words, then the
+ * field's own hint, refusal, needed note and status in the order they are drawn, then the caller's
+ * as stated. an id named twice keeps its first place, and `undefined` states nothing, so the field's
+ * own still describe the box. a caller names only the blocks it draws itself.
  *
  * @typedef {FieldOwnProps
  *   & (MaskNamesUnstated | MaskNamesStated)
@@ -225,12 +231,12 @@ export function Field({
 			<div className="adm-leadwrap">
 				<span className="adm-leadwrap__lead" aria-hidden="true">
 					{leading.mark}
+					{leadSaid ? (
+						<span hidden id={leadSaid}>
+							{leading.said}
+						</span>
+					) : null}
 				</span>
-				{leadSaid ? (
-					<span className="adm-vh" id={leadSaid}>
-						{leading.said}
-					</span>
-				) : null}
 				{withPresses(box)}
 			</div>
 		);
@@ -269,19 +275,17 @@ export function Field({
 	// the lead's words first, as the mark they stand for is the first thing in the box.
 	const describedBy =
 		[
-			leadSaid,
-			describedByStated ??
+			...new Set(
 				[
+					leadSaid,
 					hint ? `${id}-hint` : null,
 					error ? `${id}-err` : null,
 					needed ? `${id}-need` : null,
-					status ? `${id}-status` : null
-				]
-					.filter(Boolean)
-					.join(' ')
-		]
-			.filter(Boolean)
-			.join(' ') || undefined;
+					status ? `${id}-status` : null,
+					...(describedByStated?.split(/\s+/) ?? [])
+				].filter(Boolean)
+			)
+		].join(' ') || undefined;
 	const cls = [
 		as === 'textarea' ? 'adm-textarea' : 'adm-input',
 		refused ? (as === 'textarea' ? 'adm-textarea--invalid' : 'adm-input--invalid') : '',
