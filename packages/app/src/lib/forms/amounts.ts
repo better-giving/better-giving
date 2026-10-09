@@ -197,11 +197,15 @@ export function majorEntry(amountMinor: number, currency: string): string {
  */
 export const MAX_SUGGESTED_AMOUNTS = 12;
 
+/** the sentence a list over `MAX_SUGGESTED_AMOUNTS` is refused with. */
+const TOO_MANY_SUGGESTED_AMOUNTS = `at most ${MAX_SUGGESTED_AMOUNTS}`;
+
 /**
- * the sentence a list over `MAX_SUGGESTED_AMOUNTS` is refused with. exported because the editor's
- * Add says it too, when a press at the cap is held, and the two have to be one sentence.
+ * the sentence the editor's Add is held with, once the boxes already hold `MAX_SUGGESTED_AMOUNTS`
+ * different amounts. the save's refusal above is a predicate under the group's legend; this one
+ * answers a press on a button, so it is said whole.
  */
-export const TOO_MANY_SUGGESTED_AMOUNTS = `at most ${MAX_SUGGESTED_AMOUNTS}`;
+export const SUGGESTED_AMOUNTS_HELD = `You can suggest up to ${MAX_SUGGESTED_AMOUNTS} different amounts.`;
 
 /**
  * a figure as the operator who typed it reads it back.
@@ -215,6 +219,25 @@ export const TOO_MANY_SUGGESTED_AMOUNTS = `at most ${MAX_SUGGESTED_AMOUNTS}`;
  * anything else would name a figure the parser never read.
  */
 const money = (amountMinor: number) => formatMinorBrief(amountMinor, FORM_CURRENCY);
+
+/**
+ * the boxes the count cap counts: each non-blank text once, trimmed, at the row it first appears in.
+ *
+ * exported because the editor's Add is held by this count too, and a press refused at a count the
+ * save would not refuse — twelve boxes with one of them blank — is the two disagreeing about one
+ * list.
+ */
+export function suggestedEntries(rows: readonly string[]): { row: number; text: string }[] {
+	const seen = new Set<string>();
+	const entries: { row: number; text: string }[] = [];
+	rows.forEach((entry, row) => {
+		const text = entry.trim();
+		if (text.length === 0 || seen.has(text)) return;
+		seen.add(text);
+		entries.push({ row, text });
+	});
+	return entries;
+}
 
 /**
  * the suggested amounts as the repeating row editor submits them, checked against this form's own
@@ -266,14 +289,7 @@ export function readSuggestedAmounts(
 	problem: string | null;
 	problems: ReadonlyArray<{ row: number; problem: string }>;
 } {
-	const seen = new Set<string>();
-	const entries: { row: number; text: string }[] = [];
-	rows.forEach((entry, row) => {
-		const text = entry.trim();
-		if (text.length === 0 || seen.has(text)) return;
-		seen.add(text);
-		entries.push({ row, text });
-	});
+	const entries = suggestedEntries(rows);
 
 	if (entries.length > MAX_SUGGESTED_AMOUNTS) {
 		// checked instead of the entries, not alongside them: a paste of fifty boxes would otherwise
