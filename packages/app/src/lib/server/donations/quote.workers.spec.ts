@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq, sql } from 'drizzle-orm';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import { createDb, type Db } from '../db/client';
 import { contact, donation, entryGroup, lineItem, payment } from '../db/schema';
@@ -34,6 +34,11 @@ import { mintQuote, refusalCode, type QuoteDeps } from './quote';
 // src/routes/api.v1.forms.$id.donations.workers.spec.ts.
 
 const FORM_ID = 'frm_quotepath000001';
+
+/** what a donor reads when a processor could not take the gift and the reason is not theirs. */
+const PROCESSOR_FAILED =
+	'We couldn’t complete this gift. Try again, or use another payment method.';
+
 const ALLOWED = 'https://acme.org';
 
 const STRIPE_ENV = {
@@ -968,6 +973,8 @@ describe('mintQuote() — a repeating gift', () => {
 			const result = await mint(deps({ provider: port.port }), { frequency: 'monthly' });
 
 			expect(result.ok || result.reason).toBe('frequency_unsupported');
+			// the processor's own sentence is staff's, and goes to the log rather than the card.
+			expect(result.ok || result.message).not.toContain('the processor said');
 			// and never as our defect: the catch-all sends a donor to this deployment's logs, which
 			// is an errand they cannot run and a diagnosis that is wrong.
 			expect(result.ok || result.fix).not.toContain('bug in this app');
@@ -1091,6 +1098,20 @@ describe('mintQuote() — the processor', () => {
 		}
 	);
 
+	// `detail` is the adapter's sentence for the log — a transport's raw error, an env var's name —
+	// and the card draws `message` to the donor (packages/form/src/views.ts).
+	it.each(['rate_limited', 'unreachable', 'provider_error', 'not_configured'] as const)(
+		'tells the donor of %s in the app’s own words, and the log the processor’s',
+		async (reason) => {
+			const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const result = await mint(deps({ provider: provider([failure(reason)]).port }));
+
+			expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+			expect(logged.mock.calls.flat().join(' ')).toContain(`the processor said ${reason}`);
+		}
+	);
+
 	it('reports unset credentials under the deployment’s own code', async () => {
 		const result = await mint(deps({ provider: provider([failure('not_configured')]).port }));
 
@@ -1120,6 +1141,7 @@ describe('mintQuote() — the processor', () => {
 			const result = await mint(deps({ provider: provider([failure(reason)]).port }));
 
 			expect(result.ok || result.reason).toBe('internal_error');
+			expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
 			expect(refusalCode('internal_error')).toBeNull();
 		}
 	);
@@ -1593,21 +1615,19 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		);
 	});
 
-	it('tells the donor the fund declined, in plain words, where Chariot gave no reason', async () => {
-		const port = chariotProvider([
-			{
-				ok: false,
-				reason: 'invalid_request',
-				detail: 'Chariot did not create the grant. Chariot said: nothing this app could read'
-			}
-		]);
+	// every refusal Chariot documents carries its words, so a 4xx with none is nothing the fund said
+	// — a request of ours it would not read is the other cause — and the donor is not told the fund
+	// refused.
+	it('never blames the fund for a refusal Chariot gave no reason for', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const said = 'Chariot did not create the grant. Chariot said: nothing this app could read';
+		const port = chariotProvider([{ ok: false, reason: 'invalid_request', detail: said }]);
 
 		const result = await mint(chariotDeps(port.port), fundGift());
 
 		expect(result.ok || result.reason).toBe('daf_grant_declined');
-		expect(result.ok || result.message).toBe(
-			'Your fund didn’t approve this gift, so nothing was given.'
-		);
+		expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+		expect(logged.mock.calls.flat().join(' ')).toContain(said);
 	});
 
 	it('reports a Chariot that did not answer as an outage the donor may retry', async () => {
@@ -1619,6 +1639,20 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		// the grant may exist, so the answer never says nothing was given.
 		expect(result.ok || result.fix).toContain('may already');
 		expect(result.ok || result.fix).not.toContain('Nothing was charged');
+	});
+
+	it('tells the donor of a Chariot that did not answer in the app’s own words, and staff Chariot’s', async () => {
+		await env.DB.prepare(`update org_profile set notification_email = 'ops@hope.example'`).run();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const mail = mailer();
+		const said = 'No answer came back from Chariot. The transport said: socket hang up';
+		const port = chariotProvider([{ ok: false, reason: 'unreachable', detail: said }]);
+
+		const result = await mint(chariotDeps(port.port, { email: mail.port }), fundGift());
+
+		expect(result.ok || result.message).toBe(PROCESSOR_FAILED);
+		expect(logged.mock.calls.flat().join(' ')).toContain(said);
+		expect(mail.sent[0]?.text.replace(/\s+/g, ' ')).toContain(said);
 	});
 
 	/**

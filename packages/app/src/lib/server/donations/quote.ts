@@ -142,7 +142,8 @@ export const QUOTE_REFUSALS = [
 	/**
 	 * a donor-advised fund gift the fund will not grant — below its minimum, above the donor's
 	 * balance — carrying Chariot's reason. nothing about the deployment is wrong; the donor gives a
-	 * different amount.
+	 * different amount. a Chariot 4xx with no reason lands here too, and its message names no fund
+	 * (`grantRefusal` below).
 	 */
 	'daf_grant_declined',
 	/**
@@ -937,9 +938,12 @@ function splitGrant(
  * will not grant (`invalid_request`, carrying Chariot's reason — the adapter's own local refusals
  * cannot reach it, because the parser and the checks above refuse those figures first). every other
  * Chariot 4xx lands on `invalid_request` too, a 400 caused by this app's own parameters included, and
- * the copy on that arm reads to the donor as the fund's refusal in every one of them. a call whose
- * outcome is unknown (`unreachable`) is retryable, and never says nothing was given. everything else
- * is what any single gift's processor failure answers.
+ * the status that would tell them apart does not reach this port. so the fund is named only where
+ * Chariot gave its words (`providerSaid`), which every refusal its API documents carries; a 4xx with
+ * none is answered in `PROCESSOR_FAILED`'s words under the same code. a 400 of ours that Chariot did
+ * word still reads to the donor as the fund's. a call whose outcome is unknown (`unreachable`) is
+ * retryable, and its fix never says nothing was given. everything else is what any single gift's
+ * processor failure answers.
  */
 function grantRefusal(form: FormRecord, failure: PaymentFailure): QuoteResult {
 	const { reason, detail } = failure;
@@ -961,23 +965,33 @@ function grantRefusal(form: FormRecord, failure: PaymentFailure): QuoteResult {
 		);
 	}
 	if (reason === 'unreachable') {
+		logProcessorFailure(reason, detail);
 		return refuse(
 			form,
 			'payments_unavailable',
-			detail,
+			PROCESSOR_FAILED,
 			'Your fund may already have the grant request. Try again in a moment — the same approval ' +
 				'sends it at most once.'
 		);
 	}
-	if (reason === 'invalid_request') {
+	if (reason === 'invalid_request' && failure.providerSaid !== undefined) {
 		return refuse(
 			form,
 			'daf_grant_declined',
-			failure.providerSaid === undefined
-				? 'Your fund didn’t approve this gift, so nothing was given.'
-				: `Your fund didn’t approve this gift: ${failure.providerSaid}`,
+			`Your fund didn’t approve this gift: ${failure.providerSaid}`,
 			'Give an amount the fund allows — at least its minimum and no more than the balance ' +
 				'available — through the fund’s window.'
+		);
+	}
+	if (reason === 'invalid_request') {
+		logProcessorFailure(reason, detail);
+		return refuse(
+			form,
+			'daf_grant_declined',
+			PROCESSOR_FAILED,
+			'Nothing was given. The grant request was refused with no reason given, and the answer ' +
+				'is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
+				'checkout).'
 		);
 	}
 	return paymentRefusal(form, 'daf', 'one_time', reason, detail);
@@ -1165,19 +1179,21 @@ function paymentRefusal(
 	minAmountMinor?: number
 ): QuoteResult {
 	if (reason === 'rate_limited' || reason === 'unreachable' || reason === 'provider_error') {
+		logProcessorFailure(reason, detail);
 		return refuse(
 			form,
 			'payments_unavailable',
-			detail,
+			PROCESSOR_FAILED,
 			'Nothing was charged. Try again in a moment — this is the payment processor rather than ' +
 				'anything about the request.'
 		);
 	}
 	if (reason === 'not_configured') {
+		logProcessorFailure(reason, detail);
 		return refuse(
 			form,
 			'payments_not_configured',
-			detail,
+			PROCESSOR_FAILED,
 			// the processor that settles the rail the donor picked, and never the one this deployment
 			// happens to hold: a donor on a cached page may name a rail whose processor was cleared
 			// since, and the pair that is set is not the pair to go and re-check.
@@ -1189,25 +1205,42 @@ function paymentRefusal(
 		return minAmountMinor === undefined ? refused : { ...refused, minAmountMinor };
 	}
 	if (frequency !== 'one_time' && (reason === 'unsupported' || reason === 'not_found')) {
+		logProcessorFailure(reason, detail);
 		return refuse(
 			form,
 			'frequency_unsupported',
 			`A gift that repeats cannot be collected on ${PROCESSOR_LABELS[processorOf(rail)]} here, ` +
-				`and nothing was charged: ${detail}`,
+				'and nothing was charged.',
 			// written for the donor reading it, who has no account to set up and no deployment to
 			// fix. a single gift needs nothing on the processor's account, so it is the one thing
 			// this deployment can always still take.
 			'Nothing was charged and nothing about the request is wrong. Give once instead.'
 		);
 	}
+	logProcessorFailure(reason, detail);
 	return refuse(
 		form,
 		'internal_error',
-		`No payment could be started, and nothing was charged: ${detail}`,
+		PROCESSOR_FAILED,
 		'This is a bug in this app rather than anything about the request or the deployment. The ' +
 			'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
 			'checkout).'
 	);
+}
+
+/**
+ * what the donor reads when a processor shed load, did not answer, faulted, holds no keys here, or
+ * refused a grant with no reason. the adapter's `detail` on those is written for the log
+ * (`PaymentFailure` in ../payments/provider.ts) and names env vars and a transport's raw error, so
+ * it goes to `logProcessorFailure` instead of `message`, which the card draws
+ * (packages/form/src/views.ts).
+ */
+const PROCESSOR_FAILED =
+	'We couldn’t complete this gift. Try again, or use another payment method.';
+
+/** the adapter's sentence, where staff read it. */
+function logProcessorFailure(reason: string, detail: string): void {
+	console.error(`a donation was refused by the payment processor (${reason}):`, detail);
 }
 
 /**
