@@ -53,6 +53,7 @@ export default defineConfig({
 				test: {
 					name: 'server',
 					environment: 'node',
+					setupFiles: ['./src/lib/server/nonprofits/live-api.setup.ts'],
 					// three roots, and each is a place a spec sits beside its subject: `src/` is the
 					// app, `scripts/` the operator scripts — plain node with no binding and no DOM
 					// under them — and the package root, where the config specs that read this

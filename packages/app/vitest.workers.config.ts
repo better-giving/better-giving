@@ -107,6 +107,6 @@ export default defineConfig({
 		// a stubbed global is restored before the next test runs too
 		unstubGlobals: true,
 		include: ['src/**/*.workers.{test,spec}.{js,ts}'],
-		setupFiles: ['./src/lib/server/db/d1.setup.ts']
+		setupFiles: ['./src/lib/server/db/d1.setup.ts', './src/lib/server/nonprofits/live-api.setup.ts']
 	}
 });

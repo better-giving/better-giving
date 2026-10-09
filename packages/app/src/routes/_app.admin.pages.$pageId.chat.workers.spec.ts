@@ -15,6 +15,14 @@ import * as chat from './_app.admin.pages.$pageId.chat';
 // turn does to the page is ../lib/server/pages/draft.workers.spec.ts's; here, what the edge takes
 // and what it answers.
 
+// the deployment's stored EIN is looked up at an opening and at its answers; here the lookup finds
+// nothing and asks no one, so no case reaches the live API. what a filing adds to a turn is
+// ../lib/server/pages/draft.workers.spec.ts's.
+vi.mock(import('$lib/server/nonprofits/filing'), async (importOriginal) => ({
+	...(await importOriginal()),
+	lookUpFiling: async () => null
+}));
+
 let db: Db;
 let request: RouteRequester;
 let session: string;
