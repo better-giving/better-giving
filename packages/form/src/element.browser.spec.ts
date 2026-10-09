@@ -633,6 +633,56 @@ describe('the closed choices on the amount step', () => {
 			}
 			expect(list.getBoundingClientRect().width).toBeCloseTo(box.getBoundingClientRect().width, 0);
 		});
+
+		// the positioner's inline style reads `z-index: var(--z-index)` from the first render and
+		// `translate3d(var(--x), var(--y), 0)` from the first placement on, and zag writes the three
+		// only while a list is open and placed — closing takes them back off. so a closed list, and a
+		// list reopened before zag has placed it again, would take a host's own properties of those
+		// names. each is planted at a value no list of ours ever takes.
+		it(`stacks and places ${name} by zag and never by a host’s own --z-index, --x or --y`, async () => {
+			const { page, root, press } = await open();
+			const HOST_Z = '7';
+			const HOST_AT = '100000px';
+			page.style.setProperty('--z-index', HOST_Z);
+			page.style.setProperty('--x', HOST_AT);
+			page.style.setProperty('--y', HOST_AT);
+			const list = root.querySelector<HTMLElement>('[part~="select-list"]');
+			const positioner = list?.parentElement;
+			if (list === null || positioner === null || positioner === undefined)
+				throw new Error('no list');
+			const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+			const drawn: { zIndex: string; transform: string }[] = [];
+			const sample = () => {
+				const { zIndex, transform } = getComputedStyle(positioner);
+				drawn.push({ zIndex, transform });
+			};
+			const unplaced = () => positioner.style.getPropertyValue('--x') === '';
+			const openAndSample = async () => {
+				press();
+				for (let frames = 0; frames < 30 && unplaced(); frames += 1) {
+					sample();
+					await frame();
+				}
+				await placedList(root);
+			};
+
+			sample();
+			await openAndSample();
+			await userEvent.keyboard('{Escape}');
+			await vi.waitFor(() => expect(positioner.matches(':popover-open')).toBe(false));
+			sample();
+			await openAndSample();
+
+			for (const { zIndex, transform } of drawn) {
+				expect(zIndex).not.toBe(HOST_Z);
+				expect(transform).not.toContain('100000');
+			}
+			const placed = getComputedStyle(positioner);
+			const at = new DOMMatrix(placed.transform);
+			expect(at.e).toBe(Number.parseFloat(positioner.style.getPropertyValue('--x')));
+			expect(at.f).toBe(Number.parseFloat(positioner.style.getPropertyValue('--y')));
+			expect(placed.zIndex).toBe(positioner.style.getPropertyValue('--z-index'));
+		});
 	}
 
 	// a move is a disconnect and a connect, and the removal hides an open popover under the machine.

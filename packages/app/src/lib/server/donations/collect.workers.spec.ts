@@ -1368,6 +1368,33 @@ describe('settleDelivery() — a collection this deployment cannot attribute', (
 		}
 	);
 
+	it('says it is which gift a subscription naming none is missing', async () => {
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider({
+					gift: {
+						ok: true,
+						value: notice({ metadata: commitmentMetadata({ [DONATION_METADATA_KEY]: '' }) })
+					}
+				})
+			}),
+			DELIVERY
+		);
+
+		const alerted = mail.sent[0];
+		expect(alerted?.subject).toBe('A recurring gift payment couldn’t be matched to a gift');
+		expect(alerted?.text).toContain(
+			'A payment on a recurring gift went through, but its Stripe subscription doesn’t say ' +
+				'which gift it belongs to, so the money isn’t in your records.'
+		);
+		expect(alerted?.text).toContain(
+			'What’s missing: Which gift it’s for. The subscription has no `donation_id`.'
+		);
+	});
+
 	it.each(unattributable)('writes nothing at all for a commitment with %s', async (_, metadata) => {
 		await settleDelivery(
 			deps({ provider: provider({ gift: { ok: true, value: notice({ metadata }) } }) }),
@@ -1898,9 +1925,9 @@ describe('settleDelivery() — a repeating gift that could not be read', () => {
 			expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 			// the delivery may as well have reported a failed payment, which moved nothing.
 			const said = mail.sent[0]?.text.replace(/\s+/g, ' ');
-			expect(said).toContain('If it was a collection, money moved and the books do not have it.');
+			expect(said).toContain('If it was a successful payment, that money isn’t in your records.');
 			expect(said).toContain(
-				'If it was a failed payment, no money moved and the books are complete: what is lost is the "Recurring charge failed" event your webhook destinations are owed for that attempt.'
+				'If it was a failed payment, your records are fine, but the destinations on your Webhooks page weren’t told about the failure.'
 			);
 		}
 	);
@@ -2013,8 +2040,8 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 		// gift started — a different message about a different thing. the donor's own receipt goes on
 		// the same collection and says nothing about a fee (see `feeMinor` in ./collect.ts).
 		expect(mail.sent.filter((m) => m.to === 'ops@hope.example').map((m) => m.subject)).toEqual([
-			'A collection under a repeating gift was posted with no processor fee',
-			'A gift of USD 25.00 was received'
+			'A recurring gift was recorded without its Stripe fee',
+			'You received a USD 25.00 gift'
 		]);
 	});
 
@@ -2029,10 +2056,13 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 			DELIVERY
 		);
 
-		const alerted = mail.sent.find((m) => m.subject.includes('no processor fee'));
-		expect(alerted?.text).toContain('/admin/books');
-		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds, into 5200 — Processor Fees');
-		expect(alerted?.text).not.toContain('outside it');
+		const alerted = mail.sent.find((m) => m.subject.includes('recorded without its'));
+		expect(alerted?.text).toContain(
+			'What to do: Find this payment in your Stripe dashboard and note the fee in the currency ' +
+				'the gift was charged in. Don’t convert a fee shown in another currency. Then, on the ' +
+				'Books page in your dashboard, post a correction dated the day the payment settled: out ' +
+				'of 1020 — Undeposited Funds, into 5200 — Processor Fees.'
+		);
 	});
 
 	/**
@@ -2058,7 +2088,7 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 		provider({ settled: { ok: true, value: settlement({ feeMinor: null }) } });
 
 	it('keeps a banked collection banked when that alert throws', async () => {
-		const mail = brittleMailer((m) => m.subject.includes('no processor fee'));
+		const mail = brittleMailer((m) => m.subject.includes('recorded without its'));
 
 		const result = await settleDelivery(
 			deps({ email: mail.port, provider: feeUnknown() }),
@@ -2072,7 +2102,7 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		const [gift] = await db.select().from(donation);
 		expect(gift?.totalMinor).toBe(2500);
-		expect(mail.sent.some((m) => m.subject.includes('could not be attempted'))).toBe(true);
+		expect(mail.sent.some((m) => m.subject.includes('receipt wasn’t sent'))).toBe(true);
 	});
 
 	it('does not escape when the report about it throws too', async () => {
@@ -2157,6 +2187,41 @@ describe('settleDelivery() — a commitment whose cadence the metadata does not 
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 	});
+
+	it('tells an operator the schedule is what stops it, not which gift it is for', async () => {
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider({
+					gift: {
+						ok: true,
+						value: notice({
+							metadata: commitmentMetadata({ [INTERVAL_METADATA_KEY]: 'weekly' }),
+							interval: null
+						})
+					}
+				})
+			}),
+			DELIVERY
+		);
+
+		// the subscription does name the gift here, so the alert says what it is missing instead.
+		const alerted = mail.sent[0];
+		expect(alerted?.subject).toBe(
+			'A recurring gift payment came in on a schedule that can’t be recorded'
+		);
+		expect(alerted?.text).toContain(
+			'A payment on a recurring gift went through, but its Stripe subscription charges on a ' +
+				'schedule your donations app can’t record, so the money isn’t in your records.'
+		);
+		expect(alerted?.text).toContain(
+			'What’s missing: How often it charges. The subscription’s `interval` is "weekly", and ' +
+				'only monthly or yearly can be recorded.'
+		);
+		expect(alerted?.text).not.toContain('which gift');
+	});
 });
 
 describe('settleDelivery() — the notice that a repeating gift started', () => {
@@ -2195,7 +2260,7 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		expect(notices[0]?.text).toContain('Ada Okafor');
 		expect(notices[0]?.text).toContain('General Fund');
 		// the fact that makes it a different piece of news from a one-off gift of the same size.
-		expect(notices[0]?.text).toContain('first collection');
+		expect(notices[0]?.text).toContain('Recurring: Yes, first payment');
 	});
 
 	it('tells them nothing about a later collection, and receipts the donor anyway', async () => {
@@ -2224,7 +2289,7 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain('no receipt was sent');
-		expect(mail.sent[0]?.text).toContain('first collection');
+		expect(mail.sent[0]?.text).toContain('Recurring: Yes, first payment');
 	});
 
 	it('answers the delivery the same way when the notice itself faults', async () => {
@@ -2232,7 +2297,7 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		const sent: EmailMessage[] = [];
 		const brittle: EmailProvider = {
 			async send(message) {
-				if (message.subject.includes('was received')) throw new Error('the socket went away');
+				if (message.subject.includes('You received')) throw new Error('the socket went away');
 				sent.push(message);
 				return { ok: true };
 			}
@@ -2247,7 +2312,7 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(await db.select().from(entryGroup)).toHaveLength(2);
 		expect(sent.map((m) => m.to)).toEqual(['ada@example.org']);
-		expect(sent.some((m) => m.subject.includes('could not be attempted'))).toBe(false);
+		expect(sent.some((m) => m.subject.includes('receipt wasn’t sent'))).toBe(false);
 		const [gift] = await db.select().from(donation);
 		expect(gift?.receiptSentAt).not.toBeNull();
 	});

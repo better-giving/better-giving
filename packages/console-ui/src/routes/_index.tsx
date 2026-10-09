@@ -16,7 +16,14 @@ import { ConsoleRefused, ConsoleUnreachable, closeConsole, connect } from '../ap
 import type { Blocked, Connection, NoReport } from '../api/types';
 import { CHECK_INTENT, CLOSE_INTENT, CloseConfirm, useClosed } from '../lib/close-confirm';
 import { firstUnfinishedPage } from '../lib/console-pages';
-import { drawsReading, gatedPage, handOver, readConsole, watchPress } from '../lib/console-reading';
+import {
+	drawsReading,
+	gatedBy,
+	gatedPage,
+	handOver,
+	readConsole,
+	watchPress
+} from '../lib/console-reading';
 import { CloudflareGateFace, ConsoleStopped } from '../lib/deployment-states';
 import { CLOSE_PARAM, consoleRereads, DialogLink } from '../lib/dialog-params';
 import { ConsoleHead } from '../lib/head-strip';
@@ -649,7 +656,18 @@ export function ConnectOutcome({
 				</>
 			);
 		case 'unkept':
-			return <FieldMessage>Nothing was connected. This is what Cloudflare said:</FieldMessage>;
+			// the session is live on the deployment and the write that failed is this machine's own
+			// record of it, so cloudflare's name stays off it and the way out is the folder the error
+			// names — the sentence the terminal says it in (packages/console/internal/terminal/connect.go).
+			return (
+				<>
+					<FieldMessage>
+						This deployment holds the console's session, but this machine couldn't write it down.
+						Make the folder named below writable, then connect again.
+					</FieldMessage>
+					<Said answer={connected} />
+				</>
+			);
 		default:
 			return connected.kind satisfies never;
 	}
@@ -663,9 +681,15 @@ export function ConnectOutcome({
  * drawn in its own words, printed rather than marked for ../lib/said.tsx's reason. anything else
  * threw on this side of the call, so a reload is the one way out this page has.
  *
+ * **a gate is handed on rather than drawn.** a page under ./_sections.tsx that reads the deployment
+ * for itself meets the same gate the layout does, and its own boundary catches it first whenever the
+ * layout's reading was kept; thrown again from here it reaches the layout's boundary, which draws it
+ * as the whole screen (`notReady` in ../lib/console-reading.ts).
+ *
  * exported for every boundary under ./_sections.tsx, which already reach this module for `TITLE`.
  */
 export function ConsoleFailure({ error }: { error: unknown }): ReactNode {
+	if (gatedBy(error) !== null) throw error;
 	if (error instanceof ConsoleUnreachable) return <ConsoleStopped />;
 	if (error instanceof ConsoleRefused) {
 		return (
@@ -693,13 +717,18 @@ export function ConsoleFailure({ error }: { error: unknown }): ReactNode {
 // from. the one throw this page's loader has is `readConsole` meeting a binary it cannot reach, or
 // one that turned the reading down.
 //
-// it stands the same foot as every other screen, with no release in it: a boundary has no loader,
-// so nothing here read what this binary is and that end of the strip stands empty.
+// it stands the same foot as every other screen. a boundary has no loader, so only a gate, which
+// carries the release, fills that end of the strip; anything else leaves it empty.
+//
+// a gate is drawn here rather than handed on as `ConsoleFailure` hands it: this route sits straight
+// under ../root.tsx, which draws no boundary, so a gate thrown on from `/` would land on react
+// router's own error page.
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	const gated = gatedBy(error);
 	return (
-		<PanelRoute foot={<ProductFoot version="" />}>
+		<PanelRoute foot={<ProductFoot version={gated?.version ?? ''} />}>
 			<title>{TITLE}</title>
-			<ConsoleFailure error={error} />
+			{gated === null ? <ConsoleFailure error={error} /> : <CloudflareGateFace gate={gated.gate} />}
 		</PanelRoute>
 	);
 }

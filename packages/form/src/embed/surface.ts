@@ -68,9 +68,10 @@ type Part = {
 	/** whether this page load is a return from this processor's own window. */
 	claimsReturn(): Promise<boolean>;
 	/**
-	 * whether a repeating gift can be paid through it: a fund and crypto are one-time rails
-	 * (`fundIsOffered` and `cryptoIsOffered` in ../checkout.machine.ts), and so is Venmo
-	 * (`venmoIsOffered`), which leaves PayPal's window one only where the config offers `paypal`.
+	 * whether a repeating gift can be paid through it, as far as the config says: a fund and crypto
+	 * are one-time rails (`fundIsOffered` and `cryptoIsOffered` in ../checkout.machine.ts), and so is
+	 * Venmo (`venmoIsOffered`), which leaves PayPal's window one only where the config offers `paypal`
+	 * — and only until PayPal says it cannot start one here (`unrepeatableAt` below).
 	 */
 	readonly repeats: boolean;
 };
@@ -97,10 +98,10 @@ export type ComposedPaymentSurface = PaymentSurface & {
 	offerVenmo(offered: boolean): void;
 	rows(listener: (count: number) => void): void;
 	/**
-	 * `listener` called once every processor that takes a repeating gift has said it never came up
-	 * while one taking a one-time gift is still up — now, where that has already happened, or when it
-	 * does. one listener; a second call replaces the first. `createPaymentSurface` below says why
-	 * this is not `onUnavailable`.
+	 * `listener` called once every processor that takes a repeating gift has said it never came up,
+	 * or that it cannot start one here, while one taking a one-time gift is still up — now, where
+	 * that has already happened, or when it does. one listener; a second call replaces the first.
+	 * `createPaymentSurface` below says why this is not `onUnavailable`.
 	 */
 	repeatingUnavailable(listener: () => void): void;
 };
@@ -192,7 +193,9 @@ export function createPaymentSurface(
 	 * once too, to `repeatingUnavailable`, and is not a form with no way to pay: the flow offers the
 	 * donor the one-time gift instead. it is a fact about the processors rather than the cadence,
 	 * because a processor that never came up does not come up later, and the flow is what knows
-	 * which cadence the donor is on.
+	 * which cadence the donor is on. a processor that is up and cannot start a repeating gift here
+	 * counts the same way — PayPal, where it will not start a subscription for this buyer — and it
+	 * says so through a reporter of its own, because nothing about it is down.
 	 *
 	 * a processor is counted by the place it is built in, because its reporter is handed over before
 	 * its part exists — and PayPal's adapter can report inside its own constructor, so nothing is
@@ -203,21 +206,23 @@ export function createPaymentSurface(
 	let building = true;
 	const down = new Set<number>();
 	const up = (at: number): boolean => !down.has(at);
+	const unrepeatable = new Set<number>();
+	const repeatsAt = (part: Part, at: number): boolean => part.repeats && !unrepeatable.has(at);
 	let repeatingDown = false;
 	let repeatingListener: (() => void) | null = null;
 	const sayWhatIsLeft = (): void => {
-		if (building || said || unsaid === null) return;
+		if (building || said || (unsaid === null && unrepeatable.size === 0)) return;
 		const oneTimeOffered = config.frequencies.includes('one_time');
 		const repeatingOffered = config.frequencies.some((frequency) => frequency !== 'one_time');
-		const takesAGift = (part: Part): boolean =>
-			oneTimeOffered || (part.repeats && repeatingOffered);
-		if (!parts.some((part, at) => up(at) && takesAGift(part))) {
+		const takesAGift = (part: Part, at: number): boolean =>
+			oneTimeOffered || (repeatsAt(part, at) && repeatingOffered);
+		if (unsaid !== null && !parts.some((part, at) => up(at) && takesAGift(part, at))) {
 			said = true;
 			onUnavailable(unsaid);
 			return;
 		}
 		if (repeatingDown || !repeatingOffered) return;
-		if (parts.some((part, at) => up(at) && part.repeats)) return;
+		if (parts.some((part, at) => up(at) && repeatsAt(part, at))) return;
 		repeatingDown = true;
 		repeatingListener?.();
 	};
@@ -227,6 +232,14 @@ export function createPaymentSurface(
 		return (failure) => {
 			if (unsaid === null) unsaid = failure;
 			down.add(at);
+			sayWhatIsLeft();
+		};
+	};
+	/** the same, for a processor that is up and cannot start a repeating gift on this page. */
+	const unrepeatableAt = (): (() => void) => {
+		const at = parts.length;
+		return () => {
+			unrepeatable.add(at);
 			sayWhatIsLeft();
 		};
 	};
@@ -327,6 +340,7 @@ export function createPaymentSurface(
 			open(),
 			(rail) => reported(part, rail),
 			heldAt(),
+			unrepeatableAt(),
 			seams?.paypal
 		);
 		const part: Part = {

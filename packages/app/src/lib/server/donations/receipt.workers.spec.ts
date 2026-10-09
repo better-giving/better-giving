@@ -305,12 +305,12 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 
 		const text = alertText(mail.sent);
 		expect(text).toContain(
-			'This gift carries $6.00 recorded as not deductible, and this deployment records no goods ' +
-				'or services against any gift, so its receipt cannot say what that amount was for.'
+			'This gift has $6.00 marked as not tax-deductible, but nothing is recorded as given in ' +
+				'return, so the receipt can’t explain it.'
 		);
 		// no screen edits the amount, so the operator is sent to none.
-		expect(text).toContain('no screen edits it');
-		expect(text).not.toContain('organisation’s details');
+		expect(text).toContain('changed outside the app and needs correcting there');
+		expect(text).not.toContain('go to Organisation');
 		expect(await stampOf()).toBeNull();
 	});
 
@@ -325,9 +325,9 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 
 		const text = alertText(mail.sent);
 		expect(text).toContain(
-			'This gift is recorded with a processing fee of $30.00 against a payment of $25.00.'
+			'This gift records a $30.00 processing fee that doesn’t fit its $25.00 payment.'
 		);
-		expect(text).not.toContain('organisation’s details');
+		expect(text).not.toContain('go to Organisation');
 	});
 
 	it('sends an organisation missing a receipt detail to the console', async () => {
@@ -336,7 +336,7 @@ describe('sendReceipt() — what the operator is told to do about a refusal', ()
 		await sendReceipt(deps(mail.port), target());
 
 		expect(alertText(mail.sent)).toContain(
-			'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+			'Open the console (run `better-giving start`), go to Organisation and fill in what’s missing.'
 		);
 	});
 });

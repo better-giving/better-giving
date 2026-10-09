@@ -30,12 +30,23 @@ import type { Route as LoginRoute } from './+types/login';
 // than imported: a spec that imported another spec's helpers would make one file's clean-up decide
 // another file's isolation.
 
-/** what the route handed the mailer, in order. */
-const sent = vi.hoisted(() => [] as { to: string; subject: string; html: string; text: string }[]);
+type Message = { to: string; subject: string; html: string; text: string };
+
+/** what the transport delivered, in order. */
+const sent = vi.hoisted(() => [] as Message[]);
+
+/**
+ * how the transport answers a send. `null` delivers at once; a case that sets one answers for
+ * itself, and the next case starts from `null` again.
+ */
+const transport = vi.hoisted(() => ({
+	answer: null as null | ((message: Message) => Promise<unknown>)
+}));
 
 vi.mock('$lib/server/email/factory', () => ({
 	createEmailProvider: () => ({
-		async send(message: { to: string; subject: string; html: string; text: string }) {
+		async send(message: Message) {
+			if (transport.answer !== null) return transport.answer(message);
 			sent.push(message);
 			return { ok: true as const };
 		}
@@ -129,6 +140,7 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from auth_user').run();
 	await env.DB.prepare('delete from org_profile').run();
 	sent.length = 0;
+	transport.answer = null;
 });
 
 describe('GET /forgot', () => {
@@ -165,16 +177,29 @@ function typed(email: string): FormData {
 	return body;
 }
 
+/** how many callers `post` has made up, so each is its own `/48` and its own fresh bucket. */
+let callersMinted = 0;
+
+/**
+ * the form submitted from `ip`, which is what the edge writes as `cf-connecting-ip`.
+ *
+ * left out, the caller is a new address every call, which is what production looks like — every
+ * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * not attribute: no header at all.
+ */
 async function post(
 	body: FormData,
-	{ ip, deployed = DEPLOYED }: { ip?: string; deployed?: typeof DEPLOYED } = {}
+	{
+		ip = `2001:db8:${(0x1000 + callersMinted++).toString(16)}::1`,
+		deployed = DEPLOYED
+	}: { ip?: string | null; deployed?: typeof DEPLOYED } = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
-	if (ip) headers.set('cf-connecting-ip', ip);
+	if (ip !== null) headers.set('cf-connecting-ip', ip);
 	const answer = await action(
 		args(new Request(`${ORIGIN}/forgot`, { method: 'POST', headers, body }), deployed)
 	);
-	// the send is handed to `waitUntil` rather than awaited, so the message only exists once the
+	// the reset is handed to `waitUntil` rather than awaited, so the message only exists once the
 	// isolate has finished the work the request left behind.
 	await waitOnExecutionContext(running);
 	return answer;
@@ -187,6 +212,14 @@ async function refused(...call: Parameters<typeof post>): Promise<Refused> {
 	// itself — the accepted arm is the bare `{ sent: true }`.
 	if (!('data' in answer)) throw new Error('the request was accepted instead of refused');
 	return answer;
+}
+
+/** how many reset links D1 holds, live or not. */
+async function resetLinks(): Promise<number> {
+	const row = await env.DB.prepare(
+		"select count(*) as n from auth_verification where identifier like 'reset-password:%'"
+	).first<{ n: number }>();
+	return row?.n ?? 0;
 }
 
 /** the form-level sentence a refusal carries, which is what the banner renders. */
@@ -245,6 +278,109 @@ describe('POST /forgot', () => {
 			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
 		});
 		expect(sent).toHaveLength(0);
+	});
+
+	/**
+	 * the answer waits on none of the work. a member's request writes a row and sends a message a
+	 * stranger's does not, so a request that waited for either would answer a member more slowly — a
+	 * stopwatch would say who works here. the transport is held shut until the action has answered:
+	 * an action that waited on the work would wait on the transport too, and never answer.
+	 */
+	it('answers a member while the link’s message is still held, and sends it once released', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		let release = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		transport.answer = async (message) => {
+			await held;
+			sent.push(message);
+			return { ok: true };
+		};
+		const headers = new Headers({ origin: ORIGIN, 'cf-connecting-ip': '203.0.113.70' });
+		const request = new Request(`${ORIGIN}/forgot`, {
+			method: 'POST',
+			headers,
+			body: typed('nadia@riverbanktrust.org')
+		});
+
+		const answer = await action(args(request));
+		const sentWhenAnswered = sent.length;
+		release();
+		await waitOnExecutionContext(running);
+
+		expect(answer).toEqual({ sent: true });
+		expect(sentWhenAnswered).toBe(0);
+		expect(await resetLinks()).toBe(1);
+		expect(sent.map((message) => message.to)).toEqual(['nadia@riverbanktrust.org']);
+	});
+
+	/**
+	 * a transport that fails is the deployment's to read, for the reason the failing-reset case
+	 * further down states: a page that said so would say so only for an address this deployment has.
+	 */
+	it('answers a member the same when the transport refuses the message, and logs why', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		transport.answer = async () => ({
+			ok: false,
+			reason: 'connect_failed',
+			detail: 'No route to smtp.example.org on port 587.',
+			indeterminate: false
+		});
+
+		const answer = await post(typed('nadia@riverbanktrust.org'));
+
+		expect(answer).toEqual({ sent: true });
+		expect(sent).toEqual([]);
+		const line = logged.mock.calls.flat().join(' ');
+		expect(line).toContain('a reset link could not be sent');
+		expect(line).toContain('No route to smtp.example.org on port 587.');
+	});
+
+	it('answers a member the same when the transport throws, and logs the throw', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		transport.answer = async () => {
+			throw new Error('the socket closed mid-greeting');
+		};
+
+		const answer = await post(typed('nadia@riverbanktrust.org'));
+
+		expect(answer).toEqual({ sent: true });
+		expect(sent).toEqual([]);
+		expect(logged.mock.calls.flat().map(String).join(' ')).toContain(
+			'the socket closed mid-greeting'
+		);
+	});
+
+	/**
+	 * a reset that fails is the deployment's fault and the log's to report. a member's request fails
+	 * at the write and a stranger's at the read, and a page that waited to say so would be the same
+	 * stopwatch as above — so both are answered as if it worked, and the cause is in the log once the
+	 * work has run. a fork that skipped a migration is the case: no `auth_verification` table.
+	 */
+	it.each([
+		['a member', 'nadia@riverbanktrust.org'],
+		['an address nobody here has', 'stranger@example.org']
+	])('answers %s the same when the reset fails, and logs why', async (_, email) => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await env.DB.prepare('alter table auth_verification rename to auth_verification_away').run();
+		try {
+			const answer = await post(typed(email));
+
+			expect(answer).toEqual({ sent: true });
+			expect(logged.mock.calls.flat().join(' ')).toContain('a password reset request failed');
+			expect(sent).toEqual([]);
+		} finally {
+			await env.DB.prepare('alter table auth_verification_away rename to auth_verification').run();
+			logged.mockRestore();
+		}
 	});
 
 	it('refuses an empty box under the box, and mails nobody', async () => {
@@ -321,5 +457,58 @@ describe('the limit on POST /forgot', () => {
 		} as LoginRoute.ActionArgs);
 
 		expect(attempt instanceof Response ? 0 : attempt.init?.status).toBe(429);
+	});
+});
+
+describe('the limit on POST /forgot — a caller the edge did not attribute', () => {
+	/**
+	 * no address means no bucket to charge, and the bucket is the whole of what bounds this form
+	 * mailing whoever it is told to. a member's address is the case that discriminates: refused with
+	 * no message sent is a refusal made before the reset was requested, where a stranger's address
+	 * would send nothing either way.
+	 */
+	it.each([
+		['with no address header', null],
+		['with a header that is not an address', 'not-an-address']
+	])('refuses a request %s, before the body is read, and mails nobody', async (_, ip) => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typed('nadia@riverbanktrust.org'), { ip });
+
+		expect(answer.init?.status).toBe(403);
+		expect(answer.data.form.result.initialValue).toEqual({});
+		expect(sent).toEqual([]);
+	});
+
+	/**
+	 * the person who can fix it is whoever runs the deployment, so the sentence carries the cause and
+	 * the usual switch behind it — and nothing about the address typed, which was never read.
+	 */
+	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+		const answer = await refused(typed('nadia@riverbanktrust.org'), { ip: null });
+
+		expect(banner(answer)).toMatch(/^A reset link could not be sent\./);
+		// the only box on this page is an email address, so "your address" alone reads as that.
+		expect(banner(answer)).toContain('your connection’s IP address');
+		expect(banner(answer)).toContain('Remove visitor IP headers');
+	});
+
+	/**
+	 * and the other half, so the refusal above is about the missing address: one attributed address
+	 * gets the member's link, and keeps getting one until its bucket is spent.
+	 */
+	it('mails an attributed caller the link, and charges every request to their address', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const statuses: number[] = [];
+		for (let i = 0; i < 50 && statuses.at(-1) !== 429; i++) {
+			const answer = await post(typed('nadia@riverbanktrust.org'), { ip: '203.0.113.60' });
+			statuses.push('data' in answer ? (answer.init?.status ?? 200) : 200);
+		}
+
+		expect(statuses[0]).toBe(200);
+		expect(statuses.at(-1)).toBe(429);
+		expect(sent).toHaveLength(statuses.length - 1);
 	});
 });

@@ -2,6 +2,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { projectTribute } from '../../donations/tributes';
 import type { Db } from '../db/client';
 import { donation } from '../db/schema';
+import {
+	FILL_IN_ORG_DETAILS,
+	NO_RESEND,
+	SEND_THIS_TO_WHOEVER_SET_IT_UP,
+	TEST_THE_SMTP_SETTINGS
+} from '../email/alert';
 import { renderTributeNotice } from '../email/tribute';
 import { readOrgProfile } from '../org/queries';
 import { alert, type SettleDeps } from './delivery';
@@ -119,16 +125,16 @@ export async function sendTributeNotice(
 		if (!rendered.ok) {
 			await release(deps.db, target.donationId);
 			await alert(deps, {
-				headline: 'A gift was recorded and the person it was dedicated to could not be told',
+				headline: 'The person a donor asked you to notify wasn’t told',
 				body:
-					'The gift is in the books. The donor asked that somebody be told it was made, and the ' +
-					'notice could not be written. Nothing will try again on its own.',
+					'A donor asked you to let someone know about their dedicated gift, and that email ' +
+					'couldn’t be prepared. The gift is recorded and safe. Nothing will resend this email ' +
+					'automatically.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
+					{ label: 'Gift ID', value: target.donationId },
 					{ label: 'Reason', value: rendered.detail }
 				],
-				action:
-					'Open the console (`better-giving start`) and fill in the organisation’s details under Organisation.'
+				action: `${FILL_IN_ORG_DETAILS}${NO_RESEND}`
 			});
 			return 'not_sent';
 		}
@@ -140,18 +146,17 @@ export async function sendTributeNotice(
 			// wrote to.
 			await release(deps.db, target.donationId);
 			await alert(deps, {
-				headline: 'A gift was recorded and the person it was dedicated to could not be told',
+				headline: 'The person a donor asked you to notify wasn’t told',
 				body:
-					'The gift is in the books. The person the donor asked us to tell was not written to, ' +
-					'and nothing will try again on its own.',
+					'A donor asked you to let someone know about their dedicated gift, and that email ' +
+					'failed to send. The gift is recorded and safe. Nothing will resend it automatically.',
 				facts: [
-					{ label: 'Donation', value: target.donationId },
-					{ label: 'Reason', value: sent.reason },
-					{ label: 'Detail', value: sent.detail },
-					{ label: 'May have sent anyway', value: sent.indeterminate ? 'yes' : 'no' }
+					{ label: 'Gift ID', value: target.donationId },
+					{ label: 'What went wrong', value: sent.detail },
+					{ label: 'May have been delivered anyway', value: sent.indeterminate ? 'yes' : 'no' },
+					{ label: 'Error code', value: sent.reason }
 				],
-				action:
-					'Check the SMTP settings on the console (`better-giving start`) and send a test message.'
+				action: `${TEST_THE_SMTP_SETTINGS}${NO_RESEND}`
 			});
 			return 'not_sent';
 		}
@@ -192,18 +197,16 @@ async function faulted(deps: SettleDeps, donationId: string, error: unknown): Pr
 
 	try {
 		await alert(deps, {
-			headline: 'A gift was recorded and the person it was dedicated to could not be told',
+			headline: 'The person a donor asked you to notify wasn’t told',
 			body:
-				'The gift is in the books and the step that writes to them failed outright. The donor ' +
-				'asked that somebody be told the gift was made, and nobody was.',
+				'A donor asked you to let someone know about their dedicated gift, and sending that ' +
+				'email failed with an unexpected error. The gift is recorded and safe. Nothing will ' +
+				'resend it automatically.',
 			facts: [
-				{ label: 'Donation', value: donationId },
+				{ label: 'Gift ID', value: donationId },
 				{ label: 'Reason', value: error instanceof Error ? error.message : String(error) }
 			],
-			action:
-				'Check the SMTP settings on the console (`better-giving start`) and send a test message. The ' +
-				'cause is in this deployment’s logs (the Cloudflare dashboard, or `pnpm run logs` from a ' +
-				'checkout).'
+			action: `${TEST_THE_SMTP_SETTINGS}${SEND_THIS_TO_WHOEVER_SET_IT_UP}${NO_RESEND}`
 		});
 	} catch {
 		// nothing to report it to, and nothing on this path may throw.

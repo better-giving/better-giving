@@ -1,6 +1,11 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { ClientActionFunctionArgs } from 'react-router';
+import {
+	createMemoryRouter,
+	data,
+	RouterProvider,
+	type ClientActionFunctionArgs
+} from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Connection, VarsWritten } from '../api/types';
 
@@ -103,5 +108,74 @@ describe('a connect press the deployment refused for this machine’s clock', ()
 	it('puts no cloudflare quotation over them', () => {
 		expect(drawn).not.toContain('Cloudflare');
 		expect(drawn).not.toContain('adm-cmd');
+	});
+});
+
+describe('a connect press whose session this machine could not write down', () => {
+	const connection: Connection = {
+		kind: 'unkept',
+		expiresAt: '',
+		origin: 'https://example.workers.dev',
+		detail: 'open /home/op/.config/better-giving/session.json: permission denied',
+		message: null,
+		fix: null
+	};
+	const drawn = renderToStaticMarkup(
+		createElement(home.ConnectOutcome, {
+			connected: connection,
+			workerName: 'better-giving',
+			accountName: 'Example'
+		})
+	);
+	const read = drawn.replace(/<[^>]+>/g, '');
+
+	it('says the deployment holds the session and the folder is the way out', () => {
+		expect(read).toContain('This deployment holds the console');
+		expect(read).toContain('Make the folder named below writable');
+	});
+
+	it('shows the error that names the folder, and keeps cloudflare out of it', () => {
+		expect(drawn).toContain('session.json: permission denied');
+		expect(read).not.toContain('Cloudflare');
+	});
+});
+
+/**
+ * `/` sits straight under the root, and the root draws no boundary of its own, so a gate handed on
+ * from here would reach react router's default error page. no loader of `/`'s throws one today;
+ * this is what keeps one that did on the console's own face.
+ */
+describe('a gate thrown to `/`', () => {
+	it('is drawn as the gate rather than handed on', async () => {
+		// thrown the way `notReady` in ../lib/console-reading.ts throws one.
+		const gated = {
+			gate: { title: 'Cloudflare turned this sign-in down', sentence: null, retry: false },
+			account: 'Riverbank Trust',
+			accountId: '8f3c2a1b',
+			remembered: true,
+			notKept: null,
+			version: '1.4.0'
+		};
+		const router = createMemoryRouter([
+			{
+				path: '/',
+				loader: () => {
+					throw data(gated, { status: 503 });
+				},
+				Component: () => null,
+				// the module as the framework hands it over, its props read off the router.
+				ErrorBoundary: home.ErrorBoundary as never
+			}
+		]);
+		try {
+			await vi.waitFor(() => expect(router.state.initialized).toBe(true));
+
+			const page = renderToStaticMarkup(createElement(RouterProvider, { router }));
+
+			expect(page).toContain('Cloudflare turned this sign-in down');
+			expect(page).not.toContain('This part of the console failed');
+		} finally {
+			router.dispose();
+		}
 	});
 });

@@ -61,6 +61,14 @@ func TestHeldIsTheRecordAtTheFurthestExpiryADeploymentAccepts(t *testing.T) {
 	}
 }
 
+// the deployment refuses only an expiry before its now, so a session ending at now is still one.
+func TestHeldIsTheRecordAtTheInstantItEnds(t *testing.T) {
+	store := recorded(t, `{"workerName":"better-giving","origin":"https://x.workers.dev","token":"bg1.1800000000.`+random+`"}`)
+	if Held(store, "better-giving", time.Unix(1_800_000_000, 0)) == nil {
+		t.Error("a session ending at now was read as none, where the deployment still accepts it")
+	}
+}
+
 func TestHeldIsTheRecordWhereItIsThisDeploymentsAndStillOne(t *testing.T) {
 	store := recorded(t, `{"workerName":"better-giving","origin":"https://x.workers.dev","token":"bg1.1800000000.`+random+`"}`)
 	held := Held(store, "better-giving", time.Unix(1_800_000_000-60*60, 0))
@@ -87,6 +95,9 @@ func TestHeldIsNothingWhereTheRecordIsAnotherDeploymentsOrGone(t *testing.T) {
 	}
 	if Held(recorded(t, live), "better-giving", time.Unix(1_800_000_001, 0)) != nil {
 		t.Error("a session past its expiry answered as one")
+	}
+	if Held(recorded(t, live), "better-giving", time.Unix(1_800_000_000, int64(time.Millisecond))) != nil {
+		t.Error("a session a millisecond past its expiry answered as one, where the deployment refuses it")
 	}
 	if Held(recorded(t, live), "better-giving", time.Unix(1_800_000_000-sessionSeconds-clockSkewSeconds-1, 0)) != nil {
 		t.Error("a session ending further out than a deployment accepts answered as one")

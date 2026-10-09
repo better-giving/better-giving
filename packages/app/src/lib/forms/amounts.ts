@@ -197,11 +197,15 @@ export function majorEntry(amountMinor: number, currency: string): string {
  */
 export const MAX_SUGGESTED_AMOUNTS = 12;
 
+/** the sentence a list over `MAX_SUGGESTED_AMOUNTS` is refused with. */
+const TOO_MANY_SUGGESTED_AMOUNTS = `at most ${MAX_SUGGESTED_AMOUNTS}`;
+
 /**
- * the sentence a list over `MAX_SUGGESTED_AMOUNTS` is refused with. exported because the editor's
- * Add says it too, when a press at the cap is held, and the two have to be one sentence.
+ * the sentence the editor's Add is held with, once the boxes already hold `MAX_SUGGESTED_AMOUNTS`
+ * different amounts. the save's refusal above is a predicate under the group's legend; this one
+ * answers a press on a button, so it is said whole.
  */
-export const TOO_MANY_SUGGESTED_AMOUNTS = `at most ${MAX_SUGGESTED_AMOUNTS}`;
+export const SUGGESTED_AMOUNTS_HELD = `You can suggest up to ${MAX_SUGGESTED_AMOUNTS} different amounts.`;
 
 /**
  * a figure as the operator who typed it reads it back.
@@ -215,6 +219,30 @@ export const TOO_MANY_SUGGESTED_AMOUNTS = `at most ${MAX_SUGGESTED_AMOUNTS}`;
  * anything else would name a figure the parser never read.
  */
 const money = (amountMinor: number) => formatMinorBrief(amountMinor, FORM_CURRENCY);
+
+/**
+ * the boxes the count cap counts: each amount once, at the row it first appears in — `25` and
+ * `25.00` are one amount — and a box that reads as no amount once per text it holds, trimmed. a blank
+ * box is not counted.
+ *
+ * exported because the editor's Add is held by this count too, and a press refused at a count the
+ * save would not refuse — twelve boxes with one of them blank — is the two disagreeing about one
+ * list. by amount rather than by text because that is what is stored, so `SUGGESTED_AMOUNTS_HELD`
+ * never claims more different amounts than the list would hold.
+ */
+export function suggestedEntries(rows: readonly string[]): { row: number; text: string }[] {
+	const seen = new Set<number | string>();
+	const entries: { row: number; text: string }[] = [];
+	rows.forEach((entry, row) => {
+		const text = entry.trim();
+		if (text.length === 0) return;
+		const key = readAmount(text, FORM_CURRENCY).minor ?? text;
+		if (seen.has(key)) return;
+		seen.add(key);
+		entries.push({ row, text });
+	});
+	return entries;
+}
 
 /**
  * the suggested amounts as the repeating row editor submits them, checked against this form's own
@@ -252,10 +280,10 @@ const money = (amountMinor: number) => formatMinorBrief(amountMinor, FORM_CURREN
  * their amounts are outside a bound nobody set.
  *
  * the repeats come out before the count is taken, because the cap and the dedupe are the same paste
- * read twice and they have to agree about it: a repeat is "a paste rather than a mistake" below, so
- * a group that would store twelve tiles cannot be refused for holding fifteen boxes. two spellings
- * of one amount — `25` and `25.00` — survive that pass and are caught by the numeric dedupe further
- * down, which is the one the stored list is built from.
+ * read twice and they have to agree about it: a repeat is a paste rather than a mistake, so a group
+ * that would store twelve tiles cannot be refused for holding fifteen boxes. a repeat is one amount
+ * however it is written — `25` and `25.00` — and `suggestedEntries` is the one dedupe, for the count
+ * and the stored list alike.
  */
 export function readSuggestedAmounts(
 	rows: readonly string[],
@@ -266,14 +294,7 @@ export function readSuggestedAmounts(
 	problem: string | null;
 	problems: ReadonlyArray<{ row: number; problem: string }>;
 } {
-	const seen = new Set<string>();
-	const entries: { row: number; text: string }[] = [];
-	rows.forEach((entry, row) => {
-		const text = entry.trim();
-		if (text.length === 0 || seen.has(text)) return;
-		seen.add(text);
-		entries.push({ row, text });
-	});
+	const entries = suggestedEntries(rows);
 
 	if (entries.length > MAX_SUGGESTED_AMOUNTS) {
 		// checked instead of the entries, not alongside them: a paste of fifty boxes would otherwise
@@ -305,10 +326,9 @@ export function readSuggestedAmounts(
 			problems.push({ row, problem: `must be less than largest gift of ${money(maxMinor)}` });
 			continue;
 		}
-		// a repeat is a paste rather than a mistake, and two identical tiles is what storing it
-		// would render. first-seen order is kept: the order is the operator's, and it is the
-		// order the buttons appear in.
-		if (!amounts.includes(amount)) amounts.push(amount);
+		// a repeat never arrives here, in any spelling (`suggestedEntries`). first-seen order is
+		// kept: the order is the operator's, and it is the order the buttons appear in.
+		amounts.push(amount);
 	}
 
 	return { amounts, problem: null, problems };

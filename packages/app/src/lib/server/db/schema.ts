@@ -1680,7 +1680,30 @@ export const payment = sqliteTable(
 		 * not a key: unindexed, held unique by nothing, and no read looks a row up by it. the
 		 * processor's key for a row is `provider_txn_id`.
 		 */
-		providerReference: text('provider_reference')
+		providerReference: text('provider_reference'),
+		/**
+		 * on a `direction = 'refund'` row, since when its donor is owed a notice of it: set by
+		 * ../donations/reverse.ts on a refund that tells its donor, in the batch that writes it,
+		 * and cleared by ../donations/refund-notice.ts once nothing more is owed — the notice went,
+		 * there is nobody to send it to, the donor's address is refused, a second run's send of it
+		 * may have gone, or its week is up. while set, `sendOwedRefundNotices` there sends it again
+		 * for a week after the refund, and the first run after that clears it and tells staff; a row
+		 * no run reads within `GIVE_UP_READ_MS` of its week stays set.
+		 *
+		 * null on every other row: a dispute's withdrawal, a refund written in the delivery that
+		 * settled its gift (`RefundNotice` in ../donations/reverse.ts), any refund written before
+		 * the column, and every inbound payment. a writer that forgets it owes nobody an email.
+		 *
+		 * a record of an email and never of money: no total reads it.
+		 */
+		noticeOwedSince: at('notice_owed_since'),
+		/**
+		 * on a refund whose notice is owed, when a run's send of it last came back unsure whether it
+		 * went (`indeterminate` on `SendResult` in ../email/provider.ts). the next run that comes back
+		 * unsure stops owing it (../donations/refund-notice.ts); null where no run has. read only
+		 * while `notice_owed_since` is set, and, like it, a record of an email and never of money.
+		 */
+		noticeMaybeSentAt: at('notice_maybe_sent_at')
 	},
 	(t) => [
 		check('payment_direction_check', enumCheck(t.direction, PAYMENT_DIRECTIONS)),

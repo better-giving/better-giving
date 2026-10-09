@@ -12,7 +12,8 @@ import {
 	MAX_SUGGESTED_AMOUNTS,
 	majorEntry,
 	readAmount,
-	TOO_MANY_SUGGESTED_AMOUNTS
+	SUGGESTED_AMOUNTS_HELD,
+	suggestedEntries
 } from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
@@ -50,13 +51,16 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // and marks no row with it, which is why it is not handed to `RepeatingRows` as the group's `error`.
 //
 // the one control that sentence is about is Add, so Add is described by it too, and Add is where
-// the cap is kept: once the screen has hydrated, a press at `MAX_SUGGESTED_AMOUNTS` rows adds
-// nothing and draws the sentence until the rows change. before hydration Add is the plain intent
-// submit and the row is added, and the save is what refuses the list. a save refused by the cap is
-// answered at Add as well — the bare name is on no box, so conform's failed-submit walk focuses
-// nothing (`report` in @conform-to/dom's form.js matches a box's `name` and never a button), and
-// the group moves focus to Add itself, unless the walk has already moved it to a box some other
-// rule refused.
+// the cap is kept: once the screen has hydrated, a press while the boxes hold
+// `MAX_SUGGESTED_AMOUNTS` different amounts adds nothing and draws `SUGGESTED_AMOUNTS_HELD` until
+// the rows change. the count is `suggestedEntries`, the one the save takes, read off the boxes at
+// the press — so neither a blank box nor a second box holding an amount already counted, however
+// it is written, holds Add, as neither adds a tile to what the save would store. every press on a
+// held Add says the sentence again. before hydration Add is the plain intent submit and the row is
+// added, and the save is what refuses the list. a save refused by the cap is answered at Add as
+// well — the bare name is on no box, so conform's failed-submit walk focuses nothing (`report` in
+// @conform-to/dom's form.js matches a box's `name` and never a button), and the group moves focus
+// to Add itself, unless the walk has already moved it to a box some other rule refused.
 //
 // the bounds carry a slider over their two boxes, and it is the one control here that is not a
 // box: it moves along `BOUND_STOPS` below, writes the stop a thumb lands on into that thumb's box,
@@ -179,11 +183,16 @@ type FormGivingFieldsProps = {
 
 export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivingFieldsProps) {
 	// the rows a press was held over at the cap. the sentence stands while they are the rows on
-	// screen, and goes the moment one is added or dropped.
+	// screen, and goes the moment one is added or dropped. it is the answer to the latest press, so
+	// it stands over a save's refusal of the same group.
 	const identities = amounts.rows.map((row) => row.key ?? row.id).join('\n');
 	const [heldOver, setHeldOver] = useState<string | null>(null);
-	const capError =
-		amounts.errors?.[0] ?? (heldOver === identities ? TOO_MANY_SUGGESTED_AMOUNTS : undefined);
+	const capError = heldOver === identities ? SUGGESTED_AMOUNTS_HELD : amounts.errors?.[0];
+
+	// the presses held at the cap, which key the message. it is an alert, and an alert handed the
+	// words it is holding is announced by nobody, while one inserted with them is announced — so each
+	// press inserts its own, and the line on screen never goes blank between two.
+	const [heldPresses, setHeldPresses] = useState(0);
 
 	const capErrorId = boxErrorId(amounts.id);
 	const addId = `${amounts.id}-add`;
@@ -192,8 +201,11 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 		id: addId,
 		...(capError ? { 'aria-describedby': capErrorId } : {}),
 		onClick(event: MouseEvent<HTMLButtonElement>) {
-			if (amounts.rows.length >= MAX_SUGGESTED_AMOUNTS) {
+			const form = event.currentTarget.form;
+			const texts = amounts.rows.map((row) => textIn(form, row.name));
+			if (suggestedEntries(texts).length >= MAX_SUGGESTED_AMOUNTS) {
 				event.preventDefault();
+				setHeldPresses((at) => at + 1);
 				setHeldOver(identities);
 				return;
 			}
@@ -457,7 +469,7 @@ export function FormGivingFields({ boxes, amounts, currency, footer }: FormGivin
 				/>
 
 				{capError ? (
-					<FieldMessage id={capErrorId}>
+					<FieldMessage key={heldPresses} id={capErrorId}>
 						<MarkedText text={capError} />
 					</FieldMessage>
 				) : null}

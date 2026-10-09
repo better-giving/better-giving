@@ -55,9 +55,12 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     lands in is out of `hidden`. the one first paint that takes it is a second gift's, and only
 //     where the caret was inside the card when Back to start was pressed: that press remounts the
 //     card under the caret, so the rebuilt card puts it on its first heading — and a caret the
-//     donor had already taken elsewhere on the page is left there. one takeover replacing another
-//     is no screen change and can hide that control too, so it is taken back to the heading from
-//     inside the takeover.
+//     donor had already taken elsewhere on the page is left there. a stamped return with no token
+//     is no first paint but a screen change: the route drew the resume's takeover and the live flow
+//     starts on the amount step, so the step's heading takes the caret unless the donor put it on
+//     the host page, where the region says it instead. one takeover replacing another is no
+//     screen change and can hide that control too, so it is taken back to the heading from inside
+//     the takeover.
 //   - what is said out loud, on one channel, decided in one place.
 //
 // the two mount nodes are the card's and the checkout's between them: this file renders them and
@@ -111,6 +114,14 @@ function visibleStep(state: State, last: Screen): Screen {
 	return 'takeover';
 }
 
+/**
+ * a sentence a moment on a numbered step said, rather than one the step says while it stands.
+ *
+ * `restating` names what it states that a later snapshot on the same step can make false — the total
+ * it read out, or the fields it asked for — and it is said no longer than that stands.
+ */
+type News = { readonly words: string; readonly restating?: 'total' | 'fields' };
+
 /** what a busy flow says out loud, which is not one sentence: a mint and a charge are different news. */
 function workingWords(state: State): string {
 	return state.step === 'working' && state.phase === 'confirming'
@@ -143,7 +154,8 @@ export type DonateCardProps = {
 	 *
 	 * true draws the resume's takeover from the first paint, server and hydration alike, and the live
 	 * flow carries on from it once it has claimed the token. it says nothing about the token itself:
-	 * a stamp that arrived without one hands the donor the amount step as soon as the flow starts.
+	 * a stamp that arrived without one hands the donor the amount step as soon as the flow starts,
+	 * which the card treats as a move off the takeover rather than a first paint.
 	 */
 	readonly resuming?: boolean;
 };
@@ -272,6 +284,11 @@ function CheckoutCard({
 
 	/** whether a press has already asked the amount step for a decision it did not have. */
 	const [asked, setAsked] = useState(false);
+	/**
+	 * whether the last such press found the caret already on the box it would send it to, which is
+	 * the one press the region says the amount's refusal for.
+	 */
+	const [askedInPlace, setAskedInPlace] = useState(false);
 	/** the same for the details step, kept apart because the two are refused on different presses. */
 	const [attempted, setAttempted] = useState(false);
 	/** and the same for the one thing the review step can refuse a press for. */
@@ -289,8 +306,9 @@ function CheckoutCard({
 	/** the press that asked for a sentence to be said again, which is the only thing a repeat has. */
 	const [nonce, setNonce] = useState(0);
 	/**
-	 * a sentence one press asked for. a refusal or a one-time switch is spent by the snapshot it was
-	 * asked on; a Copy's is kept by the heading it was pressed under, in `on`.
+	 * a sentence one press asked for. a refusal or a one-time switch arrives on the snapshot it was
+	 * asked on and is kept from there as a `News`; a Copy's is kept by the heading it was pressed
+	 * under, in `on`.
 	 */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
@@ -332,10 +350,47 @@ function CheckoutCard({
 	// disagree wherever a press is refused for anything but the rail, and there the caret would land
 	// on a group with nothing said about why.
 	// a crypto gift's press is refused for its coin rather than its rail, and that is said in the coin
-	// list rather than on the box it stands in.
+	// list rather than on the box it stands in. and an offer of a one-time gift hides the box, so a
+	// refusal naming it is about nothing on screen: the offer is what the step is asking.
 	const onCrypto = api.state.step === 'give' && api.state.method === 'crypto';
 	const refusedPayment =
-		pressed && api.state.step === 'give' && !api.state.payerComplete && !onCrypto;
+		pressed &&
+		api.state.step === 'give' &&
+		!api.state.payerComplete &&
+		!onCrypto &&
+		!api.state.oneTimeInstead;
+
+	/**
+	 * what the last commit left the card holding, which is the only render a donor heard.
+	 *
+	 * every sentence that is kept past the snapshot it arrived on is kept here, and every reading one
+	 * is told from — the decline, the offer and the total as that commit drew them. only the effect
+	 * after a commit writes it: a render react throws away — strict mode's second pass, a suspended
+	 * render, one a newer snapshot overtook — neither keeps a sentence, spends one nor moves a reading
+	 * the next render is compared against.
+	 */
+	const kept = useRef<{
+		/** the Copy the region has moved on from, which is not said again. */
+		outsaid: typeof shot;
+		retitle: { on: string | null; words: string };
+		handed: { on: Screen | null; words: string };
+		decline: { words: string; on: boolean | null };
+		offer: string;
+		total: { step: State['step'] | null; figure: string };
+		/** a `News` the region is holding for the screen it was said on, or nothing. */
+		news: (News & { on: Screen }) | null;
+		/** the last press a commit answered, as `nonce` counts them. */
+		again: number;
+	}>({
+		outsaid: null,
+		retitle: { on: null, words: '' },
+		handed: { on: null, words: '' },
+		decline: { words: '', on: null },
+		offer: '',
+		total: { step: null, figure: '' },
+		news: null,
+		again: 0
+	});
 
 	/**
 	 * the reason a rail refused, taken off the takeover and kept for the step a retry lands on.
@@ -345,36 +400,30 @@ function CheckoutCard({
 	 * pressed Try again. only a rail's refusal is taken — every other way into `failed` says nothing
 	 * about the card the donor entered, and all of them read as if they did beside the payment fields.
 	 *
-	 * it is a reduction over transitions rather than a value, so it is cached against the snapshot it
-	 * was computed for: a re-render that is not a transition reads the same answer back.
+	 * it is a reduction over transitions rather than a value, so it is read against the decline the
+	 * last commit drew (`kept`): a re-render that is not a transition reads the same answer back.
 	 */
-	const decline = useRef<{ at: CheckoutSnapshot | null; words: string; on: boolean | null }>({
-		at: null,
-		words: '',
-		on: null
-	});
-	if (decline.current.at !== snapshot) {
-		const held = decline.current;
-		const state = api.state;
-		decline.current =
-			state.step === 'failed'
-				? { at: snapshot, words: state.refusedByRail === true ? state.message : '', on: null }
-				: state.step !== 'give'
-					? { at: snapshot, words: '', on: null }
-					: {
-							at: snapshot,
-							// `payable` is the whole of what this layer can read the rail off, so a picker
-							// emptied or refilled clears the sentence and a donor moving between two rails it
-							// can charge keeps it until they press.
-							words: held.on !== null && state.payable !== held.on ? '' : held.words,
-							on: held.on === null ? state.payable : held.on
-						};
-	}
+	const drawnDecline = kept.current.decline;
+	const decline =
+		api.state.step === 'failed'
+			? { words: api.state.refusedByRail === true ? api.state.message : '', on: null }
+			: api.state.step !== 'give'
+				? { words: '', on: null }
+				: {
+						// `payable` is the whole of what this layer can read the rail off, so a picker
+						// emptied or refilled clears the sentence and a donor moving between two rails it
+						// can charge keeps it until they press.
+						words:
+							drawnDecline.on !== null && api.state.payable !== drawnDecline.on
+								? ''
+								: drawnDecline.words,
+						on: drawnDecline.on ?? api.state.payable
+					};
 
 	// the refusal outranks the decline where both stand: the refusal names something the donor can do
 	// next, and the decline names what happened last.
 	const paymentWords =
-		api.state.step !== 'give' ? '' : refusedPayment ? copy.PAYMENT_PROBLEM : decline.current.words;
+		api.state.step !== 'give' ? '' : refusedPayment ? copy.PAYMENT_PROBLEM : decline.words;
 
 	// ── a repeating gift no processor still up can take ─────────────────────────────────────────
 
@@ -385,20 +434,9 @@ function CheckoutCard({
 	/**
 	 * the offer appearing, said out loud: it arrives whenever the processors fail, which is as likely
 	 * to be while the donor is reading the step as on the way into it, and nothing moves the caret to
-	 * it. cached against the snapshot it was read for, as `decline` is.
+	 * it. read against the offer the last commit drew, as `decline` is.
 	 */
-	const offerSeen = useRef<{ at: CheckoutSnapshot | null; offer: string; arrived: boolean }>({
-		at: null,
-		offer: '',
-		arrived: false
-	});
-	if (offerSeen.current.at !== snapshot) {
-		offerSeen.current = {
-			at: snapshot,
-			offer: oneTimeOffer,
-			arrived: oneTimeOffer !== '' && offerSeen.current.offer === ''
-		};
-	}
+	const offerArrived = oneTimeOffer !== '' && kept.current.offer === '';
 
 	// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
 
@@ -495,6 +533,37 @@ function CheckoutCard({
 	const caret = typeof document === 'undefined' ? null : document.activeElement;
 	const caretInTakeover = caret !== null && takeoverSection.current?.contains(caret) === true;
 	const withinTakeover = shown === 'takeover' && screen.current.shown === 'takeover';
+	/** a caret the donor put on the host page, which no move of the card's takes from them. */
+	const caretOnPage =
+		caret !== null && caret !== document.body && cardNode.current?.contains(caret) !== true;
+	/**
+	 * the live flow's first snapshot leaving the resume's takeover the first paint drew: the route saw
+	 * the stamp and the flow had no token behind it to claim, so it starts where a fresh card does.
+	 * the donor was shown and told `copy.RESUMING_HEADING`, so this is a screen change and not a first
+	 * paint, whatever `painted` says.
+	 */
+	const unresumed =
+		live !== null &&
+		!screen.current.painted &&
+		screen.current.shown === 'takeover' &&
+		shown === 'amount';
+	/**
+	 * a press asking for its sentence to be said again, until a commit answers it. a repeat re-says only
+	 * what that press chose, so a sentence kept from before it — the handed step, a `News` — is spent
+	 * here: said again beside the refusal the press put somewhere else, it is old news read as the
+	 * press's answer.
+	 */
+	const repeating = nonce !== kept.current.again;
+	/**
+	 * that move said out loud to a caret on the host page, which the move leaves where it is. kept
+	 * while the amount step stands, the way `retitle` is kept by its heading, because the commit that
+	 * draws the step is what makes `unresumed` false on the next render.
+	 */
+	const handed = unresumed
+		? { on: shown, words: caretOnPage ? `${copy.STEP_HEADINGS[0]}.` : '' }
+		: !repeating && kept.current.handed.on === shown
+			? kept.current.handed
+			: { on: null, words: '' };
 
 	/**
 	 * a takeover's heading replaced, said out loud wherever no caret move reads it.
@@ -506,22 +575,25 @@ function CheckoutCard({
 	 * was read for rather than the snapshot: the commit that draws the new heading is what makes the
 	 * next render's comparison come out equal, and the address screen's reading loop is a new
 	 * snapshot every few seconds with nothing to say — one landing in the same instant the address
-	 * closes would otherwise empty the sentence as it is written. a sentence the region moved on
-	 * from is emptied where `words` is chosen below.
+	 * closes would otherwise empty the sentence as it is written. decided afresh by every render
+	 * until a commit keeps it, so the caret it is decided by is the one the committed render read; a
+	 * sentence the region moved on from is emptied by the commit after `words` is chosen below.
 	 */
 	const heard = withinTakeover ? takeover.heading : null;
-	const retitle = useRef<{ on: string | null; words: string }>({ on: null, words: '' });
-	if (retitle.current.on !== heard) {
-		retitle.current = {
-			on: heard,
-			words:
-				withinTakeover &&
-				takeover.heading !== screen.current.heading &&
-				(caret === headings.takeover.current || !caretInTakeover)
-					? `${takeover.heading}.`
-					: ''
-		};
-	}
+	const retitle =
+		kept.current.retitle.on === heard
+			? kept.current.retitle
+			: {
+					on: heard,
+					// never on the flow's first paint, which drew the heading rather than replaced one.
+					words:
+						live !== null &&
+						withinTakeover &&
+						takeover.heading !== screen.current.heading &&
+						(caret === headings.takeover.current || !caretInTakeover)
+							? `${takeover.heading}.`
+							: ''
+				};
 
 	useEffect(() => {
 		const before = screen.current;
@@ -539,8 +611,9 @@ function CheckoutCard({
 		};
 		// never on the flow's first paint: a donor returning from their bank boots straight onto a
 		// takeover, and a card that took focus as it rendered would move the caret on a page nobody
-		// asked it to.
-		const advanced = before.painted && shown !== before.shown;
+		// asked it to. a takeover that first paint drew and the live flow left (`unresumed`) is a
+		// screen change the donor was told about, and moves a caret that is not on the host page.
+		const advanced = (before.painted && shown !== before.shown) || (unresumed && !caretOnPage);
 		// one takeover replacing another can take the control holding the caret with it: Give and
 		// Authorize go to a wait that paints no primary, and the address block leaves with whatever
 		// Copy held it. taken back only from inside the takeover — a resume's outcome replaces the
@@ -577,25 +650,14 @@ function CheckoutCard({
 	 * caret, and the figure's own `<output>` is silent, so this is the one place either is heard from.
 	 * read off the figure rather than off the press, because a rail is picked inside the provider's own
 	 * fields and no handler of ours sees it. a move that left the figure where it was is not news: the
-	 * fee box reports its own new setting either way. cached against the snapshot it was read for, as
-	 * `decline` is.
+	 * fee box reports its own new setting either way. read against the figure the last commit drew,
+	 * as `decline` is.
 	 */
-	const total = useRef<{
-		at: CheckoutSnapshot | null;
-		step: string;
-		figure: string;
-		moved: boolean;
-	}>({ at: null, step: '', figure: '', moved: false });
-	if (total.current.at !== snapshot) {
-		const before = total.current;
-		const figure = reading?.totalFigure ?? '';
-		total.current = {
-			at: snapshot,
-			step: api.state.step,
-			figure,
-			moved: before.step === 'give' && api.state.step === 'give' && figure !== before.figure
-		};
-	}
+	const figure = reading?.totalFigure ?? '';
+	const totalMoved =
+		kept.current.total.step === 'give' &&
+		api.state.step === 'give' &&
+		figure !== kept.current.total.figure;
 
 	const feeBox = useRef<HTMLInputElement | null>(null);
 	const amountRefs: AmountRefs = {
@@ -657,15 +719,21 @@ function CheckoutCard({
 	 * same test the two below make. what is missing is named on every press rather than on a press
 	 * that changed the words: the sentences do not move between two presses refused for the same
 	 * decisions, and neither does the caret.
+	 *
+	 * which channel the amount's refusal has is asked before the caret moves, as the details step's
+	 * Continue asks it: the entry is described by the sentence while it stands, so a caret arriving
+	 * there reads it, and only a caret already on it — Enter in the box — leaves the region to say it.
 	 */
 	function onAmountContinue(): void {
 		const before = api.state.step;
 		api.continueButton.onClick();
 		const state = now().state;
 		if (before !== 'amount' || state.step !== 'amount') return;
+		const target = firstAmountProblem(state.missing);
 		setAsked(true);
+		setAskedInPlace(target !== null && document.activeElement === target);
 		setNonce((at) => at + 1);
-		focusOn(firstAmountProblem(state.missing));
+		focusOn(target);
 	}
 
 	function onDetailsContinue(): void {
@@ -824,44 +892,36 @@ function CheckoutCard({
 	// ── what is said out loud ────────────────────────────────────────────────────────────────────
 
 	const spent = shot !== null && shot.at === snapshot ? shot.kind : null;
-	/** the Copy sentence the region moved on from, which is not said again when what replaced it clears. */
-	const outsaid = useRef<typeof shot>(null);
 	const copied =
 		shot?.kind === 'copy' &&
-		shot !== outsaid.current &&
+		shot !== kept.current.outsaid &&
 		shot.on === takeover.heading &&
 		takeover.deposit !== null
 			? (shot.words ?? '')
 			: '';
 	// in the order the fields are asked in, which is the order they are laid out in and the order the
-	// caret walks them.
-	const detailsSaid =
-		spent === 'details'
-			? [
-					missingFields.includes('email')
-						? copy.refusalSaid(copy.EMAIL, fieldProblem('email', api.emailField.box.value))
-						: '',
-					missingFields.includes('firstName')
-						? copy.refusalSaid(copy.FIRST_NAME, copy.NAME_PROBLEM)
-						: '',
-					missingFields.includes('lastName')
-						? copy.refusalSaid(copy.LAST_NAME, copy.NAME_PROBLEM)
-						: ''
-				]
-					.filter((sentence) => sentence !== '')
-					// a semicolon because each already holds a colon, and a comma runs one field into the next.
-					.join('; ')
-			: '';
+	// caret walks them. what the step is refusing as it stands, which the press's sentence is spoken
+	// from and a kept one is checked against.
+	const detailsRefusal = [
+		missingFields.includes('email')
+			? copy.refusalSaid(copy.EMAIL, fieldProblem('email', api.emailField.box.value))
+			: '',
+		missingFields.includes('firstName') ? copy.refusalSaid(copy.FIRST_NAME, copy.NAME_PROBLEM) : '',
+		missingFields.includes('lastName') ? copy.refusalSaid(copy.LAST_NAME, copy.NAME_PROBLEM) : ''
+	]
+		.filter((sentence) => sentence !== '')
+		// a semicolon because each already holds a colon, and a comma runs one field into the next.
+		.join('; ');
+	const detailsSaid = spent === 'details' ? detailsRefusal : '';
 	const bounds = copy.amountProblem(offer, config.minAmountMinor, config.maxAmountMinor);
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
-	// are: the three are mutually exclusive, because a press is refused on the step it was made on.
-	//
-	// the amount step's sentence hangs off a `<fieldset>` and the refused press puts the caret on a
-	// control inside one, where a group's description is not reliably announced from a descendant — so
-	// it is on this channel however the press was made. the details step's is here only for the press
-	// that moved no caret and had no other channel.
+	// are: the two are mutually exclusive, because a press is refused on the step it was made on. each
+	// is here only for the press that moved no caret and had no other channel (`askedInPlace`,
+	// `detailsSaid`).
 	const askedFor = [
-		missingDecisions.includes('amount') ? copy.refusalSaid(copy.AMOUNT, bounds) : '',
+		askedInPlace && missingDecisions.includes('amount')
+			? copy.refusalSaid(copy.AMOUNT, bounds)
+			: '',
 		detailsSaid
 	]
 		.filter((sentence) => sentence !== '')
@@ -869,36 +929,85 @@ function CheckoutCard({
 
 	const busy = api.continueButton['aria-busy'];
 	// the takeover's own words first: a screen that has taken the whole card is not one a numbered step
-	// is still asking anything on. a total that moved on the review step stands ahead of that step's
-	// refusal on the commit it moved on: the refusal was said on the press and stays on the payment
-	// box's description, and the figure that moved is said nowhere else. the retitled heading last: a
-	// screen's own sentence and the wait's both say more than its heading does.
+	// is still asking anything on. the review step's refusal stands ahead of every `News`, a moved
+	// total included, as `standing` in @better-giving/form's views.ts ranks it: it is a thing the donor
+	// was asked for and has not done, and a sentence written over it would have the next render write
+	// it back and say it again with nobody having pressed anything. a heading said in place of a caret
+	// move last — the step a tokenless return was handed, or a retitled takeover: a screen's own
+	// sentence and the wait's both say more than its heading does. the wait is never said on the flow's
+	// first paint (`live === null`), for the reason the caret is never moved on it: a resume's served
+	// wait is the route's drawing, and the flow that would be waiting has not started.
 	//
-	// the Copy's sentence and the retitled heading's keep one rule: a live-region sentence stays
-	// until the heading it announces changes or another sentence replaces it; a new snapshot alone
-	// never clears it. each is spent below once another has taken its place.
+	// the Copy's sentence, the retitled heading's, the handed step's and every `News` keep one rule: a
+	// live-region sentence stays until the heading it announces changes or another sentence replaces
+	// it — and a `News`, until what it `restating` names moves. a press asking for a repeat spends the
+	// handed step and a `News` too (`repeating`). a new snapshot alone never clears any of them:
+	// the provider's fields and the challenge widget report whenever they finish, and the address
+	// screen's reading loop every few seconds, each with nothing to say. each is spent by the commit
+	// that said something else. a sentence said while something stands — the amount step's refusal,
+	// the payment box's, the wait — is said again by every render and needs no keeping.
+	const arrived: News | null =
+		detailsSaid !== ''
+			? { words: detailsSaid, restating: 'fields' }
+			: totalMoved
+				? { words: reading?.words ?? '', restating: 'total' }
+				: offerArrived
+					? { words: oneTimeOffer }
+					: spent === 'one-time'
+						? { words: copy.MADE_ONE_TIME }
+						: null;
+	const restated = { total: reading?.words ?? '', fields: detailsRefusal };
+	const prior = repeating ? null : kept.current.news;
+	const news =
+		prior !== null &&
+		prior.on === shown &&
+		(prior.restating === undefined || restated[prior.restating] === prior.words)
+			? prior
+			: null;
 	const words =
 		takeover.announce !== ''
 			? takeover.announce
 			: askedFor !== ''
 				? askedFor
-				: total.current.moved
-					? (reading?.words ?? '')
-					: refusedPayment
-						? copy.PAYMENT_PROBLEM
-						: offerSeen.current.arrived
-							? oneTimeOffer
-							: spent === 'one-time'
-								? copy.MADE_ONE_TIME
-								: copied !== ''
-									? copied
-									: busy
-										? workingWords(api.state)
-										: retitle.current.words;
-	if (words !== '') {
-		if (words !== copied && shot?.kind === 'copy') outsaid.current = shot;
-		if (words !== retitle.current.words) retitle.current.words = '';
-	}
+				: refusedPayment
+					? copy.PAYMENT_PROBLEM
+					: arrived !== null
+						? arrived.words
+						: copied !== ''
+							? copied
+							: busy && live !== null
+								? workingWords(api.state)
+								: news !== null
+									? news.words
+									: handed.words !== ''
+										? handed.words
+										: retitle.words;
+	useEffect(() => {
+		const replaced = (by: string) => words !== '' && words !== by;
+		kept.current = {
+			// a Copy is kept by the heading it was pressed under, so a commit drawing another one spends
+			// it as surely as a sentence replacing it does: the screen it comes back to is a new one.
+			outsaid:
+				shot?.kind === 'copy' && (copied === '' || replaced(copied)) ? shot : kept.current.outsaid,
+			retitle: replaced(retitle.words) ? { on: retitle.on, words: '' } : retitle,
+			handed: replaced(handed.words) ? { on: handed.on, words: '' } : handed,
+			decline,
+			offer: oneTimeOffer,
+			// a moved total another sentence outranked is deferred rather than spent: the figure kept
+			// stays the one before the move, so the move still reads as one once that sentence clears.
+			total:
+				arrived?.restating === 'total' && words !== arrived.words
+					? kept.current.total
+					: { step: api.state.step, figure },
+			news:
+				arrived !== null && words === arrived.words
+					? { ...arrived, on: shown }
+					: news === null || replaced(news.words)
+						? null
+						: news,
+			again: nonce
+		};
+	});
 
 	const receipt =
 		reading === null ? null : <Receipt reading={reading} onFee={() => onFee()} feeRef={feeBox} />;

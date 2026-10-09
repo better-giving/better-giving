@@ -17,6 +17,7 @@ import type {
 	SettlementEvent
 } from '../payments/provider';
 import { recordDonation } from './record';
+import { sendOwedRefundNotices } from './refund-notice';
 import { recordReversal } from './reverse';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { failureIsNewsToTheDonor, settleDelivery, settleTransaction } from './settle';
@@ -1009,6 +1010,18 @@ describe('settleDelivery() — what the donor’s message cannot do', () => {
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
 	});
 
+	it('says it is the donor’s email that nothing resends, and who to contact', async () => {
+		await pendingGift({ method: 'ach' });
+		const mail = mailer(false);
+
+		await settleDelivery(deps({ email: mail.port, provider: failedAch }), DELIVERY);
+
+		expect(mail.sent[1]?.text).toContain(
+			'Fix whatever the test reports. The email won’t be resent, so contact whoever it was for ' +
+				'if they need it.'
+		);
+	});
+
 	it('answers the delivery when there is no organisation to write on behalf of', async () => {
 		await pendingGift({ method: 'ach' });
 		await env.DB.prepare(`delete from org_profile`).run();
@@ -1050,6 +1063,20 @@ describe('settleDelivery() — a settlement with no gift behind it', () => {
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain('pi_settle_1');
+	});
+
+	it('names the status as this app reads it, never as the processor’s own word', async () => {
+		const mail = mailer();
+
+		await settleDelivery(deps({ email: mail.port }), DELIVERY);
+
+		// `settlement.status` is the app's own reading, which PayPal for one spells `COMPLETED`.
+		const text = mail.sent[0]?.text;
+		expect(text).toContain(
+			'Stripe reported a payment that doesn’t match any gift in your records, so nothing was ' +
+				'recorded. If it went through, money came in that your records don’t show.'
+		);
+		expect(text).toMatch(/^Status: succeeded$/m);
 	});
 
 	it('writes nothing at all', async () => {
@@ -1457,7 +1484,7 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 
 	it('keeps a banked gift banked when the operator’s alert throws', async () => {
 		await pendingGift();
-		const mail = brittleMailer((m) => m.subject.includes('no processor fee'));
+		const mail = brittleMailer((m) => m.subject.includes('recorded without its'));
 
 		const result = await settleDelivery(deps({ email: mail.port, provider: noFee() }), DELIVERY);
 
@@ -1467,7 +1494,7 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		const [groups] = await db.select({ n: sql<number>`count(*)` }).from(entryGroup);
 		expect(groups?.n).toBe(1);
-		expect(mail.sent.some((m) => m.subject.includes('nobody could be told'))).toBe(true);
+		expect(mail.sent.some((m) => m.subject.includes('Emails about a payment failed'))).toBe(true);
 	});
 
 	it('answers the delivery when the donor’s message throws', async () => {
@@ -1484,7 +1511,22 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
 		const [row] = await db.select().from(payment);
 		expect(row?.status).toBe('failed');
-		expect(mail.sent.some((m) => m.subject.includes('nobody could be told'))).toBe(true);
+		expect(mail.sent.some((m) => m.subject.includes('Emails about a payment failed'))).toBe(true);
+	});
+
+	it('sends whoever set the app up to the logs that hold a past fault', async () => {
+		await pendingGift({ method: 'ach' });
+		const mail = brittleMailer((m) => m.subject.includes('did not go through'));
+
+		await settleDelivery(deps({ email: mail.port, provider: failedAch() }), DELIVERY);
+
+		// `pnpm run logs` is a live tail, which never shows a fault that has already happened.
+		const report = mail.sent.find((m) => m.subject.includes('Emails about a payment failed'));
+		expect(report?.text).toContain(
+			'If the test works, send this email to whoever set up your donations app. The cause is ' +
+				'in its Workers logs on the Cloudflare dashboard.'
+		);
+		expect(report?.text).not.toContain('pnpm');
 	});
 
 	it('does not escape when the report itself throws too', async () => {
@@ -1547,10 +1589,13 @@ describe('settleDelivery() — a settled charge whose fee is unknown', () => {
 			DELIVERY
 		);
 
-		const alerted = mail.sent.find((m) => m.subject.includes('no processor fee'));
-		expect(alerted?.text).toContain('/admin/books');
-		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds, into 5200 — Processor Fees');
-		expect(alerted?.text).not.toContain('outside it');
+		const alerted = mail.sent.find((m) => m.subject.includes('recorded without its'));
+		expect(alerted?.text).toContain(
+			'What to do: Find this payment in your Stripe dashboard and note the fee in the currency ' +
+				'the gift was charged in. Don’t convert a fee shown in another currency. Then, on the ' +
+				'Books page in your dashboard, post a correction dated the day the payment settled: out ' +
+				'of 1020 — Undeposited Funds, into 5200 — Processor Fees.'
+		);
 	});
 });
 
@@ -1587,7 +1632,7 @@ describe('settleDelivery() — the notice that a gift settled', () => {
 		// the screen the dashboard actually has. the rail calls it Gifts
 		// (src/lib/admin/destinations.ts),
 		// and an instruction naming a screen that is not there is worse than none.
-		expect(notice?.text).toContain('Open Gifts in /admin');
+		expect(notice?.text).toContain('recorded on Gifts in your dashboard');
 		// nothing to do about a gift that worked, which is what `action: null` renders as.
 		expect(notice?.text).not.toContain('What to do');
 	});
@@ -1603,7 +1648,7 @@ describe('settleDelivery() — the notice that a gift settled', () => {
 		const notices = noticesIn(mail.sent);
 		expect(notices).toHaveLength(1);
 		expect(mail.sent).toHaveLength(1);
-		expect(notices[0]?.text).toContain('no email address');
+		expect(notices[0]?.text).toContain('didn’t give an email address');
 		expect(notices[0]?.text).toContain('no receipt was sent');
 	});
 
@@ -1637,7 +1682,7 @@ describe('settleDelivery() — the notice that a gift settled', () => {
 
 	it('answers the delivery the same way when the notice itself faults', async () => {
 		const gift = await pendingGift();
-		const mail = brittleMailer((m) => m.subject.includes('was received'));
+		const mail = brittleMailer((m) => m.subject.includes('You received'));
 
 		const result = await settleDelivery(deps({ email: mail.port }), DELIVERY);
 
@@ -2209,13 +2254,23 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			expect(mail.sent.map((m) => m.to)).not.toContain('ada@example.org');
 		});
 
+		it('leaves no refund notice owed for a later run to send', async () => {
+			await pendingCrypto();
+			await settleDelivery(deps({ provider: refunded() }), DELIVERY);
+			const mail = mailer();
+
+			await sendOwedRefundNotices({ db, email: mail.port }, new Date(Date.now() + 60 * 60_000));
+
+			expect(mail.sent.map((m) => m.to)).not.toContain('ada@example.org');
+		});
+
 		it('asks nobody to post the missing fee of a gift refunded in the same delivery', async () => {
 			await pendingCrypto();
 			const mail = mailer();
 
 			await settleDelivery(deps({ provider: refunded(), email: mail.port }), DELIVERY);
 
-			expect(mail.sent.filter((m) => m.subject.includes('no processor fee'))).toEqual([]);
+			expect(mail.sent.filter((m) => m.subject.includes('recorded without its'))).toEqual([]);
 		});
 
 		it('still asks for the missing fee of a gift the same read reports standing', async () => {
@@ -2225,7 +2280,7 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			await settleDelivery(deps({ provider: nowpayments(), email: mail.port }), DELIVERY);
 
 			expect(
-				mail.sent.filter((m) => m.subject.includes('no processor fee')).map((m) => m.to)
+				mail.sent.filter((m) => m.subject.includes('recorded without its')).map((m) => m.to)
 			).toEqual(['ops@hope.example']);
 		});
 

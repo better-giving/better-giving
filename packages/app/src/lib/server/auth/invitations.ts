@@ -1,6 +1,6 @@
 import { MIN_ADMIN_PASSWORD_LENGTH } from '@better-giving/operator/admin-password';
 import { APIError } from 'better-auth/api';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, notExists } from 'drizzle-orm';
 import * as z from 'zod';
 import type { Db } from '$lib/server/db/client';
 import {
@@ -170,8 +170,9 @@ export async function readInvitation(
  * revokes an invitation by id, and answers whether one was live to revoke.
  *
  * `false` covers a row that was already accepted, already revoked, expired, or never existed —
- * the caller renders the same thing for all of them, because the press was "make this stop
- * working" and every one of them means it already has.
+ * the caller renders the same thing for all of them. every one but the first means the link has
+ * already stopped working; an accepted one became a member, who is on the list and is removed
+ * there.
  */
 export async function revokeInvitation(
 	db: Db,
@@ -180,15 +181,46 @@ export async function revokeInvitation(
 	const revoked = await db
 		.update(authMemberInvitation)
 		.set({ revokedAt: input.now })
-		.where(
-			and(
-				eq(authMemberInvitation.id, input.id),
-				isNull(authMemberInvitation.acceptedAt),
-				isNull(authMemberInvitation.revokedAt)
-			)
-		)
+		.where(unanswered(input.id))
 		.returning({ id: authMemberInvitation.id });
 	return revoked.length > 0;
+}
+
+/** one invitation, while it is neither accepted nor revoked — what a revoke and a stamp both need. */
+function unanswered(id: string) {
+	return and(
+		eq(authMemberInvitation.id, id),
+		isNull(authMemberInvitation.acceptedAt),
+		isNull(authMemberInvitation.revokedAt)
+	);
+}
+
+/**
+ * the two statements that take a user away with every live invitation at their address,
+ * unexecuted and in the order they must run, for `removeMember` in ./members.ts to put in its
+ * `batch()`. the revoke reads the address off the `auth_user` row, so it comes first: after the
+ * delete it would match nothing and leave the invitation able to make the account again. the
+ * delete answers the ids it removed.
+ */
+export function revokeInvitationsThenDeleteUser(
+	db: Db,
+	input: { readonly userId: string; readonly now: Date }
+) {
+	return [
+		db
+			.update(authMemberInvitation)
+			.set({ revokedAt: input.now })
+			.where(
+				and(
+					inArray(
+						authMemberInvitation.email,
+						db.select({ email: authUser.email }).from(authUser).where(eq(authUser.id, input.userId))
+					),
+					liveInvitations(input.now)
+				)
+			),
+		db.delete(authUser).where(eq(authUser.id, input.userId)).returning({ id: authUser.id })
+	] as const;
 }
 
 export type RedeemResult =
@@ -224,8 +256,13 @@ export type RedeemResult =
  * account behind it is a colleague locked out of a link that will never work again, needing
  * somebody else to press a button.
  *
- * the stamp is guarded on the invitation still being unaccepted, so two presses of the same button
- * cannot make the second one look like a fresh acceptance.
+ * **the stamp is guarded on the invitation still being unaccepted and unrevoked, and the same
+ * `batch()` takes the account back out when it is not.** the liveness read and the stamp are two
+ * round trips with the sign-up between them, so a revoke pressed while the colleague is on the form
+ * can land in that window. the delete runs first in the batch, on the negation of the stamp's own
+ * guard, so exactly one of the two lands and no failed round trip can leave the account behind; the
+ * answer is then `link`, the one a link revoked a moment earlier gets. a revoke holds until the
+ * stamp lands; after that, remove the member.
  *
  * `email_verified` is written true in that same `batch()`. better-auth's sign-up writes false and
  * has no reason to know better; here the address was proven before the account existed, because
@@ -267,22 +304,32 @@ export async function redeemInvitation(
 		return signUpRefusal(e);
 	}
 
-	await db.batch([
+	const open = unanswered(row.id);
+	const [takenBack] = await db.batch([
+		// the session and the credential go with the user, by cascade (`db/auth-schema.ts`), so the
+		// cookies minted above resolve nothing even if they were sent.
 		db
-			.update(authMemberInvitation)
-			.set({ acceptedAt: input.now })
+			.delete(authUser)
 			.where(
 				and(
-					eq(authMemberInvitation.id, row.id),
-					isNull(authMemberInvitation.acceptedAt),
-					isNull(authMemberInvitation.revokedAt)
+					eq(authUser.id, created.id),
+					notExists(
+						db.select({ id: authMemberInvitation.id }).from(authMemberInvitation).where(open)
+					)
 				)
-			),
+			)
+			.returning({ id: authUser.id }),
+		db.update(authMemberInvitation).set({ acceptedAt: input.now }).where(open),
 		db
 			.update(authUser)
 			.set({ emailVerified: true, updatedAt: input.now })
 			.where(eq(authUser.id, created.id))
 	]);
+
+	if (takenBack.length > 0) {
+		console.warn('an invitation could not be redeemed: revoked or used while it was redeemed');
+		return { ok: false, reason: 'link' };
+	}
 
 	return { ok: true, cookies, user: created };
 }

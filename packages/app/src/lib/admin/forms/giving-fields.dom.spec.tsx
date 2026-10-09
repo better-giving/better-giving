@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Form, createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { getFormProps } from '@conform-to/react';
-import { MAX_SUGGESTED_AMOUNTS } from '$lib/forms/amounts';
+import { MAX_SUGGESTED_AMOUNTS, SUGGESTED_AMOUNTS_HELD } from '$lib/forms/amounts';
 import { defineForm } from '$lib/forms/definition';
 import { FORM_GIVING_INPUT } from '$lib/forms/input-schema';
 import { boxErrorId, insertWhenValid, useAdminForm } from '../use-admin-form';
@@ -400,15 +400,96 @@ it('adds a row while the group is under the cap', async () => {
 	expect(group.rows()).toBe(MAX_SUGGESTED_AMOUNTS);
 });
 
-it('holds Add at the cap, and says why on Add', async () => {
+// the cap counts what the save counts: each amount once, and a blank box not at all
+// (`readSuggestedAmounts` in `$lib/forms/amounts.ts`). a box an operator has not typed into yet, or
+// a figure written twice, is no reason to refuse the next one.
+it.each([
+	['one is blank', ''],
+	['one repeats another', '10'],
+	['one writes another differently', '10.00']
+])('adds a row at the cap in boxes where %s', async (_, last) => {
+	const group = giving([...figures(MAX_SUGGESTED_AMOUNTS - 1), last]);
+
+	await group.press(group.add());
+
+	expect(group.rows()).toBe(MAX_SUGGESTED_AMOUNTS + 1);
+	expect(group.description(group.add())).toEqual([]);
+});
+
+it('holds Add at the cap in different amounts, and says why on Add', async () => {
 	const group = giving(figures(MAX_SUGGESTED_AMOUNTS));
 
 	await group.press(group.add());
 
 	expect(group.rows()).toBe(MAX_SUGGESTED_AMOUNTS);
-	expect(group.description(group.add())).toContain(CAP);
+	expect(group.description(group.add())).toEqual(['You can suggest up to 12 different amounts.']);
 	// the press is answered where it was made: focus stays on Add.
 	expect(document.activeElement).toBe(group.add());
+});
+
+it('holds Add once a blank box at the cap is typed into', async () => {
+	const group = giving([...figures(MAX_SUGGESTED_AMOUNTS - 1), '']);
+	const last = group.root.querySelector(
+		`input[name="suggested_amounts[${MAX_SUGGESTED_AMOUNTS - 1}]"]`
+	);
+	if (!(last instanceof HTMLInputElement)) throw new Error('no last box');
+
+	await type(last, '99');
+	await group.press(group.add());
+
+	expect(group.rows()).toBe(MAX_SUGGESTED_AMOUNTS);
+	expect(group.description(group.add())).toEqual([SUGGESTED_AMOUNTS_HELD]);
+});
+
+it('says why again on every press of a held Add', async () => {
+	// the sentence is already on screen after the first press, and an alert handed the words it
+	// is holding is announced by nobody — so a second press has to write them again.
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS));
+	await group.press(group.add());
+	const written: string[] = [];
+	const watching = new MutationObserver((records) => {
+		for (const record of records) {
+			for (const node of record.addedNodes) written.push(node.textContent ?? '');
+		}
+	});
+	watching.observe(group.root, { childList: true, subtree: true });
+	onTestFinished(() => watching.disconnect());
+
+	await group.press(group.add());
+
+	expect(written).toContain(SUGGESTED_AMOUNTS_HELD);
+	expect(group.description(group.add())).toEqual([SUGGESTED_AMOUNTS_HELD]);
+});
+
+// two presses can land with no other task run between them: each is its own alert inserted with the
+// sentence already in it, and the line under the rows never goes blank between them.
+it('says why once per press of a held Add, however close together', async () => {
+	const group = giving(figures(MAX_SUGGESTED_AMOUNTS));
+	await group.press(group.add());
+	const inserted: string[] = [];
+	const watching = new MutationObserver((records) => {
+		for (const record of records) {
+			for (const node of record.addedNodes) {
+				if (node instanceof HTMLElement && node.getAttribute('role') === 'alert') {
+					inserted.push(node.textContent ?? '');
+				}
+			}
+		}
+	});
+	watching.observe(group.root, { childList: true, subtree: true });
+	onTestFinished(() => watching.disconnect());
+	const click = () =>
+		act(() => {
+			group.add().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		});
+
+	click();
+	expect(group.description(group.add())).toEqual([SUGGESTED_AMOUNTS_HELD]);
+	click();
+	expect(group.description(group.add())).toEqual([SUGGESTED_AMOUNTS_HELD]);
+	await act(() => new Promise((settled) => setTimeout(settled, 0)));
+
+	expect(inserted).toEqual([SUGGESTED_AMOUNTS_HELD, SUGGESTED_AMOUNTS_HELD]);
 });
 
 it('moves focus to Add when a save is refused by the cap alone', async () => {

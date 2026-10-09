@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createActor } from 'xstate';
 import { checkoutMachine, type Failure } from '../checkout.machine';
 import type { CheckoutPorts } from '../ports';
-import type { FormConfig, PaymentMethod, Quote, QuoteRequest } from '../v1';
+import type { FormConfig, Frequency, PaymentMethod, Quote, QuoteRequest } from '../v1';
 import {
 	createPaymentSurface,
 	loadPaypalScript,
@@ -250,11 +250,17 @@ const CONFIG: FormConfig = {
 	deductibilityStatement: 'No goods or services were provided in exchange for this gift.'
 };
 
+/** the same form, offering a monthly gift beside the one-time one. */
+const MONTHLY: FormConfig = { ...CONFIG, frequencies: ['one_time', 'monthly'] };
+
+/** which creator a session came off: a rail's one-time session, or PayPal's subscription session. */
+type SessionKind = 'paypal' | 'venmo' | 'subscription';
+
 type SessionRecorder = {
-	readonly rail: 'paypal' | 'venmo';
+	readonly rail: SessionKind;
 	readonly session: PaypalSessionLike;
 	readonly options: SessionOptionsLike;
-	readonly starts: { presentation: unknown; order: Promise<{ orderId: string }> }[];
+	readonly starts: { presentation: unknown; order: Promise<unknown> }[];
 	destroyed: number;
 	cancelled: number;
 	resumed: number;
@@ -268,21 +274,29 @@ type Kit = {
 	readonly created: Record<string, unknown>[];
 	readonly eligibilityAsks: Record<string, unknown>[];
 	readonly sessions: SessionRecorder[];
-	/** the deadline this surface armed, fired by hand. */
+	/** every deadline this surface armed and has not disarmed, fired by hand. */
 	expire(): void;
 	readonly seam: PaypalSeam;
 	readonly rails: (PaymentMethod | null)[];
 	readonly unavailable: Failure[];
+	/** how many times the surface said PayPal cannot start a repeating gift here. */
+	unrepeatable: number;
 	readonly mount: HTMLElement;
 };
 
 type Answers = {
 	readonly eligible?: readonly string[];
-	readonly findEligibleMethods?: () => Promise<EligibilityLike>;
+	/** what the read asked for a repeating gift answers, where it differs from the one-time read. */
+	readonly eligibleToRepeat?: readonly string[];
+	readonly findEligibleMethods?: (options: Record<string, unknown>) => Promise<EligibilityLike>;
 	readonly createInstance?: () => Promise<PaypalSdkLike>;
+	/** a component whose script will not load, which `createInstance` refuses whole when asked for it. */
+	readonly unloadable?: string;
 	readonly load?: ((sdkUrl: string) => Promise<PaypalNamespaceLike | null>) | undefined;
 	readonly start?: () => Promise<unknown>;
 	readonly hasReturned?: boolean;
+	/** an SDK started without `createPayPalSubscriptionPaymentSession`, whatever it was asked for. */
+	readonly noSubscriptionSession?: boolean;
 };
 
 function kit(answers: Answers = {}): Kit {
@@ -293,8 +307,9 @@ function kit(answers: Answers = {}): Kit {
 	const rails: (PaymentMethod | null)[] = [];
 	const unavailable: Failure[] = [];
 	const eligible = answers.eligible ?? ['paypal', 'venmo'];
+	const eligibleToRepeat = answers.eligibleToRepeat ?? eligible;
 
-	const makeSession = (rail: 'paypal' | 'venmo') => (options: SessionOptionsLike) => {
+	const makeSession = (rail: SessionKind) => (options: SessionOptionsLike) => {
 		const record: SessionRecorder = {
 			rail,
 			options,
@@ -326,21 +341,39 @@ function kit(answers: Answers = {}): Kit {
 			eligibilityAsks.push(options);
 			return (
 				answers.findEligibleMethods ??
-				(() => Promise.resolve({ isEligible: (method: string) => eligible.includes(method) }))
-			)();
+				((options) => {
+					const answer = options.paymentFlow === 'RECURRING_PAYMENT' ? eligibleToRepeat : eligible;
+					return Promise.resolve({ isEligible: (method: string) => answer.includes(method) });
+				})
+			)(options);
 		},
 		createPayPalOneTimePaymentSession: makeSession('paypal'),
-		createVenmoOneTimePaymentSession: makeSession('venmo')
+		createVenmoOneTimePaymentSession: makeSession('venmo'),
+		...(answers.noSubscriptionSession === true
+			? {}
+			: { createPayPalSubscriptionPaymentSession: makeSession('subscription') })
 	};
 
 	const namespace: PaypalNamespaceLike = {
 		createInstance: (options) => {
 			created.push(options);
+			const components = options.components as readonly string[];
+			if (answers.unloadable !== undefined && components.includes(answers.unloadable)) {
+				// the served core's own refusal of a component script that did not load.
+				return Promise.reject(
+					Object.assign(
+						new Error(
+							`script failed to load: https://www.paypal.com/web-sdk/v6/${answers.unloadable}`
+						),
+						{ code: 'ERR_DEV_SCRIPT_LOAD_FAILED' }
+					)
+				);
+			}
 			return (answers.createInstance ?? (() => Promise.resolve(sdk)))();
 		}
 	};
 
-	let fire: (() => void) | null = null;
+	const timers = new Set<() => void>();
 	const mount = document.createElement('div');
 	document.body.appendChild(mount);
 
@@ -352,8 +385,14 @@ function kit(answers: Answers = {}): Kit {
 		sessions,
 		rails,
 		unavailable,
+		unrepeatable: 0,
 		mount,
-		expire: () => fire?.(),
+		expire: () => {
+			for (const run of [...timers]) {
+				timers.delete(run);
+				run();
+			}
+		},
 		seam: {
 			// a loader handed in is passed through as itself, because a page's memory of a dead one is
 			// keyed on its identity.
@@ -364,9 +403,10 @@ function kit(answers: Answers = {}): Kit {
 					return Promise.resolve(namespace);
 				}),
 			delay: (run) => {
-				fire = run;
+				const timer = () => run();
+				timers.add(timer);
 				return () => {
-					fire = null;
+					timers.delete(timer);
 				};
 			}
 		}
@@ -374,7 +414,7 @@ function kit(answers: Answers = {}): Kit {
 }
 
 /** the session most recently created for a rail, which is the one the last window was opened on. */
-function latest(k: Kit, rail: 'paypal' | 'venmo'): SessionRecorder | undefined {
+function latest(k: Kit, rail: SessionKind): SessionRecorder | undefined {
 	return k.sessions.filter((session) => session.rail === rail).at(-1);
 }
 
@@ -390,6 +430,7 @@ async function mounted(kit: Kit, config: FormConfig = CONFIG): Promise<PaypalPay
 		kit.mount,
 		(rail) => kit.rails.push(rail),
 		(failure) => kit.unavailable.push(failure),
+		() => (kit.unrepeatable += 1),
 		kit.seam
 	);
 	await Promise.resolve();
@@ -405,11 +446,15 @@ async function mounted(kit: Kit, config: FormConfig = CONFIG): Promise<PaypalPay
  * the two halves the flow drives in that order — the window opened on the press, the order handed
  * to it at the confirmation — run back to back, as they do wherever the total is the one shown.
  */
-function pressed(surface: PaypalPaymentSurface, paymentToken: string) {
+function pressed(
+	surface: PaypalPaymentSurface,
+	paymentToken: string,
+	frequency: Frequency = 'one_time'
+) {
 	const request: QuoteRequest = {
 		formId: CONFIG.formId,
 		amountMinor: 2500,
-		frequency: 'one_time',
+		frequency,
 		method: 'paypal',
 		coversFee: false,
 		email: 'donor@example.org',
@@ -457,6 +502,16 @@ describe('the buttons this adapter draws', () => {
 		expect(k.loads).toEqual([PAYPAL_CORE_URL]);
 	});
 
+	// a repeating gift on PayPal is a subscription, approved in a session only `paypal-subscriptions`
+	// carries, and it has to be on the instance before the press: a press may await nothing.
+	it('asks for the subscription component beside PayPal’s own where the form offers a repeat', async () => {
+		const k = kit();
+		await mounted(k, MONTHLY);
+		expect(k.created[0]).toMatchObject({
+			components: ['paypal-payments', 'paypal-subscriptions', 'venmo-payments']
+		});
+	});
+
 	it('leaves a rail the config does not offer out of the components it asks for', async () => {
 		const k = kit();
 		const surface = createPaymentSurface(
@@ -464,6 +519,7 @@ describe('the buttons this adapter draws', () => {
 			k.mount,
 			(rail) => k.rails.push(rail),
 			(failure) => k.unavailable.push(failure),
+			() => (k.unrepeatable += 1),
 			k.seam
 		);
 		await Promise.resolve();
@@ -498,6 +554,258 @@ describe('the buttons this adapter draws', () => {
 		const surface = await mounted(k);
 		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
 		expect(k.mount.querySelector('venmo-button')).toBeNull();
+	});
+
+	// eligibility is a property of the payment flow too: a buyer PayPal will take a one-time gift from
+	// may not be one it will start a subscription for, and a window that cannot approve is no button.
+	// asked behind the one-time read rather than ahead of it, once the one-time rows are drawn.
+	it('reads eligibility for a repeating gift too, behind the one-time read', async () => {
+		const k = kit();
+		await mounted(k, MONTHLY);
+		expect(k.eligibilityAsks).toEqual([
+			{ currencyCode: 'USD' },
+			{ currencyCode: 'USD', paymentFlow: 'RECURRING_PAYMENT' }
+		]);
+	});
+
+	it('draws PayPal’s row on a repeating gift only where PayPal can start one', async () => {
+		const k = kit({ eligibleToRepeat: [] });
+		const surface = await mounted(k, MONTHLY);
+		k.mount.querySelector('paypal-button')?.dispatchEvent(new Event('click'));
+
+		surface.cadence('monthly');
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['Venmo']);
+		expect(k.rails).toEqual(['paypal', null]);
+
+		surface.cadence('one_time');
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal', 'Venmo']);
+		await nextTask();
+		expect(k.unrepeatable).toBe(1);
+	});
+
+	// the one-time read is what says PayPal's button is drawn at all; a repeat on a button nobody sees
+	// is no question to send, and the composer still hears PayPal will not take one.
+	it('asks nothing about a repeat where PayPal’s own button is not drawn', async () => {
+		const k = kit({ eligible: ['venmo'] });
+		await mounted(k, MONTHLY);
+		await nextTask();
+		expect(k.eligibilityAsks).toEqual([{ currencyCode: 'USD' }]);
+		expect(k.unrepeatable).toBe(1);
+	});
+
+	it('asks nothing about a repeat on a form that has already said PayPal did not load', async () => {
+		const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const k = kit({ eligible: [] });
+		await mounted(k, MONTHLY);
+		await nextTask();
+		expect(k.eligibilityAsks).toEqual([{ currencyCode: 'USD' }]);
+		expect(k.unavailable).toHaveLength(1);
+		expect(reported).not.toHaveBeenCalled();
+	});
+
+	// a subscription id opens a window only in the subscription component's own session, and an SDK
+	// carrying none would send the donor's Donate press to a window that never opens.
+	it('keeps PayPal’s row off a repeating gift where the SDK carries no subscription session', async () => {
+		const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const k = kit({ noSubscriptionSession: true });
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		surface.offerVenmo(false);
+		surface.cadence('monthly');
+		expect(surface.rows.current()).toEqual([]);
+		expect(k.unrepeatable).toBe(1);
+		expect(reported).toHaveBeenCalledWith(expect.stringContaining('no subscription session'));
+		surface.cadence('one_time');
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+	});
+
+	// PayPal's row comes back above Venmo's rather than redrawing it: a row open with Venmo's button
+	// pressed in it stays as the donor left it.
+	it('puts PayPal’s row back above a Venmo row the donor has open and pressed', async () => {
+		const k = kit({ eligibleToRepeat: [] });
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		surface.cadence('monthly');
+		const [venmo] = surface.rows.current();
+		venmo?.expand();
+		k.mount.querySelector('venmo-button')?.dispatchEvent(new Event('click'));
+
+		surface.cadence('one_time');
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal', 'Venmo']);
+		expect(surface.rows.current()[1]).toBe(venmo);
+		expect(venmo?.expanded).toBe(true);
+		expect(
+			[...k.mount.children].map((child) => child.firstElementChild?.tagName.toLowerCase())
+		).toEqual(['paypal-button', 'venmo-button']);
+		expect(k.rails).toEqual(['venmo']);
+	});
+
+	// a window that cannot approve is the dead end at the last step this row exists to avoid, and the
+	// one-time gift's row is no less drawable for the repeat's read having failed.
+	it('keeps PayPal’s row off a repeating gift when that read fails, and says so', async () => {
+		const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const k = kit({
+			findEligibleMethods: (options) =>
+				options.paymentFlow === 'RECURRING_PAYMENT'
+					? Promise.reject(new Error('gateway'))
+					: Promise.resolve({ isEligible: () => true })
+		});
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		surface.offerVenmo(false);
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+
+		surface.cadence('monthly');
+		expect(surface.rows.current()).toEqual([]);
+		expect(k.unavailable).toEqual([]);
+		expect(reported).toHaveBeenCalledWith(expect.stringContaining('gateway'));
+		expect(k.unrepeatable).toBe(1);
+	});
+
+	// the read is never awaited by the mount, so a donor can commit to Monthly before it answers.
+	it('draws PayPal’s row on a repeating gift once a read still out answers that it can', async () => {
+		let answer: (eligibility: EligibilityLike) => void = () => {};
+		const k = kit({
+			findEligibleMethods: (options) =>
+				options.paymentFlow === 'RECURRING_PAYMENT'
+					? new Promise<EligibilityLike>((resolve) => {
+							answer = resolve;
+						})
+					: Promise.resolve({ isEligible: () => true })
+		});
+		const surface = await mounted(k, MONTHLY);
+		surface.offerVenmo(false);
+		surface.cadence('monthly');
+		expect(surface.rows.current()).toEqual([]);
+
+		answer({ isEligible: (method) => method === 'paypal' });
+		await nextTask();
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.unrepeatable).toBe(0);
+	});
+
+	// the mount's own deadline is over once the buttons are up, and a read that never settles would
+	// otherwise keep PayPal off every repeat with nothing said anywhere.
+	it('says at the deadline that the repeat read never answered, keeping PayPal off a repeat', async () => {
+		const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const k = kit({
+			findEligibleMethods: (options) =>
+				options.paymentFlow === 'RECURRING_PAYMENT'
+					? new Promise<EligibilityLike>(() => {})
+					: Promise.resolve({ isEligible: () => true })
+		});
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		expect(reported).not.toHaveBeenCalled();
+
+		k.expire();
+		expect(reported).toHaveBeenCalledWith(expect.stringContaining('never answered'));
+		surface.offerVenmo(false);
+		surface.cadence('monthly');
+		expect(surface.rows.current()).toEqual([]);
+		surface.cadence('one_time');
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.unavailable).toEqual([]);
+		expect(k.unrepeatable).toBe(1);
+	});
+
+	// the flow latches a repeat said to be unavailable, so a yes arriving behind the deadline is one
+	// the donor is already past: the row it would bring back stands on a repeat nobody is offered.
+	it('drops a yes that arrives after the repeat read’s deadline', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		let answer: (eligibility: EligibilityLike) => void = () => {};
+		const k = kit({
+			findEligibleMethods: (options) =>
+				options.paymentFlow === 'RECURRING_PAYMENT'
+					? new Promise<EligibilityLike>((resolve) => {
+							answer = resolve;
+						})
+					: Promise.resolve({ isEligible: () => true })
+		});
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		k.expire();
+		answer({ isEligible: () => true });
+		await nextTask();
+		surface.offerVenmo(false);
+		surface.cadence('monthly');
+		expect(surface.rows.current()).toEqual([]);
+		expect(k.unrepeatable).toBe(1);
+	});
+
+	// the core loads every component it is asked for together and refuses the instance whole, so a
+	// subscription bundle that would not load must not take the one-time gift's buttons with it.
+	it('draws the one-time buttons when the subscription component will not load', async () => {
+		const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const k = kit({ unloadable: 'paypal-subscriptions' });
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		expect(k.created.at(-1)).toMatchObject({ components: ['paypal-payments', 'venmo-payments'] });
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal', 'Venmo']);
+		expect(k.unavailable).toEqual([]);
+		expect(reported).toHaveBeenCalledWith(
+			expect.stringContaining('web-sdk/v6/paypal-subscriptions')
+		);
+		expect(k.unrepeatable).toBe(1);
+
+		surface.offerVenmo(false);
+		surface.cadence('monthly');
+		expect(surface.rows.current()).toEqual([]);
+	});
+
+	// the retry costs the repeat alone, so it is spent only where the refusal could be the repeat's:
+	// a script the core names as another component's is that component's.
+	it('starts no second time when the core names another component’s script', async () => {
+		const k = kit({ unloadable: 'paypal-payments' });
+		await mounted(k, MONTHLY);
+		await nextTask();
+		expect(k.created).toHaveLength(1);
+		expect(k.unavailable[0]?.fix).toContain('web-sdk/v6/paypal-payments');
+		expect(k.unrepeatable).toBe(0);
+	});
+
+	it('says the second start’s own refusal when the start without repeats fails too', async () => {
+		const reported = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const k = kit({
+			unloadable: 'paypal-subscriptions',
+			createInstance: () => Promise.reject(new Error('client id refused'))
+		});
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		expect(k.created).toHaveLength(2);
+		expect(k.unavailable).toHaveLength(1);
+		expect(k.unavailable[0]?.fix).toContain('client id refused');
+		expect(surface.rows.current()).toEqual([]);
+		expect(reported).not.toHaveBeenCalled();
+	});
+
+	it('starts no second time for a card that let go while the first start was out', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		let refuse: (reason: unknown) => void = () => {};
+		const k = kit({
+			createInstance: () =>
+				new Promise<PaypalSdkLike>((_resolve, reject) => {
+					refuse = reject;
+				})
+		});
+		const surface = await mounted(k, MONTHLY);
+		surface.stop();
+		refuse(
+			new Error('script failed to load: https://www.paypal.com/web-sdk/v6/paypal-subscriptions')
+		);
+		await nextTask();
+		expect(k.created).toHaveLength(1);
+		expect(k.unrepeatable).toBe(0);
+	});
+
+	it('leaves PayPal’s row standing on a repeating gift where PayPal can start one', async () => {
+		const k = kit();
+		const surface = await mounted(k, MONTHLY);
+		await nextTask();
+		surface.offerVenmo(false);
+		surface.cadence('monthly');
+		expect(surface.rows.current().map((row) => row.name)).toEqual(['PayPal']);
+		expect(k.unrepeatable).toBe(0);
 	});
 
 	it('draws every row closed, its button behind a press on the row’s name', async () => {
@@ -541,6 +849,7 @@ describe('the buttons this adapter draws', () => {
 			k.mount,
 			(rail) => k.rails.push(rail),
 			(failure) => k.unavailable.push(failure),
+			() => (k.unrepeatable += 1),
 			k.seam
 		);
 		await Promise.resolve();
@@ -582,6 +891,7 @@ describe('the buttons this adapter draws', () => {
 			k.mount,
 			(rail) => k.rails.push(rail),
 			(failure) => k.unavailable.push(failure),
+			() => (k.unrepeatable += 1),
 			k.seam
 		);
 		surface.offerVenmo(false);
@@ -627,6 +937,52 @@ describe('a donor’s gift through PayPal’s window', () => {
 		expect(started?.presentation).toEqual({ presentationMode: 'auto' });
 		await expect(started?.order).resolves.toEqual({ orderId: '5O190127TN364715T' });
 		expect(k.sessions.find((session) => session.rail === 'venmo')?.starts).toHaveLength(0);
+	});
+
+	// the server mints a subscription for a repeating gift and its id is no order: handed to the
+	// one-time session as `{ orderId }` the window errors, and the gift ends on an answer nobody has.
+	it('opens a repeating gift’s window on a subscription session, carrying the subscription', async () => {
+		const k = kit();
+		const surface = await mounted(k, MONTHLY);
+		surface.cadence('monthly');
+		void pressed(surface, 'I-BW452GLLEP1G', 'monthly');
+		await Promise.resolve();
+		const started = latest(k, 'subscription')?.starts;
+		expect(started).toHaveLength(1);
+		expect(started?.[0]?.presentation).toEqual({ presentationMode: 'auto' });
+		await expect(started?.[0]?.order).resolves.toEqual({ subscriptionId: 'I-BW452GLLEP1G' });
+		expect(
+			k.sessions.filter((session) => session.rail === 'paypal').flatMap((s) => s.starts)
+		).toEqual([]);
+	});
+
+	// the correction screen's Confirm opens a window with no press behind it and the port carries no
+	// cadence, so the one the card last committed to says the token is a subscription.
+	it('opens a subscription session on a confirmation no press opened a window for', async () => {
+		const k = kit();
+		const surface = await mounted(k, MONTHLY);
+		surface.cadence('monthly');
+		void surface.confirm({
+			paymentToken: 'I-BW452GLLEP1G',
+			method: 'paypal',
+			mandateAccepted: false
+		});
+		await expect(latest(k, 'subscription')?.starts[0]?.order).resolves.toEqual({
+			subscriptionId: 'I-BW452GLLEP1G'
+		});
+	});
+
+	// the same form, the same press, the gift made once: an order, on PayPal's one-time session.
+	it('keeps a one-time gift on the one-time session where the form also offers a repeat', async () => {
+		const k = kit();
+		const surface = await mounted(k, MONTHLY);
+		surface.cadence('one_time');
+		void pressed(surface, '5O190127TN364715T');
+		await Promise.resolve();
+		await expect(paypalSession(k).starts[0]?.order).resolves.toEqual({
+			orderId: '5O190127TN364715T'
+		});
+		expect(k.sessions.filter((session) => session.rail === 'subscription')).toEqual([]);
 	});
 
 	it('reads an approval as money in flight', async () => {
@@ -728,6 +1084,7 @@ describe('letting go of the surface', () => {
 			k.mount,
 			(rail) => k.rails.push(rail),
 			(failure) => k.unavailable.push(failure),
+			() => (k.unrepeatable += 1),
 			k.seam
 		);
 		expect(() => {

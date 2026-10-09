@@ -5,7 +5,8 @@ import {
 	majorText,
 	MAX_SUGGESTED_AMOUNTS,
 	readAmount,
-	readSuggestedAmounts
+	readSuggestedAmounts,
+	suggestedEntries
 } from './amounts';
 
 // node pool, no database: every rule here is decidable from one typed string and a currency code.
@@ -278,6 +279,13 @@ describe('readSuggestedAmounts', () => {
 		expect(stored([...typed, '10'])).toHaveLength(MAX_SUGGESTED_AMOUNTS);
 	});
 
+	it('counts two spellings of one amount once, so the cap counts what is stored', () => {
+		// `25` and `25.00` are one tile: refusing a group for thirteen amounts when it would store
+		// twelve is the cap claiming a list nobody saved.
+		const typed = Array.from({ length: MAX_SUGGESTED_AMOUNTS }, (_, i) => String(10 + i));
+		expect(stored([...typed, '10.00'])).toHaveLength(MAX_SUGGESTED_AMOUNTS);
+	});
+
 	it('names no value in a row\u2019s own message, because that row is the box showing it', () => {
 		// these boxes have no length cap in front of them. where the sentence has to leave the box —
 		// `parseFormGiving` in `$lib/server/forms/form-input.ts` folds the rows into one string — it
@@ -285,6 +293,25 @@ describe('readSuggestedAmounts', () => {
 		const long = 'x'.repeat(400);
 		expect(perRow([long])).toEqual([
 			{ row: 0, problem: 'must be an amount, write 25.00 for $25.00' }
+		]);
+	});
+});
+
+// the count the cap and the editor's Add both take, so it is asserted here once for the two of them.
+describe('suggestedEntries', () => {
+	it('counts an amount once however it is written, at the row it first appears in', () => {
+		expect(suggestedEntries(['25', ' 10 ', '25.00', '10'])).toEqual([
+			{ row: 0, text: '25' },
+			{ row: 1, text: '10' }
+		]);
+	});
+
+	// a box that reads as no amount has no figure to compare, so it is counted by what it says.
+	it('counts a box that reads as no amount by its text, blanks not at all', () => {
+		expect(suggestedEntries(['lots', '', ' lots ', 'more', '25'])).toEqual([
+			{ row: 0, text: 'lots' },
+			{ row: 3, text: 'more' },
+			{ row: 4, text: '25' }
 		]);
 	});
 });

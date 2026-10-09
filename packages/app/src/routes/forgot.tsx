@@ -48,9 +48,11 @@ import type { Route } from './+types/forgot';
 // page names the organisation — and the deployer is refused inside it by name, because their
 // password is a deploy-time var with no `auth_account` row behind it.
 //
-// **the send runs in `waitUntil` rather than on the request.** better-auth defers it through
-// `passwordReset.background` ($lib/server/auth/index.ts), so an address this deployment has takes
-// the same time to answer as one it does not — the timing is the rest of what the answer withholds.
+// **the reset runs in `waitUntil`, after the answer has left.** the lookup, the row a member's link
+// is written to and the mail are all handed to the request's `ctx.waitUntil` by
+// `requestPasswordReset`, so an address this deployment has is answered in the time one it does not
+// — the timing is the rest of what the answer withholds. it is also why a reset that fails is a
+// log line and never a banner here.
 //
 // **the link is composed here and nowhere else**, the same split ./_app.admin.members.tsx states
 // about the invitation: the auth module hands over an address and a token and reads no url, no
@@ -109,16 +111,19 @@ const SENT =
 	'once and for an hour.';
 
 /**
- * what a refusal that is about the deployment says.
+ * what a caller is told when the edge attributed no address to the request, so there is no
+ * sign-in bucket to charge and nothing is sent.
  *
- * the same shape ./login.tsx's `UNAVAILABLE` is and for the same reason: the auth layer's own
- * message is written for an agent reading a status body and belongs on the surfaces an operator
- * controls, so what an anonymous POST gets is the pointer rather than the answer.
+ * ./login.tsx's `UNATTRIBUTED` in this screen's words, and argued there: it names the cause and the
+ * switch that usually produces it, for whoever runs the deployment. it says nothing about the email
+ * address typed, because the body was never read, and it names the IP address in full because
+ * "your address" on a page whose one box is an email address reads as that box.
  */
-const UNAVAILABLE =
-	'A reset link could not be sent: something is wrong with this deployment rather than with ' +
-	'what you typed. Ask whoever runs it to check the console (`better-giving start`); the exact ' +
-	'cause is in the deployment’s logs, which the console does not read.';
+const UNATTRIBUTED =
+	'A reset link could not be sent. This deployment is not being told your connection’s IP ' +
+	'address, so it cannot limit how many links are requested and refuses every request until it ' +
+	'is. The usual cause is Cloudflare’s “Remove visitor IP headers” setting being switched on for ' +
+	'this site; whoever runs this deployment can switch it off in the Cloudflare dashboard.';
 
 export const links = operatorLinks;
 
@@ -165,9 +170,15 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// a deployment with no binding sends on, and a caller the edge attributed no address to is not
 	// counted at all. both are `isRateLimited`'s decisions and are argued in
 	// $lib/server/api/rate-limit.ts.
-	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, signInRateLimitKey(request))) {
+	const bucket = signInRateLimitKey(request);
+	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(FORGOT_FORM, signInRateLimitMessage()));
 	}
+
+	// so a caller with no bucket is refused here, for every address alike and before the body is
+	// read. `signInRateLimitKey` argues why this site refuses all of them where ./login.tsx lets the
+	// deployer through, and ./login.tsx argues the 403.
+	if (bucket === null) return invalid(403, unread(FORGOT_FORM, UNATTRIBUTED));
 
 	const submission = parseForm(await request.formData(), FORGOT_FORM);
 
@@ -215,16 +226,11 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 				if (!mailed.ok) {
 					console.error('a reset link could not be sent:', mailed.reason, mailed.detail);
 				}
-			},
-			background: (task) => ctx.waitUntil(task)
+			}
 		}
 	});
 
-	const requested = await requestPasswordReset(auth, { email: submission.value.email });
-	// `unavailable` is already logged where it was classified, and is the only answer that is not
-	// `ok`: an address nobody here has is not one of them.
-	if (!requested.ok) return invalid(500, submission.reject({ formErrors: [UNAVAILABLE] }));
-
+	requestPasswordReset(auth, { email: submission.value.email }, (task) => ctx.waitUntil(task));
 	return { sent: true as const };
 }
 

@@ -15,10 +15,11 @@ import type { ChallengeSeam, TurnstileLike } from '@better-giving/form/embed/tur
 import { PART_NAMES, ROLE_TOKENS, STATE_TOKENS } from '@better-giving/form/parts';
 import { DEPOSIT_POLL_MS, MICRODEPOSIT_WINDOW_MS } from '@better-giving/form/machine';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
-import { act, createRef, StrictMode } from 'react';
+import { act, createRef, StrictMode, Suspense } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import type { DonateAnnouncerProps } from './announce';
 import { DonateCard } from './card';
 import { Choice, type ChoiceProps } from './choice';
 import * as copy from './copy';
@@ -50,6 +51,19 @@ vi.mock('./choice', async (importOriginal) => {
 		return <actual.Choice {...props} />;
 	}
 	return { ...actual, Choice: Recorded };
+});
+
+// a promise the card's region suspends on while it is set, which is how a spec has react throw a
+// render of the card away: the region is drawn by every render of the card, after the card's own body
+// has run, and a render that suspends is discarded without a commit.
+const regionHeld = vi.hoisted(() => ({ on: null as Promise<void> | null }));
+vi.mock('./announce', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./announce')>();
+	function Held(props: DonateAnnouncerProps) {
+		if (regionHeld.on !== null) throw regionHeld.on;
+		return <actual.DonateAnnouncer {...props} />;
+	}
+	return { ...actual, DonateAnnouncer: Held };
 });
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
@@ -136,6 +150,12 @@ function paymentProvider(answers: Answers = {}) {
 				}
 			});
 		},
+		/** the element group reporting with no rail chosen, which a picker still collapsed does. */
+		idle: () => {
+			act(() => {
+				for (const handler of [...change]) handler({ collapsed: true, empty: true });
+			});
+		},
 		/** the element group saying its fields will not come up. */
 		fail: () => {
 			act(() => {
@@ -192,13 +212,30 @@ function openFund(root: HTMLElement): StubConnect {
 	return button;
 }
 
+/** the callback the card last handed the challenge widget, which is what a token arrives through. */
+const widget = { answer: (_token: string): void => {} };
+
 const CHALLENGE: ChallengeSeam = {
 	load: async () => {
-		const api: TurnstileLike = { render: () => 'widget-1', reset: () => {}, remove: () => {} };
+		const api: TurnstileLike = {
+			render: (_node, options) => {
+				widget.answer = options.callback ?? (() => {});
+				return 'widget-1';
+			},
+			reset: () => {},
+			remove: () => {}
+		};
 		return api;
 	},
 	delay: () => () => {}
 };
+
+/** the challenge widget minting a token, which it does on its own schedule rather than a donor's. */
+function token(value: string): void {
+	act(() => {
+		widget.answer(value);
+	});
+}
 
 /**
  * a card on a page, with both providers answered from plain objects.
@@ -210,7 +247,10 @@ const CHALLENGE: ChallengeSeam = {
 async function card(
 	config: FormConfig = CONFIG,
 	answers: Answers = {},
-	{ strict = false }: { readonly strict?: boolean } = {}
+	{
+		strict = false,
+		boundary = false
+	}: { readonly strict?: boolean; readonly boundary?: boolean } = {}
 ) {
 	const payment = paymentProvider(answers);
 	const paypal = paypalProvider();
@@ -230,10 +270,12 @@ async function card(
 			}}
 		/>
 	);
+	// a boundary to suspend into, for the spec that has react discard a render (`regionHeld`).
+	const bounded = boundary ? <Suspense fallback={null}>{drawn}</Suspense> : drawn;
 	act(() => {
 		// react-router's default client entry hydrates under `<StrictMode>`, which runs every effect
 		// twice on a development mount.
-		mounted.render(strict ? <StrictMode>{drawn}</StrictMode> : drawn);
+		mounted.render(strict ? <StrictMode>{bounded}</StrictMode> : bounded);
 	});
 	onTestFinished(() => {
 		act(() => {
@@ -294,6 +336,33 @@ function type(box: HTMLInputElement, value: string): void {
 /** what the card is saying out loud. */
 function said(root: HTMLElement): string {
 	return one(root, '[role="status"]').textContent ?? '';
+}
+
+/** a task's turn, which is how long the region takes to write a sentence it said again. */
+async function settled(): Promise<void> {
+	await act(() => new Promise<void>((settle) => setTimeout(settle, 0)));
+}
+
+/**
+ * `during` run with every render of the card thrown away, and then the render that commits.
+ *
+ * the card's boundary shows its empty fallback meanwhile, so nothing the card renders inside is
+ * committed — what the region says after is what the commits before and after decided.
+ */
+async function held(during: () => Promise<void>): Promise<void> {
+	let release: () => void = () => {};
+	regionHeld.on = new Promise<void>((settle) => {
+		release = settle;
+	});
+	onTestFinished(() => {
+		regionHeld.on = null;
+	});
+	await during();
+	await act(async () => {
+		regionHeld.on = null;
+		release();
+		for (let at = 0; at < 20; at += 1) await Promise.resolve();
+	});
 }
 
 const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
@@ -613,7 +682,15 @@ describe('the way past the presets', () => {
 	});
 });
 
-it('refuses a figure outside the bounds and states them where the caret cannot land', async () => {
+/**
+ * the amount step's refusal as the region says it, with the subject the visible sentence takes from
+ * where it stands.
+ */
+const AMOUNT_REFUSED = 'Amount: between $5 and $5,000';
+
+// the caret lands on the entry, which is described by the sentence while it stands, so arriving there
+// reads it: the region saying it too is the refusal twice.
+it('refuses a figure outside the bounds and states them on the entry the caret lands on', async () => {
 	const { root } = await card();
 
 	press(one(root, '.tiles > label.other'));
@@ -623,12 +700,50 @@ it('refuses a figure outside the bounds and states them where the caret cannot l
 	expect(one(root, '#amount-problem').hidden).toBe(false);
 	expect(one(root, '#amount-problem').textContent).toBe('between $5 and $5,000');
 	expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
-	// the caret lands on a control inside a fieldset, where a group's description is not reliably
-	// announced from a descendant — so the sentence is on the region however the press was made, and
-	// spoken with its subject, which the visible sentence takes from where it stands.
-	expect(said(root)).toBe('Amount: between $5 and $5,000');
+	expect(input(root, '#amount-entry').getAttribute('aria-describedby')).toBe('amount-problem');
 	expect(document.activeElement).toBe(input(root, '#amount-entry'));
+	expect(said(root)).toBe('');
 });
+
+// Enter in the entry presses Continue with the caret already where the press would send it, and
+// focusing the node that holds focus says nothing, so the region is the one channel left.
+it('says the bounds on the region where the caret was already on the entry', async () => {
+	const { root } = await card();
+	press(one(root, '.tiles > label.other'));
+	type(input(root, '#amount-entry'), '1.00');
+	act(() => {
+		input(root, '#amount-entry').focus();
+	});
+
+	press(one(root, CONTINUE));
+
+	expect(document.activeElement).toBe(input(root, '#amount-entry'));
+	expect(said(root)).toBe(AMOUNT_REFUSED);
+});
+
+/**
+ * the positive every "said no second time" check is paired with: a Continue refused twice with the
+ * caret on the entry is said again within the one `settled()` the negative waited, so a re-say that
+ * took longer than that wait fails here rather than leaving the negative passing on silence.
+ */
+async function saidAgainAfterSettling(root: HTMLElement): Promise<void> {
+	if (one(screen(root), 'h2').textContent !== copy.STEP_HEADINGS[0]) {
+		press(every(screen(root), '.step-dot')[0] as HTMLElement);
+	}
+	press(one(root, '.tiles > label.other'));
+	act(() => {
+		input(root, '#amount-entry').focus();
+	});
+	press(one(root, CONTINUE));
+	await settled();
+	expect(said(root)).toBe(AMOUNT_REFUSED);
+
+	press(one(root, CONTINUE));
+	expect(said(root)).toBe('');
+	await settled();
+
+	expect(said(root)).toBe(AMOUNT_REFUSED);
+}
 
 it('describes the entry by the bounds while a missing amount is marked', async () => {
 	const { root } = await card();
@@ -650,12 +765,15 @@ it('names every decision a press was refused for, not the first', async () => {
 
 	press(one(root, '.tiles > label.other'));
 	press(input(root, '.disclosure.note input[type="checkbox"]'));
+	act(() => {
+		input(root, '#amount-entry').focus();
+	});
 	press(one(root, CONTINUE));
 
 	expect(one(root, '#amount-problem').hidden).toBe(false);
 	expect(one(root, '#note-problem').hidden).toBe(false);
 	// the note's sentence is on the control itself, so it is not repeated on the region.
-	expect(said(root)).toBe('Amount: between $5 and $5,000');
+	expect(said(root)).toBe(AMOUNT_REFUSED);
 });
 
 it('marks a dedication the press was refused for and clears it when the block is taken back', async () => {
@@ -813,6 +931,54 @@ it('names each refused field when a press leaves the caret where it was', async 
 	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
 });
 
+describe('the refused fields, said where the press left the caret', () => {
+	const REFUSAL = 'Email: required for your receipt; First name: required';
+
+	/** the details step refused with the caret on the email box, which the press leaves it on. */
+	async function refused() {
+		const reached = await card();
+		press(one(reached.root, '.tiles > label:nth-of-type(2)'));
+		press(one(reached.root, CONTINUE));
+		type(input(reached.root, '#last-name'), 'Lovelace');
+		act(() => {
+			input(reached.root, '#email').focus();
+		});
+		press(one(reached.root, CONTINUE));
+		expect(said(reached.root)).toBe(REFUSAL);
+		return reached;
+	}
+
+	// the challenge widget and the provider's fields both report on their own schedule, so a reading
+	// that changes no field can land in the instant the refusal is said.
+	it('keeps naming them through a reading that changes none of them', async () => {
+		const { root, payment } = await refused();
+
+		token('tok_from_the_widget');
+		payment.pick('card');
+
+		expect(said(root)).toBe(REFUSAL);
+	});
+
+	// a region reading out the fields still to fill in while the donor is typing one is talking over
+	// them, and the sentence under the box says the rest.
+	it('stops naming them once the donor edits one it named', async () => {
+		const { root } = await refused();
+
+		type(input(root, '#first-name'), 'Ada');
+
+		expect(said(root)).toBe('');
+	});
+
+	it('stops naming them once the donor goes back a step', async () => {
+		const { root } = await refused();
+
+		press(every(root, '.step-details .step-dot')[0] as HTMLElement);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(said(root)).toBe('');
+	});
+});
+
 it('says which of the two rules an address broke', async () => {
 	const { root } = await card();
 
@@ -887,20 +1053,113 @@ it('says nothing about the total when a rail pick leaves it where it was', async
 	expect(said(root)).toBe('');
 });
 
-// a refused press has been heard, and the box keeps the refusal as its description; a total that
-// moved after it is news the region would otherwise never carry, because the figure is silent.
-it('says a total moved under a standing refusal on the card’s region', async () => {
+// the provider reports its rail on its own schedule and the widget its token on its own, so a reading
+// with nothing to say can land in the instant the total is said. the sentence stays until the step
+// changes, another replaces it, or the total it names does.
+it('keeps saying the total through a reading that changes nothing it states', async () => {
+	const { root, payment } = await card();
+	walkToGive(root);
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	const total = one(root, 'output.figure').textContent;
+	expect(said(root)).toBe(`Total today is ${total}.`);
+
+	token('tok_from_the_widget');
+	payment.pick('card');
+
+	expect(one(root, 'output.figure').textContent).toBe(total);
+	expect(said(root)).toBe(`Total today is ${total}.`);
+});
+
+it('says a total a rail repriced in place of the one it said before', async () => {
+	const { root, payment } = await card(WITH_BANK);
+	walkToGive(root);
+	payment.pick('card');
+	// off and back on, so the total said is one with a fee in it for the bank's rules to reprice.
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	const before = one(root, 'output.figure').textContent;
+	expect(said(root)).toBe(`Total today is ${before}.`);
+
+	payment.pick('us_bank_account');
+
+	const after = one(root, 'output.figure').textContent;
+	expect(after).not.toBe(before);
+	expect(said(root)).toBe(`Total today is ${after}.`);
+});
+
+it('stops saying the total once the donor goes back a step', async () => {
 	const { root } = await card();
+	walkToGive(root);
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	expect(said(root)).not.toBe('');
+
+	press(every(root, '.step-give .step-dot')[1] as HTMLElement);
+
+	expect(screen(root).className).toContain('step-details');
+	expect(said(root)).toBe('');
+});
+
+// a render react throws away is one nobody heard: here the fee decision's render is discarded and a
+// reading overtakes it, so the render that commits is the first to set the figure against the one the
+// donor was last shown.
+it('decides a moved total on the render that commits, not on one react discards', async () => {
+	const { root, payment } = await card(CONFIG, {}, { boundary: true });
+	walkToGive(root);
+	const before = one(root, 'output.figure').textContent;
+
+	await held(async () => {
+		press(input(root, '.fee-decision input[type="checkbox"]'));
+		payment.pick('card');
+	});
+
+	const after = one(root, 'output.figure').textContent;
+	expect(after).not.toBe(before);
+	expect(said(root)).toBe(`Total today is ${after}.`);
+});
+
+// the refusal is a thing the donor was asked for and has not done, so it holds the region ahead of a
+// total that moved under it, as the element's does: a total written over it is the ask disappearing,
+// and the next render writing it back says it again with nobody having pressed anything.
+it('keeps a standing refusal on the region through a total that moved under it, said once', async () => {
+	const { root, payment } = await card();
 	walkToGive(root);
 	press(one(root, 'button[part~="submit"]'));
 	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
-	const total = one(root, 'output.figure');
+	const region = one(root, '[role="status"]');
+	const written: string[] = [];
+	const watch = new MutationObserver(() => written.push(region.textContent ?? ''));
+	watch.observe(region, { childList: true, characterData: true, subtree: true });
+	onTestFinished(() => watch.disconnect());
 
 	press(input(root, '.fee-decision input[type="checkbox"]'));
+	payment.idle();
+	await settled();
 
-	expect(said(root)).toBe(`Total today is ${total.textContent}.`);
-	expect(total.getAttribute('aria-live')).toBe('off');
+	expect(written).toEqual([]);
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
 	expect(one(root, '#payment-problem').hidden).toBe(false);
+
+	// the same wait shows a repeated press saying it again, so the silence above is not the wait
+	// ending before a re-say could land.
+	press(one(root, 'button[part~="submit"]'));
+	expect(said(root)).toBe('');
+	await settled();
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+});
+
+// outranked is deferred rather than dropped: the figure the donor will be charged is said once the
+// refusal standing over it clears, however many commits it waited.
+it('says a total that moved under a standing refusal once the refusal clears', async () => {
+	const { root, payment } = await card();
+	walkToGive(root);
+	press(one(root, 'button[part~="submit"]'));
+	press(input(root, '.fee-decision input[type="checkbox"]'));
+	expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+
+	payment.pick('card');
+
+	expect(one(root, '#payment-problem').hidden).toBe(true);
+	expect(said(root)).toBe(`Total today is ${one(root, 'output.figure').textContent}.`);
 });
 
 it('refuses a press with no rail, and says so on the box and on the region', async () => {
@@ -1151,6 +1410,22 @@ describe('a repeating gift no processor still up can take', () => {
 		expect(said(root)).toBe(OFFER);
 	});
 
+	// the box the refusal was about is hidden by the offer, so the refusal has nothing left to name
+	// and the offer is what the step is asking.
+	it('says the offer where a press had been refused for the rail before it', async () => {
+		const { root, payment } = await card(WITH_FUND);
+		press(one(root, '.segment > label:nth-of-type(2)'));
+		walkToGive(root);
+		press(one(root, 'button[part~="submit"]'));
+		expect(said(root)).toBe(copy.PAYMENT_PROBLEM);
+
+		payment.fail();
+
+		expect(paymentGroup(root).hidden).toBe(true);
+		expect(one(root, '#payment-problem').hidden).toBe(true);
+		expect(said(root)).toBe(OFFER);
+	});
+
 	it('names a yearly gift’s cadence in the offer', async () => {
 		const { root } = await atReview(3);
 
@@ -1183,6 +1458,50 @@ describe('a repeating gift no processor still up can take', () => {
 		expect(paymentGroup(root).hidden).toBe(false);
 		expect(one(root, 'button[part~="submit"]').hidden).toBe(false);
 		expect(said(root)).not.toBe(OFFER);
+	});
+
+	// the offer arrives whenever the processors fail and nothing moves the caret to it, so the region
+	// is its one channel — and a reading landing a moment later says nothing to replace it.
+	it('keeps saying the offer through a reading that has nothing to say', async () => {
+		const { root } = await atReview();
+		expect(said(root)).toBe(OFFER);
+
+		token('tok_from_the_widget');
+
+		expect(said(root)).toBe(OFFER);
+	});
+
+	it('stops saying the offer once the donor goes back a step', async () => {
+		const { root } = await atReview();
+		expect(said(root)).toBe(OFFER);
+
+		press(every(root, '.step-give .step-dot')[1] as HTMLElement);
+
+		expect(screen(root).className).toContain('step-details');
+		expect(said(root)).toBe('');
+	});
+
+	// the press hands the provider's fields a new cadence, and the widget and the provider report on
+	// their own schedule — a reading that can land as the sentence is said, with nothing of its own.
+	it('keeps saying the gift is one-time through a reading that has nothing to say', async () => {
+		const { root } = await atReview();
+		press(makeOneTime(root));
+		expect(said(root)).toBe('This is now a one-time gift.');
+
+		token('tok_from_the_widget');
+
+		expect(said(root)).toBe('This is now a one-time gift.');
+	});
+
+	it('stops saying the gift is one-time once the donor goes back a step', async () => {
+		const { root } = await atReview();
+		press(makeOneTime(root));
+		expect(said(root)).toBe('This is now a one-time gift.');
+
+		press(every(root, '.step-give .step-dot')[1] as HTMLElement);
+
+		expect(screen(root).className).toContain('step-details');
+		expect(said(root)).toBe('');
 	});
 });
 
@@ -1548,7 +1867,14 @@ describe('a resume drawn before the flow starts', () => {
 		return host;
 	}
 
-	/** that markup hydrated, with every screen the card showed on the way recorded. */
+	/**
+	 * that markup hydrated, with every screen the card showed on the way recorded, and every sentence
+	 * the region held on the way, however briefly.
+	 *
+	 * a sentence is read off what replaced it — the old value a text edit carries, or the text node a
+	 * write took out — because several commits land between two deliveries of the observer, and the
+	 * region's text by then is only the last of them.
+	 */
 	async function hydrated(host: HTMLElement, resuming: boolean) {
 		const shownOnTheWay: string[] = [];
 		const watch = new MutationObserver(() => {
@@ -1556,6 +1882,27 @@ describe('a resume drawn before the flow starts', () => {
 			shownOnTheWay.push(open.map((section) => section.className).join(' + '));
 		});
 		watch.observe(host, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+		const region = one(host, '[role="status"]');
+		const replaced: string[] = [];
+		const take = (records: MutationRecord[]) => {
+			for (const record of records) {
+				if (record.type === 'characterData') replaced.push(record.oldValue ?? '');
+				for (const node of record.removedNodes) replaced.push(node.textContent ?? '');
+			}
+		};
+		const hear = new MutationObserver(take);
+		hear.observe(region, {
+			childList: true,
+			characterData: true,
+			characterDataOldValue: true,
+			subtree: true
+		});
+		onTestFinished(() => hear.disconnect());
+		/** every sentence the region has held since before hydration, in order. */
+		const spoken = () => {
+			take(hear.takeRecords());
+			return [...replaced, region.textContent ?? ''].filter((words) => words !== '');
+		};
 		const recovered: unknown[] = [];
 		let mounted: ReturnType<typeof hydrateRoot> | null = null;
 		act(() => {
@@ -1576,7 +1923,7 @@ describe('a resume drawn before the flow starts', () => {
 			for (let at = 0; at < 4; at += 1) await Promise.resolve();
 		});
 		watch.disconnect();
-		return { shownOnTheWay, recovered };
+		return { shownOnTheWay, recovered, spoken };
 	}
 
 	it('draws the resume’s takeover in the server render rather than the amount step', () => {
@@ -1623,9 +1970,84 @@ describe('a resume drawn before the flow starts', () => {
 		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
 		const host = served(true);
 
-		await hydrated(host, true);
+		const { spoken } = await hydrated(host, true);
 
 		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		// the resume's wait the first paint drew is no news: the flow behind it never started.
+		expect(spoken()).toEqual([]);
+	});
+
+	// the takeover the donor was told about is gone, so the caret is put on the heading of the step
+	// that replaced it, and arriving there reads it: the region saying it too is the heading twice.
+	it('puts the caret on the amount step’s heading where the stamped return had no token', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		const held = one(screen(host), ':scope > h2');
+		held.focus();
+
+		const { spoken } = await hydrated(host, true);
+
+		const heading = one(screen(host), 'h2');
+		expect(heading.textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(heading);
+		// on the way as well as at the end: focus or region, never both.
+		expect(spoken()).toEqual([]);
+	});
+
+	it('puts the caret on the amount step’s heading from the page body', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		expect(document.activeElement).toBe(document.body);
+
+		const { spoken } = await hydrated(host, true);
+
+		expect(document.activeElement).toBe(one(screen(host), 'h2'));
+		expect(spoken()).toEqual([]);
+	});
+
+	// a caret the donor put on the host page is theirs, so the region is what tells them the screen
+	// changed.
+	it('says the amount step to a caret on the host page, and leaves the caret there', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+
+		const { spoken } = await hydrated(host, true);
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(document.activeElement).toBe(elsewhere);
+		expect(said(host)).toBe(`${copy.STEP_HEADINGS[0]}.`);
+		expect(spoken()).toEqual([`${copy.STEP_HEADINGS[0]}.`]);
+	});
+
+	// the press chose no sentence for the region — the note's refusal is on the box the caret is sent
+	// to — so the step it was handed is not said a second time beside it.
+	it('says the amount step no second time on a Continue refused for the note alone', async () => {
+		window.history.replaceState(null, '', `?bg_donate_form=${CONFIG.formId}`);
+		const host = served(true);
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		elsewhere.focus();
+		await hydrated(host, true);
+		expect(said(host)).toBe(`${copy.STEP_HEADINGS[0]}.`);
+		press(one(host, '.tiles > label:nth-of-type(2)'));
+		press(input(host, '.disclosure.note input[type="checkbox"]'));
+
+		press(one(host, CONTINUE));
+		await settled();
+
+		expect(one(screen(host), 'h2').textContent).toBe(copy.STEP_HEADINGS[0]);
+		expect(one(host, '#note-problem').hidden).toBe(false);
+		expect(said(host)).toBe('');
+		await saidAgainAfterSettling(host);
 	});
 });
 
@@ -1726,9 +2148,12 @@ describe('a crypto gift', () => {
 	}
 
 	/** the review step of a one-time gift with the crypto option open. */
-	async function onCrypto(quote: () => Response = () => json(USDT)) {
+	async function onCrypto(
+		quote: () => Response = () => json(USDT),
+		drawn: Parameters<typeof card>[2] = {}
+	) {
 		const server = deployment(quote);
-		const { root } = await card(CRYPTO);
+		const { root } = await card(CRYPTO, {}, drawn);
 		walkToGive(root);
 		const head = row(root, 'Crypto');
 		if (head === null) throw new Error('no crypto option on the review step');
@@ -1746,8 +2171,8 @@ describe('a crypto gift', () => {
 	}
 
 	/** the address screen, for a USDT gift. */
-	async function atAddress() {
-		const reached = await onCrypto();
+	async function atAddress(drawn: Parameters<typeof card>[2] = {}) {
+		const reached = await onCrypto(undefined, drawn);
 		await pick(reached.root, 'USDT');
 		await donate(reached.root);
 		return reached;
@@ -1812,6 +2237,44 @@ describe('a crypto gift', () => {
 		expect(coins(root).activeElement).toBe(combobox(root));
 		expect(one(root, '#payment-problem').hidden).toBe(true);
 		expect(server.reads).toBe(0);
+	});
+
+	// the coin list states its own refusal where the caret lands, and the press chose nothing for the
+	// region: a sentence it was holding from before the press is not said a second time beside it.
+	it('says a kept total no second time on a press with no coin picked', async () => {
+		const { root } = await onCrypto();
+		press(input(root, '.row.fee [part~="checkbox"]'));
+		const total = one(root, 'output.figure').textContent;
+		expect(said(root)).toBe(`Total today is ${total}.`);
+
+		await donate(root);
+		await settled();
+
+		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REQUIRED);
+		expect(said(root)).toBe('');
+		await saidAgainAfterSettling(root);
+	});
+
+	it('says the gift being one-time no second time on a press with no coin picked', async () => {
+		deployment(() => json(USDT));
+		const { root, payment } = await card(CRYPTO);
+		press(one(root, '.segment > label:nth-of-type(2)'));
+		walkToGive(root);
+		// no fee, so the crypto rail moves no figure and the one-time sentence is still held.
+		press(input(root, '.fee-decision input[type="checkbox"]'));
+		payment.fail();
+		press(one(root, '.step-give .attention + [part~="action"]'));
+		const head = row(root, 'Crypto');
+		if (head === null) throw new Error('no crypto option on the one-time gift');
+		press(head);
+		expect(said(root)).toBe('This is now a one-time gift.');
+
+		await donate(root);
+		await settled();
+
+		expect(coins(root).getElementById('coin-problem')?.textContent).toBe(copy.COIN_REQUIRED);
+		expect(said(root)).toBe('');
+		await saidAgainAfterSettling(root);
 	});
 
 	it('shows where and how much to send, with the caret on the heading', async () => {
@@ -2052,6 +2515,56 @@ describe('a crypto gift', () => {
 		await tick(DEPOSIT_POLL_MS * 2);
 
 		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
+	});
+
+	// the heading a Copy was pressed under went away and came back, which is a new address screen and
+	// not the one the press was made on. the wait between the two is a render react throws away here,
+	// so its sentence is never on the region and spends nothing: the heading leaving is what does.
+	it('says a Copy once, and not again on the address screen a different coin returns to', async () => {
+		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: async () => {} } });
+		const { root } = await atAddress({ boundary: true });
+		await act(async () => {
+			one(root, '.deposit [aria-label="Copy address"]').click();
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+		expect(said(root)).toBe('Address copied.');
+		press(one(root, '.takeover > .foot > button[part~="action-quiet"]'));
+		expect(screen(root).className).toContain('step-give');
+		expect(said(root)).toBe('');
+
+		await held(async () => {
+			await donate(root);
+		});
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
+		expect(said(root)).toBe('');
+	});
+
+	// a render react throws away is one nobody heard, so what the region says is decided by the
+	// render that commits: here the first render of the closed address is suspended with the caret
+	// still on a Copy, and the one that commits finds it on the host page.
+	it('decides a retitled heading on the render that commits, not on one react discards', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date(VALID_UNTIL).getTime() - 1000 });
+		const { root } = await atAddress({ boundary: true });
+		const elsewhere = document.createElement('button');
+		document.body.appendChild(elsewhere);
+		onTestFinished(() => {
+			elsewhere.remove();
+		});
+		act(() => {
+			one(root, '.deposit [aria-label="Copy address"]').focus();
+		});
+
+		await held(async () => {
+			await tick(1000);
+			act(() => {
+				elsewhere.focus();
+			});
+		});
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.CHECKING_HEADING);
+		expect(document.activeElement).toBe(elsewhere);
 		expect(said(root)).toBe(`${copy.CHECKING_HEADING}.`);
 	});
 

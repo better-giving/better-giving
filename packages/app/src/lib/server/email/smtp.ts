@@ -176,13 +176,7 @@ export function createSmtpProvider(
 				// the catch the whole port exists for. every failure below this line — DNS, TLS,
 				// AUTH, a rejected recipient, a timeout — leaves as a value. nothing thrown by a
 				// mail host may propagate into a caller that has already committed a `batch()`.
-				const failure = classifySmtpFailure(error);
-				return {
-					ok: false,
-					reason: failure.reason,
-					detail: failure.detail,
-					indeterminate: failure.indeterminate
-				};
+				return { ok: false, ...classifySmtpFailure(error) };
 			}
 
 			return { ok: true };

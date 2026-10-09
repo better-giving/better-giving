@@ -68,7 +68,10 @@
 	// (https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/).
 	//
 	// every thirty minutes, the crypto gifts no IPN settled are read back
-	// (src/lib/server/donations/pending-crypto-read.ts). every minute, in one invocation, what this
+	// (src/lib/server/donations/pending-crypto-read.ts). at a quarter past and a quarter to, in an
+	// invocation of their own so that nothing else's sizing is theirs to share, the donor notices of
+	// refunds that did not send are sent again (`sendOwedRefundNotices` in
+	// src/lib/server/donations/refund-notice.ts). every minute, in one invocation, what this
 	// deployment owes is sent: the organisation's books (src/lib/server/accounting/deliver.ts), its
 	// Zaps (src/lib/server/zapier/deliver.ts) and its webhook destinations
 	// (src/lib/server/webhooks/deliver.ts) — a minute because a gift is meant to arrive while it is
@@ -83,22 +86,23 @@
 	// Paid the CPU row is the one selected by the interval, thirty seconds under an hour and fifteen
 	// minutes at an hour or longer (https://developers.cloudflare.com/workers/platform/limits/,
 	// "CPU time").
-	// both expressions above are under an hour, so both runs have thirty seconds of CPU. fifteen
-	// minutes is the figure on the Duration table, which carries no interval condition and is
-	// therefore the easy one to reach for; it binds every run, and it is the higher of this
-	// schedule's two limits.
+	// the thirty-minute and the minute expressions are under an hour, so their runs have thirty
+	// seconds of CPU; each of the refund notices' two fires once an hour, so their runs have fifteen
+	// minutes. fifteen minutes is the figure on the Duration table, which carries no interval
+	// condition and is therefore the easy one to reach for; it binds every run, and for the two
+	// under an hour it is the higher of their two limits.
 	//
 	// what makes that worth stating here rather than beside a run is how the ceiling is enforced: the
 	// invocation is terminated as `exceededCpu` mid-flight, so nothing the run was part way through
 	// is written and nothing is marked. a run that overspends leaves its rows exactly as it found
 	// them — no backoff, no failure, no notice — and shows up in nothing but the Worker's invocation
 	// statuses. no run is held to that ceiling by its sizing: `RUN_DEADLINE_MS` in
-	// src/lib/server/accounting/deliver.ts and src/lib/server/donations/pending-crypto-read.ts bounds
-	// a run's wall clock, and each minute feed's pace in src/lib/server/outbox/budget.ts is sized
-	// against subrequests, D1 queries and connections, with CPU unbudgeted there. what keeps a run
-	// under the thirty seconds is that its time goes to waiting, which CPU does not count. so
-	// lengthening an interval past an hour is what lifts the ceiling, and shortening one never
-	// touches it.
+	// src/lib/server/accounting/deliver.ts, src/lib/server/donations/pending-crypto-read.ts and
+	// src/lib/server/donations/refund-notice.ts bounds a run's wall clock, and each minute feed's
+	// pace in src/lib/server/outbox/budget.ts is sized against subrequests, D1 queries and
+	// connections, with CPU unbudgeted there. what keeps a run under the thirty seconds is that its
+	// time goes to waiting, which CPU does not count. so lengthening an interval past an hour is what
+	// lifts the ceiling, and shortening one never touches it.
 	//
 	// a Workers Free account's cron invocation has ten milliseconds of CPU, fifty subrequests and
 	// fifty D1 queries (the same page, and https://developers.cloudflare.com/d1/platform/limits/),
@@ -116,8 +120,14 @@
 	// top-level and only top-level: wrangler runs `triggers` through its `inheritable` helper, so the
 	// `test` environment below carries the same schedule without repeating it — unlike the bindings,
 	// which it has to. an environment declaring `triggers` of its own replaces this one outright.
+	//
+	// no comma list: the refund notices' half hour is two expressions. `controller.cron` is this
+	// string character for character
+	// (https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/), but nothing
+	// documents how the schedules API hands a list back, and the console compares what it reads
+	// there against these (`Unscheduled` in packages/console/internal/deploy/upload.go).
 	"triggers": {
-		"crons": ["*/30 * * * *", "* * * * *"]
+		"crons": ["*/30 * * * *", "15 * * * *", "45 * * * *", "* * * * *"]
 	},
 
 	"d1_databases": [
@@ -158,16 +168,17 @@
 	],
 
 	// the four buckets this app charges: the whole public surface, the one endpoint on it that
-	// takes money, the staff sign-in, and each key on the read API. CLAUDE.md names rate limiting
-	// as one of the things an endpoint on `/api/v1` owes before it ships; the sign-in is not on that
-	// surface and is here because it compares a single deploy-time var for anyone who asks, and
-	// the read API's is here because a key reads donor records as fast as it is answered.
+	// takes money, the staff sign-in and its password reset, and each key on the read API.
+	// CLAUDE.md names rate limiting as one of the things an endpoint on `/api/v1` owes before it
+	// ships; the sign-in is not on that surface and is here because it compares a single
+	// deploy-time var for anyone who asks, and the read API's is here because a key reads donor
+	// records as fast as it is answered.
 	//
 	// this deployment answers anonymous writes on three paths, not one: `POST /api/v1/forms/:id/
-	// donations`, the sign-in, and `POST /api/stripe/webhook`. the webhook is the one with no
-	// bucket, deliberately — `src/routes/api.stripe.webhook.ts`'s header says why, and the short
-	// version is that a signature is checked before anything is parsed and a shed delivery costs a
-	// settlement.
+	// donations`, the sign-in and its password reset, and `POST /api/stripe/webhook`. the webhook
+	// is the one with no bucket, deliberately — `src/routes/api.stripe.webhook.ts`'s header says
+	// why, and the short version is that a signature is checked before anything is parsed and a
+	// shed delivery costs a settlement.
 	//
 	// each has a `namespace_id` of its own, and that is load-bearing rather than tidy: a namespace
 	// is account-wide, so two bindings naming one share a count for a given key — donors reading a
@@ -182,8 +193,8 @@
 	// own, a failed key check in `src/routes/zapier.ts` and every read-API request, ahead of its key
 	// lookup, in `src/routes/integrations.v1.ts`; the quote in
 	// `src/routes/api.v1.forms.$id.donations.ts`; the sign-in in `src/routes/login.tsx`'s own
-	// action, which is the one site that spends that bucket; and each read-API key, once admitted,
-	// in `src/routes/integrations.v1.ts`'s middleware. what
+	// action and `src/routes/forgot.tsx`'s, the two sites that spend that bucket; and each read-API
+	// key, once admitted, in `src/routes/integrations.v1.ts`'s middleware. what
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
 	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
 	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
@@ -275,8 +286,9 @@
 			"namespace_id": "7414",
 
 			"simple": {
-				// per client IP per minute on the one path that compares `ADMIN_PASSWORD`: the
-				// form action at `POST /login`. the key is the credential's rather than that
+				// per client IP per minute on the one path that compares `ADMIN_PASSWORD`, the
+				// form action at `POST /login`, and on the reset requests `POST /forgot` sends
+				// mail for. the key is the credential's rather than that
 				// path's (`signInRateLimitKey` in src/lib/server/api/rate-limit.ts), so a second
 				// way in would spend this same bucket instead of minting one of its own.
 				//
