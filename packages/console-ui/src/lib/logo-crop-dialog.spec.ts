@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest';
 import {
 	CANCEL_CROP,
 	CROP_TITLE,
+	CROP_WORDS,
 	type CropImage,
 	LogoCropCard,
 	type LogoCropCardProps,
 	LogoCropDialog,
-	SAVE_LOGO
+	SAVE_LOGO,
+	squareWords
 } from './logo-crop-dialog';
 import {
 	LOGO_CROP_SIZE,
@@ -21,10 +23,11 @@ import {
 } from './org-fields';
 import { LOGO_REFUSED } from './org-logo';
 
-// the logo's crop card as drawn in each state, and the dialog's first draw around it.
-// ../../vite.config.ts pins `node` and there is no dom, so what a save posts is read off the boxes
-// the card draws into the logo form, and what the cropper says off the markup the server draws; the
-// arithmetic of the square is ./logo-crop.spec.ts's, and the cropper's drag is ark's.
+// the logo's crop card as drawn in each state, the dialog's first draw around it, and the words the
+// cropper says. ../../vite.config.ts pins `node` and there is no dom, so what a save posts is read
+// off the boxes the card draws into the logo form, what the cropper says off the markup the server
+// draws and off the words themselves; the arithmetic of the square is ./logo-crop.spec.ts's, and
+// the cropper's drag is ark's.
 
 const FORM = 'org-logo-upload';
 
@@ -118,10 +121,10 @@ describe('the logo’s crop card', () => {
 		expect(save).toContain(`aria-describedby="${FORM}-crop-err"`);
 	});
 
-	it('says why, and keeps Save closed, over a file that is no image', () => {
-		const markup = drawn({ refusal: 'not-an-image', square: null });
+	it('says why, and keeps Save closed, over a file of a type a logo is not taken in', () => {
+		const markup = drawn({ refusal: 'not-a-logo-type', square: null });
 
-		expect(markup).toContain(LOGO_REFUSED['not-an-image']);
+		expect(markup).toContain(LOGO_REFUSED['not-a-logo-type']);
 		expect(press(markup, SAVE_LOGO)).toContain('aria-disabled="true"');
 	});
 
@@ -150,16 +153,20 @@ describe('the logo’s crop, as it opens', () => {
 		file: new File(['x'], name, { type })
 	});
 
+	// each is an image, or may be one, so the sentence is about the type and never that it is none.
 	it.each([
 		['an SVG', 'logo.svg', 'image/svg+xml'],
+		['a HEIC photo', 'IMG_0412.HEIC', 'image/heic'],
 		['a GIF', 'logo.gif', 'image/gif'],
 		['a file with no type', 'logo', '']
-	])('refuses %s before any cropping, with Save closed', (_, name, type) => {
+	])('refuses %s by its type before any cropping, with Save closed on it', (_, name, type) => {
 		const markup = opened(file(name, type));
+		const save = press(markup, SAVE_LOGO);
 
-		expect(markup).toContain(LOGO_REFUSED['not-an-image']);
-		expect(press(markup, SAVE_LOGO)).toContain('aria-disabled="true"');
-		expect(markup).not.toContain('adm-cropper');
+		expect(markup).toContain(LOGO_REFUSED['not-a-logo-type']);
+		expect(markup).not.toContain(LOGO_REFUSED['not-an-image']);
+		expect(save).toContain('aria-disabled="true"');
+		expect(save).toContain(`aria-describedby="${FORM}-crop-err"`);
 	});
 
 	it('refuses nothing as a PNG opens', () => {
@@ -173,6 +180,16 @@ describe('the logo’s crop, as it opens', () => {
 		return found?.[0] ?? '';
 	};
 
+	// the machine's own value text is handed the box's pixels already rounded; the square says the
+	// one a save posts, which is nothing until the image is measured.
+	it('says where the square stands in its own words, not the machine’s', () => {
+		const square = selection(
+			opened({ from: LOGO_FROM_STORED, url: 'https://give.riverside.org/images/img_1' })
+		);
+
+		expect(square).toContain(`aria-valuetext="${squareWords(null)}"`);
+	});
+
 	it('names a square and says nothing of zoom to a reader', () => {
 		const markup = opened({
 			from: LOGO_FROM_STORED,
@@ -185,5 +202,38 @@ describe('the logo’s crop, as it opens', () => {
 		// the machine's own words are for a rectangle that zooms.
 		const said = [...markup.matchAll(/\baria-[a-z]+="([^"]*)"/g)].map(([, words = '']) => words);
 		expect(said.filter((words) => /rectangle|zoom/i.test(words))).toEqual([]);
+	});
+});
+
+describe('what the cropper says to a reader', () => {
+	const crop = { x: 0, y: 0, width: 100, height: 100 };
+
+	it('describes the image as the square kept from it, with no zoom or turn', () => {
+		const said = CROP_WORDS.previewDescription?.({ crop, zoom: 2, rotation: 90 }) ?? '';
+
+		expect(said).toMatch(/square/i);
+		expect(said).not.toMatch(/zoom|rotation|degrees|rectangle/i);
+	});
+
+	it('names the selection a square, whatever shape the machine passes', () => {
+		const named = CROP_WORDS.selectionLabel?.({ shape: 'rectangle' }) ?? '';
+
+		expect(named).toMatch(/square/i);
+		expect(named).not.toMatch(/rectangle|crop selection/i);
+	});
+
+	it('says which arrows grow the square and which shrink it, and names the key on a Mac', () => {
+		const told = CROP_WORDS.selectionInstructions ?? '';
+
+		expect(told).toMatch(/Alt \(Option on a Mac\)/);
+		expect(told).toMatch(/right or down arrow to make it larger/);
+		expect(told).toMatch(/left or up to make it smaller/);
+		expect(told).not.toMatch(/zoom|plus|minus/i);
+	});
+
+	it('says the size and place of the square a save posts, in the image’s own pixels', () => {
+		expect(squareWords({ x: 120, y: 0, size: 640 })).toBe(
+			'640 pixels across, 120 from the left and 0 from the top'
+		);
 	});
 });

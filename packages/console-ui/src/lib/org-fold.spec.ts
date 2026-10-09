@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { NonprofitLookup, NonprofitSearch, OrgWrite } from '../api/types';
-import { takesLogo } from './logo-crop';
 import {
 	LOGO_FILE,
 	ORG_INTENT,
@@ -16,6 +15,7 @@ import {
 	storedProfile
 } from './org-fields';
 import { OrgFold } from './org-fold';
+import { takesLogo } from './org-logo';
 
 // the Organisation fold as drawn, around the IRS list. ../../vite.config.ts pins `node` and there
 // is no dom, so what is read here is the first draw: what each form would post is read off the

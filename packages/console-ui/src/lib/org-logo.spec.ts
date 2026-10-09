@@ -231,12 +231,16 @@ describe('an image the crop turns down at the logo', () => {
 		expect(called()).toEqual([]);
 	});
 
-	it('refuses a file typed as something other than an image before opening it', async () => {
-		await expect(
-			putLogo(choosing(photo('application/pdf'), { x: 0, y: 0, size: 400 }), pressing())
-		).resolves.toEqual(refusal(LOGO_REFUSED['not-an-image']));
-		expect(called()).toEqual([]);
-	});
+	// the crop card refuses each of these as it opens, in the same words (./logo-crop-dialog.tsx).
+	it.each(['image/svg+xml', 'image/heic', 'image/gif', 'application/pdf', ''])(
+		'refuses a file typed %j by its type before opening it',
+		async (type) => {
+			await expect(
+				putLogo(choosing(photo(type), { x: 0, y: 0, size: 400 }), pressing())
+			).resolves.toEqual(refusal(LOGO_REFUSED['not-a-logo-type']));
+			expect(called()).toEqual([]);
+		}
+	);
 
 	it('refuses an image the browser could not open as unreadable', async () => {
 		seen.decoded = 'fails';
@@ -245,15 +249,6 @@ describe('an image the crop turns down at the logo', () => {
 			putLogo(choosing(photo(), { x: 0, y: 0, size: 400 }), pressing())
 		).resolves.toEqual(refusal(LOGO_REFUSED.unreadable));
 		expect(called()).not.toContain('uploadOrgLogo');
-	});
-
-	it('refuses an untyped file the browser could not open as no image', async () => {
-		// some devices send a photo untyped, so one is given the chance to decode first.
-		seen.decoded = 'fails';
-
-		await expect(
-			putLogo(choosing(photo(''), { x: 0, y: 0, size: 400 }), pressing())
-		).resolves.toEqual(refusal(LOGO_REFUSED['not-an-image']));
 	});
 
 	it('refuses a cropped square the resize could not bring under the cap, and uploads nothing', async () => {

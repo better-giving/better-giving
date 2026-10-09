@@ -2,17 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
 	centredSquare,
 	cropRefusal,
+	type DragCarries,
 	droppedFile,
+	dropEffect,
 	type KeyPress,
 	NUDGE,
 	naturalSquare,
+	type Rect,
+	resizeCorner,
 	shownMinimum,
 	squareResize,
-	takesLogo,
 	unloaded
 } from './logo-crop';
 import { LOGO_FROM_FILE, LOGO_FROM_STORED } from './org-fields';
-import { LOGO_CROP_MIN } from './org-logo';
+import { LOGO_CROP_MIN, takesLogo } from './org-logo';
 
 // the arithmetic between the square dragged on the screen and the square a logo press posts. the
 // dialog that draws it is ./logo-crop-dialog.spec.ts's, and what the crop does with the square is
@@ -120,6 +123,72 @@ describe('a resize from the keyboard', () => {
 	});
 });
 
+describe('the corner a resize from the keyboard is made from', () => {
+	// a 600 × 200 wordmark, and a square of 100 standing in it.
+	const box = { width: 600, height: 200 };
+	const at = (x: number, y: number): Rect => ({ x, y, width: 100, height: 100 });
+
+	it('is the bottom right where there is room below it and to its right', () => {
+		expect(resizeCorner(at(250, 50), box, NUDGE.step)).toBe('se');
+	});
+
+	it('is the bottom right at the top and the left edges, which it grows away from', () => {
+		expect(resizeCorner(at(0, 0), box, NUDGE.shift)).toBe('se');
+	});
+
+	it('is the bottom left for a square touching the right edge', () => {
+		expect(resizeCorner(at(500, 50), box, NUDGE.step)).toBe('sw');
+	});
+
+	it('is the top right for a square touching the bottom edge', () => {
+		expect(resizeCorner(at(250, 100), box, NUDGE.step)).toBe('ne');
+	});
+
+	it('is the top left for a square in the bottom right corner', () => {
+		expect(resizeCorner(at(500, 100), box, NUDGE.shift)).toBe('nw');
+	});
+
+	it('is the corner with the most room where none has room for the whole step', () => {
+		// 6 above and to the right, 4 below and to the left: the top right grows 6 of the 10.
+		const near = { x: 4, y: 6, width: 190, height: 190 };
+		expect(resizeCorner(near, { width: 200, height: 200 }, NUDGE.shift)).toBe('ne');
+	});
+
+	it('is the bottom right for a square shrinking, wherever it stands', () => {
+		expect(resizeCorner(at(500, 100), box, -NUDGE.step)).toBe('se');
+	});
+});
+
+describe('a file dragged over the open crop', () => {
+	const dragging = (...types: string[]): DragCarries => ({
+		types: ['Files'],
+		items: types.map((type) => ({ type }))
+	});
+
+	it.each(['image/png', 'image/jpeg', 'image/webp'])('shows a copy for %s', (type) => {
+		expect(dropEffect(dragging(type))).toBe('copy');
+	});
+
+	it.each(['image/svg+xml', 'image/heic', 'image/gif', 'application/pdf', ''])(
+		'shows none for %s, which the drop ignores',
+		(type) => {
+			expect(dropEffect(dragging(type))).toBe('none');
+		}
+	);
+
+	it('is judged by the first file, which is the one a drop takes', () => {
+		expect(dropEffect(dragging('image/svg+xml', 'image/png'))).toBe('none');
+	});
+
+	it('shows a copy where no item can be read yet, and leaves the file to the drop', () => {
+		expect(dropEffect(dragging())).toBe('copy');
+	});
+
+	it('shows none for a drag that carries no file', () => {
+		expect(dropEffect({ types: ['text/plain'], items: [{ type: 'text/plain' }] })).toBe('none');
+	});
+});
+
 describe('the files a logo is taken in', () => {
 	const typed = (type: string) => new File(['x'], 'logo', { type });
 
@@ -127,9 +196,12 @@ describe('the files a logo is taken in', () => {
 		expect(takesLogo(typed(type))).toBe(true);
 	});
 
-	it.each(['image/svg+xml', 'image/gif', 'application/pdf', ''])('refuses %s', (type) => {
-		expect(takesLogo(typed(type))).toBe(false);
-	});
+	it.each(['image/svg+xml', 'image/heic', 'image/gif', 'application/pdf', ''])(
+		'refuses %s',
+		(type) => {
+			expect(takesLogo(typed(type))).toBe(false);
+		}
+	);
 });
 
 describe('an image that would not draw in the crop', () => {
