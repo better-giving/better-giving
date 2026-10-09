@@ -3,6 +3,8 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/better-giving/console/internal/nonprofits"
@@ -18,8 +20,9 @@ import (
 //
 // **a read that could not be made is an answer and never a refusal**: `unavailable` at 200, so the
 // fold leaves the boxes as typed and set-up goes on without it. a 400 names the value and the box it
-// came from: a query under searchFewest or past searchMost, counted in runes, or a path that is no
-// EIN.
+// came from: a query under searchFewest or past searchMost, counted in runes, one with no letter or
+// digit, which the API refuses as holding no word, or a path that is no EIN. a refusal of the API's
+// would read as `unavailable`, which says the API is down.
 //
 // every field of `organisation` is written in every state, empty unless found
 // (packages/console-ui/src/api/types.ts' header).
@@ -45,6 +48,11 @@ func nonprofitRoutes(routes *http.ServeMux, lookups *nonprofits.Client) {
 				typed, length)})
 			return
 		}
+		if !strings.ContainsFunc(typed, isWordRune) {
+			answer(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf(
+				"the search box needs a letter or a digit, and %q has none", typed)})
+			return
+		}
 		answer(w, http.StatusOK, lookups.Search(r.Context(), typed))
 	})
 	routes.HandleFunc("GET /api/nonprofits/{ein}", func(w http.ResponseWriter, r *http.Request) {
@@ -57,3 +65,6 @@ func nonprofitRoutes(routes *http.ServeMux, lookups *nonprofits.Client) {
 		answer(w, http.StatusOK, lookups.LookUp(r.Context(), typed))
 	})
 }
+
+// whether r is in a word as the API reads one (https://nonprofits.better.giving): a letter or a digit.
+func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }

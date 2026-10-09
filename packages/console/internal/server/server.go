@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/better-giving/console/internal/account"
@@ -82,7 +83,8 @@ type Options struct {
 	// nothing is waiting on, which is every case that starts one without a terminal to stop it.
 	Presses *Presses
 	// Nonprofits is where an organisation is found in the IRS nonprofit API, remembered for the life
-	// of this server. Nil is the API at the address every console is built with.
+	// of this server. Nil is the API at the address every console is built with, and in a test binary
+	// a client with no address, so reaching the live API's allowance is a test's choice to name.
 	Nonprofits *nonprofits.Client
 	// Close asks the run around this server to end, which the close press calls and may call more
 	// than once — guarding a second press is the run's own (../../cmd/better-giving/main.go). Nil
@@ -137,7 +139,9 @@ func New(options Options) http.Handler {
 		sends = cf.APISend
 	}
 	lookups := options.Nonprofits
-	if lookups == nil {
+	if lookups == nil && testing.Testing() {
+		lookups = nonprofits.At("")
+	} else if lookups == nil {
 		lookups = nonprofits.New()
 	}
 	presses := options.Presses

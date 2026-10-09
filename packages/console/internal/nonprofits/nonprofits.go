@@ -3,15 +3,21 @@
 //
 // **one fixed address, and nothing reads another.** every console is built with API, and no env
 // var, flag or record may point a console elsewhere: what comes back fills the legal identity a
-// receipt is printed under, so the source is the build's to name. a test builds a client on its own
-// upstream with At. the deployment reads the same API for its page AI, and
+// receipt is printed under, so the source is the build's to name, and a redirect to anywhere is
+// `unavailable` rather than followed. a test builds a client on its own upstream with At. the
+// deployment reads the same API for its page AI, and
 // `packages/app/src/lib/server/nonprofits/filing.ts` holds its copy of the address and the shape:
 // the two change together, and ../release/config_test.go holds them equal.
 //
 // **keyless.** no key is sent and none is configured, so the console spends the allowance the API
 // keeps per calling address — one request a minute and five a day (https://nonprofits.better.giving).
-// a refusal for the minute is the one the console waits out: once, for the `Retry-After` it names
-// and at most longestWait, and then asked again. any other refusal, or a second one, is answered.
+// a refusal for the minute is the one the console waits out: once, for the `Retry-After` it names,
+// and then asked again. one naming a wait past longestWait, or none this client reads, says the
+// retry would be refused too, and is answered at once; so is any other refusal, or a second one.
+// a refusal for the day or for the service closes the client until the `Retry-After` it names,
+// however far: until then nothing is asked, and what memory does not already hold is `unavailable`
+// at once, since the API would refuse it — and would refuse it for the minute first, a minute's wait
+// to learn the same.
 //
 // **every failure is an answer, and `unavailable` is all of them.** no route, a timeout, a refusal
 // for the day or for the service, the API saying its data is unavailable, a second refusal for the
@@ -23,7 +29,7 @@
 // set-up rather than for a box asking per keystroke, so one console run asks it once per EIN and
 // once per query, callers in flight together included, and a caller that gives up does not take the
 // request it started down with it (memory); an `unavailable` is forgotten, because the next try may
-// land.
+// land, and only a refusal for the day or the service says it cannot (closedUntil).
 //
 // **the upstream shape is decoded in one place per path** (upstreamOrganisation, upstreamMatches),
 // and unknown members are ignored: the API grows facts this console does not read, and a member it
@@ -34,6 +40,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -49,7 +56,8 @@ const API = "https://nonprofits.better.giving"
 // how long one request may take before the API counts as not answering: a box waits on it.
 const within = 5 * time.Second
 
-// the longest `Retry-After` waited out before a per-minute refusal is asked again.
+// the longest `Retry-After` waited out before a per-minute refusal is asked again, and the one the
+// API names when it refuses a request with no key for the minute.
 const longestWait = time.Minute
 
 // AskBound is how long one lookup or search may take: a request, the one wait a per-minute refusal
@@ -136,8 +144,13 @@ type Client struct {
 	within    time.Duration
 	askWithin time.Duration
 	wait      func(context.Context, time.Duration) bool
+	now       func() time.Time
 	lookups   memory[Lookup]
 	searches  memory[Search]
+
+	closing sync.Mutex
+	// when the last refusal for the day or the service lifts, under closing.
+	closedUntil time.Time
 }
 
 // New is a client on API.
@@ -147,14 +160,18 @@ func New() *Client { return At(API) }
 func At(base string) *Client {
 	return &Client{
 		base:      strings.TrimSuffix(base, "/"),
-		http:      &http.Client{},
+		http:      &http.Client{CheckRedirect: answerHere},
 		within:    within,
 		askWithin: AskBound,
 		wait:      pause,
+		now:       time.Now,
 		lookups:   memory[Lookup]{kept: map[string]*recalled[Lookup]{}},
 		searches:  memory[Search]{kept: map[string]*recalled[Search]{}},
 	}
 }
+
+// a redirect is followed nowhere: the 3xx is the answer, and it is no 200.
+func answerHere(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 // Built is whether this client has an address to ask: false is every answer `unavailable`, which
 // a screen can know before anyone types.
@@ -186,8 +203,8 @@ func (c *Client) LookUp(ctx context.Context, typed string) Lookup {
 		return Lookup{State: Unavailable}
 	}
 	missed := Lookup{State: Unavailable}
-	return c.lookups.recall(ctx, ein, missed, func(asking context.Context) (Lookup, bool) {
-		looked := c.lookUp(asking, ein)
+	return c.lookups.recall(ctx, ein, missed, func(asking context.Context, wanted func() bool) (Lookup, bool) {
+		looked := c.lookUp(asking, ein, wanted)
 		return looked, looked.State != Unavailable
 	})
 }
@@ -203,8 +220,8 @@ func (c *Client) Search(ctx context.Context, typed string) Search {
 		return Search{State: SearchUnavailable, Matches: []Match{}}
 	}
 	missed := Search{State: SearchUnavailable, Matches: []Match{}}
-	return c.searches.recall(ctx, query, missed, func(asking context.Context) (Search, bool) {
-		searched := c.search(asking, query)
+	return c.searches.recall(ctx, query, missed, func(asking context.Context, wanted func() bool) (Search, bool) {
+		searched := c.search(asking, query, wanted)
 		return searched, searched.State != SearchUnavailable
 	})
 }
@@ -238,8 +255,8 @@ type upstreamMatches struct {
 	} `json:"results"`
 }
 
-func (c *Client) lookUp(ctx context.Context, ein string) Lookup {
-	said := c.ask(ctx, "/v1/orgs/"+ein)
+func (c *Client) lookUp(ctx context.Context, ein string, wanted func() bool) Lookup {
+	said := c.ask(ctx, "/v1/orgs/"+ein, wanted)
 	switch {
 	case said.status == http.StatusOK:
 	case said.code == "not_found":
@@ -293,9 +310,9 @@ func (c *Client) searchEIN(ctx context.Context, ein string) Search {
 	}
 }
 
-func (c *Client) search(ctx context.Context, query string) Search {
+func (c *Client) search(ctx context.Context, query string, wanted func() bool) Search {
 	unavailable := Search{State: SearchUnavailable, Matches: []Match{}}
-	said := c.ask(ctx, "/v1/search?q="+url.QueryEscape(query)+"&limit="+strconv.Itoa(mostMatches))
+	said := c.ask(ctx, "/v1/search?q="+url.QueryEscape(query)+"&limit="+strconv.Itoa(mostMatches), wanted)
 	if said.status != http.StatusOK {
 		return unavailable
 	}
@@ -346,30 +363,35 @@ func cut(said string, limit int) string {
 	return said
 }
 
-// one answer of the API's: its status and body, and the `code` a refusal's problem json carries.
-// status 0 is no answer to read.
+// one answer of the API's: its status and body, and the `code` and `Retry-After` a refusal carries,
+// where retryAfter is meaningful only if told. status 0 is no answer to read.
 type answer struct {
 	status     int
 	body       []byte
 	code       string
 	retryAfter time.Duration
+	told       bool
 }
 
-// a read, and where the API refuses it for the minute, the one wait it names and one read more.
-func (c *Client) ask(ctx context.Context, path string) answer {
+// a read, and where the API refuses it for the minute, the one wait it names and one read more —
+// made only while wanted says a caller still waits on it, since it spends the next minute's request.
+func (c *Client) ask(ctx context.Context, path string, wanted func() bool) answer {
 	ctx, stop := context.WithTimeout(ctx, c.askWithin)
 	defer stop()
 	said := c.get(ctx, path)
-	if said.code != "per_minute_limit_exceeded" {
+	if said.code != "per_minute_limit_exceeded" || !said.told || said.retryAfter > longestWait {
 		return said
 	}
-	if !c.wait(ctx, said.retryAfter) {
+	if !c.wait(ctx, said.retryAfter) || !wanted() {
 		return answer{}
 	}
 	return c.get(ctx, path)
 }
 
 func (c *Client) get(ctx context.Context, path string) answer {
+	if c.closed() {
+		return answer{}
+	}
 	bound, stop := context.WithTimeout(ctx, c.within)
 	defer stop()
 	request, err := http.NewRequestWithContext(bound, http.MethodGet, c.base+path, nil)
@@ -394,19 +416,36 @@ func (c *Client) get(ctx context.Context, path string) answer {
 		if json.Unmarshal(body, &problem) == nil {
 			said.code = problem.Code
 		}
-		said.retryAfter = waitOf(response.Header.Get("Retry-After"))
+		said.retryAfter, said.told = waitOf(response.Header.Get("Retry-After"))
+		if said.told && (said.code == "daily_quota_exceeded" || said.code == "service_daily_limit_reached") {
+			c.closeFor(said.retryAfter)
+		}
 	}
 	return said
 }
 
-// the wait a `Retry-After` in whole seconds names, at most longestWait, which is also the wait a
-// value in no other spelling is given.
-func waitOf(header string) time.Duration {
-	seconds, err := strconv.Atoi(header)
-	if err != nil || seconds < 0 || seconds > int(longestWait/time.Second) {
-		return longestWait
+func (c *Client) closed() bool {
+	c.closing.Lock()
+	defer c.closing.Unlock()
+	return c.now().Before(c.closedUntil)
+}
+
+func (c *Client) closeFor(d time.Duration) {
+	c.closing.Lock()
+	defer c.closing.Unlock()
+	if until := c.now().Add(d); until.After(c.closedUntil) {
+		c.closedUntil = until
 	}
-	return time.Duration(seconds) * time.Second
+}
+
+// the wait a `Retry-After` in whole seconds names, which is the one spelling the API sends; any
+// other, or a wait too long to be a Duration, is not told.
+func waitOf(header string) (time.Duration, bool) {
+	seconds, err := strconv.ParseInt(header, 10, 64)
+	if err != nil || seconds < 0 || seconds > math.MaxInt64/int64(time.Second) {
+		return 0, false
+	}
+	return time.Duration(seconds) * time.Second, true
 }
 
 // d slept, or false where ctx ended first.
@@ -423,13 +462,15 @@ func pause(ctx context.Context, d time.Duration) bool {
 
 // what one console run found out, by key.
 //
-// **an ask, once made, belongs to the run rather than to the caller that made it.** the API counts a
-// request it received whether or not anyone waits for the answer, and the find box drops its call
-// whenever the operator types on — so the ask runs on its own, bounded by AskBound alone, and what it
-// finds out is kept for whoever asks next. a caller arriving while the same key is being asked waits
-// on that ask rather than making a second; any caller that gives up is answered `missed` alone, and
-// changes nothing for the others or for what is kept. an answer `ask` says not to keep is forgotten
-// once it is handed out.
+// **a request, once sent, belongs to the run rather than to the caller that made it.** the API counts
+// a request it received whether or not anyone waits for the answer, and the EIN box drops its call
+// whenever the operator types on, as the finder does when it is taken off the page — so the ask runs
+// on its own, bounded by AskBound alone, and what it finds out is kept for whoever asks next. a
+// caller arriving while the same key is being asked waits on that ask rather than making a second;
+// any caller that gives up is answered `missed` alone, and changes nothing for the others or for
+// what is kept. the retry after a minute's wait has not been sent yet, so it is sent only if a caller
+// still waits (wanted): an ask every caller left ends there, kept by nobody. an answer `ask` says not
+// to keep is forgotten once it is handed out.
 type memory[T any] struct {
 	held sync.Mutex
 	kept map[string]*recalled[T]
@@ -438,13 +479,15 @@ type memory[T any] struct {
 type recalled[T any] struct {
 	done  chan struct{}
 	value T
+	// callers waiting on done, under memory.held.
+	waiting int
 }
 
 func (m *memory[T]) recall(
 	ctx context.Context,
 	key string,
 	missed T,
-	ask func(context.Context) (T, bool),
+	ask func(asking context.Context, wanted func() bool) (T, bool),
 ) T {
 	m.held.Lock()
 	one, asking := m.kept[key]
@@ -453,12 +496,36 @@ func (m *memory[T]) recall(
 		m.kept[key] = one
 		go m.settle(context.WithoutCancel(ctx), key, one, missed, ask)
 	}
+	one.waiting++
 	m.held.Unlock()
 	select {
 	case <-one.done:
 		return one.value
 	case <-ctx.Done():
+		m.held.Lock()
+		one.waiting--
+		m.held.Unlock()
 		return missed
+	}
+}
+
+// whether a caller still waits on one. where none does, one is let go under the same lock, so a
+// caller arriving after starts an ask of its own rather than joining one that is ending.
+func (m *memory[T]) wanted(key string, one *recalled[T]) bool {
+	m.held.Lock()
+	defer m.held.Unlock()
+	if one.waiting > 0 {
+		return true
+	}
+	m.forget(key, one)
+	return false
+}
+
+// key let go of, where it is still one: a newer ask of the same key is not this one's to end.
+// called under m.held.
+func (m *memory[T]) forget(key string, one *recalled[T]) {
+	if m.kept[key] == one {
+		delete(m.kept, key)
 	}
 }
 
@@ -469,7 +536,7 @@ func (m *memory[T]) settle(
 	key string,
 	one *recalled[T],
 	missed T,
-	ask func(context.Context) (T, bool),
+	ask func(asking context.Context, wanted func() bool) (T, bool),
 ) {
 	keep := false
 	defer func() {
@@ -478,10 +545,10 @@ func (m *memory[T]) settle(
 		}
 		if !keep {
 			m.held.Lock()
-			delete(m.kept, key)
+			m.forget(key, one)
 			m.held.Unlock()
 		}
 		close(one.done)
 	}()
-	one.value, keep = ask(ctx)
+	one.value, keep = ask(ctx, func() bool { return m.wanted(key, one) })
 }

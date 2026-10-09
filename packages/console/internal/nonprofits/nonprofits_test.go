@@ -644,7 +644,7 @@ func TestASecondPerMinuteRefusalIsUnavailableAndForgotten(t *testing.T) {
 	}
 }
 
-func TestTheWaitIsTheRetryAfterNamedAndAtMostAMinute(t *testing.T) {
+func TestTheWaitIsTheRetryAfterNamedUpToAMinute(t *testing.T) {
 	for _, one := range []struct {
 		retryAfter string
 		want       time.Duration
@@ -652,19 +652,33 @@ func TestTheWaitIsTheRetryAfterNamedAndAtMostAMinute(t *testing.T) {
 		{"0", 0},
 		{"59", 59 * time.Second},
 		{"60", time.Minute},
-		{"61", time.Minute},
-		{"99999999999999999", time.Minute},
-		{"-1", time.Minute},
-		{"", time.Minute},
-		{"Wed, 21 Oct 2026 07:28:00 GMT", time.Minute},
 	} {
-		client, _, waited := turns(t, limited("per_minute_limit_exceeded", one.retryAfter),
+		client, asked, waited := turns(t, limited("per_minute_limit_exceeded", one.retryAfter),
 			says(http.StatusOK, redCross))
 
-		client.LookUp(t.Context(), "530196605")
+		looked := client.LookUp(t.Context(), "530196605")
 
-		if !slices.Equal(*waited, []time.Duration{one.want}) {
-			t.Errorf("Retry-After %q waited %v, want %v", one.retryAfter, *waited, one.want)
+		if !slices.Equal(*waited, []time.Duration{one.want}) || looked.State != Found || len(asked()) != 2 {
+			t.Errorf("Retry-After %q waited %v and looked up %q over %q, want %v and found on the second ask",
+				one.retryAfter, *waited, looked.State, asked(), one.want)
+		}
+	}
+}
+
+// a minute's refusal that names a longer wait, or none this client can read, says the retry would be
+// refused too: it is answered rather than waited on.
+func TestARetryAfterPastAMinuteOrUnreadableIsUnavailableAtOnce(t *testing.T) {
+	for _, retryAfter := range []string{
+		"61", "99999999999999999", "-1", "", "1.5", "Wed, 21 Oct 2026 07:28:00 GMT",
+	} {
+		client, asked, waited := turns(t, limited("per_minute_limit_exceeded", retryAfter),
+			says(http.StatusOK, redCross))
+
+		looked := client.LookUp(t.Context(), "530196605")
+
+		if looked != (Lookup{State: Unavailable}) || len(asked()) != 1 || len(*waited) != 0 {
+			t.Errorf("Retry-After %q: looked up %q over %q after waiting %v, want unavailable over one "+
+				"request and no wait", retryAfter, looked.State, asked(), *waited)
 		}
 	}
 }
@@ -732,5 +746,130 @@ func TestNoKeyIsSent(t *testing.T) {
 	defer held.Unlock()
 	if len(sent) != 0 {
 		t.Errorf("sent Authorization %q, want none", sent)
+	}
+}
+
+func TestARedirectIsUnavailableAndItsTargetIsNeverAsked(t *testing.T) {
+	elsewhere, reachedElsewhere := upstream(t, says(http.StatusOK, redCross))
+	client, asked := upstream(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.base+r.URL.RequestURI(), http.StatusFound)
+	})
+
+	looked := client.LookUp(t.Context(), "530196605")
+
+	if looked != (Lookup{State: Unavailable}) || len(asked()) != 1 {
+		t.Errorf("looked up %+v over %q, want unavailable over one request", looked, asked())
+	}
+	if got := reachedElsewhere(); len(got) != 0 {
+		t.Errorf("the redirect's target was asked %q, want nothing", got)
+	}
+}
+
+// a client on `answers` whose per-minute waits are held: each says it began on `began` and ends
+// when the test sends on `ends`.
+func heldWaits(t *testing.T, answers ...http.HandlerFunc) (*Client, func() []string, chan struct{}, chan struct{}) {
+	t.Helper()
+	client, asked, _ := turns(t, answers...)
+	began, ends := make(chan struct{}), make(chan struct{})
+	client.wait = func(context.Context, time.Duration) bool {
+		began <- struct{}{}
+		<-ends
+		return true
+	}
+	return client, asked, began, ends
+}
+
+func TestAnAskEveryCallerLeftDuringItsWaitSendsNoRetry(t *testing.T) {
+	client, asked, began, ends := heldWaits(t,
+		refused(http.StatusTooManyRequests, "per_minute_limit_exceeded"), says(http.StatusOK, redCross))
+	ctx, cancel := context.WithCancel(t.Context())
+	first := make(chan Lookup, 1)
+	go func() { first <- client.LookUp(ctx, "530196605") }()
+	<-began
+	one := client.lookups.inFlight("530196605")
+
+	cancel()
+	if gave := <-first; gave.State != Unavailable {
+		t.Errorf("the caller that left got %q, want unavailable", gave.State)
+	}
+	ends <- struct{}{}
+	<-one.done
+
+	if got := asked(); len(got) != 1 {
+		t.Errorf("asked %q, want the one request made before the wait and no retry", got)
+	}
+	if client.lookups.inFlight("530196605") != nil {
+		t.Error("the ask nobody waited on is remembered, want it forgotten")
+	}
+}
+
+func TestAnAskOneCallerStillWaitsOnIsRetriedForIt(t *testing.T) {
+	client, asked, began, ends := heldWaits(t,
+		refused(http.StatusTooManyRequests, "per_minute_limit_exceeded"), says(http.StatusOK, redCross))
+	gone, cancel := context.WithCancel(t.Context())
+	first := make(chan Lookup, 1)
+	go func() { first <- client.LookUp(gone, "530196605") }()
+	<-began
+	second := make(chan Lookup, 1)
+	go func() { second <- client.LookUp(t.Context(), "53-0196605") }()
+	for client.lookups.callers("530196605") != 2 {
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+	<-first
+	ends <- struct{}{}
+
+	if got := <-second; got.State != Found || len(asked()) != 2 {
+		t.Errorf("the caller still waiting got %q over %q, want found from the retry", got.State, asked())
+	}
+}
+
+// the ask in flight for key, as recall left it.
+func (m *memory[T]) inFlight(key string) *recalled[T] {
+	m.held.Lock()
+	defer m.held.Unlock()
+	return m.kept[key]
+}
+
+// how many callers wait on the ask in flight for key.
+func (m *memory[T]) callers(key string) int {
+	m.held.Lock()
+	defer m.held.Unlock()
+	return m.kept[key].waiting
+}
+
+func TestARefusalForTheDayClosesTheClientUntilItsRetryAfter(t *testing.T) {
+	for _, code := range []string{"daily_quota_exceeded", "service_daily_limit_reached"} {
+		t.Run(code, func(t *testing.T) {
+			client, asked, waited := turns(t, limited(code, "3600"),
+				says(http.StatusOK, `{"results": [`+entry("530196605", "Red Cross")+`]}`))
+			now := time.Date(2026, 10, 9, 23, 0, 0, 0, time.UTC)
+			client.now = func() time.Time { return now }
+
+			first := client.Search(t.Context(), "red cross")
+			looked := client.LookUp(t.Context(), "131624241")
+			searched := client.Search(t.Context(), "food bank")
+
+			if first.State != SearchUnavailable || looked != (Lookup{State: Unavailable}) ||
+				searched.State != SearchUnavailable || searched.Matches == nil {
+				t.Errorf("answered %q, %+v and %+v, want every one unavailable", first.State, looked, searched)
+			}
+			if got := asked(); len(got) != 1 || len(*waited) != 0 {
+				t.Errorf("asked %q after waiting %v, want the one refused request and no wait", got, *waited)
+			}
+
+			now = now.Add(time.Hour - time.Second)
+			client.Search(t.Context(), "red cross")
+			if got := asked(); len(got) != 1 {
+				t.Errorf("asked %q a second before the refusal lifts, want nothing more", got)
+			}
+
+			now = now.Add(time.Second)
+			if again := client.Search(t.Context(), "red cross"); again.State != Listed || len(asked()) != 2 {
+				t.Errorf("searched %q over %q once it lifted, want ok over a second request",
+					again.State, asked())
+			}
+		})
 	}
 }
