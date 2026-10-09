@@ -57,18 +57,30 @@ const px = (token: string): number => {
 };
 
 /**
- * a length a rule spells, in css pixels: tokens, numbers, `+ - * /`, brackets and `calc()`, with
- * `100%` standing for `percent`. a value spelled any other way throws rather than reading as zero.
+ * a length a rule spells, in css pixels: tokens, numbers, `+ - * /`, brackets, `calc()`, `min()`
+ * and `max()`, with `100%` standing for `percent`. a name in `bound` is read from there rather than
+ * from ./tokens.css — a length in pixels, or another value to spell out — which is how a property
+ * the sheet declares, or one the machine states inline, is given the value a case reads it at. a
+ * value spelled any other way throws rather than reading as zero.
  */
-const evaluate = (value: string | undefined, percent?: number): number => {
+const evaluate = (
+	value: string | undefined,
+	percent?: number,
+	bound: Readonly<Record<string, string | number>> = {}
+): number => {
 	const source = (value ?? '').trim();
-	const lexer = /\s*(?:var\((--[\w-]+)\)|(\d*\.?\d+)(%|px|rem)?|(calc\(|[-+*/()]))/y;
+	const lexer = /\s*(?:var\((--[\w-]+)\)|(\d*\.?\d+)(%|px|rem)?|(calc\(|min\(|max\(|[-+*/(),]))/y;
 	const items: (number | string)[] = [];
+	const named = (name: string): number => {
+		const given = bound[name];
+		if (given === undefined) return px(name);
+		return typeof given === 'number' ? given : evaluate(given, percent, bound);
+	};
 	while (lexer.lastIndex < source.length) {
 		const hit = lexer.exec(source);
 		if (hit === null) throw new Error(`not a length this spec reads: ${source}`);
 		const [, name, figure, unit, operator] = hit;
-		if (name !== undefined) items.push(px(name));
+		if (name !== undefined) items.push(named(name));
 		else if (figure === undefined) items.push(operator === 'calc(' ? '(' : (operator ?? ''));
 		else if (unit !== '%') items.push(Number(figure) * (unit === 'rem' ? 16 : 1));
 		else if (percent === undefined)
@@ -84,6 +96,15 @@ const evaluate = (value: string | undefined, percent?: number): number => {
 			const inner = sum();
 			if (items[at++] !== ')') throw new Error(`an unclosed bracket in: ${source}`);
 			return inner;
+		}
+		if (item === 'min(' || item === 'max(') {
+			const terms = [sum()];
+			while (items[at] === ',') {
+				at += 1;
+				terms.push(sum());
+			}
+			if (items[at++] !== ')') throw new Error(`an unclosed bracket in: ${source}`);
+			return item === 'min(' ? Math.min(...terms) : Math.max(...terms);
 		}
 		throw new Error(`not a length this spec reads: ${source}`);
 	};
@@ -418,34 +439,64 @@ describe('a control drawn under the floor takes a target at it', () => {
 	});
 });
 
-describe("a crop handle keeps 2.5.8's 24px inside the square", () => {
+describe('a crop handle reaches 24px into the square, and leaves 24px in its middle to drag', () => {
 	// the viewport clips what lies past the image, so a handle on a square at the image's edge keeps
-	// only the half of its target inside the square: the reach on that side is the whole target.
+	// only the half of its target inside the square: the reach on that side is the whole target. a
+	// press on a handle never moves the square, so what is left in the middle is where a drag starts.
 	const CORNERS =
 		".adm-cropper__handle:is( [data-position='nw'], [data-position='ne'], [data-position='sw'], [data-position='se'] )";
+	const ACROSS = ".adm-cropper__handle:is([data-position='n'], [data-position='s'])";
+	const DOWN = ".adm-cropper__handle:is([data-position='e'], [data-position='w'])";
+	const stated = (selector: string) =>
+		rulesIn(css).find((rule) => rule.selector === selector)?.stated ?? new Map<string, string>();
 
-	it.each([
+	const HANDLES = [
 		['a corner', `${CORNERS}::before`, 'inset'],
-		[
-			'the top and bottom edges',
-			".adm-cropper__handle:is([data-position='n'], [data-position='s'])::before",
-			'inset-block'
-		],
-		[
-			'the side edges',
-			".adm-cropper__handle:is([data-position='e'], [data-position='w'])::before",
-			'inset-inline'
-		]
-	])('%s', (_, selector, property) => {
-		const target = rulesIn(css).find((rule) => rule.selector === selector)?.stated;
+		['an edge across the top or bottom', `${ACROSS}::before`, 'inset-block'],
+		['an edge down a side', `${DOWN}::before`, 'inset-inline']
+	] as const;
 
-		expect(target?.get(property)).toBe('calc(50% - var(--admin-space-8))');
-		expect(px('--admin-space-8')).toBeGreaterThanOrEqual(24);
-	});
+	/**
+	 * how far a handle's target reaches into a square drawn `side` across, from the corner or edge it
+	 * moves: half the handle less the inset its `::before` states, at the reach the square states.
+	 */
+	const reach = (selector: string, property: string, side: number): number => {
+		const handle = evaluate(stated(CORNERS).get('inline-size'));
+		const inset = evaluate(stated(selector).get(property), handle, {
+			'--_handle-reach': ruleOf(css, '.adm-cropper__selection').get('--_handle-reach') ?? '',
+			'--crop-width': side
+		});
+		return handle / 2 - inset;
+	};
+
+	it.each(HANDLES)(
+		"%s reaches 2.5.8's 24px into a square of 72px or more",
+		(_, selector, property) => {
+			for (const side of [72, 120, 400]) {
+				expect(reach(selector, property, side), `on a square of ${side}`).toBe(
+					px('--admin-space-8')
+				);
+				expect(reach(selector, property, side)).toBeGreaterThanOrEqual(24);
+			}
+		}
+	);
+
+	it.each(HANDLES)(
+		'%s leaves 24px clear in the middle of a smaller square',
+		(_, selector, property) => {
+			for (const side of [71, 60, 48, 40]) {
+				const clear = side - 2 * reach(selector, property, side);
+				expect(clear, `on a square of ${side}`).toBeCloseTo(24);
+				expect(reach(selector, property, side)).toBeLessThan(24);
+			}
+		}
+	);
 
 	it('stands a corner over the edges its target overlaps', () => {
-		const corner = rulesIn(css).find((rule) => rule.selector === CORNERS)?.stated;
+		// an edge stating no step stands at the one every positioned box without one does.
+		const step = (selector: string) => Number(stated(selector).get('z-index') ?? 0);
 
-		expect(corner?.get('z-index')).toBe('1');
+		expect(step(CORNERS)).toBeGreaterThan(step(ACROSS));
+		expect(step(CORNERS)).toBeGreaterThan(step(DOWN));
 	});
 });
