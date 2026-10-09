@@ -24,9 +24,11 @@
 // through neither callback is `indeterminate` — a re-read rather than a second charge — and that is
 // the safe direction rather than a working one.
 //
-// **a return from PayPal's subscription window is not picked up either.** the sessions a return is
-// claimed on are the one-time sessions made at mount, so a repeating gift's window that leaves the
-// page and comes back lands on `indeterminate` the same way a Venmo return does.
+// **a repeating gift's window has no return to pick up.** the served `paypal-subscriptions` bundle
+// opens its window as a popup, a modal or a payment handler and never by leaving the page, and it
+// carries no `hasReturned` or `resume` — the installed types declare both as optional, and the
+// bundle defines neither. so the return claim is made on the one-time sessions made at mount, and a
+// subscription session made there would claim nothing.
 //
 // **the script's address is the whole of which PayPal this page talks to.** the core is loaded from
 // `Provider.sdkUrl` on this adapter's own entry in the served config, or from `PAYPAL_CORE_URL`
@@ -663,12 +665,19 @@ function sharedInstance(
  *
  * `onUnavailable` is called at most once and says the button is not coming up. the four routes to
  * it are the ones `NO_BUTTON` names.
+ *
+ * `onUnrepeatable` is called at most once and says PayPal is up and will not start a repeating gift
+ * on this page, so its row stays off one for good: the subscription component would not load or
+ * carries no session, PayPal's own read answered no or failed, or that read was still out at its
+ * deadline. ./surface.ts counts it toward `repeatingUnavailable`, which the flow latches — so a late
+ * answer is dropped rather than read, and the row never comes back on a repeat it already said no to.
  */
 export function createPaymentSurface(
 	config: FormConfig,
 	mount: HTMLElement,
 	onRail: (rail: PaymentMethod | null) => void,
 	onUnavailable: (failure: Failure) => void,
+	onUnrepeatable: () => void,
 	seam?: PaypalSeam
 ): PaypalPaymentSurface {
 	/** the rails on offer that this processor settles, and never the whole offered list. */
@@ -734,28 +743,29 @@ export function createPaymentSurface(
 	/**
 	 * every button in its row or out of it, as the offer stands.
 	 *
-	 * rows are only ever appended, so a rail coming back in has every row standing after it in the
-	 * served order (`PAYPAL_RAILS` in ./rails.ts) drawn again behind it: both rails come and go —
-	 * Venmo with the flow's offer, PayPal with a repeating gift it cannot start. a press is taken
-	 * back with its row, so a donor who pressed a rail and then picked a cadence it cannot approve is
-	 * not left holding it.
+	 * both rails come and go — Venmo with the flow's offer, PayPal with a repeating gift it cannot
+	 * start — and a rail coming back in is put in ahead of the first row standing after it in the
+	 * served order (`PAYPAL_RAILS` in ./rails.ts), so a row already standing is never redrawn and one
+	 * a donor has open stays open. a press is taken back with its row, so a donor who pressed a rail
+	 * and then picked a cadence it cannot approve is not left holding it.
 	 */
 	function place(): void {
-		let appended = false;
+		const order = [...buttons.keys()];
 		for (const [rail, button] of buttons) {
 			const wanted = !stopped && offered(rail);
 			const row = standing.get(rail);
-			if (row !== undefined && (!wanted || appended)) {
+			if (row !== undefined && !wanted) {
 				rowList.erase(row);
 				standing.delete(rail);
-				if (!wanted && pressed === rail) {
+				if (pressed === rail) {
 					pressed = null;
 					onRail(null);
 				}
 			}
-			if (wanted && !standing.has(rail)) {
-				standing.set(rail, rowList.draw(ROW_NAMES[rail], rail, button));
-				appended = true;
+			if (wanted && row === undefined) {
+				const after = order.slice(order.indexOf(rail) + 1);
+				const next = after.map((later) => standing.get(later)).find((later) => later !== undefined);
+				standing.set(rail, rowList.draw(ROW_NAMES[rail], rail, button, undefined, next));
 			}
 		}
 	}
@@ -907,40 +917,63 @@ export function createPaymentSurface(
 	/** every listener this surface took out, dropped in one call whatever order `stop` is reached in. */
 	const letGo = new AbortController();
 
+	/** whether `onUnrepeatable` has been said, which it is once. */
+	let unrepeatable = false;
+	/**
+	 * PayPal kept off repeating gifts for good, and the composer told — with a line in the console of
+	 * the page the form is embedded in wherever there is a reason to give, which a plain no is not.
+	 */
+	function cannotRepeat(reason?: unknown): void {
+		if (unrepeatable || stopped) return;
+		unrepeatable = true;
+		if (reason !== undefined) report(UNREPEATABLE, reason);
+		onUnrepeatable();
+	}
+
 	/**
 	 * whether PayPal will start a subscription for this buyer, read as a flow of its own: a buyer it
 	 * takes a one-time gift from may not be one it starts a subscription for.
 	 *
-	 * sent once the one-time read has answered, so whatever answer the core holds for its instance is
-	 * the one-time one wherever the one-time rows read it, and never awaited by the build, so a
-	 * repeat's answer can neither hold the buttons back nor take the one-time gift's down. until it
-	 * answers PayPal's row stays off a repeating gift — a window that cannot approve is the donor's
-	 * dead end at the last step — and an answer that does not come, refused or still out at a
-	 * `MOUNT_DEADLINE_MS` of its own, is said once in the console of the page the form is embedded
-	 * in. an answer arriving after its deadline still counts.
+	 * sent once the one-time read has answered and the one-time rows are drawn off it, and never
+	 * awaited by the build, so a repeat's answer can neither hold the buttons back nor take the
+	 * one-time gift's down. the rows here are drawn off this module's own two reads alone; whether the
+	 * core keeps an answer per instance, and whether a `<paypal-button>` it registers reads one back
+	 * when `place` moves it, is not something the 11.0.1 types say.
+	 *
+	 * until it answers PayPal's row stays off a repeating gift — a window that cannot approve is the
+	 * donor's dead end at the last step. a no, a refusal, a `MOUNT_DEADLINE_MS` of its own running out
+	 * first, or an SDK carrying no subscription session to open a window in, is `cannotRepeat`, and
+	 * whichever lands first is the answer.
 	 */
 	function readRepeatEligibility(sdk: PaypalSdkLike): void {
-		let said = false;
-		const unanswered = (reason: unknown): void => {
-			if (said || stopped) return;
-			said = true;
-			report(UNREPEATABLE, reason);
-		};
-		const disarmRepeat = delay(
-			() => unanswered('PayPal never answered whether it can start one'),
-			MOUNT_DEADLINE_MS
-		);
+		if (typeof sdk.createPayPalSubscriptionPaymentSession !== 'function') {
+			cannotRepeat('the started SDK carries no subscription session to open its window in');
+			return;
+		}
+		let answered = false;
+		const disarmRepeat = delay(() => {
+			answered = true;
+			cannotRepeat('PayPal never answered whether it can start one');
+		}, MOUNT_DEADLINE_MS);
 		sdk
 			.findEligibleMethods({ currencyCode: config.currency, paymentFlow: 'RECURRING_PAYMENT' })
 			.then(
 				(answer) => {
 					disarmRepeat();
-					paypalRepeats = answer.isEligible(FUNDING.paypal);
+					if (answered) return;
+					answered = true;
+					if (!answer.isEligible(FUNDING.paypal)) {
+						cannotRepeat();
+						return;
+					}
+					paypalRepeats = true;
 					place();
 				},
 				(thrown: unknown) => {
 					disarmRepeat();
-					unanswered(thrown);
+					if (answered) return;
+					answered = true;
+					cannotRepeat(thrown);
 				}
 			);
 	}
@@ -963,25 +996,39 @@ export function createPaymentSurface(
 	 * when any one script fails, so a subscription bundle that would not load would take PayPal and
 	 * Venmo off the form for the one-time donor too. the second start costs the repeat alone: PayPal
 	 * stays off repeating gifts, as it does where the repeat's eligibility could not be read, and the
-	 * console says why. it runs in the build and never in a press, which may await nothing.
+	 * console says why once the second start has shown the first one's cause was the repeat's. it runs
+	 * in the build and never in a press, which may await nothing.
+	 *
+	 * a script that would not load is refused by the served core as `ERR_DEV_SCRIPT_LOAD_FAILED`
+	 * naming the script's address, which ends in the component's name. so a refusal naming another
+	 * component this form asked for is that component's and is not retried; one naming none — a client
+	 * id refused, a connection gone — is retried, because the second start then costs a round trip and
+	 * not starting it costs the one-time gift.
 	 */
 	async function startWithoutRepeats(
 		namespace: PaypalNamespaceLike,
 		clientId: string,
 		thrown: unknown
 	): Promise<PaypalSdkLike | null> {
-		if (!subscribes) {
-			unavailable(noButtonFix(named(thrown)));
+		if (stopped) return null;
+		const reason = named(thrown);
+		const blamesAnother = instanceOptions(clientId).components.some(
+			(component) => component !== SUBSCRIPTION_COMPONENT && reason.includes(`/${component}`)
+		);
+		if (!subscribes || blamesAnother) {
+			unavailable(noButtonFix(reason));
 			return null;
 		}
 		subscribes = false;
-		report(UNREPEATABLE, thrown);
+		let sdk: PaypalSdkLike;
 		try {
-			return await sharedInstance(load, namespace, instanceOptions(clientId));
+			sdk = await sharedInstance(load, namespace, instanceOptions(clientId));
 		} catch (again) {
 			unavailable(noButtonFix(named(again)));
 			return null;
 		}
+		cannotRepeat(thrown);
+		return sdk;
 	}
 
 	async function build(): Promise<Live | null> {
@@ -1034,7 +1081,6 @@ export function createPaymentSurface(
 			return null;
 		}
 		if (stopped) return null;
-		if (subscribes) readRepeatEligibility(sdk);
 
 		const drawn = rails.filter((rail) => eligible.isEligible(FUNDING[rail]));
 		if (drawn.length === 0) {
@@ -1078,6 +1124,10 @@ export function createPaymentSurface(
 			buttons.set(rail, button);
 		}
 		place();
+		if (subscribes) {
+			if (sessions.has('paypal')) readRepeatEligibility(sdk);
+			else cannotRepeat();
+		}
 
 		// one claim over all of them and never one each: every mount session answers the one return
 		// attempt, so two sessions each claiming would leave the first waiting on a signal the second
@@ -1135,12 +1185,11 @@ export function createPaymentSurface(
 	 * is — the callbacks the session was built with fire, and the outcome lands on `last` for the
 	 * resume port to answer with.
 	 *
-	 * it covers a one-time gift on the PayPal rail alone, and the other two returns are why this
-	 * file's header says what it says: the served Venmo bundle carries no such check and neither do
-	 * its types, and the sessions it is asked of are the one-time sessions made at mount, never a
-	 * subscription session. a Venmo app-switch return and a return from a repeating gift's window
-	 * both arrive through neither callback, and `resume` below answers them as an answer nobody has
-	 * — a re-read rather than a second charge.
+	 * it covers a one-time gift on the PayPal rail alone. the served Venmo bundle carries no such
+	 * check and neither do its types, so a Venmo app-switch return arrives through neither callback
+	 * and `resume` below answers it as an answer nobody has — a re-read rather than a second charge.
+	 * a repeating gift's window never leaves the page, so it has no return to claim (this file's
+	 * header).
 	 */
 	async function claimReturn(session: PaypalSessionLike): Promise<void> {
 		if (session.hasReturned?.() !== true || session.resume === undefined) return;

@@ -3227,6 +3227,10 @@ export function createCard(
 	 *
 	 * the refusal outranks the decline where both stand. the refusal names something the donor can
 	 * do next; the decline names what happened last.
+	 *
+	 * and the offer of a one-time gift ends it: the offer takes this box off the step
+	 * (`updateOneTimeOffer` below), so a refusal still standing would ask the donor for a rail in a
+	 * box they can no longer see, and outrank the offer that is the one thing they can do.
 	 */
 	function updatePayment(api: DomApi): boolean {
 		const { state } = api;
@@ -3234,7 +3238,11 @@ export function createCard(
 		// a crypto press is refused for its coin, and the coin list says so under itself instead
 		// (`updateCoins` below): the rail is chosen, so this box has nothing to say about it.
 		const refused =
-			pressed && state.step === 'give' && !state.payerComplete && state.method !== 'crypto';
+			pressed &&
+			state.step === 'give' &&
+			!state.payerComplete &&
+			state.method !== 'crypto' &&
+			!state.oneTimeInstead;
 		carryDecline(state);
 		// written only on the step this box is on. the node is inside the review step and every
 		// other screen hides that step, so a sentence written here off it is one kept quiet by the

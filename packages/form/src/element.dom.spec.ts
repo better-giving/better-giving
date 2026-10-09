@@ -5840,6 +5840,20 @@ describe('where a payment provider paints', () => {
 			expect(card.text('[role="status"]')).toBe('');
 		});
 
+		// a Donate press with no rail is refused about the payment box, and the offer then takes that
+		// box off the step: the refusal is about nothing the donor can see, and the offer is what is said.
+		it('says the offer in place of a refusal about the box it took away', async () => {
+			const card = await atMonthlyReview({ paymentMethods: ['card', 'daf'] });
+			card.find('[part~="submit"]').click();
+			await settle();
+			expect(card.text('[role="status"]')).toBe('Please select payment method');
+
+			card.repeatingUnavailable();
+			await settle();
+
+			expect(card.text('[role="status"]')).toBe(OFFER);
+		});
+
 		it('names the cadence the donor chose', async () => {
 			const card = await mount({ config: { ...CONFIG, paymentMethods: ['card', 'daf'] } });
 			press(card.all('[part~="frequency-option"] input')[2] as HTMLElement);
@@ -6948,6 +6962,31 @@ describe('the events a host page hears', () => {
 		await settle();
 
 		expect(unavailable).toHaveLength(1);
+	});
+
+	// the held-back card finds the element off the page, and the element is put back before its
+	// teardown runs: the connect has to boot it again, or it is blank for good and says nothing.
+	it('says it for an element put back on the page while its card was held back', async () => {
+		const host = unnamed();
+		const unavailable: unknown[] = [];
+		host.addEventListener('bg-donate:unavailable', (event) => {
+			unavailable.push((event as CustomEvent).detail);
+		});
+		document.body.appendChild(host);
+		const back = new Promise<void>((resolve) =>
+			setTimeout(() => {
+				document.body.appendChild(host);
+				resolve();
+			}, 0)
+		);
+		host.remove();
+		await back;
+		await settle();
+
+		expect(unavailable).toHaveLength(1);
+		expect(host.shadowRoot?.querySelector('.unavailable')?.textContent).toContain(
+			'not told which form'
+		);
 	});
 
 	it('says what it painted when the configuration read was refused', async () => {

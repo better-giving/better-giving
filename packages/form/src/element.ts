@@ -989,8 +989,12 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				this.#unnamed = this.#delay(() => {
 					this.#unnamed = null;
 					// off the page by now is a departure whose teardown (`#leaving` above) is still a task
-					// away, and there is nobody to show the card to.
-					if (!this.isConnected) return;
+					// away, and there is nobody to show the card to. the boot is forgotten rather than
+					// kept, so an element put back before that teardown runs boots again on its connect.
+					if (!this.isConnected) {
+						this.#live = null;
+						return;
+					}
 					this.#showUnavailable(
 						'This donation form was not told which form to render.',
 						`Set the form attribute on <${DONATE_FORM_TAG}> to the id of the form to render.`

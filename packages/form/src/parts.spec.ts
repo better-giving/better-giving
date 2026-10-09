@@ -316,11 +316,24 @@ describe('the reservation a host page holds before the element upgrades', () => 
 
 	// a host page's style-src is written against that list, so a writer it leaves out is one an
 	// integrator was never told about.
+	//
+	// the two writes MDN's style-src page names as refused without 'unsafe-inline' are the ones
+	// swept: `style.cssText =` and `setAttribute('style', …)`
+	// (https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/style-src).
+	// a single property written through the element's own `style` object — `style.display =`, which
+	// that page shows passing, and `style.setProperty`, the same CSSOM write by name — is outside
+	// it, so ./views.ts, ./deposit.ts and ./zag.ts writing that way are not on the list. code lines
+	// only, because ./zag.ts names the refused call in its header to say why it does not make it.
 	it('names every module that writes inline style text', () => {
 		const src = new URL('./', import.meta.url);
+		const writesStyleText = /\.style\.cssText\s*=|\.setAttribute\(\s*['"]style['"]/;
+		const code = (file: string): string[] =>
+			readFileSync(new URL(file, src), 'utf8')
+				.split('\n')
+				.filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line));
 		const writers = readdirSync(src, { recursive: true, encoding: 'utf8' })
 			.filter((file) => file.endsWith('.ts') && !file.includes('.spec.'))
-			.filter((file) => /\.style\.cssText\s*=/.test(readFileSync(new URL(file, src), 'utf8')))
+			.filter((file) => code(file).some((line) => writesStyleText.test(line)))
 			.filter((file) => file !== 'element.ts');
 		expect(writers.length).toBeGreaterThan(0);
 		for (const file of writers) expect(element?.description).toContain(`packages/form/src/${file}`);
