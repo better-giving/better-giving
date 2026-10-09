@@ -8,8 +8,8 @@ import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import { defaultCampaign } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
 
-// a campaign's editor as the route mounts it: the opening questions an empty chat is asked, alone
-// on a page never drafted and beside the preview on one that has been, every hand edit reached from
+// a campaign's editor as the route mounts it: the opening questions an empty chat is asked alone on
+// a page never drafted, and none on one that has been, every hand edit reached from
 // Settings or a click in the preview once Edit is on, what its first Publish says of the address, the
 // questions an address save comes back with — asked, answered yes with the version, or declined —
 // whether the donation settings sheet stands over Settings or on its own ground, and the notice over
@@ -194,14 +194,13 @@ async function press(target: HTMLElement) {
 }
 
 describe('the AI panel', () => {
-	it('asks an empty chat its opening questions, the card docked beside the preview', async () => {
+	it('asks a drafted page’s empty chat nothing, the panel docked beside the preview', async () => {
 		await screen();
 		await settle();
 
-		expect(chatPosted).toEqual([
-			{ intent: 'open', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
-		]);
-		expect(document.querySelector('[role="complementary"] .adm-questions')).not.toBeNull();
+		expect(chatPosted).toEqual([]);
+		expect(document.querySelector('[role="complementary"].adm-aipanel textarea')).not.toBeNull();
+		expect(document.querySelector('.adm-questions')).toBeNull();
 	});
 
 	it('asks a page never drafted its opening questions alone, with no preview and no Edit', async () => {
@@ -211,6 +210,9 @@ describe('the AI panel', () => {
 		await settle();
 
 		expect(document.querySelector('iframe')).toBeNull();
+		expect(chatPosted).toEqual([
+			{ intent: 'open', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
+		]);
 		expect(document.querySelector('[role="main"].adm-aipanel .adm-questions')).not.toBeNull();
 		expect(() => button('Edit')).toThrow('no Edit button');
 	});
