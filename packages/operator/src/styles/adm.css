@@ -6485,9 +6485,10 @@
 	   with no logo the square holds the mark and the word that say what a press does, and its edge is
 	   dashed, for `.adm-create`'s reason: the dashes are what say it holds nothing. one holding a
 	   logo keeps its solid edge while a press on it saves, though the word stands in for the art
-	   then: what it holds is stated by `data-logo`, which the fold sets, and never read off the art
-	   being drawn. a file dragged over it draws the edge in the ring's ink on the accent's tint,
-	   because the square is what will take it. */
+	   then, and while the logo is being removed, when the art stays and the word stands under it
+	   in the inner step: what it holds is stated by `data-logo`, which the fold sets, and never
+	   read off the art being drawn. a file dragged over it draws the edge in the ring's ink on the
+	   accent's tint, because the square is what will take it. */
 	.adm-logo {
 		display: grid;
 		justify-items: start;
