@@ -49,12 +49,12 @@ import { useWide } from './wide';
 // the operator's line for why, worded here off the answer's `reason` (a 400 or 404 names none and
 // is said in its own `error`). answers nothing was stored from come back as `answerRefusal`, said
 // at the card, which is still up with every value in it and the focus on its press: worded here
-// for `answered`, `stale` and `failed`, and otherwise the route's own `error` — the reply's words
-// where no model answered (503 `unanswered`) or the reply was refused (422 `refused`), which mark a
-// command in backticks the card draws as code. each refusal is held in state, taken from each new
-// answer the fetcher lands, because the fetcher's answer outlives the sheet; it is cleared by the
-// next send or answers, so a refusal repeated word for word still reads as a new one, and by
-// reopening the sheet.
+// for `answered`, `stale`, `failed` and `refused_again`, and otherwise the route's own `error` —
+// the reply's words where no model answered (503 `unanswered`) or the reply was refused (422
+// `refused`), which mark a command in backticks the card draws as code. each refusal is held in
+// state, taken from each new answer the fetcher lands, because the fetcher's answer outlives the
+// sheet; it is cleared by the next send or answers, so a refusal repeated word for word still reads
+// as a new one, and by reopening the sheet.
 //
 // suggestions are offered only while no card is live and a reply has changed the page: before
 // that, the card is what drafts it, and a suggestion beside a card would skip it unanswered.
@@ -93,7 +93,13 @@ type TurnAnswer =
 	| { readonly outcome: string; readonly turns: readonly ChatMessage[] }
 	| {
 			readonly error: string;
-			readonly reason?: 'stale' | 'failed' | 'answered' | 'unanswered' | 'refused';
+			readonly reason?:
+				| 'stale'
+				| 'failed'
+				| 'answered'
+				| 'unanswered'
+				| 'refused'
+				| 'refused_again';
 	  };
 
 type Refused = Extract<TurnAnswer, { error: string }>;
@@ -138,6 +144,8 @@ function answersRefusal(answer: Refused): string {
 			return 'The page was saved while this was being written, so nothing changed. Send your answers again.';
 		case 'failed':
 			return 'That didn’t go through. Send your answers again.';
+		case 'refused_again':
+			return 'Couldn’t update the page from your answers. Send them again.';
 		default:
 			return answer.error;
 	}

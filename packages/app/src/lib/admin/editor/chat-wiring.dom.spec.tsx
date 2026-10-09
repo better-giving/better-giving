@@ -593,6 +593,18 @@ describe('a question card answered', () => {
 			'That reply didn’t fit the page. Send your answers again.'
 		],
 		[
+			'a reply refused when asked again',
+			{
+				body: {
+					error:
+						'I couldn’t apply that: a reply to answers past the chat’s first round of questions changes the page from them and never asks again',
+					reason: 'refused_again'
+				},
+				status: 422
+			},
+			'Couldn’t update the page from your answers. Send them again.'
+		],
+		[
 			'answers the route refused',
 			{ body: { error: 'answers[0] names no question asked: "who-else"' }, status: 400 },
 			'answers[0] names no question asked: "who-else"'

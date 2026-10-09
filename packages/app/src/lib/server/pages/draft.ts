@@ -5,10 +5,12 @@ import { FORM_CURRENCY } from '../../forms/amounts';
 import {
 	type Accepted,
 	acceptReply,
+	type Asked,
 	type Change,
 	type ChatMessage as AcceptMessage,
 	type IllustrationRequest,
 	illustrationRequests,
+	type Refused,
 	REPLY_JSON_SCHEMA,
 	readReply,
 	SAY_MAX
@@ -45,7 +47,12 @@ import {
 	readAsk,
 	starterQuestions
 } from '../../page/questions';
-import { type ChatMessage as ModelMessage, generate } from '../ai/generate';
+import {
+	type GenerateFailure,
+	type GenerateRequest,
+	type ChatMessage as ModelMessage,
+	generate
+} from '../ai/generate';
 import { illustrate } from '../ai/illustrate';
 import type { Db } from '../db/client';
 import { type ChatTurn, chatTurn, type Page as PageRow, page } from '../db/schema';
@@ -103,13 +110,19 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 //   `acceptReply` dropped, so what the chat says it did is what it did. `fell-back` where the default
 //   model wrote it in place of the chosen.
 // - asked: the reply asks questions in place of a change. the draft is untouched, the turn's
-//   `questions` hold them and its words are the reply's `say`. a reply to answers may not ask.
+//   `questions` hold them and its words are the reply's `say`. answers are to a round of questions
+//   counted over every asking turn in the chat, the opening's being round 1: a reply to round 1's
+//   may ask one more round, and the model is told so, and a reply to any later round's may not, and
+//   is told that. one that asks anyway is asked once more, the same request with that reply and
+//   `ANSWERED_ALREADY` after it, and the second reply is the turn's in its place, the first written
+//   nowhere.
 // - refused: the draft is untouched and the turn says why.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
 //   operator's fix where there is one. its `model` is the one `generate` asked.
 // answers whose reply is refused or unanswered write neither turn, so the questions stay the chat's
 // last turn and the same answers can be sent again: the caller hears `refused` or `unanswered`
-// with the words the turn would have said.
+// with the words the turn would have said, and `refused_again` where the reply asked once more was
+// refused too.
 //
 // `acceptReply` reads the figures the operator stated out of their messages whole and out of each
 // answers turn's answers alone (`answerValueWords` in ../../page/questions.ts), never the prompts
@@ -132,6 +145,10 @@ export const TURN_IMAGES_MAX = 4;
 const HISTORY_TURNS = 20;
 
 const REFUSED_PREFIX = 'I couldn’t apply that: ';
+
+/** what the model is told after a reply that asked where it may not, before it is asked again. */
+const ANSWERED_ALREADY =
+	'I already answered your questions, so ask nothing more: change the page from my answers, using your best judgement where they are thin.';
 
 /**
  * the id every illustration request stands as while the reply is first read, before any picture is
@@ -194,8 +211,12 @@ export type TurnResult =
 	| { ok: false; reason: 'unknown_image'; imageId: string }
 	/** the chat's last turn asks nothing open: its questions were answered, or none were asked. */
 	| { ok: false; reason: 'answered' }
-	/** answers whose reply was refused or that no model answered; `text` is what the turn said. */
-	| { ok: false; reason: 'refused' | 'unanswered'; text: string }
+	/**
+	 * answers whose reply was refused or that no model answered, or whose reply asked and the one
+	 * asked again in its place was refused (`refused_again`); `text` is what the turn would have
+	 * said.
+	 */
+	| { ok: false; reason: 'refused' | 'refused_again' | 'unanswered'; text: string }
 	| { ok: false; reason: 'invalid_answers'; error: string };
 
 /** a page's chat in order, or `null` where there is no such page. */
@@ -229,9 +250,9 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 /**
  * the operator's answers to the questions the chat's last turn asked: one operator turn whose text
  * is `answerWords` and whose `answers` are the answers read, then the model's reply as any turn's,
- * except that it may not ask again, and told the filing where the questions were the opening's. a
- * reply refused or unanswered writes no turn, and is answered with the words its turn would have
- * said.
+ * except that it may ask again only after the chat's first round, and told the filing where the
+ * questions were the opening's. a reply refused or unanswered writes no turn, and is answered with
+ * the words its turn would have said.
  */
 export async function answerTurn(
 	db: Db,
@@ -255,7 +276,10 @@ export async function answerTurn(
 		operator,
 		said: answersMessage(words),
 		stated: answerValueWords(questions, read.answers),
-		answering: sql`not exists (select 1 from ${chatTurn} where ${chatTurn.pageId} = ${row.id} and ${chatTurn.seq} > ${last.seq})`,
+		answering: {
+			guard: sql`not exists (select 1 from ${chatTurn} where ${chatTurn.pageId} = ${row.id} and ${chatTurn.seq} > ${last.seq})`,
+			round: turns.filter((turn) => turn.questions !== null).length
+		},
 		filingOrigin: turns[0]?.id === last.id ? request.origin : null,
 		timeZone: request.timeZone,
 		now: request.now
@@ -282,7 +306,7 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 	if (!row) return { ok: false, reason: 'not_found' };
 	const turns = await turnsOf(db, row.id);
 	if (turns.length > 0) return { ok: true, outcome: 'unchanged', turns: chatEntries(turns) };
-	const context = await promptContext(db, row, request, request.origin);
+	const context = await promptContext(db, row, request, request.origin, null);
 	const missionEmpty = context.mission === null;
 	const mission = missionQuestion(context.filing);
 	const prefilled = (questions: readonly Question[]) =>
@@ -377,11 +401,12 @@ type Turning = {
 	/** the operator's turn as `acceptReply` reads it for figures (`acceptMessage`). */
 	stated: string;
 	/**
-	 * where the turn answers the chat's questions, what must hold, over `page`, for it to land:
-	 * nothing having followed them. the reply may not ask, and one refused or unanswered writes no
-	 * turn. null on a message.
+	 * where the turn answers the chat's questions, what must hold, over `page`, for it to land —
+	 * nothing having followed them — and their round, counted over the chat's asking turns, which
+	 * says whether the reply may ask (`answering` in ../../page/accept-reply.ts). one refused or
+	 * unanswered writes no turn. null on a message.
 	 */
-	answering: SQL | null;
+	answering: { guard: SQL; round: number } | null;
 	/**
 	 * where the turn answers the opening ask, the origin the filing is looked up under, as for the
 	 * opening; null on any other turn.
@@ -394,28 +419,28 @@ type Turning = {
 /** the model asked for the reply to `operator`, and the outcome written: one exchange. */
 async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResult> {
 	const { row, turns, operator } = turning;
-	const context = await promptContext(db, row, turning, turning.filingOrigin);
+	const context = await promptContext(
+		db,
+		row,
+		turning,
+		turning.filingOrigin,
+		turning.answering?.round ?? null
+	);
 	const { current, programs } = context;
-	const answer = await generate(env, {
+	const request: GenerateRequest = {
 		system: systemPrompt(context),
 		messages: [
 			...history(turns, row.campaignType).slice(-HISTORY_TURNS),
 			{ role: 'user', content: turning.said }
 		],
 		jsonSchema: REPLY_JSON_SCHEMA
-	});
+	};
 
 	const written = async (
 		outcome: 'refused' | 'unanswered' | 'asked',
 		assistant: NewTurn
 	): Promise<TurnResult> => {
-		const entries = await writeTurns(
-			db,
-			row.id,
-			operator,
-			assistant,
-			turning.answering ?? undefined
-		);
+		const entries = await writeTurns(db, row.id, operator, assistant, turning.answering?.guard);
 		if (entries.length === 0) return { ok: false, reason: 'stale' };
 		return { ok: true, outcome, turns: entryPair(turns, entries) };
 	};
@@ -428,43 +453,68 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 		return { ok: false, reason: outcome, text: assistant.text };
 	};
 
-	if (!answer.ok) {
-		const text = `No model answered, so nothing changed. ${answer.operatorFix ?? 'Try again in a moment.'}`;
-		return failed('unanswered', assistantTurn(text, answer.model, 'unanswered'));
-	}
+	const unanswered = ({ model, operatorFix }: GenerateFailure) => {
+		const text = `No model answered, so nothing changed. ${operatorFix ?? 'Try again in a moment.'}`;
+		return failed('unanswered', assistantTurn(text, model, 'unanswered'));
+	};
 
-	const refusedFor = (reason: string) =>
-		failed('refused', assistantTurn(`${REFUSED_PREFIX}${reason}`, answer.model, 'refused'));
-
-	const read = readReply(answer.text);
-	const asked = read.ok ? illustrationRequests(read.json) : read;
-	if (!asked.ok) return refusedFor(asked.reason);
 	const placeable = [...turns.flatMap(imageIdsOf), ...operator.imageIds];
-	const acceptWith = (placed: readonly (string | null)[]) =>
-		acceptReply({
-			type: row.type,
-			current,
-			name: row.name,
-			reply: asked.place(placed),
-			attached: [...placeable, ...placed.filter((id) => id !== null)],
-			illustrations: asked.requests,
-			messages: [
-				...turns.map((turn, index) => acceptMessage(turn, turns[index - 1])),
-				{ author: 'operator', text: turning.stated }
-			],
-			activePrograms: programs,
-			timeZone: turning.timeZone,
-			now: turning.now,
-			answering: turning.answering !== null
-		});
-	let drawn: Drawn[] = [];
-	if (asked.requests.length > 0) {
-		const rehearsed = acceptWith(asked.requests.map(() => STAND_IN));
-		if (!rehearsed.ok) return refusedFor(rehearsed.reason);
-		drawn = await drawIllustrations(env, db, asked.requests);
+	/** a reply read through `acceptReply`, what it asked drawn only where it would be taken. */
+	const settle = async (
+		text: string
+	): Promise<Refused | { ok: true; result: Accepted | Asked; drawn: Drawn[] }> => {
+		const read = readReply(text);
+		const asked = read.ok ? illustrationRequests(read.json) : read;
+		if (!asked.ok) return { ok: false, reason: asked.reason, current };
+		const acceptWith = (placed: readonly (string | null)[]) =>
+			acceptReply({
+				type: row.type,
+				current,
+				name: row.name,
+				reply: asked.place(placed),
+				attached: [...placeable, ...placed.filter((id) => id !== null)],
+				illustrations: asked.requests,
+				messages: [
+					...turns.map((turn, index) => acceptMessage(turn, turns[index - 1])),
+					{ author: 'operator', text: turning.stated }
+				],
+				activePrograms: programs,
+				timeZone: turning.timeZone,
+				now: turning.now,
+				...(turning.answering === null ? {} : { answering: turning.answering.round })
+			});
+		let drawn: Drawn[] = [];
+		if (asked.requests.length > 0) {
+			const rehearsed = acceptWith(asked.requests.map(() => STAND_IN));
+			if (!rehearsed.ok) return rehearsed;
+			drawn = await drawIllustrations(env, db, asked.requests);
+		}
+		const result = acceptWith(drawn.map(({ imageId }) => imageId));
+		return result.ok ? { ok: true, result, drawn } : result;
+	};
+
+	const first = await generate(env, request);
+	if (!first.ok) return unanswered(first);
+	const firstSettled = await settle(first.text);
+	const retry = !firstSettled.ok && firstSettled.askedAgain === true;
+	const answer = retry
+		? await generate(env, {
+				...request,
+				messages: [
+					...request.messages,
+					{ role: 'assistant', content: first.text },
+					{ role: 'user', content: ANSWERED_ALREADY }
+				]
+			})
+		: first;
+	if (!answer.ok) return unanswered(answer);
+	const settled = retry ? await settle(answer.text) : firstSettled;
+	if (!settled.ok) {
+		const text = `${REFUSED_PREFIX}${settled.reason}`;
+		if (retry) return { ok: false, reason: 'refused_again', text };
+		return failed('refused', assistantTurn(text, answer.model, 'refused'));
 	}
-	const result = acceptWith(drawn.map(({ imageId }) => imageId));
-	if (!result.ok) return refusedFor(result.reason);
+	const { result, drawn } = settled;
 	const note = answer.fellBack ? 'fell-back' : null;
 	if (result.kind === 'asked') {
 		return written(
@@ -477,7 +527,7 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 	const summary = summarise(result, drawn, programs);
 	const text = [oneLine(result.say), summary].filter((line) => line !== '').join('\n');
 	const assistant = assistantTurn(text, answer.model, note);
-	const seen = and(eq(page.id, row.id), turning.answering ?? undefined, eq(page.draft, row.draft));
+	const seen = and(eq(page.id, row.id), turning.answering?.guard, eq(page.draft, row.draft));
 	const name = nameToCarry(row, result.draft);
 	for (let attempt = 1; ; attempt += 1) {
 		const rename = name === null ? null : await renaming(db, row, name, seen);
@@ -507,14 +557,15 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 }
 
 /**
- * what the model is told of the page and the organisation, read afresh for each turn, and the
- * filing looked up under `filingOrigin` where there is one.
+ * what the model is told of the page and the organisation, read afresh for each turn, the filing
+ * looked up under `filingOrigin` where there is one, and the round of questions the turn answers.
  */
 async function promptContext(
 	db: Db,
 	row: PageRow,
 	{ timeZone, now }: { timeZone: string; now: number },
-	filingOrigin: string | null
+	filingOrigin: string | null,
+	answering: number | null
 ): Promise<PromptContext> {
 	const current = readableDraft(row);
 	const [profile, programs] = await Promise.all([readOrgProfile(db), readActivePrograms(db)]);
@@ -531,6 +582,7 @@ async function promptContext(
 		brandColour: profile?.brandColour ?? null,
 		programs,
 		filing,
+		answering,
 		timeZone,
 		now
 	};
@@ -750,6 +802,8 @@ type PromptContext = {
 	programs: readonly ProgramOption[];
 	/** the organisation's latest filing, on an opening and the answers to it alone. */
 	filing: Filing | null;
+	/** the round of questions the turn answers, 1 for the chat's first; null on any other turn. */
+	answering: number | null;
 	timeZone: string;
 	now: number;
 };
@@ -759,6 +813,7 @@ function systemPrompt(context: PromptContext): string {
 		pageCatalog(context.type).prompt({ customRules: switchRules(context.current.switches) }),
 		'',
 		...replyFormat(context.type),
+		...answersLines(context.answering),
 		'',
 		'CONTEXT:',
 		...contextLines(context),
@@ -797,9 +852,23 @@ function replyFormat(type: PageType): string[] {
 		'- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.',
 		'- ask: when the message is vague, or the page needs what only the operator knows — figures, dates, names, what a gift does — ask instead of guessing. A reply that asks has no page and no set.',
 		`- each question is {"id": ..., "kind": ..., "prompt": ..., "hint"?: ..., "options"?: [...], "placeholder"?: ..., "prefill"?: ...}, 1 to ${QUESTIONS_MAX} of them. id: lowercase letters, digits and "-", unique. kind: "choice" (pick one option), "choices" (pick several), "text", "amount" (answered in dollars) or "date" (answered as a day). Prefer "choice" and "choices", with 2 to 6 short options; every choice gets an Other box of its own, so never list "Other". placeholder and prefill are for "text" only.`,
-		'- every word in a question is plain text: no HTML, no link, no web address.',
-		'- never ask in reply to answers: when the message answers your questions, change the page from them.'
+		'- every word in a question is plain text: no HTML, no link, no web address.'
 	];
+}
+
+/**
+ * whether a reply to answers may ask, as `acceptReply` holds it: one more round after the chat's
+ * first, none after any later one. none on a turn that answers nothing.
+ */
+function answersLines(round: number | null): string[] {
+	if (round === null) return [];
+	return round === 1
+		? [
+				'- this message answers your first questions: change the page from them, or ask one more round, only for what the page’s blocks still cannot be filled from, never for what the page already holds, such as a campaign’s name and type. That round is the last.'
+			]
+		: [
+				'- this message answers your last round of questions, so never ask again: change the page from the answers, using your best judgement where they are thin.'
+			];
 }
 
 function contextLines({

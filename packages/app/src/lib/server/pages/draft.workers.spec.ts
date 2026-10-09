@@ -644,7 +644,6 @@ describe('what the model is told', () => {
 			- ask: when the message is vague, or the page needs what only the operator knows — figures, dates, names, what a gift does — ask instead of guessing. A reply that asks has no page and no set.
 			- each question is {"id": ..., "kind": ..., "prompt": ..., "hint"?: ..., "options"?: [...], "placeholder"?: ..., "prefill"?: ...}, 1 to 5 of them. id: lowercase letters, digits and "-", unique. kind: "choice" (pick one option), "choices" (pick several), "text", "amount" (answered in dollars) or "date" (answered as a day). Prefer "choice" and "choices", with 2 to 6 short options; every choice gets an Other box of its own, so never list "Other". placeholder and prefill are for "text" only.
 			- every word in a question is plain text: no HTML, no link, no web address.
-			- never ask in reply to answers: when the message answers your questions, change the page from them.
 
 			CONTEXT:
 			- page: a campaign named "Winter coat drive"
@@ -1185,6 +1184,16 @@ describe('a reply that asks', () => {
 		expect(JSON.parse(asked?.questions ?? 'null')).toEqual(GOAL_AND_END);
 	});
 
+	it('to a message is the turn’s, asking the model once', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const AI = answering({ say: 'Two quick questions.', ask: GOAL_AND_END }, { say: 'Drafted.' });
+
+		expect(await turn(pageId, 'make a page for our coat drive', AI)).toMatchObject({
+			outcome: 'asked'
+		});
+		expect(AI.run).toHaveBeenCalledTimes(1);
+	});
+
 	it('beside a page edit is refused, and the draft is untouched', async () => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
@@ -1212,6 +1221,9 @@ const ASKED = [
 	{ id: 'ends', kind: 'date', prompt: 'When does it end?' },
 	WAYS
 ];
+
+/** the questions a reply to `ASKED`'s answers asks: the chat's second round. */
+const SECOND = [{ id: 'story', kind: 'text', prompt: 'A story to tell?' }];
 
 /** a campaign whose chat's last turn asks `questions`. */
 async function asking(questions: unknown[] = ASKED, draft?: Page) {
@@ -1362,19 +1374,22 @@ describe('answers to the questions asked', () => {
 		expect(await chat(pageId)).toHaveLength(4);
 	});
 
-	it('answered with another ask are refused, writing no turn, so the questions stay asked', async () => {
+	it('answered with another ask are asked a second round, asking the model once', async () => {
 		const pageId = await asking();
-		const before = (await stored(pageId)).draft;
+		const AI = answering({ say: 'Two more.', ask: SECOND }, { say: 'Drafted.' });
 
-		const result = await answer(pageId, [], answering({ say: 'One more.', ask: ASKED }));
+		const result = await answer(pageId, [{ id: 'goal', value: 5000 }], AI);
 
-		expect(result).toEqual({
-			ok: false,
-			reason: 'refused',
-			text: 'I couldn’t apply that: a reply to answers changes the page from them and never asks again'
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'asked',
+			turns: [
+				{ role: 'operator', text: 'Your goal — $50' },
+				{ role: 'assistant', text: 'Two more.', questions: SECOND }
+			]
 		});
-		expect((await stored(pageId)).draft).toEqual(before);
-		expect(await chat(pageId)).toHaveLength(2);
+		expect(AI.run).toHaveBeenCalledTimes(1);
+		expect(await chat(pageId)).toHaveLength(4);
 	});
 
 	it('that no model answers write no turn, and sent again once one does, draft', async () => {
@@ -1425,6 +1440,117 @@ describe('answers to the questions asked', () => {
 		const { draft } = await stored(pageId);
 		expect(draft.blocks[1]).toMatchObject({ heading: 'Give $50 this winter' });
 		expect(draft.blocks.find(({ type }) => type === 'impact-tiers')).toMatchObject({ tiers: [] });
+	});
+});
+
+/** a campaign whose chat's last turn asks `SECOND`, the chat's second round of questions. */
+async function askingTwice() {
+	const pageId = await asking();
+	await answer(pageId, [{ id: 'goal', value: 5000 }], answering({ say: 'Two more.', ask: SECOND }));
+	return pageId;
+}
+
+describe('answers to a second round of questions', () => {
+	it('are told no round follows them, where the first round’s were told one more may', async () => {
+		const pageId = await asking();
+		const firstRound = answering({ say: 'Two more.', ask: SECOND });
+		await answer(pageId, [{ id: 'goal', value: 5000 }], firstRound);
+		const secondRound = answering({ say: 'Drafted.' });
+		await answer(pageId, [], secondRound);
+		const message = answering({ say: 'Two-tone.' });
+		await turn(pageId, 'make it two-tone', message);
+
+		const told = (AI: { run: ReturnType<typeof vi.fn> }) => {
+			const [, input] = AI.run.mock.calls[0] ?? [];
+			const [system] = input.messages;
+			const content: string = system.content;
+			return ['one more round', 'never ask again'].filter((words) => content.includes(words));
+		};
+		expect([told(firstRound), told(secondRound), told(message)]).toEqual([
+			['one more round'],
+			['never ask again'],
+			[]
+		]);
+	});
+
+	it('answered with an ask ask the model once more, told they were answered, and the second reply lands', async () => {
+		const pageId = await askingTwice();
+		const AI = answering(
+			{ say: 'One more.', ask: ASKED },
+			{ say: 'Drafted.', set: { goalMinor: 5000 } }
+		);
+
+		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
+
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'accepted',
+			turns: [{ role: 'operator' }, { role: 'assistant', text: 'Drafted.\nGoal set to $50.' }]
+		});
+		expect((await stored(pageId)).draft.goalMinor).toBe(5000);
+		expect((await chat(pageId)).map(({ text }) => text).slice(4)).toEqual([
+			'A story to tell? — Ana got a coat.',
+			'Drafted.\nGoal set to $50.'
+		]);
+		expect(AI.run).toHaveBeenCalledTimes(2);
+		const [, first] = AI.run.mock.calls[0] ?? [];
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		expect(second.messages.slice(0, first.messages.length)).toEqual(first.messages);
+		expect(second.messages.slice(first.messages.length)).toEqual([
+			{ role: 'assistant', content: JSON.stringify({ say: 'One more.', ask: ASKED }) },
+			{ role: 'user', content: expect.stringContaining('already answered') }
+		]);
+	});
+
+	it('answered with an ask twice are refused again, writing no turn, so the questions stay asked', async () => {
+		const pageId = await askingTwice();
+		const before = (await stored(pageId)).draft;
+		const ask = { say: 'One more.', ask: ASKED };
+		const AI = answering(ask, ask, { say: 'Drafted.' });
+
+		const result = await answer(pageId, [], AI);
+
+		expect(result).toEqual({
+			ok: false,
+			reason: 'refused_again',
+			text: 'I couldn’t apply that: a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
+		});
+		expect(AI.run).toHaveBeenCalledTimes(2);
+		expect((await stored(pageId)).draft).toEqual(before);
+		expect(await chat(pageId)).toHaveLength(4);
+	});
+
+	it('answered with an ask, then a reply refused for another reason, are refused again', async () => {
+		const pageId = await askingTwice();
+		const AI = answering(
+			{ say: 'One more.', ask: ASKED },
+			{ say: 'Drafted.', set: { goalMinor: 9_900 } },
+			{ say: 'Drafted.' }
+		);
+
+		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
+
+		expect(result).toMatchObject({ ok: false, reason: 'refused_again' });
+		expect(AI.run).toHaveBeenCalledTimes(2);
+		expect(await chat(pageId)).toHaveLength(4);
+	});
+
+	it('refused for anything but asking are refused as they stand, asking the model once', async () => {
+		const pageId = await askingTwice();
+		const AI = answering(
+			{ say: 'Drafted.', set: { goalMinor: 9_900 } },
+			{ say: 'Drafted.', set: { goalMinor: 5000 } }
+		);
+
+		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
+
+		expect(result).toEqual({
+			ok: false,
+			reason: 'refused',
+			text: expect.stringMatching(/^I couldn’t apply that: .*\$99/)
+		});
+		expect(AI.run).toHaveBeenCalledTimes(1);
+		expect(await chat(pageId)).toHaveLength(4);
 	});
 });
 
@@ -1576,6 +1702,7 @@ describe('a page opened with an empty chat', () => {
 			{ author: 'assistant', model: DEFAULT_MODEL, note: null }
 		]);
 		expect((await stored(pageId)).draft).toEqual(before);
+		expect(AI.run).toHaveBeenCalledTimes(1);
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages.slice(1)).toEqual([
 			{
@@ -1840,7 +1967,7 @@ describe('the mission answered', () => {
 		const result = await answer(
 			pageId,
 			[{ id: 'mission', value: 'Warm coats.' }],
-			answering({ say: 'One more.', ask: OWN })
+			answering({ say: 'Drafted.', set: { goalMinor: 9_900 } })
 		);
 
 		expect(result).toMatchObject({ ok: false, reason: 'refused' });
