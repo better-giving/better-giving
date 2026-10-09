@@ -717,13 +717,18 @@ export function ConsoleFailure({ error }: { error: unknown }): ReactNode {
 // from. the one throw this page's loader has is `readConsole` meeting a binary it cannot reach, or
 // one that turned the reading down.
 //
-// it stands the same foot as every other screen, with no release in it: a boundary has no loader,
-// so nothing here read what this binary is and that end of the strip stands empty.
+// it stands the same foot as every other screen. a boundary has no loader, so only a gate, which
+// carries the release, fills that end of the strip; anything else leaves it empty.
+//
+// a gate is drawn here rather than handed on as `ConsoleFailure` hands it: this route sits straight
+// under ../root.tsx, which draws no boundary, so a gate thrown on from `/` would land on react
+// router's own error page.
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+	const gated = gatedBy(error);
 	return (
-		<PanelRoute foot={<ProductFoot version="" />}>
+		<PanelRoute foot={<ProductFoot version={gated?.version ?? ''} />}>
 			<title>{TITLE}</title>
-			<ConsoleFailure error={error} />
+			{gated === null ? <ConsoleFailure error={error} /> : <CloudflareGateFace gate={gated.gate} />}
 		</PanelRoute>
 	);
 }

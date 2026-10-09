@@ -1,8 +1,10 @@
 import {
 	ApiError,
+	ApplicationContextUserAction,
 	CheckoutPaymentIntent,
 	Client,
 	Environment,
+	ExperienceContextShippingPreference,
 	IntervalUnit,
 	OrderStatus,
 	OrdersController,
@@ -652,6 +654,17 @@ function unusableKey(idempotencyKey: string): PaymentFailure | null {
  * absence of the pointer is money with no gift to attach it to.
  */
 const COMMITMENT_METADATA_KEYS = [DONATION_METADATA_KEY, INTERVAL_METADATA_KEY] as const;
+
+/** a commitment asked for with no `RecurringGiftRequest.donorPageUrl` (./provider.ts). */
+const NO_DONOR_PAGE: PaymentFailure = Object.freeze({
+	ok: false,
+	reason: 'invalid_request',
+	detail:
+		'this repeating gift carries no `donorPageUrl`, so no commitment was made and nothing was ' +
+		'charged. PayPal requires a return and a cancel address on the approval that makes it ' +
+		'collect the first payment, and the form’s donor page is both. This is a bug in this app ' +
+		'rather than anything about the gift.'
+});
 
 /**
  * why a commitment may not be made, or nothing.
@@ -2006,6 +2019,8 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		): Promise<PaymentResult<RecurringGift>> {
 			const refusal = unusableGift(request);
 			if (refusal) return refusal;
+			const donorPage = request.donorPageUrl;
+			if (donorPage === undefined || donorPage.trim() === '') return NO_DONOR_PAGE;
 			if (!settles(request.method)) return unsettledRail(request.method);
 
 			const planId = await findOrCreateBillingPlan(subscriptions, {
@@ -2022,7 +2037,21 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 					// undecorated key here would be one of them replayed at the call that wanted the other.
 					paypalRequestId: `${DERIVED_KEY}:gift:${request.idempotencyKey}`,
 					prefer: 'return=representation',
-					body: { planId: planId.value, customId: encodeMetadata(request.metadata ?? {}) }
+					body: {
+						planId: planId.value,
+						customId: encodeMetadata(request.metadata ?? {}),
+						// named rather than left to the default, which billing_subscriptions_v1.json
+						// (`application_context.user_action`) states both ways: `CONTINUE` leaves an
+						// approved subscription waiting on an activate call nothing in this app makes.
+						// both addresses are the donor page, the one page of this deployment's own a
+						// donor can be sent back to.
+						applicationContext: {
+							userAction: ApplicationContextUserAction.SubscribeNow,
+							shippingPreference: ExperienceContextShippingPreference.NoShipping,
+							returnUrl: donorPage,
+							cancelUrl: donorPage
+						}
+					}
 				});
 
 				if (!result.id) {
@@ -2243,9 +2272,10 @@ const PLAN_INTERVALS: Readonly<Record<RecurringInterval, IntervalUnit>> = Object
  *
  *   `APPROVED` is `pending` and not `active`. the donor pressed the button in PayPal's window and
  *   nothing has been collected: `APPROVED` is the state a subscription created to wait for an
- *   activate call holds, and `createRecurringGift` creates none that way — PayPal activates its
- *   subscriptions on approval. either way ../donations/collect.ts opens the commitment's row from
- *   the first charge rather than from approval.
+ *   activate call holds, and `createRecurringGift` creates none that way — it sends
+ *   `user_action: SUBSCRIBE_NOW`, which has PayPal activate the subscription on approval. either
+ *   way ../donations/collect.ts opens the commitment's row from the first charge rather than from
+ *   approval.
  *
  *   `SUSPENDED` is `lapsed` and not `ended`. PayPal suspends a commitment when its own retries run
  *   out inside a cycle (https://developer.paypal.com/docs/subscriptions/customize/failed-payments/),

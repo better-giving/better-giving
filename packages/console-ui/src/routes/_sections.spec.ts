@@ -209,6 +209,12 @@ describe('a page that reads for itself, gated', () => {
 	});
 });
 
+/**
+ * what this proves is the hand-off's first half: the page's loader meets the gate, and drawing the
+ * page throws that gate out of the page's own boundary rather than drawing it as a failure. that
+ * the layout's boundary then catches it on the client and draws the gate as the whole screen is
+ * react's to do and is not proved here — this pool has no DOM to mount a router in.
+ */
 describe('a page that reads for itself, gated under a layout it kept', () => {
 	it('hands the gate on rather than drawing it as its own failure', async () => {
 		binary.ready = true;
@@ -220,9 +226,8 @@ describe('a page that reads for itself, gated under a layout it kept', () => {
 			expect(binary.log).toEqual(['read']);
 			expect(gatedBy(router.state.errors?.[BOOKS])).not.toBeNull();
 
-			// the layout's boundary catching what the page's hands on is react's, and this pool has no
-			// DOM to mount one in: `renderToString` runs no boundary over a throw while drawing, so the
-			// gate reaching past the page's boundary is the render throwing it.
+			// `renderToString` runs no boundary over a throw while drawing, so the gate leaving the
+			// page's boundary is the render throwing it.
 			let drawn: unknown;
 			try {
 				drawn = renderToString(createElement(RouterProvider, { router }));

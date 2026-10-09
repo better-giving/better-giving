@@ -165,10 +165,10 @@ const UNAVAILABLE =
  * account was read.
  */
 const UNATTRIBUTED =
-	'Sign-in is unavailable. This deployment is not being told your address, so it cannot limit ' +
-	'password guesses and refuses member sign-ins until it is. The usual cause is Cloudflare’s ' +
-	'“Remove visitor IP headers” setting being switched on for this site; whoever runs this ' +
-	'deployment can switch it off in the Cloudflare dashboard.';
+	'Sign-in is unavailable. This deployment is not being told your connection’s IP address, so it ' +
+	'cannot limit password guesses and refuses member sign-ins until it is. The usual cause is ' +
+	'Cloudflare’s “Remove visitor IP headers” setting being switched on for this site; whoever runs ' +
+	'this deployment can switch it off in the Cloudflare dashboard.';
 
 export const links = operatorLinks;
 

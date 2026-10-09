@@ -445,8 +445,11 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 		const answered = (await response.json()) as Record<string, unknown>;
 		expect(answered.error).toBeUndefined();
 		// the donor's sentence, not the operator's: `operatorFix` names the variable to set and is
-		// written for the deployment's log (../lib/server/api/turnstile.ts).
-		expect(answered.message).toContain('cannot verify a challenge');
+		// written for the deployment's log (../lib/server/api/turnstile.ts), and so is the check's
+		// own sentence. `fix`, which no donor's card draws, says where to look.
+		expect(answered.message).not.toContain('TURNSTILE_');
+		expect(answered.message).not.toContain('deployment');
+		expect(answered.fix).toContain('Turnstile keys');
 	});
 
 	it('never publishes a deploy-time variable in the body', async () => {
@@ -781,7 +784,7 @@ describe('POST /api/v1/forms/:id/donations — the capability it does not gate o
 			expect(response.status).toBe(503);
 			const answered = (await response.json()) as Record<string, unknown>;
 			expect(answered.error).toBeUndefined();
-			expect(String(answered.message)).toContain('challenge');
+			expect(String(answered.fix)).toContain('Turnstile keys');
 		} finally {
 			// the entry is the zone's and outlives this case: left behind, every case after it would
 			// be served a rail list nothing else asked for.
@@ -798,7 +801,7 @@ describe('POST /api/v1/forms/:id/donations — the capability it does not gate o
 		expect(response.status).toBe(503);
 		const answered = (await response.json()) as Record<string, unknown>;
 		expect(answered.error).toBeUndefined();
-		expect(String(answered.message)).toContain('challenge');
+		expect(String(answered.fix)).toContain('Turnstile keys');
 	});
 });
 

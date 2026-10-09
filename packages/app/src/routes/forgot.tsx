@@ -115,14 +115,15 @@ const SENT =
  * sign-in bucket to charge and nothing is sent.
  *
  * ./login.tsx's `UNATTRIBUTED` in this screen's words, and argued there: it names the cause and the
- * switch that usually produces it, for whoever runs the deployment. it says nothing about the
- * address, because the address was never read.
+ * switch that usually produces it, for whoever runs the deployment. it says nothing about the email
+ * address typed, because the body was never read, and it names the IP address in full because
+ * "your address" on a page whose one box is an email address reads as that box.
  */
 const UNATTRIBUTED =
-	'A reset link could not be sent. This deployment is not being told your address, so it cannot ' +
-	'limit how many links are asked for and refuses every request until it is. The usual cause is ' +
-	'Cloudflare’s “Remove visitor IP headers” setting being switched on for this site; whoever runs ' +
-	'this deployment can switch it off in the Cloudflare dashboard.';
+	'A reset link could not be sent. This deployment is not being told your connection’s IP ' +
+	'address, so it cannot limit how many links are asked for and refuses every request until it ' +
+	'is. The usual cause is Cloudflare’s “Remove visitor IP headers” setting being switched on for ' +
+	'this site; whoever runs this deployment can switch it off in the Cloudflare dashboard.';
 
 export const links = operatorLinks;
 

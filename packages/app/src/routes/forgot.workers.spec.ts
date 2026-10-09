@@ -30,12 +30,23 @@ import type { Route as LoginRoute } from './+types/login';
 // than imported: a spec that imported another spec's helpers would make one file's clean-up decide
 // another file's isolation.
 
-/** what the route handed the mailer, in order. */
-const sent = vi.hoisted(() => [] as { to: string; subject: string; html: string; text: string }[]);
+type Message = { to: string; subject: string; html: string; text: string };
+
+/** what the transport delivered, in order. */
+const sent = vi.hoisted(() => [] as Message[]);
+
+/**
+ * how the transport answers a send. `null` delivers at once; a case that sets one answers for
+ * itself, and the next case starts from `null` again.
+ */
+const transport = vi.hoisted(() => ({
+	answer: null as null | ((message: Message) => Promise<unknown>)
+}));
 
 vi.mock('$lib/server/email/factory', () => ({
 	createEmailProvider: () => ({
-		async send(message: { to: string; subject: string; html: string; text: string }) {
+		async send(message: Message) {
+			if (transport.answer !== null) return transport.answer(message);
 			sent.push(message);
 			return { ok: true as const };
 		}
@@ -129,6 +140,7 @@ beforeEach(async () => {
 	await env.DB.prepare('delete from auth_user').run();
 	await env.DB.prepare('delete from org_profile').run();
 	sent.length = 0;
+	transport.answer = null;
 });
 
 describe('GET /forgot', () => {
@@ -269,14 +281,23 @@ describe('POST /forgot', () => {
 	});
 
 	/**
-	 * the answer leaves before the reset is asked for. a member's request writes a row a stranger's
-	 * does not, so a request that waited for that write would answer a member more slowly — a
-	 * stopwatch would say who works here. the row and the mail exist once the isolate has finished
-	 * the work the request left behind.
+	 * the answer waits on none of the work. a member's request writes a row and sends a message a
+	 * stranger's does not, so a request that waited for either would answer a member more slowly — a
+	 * stopwatch would say who works here. the transport is held shut until the action has answered:
+	 * an action that waited on the work would wait on the transport too, and never answer.
 	 */
-	it('answers a member before the link is written, and writes and mails it afterwards', async () => {
+	it('answers a member while the link’s message is still held, and sends it once released', async () => {
 		await saveOrg();
 		await makeMember('nadia@riverbanktrust.org');
+		let release = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		transport.answer = async (message) => {
+			await held;
+			sent.push(message);
+			return { ok: true };
+		};
 		const headers = new Headers({ origin: ORIGIN, 'cf-connecting-ip': '203.0.113.70' });
 		const request = new Request(`${ORIGIN}/forgot`, {
 			method: 'POST',
@@ -285,13 +306,55 @@ describe('POST /forgot', () => {
 		});
 
 		const answer = await action(args(request));
-		const linksWhenAnswered = await resetLinks();
+		const sentWhenAnswered = sent.length;
+		release();
 		await waitOnExecutionContext(running);
 
 		expect(answer).toEqual({ sent: true });
-		expect(linksWhenAnswered).toBe(0);
+		expect(sentWhenAnswered).toBe(0);
 		expect(await resetLinks()).toBe(1);
 		expect(sent.map((message) => message.to)).toEqual(['nadia@riverbanktrust.org']);
+	});
+
+	/**
+	 * a transport that fails is the deployment's to read, for the reason the case below states: a
+	 * page that said so would say so only for an address this deployment has.
+	 */
+	it('answers a member the same when the transport refuses the message, and logs why', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		transport.answer = async () => ({
+			ok: false,
+			reason: 'connect_failed',
+			detail: 'No route to smtp.example.org on port 587.',
+			indeterminate: false
+		});
+
+		const answer = await post(typed('nadia@riverbanktrust.org'));
+
+		expect(answer).toEqual({ sent: true });
+		expect(sent).toEqual([]);
+		const line = logged.mock.calls.flat().join(' ');
+		expect(line).toContain('a reset link could not be sent');
+		expect(line).toContain('No route to smtp.example.org on port 587.');
+	});
+
+	it('answers a member the same when the transport throws, and logs the throw', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		transport.answer = async () => {
+			throw new Error('the socket closed mid-greeting');
+		};
+
+		const answer = await post(typed('nadia@riverbanktrust.org'));
+
+		expect(answer).toEqual({ sent: true });
+		expect(sent).toEqual([]);
+		expect(logged.mock.calls.flat().map(String).join(' ')).toContain(
+			'the socket closed mid-greeting'
+		);
 	});
 
 	/**
@@ -426,6 +489,8 @@ describe('the limit on POST /forgot — a caller the edge did not attribute', ()
 		const answer = await refused(typed('nadia@riverbanktrust.org'), { ip: null });
 
 		expect(banner(answer)).toMatch(/^A reset link could not be sent\./);
+		// the only box on this page is an email address, so "your address" alone reads as that.
+		expect(banner(answer)).toContain('your connection’s IP address');
 		expect(banner(answer)).toContain('Remove visitor IP headers');
 	});
 

@@ -217,15 +217,20 @@ export default function Sections({ loaderData }: Route.ComponentProps) {
  * are true whatever cloudflare said, and the rail goes, since every destination on it is read over
  * the answer that did not land (../lib/cloudflare-gate.ts).
  *
- * anything else is `ConsoleFailure`'s to tell apart (./_index.tsx), drawn as the panel a route
- * outside the shell is, because there is no reading to draw a shell from. a page under the layout
- * that fails is caught by its own boundary and keeps the shell. the foot stands with no release in it,
- * because nothing here read what this binary is.
+ * a gate lands here two ways: the layout's own reading meeting it, or a page under the layout that
+ * reads for itself meeting it while the layout's reading was kept, handed on by `ConsoleFailure`
+ * from the page's own boundary (./_index.tsx).
+ *
+ * anything else is `ConsoleFailure`'s to tell apart, drawn as the panel a route outside the shell
+ * is, because there is no reading to draw a shell from. a page under the layout that fails for any
+ * other reason is caught by its own boundary and keeps the shell. the foot stands with no release
+ * in it, because nothing here read what this binary is.
  */
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-	/* the confirm opens from state here rather than off `?close` as it does over a page: the layout
-	   threw, so it holds no reading, and the router re-runs a loader with nothing kept whatever
-	   `shouldRevalidate` says — a navigation to open the confirm would ask cloudflare again first. */
+	/* the confirm opens from state here rather than off `?close` as it does over a page: the gate
+	   that brought this boundary up may be the layout's own reading, which leaves it holding none,
+	   and the router re-runs a loader with nothing kept whatever `shouldRevalidate` says — a
+	   navigation to open the confirm would ask cloudflare again first. */
 	const [closing, setClosing] = useState(false);
 	const closed = useClosed();
 	const gated = gatedBy(error);

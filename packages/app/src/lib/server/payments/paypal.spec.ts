@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { commitmentMetadata, type DeliveredAttempt, type PaymentProvider } from './provider';
+import {
+	commitmentMetadata,
+	type DeliveredAttempt,
+	type PaymentProvider,
+	type RecurringGiftRequest
+} from './provider';
 import {
 	createPaypalProvider,
 	findOrCreateBillingPlan,
@@ -3064,7 +3069,8 @@ const GIFT = {
 	interval: 'monthly',
 	method: 'paypal',
 	idempotencyKey: 'gift-1',
-	metadata: GIFT_METADATA
+	metadata: GIFT_METADATA,
+	donorPageUrl: 'https://give.example.org/019412e0-8a1f-7000-9000-a1b2c3d4e5f0'
 } as const;
 
 /** a subscription as PayPal answers a create it was asked to answer in full. */
@@ -3096,7 +3102,13 @@ describe('createRecurringGift', () => {
 		expect(path(apiCall(calls, 1))).toBe('/v1/billing/subscriptions');
 		expect(sent(apiCall(calls, 1))).toEqual({
 			plan_id: 'P-5ML4271244454362WXNWU5NQ',
-			custom_id: JSON.stringify(GIFT_METADATA)
+			custom_id: JSON.stringify(GIFT_METADATA),
+			application_context: {
+				user_action: 'SUBSCRIBE_NOW',
+				shipping_preference: 'NO_SHIPPING',
+				return_url: 'https://give.example.org/019412e0-8a1f-7000-9000-a1b2c3d4e5f0',
+				cancel_url: 'https://give.example.org/019412e0-8a1f-7000-9000-a1b2c3d4e5f0'
+			}
 		});
 		expect(result.ok && result.value).toEqual({
 			providerGiftId: 'I-BW452GLLEP1G',
@@ -3153,6 +3165,27 @@ describe('createRecurringGift', () => {
 			expect(calls).toEqual([]);
 		}
 	);
+
+	/**
+	 * a commitment with no donor page is refused before anything is created.
+	 *
+	 * the approval context that makes PayPal collect on approval requires a return and a cancel
+	 * address, and the donor page is both — created without one, the subscription is left to
+	 * PayPal's own defaults for whether approval collects anything at all.
+	 */
+	it('refuses a commitment with no donor page rather than making one', async () => {
+		const { calls } = recording([]);
+		const { donorPageUrl: _absent, ...rest } = GIFT;
+
+		// past the type, which requires the field: what is proved is the adapter's own refusal.
+		const result = await createPaypalProvider(CREDENTIALS).createRecurringGift(
+			rest as RecurringGiftRequest
+		);
+
+		expect(result.ok === false && result.reason).toBe('invalid_request');
+		expect(result.ok === false && result.detail).toContain('donorPageUrl');
+		expect(calls).toEqual([]);
+	});
 
 	/**
 	 * the same attempt made twice resolves to one commitment, because the key does not move.
@@ -4028,8 +4061,9 @@ describe('what a donor typed', () => {
 	 *
 	 * a commitment carries pointers and figures only (CLAUDE.md, *Bans* → **Repeating gifts**), and
 	 * the field that would break that is `subscriber` — it takes a name, an email address and a
-	 * shipping address, and PayPal collects all three in its own window anyway. the cancel's reason
-	 * is the other one: it is a fixed sentence rather than anything about the gift.
+	 * shipping address, and PayPal asks the payer for what it needs in its own window anyway. the
+	 * approval context beside it carries the form's donor page and fixed settings. the cancel's
+	 * reason is the other one: it is a fixed sentence rather than anything about the gift.
 	 */
 	it('reaches PayPal on neither the create nor the cancel', async () => {
 		const { calls } = recording([
@@ -4042,7 +4076,11 @@ describe('what a donor typed', () => {
 		await provider.createRecurringGift(GIFT);
 		await provider.cancelRecurringGift('I-BW452GLLEP1G');
 
-		expect(Object.keys(sent(apiCall(calls, 1)))).toEqual(['plan_id', 'custom_id']);
+		expect(Object.keys(sent(apiCall(calls, 1))).sort()).toEqual([
+			'application_context',
+			'custom_id',
+			'plan_id'
+		]);
 		expect(Object.keys(sent(apiCall(calls, 2)))).toEqual(['reason']);
 	});
 });
