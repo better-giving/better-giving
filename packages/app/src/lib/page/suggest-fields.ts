@@ -3,7 +3,8 @@
 // (./block-edit.ts, $lib/admin/editor/block-edit.tsx) and the page's own boxes under `PAGE_BOXES`
 // — each with the bound ./catalog.ts holds its words to and the place in the page as the model reads
 // it (`draftFromPage` in ./ai-catalog.ts) its words go. a box holding an amount, a photo's id or a
-// picked name is no text box, and neither is a block with nothing typed in it.
+// picked name is no text box, and a block that draws only what it reads at render, such as the
+// share buttons or the donation box, has none.
 //
 // a box is resolved against the draft as it stands: a block by its id, a row of a list by its index
 // among the rows the draft holds, and a photo's description only where a photo is placed, since the

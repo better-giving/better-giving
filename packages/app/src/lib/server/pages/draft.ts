@@ -113,16 +113,16 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 //   `questions` hold them and its words are the reply's `say`. answers are to a round of questions
 //   counted over every asking turn in the chat, the opening's being round 1: a reply to round 1's
 //   may ask one more round, and the model is told so, and a reply to any later round's may not, and
-//   is told that. one that asks anyway is asked once more, the same request with that reply and
-//   `ANSWERED_ALREADY` after it, and the second reply is the turn's in its place, the first written
-//   nowhere.
+//   is told that. where one asks anyway, the model is asked once more, the same request with that
+//   reply and `ANSWERED_ALREADY` after it, and its second reply is the turn's in the first's place,
+//   the first written nowhere.
 // - refused: the draft is untouched and the turn says why.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
 //   operator's fix where there is one. its `model` is the one `generate` asked.
 // answers whose reply is refused or unanswered write neither turn, so the questions stay the chat's
 // last turn and the same answers can be sent again: the caller hears `refused` or `unanswered`
-// with the words the turn would have said, and `refused_again` where the reply asked once more was
-// refused too.
+// with the words the turn would have said, and `refused_again` where the second reply, asked for
+// after the first asked, was refused too.
 //
 // `acceptReply` reads the figures the operator stated out of their messages whole and out of each
 // answers turn's answers alone (`answerValueWords` in ../../page/questions.ts), never the prompts
@@ -212,8 +212,8 @@ export type TurnResult =
 	/** the chat's last turn asks nothing open: its questions were answered, or none were asked. */
 	| { ok: false; reason: 'answered' }
 	/**
-	 * answers whose reply was refused or that no model answered, or whose reply asked and the one
-	 * asked again in its place was refused (`refused_again`); `text` is what the turn would have
+	 * answers whose reply was refused or that no model answered, or whose reply asked and the second
+	 * reply asked for in its place was refused (`refused_again`); `text` is what the turn would have
 	 * said.
 	 */
 	| { ok: false; reason: 'refused' | 'refused_again' | 'unanswered'; text: string }
@@ -250,8 +250,8 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 /**
  * the operator's answers to the questions the chat's last turn asked: one operator turn whose text
  * is `answerWords` and whose `answers` are the answers read, then the model's reply as any turn's,
- * except that it may ask again only after the chat's first round, and told the filing where the
- * questions were the opening's. a reply refused or unanswered writes no turn, and is answered with
+ * except that it may ask only where the questions were the chat's first round, and told the filing
+ * where they were the opening's. a reply refused or unanswered writes no turn, and is answered with
  * the words its turn would have said.
  */
 export async function answerTurn(
@@ -858,7 +858,7 @@ function replyFormat(type: PageType): string[] {
 
 /**
  * whether a reply to answers may ask, as `acceptReply` holds it: one more round after the chat's
- * first, none after any later one. none on a turn that answers nothing.
+ * first, none after any later one. no line on a turn that answers nothing.
  */
 function answersLines(round: number | null): string[] {
 	if (round === null) return [];

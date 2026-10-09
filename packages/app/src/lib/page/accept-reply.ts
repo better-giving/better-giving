@@ -36,9 +36,9 @@
 // `set` refuses the reply, since a reply that asks never also changes the page. where the caller
 // says the turn answers questions, it names their round, counted from the chat's first: answers to
 // round 1 may be followed by one more round, and any `ask` in reply to a later round's answers
-// refuses the reply — so a page is drafted after two rounds at most, and the answers to any ask
-// after the first draft are followed by a draft. that refusal alone is marked `askedAgain`, for the
-// caller to tell it from the rest. an `ask` that is `[]` or `null` is read as none.
+// refuses the reply, so answers alone never lead to a third round. that refusal alone is marked
+// `askedAgain`, for the caller to tell it from the rest. an `ask` that is `[]` or `null` is read as
+// none.
 //
 // the model's answer is text nobody checked, so its size is bounded before anything reads it
 // (`readReply`, which $lib/server/pages/draft.ts reads a reply through too): the text at
@@ -244,7 +244,7 @@ export type AcceptInput = {
 	now: number;
 	/**
 	 * the round of questions the turn answers, counted from the chat's first, 1 for it; absent
-	 * where the turn answers none. a reply to any round past the first may not ask.
+	 * where the turn answers none. a reply to answers to any round past the first may not ask.
 	 */
 	answering?: number;
 };

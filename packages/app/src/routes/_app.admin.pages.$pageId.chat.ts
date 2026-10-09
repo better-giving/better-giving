@@ -34,8 +34,8 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 // editor's error boundary and takes the editor with it. answers whose reply could not land write no
 // turn, so the questions stay asked and the same answers can be sent again: `unanswered` on the 503
 // where no model answered, `refused` on the 422 where the reply was refused, and `refused_again` on
-// the 422 where a reply to answers asked and the one asked again in its place was refused too, each
-// `error` the line the turn would have said.
+// the 422 where a reply to answers asked and the second reply asked for in its place was refused
+// too, each `error` the line the turn would have said.
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const turns = await readChat(context.get(database), params.pageId);
