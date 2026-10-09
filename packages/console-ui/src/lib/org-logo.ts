@@ -50,7 +50,7 @@ export type LogoRefusal =
 export const LOGO_REFUSED: Readonly<Record<LogoRefusal, string>> = {
 	'not-an-image': 'That file isn’t an image. Choose a PNG, JPEG or WebP.',
 	'not-a-logo-type':
-		'Logos are taken as PNG, JPEG or WebP. Save it as one of those and choose it again.',
+		'That file isn’t a PNG, JPEG or WebP. Save it as one of those and choose it again.',
 	unreadable:
 		'That image couldn’t be opened here. Save it as a PNG, JPEG or WebP and choose it again.',
 	'too-large-after-resize': 'That image is too large even after resizing. Choose a smaller one.',

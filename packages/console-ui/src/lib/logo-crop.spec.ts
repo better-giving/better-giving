@@ -184,7 +184,7 @@ describe('a file dragged over the open crop', () => {
 		expect(dropEffect(dragging())).toBe('copy');
 	});
 
-	// a browser may report no type until the drop; one that really has none is refused there.
+	// a browser may report no type until the drop; one that really has none is ignored there.
 	it('shows a copy for an item with no type, and leaves the file to the drop', () => {
 		expect(dropEffect(dragging(''))).toBe('copy');
 	});
