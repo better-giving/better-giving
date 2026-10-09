@@ -138,7 +138,9 @@ import { sendRefundNotice } from './refund-notice';
 // posted, because the money went back either way. a redelivery is answered `already_posted` before
 // it, and a dispute or a refund that did not stand never reaches it, nor a refund ./settle.ts writes
 // for a gift settled in the same delivery, whose donor was sent no receipt (`RefundNotice`). a
-// notice that fails is told to staff and never changes the answer.
+// refund that tells its donor is written with `notice_owed_since` set and every other row with it
+// null. a notice that fails is told to staff, stays owed for a later run to send, and never
+// changes the answer.
 //
 // ---------------------------------------------------------------------------
 // a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
@@ -376,7 +378,9 @@ async function withdraw(
 			provider: deps.provider.processor,
 			providerTxnId: reversal.providerReversalId,
 			occurredAt: reversal.occurredAt,
-			parentPaymentId: reversed.id
+			parentPaymentId: reversed.id,
+			// owed by a refund that tells its donor, until ./refund-notice.ts clears it.
+			noticeOwedSince: reversal.kind === 'refund' && notice === 'send' ? new Date() : null
 		}),
 		...(reversal.kind === 'refund'
 			? []

@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import type { EmailMessage, EmailProvider } from '../email/provider';
+import type { EmailMessage, EmailProvider, SendResult } from '../email/provider';
 import type { MailDeps } from './delivery';
-import { sendRefundNotice, type RefundNoticeTarget } from './refund-notice';
+import { sendOwedRefundNotices, sendRefundNotice, type RefundNoticeTarget } from './refund-notice';
 
 // the one sender of the refund notice, against a real D1 for the donor it reads off the gift, the
 // organisation's details and the staff address an alert goes to. driven directly rather than
@@ -264,5 +264,245 @@ describe('sendRefundNotice()', () => {
 
 		await expect(sendRefundNotice(deps(port), target())).resolves.toBeUndefined();
 		logged.mockRestore();
+	});
+});
+
+const HOUR = 60 * 60_000;
+
+/**
+ * a run now, which is what its deadline reads the clock against, over refunds written `ago` before
+ * it — by default an hour, past the delivery's own grace and well inside the week a notice is
+ * owed for.
+ */
+async function sweep(email: EmailProvider, ago = HOUR) {
+	const now = Date.now();
+	await env.DB.prepare(`update payment set created_at = ? where direction = 'refund'`)
+		.bind(now - ago)
+		.run();
+	await sendOwedRefundNotices(deps(email), new Date(now));
+}
+
+/**
+ * a refund that tells its donor, as ./reverse.ts writes one: owing its notice from the moment it is
+ * written until a send goes.
+ */
+async function owedRefund(id: string, amountMinor: number) {
+	await withdrawal(id, amountMinor);
+	await env.DB.prepare('update payment set notice_owed_since = created_at where id = ?')
+		.bind(id)
+		.run();
+}
+
+/** a transport that answers every message to the donor with `failure`, and records them all. */
+function failing(failure: Extract<SendResult, { ok: false }>) {
+	const sent: EmailMessage[] = [];
+	const port: EmailProvider = {
+		async send(message) {
+			sent.push(message);
+			return message.to === 'ada@example.org' ? failure : { ok: true };
+		}
+	};
+	return { port, sent };
+}
+
+const TIMED_OUT = {
+	ok: false,
+	reason: 'connect_failed',
+	detail: 'Could not reach the mail host in `SMTP_HOST`: Timed out waiting for response.',
+	indeterminate: true
+} as const;
+
+const NOT_AN_ADDRESS = {
+	ok: false,
+	reason: 'invalid_message',
+	detail: 'The recipient is not a bare address.',
+	indeterminate: false
+} as const;
+
+describe('sendOwedRefundNotices()', () => {
+	/** the outage is the case it exists for: the alert rides the same transport and is lost too. */
+	it('sends a notice the transport refused, once the transport is back', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		await sendRefundNotice(deps(mailer('ada@example.org').port), target());
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+		expect(mail.sent[0]?.subject).toBe('Part of your gift to Hope Foundation has been refunded');
+		expect(mail.sent[0]?.text).toContain('USD 25.00');
+		expect(mail.sent[0]?.text).toContain('USD 75.00');
+	});
+
+	it('never sends again a notice that went', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		await sendRefundNotice(deps(mailer().port), target());
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent).toEqual([]);
+	});
+
+	it('sends a notice whose step faulted outright', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		const faulting: EmailProvider = {
+			async send() {
+				throw new Error('socket hung up');
+			}
+		};
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		await sendRefundNotice(deps(faulting), target());
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+	});
+
+	it('sends a notice once, however many runs follow', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		const mail = mailer();
+
+		await sweep(mail.port);
+		await sweep(mail.port);
+
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+	});
+
+	/** a donor given an address later is not written to about a refund nobody could tell them of. */
+	it('owes nothing on a refund whose donor had no address', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		await env.DB.prepare('update contact set primary_email = null where id = ?')
+			.bind(CONTACT_ID)
+			.run();
+		await sendRefundNotice(deps(mailer().port), target());
+		await env.DB.prepare(`update contact set primary_email = 'ada@example.org' where id = ?`)
+			.bind(CONTACT_ID)
+			.run();
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent).toEqual([]);
+	});
+
+	/** the delivery that wrote it is still on its own send, and two would reach the donor. */
+	it('leaves a refund written in the last half hour to the delivery that wrote it', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		const mail = mailer();
+
+		await sweep(mail.port, 29 * 60_000);
+
+		expect(mail.sent).toEqual([]);
+	});
+
+	it('gives up on a notice a week after its refund', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		const mail = mailer();
+
+		await sweep(mail.port, 7 * 24 * HOUR);
+
+		expect(mail.sent).toEqual([]);
+	});
+
+	it('sends nothing of a refund that did not stand', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		await env.DB.prepare(`update payment set status = 'cancelled' where id = ?`)
+			.bind(REFUND_ID)
+			.run();
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent).toEqual([]);
+	});
+
+	/** the delivery that wrote the refund told staff; a run every half hour would tell them again. */
+	it('logs a notice that still does not send, tells staff nothing, and keeps it owed', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const refusing = mailer('ada@example.org');
+
+		await sweep(refusing.port);
+		const lines = logged.mock.calls.map(([line]) => line);
+		const mail = mailer();
+		await sweep(mail.port);
+
+		expect(refusing.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+		expect(lines).toContain('A donor’s refund notice did not send:');
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+	});
+
+	/** a worker from before the column records a refund it has already told the donor of. */
+	it('owes nothing on a refund written without the column', async () => {
+		await orgProfile();
+		await withdrawal(REFUND_ID, 2_500);
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent).toEqual([]);
+	});
+
+	/** the first timeout on the delivery is the outage case: the host may simply not be there. */
+	it('sends again a notice whose delivery send timed out', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		await sendRefundNotice(deps(failing(TIMED_OUT).port), target());
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+	});
+
+	/** a host that takes the message and then goes quiet would otherwise get it every half hour. */
+	it('stops owing a notice once a run’s own send of it times out', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const timedOut = failing(TIMED_OUT);
+		await sweep(timedOut.port);
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(timedOut.sent.map((m) => m.to)).toEqual(['ada@example.org']);
+		expect(mail.sent).toEqual([]);
+	});
+
+	it('stops owing a notice the transport refuses as unsendable, on a run', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		await sweep(failing(NOT_AN_ADDRESS).port);
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(mail.sent).toEqual([]);
+	});
+
+	it('stops owing a notice the transport refuses as unsendable, on the delivery, and tells staff', async () => {
+		await orgProfile();
+		await owedRefund(REFUND_ID, 2_500);
+		const refused = failing(NOT_AN_ADDRESS);
+		await sendRefundNotice(deps(refused.port), target());
+		const mail = mailer();
+
+		await sweep(mail.port);
+
+		expect(refused.sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
+		expect(mail.sent).toEqual([]);
 	});
 });

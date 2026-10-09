@@ -17,6 +17,7 @@ import type {
 	SettlementEvent
 } from '../payments/provider';
 import { recordDonation } from './record';
+import { sendOwedRefundNotices } from './refund-notice';
 import { recordReversal } from './reverse';
 import type { SettleDeps, SettleOutcome } from './delivery';
 import { failureIsNewsToTheDonor, settleDelivery, settleTransaction } from './settle';
@@ -2206,6 +2207,16 @@ describe('settleDelivery() — a crypto gift valued at what arrived', () => {
 			expect(withdrawn?.lines.map((l) => l.amountMinor).sort((a, b) => a - b)).toEqual([
 				-8_000, 8_000
 			]);
+			expect(mail.sent.map((m) => m.to)).not.toContain('ada@example.org');
+		});
+
+		it('leaves no refund notice owed for a later run to send', async () => {
+			await pendingCrypto();
+			await settleDelivery(deps({ provider: refunded() }), DELIVERY);
+			const mail = mailer();
+
+			await sendOwedRefundNotices({ db, email: mail.port }, new Date(Date.now() + 60 * 60_000));
+
 			expect(mail.sent.map((m) => m.to)).not.toContain('ada@example.org');
 		});
 

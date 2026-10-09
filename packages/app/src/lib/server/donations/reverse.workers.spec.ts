@@ -22,6 +22,7 @@ import { listDonations } from './queries';
 import { recordDonation } from './record';
 import { createDestination } from '../webhooks/destinations';
 import type { WebhookEvent } from '../../webhooks/catalog';
+import { sendOwedRefundNotices } from './refund-notice';
 import { recordReversal } from './reverse';
 import { settleDelivery, settleTransaction } from './settle';
 
@@ -2589,6 +2590,54 @@ describe('recordReversal() — what the donor is told of a refund', () => {
 		await recordReversal(deps({ email: mail.port }), reversal(), 'evt_d1');
 
 		expect(toDonor(mail.sent)).toEqual([]);
+	});
+
+	/** a run an hour from now, past the grace a delivery has for its own send. */
+	const laterRun = (email: EmailProvider) =>
+		sendOwedRefundNotices({ db, email }, new Date(Date.now() + 60 * 60_000));
+
+	it.each([
+		{ state: 'opened', before: [], reversal: () => opened() },
+		{ state: 'lost after it opened', before: [() => opened()], reversal: () => lost() },
+		{ state: 'lost with no opening recorded', before: [], reversal: () => lost() }
+	])(
+		'leaves no notice owed for a later run to send of a dispute $state',
+		async ({ before, reversal }) => {
+			await settledGift();
+			for (const [i, earlier] of before.entries()) {
+				await recordReversal(deps(), earlier(), `evt_d0${i}`);
+			}
+			await recordReversal(deps(), reversal(), 'evt_d1');
+			const mail = mailer();
+
+			await laterRun(mail.port);
+
+			expect(toDonor(mail.sent)).toEqual([]);
+		}
+	);
+
+	it('leaves a notice that did not send owed, and a later run sends it', async () => {
+		await settledGift();
+		const refusing: EmailProvider = {
+			async send(message) {
+				return message.to === 'ada@example.org'
+					? {
+							ok: false,
+							reason: 'connect_failed',
+							detail: 'no route to host',
+							indeterminate: false
+						}
+					: { ok: true };
+			}
+		};
+		await recordReversal(deps({ email: refusing }), refund(), 'evt_r1');
+		const mail = mailer();
+
+		await laterRun(mail.port);
+
+		const notices = toDonor(mail.sent);
+		expect(notices).toHaveLength(1);
+		expect(notices[0]?.subject).toBe('Your gift to Hope Foundation has been refunded');
 	});
 
 	it.each([

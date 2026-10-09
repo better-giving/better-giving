@@ -25,12 +25,14 @@
 		"0019_webhook_delivery_dropped_and_detail.sql",
 		"0020_webhook_delivery_recent_index.sql",
 		"0021_list_walk_indexes.sql",
-		"0022_webhook_delivery_owed_index.sql"
+		"0022_webhook_delivery_owed_index.sql",
+		"0023_refund_notice_owed.sql"
 	],
 	"crons": [
 		"*/30 * * * *",
+		"15,45 * * * *",
 		"* * * * *"
 	],
 	"turnstileWidgetName": "better-giving",
-	"commit": "8ff2051c912763df937c1685ee542936d9811d6b"
+	"commit": "e8fcfd66660d04c89eadab1403092f97ab5d7c00"
 }

@@ -810,3 +810,26 @@ describe('0022 holds the backlog of a destination already paused out of the due 
 		}
 	);
 });
+
+// what 0023 is for: a refund written before the column arrived was told to its donor on its own
+// delivery or never will be, so none is read as owing a notice (`sendOwedRefundNotices` in
+// ../donations/refund-notice.ts reads only the rows that do).
+describe('0023 owes no notice on a refund already written', () => {
+	let payments: Row[];
+
+	beforeAll(async () => {
+		if (nowhereToStop) return;
+		payments = (await migrateOverSeed()).after.get('payment') ?? [];
+	});
+
+	it.skipIf(nowhereToStop)('leaves every payment already written owing nothing', () => {
+		expect(payments.map((r) => [r.id, r.notice_owed_since])).toEqual([
+			['p-card', null],
+			['p-refund', null],
+			['p-venmo', null],
+			['p-daf', null],
+			['p-cash', null],
+			['p-unknown', null]
+		]);
+	});
+});

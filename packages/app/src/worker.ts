@@ -5,6 +5,7 @@ import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { pinnedOrigin, readAuthEnv } from '$lib/server/auth/env';
 import { requestDb } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
+import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { INTEGRATIONS_BASE_PATH, readOnlyRefusal } from '$lib/server/integrations/surface';
 import { createPaymentProviders } from '$lib/server/payments/factory';
@@ -58,6 +59,9 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, now: Date) => Promise
 			},
 			now
 		),
+
+	'15,45 * * * *': (env, now) =>
+		sendOwedRefundNotices({ db: requestDb(env), email: createEmailProvider(env) }, now),
 
 	'* * * * *': (env, now) => {
 		// the three jobs below run in one invocation and spend its connections, subrequests and D1

@@ -68,7 +68,10 @@
 	// (https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/).
 	//
 	// every thirty minutes, the crypto gifts no IPN settled are read back
-	// (src/lib/server/donations/pending-crypto-read.ts). every minute, in one invocation, what this
+	// (src/lib/server/donations/pending-crypto-read.ts). at a quarter past and a quarter to, in an
+	// invocation of their own so that nothing else's sizing is theirs to share, the donor notices of
+	// refunds that did not send are sent again (`sendOwedRefundNotices` in
+	// src/lib/server/donations/refund-notice.ts). every minute, in one invocation, what this
 	// deployment owes is sent: the organisation's books (src/lib/server/accounting/deliver.ts), its
 	// Zaps (src/lib/server/zapier/deliver.ts) and its webhook destinations
 	// (src/lib/server/webhooks/deliver.ts) — a minute because a gift is meant to arrive while it is
@@ -83,7 +86,7 @@
 	// Paid the CPU row is the one selected by the interval, thirty seconds under an hour and fifteen
 	// minutes at an hour or longer (https://developers.cloudflare.com/workers/platform/limits/,
 	// "CPU time").
-	// both expressions above are under an hour, so both runs have thirty seconds of CPU. fifteen
+	// every expression above is under an hour, so every run has thirty seconds of CPU. fifteen
 	// minutes is the figure on the Duration table, which carries no interval condition and is
 	// therefore the easy one to reach for; it binds every run, and it is the higher of this
 	// schedule's two limits.
@@ -93,9 +96,10 @@
 	// is written and nothing is marked. a run that overspends leaves its rows exactly as it found
 	// them — no backoff, no failure, no notice — and shows up in nothing but the Worker's invocation
 	// statuses. no run is held to that ceiling by its sizing: `RUN_DEADLINE_MS` in
-	// src/lib/server/accounting/deliver.ts and src/lib/server/donations/pending-crypto-read.ts bounds
-	// a run's wall clock, and each minute feed's pace in src/lib/server/outbox/budget.ts is sized
-	// against subrequests, D1 queries and connections, with CPU unbudgeted there. what keeps a run
+	// src/lib/server/accounting/deliver.ts, src/lib/server/donations/pending-crypto-read.ts and
+	// src/lib/server/donations/refund-notice.ts bounds a run's wall clock, and each minute feed's
+	// pace in src/lib/server/outbox/budget.ts is sized against subrequests, D1 queries and
+	// connections, with CPU unbudgeted there. what keeps a run
 	// under the thirty seconds is that its time goes to waiting, which CPU does not count. so
 	// lengthening an interval past an hour is what lifts the ceiling, and shortening one never
 	// touches it.
@@ -117,7 +121,7 @@
 	// `test` environment below carries the same schedule without repeating it — unlike the bindings,
 	// which it has to. an environment declaring `triggers` of its own replaces this one outright.
 	"triggers": {
-		"crons": ["*/30 * * * *", "* * * * *"]
+		"crons": ["*/30 * * * *", "15,45 * * * *", "* * * * *"]
 	},
 
 	"d1_databases": [
