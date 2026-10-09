@@ -21,9 +21,9 @@ import type { Route } from './+types/_app.admin.pages.$pageId.suggest';
 //
 // it answers 200 `{ ok: true, text }`: a plain box's words on one line, and a rich-text box's as
 // paragraphs a blank line apart, which `richTextOf` in $lib/page/suggest-fields.ts makes its
-// document. words that could not be written are `{ ok: false, reason, text }`, `text` one sentence
-// for the operator: `unanswered` on the 503 where no model answered, `refused` on the 422 where the
-// words were refused twice, and `failed` on the 500 a suggestion that threw is caught into —
+// document. words that could not be written are `{ ok: false, reason, text }`, `text` the line
+// the operator is shown: `unanswered` on the 503 where no model answered, `refused` on the 422
+// where the words were refused twice, and `failed` on the 500 a suggestion that threw is caught into —
 // caught, because a fetcher's thrown error lands on the editor's error boundary and takes the
 // editor with it. a request naming no such page is a 404, and a box missing, or a block or field
 // that is no text box of the draft, a 400; each `{ error }` names the value.

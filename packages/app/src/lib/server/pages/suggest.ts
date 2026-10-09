@@ -22,11 +22,12 @@ import { readableDraft } from './document';
 //
 // the words are held by putting them where they go and handing that reply to `acceptReply`
 // (../../page/accept-reply.ts): the box's length, a share message's web address only where the page
-// already links it, and the page's shape. its figure and impact rules do not bind them: the words
-// are the operator's to review and save, so they are the operator's only statement for this check,
-// and the tier `acceptReply` drops for want of a grant is no refusal here — a tier's length is held
-// before the drop. markup — a `<` or `>` — refuses them too. a plain box's words are made one line
-// first, and a rich box's paragraphs are each made one line.
+// already links it, and the page's shape. its figure and impact rules do not bind them, because the
+// words are the operator's to review and save: they are handed over as the operator's one message,
+// so every figure in them reads as stated, and the tier `acceptReply` drops for want of a grant is
+// no refusal here — a tier's length is held before the drop. markup — a `<` or `>` — refuses them
+// too. a plain box's words are made one line first, and a rich box's paragraphs are each made one
+// line.
 //
 // words refused are asked for once more, the model told why; refused again, the caller hears
 // `refused`. no model answering is `unanswered`, with the words the chat says it in.
@@ -47,7 +48,7 @@ export type SuggestRequest = {
 export type SuggestResult =
 	| { ok: true; text: string }
 	| { ok: false; reason: 'not_found' }
-	/** `error` names the block or the field that is no text box, and the ones there are. */
+	/** `error` names the block or the field that is no text box, and the ones there are, if any. */
 	| { ok: false; reason: 'no_box'; error: string }
 	| { ok: false; reason: 'unanswered' | 'refused'; text: string };
 
