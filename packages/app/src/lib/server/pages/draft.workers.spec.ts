@@ -29,8 +29,8 @@ vi.mock(import('../nonprofits/filing'), async (importOriginal) => {
 	const real = await importOriginal();
 	return {
 		...real,
-		lookUpFiling: async (taxId: string | null) =>
-			upstream.at === '' ? null : real.lookUpFiling(taxId, upstream.at)
+		lookUpFiling: async (taxId: string | null, origin: string) =>
+			upstream.at === '' ? null : real.lookUpFiling(taxId, origin, upstream.at)
 	};
 });
 
@@ -42,6 +42,11 @@ beforeAll(() => {
 
 const NOW = Date.parse('2026-09-28T16:00:00Z');
 const ZONE = 'America/New_York';
+/**
+ * the origin a turn arrives on. each 990 case takes one of its own, because the edge cache holds a
+ * found filing under it for the whole run.
+ */
+let origin = 'https://admin.example';
 
 function turn(pageId: string, message: string, AI: { run: unknown }, extra: object = {}) {
 	return draftTurn(
@@ -1220,7 +1225,7 @@ async function asking(questions: unknown[] = ASKED, draft?: Page) {
 }
 
 function answer(pageId: string, answers: unknown, AI: { run: unknown }) {
-	return answerTurn(db, { ...env, AI }, { pageId, answers, timeZone: ZONE, now: NOW });
+	return answerTurn(db, { ...env, AI }, { pageId, answers, timeZone: ZONE, now: NOW, origin });
 }
 
 describe('answers to the questions asked', () => {
@@ -1525,7 +1530,7 @@ const OWN = [
 ];
 
 function open(pageId: string, AI: { run: unknown }) {
-	return openTurn(db, { ...env, AI }, { pageId, timeZone: ZONE, now: NOW });
+	return openTurn(db, { ...env, AI }, { pageId, timeZone: ZONE, now: NOW, origin });
 }
 
 async function writeMission(mission: string) {
@@ -1878,6 +1883,7 @@ async function onRecord(body: unknown = ON_RECORD, status = 200) {
 describe('a page opened with a 990 on record', () => {
 	beforeEach(async () => {
 		await env.DB.prepare('delete from org_profile').run();
+		origin = `https://${crypto.randomUUID()}.example`;
 	});
 
 	afterEach(() => {
@@ -1969,7 +1975,7 @@ describe('a page opened with a 990 on record', () => {
 		}
 	});
 
-	it('tells the answers to the opening the same filing, looked up once more', async () => {
+	it('tells the answers to the opening the same filing, without asking the API again', async () => {
 		const fetch = await onRecord();
 		const pageId = await insertPage(db, 'campaign');
 		await open(pageId, answering({ say: 'Questions.', ask: OWN }));
@@ -1979,7 +1985,7 @@ describe('a page opened with a 990 on record', () => {
 
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages[0].content).toContain('- programs: "Coat drive"; "School coat closets"');
-		expect(fetch).toHaveBeenCalledTimes(2);
+		expect(fetch).toHaveBeenCalledOnce();
 	});
 
 	it('is looked up by no later turn, message or answers', async () => {
@@ -1997,7 +2003,7 @@ describe('a page opened with a 990 on record', () => {
 		const [, asked] = asking.run.mock.calls[0] ?? [];
 		expect(input.messages[0].content).not.toContain('IRS FILING');
 		expect(asked.messages[0].content).not.toContain('IRS FILING');
-		expect(fetch).toHaveBeenCalledTimes(2);
+		expect(fetch).toHaveBeenCalledOnce();
 	});
 
 	it('asks nothing where no EIN is stored', async () => {

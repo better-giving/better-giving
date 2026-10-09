@@ -79,8 +79,10 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // descriptions and notes in a section of their own, as data and never as instructions, with no
 // figure from it to be written on the page. while the profile's mission is empty, the
 // filing's mission prefills `MISSION_QUESTION`, on the model's opening and the starter questions
-// alike. no other turn looks anything up, nothing looked up is stored but what the operator
-// answers, and a lookup that answers nothing leaves the turn as it is with no EIN stored.
+// alike. no other turn looks anything up. looked up facts are held in the edge cache for an hour,
+// never in the database, so the answers turn is told the filing its opening fetched without asking
+// the API again (../nonprofits/filing.ts). a lookup that answers nothing leaves the turn as it is
+// with no EIN stored.
 //
 // the mission answered is an answer like any other: it reaches the model in that turn's answers and
 // is kept in the chat alone. no turn writes `org_profile` — the profile is the console's to save,
@@ -147,9 +149,22 @@ export type TurnRequest = {
 };
 
 /** the operator's answers to the questions the chat's last turn asked, as posted. */
-export type AnswersRequest = { pageId: string; answers: unknown; timeZone: string; now: number };
+export type AnswersRequest = {
+	pageId: string;
+	answers: unknown;
+	timeZone: string;
+	now: number;
+	/** the origin the request arrived on, which a looked-up filing is held under. */
+	origin: string;
+};
 
-export type OpenRequest = { pageId: string; timeZone: string; now: number };
+export type OpenRequest = {
+	pageId: string;
+	timeZone: string;
+	now: number;
+	/** the origin the request arrived on, which a looked-up filing is held under. */
+	origin: string;
+};
 
 /** an answered question as the chat draws it: its prompt, from the turn that asked it. */
 export type AnsweredQuestion = { id: string; prompt: string; words: string };
@@ -204,7 +219,7 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 		said: withImages(request.message, request.imageIds),
 		stated: request.message,
 		answering: null,
-		lookUp: false,
+		filingOrigin: null,
 		timeZone: request.timeZone,
 		now: request.now
 	});
@@ -240,7 +255,7 @@ export async function answerTurn(
 		said: answersMessage(words),
 		stated: answerValueWords(questions, read.answers),
 		answering: sql`not exists (select 1 from ${chatTurn} where ${chatTurn.pageId} = ${row.id} and ${chatTurn.seq} > ${last.seq})`,
-		lookUp: turns[0]?.id === last.id,
+		filingOrigin: turns[0]?.id === last.id ? request.origin : null,
 		timeZone: request.timeZone,
 		now: request.now
 	});
@@ -266,7 +281,7 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 	if (!row) return { ok: false, reason: 'not_found' };
 	const turns = await turnsOf(db, row.id);
 	if (turns.length > 0) return { ok: true, outcome: 'unchanged', turns: chatEntries(turns) };
-	const context = await promptContext(db, row, request, true);
+	const context = await promptContext(db, row, request, request.origin);
 	const missionEmpty = context.mission === null;
 	const mission = missionQuestion(context.filing);
 	const prefilled = (questions: readonly Question[]) =>
@@ -366,8 +381,11 @@ type Turning = {
 	 * turn. null on a message.
 	 */
 	answering: SQL | null;
-	/** the turn answers the opening ask, so the filing is looked up for it as for the opening. */
-	lookUp: boolean;
+	/**
+	 * where the turn answers the opening ask, the origin the filing is looked up under, as for the
+	 * opening; null on any other turn.
+	 */
+	filingOrigin: string | null;
 	timeZone: string;
 	now: number;
 };
@@ -375,7 +393,7 @@ type Turning = {
 /** the model asked for the reply to `operator`, and the outcome written: one exchange. */
 async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResult> {
 	const { row, turns, operator } = turning;
-	const context = await promptContext(db, row, turning, turning.lookUp);
+	const context = await promptContext(db, row, turning, turning.filingOrigin);
 	const { current, programs } = context;
 	const answer = await generate(env, {
 		system: systemPrompt(context),
@@ -489,17 +507,18 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 
 /**
  * what the model is told of the page and the organisation, read afresh for each turn, and the
- * filing where `lookUp` asks for it.
+ * filing looked up under `filingOrigin` where there is one.
  */
 async function promptContext(
 	db: Db,
 	row: PageRow,
 	{ timeZone, now }: { timeZone: string; now: number },
-	lookUp: boolean
+	filingOrigin: string | null
 ): Promise<PromptContext> {
 	const current = readableDraft(row);
 	const [profile, programs] = await Promise.all([readOrgProfile(db), readActivePrograms(db)]);
-	const filing = lookUp ? await lookUpFiling(profile?.taxId ?? null) : null;
+	const filing =
+		filingOrigin === null ? null : await lookUpFiling(profile?.taxId ?? null, filingOrigin);
 	const name = current.name ?? row.name;
 	return {
 		type: row.type,
