@@ -37,8 +37,7 @@ export {
 	type MemberSignIn,
 	type PasswordChange,
 	type PasswordReset,
-	type RemoveResult,
-	type ResetRequest
+	type RemoveResult
 } from './members';
 export { LOGIN_PATH, NEXT_PARAM, safeNext, signInDestination } from './next';
 export { resolveAuthSecret, type AuthSecretResolution } from './signing-key';
@@ -103,21 +102,19 @@ export interface AuthRuntime {
 	 * how a mailed reset link reaches the member who asked for one. supplied by the route that
 	 * requests a reset and by no other caller, which leaves `sendResetPassword` unset everywhere
 	 * else and `auth.api.requestPasswordReset` refusing with `RESET_PASSWORD_DISABLED` there —
-	 * `requestPasswordReset` in ./members.ts is what turns that into an answer.
+	 * `requestPasswordReset` in ./members.ts is what turns that into a log line.
 	 *
 	 * `send` is given the address and the token and composes nothing. the link is the route's to
 	 * build, for the reason `inviteMember` returns a token rather than a url (./invitations.ts):
 	 * this module never reads an origin it was not handed, and the token exists in that one call,
 	 * in the mail, and in the recipient's address bar.
 	 *
-	 * `background` is the Worker's `ctx.waitUntil`. better-auth hands the send to it instead of
-	 * awaiting it, so a request for an address this deployment has takes the same time as one for
-	 * an address it does not — the timing is the whole of what the answer withholds. the isolate
-	 * stays alive for the send because `waitUntil` is what keeps it alive.
+	 * the send is awaited by better-auth, inside the request for the link, and that whole request
+	 * runs after the answer has left: `requestPasswordReset` in ./members.ts hands it to the Worker's
+	 * `waitUntil`, which is what equalises a member's request with a stranger's.
 	 */
 	readonly passwordReset?: {
 		send(input: { readonly email: string; readonly token: string }): Promise<void>;
-		background(task: Promise<unknown>): void;
 	};
 }
 
@@ -161,7 +158,7 @@ export type Auth = ReturnType<typeof createAuth>;
  * `BETTER_AUTH_URL` var.
  */
 export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
-	// destructured so the two options below narrow inside their own closures.
+	// destructured so `sendResetPassword` below narrows it inside its own closure.
 	const { passwordReset } = runtime;
 	const secret = runtime.secret.trim();
 	if (!secret) {
@@ -339,8 +336,8 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		 * a member holds one live link. `sendResetPassword` deletes every earlier one before the new
 		 * mail goes, and `onPasswordReset` deletes whatever is left once a reset lands, so an older
 		 * mail cannot overwrite the password just chosen (`deleteResetLinks` in ./reset-links.ts).
-		 * the first delete runs inside the backgrounded send and so costs the request nothing: an
-		 * address this deployment has still answers in the time one it does not.
+		 * the first delete runs after the request for the link has been answered, with the rest of
+		 * that request (`requestPasswordReset` in ./members.ts), and so costs the answer nothing.
 		 *
 		 * neither delete is guaranteed, and each one that throws is caught and logged. one before a
 		 * send leaves the earlier links working beside the new one, and the new mail still goes: a
@@ -398,17 +395,6 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 		},
 
 		advanced: {
-			// better-auth hands the send here instead of awaiting it
-			// (`runInBackgroundOrAwait`, `better-auth/dist/context/create-context.mjs`), which is
-			// what keeps a request for an address this deployment has taking the same time as one
-			// for an address it does not. absent, the send is awaited and the two arms are
-			// distinguishable by a stopwatch.
-			...(passwordReset
-				? {
-						backgroundTasks: { handler: (task: Promise<unknown>) => passwordReset.background(task) }
-					}
-				: {}),
-
 			database: {
 				// ids are text uuidv7 generated app-side project-wide (see db/schema.ts).
 				// without this, better-auth's own generator would put a different id shape in

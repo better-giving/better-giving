@@ -187,7 +187,7 @@ async function post(
 	const answer = await action(
 		args(new Request(`${ORIGIN}/forgot`, { method: 'POST', headers, body }), deployed)
 	);
-	// the send is handed to `waitUntil` rather than awaited, so the message only exists once the
+	// the reset is handed to `waitUntil` rather than awaited, so the message only exists once the
 	// isolate has finished the work the request left behind.
 	await waitOnExecutionContext(running);
 	return answer;
@@ -200,6 +200,14 @@ async function refused(...call: Parameters<typeof post>): Promise<Refused> {
 	// itself — the accepted arm is the bare `{ sent: true }`.
 	if (!('data' in answer)) throw new Error('the request was accepted instead of refused');
 	return answer;
+}
+
+/** how many reset links D1 holds, live or not. */
+async function resetLinks(): Promise<number> {
+	const row = await env.DB.prepare(
+		"select count(*) as n from auth_verification where identifier like 'reset-password:%'"
+	).first<{ n: number }>();
+	return row?.n ?? 0;
 }
 
 /** the form-level sentence a refusal carries, which is what the banner renders. */
@@ -258,6 +266,58 @@ describe('POST /forgot', () => {
 			expect(logged.mock.calls.flat().join(' ')).toContain('`auth_signing_key` could not be read');
 		});
 		expect(sent).toHaveLength(0);
+	});
+
+	/**
+	 * the answer leaves before the reset is asked for. a member's request writes a row a stranger's
+	 * does not, so a request that waited for that write would answer a member more slowly — a
+	 * stopwatch would say who works here. the row and the mail exist once the isolate has finished
+	 * the work the request left behind.
+	 */
+	it('answers a member before the link is written, and writes and mails it afterwards', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const headers = new Headers({ origin: ORIGIN, 'cf-connecting-ip': '203.0.113.70' });
+		const request = new Request(`${ORIGIN}/forgot`, {
+			method: 'POST',
+			headers,
+			body: typed('nadia@riverbanktrust.org')
+		});
+
+		const answer = await action(args(request));
+		const linksWhenAnswered = await resetLinks();
+		await waitOnExecutionContext(running);
+
+		expect(answer).toEqual({ sent: true });
+		expect(linksWhenAnswered).toBe(0);
+		expect(await resetLinks()).toBe(1);
+		expect(sent.map((message) => message.to)).toEqual(['nadia@riverbanktrust.org']);
+	});
+
+	/**
+	 * a reset that fails is the deployment's fault and the log's to report. a member's request fails
+	 * at the write and a stranger's at the read, and a page that waited to say so would be the same
+	 * stopwatch as above — so both are answered as if it worked, and the cause is in the log once the
+	 * work has run. a fork that skipped a migration is the case: no `auth_verification` table.
+	 */
+	it.each([
+		['a member', 'nadia@riverbanktrust.org'],
+		['an address nobody here has', 'stranger@example.org']
+	])('answers %s the same when the reset fails, and logs why', async (_, email) => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await env.DB.prepare('alter table auth_verification rename to auth_verification_away').run();
+		try {
+			const answer = await post(typed(email));
+
+			expect(answer).toEqual({ sent: true });
+			expect(logged.mock.calls.flat().join(' ')).toContain('a password reset request failed');
+			expect(sent).toEqual([]);
+		} finally {
+			await env.DB.prepare('alter table auth_verification_away rename to auth_verification').run();
+			logged.mockRestore();
+		}
 	});
 
 	it('refuses an empty box under the box, and mails nobody', async () => {

@@ -176,46 +176,51 @@ export async function signInMember(
 	}
 }
 
-export type ResetRequest =
-	| { readonly ok: true }
-	/**
-	 * `unavailable` — the auth layer refused for a reason about this deployment, or the instance
-	 *   was built without a way to send. already logged; the sign-in page says what it says about
-	 *   every other failure of its own. it is the only answer that is not `ok`.
-	 */
-	| { readonly ok: false; readonly reason: 'unavailable' };
-
 /**
- * takes a request for a reset link and, where there is somebody to send one to, has it sent.
+ * takes a request for a reset link and, where there is somebody to send one to, has one sent —
+ * after the request has been answered.
  *
- * **an address nobody here has is answered exactly as a member's is.** better-auth answers the two
- * identically and pads the unknown arm's timing itself, and the send is deferred rather than
- * awaited (`passwordReset.background` — ./index.ts) so the two take the same time as well. telling
- * them apart would turn this form into a way to ask whether a given person works here, on a
- * deployment whose donation page names the organisation.
+ * **an address nobody here has is answered exactly as a member's is, and in the same time.** the
+ * caller has nothing to wait for and nothing to read: the lookup, the row a member's link is
+ * written to and the mail all run in the task handed to `background`, the Worker's `waitUntil`, so
+ * the request answers without waiting on any of it. awaited, a member's request would pay an
+ * `auth_verification` INSERT where a stranger's pays a SELECT (better-auth's
+ * `/request-password-reset`), and a stopwatch would say which. telling the two apart would turn
+ * the form into a way to ask whether a given person works here, on a deployment whose donation
+ * page names the organisation.
  *
- * **the deployer's identifier is refused by name, before better-auth is asked, and answered `ok`
- * like everything else.** `auth.api.resetPassword` writes a `credential` account for a user that
- * has none, so a token minted against the fixed staff row would hand that identity the password
- * hash ./credential.ts says this deployment never stores — and the row is one an operator cannot
- * remove. the refusal here is what makes that unreachable; a value that is not an address at all
- * joins it, because the deployer's identifier is a username and would fail that test anyway.
+ * **so a failure is the deployment's to read, never the requester's.** the auth layer refusing, an
+ * instance built without a way to send, a database missing a table: each is logged inside the task
+ * and the request has already been answered like every other. reporting it would report it only
+ * where the work got far enough to fail, which is the same oracle.
+ *
+ * **the deployer's identifier is refused by name, before better-auth is asked, and no task is
+ * started.** `auth.api.resetPassword` writes a `credential` account for a user that has none, so a
+ * token minted against the fixed staff row would hand that identity the password hash
+ * ./credential.ts says this deployment never stores — and the row is one an operator cannot remove.
+ * the refusal here is what makes that unreachable; a value that is not an address at all joins it,
+ * because the deployer's identifier is a username and would fail that test anyway.
  *
  * **it charges nothing.** the sign-in bucket is charged by the route that owns the press, on
  * `signInRateLimitKey` — one key for every way in (CLAUDE.md, ../api/rate-limit.ts) — for the
  * reason `signInMember` above charges nothing.
  */
-export async function requestPasswordReset(
+export function requestPasswordReset(
 	auth: Auth,
-	input: { readonly email: string }
-): Promise<ResetRequest> {
+	input: { readonly email: string },
+	background: (task: Promise<void>) => void
+): void {
 	const email = normaliseEmail(input.email);
-	if (email === normaliseEmail(STAFF_USER_EMAIL)) return { ok: true };
-	if (!isAddress(email)) return { ok: true };
+	if (email === normaliseEmail(STAFF_USER_EMAIL)) return;
+	if (!isAddress(email)) return;
 
+	background(askForResetLink(auth, email));
+}
+
+/** the work `requestPasswordReset` hands to the background. it never rejects: every failure is logged. */
+async function askForResetLink(auth: Auth, email: string): Promise<void> {
 	try {
 		await auth.api.requestPasswordReset({ body: { email } });
-		return { ok: true };
 	} catch (e) {
 		if (e instanceof APIError) {
 			if (e.body?.code === 'RESET_PASSWORD_DISABLED') {
@@ -224,7 +229,7 @@ export async function requestPasswordReset(
 				// instance it never gave a way to send — a wiring mistake, not anything the person
 				// at the form did, and the log is where it is visible.
 				console.error('a password reset was requested of an auth instance that cannot send.');
-				return { ok: false, reason: 'unavailable' };
+				return;
 			}
 			console.error(
 				'a password reset request failed:',
@@ -232,12 +237,11 @@ export async function requestPasswordReset(
 				e.body?.code,
 				e.body?.message
 			);
-			return { ok: false, reason: 'unavailable' };
+			return;
 		}
 		// not an APIError: the auth layer threw before it could shape a response. a database with no
 		// `auth_verification` table is what a fork that skipped a migration hits here.
 		console.error('a password reset request failed before the auth layer could respond:', e);
-		return { ok: false, reason: 'unavailable' };
 	}
 }
 

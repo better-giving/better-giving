@@ -48,9 +48,11 @@ import type { Route } from './+types/forgot';
 // page names the organisation — and the deployer is refused inside it by name, because their
 // password is a deploy-time var with no `auth_account` row behind it.
 //
-// **the send runs in `waitUntil` rather than on the request.** better-auth defers it through
-// `passwordReset.background` ($lib/server/auth/index.ts), so an address this deployment has takes
-// the same time to answer as one it does not — the timing is the rest of what the answer withholds.
+// **the reset runs in `waitUntil`, after the answer has left.** the lookup, the row a member's link
+// is written to and the mail are all handed to the request's `ctx.waitUntil` by
+// `requestPasswordReset`, so an address this deployment has is answered in the time one it does not
+// — the timing is the rest of what the answer withholds. it is also why a reset that fails is a
+// log line and never a banner here.
 //
 // **the link is composed here and nowhere else**, the same split ./_app.admin.members.tsx states
 // about the invitation: the auth module hands over an address and a token and reads no url, no
@@ -107,18 +109,6 @@ const FORGOT_FORM = defineForm({
 const SENT =
 	'If that address belongs to a member of this organisation, a link is on its way. It works ' +
 	'once and for an hour.';
-
-/**
- * what a refusal that is about the deployment says.
- *
- * the same shape ./login.tsx's `UNAVAILABLE` is and for the same reason: the auth layer's own
- * message is written for an agent reading a status body and belongs on the surfaces an operator
- * controls, so what an anonymous POST gets is the pointer rather than the answer.
- */
-const UNAVAILABLE =
-	'A reset link could not be sent: something is wrong with this deployment rather than with ' +
-	'what you typed. Ask whoever runs it to check the console (`better-giving start`); the exact ' +
-	'cause is in the deployment’s logs, which the console does not read.';
 
 /**
  * what a caller is told when the edge attributed no address to the request, so there is no
@@ -235,16 +225,11 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 				if (!mailed.ok) {
 					console.error('a reset link could not be sent:', mailed.reason, mailed.detail);
 				}
-			},
-			background: (task) => ctx.waitUntil(task)
+			}
 		}
 	});
 
-	const requested = await requestPasswordReset(auth, { email: submission.value.email });
-	// `unavailable` is already logged where it was classified, and is the only answer that is not
-	// `ok`: an address nobody here has is not one of them.
-	if (!requested.ok) return invalid(500, submission.reject({ formErrors: [UNAVAILABLE] }));
-
+	requestPasswordReset(auth, { email: submission.value.email }, (task) => ctx.waitUntil(task));
 	return { sent: true as const };
 }
 
