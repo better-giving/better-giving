@@ -130,7 +130,7 @@ function Editor() {
 					publishing={false}
 					republished={false}
 					undoing={false}
-					onEditByHand={() => {}}
+					onSettings={() => {}}
 					onPublish={() => {}}
 					onAi={chat.open}
 				/>
@@ -909,7 +909,7 @@ describe('a page never drafted', () => {
 			expect(aiPanel()?.querySelector('.adm-questions')).not.toBeNull();
 			expect(document.querySelector('textarea')?.placeholder).toBe('Or tell me in your own words');
 			expect(document.querySelector('dialog')).toBeNull();
-			expect(['Edit by hand', 'AI', 'Publish'].filter(drawn)).toEqual([]);
+			expect(['Edit', 'AI', 'Publish'].filter(drawn)).toEqual([]);
 			expect(document.querySelector('.adm-publishbar__name')?.textContent).toBe('Donation page');
 			expect(document.querySelector('.adm-publishbar__state')?.textContent).toBe('Live');
 		}
@@ -938,7 +938,7 @@ describe('a page never drafted', () => {
 		expect(previewShown()).not.toBeNull();
 		expect(aiPanel()).toBe(panel);
 		expect(panel?.getAttribute('role')).toBe('complementary');
-		expect(['Edit by hand', 'Publish'].filter(drawn)).toEqual(['Edit by hand', 'Publish']);
+		expect(['Edit', 'Publish'].filter(drawn)).toEqual(['Edit', 'Publish']);
 		expect(document.activeElement).toBe(document.querySelector('textarea'));
 		expect(document.querySelector('[role="log"]')?.lastElementChild?.textContent).toBe(
 			'I drafted your page.'
@@ -991,10 +991,6 @@ describe('a page already drafted', () => {
 		await settle();
 
 		expect(previewShown()).not.toBeNull();
-		expect(['Edit by hand', 'AI', 'Publish'].filter(drawn)).toEqual([
-			'Edit by hand',
-			'AI',
-			'Publish'
-		]);
+		expect(['Edit', 'AI', 'Publish'].filter(drawn)).toEqual(['Edit', 'AI', 'Publish']);
 	});
 });

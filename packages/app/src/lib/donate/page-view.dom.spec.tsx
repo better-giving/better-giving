@@ -6,7 +6,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { BLOCK_TYPES, BLOCKS, type Block, type Page, parsePage } from '../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../page/defaults';
 import { LAYOUTS, type Layout, PAGE_TYPES, type PageType } from '../page/keys';
-import { BLOCK_MESSAGE } from '../page/preview-message';
+import { BLOCK_MESSAGE, EDITING_MESSAGE, READY_MESSAGE } from '../page/preview-message';
 import type { RichTextDocument } from '../rich-text/document';
 import { initials, PageView, type PageViewProps } from './page-view';
 
@@ -329,9 +329,31 @@ describe('the cover', () => {
 		act(() => root.querySelector<HTMLElement>('.page-hero-over h1')?.click());
 		act(() => root.querySelector<HTMLElement>('.page-hero img')?.click());
 		expect(post.mock.calls.map(([message]) => message)).toEqual([
+			{ type: READY_MESSAGE },
 			{ type: BLOCK_MESSAGE, id: 'title-left' },
 			{ type: BLOCK_MESSAGE, id: 'hero-wide' }
 		]);
+	});
+
+	it('draws its blocks as clickable while the editor around it says Edit is on, and only it', () => {
+		vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+		mount(<PageView {...props('campaign', covered())} preview />);
+		const editing = () => document.documentElement.hasAttribute('data-editing');
+		const say = (on: boolean, origin: string, source: Window | null) =>
+			act(() => {
+				window.dispatchEvent(
+					new MessageEvent('message', { data: { type: EDITING_MESSAGE, on }, origin, source })
+				);
+			});
+
+		say(true, 'https://elsewhere.example', window.parent);
+		say(true, window.location.origin, null);
+		expect(editing()).toBe(false);
+
+		say(true, window.location.origin, window.parent);
+		expect(editing()).toBe(true);
+		say(false, window.location.origin, window.parent);
+		expect(editing()).toBe(false);
 	});
 });
 

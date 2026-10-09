@@ -65,9 +65,14 @@ function done(root: Element): HTMLButtonElement {
 	return found;
 }
 
-/** every report region in the open sheet, in tree order: the pictures' first, Done's after it. */
+/**
+ * every report region in the open sheet, in tree order: the pictures' first, Done's after it. a
+ * box's own region, which Write with AI speaks in, is the box's and not one of these.
+ */
 const reports = (root: Element) =>
-	[...root.querySelectorAll('dialog [role="status"]')].map((one) => one.textContent);
+	[...root.querySelectorAll('dialog [role="status"]:not(.adm-field__needed)')].map(
+		(one) => one.textContent
+	);
 
 const title: EditorBlock = {
 	id: 'b1',
@@ -108,6 +113,7 @@ const sheet = (block: EditorBlock, stacked?: boolean) => (
 	<BlockEditSheet
 		block={block}
 		version={3}
+		suggestUrl="/admin/pages/p1/suggest"
 		onDismiss={() => {}}
 		onSaved={() => {}}
 		stacked={stacked}

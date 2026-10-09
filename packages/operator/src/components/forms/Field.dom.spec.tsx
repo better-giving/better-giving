@@ -124,6 +124,33 @@ describe('a field mounted into a document', () => {
 		expect(root.querySelector('label')).toBeNull();
 	});
 
+	it('stands what it is handed beside the label on the label’s own row, and the label still names the box', () => {
+		const root = render(Field, {
+			id: 'heading',
+			label: 'Heading',
+			labelAside: (
+				<button type="button" aria-label="Write with AI">
+					*
+				</button>
+			)
+		});
+		const head = root.querySelector('.adm-field__head');
+
+		expect(head?.querySelector('label')?.getAttribute('for')).toBe('heading');
+		expect(head?.querySelector('.adm-field__aside button')?.getAttribute('aria-label')).toBe(
+			'Write with AI'
+		);
+		expect(head?.nextElementSibling?.matches('input#heading')).toBe(true);
+		expect(root.querySelector('label')?.textContent).toBe('Heading');
+	});
+
+	it('draws no head row where nothing stands beside the label', () => {
+		const root = render(Field, { id: 'heading', label: 'Heading' });
+
+		expect(root.querySelector('.adm-field__head')).toBeNull();
+		expect(root.querySelector('.adm-field > label')).not.toBeNull();
+	});
+
 	it('holds a masked box as dots until the press shows it, and hides it again', () => {
 		// the whole of the reveal: the value is in the box either way — a console box is seeded with
 		// what the deployment is holding — and what the press changes is whether it is legible to

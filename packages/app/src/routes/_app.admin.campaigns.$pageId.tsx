@@ -8,6 +8,7 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
+import { suggestUrl } from '$lib/admin/editor/suggest';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
 import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
@@ -61,9 +62,9 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
 // a campaign's editor, reached from the Campaigns list: its draft framed by the preview route, the
 // publish bar over it, the AI panel beside it ($lib/admin/editor/chat-wiring.tsx, which asks an
-// empty chat its opening questions), and the Settings sheet behind the bar's Edit by hand. the parts
-// are $lib/admin/editor/'s; what they read and the writes behind them are here and in
-// $lib/server/pages/queries.ts.
+// empty chat its opening questions), and the Settings sheet behind the bar's Settings, while Edit
+// is on. the parts are $lib/admin/editor/'s; what they read and the writes behind them are here and
+// in $lib/server/pages/queries.ts.
 //
 // **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
 // which the dashboard shows, its settings row's, which a gift's notices carry, and the draft's,
@@ -91,7 +92,7 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
-// preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
+// preview while Edit is on and by its row in Settings' block list alike, and the layout by Settings' pictures; each
 // writes the draft ($lib/server/pages/blocks.ts), as the Donation page's editor does.
 // the donation box opens Donation settings, which are what it draws.
 //
@@ -367,11 +368,11 @@ function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'pro
 
 type Loaded = Route.ComponentProps['loaderData'];
 
-export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
+export default function CampaignEditor({ loaderData, params }: Route.ComponentProps) {
 	return loaderData.unreadable ? (
 		<UnreadableDraftEditor loaderData={loaderData} />
 	) : (
-		<DraftEditor loaderData={loaderData} />
+		<DraftEditor loaderData={loaderData} suggest={suggestUrl(params.pageId)} />
 	);
 }
 
@@ -448,9 +449,11 @@ function UnreadableDraftEditor({
 }
 
 function DraftEditor({
-	loaderData
+	loaderData,
+	suggest
 }: {
 	readonly loaderData: Extract<Loaded, { unreadable: false }>;
+	readonly suggest: string;
 }) {
 	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
@@ -531,7 +534,7 @@ function DraftEditor({
 					state={state}
 					livePath={address ?? undefined}
 					{...presses.bar}
-					onEditByHand={() => {
+					onSettings={() => {
 						layoutPick.startClean();
 						setSettings(true);
 					}}
@@ -573,6 +576,7 @@ function DraftEditor({
 					key={openBlock.id}
 					block={openBlock}
 					version={version}
+					suggestUrl={suggest}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
 					stacked={settings}
@@ -586,6 +590,7 @@ function DraftEditor({
 					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
 					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
 					onDismiss={() => setOpened(null)}
+					suggestUrl={suggest}
 				/>
 			) : null}
 			{opened === 'goal' ? (

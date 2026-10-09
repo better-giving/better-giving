@@ -31,6 +31,11 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {string | undefined} [statusSaid] words the same region says to a reader alone, ahead of
  *   `status` — what changed elsewhere on the screen because of the value, which the screen shows by
  *   the change itself. drawn only inside a region `status` has put up.
+ * @property {ReactNode} [labelAside] what stands at the trailing end of the label's own row: a small
+ *   press that writes the whole box, and the words saying where the value in it came from. the
+ *   label and it are one row, `.adm-field__head`, as tall as the small control, so the press stands
+ *   level with the name of the box it acts on rather than on the box's row, where `beside` would
+ *   take the box's width in a narrow sheet.
  * @property {ReactNode} [beside] a control that acts on what is in the box, put on the box's own
  *   row rather than under it — one destination and one send, instead of a press below a column of
  *   boxes. the row is `.adm-actions`, which is what makes the box take the line's remainder and the
@@ -136,6 +141,7 @@ export function Field({
 	needed,
 	status,
 	statusSaid,
+	labelAside,
 	beside,
 	masked,
 	lead,
@@ -297,14 +303,22 @@ export function Field({
 	]
 		.filter(Boolean)
 		.join(' ');
+	const named = label ? (
+		<label className="adm-field__label" htmlFor={id}>
+			{label}
+			{optional ? <span className="adm-field__optional"> (optional)</span> : null}
+		</label>
+	) : null;
 	return (
 		<div className="adm-field">
-			{label ? (
-				<label className="adm-field__label" htmlFor={id}>
-					{label}
-					{optional ? <span className="adm-field__optional"> (optional)</span> : null}
-				</label>
-			) : null}
+			{labelAside ? (
+				<div className="adm-field__head">
+					{named}
+					<div className="adm-field__aside">{labelAside}</div>
+				</div>
+			) : (
+				named
+			)}
 			{hint ? (
 				<p className="adm-hint" id={`${id}-hint`}>
 					{hint}

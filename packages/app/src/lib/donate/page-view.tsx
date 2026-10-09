@@ -3,7 +3,13 @@ import type { ProgramMode } from '../forms/program-modes';
 import type { Block, Page } from '../page/catalog';
 import { imageSrc } from '../page/image-src';
 import type { Background, Corner, Layout, PageType, Shade } from '../page/keys';
-import { BLOCK_MESSAGE, type BlockMessage } from '../page/preview-message';
+import {
+	BLOCK_MESSAGE,
+	type BlockMessage,
+	EDITING_MESSAGE,
+	READY_MESSAGE,
+	type ReadyMessage
+} from '../page/preview-message';
 import { isEmptyDocument } from '../rich-text/document';
 import { AboutUsBlock } from './blocks/about-us';
 import { FaqBlock } from './blocks/faq';
@@ -457,6 +463,11 @@ const TAB_STOPS =
  * not followed, and no handler of a block's hears it. nothing in it takes a tab stop either — the
  * donation box is inert, and every other stop is taken out of the order. the document itself stays
  * live, since an inert one would take no click to report.
+ *
+ * while the editor's Edit is on, the document carries `data-editing`, which ./page.css draws every
+ * block as clickable by. the editor says so on each press, and answers the ready this posts once it
+ * listens, so a frame that reloaded under an Edit already on is told too. only the editor's own
+ * window, on this deployment's origin, is listened to.
  */
 function usePreviewReport(preview: boolean) {
 	useEffect(() => {
@@ -471,7 +482,20 @@ function usePreviewReport(preview: boolean) {
 			const message: BlockMessage = { type: BLOCK_MESSAGE, id };
 			window.parent.postMessage(message, window.location.origin);
 		};
+		const editing = (event: MessageEvent) => {
+			if (event.origin !== window.location.origin || event.source !== window.parent) return;
+			const { type, on } = (event.data ?? {}) as Record<string, unknown>;
+			if (type !== EDITING_MESSAGE || typeof on !== 'boolean') return;
+			document.documentElement.toggleAttribute('data-editing', on);
+		};
 		document.addEventListener('click', report, true);
-		return () => document.removeEventListener('click', report, true);
+		window.addEventListener('message', editing);
+		const ready: ReadyMessage = { type: READY_MESSAGE };
+		window.parent.postMessage(ready, window.location.origin);
+		return () => {
+			document.removeEventListener('click', report, true);
+			window.removeEventListener('message', editing);
+			document.documentElement.removeAttribute('data-editing');
+		};
 	}, [preview]);
 }

@@ -1,7 +1,7 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
-import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { editorBlocks, layoutPictures } from '$lib/page/block-edit';
 import { BLOCK_MESSAGE } from '$lib/page/preview-message';
@@ -10,10 +10,10 @@ import CampaignEditor from './_app.admin.campaigns.$pageId';
 
 // a campaign's editor as the route mounts it: the opening questions an empty chat is asked, alone
 // on a page never drafted and beside the preview on one that has been, every hand edit reached from
-// Edit by hand or a click in the preview, what its first Publish says of the address, the questions
-// an address save comes back with — asked, answered yes with the version, or declined — whether the
-// donation settings sheet stands over Settings or on its own ground, and the notice over a draft the
-// read rule refuses.
+// Settings or a click in the preview once Edit is on, what its first Publish says of the address, the
+// questions an address save comes back with — asked, answered yes with the version, or declined —
+// whether the donation settings sheet stands over Settings or on its own ground, and the notice over
+// a draft the read rule refuses.
 // the loader and the action are stand-ins, one drawing the fixture below and the other recording
 // each body and answering what the case scripts; what the real ones do is
 // ./_app.admin.campaigns.$pageId.workers.spec.ts's.
@@ -231,20 +231,35 @@ async function clickInPreview(id: string) {
 	await settle();
 }
 
+/**
+ * the bar's Edit pressed on. what the editor tells the framed page is recorded rather than sent into
+ * the empty document the stand-in frames.
+ */
+async function editOn() {
+	const framed = document.querySelector('iframe')?.contentWindow;
+	if (framed) vi.spyOn(framed, 'postMessage').mockImplementation(() => {});
+	await press(button('Edit'));
+}
+
 describe('every hand edit', () => {
-	it('is reached from Edit by hand, which opens Settings', async () => {
+	it('is reached from Settings, which stands beside Done once Edit is on', async () => {
 		await screen();
 
-		await press(button('Edit by hand'));
+		await editOn();
+		await press(button('Settings'));
 
 		expect(card('Settings').open).toBe(true);
 	});
 
-	it('is reached by a click on its block in the preview, which opens that block’s sheet', async () => {
+	it('is reached by a click on its block in the preview while Edit is on, which opens that block’s sheet', async () => {
 		await screen();
 		const block = drawn.blocks.find((one) => one.type !== 'donation-box');
 		if (block === undefined) throw new Error('the fixture draws only a donation box');
 
+		await clickInPreview(block.id);
+		expect(document.querySelector('dialog')).toBeNull();
+
+		await editOn();
 		await clickInPreview(block.id);
 
 		expect(card(block.label).open).toBe(true);
@@ -277,7 +292,8 @@ describe('an address save that comes back with a question', () => {
 
 	/** Settings, its Address row, `slug` typed and saved. */
 	async function saveAddress(slug: string) {
-		await press(button('Edit by hand'));
+		await editOn();
+		await press(button('Settings'));
 		await press(settingsRow('Address'));
 		const sheet = card('Address');
 		const box = sheet.querySelector('input');
@@ -351,7 +367,8 @@ describe('an address save that comes back with a question', () => {
 describe('the donation settings sheet', () => {
 	it('stacks over Settings when opened from its Donation settings row', async () => {
 		await screen();
-		await press(button('Edit by hand'));
+		await editOn();
+		await press(button('Settings'));
 
 		await press(settingsRow('Donation settings'));
 
@@ -363,6 +380,7 @@ describe('the donation settings sheet', () => {
 		const box = drawn.blocks.find((block) => block.type === 'donation-box');
 		if (box === undefined) throw new Error('the fixture draws no donation box');
 
+		await editOn();
 		await clickInPreview(box.id);
 
 		expect(() => card('Settings')).toThrow();

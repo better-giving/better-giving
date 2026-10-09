@@ -348,6 +348,21 @@ body {
 	box-shadow: 0 0 0 var(--_focus-width) var(--page-ring);
 }
 
+/* the editor's preview while its Edit is on (`usePreviewReport` in ./page-view.tsx): every block is
+   drawn as a thing to click, by the pointer and by its edge in the focus ring's ink — dashed at
+   rest, so a finger with no hover sees it too, and solid under the pointer. drawn inside the
+   block's own edge, so a block on the page's gutter keeps all of it. the donation box's wrapper is
+   no `.page-block` and declares no ring of its own, so it reads the form's. */
+:root[data-editing] [data-block-id] {
+	cursor: pointer;
+	outline: var(--_border) dashed var(--page-ring, var(--_focus-ring));
+	outline-offset: calc(-1 * var(--_border));
+}
+
+:root[data-editing] [data-block-id]:hover {
+	outline-style: solid;
+}
+
 .page-in {
 	box-sizing: border-box;
 	max-inline-size: var(--page-width);
