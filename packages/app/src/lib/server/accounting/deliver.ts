@@ -345,6 +345,26 @@ export function blockedNoticeOf(reason: AccountingFailureReason): BlockedNotice 
 }
 
 /**
+ * what an operator does about a run stopped by `reason`, for the three reasons
+ * {@link BLOCKED_NOTICE_OF} emails about — a reason moved off `never` there needs its own line here.
+ * the press and the step are named as the QuickBooks page names them:
+ * packages/console-ui/src/lib/quickbooks-section.tsx, and `STEP_LABEL` in quickbooks-standing.ts.
+ */
+function blockedAction(reason: AccountingFailureReason): string {
+	switch (reason) {
+		case 'reconnect_needed':
+			return 'Open the console (run `better-giving start`), go to QuickBooks and press Sign in again.';
+		case 'accounts_not_chosen':
+			return (
+				'Open the console (run `better-giving start`), go to QuickBooks and choose every ' +
+				'account under Accounts.'
+			);
+		default:
+			return 'Nothing. Gifts sync once QuickBooks can be reached again.';
+	}
+}
+
+/**
  * what one queued entry group came to, and what it asks of the caller.
  *
  *   sent         — it is in the company's books, under `remoteId`.
@@ -641,11 +661,15 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 	if (tally === undefined || tally.waiting + tally.givenUp === 0) return;
 	if (tally.reported > 0) return;
 
+	// a given-up gift's reason first: Try these again retries those alone, so it is the one to fix.
 	const [latest] = await deps.db
 		.select({ lastError: quickbooksSync.lastError })
 		.from(quickbooksSync)
 		.where(and(failing(now), isNotNull(quickbooksSync.lastError)))
-		.orderBy(desc(quickbooksSync.updatedAt))
+		.orderBy(
+			sql`case when ${quickbooksSync.status} = 'failed' then 0 else 1 end`,
+			desc(quickbooksSync.updatedAt)
+		)
 		.limit(1);
 
 	await alert(deps, {
@@ -654,16 +678,20 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 			'QuickBooks turned down some gifts. They’re safe in your donations app; only QuickBooks is ' +
 			'missing them. Gifts being retried are tried again automatically, but if the reason below ' +
 			'asks you to do something, they won’t get through until you do. Gifts that need you stay ' +
-			'out of QuickBooks until you press Try these again. This email repeats once a day while ' +
-			'gifts are stuck, not once per gift.',
+			'out of QuickBooks until you press Try these again. This email comes at most once a day ' +
+			'for the same problem, not once per gift.',
 		facts: [
 			{ label: 'Being retried automatically', value: String(tally.waiting) },
 			{ label: 'Need you to retry', value: String(tally.givenUp) },
 			{ label: 'Latest reason', value: latest?.lastError ?? 'none given' }
 		],
 		action:
-			'Open the console (run `better-giving start`) and go to QuickBooks. Fix what the latest ' +
-			'reason says, then press Try these again.'
+			tally.givenUp > 0
+				? 'Open the console (run `better-giving start`) and go to QuickBooks. Fix what the ' +
+					'latest reason says, then press Try these again.'
+				: 'If the latest reason asks you to fix something, open the console (run ' +
+					'`better-giving start`), go to QuickBooks and fix it. Otherwise there’s nothing to ' +
+					'do: these gifts are tried again automatically.'
 	});
 
 	await stamp(deps.db, failing(now), now);
@@ -708,10 +736,7 @@ async function notifyBlocked(
 			{ label: 'Gifts waiting', value: String(backlog.waiting) },
 			{ label: 'Oldest waiting for', value: waited(now.getTime() - backlog.oldest) }
 		],
-		action:
-			'Open the console (run `better-giving start`) and go to QuickBooks. Check your company is ' +
-			'still connected and every account is chosen. If the reason says QuickBooks can’t be ' +
-			'reached, there’s nothing to do: gifts sync once it’s back.'
+		action: blockedAction(failure.reason)
 	});
 
 	await stamp(deps.db, UNFINISHED, now);

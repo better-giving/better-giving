@@ -1256,11 +1256,11 @@ async function unmatched(
 		headline: `A ${processor} payment doesn’t match any gift`,
 		body:
 			`${processor} reported a payment that doesn’t match any gift in your records, so nothing ` +
-			'was recorded. If its status is succeeded, money came in that your records don’t show.',
+			'was recorded. If it went through, money came in that your records don’t show.',
 		facts: [
 			{ label: `${processor} event ID`, value: eventId },
 			{ label: `${processor} payment ID`, value: settlement.providerTxnId },
-			{ label: `Status at ${processor}`, value: settlement.status },
+			{ label: 'Status', value: settlement.status },
 			{ label: 'Amount', value: alertMoney(settlement.amountMinor, settlement.currency) },
 			{ label: 'Gift ID it names', value: named }
 		],

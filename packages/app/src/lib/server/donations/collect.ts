@@ -636,13 +636,11 @@ async function openCommitment(
 	settlement: Settlement
 ): Promise<SettleResult | 'duplicate'> {
 	const processor = processorLabel(deps);
-	const named = attribution(notice);
-	if (typeof named === 'string') {
+	const named = attribution(notice, processor);
+	if ('missing' in named) {
 		await alert(deps, {
-			headline: 'A recurring gift payment couldn’t be matched to a gift',
-			body:
-				`A payment on a recurring gift went through, but its ${processor} subscription doesn’t ` +
-				'say which gift it belongs to, so the money isn’t in your records.',
+			headline: named.headline,
+			body: named.body,
 			facts: [
 				{ label: `${processor} event ID`, value: event.id },
 				{ label: `${processor} subscription ID`, value: notice.providerGiftId },
@@ -651,14 +649,14 @@ async function openCommitment(
 					label: 'Amount',
 					value: alertMoney(settlement.amountMinor, settlement.currency)
 				},
-				{ label: 'What’s missing', value: named }
+				{ label: 'What’s missing', value: named.missing }
 			],
 			action: `Find this payment in your ${processor} dashboard and record the gift yourself.`
 		});
 		return {
 			ok: true,
 			outcome: 'unmatched',
-			detail: `the commitment ${notice.providerGiftId} names nothing this deployment can record a gift against: ${named}`
+			detail: `the commitment ${notice.providerGiftId} cannot be recorded: ${named.missing}`
 		};
 	}
 
@@ -1513,11 +1511,18 @@ type Attribution = {
 	readonly interval: RecurringInterval;
 };
 
+/** a commitment that names no gift, or no cadence, as the alert that says so reads. */
+type Unattributable = {
+	readonly headline: string;
+	readonly body: string;
+	readonly missing: string;
+};
+
 /**
  * the two facts a commitment has to carry, read off its metadata — and, for the one of them that
  * has a second source, off the rail's own schedule where the metadata cannot say.
  *
- * a sentence rather than a null on failure, because the sentence is what reaches an operator, and
+ * the alert's words rather than a null on failure, because they are what reaches an operator, and
  * "this gift is not attributable" is only actionable if it says which fact is missing. the contract
  * itself is stated on `commitmentMetadata` in ../payments/provider.ts.
  *
@@ -1535,18 +1540,33 @@ type Attribution = {
  * commitment collecting on a cadence this app does not model at all and therefore cannot record
  * honestly.
  */
-function attribution(notice: RecurringGiftNotice): Attribution | string {
+function attribution(notice: RecurringGiftNotice, processor: string): Attribution | Unattributable {
 	const authorized = (notice.metadata[DONATION_METADATA_KEY] ?? '').trim();
 	const stated = (notice.metadata[INTERVAL_METADATA_KEY] ?? '').trim();
 
-	if (authorized === '')
-		return `the commitment carries no \`${DONATION_METADATA_KEY}\`, so there is no gift to file this money under.`;
+	if (authorized === '') {
+		return {
+			headline: 'A recurring gift payment couldn’t be matched to a gift',
+			body:
+				`A payment on a recurring gift went through, but its ${processor} subscription doesn’t ` +
+				'say which gift it belongs to, so the money isn’t in your records.',
+			missing: `Which gift it’s for. The subscription has no \`${DONATION_METADATA_KEY}\`.`
+		};
+	}
 
 	const interval = (RECURRING_INTERVALS as readonly string[]).includes(stated)
 		? (stated as RecurringInterval)
 		: notice.interval;
 	if (interval === null) {
-		return `the commitment's \`${INTERVAL_METADATA_KEY}\` is ${JSON.stringify(stated)} and its schedule collects on a cadence this app does not model, so there is no interval to record it under. one of ${RECURRING_INTERVALS.join(', ')} is what a commitment here may be.`;
+		return {
+			headline: 'A recurring gift payment came in on a schedule that can’t be recorded',
+			body:
+				`A payment on a recurring gift went through, but its ${processor} subscription charges ` +
+				'on a schedule your donations app can’t record, so the money isn’t in your records.',
+			missing:
+				`How often it charges. The subscription’s \`${INTERVAL_METADATA_KEY}\` is ` +
+				`${JSON.stringify(stated)}, and only ${RECURRING_INTERVALS.join(' or ')} can be recorded.`
+		};
 	}
 
 	return { authorizedGiftId: authorized, interval };

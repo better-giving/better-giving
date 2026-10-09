@@ -774,6 +774,51 @@ describe('the failure notice', () => {
 		expect((await row(second)).notifiedAt).not.toBeNull();
 	});
 
+	it('promises no more than one email a day for the same problem', async () => {
+		await queuedGift();
+		const mail = mailer();
+		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
+
+		await sendDueEntries(deps(faulting.port, mail.port), NOW);
+
+		// a backlog that clears and fails again is reported at once, whatever the day says.
+		expect(mail.sent[0]?.text).toContain(
+			'This email comes at most once a day for the same problem, not once per gift.'
+		);
+	});
+
+	it('asks for no press where every gift is still being retried', async () => {
+		await queuedGift();
+		const mail = mailer();
+		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
+
+		await sendDueEntries(deps(faulting.port, mail.port), NOW);
+
+		// Try these again stands beside gifts given up on, and there are none.
+		expect(mail.sent[0]?.text).toContain(
+			'What to do: If the latest reason asks you to fix something, open the console (run ' +
+				'`better-giving start`), go to QuickBooks and fix it. Otherwise there’s nothing to do: ' +
+				'these gifts are tried again automatically.'
+		);
+	});
+
+	it('names the reason a gift was given up on over a newer one still being retried', async () => {
+		const abandoned = await queuedGift();
+		await givenUpOn(abandoned, 2 * 24 * 60 * MINUTE);
+		await queuedGift();
+		const mail = mailer();
+		const faulting = provider(() => failed('provider_error', 'QuickBooks answered 502.'));
+
+		await sendDueEntries(deps(faulting.port, mail.port), NOW);
+
+		// the press retries the given-up gifts alone, so their reason is the one to fix first.
+		expect(mail.sent[0]?.text).toMatch(/^Latest reason: Intuit refused the payload\.$/m);
+		expect(mail.sent[0]?.text).toContain(
+			'What to do: Open the console (run `better-giving start`) and go to QuickBooks. Fix what ' +
+				'the latest reason says, then press Try these again.'
+		);
+	});
+
 	it('counts what is waiting and what has been given up on', async () => {
 		const waiting = await queuedGift();
 		const givenUp = await queuedCorrection('salesTaxPayable');
@@ -917,6 +962,10 @@ describe('the notice for a run that could not send anything', () => {
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('The refresh token was rejected.');
 		expect(mail.sent[0]?.text).toContain('Gifts waiting: 2');
+		expect(mail.sent[0]?.text).toContain(
+			'What to do: Open the console (run `better-giving start`), go to QuickBooks and press ' +
+				'Sign in again.'
+		);
 		for (const entryGroupId of [first, second]) {
 			// the row the run never reached is stamped with the one it did: what is being reported is
 			// the backlog, not a row.
@@ -939,6 +988,10 @@ describe('the notice for a run that could not send anything', () => {
 
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('No account is chosen for a gift’s income.');
+		expect(mail.sent[0]?.text).toContain(
+			'What to do: Open the console (run `better-giving start`), go to QuickBooks and choose ' +
+				'every account under Accounts.'
+		);
 		expect((await row(entryGroupId)).notifiedAt).toEqual(NOW);
 	});
 
@@ -1009,6 +1062,9 @@ describe('the notice for a run that could not send anything', () => {
 
 		expect(mail.sent).toHaveLength(1);
 		expect(mail.sent[0]?.text).toContain('Oldest waiting for: 2 hours');
+		expect(mail.sent[0]?.text).toContain(
+			'What to do: Nothing. Gifts sync once QuickBooks can be reached again.'
+		);
 		expect((await row(entryGroupId)).notifiedAt).toEqual(NOW);
 	});
 

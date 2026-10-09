@@ -1010,6 +1010,18 @@ describe('settleDelivery() — what the donor’s message cannot do', () => {
 		expect(mail.sent.map((m) => m.to)).toEqual(['ada@example.org', 'ops@hope.example']);
 	});
 
+	it('says it is the donor’s email that nothing resends, and who to contact', async () => {
+		await pendingGift({ method: 'ach' });
+		const mail = mailer(false);
+
+		await settleDelivery(deps({ email: mail.port, provider: failedAch }), DELIVERY);
+
+		expect(mail.sent[1]?.text).toContain(
+			'Fix whatever the test reports. The email to the donor won’t be resent, so contact the ' +
+				'donor yourself if they need it.'
+		);
+	});
+
 	it('answers the delivery when there is no organisation to write on behalf of', async () => {
 		await pendingGift({ method: 'ach' });
 		await env.DB.prepare(`delete from org_profile`).run();
@@ -1051,6 +1063,20 @@ describe('settleDelivery() — a settlement with no gift behind it', () => {
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain('pi_settle_1');
+	});
+
+	it('names the status as this app reads it, never as the processor’s own word', async () => {
+		const mail = mailer();
+
+		await settleDelivery(deps({ email: mail.port }), DELIVERY);
+
+		// `settlement.status` is the app's own reading, which PayPal for one spells `COMPLETED`.
+		const text = mail.sent[0]?.text;
+		expect(text).toContain(
+			'Stripe reported a payment that doesn’t match any gift in your records, so nothing was ' +
+				'recorded. If it went through, money came in that your records don’t show.'
+		);
+		expect(text).toMatch(/^Status: succeeded$/m);
 	});
 
 	it('writes nothing at all', async () => {
@@ -1488,6 +1514,21 @@ describe('settleDelivery() — a send that faults after the delivery was dealt w
 		expect(mail.sent.some((m) => m.subject.includes('Emails about a payment failed'))).toBe(true);
 	});
 
+	it('sends whoever set the app up to the logs that hold a past fault', async () => {
+		await pendingGift({ method: 'ach' });
+		const mail = brittleMailer((m) => m.subject.includes('did not go through'));
+
+		await settleDelivery(deps({ email: mail.port, provider: failedAch() }), DELIVERY);
+
+		// `pnpm run logs` is a live tail, which never shows a fault that has already happened.
+		const report = mail.sent.find((m) => m.subject.includes('Emails about a payment failed'));
+		expect(report?.text).toContain(
+			'If the test works, send this email to whoever set up your donations app. The cause is ' +
+				'in its Workers logs on the Cloudflare dashboard.'
+		);
+		expect(report?.text).not.toContain('pnpm');
+	});
+
 	it('does not escape when the report itself throws too', async () => {
 		await pendingGift();
 		const mail = brittleMailer(() => true);
@@ -1549,9 +1590,12 @@ describe('settleDelivery() — a settled charge whose fee is unknown', () => {
 		);
 
 		const alerted = mail.sent.find((m) => m.subject.includes('recorded without its'));
-		expect(alerted?.text).toContain('on the Books page');
-		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds, into 5200 — Processor Fees');
-		expect(alerted?.text).not.toContain('outside it');
+		expect(alerted?.text).toContain(
+			'What to do: Find this payment in your Stripe dashboard and note the fee in the currency ' +
+				'the gift was charged in. Don’t convert a fee shown in another currency. Then, on the ' +
+				'Books page in your dashboard, post a correction dated the day the payment settled: out ' +
+				'of 1020 — Undeposited Funds, into 5200 — Processor Fees.'
+		);
 	});
 });
 

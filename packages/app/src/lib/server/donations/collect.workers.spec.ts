@@ -1368,6 +1368,33 @@ describe('settleDelivery() — a collection this deployment cannot attribute', (
 		}
 	);
 
+	it('says it is which gift a subscription naming none is missing', async () => {
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider({
+					gift: {
+						ok: true,
+						value: notice({ metadata: commitmentMetadata({ [DONATION_METADATA_KEY]: '' }) })
+					}
+				})
+			}),
+			DELIVERY
+		);
+
+		const alerted = mail.sent[0];
+		expect(alerted?.subject).toBe('A recurring gift payment couldn’t be matched to a gift');
+		expect(alerted?.text).toContain(
+			'A payment on a recurring gift went through, but its Stripe subscription doesn’t say ' +
+				'which gift it belongs to, so the money isn’t in your records.'
+		);
+		expect(alerted?.text).toContain(
+			'What’s missing: Which gift it’s for. The subscription has no `donation_id`.'
+		);
+	});
+
 	it.each(unattributable)('writes nothing at all for a commitment with %s', async (_, metadata) => {
 		await settleDelivery(
 			deps({ provider: provider({ gift: { ok: true, value: notice({ metadata }) } }) }),
@@ -2030,9 +2057,12 @@ describe('settleDelivery() — a collection whose fee is unknown', () => {
 		);
 
 		const alerted = mail.sent.find((m) => m.subject.includes('recorded without its'));
-		expect(alerted?.text).toContain('on the Books page');
-		expect(alerted?.text).toContain('out of 1020 — Undeposited Funds, into 5200 — Processor Fees');
-		expect(alerted?.text).not.toContain('outside it');
+		expect(alerted?.text).toContain(
+			'What to do: Find this payment in your Stripe dashboard and note the fee in the currency ' +
+				'the gift was charged in. Don’t convert a fee shown in another currency. Then, on the ' +
+				'Books page in your dashboard, post a correction dated the day the payment settled: out ' +
+				'of 1020 — Undeposited Funds, into 5200 — Processor Fees.'
+		);
 	});
 
 	/**
@@ -2156,6 +2186,41 @@ describe('settleDelivery() — a commitment whose cadence the metadata does not 
 
 		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
+	});
+
+	it('tells an operator the schedule is what stops it, not which gift it is for', async () => {
+		const mail = mailer();
+
+		await settleDelivery(
+			deps({
+				email: mail.port,
+				provider: provider({
+					gift: {
+						ok: true,
+						value: notice({
+							metadata: commitmentMetadata({ [INTERVAL_METADATA_KEY]: 'weekly' }),
+							interval: null
+						})
+					}
+				})
+			}),
+			DELIVERY
+		);
+
+		// the subscription does name the gift here, so the alert says what it is missing instead.
+		const alerted = mail.sent[0];
+		expect(alerted?.subject).toBe(
+			'A recurring gift payment came in on a schedule that can’t be recorded'
+		);
+		expect(alerted?.text).toContain(
+			'A payment on a recurring gift went through, but its Stripe subscription charges on a ' +
+				'schedule your donations app can’t record, so the money isn’t in your records.'
+		);
+		expect(alerted?.text).toContain(
+			'What’s missing: How often it charges. The subscription’s `interval` is "weekly", and ' +
+				'only monthly or yearly can be recorded.'
+		);
+		expect(alerted?.text).not.toContain('which gift');
 	});
 });
 
