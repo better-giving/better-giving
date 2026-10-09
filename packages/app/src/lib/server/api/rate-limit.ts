@@ -154,6 +154,10 @@ export function quoteRateLimitKey(request: Request): string | null {
  * uncounted, because refusing it would shut every way into the dashboard at once — under the
  * transform `attributedCaller` describes that is every caller of the deployment — and one secret,
  * minted by the console unless the operator typed their own, is the cost that leaves unbounded.
+ *
+ * `src/routes/forgot.tsx`'s action answers it by refusing every request, before the body is read:
+ * no password is reset from there, the deployer's included, so there is no identity a refusal
+ * would lock out, and letting it through would be mail sent to whoever was named without limit.
  */
 export function signInRateLimitKey(request: Request): string | null {
 	const payer = attributedCaller(request, 48);
@@ -223,8 +227,8 @@ function caller(request: Request, block: Ipv6Block): string {
  * address or they bound nobody, and an operator who switches that transform on gets the behaviour
  * these limits were added to, rather than a dark donation form. the surface bucket keeps counting
  * them, because it is the only meter `/api/v1` has — `refuseIfRateLimited` below is where that
- * side is argued. the sign-in's `null` is not let through for every identity: a member's attempt is
- * refused instead, which `signInRateLimitKey` argues.
+ * side is argued. the sign-in's `null` is not let through for every identity: a member's attempt and
+ * every reset request are refused instead, which `signInRateLimitKey` argues.
  *
  * the decision is expressed in the return type rather than left to the call sites, for the reason
  * the keys themselves live in this file: which block counts as one caller is the whole security
@@ -508,8 +512,8 @@ export async function refuseIfRateLimited(
  * deployment reaches this: one running with no such binding would be refused by its own login, and
  * everything an operator could act on sits behind that login, so a bricked one has nothing in front
  * of anybody. `pnpm run deploy` cannot produce it: `scripts/preflight-deploy.js` refuses it. a
- * caller with no bucket on a bound deployment is a different case, refused for members at the call
- * site (`signInRateLimitKey`).
+ * caller with no bucket on a bound deployment is a different case, refused for members and for
+ * every reset request at the call sites (`signInRateLimitKey`).
  *
  * the `catch` guards a failure nothing promises either way — the binding's documentation states no
  * error conditions, so `limit()` throwing is neither a documented outcome nor one to rule out

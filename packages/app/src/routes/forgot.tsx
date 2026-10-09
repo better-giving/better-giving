@@ -120,6 +120,20 @@ const UNAVAILABLE =
 	'what you typed. Ask whoever runs it to check the console (`better-giving start`); the exact ' +
 	'cause is in the deployment’s logs, which the console does not read.';
 
+/**
+ * what a caller is told when the edge attributed no address to the request, so there is no
+ * sign-in bucket to charge and nothing is sent.
+ *
+ * ./login.tsx's `UNATTRIBUTED` in this screen's words, and argued there: it names the cause and the
+ * switch that usually produces it, for whoever runs the deployment. it says nothing about the
+ * address, because the address was never read.
+ */
+const UNATTRIBUTED =
+	'A reset link could not be sent. This deployment is not being told your address, so it cannot ' +
+	'limit how many links are asked for and refuses every request until it is. The usual cause is ' +
+	'Cloudflare’s “Remove visitor IP headers” setting being switched on for this site; whoever runs ' +
+	'this deployment can switch it off in the Cloudflare dashboard.';
+
 export const links = operatorLinks;
 
 export function meta(): Route.MetaDescriptors {
@@ -165,9 +179,15 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	// a deployment with no binding sends on, and a caller the edge attributed no address to is not
 	// counted at all. both are `isRateLimited`'s decisions and are argued in
 	// $lib/server/api/rate-limit.ts.
-	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, signInRateLimitKey(request))) {
+	const bucket = signInRateLimitKey(request);
+	if (await isRateLimited(env.SIGN_IN_RATE_LIMITER, bucket)) {
 		return invalid(429, unread(FORGOT_FORM, signInRateLimitMessage()));
 	}
+
+	// so a caller with no bucket is refused here, for every address alike and before the body is
+	// read. `signInRateLimitKey` argues why this site refuses all of them where ./login.tsx lets the
+	// deployer through, and ./login.tsx argues the 403.
+	if (bucket === null) return invalid(403, unread(FORGOT_FORM, UNATTRIBUTED));
 
 	const submission = parseForm(await request.formData(), FORGOT_FORM);
 

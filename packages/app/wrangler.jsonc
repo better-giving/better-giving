@@ -158,7 +158,7 @@
 	],
 
 	// the four buckets this app charges: the whole public surface, the one endpoint on it that
-	// takes money, the staff sign-in, and each key on the read API. CLAUDE.md names rate limiting
+	// takes money, the staff sign-in and its password reset, and each key on the read API. CLAUDE.md names rate limiting
 	// as one of the things an endpoint on `/api/v1` owes before it ships; the sign-in is not on that
 	// surface and is here because it compares a single deploy-time var for anyone who asks, and
 	// the read API's is here because a key reads donor records as fast as it is answered.
@@ -275,8 +275,9 @@
 			"namespace_id": "7414",
 
 			"simple": {
-				// per client IP per minute on the one path that compares `ADMIN_PASSWORD`: the
-				// form action at `POST /login`. the key is the credential's rather than that
+				// per client IP per minute on the one path that compares `ADMIN_PASSWORD`, the
+				// form action at `POST /login`, and on the reset requests `POST /forgot` sends
+				// mail for. the key is the credential's rather than that
 				// path's (`signInRateLimitKey` in src/lib/server/api/rate-limit.ts), so a second
 				// way in would spend this same bucket instead of minting one of its own.
 				//

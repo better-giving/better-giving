@@ -165,12 +165,25 @@ function typed(email: string): FormData {
 	return body;
 }
 
+/** how many callers `post` has made up, so each is its own `/48` and its own fresh bucket. */
+let callersMinted = 0;
+
+/**
+ * the form submitted from `ip`, which is what the edge writes as `cf-connecting-ip`.
+ *
+ * left out, the caller is a new address every call, which is what production looks like — every
+ * caller attributed — without one case spending another's bucket. `null` is a caller the edge did
+ * not attribute: no header at all.
+ */
 async function post(
 	body: FormData,
-	{ ip, deployed = DEPLOYED }: { ip?: string; deployed?: typeof DEPLOYED } = {}
+	{
+		ip = `2001:db8:${(0x1000 + callersMinted++).toString(16)}::1`,
+		deployed = DEPLOYED
+	}: { ip?: string | null; deployed?: typeof DEPLOYED } = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
-	if (ip) headers.set('cf-connecting-ip', ip);
+	if (ip !== null) headers.set('cf-connecting-ip', ip);
 	const answer = await action(
 		args(new Request(`${ORIGIN}/forgot`, { method: 'POST', headers, body }), deployed)
 	);
@@ -321,5 +334,56 @@ describe('the limit on POST /forgot', () => {
 		} as LoginRoute.ActionArgs);
 
 		expect(attempt instanceof Response ? 0 : attempt.init?.status).toBe(429);
+	});
+});
+
+describe('the limit on POST /forgot — a caller the edge did not attribute', () => {
+	/**
+	 * no address means no bucket to charge, and the bucket is the whole of what bounds this form
+	 * mailing whoever it is told to. a member's address is the case that discriminates: refused with
+	 * no message sent is a refusal made before the reset was requested, where a stranger's address
+	 * would send nothing either way.
+	 */
+	it.each([
+		['with no address header', null],
+		['with a header that is not an address', 'not-an-address']
+	])('refuses a request %s, before the body is read, and mails nobody', async (_, ip) => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+
+		const answer = await refused(typed('nadia@riverbanktrust.org'), { ip });
+
+		expect(answer.init?.status).toBe(403);
+		expect(answer.data.form.result.initialValue).toEqual({});
+		expect(sent).toEqual([]);
+	});
+
+	/**
+	 * the person who can fix it is whoever runs the deployment, so the sentence carries the cause and
+	 * the usual switch behind it — and nothing about the address typed, which was never read.
+	 */
+	it('says the deployment is not being told the visitor’s address, and names the usual cause', async () => {
+		const answer = await refused(typed('nadia@riverbanktrust.org'), { ip: null });
+
+		expect(banner(answer)).toMatch(/^A reset link could not be sent\./);
+		expect(banner(answer)).toContain('Remove visitor IP headers');
+	});
+
+	/**
+	 * and the other half, so the refusal above is about the missing address: one attributed address
+	 * gets the member's link, and keeps getting one until its bucket is spent.
+	 */
+	it('mails an attributed caller the link, and charges every request to their address', async () => {
+		await saveOrg();
+		await makeMember('nadia@riverbanktrust.org');
+		const statuses: number[] = [];
+		for (let i = 0; i < 50 && statuses.at(-1) !== 429; i++) {
+			const answer = await post(typed('nadia@riverbanktrust.org'), { ip: '203.0.113.60' });
+			statuses.push('data' in answer ? (answer.init?.status ?? 200) : 200);
+		}
+
+		expect(statuses[0]).toBe(200);
+		expect(statuses.at(-1)).toBe(429);
+		expect(sent).toHaveLength(statuses.length - 1);
 	});
 });
