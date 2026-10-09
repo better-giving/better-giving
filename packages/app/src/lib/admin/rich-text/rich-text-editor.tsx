@@ -1,7 +1,7 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import type { MarkName } from '@better-giving/operator/components/status/Mark';
+import { Mark, type MarkName } from '@better-giving/operator/components/status/Mark';
 import {
 	type Editor,
 	EditorContent,
@@ -13,8 +13,10 @@ import {
 	Fragment,
 	type KeyboardEvent,
 	type ReactNode,
+	type Ref,
 	useEffect,
 	useId,
+	useImperativeHandle,
 	useRef,
 	useState
 } from 'react';
@@ -40,7 +42,12 @@ import { linkRefusal, normaliseAddress, RICH_TEXT_EXTENSIONS } from './extension
    typed by a person, repaired where that is unambiguous (./extensions.ts's `normaliseAddress`),
    and refused at the row with the rule's own reason otherwise. Enter applies it and Escape leaves
    the row without posting anything — the row sits inside the caller's form and must not submit
-   it. going back into the words closes the row. */
+   it. going back into the words closes the row.
+
+   it takes the three a field takes for a press that writes the whole box (`labelAside`, `status`
+   and `statusSaid` in packages/operator/src/components/forms/Field.jsx), drawn the same way, and
+   `ref` hands that press the words as paragraphs and a way to replace them and put them back.
+   a replacement is an update like any other, so the posted value and `onChange` follow it. */
 
 export type RichTextEditorProps = {
 	/** the form field the document posts under. */
@@ -59,6 +66,23 @@ export type RichTextEditorProps = {
 	/** the editable's id, so a caller can move the focus onto it once a refusal arrives. it is on
 	 *  the page from the editor's first client render; the server render has no editable to carry it. */
 	id?: string;
+	/** what stands at the end of the label's row, as a field's `labelAside`. */
+	labelAside?: ReactNode;
+	/** a fact found out about the words, in a polite region under the box, as a field's `status`. */
+	status?: string;
+	/** words that region says to a reader alone, as a field's `statusSaid`. */
+	statusSaid?: string | undefined;
+	ref?: Ref<RichTextHandle>;
+};
+
+/** the box's words for a caller writing the whole of them, once the editor is built. */
+export type RichTextHandle = {
+	/** the words, a paragraph per block and a blank line between two. */
+	readonly words: () => string;
+	/** the document as it stands, for `put` to bring back. */
+	readonly kept: () => JSONContent;
+	readonly fill: (doc: RichTextDocument) => void;
+	readonly put: (kept: JSONContent) => void;
 };
 
 const BLANK: RichTextDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
@@ -126,16 +150,23 @@ export function RichTextEditor({
 	onChange,
 	describedBy,
 	error,
-	id
+	id,
+	labelAside,
+	status,
+	statusSaid,
+	ref
 }: RichTextEditorProps) {
 	const own = useId();
 	const labelId = `${own}-label`;
 	const errorId = `${own}-err`;
+	const statusId = `${own}-status`;
 	const rowId = `${own}-link`;
 	const addressId = `${own}-address`;
 	const refused = Boolean(error);
 	const described =
-		[describedBy, refused ? errorId : undefined].filter(Boolean).join(' ') || undefined;
+		[describedBy, refused ? errorId : undefined, status ? statusId : undefined]
+			.filter(Boolean)
+			.join(' ') || undefined;
 	const initial = defaultValue ?? BLANK;
 
 	const [value, setValue] = useState(() => JSON.stringify(initial));
@@ -186,6 +217,17 @@ export function RichTextEditor({
 			editor.off('focus', close);
 		};
 	}, [editor, onChange]);
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			words: () => editor?.getText({ blockSeparator: '\n\n' }) ?? '',
+			kept: () => editor?.getJSON() ?? (initial as JSONContent),
+			fill: (doc) => editor?.commands.setContent(doc as JSONContent),
+			put: (kept) => editor?.commands.setContent(kept)
+		}),
+		[editor, initial]
+	);
 
 	const rowOpen = row !== null;
 	useEffect(() => {
@@ -273,12 +315,22 @@ export function RichTextEditor({
 		presses.current[next]?.focus();
 	};
 
+	const named = (
+		<span className="adm-field__label" id={labelId}>
+			{label}
+			{optional ? <span className="adm-field__optional"> (optional)</span> : null}
+		</span>
+	);
 	return (
 		<div className="adm-field">
-			<span className="adm-field__label" id={labelId}>
-				{label}
-				{optional ? <span className="adm-field__optional"> (optional)</span> : null}
-			</span>
+			{labelAside ? (
+				<div className="adm-field__head">
+					{named}
+					<div className="adm-field__aside">{labelAside}</div>
+				</div>
+			) : (
+				named
+			)}
 			<div className="adm-rte">
 				<div
 					className="adm-rte__bar"
@@ -355,6 +407,17 @@ export function RichTextEditor({
 				)}
 			</div>
 			{refused ? <FieldMessage id={errorId}>{error}</FieldMessage> : null}
+			{status === undefined ? null : (
+				<p className="adm-field__needed" id={statusId} role="status">
+					{statusSaid ? <span className="adm-vh">{statusSaid}</span> : null}
+					{status ? (
+						<>
+							<Mark name="triangle-alert" />
+							<span>{status}</span>
+						</>
+					) : null}
+				</p>
+			)}
 			<input type="hidden" name={name} value={value} />
 		</div>
 	);

@@ -62,6 +62,7 @@ function editor({ illustration = false }: { readonly illustration?: boolean } = 
 				<BlockEditSheet
 					block={{ ...hero, illustration }}
 					version={3}
+					suggestUrl="/admin/pages/p1/suggest"
 					onDismiss={() => {}}
 					onSaved={() => {}}
 				/>

@@ -8,6 +8,7 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
+import { suggestUrl } from '$lib/admin/editor/suggest';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
 import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
@@ -364,11 +365,11 @@ function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'pro
 
 type Loaded = Route.ComponentProps['loaderData'];
 
-export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
+export default function CampaignEditor({ loaderData, params }: Route.ComponentProps) {
 	return loaderData.unreadable ? (
 		<UnreadableDraftEditor loaderData={loaderData} />
 	) : (
-		<DraftEditor loaderData={loaderData} />
+		<DraftEditor loaderData={loaderData} suggest={suggestUrl(params.pageId)} />
 	);
 }
 
@@ -445,9 +446,11 @@ function UnreadableDraftEditor({
 }
 
 function DraftEditor({
-	loaderData
+	loaderData,
+	suggest
 }: {
 	readonly loaderData: Extract<Loaded, { unreadable: false }>;
+	readonly suggest: string;
 }) {
 	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
@@ -569,6 +572,7 @@ function DraftEditor({
 					key={openBlock.id}
 					block={openBlock}
 					version={version}
+					suggestUrl={suggest}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
 					stacked={settings}
@@ -582,6 +586,7 @@ function DraftEditor({
 					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
 					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
 					onDismiss={() => setOpened(null)}
+					suggestUrl={suggest}
 				/>
 			) : null}
 			{opened === 'goal' ? (

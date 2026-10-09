@@ -1,10 +1,12 @@
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { useId, useState } from 'react';
+import { PAGE_BLOCK } from '$lib/page/suggest-fields';
 import { DoneSheet, useFocusOnRefusal } from './done-sheet';
+import { useSuggestedValue } from './suggest';
 
 // a campaign's name, as Settings' Name row: the same value the publish bar edits in place
 // (./in-place-name.tsx), in a box with a label for a reader who came to it from the list. stacked
-// over Settings, one Done.
+// over Settings, one Done. the box carries Write with AI (./suggest.tsx), the page's own `name`.
 
 type NameSheetProps = {
 	/** the name as stored. */
@@ -17,13 +19,32 @@ type NameSheetProps = {
 	/** the last apply's refusal that no box carries. */
 	readonly refusal?: string | null | undefined;
 	readonly onDismiss: () => void;
+	/** the page's suggest route (`suggestUrl` in ./suggest.tsx), which Write with AI asks. */
+	readonly suggestUrl: string;
 };
 
-export function NameSheet({ name, onDone, applying, error, refusal, onDismiss }: NameSheetProps) {
+export function NameSheet({
+	name,
+	onDone,
+	applying,
+	error,
+	refusal,
+	onDismiss,
+	suggestUrl
+}: NameSheetProps) {
 	const id = useId();
 	const [text, setText] = useState(name);
-	// `required` once a Done found the box empty, until something is typed into it.
+	// `required` once a Done found the box empty, until something is typed or written into it.
 	const [empty, setEmpty] = useState(false);
+	const write = (next: string) => {
+		setText(next);
+		if (next.trim() !== '') setEmpty(false);
+	};
+	const { edited, ...suggest } = useSuggestedValue(
+		{ url: suggestUrl, block: PAGE_BLOCK, field: 'name' },
+		text,
+		write
+	);
 	useFocusOnRefusal(error, id);
 
 	return (
@@ -48,10 +69,11 @@ export function NameSheet({ name, onDone, applying, error, refusal, onDismiss }:
 				label="Name"
 				value={text}
 				onChange={(event) => {
-					setText(event.target.value);
-					if (empty && event.target.value.trim() !== '') setEmpty(false);
+					write(event.target.value);
+					edited();
 				}}
 				error={empty ? 'required' : error}
+				{...suggest}
 			/>
 		</DoneSheet>
 	);

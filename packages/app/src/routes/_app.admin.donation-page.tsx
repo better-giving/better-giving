@@ -4,6 +4,7 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
+import { suggestUrl } from '$lib/admin/editor/suggest';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
@@ -117,7 +118,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		...editorPage(row, now),
 		...editorDraft(row, settings.currency, illustrations),
 		settings,
-		hasEdits: edited
+		hasEdits: edited,
+		pageId: row.id
 	};
 }
 
@@ -258,6 +260,7 @@ function DraftEditor({
 					key={openBlock.id}
 					block={openBlock}
 					version={version}
+					suggestUrl={suggestUrl(loaderData.pageId)}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
 					stacked={settings}
