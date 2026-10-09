@@ -103,7 +103,7 @@ export type RemoveResult =
  *
  * **a live invitation at their address is revoked in the same `batch()`.** a member can hold one —
  * a redeem that wrote the account and never reached its stamp leaves it behind (./invitations.ts)
- * — and left live it would make the account again for as long as it had to run.
+ * — and left live it would make the account again until it expired.
  *
  * **so is every reset link they were mailed** (./reset-links.ts). `auth_verification` has no key
  * to `auth_user`, so nothing cascades to it, and a link that outlived the account would be one more

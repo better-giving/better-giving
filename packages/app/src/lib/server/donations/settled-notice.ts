@@ -117,7 +117,7 @@ function seriesFact(repeating: Repeating): string {
 		case 'none':
 			return 'No';
 		case 'first':
-			return 'Yes — first payment';
+			return 'Yes, first payment';
 		// unreachable: a later collection returns before any of this is composed. it is spelled out
 		// rather than defaulted so that a state added to `Repeating` stops the type check here.
 		case 'later':

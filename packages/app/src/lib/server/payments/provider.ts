@@ -1573,8 +1573,8 @@ export type RecurringGiftRequest = {
 	readonly metadata?: Readonly<Record<string, string>>;
 	/**
 	 * the form's donor page on this deployment — `/{form_id}` on `new URL(request.url).origin`
-	 * (packages/app/src/routes/$formId.tsx) — and never an address off the donor's own page, which
-	 * is a site this deployment does not own.
+	 * (packages/app/src/routes/$formId.tsx) — and never an address off the page the donor gave from,
+	 * which is a site this deployment does not own.
 	 *
 	 * PayPal reads it alone: a subscription's approval context requires a return and a cancel
 	 * address, and this is both — `createRecurringGift` in ./paypal.ts refuses a gift without it.

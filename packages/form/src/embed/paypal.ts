@@ -938,7 +938,7 @@ export function createPaymentSurface(
 	 * awaited by the build, so a repeat's answer can neither hold the buttons back nor take the
 	 * one-time gift's down. the rows here are drawn off this module's own two reads alone; whether the
 	 * core keeps an answer per instance, and whether a `<paypal-button>` it registers reads one back
-	 * when `place` moves it, is not something the 11.0.1 types say.
+	 * when `place` moves it, is not something the installed types say.
 	 *
 	 * until it answers PayPal's row stays off a repeating gift — a window that cannot approve is the
 	 * donor's dead end at the last step. a no, a refusal, a `MOUNT_DEADLINE_MS` of its own running out
@@ -1410,8 +1410,7 @@ export function createPaymentSurface(
 		},
 		// the total is the server's and it is on the review screen the donor already read; PayPal's
 		// own window states the figure off the order or subscription the server minted, and this
-		// button carries no
-		// figure of its own to correct.
+		// button carries no figure of its own to correct.
 		quoted() {},
 		// what the cadence decides here is PayPal's alone: whether its row stands on a repeat it
 		// cannot start, and which session a window opens on where no press says (`confirm`). Venmo on

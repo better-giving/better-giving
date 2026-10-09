@@ -963,7 +963,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		/**
 		 * a wait, off the window this element is actually in. the deadline over the configuration read
 		 * takes one, and so does every wait of a task here: the teardown `#leaving` above defers, the
-		 * card `#unnamed` above holds back and the first sentence `#announce` above writes.
+		 * card `#unnamed` above holds back, and the first sentence and every repeated one `#announce`
+		 * above writes.
 		 *
 		 * `ownerDocument.defaultView` rather than the ambient `setTimeout`, for the reason `sheetsFor`
 		 * above reads its `CSSStyleSheet` off a document and `defaultDelay` in ./embed/stripe.ts reads

@@ -199,7 +199,7 @@ describe('removeMember', () => {
 	/**
 	 * a member can still hold a live link: a redeem that wrote the account and never reached its
 	 * stamp leaves one behind (./invitations.ts). removing them has to end it, or the link makes
-	 * the account again for as long as it has left to run — and it has to end that one alone.
+	 * the account again until it expires — and it has to end that one alone.
 	 */
 	it('revokes a live invitation at the removed member’s address and no other', async () => {
 		const invited = await inviteMember(db, {

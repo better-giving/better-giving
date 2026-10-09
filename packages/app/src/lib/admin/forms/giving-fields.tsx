@@ -54,13 +54,13 @@ import { type Box, boxErrorId, boxProps } from '../use-admin-form';
 // the cap is kept: once the screen has hydrated, a press while the boxes hold
 // `MAX_SUGGESTED_AMOUNTS` different amounts adds nothing and draws `SUGGESTED_AMOUNTS_HELD` until
 // the rows change. the count is `suggestedEntries`, the one the save takes, read off the boxes at
-// the press — so a blank box, or one amount in two boxes however it is written, holds nothing the
-// save would store. every press on a held Add says the sentence again. before hydration Add is the
-// plain intent submit and the row is added, and the save is what refuses the list. a save refused
-// by the cap is answered at Add as well — the bare name is on no box, so conform's failed-submit
-// walk focuses nothing (`report` in @conform-to/dom's form.js matches a box's `name` and never a
-// button), and the group moves focus to Add itself, unless the walk has already moved it to a box
-// some other rule refused.
+// the press — so neither a blank box nor a second box holding an amount already counted, however
+// it is written, holds Add, as neither adds a tile to what the save would store. every press on a
+// held Add says the sentence again. before hydration Add is the plain intent submit and the row is
+// added, and the save is what refuses the list. a save refused by the cap is answered at Add as
+// well — the bare name is on no box, so conform's failed-submit walk focuses nothing (`report` in
+// @conform-to/dom's form.js matches a box's `name` and never a button), and the group moves focus
+// to Add itself, unless the walk has already moved it to a box some other rule refused.
 //
 // the bounds carry a slider over their two boxes, and it is the one control here that is not a
 // box: it moves along `BOUND_STOPS` below, writes the stop a thumb lands on into that thumb's box,

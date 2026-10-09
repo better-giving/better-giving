@@ -892,9 +892,9 @@ describe('mintQuote() — a repeating gift', () => {
 		await mint(deps(), { frequency: 'monthly' });
 
 		// nothing else happens to a commitment the donor never confirms: Stripe, whose port this is,
-		// abandons it within 23 hours, no collection ever arrives, and what is left is one gift with no attempt
-		// against it — which is what the gifts list reads as `Pending` and what makes contacting an
-		// unfinished repeating gift possible at all.
+		// abandons it within 23 hours, no collection ever arrives, and what is left is one gift with
+		// no attempt against it — which is what the gifts list reads as `Pending` and what makes
+		// contacting an unfinished repeating gift possible at all.
 		const gifts = await db.select().from(donation);
 		expect(gifts).toHaveLength(1);
 		const [paid] = await db.select({ n: sql<number>`count(*)` }).from(payment);
@@ -1853,10 +1853,6 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		return { result, mail };
 	}
 
-	/**
-	 * a grant that exists with no gift recorded against it is visible nowhere else: the settlement path
-	 * answers an unknown grant quietly, so this press is the one place the loss can be reported.
-	 */
 	// the grant exists and the fund will pay it, so the donor is neither told nothing was given nor
 	// invited to approve a second one.
 	it('tells the donor of a grant whose gift could not be recorded in the app’s own words, and the log why', async () => {
@@ -1871,6 +1867,10 @@ describe('mintQuote() — a gift from a donor-advised fund', () => {
 		expect(logged.mock.calls.flat().join(' ')).toContain(FORM_ID);
 	});
 
+	/**
+	 * a grant that exists with no gift recorded against it is visible nowhere else: the settlement path
+	 * answers an unknown grant quietly, so this press is the one place the loss can be reported.
+	 */
 	it('tells an operator the grant id when the gift cannot be recorded against a created grant', async () => {
 		const { result, mail } = await mintGrantWithNoGift();
 

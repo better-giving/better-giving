@@ -1613,7 +1613,7 @@ describe('recordReversal() — a dispute won with no opening recorded, whose kep
 
 		expect(result).toMatchObject({ ok: true, outcome: 'unactionable' });
 		expect(await groupCount()).toBe(groups);
-		expect(mail.sent[0]?.text).toContain('What to do: Nothing to do.');
+		expect(mail.sent[0]?.text).toContain('What to do: Nothing.');
 	});
 
 	it('books nothing on a gift the books never held, naming the fee to staff to post by hand', async () => {

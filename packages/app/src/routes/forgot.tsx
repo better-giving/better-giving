@@ -121,7 +121,7 @@ const SENT =
  */
 const UNATTRIBUTED =
 	'A reset link could not be sent. This deployment is not being told your connection’s IP ' +
-	'address, so it cannot limit how many links are asked for and refuses every request until it ' +
+	'address, so it cannot limit how many links are requested and refuses every request until it ' +
 	'is. The usual cause is Cloudflare’s “Remove visitor IP headers” setting being switched on for ' +
 	'this site; whoever runs this deployment can switch it off in the Cloudflare dashboard.';
 

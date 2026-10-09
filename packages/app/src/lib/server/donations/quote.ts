@@ -142,8 +142,8 @@ export const QUOTE_REFUSALS = [
 	/**
 	 * a donor-advised fund gift the fund will not grant — below its minimum, above the donor's
 	 * balance — carrying Chariot's reason. nothing about the deployment is wrong; the donor gives a
-	 * different amount. a Chariot 4xx with no reason lands here too, and its message names no fund
-	 * (`grantRefusal` below).
+	 * different amount. only a refusal Chariot gave its reason for lands here: a 4xx with none is
+	 * `internal_error` (`grantRefusal` below).
 	 */
 	'daf_grant_declined',
 	/**
@@ -862,8 +862,8 @@ async function mintGrant(
 		alert(deps, {
 			headline: 'A donor-advised fund grant has no gift recorded',
 			body:
-				'Chariot created a grant, but the gift couldn’t be saved, so the donor was told it didn’t ' +
-				'go through. The fund will still pay the grant, so it may arrive with no gift in your ' +
+				'Chariot created a grant, but the gift couldn’t be saved, and the donor was told so. ' +
+				'The fund will still pay the grant, so it may arrive with no gift in your ' +
 				'records. If the donor tried again, that made a separate grant with its own gift, which ' +
 				'doesn’t cover this one.',
 			facts: [
@@ -994,7 +994,7 @@ function grantRefusal(
 			form,
 			'payments_unavailable',
 			PROCESSOR_FAILED,
-			'Your fund may already have the grant request. Try again in a moment — the same approval ' +
+			'Your fund may already have the grant request. Try again in a moment. The same approval ' +
 				`sends it at most once. ${LOGGED}.`
 		);
 	}
@@ -1003,8 +1003,8 @@ function grantRefusal(
 			form,
 			'daf_grant_declined',
 			`Your fund didn’t approve this gift: ${failure.providerSaid}`,
-			'Give an amount the fund allows — at least its minimum and no more than the balance ' +
-				'available — through the fund’s window.'
+			'Give an amount the fund allows, at least its minimum and no more than the balance ' +
+				'available, through the fund’s window.'
 		);
 	}
 	if (reason === 'invalid_request') {
@@ -1013,8 +1013,8 @@ function grantRefusal(
 			form,
 			'internal_error',
 			PROCESSOR_FAILED,
-			'Nothing was given. The grant request was refused with no reason, which is most likely a ' +
-				`request of this app's that the fund's processor would not read. ${LOGGED}.`
+			'Nothing was given. Chariot refused the grant request without a reason, which most likely ' +
+				`means this app sent a request Chariot couldn’t read. ${LOGGED}.`
 		);
 	}
 	return paymentRefusal(form, processors, 'daf', 'one_time', reason, detail);
@@ -1208,8 +1208,8 @@ function paymentRefusal(
 			form,
 			'payments_unavailable',
 			PROCESSOR_FAILED,
-			'Nothing was charged. Try again in a moment — this is the payment processor rather than ' +
-				`anything about the request. ${LOGGED}.`
+			'Nothing was charged. Try again in a moment. The fault is with the payment processor, not ' +
+				`the request. ${LOGGED}.`
 		);
 	}
 	if (reason === 'not_configured') {
@@ -1236,7 +1236,7 @@ function paymentRefusal(
 			'frequency_unsupported',
 			`A gift that repeats cannot be collected on ${PROCESSOR_LABELS[processorOf(rail)]} here, ` +
 				'and nothing was charged.',
-			// read by whoever sent the request, which has no account to set up and no deployment to
+			// read by whoever sent the request, who has no account to set up and no deployment to
 			// fix. a single gift needs nothing on the processor's account, so it is the one thing
 			// this deployment can always still take.
 			`Nothing was charged and nothing about the request is wrong. Give once instead. ${LOGGED}.`
@@ -1291,10 +1291,10 @@ function logProcessorFailure(reason: string, detail: string): void {
 }
 
 /**
- * the writer's sentence on a gift that could not be recorded, where staff read it. ./record.ts logs
- * only the fault it cannot name, so a refused foreign key or a malformed gift is logged here or
- * nowhere — and its sentence names the form's id and what to re-read, which is staff's and never
- * the card's.
+ * the writer's sentence on a gift, or the donor it names, that could not be recorded, where staff
+ * read it. ./record.ts and ./donor.ts log only the fault they cannot name, so a refused foreign key
+ * or a malformed gift is logged here or nowhere — and ./record.ts's sentence names the form's id
+ * and what to re-read, which is staff's and never the card's.
  */
 function logWriteFailure(detail: string): void {
 	console.error('a donation could not be recorded:', detail);

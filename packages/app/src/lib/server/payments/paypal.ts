@@ -2040,9 +2040,10 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 					body: {
 						planId: planId.value,
 						customId: encodeMetadata(request.metadata ?? {}),
-						// named rather than left to the default, which billing_subscriptions_v1.json
-						// (`application_context.user_action`) states both ways: `CONTINUE` leaves an
-						// approved subscription waiting on an activate call nothing in this app makes.
+						// named rather than left to the default, which billing_subscriptions_v1.json in
+						// https://github.com/paypal/paypal-rest-api-specifications states both ways
+						// (`application_context.user_action`): `CONTINUE` leaves an approved
+						// subscription waiting on an activate call nothing in this app makes.
 						// both addresses are the donor page, the one page of this deployment's own a
 						// donor can be sent back to.
 						applicationContext: {

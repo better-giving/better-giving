@@ -2976,7 +2976,7 @@ export function createCard(
 		// the amount step's two hang off a `<fieldset>` and the refused press puts the caret on a
 		// radio inside one — a group's description is not reliably announced from a descendant, so
 		// that refusal is on this channel however the press was made. the details step's are on the
-		// fields themselves and a field announces itself on arrival, so its sentence is here only
+		// fields themselves and a field announces itself on arrival, so its sentence is said only
 		// for the press that moved no caret and had no other channel — `unmoved`, decided by the
 		// press rather than by this patch.
 		//

@@ -940,7 +940,7 @@ describe('a donor’s gift through PayPal’s window', () => {
 	});
 
 	// the server mints a subscription for a repeating gift and its id is no order: handed to the
-	// one-time session as `{ orderId }` the window errors, and the donor lands on "we don't know".
+	// one-time session as `{ orderId }` the window errors, and the gift ends on an answer nobody has.
 	it('opens a repeating gift’s window on a subscription session, carrying the subscription', async () => {
 		const k = kit();
 		const surface = await mounted(k, MONTHLY);

@@ -117,9 +117,9 @@ export type SendResult =
 			readonly indeterminate: boolean;
 			/**
 			 * present where the host refused the recipient's mailbox itself — an address it does not
-			 * have, or one it cannot take (`recipientRefusal` in ./smtp-failure.ts) — so no later send
-			 * to that address goes. absent on every other failure, a host declining to carry mail for
-			 * this connection at all included.
+			 * have, or one it cannot take (`recipientRefusal` in ./smtp-failure.ts) — so a later send
+			 * to that address is refused too. absent on every other failure, a host declining to carry
+			 * mail for this connection at all included.
 			 */
 			readonly addressRefused?: true;
 	  };

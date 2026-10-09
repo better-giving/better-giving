@@ -50,7 +50,7 @@ describe.each(['.adm-stack', '.adm-stack--tight', '.adm-section'])(
 // every tight stack is also `.adm-stack`, so each pair of rules below is matched by one element at
 // one specificity, and the one later in the sheet is the one drawn. the cases above read each rule
 // alone, and stay green with the tight rule moved above the base one — where the base step would
-// set the caption flush on its plane.
+// set the sentence flush on its plane.
 describe('a counted table on the tight stack', () => {
 	const order = rulesIn(css).map((rule) => rule.selector);
 	const at = (selector: string) => {

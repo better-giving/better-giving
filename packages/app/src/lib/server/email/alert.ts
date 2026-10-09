@@ -53,9 +53,9 @@ export const SEND_THIS_TO_WHOEVER_SET_IT_UP =
 	' If the test works, send this email to whoever set up your donations app. The cause is in its ' +
 	'Workers logs on the Cloudflare dashboard.';
 
-/** how an action ends where an email to a donor did not go and nothing sends it again. */
+/** how an action ends where an email did not go and nothing sends it again. */
 export const NO_RESEND =
-	' The email to the donor won’t be resent, so contact the donor yourself if they need it.';
+	' The email won’t be resent, so contact whoever it was for if they need it.';
 
 /**
  * one message to the address the console names for operational mail, which every alert goes to.

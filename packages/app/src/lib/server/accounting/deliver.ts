@@ -676,7 +676,7 @@ async function notifyFailing(deps: AccountingDeliveryDeps, now: Date): Promise<v
 		headline: 'Some gifts didn’t sync to QuickBooks',
 		body:
 			'QuickBooks turned down some gifts. They’re safe in your donations app; only QuickBooks is ' +
-			'missing them. Gifts being retried are tried again automatically, but if the reason below ' +
+			'missing them. Gifts being retried are sent again automatically, but if the reason below ' +
 			'asks you to do something, they won’t get through until you do. Gifts that need you stay ' +
 			'out of QuickBooks until you press Try these again. This email comes at most once a day ' +
 			'for the same problem, not once per gift.',

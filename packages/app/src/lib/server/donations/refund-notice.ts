@@ -40,7 +40,7 @@ import { alert, type MailDeps } from './delivery';
 // leaves it owed once, stamped in `payment.notice_maybe_sent_at`, and the next run that comes
 // back unsure clears it: a host down past one run still gets a second, and a host that takes the
 // message and then goes quiet costs the donor one copy per run that tried, two at most past the
-// delivery's own rather than one every half hour.
+// delivery's own.
 //
 // staff hear of a notice once when it fails on the delivery, and once more when a run stops owing
 // it unsent; a run's other failures are logged, because a run every half hour would tell them
@@ -244,7 +244,7 @@ async function attempt(
 					headline: 'A donor wasn’t told about their refund',
 					body:
 						'A refund was recorded, but the email telling the donor couldn’t be prepared. The ' +
-						'refund is fine; the donor just has no email about it.',
+						'refund is fine, but the donor has no email about it.',
 					facts: [...facts, { label: 'Reason', value: rendered.detail }],
 					action: `${FILL_IN_ORG_DETAILS} It will be sent again once that’s fixed.`
 				},

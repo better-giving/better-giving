@@ -124,9 +124,8 @@ func digitsOnly(expiry string) bool {
 // packages/app/src/lib/server/console/access.ts refuses only an expiry before its now).
 //
 // `now` is this machine's clock at the reading, and the deployment reads its own when the request
-// arrives, so a session held here can still be refused there — by the two clocks being apart, and
-// by the time the request takes to get there, which takes a session held a moment before its
-// expiry past it.
+// arrives, so a session held here can still be refused there: the two clocks can be apart, and a
+// session read a moment before its expiry can be past it by the time the request lands.
 //
 // Every way the record could be wrong lands on the same nil, which is the state the screen already
 // draws: no session, and a control that mints one.

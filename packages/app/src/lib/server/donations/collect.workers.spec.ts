@@ -2260,7 +2260,7 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		expect(notices[0]?.text).toContain('Ada Okafor');
 		expect(notices[0]?.text).toContain('General Fund');
 		// the fact that makes it a different piece of news from a one-off gift of the same size.
-		expect(notices[0]?.text).toContain('Recurring: Yes — first payment');
+		expect(notices[0]?.text).toContain('Recurring: Yes, first payment');
 	});
 
 	it('tells them nothing about a later collection, and receipts the donor anyway', async () => {
@@ -2289,7 +2289,7 @@ describe('settleDelivery() — the notice that a repeating gift started', () => 
 		expect(result).toMatchObject({ ok: true, outcome: 'posted' });
 		expect(mail.sent.map((m) => m.to)).toEqual(['ops@hope.example']);
 		expect(mail.sent[0]?.text).toContain('no receipt was sent');
-		expect(mail.sent[0]?.text).toContain('Recurring: Yes — first payment');
+		expect(mail.sent[0]?.text).toContain('Recurring: Yes, first payment');
 	});
 
 	it('answers the delivery the same way when the notice itself faults', async () => {

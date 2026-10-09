@@ -56,10 +56,11 @@ import { BLANK, takeoverFor, TakeoverScreen } from './takeover';
 //     where the caret was inside the card when Back to start was pressed: that press remounts the
 //     card under the caret, so the rebuilt card puts it on its first heading — and a caret the
 //     donor had already taken elsewhere on the page is left there. a stamped return with no token
-//     is the other: the route drew the resume's takeover and the live flow starts on the amount
-//     step, so the step's heading takes the caret unless the donor put it on the host page, where
-//     the region says it instead. one takeover replacing another is no screen change and can hide
-//     that control too, so it is taken back to the heading from inside the takeover.
+//     is no first paint but a screen change: the route drew the resume's takeover and the live flow
+//     starts on the amount step, so the step's heading takes the caret unless the donor put it on
+//     the host page, where the region says it instead. one takeover replacing another is no
+//     screen change and can hide that control too, so it is taken back to the heading from inside
+//     the takeover.
 //   - what is said out loud, on one channel, decided in one place.
 //
 // the two mount nodes are the card's and the checkout's between them: this file renders them and
@@ -399,8 +400,8 @@ function CheckoutCard({
 	 * pressed Try again. only a rail's refusal is taken — every other way into `failed` says nothing
 	 * about the card the donor entered, and all of them read as if they did beside the payment fields.
 	 *
-	 * it is a reduction over transitions rather than a value, so it is read against the one the last
-	 * commit drew (`kept`): a re-render that is not a transition reads the same answer back.
+	 * it is a reduction over transitions rather than a value, so it is read against the decline the
+	 * last commit drew (`kept`): a re-render that is not a transition reads the same answer back.
 	 */
 	const drawnDecline = kept.current.decline;
 	const decline =
@@ -538,7 +539,7 @@ function CheckoutCard({
 	/**
 	 * the live flow's first snapshot leaving the resume's takeover the first paint drew: the route saw
 	 * the stamp and the flow had no token behind it to claim, so it starts where a fresh card does.
-	 * the donor was shown and told "Finishing your gift", so this is a screen change and not a first
+	 * the donor was shown and told `copy.RESUMING_HEADING`, so this is a screen change and not a first
 	 * paint, whatever `painted` says.
 	 */
 	const unresumed =
@@ -939,8 +940,8 @@ function CheckoutCard({
 	//
 	// the Copy's sentence, the retitled heading's, the handed step's and every `News` keep one rule: a
 	// live-region sentence stays until the heading it announces changes or another sentence replaces
-	// it — and a `News`, until what it `restating` names moves or a press asks for a repeat
-	// (`repeating`); a new snapshot alone never clears it.
+	// it — and a `News`, until what it `restating` names moves. a press asking for a repeat spends the
+	// handed step and a `News` too (`repeating`). a new snapshot alone never clears any of them:
 	// the provider's fields and the challenge widget report whenever they finish, and the address
 	// screen's reading loop every few seconds, each with nothing to say. each is spent by the commit
 	// that said something else. a sentence said while something stands — the amount step's refusal,

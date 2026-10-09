@@ -39,7 +39,7 @@ export async function sendGrantRequested(
 				headline: 'A donor didn’t get their grant confirmation',
 				body:
 					'A donor-advised fund gift was recorded, but the email confirming the grant request ' +
-					'couldn’t be prepared. The grant and the gift are fine; the donor just has no email ' +
+					'couldn’t be prepared. The grant and the gift are fine, but the donor has no email ' +
 					'about it.',
 				facts: [
 					{ label: 'Gift ID', value: target.donationId },

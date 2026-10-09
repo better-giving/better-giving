@@ -217,7 +217,7 @@ it('draws a 5xx response as the deployment failing, with its sentence', async ()
 	expect(root.querySelectorAll('a, button')).toHaveLength(0);
 });
 
-/** a donor reads the page did not load and what to do, never the deployment's words or its logs. */
+/** a donor is told the page did not load and what to do, never the deployment's words or its logs. */
 it('tells a donor the page could not load, with none of the sentence staff are told', async () => {
 	const root = await boundaryOver(
 		data('`BETTER_AUTH_URL` is not set.', { status: 503 }),

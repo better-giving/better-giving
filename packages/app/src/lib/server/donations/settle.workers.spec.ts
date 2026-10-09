@@ -1017,8 +1017,8 @@ describe('settleDelivery() — what the donor’s message cannot do', () => {
 		await settleDelivery(deps({ email: mail.port, provider: failedAch }), DELIVERY);
 
 		expect(mail.sent[1]?.text).toContain(
-			'Fix whatever the test reports. The email to the donor won’t be resent, so contact the ' +
-				'donor yourself if they need it.'
+			'Fix whatever the test reports. The email won’t be resent, so contact whoever it was for ' +
+				'if they need it.'
 		);
 	});
 

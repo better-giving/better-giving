@@ -4959,15 +4959,15 @@ describe('the stylesheets', () => {
 		});
 	};
 
-	// every absence below is checked against a non-empty string first. vitest replaces a CSS
-	// import with `''` unless `css: true` is set on the pool, and an assertion that a stylesheet
-	// contains no colour literal passes perfectly against nothing at all.
 	it('reads no length or duration inside a hyphenated name, and still reads a negative one', () => {
 		const sheet = '.a { gap: var(--gap-1px); transition: var(--fade-2s); margin: -4px; }';
 		expect(rawLengths('sheet', sheet)).toEqual([`sheet:1 -4px — ${sheet}`]);
 		expect(rawDurations('sheet', sheet)).toEqual([]);
 	});
 
+	// every absence below is checked against a non-empty string first. vitest replaces a CSS
+	// import with `''` unless `css: true` is set on the pool, and an assertion that a stylesheet
+	// contains no colour literal passes perfectly against nothing at all.
 	it('is scanning the stylesheets rather than four empty strings', async () => {
 		expect(still.length).toBeGreaterThan(1000);
 		expect(moving.length).toBeGreaterThan(500);

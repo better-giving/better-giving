@@ -499,12 +499,12 @@ async function disputeRefused(
 				value:
 					reversal.feeMinor === null
 						? 'None reported'
-						: `${alertMoney(reversal.feeMinor, reversal.currency)} — not recorded`
+						: `${alertMoney(reversal.feeMinor, reversal.currency)}, not recorded`
 			},
 			{
 				label: 'Recurring gift',
 				value:
-					stop === null ? 'None — this was a one-time gift' : stopSentence(stop.outcome, processor)
+					stop === null ? 'None: this was a one-time gift' : stopSentence(stop.outcome, processor)
 			},
 			...(reversal.dashboardUrl === null
 				? []
@@ -786,7 +786,7 @@ async function disputeWithdrew(
 			{
 				label: 'Recurring gift',
 				value:
-					stop === null ? 'None — this was a one-time gift' : stopSentence(stop.outcome, processor)
+					stop === null ? 'None: this was a one-time gift' : stopSentence(stop.outcome, processor)
 			},
 			...(problem === null ? [] : [{ label: 'Records', value: problem }])
 		],
@@ -1336,7 +1336,7 @@ async function wonUnheard(
 						'account the gift went into.'
 				]
 			: keptMinor === 0
-				? [`and nothing was recorded: ${processor} kept no dispute fee.`, 'Nothing to do.']
+				? [`and nothing was recorded: ${processor} kept no dispute fee.`, 'Nothing.']
 				: settleUp === null
 					? [
 							'and nothing was recorded: this gift isn’t in your Books.',

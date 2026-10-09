@@ -317,8 +317,8 @@ describe('POST /forgot', () => {
 	});
 
 	/**
-	 * a transport that fails is the deployment's to read, for the reason the case below states: a
-	 * page that said so would say so only for an address this deployment has.
+	 * a transport that fails is the deployment's to read, for the reason the failing-reset case
+	 * further down states: a page that said so would say so only for an address this deployment has.
 	 */
 	it('answers a member the same when the transport refuses the message, and logs why', async () => {
 		await saveOrg();

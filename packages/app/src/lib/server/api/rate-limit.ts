@@ -156,8 +156,8 @@ export function quoteRateLimitKey(request: Request): string | null {
  * minted by the console unless the operator typed their own, is the cost that leaves unbounded.
  *
  * `src/routes/forgot.tsx`'s action answers it by refusing every request, before the body is read:
- * no password is reset from there, the deployer's included, so there is no identity a refusal
- * would lock out, and letting it through would be mail sent to whoever was named without limit.
+ * the deployer's password is never reset from there, so a refusal shuts nobody out of the
+ * dashboard, and letting it through would be mail sent to whoever was named without limit.
  */
 export function signInRateLimitKey(request: Request): string | null {
 	const payer = attributedCaller(request, 48);

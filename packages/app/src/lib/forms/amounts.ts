@@ -282,7 +282,8 @@ export function suggestedEntries(rows: readonly string[]): { row: number; text: 
  * the repeats come out before the count is taken, because the cap and the dedupe are the same paste
  * read twice and they have to agree about it: a repeat is a paste rather than a mistake, so a group
  * that would store twelve tiles cannot be refused for holding fifteen boxes. a repeat is one amount
- * however it is written — `25` and `25.00` — which is the one dedupe the stored list is built from.
+ * however it is written — `25` and `25.00` — and `suggestedEntries` is the one dedupe, for the count
+ * and the stored list alike.
  */
 export function readSuggestedAmounts(
 	rows: readonly string[],

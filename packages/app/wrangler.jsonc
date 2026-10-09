@@ -100,10 +100,9 @@
 	// src/lib/server/accounting/deliver.ts, src/lib/server/donations/pending-crypto-read.ts and
 	// src/lib/server/donations/refund-notice.ts bounds a run's wall clock, and each minute feed's
 	// pace in src/lib/server/outbox/budget.ts is sized against subrequests, D1 queries and
-	// connections, with CPU unbudgeted there. what keeps a run
-	// under the thirty seconds is that its time goes to waiting, which CPU does not count. so
-	// lengthening an interval past an hour is what lifts the ceiling, and shortening one never
-	// touches it.
+	// connections, with CPU unbudgeted there. what keeps a run under the thirty seconds is that its
+	// time goes to waiting, which CPU does not count. so lengthening an interval past an hour is what
+	// lifts the ceiling, and shortening one never touches it.
 	//
 	// a Workers Free account's cron invocation has ten milliseconds of CPU, fifty subrequests and
 	// fifty D1 queries (the same page, and https://developers.cloudflare.com/d1/platform/limits/),
@@ -176,10 +175,10 @@
 	// records as fast as it is answered.
 	//
 	// this deployment answers anonymous writes on three paths, not one: `POST /api/v1/forms/:id/
-	// donations`, the sign-in, and `POST /api/stripe/webhook`. the webhook is the one with no
-	// bucket, deliberately — `src/routes/api.stripe.webhook.ts`'s header says why, and the short
-	// version is that a signature is checked before anything is parsed and a shed delivery costs a
-	// settlement.
+	// donations`, the sign-in and its password reset, and `POST /api/stripe/webhook`. the webhook
+	// is the one with no bucket, deliberately — `src/routes/api.stripe.webhook.ts`'s header says
+	// why, and the short version is that a signature is checked before anything is parsed and a
+	// shed delivery costs a settlement.
 	//
 	// each has a `namespace_id` of its own, and that is load-bearing rather than tidy: a namespace
 	// is account-wide, so two bindings naming one share a count for a given key — donors reading a
@@ -194,8 +193,8 @@
 	// own, a failed key check in `src/routes/zapier.ts` and every read-API request, ahead of its key
 	// lookup, in `src/routes/integrations.v1.ts`; the quote in
 	// `src/routes/api.v1.forms.$id.donations.ts`; the sign-in in `src/routes/login.tsx`'s own
-	// action, which is the one site that spends that bucket; and each read-API key, once admitted,
-	// in `src/routes/integrations.v1.ts`'s middleware. what
+	// action and `src/routes/forgot.tsx`'s, the two sites that spend that bucket; and each read-API
+	// key, once admitted, in `src/routes/integrations.v1.ts`'s middleware. what
 	// happens when one of these bindings is missing, and what happens when the edge attributes no
 	// address to a caller, are both stated in src/lib/server/api/rate-limit.ts rather than at the
 	// call sites. `src/lib/server/api/rate-limit.config.spec.ts` holds all four to this file, and
