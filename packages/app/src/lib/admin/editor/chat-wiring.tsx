@@ -65,9 +65,9 @@ import { useWide } from './wide';
 // and the panel is `alone` while it holds. until the chat has loaded it is the loader's answer
 // alone, so the server draws the layout the chat will keep. the turn that first changes the page
 // ends it in the render it lands in. from the wide breakpoint the panel stays where it stood; below
-// it the panel goes, the preview is shown, and the focus goes to the AI press (`ChatClosed`), as
-// for a sheet the arrival opened. an empty chat is asked its opening questions in the panel, and
-// opens no sheet on arrival.
+// it the panel goes, the preview is shown, and a focus left on the document goes to the AI press
+// (`ChatClosed`), as for a sheet the arrival opened. an empty chat is asked its opening questions
+// in the panel, and opens no sheet on arrival.
 //
 // the panel mounts once the chat has loaded rather than on an empty log: the log takes the chat it
 // opens on as already read ($lib/admin/chat/chat-log.tsx), and would speak the whole history as it

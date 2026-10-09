@@ -28,7 +28,8 @@ import {
 // preview, the panel alone in the body at a reading width (`alone` in ../chat/ai-panel.tsx), and a
 // bar that draws the page's name, where it stands and More, but nothing that edits or publishes a
 // page not yet made (./publish-bar.tsx reads it with `useUndrafted`). the draft that lands draws the
-// preview in its slot ahead of the panel, which stays mounted where it stood.
+// preview in its slot ahead of the panel, which from the wide breakpoint stays mounted where it
+// stood (./chat-wiring.tsx says what goes below it).
 
 type EditorShellProps = {
 	/** the publish bar. */

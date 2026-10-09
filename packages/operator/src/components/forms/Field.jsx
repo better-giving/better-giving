@@ -34,8 +34,7 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {ReactNode} [labelAside] what stands at the trailing end of the label's own row: a small
  *   press that writes the whole box, and the words saying where the value in it came from. the
  *   label and it are one row, `.adm-field__head`, as tall as the small control, so the press stands
- *   level with the name of the box it acts on rather than on the box's row, where `beside` would
- *   take the box's width in a narrow sheet.
+ *   level with the name of the box it acts on and leaves the box its whole width in a narrow sheet.
  * @property {ReactNode} [beside] a control that acts on what is in the box, put on the box's own
  *   row rather than under it — one destination and one send, instead of a press below a column of
  *   boxes. the row is `.adm-actions`, which is what makes the box take the line's remainder and the

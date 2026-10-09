@@ -13,8 +13,8 @@ import { useEditing } from './editor-shell';
 // the page inside is the preview route's own document, and it is inert there: no tab stop and no
 // press of its own. what it does do is post the id of a block that was clicked, and this host is
 // what listens. a message is taken only from this frame's own window, only from this deployment's
-// own origin, and only in the shape the preview posts — anything else on the channel is some other
-// page's and is not read.
+// own origin, and only in the shapes the preview posts — anything else on the channel is some
+// other page's and is not read.
 //
 // **a click opens a block only while Edit is on** (`useEditing` in ./editor-shell.tsx); with it off
 // the preview is the page and a click in it is not handed on. the page is told each change, and
