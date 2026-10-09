@@ -11,7 +11,14 @@ import {
 import type { Auth } from './index';
 import { createAuth } from './index';
 import { inviteMember, MEMBER_PASSWORD_MIN_LENGTH, redeemInvitation } from './invitations';
-import { changeMemberPassword, listMembers, removeMember, signInMember } from './members';
+import {
+	changeMemberPassword,
+	listMembers,
+	removeMember,
+	requestPasswordReset,
+	resetMemberPassword,
+	signInMember
+} from './members';
 import { resolveAuthSecret } from './signing-key';
 import { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 
@@ -29,12 +36,15 @@ const NOW = new Date('2026-02-01T12:00:00.000Z');
 
 let db: Db;
 let auth: Auth;
+/** every reset link the instance under test handed to its mailer, in order. */
+let sent: { email: string; token: string }[];
 
 beforeAll(() => {
 	db = createDb(env.DB);
 });
 
 beforeEach(async () => {
+	await env.DB.prepare('delete from auth_verification').run();
 	await env.DB.prepare('delete from auth_member_invitation').run();
 	await env.DB.prepare('delete from auth_session').run();
 	await env.DB.prepare('delete from auth_account').run();
@@ -42,10 +52,19 @@ beforeEach(async () => {
 
 	const signingKey = await resolveAuthSecret(db, {});
 	if (!signingKey.ok) throw new Error(signingKey.cause);
+	sent = [];
 	auth = createAuth(
 		db,
 		{ ADMIN_PASSWORD: STAFF_PASSWORD },
-		{ secret: signingKey.secret, requestOrigin: ORIGIN }
+		{
+			secret: signingKey.secret,
+			requestOrigin: ORIGIN,
+			passwordReset: {
+				send: async (input) => {
+					sent.push(input);
+				}
+			}
+		}
 	);
 });
 
@@ -63,6 +82,18 @@ async function member(email: string, name = 'Priya'): Promise<string> {
 	});
 	if (!redeemed.ok) throw new Error(`expected a member, got ${redeemed.reason}`);
 	return redeemed.user.id;
+}
+
+/** the reset link a member is mailed when they ask for one, once the background has settled. */
+async function resetLinkFor(email: string): Promise<string> {
+	const tasks: Promise<void>[] = [];
+	requestPasswordReset(auth, { email }, (task) => {
+		tasks.push(task);
+	});
+	await Promise.all(tasks);
+	const token = sent.at(-1)?.token;
+	if (token === undefined) throw new Error('no reset link was sent');
+	return token;
 }
 
 /** the `Cookie` header a browser would send back, from what a sign-in set. */
@@ -168,15 +199,21 @@ describe('removeMember', () => {
 	/**
 	 * a member can still hold a live link: a redeem that wrote the account and never reached its
 	 * stamp leaves one behind (./invitations.ts). removing them has to end it, or the link makes
-	 * the account again for as long as it has left to run.
+	 * the account again for as long as it has left to run — and it has to end that one alone.
 	 */
-	it('revokes a live invitation at the removed member’s address', async () => {
+	it('revokes a live invitation at the removed member’s address and no other', async () => {
 		const invited = await inviteMember(db, {
 			email: 'priya@example.org',
 			now: NOW,
 			invitedBy: null
 		});
 		if (!invited.ok) throw new Error('expected an invitation');
+		const colleague = await inviteMember(db, {
+			email: 'ana@example.org',
+			now: NOW,
+			invitedBy: null
+		});
+		if (!colleague.ok) throw new Error('expected an invitation');
 		const id = '019fb1c4-0000-7000-8000-00000000dead';
 		await db.insert(authUser).values({
 			id,
@@ -198,6 +235,32 @@ describe('removeMember', () => {
 		});
 		expect(redeemed).toEqual({ ok: false, reason: 'link' });
 		expect(await db.select().from(authUser)).toEqual([]);
+
+		expect(
+			await redeemInvitation(db, auth, {
+				token: colleague.token,
+				name: 'Ana',
+				password: PASSWORD,
+				headers: new Headers({ origin: ORIGIN }),
+				now: NOW
+			})
+		).toMatchObject({ ok: true, user: { email: 'ana@example.org' } });
+	});
+
+	/**
+	 * a link mailed before the removal is one more way back to an account that is gone. it answers
+	 * as any dead link does, rather than as a deployment fault.
+	 */
+	it('ends a reset link the removed member was mailed', async () => {
+		const id = await member('priya@example.org');
+		const token = await resetLinkFor('priya@example.org');
+
+		expect(await removeMember(db, { id, now: NOW })).toEqual({ ok: true, removed: 'member' });
+
+		expect(await resetMemberPassword(auth, { token, newPassword: NEW_PASSWORD })).toEqual({
+			ok: false,
+			reason: 'link'
+		});
 	});
 
 	it('revokes a pending invitation instead of deleting a member', async () => {

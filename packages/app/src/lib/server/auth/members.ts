@@ -1,5 +1,5 @@
 import { APIError } from 'better-auth/api';
-import { asc, eq, ne } from 'drizzle-orm';
+import { asc, ne } from 'drizzle-orm';
 import type { Db } from '$lib/server/db/client';
 import { authMemberInvitation, authUser } from '$lib/server/db/auth-schema';
 import type { Auth } from './index';
@@ -8,9 +8,9 @@ import {
 	liveInvitations,
 	normaliseEmail,
 	revokeInvitation,
-	revokeInvitationsOfUser
+	revokeInvitationsThenDeleteUser
 } from './invitations';
-import { deleteResetLinks } from './reset-links';
+import { deleteResetLinks, resetLinksDeletion } from './reset-links';
 import { STAFF_USER_EMAIL, STAFF_USER_ID } from './staff-plugin';
 
 // who can sign in besides the deployer, and the two things /admin/members does to that list.
@@ -105,6 +105,10 @@ export type RemoveResult =
  * a redeem that wrote the account and never reached its stamp leaves it behind (./invitations.ts)
  * — and left live it would make the account again for as long as it had to run.
  *
+ * **so is every reset link they were mailed** (./reset-links.ts). `auth_verification` has no key
+ * to `auth_user`, so nothing cascades to it, and a link that outlived the account would be one more
+ * way to ask for it back.
+ *
  * **the deployer is refused by name.** `STAFF_USER_ID` is a constant, so this is a comparison
  * rather than a query, and the row cannot be reached through the list either — `listMembers`
  * excludes it. both, because a route that took an id from a form is a route that can be posted an
@@ -117,8 +121,8 @@ export async function removeMember(
 	if (input.id === STAFF_USER_ID) return { ok: false, reason: 'staff' };
 
 	const [, deleted] = await db.batch([
-		revokeInvitationsOfUser(db, { userId: input.id, now: input.now }),
-		db.delete(authUser).where(eq(authUser.id, input.id)).returning({ id: authUser.id })
+		...revokeInvitationsThenDeleteUser(db, { userId: input.id, now: input.now }),
+		resetLinksDeletion(db, input.id)
 	]);
 	if (deleted.length > 0) return { ok: true, removed: 'member' };
 
@@ -190,14 +194,13 @@ export async function signInMember(
  * takes a request for a reset link and, where there is somebody to send one to, has one sent —
  * after the request has been answered.
  *
- * **an address nobody here has is answered exactly as a member's is, and in the same time.** the
- * caller has nothing to wait for and nothing to read: the lookup, the row a member's link is
- * written to and the mail all run in the task handed to `background`, the Worker's `waitUntil`, so
- * the request answers without waiting on any of it. awaited, a member's request would pay an
- * `auth_verification` INSERT where a stranger's pays a SELECT (better-auth's
- * `/request-password-reset`), and a stopwatch would say which. telling the two apart would turn
- * the form into a way to ask whether a given person works here, on a deployment whose donation
- * page names the organisation.
+ * **an address nobody here has is answered exactly as a member's is, and the answer waits on none
+ * of the work.** the caller has nothing to wait for and nothing to read: the lookup, the row a
+ * member's link is written to and the mail all run in the task handed to `background`, the
+ * Worker's `waitUntil`. awaited, a member's request would pay an `auth_verification` INSERT where a
+ * stranger's pays a SELECT (better-auth's `/request-password-reset`), and a stopwatch would say
+ * which. telling the two apart would turn the form into a way to ask whether a given person works
+ * here, on a deployment whose donation page names the organisation.
  *
  * **so a failure is the deployment's to read, never the requester's.** the auth layer refusing, an
  * instance built without a way to send, a database missing a table: each is logged inside the task
