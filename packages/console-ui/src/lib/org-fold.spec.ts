@@ -21,10 +21,9 @@ import { takesLogo } from './org-logo';
 // is no dom, so what is read here is the first draw: what each form would post is read off the
 // controls it draws, and no effect runs, so nothing here can see the list asked. when the list is
 // asked, including that neither watch asks as it is made, and what an answer fills are
-// ./ein-lookup.spec.ts's and ./org-search.spec.ts's,
-// what a press in the finder asks is ./org-search.spec.ts's, reaching the boxes and where focus
-// goes once a number is locked in are ./fold-boxes.spec.ts's, and the finder's states are
-// ./org-finder.spec.ts's.
+// ./ein-lookup.spec.ts's and ./org-search.spec.ts's, what a press in the finder asks is
+// ./org-search.spec.ts's, reaching the boxes and where focus goes once a number is locked in are
+// ./fold-boxes.spec.ts's, and the finder's states are ./org-finder.spec.ts's.
 
 const STORED = storedProfile({
 	legal_name: 'Riverside Community Food Bank',

@@ -137,11 +137,12 @@ import type {
 // **the IRS list fills the boxes and never saves them.** a whole EIN typed into its box is looked up
 // once (./ein-lookup.ts says when), and so is a number the finder locks in; either way a found
 // organisation's values go into the boxes the way typing them would, so the press is armed over them
-// and Save stores them like any edit. a number locked in replaces the whole legal identity, emptying
-// what the answer holds nothing for; a typed one fills around what the operator typed. what the list
-// says about the number stands under the EIN box in a region drawn before it speaks, and goes when
-// the box changes. the list is reached through the two calls the page hands in, so this names no
-// address and no binary route.
+// and Save stores them like any edit. a number locked in replaces the whole legal identity with
+// what the list found, or, where it found nothing, with the picked match's name, city and state,
+// and empties every box that source holds nothing for; a typed one fills around what the operator
+// typed. what the list says about the number stands under the EIN box in a region drawn before it
+// speaks, and goes when the box changes. the list is reached through the two calls the page hands
+// in, so this names no address and no binary route.
 //
 // **a value put into a box is made to say it changed**, and the mission is a textarea the fill has
 // to reach as well as the inputs — ./fold-boxes.ts holds both.
@@ -764,8 +765,9 @@ export function OrgFold({
 						    crop, and nothing is sent until that is saved. closed by `aria-disabled` while
 						    the page writes, so a reader standing on it keeps the focus. `data-logo` says a
 						    logo is held — drawn, under a press that is saving, or under the removal — which
-						    the sheet keeps the square's logo edge by while the word stands in or under the
-						    art. it is busy for a logo going on; a removal is Remove's own, and says so there. */}
+						    the sheet keeps the square's logo edge by while the word stands in for the art or
+						    under it. it is busy for a logo going on; a removal is Remove's own, and says so
+						    there. */}
 						<button
 							ref={choosePress}
 							type="button"

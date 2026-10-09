@@ -94,7 +94,7 @@ export type DragCarries = {
  * which the drop swaps in, and none for a file of any other type, which the drop ignores. the first
  * item's type is the file the drop would take. a drag listing no item, or an item with no type, is
  * shown as a copy and judged at the drop: a browser may withhold the type until then, and a file
- * that really has none is refused there.
+ * that really has none is ignored there.
  */
 export function dropEffect(carries: DragCarries): 'copy' | 'none' {
 	if (!carries.types.includes('Files')) return 'none';
