@@ -169,7 +169,7 @@ describe('a file dragged over the open crop', () => {
 		expect(dropEffect(dragging(type))).toBe('copy');
 	});
 
-	it.each(['image/svg+xml', 'image/heic', 'image/gif', 'application/pdf', ''])(
+	it.each(['image/svg+xml', 'image/heic', 'image/gif', 'application/pdf'])(
 		'shows none for %s, which the drop ignores',
 		(type) => {
 			expect(dropEffect(dragging(type))).toBe('none');
@@ -182,6 +182,11 @@ describe('a file dragged over the open crop', () => {
 
 	it('shows a copy where no item can be read yet, and leaves the file to the drop', () => {
 		expect(dropEffect(dragging())).toBe('copy');
+	});
+
+	// a browser may report no type until the drop; one that really has none is refused there.
+	it('shows a copy for an item with no type, and leaves the file to the drop', () => {
+		expect(dropEffect(dragging(''))).toBe('copy');
 	});
 
 	it('shows none for a drag that carries no file', () => {

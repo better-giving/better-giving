@@ -69,9 +69,10 @@ import { LOGO_REFUSED, type LogoRefusal, takesLogo } from './org-logo';
 // in `LOGO_REFUSED`'s own words, before anything is sent.
 //
 // **a file dropped anywhere on the open card replaces the image under the crop**, through
-// `onSwap`, when it is of a type a logo is taken in; anything else shows no copy as it is dragged
-// over, and is ignored if it is dropped. the card takes every drag and drop either way, so the
-// browser never opens a file in the console's place.
+// `onSwap`, when it is of a type a logo is taken in; a file of any other type shows no copy as it
+// is dragged over (`dropEffect` in ./logo-crop.ts), and anything else is ignored if it is dropped.
+// the card takes every drag and drop either way, so the browser never opens a file in the
+// console's place.
 
 export const CROP_TITLE = 'Crop the logo';
 export const SAVE_LOGO = 'Save logo';

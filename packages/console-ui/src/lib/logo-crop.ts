@@ -91,13 +91,15 @@ export type DragCarries = {
 
 /**
  * the `dropEffect` a drag over the open crop shows: a copy for a file of a type a logo is taken in,
- * which the drop swaps in, and none for anything else, which the drop ignores. the first item's type
- * is the file the drop would take; a drag listing no item is shown as a copy and judged at the drop.
+ * which the drop swaps in, and none for a file of any other type, which the drop ignores. the first
+ * item's type is the file the drop would take. a drag listing no item, or an item with no type, is
+ * shown as a copy and judged at the drop: a browser may withhold the type until then, and a file
+ * that really has none is refused there.
  */
 export function dropEffect(carries: DragCarries): 'copy' | 'none' {
 	if (!carries.types.includes('Files')) return 'none';
-	const first = carries.items[0];
-	return first === undefined || LOGO_TYPES.includes(first.type) ? 'copy' : 'none';
+	const type = carries.items[0]?.type ?? '';
+	return type === '' || LOGO_TYPES.includes(type) ? 'copy' : 'none';
 }
 
 /** the largest square that fits a box of `size`, centred in it: the square a crop opens on. */
