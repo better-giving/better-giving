@@ -45,8 +45,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 // framed by the preview route, the publish bar over it, the AI panel beside it
 // ($lib/admin/editor/chat-wiring.tsx, which asks an empty chat its opening questions — the mission
 // first while the profile has none, $lib/server/pages/draft.ts), and the Settings sheet behind
-// the bar's Edit by hand. the parts are $lib/admin/editor/'s. the Donation page has no name to edit
-// and no address of its own: the bar calls it "Donation page", and it is always at /donate.
+// the bar's Settings, beside Done while Edit is on. the parts are $lib/admin/editor/'s. the
+// Donation page has no name to edit and no address of its own: the bar calls it "Donation page",
+// and it is always at /donate.
 //
 // **the loader makes the page on first need** (`ensureDonationPage` in
 // $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens an editor rather
@@ -68,7 +69,7 @@ import type { Route } from './+types/_app.admin.donation-page';
 // their confirms are mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
-// preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
+// preview while Edit is on and by its row in Settings' block list alike, and the layout by Settings' pictures; each
 // writes the draft ($lib/server/pages/blocks.ts), as a campaign's editor does.
 // the donation box opens Donation settings, which are what it draws.
 
@@ -221,7 +222,7 @@ function DraftEditor({
 					state={state}
 					livePath="/donate"
 					{...presses.bar}
-					onEditByHand={() => {
+					onSettings={() => {
 						layoutPick.startClean();
 						setSettings(true);
 					}}

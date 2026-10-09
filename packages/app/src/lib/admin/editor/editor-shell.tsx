@@ -5,6 +5,7 @@ import {
 	useContext,
 	useEffect,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState
 } from 'react';
@@ -17,6 +18,11 @@ import {
 // opens is a sheet, and a sheet or a confirm the route renders is handed in as `children`: each is
 // a modal that lifts itself into the top layer, so where it stands in the tree decides nothing about
 // where it paints.
+//
+// **Edit is the shell's**: off, the preview is the page and a click in it does nothing; on, every
+// block in it is drawn as clickable and a click opens that block's sheet (./preview-frame.tsx), and
+// the bar's press reads Done, which turns it off (./publish-bar.tsx). the bar and the frame both
+// read it with `useEditing`, so a route mounting the two hands neither the state.
 //
 // **before the page's first draft there is no page to show**, so the shell is `undrafted`: no
 // preview, the panel alone in the body at a reading width (`alone` in ../chat/ai-panel.tsx), and a
@@ -43,6 +49,10 @@ const ReportChatOpening = createContext<(opening: boolean) => void>(() => {});
 /** the bar's AI press, for `ChatClosed` to hand the focus to. */
 const AiEntry = createContext<RefObject<HTMLButtonElement | null>>({ current: null });
 const Undrafted = createContext(false);
+const Editing = createContext<{ readonly on: boolean; readonly turn: (on: boolean) => void }>({
+	on: false,
+	turn: () => {}
+});
 
 export function EditorShell({
 	bar,
@@ -53,23 +63,27 @@ export function EditorShell({
 }: EditorShellProps) {
 	const [chatOpening, setChatOpening] = useState(false);
 	const aiEntry = useRef<HTMLButtonElement>(null);
+	const [editing, setEditing] = useState(false);
+	const edit = useMemo(() => ({ on: editing, turn: setEditing }), [editing]);
 	return (
 		<ReportChatOpening.Provider value={setChatOpening}>
 			<ChatOpeningFlag.Provider value={chatOpening}>
 				<AiEntry.Provider value={aiEntry}>
 					<Undrafted.Provider value={undrafted}>
-						<div className="adm-editor">
-							{bar}
-							<div className="adm-editor__body">
-								{undrafted ? null : (
-									<main className="adm-editor__preview" aria-label="Preview">
-										{preview}
-									</main>
-								)}
-								{panel}
+						<Editing.Provider value={edit}>
+							<div className="adm-editor">
+								{bar}
+								<div className="adm-editor__body">
+									{undrafted ? null : (
+										<main className="adm-editor__preview" aria-label="Preview">
+											{preview}
+										</main>
+									)}
+									{panel}
+								</div>
+								{children}
 							</div>
-							{children}
-						</div>
+						</Editing.Provider>
 					</Undrafted.Provider>
 				</AiEntry.Provider>
 			</ChatOpeningFlag.Provider>
@@ -88,6 +102,11 @@ export function useAiEntry(): {
 	readonly opening: boolean;
 } {
 	return { ref: useContext(AiEntry), opening: useContext(ChatOpeningFlag) };
+}
+
+/** whether Edit is on, and the way the bar's press turns it. */
+export function useEditing(): { readonly on: boolean; readonly turn: (on: boolean) => void } {
+	return useContext(Editing);
 }
 
 /** whether the page has never been drafted, as the shell was told. */

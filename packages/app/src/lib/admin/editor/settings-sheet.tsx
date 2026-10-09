@@ -11,8 +11,9 @@ import { PickRefusal, PicturePicker, type PictureOption } from './pictures';
 // the layout pictures apply the moment they are picked, here, with nothing to finish. a refused
 // layout pick is reported under the pictures, in a region there whenever they are.
 //
-// the block list is the keyboard's way to a block: a click on a block in the preview opens the same
-// block's sheet (./preview-frame.tsx), and a row here is that click for a reader who cannot point.
+// the block list is the keyboard's way to a block: a click on a block in the preview while Edit is
+// on opens the same block's sheet (./preview-frame.tsx), and a row here is that click for a reader
+// who cannot point.
 //
 // a campaign carries its name, address, goal and end date; the Donation page has none of the four.
 //

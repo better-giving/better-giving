@@ -60,9 +60,9 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
 // a campaign's editor, reached from the Campaigns list: its draft framed by the preview route, the
 // publish bar over it, the AI panel beside it ($lib/admin/editor/chat-wiring.tsx, which asks an
-// empty chat its opening questions), and the Settings sheet behind the bar's Edit by hand. the parts
-// are $lib/admin/editor/'s; what they read and the writes behind them are here and in
-// $lib/server/pages/queries.ts.
+// empty chat its opening questions), and the Settings sheet behind the bar's Settings, while Edit
+// is on. the parts are $lib/admin/editor/'s; what they read and the writes behind them are here and
+// in $lib/server/pages/queries.ts.
 //
 // **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
 // which the dashboard shows, its settings row's, which a gift's notices carry, and the draft's,
@@ -90,7 +90,7 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
 //
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
-// preview and by its row in Settings' block list alike, and the layout by Settings' pictures; each
+// preview while Edit is on and by its row in Settings' block list alike, and the layout by Settings' pictures; each
 // writes the draft ($lib/server/pages/blocks.ts), as the Donation page's editor does.
 // the donation box opens Donation settings, which are what it draws.
 //
@@ -527,7 +527,7 @@ function DraftEditor({
 					state={state}
 					livePath={address ?? undefined}
 					{...presses.bar}
-					onEditByHand={() => {
+					onSettings={() => {
 						layoutPick.startClean();
 						setSettings(true);
 					}}

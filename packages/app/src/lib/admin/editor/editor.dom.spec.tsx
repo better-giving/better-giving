@@ -88,7 +88,7 @@ function atWidth(wide: boolean) {
 beforeEach(() => atWidth(true));
 
 /** the bar as an editor draws it over a live Donation page, with the presses that open sheets. */
-function Bar({ onEditByHand, onAi }: { onEditByHand: () => void; onAi: () => void }) {
+function Bar({ onSettings, onAi }: { onSettings: () => void; onAi: () => void }) {
 	return (
 		<PublishBar
 			closeHref="/admin"
@@ -97,17 +97,17 @@ function Bar({ onEditByHand, onAi }: { onEditByHand: () => void; onAi: () => voi
 			publishing={false}
 			republished={false}
 			undoing={false}
-			onEditByHand={onEditByHand}
+			onSettings={onSettings}
 			onAi={onAi}
 		/>
 	);
 }
 
-describe('the Settings sheet opened from Edit by hand', () => {
+describe('the Settings sheet opened from Settings while Edit is on', () => {
 	function Editor() {
 		const [open, setOpen] = useState(false);
 		return (
-			<EditorShell bar={<Bar onEditByHand={() => setOpen(true)} onAi={() => {}} />} preview={null}>
+			<EditorShell bar={<Bar onSettings={() => setOpen(true)} onAi={() => {}} />} preview={null}>
 				{open ? (
 					<SettingsSheet
 						onDismiss={() => setOpen(false)}
@@ -125,7 +125,8 @@ describe('the Settings sheet opened from Edit by hand', () => {
 	}
 
 	function opened(root: HTMLElement): { entry: HTMLButtonElement; sheet: HTMLDialogElement } {
-		const entry = button(root, 'Edit by hand');
+		act(() => button(root, 'Edit').click());
+		const entry = button(root, 'Settings');
 		entry.focus();
 		act(() => entry.click());
 		const sheet = root.querySelector('dialog');
@@ -140,7 +141,7 @@ describe('the Settings sheet opened from Edit by hand', () => {
 		expect(document.activeElement).toBe(sheet);
 	});
 
-	it('goes on Escape and hands the focus back to Edit by hand', () => {
+	it('goes on Escape and hands the focus back to Settings', () => {
 		const root = routed(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => sheet.dispatchEvent(new Event('cancel', { cancelable: true })));
@@ -148,7 +149,7 @@ describe('the Settings sheet opened from Edit by hand', () => {
 		expect(document.activeElement).toBe(entry);
 	});
 
-	it('goes on its X and hands the focus back to Edit by hand', () => {
+	it('goes on its X and hands the focus back to Settings', () => {
 		const root = routed(<Editor />);
 		const { entry, sheet } = opened(root);
 		act(() => button(sheet, 'Close').click());
@@ -162,7 +163,7 @@ describe('the AI panel in the editor', () => {
 		const [open, setOpen] = useState(false);
 		return (
 			<EditorShell
-				bar={<Bar onEditByHand={() => {}} onAi={() => setOpen(true)} />}
+				bar={<Bar onSettings={() => {}} onAi={() => setOpen(true)} />}
 				preview={null}
 				panel={
 					<AiPanel
@@ -536,26 +537,43 @@ describe('the publish bar', () => {
 	const lines = (root: HTMLElement) =>
 		[...root.querySelectorAll('[role="menuitem"]')].map((one) => one.textContent?.trim());
 
-	it('offers Edit by hand, opening a sheet, and More holding the page’s other presses', () => {
-		const onEditByHand = vi.fn();
+	it('offers Edit, which reads Done while on with Settings beside it, and More holding the page’s other presses', () => {
+		const onSettings = vi.fn();
 		const root = routed(
-			<PublishBar
-				closeHref="/admin"
-				page={{ kind: 'donation' }}
-				state="changed"
-				livePath="/donate"
-				publishing={false}
-				republished={false}
-				undoing={false}
-				onDiscard={() => {}}
-				reset={{ hasEdits: true, onReset: () => {} }}
-				onEditByHand={onEditByHand}
+			<EditorShell
+				bar={
+					<PublishBar
+						closeHref="/admin"
+						page={{ kind: 'donation' }}
+						state="changed"
+						livePath="/donate"
+						publishing={false}
+						republished={false}
+						undoing={false}
+						onDiscard={() => {}}
+						reset={{ hasEdits: true, onReset: () => {} }}
+						onSettings={onSettings}
+					/>
+				}
+				preview={null}
 			/>
 		);
-		const edit = button(root, 'Edit by hand');
-		expect(edit.getAttribute('aria-haspopup')).toBe('dialog');
+		const edit = button(root, 'Edit');
+		expect(edit.hasAttribute('aria-haspopup')).toBe(false);
+		expect(names(root)).not.toContain('Settings');
+
+		edit.focus();
 		act(() => edit.click());
-		expect(onEditByHand).toHaveBeenCalledOnce();
+		expect(edit.textContent).toBe('Done');
+		expect(document.activeElement).toBe(edit);
+		const settings = button(root, 'Settings');
+		expect(settings.getAttribute('aria-haspopup')).toBe('dialog');
+		act(() => settings.click());
+		expect(onSettings).toHaveBeenCalledOnce();
+
+		act(() => edit.click());
+		expect(edit.textContent).toBe('Edit');
+		expect(names(root)).not.toContain('Settings');
 
 		expect(button(root, 'More').getAttribute('aria-haspopup')).toBe('menu');
 		expect(lines(root)).toEqual([
@@ -631,17 +649,17 @@ describe('the publish bar', () => {
 						republished={false}
 						onPublish={() => {}}
 						undoing={false}
-						onEditByHand={() => {}}
+						onSettings={() => {}}
 						onAi={() => {}}
 					/>
 				)
 			).filter((name) => name !== 'Close editor' && name !== 'Open /donate (opens in a new tab)');
 
 		atMiddle(false);
-		expect(presses()).toEqual(['Publish', 'Edit by hand', 'AI', 'More']);
+		expect(presses()).toEqual(['Publish', 'Edit', 'AI', 'More']);
 
 		atMiddle(true);
-		expect(presses()).toEqual(['Edit by hand', 'AI', 'More', 'Publish']);
+		expect(presses()).toEqual(['Edit', 'AI', 'More', 'Publish']);
 	});
 
 	it('offers Reset to default only once the page has edits', () => {
@@ -871,18 +889,34 @@ describe('the goal', () => {
 });
 
 describe('the preview frame', () => {
+	/** the frame in the editor, under the bar whose Edit turns it. */
 	function framed(onBlockClick: (id: string) => void) {
-		const root = mount(
-			<PreviewFrame
-				src="about:blank"
-				title="Preview of Winter coat drive"
-				onBlockClick={onBlockClick}
+		const root = routed(
+			<EditorShell
+				bar={<Bar onSettings={() => {}} onAi={() => {}} />}
+				preview={
+					<PreviewFrame
+						src="about:blank"
+						title="Preview of Winter coat drive"
+						onBlockClick={onBlockClick}
+					/>
+				}
 			/>
 		);
 		const frame = root.querySelector('iframe');
-		if (frame === null) throw new Error('no frame');
-		return frame;
+		if (frame === null || frame.contentWindow === null) throw new Error('no frame');
+		// the framed window is the boundary: what the editor tells it is recorded rather than sent
+		// into an empty document of another origin.
+		const told = vi.spyOn(frame.contentWindow, 'postMessage').mockImplementation(() => {});
+		return Object.assign(frame, { told });
 	}
+	/** the bar's Edit, or Done while it is on. */
+	const turnEdit = () => {
+		const press = [...document.querySelectorAll('button')].find(
+			(one) => one.textContent === 'Edit' || one.textContent === 'Done'
+		);
+		act(() => press?.click());
+	};
 	const post = (data: unknown, origin: string, source: Window | null) =>
 		act(() => {
 			window.dispatchEvent(new MessageEvent('message', { data, origin, source }));
@@ -936,6 +970,7 @@ describe('the preview frame', () => {
 	it('hands on a block id its own page posted, and nothing else on the channel', () => {
 		const onBlockClick = vi.fn();
 		const frame = framed(onBlockClick);
+		turnEdit();
 		const own = window.location.origin;
 		const message = { type: 'bg-page-block', id: 'b1' };
 
@@ -945,5 +980,36 @@ describe('the preview frame', () => {
 		post(message, own, frame.contentWindow);
 
 		expect(onBlockClick.mock.calls).toEqual([['b1']]);
+	});
+
+	it('hands on a click only while Edit is on, the preview being just the page with it off', () => {
+		const onBlockClick = vi.fn();
+		const frame = framed(onBlockClick);
+		const clicked = (id: string) =>
+			post({ type: 'bg-page-block', id }, window.location.origin, frame.contentWindow);
+
+		clicked('off-before');
+		turnEdit();
+		clicked('on');
+		turnEdit();
+		clicked('off-after');
+
+		expect(onBlockClick.mock.calls).toEqual([['on']]);
+	});
+
+	it('tells the page whether Edit is on at each press, and again when the page says it is ready', () => {
+		const frame = framed(() => {});
+		const own = window.location.origin;
+
+		turnEdit();
+		post({ type: 'bg-page-ready' }, own, frame.contentWindow);
+		turnEdit();
+		post({ type: 'bg-page-ready' }, own, window);
+
+		expect(frame.told.mock.calls).toEqual([
+			[{ type: 'bg-page-editing', on: true }, own],
+			[{ type: 'bg-page-editing', on: true }, own],
+			[{ type: 'bg-page-editing', on: false }, own]
+		]);
 	});
 });

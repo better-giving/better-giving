@@ -4,12 +4,12 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { type Ref, useId } from 'react';
 import { RouterLink } from '../router-link';
-import { useAiEntry, useUndrafted } from './editor-shell';
+import { useAiEntry, useEditing, useUndrafted } from './editor-shell';
 import { InPlaceName } from './in-place-name';
 import { useMiddle, useWide } from './wide';
 
 // the bar across the top of the editor: the way out, the page's name and where it stands, and the
-// presses that act on the whole page — Edit by hand, AI below the wide breakpoint, a More menu, and
+// presses that act on the whole page — Edit, AI below the wide breakpoint, a More menu, and
 // Publish.
 //
 // the editor's `h1` is here, naming the page being edited, and read by a screen reader only: the
@@ -17,8 +17,12 @@ import { useMiddle, useWide } from './wide';
 // which a heading cannot hold. the Donation page's drawn word is hidden from a screen reader for
 // that reason, so the name is not read twice.
 //
-// Edit by hand opens the Settings sheet, which holds everything the page is edited by. AI opens
-// the AI sheet, and is drawn only below the wide breakpoint (./wide.ts): from there the panel is
+// **Edit turns the editor's Edit on** (`useEditing` in ./editor-shell.tsx): the preview's blocks
+// are drawn as clickable, each opening its own sheet, and the press reads Done, which turns it off
+// again. it is one press whose words change, so the focus stays on it through both. while it is
+// on, Settings stands beside it and opens the Settings sheet: the page's layout, a campaign's
+// name, address, goal and end date, and the block list, which is the keyboard's way to a block.
+// AI opens the AI sheet, and is drawn only below the wide breakpoint (./wide.ts): from there the panel is
 // docked beside the preview and always open. it is busy from its press until the sheet is up
 // (`useAiEntry` in ./editor-shell.tsx), held with `aria-disabled` so the focus stays on it.
 //
@@ -45,14 +49,14 @@ import { useMiddle, useWide } from './wide';
 // state word's line and they take the line under it, so below it Publish comes first
 // (`useMiddle` in ./wide.ts).
 //
-// **nothing pressable does nothing.** a caller with no handler for Edit by hand, AI, Undo or
-// Discard changes gets no such press drawn — the editor over a draft it cannot read has neither
-// Settings nor a chat to open. Publish is the bar's one press that is always there, so without
+// **nothing pressable does nothing.** a caller with no handler for Settings, AI, Undo or Discard
+// changes gets no such press drawn, and with no Settings no Edit either — the editor over a draft
+// it cannot read has no blocks to click, nor Settings or a chat to open. Publish is the bar's one press that is always there, so without
 // `onPublish` it is drawn held — `aria-disabled`, the press turned away — and described by
 // `publishHeld`, which stands in the report region beside any refusal.
 //
 // **a page never drafted has nothing to edit or publish** (`undrafted` in ./editor-shell.tsx): the
-// bar draws its name, where it stands and More, and no Edit by hand, AI, Publish or Undo, whatever
+// bar draws its name, where it stands and More, and no Edit, AI, Publish or Undo, whatever
 // handlers it is handed — the AI panel is the whole editor then, and nothing opens it.
 
 /** where the page stands against what donors see. */
@@ -102,8 +106,8 @@ type PublishBarPage =
 type PublishBarProps = {
 	/** where the X goes: the dashboard or the Campaigns list. */
 	readonly closeHref: string;
-	/** opens the Settings sheet. absent: no Edit by hand is drawn. */
-	readonly onEditByHand?: (() => void) | undefined;
+	/** opens the Settings sheet, from Settings while Edit is on. absent: neither is drawn. */
+	readonly onSettings?: (() => void) | undefined;
 	/** opens the AI sheet, below the wide breakpoint. absent: no AI is drawn. */
 	readonly onAi?: (() => void) | undefined;
 	/** the Donation page, which has no name to edit, or a campaign and its name. */
@@ -135,7 +139,7 @@ type PublishBarProps = {
 
 export function PublishBar({
 	closeHref,
-	onEditByHand,
+	onSettings,
 	onAi,
 	page,
 	state,
@@ -162,6 +166,7 @@ export function PublishBar({
 	const middle = useMiddle();
 	const ai = useAiEntry();
 	const undrafted = useUndrafted();
+	const editing = useEditing();
 	const more: MenuItem[] = [];
 	if (live && livePath) more.push({ label: `Open ${livePath}`, href: livePath, newTab: true });
 	if (reset?.hasEdits) more.push({ label: 'Reset to default', onSelect: reset.onReset });
@@ -170,9 +175,18 @@ export function PublishBar({
 
 	const quiet = (
 		<div key="quiet" className="adm-publishbar__quiet">
-			{onEditByHand && !undrafted ? (
-				<Button type="button" mark="pencil" aria-haspopup="dialog" onClick={onEditByHand}>
-					Edit by hand
+			{onSettings && !undrafted ? (
+				<Button
+					type="button"
+					mark={editing.on ? 'check' : 'pencil'}
+					onClick={() => editing.turn(!editing.on)}
+				>
+					{editing.on ? 'Done' : 'Edit'}
+				</Button>
+			) : null}
+			{onSettings && !undrafted && editing.on ? (
+				<Button type="button" mark="settings" aria-haspopup="dialog" onClick={onSettings}>
+					Settings
 				</Button>
 			) : null}
 			{wide || !onAi || undrafted ? null : (
