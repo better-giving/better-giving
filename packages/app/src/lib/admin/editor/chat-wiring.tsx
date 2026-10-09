@@ -59,6 +59,16 @@ import { useWide } from './wide';
 // suggestions are offered only while no card is live and a reply has changed the page: before
 // that, the card is what drafts it, and a suggestion beside a card would skip it unanswered.
 //
+// **a page never drafted is `undrafted`**, the answer the editor's shell is drawn by
+// (./editor-shell.tsx): the editor's loader read it before any hand edit or accepted turn
+// (`drafted`), and no reply in the chat has changed it since. it is the routes' to hand the shell,
+// and the panel is `alone` while it holds. until the chat has loaded it is the loader's answer
+// alone, so the server draws the layout the chat will keep. the turn that first changes the page
+// ends it in the render it lands in. from the wide breakpoint the panel stays where it stood; below
+// it the panel goes, the preview is shown, and the focus goes to the AI press (`ChatClosed`), as
+// for a sheet the arrival opened. an empty chat is asked its opening questions in the panel, and
+// opens no sheet on arrival.
+//
 // the panel mounts once the chat has loaded rather than on an empty log: the log takes the chat it
 // opens on as already read ($lib/admin/chat/chat-log.tsx), and would speak the whole history as it
 // arrived. until then, below the wide breakpoint, `ChatOpening` stands in the sheet's place and
@@ -77,7 +87,7 @@ const SUGGESTIONS = ['Tell donors what each amount buys', 'Add a FAQ', 'Shorten 
  * whether a reply in `turns` changed the page: one that asks nothing and was accepted, so carries no
  * note but `fell-back`.
  */
-const drafted = (turns: readonly ChatMessage[]) =>
+const changedPage = (turns: readonly ChatMessage[]) =>
 	turns.some(
 		(turn) =>
 			turn.role === 'assistant' &&
@@ -175,18 +185,36 @@ function inFlight(
 /** the browser's IANA zone, which an end date the operator names is a day in. */
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-export function useEditorChat(url: string): {
+/**
+ * `drafted` is the editor's loader's answer: the page had been drafted, by hand or by an accepted
+ * turn, when it was read. absent, the page is taken as drafted.
+ */
+export function useEditorChat(
+	url: string,
+	drafted = true
+): {
 	open: () => void;
 	panel: ReactNode;
 	sheet: ReactNode;
+	undrafted: boolean;
 } {
 	const wide = useWide();
 	const [open, setOpen] = useState(false);
-	/** the sheet up, or last up, is one the arrival opened, rather than one an AI press did. */
+	/**
+	 * the panel up, or last up, is one no AI press opened: a sheet the arrival opened, or the panel
+	 * that was the whole editor before the first draft.
+	 */
 	const [openedOnArrival, setOpenedOnArrival] = useState(false);
 	const history = useFetcher<History>();
 	const turn = useFetcher<TurnAnswer>();
 	const opener = useFetcher<TurnAnswer>();
+	const undrafted = !drafted && (history.data === undefined || !changedPage(history.data.turns));
+	const [wasUndrafted, setWasUndrafted] = useState(undrafted);
+	if (undrafted !== wasUndrafted) {
+		setWasUndrafted(undrafted);
+		setOpen(false);
+		setOpenedOnArrival(!undrafted && !wide);
+	}
 	/** the chat read empty on arrival, so this visit asks its opening questions. */
 	const [asksOpening, setAsksOpening] = useState(false);
 	const [arrived, setArrived] = useState(false);
@@ -194,7 +222,7 @@ export function useEditorChat(url: string): {
 		setArrived(true);
 		if (history.data.turns.length === 0) {
 			setAsksOpening(true);
-			if (!wide) {
+			if (!wide && !undrafted) {
 				setOpen(true);
 				setOpenedOnArrival(true);
 			}
@@ -314,13 +342,14 @@ export function useEditorChat(url: string): {
 	const dismiss = () => setOpen(false);
 
 	const running = turn.state !== 'idle';
-	const sheet = wide ? null : !open ? (
-		openedOnArrival ? (
-			<ChatClosed />
-		) : null
-	) : history.data === undefined ? (
-		<ChatOpening />
-	) : null;
+	const sheet =
+		wide || undrafted ? null : !open ? (
+			openedOnArrival ? (
+				<ChatClosed />
+			) : null
+		) : history.data === undefined ? (
+			<ChatOpening />
+		) : null;
 	const turns = history.data?.turns;
 	const panel =
 		turns === undefined ? null : (
@@ -331,8 +360,9 @@ export function useEditorChat(url: string): {
 				onAnswer={answer}
 				open={open}
 				onDismiss={dismiss}
+				alone={undrafted}
 				opening={opening}
-				suggestions={liveAsk(turns) === null && drafted(turns) ? SUGGESTIONS : []}
+				suggestions={liveAsk(turns) === null && changedPage(turns) ? SUGGESTIONS : []}
 				imageSrc={imageSrc}
 				unsent={unsent}
 				answerRefusal={answerRefusal}
@@ -349,6 +379,7 @@ export function useEditorChat(url: string): {
 			setOpen(true);
 		},
 		panel,
-		sheet
+		sheet,
+		undrafted
 	};
 }

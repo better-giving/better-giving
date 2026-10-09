@@ -5856,6 +5856,16 @@
 		border-inline-start: var(--admin-hairline);
 	}
 
+	/* the panel as the whole editor, before the page's first draft: no preview beside it, so it is
+	   drawn at every width, at the column's measure and centred in the body, a hairline either side. */
+	.adm-aipanel--alone {
+		display: flex;
+		justify-self: center;
+		inline-size: 100%;
+		max-inline-size: var(--admin-measure-column);
+		border-inline: var(--admin-hairline);
+	}
+
 	/* the questions an asked turn puts, in one card under its words: each question a field or a group
 	   of chips, a stack step apart so a question's own parts read as one, then the two presses. the
 	   card is set on the page's ground inside its edge, which is what holds it apart from the turns

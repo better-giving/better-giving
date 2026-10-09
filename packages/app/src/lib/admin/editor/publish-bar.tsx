@@ -4,7 +4,7 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { type Ref, useId } from 'react';
 import { RouterLink } from '../router-link';
-import { useAiEntry } from './editor-shell';
+import { useAiEntry, useUndrafted } from './editor-shell';
 import { InPlaceName } from './in-place-name';
 import { useMiddle, useWide } from './wide';
 
@@ -50,6 +50,10 @@ import { useMiddle, useWide } from './wide';
 // Settings nor a chat to open. Publish is the bar's one press that is always there, so without
 // `onPublish` it is drawn held — `aria-disabled`, the press turned away — and described by
 // `publishHeld`, which stands in the report region beside any refusal.
+//
+// **a page never drafted has nothing to edit or publish** (`undrafted` in ./editor-shell.tsx): the
+// bar draws its name, where it stands and More, and no Edit by hand, AI, Publish or Undo, whatever
+// handlers it is handed — the AI panel is the whole editor then, and nothing opens it.
 
 /** where the page stands against what donors see. */
 export type PublishState =
@@ -157,6 +161,7 @@ export function PublishBar({
 	const wide = useWide();
 	const middle = useMiddle();
 	const ai = useAiEntry();
+	const undrafted = useUndrafted();
 	const more: MenuItem[] = [];
 	if (live && livePath) more.push({ label: `Open ${livePath}`, href: livePath, newTab: true });
 	if (reset?.hasEdits) more.push({ label: 'Reset to default', onSelect: reset.onReset });
@@ -165,12 +170,12 @@ export function PublishBar({
 
 	const quiet = (
 		<div key="quiet" className="adm-publishbar__quiet">
-			{onEditByHand ? (
+			{onEditByHand && !undrafted ? (
 				<Button type="button" mark="pencil" aria-haspopup="dialog" onClick={onEditByHand}>
 					Edit by hand
 				</Button>
 			) : null}
-			{wide || !onAi ? null : (
+			{wide || !onAi || undrafted ? null : (
 				<Button
 					ref={ai.ref}
 					type="button"
@@ -188,7 +193,7 @@ export function PublishBar({
 			{more.length === 0 ? null : <Menu label="More" items={more} />}
 		</div>
 	);
-	const done = (
+	const done = undrafted ? null : (
 		<div key="done" className="adm-publishbar__done">
 			<SaveButton
 				type="button"
