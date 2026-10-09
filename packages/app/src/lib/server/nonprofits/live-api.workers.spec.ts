@@ -15,7 +15,7 @@ describe('a spec that reaches the live nonprofit API unmocked', () => {
 	});
 
 	it('fails at its end where the lookup answered null over the refusal', async () => {
-		expect(await lookUpFiling('12-3456789')).toBeNull();
+		expect(await lookUpFiling('12-3456789', 'https://deployment.test')).toBeNull();
 		expect(refuseLiveApiCalls).toThrow(REFUSED);
 	});
 });
