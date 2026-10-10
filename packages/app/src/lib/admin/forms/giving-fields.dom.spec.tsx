@@ -216,9 +216,88 @@ it('puts a thumb at the end of the scale for a figure past the last stop', async
 it('leaves a thumb where it is while its box holds text that is not an amount', async () => {
 	const { upper, max } = bounds(group({ rows: [row(0)] }));
 
-	await type(max, '5,000');
+	await type(max, 'about 50');
 	expect(upper.getAttribute('aria-valuenow')).toBe(AT_500);
 	expect(upper.getAttribute('aria-valuetext')).toBe('$500');
+});
+
+// the boxes group thousands as they are typed and post what they posted before: the figure with
+// no separator in it, which is all `readAmount` reads.
+
+it('groups a bound’s thousands as it is typed, and moves its thumb on the figure', async () => {
+	const { upper, max } = bounds(group({ rows: [row(0)] }));
+
+	await type(max, '2000');
+
+	expect(max.value).toBe('2,000');
+	expect(upper.getAttribute('aria-valuetext')).toBe('$2,000');
+});
+
+it('draws a seed grouped once hydrated, and as stored before', () => {
+	const seeded = {
+		boxes: {
+			min_minor: { id: MIN_BOX, name: 'min_minor', defaultValue: '5' },
+			max_minor: { id: MAX_BOX, name: 'max_minor', defaultValue: '20000' }
+		},
+		amounts: {
+			id: GROUP,
+			rows: [{ ...row(0), defaultValue: '1500' }],
+			add: intent,
+			remove: () => intent
+		},
+		currency: 'USD'
+	};
+	const served = document.createElement('div');
+	served.innerHTML = renderToString(createElement(FormGivingFields, seeded));
+	const hydrated = mount(createElement(FormGivingFields, seeded));
+	const values = (root: HTMLElement) =>
+		[MAX_BOX, `${GROUP}[0]`].map(
+			(id) => root.querySelector<HTMLInputElement>(`[id="${id}"]`)?.value
+		);
+
+	expect(values(served)).toEqual(['20000', '1500']);
+	expect(values(hydrated)).toEqual(['20,000', '1,500']);
+});
+
+it('deletes the digit before a separator on a Backspace just after it', async () => {
+	const root = group({ rows: [row(0)] });
+	const box = input(root, 0);
+	await type(box, '12345');
+
+	await act(async () => {
+		box.setSelectionRange(3, 3);
+		box.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })
+		);
+	});
+
+	expect(box.value).toBe('1,345');
+	expect(box.selectionStart).toBe(1);
+});
+
+/**
+ * what the form posts. a browser raises `formdata` on the form for every reading of its boxes;
+ * happy-dom builds the data without raising it, so the case raises it as the browser would.
+ */
+function postedBy(form: HTMLFormElement): [string, FormDataEntryValue][] {
+	const data = new FormData(form);
+	form.dispatchEvent(Object.assign(new Event('formdata'), { formData: data }));
+	return [...data];
+}
+
+it('posts every amount without its separators', async () => {
+	const { root, form } = inForm({ min: '5', max: '500' });
+	const { min, max } = bounds(root);
+	await type(min, '1000');
+	await type(max, '250000.5');
+	await type(input(root, 0), '12500');
+	expect([min.value, max.value, input(root, 0).value]).toEqual(['1,000', '250,000.5', '12,500']);
+
+	expect(postedBy(form)).toEqual([
+		['min_minor', '1000'],
+		['max_minor', '250000.5'],
+		['suggested_amounts[0]', '12500']
+	]);
 });
 
 /** a key pressed on a thumb. the machine takes each event on a microtask after react's handler. */

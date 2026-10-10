@@ -16,6 +16,9 @@ import { groupAmountEntry, ungroupAmountEntry } from '$lib/forms/amounts';
 // digit in front of it. deleting the separator alone would leave the figure as it was, drawn back
 // the same, and the key would do nothing.
 
+/** a box a sum is typed in, as a field's handlers type it: an input, or the textarea it may draw. */
+type MoneyBox = HTMLInputElement | HTMLTextAreaElement;
+
 /**
  * where the caret goes in `shown` to stand after as many characters that are not `separator` as it
  * stood after at `caret` in `typed`.
@@ -36,7 +39,7 @@ function caretIn(shown: string, typed: string, caret: number, separator: string)
  * drawn and placed here, before react renders the same text: an input whose value already matches
  * is left alone, so the caret is not thrown to the end.
  */
-export function regroupAmountBox(box: HTMLInputElement, currency: string): string {
+export function regroupAmountBox(box: MoneyBox, currency: string): string {
 	const typed = box.value;
 	const entry = ungroupAmountEntry(typed, currency);
 	const shown = groupAmountEntry(entry, currency);
@@ -54,7 +57,7 @@ export function regroupAmountBox(box: HTMLInputElement, currency: string): strin
  * a keystroke's does — the text through the platform's own setter, which react has no copy of, and
  * an `input` raised — so the box's holder hears it as typing and groups it again.
  */
-export function deleteOverSeparator(event: KeyboardEvent<HTMLInputElement>, currency: string) {
+export function deleteOverSeparator(event: KeyboardEvent<MoneyBox>, currency: string) {
 	const box = event.currentTarget;
 	const at = box.selectionStart;
 	if (event.key !== 'Backspace' || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -62,7 +65,7 @@ export function deleteOverSeparator(event: KeyboardEvent<HTMLInputElement>, curr
 	if (box.value[at - 1] !== digitGrouping(currency).separator) return;
 	event.preventDefault();
 	const text = box.value.slice(0, at - 2) + box.value.slice(at - 1);
-	Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
+	Object.getOwnPropertyDescriptor(Object.getPrototypeOf(box), 'value')?.set?.call(box, text);
 	box.setSelectionRange(at - 2, at - 2);
 	box.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
 }

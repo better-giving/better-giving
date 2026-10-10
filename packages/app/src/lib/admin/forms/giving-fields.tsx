@@ -6,16 +6,27 @@ import {
 	type RowControl
 } from '@better-giving/operator/components/forms/RepeatingRows';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+	type FormEvent,
+	type KeyboardEvent,
+	type MouseEvent,
+	type ReactNode,
+	useEffect,
+	useRef,
+	useState
+} from 'react';
 import { formatMinorBrief, minorUnitDigits } from '$lib/donations/money';
 import {
+	groupAmountEntry,
 	MAX_SUGGESTED_AMOUNTS,
 	majorEntry,
 	readAmount,
-	TOO_MANY_SUGGESTED_AMOUNTS
+	TOO_MANY_SUGGESTED_AMOUNTS,
+	ungroupAmountEntry
 } from '$lib/forms/amounts';
 import { FORM_FIELD_LABELS } from '$lib/forms/fields';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
+import { deleteOverSeparator, regroupAmountBox } from '../amount-box';
 import { type Box, boxErrorId, boxProps, listPress, useHydrated } from '../use-admin-form';
 
 // what a donor may give: the currency the figures are in, the two bounds, and the amounts a donor
@@ -69,6 +80,14 @@ import { type Box, boxErrorId, boxProps, listPress, useHydrated } from '../use-a
 // each bound draws its own message, under its own box: `parseFormGiving` keys every sentence to the
 // box whose label it names, the two bounds being the right way round included. every box in this
 // group is bound the same way, the amounts' rows included.
+//
+// every box here is a money box (../amount-box.ts): its digits are grouped as they are typed, and
+// once the page has hydrated its seed is drawn grouped too. what is posted is what was posted
+// before any grouping: the form's `formdata` event, which a browser raises for every reading of
+// the form's boxes — conform's, the router's and the platform's own submit alike — takes the
+// separators out of each of these boxes' entries, so the parse reads the figure it always has.
+// before hydration nothing groups and nothing needs taking out, so a post made without script is
+// the boxes as typed. everything this group reads off a box itself reads it ungrouped.
 
 /**
  * the stops the bounds slider moves along, in major units, lowest first.
@@ -117,10 +136,17 @@ function marksOf(
 	return [{ ...lower, stop: Math.min(lower.stop, upper.stop) }, upper];
 }
 
-/** the text in the box `name` inside `within`, or `''` where no such box is there. */
-function textIn(within: HTMLFormElement | HTMLFieldSetElement | null, name: string): string {
+/**
+ * the text in the box `name` inside `within` with its separators taken out, or `''` where no such
+ * box is there.
+ */
+function textIn(
+	within: HTMLFormElement | HTMLFieldSetElement | null,
+	name: string,
+	currency: string
+): string {
 	const box = within?.elements.namedItem(name);
-	return box instanceof HTMLInputElement ? box.value : '';
+	return box instanceof HTMLInputElement ? ungroupAmountEntry(box.value, currency) : '';
 }
 
 /**
@@ -279,8 +305,8 @@ export function FormGivingFields({
 			settling = setTimeout(() => {
 				resetting.current = false;
 				const texts = [
-					textIn(form, boxes.min_minor.name),
-					textIn(form, boxes.max_minor.name)
+					textIn(form, boxes.min_minor.name, currency),
+					textIn(form, boxes.max_minor.name, currency)
 				] as const;
 				setMarks((held) => marksOf(texts, ladder, currency, held));
 			}, 0);
@@ -343,7 +369,7 @@ export function FormGivingFields({
 	): Mark => {
 		const box = bounds.current?.elements.namedItem(own);
 		if (stop === mark.stop || !(box instanceof HTMLInputElement)) return mark;
-		const held = readAmount(textIn(bounds.current, other), currency).minor;
+		const held = readAmount(textIn(bounds.current, other, currency), currency).minor;
 		const reached = ladder[stop] ?? 0;
 		const minor = held === null ? reached : cap(reached, held);
 		typeInto(box, majorEntry(minor, currency));
@@ -356,6 +382,38 @@ export function FormGivingFields({
 			step(marks[0], lower, min.name, max.name, Math.min),
 			step(marks[1], upper, max.name, min.name, Math.max)
 		]);
+	};
+
+	// the money boxes whose entries the form's `formdata` takes the separators out of.
+	const grouped = [
+		boxes.min_minor.name,
+		boxes.max_minor.name,
+		...amounts.rows.map((row) => row.name)
+	].join('\n');
+	useEffect(() => {
+		const form = bounds.current?.form;
+		if (!form) return;
+		const names = grouped.split('\n');
+		const ungroup = (event: FormDataEvent) => {
+			for (const name of names) {
+				const typed = event.formData.get(name);
+				if (typeof typed === 'string') {
+					event.formData.set(name, ungroupAmountEntry(typed, currency));
+				}
+			}
+		};
+		form.addEventListener('formdata', ungroup);
+		return () => form.removeEventListener('formdata', ungroup);
+	}, [grouped, currency]);
+
+	// a seed as a money box draws it, once there is script to group what is typed after it.
+	const seed = (box: Box) =>
+		hydrated && box.defaultValue !== undefined
+			? groupAmountEntry(box.defaultValue, currency)
+			: box.defaultValue;
+	const money = {
+		onKeyDown: (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+			deleteOverSeparator(event, currency)
 	};
 
 	// a box being typed in moves its thumb to the nearest stop, and never past the other thumb.
@@ -429,7 +487,9 @@ export function FormGivingFields({
 							inputMode="decimal"
 							required
 							{...boxProps(boxes.min_minor)}
-							onInput={(event) => typedLower(event.currentTarget.value)}
+							defaultValue={seed(boxes.min_minor)}
+							{...money}
+							onInput={(event) => typedLower(regroupAmountBox(event.currentTarget, currency))}
 							error={
 								boxes.min_minor.errors?.[0] === undefined ? undefined : (
 									<MarkedText text={boxes.min_minor.errors[0]} />
@@ -442,7 +502,9 @@ export function FormGivingFields({
 							inputMode="decimal"
 							required
 							{...boxProps(boxes.max_minor)}
-							onInput={(event) => typedUpper(event.currentTarget.value)}
+							defaultValue={seed(boxes.max_minor)}
+							{...money}
+							onInput={(event) => typedUpper(regroupAmountBox(event.currentTarget, currency))}
 							error={
 								boxes.max_minor.errors?.[0] === undefined ? undefined : (
 									<MarkedText text={boxes.max_minor.errors[0]} />
@@ -474,6 +536,11 @@ export function FormGivingFields({
 						// replacing the message's id (../use-admin-form.ts). the sentence goes over as a
 						// node for the reason the bounds' do.
 						...boxProps(row, { describedBy: suggestedHintId }),
+						defaultValue: seed(row),
+						...money,
+						onInput: (event: FormEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+							regroupAmountBox(event.currentTarget, currency);
+						},
 						key: row.key,
 						className: 'adm-num',
 						inputMode: 'decimal',
