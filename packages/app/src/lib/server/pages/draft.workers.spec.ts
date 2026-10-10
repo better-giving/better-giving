@@ -58,6 +58,15 @@ function turn(pageId: string, message: string, AI: { run: unknown }, extra: obje
 	);
 }
 
+/** what the chat says of a message turn whose reply was refused, and its retry too. */
+const REFUSED = 'I couldn’t make that change. Try saying it another way.';
+
+/** the lines a turn logs from now on: why a reply was refused, which the chat never says. */
+function warnings() {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	return () => warn.mock.calls.map(([line]) => String(line)).join('\n');
+}
+
 async function stored(pageId: string) {
 	const [row] = await db.select().from(page).where(eq(page.id, pageId));
 	if (!row) throw new Error('the page is gone');
@@ -145,24 +154,51 @@ describe('an accepted reply', () => {
 });
 
 describe('a refused reply', () => {
-	it('leaves the draft as it was, and the chat says why', async () => {
+	const NEON = { say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } };
+
+	it('asks the model once more, told why, and the second reply lands', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const AI = answering(NEON, {
+			say: 'Two-tone.',
+			page: { kind: 'merge', doc: { palette: 'duo' } }
+		});
+
+		const result = await turn(pageId, 'make it neon', AI);
+
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'accepted',
+			turns: [{ role: 'operator' }, { role: 'assistant', text: 'Two-tone.' }]
+		});
+		expect((await stored(pageId)).draft.palette).toBe('duo');
+		expect(AI.run).toHaveBeenCalledTimes(2);
+		const [, first] = AI.run.mock.calls[0] ?? [];
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		expect(second.messages.slice(0, first.messages.length)).toEqual(first.messages);
+		expect(second.messages.slice(first.messages.length)).toEqual([
+			{ role: 'assistant', content: JSON.stringify(NEON) },
+			{ role: 'user', content: expect.stringContaining('palette: ') }
+		]);
+	});
+
+	it('twice leaves the draft as it was, and the chat says so plainly, the reason in the log alone', async () => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
-		const AI = answering({ say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } });
+		const warned = warnings();
+		const AI = answering(NEON, NEON, { say: 'Two-tone.' });
 
 		const result = await turn(pageId, 'make it neon', AI);
 
 		expect((await stored(pageId)).draft).toEqual(before);
+		expect(AI.run).toHaveBeenCalledTimes(2);
 		expect(result).toMatchObject({
 			ok: true,
 			outcome: 'refused',
 			turns: [{ role: 'operator' }, { role: 'assistant', note: 'refused' }]
 		});
 		const [, answer] = await chat(pageId);
-		expect(answer).toMatchObject({
-			text: expect.stringMatching(/^I couldn’t apply that: palette: /),
-			note: 'refused'
-		});
+		expect(answer).toMatchObject({ text: REFUSED, note: 'refused' });
+		expect(warned()).toContain('palette: ');
 	});
 });
 
@@ -227,15 +263,14 @@ describe('a value the deployment does not hold', () => {
 	])('is refused for %s, and the draft stays as it was', async (_, set, reason) => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
+		const warned = warnings();
 
-		await turn(pageId, 'tidy the heading', answering({ say: 'Done.', set }));
+		await turn(pageId, 'tidy the heading', answering({ say: 'Done.', set }, { say: 'Done.', set }));
 
 		expect((await stored(pageId)).draft).toEqual(before);
 		const [, answer] = await chat(pageId);
-		expect(answer).toMatchObject({
-			text: expect.stringContaining(reason),
-			note: 'refused'
-		});
+		expect(answer).toMatchObject({ text: REFUSED, note: 'refused' });
+		expect(warned()).toContain(reason);
 	});
 });
 
@@ -412,18 +447,18 @@ describe('the Donation page', () => {
 		['a name', { name: 'Coats for Kids' }, 'name'],
 		['a goal', { goalMinor: 1_500_000 }, 'goal'],
 		['an end date', { endDate: '2026-12-31' }, 'end date']
-	])('asked for %s changes nothing, and the reply says why', async (_, set, what) => {
+	])('asked for %s changes nothing, and the log says why', async (_, set, what) => {
 		const before = { ...defaultDonationPage(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'donation_page', before);
+		const warned = warnings();
 
-		await turn(pageId, 'set it', answering({ say: 'Set.', set }));
+		await turn(pageId, 'set it', answering({ say: 'Set.', set }, { say: 'Set.', set }));
 
 		const after = await stored(pageId);
 		expect([after.draft, after.name]).toEqual([before, null]);
 		const [, answer] = await chat(pageId);
-		expect(answer?.text).toBe(
-			`I couldn’t apply that: the Donation page has no ${what}; only a campaign does`
-		);
+		expect(answer?.text).toBe(REFUSED);
+		expect(warned()).toContain(`the Donation page has no ${what}; only a campaign does`);
 	});
 });
 
@@ -455,18 +490,14 @@ describe('a credit-billed model that fails', () => {
 	});
 	it('that the default model then answers off the page is marked refused, since nothing changed', async () => {
 		const pageId = await insertPage(db, 'campaign');
-		const AI = answering(new Error('3036: insufficient credits'), {
-			say: 'Neon!',
-			page: { kind: 'merge', doc: { palette: 'neon' } }
-		});
+		const neon = { say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } };
+		const credits = new Error('3036: insufficient credits');
+		const AI = answering(credits, neon, credits, neon);
 
 		await turn(pageId, 'make it neon', AI, { AI_MODEL: 'anthropic/claude-sonnet-4.6' });
 
 		const [, answer] = (await readChat(db, pageId)) ?? [];
-		expect(answer).toMatchObject({
-			note: 'refused',
-			text: expect.stringMatching(/^I couldn’t apply that: palette: /)
-		});
+		expect(answer).toMatchObject({ note: 'refused', text: REFUSED });
 	});
 });
 
@@ -951,13 +982,14 @@ describe('a photo sent with a turn', () => {
 		);
 		const pageId = await insertPage(db, 'campaign');
 		const before = await stored(pageId);
-		const AI = answering({
+		const reply = {
 			say: 'Your photo is in the hero.',
 			page: {
 				kind: 'patch',
 				ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: imageId }]
 			}
-		});
+		};
+		const AI = answering(reply, reply);
 
 		expect(await turn(pageId, 'use the photo from the other campaign', AI)).toMatchObject({
 			outcome: 'refused'
@@ -1103,14 +1135,16 @@ describe('an illustration the reply asks for', () => {
 		async (_, ops, reason) => {
 			const pageId = await insertPage(db, 'campaign');
 			const before = await db.$count(image);
-			const AI = drawing({ say: 'A picture.', page: { kind: 'patch', ops } }, true);
+			const reply = { say: 'A picture.', page: { kind: 'patch', ops } };
+			const AI = answering(reply, reply);
+			AI.run.mockImplementationOnce(async () => picture());
+			const warned = warnings();
 
 			expect(await turn(pageId, 'a picture please', AI)).toMatchObject({ outcome: 'refused' });
 
-			expect(AI.run).toHaveBeenCalledTimes(1);
+			expect(AI.run).toHaveBeenCalledTimes(2);
 			expect(await db.$count(image)).toBe(before);
-			const [, answer] = await chat(pageId);
-			expect(answer?.text).toContain(reason);
+			expect(warned()).toContain(reason);
 		}
 	);
 
@@ -1259,11 +1293,12 @@ describe('a reply that asks', () => {
 	it('beside a page edit is refused, and the draft is untouched', async () => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
-		const AI = answering({
+		const reply = {
 			say: 'Asking.',
 			ask: GOAL_AND_END,
 			page: { kind: 'merge', doc: { palette: 'duo' } }
-		});
+		};
+		const AI = answering(reply, reply);
 
 		expect(await turn(pageId, 'two-tone', AI)).toMatchObject({ outcome: 'refused' });
 		expect((await stored(pageId)).draft).toEqual(before);
@@ -1665,7 +1700,8 @@ describe('answers to a second round of questions', () => {
 		expect(result).toEqual({
 			ok: false,
 			reason: 'refused_again',
-			text: 'I couldn’t apply that: a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
+			error:
+				'a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
 		});
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		expect((await stored(pageId)).draft).toEqual(before);
@@ -1682,27 +1718,34 @@ describe('answers to a second round of questions', () => {
 
 		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
 
-		expect(result).toMatchObject({ ok: false, reason: 'refused_again' });
+		expect(result).toEqual({
+			ok: false,
+			reason: 'refused_again',
+			error: expect.stringContaining('$99')
+		});
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		expect(await chat(pageId)).toHaveLength(4);
 	});
 
-	it('refused for anything but asking are refused as they stand, asking the model once', async () => {
+	it('refused for anything but asking ask the model once more, told why, and the second reply lands', async () => {
 		const pageId = await askingTwice();
-		const AI = answering(
-			{ say: 'Drafted.', set: { goalMinor: 9_900 } },
-			{ say: 'Drafted.', set: { goalMinor: 5000 } }
-		);
+		const refused = { say: 'Drafted.', set: { goalMinor: 9_900 } };
+		const AI = answering(refused, { say: 'Drafted.', set: { goalMinor: 5000 } });
 
 		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
 
-		expect(result).toEqual({
-			ok: false,
-			reason: 'refused',
-			text: expect.stringMatching(/^I couldn’t apply that: .*\$99/)
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'accepted',
+			turns: [{ role: 'operator' }, { role: 'assistant', text: 'Drafted.\nGoal set to $50.' }]
 		});
-		expect(AI.run).toHaveBeenCalledTimes(1);
-		expect(await chat(pageId)).toHaveLength(4);
+		expect(AI.run).toHaveBeenCalledTimes(2);
+		const [, first] = AI.run.mock.calls[0] ?? [];
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		expect(second.messages.slice(first.messages.length)).toEqual([
+			{ role: 'assistant', content: JSON.stringify(refused) },
+			{ role: 'user', content: expect.stringContaining('$99') }
+		]);
 	});
 });
 
@@ -1723,16 +1766,13 @@ describe('a figure in a question the model asked', () => {
 		]);
 		const before = (await stored(pageId)).draft;
 
-		const result = await answer(
-			pageId,
-			[{ id: 'size', value: 'No' }],
-			answering(heading('Help us reach $10,000'))
-		);
+		const reply = heading('Help us reach $10,000');
+		const result = await answer(pageId, [{ id: 'size', value: 'No' }], answering(reply, reply));
 
 		expect(result).toEqual({
 			ok: false,
-			reason: 'refused',
-			text: expect.stringContaining('$10,000')
+			reason: 'refused_again',
+			error: expect.stringContaining('$10,000')
 		});
 		expect((await stored(pageId)).draft).toEqual(before);
 	});
@@ -1794,7 +1834,8 @@ describe('a figure in a question the model asked', () => {
 		]);
 		await answer(pageId, [{ id: 'size', value: 'No' }], answering({ say: 'Drafted.' }));
 
-		const result = await turn(pageId, 'add a heading', answering(heading('Help us reach $10,000')));
+		const reply = heading('Help us reach $10,000');
+		const result = await turn(pageId, 'add a heading', answering(reply, reply));
 
 		expect(result).toMatchObject({ ok: true, outcome: 'refused' });
 	});
@@ -2121,13 +2162,14 @@ describe('the mission answered', () => {
 		const pageId = await opened();
 		const before = await readOrgProfile(db);
 
+		const reply = { say: 'Drafted.', set: { goalMinor: 9_900 } };
 		const result = await answer(
 			pageId,
 			[{ id: 'mission', value: 'Warm coats.' }],
-			answering({ say: 'Drafted.', set: { goalMinor: 9_900 } })
+			answering(reply, reply)
 		);
 
-		expect(result).toMatchObject({ ok: false, reason: 'refused' });
+		expect(result).toMatchObject({ ok: false, reason: 'refused_again' });
 		expect(await readOrgProfile(db)).toEqual(before);
 	});
 });

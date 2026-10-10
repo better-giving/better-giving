@@ -22,7 +22,8 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 // - `message`, or no `intent`: `message`, `imageIds` (a JSON array of stored image ids, `[]` for
 //   none) and `timeZone` (the browser's IANA zone, which an end date is a day in).
 // - `answers`: `answers`, a JSON array of `{ id, value }` answering the questions the chat's last
-//   turn asked, `[]` to skip them all, and `timeZone`.
+//   turn asked, `[]` to skip them all, and `timeZone`. a `tiers` question's value is its rows,
+//   `[{ amount, text }]`, each amount in minor units ($lib/page/questions.ts).
 // - `open`: `timeZone`. the editor posts it on opening a page; a chat with any turn is answered as
 //   it stands, outcome `unchanged`, and nothing is written.
 // a turn the edge refuses is a 400 whose `error` names the box, an answer by its index.
@@ -33,9 +34,10 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 // the 500 a turn that threw is caught into — caught, because a fetcher's thrown error lands on the
 // editor's error boundary and takes the editor with it. answers whose reply could not land write no
 // turn, so the questions stay asked and the same answers can be sent again: `unanswered` on the 503
-// where no model answered, `refused` on the 422 where the reply was refused, and `refused_again` on
-// the 422 where a reply to answers asked and the second reply asked for in its place was refused
-// too, each `error` the line the turn would have said.
+// where no model answered, its `error` the line the turn would have said, and `refused_again` on the
+// 422 where the reply was refused and the one retry after it too, its `error` why the second was:
+// words for the model and the log, never the operator's to read. a message whose reply was refused
+// twice is a turn like any other, its words the operator's plain line.
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const turns = await readChat(context.get(database), params.pageId);
@@ -144,9 +146,8 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 			);
 		case 'unanswered':
 			return data({ error: result.text, reason: 'unanswered' }, 503);
-		case 'refused':
 		case 'refused_again':
-			return data({ error: result.text, reason: result.reason }, 422);
+			return data({ error: result.error, reason: 'refused_again' }, 422);
 	}
 }
 

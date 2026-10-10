@@ -107,6 +107,13 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // null, so its block is left out as one with no photo is. a picture drawn for a turn that then goes
 // stale stays stored and placed nowhere.
 //
+// a reply `acceptReply` refuses, on a message or on answers, is asked for once more: the same
+// request with that reply after it and then why it was refused (`refusedOnce`), or
+// `ANSWERED_ALREADY` where it asked when it may not, and the second reply is the turn's in the
+// first's place, the first written nowhere. one retry a turn at most, so a turn asks the model at
+// most twice. why a reply was refused is words for the model and the log (`console.warn`), never
+// for the operator.
+//
 // four outcomes, each one assistant turn, its `note` the column's word for it:
 // - accepted: the draft is replaced. the assistant's words are the reply's `say` on one line, then
 //   a line naming each value `set` changed, each illustration made or not, and each thing
@@ -116,16 +123,14 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 //   `questions` hold them and its words are the reply's `say`. answers are to a round of questions
 //   counted over every asking turn in the chat, the opening's being round 1: a reply to round 1's
 //   may ask one more round, and the model is told so, and a reply to any later round's may not, and
-//   is told that. where one asks anyway, the model is asked once more, the same request with that
-//   reply and `ANSWERED_ALREADY` after it, and its second reply is the turn's in the first's place,
-//   the first written nowhere.
-// - refused: the draft is untouched and the turn says why.
+//   is told that, and one that asks anyway is refused.
+// - refused: the reply and its retry were both refused. the draft is untouched and the turn says
+//   so in `REFUSED_TWICE`'s plain words.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
 //   operator's fix where there is one. its `model` is the one `generate` asked.
 // answers whose reply is refused or unanswered write neither turn, so the questions stay the chat's
-// last turn and the same answers can be sent again: the caller hears `refused` or `unanswered`
-// with the words the turn would have said, and `refused_again` where the second reply, asked for
-// after the first asked, was refused too.
+// last turn and the same answers can be sent again: the caller hears `unanswered` with the words
+// the turn would have said, or `refused_again` with why the retry was refused.
 //
 // `acceptReply` reads the figures the operator stated out of their messages whole and out of each
 // answers turn's answers alone (`answerValueWords` in ../../page/questions.ts), never the prompts
@@ -148,7 +153,13 @@ export const TURN_IMAGES_MAX = 4;
  */
 const HISTORY_TURNS = 20;
 
-const REFUSED_PREFIX = 'I couldn’t apply that: ';
+/** a message turn's words where its reply was refused, and the one retry after it too. */
+const REFUSED_TWICE = 'I couldn’t make that change. Try saying it another way.';
+
+/** what the model is told after a reply refused for `reason`, before it is asked again. */
+function refusedOnce(reason: string) {
+	return `That reply could not be used, so nothing changed: ${reason}. Answer again with that put right, keeping to every rule.`;
+}
 
 /** what the model is told after a reply that asked where it may not, before it is asked again. */
 const ANSWERED_ALREADY =
@@ -215,12 +226,10 @@ export type TurnResult =
 	| { ok: false; reason: 'unknown_image'; imageId: string }
 	/** the chat's last turn asks nothing open: its questions were answered, or none were asked. */
 	| { ok: false; reason: 'answered' }
-	/**
-	 * answers whose reply was refused or that no model answered, or whose reply asked and the second
-	 * reply asked for in its place was refused (`refused_again`); `text` is what the turn would have
-	 * said.
-	 */
-	| { ok: false; reason: 'refused' | 'refused_again' | 'unanswered'; text: string }
+	/** answers no model answered; `text` is what the turn would have said. */
+	| { ok: false; reason: 'unanswered'; text: string }
+	/** answers whose reply was refused, and the one retry after it too; `error` is why, the model's to read. */
+	| { ok: false; reason: 'refused_again'; error: string }
 	| { ok: false; reason: 'invalid_answers'; error: string };
 
 /** a page's chat in order, or `null` where there is no such page. */
@@ -256,7 +265,7 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
  * is `answerWords` and whose `answers` are the answers read, then the model's reply as any turn's,
  * except that it may ask only where the questions were the chat's first round, and told the filing
  * where they were the opening's. a reply refused or unanswered writes no turn, and is answered with
- * the words its turn would have said.
+ * why it was refused, or the words its turn would have said.
  */
 export async function answerTurn(
 	db: Db,
@@ -449,17 +458,10 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 		return { ok: true, outcome, turns: entryPair(turns, entries) };
 	};
 
-	const failed = async (
-		outcome: 'refused' | 'unanswered',
-		assistant: NewTurn
-	): Promise<TurnResult> => {
-		if (turning.answering === null) return written(outcome, assistant);
-		return { ok: false, reason: outcome, text: assistant.text };
-	};
-
-	const unanswered = ({ model, operatorFix }: GenerateFailure) => {
+	const unanswered = async ({ model, operatorFix }: GenerateFailure): Promise<TurnResult> => {
 		const text = `No model answered, so nothing changed. ${operatorFix ?? 'Try again in a moment.'}`;
-		return failed('unanswered', assistantTurn(text, model, 'unanswered'));
+		if (turning.answering !== null) return { ok: false, reason: 'unanswered', text };
+		return written('unanswered', assistantTurn(text, model, 'unanswered'));
 	};
 
 	const placeable = [...turns.flatMap(imageIdsOf), ...operator.imageIds];
@@ -500,23 +502,30 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 	const first = await generate(env, request);
 	if (!first.ok) return unanswered(first);
 	const firstSettled = await settle(first.text);
-	const retry = !firstSettled.ok && firstSettled.askedAgain === true;
-	const answer = retry
-		? await generate(env, {
+	const answer = firstSettled.ok
+		? first
+		: await generate(env, {
 				...request,
 				messages: [
 					...request.messages,
 					{ role: 'assistant', content: first.text },
-					{ role: 'user', content: ANSWERED_ALREADY }
+					{
+						role: 'user',
+						content: firstSettled.askedAgain ? ANSWERED_ALREADY : refusedOnce(firstSettled.reason)
+					}
 				]
-			})
-		: first;
+			});
 	if (!answer.ok) return unanswered(answer);
-	const settled = retry ? await settle(answer.text) : firstSettled;
+	const settled = firstSettled.ok ? firstSettled : await settle(answer.text);
 	if (!settled.ok) {
-		const text = `${REFUSED_PREFIX}${settled.reason}`;
-		if (retry) return { ok: false, reason: 'refused_again', text };
-		return failed('refused', assistantTurn(text, answer.model, 'refused'));
+		const reasons = firstSettled.ok ? [] : [firstSettled.reason];
+		console.warn(
+			`a chat reply on page ${row.id} was refused twice: ${[...reasons, settled.reason].join('; then ')}`
+		);
+		if (turning.answering !== null) {
+			return { ok: false, reason: 'refused_again', error: settled.reason };
+		}
+		return written('refused', assistantTurn(REFUSED_TWICE, answer.model, 'refused'));
 	}
 	const { result, drawn } = settled;
 	const note = answer.fellBack ? 'fell-back' : null;
