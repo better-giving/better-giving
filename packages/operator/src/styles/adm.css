@@ -5891,33 +5891,37 @@
 		color: var(--admin-tone-blocker-ink);
 	}
 
-	/* the AI panel docked beside the preview, from the wide breakpoint (the layout layer): the
-	   sheet's body and foot above, standing in a column at the panel's measure with a hairline
-	   between it and the page, the one line on that edge. it draws no head: its name is the
-	   landmark's, held by a heading drawn to a reader alone. below the breakpoint it is not drawn —
-	   there the panel is a sheet — and this keeps the server's wide render of it off a phone until
-	   the page has read its width. packages/app/src/lib/admin/chat/ai-panel.tsx is the only thing
-	   that writes it. */
+	/* the AI panel floating over the preview's end edge, from the wide breakpoint: the sheet's body
+	   and foot above, in a column at the panel's measure and the editor body's full height, standing
+	   where a sheet stands. it covers the page rather than taking room from it, so it takes the one
+	   shadow (`--admin-elevation-dialog` in ./tokens.css) and no line: the shadow is its edge, and a
+	   hairline under it would draw that edge twice. no scrim — the page beside it stays readable and
+	   reachable. it draws no head: its name is the landmark's, held by a heading drawn to a reader
+	   alone. below the breakpoint the panel is a sheet and this is not written.
+	   packages/app/src/lib/admin/chat/ai-panel.tsx is the only thing that writes it. */
 	.adm-aipanel {
-		display: none;
+		position: absolute;
+		inset-block: 0;
+		inset-inline-end: 0;
+		display: flex;
 		flex-direction: column;
 		inline-size: var(--admin-measure-panel);
 		min-block-size: 0;
 		color: var(--admin-ink);
 		background: var(--admin-surface);
-		border-inline-start: var(--admin-hairline);
+		box-shadow: var(--admin-elevation-dialog);
 	}
 
-	/* the panel as the whole editor, before the page's first draft: no preview beside it, so it is
-	   drawn at every width, a column at the column's measure centred in the body, on the page's own
-	   ground and with no line either side — nothing stands beside it to be held apart from. */
+	/* the panel as the whole editor, before the page's first draft: no preview under it, so it
+	   stands in the body's flow at every width, a column at the column's measure centred there, on
+	   the page's own ground and with no edge — nothing is under it to be held apart from. */
 	.adm-aipanel--alone {
-		display: flex;
+		position: static;
 		justify-self: center;
 		inline-size: 100%;
 		max-inline-size: var(--admin-measure-column);
 		background: transparent;
-		border-inline-start: 0;
+		box-shadow: none;
 	}
 
 	/* the questions an asked turn puts, under its words: each question a field or a group of chips,
@@ -5989,9 +5993,9 @@
 	/* ---------- the page editor ---------------------------------------------------------------
 
 	   a route of its own outside the rail, for the Donation page and a campaign alike: the publish
-	   bar across the top, and under it the page's own preview with the AI panel docked at its end
-	   from the wide breakpoint (the layout layer); below it the panel is `.adm-sheet` above, as
-	   everything a bar press opens is. every part in this section is drawn by
+	   bar across the top, and under it the page's own preview across the whole width, with the AI
+	   panel floating over its end edge from the wide breakpoint; below it the panel is `.adm-sheet`
+	   above, as everything a bar press opens is. every part in this section is drawn by
 	   packages/app/src/lib/admin/editor/ and packages/app/src/lib/admin/chat/.
 
 	   space tiers, inside out: a picture's drawing space-2, a control group space-4, the bar's two
@@ -6009,9 +6013,10 @@
 		background: var(--admin-page);
 	}
 
-	/* the preview, and the docked panel beside it once there is room for one. one track until then:
-	   below the wide breakpoint the panel is a sheet in the top layer and takes no track. */
+	/* the preview, in one track at every width: the AI panel floats over it rather than taking a
+	   track, so nothing reflows as it comes and goes. the body is what the floating panel stands in. */
 	.adm-editor__body {
+		position: relative;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		min-block-size: 0;
@@ -6130,6 +6135,20 @@
 	/* no quieter press to draw is no line for them. */
 	.adm-publishbar__quiet:empty {
 		display: none;
+	}
+
+	/* the AI press's mark for a turn that landed while the panel was closed: a dot in the accent at
+	   the press's end corner, inside its padding, so the press keeps its size and the bar does not
+	   move. it is the mark of a completed write, which is the accent's (./tokens.css). */
+	.adm-publishbar__unread {
+		position: absolute;
+		inset-block-start: var(--admin-space-2);
+		inset-inline-end: var(--admin-space-2);
+		inline-size: var(--admin-space-4);
+		block-size: var(--admin-space-4);
+		/* raw-length-ok: 50% — a circle, which is a shape and not a step on the size scale. */
+		border-radius: 50%;
+		background: var(--admin-tone-done-mark);
 	}
 
 	/* Published and the Undo beside it, one pair, at the end of the line. */
@@ -8715,15 +8734,6 @@
 
 		.adm-sheet--wide {
 			inline-size: var(--admin-measure-dialog);
-		}
-
-		/* the editor's AI panel docked at the preview's end, at its own measure. */
-		.adm-editor__body {
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-
-		.adm-aipanel {
-			display: flex;
 		}
 
 		.adm-dest__full {

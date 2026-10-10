@@ -12,18 +12,24 @@ import {
 } from '../chat/ai-panel';
 import { liveAsk } from '../chat/chat-log';
 import type { CardAnswer } from '../chat/question-card';
-import { ChatClosed, ChatOpening } from './editor-shell';
+import { AiLayer, ChatClosed, ChatOpening } from './editor-shell';
 import { postPhoto, type UploadAnswer } from './photo-upload';
 import { useWide } from './wide';
 
-// the AI panel as both editors mount it: `panel` for the shell's slot beside the preview, `open`
-// for the bar's AI press, and `sheet` for what stands in the sheet's place below the wide breakpoint
-// while it is on its way or once it went. the chat is the page's chat route's
-// (src/routes/_app.admin.pages.$pageId.chat.ts), asked by fetchers held by the editor rather than
-// the panel, so a turn sent and closed on still lands: one loading the chat as the editor opens, at
-// either width, because whether it is empty decides the arrival; one posting the opening; one
-// posting each turn and each card's answers. from the wide breakpoint the panel is docked and shown
-// from the start; below it, from the AI press.
+// the AI panel as both editors mount it: `panel` for the shell's slot after the preview, `open`
+// for the bar's AI press, and `sheet` for the shell's children: `AiLayer`, which tells the bar
+// whether the panel is open and lets Settings and a clicked block close it, and what stands in the
+// panel's place while it is on its way or once it went (./editor-shell.tsx). the chat is the page's
+// chat route's (src/routes/_app.admin.pages.$pageId.chat.ts), asked by fetchers held by the editor
+// rather than the panel, so a turn sent and closed on still lands: one loading the chat as the
+// editor opens, because whether it is empty decides the arrival; one posting the opening; one
+// posting each turn and each card's answers.
+//
+// **a drafted page opens with the panel closed**, at every width, and the AI press opens it. it
+// stays open through a turn and the reply that lands, and goes on the AI press again, on Escape or
+// the sheet's X, and as the bar's Settings or a clicked block opens a sheet. a turn that lands while
+// it is closed marks the AI press unread until it is next opened, and moves no focus; a refusal that
+// landed that way is still there when it is, where one the operator has already read is cleared.
 //
 // a page never drafted whose chat reads empty on arrival is asked its opening questions: one `open`
 // post carrying the browser's zone, once per editor visit, so a chat a Reset or a Discard empties
@@ -52,8 +58,8 @@ import { useWide } from './wide';
 // the reply's words where no model answered (503 `unanswered`) or the reply was refused (422
 // `refused`), which mark a command in backticks the card draws as code. each refusal is held in
 // state, taken from each new answer the fetcher lands, because the fetcher's answer outlives the
-// sheet; it is cleared by the next send or answers, so a refusal repeated word for word still reads
-// as a new one, and by reopening the sheet.
+// panel; it is cleared by the next send or answers, so a refusal repeated word for word still reads
+// as a new one, and by reopening the panel on one already read.
 //
 // suggestions are offered only while no card is live and a reply has changed the page: before
 // that, the card is what drafts it, and a suggestion beside a card would skip it unanswered.
@@ -63,15 +69,15 @@ import { useWide } from './wide';
 // (`drafted`), and no reply in the chat has changed it since. it is the routes' to hand the shell,
 // and the panel is `alone` while it holds. until the chat has loaded it is the loader's answer
 // alone, so the server draws the layout the chat will keep. the turn that first changes the page
-// ends it in the render it lands in. from the wide breakpoint the panel stays where it stood; below
-// it the panel goes, the preview is shown, and a focus left on the document goes to the AI press
-// (`ChatClosed`). an empty chat is asked its opening questions in the panel, and opens no sheet on
-// arrival.
+// ends it in the render it lands in. from the wide breakpoint the panel stays open where it stood,
+// now floating over the preview; below it the panel goes, the preview is shown, and a focus left on
+// the document goes to the AI press (`ChatClosed`). an empty chat is asked its opening questions in
+// the panel, and opens no sheet on arrival.
 //
 // the panel mounts once the chat has loaded rather than on an empty log: the log takes the chat it
 // opens on as already read ($lib/admin/chat/chat-log.tsx), and would speak the whole history as it
-// arrived. until then, below the wide breakpoint, `ChatOpening` stands in the sheet's place and
-// holds the AI press busy (./editor-shell.tsx).
+// arrived. until then `ChatOpening` stands in the panel's place and holds the AI press busy
+// (./editor-shell.tsx).
 //
 // a photo is attached by the sheet's attach press, which resizes it in the browser and reports
 // here; the resized photo is posted at once to the images route (./photo-upload.ts) by its own
@@ -200,11 +206,12 @@ export function useEditorChat(
 	const wide = useWide();
 	const [open, setOpen] = useState(false);
 	/**
-	 * the panel last up is one no AI press opened: the panel that was the whole editor before the
-	 * first draft. closing what stands in its place below the wide breakpoint hands the focus to the
-	 * AI press (`ChatClosed`), since it has no opener of its own to hand it back to.
+	 * the panel was up and went, so `ChatClosed` stands in its place: what hands the focus to the AI
+	 * press when the panel took it down with it.
 	 */
-	const [openedOnArrival, setOpenedOnArrival] = useState(false);
+	const [went, setWent] = useState(false);
+	/** a turn landed while the panel was closed, and it has not been opened since. */
+	const [unread, setUnread] = useState(false);
 	const history = useFetcher<History>();
 	const turn = useFetcher<TurnAnswer>();
 	const opener = useFetcher<TurnAnswer>();
@@ -212,8 +219,9 @@ export function useEditorChat(
 	const [wasUndrafted, setWasUndrafted] = useState(undrafted);
 	if (undrafted !== wasUndrafted) {
 		setWasUndrafted(undrafted);
-		setOpen(false);
-		setOpenedOnArrival(!undrafted && !wide);
+		setUnread(false);
+		setOpen(!undrafted && wide);
+		setWent(!undrafted && !wide);
 	}
 	/** the page never drafted and its chat read empty on arrival: this visit asks the opening. */
 	const [asksOpening, setAsksOpening] = useState(false);
@@ -237,6 +245,8 @@ export function useEditorChat(
 	const [uploadAnswered, setUploadAnswered] = useState(upload.data);
 	if (turn.data !== answered) {
 		setAnswered(turn.data);
+		// `wasUndrafted` is the panel alone, shown, as the turn landed.
+		if (turn.data !== undefined && !open && !wasUndrafted) setUnread(true);
 		if (turn.data !== undefined && 'error' in turn.data) {
 			if (sent.answers) setAnswerRefusal(answersRefusal(turn.data));
 			else setUnsent({ text: sent.text, reason: unsentReason(turn.data) });
@@ -333,17 +343,19 @@ export function useEditorChat(
 		);
 	};
 
-	const dismiss = () => setOpen(false);
+	const close = () => {
+		if (!open) return;
+		setOpen(false);
+		setWent(true);
+	};
 
 	const running = turn.state !== 'idle';
-	const sheet =
-		wide || undrafted ? null : !open ? (
-			openedOnArrival ? (
-				<ChatClosed />
-			) : null
-		) : history.data === undefined ? (
-			<ChatOpening />
-		) : null;
+	const sheet = undrafted ? null : (
+		<>
+			<AiLayer open={open} unread={unread} onClose={close} />
+			{open ? history.data === undefined ? <ChatOpening /> : null : went ? <ChatClosed /> : null}
+		</>
+	);
 	const turns = history.data?.turns;
 	const panel =
 		turns === undefined ? null : (
@@ -353,7 +365,7 @@ export function useEditorChat(
 				onSend={send}
 				onAnswer={answer}
 				open={open}
-				onDismiss={dismiss}
+				onDismiss={close}
 				alone={undrafted}
 				opening={opening}
 				suggestions={liveAsk(turns) === null && changedPage(turns) ? SUGGESTIONS : []}
@@ -367,9 +379,12 @@ export function useEditorChat(
 
 	return {
 		open: () => {
-			setUnsent(undefined);
-			setAnswerRefusal(undefined);
-			setOpenedOnArrival(false);
+			if (!unread) {
+				setUnsent(undefined);
+				setAnswerRefusal(undefined);
+			}
+			setUnread(false);
+			setWent(false);
 			setOpen(true);
 		},
 		panel,

@@ -44,7 +44,7 @@ import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
 
 // the Donation page's editor, reached from the globe beside the organisation's name: its draft
-// framed by the preview route, the publish bar over it, the AI panel beside it
+// framed by the preview route, the publish bar over it, the AI panel its AI press opens
 // ($lib/admin/editor/chat-wiring.tsx, which asks a page never drafted its opening questions — the
 // mission first while the profile has none, $lib/server/pages/draft.ts), and the Settings sheet
 // behind the bar's Settings, beside Done while Edit is on. the parts are $lib/admin/editor/'s. the

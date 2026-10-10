@@ -9,8 +9,7 @@ import { InPlaceName } from './in-place-name';
 import { useMiddle, useWide } from './wide';
 
 // the bar across the top of the editor: the way out, the page's name and where it stands, and the
-// presses that act on the whole page — Edit, AI below the wide breakpoint, a More menu, and
-// Publish.
+// presses that act on the whole page — Edit, AI, a More menu, and Publish.
 //
 // the editor's `h1` is here, naming the page being edited, and read by a screen reader only: the
 // name the bar shows is the heading's words already, and a campaign's is a box to rename it in,
@@ -21,10 +20,12 @@ import { useMiddle, useWide } from './wide';
 // are drawn as clickable, each opening its own sheet, and the press reads Done, which turns it off
 // again. it is one press whose words change, so the focus stays on it through both. while it is
 // on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose block
-// list is the keyboard's way to a block. AI opens the AI sheet, and is drawn only below the wide
-// breakpoint (./wide.ts): from there the panel is docked beside the preview and always open. it is
-// busy from its press until the sheet is up (`useAiEntry` in ./editor-shell.tsx), held with
-// `aria-disabled` so the focus stays on it.
+// list is the keyboard's way to a block; it closes the AI panel as it does, since the two never
+// stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
+// ./editor-shell.tsx): `aria-expanded` says which, and below the wide breakpoint (./wide.ts), where
+// the panel is a sheet, `aria-haspopup` says it is a dialog. it is busy from its press until the
+// panel is up, held with `aria-disabled` so the focus stays on it. a turn that landed while the
+// panel was closed draws a mark at its corner, named for a reader, until the panel is next opened.
 //
 // **Publish reports at itself.** it is `SaveButton`, so a press in flight holds its focus and draws
 // its dots, and a republish reads "Published" with Undo beside it for as long as the caller says the
@@ -109,7 +110,7 @@ type PublishBarProps = {
 	readonly closeHref: string;
 	/** opens the Settings sheet, from Settings while Edit is on. absent: neither is drawn. */
 	readonly onSettings?: (() => void) | undefined;
-	/** opens the AI sheet, below the wide breakpoint. absent: no AI is drawn. */
+	/** opens the AI panel. absent: no AI is drawn. */
 	readonly onAi?: (() => void) | undefined;
 	/** the Donation page, which has no name to edit, or a campaign and its name. */
 	readonly page: PublishBarPage;
@@ -186,23 +187,37 @@ export function PublishBar({
 				</Button>
 			) : null}
 			{onSettings && !undrafted && editing.on ? (
-				<Button type="button" mark="settings" aria-haspopup="dialog" onClick={onSettings}>
+				<Button
+					type="button"
+					mark="settings"
+					aria-haspopup="dialog"
+					onClick={() => {
+						ai.close();
+						onSettings();
+					}}
+				>
 					Settings
 				</Button>
 			) : null}
-			{wide || !onAi || undrafted ? null : (
+			{!onAi || undrafted ? null : (
 				<Button
 					ref={ai.ref}
 					type="button"
 					mark="sparkles"
-					aria-haspopup="dialog"
+					aria-haspopup={wide ? undefined : 'dialog'}
+					aria-expanded={ai.open}
 					aria-busy={ai.opening || undefined}
 					aria-disabled={ai.opening || undefined}
 					onClick={() => {
-						if (!ai.opening) onAi();
+						if (ai.opening) return;
+						if (ai.open) ai.close();
+						else onAi();
 					}}
 				>
 					AI
+					{ai.unread ? (
+						<span className="adm-publishbar__unread" role="img" aria-label="New reply" />
+					) : null}
 				</Button>
 			)}
 			{more.length === 0 ? null : <Menu label="More" items={more} />}

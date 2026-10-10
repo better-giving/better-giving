@@ -285,8 +285,11 @@ describe('the AI panel', () => {
 });
 
 describe('the AI panel by width', () => {
-	it('is a column docked beside the preview from the wide breakpoint, named AI, with no way out', () => {
-		const { host } = mount(props({ open: false }));
+	it('floats from the wide breakpoint while open, named AI, no dialog and no X, the focus in its box', () => {
+		const { host, redraw } = mount(props({ open: false }));
+		expect(host.querySelector('.adm-aipanel')).toBeNull();
+
+		redraw(props({ open: true }));
 		const panel = one(host, '[role="complementary"]');
 
 		expect(document.getElementById(panel.getAttribute('aria-labelledby') ?? '')?.textContent).toBe(
@@ -294,7 +297,18 @@ describe('the AI panel by width', () => {
 		);
 		expect(host.querySelector('dialog')).toBeNull();
 		expect(panel.querySelector('button[aria-label="Close"]')).toBeNull();
-		expect(panel.querySelector('textarea')).not.toBeNull();
+		expect(document.activeElement).toBe(box(host));
+	});
+
+	it('hands Escape from inside it to `onDismiss` from the wide breakpoint', () => {
+		const onDismiss = vi.fn();
+		const { host } = mount(props({ onDismiss }));
+
+		act(() => {
+			box(host).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		});
+
+		expect(onDismiss).toHaveBeenCalledOnce();
 	});
 
 	it('is a sheet named AI below it, drawn only while open, and dismissed by its X', () => {
