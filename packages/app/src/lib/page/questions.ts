@@ -8,17 +8,25 @@
 // choice, so a choice's answer is one of its options or the Other words, and a several-choices
 // answer holds at most one string that is not an option.
 //
+// a `tiers` question asks what amounts do, a row per amount: its rows are the model's guess, every
+// amount and the words where it has them, and an example per row may stand where the words are
+// empty. its answer is rows the operator wrote, each an amount and what it does, held to the bound
+// of what an impact tier buys in ./catalog.ts, since each becomes one. an `amount` question's
+// prefill and example are minor units.
+//
 // the operator turn's text is `answerWords`, one line per answered question, its prompt and its
-// answer, an amount in dollars and a day in words; the model reads those words. ./accept-reply.ts
-// reads a figure the operator stated out of `answerValueWords` alone, the answers without their
-// prompts: a prompt is the model's words, and "Is your goal $10,000 or more?" answered "No" states
-// no figure. an option the operator picked is their answer, figure and all.
+// answer, an amount in dollars, a day in words and a tier as its amount and words; the model reads
+// those words. ./accept-reply.ts reads a figure the operator stated out of `answerValueWords`
+// alone, the answers without their prompts: a prompt is the model's words, and "Is your goal
+// $10,000 or more?" answered "No" states no figure. an option the operator picked is their answer,
+// figure and all, and a tiers row is their saying what its amount does.
 //
 // pure and not under `$lib/server/**`, beside the catalog its replies edit.
 import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
 import { FORM_CURRENCY } from '../forms/amounts';
 import { CAMPAIGN_TYPE_DETAILS, type CampaignType } from './campaign-types';
+import { BUYS_MAX, TIERS_MAX } from './catalog';
 import { dayWords } from './end-date';
 import type { PageType } from './keys';
 
@@ -65,6 +73,41 @@ const options = z
 		error: '"Other" is added to every choice by the card, so it is never an option'
 	});
 
+const minor = z
+	.int({ error: 'is an amount in minor units' })
+	.positive({ error: 'is more than nothing' });
+
+/** an impact tier's amounts: 1 to `TIERS_MAX` of them, each listed once. */
+function tierRows<Row extends z.ZodType<{ amount: number }>>(row: Row) {
+	return z
+		.array(row)
+		.min(1, { error: `a tiers question holds 1 to ${TIERS_MAX} rows` })
+		.max(TIERS_MAX, { error: `a tiers question holds 1 to ${TIERS_MAX} rows` })
+		.refine((rows) => new Set(rows.map(({ amount }) => amount)).size === rows.length, {
+			error: 'an amount is listed twice'
+		});
+}
+
+const tiersQuestion = z
+	.strictObject({
+		...common,
+		kind: z.literal('tiers'),
+		// the model's guess: every amount, and what it does where it can say.
+		rows: tierRows(
+			z.strictObject({ amount: minor, text: plain(BUYS_MAX, 'what a tier does').optional() })
+		),
+		// an example of what each row's amount does, by index, shown where its words are empty.
+		placeholders: z
+			.array(plain(BUYS_MAX, 'an example'))
+			.max(TIERS_MAX, { error: 'a tiers question gives at most one example per row' })
+			.optional()
+	})
+	.refine(({ rows, placeholders = [] }) => placeholders.length <= rows.length, {
+		error: 'a tiers question gives at most one example per row',
+		path: ['placeholders']
+	});
+export type TiersQuestion = z.infer<typeof tiersQuestion>;
+
 const questionSchema = z.discriminatedUnion('kind', [
 	z.strictObject({ ...common, kind: z.literal('choice'), options }),
 	z.strictObject({ ...common, kind: z.literal('choices'), options }),
@@ -74,8 +117,14 @@ const questionSchema = z.discriminatedUnion('kind', [
 		placeholder: plain(PLACEHOLDER_MAX, 'placeholder').optional(),
 		prefill: plain(WORDS_MAX, 'prefill').optional()
 	}),
-	z.strictObject({ ...common, kind: z.literal('amount') }),
-	z.strictObject({ ...common, kind: z.literal('date') })
+	z.strictObject({
+		...common,
+		kind: z.literal('amount'),
+		placeholder: minor.optional(),
+		prefill: minor.optional()
+	}),
+	z.strictObject({ ...common, kind: z.literal('date') }),
+	tiersQuestion
 ]);
 export type Question = z.infer<typeof questionSchema>;
 
@@ -96,8 +145,18 @@ export function readAsk(
 		: { ok: false, reason: issueText(read.error) };
 }
 
-/** one answer: the option or Other words, a list of those, the words, minor units, or a day. */
-export type Answer = { id: string; value: string | string[] | number };
+/** a `tiers` answer's row: an amount in minor units and what it does, in the operator's words. */
+export type TierAnswer = { amount: number; text: string };
+
+/**
+ * one answer: the option or Other words, a list of those, the words, minor units, a day, or a
+ * tiers question's rows.
+ */
+export type Answer = { id: string; value: string | string[] | number | TierAnswer[] };
+
+const tierAnswer = tierRows(
+	z.strictObject({ amount: minor, text: plain(BUYS_MAX, 'what a tier does') })
+);
 
 const words = z
 	.string()
@@ -126,9 +185,9 @@ function answerSchema(question: Question): z.ZodType<Answer['value']> {
 		case 'text':
 			return words;
 		case 'amount':
-			return z
-				.int({ error: 'is an amount in minor units' })
-				.positive({ error: 'is more than nothing' });
+			return minor;
+		case 'tiers':
+			return tierAnswer;
 		case 'date':
 			return z
 				.string()
@@ -189,10 +248,16 @@ export function answeredLines(
 				: kind === 'date' && typeof value === 'string'
 					? dayWords(value)
 					: Array.isArray(value)
-						? value.join(', ')
+						? value.map(choiceOrTier).join(kind === 'tiers' ? '; ' : ', ')
 						: String(value);
 		return [{ id, prompt, words: said }];
 	});
+}
+
+function choiceOrTier(one: string | TierAnswer) {
+	return typeof one === 'string'
+		? one
+		: `${formatMinorBrief(one.amount, FORM_CURRENCY)}: ${one.text}`;
 }
 
 /** the operator turn's text for `answers`: one line per answered question, the model's to read. */
@@ -223,7 +288,8 @@ export function answerValueWords(
 export const MISSION_QUESTION = {
 	id: 'mission',
 	kind: 'text',
-	prompt: 'Your mission, in a sentence'
+	prompt: 'Your mission, in a sentence',
+	placeholder: 'We help families in our city find a stable home'
 } as const satisfies Question;
 
 const DONATION_PAGE_STARTER: readonly Question[] = [
@@ -252,7 +318,7 @@ const DONATION_PAGE_STARTER: readonly Question[] = [
 		prompt: 'Which ways to give should stand out?',
 		options: ['One-time gifts', 'Monthly gifts', 'Gifts in someone’s honour']
 	},
-	{ id: 'typical-gift', kind: 'amount', prompt: 'A typical gift' }
+	{ id: 'typical-gift', kind: 'amount', prompt: 'A typical gift', placeholder: 5_000 }
 ];
 
 /**

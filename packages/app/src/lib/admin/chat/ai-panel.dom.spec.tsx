@@ -159,23 +159,21 @@ describe('the AI panel', () => {
 		expect(mine?.textContent).toBe('Why is `AI` missing?');
 	});
 
-	it('draws a line under a reply that did not fit the page, and under no other', () => {
+	it('draws a refused turn as its own words alone', () => {
+		const refused = 'I couldn’t make that change. Try saying it another way.';
 		const { host } = mount(
 			props({
 				messages: [
 					...HISTORY,
 					{ id: 't3', role: 'operator', text: 'Put the box first' },
-					{ id: 't4', role: 'assistant', text: 'I moved the box to the top.', note: 'refused' }
+					{ id: 't4', role: 'assistant', text: refused, note: 'refused' }
 				]
 			})
 		);
-		const turns = [...one(host, '.adm-chat__log').querySelectorAll('.adm-chat__turn')];
-		const turnOf = (words: string) => turns.find((turn) => turn.textContent?.startsWith(words));
-		const refused =
-			'That reply didn’t fit the page, so nothing changed. Ask again, or say it another way.';
+		const turn = [...one(host, '.adm-chat__log').querySelectorAll('.adm-chat__turn')].at(-1);
 
-		expect(turnOf('I moved the box to the top.')?.textContent).toContain(refused);
-		expect(turnOf('I moved the page to the warm shade.')?.textContent).not.toContain(refused);
+		expect(turn?.textContent).toBe(refused);
+		expect(turn?.querySelectorAll('p')).toHaveLength(1);
 	});
 
 	it('says a reply is being written on a turn after the first, and falls silent when it lands', () => {

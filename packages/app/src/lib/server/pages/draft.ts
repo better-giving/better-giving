@@ -11,13 +11,13 @@ import {
 	type IllustrationRequest,
 	illustrationRequests,
 	type Refused,
-	REPLY_JSON_SCHEMA,
 	readReply,
+	replyJsonSchema,
 	SAY_MAX
 } from '../../page/accept-reply';
 import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog, switchRules } from '../../page/ai-catalog';
 import { CAMPAIGN_TYPE_DETAILS, type CampaignType } from '../../page/campaign-types';
-import type { Page } from '../../page/catalog';
+import { BUYS_MAX, type Page, TIERS_MAX } from '../../page/catalog';
 import { placedImageIds } from '../../page/illustration';
 import { listed } from '../../page/refusal';
 import { dayOf, dayWords, endDayOf } from '../../page/end-date';
@@ -44,6 +44,8 @@ import {
 	type Question,
 	QUESTIONS_MAX,
 	readAnswers,
+	type Answer,
+	type TierAnswer,
 	readAsk,
 	starterQuestions
 } from '../../page/questions';
@@ -76,7 +78,8 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // all), its type, a campaign's type label, name, goal, end date, donation settings and where its
 // donation box opens, with the wording each switch that is on asks for (`switchRules`), its shade,
 // corners, share buttons and share message, the profile's mission, vision and brand colour, the
-// active programs, and what it said so far: each accepted or asking exchange as the operator's
+// active programs — and `set.programId` is offered, in the prompt and the reply's schema alike,
+// only while one is — and what it said so far: each accepted or asking exchange as the operator's
 // message and the reply's `say`, cut at `SAY_MAX`, an ask with its questions beside its `say` and
 // an answers turn as the words it was composed into. an opening ask follows the request an opening is
 // asked with. which model is `generate`'s, never the chat's.
@@ -104,6 +107,13 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // null, so its block is left out as one with no photo is. a picture drawn for a turn that then goes
 // stale stays stored and placed nowhere.
 //
+// a reply `acceptReply` refuses, on a message or on answers, is asked for once more: the same
+// request with that reply after it and then why it was refused (`refusedOnce`), or
+// `ANSWERED_ALREADY` where it asked when it may not, and the second reply is the turn's in the
+// first's place, the first written nowhere. one retry a turn at most, so a turn asks the model at
+// most twice. why a reply was refused is words for the model and the log (`console.warn`), never
+// for the operator.
+//
 // four outcomes, each one assistant turn, its `note` the column's word for it:
 // - accepted: the draft is replaced. the assistant's words are the reply's `say` on one line, then
 //   a line naming each value `set` changed, each illustration made or not, and each thing
@@ -113,20 +123,19 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 //   `questions` hold them and its words are the reply's `say`. answers are to a round of questions
 //   counted over every asking turn in the chat, the opening's being round 1: a reply to round 1's
 //   may ask one more round, and the model is told so, and a reply to any later round's may not, and
-//   is told that. where one asks anyway, the model is asked once more, the same request with that
-//   reply and `ANSWERED_ALREADY` after it, and its second reply is the turn's in the first's place,
-//   the first written nowhere.
-// - refused: the draft is untouched and the turn says why.
+//   is told that, and one that asks anyway is refused.
+// - refused: the reply and its retry were both refused. the draft is untouched and the turn says
+//   so in `REFUSED_TWICE`'s plain words.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
 //   operator's fix where there is one. its `model` is the one `generate` asked.
 // answers whose reply is refused or unanswered write neither turn, so the questions stay the chat's
-// last turn and the same answers can be sent again: the caller hears `refused` or `unanswered`
-// with the words the turn would have said, and `refused_again` where the second reply, asked for
-// after the first asked, was refused too.
+// last turn and the same answers can be sent again: the caller hears `unanswered` with the words
+// the turn would have said, or `refused_again` with why the retry was refused.
 //
 // `acceptReply` reads the figures the operator stated out of their messages whole and out of each
 // answers turn's answers alone (`answerValueWords` in ../../page/questions.ts), never the prompts
-// the model wrote, though the model reads both.
+// the model wrote, though the model reads both, and each `tiers` answer's rows as the operator
+// saying what those amounts do, on that turn and every later one.
 //
 // the operator's turn is inserted first, and everything after it lands only where it did. an
 // accepted turn's is guarded on the draft text the reply was built against, so a hand edit or a
@@ -144,7 +153,13 @@ export const TURN_IMAGES_MAX = 4;
  */
 const HISTORY_TURNS = 20;
 
-const REFUSED_PREFIX = 'I couldn’t apply that: ';
+/** a message turn's words where its reply was refused, and the one retry after it too. */
+const REFUSED_TWICE = 'I couldn’t make that change. Try saying it another way.';
+
+/** what the model is told after a reply refused for `reason`, before it is asked again. */
+function refusedOnce(reason: string) {
+	return `That reply could not be used, so nothing changed: ${reason}. Answer again with that put right, keeping to every rule.`;
+}
 
 /** what the model is told after a reply that asked where it may not, before it is asked again. */
 const ANSWERED_ALREADY =
@@ -211,12 +226,10 @@ export type TurnResult =
 	| { ok: false; reason: 'unknown_image'; imageId: string }
 	/** the chat's last turn asks nothing open: its questions were answered, or none were asked. */
 	| { ok: false; reason: 'answered' }
-	/**
-	 * answers whose reply was refused or that no model answered, or whose reply asked and the second
-	 * reply asked for in its place was refused (`refused_again`); `text` is what the turn would have
-	 * said.
-	 */
-	| { ok: false; reason: 'refused' | 'refused_again' | 'unanswered'; text: string }
+	/** answers no model answered; `text` is what the turn would have said. */
+	| { ok: false; reason: 'unanswered'; text: string }
+	/** answers whose reply was refused, and the one retry after it too; `error` is why, the model's to read. */
+	| { ok: false; reason: 'refused_again'; error: string }
 	| { ok: false; reason: 'invalid_answers'; error: string };
 
 /** a page's chat in order, or `null` where there is no such page. */
@@ -239,7 +252,7 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 		turns,
 		operator: operatorTurn(request.message, [...request.imageIds], null),
 		said: withImages(request.message, request.imageIds),
-		stated: request.message,
+		stated: { author: 'operator', text: request.message },
 		answering: null,
 		filingOrigin: null,
 		timeZone: request.timeZone,
@@ -252,7 +265,7 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
  * is `answerWords` and whose `answers` are the answers read, then the model's reply as any turn's,
  * except that it may ask only where the questions were the chat's first round, and told the filing
  * where they were the opening's. a reply refused or unanswered writes no turn, and is answered with
- * the words its turn would have said.
+ * why it was refused, or the words its turn would have said.
  */
 export async function answerTurn(
 	db: Db,
@@ -275,7 +288,7 @@ export async function answerTurn(
 		turns,
 		operator,
 		said: answersMessage(words),
-		stated: answerValueWords(questions, read.answers),
+		stated: answersStated(questions, read.answers),
 		answering: {
 			guard: sql`not exists (select 1 from ${chatTurn} where ${chatTurn.pageId} = ${row.id} and ${chatTurn.seq} > ${last.seq})`,
 			round: turns.filter((turn) => turn.questions !== null).length
@@ -314,7 +327,7 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 	const answer = await generate(env, {
 		system: systemPrompt(context),
 		messages: [{ role: 'user', content: openingRequest(missionEmpty, row.campaignType) }],
-		jsonSchema: REPLY_JSON_SCHEMA
+		jsonSchema: replyJsonSchema(context.programs.length > 0)
 	});
 	const reply = answer.ok
 		? acceptReply({
@@ -398,8 +411,8 @@ type Turning = {
 	operator: NewTurn;
 	/** the operator's turn as the model reads it. */
 	said: string;
-	/** the operator's turn as `acceptReply` reads it for figures (`acceptMessage`). */
-	stated: string;
+	/** the operator's turn as `acceptReply` reads it for what they stated (`acceptMessage`). */
+	stated: AcceptMessage;
 	/**
 	 * where the turn answers the chat's questions, what must hold, over `page`, for it to land —
 	 * nothing having followed them — and their round, counted over the chat's asking turns, which
@@ -433,7 +446,7 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 			...history(turns, row.campaignType).slice(-HISTORY_TURNS),
 			{ role: 'user', content: turning.said }
 		],
-		jsonSchema: REPLY_JSON_SCHEMA
+		jsonSchema: replyJsonSchema(programs.length > 0)
 	};
 
 	const written = async (
@@ -445,17 +458,10 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 		return { ok: true, outcome, turns: entryPair(turns, entries) };
 	};
 
-	const failed = async (
-		outcome: 'refused' | 'unanswered',
-		assistant: NewTurn
-	): Promise<TurnResult> => {
-		if (turning.answering === null) return written(outcome, assistant);
-		return { ok: false, reason: outcome, text: assistant.text };
-	};
-
-	const unanswered = ({ model, operatorFix }: GenerateFailure) => {
+	const unanswered = async ({ model, operatorFix }: GenerateFailure): Promise<TurnResult> => {
 		const text = `No model answered, so nothing changed. ${operatorFix ?? 'Try again in a moment.'}`;
-		return failed('unanswered', assistantTurn(text, model, 'unanswered'));
+		if (turning.answering !== null) return { ok: false, reason: 'unanswered', text };
+		return written('unanswered', assistantTurn(text, model, 'unanswered'));
 	};
 
 	const placeable = [...turns.flatMap(imageIdsOf), ...operator.imageIds];
@@ -476,7 +482,7 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 				illustrations: asked.requests,
 				messages: [
 					...turns.map((turn, index) => acceptMessage(turn, turns[index - 1])),
-					{ author: 'operator', text: turning.stated }
+					turning.stated
 				],
 				activePrograms: programs,
 				timeZone: turning.timeZone,
@@ -496,23 +502,30 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 	const first = await generate(env, request);
 	if (!first.ok) return unanswered(first);
 	const firstSettled = await settle(first.text);
-	const retry = !firstSettled.ok && firstSettled.askedAgain === true;
-	const answer = retry
-		? await generate(env, {
+	const answer = firstSettled.ok
+		? first
+		: await generate(env, {
 				...request,
 				messages: [
 					...request.messages,
 					{ role: 'assistant', content: first.text },
-					{ role: 'user', content: ANSWERED_ALREADY }
+					{
+						role: 'user',
+						content: firstSettled.askedAgain ? ANSWERED_ALREADY : refusedOnce(firstSettled.reason)
+					}
 				]
-			})
-		: first;
+			});
 	if (!answer.ok) return unanswered(answer);
-	const settled = retry ? await settle(answer.text) : firstSettled;
+	const settled = firstSettled.ok ? firstSettled : await settle(answer.text);
 	if (!settled.ok) {
-		const text = `${REFUSED_PREFIX}${settled.reason}`;
-		if (retry) return { ok: false, reason: 'refused_again', text };
-		return failed('refused', assistantTurn(text, answer.model, 'refused'));
+		const reasons = firstSettled.ok ? [] : [firstSettled.reason];
+		console.warn(
+			`a chat reply on page ${row.id} was refused twice: ${[...reasons, settled.reason].join('; then ')}`
+		);
+		if (turning.answering !== null) {
+			return { ok: false, reason: 'refused_again', error: settled.reason };
+		}
+		return written('refused', assistantTurn(REFUSED_TWICE, answer.model, 'refused'));
 	}
 	const { result, drawn } = settled;
 	const note = answer.fellBack ? 'fell-back' : null;
@@ -738,13 +751,22 @@ function answersOf(turn: ChatTurn, before: ChatTurn | undefined) {
 	return { asked, answers: read.ok ? read.answers : [] };
 }
 
-/** `turn` as `acceptReply` reads it: an answering turn as its answers alone, never their prompts. */
+/**
+ * `turn` as `acceptReply` reads it: an answering turn as its answers alone, never their prompts,
+ * with the rows of each `tiers` answer.
+ */
 function acceptMessage(turn: ChatTurn, before: ChatTurn | undefined): AcceptMessage {
 	const answered = answersOf(turn, before);
-	return {
-		author: turn.author,
-		text: answered === null ? turn.text : answerValueWords(answered.asked, answered.answers)
-	};
+	return answered === null
+		? { author: turn.author, text: turn.text }
+		: answersStated(answered.asked, answered.answers);
+}
+
+function answersStated(questions: readonly Question[], answers: readonly Answer[]): AcceptMessage {
+	const tiers = answers.flatMap(({ value }): TierAnswer[] =>
+		Array.isArray(value) ? value.flatMap((row) => (typeof row === 'string' ? [] : [row])) : []
+	);
+	return { author: 'operator', text: answerValueWords(questions, answers), tiers };
 }
 
 /**
@@ -812,7 +834,7 @@ function systemPrompt(context: PromptContext): string {
 	return [
 		pageCatalog(context.type).prompt({ customRules: switchRules(context.current.switches) }),
 		'',
-		...replyFormat(context.type),
+		...replyFormat(context.type, context.programs.length > 0),
 		...answersLines(context.answering),
 		'',
 		'CONTEXT:',
@@ -824,11 +846,13 @@ function systemPrompt(context: PromptContext): string {
 	].join('\n');
 }
 
-function replyFormat(type: PageType): string[] {
+/** the reply's format; `set.programId` is offered only where `programsActive`. */
+function replyFormat(type: PageType, programsActive: boolean): string[] {
+	const program = programsActive ? ' "programId": ...,' : '';
 	const settable =
 		type === 'campaign'
-			? '{"corner": ..., "endDate": "YYYY-MM-DD", "goalMinor": ..., "name": ..., "programId": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}'
-			: '{"corner": ..., "programId": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}';
+			? `{"corner": ..., "endDate": "YYYY-MM-DD", "goalMinor": ..., "name": ...,${program} "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}`
+			: `{"corner": ...,${program} "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}`;
 	const channels = SHARE_CHANNELS.map((channel) => `${channel} (${SHARE_CHANNEL_LABELS[channel]})`);
 	return [
 		'REPLY:',
@@ -838,7 +862,7 @@ function replyFormat(type: PageType): string[] {
 		'- say: one or two sentences to the operator saying what you changed, naming each value you set; when you ask, one sentence leading into the questions.',
 		'- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.',
 		'- a patch path starts at /layout, /palette or /blocks; set is not part of the page, so no path starts at /set: a setting goes in set alone, and a reply that changes only settings has {"kind": "patch", "ops": []} as its page. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...} changes one value; {"op": "add", "path": "/blocks/-", "value": {a whole block}} adds a block after the last; {"op": "add", "path": "/blocks/2", "value": {a whole block}} adds one before the third.',
-		`- set: only what the operator asked for, of ${settable}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.`,
+		`- set: only what the operator asked for, of ${settable}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum${programsActive ? '; programId is one of the active programs' : ''}. Leave it out when no setting changes.`,
 		`- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of ${channels.slice(0, -1).join(', ')} or ${channels.at(-1)}; [] takes them all off.`,
 		`- shade and corner: the page’s look, set only when the operator asks, and either may be set alone. shade is ${listed(SHADES, 'or')}: "warmer" asks for warm, "cooler" for cool, "plainer" or "neutral" for light. corner is ${listed(CORNERS, 'or')}: "rounder" asks for round, "sharper" or "squarer" for square, "softer" for soft. Every shade is a pale ground, so a darker or more colourful page is the palette’s to change, never the shade’s.`,
 		'- shareMessage: the words a donor shares the page with, at most one or two sentences, holding no web address the page does not already link: a share carries the page’s own link. Leave it out of set, or null, to keep the message as it is; a share message is never taken off here, so when asked to, change nothing and say so. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.',
@@ -849,9 +873,12 @@ function replyFormat(type: PageType): string[] {
 				]),
 		'- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.',
 		'- write an amount in the words only from a figure the operator stated in the chat or one the page already shows.',
-		'- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.',
+		'- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page, or answered it in a "tiers" question; otherwise an amount stays an amount alone, with no impact tier.',
+		'- answers to a "tiers" question are the operator’s impact tiers: put every row on the page as a tier of the impact-tiers block, its amount as answered and its words the operator’s, tidied but meaning the same.',
 		'- ask: when the message is vague, or the page needs what only the operator knows — figures, dates, names, what a gift does — ask instead of guessing. A reply that asks has no page and no set.',
-		`- each question is {"id": ..., "kind": ..., "prompt": ..., "hint"?: ..., "options"?: [...], "placeholder"?: ..., "prefill"?: ...}, 1 to ${QUESTIONS_MAX} of them. id: lowercase letters, digits and "-", unique. kind: "choice" (pick one option), "choices" (pick several), "text", "amount" (answered in dollars) or "date" (answered as a day). Prefer "choice" and "choices", with 2 to 6 short options; every choice gets an Other box of its own, so never list "Other". placeholder and prefill are for "text" only.`,
+		`- each question is {"id": ..., "kind": ..., "prompt": ..., "hint"?: ..., "options"?: [...], "placeholder"?: ..., "prefill"?: ..., "rows"?: [...], "placeholders"?: [...]}, 1 to ${QUESTIONS_MAX} of them. id: lowercase letters, digits and "-", unique. kind: "choice" (pick one option), "choices" (pick several), "text", "amount" (answered in dollars), "date" (answered as a day) or "tiers" (amounts and what each does). Prefer "choice" and "choices", with 2 to 6 short options; every choice gets an Other box of its own, so never list "Other".`,
+		'- every "text" question has a prefill: your best guess at the answer from the page, the organisation and the campaign’s type, which the operator corrects; only where you cannot guess, a placeholder instead: a short example answer. every "amount" question has a prefill, your best guess in minor units, or failing that a placeholder, an example in minor units. placeholder and prefill are for "text" and "amount" only.',
+		`- whenever you ask what amounts do — what a gift of each amount buys, pays for or makes possible — ask one "tiers" question, never a "text" one, and write no amount into its prompt. rows: 1 to ${TIERS_MAX} of {"amount": minor units, "text"?: what it does}, each amount once, every row with an amount and with text where the page or the organisation lets you guess it, at most ${BUYS_MAX} characters. placeholders: an example of what each row’s amount does, one per row in order, for rows you leave without text.`,
 		'- every word in a question is plain text: no HTML, no link, no web address.'
 	];
 }
@@ -983,6 +1010,9 @@ function summarise(
 	});
 	const lost = dropped.map((item) => {
 		if (item.what === 'link') return `Took the link off “${item.text}”.`;
+		if (item.what === 'program') {
+			return 'Kept gifts going where they went: the program I named isn’t one of your active programs.';
+		}
 		const amount = money(item.amountMinor);
 		return item.reworded
 			? `Left out the ${amount} tier I reworded: what ${amount} does is yours to say, so tell me and I’ll use your words.`

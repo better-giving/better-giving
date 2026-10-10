@@ -19,13 +19,14 @@
 // `DEFAULT_CORNER` where it has none. the share message is words, trimmed, within
 // `SHARE_MESSAGE_MAX`, or null for none. an end date is a day, `YYYY-MM-DD`, in the zone of the
 // browser that posted the chat turn, stored as ./end-date.ts's `endOfDay` of it with that zone
-// beside it, and refused once that day is over. a program is one of the active programs,
-// suggested amounts sit within the page's smallest and largest gift, and a goal is at most
-// ./catalog.ts's `GOAL_MINOR_MAX`, the most the Settings sheet takes, and is one the operator
-// stated: a figure in a chat message of theirs, read by the grammar below, or the goal the page
-// already stores. a figure the assistant wrote or the page's words draw is not the operator asking
-// for that goal. any other value is refused, naming it. pinning a program is refused on the
-// Donation page while its donors choose one, since its program chooser stays. each value `set`
+// beside it, and refused once that day is over. a program that is not active is dropped and
+// noted, gifts' program left as it was, and the rest of the reply lands. suggested amounts sit
+// within the page's smallest and largest gift, and a goal is at most ./catalog.ts's
+// `GOAL_MINOR_MAX`, the most the Settings sheet takes, and is one the operator stated: a figure
+// in a chat message of theirs, read by the grammar below, or the goal the page already stores. a
+// figure the assistant wrote or the page's words draw is not the operator asking for that goal.
+// any other value is refused, naming it. pinning a program is refused on the Donation page while
+// its donors choose one, since its program chooser stays. each value `set`
 // changes comes back in `changes` — an end date as its day, a program with the mode it leaves, the
 // share buttons, shade and corners from the ones the page drew — so the reply's own words can be
 // held to what it did. a rename is from the draft's own name where it holds one, and from the
@@ -51,11 +52,12 @@
 //   and its text kept, noted in `dropped`.
 // - an impact tier: kept where the operator stated its amount and what that amount does in one
 //   sentence — the figure beside one of `IMPACT`'s words — in a chat message of theirs or in the
-//   words the page already draws, or where the page already held the same tier, amount and words
-//   alike. the tier's words may paraphrase that sentence; an amount stated on its own (`set the
-//   suggested amounts to $25, $50 and $100`) grants no tier. a sentence ends at `.`, `!` or `?`
-//   before a space, or at a line break. any other tier is dropped and noted, and the rest of the
-//   reply lands; one whose amount the page held as a tier is the reply rewording it, noted so.
+//   words the page already draws, or answered as a row of a `tiers` question (a message's `tiers`),
+//   or where the page already held the same tier, amount and words alike. the tier's words may
+//   paraphrase that sentence or row; an amount stated on its own (`set the suggested amounts to
+//   $25, $50 and $100`) grants no tier. a sentence ends at `.`, `!` or `?` before a space, or at a
+//   line break. any other tier is dropped and noted, and the rest of the reply lands; one whose
+//   amount the page held as a tier is the reply rewording it, noted so.
 // - a figure in the words: a new campaign name, a new share message and every string a block
 //   draws — a heading, a lede, what a tier buys, a question, each paragraph of a story or an
 //   answer — and each illustration's description may hold only figures the operator wrote in the
@@ -65,7 +67,8 @@
 // - an impact in the words: a sentence of those words holding one of `IMPACT`'s words says what
 //   each figure in it does, and each needs the grant a tier needs — the operator's own sentence
 //   pairing that amount with an impact — or the reply is refused, naming the sentence. a figure
-//   in no such sentence answers to the rule above alone.
+//   in no such sentence answers to the rule above alone. an answered row grants its amount here
+//   as that sentence would.
 // - an image: any `imageId`, whichever block carries it, is one attached in this page's chat or
 //   one `current` already places, or the reply is refused. that it names a stored image is
 //   $lib/server/pages/draft.ts's to check, and that it is an id and never an address the catalog's.
@@ -118,7 +121,7 @@ import {
 	type Shade
 } from './keys';
 import { applyPatch, deeperThan, mergePatch, outOfBounds, pointer } from './json-patch';
-import { askSchema, type Question } from './questions';
+import { askSchema, type Question, type TierAnswer } from './questions';
 import { listed, oneOf } from './refusal';
 import { SHARE_CHANNELS, SHARE_CHANNELS_DEFAULT, type ShareChannel } from './share';
 
@@ -204,8 +207,23 @@ const replySchema = z.strictObject({
 	)
 });
 
-/** the reply's shape as JSON Schema, for a model's JSON mode; this door checks it again whatever. */
-export const REPLY_JSON_SCHEMA = z.toJSONSchema(replySchema, { io: 'input' });
+const REPLY_JSON_SCHEMAS = {
+	withPrograms: z.toJSONSchema(replySchema, { io: 'input' }),
+	withoutPrograms: z.toJSONSchema(
+		replySchema.extend({
+			set: z.strictObject(SETTABLE).omit({ programId: true }).optional()
+		}),
+		{ io: 'input' }
+	)
+};
+
+/**
+ * the reply's shape as JSON Schema, for a model's JSON mode, offering `set.programId` only where a
+ * program is active; this door checks it again whatever.
+ */
+export function replyJsonSchema(programsActive: boolean) {
+	return programsActive ? REPLY_JSON_SCHEMAS.withPrograms : REPLY_JSON_SCHEMAS.withoutPrograms;
+}
 
 /** what a page edit reaches: the page as the model reads it, `draftFromPage`'s keys. */
 const DRAFT_KEYS: readonly string[] = ['layout', 'palette', 'blocks'];
@@ -216,7 +234,12 @@ const CAMPAIGN_ONLY = [
 	{ set: 'endDate', page: PAGE_KEYS.endsAt, what: 'end date' }
 ] as const;
 
-export type ChatMessage = { author: 'operator' | 'assistant'; text: string };
+export type ChatMessage = {
+	author: 'operator' | 'assistant';
+	text: string;
+	/** the rows of a `tiers` answer in the message: each the operator stating what its amount does. */
+	tiers?: readonly TierAnswer[];
+};
 export type ActiveProgram = { id: string; name: string };
 
 export type AcceptInput = {
@@ -275,7 +298,9 @@ export type Dropped =
 			/** the page held a tier of this amount, and the reply changed what it buys. */
 			reworded: boolean;
 	  }
-	| { what: 'link'; href: string; text: string };
+	| { what: 'link'; href: string; text: string }
+	/** `set.programId` named a program that is not active, so gifts' program stayed as it was. */
+	| { what: 'program'; programId: string };
 
 export type Accepted = {
 	ok: true;
@@ -357,14 +382,23 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 	}
 
 	const said = operatorTexts(input.messages);
+	const answeredTiers = input.messages.flatMap(({ author, tiers = [] }) =>
+		author === 'operator' ? tiers.map(({ amount }) => amount) : []
+	);
 	const stated = new Set(said.flatMap(readFigures));
-	const set = settle(input, reply.set ?? {}, stated);
+	const dropped: Dropped[] = [];
+	const { programId, ...rest } = reply.set ?? {};
+	const active = programId === undefined || input.activePrograms.some(({ id }) => id === programId);
+	if (!active) dropped.push({ what: 'program', programId });
+	const set = settle(input, active ? (reply.set ?? {}) : rest, stated);
 	if (!set.ok) return refuse(set.reason);
 
 	const page = pageFromDraft(type, draft, set.onto);
 	if (!page.ok) return refuse(located(page.path, page.message));
-	const dropped: Dropped[] = [];
-	const impacts = new Set(impactFigures([...said, ...current.blocks.flatMap(textsIn)]));
+	const impacts = new Set([
+		...impactFigures([...said, ...current.blocks.flatMap(textsIn)]),
+		...answeredTiers
+	]);
 	const held = new Set(tiersOf(current).map(tierKey));
 	const heldAmounts = new Set(tiersOf(current).map(({ amountMinor }) => amountMinor));
 	const blocks = page.page.blocks.map((block) => {
@@ -703,7 +737,7 @@ type Settable = NonNullable<z.infer<typeof replySchema>['set']>;
  * in the operator's own chat messages.
  */
 function settle(
-	{ type, current, name, activePrograms, timeZone, now }: AcceptInput,
+	{ type, current, name, timeZone, now }: AcceptInput,
 	set: Settable,
 	stated: ReadonlySet<number>
 ):
@@ -801,13 +835,6 @@ function settle(
 	}
 	if (set.programId !== undefined) {
 		const { programId } = set;
-		if (!activePrograms.some(({ id }) => id === programId)) {
-			const active = activePrograms.map(({ id, name }) => `${id} (${name})`);
-			return {
-				ok: false,
-				reason: `set.programId: "${programId}" is not an active program; ${active.length === 0 ? 'none is active' : `the active ones are ${listed(active)}`}`
-			};
-		}
 		const { programMode: mode } = settings;
 		if (type === 'donation_page' && mode === 'choice') {
 			return {

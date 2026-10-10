@@ -4,7 +4,8 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { MoneyField } from './money-field';
 
 // what a money box draws and what it hands on: the digits grouped as they are typed and pasted,
-// the caret among the digits it was typed between, and the text with the separators taken out
+// the caret among the digits it was typed between, Backspace over a separator taking the digit in
+// front of it, and the text with the separators taken out
 // handed to the caller or posted with the form. the boxes that mount it say what they do with that
 // text in their own specs.
 
@@ -59,6 +60,18 @@ function edit(box: HTMLInputElement, text: string, caret = text.length, inputTyp
 	});
 }
 
+/** Backspace pressed with the caret at `caret`; whether the platform is left to make the edit. */
+function backspace(box: HTMLInputElement, caret: number): boolean {
+	let left = true;
+	act(() => {
+		box.setSelectionRange(caret, caret);
+		left = box.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })
+		);
+	});
+	return left;
+}
+
 describe('a money box', () => {
 	it('groups the thousands as they are typed, and hands on the figure without them', () => {
 		const onText = vi.fn();
@@ -96,6 +109,30 @@ describe('a money box', () => {
 
 		expect(box.value).toBe('134');
 		expect(box.selectionStart).toBe(1);
+	});
+
+	it('deletes the digit before a separator on a Backspace just after it', () => {
+		const onText = vi.fn();
+		const box = boxIn(mount(<Held onText={onText} />));
+		edit(box, '12345');
+		expect(box.value).toBe('12,345');
+
+		expect(backspace(box, 3)).toBe(false);
+
+		expect(box.value).toBe('1,345');
+		expect(box.selectionStart).toBe(1);
+		expect(onText).toHaveBeenLastCalledWith('1345');
+	});
+
+	it('leaves a Backspace anywhere else to the platform', () => {
+		const onText = vi.fn();
+		const box = boxIn(mount(<Held onText={onText} />));
+		edit(box, '12345');
+
+		expect(backspace(box, 2)).toBe(true);
+
+		expect(box.value).toBe('12,345');
+		expect(onText).toHaveBeenCalledTimes(1);
 	});
 
 	it('groups a paste, the caret after the last digit pasted', () => {

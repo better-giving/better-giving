@@ -5,9 +5,10 @@ import { type CardQuestion, QuestionCard, type QuestionCardProps } from './quest
 
 // what the question card sends for what was picked and typed: one choice, several, Other with its
 // words and without them, words prefilled and cleared, an amount read into minor units or refused at
-// its box, a date; the tick that marks a question taking several answers; the skip press; the
-// presses held while answers are on their way; a refusal of the answers said at the card; the
-// starter note; and the presses' words for each round.
+// its box, a date; a tiers question's rows, seeded, added, dropped, refused at the box that is
+// wrong and sent as amounts and words; the tick that marks a question taking several answers; the
+// skip press; the presses held while answers are on their way; a refusal of the answers said at
+// the card; the starter note; and the presses' words for each round.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,6 +35,18 @@ const QUESTIONS: CardQuestion[] = [
 	{ id: 'gift', kind: 'amount', prompt: 'A typical gift' },
 	{ id: 'ends', kind: 'date', prompt: 'When does it end?' }
 ];
+
+const TIERS: CardQuestion = {
+	id: 'tiers',
+	kind: 'tiers',
+	prompt: 'What does each amount do?',
+	rows: [
+		{ amount: 2500, text: 'Feeds a family for a week' },
+		{ amount: 10_000 },
+		{ amount: 150_000 }
+	],
+	placeholders: ['Feeds a family for a day', 'Stocks a pantry shelf', 'Keeps the kitchen open']
+};
 
 function props(over: Partial<QuestionCardProps> = {}): QuestionCardProps {
 	return { questions: QUESTIONS, round: 'opening', onSubmit: () => {}, busy: false, ...over };
@@ -98,6 +111,26 @@ function type(input: HTMLInputElement, words: string) {
 		setter?.call(input, words);
 		input.dispatchEvent(new Event('input', { bubbles: true }));
 	});
+}
+
+/** a tiers row's box, by the name a reader hears it by. */
+function named(host: HTMLElement, name: string): HTMLInputElement {
+	const found = host.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`);
+	if (found === null) throw new Error(`no box named ${name}`);
+	return found;
+}
+
+/** each tiers row's amount box, in order. */
+function tierAmounts(host: HTMLElement): HTMLInputElement[] {
+	return [...host.querySelectorAll<HTMLInputElement>('input[aria-label$=" amount"]')];
+}
+
+/** what a box's `aria-describedby` names, read off the elements it names. */
+function said(box: HTMLElement): string {
+	return (box.getAttribute('aria-describedby') ?? '')
+		.split(' ')
+		.map((id) => document.getElementById(id)?.textContent)
+		.join(' ');
 }
 
 async function press(target: HTMLElement) {
@@ -209,6 +242,31 @@ describe('the question card', () => {
 		expect(onSubmit.mock.calls[0]?.[0]).toContainEqual({ id: 'gift', value: 10_000_000 });
 	});
 
+	it('starts an amount box on its prefill and shows its example, both grouped, and sends the prefill', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(
+			props({
+				questions: [
+					{
+						id: 'goal',
+						kind: 'amount',
+						prompt: 'Your goal',
+						prefill: 2_500_000,
+						placeholder: 1_000_000
+					}
+				],
+				onSubmit
+			})
+		);
+		const goal = box(host, 'Your goal');
+
+		expect(goal.value).toBe('25,000');
+		expect(goal.placeholder).toBe('10,000');
+
+		await press(button(host, 'Draft my page'));
+		expect(onSubmit).toHaveBeenCalledWith([{ id: 'goal', value: 2_500_000 }]);
+	});
+
 	it('takes a press anywhere on an amount box’s drawn frame, named by its question alone', () => {
 		const { host } = mount(props());
 		const gift = box(host, 'A typical gift');
@@ -240,6 +298,124 @@ describe('the question card', () => {
 
 		type(gift, '50');
 		expect(gift.hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('draws a tiers question’s rows with their amounts grouped, their words and their examples', () => {
+		const { host } = mount(props({ questions: [TIERS] }));
+
+		expect(host.querySelector('legend')?.textContent).toBe('What does each amount do?');
+		expect(tierAmounts(host).map((box) => box.value)).toEqual(['25', '100', '1,500']);
+		const words = [1, 2, 3].map((at) => named(host, `What tier ${at} does`));
+		expect(words.map((box) => box.value)).toEqual(['Feeds a family for a week', '', '']);
+		expect(words.map((box) => box.placeholder)).toEqual([
+			'Feeds a family for a day',
+			'Stocks a pantry shelf',
+			'Keeps the kitchen open'
+		]);
+	});
+
+	it('adds tier rows up to six, the caret in each new amount, and holds Add there', async () => {
+		const { host } = mount(props({ questions: [TIERS] }));
+		const add = button(host, 'Add another');
+
+		await press(add);
+		expect(document.activeElement).toBe(named(host, 'Tier 4 amount'));
+		await press(add);
+		await press(add);
+		expect(tierAmounts(host)).toHaveLength(6);
+		expect(add.getAttribute('aria-disabled')).toBe('true');
+
+		await press(add);
+		expect(tierAmounts(host)).toHaveLength(6);
+		expect(document.activeElement).toBe(add);
+	});
+
+	it('drops tier rows down to one, which carries no Remove', async () => {
+		const { host } = mount(props({ questions: [TIERS] }));
+		const removes = () =>
+			[...host.querySelectorAll('button')].flatMap((one) => one.getAttribute('aria-label') ?? []);
+		expect(removes()).toEqual(['Remove tier 1', 'Remove tier 2', 'Remove tier 3']);
+
+		await press(host.querySelector<HTMLElement>('[aria-label="Remove tier 1"]') as HTMLElement);
+		expect(tierAmounts(host).map((box) => box.value)).toEqual(['100', '1,500']);
+		expect(document.activeElement).toBe(named(host, 'Tier 1 amount'));
+		await press(host.querySelector<HTMLElement>('[aria-label="Remove tier 2"]') as HTMLElement);
+
+		expect(tierAmounts(host).map((box) => box.value)).toEqual(['100']);
+		expect(removes()).toEqual([]);
+	});
+
+	it('refuses a tier with an amount and no words at its words, and sends nothing until they clear', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(props({ questions: [TIERS], onSubmit }));
+
+		await press(button(host, 'Draft my page'));
+
+		expect(onSubmit).not.toHaveBeenCalled();
+		const second = named(host, 'What tier 2 does');
+		expect(second.getAttribute('aria-invalid')).toBe('true');
+		expect(said(second)).toBe('required');
+		expect(document.activeElement).toBe(second);
+		expect(named(host, 'What tier 1 does').hasAttribute('aria-invalid')).toBe(false);
+		expect(named(host, 'Tier 2 amount').hasAttribute('aria-invalid')).toBe(false);
+
+		type(second, 'Stocks a pantry shelf');
+		expect(second.hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('refuses words with no amount at the amount', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(props({ questions: [TIERS], onSubmit }));
+		type(named(host, 'What tier 2 does'), 'Stocks a pantry shelf');
+		type(named(host, 'What tier 3 does'), 'Keeps the kitchen open');
+		type(named(host, 'Tier 3 amount'), '');
+
+		await press(button(host, 'Draft my page'));
+
+		const amount = named(host, 'Tier 3 amount');
+		expect(onSubmit).not.toHaveBeenCalled();
+		expect(said(amount)).toBe('$ required');
+		expect(document.activeElement).toBe(amount);
+	});
+
+	it('refuses an amount a tier above already holds at the second', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(props({ questions: [TIERS], onSubmit }));
+		type(named(host, 'What tier 2 does'), 'Stocks a pantry shelf');
+		type(named(host, 'What tier 3 does'), 'Keeps the kitchen open');
+		type(named(host, 'Tier 3 amount'), '25');
+
+		await press(button(host, 'Draft my page'));
+
+		const third = named(host, 'Tier 3 amount');
+		expect(onSubmit).not.toHaveBeenCalled();
+		expect(said(third)).toBe('$ different from tier 1');
+		expect(named(host, 'Tier 1 amount').hasAttribute('aria-invalid')).toBe(false);
+		expect(document.activeElement).toBe(third);
+
+		type(third, '250');
+		expect(third.hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('sends the filled tiers as minor units and words, in order, an empty row left out', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(props({ questions: [TIERS], onSubmit }));
+		type(named(host, 'What tier 2 does'), ' Stocks a pantry shelf ');
+		type(named(host, 'What tier 3 does'), 'Keeps the kitchen open');
+		await press(button(host, 'Add another'));
+
+		await press(button(host, 'Draft my page'));
+
+		expect(onSubmit).toHaveBeenCalledWith([
+			{
+				id: 'tiers',
+				value: [
+					{ amount: 2500, text: 'Feeds a family for a week' },
+					{ amount: 10_000, text: 'Stocks a pantry shelf' },
+					{ amount: 150_000, text: 'Keeps the kitchen open' }
+				]
+			}
+		]);
 	});
 
 	it('sends a date as the platform’s YYYY-MM-DD', async () => {

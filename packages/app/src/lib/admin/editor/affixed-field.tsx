@@ -1,5 +1,5 @@
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import type { InputHTMLAttributes, Ref } from 'react';
+import type { InputHTMLAttributes, KeyboardEventHandler, Ref } from 'react';
 
 // a box whose unit or address prefix is stated on the box itself — the goal's currency, a campaign
 // address's host. the rows are packages/operator/src/components/forms/Field.jsx's own (label, hint,
@@ -11,7 +11,11 @@ import type { InputHTMLAttributes, Ref } from 'react';
 //
 // the whole drawn frame takes a press, the affix and the padding round the input included: the
 // frame is a second `<label>` of the input, so the platform puts the caret in the box from any of
-// it. the input is named by the field's label alone, which keeps the affix out of its name.
+// it. the input is named by the field's label or its `aria-label` alone, which keeps the affix
+// out of its name.
+//
+// a box in a repeating row draws no label: the group's legend names the rows on the screen and the
+// box is named by `aria-label` (packages/operator/src/components/forms/RepeatingRows.jsx).
 //
 // the box is the caller's to hold, with `value` and `onValueChange`; a money box that posts with a
 // form holds its own and posts it from a hidden box (./money-field.tsx).
@@ -21,7 +25,9 @@ export type AffixedFieldProps = {
 	/** what is typed, and the box it is typed in. */
 	readonly onValueChange: (text: string, box: HTMLInputElement) => void;
 	readonly id: string;
-	readonly label: string;
+	/** the label drawn over the box, or `aria-label` where the box is named by a group instead. */
+	readonly label?: string | undefined;
+	readonly 'aria-label'?: string | undefined;
 	readonly optional?: boolean;
 	readonly hint?: string | undefined;
 	/** what stands in the box beside what is typed. */
@@ -32,11 +38,14 @@ export type AffixedFieldProps = {
 	readonly error?: string | null | undefined;
 	readonly inputRef?: Ref<HTMLInputElement>;
 	readonly inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
+	readonly placeholder?: string | undefined;
+	readonly onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
 };
 
 export function AffixedField({
 	id,
 	label,
+	'aria-label': named,
 	optional = false,
 	hint,
 	affix,
@@ -45,7 +54,9 @@ export function AffixedField({
 	inputRef,
 	value,
 	onValueChange,
-	inputMode
+	inputMode,
+	placeholder,
+	onKeyDown
 }: AffixedFieldProps) {
 	const labelId = `${id}-label`;
 	const affixId = `${id}-affix`;
@@ -59,10 +70,12 @@ export function AffixedField({
 	);
 	return (
 		<div className="adm-field">
-			<label className="adm-field__label" htmlFor={id} id={labelId}>
-				{label}
-				{optional ? <span className="adm-field__optional"> (optional)</span> : null}
-			</label>
+			{label === undefined ? null : (
+				<label className="adm-field__label" htmlFor={id} id={labelId}>
+					{label}
+					{optional ? <span className="adm-field__optional"> (optional)</span> : null}
+				</label>
+			)}
 			{hint ? (
 				<p className="adm-hint" id={`${id}-hint`}>
 					{hint}
@@ -77,10 +90,13 @@ export function AffixedField({
 					type="text"
 					inputMode={inputMode}
 					autoComplete="off"
-					aria-labelledby={labelId}
+					aria-labelledby={label === undefined ? undefined : labelId}
+					aria-label={named}
 					aria-invalid={error ? 'true' : undefined}
 					aria-describedby={describedBy}
+					placeholder={placeholder}
 					value={value}
+					onKeyDown={onKeyDown}
 					onChange={(event) => onValueChange(event.target.value, event.target)}
 				/>
 				{affixAt === 'end' ? unit : null}

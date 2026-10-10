@@ -55,11 +55,11 @@ import { useWide } from './wide';
 // is said in its own `error`). answers nothing was stored from come back as `answerRefusal`, said
 // at the card, which is still up with every value in it and the focus on its press: worded here
 // for `answered`, `stale`, `failed` and `refused_again`, and otherwise the route's own `error` —
-// the reply's words where no model answered (503 `unanswered`) or the reply was refused (422
-// `refused`), which mark a command in backticks the card draws as code. each refusal is held in
-// state, taken from each new answer the fetcher lands, because the fetcher's answer outlives the
-// panel; it is cleared by the next send or answers, so a refusal repeated word for word still reads
-// as a new one, and by reopening the panel on one already read.
+// the reply's words where no model answered (503 `unanswered`), which mark a command in backticks
+// the card draws as code. each refusal is held in state, taken from each new answer the fetcher
+// lands, because the fetcher's answer outlives the panel; it is cleared by the next send or
+// answers, so a refusal repeated word for word still reads as a new one, and by reopening the
+// panel on one already read.
 //
 // suggestions are offered only while no card is live and a reply has changed the page: before
 // that, the card is what drafts it, and a suggestion beside a card would skip it unanswered.
@@ -108,13 +108,7 @@ type TurnAnswer =
 	| { readonly outcome: string; readonly turns: readonly ChatMessage[] }
 	| {
 			readonly error: string;
-			readonly reason?:
-				| 'stale'
-				| 'failed'
-				| 'answered'
-				| 'unanswered'
-				| 'refused'
-				| 'refused_again';
+			readonly reason?: 'stale' | 'failed' | 'answered' | 'unanswered' | 'refused_again';
 	  };
 
 type Refused = Extract<TurnAnswer, { error: string }>;

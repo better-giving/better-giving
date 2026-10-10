@@ -4075,8 +4075,8 @@
 		color: var(--admin-ink);
 	}
 
-	/* repeating rows: a box and the control that removes it. an error is never per row —
-	   the group is what was got wrong.
+	/* repeating rows: a box, or a pair of boxes, and the control that removes it. an error is
+	   never per row — the group is what was got wrong.
 
 	   the control in the trailing track is the quiet rank, because it repeats: a bordered
 	   control beside every box draws a column of boxes down the side of a group of boxes, and
@@ -4129,7 +4129,7 @@
 		align-items: center;
 	}
 
-	.adm-rows__row > :not(.adm-field) {
+	.adm-rows__row > :not(.adm-field, .adm-pair) {
 		grid-column: 2;
 		display: flex;
 		align-items: center;
@@ -4139,8 +4139,16 @@
 		text-align: start;
 	}
 
-	:where(.adm-rows__row > :not(.adm-field)) {
+	:where(.adm-rows__row > :not(.adm-field, .adm-pair)) {
 		border-inline: var(--admin-border-width) solid transparent;
+	}
+
+	/* a row that is two boxes — an amount and what it does — stands them the step its Remove stands
+	   off them, side by side or stacked: the three are one row's, and a pair's own gap, the step
+	   between one field and the next, is wider than the step between one row and the next, so the
+	   second box would read as the next row's. */
+	.adm-rows__row > .adm-pair {
+		gap: var(--admin-space-2);
 	}
 
 	/* the status a locked row states where the rows under it offer a Remove. it is read beside the

@@ -10,6 +10,8 @@ import { jpegHeader } from '../images/headers.testing';
 import { chatTurn, form, image, page } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
 import { readOrgProfile } from '../org/queries';
+import { parseProgramInput } from '../programs/program-input';
+import { archiveProgram, createProgram } from '../programs/queries';
 import { saveProfile } from '../org/profile.testing';
 import { draftIllustrations, editorDraft } from './blocks';
 import { readCampaigns } from './campaign';
@@ -54,6 +56,15 @@ function turn(pageId: string, message: string, AI: { run: unknown }, extra: obje
 		{ ...env, AI, ...extra },
 		{ pageId, message, imageIds: [], timeZone: ZONE, now: NOW }
 	);
+}
+
+/** what the chat says of a message turn whose reply was refused, and its retry too. */
+const REFUSED = 'I couldn’t make that change. Try saying it another way.';
+
+/** the lines a turn logs from now on: why a reply was refused, which the chat never says. */
+function warnings() {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	return () => warn.mock.calls.map(([line]) => String(line)).join('\n');
 }
 
 async function stored(pageId: string) {
@@ -143,24 +154,51 @@ describe('an accepted reply', () => {
 });
 
 describe('a refused reply', () => {
-	it('leaves the draft as it was, and the chat says why', async () => {
+	const NEON = { say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } };
+
+	it('asks the model once more, told why, and the second reply lands', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const AI = answering(NEON, {
+			say: 'Two-tone.',
+			page: { kind: 'merge', doc: { palette: 'duo' } }
+		});
+
+		const result = await turn(pageId, 'make it neon', AI);
+
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'accepted',
+			turns: [{ role: 'operator' }, { role: 'assistant', text: 'Two-tone.' }]
+		});
+		expect((await stored(pageId)).draft.palette).toBe('duo');
+		expect(AI.run).toHaveBeenCalledTimes(2);
+		const [, first] = AI.run.mock.calls[0] ?? [];
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		expect(second.messages.slice(0, first.messages.length)).toEqual(first.messages);
+		expect(second.messages.slice(first.messages.length)).toEqual([
+			{ role: 'assistant', content: JSON.stringify(NEON) },
+			{ role: 'user', content: expect.stringContaining('palette: ') }
+		]);
+	});
+
+	it('twice leaves the draft as it was, and the chat says so plainly, the reason in the log alone', async () => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
-		const AI = answering({ say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } });
+		const warned = warnings();
+		const AI = answering(NEON, NEON, { say: 'Two-tone.' });
 
 		const result = await turn(pageId, 'make it neon', AI);
 
 		expect((await stored(pageId)).draft).toEqual(before);
+		expect(AI.run).toHaveBeenCalledTimes(2);
 		expect(result).toMatchObject({
 			ok: true,
 			outcome: 'refused',
 			turns: [{ role: 'operator' }, { role: 'assistant', note: 'refused' }]
 		});
 		const [, answer] = await chat(pageId);
-		expect(answer).toMatchObject({
-			text: expect.stringMatching(/^I couldn’t apply that: palette: /),
-			note: 'refused'
-		});
+		expect(answer).toMatchObject({ text: REFUSED, note: 'refused' });
+		expect(warned()).toContain('palette: ');
 	});
 });
 
@@ -207,7 +245,6 @@ describe('a campaign’s goal and end date', () => {
 
 describe('a value the deployment does not hold', () => {
 	it.each([
-		['a program "none"', { programId: 'none' }, 'set.programId: "none" is not an active program'],
 		[
 			'a sixteen-digit suggested amount',
 			{ suggestedAmounts: [2500, 1_234_567_890_123_456] },
@@ -226,15 +263,72 @@ describe('a value the deployment does not hold', () => {
 	])('is refused for %s, and the draft stays as it was', async (_, set, reason) => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
+		const warned = warnings();
 
-		await turn(pageId, 'tidy the heading', answering({ say: 'Done.', set }));
+		await turn(pageId, 'tidy the heading', answering({ say: 'Done.', set }, { say: 'Done.', set }));
 
 		expect((await stored(pageId)).draft).toEqual(before);
 		const [, answer] = await chat(pageId);
-		expect(answer).toMatchObject({
-			text: expect.stringContaining(reason),
-			note: 'refused'
-		});
+		expect(answer).toMatchObject({ text: REFUSED, note: 'refused' });
+		expect(warned()).toContain(reason);
+	});
+});
+
+describe('a program the model names', () => {
+	const offered = (AI: { run: ReturnType<typeof vi.fn> }) => {
+		const [, input] = AI.run.mock.calls[0] ?? [];
+		const set = input.response_format.json_schema.schema.properties.set.properties;
+		return { schema: Object.keys(set), system: input.messages[0].content as string };
+	};
+
+	it('that is not active is left out, and the rest of the reply lands and says so', async () => {
+		const pageId = await insertPage(db, 'campaign');
+
+		const result = await turn(
+			pageId,
+			'warmer, and send gifts to the shelter',
+			answering({ say: 'Done.', set: { programId: '/', shade: 'warm' } })
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'accepted' });
+		const after = await stored(pageId);
+		expect(after.draft.look?.shade).toBe('warm');
+		expect(after.draft.settings).toMatchObject({ programMode: 'none', programId: null });
+		const [, answer] = await chat(pageId);
+		expect(answer?.text).toBe(
+			'Done.\nShade: warm. Kept gifts going where they went: the program I named isn’t one of your active programs.'
+		);
+	});
+
+	it('is not offered while no program is active', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const AI = answering({ say: 'Warmer.' });
+
+		await turn(pageId, 'warmer colours', AI);
+
+		const { schema, system } = offered(AI);
+		expect(schema).toContain('shade');
+		expect(schema).not.toContain('programId');
+		expect(system).not.toContain('programId');
+	});
+
+	it('is offered once one is active', async () => {
+		const parsed = parseProgramInput({ name: 'Coat closet', description: '' });
+		if (!parsed.ok) throw new Error('the fixture program did not parse');
+		const program = await createProgram(db, parsed.value);
+		if (program === null) throw new Error('the fixture program was not created');
+		try {
+			const pageId = await insertPage(db, 'campaign');
+			const AI = answering({ say: 'Warmer.' });
+
+			await turn(pageId, 'warmer colours', AI);
+
+			const { schema, system } = offered(AI);
+			expect(schema).toContain('programId');
+			expect(system).toContain('programId is one of the active programs');
+		} finally {
+			await archiveProgram(db, program.id);
+		}
 	});
 });
 
@@ -353,18 +447,18 @@ describe('the Donation page', () => {
 		['a name', { name: 'Coats for Kids' }, 'name'],
 		['a goal', { goalMinor: 1_500_000 }, 'goal'],
 		['an end date', { endDate: '2026-12-31' }, 'end date']
-	])('asked for %s changes nothing, and the reply says why', async (_, set, what) => {
+	])('asked for %s changes nothing, and the log says why', async (_, set, what) => {
 		const before = { ...defaultDonationPage(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'donation_page', before);
+		const warned = warnings();
 
-		await turn(pageId, 'set it', answering({ say: 'Set.', set }));
+		await turn(pageId, 'set it', answering({ say: 'Set.', set }, { say: 'Set.', set }));
 
 		const after = await stored(pageId);
 		expect([after.draft, after.name]).toEqual([before, null]);
 		const [, answer] = await chat(pageId);
-		expect(answer?.text).toBe(
-			`I couldn’t apply that: the Donation page has no ${what}; only a campaign does`
-		);
+		expect(answer?.text).toBe(REFUSED);
+		expect(warned()).toContain(`the Donation page has no ${what}; only a campaign does`);
 	});
 });
 
@@ -396,18 +490,14 @@ describe('a credit-billed model that fails', () => {
 	});
 	it('that the default model then answers off the page is marked refused, since nothing changed', async () => {
 		const pageId = await insertPage(db, 'campaign');
-		const AI = answering(new Error('3036: insufficient credits'), {
-			say: 'Neon!',
-			page: { kind: 'merge', doc: { palette: 'neon' } }
-		});
+		const neon = { say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } };
+		const credits = new Error('3036: insufficient credits');
+		const AI = answering(credits, neon, credits, neon);
 
 		await turn(pageId, 'make it neon', AI, { AI_MODEL: 'anthropic/claude-sonnet-4.6' });
 
 		const [, answer] = (await readChat(db, pageId)) ?? [];
-		expect(answer).toMatchObject({
-			note: 'refused',
-			text: expect.stringMatching(/^I couldn’t apply that: palette: /)
-		});
+		expect(answer).toMatchObject({ note: 'refused', text: REFUSED });
 	});
 });
 
@@ -634,15 +724,18 @@ describe('what the model is told', () => {
 			- say: one or two sentences to the operator saying what you changed, naming each value you set; when you ask, one sentence leading into the questions.
 			- page: an edit to the page as it stands, changing only what the message asks for and keeping every word it does not mention. Either {"kind": "patch", "ops": [RFC 6902 operations]} or {"kind": "merge", "doc": {an RFC 7396 merge of layout, palette or blocks}}. Leave it out when the page does not change.
 			- a patch path starts at /layout, /palette or /blocks; set is not part of the page, so no path starts at /set: a setting goes in set alone, and a reply that changes only settings has {"kind": "patch", "ops": []} as its page. {"op": "replace", "path": "/blocks/0/props/heading", "value": ...} changes one value; {"op": "add", "path": "/blocks/-", "value": {a whole block}} adds a block after the last; {"op": "add", "path": "/blocks/2", "value": {a whole block}} adds one before the third.
-			- set: only what the operator asked for, of {"corner": ..., "endDate": "YYYY-MM-DD", "goalMinor": ..., "name": ..., "programId": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum; programId is one of the active programs. Leave it out when no setting changes.
+			- set: only what the operator asked for, of {"corner": ..., "endDate": "YYYY-MM-DD", "goalMinor": ..., "name": ..., "shade": ..., "shareChannels": [...], "shareMessage": ..., "suggestedAmounts": [...]}. Amounts are in minor units ($15,000 is 1500000); a goal is only a figure the operator wrote; suggested amounts stay within the donation settings' minimum and maximum. Leave it out when no setting changes.
 			- shareChannels: the page’s share buttons, the whole list in the order they stand, each one of facebook (Facebook), whatsapp (WhatsApp), email (Email), copy-link (Copy link), linkedin (LinkedIn) or x (X); [] takes them all off.
 			- shade and corner: the page’s look, set only when the operator asks, and either may be set alone. shade is light, warm or cool: "warmer" asks for warm, "cooler" for cool, "plainer" or "neutral" for light. corner is square, soft or round: "rounder" asks for round, "sharper" or "squarer" for square, "softer" for soft. Every shade is a pale ground, so a darker or more colourful page is the palette’s to change, never the shade’s.
 			- shareMessage: the words a donor shares the page with, at most one or two sentences, holding no web address the page does not already link: a share carries the page’s own link. Leave it out of set, or null, to keep the message as it is; a share message is never taken off here, so when asked to, change nothing and say so. Suggest one with the page’s first draft, while it has none; after that, set it only when the operator asks.
 			- where the donation box opens is the operator’s to set in Donation settings; when asked to change it, change nothing and say so.
 			- write an amount in the words only from a figure the operator stated in the chat or one the page already shows.
-			- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page; otherwise an amount stays an amount alone, with no impact tier.
+			- say what an amount does, in the words or as an impact tier, only where the operator said it of that amount in one sentence, in the chat or on the page, or answered it in a "tiers" question; otherwise an amount stays an amount alone, with no impact tier.
+			- answers to a "tiers" question are the operator’s impact tiers: put every row on the page as a tier of the impact-tiers block, its amount as answered and its words the operator’s, tidied but meaning the same.
 			- ask: when the message is vague, or the page needs what only the operator knows — figures, dates, names, what a gift does — ask instead of guessing. A reply that asks has no page and no set.
-			- each question is {"id": ..., "kind": ..., "prompt": ..., "hint"?: ..., "options"?: [...], "placeholder"?: ..., "prefill"?: ...}, 1 to 5 of them. id: lowercase letters, digits and "-", unique. kind: "choice" (pick one option), "choices" (pick several), "text", "amount" (answered in dollars) or "date" (answered as a day). Prefer "choice" and "choices", with 2 to 6 short options; every choice gets an Other box of its own, so never list "Other". placeholder and prefill are for "text" only.
+			- each question is {"id": ..., "kind": ..., "prompt": ..., "hint"?: ..., "options"?: [...], "placeholder"?: ..., "prefill"?: ..., "rows"?: [...], "placeholders"?: [...]}, 1 to 5 of them. id: lowercase letters, digits and "-", unique. kind: "choice" (pick one option), "choices" (pick several), "text", "amount" (answered in dollars), "date" (answered as a day) or "tiers" (amounts and what each does). Prefer "choice" and "choices", with 2 to 6 short options; every choice gets an Other box of its own, so never list "Other".
+			- every "text" question has a prefill: your best guess at the answer from the page, the organisation and the campaign’s type, which the operator corrects; only where you cannot guess, a placeholder instead: a short example answer. every "amount" question has a prefill, your best guess in minor units, or failing that a placeholder, an example in minor units. placeholder and prefill are for "text" and "amount" only.
+			- whenever you ask what amounts do — what a gift of each amount buys, pays for or makes possible — ask one "tiers" question, never a "text" one, and write no amount into its prompt. rows: 1 to 6 of {"amount": minor units, "text"?: what it does}, each amount once, every row with an amount and with text where the page or the organisation lets you guess it, at most 140 characters. placeholders: an example of what each row’s amount does, one per row in order, for rows you leave without text.
 			- every word in a question is plain text: no HTML, no link, no web address.
 
 			CONTEXT:
@@ -889,13 +982,14 @@ describe('a photo sent with a turn', () => {
 		);
 		const pageId = await insertPage(db, 'campaign');
 		const before = await stored(pageId);
-		const AI = answering({
+		const reply = {
 			say: 'Your photo is in the hero.',
 			page: {
 				kind: 'patch',
 				ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: imageId }]
 			}
-		});
+		};
+		const AI = answering(reply, reply);
 
 		expect(await turn(pageId, 'use the photo from the other campaign', AI)).toMatchObject({
 			outcome: 'refused'
@@ -1041,14 +1135,16 @@ describe('an illustration the reply asks for', () => {
 		async (_, ops, reason) => {
 			const pageId = await insertPage(db, 'campaign');
 			const before = await db.$count(image);
-			const AI = drawing({ say: 'A picture.', page: { kind: 'patch', ops } }, true);
+			const reply = { say: 'A picture.', page: { kind: 'patch', ops } };
+			const AI = answering(reply, reply);
+			AI.run.mockImplementationOnce(async () => picture());
+			const warned = warnings();
 
 			expect(await turn(pageId, 'a picture please', AI)).toMatchObject({ outcome: 'refused' });
 
-			expect(AI.run).toHaveBeenCalledTimes(1);
+			expect(AI.run).toHaveBeenCalledTimes(2);
 			expect(await db.$count(image)).toBe(before);
-			const [, answer] = await chat(pageId);
-			expect(answer?.text).toContain(reason);
+			expect(warned()).toContain(reason);
 		}
 	);
 
@@ -1197,11 +1293,12 @@ describe('a reply that asks', () => {
 	it('beside a page edit is refused, and the draft is untouched', async () => {
 		const before = { ...defaultCampaign(), settings: SETTINGS };
 		const pageId = await insertPage(db, 'campaign', before);
-		const AI = answering({
+		const reply = {
 			say: 'Asking.',
 			ask: GOAL_AND_END,
 			page: { kind: 'merge', doc: { palette: 'duo' } }
-		});
+		};
+		const AI = answering(reply, reply);
 
 		expect(await turn(pageId, 'two-tone', AI)).toMatchObject({ outcome: 'refused' });
 		expect((await stored(pageId)).draft).toEqual(before);
@@ -1450,6 +1547,96 @@ async function askingTwice() {
 	return pageId;
 }
 
+describe('answers to a tiers question', () => {
+	const IMPACT = {
+		id: 'impact',
+		kind: 'tiers',
+		prompt: 'What does each gift do?',
+		rows: [{ amount: 2500 }, { amount: 5000 }, { amount: 10000 }]
+	};
+	const ROWS = [
+		{ amount: 2500, text: 'medicine' },
+		{ amount: 5000, text: 'meal' },
+		{ amount: 10000, text: 'super meal' }
+	];
+
+	it('become the page’s impact tiers in the reply’s words, with nothing left out', async () => {
+		const pageId = await asking([IMPACT]);
+		const AI = answering({
+			say: 'Added what each gift does.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'add',
+						path: '/blocks/4',
+						value: {
+							id: 'impact',
+							type: 'impact-tiers',
+							variant: 'cards',
+							background: 'none',
+							props: {
+								tiers: [
+									{ amountMinor: 2500, buys: 'Medicine for a sick child' },
+									{ amountMinor: 5000, buys: '$50 feeds a family a meal' },
+									{ amountMinor: 10000, buys: 'A super meal' }
+								]
+							}
+						}
+					}
+				]
+			}
+		});
+
+		const result = await answer(pageId, [{ id: 'impact', value: ROWS }], AI);
+
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'accepted',
+			turns: [
+				{
+					role: 'operator',
+					text: 'What does each gift do? — $25: medicine; $50: meal; $100: super meal'
+				},
+				{ role: 'assistant', text: 'Added what each gift does.' }
+			]
+		});
+		const impact = (await stored(pageId)).draft.blocks.find(({ type }) => type === 'impact-tiers');
+		expect(impact).toMatchObject({
+			tiers: [{ amountMinor: 2500 }, { amountMinor: 5000 }, { amountMinor: 10000 }]
+		});
+	});
+
+	it('still grant their tiers on a later message', async () => {
+		const pageId = await asking([IMPACT]);
+		await answer(pageId, [{ id: 'impact', value: ROWS }], answering({ say: 'Noted.' }));
+		const AI = answering({
+			say: 'Added the tiers.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'add',
+						path: '/blocks/4',
+						value: {
+							id: 'impact',
+							type: 'impact-tiers',
+							variant: 'list',
+							background: 'none',
+							props: { tiers: [{ amountMinor: 5000, buys: 'A meal' }] }
+						}
+					}
+				]
+			}
+		});
+
+		await turn(pageId, 'show what a gift does', AI);
+
+		const impact = (await stored(pageId)).draft.blocks.find(({ type }) => type === 'impact-tiers');
+		expect(impact).toMatchObject({ tiers: [{ amountMinor: 5000, buys: 'A meal' }] });
+	});
+});
+
 describe('answers to a second round of questions', () => {
 	it('are told no round follows them, where the first round’s were told one more may', async () => {
 		const pageId = await asking();
@@ -1513,7 +1700,8 @@ describe('answers to a second round of questions', () => {
 		expect(result).toEqual({
 			ok: false,
 			reason: 'refused_again',
-			text: 'I couldn’t apply that: a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
+			error:
+				'a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
 		});
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		expect((await stored(pageId)).draft).toEqual(before);
@@ -1530,27 +1718,34 @@ describe('answers to a second round of questions', () => {
 
 		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
 
-		expect(result).toMatchObject({ ok: false, reason: 'refused_again' });
+		expect(result).toEqual({
+			ok: false,
+			reason: 'refused_again',
+			error: expect.stringContaining('$99')
+		});
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		expect(await chat(pageId)).toHaveLength(4);
 	});
 
-	it('refused for anything but asking are refused as they stand, asking the model once', async () => {
+	it('refused for anything but asking ask the model once more, told why, and the second reply lands', async () => {
 		const pageId = await askingTwice();
-		const AI = answering(
-			{ say: 'Drafted.', set: { goalMinor: 9_900 } },
-			{ say: 'Drafted.', set: { goalMinor: 5000 } }
-		);
+		const refused = { say: 'Drafted.', set: { goalMinor: 9_900 } };
+		const AI = answering(refused, { say: 'Drafted.', set: { goalMinor: 5000 } });
 
 		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
 
-		expect(result).toEqual({
-			ok: false,
-			reason: 'refused',
-			text: expect.stringMatching(/^I couldn’t apply that: .*\$99/)
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'accepted',
+			turns: [{ role: 'operator' }, { role: 'assistant', text: 'Drafted.\nGoal set to $50.' }]
 		});
-		expect(AI.run).toHaveBeenCalledTimes(1);
-		expect(await chat(pageId)).toHaveLength(4);
+		expect(AI.run).toHaveBeenCalledTimes(2);
+		const [, first] = AI.run.mock.calls[0] ?? [];
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		expect(second.messages.slice(first.messages.length)).toEqual([
+			{ role: 'assistant', content: JSON.stringify(refused) },
+			{ role: 'user', content: expect.stringContaining('$99') }
+		]);
 	});
 });
 
@@ -1571,16 +1766,13 @@ describe('a figure in a question the model asked', () => {
 		]);
 		const before = (await stored(pageId)).draft;
 
-		const result = await answer(
-			pageId,
-			[{ id: 'size', value: 'No' }],
-			answering(heading('Help us reach $10,000'))
-		);
+		const reply = heading('Help us reach $10,000');
+		const result = await answer(pageId, [{ id: 'size', value: 'No' }], answering(reply, reply));
 
 		expect(result).toEqual({
 			ok: false,
-			reason: 'refused',
-			text: expect.stringContaining('$10,000')
+			reason: 'refused_again',
+			error: expect.stringContaining('$10,000')
 		});
 		expect((await stored(pageId)).draft).toEqual(before);
 	});
@@ -1642,14 +1834,20 @@ describe('a figure in a question the model asked', () => {
 		]);
 		await answer(pageId, [{ id: 'size', value: 'No' }], answering({ say: 'Drafted.' }));
 
-		const result = await turn(pageId, 'add a heading', answering(heading('Help us reach $10,000')));
+		const reply = heading('Help us reach $10,000');
+		const result = await turn(pageId, 'add a heading', answering(reply, reply));
 
 		expect(result).toMatchObject({ ok: true, outcome: 'refused' });
 	});
 });
 
 const DEFAULT_MODEL = '@cf/openai/gpt-oss-120b';
-const MISSION = { id: 'mission', kind: 'text', prompt: 'Your mission, in a sentence' };
+const MISSION = {
+	id: 'mission',
+	kind: 'text',
+	prompt: 'Your mission, in a sentence',
+	placeholder: 'We help families in our city find a stable home'
+};
 const OWN = [
 	{ id: 'who', kind: 'choice', prompt: 'Who does it help?', options: ['Kids', 'Families'] },
 	{ id: 'goal', kind: 'amount', prompt: 'Your goal' }
@@ -1964,13 +2162,14 @@ describe('the mission answered', () => {
 		const pageId = await opened();
 		const before = await readOrgProfile(db);
 
+		const reply = { say: 'Drafted.', set: { goalMinor: 9_900 } };
 		const result = await answer(
 			pageId,
 			[{ id: 'mission', value: 'Warm coats.' }],
-			answering({ say: 'Drafted.', set: { goalMinor: 9_900 } })
+			answering(reply, reply)
 		);
 
-		expect(result).toMatchObject({ ok: false, reason: 'refused' });
+		expect(result).toMatchObject({ ok: false, reason: 'refused_again' });
 		expect(await readOrgProfile(db)).toEqual(before);
 	});
 });

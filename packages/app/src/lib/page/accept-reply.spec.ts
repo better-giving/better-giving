@@ -8,7 +8,7 @@ import {
 	illustrationRequests,
 	OPS_MAX,
 	REPLY_BYTES_MAX,
-	REPLY_JSON_SCHEMA,
+	replyJsonSchema,
 	SAY_MAX
 } from './accept-reply';
 import { MAX_SUGGESTED_AMOUNTS, TOO_MANY_SUGGESTED_AMOUNTS } from '../forms/amounts';
@@ -92,8 +92,20 @@ describe('the schema a model is sent', () => {
 				if (key !== '$defs') visit(value, `${path}/${key}`);
 			}
 		};
-		visit(REPLY_JSON_SCHEMA, '');
+		visit(replyJsonSchema(true), '');
 		expect(uncapped).toEqual([]);
+	});
+
+	const settable = (schema: unknown) =>
+		Object.keys(
+			(schema as { properties: { set: { properties: Record<string, unknown> } } }).properties.set
+				.properties
+		);
+
+	it('offers a program only where one is active', () => {
+		expect(settable(replyJsonSchema(true))).toContain('programId');
+		expect(settable(replyJsonSchema(false))).not.toContain('programId');
+		expect(settable(replyJsonSchema(false))).toContain('suggestedAmounts');
 	});
 });
 
@@ -594,17 +606,27 @@ describe('what a reply sets', () => {
 		});
 	});
 
-	it('refuses a program that is not active, naming the ones that are', () => {
+	it('drops a program that is not active, and lands the rest of the reply', () => {
 		const current = campaign();
 		const result = accept(
-			{ say: 'Pinned.', set: { programId: 'prg_old' } },
+			{ say: 'Pinned.', set: { programId: 'prg_old', suggestedAmounts: [2500, 7500] } },
 			{ current, activePrograms: programs }
 		);
-		expect(result).toEqual({
-			ok: false,
-			reason:
-				'set.programId: "prg_old" is not an active program; the active ones are prg_coats (Coats) and prg_meals (Meals)',
-			current
+		expect(result).toMatchObject({
+			ok: true,
+			draft: { settings: { programMode: 'none', programId: null, suggestedAmounts: [2500, 7500] } },
+			changes: [{ field: 'amounts' }],
+			dropped: [{ what: 'program', programId: 'prg_old' }]
+		});
+	});
+
+	it('drops a program named where none is active, on a page with no donation settings', () => {
+		const current = { ...defaultCampaign(), settings: undefined };
+		const result = accept({ say: 'Pinned.', set: { programId: '/' } }, { current });
+		expect(result).toMatchObject({
+			ok: true,
+			changes: [],
+			dropped: [{ what: 'program', programId: '/' }]
 		});
 	});
 
@@ -883,6 +905,55 @@ describe('an impact figure', () => {
 			ok: true,
 			dropped: [{ what: 'tier', blockId: 'impact', amountMinor: 7500, reworded: false }]
 		});
+	});
+
+	it('is kept, with its figures in the words, when the operator answered it as a tier', () => {
+		const answered = {
+			author: 'operator' as const,
+			text: '$25: medicine; $50: meal; $100: super meal',
+			tiers: [
+				{ amount: 2500, text: 'medicine' },
+				{ amount: 5000, text: 'meal' },
+				{ amount: 10000, text: 'super meal' }
+			]
+		};
+		const reply = {
+			say: 'Added what each gift does.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'add',
+						path: '/blocks/3',
+						value: {
+							...tiers([]),
+							props: {
+								tiers: [
+									{ amountMinor: 2500, buys: 'Medicine for a sick child' },
+									{ amountMinor: 5000, buys: '$50 feeds a family a hot meal' },
+									{ amountMinor: 10000, buys: 'A super meal' }
+								]
+							}
+						}
+					}
+				]
+			}
+		};
+		const result = accept(reply, { messages: [answered] });
+		expect(result).toMatchObject({ ok: true, dropped: [] });
+		expect(tiersOf(result)).toMatchObject({
+			tiers: [{ amountMinor: 2500 }, { amountMinor: 5000 }, { amountMinor: 10000 }]
+		});
+	});
+
+	it('is dropped when an answered tier names another amount', () => {
+		const answered = {
+			author: 'operator' as const,
+			text: '$25: medicine',
+			tiers: [{ amount: 2500, text: 'medicine' }]
+		};
+		const result = accept(addTier(5000, 'medicine'), { messages: [answered] });
+		expect(tiersOf(result)).toMatchObject({ tiers: [] });
 	});
 
 	it('is dropped when the operator gave its amount but not what it does', () => {

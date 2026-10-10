@@ -158,6 +158,31 @@ describe('a turn the edge refuses', () => {
 		expect(AI.run).not.toHaveBeenCalled();
 	});
 
+	it('whose reply is refused, and its one retry too, is said plainly in the chat, its reason in the log', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		const response = await post(pageId, TURN, answering('not a reply', 'not a reply either'));
+
+		const body = await response.json();
+		expect([response.status, body]).toMatchObject([
+			200,
+			{
+				outcome: 'refused',
+				turns: [
+					{ role: 'operator' },
+					{
+						role: 'assistant',
+						text: 'I couldn’t make that change. Try saying it another way.',
+						note: 'refused'
+					}
+				]
+			}
+		]);
+		expect(JSON.stringify(body)).not.toContain('not JSON');
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining('the reply is not JSON'));
+	});
+
 	it('is a 404 for a page that does not exist', async () => {
 		const response = await post('no-such-page', TURN);
 		expect([response.status, await response.json()]).toEqual([
@@ -181,6 +206,17 @@ it('sends a turn from someone signed out to sign in, and asks no model', async (
 });
 
 const ASK = { say: 'A few questions.', ask: [{ id: 'goal', kind: 'amount', prompt: 'Your goal' }] };
+const TIERS_ASK = {
+	say: 'A few questions.',
+	ask: [
+		{
+			id: 'impact',
+			kind: 'tiers',
+			prompt: 'What does each gift do?',
+			rows: [{ amount: 2500 }, { amount: 5000 }]
+		}
+	]
+};
 const ZONE = 'America/New_York';
 
 describe('a page’s opening, posted as intent open', () => {
@@ -327,24 +363,26 @@ describe('answers, posted as intent answers', () => {
 		expect([resent.status, await resent.json()]).toMatchObject([200, { outcome: 'accepted' }]);
 	});
 
-	it('whose reply is refused are a 422 marked refused, saying why', async () => {
+	it('whose reply is refused, and its one retry too, are a 422 marked refused_again, naming why', async () => {
 		const pageId = await asked();
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const response = await post(
 			pageId,
 			{ intent: 'answers', answers: '[]', timeZone: ZONE },
-			answering('not a reply')
+			answering('not a reply', 'not a reply either')
 		);
 
 		expect([response.status, await response.json()]).toEqual([
 			422,
-			{ error: expect.stringMatching(/^I couldn’t apply that: /), reason: 'refused' }
+			{ error: 'the reply is not JSON', reason: 'refused_again' }
 		]);
 	});
 
-	it('to a second round whose reply asks, and asks again when asked once more, are a 422 marked refused_again, saying why', async () => {
+	it('to a second round whose reply asks, and asks again when asked once more, are a 422 marked refused_again, naming why', async () => {
 		const pageId = await asked();
 		await post(pageId, { intent: 'answers', answers: '[]', timeZone: ZONE }, answering(ASK));
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const response = await post(
 			pageId,
@@ -356,10 +394,67 @@ describe('answers, posted as intent answers', () => {
 			422,
 			{
 				error:
-					'I couldn’t apply that: a reply to answers past the chat’s first round of questions changes the page from them and never asks again',
+					'a reply to answers past the chat’s first round of questions changes the page from them and never asks again',
 				reason: 'refused_again'
 			}
 		]);
+	});
+
+	it('to a tiers question are posted as its rows, and land as words', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await post(pageId, { intent: 'open', timeZone: ZONE }, answering(TIERS_ASK));
+		const rows = [
+			{ amount: 2500, text: 'Medicine' },
+			{ amount: 5000, text: 'A meal' }
+		];
+
+		const response = await post(pageId, {
+			intent: 'answers',
+			answers: JSON.stringify([{ id: 'impact', value: rows }]),
+			timeZone: ZONE
+		});
+
+		expect([response.status, await response.json()]).toMatchObject([
+			200,
+			{
+				outcome: 'accepted',
+				turns: [
+					{
+						role: 'operator',
+						answers: [
+							{
+								id: 'impact',
+								prompt: 'What does each gift do?',
+								words: '$25: Medicine; $50: A meal'
+							}
+						]
+					},
+					{ role: 'assistant' }
+				]
+			}
+		]);
+	});
+
+	it('to a tiers question are a 400 naming the row, for an amount listed twice, and ask no model', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		await post(pageId, { intent: 'open', timeZone: ZONE }, answering(TIERS_ASK));
+		const AI = answering(TWO_TONE);
+		const value = [
+			{ amount: 2500, text: 'Medicine' },
+			{ amount: 2500, text: 'A meal' }
+		];
+
+		const response = await post(
+			pageId,
+			{ intent: 'answers', answers: JSON.stringify([{ id: 'impact', value }]), timeZone: ZONE },
+			AI
+		);
+
+		expect([response.status, await response.json()]).toEqual([
+			400,
+			{ error: 'answers.0.value: an amount is listed twice' }
+		]);
+		expect(AI.run).not.toHaveBeenCalled();
 	});
 
 	it.each([

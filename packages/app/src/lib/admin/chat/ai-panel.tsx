@@ -15,9 +15,10 @@ import type { CardAnswer, CardQuestion } from './question-card';
  * one turn of a page's chat, as its `chat_turn` row holds it.
  *
  * `note` marks an assistant turn the log draws a line under: `fell-back` when the chosen model did
- * not answer and the default model wrote it, `refused` when the reply did not fit the page and nothing
- * changed, `starter` when the AI did not answer the opening and the page's usual questions were
- * asked instead. `unanswered` marks a turn no model answered, whose words say so; no line is drawn.
+ * not answer and the default model wrote it, `starter` when the AI did not answer the opening and
+ * the page's usual questions were asked instead. `refused` marks a turn whose reply was refused and
+ * refused again, and `unanswered` one no model answered; the words of each say so, and no line is
+ * drawn.
  */
 export interface ChatMessage {
 	readonly id: string;
