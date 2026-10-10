@@ -300,14 +300,16 @@ const MEMBERS: Record<string, Member> = {
 			];
 		}
 	},
-	// the press at the end of a field's label row, the small control's square: the Undo standing
-	// before it in the row, the field's own box under the row, and the field above it.
+	// the press at the end of a field's label row, a mark and a word on the small control, drawn
+	// here at its narrowest: the Undo standing before it in the row, the field's own box under the
+	// row, and the field above it.
 	'.adm-field__press': {
 		holder: '.adm-btn',
-		drawn: () => {
-			const square = evaluate(ruleOf(css, '.adm-field__press').get('inline-size'));
-			return { inline: square, block: square, border: BUTTON_BORDER() };
-		},
+		drawn: () => ({
+			inline: evaluate(ruleOf(css, '.adm-field__press').get('min-inline-size')),
+			block: evaluate(ruleOf(css, '.adm-btn--sm').get('min-block-size')),
+			border: BUTTON_BORDER()
+		}),
 		contexts: [FIELD_HEAD_PRESS],
 		neighbours: () => {
 			const at = target('.adm-field__press', FIELD_HEAD_PRESS);
@@ -387,9 +389,9 @@ const MEMBERS: Record<string, Member> = {
 };
 
 /**
- * the target the shared rule draws on a member, with the rule a context adds over it. an inset is
- * measured from the holder's padding box, so `100%` is the drawn size less the border and the
- * border is added back to place the target against the border box.
+ * the target the shared rule draws on a member, with the rule a context adds over it. a size and an
+ * inset are measured from the holder's padding box, so `100%` is the drawn size less the border and
+ * the border is added back to place the target against the border box.
  */
 function target(member: string, context?: string): Target {
 	const entry = MEMBERS[member];
@@ -399,8 +401,8 @@ function target(member: string, context?: string): Target {
 		...(floorRules[0]?.stated ?? []),
 		...(context === undefined ? [] : ruleOf(css, `${context}::before`))
 	]);
-	const inline = evaluate(stated.get('inline-size'));
-	const block = evaluate(stated.get('block-size'));
+	const inline = evaluate(stated.get('inline-size'), drawn.inline - 2 * drawn.border);
+	const block = evaluate(stated.get('block-size'), drawn.block - 2 * drawn.border);
 	const inlineStart =
 		-drawn.border - evaluate(stated.get('inset-inline-start'), drawn.inline - 2 * drawn.border);
 	const blockStart =

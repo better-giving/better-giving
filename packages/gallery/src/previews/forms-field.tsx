@@ -253,7 +253,9 @@ export default function FormsFieldPreview() {
 						mark="sparkles"
 						className="adm-field__press"
 						aria-label="Write with AI"
-					/>
+					>
+						Write
+					</Button>
 				}
 			/>
 			<Field
@@ -275,7 +277,9 @@ export default function FormsFieldPreview() {
 							mark="sparkles"
 							className="adm-field__press"
 							aria-label="Write with AI"
-						/>
+						>
+							Write
+						</Button>
 					</>
 				}
 			/>

@@ -440,6 +440,7 @@ describe('a chat with turns', () => {
 describe('an empty chat', () => {
 	beforeEach(() => {
 		stored = [];
+		loadedDrafted = false;
 	});
 
 	it('is asked its opening questions once, reading the page until they land', async () => {
@@ -459,30 +460,6 @@ describe('an empty chat', () => {
 		expect(posted).toHaveLength(1);
 	});
 
-	it('opens the AI sheet on arrival below the wide breakpoint, the card in it once it lands', async () => {
-		screen();
-		await settle();
-
-		expect(document.querySelector('dialog .adm-chat__log')).not.toBeNull();
-		await act(async () => held.shift()?.());
-		await settle();
-
-		expect(document.querySelector('dialog .adm-questions')).not.toBeNull();
-	});
-
-	it('hands the focus to the AI press when the sheet it opened on arrival is closed', async () => {
-		screen();
-		await settle();
-		await act(async () => held.shift()?.());
-		await settle();
-
-		await press(button('Close'));
-		await settle();
-
-		expect(document.querySelector('dialog')).toBeNull();
-		expect(document.activeElement).toBe(button('AI'));
-	});
-
 	it('says the questions did not load when the opening fails, and stops reading', async () => {
 		atWidth(true);
 		refusals = [{ body: { error: 'the turn on page "p1" failed', reason: 'failed' }, status: 500 }];
@@ -497,21 +474,34 @@ describe('an empty chat', () => {
 		expect(posted).toHaveLength(1);
 	});
 
-	it('shows the card docked from the wide breakpoint, with no sheet', async () => {
-		atWidth(true);
-		screen();
-		await settle();
-		await act(async () => held.shift()?.());
-		await settle();
+	it.each([
+		['from the wide breakpoint', true],
+		['below it', false]
+	])(
+		'on a drafted page is asked nothing %s, the panel opening on the box alone',
+		async (_, wide) => {
+			loadedDrafted = true;
+			atWidth(wide);
+			screen();
+			await settle();
+			expect(document.querySelector('dialog')).toBeNull();
 
-		expect(document.querySelector('[role="complementary"] .adm-questions')).not.toBeNull();
-		expect(document.querySelector('dialog')).toBeNull();
-	});
+			if (!wide) await press(button('AI'));
+			await settle();
+
+			expect(posted).toEqual([]);
+			expect(document.querySelector('.adm-chat__waiting')).toBeNull();
+			expect(questionCard()).toBeNull();
+			expect(turnsShown()).toEqual([]);
+			expect(document.querySelector('textarea')).not.toBeNull();
+		}
+	);
 });
 
-/** an empty chat at the wide breakpoint, its opening questions landed. */
+/** a page never drafted with an empty chat, at the wide breakpoint, its opening questions landed. */
 async function asked(): Promise<HTMLElement> {
 	stored = [];
+	loadedDrafted = false;
 	atWidth(true);
 	const root = screen();
 	await settle();
@@ -663,10 +653,9 @@ describe('a question card answered', () => {
 		expect(document.activeElement).toBe(document.querySelector('textarea'));
 	});
 
-	it('draws the answers and the drafted turn once they land, and the preview reads again', async () => {
-		const root = await asked();
-		const version = () => root.querySelector('output')?.textContent;
-		const before = version();
+	it('draws the answers and the drafted turn once they land, and the editor reads the page again', async () => {
+		await asked();
+		const loads = editorLoads;
 		answer('mission', 'Warm coats for every child.');
 		await press(button('Draft my page'));
 		await settle();
@@ -679,7 +668,7 @@ describe('a question card answered', () => {
 			'Your answersYour mission, in a sentenceWarm coats for every child.',
 			'I drafted your page.'
 		]);
-		expect(version()).not.toBe(before);
+		expect(editorLoads).toBeGreaterThan(loads);
 	});
 });
 

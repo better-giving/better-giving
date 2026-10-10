@@ -61,10 +61,10 @@ import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
 // a campaign's editor, reached from the Campaigns list: its draft framed by the preview route, the
-// publish bar over it, the AI panel beside it ($lib/admin/editor/chat-wiring.tsx, which asks an
-// empty chat its opening questions), and the Settings sheet behind the bar's Settings, while Edit
-// is on. the parts are $lib/admin/editor/'s; what they read and the writes behind them are here and
-// in $lib/server/pages/queries.ts.
+// publish bar over it, the AI panel beside it ($lib/admin/editor/chat-wiring.tsx, which asks a
+// page never drafted its opening questions), and the Settings sheet behind the bar's Settings,
+// while Edit is on. the parts are $lib/admin/editor/'s; what they read and the writes behind them
+// are here and in $lib/server/pages/queries.ts.
 //
 // **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
 // which the dashboard shows, its settings row's, which a gift's notices carry, and the draft's,

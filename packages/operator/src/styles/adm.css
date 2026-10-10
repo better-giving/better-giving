@@ -2079,15 +2079,15 @@
 		margin-inline-start: auto;
 	}
 
-	/* the press that writes the box draws its mark and no word, in the small control's square. */
+	/* the press that writes the box draws its mark and a word, a small quiet button never narrower
+	   than the floor, so its target need reach past it in the block axis alone. */
 	.adm-field__press {
-		inline-size: var(--admin-control-height-sm);
-		padding-inline: 0;
+		min-inline-size: var(--admin-touch-min);
 	}
 
-	/* its target (a target past the drawn edge, under the buttons) would reach further under the
-	   head than the step down to the box, so it ends at that step instead and reaches up toward the
-	   field above, which stands a field's step off. */
+	/* its target (a target past the drawn edge, under the buttons) spans the press edge to edge, and
+	   would reach further under the head than the step down to the box, so it ends at that step
+	   instead and reaches up toward the field above, which stands a field's step off. */
 	.adm-field__head .adm-field__press::before {
 		inset-block-start: calc(
 			100% +
@@ -2095,6 +2095,8 @@
 			var(--admin-space-3) -
 			var(--admin-touch-min)
 		);
+		inset-inline-start: calc(-1 * var(--admin-border-width));
+		inline-size: calc(100% + 2 * var(--admin-border-width));
 	}
 
 	.adm-field > .adm-hint {
@@ -5541,8 +5543,7 @@
 
 	/* the heading and its X on one line. the X sits on the padding's own edge at the end, the
 	   heading on the body's edge at the start, so the title lines up with what is under it. */
-	.adm-sheet__head,
-	.adm-aipanel__head {
+	.adm-sheet__head {
 		display: flex;
 		align-items: center;
 		gap: var(--admin-space-4);
@@ -5550,8 +5551,7 @@
 		border-block-end: var(--admin-rule);
 	}
 
-	.adm-sheet__head > h2,
-	.adm-aipanel__head > h2 {
+	.adm-sheet__head > h2 {
 		flex: 1;
 		min-inline-size: 0;
 		font-size: var(--admin-section-size);
@@ -5582,6 +5582,11 @@
 		/* raw-length-ok: 0px is env()'s fallback inside calc(), where a unitless 0 is invalid */
 		padding: var(--admin-space-5) var(--admin-space-7)
 			calc(var(--admin-space-5) + env(safe-area-inset-bottom, 0px));
+	}
+
+	/* a rule marks where the body scrolls under the foot. a foot holding the chat's composer draws
+	   none: the composer's own box is that edge, and a rule over it is a second line on it. */
+	.adm-sheet__foot:not(:has(> .adm-chat__foot)) {
 		border-block-start: var(--admin-rule);
 	}
 
@@ -5887,10 +5892,12 @@
 	}
 
 	/* the AI panel docked beside the preview, from the wide breakpoint (the layout layer): the
-	   sheet's head, body and foot above, standing in a column at the panel's measure with a hairline
-	   between it and the page. below the breakpoint it is not drawn — there the panel is a sheet —
-	   and this keeps the server's wide render of it off a phone until the page has read its width.
-	   packages/app/src/lib/admin/chat/ai-panel.tsx is the only thing that writes it. */
+	   sheet's body and foot above, standing in a column at the panel's measure with a hairline
+	   between it and the page, the one line on that edge. it draws no head: its name is the
+	   landmark's, held by a heading drawn to a reader alone. below the breakpoint it is not drawn —
+	   there the panel is a sheet — and this keeps the server's wide render of it off a phone until
+	   the page has read its width. packages/app/src/lib/admin/chat/ai-panel.tsx is the only thing
+	   that writes it. */
 	.adm-aipanel {
 		display: none;
 		flex-direction: column;
@@ -5902,26 +5909,38 @@
 	}
 
 	/* the panel as the whole editor, before the page's first draft: no preview beside it, so it is
-	   drawn at every width, at the column's measure and centred in the body, a hairline either side. */
+	   drawn at every width, a column at the column's measure centred in the body, on the page's own
+	   ground and with no line either side — nothing stands beside it to be held apart from. */
 	.adm-aipanel--alone {
 		display: flex;
 		justify-self: center;
 		inline-size: 100%;
 		max-inline-size: var(--admin-measure-column);
-		border-inline: var(--admin-hairline);
+		background: transparent;
+		border-inline-start: 0;
 	}
 
-	/* the questions an asked turn puts, in one card under its words: each question a field or a group
-	   of chips, a stack step apart so a question's own parts read as one, then the two presses. the
-	   card is set on the page's ground inside its edge, which is what holds it apart from the turns
-	   around it. packages/app/src/lib/admin/chat/question-card.tsx writes it. */
+	/* the questions an asked turn puts, under its words: each question a field or a group of chips,
+	   a stack step apart so a question's own parts read as one, then the two presses. they stand in
+	   the panel itself, grouped by space alone — the boxes typed into are the only edges drawn.
+	   packages/app/src/lib/admin/chat/question-card.tsx writes it. */
 	.adm-questions {
 		display: grid;
 		gap: var(--admin-space-8);
-		padding: var(--admin-space-6);
-		background: var(--admin-page);
-		border: var(--admin-hairline);
-		border-radius: var(--admin-radius);
+	}
+
+	/* a turn that asks stands its words a heading's step off the questions under them, wider than
+	   the step from a question's label to its box, so the words head the whole set rather than
+	   reading as the first question's. */
+	.adm-chat__turn:has(> .adm-questions) {
+		gap: var(--admin-space-5);
+	}
+
+	/* the page's usual questions say why above them on the notice's tint, which is its edge: a line
+	   round it would draw that edge twice. the border stays, unseen, for a forced-colours scheme,
+	   which takes the tint away. */
+	.adm-questions > .adm-banner {
+		border-color: transparent;
 	}
 
 	/* why the card's answers were not taken, under its presses. the region is on the card before it
@@ -5933,14 +5952,14 @@
 
 	/* what an operator turn answered, in place of its words: a quiet title, and each question's prompt
 	   beside its answer, the prompt a column of its own that gives way to the answer past half the
-	   width so a long prompt wraps rather than squeezing the answer it labels.
+	   width so a long prompt wraps rather than squeezing the answer it labels. it is the operator's
+	   turn, so it is set on the sunken ground their words are, with no line round it.
 	   packages/app/src/lib/admin/chat/chat-log.tsx writes it. */
 	.adm-answers {
 		display: grid;
 		gap: var(--admin-space-3);
 		padding: var(--admin-space-5);
-		background: var(--admin-page);
-		border: var(--admin-rule);
+		background: var(--admin-surface-sunken);
 		border-radius: var(--admin-radius);
 	}
 

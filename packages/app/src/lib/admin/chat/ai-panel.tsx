@@ -123,7 +123,9 @@ const textOf = (message: AppendMessage) =>
    breakpoint (../editor/wide.ts) it is a column docked beside the preview, always there and never
    dismissed — non-modal, so the page and the panel are worked side by side. below it, it is a modal
    sheet, up while `open` and taken down by `onDismiss`. one body either way, so what the operator
-   reads and types in is the same thing in both.
+   reads and types in is the same thing in both. the column draws no head: the sheet's carries the
+   X the column has no use for, so the column's name is a heading drawn to a reader alone, which
+   names its landmark.
 
    before the page's first draft it is `alone`: the editor's main content at every width, with no
    preview beside it. the column is one element in both of its roles, the landmark its role
@@ -239,9 +241,9 @@ function Shown({
 					role={alone ? 'main' : 'complementary'}
 					aria-labelledby={heading}
 				>
-					<div className="adm-aipanel__head">
-						<h2 id={heading}>AI</h2>
-					</div>
+					<h2 id={heading} className="adm-vh">
+						AI
+					</h2>
 					<div className="adm-aipanel__body">{log}</div>
 					<div className="adm-aipanel__foot">{composer}</div>
 				</section>
