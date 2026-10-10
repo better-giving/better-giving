@@ -7,7 +7,7 @@ import { AffixedField, type AffixedFieldProps } from './affixed-field';
 // goal (./goal-sheet.tsx), a tier's amount (./block-edit.tsx), and an amount question's box and a
 // tiers question's amounts (../chat/question-card.tsx). an affixed box (./affixed-field.tsx) that
 // groups its digits as they are typed and hands on the text with the separators taken out, as
-// ../amount-box.ts states for every money box.
+// ../amount-box.ts states for every money box. an example figure in the box is grouped as well.
 //
 // the box is the caller's to hold, with `value` and `onValueChange`, or the form's, with `name` and
 // `defaultValue`, in which case it holds what is typed itself and posts it from a hidden box under
@@ -43,6 +43,7 @@ export function MoneyField({
 	onValueChange,
 	name,
 	defaultValue,
+	placeholder,
 	...field
 }: MoneyFieldProps) {
 	const [held, setHeld] = useState(defaultValue ?? '');
@@ -52,6 +53,9 @@ export function MoneyField({
 			<AffixedField
 				{...field}
 				inputMode="decimal"
+				placeholder={
+					placeholder === undefined ? undefined : groupAmountEntry(placeholder, currency)
+				}
 				value={groupAmountEntry(text, currency)}
 				onKeyDown={(event) => deleteOverSeparator(event, currency)}
 				onValueChange={(_, box) => {

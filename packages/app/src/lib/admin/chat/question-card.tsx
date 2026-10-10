@@ -22,8 +22,9 @@ import { MoneyField } from '../editor/money-field';
 // a question arrives as the wire holds it ($lib/page/questions.ts), and every string in it is drawn
 // as text. a choice is ChoiceChips' radios, several choices its checkboxes, and both end on an
 // Other chip whose words are the answer — Other taken with nothing typed is no answer. an amount is
-// read by the app's own amount parse ($lib/forms/amounts) into minor units of the form currency, a
-// date is the platform's date box, which hands back `YYYY-MM-DD`.
+// read by the app's own amount parse ($lib/forms/amounts) into minor units of the form currency,
+// its box starting on the question's prefill and showing its example, a date is the platform's
+// date box, which hands back `YYYY-MM-DD`.
 //
 // a tiers question is repeating rows, each an amount and what it does, seeded from the question's
 // rows and each row's example; the operator adds rows up to `TIERS_MAX` and drops them down to one.
@@ -213,7 +214,15 @@ export function QuestionCard({
 	const refusalId = `${uid}-refusal`;
 	const describedBy = refusal === '' ? undefined : refusalId;
 	const domId = (question: CardQuestion) => `${uid}-${question.id}`;
-	const [amounts, setAmounts] = useState<Held['amounts']>({});
+	const [amounts, setAmounts] = useState<Held['amounts']>(() =>
+		Object.fromEntries(
+			questions.flatMap((question) =>
+				question.kind === 'amount' && question.prefill !== undefined
+					? [[question.id, majorEntry(question.prefill, FORM_CURRENCY)]]
+					: []
+			)
+		)
+	);
 	const [tiers, setTiers] = useState<Held['tiers']>(() =>
 		Object.fromEntries(
 			questions.flatMap((question) =>
@@ -416,6 +425,11 @@ export function QuestionCard({
 						affix="$"
 						affixAt="start"
 						currency={FORM_CURRENCY}
+						placeholder={
+							question.placeholder === undefined
+								? undefined
+								: majorEntry(question.placeholder, FORM_CURRENCY)
+						}
 						value={amounts[question.id] ?? ''}
 						onValueChange={(text) => typeAmount(question, text)}
 						error={refused[question.id]?.[id]}

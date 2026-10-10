@@ -38,6 +38,7 @@ export type AffixedFieldProps = {
 	readonly error?: string | null | undefined;
 	readonly inputRef?: Ref<HTMLInputElement>;
 	readonly inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
+	readonly placeholder?: string | undefined;
 	readonly onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
 };
 
@@ -54,6 +55,7 @@ export function AffixedField({
 	value,
 	onValueChange,
 	inputMode,
+	placeholder,
 	onKeyDown
 }: AffixedFieldProps) {
 	const labelId = `${id}-label`;
@@ -92,6 +94,7 @@ export function AffixedField({
 					aria-label={named}
 					aria-invalid={error ? 'true' : undefined}
 					aria-describedby={describedBy}
+					placeholder={placeholder}
 					value={value}
 					onKeyDown={onKeyDown}
 					onChange={(event) => onValueChange(event.target.value, event.target)}

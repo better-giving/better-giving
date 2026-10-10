@@ -243,6 +243,31 @@ describe('the question card', () => {
 		expect(onSubmit.mock.calls[0]?.[0]).toContainEqual({ id: 'gift', value: 10_000_000 });
 	});
 
+	it('starts an amount box on its prefill and shows its example, both grouped, and sends the prefill', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(
+			props({
+				questions: [
+					{
+						id: 'goal',
+						kind: 'amount',
+						prompt: 'Your goal',
+						prefill: 2_500_000,
+						placeholder: 1_000_000
+					}
+				],
+				onSubmit
+			})
+		);
+		const goal = box(host, 'Your goal');
+
+		expect(goal.value).toBe('25,000');
+		expect(goal.placeholder).toBe('10,000');
+
+		await press(button(host, 'Draft my page'));
+		expect(onSubmit).toHaveBeenCalledWith([{ id: 'goal', value: 2_500_000 }]);
+	});
+
 	it('takes a press anywhere on an amount box’s drawn frame, named by its question alone', () => {
 		const { host } = mount(props());
 		const gift = box(host, 'A typical gift');
