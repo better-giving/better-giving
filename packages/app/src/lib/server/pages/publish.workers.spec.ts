@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Page as PageDocument } from '../../page/catalog';
 import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 import { endOfDay } from '../../page/end-date';
@@ -686,7 +686,9 @@ describe('Discard changes', () => {
 		const pageId = await insertPage(db, 'donation_page', LIVE_DONATION_PAGE);
 		await draftAs(pageId, { ...LIVE_DONATION_PAGE, shareMessage: 'Warm coats.' });
 		const drawn = await stored(pageId);
-		const AI = answering({ say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } });
+		const neon = { say: 'Neon!', page: { kind: 'merge', doc: { palette: 'neon' } } };
+		const AI = answering(neon, neon);
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
 		const refusedTurn = await draftTurn(
 			db,
 			{ ...env, AI },
