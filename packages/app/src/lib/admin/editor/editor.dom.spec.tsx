@@ -9,7 +9,7 @@ import { PageView } from '$lib/donate/page-view';
 import { AiPanel } from '../chat/ai-panel';
 import { AddressSheet } from './address-sheet';
 import { BlockSheet } from './block-sheet';
-import { EditorShell } from './editor-shell';
+import { AiLayer, EditorShell } from './editor-shell';
 import { GoalSheet } from './goal-sheet';
 import { InPlaceName } from './in-place-name';
 import { PicturePicker } from './pictures';
@@ -164,7 +164,7 @@ describe('the AI panel in the editor', () => {
 		return (
 			<EditorShell
 				bar={<Bar onSettings={() => {}} onAi={() => setOpen(true)} />}
-				preview={null}
+				preview={<output>preview</output>}
 				panel={
 					<AiPanel
 						messages={[]}
@@ -177,7 +177,9 @@ describe('the AI panel in the editor', () => {
 						imageSrc={(id) => `/image/${id}`}
 					/>
 				}
-			/>
+			>
+				<AiLayer open={open} unread={false} onClose={() => setOpen(false)} />
+			</EditorShell>
 		);
 	}
 
@@ -190,13 +192,23 @@ describe('the AI panel in the editor', () => {
 		return { entry, sheet };
 	}
 
-	it('stands docked beside the preview from the wide breakpoint, with no AI press', () => {
+	it('floats over the preview from the wide breakpoint, opened and closed by the AI press', () => {
 		const root = routed(<Editor />);
 		const body = root.querySelector('.adm-editor__body');
-		expect(body?.querySelector(':scope > main')).not.toBeNull();
+		const entry = button(root, 'AI');
+		expect(body?.querySelector(':scope > main output')).not.toBeNull();
+		expect(body?.querySelector('.adm-aipanel')).toBeNull();
+
+		entry.focus();
+		act(() => entry.click());
+		expect(body?.querySelector(':scope > main output')).not.toBeNull();
 		expect(body?.querySelector(':scope > [role="complementary"] textarea')).not.toBeNull();
 		expect(root.querySelector('dialog')).toBeNull();
-		expect(() => button(root, 'AI')).toThrow();
+		expect(entry.getAttribute('aria-expanded')).toBe('true');
+
+		act(() => entry.click());
+		expect(body?.querySelector('.adm-aipanel')).toBeNull();
+		expect(entry.getAttribute('aria-expanded')).toBe('false');
 	});
 
 	it('is a modal below it, opened from the AI press, with the focus inside it', () => {
@@ -602,7 +614,7 @@ describe('the publish bar', () => {
 		expect(names(routed(campaign('unpublished')))).not.toContain('More');
 	});
 
-	it('offers the AI press below the wide breakpoint alone, where the panel is a sheet', () => {
+	it('offers the AI press at every width, opening a dialog below the wide breakpoint alone', () => {
 		const onAi = vi.fn();
 		const at = () =>
 			routed(
@@ -616,13 +628,16 @@ describe('the publish bar', () => {
 					onAi={onAi}
 				/>
 			);
-		expect(names(at())).not.toContain('AI');
+		const floating = button(at(), 'AI');
+		expect(floating.hasAttribute('aria-haspopup')).toBe(false);
+		act(() => floating.click());
+		expect(onAi).toHaveBeenCalledOnce();
 
 		atWidth(false);
 		const ai = button(at(), 'AI');
 		expect(ai.getAttribute('aria-haspopup')).toBe('dialog');
 		act(() => ai.click());
-		expect(onAi).toHaveBeenCalledOnce();
+		expect(onAi).toHaveBeenCalledTimes(2);
 	});
 
 	it('walks its presses in the order it draws them: Publish before the quieter ones on a phone', () => {

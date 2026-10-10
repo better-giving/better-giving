@@ -194,9 +194,12 @@ async function press(target: HTMLElement) {
 }
 
 describe('the AI panel', () => {
-	it('asks a drafted page’s empty chat nothing, the panel docked beside the preview', async () => {
+	it('asks a drafted page’s empty chat nothing, the panel the AI press opens over the preview', async () => {
 		await screen();
 		await settle();
+		expect(document.querySelector('.adm-aipanel')).toBeNull();
+
+		await press(button('AI'));
 
 		expect(chatPosted).toEqual([]);
 		expect(document.querySelector('[role="complementary"].adm-aipanel textarea')).not.toBeNull();
@@ -266,6 +269,35 @@ describe('every hand edit', () => {
 
 		expect(card(block.label).open).toBe(true);
 		expect(() => card('Settings')).toThrow();
+	});
+});
+
+describe('the AI panel and a sheet', () => {
+	it('never stand together: a block clicked in the preview closes the panel as its sheet opens', async () => {
+		await screen();
+		const block = drawn.blocks.find((one) => one.type !== 'donation-box');
+		if (block === undefined) throw new Error('the fixture draws only a donation box');
+		await editOn();
+		await press(button('AI'));
+		expect(document.querySelector('.adm-aipanel')).not.toBeNull();
+
+		await clickInPreview(block.id);
+
+		expect(card(block.label).open).toBe(true);
+		expect(document.querySelector('.adm-aipanel')).toBeNull();
+		expect(button('AI').getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('never stand together: Settings closes the panel as its sheet opens', async () => {
+		await screen();
+		await editOn();
+		await press(button('AI'));
+		expect(document.querySelector('.adm-aipanel')).not.toBeNull();
+
+		await press(button('Settings'));
+
+		expect(card('Settings').open).toBe(true);
+		expect(document.querySelector('.adm-aipanel')).toBeNull();
 	});
 });
 

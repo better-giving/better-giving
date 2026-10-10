@@ -5,7 +5,7 @@ import {
 	useExternalStoreRuntime
 } from '@assistant-ui/react';
 import { Sheet } from '@better-giving/operator/components/shell/Sheet';
-import { type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useWide } from '../editor/wide';
 import { ChatComposer } from './chat-composer';
 import { ChatLog, liveAsk } from './chat-log';
@@ -80,9 +80,9 @@ export interface AiPanelProps {
 	readonly onSend: (send: ChatSend) => void;
 	/** the answers a question card sent, or none from its skip press. */
 	readonly onAnswer: (answers: readonly CardAnswer[]) => void;
-	/** below the wide breakpoint, whether the sheet is up. the docked column ignores it. */
+	/** whether the panel is up: floating from the wide breakpoint, a sheet below it. */
 	readonly open: boolean;
-	/** the sheet's X and Escape, below the wide breakpoint. */
+	/** Escape, and the sheet's X below the wide breakpoint. */
 	readonly onDismiss: () => void;
 	/**
 	 * the panel is the whole editor, before the page's first draft: a column at every width, the
@@ -119,23 +119,25 @@ const textOf = (message: AppendMessage) =>
 		.join('\n')
 		.trim();
 
-/* the AI panel: the log in its body, suggestions and the composer in its foot. from the wide
-   breakpoint (../editor/wide.ts) it is a column docked beside the preview, always there and never
-   dismissed — non-modal, so the page and the panel are worked side by side. below it, it is a modal
-   sheet, up while `open` and taken down by `onDismiss`. one body either way, so what the operator
-   reads and types in is the same thing in both. the column draws no head: the sheet's carries the
-   X the column has no use for, so the column's name is a heading drawn to a reader alone, which
-   names its landmark.
+/* the AI panel: the log in its body, suggestions and the composer in its foot. it is up while
+   `open`, and taken down by `onDismiss`. from the wide breakpoint (../editor/wide.ts) it floats over
+   the preview's end edge, non-modal, so the page beside it stays readable and reachable: the bar's
+   AI press closes it again, and so does Escape from inside it, and it opens with the focus in its
+   message box. below it, it is a modal sheet. one body either way, so what the operator reads and
+   types in is the same thing in both. the floating panel draws no head: the AI press is its way out
+   and the sheet's X has no use there, so its name is a heading drawn to a reader alone, which names
+   its landmark.
 
    before the page's first draft it is `alone`: the editor's main content at every width, with no
-   preview beside it. the column is one element in both of its roles, the landmark its role
-   attribute, so the draft that ends `alone` at the wide breakpoint keeps the log and the composer
-   mounted — the reply is spoken, and the focus rule below holds across the switch.
+   preview beside it, and shown whatever `open` says. the panel is one element in both of its wide
+   roles, the landmark its role attribute, so the draft that ends `alone` at the wide breakpoint
+   keeps the log and the composer mounted — the reply is spoken, and the focus rule below holds
+   across the switch.
 
    assistant-ui's thread, message and composer primitives draw it, on an external-store runtime
    built from these props — the route owns the history and the run, and every send leaves through
    `onSend`, every card's answers through `onAnswer`. the runtime's provider stands outside the
-   column and the sheet because their body and foot are two slots, and both read the one thread.
+   panel and the sheet because their body and foot are two slots, and both read the one thread.
 
    a reply is being written while `isRunning` or `opening` is set. Send is held and the
    suggestions go, and that is all: the box keeps its words and its focus, which is why nothing here
@@ -155,9 +157,9 @@ const textOf = (message: AppendMessage) =>
    answers were away. */
 export function AiPanel(props: AiPanelProps) {
 	const wide = useWide();
-	// the sheet's state goes with it: a sheet opened again is a sheet drawn afresh, with no refusal
-	// held over from the last time it was up.
-	return wide || props.open || props.alone ? <Shown {...props} wide={wide} /> : null;
+	// the panel's state goes with it: a panel opened again is drawn afresh, with no refusal held over
+	// from the last time it was up.
+	return props.open || props.alone ? <Shown {...props} wide={wide} /> : null;
 }
 
 function Shown({
@@ -177,6 +179,12 @@ function Shown({
 	wide
 }: AiPanelProps & { readonly wide: boolean }) {
 	const heading = useId();
+	const panel = useRef<HTMLElement>(null);
+	/** opened as the floating panel, rather than drawn alone or as a sheet. */
+	const [floated] = useState(wide && !alone);
+	useEffect(() => {
+		if (floated) panel.current?.querySelector<HTMLTextAreaElement>('.adm-composer__input')?.focus();
+	}, [floated]);
 	const running = isRunning || opening;
 	const imageIds = attachment?.state === 'ready' ? [attachment.imageId] : [];
 	const [landed, setLanded] = useState(unsent);
@@ -237,9 +245,13 @@ function Shown({
 		<AssistantRuntimeProvider runtime={runtime}>
 			{wide || alone ? (
 				<section
+					ref={panel}
 					className={alone ? 'adm-aipanel adm-aipanel--alone' : 'adm-aipanel'}
 					role={alone ? 'main' : 'complementary'}
 					aria-labelledby={heading}
+					onKeyDown={(event) => {
+						if (event.key === 'Escape' && !alone && !event.defaultPrevented) onDismiss();
+					}}
 				>
 					<h2 id={heading} className="adm-vh">
 						AI

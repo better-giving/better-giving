@@ -343,16 +343,6 @@ describe('the editor’s chat', () => {
 		expect(button('Send').getAttribute('aria-disabled')).toBeNull();
 	});
 
-	it('stands docked from the wide breakpoint, on the chat read without a press', async () => {
-		atWidth(true);
-		screen();
-		await settle();
-
-		expect(document.querySelector('[role="complementary"] .adm-chat__log')).not.toBeNull();
-		expect(document.querySelector('dialog')).toBeNull();
-		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
-	});
-
 	it('gives a send back to the box when the page was saved while it was answered', async () => {
 		await opened();
 		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];
@@ -486,7 +476,7 @@ describe('an empty chat', () => {
 			await settle();
 			expect(document.querySelector('dialog')).toBeNull();
 
-			if (!wide) await press(button('AI'));
+			await press(button('AI'));
 			await settle();
 
 			expect(posted).toEqual([]);
@@ -858,6 +848,14 @@ describe('a photo attached in the chat', () => {
 
 /** the AI panel, whichever role it stands in. */
 const aiPanel = () => document.querySelector<HTMLElement>('.adm-aipanel');
+/** the AI press's mark for a turn that landed while the panel was closed. */
+const unreadMark = () => button('AI').querySelector('[role="img"]');
+/** Escape pressed with the focus on `target`. */
+function escapeFrom(target: Element) {
+	act(() => {
+		target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+	});
+}
 /** the preview slot, which the stand-in fills with the editor's version. */
 const previewShown = () => document.querySelector('main.adm-editor__preview output');
 const drawn = (name: string) => {
@@ -868,6 +866,111 @@ const drawn = (name: string) => {
 		return false;
 	}
 };
+
+describe('the AI panel from the wide breakpoint', () => {
+	beforeEach(() => atWidth(true));
+
+	it('is closed on a drafted page, the preview alone in the body', async () => {
+		screen();
+		await settle();
+
+		expect(previewShown()).not.toBeNull();
+		expect(aiPanel()).toBeNull();
+		expect(document.querySelector('dialog')).toBeNull();
+		expect(button('AI').getAttribute('aria-expanded')).toBe('false');
+		expect(button('AI').hasAttribute('aria-haspopup')).toBe(false);
+	});
+
+	it('floats over the preview from the AI press, the focus in its box, and goes on the press again', async () => {
+		screen();
+		await settle();
+		const entry = button('AI');
+
+		await press(entry);
+		await settle();
+
+		expect(aiPanel()?.getAttribute('role')).toBe('complementary');
+		expect(previewShown()).not.toBeNull();
+		expect(document.querySelector('dialog')).toBeNull();
+		expect(entry.getAttribute('aria-expanded')).toBe('true');
+		expect(document.activeElement).toBe(document.querySelector('textarea'));
+		expect(turnsShown()).toEqual(['Make it warmer', 'I moved the page to the warm shade.']);
+
+		await press(entry);
+
+		expect(aiPanel()).toBeNull();
+		expect(entry.getAttribute('aria-expanded')).toBe('false');
+		expect(document.activeElement).toBe(entry);
+	});
+
+	it('goes on Escape from inside it and hands the focus to the AI press', async () => {
+		await opened();
+		const field = document.querySelector('textarea');
+		if (field === null) throw new Error('no message box');
+
+		escapeFrom(field);
+
+		expect(aiPanel()).toBeNull();
+		expect(document.activeElement).toBe(button('AI'));
+	});
+
+	it('stays open while a turn is out and as its reply lands, unmarked', async () => {
+		await opened();
+		type('Add a FAQ about coat sizes');
+		await press(button('Send'));
+		await settle();
+		expect(aiPanel()).not.toBeNull();
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(aiPanel()).not.toBeNull();
+		expect(turnsShown().at(-1)).toBe('I added a FAQ.');
+		expect(unreadMark()).toBeNull();
+	});
+
+	it('marks the AI press for a reply that lands while it is closed, moving no focus, until it is opened', async () => {
+		await opened();
+		type('Add a FAQ about coat sizes');
+		await press(button('Send'));
+		await settle();
+		const entry = button('AI');
+		await press(entry);
+		const away = document.querySelector<HTMLElement>('[aria-label="Close editor"]');
+		act(() => away?.focus());
+
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(aiPanel()).toBeNull();
+		expect(unreadMark()?.getAttribute('aria-label')).toBe('New reply');
+		expect(document.activeElement).toBe(away);
+
+		await press(entry);
+		await settle();
+
+		expect(unreadMark()).toBeNull();
+		expect(turnsShown().at(-1)).toBe('I added a FAQ.');
+	});
+
+	it('keeps a refusal that landed while it was closed for when it is opened', async () => {
+		await opened();
+		refusals = [{ body: { error: 'the turn on page "p1" failed', reason: 'failed' }, status: 500 }];
+		type('Add a FAQ about coat sizes');
+		await press(button('Send'));
+		await settle();
+		await press(button('AI'));
+
+		await act(async () => held.shift()?.());
+		await settle();
+		expect(unreadMark()).not.toBeNull();
+		await press(button('AI'));
+		await settle();
+
+		expect(refusalShown()).toBe('That didn’t go through. Send it again.');
+		expect(box()).toBe('Add a FAQ about coat sizes');
+	});
+});
 
 describe('a page never drafted', () => {
 	beforeEach(() => {

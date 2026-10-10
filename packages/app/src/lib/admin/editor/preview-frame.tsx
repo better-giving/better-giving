@@ -6,7 +6,7 @@ import {
 	type EditingMessage,
 	READY_MESSAGE
 } from '../../page/preview-message';
-import { useEditing } from './editor-shell';
+import { useAiEntry, useEditing } from './editor-shell';
 
 // the page's draft, framed across the whole editor.
 //
@@ -17,8 +17,9 @@ import { useEditing } from './editor-shell';
 // other page's and is not read.
 //
 // **a click opens a block only while Edit is on** (`useEditing` in ./editor-shell.tsx); with it off
-// the preview is the page and a click in it is not handed on. the page is told each change, and
-// told again when it says it is ready, so a frame reloaded under an Edit already on draws its
+// the preview is the page and a click in it is not handed on. a click handed on closes the AI panel
+// first, since the sheet it opens and the panel never stand together. the page is told each change,
+// and told again when it says it is ready, so a frame reloaded under an Edit already on draws its
 // blocks clickable from the start.
 //
 // the frame is the preview's one tab stop, which an iframe is without a `tabIndex`, and `title`
@@ -61,6 +62,9 @@ export function PreviewFrame({ src, title, onBlockClick }: PreviewFrameProps) {
 	handler.current = onBlockClick;
 	const on = useRef(editing);
 	on.current = editing;
+	const { close } = useAiEntry();
+	const closeAi = useRef(close);
+	closeAi.current = close;
 
 	useEffect(() => {
 		const listen = (event: MessageEvent) => {
@@ -68,7 +72,10 @@ export function PreviewFrame({ src, title, onBlockClick }: PreviewFrameProps) {
 			if (frame.current === null || event.source !== frame.current.contentWindow) return;
 			if (isMessage(event.data) && event.data.type === READY_MESSAGE)
 				tell(frame.current, on.current);
-			else if (isBlockMessage(event.data) && on.current) handler.current(event.data.id);
+			else if (isBlockMessage(event.data) && on.current) {
+				closeAi.current();
+				handler.current(event.data.id);
+			}
 		};
 		window.addEventListener('message', listen);
 		return () => window.removeEventListener('message', listen);
