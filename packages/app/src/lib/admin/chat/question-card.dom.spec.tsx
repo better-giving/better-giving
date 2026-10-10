@@ -7,9 +7,8 @@ import { type CardQuestion, QuestionCard, type QuestionCardProps } from './quest
 // words and without them, words prefilled and cleared, an amount read into minor units or refused at
 // its box, a date; a tiers question's rows, seeded, added, dropped, refused at the box that is
 // wrong and sent as amounts and words; the tick that marks a question taking several answers; the
-// skip press; the
-// presses held while answers are on their way; a refusal of the answers said at the card; the
-// starter note; and the presses' words for each round.
+// skip press; the presses held while answers are on their way; a refusal of the answers said at
+// the card; the starter note; and the presses' words for each round.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

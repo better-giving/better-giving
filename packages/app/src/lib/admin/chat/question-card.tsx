@@ -12,7 +12,7 @@ import { type FormEvent, type ReactElement, useId, useRef, useState } from 'reac
 import { FORM_CURRENCY, majorEntry, readAmount } from '$lib/forms/amounts';
 import { REQUIRED } from '$lib/forms/input-schema';
 import { BUYS_MAX, TIERS_MAX } from '$lib/page/catalog';
-import type { Answer, Question, TierAnswer } from '$lib/page/questions';
+import type { Answer, Question, TierAnswer, TiersQuestion } from '$lib/page/questions';
 import { MoneyField } from '../editor/money-field';
 
 // the questions an asked turn puts to the operator, answered in one card: every question at once,
@@ -107,7 +107,7 @@ const tierBox = (base: string, row: TierRow, half: 'amount' | 'text') =>
 	`${base}:${row.key}:${half}`;
 
 /** a tiers question's rows as the card first draws them: the question's own, and its examples. */
-function seedRows(question: Extract<CardQuestion, { kind: 'tiers' }>): TierRow[] {
+function seedRows(question: TiersQuestion): TierRow[] {
 	return question.rows.map((row, at) => ({
 		key: `asked-${at}`,
 		amount: majorEntry(row.amount, FORM_CURRENCY),
@@ -305,7 +305,7 @@ export function QuestionCard({
 		onClick
 	});
 
-	const tierRows = (question: Extract<CardQuestion, { kind: 'tiers' }>): ReactElement => {
+	const tierRows = (question: TiersQuestion): ReactElement => {
 		const base = domId(question);
 		const rows = tiers[question.id] ?? [];
 		const said = refused[question.id] ?? {};
