@@ -77,3 +77,26 @@ export function formatMinorBrief(amountMinor: number, currency: string): string 
 	});
 	return format.format(amountMinor / 10 ** digits);
 }
+
+/**
+ * how the whole part of a figure in `currency` is grouped on a screen: the separator, the size of
+ * the group nearest the point, and the size of every group before it — `,` 3 3 for `$1,234,567`.
+ *
+ * read off the formatter for the reason the exponent is, so a box an operator types in groups its
+ * digits the way every figure beside it does. two sizes because a locale may group the rest more
+ * tightly than the last group, as `en-IN`'s `12,34,567` does.
+ */
+export function digitGrouping(currency: string): {
+	readonly separator: string;
+	readonly last: number;
+	readonly rest: number;
+} {
+	const parts = new Intl.NumberFormat(DISPLAY_LOCALE, {
+		style: 'currency',
+		currency
+	}).formatToParts(1_234_567_890);
+	const runs = parts.filter((part) => part.type === 'integer').map((part) => part.value.length);
+	const separator = parts.find((part) => part.type === 'group')?.value ?? ',';
+	const last = runs.at(-1) ?? 3;
+	return { separator, last, rest: runs.at(-2) ?? last };
+}

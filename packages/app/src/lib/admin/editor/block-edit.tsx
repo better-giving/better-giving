@@ -5,9 +5,9 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { Resized } from '@better-giving/operator/images/resize';
 import { BLOCK_FORMS, type BlockText, type EditorBlock } from '$lib/page/block-edit';
 import { imageSrc } from '$lib/page/image-src';
-import { AffixedField } from './affixed-field';
 import { BlockSheet } from './block-sheet';
 import { useFocusOnRefusal } from './done-sheet';
+import { MoneyField } from './money-field';
 import { postPhoto, type UploadAnswer } from './photo-upload';
 import {
 	ReplacePhotoControl,
@@ -31,8 +31,8 @@ import { SuggestedField, SuggestedRichText, useSuggestedValue } from './suggest'
 // the tiers and the questions are repeating rows: each row a pair of boxes whose legend, read to a
 // screen reader and not drawn, names it by its place — Tier 2 — and the rows a stack, so one row
 // stands off the next further than the two boxes inside it stand apart, and nearer than the
-// pictures stand off the rows. a tier's amount carries its currency on the box
-// (./affixed-field.tsx), as the goal's does.
+// pictures stand off the rows. a tier's amount carries its currency on the box and groups its
+// digits as typed (./money-field.tsx), as the goal's does.
 //
 // a placed photo's sheet is the replace press and its description (./replace-photo.tsx), with
 // Illustration over the art while the photo is still the AI illustration it opened on. a new
@@ -317,13 +317,13 @@ function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly 
 					{text.tiers.map((tier, at) => (
 						<fieldset key={`tier-${String(at)}`} className="adm-pair">
 							<legend className="adm-vh">Tier {at + 1}</legend>
-							<AffixedField
+							<MoneyField
 								id={boxId(id, `tier_amount[${at}]`)}
 								name={`tier_amount[${at}]`}
 								label="Amount"
 								affix={text.currency}
 								affixAt="end"
-								inputMode="decimal"
+								currency={text.currency}
 								defaultValue={tier.amount}
 								error={error(`tier_amount[${at}]`)}
 							/>

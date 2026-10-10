@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
 	amountRule,
+	groupAmountEntry,
 	majorEntry,
 	majorText,
 	MAX_SUGGESTED_AMOUNTS,
 	readAmount,
-	readSuggestedAmounts
+	readSuggestedAmounts,
+	ungroupAmountEntry
 } from './amounts';
 
 // node pool, no database: every rule here is decidable from one typed string and a currency code.
@@ -300,5 +302,33 @@ describe('amountRule', () => {
 		// `25.00 for ¥25` would teach a shape the box refuses, and this is the branch that keeps the
 		// exponent `Intl`'s rather than a constant.
 		expect(amountRule('JPY')).toBe('write 25 for ¥25');
+	});
+});
+
+describe('an amount box grouped as typed', () => {
+	it('groups the whole part and leaves the point and what follows it alone', () => {
+		expect(groupAmountEntry('100000', 'USD')).toBe('100,000');
+		expect(groupAmountEntry('1234567.5', 'USD')).toBe('1,234,567.5');
+		expect(groupAmountEntry('1000.', 'USD')).toBe('1,000.');
+		expect(groupAmountEntry('999', 'USD')).toBe('999');
+		expect(groupAmountEntry('2500000', 'JPY')).toBe('2,500,000');
+	});
+
+	it('draws text that is not a figure as typed', () => {
+		expect(groupAmountEntry('about 5000', 'USD')).toBe('about 5000');
+		expect(groupAmountEntry('$5000', 'USD')).toBe('$5000');
+		expect(groupAmountEntry('', 'USD')).toBe('');
+	});
+
+	it('takes the separators out of a figure, for the parse to read what was typed', () => {
+		const typed = ungroupAmountEntry('1,234,567.50', 'USD');
+		expect(typed).toBe('1234567.50');
+		expect(minor(typed)).toBe(123_456_750);
+		expect(ungroupAmountEntry('12,34', 'USD')).toBe('1234');
+	});
+
+	it('hands on text that is not a figure as typed, for the parse to refuse', () => {
+		expect(ungroupAmountEntry('about 5,000', 'USD')).toBe('about 5,000');
+		expect(refusal(ungroupAmountEntry('5,000,x', 'USD'))).toContain('must be an amount');
 	});
 });

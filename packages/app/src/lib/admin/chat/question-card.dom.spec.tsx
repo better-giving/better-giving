@@ -197,6 +197,18 @@ describe('the question card', () => {
 		expect(onSubmit.mock.calls[0]?.[0]).toContainEqual({ id: 'gift', value: 5000 });
 	});
 
+	it('groups an amount’s thousands as it is typed, and sends the minor units typed', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(props({ onSubmit }));
+		const gift = box(host, 'A typical gift');
+		type(gift, '100000');
+		expect(gift.value).toBe('100,000');
+
+		await press(button(host, 'Draft my page'));
+
+		expect(onSubmit.mock.calls[0]?.[0]).toContainEqual({ id: 'gift', value: 10_000_000 });
+	});
+
 	it('takes a press anywhere on an amount box’s drawn frame, named by its question alone', () => {
 		const { host } = mount(props());
 		const gift = box(host, 'A typical gift');

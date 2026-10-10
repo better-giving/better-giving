@@ -146,6 +146,15 @@ describe('a block sheet', () => {
 });
 
 describe('the tiers', () => {
+	/** the amount box drawn in tier `at`'s row. */
+	function amountBox(root: Element, at: number): HTMLInputElement {
+		const found = root
+			.querySelectorAll('dialog fieldset')
+			[at]?.querySelector<HTMLInputElement>('.adm-affixed__input');
+		if (found == null) throw new Error(`no amount box in tier ${at + 1}`);
+		return found;
+	}
+
 	it('are a row per tier, each named by its place', () => {
 		const { root } = editor(sheet(tiers), '');
 		expect(
@@ -157,8 +166,8 @@ describe('the tiers', () => {
 
 	it('read the currency with the amount box and post each row as the form names it', async () => {
 		const { root, posted } = editor(sheet(tiers), '');
-		const amount = root.querySelector<HTMLInputElement>('input[name="tier_amount[0]"]');
-		const described = (amount?.getAttribute('aria-describedby') ?? '')
+		const amount = amountBox(root, 0);
+		const described = (amount.getAttribute('aria-describedby') ?? '')
 			.split(' ')
 			.map((id) => document.getElementById(id)?.textContent);
 		expect(described).toContain('USD');
@@ -169,6 +178,22 @@ describe('the tiers', () => {
 		expect(body?.getAll('tier_buys[0]')).toEqual(['one winter coat']);
 		expect(body?.getAll('tier_amount[1]')).toEqual(['120.00']);
 		expect(body?.getAll('tier_buys[1]')).toEqual(['coats for a family of three']);
+	});
+
+	it('group an amount’s thousands as typed, and post the figure typed', async () => {
+		const { root, posted } = editor(sheet(tiers), '');
+		const amount = amountBox(root, 1);
+		act(() => {
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+				amount,
+				'1200'
+			);
+			amount.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+		expect(amount.value).toBe('1,200');
+
+		await press(done(root));
+		expect(posted[0]?.getAll('tier_amount[1]')).toEqual(['1200']);
 	});
 });
 

@@ -873,12 +873,13 @@ describe('the goal', () => {
 		return box;
 	};
 
-	it('is seeded from minor units and hands minor units back', () => {
+	it('is seeded from minor units, grouped as typed, and hands minor units back', () => {
 		const onDone = vi.fn();
 		const root = goal(1_500_000, onDone);
 		const box = boxIn(root);
-		expect(box.value).toBe('15000');
+		expect(box.value).toBe('15,000');
 		typeInto(box, '20000.50');
+		expect(box.value).toBe('20,000.50');
 		act(() => button(root, 'Done').click());
 		expect(onDone).toHaveBeenCalledWith(2_000_050);
 	});

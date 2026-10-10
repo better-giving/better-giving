@@ -436,6 +436,33 @@ describe('the log', () => {
 		expect(document.activeElement).toBe(skip);
 	});
 
+	it('marks a card’s answers on their way at its pressed button alone, and no reply as being written', async () => {
+		const { host, redraw } = mount(props({ messages: [asked('a1')] }));
+		await press(cardPress(host, 'Draft my page'));
+
+		redraw(props({ messages: [asked('a1')], isRunning: true }));
+
+		const marks = host.querySelectorAll('.adm-btn__dots, .adm-dots');
+		expect(marks).toHaveLength(1);
+		expect(marks[0]?.closest('button')).toBe(cardPress(host, 'Draft my page'));
+		expect(host.querySelector('.adm-chat__waiting')).toBeNull();
+		expect(one(host, '.adm-vh [role="status"]').textContent).toBe('');
+	});
+
+	it('says a reply is being written for words sent from the box while a card is up', () => {
+		const { host, redraw } = mount(props({ messages: [asked('a1')] }));
+
+		redraw(
+			props({
+				messages: [asked('a1'), { id: 'sending', role: 'operator', text: 'Just make it warm' }],
+				isRunning: true
+			})
+		);
+
+		expect(one(host, '.adm-chat__waiting').textContent).toBe('Writing a reply');
+		expect(host.querySelectorAll('.adm-btn__dots, .adm-dots')).toHaveLength(1);
+	});
+
 	describe('answers refused', () => {
 		const said = (host: HTMLElement) => one(host, '.adm-questions__refusal').textContent;
 
@@ -535,6 +562,16 @@ describe('the log', () => {
 
 		expect(status.textContent).toBe('Reading your page');
 		expect(changed.length).toBeGreaterThan(0);
+	});
+
+	it.each([
+		['a page never drafted', true, 'Getting your questions ready'],
+		['a drafted page', false, 'Reading your page']
+	])('words the opening’s wait for %s', (_, alone, words) => {
+		const { host } = mount(props({ messages: [], opening: true, alone }));
+
+		expect(one(host, '.adm-chat__waiting').textContent).toBe(words);
+		expect(one(host, '.adm-vh [role="status"]').textContent).toBe(words);
 	});
 
 	it('says the opening questions are being read while they are', () => {

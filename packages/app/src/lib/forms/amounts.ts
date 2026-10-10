@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { formatMinor, formatMinorBrief, minorUnitDigits } from '../donations/money';
+import { digitGrouping, formatMinor, formatMinorBrief, minorUnitDigits } from '../donations/money';
 
 // what an operator writes in an amount box, and the integer it is stored as, in the one place a
 // server parser and a browser may both import from.
@@ -183,6 +183,39 @@ export function majorEntry(amountMinor: number, currency: string): string {
 	const fraction = text.slice(-digits);
 	// the point comes off with the zeros: `50.` is not an amount this module's own parser reads.
 	return /^0+$/.test(fraction) ? text.slice(0, -(digits + 1)) : text;
+}
+
+/** a figure part-way through being typed: digits, and at most one point with any digits behind it. */
+const FIGURE_TYPED = /^(\s*)(\d+)(\.\d*)?(\s*)$/;
+
+/**
+ * an amount box's text as the box draws it: the whole part's digits grouped the way a screen
+ * groups `currency` (`digitGrouping` in `$lib/donations/money.ts`), `100000` drawn `100,000`.
+ * text that is not a figure being typed is drawn as typed, for `readAmount` to refuse.
+ *
+ * the digits are moved and never parsed, so every digit typed stays in the box — a leading zero
+ * and a figure past the safe integers included — and reaches `readAmount` as typed.
+ */
+export function groupAmountEntry(text: string, currency: string): string {
+	const figure = FIGURE_TYPED.exec(text);
+	if (figure === null) return text;
+	const [, before = '', whole = '', fraction = '', after = ''] = figure;
+	const { separator, last, rest } = digitGrouping(currency);
+	const groups = [whole.slice(-last)];
+	for (let end = whole.length - last; end > 0; end -= rest) {
+		groups.unshift(whole.slice(Math.max(0, end - rest), end));
+	}
+	return `${before}${groups.join(separator)}${fraction}${after}`;
+}
+
+/**
+ * the text a grouped box stands for: its group separators taken out where what is left is a figure
+ * being typed, which is the text `readAmount` reads. anything else is handed on as typed, for
+ * `readAmount` to refuse.
+ */
+export function ungroupAmountEntry(text: string, currency: string): string {
+	const bare = text.split(digitGrouping(currency).separator).join('');
+	return FIGURE_TYPED.test(bare) ? bare : text;
 }
 
 /**

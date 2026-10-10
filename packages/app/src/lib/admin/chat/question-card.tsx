@@ -6,7 +6,7 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { type FormEvent, type ReactNode, useId, useRef, useState } from 'react';
 import { FORM_CURRENCY, readAmount } from '$lib/forms/amounts';
-import { AffixedField } from '../editor/affixed-field';
+import { MoneyField } from '../editor/money-field';
 
 // the questions an asked turn puts to the operator, answered in one card: every question at once,
 // all of them optional, sent by one press and skipped by the other. the same card at both widths —
@@ -222,14 +222,14 @@ export function QuestionCard({
 				);
 			case 'amount':
 				return (
-					<AffixedField
+					<MoneyField
 						key={question.id}
 						id={id}
 						label={question.prompt}
 						hint={question.hint}
 						affix="$"
 						affixAt="start"
-						inputMode="decimal"
+						currency={FORM_CURRENCY}
 						inputRef={(box) => {
 							if (box === null) amountBoxes.current.delete(question.id);
 							else amountBoxes.current.set(question.id, box);
