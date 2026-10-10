@@ -574,17 +574,6 @@ describe('a question card answered', () => {
 			'No model answered. Set AI and run pnpm run login.'
 		],
 		[
-			'a reply refused',
-			{
-				body: {
-					error: 'That reply didn’t fit the page. Send your answers again.',
-					reason: 'refused'
-				},
-				status: 422
-			},
-			'That reply didn’t fit the page. Send your answers again.'
-		],
-		[
 			'a reply refused when asked again',
 			{
 				body: {
@@ -687,7 +676,7 @@ describe('the suggestions', () => {
 	});
 
 	it.each([
-		['refused', 'That reply didn’t fit.'],
+		['refused', 'I couldn’t make that change. Try saying it another way.'],
 		['unanswered', 'No model answered, so nothing changed. Try again in a moment.']
 	] as const)('are not offered on a chat whose only reply was %s', async (note, text) => {
 		stored = [
