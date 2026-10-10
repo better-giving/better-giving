@@ -43,11 +43,18 @@ import { FieldMessage } from './FieldMessage.jsx';
  * `error` is this row's own sentence, drawn under this row's own box. the group's is a different
  * thing and is {@link RepeatingRowsProps.error}.
  *
+ * `boxes` is a row that is more than one box — an amount and what it does — drawn side by side in
+ * the one box's place, and stacked at the floor (`.adm-pair--side` in ../../styles/adm.css). they
+ * are the caller's whole: each box names itself and draws its own sentence, so nothing else a
+ * field takes is read for the row, and `id` names the box among them that focus goes to when the
+ * row is added or the row under it dropped.
+ *
  * @typedef {object} RepeatingRowOwnProps
  * @property {string} id
  * @property {string | undefined} [key]
  * @property {ReactNode} [error]
  * @property {RowControl | undefined} [remove]
+ * @property {ReactNode} [boxes]
  */
 
 /**
@@ -265,7 +272,7 @@ export function RepeatingRows({
 						)}
 					</div>
 				) : null}
-				{rows.map(({ id: row, key, error: said, remove, ...rest }, i) => (
+				{rows.map(({ id: row, key, error: said, remove, boxes, ...rest }, i) => (
 					// keyed by the identity the caller minted for the row rather than by the box's id:
 					// under a list named by position the id is whichever row is in that place right now
 					// ({@link RepeatingRowOwnProps}). the id is the fallback, which is only ever reached
@@ -279,22 +286,26 @@ export function RepeatingRows({
 						    group's own sentence reaches only a row that has none of its own. a row's own
 						    `aria-describedby` goes in ahead of the group's, so the composed list is stated
 						    after `{...rest}`, which would otherwise overwrite it. */}
-						<Field
-							id={row}
-							name={name}
-							code={code}
-							placeholder={placeholder}
-							disabled={disabled}
-							error={said}
-							aria-label={`${rowLabel} ${i + 1}`}
-							aria-invalid={error && said === undefined ? 'true' : undefined}
-							{...rest}
-							aria-describedby={
-								[rest['aria-describedby'], hintId, said === undefined ? groupErrorId : null]
-									.filter(Boolean)
-									.join(' ') || undefined
-							}
-						/>
+						{boxes === undefined ? (
+							<Field
+								id={row}
+								name={name}
+								code={code}
+								placeholder={placeholder}
+								disabled={disabled}
+								error={said}
+								aria-label={`${rowLabel} ${i + 1}`}
+								aria-invalid={error && said === undefined ? 'true' : undefined}
+								{...rest}
+								aria-describedby={
+									[rest['aria-describedby'], hintId, said === undefined ? groupErrorId : null]
+										.filter(Boolean)
+										.join(' ') || undefined
+								}
+							/>
+						) : (
+							<div className="adm-pair adm-pair--side">{boxes}</div>
+						)}
 						{/* a mark and no word, standing beside the box it drops and the box's own height
 						    (`.adm-rows__remove` in ../../styles/adm.css). the mark is the same on every
 						    row, so the name is what says which row it drops to a reader out of context. */}

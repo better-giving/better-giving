@@ -1,4 +1,5 @@
 import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
+import { Field } from '@better-giving/operator/components/forms/Field';
 import { RepeatingRows } from '@better-giving/operator/components/forms/RepeatingRows';
 import type { RowControl } from '@better-giving/operator/components/forms/RepeatingRows';
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
@@ -42,6 +43,10 @@ import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-li
  * is read from, the empty row included. the slot is the box's whichever stands in it, so the
  * addresses start on one edge down the column — YouTube's wide mark and X's narrow one alike. a
  * network's mark carries its name for the box to be described by, and the globe carries none.
+ *
+ * the group whose rows are two boxes is an amount beside what it does, one row's words refused
+ * under its own box: the pair stands in the one box's place, side by side and stacked at the floor,
+ * and the Remove stands off the pair by the step the two stand off each other.
  *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the
@@ -290,6 +295,40 @@ export default function FormsRepeatingRowsPreview() {
 						remove: drop(3)
 					}
 				]}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair"
+				legend="What does each amount do?"
+				rowLabel="tier"
+				addLabel="Add a tier"
+				add={add}
+				rows={[
+					['25', 'Feeds a family for a week', ''],
+					['100', '', 'required'],
+					['500', 'Keeps the pantry open on a Saturday morning, staff and all', '']
+				].map(([amount, text, error], at) => ({
+					id: `forms-rows-pair-${at}-amount`,
+					key: `pair-${at}`,
+					remove: drop(at),
+					boxes: (
+						<>
+							<Field
+								id={`forms-rows-pair-${at}-amount`}
+								className="adm-num"
+								inputMode="decimal"
+								defaultValue={amount}
+								aria-label={`Tier ${at + 1} amount`}
+							/>
+							<Field
+								id={`forms-rows-pair-${at}-text`}
+								defaultValue={text}
+								placeholder="Stocks the shelves for a month"
+								error={error || undefined}
+								aria-label={`What tier ${at + 1} does`}
+							/>
+						</>
+					)
+				}))}
 			/>
 			<RepeatingRows
 				id="forms-rows-long"

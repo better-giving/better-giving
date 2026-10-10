@@ -535,6 +535,69 @@ describe('where focus lands after a row is added or dropped', () => {
 	});
 });
 
+/**
+ * a group whose rows are an amount and what it does, held by its caller, whose presses change the
+ * rows on the click itself rather than through a submit.
+ */
+function Pairs(props: { start: readonly string[] }) {
+	const [keys, setKeys] = useState(props.start);
+	const press = (onClick: () => void): RowControl & { type: 'button' } => ({
+		...ADD,
+		type: 'button',
+		onClick
+	});
+	return (
+		<form>
+			<RepeatingRows
+				id="tiers"
+				legend="What does each amount do?"
+				rowLabel="tier"
+				add={press(() => setKeys((was) => [...was, `new-${was.length}`]))}
+				rows={keys.map((key, at) => ({
+					id: `tiers-${key}-amount`,
+					key,
+					remove: press(() => setKeys((was) => was.filter((one) => one !== key))),
+					boxes: (
+						<>
+							<input id={`tiers-${key}-amount`} name={`amount[${at}]`} defaultValue={key} />
+							<input id={`tiers-${key}-text`} name={`text[${at}]`} defaultValue="Feeds a family" />
+						</>
+					)
+				}))}
+			/>
+		</form>
+	);
+}
+
+describe('a row of two boxes', () => {
+	it('draws its boxes in the one box’s place, each posting its own name', () => {
+		const root = render(Pairs, { start: ['25', '100'] });
+		const rows = [...root.querySelectorAll('.adm-rows__row')];
+
+		expect(rows.map((row) => row.querySelectorAll('input').length)).toEqual([2, 2]);
+		expect(root.querySelector('.adm-rows__row > .adm-field')).toBeNull();
+		expect(submitted(root)).toEqual([
+			'amount[0]=25',
+			'text[0]=Feeds a family',
+			'amount[1]=100',
+			'text[1]=Feeds a family'
+		]);
+		expect(
+			[...root.querySelectorAll('.adm-rows__remove')].map((one) => one.getAttribute('aria-label'))
+		).toEqual(['Remove tier 1', 'Remove tier 2']);
+	});
+
+	it('goes into the box its id names when a row is added, and to the row above when one is dropped', () => {
+		const { root } = mount(Pairs, { start: ['25', '100'] });
+
+		press(root, 'Add another');
+		expect(document.activeElement?.id).toBe('tiers-new-2-amount');
+
+		press(root, 'Remove tier 2');
+		expect(document.activeElement?.id).toBe('tiers-25-amount');
+	});
+});
+
 describe('the Remove beside a row', () => {
 	// happy-dom lays nothing out, so the height is read as the sheet states it: the press and the
 	// box it stands beside are given the same token, and that is the whole of the claim.

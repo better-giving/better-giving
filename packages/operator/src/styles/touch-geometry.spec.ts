@@ -279,8 +279,8 @@ const MEMBERS: Record<string, Member> = {
 		neighbours: () => {
 			const at = target('.adm-markbtn', LOCKED_TRIGGER);
 			const [rowStep, boxStep] = terms(ruleOf(css, '.adm-rows').get('gap'));
-			const trailing = ruleOf(css, '.adm-rows__row > :not(.adm-field)');
-			const trailingBorder = ruleOf(css, ':where(.adm-rows__row > :not(.adm-field))');
+			const trailing = ruleOf(css, '.adm-rows__row > :not(.adm-field, .adm-pair)');
+			const trailingBorder = ruleOf(css, ':where(.adm-rows__row > :not(.adm-field, .adm-pair))');
 			// the trigger is centred on a row as tall as the box beside it.
 			const row = evaluate(ruleOf(css, ROW_REMOVE).get('min-block-size'));
 			const mark = evaluate(ruleOf(base, '.adm-mark').get('block-size'));
