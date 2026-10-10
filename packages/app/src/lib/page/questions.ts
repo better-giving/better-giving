@@ -292,6 +292,7 @@ export const MISSION_QUESTION = {
 	placeholder: 'We help families in our city find a stable home'
 } as const satisfies Question;
 
+/** on the starter rule ./campaign-types.ts states, and asking nothing of how the page is laid out. */
 const DONATION_PAGE_STARTER: readonly Question[] = [
 	{
 		id: 'who',
@@ -305,20 +306,7 @@ const DONATION_PAGE_STARTER: readonly Question[] = [
 			'The environment',
 			'Our whole community'
 		]
-	},
-	{
-		id: 'first',
-		kind: 'choice',
-		prompt: 'What should donors see first?',
-		options: ['The story', 'A photo', 'What a gift buys']
-	},
-	{
-		id: 'ways',
-		kind: 'choices',
-		prompt: 'Which ways to give should stand out?',
-		options: ['One-time gifts', 'Monthly gifts', 'Gifts in someone’s honour']
-	},
-	{ id: 'typical-gift', kind: 'amount', prompt: 'A typical gift', placeholder: 5_000 }
+	}
 ];
 
 /**

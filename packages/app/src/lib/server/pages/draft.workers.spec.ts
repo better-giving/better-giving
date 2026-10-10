@@ -1658,6 +1658,10 @@ describe('answers to a second round of questions', () => {
 			['never ask again'],
 			[]
 		]);
+		const [, firstInput] = firstRound.run.mock.calls[0] ?? [];
+		expect(firstInput.messages[0].content).toContain(
+			'ask one more round only when a fact the page cannot be written without is still missing, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out'
+		);
 	});
 
 	it('answered with an ask ask the model once more, told they were answered, and the second reply lands', async () => {
@@ -1906,7 +1910,7 @@ describe('a page opened with an empty chat', () => {
 			{
 				role: 'user',
 				content:
-					'Before you draft this page, ask me 3 to 4 questions whose answers you need to draft it. My mission is asked separately, so ask nothing about it.'
+					'Before you draft this page, ask me 1 to 2 questions whose answers you need to draft it. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
 			}
 		]);
 	});
@@ -1922,7 +1926,7 @@ describe('a page opened with an empty chat', () => {
 		expect(result).toMatchObject({ turns: [{ questions: six }] });
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages.at(-1).content).toBe(
-			'Before you draft this page, ask me 3 to 5 questions whose answers you need to draft it.'
+			'Before you draft this page, ask me 1 to 3 questions whose answers you need to draft it. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out.'
 		);
 	});
 
@@ -1973,13 +1977,7 @@ describe('a page opened with an empty chat', () => {
 					{
 						role: 'assistant',
 						note: 'starter',
-						questions: [
-							MISSION,
-							{ id: 'purpose' },
-							{ id: 'who' },
-							{ id: 'pays-for' },
-							{ id: 'goal' }
-						]
+						questions: [MISSION, { id: 'purpose' }, { id: 'who' }]
 					}
 				]
 			});
@@ -2000,9 +1998,7 @@ describe('a page opened with an empty chat', () => {
 					questions: [
 						MISSION,
 						{ prompt: 'What are you building or buying?' },
-						{ prompt: 'Why does it matter to the people you serve?' },
-						{ prompt: 'Goal' },
-						{ prompt: 'End date' }
+						{ prompt: 'Why does it matter to the people you serve?' }
 					]
 				}
 			]
@@ -2019,7 +2015,7 @@ describe('a page opened with an empty chat', () => {
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages[0].content).toContain('- campaign type: Emergency response');
 		expect(input.messages.at(-1).content).toBe(
-			'Before you draft this campaign, of the type "Emergency response", ask me 3 to 5 questions whose answers you need to draft a campaign of its type.'
+			'Before you draft this campaign, of the type "Emergency response", ask me 1 to 3 questions whose answers you need to draft a campaign of its type. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out.'
 		);
 	});
 
@@ -2032,7 +2028,7 @@ describe('a page opened with an empty chat', () => {
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages[0].content).toContain('- campaign type: Something else');
 		expect(input.messages.at(-1).content).toBe(
-			'Before you draft this campaign, of the type "Something else", ask me 3 to 4 questions whose answers you need to draft it, the first asking what the campaign is for. My mission is asked separately, so ask nothing about it.'
+			'Before you draft this campaign, of the type "Something else", ask me 1 to 2 questions whose answers you need to draft it, the first asking what the campaign is for. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
 		);
 	});
 
@@ -2045,7 +2041,7 @@ describe('a page opened with an empty chat', () => {
 
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages[1].content).toBe(
-			'Before you draft this campaign, of the type "Emergency response", ask me 3 to 4 questions whose answers you need to draft a campaign of its type. My mission is asked separately, so ask nothing about it.'
+			'Before you draft this campaign, of the type "Emergency response", ask me 1 to 2 questions whose answers you need to draft a campaign of its type. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
 		);
 	});
 
@@ -2059,9 +2055,7 @@ describe('a page opened with an empty chat', () => {
 		const result = await open(pageId, undefined as never);
 
 		expect(result).toMatchObject({
-			turns: [
-				{ questions: [{ id: 'who' }, { id: 'first' }, { id: 'ways' }, { id: 'typical-gift' }] }
-			]
+			turns: [{ questions: [{ id: 'who' }] }]
 		});
 	});
 
@@ -2094,7 +2088,7 @@ describe('a page opened with an empty chat', () => {
 			'assistant',
 			'user'
 		]);
-		expect(input.messages[1].content).toMatch(/^Before you draft this page, ask me 3 to 4/);
+		expect(input.messages[1].content).toMatch(/^Before you draft this page, ask me 1 to 2/);
 	});
 });
 
@@ -2247,9 +2241,7 @@ describe('a page opened with a 990 on record', () => {
 					questions: [
 						{ ...MISSION, prefill: 'Warm coats for every child in Springfield.' },
 						{ id: 'purpose' },
-						{ id: 'who' },
-						{ id: 'pays-for' },
-						{ id: 'goal' }
+						{ id: 'who' }
 					]
 				}
 			]
@@ -2267,13 +2259,7 @@ describe('a page opened with a 990 on record', () => {
 		expect(result).toMatchObject({
 			turns: [
 				{
-					questions: [
-						{ id: 'purpose' },
-						{ id: 'who' },
-						{ id: 'pays-for' },
-						{ id: 'goal' },
-						{ id: 'end-date' }
-					]
+					questions: [{ id: 'purpose' }, { id: 'who' }]
 				}
 			]
 		});

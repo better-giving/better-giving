@@ -3,7 +3,10 @@
 // the type was asked holds none. each type's label and line are what New campaign shows, the label
 // is what the chat's model is told the campaign is, and the starter questions are what its opening
 // asks when no model writes its own (`starterQuestions` in ./questions.ts), `other`'s for a campaign
-// that holds none.
+// that holds none. a starter asks only what the page cannot be written without: a goal, an end date,
+// amounts and what they buy leave a complete page when blank, so none is asked here, and each stays
+// the operator's to set by Edit or through the chat. an event's day is asked, since its page reads
+// incomplete without one.
 //
 // pure, and imports nothing at run time, for the reason ./keys.ts gives: the one import is a type.
 
@@ -29,30 +32,6 @@ export type CampaignTypeDetails = {
 	readonly starter: readonly Question[];
 };
 
-const GOAL = {
-	id: 'goal',
-	kind: 'amount',
-	prompt: 'Goal',
-	hint: 'Leave it blank for no goal',
-	placeholder: 1_000_000
-} as const satisfies Question;
-const END_DATE = {
-	id: 'end-date',
-	kind: 'date',
-	prompt: 'End date',
-	hint: 'Leave it blank for no end'
-} as const satisfies Question;
-
-/** $25, $50 and $100, in minor units of `FORM_CURRENCY` (../forms/amounts.ts). */
-const IMPACT_ROWS = [{ amount: 2_500 }, { amount: 5_000 }, { amount: 10_000 }];
-
-/** what gifts do, as a row per amount: the amounts set, the words the operator's, `examples` shown. */
-function impact(id: string, prompt: string, examples: readonly [string, string, string]): Question {
-	return { id, kind: 'tiers', prompt, rows: IMPACT_ROWS, placeholders: [...examples] };
-}
-const paysFor = (examples: readonly [string, string, string]) =>
-	impact('pays-for', 'What will gifts pay for?', examples);
-
 export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = {
 	year_end: {
 		label: 'Year-end appeal',
@@ -64,13 +43,12 @@ export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = 
 				prompt: 'What did this year’s gifts make possible?',
 				placeholder: 'Hot meals for families all through the winter'
 			},
-			impact('next-year', 'What will a gift do next year?', [
-				'School supplies for one child',
-				'A month of meals for a family',
-				'A winter coat and boots for a teenager'
-			]),
-			GOAL,
-			END_DATE
+			{
+				id: 'next-year',
+				kind: 'text',
+				prompt: 'What will a gift do next year?',
+				placeholder: 'A month of meals for a family'
+			}
 		]
 	},
 	emergency: {
@@ -88,14 +66,7 @@ export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = 
 				kind: 'text',
 				prompt: 'Who and where are you helping?',
 				placeholder: 'Families sheltering in the east side’s schools'
-			},
-			paysFor([
-				'Clean water for a family for a week',
-				'A shelter kit for one household',
-				'Emergency medical care for a child'
-			]),
-			GOAL,
-			END_DATE
+			}
 		]
 	},
 	building: {
@@ -113,9 +84,7 @@ export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = 
 				kind: 'text',
 				prompt: 'Why does it matter to the people you serve?',
 				placeholder: 'It keeps the kitchen open through the winter'
-			},
-			GOAL,
-			END_DATE
+			}
 		]
 	},
 	event: {
@@ -129,12 +98,12 @@ export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = 
 				placeholder: 'A fun run in the park'
 			},
 			{ id: 'event-date', kind: 'date', prompt: 'When is it?' },
-			impact('raised-for', 'What will the money raised do?', [
-				'A seat at summer camp for one child',
-				'Art supplies for a classroom',
-				'A week of after-school care'
-			]),
-			GOAL
+			{
+				id: 'raised-for',
+				kind: 'text',
+				prompt: 'What will the money raised do?',
+				placeholder: 'A seat at summer camp for one child'
+			}
 		]
 	},
 	tribute: {
@@ -158,24 +127,18 @@ export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = 
 				kind: 'text',
 				prompt: 'What would they want gifts to support?',
 				placeholder: 'The reading club she started'
-			},
-			GOAL
+			}
 		]
 	},
 	monthly: {
 		label: 'Monthly giving drive',
 		description: 'Grow regular donors',
 		starter: [
-			impact('keeps-going', 'What does a monthly gift keep going?', [
-				'A hot lunch every week',
-				'A month of tutoring for one student',
-				'Medicine for a family each month'
-			]),
 			{
-				id: 'typical-gift',
-				kind: 'amount',
-				prompt: 'A typical monthly gift',
-				placeholder: 2_500
+				id: 'keeps-going',
+				kind: 'text',
+				prompt: 'What does a monthly gift keep going?',
+				placeholder: 'A hot lunch every week'
 			},
 			{
 				id: 'who',
@@ -200,14 +163,7 @@ export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = 
 				kind: 'text',
 				prompt: 'What does it do, and for whom?',
 				placeholder: 'Weekly reading help for children behind at school'
-			},
-			paysFor([
-				'A workbook for one student',
-				'A month of coaching for one person',
-				'Training for a new volunteer'
-			]),
-			GOAL,
-			END_DATE
+			}
 		]
 	},
 	other: {
@@ -225,14 +181,7 @@ export const CAMPAIGN_TYPE_DETAILS: Record<CampaignType, CampaignTypeDetails> = 
 				kind: 'text',
 				prompt: 'Who does it help?',
 				placeholder: 'Families in our neighbourhood'
-			},
-			paysFor([
-				'A meal for a neighbour',
-				'Supplies for one family',
-				'A month of support for one person'
-			]),
-			GOAL,
-			END_DATE
+			}
 		]
 	}
 };
