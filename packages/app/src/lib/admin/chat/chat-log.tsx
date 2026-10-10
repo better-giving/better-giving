@@ -137,9 +137,12 @@ export function liveAsk(messages: readonly ChatMessage[]): ChatMessage | null {
    says is a change to a region rather than a region arriving. the log speaks each assistant reply
    that arrives after the panel mounted — the history it mounted on is read, not announced, which is
    why that history's ids are taken once, on mount — with the line under it, the starter questions'
-   included. the status says the opening questions are being read or a reply is being written, and
-   falls silent when it lands; the visible line saying the same is kept out of the tree so it is not
-   read twice.
+   included. the status says the opening questions are being got ready — or, on a page with a draft,
+   that the page is being read — or that a reply is being written, and falls silent when it lands;
+   the visible line saying the same is kept out of the tree so it is not read twice. while a card's
+   answers are on their way the card is still the chat's last turn, and its pressed button is busy:
+   that is the wait's one mark, so the line and the status say nothing then. a reply asked for from
+   the message box has no button showing it, and the line is its mark.
 
    the panel's body is the scroller, not the viewport, so the viewport's own scrolling is off and the
    newest turn is brought into view here, on the turn that arrived or the wait that began. */
@@ -147,6 +150,7 @@ export function ChatLog({
 	messages,
 	running,
 	opening,
+	undrafted,
 	imageSrc,
 	onAnswer,
 	answering,
@@ -156,6 +160,8 @@ export function ChatLog({
 	running: boolean;
 	/** the opening questions are being read; `messages` is empty until they land. */
 	opening: boolean;
+	/** the page has never been drafted, so there is no page to read yet. */
+	undrafted: boolean;
 	imageSrc: (imageId: string) => string;
 	onAnswer: (answers: readonly CardAnswer[]) => void;
 	/** answers sent from the card are on their way. */
@@ -170,7 +176,13 @@ export function ChatLog({
 	const byId = new Map(messages.map((m) => [m.id, m]));
 	const asking = liveAsk(messages)?.id;
 	const round: QuestionRound = messages[0]?.id === asking ? 'opening' : 'follow-up';
-	const writing = opening ? 'Reading your page' : running ? 'Writing a reply' : '';
+	const writing = opening
+		? undrafted
+			? 'Getting your questions ready'
+			: 'Reading your page'
+		: running && asking === undefined
+			? 'Writing a reply'
+			: '';
 	// the status takes its words a commit after the log mounts: the log mounts in the same render
 	// that starts the opening, and a region that arrives already holding words is not announced.
 	const [spoken, setSpoken] = useState('');

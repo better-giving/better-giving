@@ -433,13 +433,15 @@ describe('an empty chat', () => {
 		loadedDrafted = false;
 	});
 
-	it('is asked its opening questions once, reading the page until they land', async () => {
+	it('is asked its opening questions once, getting them ready until they land', async () => {
 		atWidth(true);
 		screen();
 		await settle();
 
 		expect(posted).toEqual([{ intent: 'open', timeZone: ZONE }]);
-		expect(document.querySelector('.adm-chat__waiting')?.textContent).toBe('Reading your page');
+		expect(document.querySelector('.adm-chat__waiting')?.textContent).toBe(
+			'Getting your questions ready'
+		);
 		expect(questionCard()).toBeNull();
 
 		await act(async () => held.shift()?.());
@@ -525,6 +527,7 @@ describe('a question card answered', () => {
 		});
 		expect(button('Draft my page').getAttribute('aria-disabled')).toBe('true');
 		expect(button('Draft my page').getAttribute('aria-busy')).toBe('true');
+		expect(document.querySelector('.adm-chat__waiting')).toBeNull();
 		expect(document.activeElement).toBe(button('Draft my page'));
 	});
 
