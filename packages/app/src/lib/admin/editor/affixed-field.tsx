@@ -1,5 +1,5 @@
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import type { InputHTMLAttributes, Ref } from 'react';
+import type { InputHTMLAttributes, KeyboardEventHandler, Ref } from 'react';
 
 // a box whose unit or address prefix is stated on the box itself — the goal's currency, a campaign
 // address's host. the rows are packages/operator/src/components/forms/Field.jsx's own (label, hint,
@@ -32,6 +32,7 @@ export type AffixedFieldProps = {
 	readonly error?: string | null | undefined;
 	readonly inputRef?: Ref<HTMLInputElement>;
 	readonly inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
+	readonly onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
 };
 
 export function AffixedField({
@@ -45,7 +46,8 @@ export function AffixedField({
 	inputRef,
 	value,
 	onValueChange,
-	inputMode
+	inputMode,
+	onKeyDown
 }: AffixedFieldProps) {
 	const labelId = `${id}-label`;
 	const affixId = `${id}-affix`;
@@ -81,6 +83,7 @@ export function AffixedField({
 					aria-invalid={error ? 'true' : undefined}
 					aria-describedby={describedBy}
 					value={value}
+					onKeyDown={onKeyDown}
 					onChange={(event) => onValueChange(event.target.value, event.target)}
 				/>
 				{affixAt === 'end' ? unit : null}
