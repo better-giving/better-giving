@@ -16,10 +16,10 @@
 //
 // the operator turn's text is `answerWords`, one line per answered question, its prompt and its
 // answer, an amount in dollars, a day in words and a tier as its amount and words; the model reads
-// those words. ./accept-reply.ts
-// reads a figure the operator stated out of `answerValueWords` alone, the answers without their
-// prompts: a prompt is the model's words, and "Is your goal $10,000 or more?" answered "No" states
-// no figure. an option the operator picked is their answer, figure and all.
+// those words. ./accept-reply.ts reads a figure the operator stated out of `answerValueWords`
+// alone, the answers without their prompts: a prompt is the model's words, and "Is your goal
+// $10,000 or more?" answered "No" states no figure. an option the operator picked is their answer,
+// figure and all, and a tiers row is their saying what its amount does.
 //
 // pure and not under `$lib/server/**`, beside the catalog its replies edit.
 import { z } from 'zod';
@@ -92,11 +92,11 @@ const tiersQuestion = z
 	.strictObject({
 		...common,
 		kind: z.literal('tiers'),
-		/** the model's guess: every amount, and what it does where it can say. */
+		// the model's guess: every amount, and what it does where it can say.
 		rows: tierRows(
 			z.strictObject({ amount: minor, text: plain(BUYS_MAX, 'what a tier does').optional() })
 		),
-		/** an example of what each row's amount does, by index, shown where its words are empty. */
+		// an example of what each row's amount does, by index, shown where its words are empty.
 		placeholders: z
 			.array(plain(BUYS_MAX, 'an example'))
 			.max(TIERS_MAX, { error: 'a tiers question gives at most one example per row' })

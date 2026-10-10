@@ -22,10 +22,11 @@
 // beside it, and refused once that day is over. a program that is not active is dropped and
 // noted, gifts' program left as it was, and the rest of the reply lands. suggested amounts sit
 // within the page's smallest and largest gift, and a goal is at most ./catalog.ts's
-// `GOAL_MINOR_MAX`, the most the Settings sheet takes, and is one the operator stated: a figure in a chat message of theirs, read by the grammar below, or the goal the page
-// already stores. a figure the assistant wrote or the page's words draw is not the operator asking
-// for that goal. any other value is refused, naming it. pinning a program is refused on the
-// Donation page while its donors choose one, since its program chooser stays. each value `set`
+// `GOAL_MINOR_MAX`, the most the Settings sheet takes, and is one the operator stated: a figure
+// in a chat message of theirs, read by the grammar below, or the goal the page already stores. a
+// figure the assistant wrote or the page's words draw is not the operator asking for that goal.
+// any other value is refused, naming it. pinning a program is refused on the Donation page while
+// its donors choose one, since its program chooser stays. each value `set`
 // changes comes back in `changes` — an end date as its day, a program with the mode it leaves, the
 // share buttons, shade and corners from the ones the page drew — so the reply's own words can be
 // held to what it did. a rename is from the draft's own name where it holds one, and from the
