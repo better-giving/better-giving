@@ -11,15 +11,11 @@ import type { ChatMessage } from './ai-panel';
 import { type CardAnswer, QuestionCard, type QuestionRound, STARTER_NOTE } from './question-card';
 
 const FELL_BACK = 'Your chosen model didn’t answer, so the default model wrote this reply.';
-const REFUSED =
-	'That reply didn’t fit the page, so nothing changed. Ask again, or say it another way.';
 
 const noteOf = (message: ChatMessage) => {
 	switch (message.note) {
 		case 'fell-back':
 			return FELL_BACK;
-		case 'refused':
-			return REFUSED;
 		case 'starter':
 			return STARTER_NOTE;
 		default:
@@ -96,11 +92,6 @@ function AssistantTurn({ message, ask }: { message: ChatMessage; ask: Ask | null
 				<p className="adm-chat__note">
 					<Mark name="info" />
 					{FELL_BACK}
-				</p>
-			) : message.note === 'refused' ? (
-				<p className="adm-momentary adm-momentary--blocked">
-					<Mark name="circle-alert" />
-					{REFUSED}
 				</p>
 			) : null}
 			{ask === null || questions.length === 0 ? null : (
