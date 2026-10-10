@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import { majorEntry, readAmount } from '$lib/forms/amounts';
-import { AffixedField } from './affixed-field';
 import { DoneSheet, useFocusOnRefusal } from './done-sheet';
+import { MoneyField } from './money-field';
 
 // a campaign's goal, one box and one Done, stacked over Settings. the figure travels as integer
 // minor units in the campaign's currency both ways — seeded from them through `majorEntry` and read
@@ -67,14 +67,14 @@ export function GoalSheet({
 				onDone(read.minor);
 			}}
 		>
-			<AffixedField
+			<MoneyField
 				id={id}
 				label="Goal"
 				optional
 				hint="Leave it empty for no goal bar."
 				affix={currency}
 				affixAt="end"
-				inputMode="decimal"
+				currency={currency}
 				inputRef={box}
 				value={text}
 				onValueChange={(next) => {
