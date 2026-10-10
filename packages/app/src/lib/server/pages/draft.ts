@@ -375,19 +375,24 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 
 const STARTER_SAY = 'A few questions before I draft your page.';
 
+/** what an opening and its one more round never ask: a page left without it still reads complete. */
+const NEVER_ASKED =
+	'a goal, an end date, amounts or what an amount buys, or how the page is laid out';
+
 /**
  * the user message an opening is asked with, shown before every opening ask in the history. a typed
  * campaign's names its type, and one of type `other` asks what the campaign is for first.
  */
 function openingRequest(missionFirst: boolean, campaignType: CampaignType | null) {
-	const count = missionFirst ? '3 to 4' : '3 to 5';
+	const count = missionFirst ? '1 to 2' : '1 to 3';
 	const ask =
 		campaignType === null
 			? `Before you draft this page, ask me ${count} questions whose answers you need to draft it.`
 			: campaignType === 'other'
 				? `Before you draft this campaign, of the type "${CAMPAIGN_TYPE_DETAILS.other.label}", ask me ${count} questions whose answers you need to draft it, the first asking what the campaign is for.`
 				: `Before you draft this campaign, of the type "${CAMPAIGN_TYPE_DETAILS[campaignType].label}", ask me ${count} questions whose answers you need to draft a campaign of its type.`;
-	return missionFirst ? `${ask} My mission is asked separately, so ask nothing about it.` : ask;
+	const lean = `${ask} Ask only for facts the page cannot be written without, never for ${NEVER_ASKED}: decide those yourself or leave them out.`;
+	return missionFirst ? `${lean} My mission is asked separately, so ask nothing about it.` : lean;
 }
 
 /**
@@ -891,7 +896,7 @@ function answersLines(round: number | null): string[] {
 	if (round === null) return [];
 	return round === 1
 		? [
-				'- this message answers your first questions: change the page from them, or ask one more round, only for what the page’s blocks still cannot be filled from, never for what the page already holds, such as a campaign’s name and type. That round is the last.'
+				`- this message answers your first questions: change the page from them, or ask one more round only when a fact the page cannot be written without is still missing, never for ${NEVER_ASKED}, nor for what the page already holds, such as a campaign’s name and type. That round is the last.`
 			]
 		: [
 				'- this message answers your last round of questions, so never ask again: change the page from the answers, using your best judgement where they are thin.'

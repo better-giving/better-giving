@@ -276,50 +276,24 @@ describe('the starter questions', () => {
 		const starter = starterQuestions('donation_page', null, true);
 		expect(starter.map(({ id, kind }) => [id, kind])).toEqual([
 			['mission', 'text'],
-			['who', 'choice'],
-			['first', 'choice'],
-			['ways', 'choices'],
-			['typical-gift', 'amount']
+			['who', 'choice']
 		]);
 		expect(starter[0]).toEqual(MISSION_QUESTION);
 		expect(readAsk(starter)).toEqual({ ok: true, questions: starter });
 	});
 
 	it('of the Donation page leave the mission out once it is written', () => {
-		expect(starterQuestions('donation_page', null, false).map(({ id }) => id)).toEqual([
-			'who',
-			'first',
-			'ways',
-			'typical-gift'
-		]);
+		expect(starterQuestions('donation_page', null, false).map(({ id }) => id)).toEqual(['who']);
 	});
 
-	it('of a campaign made before types ask what it is for, who it helps, what gifts pay for, a goal and an end', () => {
+	it('of a campaign made before types ask what it is for and who it helps', () => {
 		const starter = starterQuestions('campaign', null, false);
 		expect(starter.map(({ id, kind }) => [id, kind])).toEqual([
 			['purpose', 'text'],
-			['who', 'text'],
-			['pays-for', 'tiers'],
-			['goal', 'amount'],
-			['end-date', 'date']
+			['who', 'text']
 		]);
 		expect(readAsk(starter)).toEqual({ ok: true, questions: starter });
 	});
-
-	it('of a campaign made before types stay at five with the mission first', () => {
-		const starter = starterQuestions('campaign', null, true);
-		expect(starter.map(({ id }) => id)).toEqual(['mission', 'purpose', 'who', 'pays-for', 'goal']);
-	});
-
-	it.each([null, 'year_end', 'program'] as const)(
-		'of a %s campaign say its goal and its end may be left blank',
-		(type) => {
-			const starter = starterQuestions('campaign', type, false);
-			expect(
-				starter.filter(({ id }) => id === 'goal' || id === 'end-date').map(({ hint }) => hint)
-			).toEqual(['Leave it blank for no goal', 'Leave it blank for no end']);
-		}
-	);
 
 	it('of a campaign made before types are those of one of type other', () => {
 		expect(starterQuestions('campaign', null, true)).toEqual(
@@ -332,8 +306,7 @@ describe('the starter questions', () => {
 		expect(starter.map(({ kind, prompt }) => [kind, prompt])).toEqual([
 			['text', 'What’s the event?'],
 			['date', 'When is it?'],
-			['tiers', 'What will the money raised do?'],
-			['amount', 'Goal']
+			['text', 'What will the money raised do?']
 		]);
 	});
 
@@ -346,14 +319,12 @@ describe('the starter questions', () => {
 		});
 	});
 
-	it('of a typed campaign put the mission first while it is empty, dropping the type’s last to stay at five', () => {
+	it('of a typed campaign put the mission first while it is empty', () => {
 		const starter = starterQuestions('campaign', 'emergency', true);
 		expect(starter.map(({ prompt }) => prompt)).toEqual([
 			'Your mission, in a sentence',
 			'What happened?',
-			'Who and where are you helping?',
-			'What will gifts pay for?',
-			'Goal'
+			'Who and where are you helping?'
 		]);
 	});
 
@@ -362,6 +333,13 @@ describe('the starter questions', () => {
 		...CAMPAIGN_TYPES.map((type) => [type, starterQuestions('campaign', type, true)] as const)
 	] as const;
 
+	it.each(STARTERS)('of %s ask no amount, tiers or day but an event’s', (name, starter) => {
+		const asked = starter
+			.filter(({ kind }) => kind === 'amount' || kind === 'tiers' || kind === 'date')
+			.map(({ id }) => id);
+		expect(asked).toEqual(name === 'event' ? ['event-date'] : []);
+	});
+
 	it.each(STARTERS)('of %s arrive prefilled or with an example in every box', (_, starter) => {
 		const bare = starter.filter((question) =>
 			question.kind === 'text' || question.kind === 'amount'
@@ -369,39 +347,6 @@ describe('the starter questions', () => {
 				: false
 		);
 		expect(bare).toEqual([]);
-	});
-
-	it.each([
-		['year_end', 'next-year'],
-		['emergency', 'pays-for'],
-		['event', 'raised-for'],
-		['monthly', 'keeps-going'],
-		['program', 'pays-for'],
-		['other', 'pays-for']
-	] as const)(
-		'of a %s campaign ask what gifts do as rows of 25, 50 and 100 dollars with the type’s own examples',
-		(type, id) => {
-			const impact = starterQuestions('campaign', type, false).find((one) => one.id === id);
-			expect(impact).toMatchObject({
-				kind: 'tiers',
-				rows: [{ amount: 2500 }, { amount: 5000 }, { amount: 10000 }]
-			});
-			const examples = impact?.kind === 'tiers' ? (impact.placeholders ?? []) : [];
-			expect(examples).toHaveLength(3);
-			const others = CAMPAIGN_TYPES.filter((one) => one !== type).flatMap((one) =>
-				starterQuestions('campaign', one, false).flatMap((question) =>
-					question.kind === 'tiers' ? (question.placeholders ?? []) : []
-				)
-			);
-			expect(examples.filter((example) => others.includes(example))).toEqual([]);
-		}
-	);
-
-	it.each(STARTERS)('of %s leave a tier’s words for the operator to write', (_, starter) => {
-		const prefilled = starter.flatMap((question) =>
-			question.kind === 'tiers' ? question.rows.filter(({ text }) => text !== undefined) : []
-		);
-		expect(prefilled).toEqual([]);
 	});
 
 	it.each(CAMPAIGN_TYPES)('of a %s campaign are on the rule, with the mission first', (type) => {
