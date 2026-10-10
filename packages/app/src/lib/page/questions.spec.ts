@@ -56,6 +56,136 @@ describe('an ask off the rule', () => {
 	});
 });
 
+describe('an amount question', () => {
+	const amount = { id: 'goal', kind: 'amount', prompt: 'Your goal' } as const;
+
+	it('carries a prefilled guess and an example, each in minor units', () => {
+		const ask = [{ ...amount, prefill: 1000000, placeholder: 2500000 }];
+		expect(readAsk(ask)).toEqual({ ok: true, questions: ask });
+	});
+
+	it.each([
+		['a prefill of nothing', { prefill: 0 }, '0.prefill: '],
+		['a prefill in fractions of a cent', { prefill: 12.5 }, '0.prefill: '],
+		['a prefill in words', { prefill: '$10,000' }, '0.prefill: '],
+		['an example in words', { placeholder: 'e.g. $10,000' }, '0.placeholder: ']
+	])('is refused for %s, naming it', (_, extra, reason) => {
+		expect(readAsk([{ ...amount, ...extra }])).toEqual({
+			ok: false,
+			reason: expect.stringContaining(reason)
+		});
+	});
+});
+
+const tiers: Question = {
+	id: 'impact',
+	kind: 'tiers',
+	prompt: 'What can a gift do?',
+	rows: [{ amount: 2500, text: 'Medicine for a week' }, { amount: 5000 }, { amount: 10000 }]
+};
+
+describe('a tiers question', () => {
+	it('of 1 to 6 rows, each an amount and what it does, is read as asked', () => {
+		const ask = [tiers, { ...tiers, id: 'one', rows: [{ amount: 100 }] }];
+		expect(readAsk(ask)).toEqual({ ok: true, questions: ask });
+	});
+
+	it('takes an example sentence per row for the card to show', () => {
+		const ask = [{ ...tiers, placeholders: ['A meal', 'A night of shelter', 'A week of care'] }];
+		expect(readAsk(ask)).toEqual({ ok: true, questions: ask });
+	});
+
+	const row = (amount: unknown, text?: unknown) => ({
+		amount,
+		...(text === undefined ? {} : { text })
+	});
+	it.each([
+		['no row', [], '0.rows: '],
+		['seven rows', [1, 2, 3, 4, 5, 6, 7].map((n) => row(n * 100)), '0.rows: '],
+		['an amount twice', [row(2500), row(2500)], 'amount is listed twice'],
+		['an amount of nothing', [row(0)], '0.rows.0.amount: '],
+		['an amount in fractions of a cent', [row(12.5)], '0.rows.0.amount: '],
+		['an amount in words', [row('$25')], '0.rows.0.amount: '],
+		['words past what a tier buys', [row(2500, 'x'.repeat(141))], '0.rows.0.text: '],
+		['markup in the words', [row(2500, 'a <b>meal</b>')], 'plain text'],
+		['blank words', [row(2500, '  ')], '0.rows.0.text: '],
+		['a key beside the amount', [{ amount: 2500, buys: 'A meal' }], '0.rows.0: ']
+	])('is refused for %s, naming where', (_, rows, reason) => {
+		expect(readAsk([{ ...tiers, rows }])).toEqual({
+			ok: false,
+			reason: expect.stringContaining(reason)
+		});
+	});
+
+	it.each([
+		['more examples than rows', ['A meal', 'A bed', 'A coat', 'A book'], '0.placeholders: '],
+		['markup in an example', ['A <i>meal</i>'], 'plain text']
+	])('is refused for %s', (_, placeholders, reason) => {
+		expect(readAsk([{ ...tiers, placeholders }])).toEqual({
+			ok: false,
+			reason: expect.stringContaining(reason)
+		});
+	});
+});
+
+describe('answers to a tiers question', () => {
+	const rows = [
+		{ amount: 2500, text: 'Medicine' },
+		{ amount: 5000, text: '  A meal  ' },
+		{ amount: 10000, text: 'A super meal' }
+	];
+
+	it('are its rows, trimmed, said as each amount and what it does', () => {
+		const read = readAnswers([tiers], [{ id: 'impact', value: rows }]);
+		expect(read).toEqual({
+			ok: true,
+			answers: [{ id: 'impact', value: [rows[0], { amount: 5000, text: 'A meal' }, rows[2]] }]
+		});
+		expect(read.ok && answerWords([tiers], read.answers)).toBe(
+			'What can a gift do? — $25: Medicine; $50: A meal; $100: A super meal'
+		);
+	});
+
+	it('may hold amounts the question did not prefill', () => {
+		const value = [{ amount: 1500, text: 'A blanket' }];
+		expect(readAnswers([tiers], [{ id: 'impact', value }])).toEqual({
+			ok: true,
+			answers: [{ id: 'impact', value }]
+		});
+	});
+
+	it.each([
+		['words', 'medicine, a meal', 'answers.0.value: '],
+		['no row', [], 'answers.0.value: '],
+		[
+			'seven rows',
+			[1, 2, 3, 4, 5, 6, 7].map((n) => ({ amount: n * 100, text: 'A meal' })),
+			'answers.0.value: '
+		],
+		['an amount twice', [rows[0], rows[0]], 'an amount is listed twice'],
+		['an amount of nothing', [{ amount: 0, text: 'A meal' }], 'answers.0.value.0.amount: '],
+		[
+			'an amount in fractions of a cent',
+			[{ amount: 12.5, text: 'A meal' }],
+			'answers.0.value.0.amount: '
+		],
+		['a row saying nothing', [{ amount: 2500, text: ' ' }], 'answers.0.value.0.text: '],
+		['a row with no words', [{ amount: 2500 }], 'answers.0.value.0.text: '],
+		[
+			'words past what a tier buys',
+			[{ amount: 2500, text: 'x'.repeat(141) }],
+			'answers.0.value.0.text: '
+		],
+		['markup', [{ amount: 2500, text: '<b>A meal</b>' }], 'plain text'],
+		['a link', [{ amount: 2500, text: 'see www.example.org' }], 'plain text']
+	])('are refused for %s, naming it', (_, value, reason) => {
+		expect(readAnswers([tiers], [{ id: 'impact', value }])).toEqual({
+			ok: false,
+			reason: expect.stringContaining(reason)
+		});
+	});
+});
+
 const asked: Question[] = [
 	pick,
 	{ id: 'ways', kind: 'choices', prompt: 'Ways to give', options: ['One-time', 'Monthly'] },
@@ -169,7 +299,7 @@ describe('the starter questions', () => {
 		expect(starter.map(({ id, kind }) => [id, kind])).toEqual([
 			['purpose', 'text'],
 			['who', 'text'],
-			['pays-for', 'text'],
+			['pays-for', 'tiers'],
 			['goal', 'amount'],
 			['end-date', 'date']
 		]);
@@ -202,7 +332,7 @@ describe('the starter questions', () => {
 		expect(starter.map(({ kind, prompt }) => [kind, prompt])).toEqual([
 			['text', 'What’s the event?'],
 			['date', 'When is it?'],
-			['text', 'What will the money raised do?'],
+			['tiers', 'What will the money raised do?'],
 			['amount', 'Goal']
 		]);
 	});
@@ -225,6 +355,53 @@ describe('the starter questions', () => {
 			'What will gifts pay for?',
 			'Goal'
 		]);
+	});
+
+	const STARTERS = [
+		['the Donation page', starterQuestions('donation_page', null, true)],
+		...CAMPAIGN_TYPES.map((type) => [type, starterQuestions('campaign', type, true)] as const)
+	] as const;
+
+	it.each(STARTERS)('of %s arrive prefilled or with an example in every box', (_, starter) => {
+		const bare = starter.filter((question) =>
+			question.kind === 'text' || question.kind === 'amount'
+				? question.prefill === undefined && question.placeholder === undefined
+				: false
+		);
+		expect(bare).toEqual([]);
+	});
+
+	it.each([
+		['year_end', 'next-year'],
+		['emergency', 'pays-for'],
+		['event', 'raised-for'],
+		['monthly', 'keeps-going'],
+		['program', 'pays-for'],
+		['other', 'pays-for']
+	] as const)(
+		'of a %s campaign ask what gifts do as rows of 25, 50 and 100 dollars with the type’s own examples',
+		(type, id) => {
+			const impact = starterQuestions('campaign', type, false).find((one) => one.id === id);
+			expect(impact).toMatchObject({
+				kind: 'tiers',
+				rows: [{ amount: 2500 }, { amount: 5000 }, { amount: 10000 }]
+			});
+			const examples = impact?.kind === 'tiers' ? (impact.placeholders ?? []) : [];
+			expect(examples).toHaveLength(3);
+			const others = CAMPAIGN_TYPES.filter((one) => one !== type).flatMap((one) =>
+				starterQuestions('campaign', one, false).flatMap((question) =>
+					question.kind === 'tiers' ? (question.placeholders ?? []) : []
+				)
+			);
+			expect(examples.filter((example) => others.includes(example))).toEqual([]);
+		}
+	);
+
+	it.each(STARTERS)('of %s leave a tier’s words for the operator to write', (_, starter) => {
+		const prefilled = starter.flatMap((question) =>
+			question.kind === 'tiers' ? question.rows.filter(({ text }) => text !== undefined) : []
+		);
+		expect(prefilled).toEqual([]);
 	});
 
 	it.each(CAMPAIGN_TYPES)('of a %s campaign are on the rule, with the mission first', (type) => {
