@@ -97,7 +97,10 @@ const tiersQuestion = z
 			z.strictObject({ amount: minor, text: plain(BUYS_MAX, 'what a tier does').optional() })
 		),
 		/** an example of what each row's amount does, by index, shown where its words are empty. */
-		placeholders: z.array(plain(BUYS_MAX, 'an example')).optional()
+		placeholders: z
+			.array(plain(BUYS_MAX, 'an example'))
+			.max(TIERS_MAX, { error: 'a tiers question gives at most one example per row' })
+			.optional()
 	})
 	.refine(({ rows, placeholders = [] }) => placeholders.length <= rows.length, {
 		error: 'a tiers question gives at most one example per row',
