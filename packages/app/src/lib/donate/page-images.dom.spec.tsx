@@ -9,9 +9,8 @@ import { EndedCampaignPage } from './plain-page';
 // the images a page draws beside its blocks' own photos, through the renderer: the organisation's
 // logo in the masthead and a program's photo on its chooser option — and the logo on an ended
 // campaign's screen, which is drawn beside the renderer rather than by it. every one is drawn from
-// the deployment's image route by its stored id, and a hero or image block the loader still marks
-// as an illustration draws as any photo does. how any of it looks is left to a person looking at
-// it.
+// the deployment's image route by its stored id, and a hero's or an image block's photo draws as a
+// plain photo with nothing captioning it. how any of it looks is left to a person looking at it.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -65,14 +64,6 @@ const page = (type: PageType, layout: string, blocks: unknown[]) =>
 		switches: { openOnMonthly: false, dedicationOn: false },
 		blocks
 	});
-
-/** the page with the named blocks marked as illustrations, as the page's loader still marks them. */
-const marked = (shown: Page, ids: readonly string[]): Page => ({
-	...shown,
-	blocks: shown.blocks.map((block) =>
-		ids.includes(block.id) ? { ...block, illustration: true } : block
-	)
-});
 
 function props(type: PageType, shown: Page, over: Partial<PageViewProps> = {}): PageViewProps {
 	return {
@@ -235,7 +226,7 @@ describe.each(['cards', 'list'] as const)('program photos on the chooser, %s', (
 	});
 });
 
-describe('a photo the loader marks as an illustration', () => {
+describe('a hero’s or an image block’s photo', () => {
 	it.each([
 		['wide', 'column'],
 		['framed', 'wide']
@@ -246,7 +237,7 @@ describe('a photo the loader marks as an illustration', () => {
 			box,
 			image(imageVariant)
 		]);
-		const root = mount(<PageView {...props('campaign', marked(shown, ['hero', 'image']))} />);
+		const root = mount(<PageView {...props('campaign', shown)} />);
 		expect(root.querySelector('[data-block="hero"] .page-photo')?.getAttribute('src')).toBe(
 			`/image/${HERO}`
 		);
@@ -254,17 +245,15 @@ describe('a photo the loader marks as an illustration', () => {
 			`/image/${IMAGE}`
 		);
 		expect(root.querySelector('figure, figcaption')).toBeNull();
-		expect(root.textContent).not.toContain('Illustration');
 	});
 
 	it('draws as a plain photo under the cover, its title over it', () => {
 		const shown = page('campaign', 'cover', [hero('wide'), title, box]);
-		const root = mount(<PageView {...props('campaign', marked(shown, ['hero']))} />);
+		const root = mount(<PageView {...props('campaign', shown)} />);
 		const cover = root.querySelector('.page-hero[data-variant="cover"]');
 
 		expect(cover?.tagName).toBe('DIV');
 		expect(cover?.querySelector('.page-hero-over [data-block="title"]')).not.toBeNull();
 		expect(root.querySelector('figure, figcaption')).toBeNull();
-		expect(root.textContent).not.toContain('Illustration');
 	});
 });

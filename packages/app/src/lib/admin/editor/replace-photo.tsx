@@ -38,6 +38,8 @@ export type ReplacePhotoControlProps = Description & {
 	readonly frame?: 'square' | undefined;
 	/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
 	readonly onRemove?: (() => void) | undefined;
+	/** the press's id, for a caller that moves the focus to it. */
+	readonly pressId?: string | undefined;
 };
 
 /* a placed image and the press that swaps it: a block's photo in its edit sheet, a program's
@@ -62,7 +64,8 @@ export function ReplacePhotoControl({
 	altError,
 	describe = true,
 	frame,
-	onRemove
+	onRemove,
+	pressId
 }: ReplacePhotoControlProps) {
 	const picker = usePhotoPicker({ onResized });
 	const id = useId();
@@ -95,6 +98,7 @@ export function ReplacePhotoControl({
 				<div className="adm-actions">
 					<Button
 						ref={pressRef}
+						id={pressId}
 						type="button"
 						mark="image-up"
 						state={picker.choosing ? 'active' : undefined}

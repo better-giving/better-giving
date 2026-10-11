@@ -16,7 +16,8 @@ vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 }));
 
 // a placed photo's sheet as the editor routes mount it: a new photo is resized, posted to the images
-// route, drawn once stored, and written to the block by Done with what describes it. both routes are
+// route, drawn once stored, and written to the block by Done with what describes it; and the sheet of
+// a block with no photo yet, whose Done posts nothing until one is chosen. both routes are
 // stand-ins; what the real ones store is src/routes/_app.admin.images.workers.spec.ts's and
 // $lib/server/pages/blocks.workers.spec.ts's.
 
@@ -58,12 +59,12 @@ const hero: EditorBlock = {
 	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' }
 };
 
-function editor() {
+function editor(block: EditorBlock = hero) {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
 			Component: () => (
-				<BlockEditSheet block={hero} version={3} onDismiss={() => {}} onSaved={() => {}} />
+				<BlockEditSheet block={block} version={3} onDismiss={() => {}} onSaved={() => {}} />
 			),
 			action: async ({ request }) => {
 				saves.push(
@@ -218,5 +219,50 @@ describe('a placed photo’s sheet', () => {
 		);
 		await done(root);
 		expect(saves).toEqual([expect.objectContaining({ image_id: PLACED, alt: 'Volunteers' })]);
+	});
+});
+
+describe('the sheet of a block with no photo yet', () => {
+	const bare: EditorBlock = {
+		...hero,
+		summary: 'No photo yet',
+		text: { kind: 'photo', imageId: null, alt: '' }
+	};
+
+	it('offers Add photo alone, and Done posts nothing but says a photo is wanted at the press', async () => {
+		const root = editor(bare);
+		expect([shown(root), pressWords(root)]).toEqual([undefined, 'Add photo']);
+
+		await done(root);
+
+		expect(saves).toEqual([]);
+		const press = root.querySelector('.adm-placed button');
+		const said = root.querySelector('.adm-placed [role="status"]');
+		expect(said?.textContent).toBe('Add a photo first. The page doesn’t change until you do.');
+		expect(press?.getAttribute('aria-describedby')).toBe(said?.id);
+		expect(document.activeElement).toBe(press);
+	});
+
+	it('writes the photo chosen, by its id, at the next Done', async () => {
+		const root = editor(bare);
+		await done(root);
+
+		await pick(root);
+		await uploaded({ id: STORED, width: 1600, height: 1067 });
+		expect([shown(root), root.querySelector('.adm-placed [role="status"]')?.textContent]).toEqual([
+			`/image/${STORED}`,
+			''
+		]);
+		describePhoto(root, 'Coats on a rack');
+		await done(root);
+
+		expect(saves).toEqual([
+			expect.objectContaining({
+				[WHICH_FORM]: BLOCK_FORMS.photo,
+				block_id: 'hero',
+				image_id: STORED,
+				alt: 'Coats on a rack'
+			})
+		]);
 	});
 });

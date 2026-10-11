@@ -2,18 +2,17 @@ import { useCallback, useEffect } from 'react';
 import { useFetcher } from 'react-router';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import {
-	PAGE_END_DATE_FORM_ID,
-	PAGE_GOAL_FORM_ID,
-	type PageSettingFormId
-} from '$lib/page/page-settings-form';
+import { BLOCK_FORMS } from '$lib/page/block-edit';
+import { PAGE_END_DATE_FORM_ID, PAGE_GOAL_FORM_ID } from '$lib/page/page-settings-form';
 import { EndDateSheet } from './end-date-sheet';
 import { GoalSheet } from './goal-sheet';
+import { ShareMessageSheet } from './share-message-sheet';
 
-// a campaign's goal and end date, each a sheet over Settings: each posts its form
-// ($lib/page/page-settings-form.ts) through a fetcher of its own to the editor route's action
-// (`savePageSetting` in $lib/server/pages/page-settings.ts), written against the page's version
-// the editor was drawn at. a landed write moves that version, which reloads the preview.
+// a campaign's goal and end date, and any page's share message, each a sheet over Settings: each
+// posts its form ($lib/page/page-settings-form.ts, $lib/page/block-edit.ts) through a fetcher of its
+// own to the editor route's action (`savePageSetting` in $lib/server/pages/page-settings.ts,
+// `saveBlockForm` in $lib/server/pages/blocks.ts), written against the page's version the editor
+// was drawn at. a landed write moves that version, which reloads the preview.
 //
 // each sheet has one Done that closes it when the write lands and keeps what was typed when it is
 // refused.
@@ -24,7 +23,7 @@ import { GoalSheet } from './goal-sheet';
 type Answer = AdminActionData & { readonly saved?: string };
 
 /** one form's press: what to post, how it stands, and what its last answer said. */
-function usePress(form: PageSettingFormId, version: number) {
+function usePress(form: string, version: number) {
 	const fetcher = useFetcher<Answer>();
 	const busy = fetcher.state !== 'idle';
 	const answer = busy ? undefined : fetcher.data;
@@ -116,6 +115,30 @@ export function EndDateSettingsSheet({
 			}}
 			applying={press.busy}
 			error={press.refused('end_date') ?? press.refused('time_zone')}
+			refusal={press.refused('')}
+			onDismiss={onDismiss}
+		/>
+	);
+}
+
+/** what a donor's share says beside the page's address; an emptied box removes it. */
+export function ShareMessageSettingsSheet({
+	message,
+	version,
+	onDismiss,
+	onSaved
+}: SheetProps & { readonly message: string }) {
+	const press = usePress(BLOCK_FORMS.shareMessage, version);
+	useClosesOnSave(press.saved, onSaved);
+	return (
+		<ShareMessageSheet
+			message={message}
+			onDone={(next) => {
+				if (next === message) onDismiss();
+				else press.post({ share_message: next });
+			}}
+			applying={press.busy}
+			error={press.refused('share_message')}
 			refusal={press.refused('')}
 			onDismiss={onDismiss}
 		/>

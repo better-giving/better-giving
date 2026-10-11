@@ -3,8 +3,10 @@ import { useCallback, useState } from 'react';
 import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
+import { ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -196,13 +198,21 @@ function DraftEditor({
 	const { state, version, preview, hasEdits } = loaderData;
 	const [settings, setSettings] = useState(false);
 	const [donationSettings, setDonationSettings] = useState(false);
+	const [shareMessage, setShareMessage] = useState(false);
 	const presses = usePublishPresses({ version, state, reset: { hasEdits } });
 	const [blockId, setBlockId] = useState<string | null>(null);
 	const openBlock = loaderData.blocks.find((block) => block.id === blockId) ?? null;
-	const layoutPick = useLayoutPick(loaderData.layout, version);
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setDonationSettings(true) : setBlockId(id);
+	const layoutPick = useLayoutPick(loaderData.layout, version);
+	const settingsPresses = useSettingsPresses({
+		version,
+		look: loaderData.look,
+		share: loaderData.share,
+		addable: loaderData.addable,
+		onAdded: openBlockSheet
+	});
 
 	return (
 		<EditorShell
@@ -215,6 +225,7 @@ function DraftEditor({
 					{...presses.bar}
 					onSettings={() => {
 						layoutPick.startClean();
+						settingsPresses.startClean();
 						setSettings(true);
 					}}
 				/>
@@ -235,6 +246,10 @@ function DraftEditor({
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
 					{...layoutPick.sheet}
+					lookPictures={loaderData.lookPictures}
+					shareChannels={loaderData.shareChannels}
+					{...settingsPresses.sheet}
+					onShareMessage={() => setShareMessage(true)}
 					donationSettings={loaderData.settings.summary}
 					onOpen={(row) => {
 						if (row === 'donation-settings') setDonationSettings(true);
@@ -251,6 +266,14 @@ function DraftEditor({
 					stacked={settings}
 				/>
 			)}
+			{shareMessage ? (
+				<ShareMessageSettingsSheet
+					message={loaderData.share.message}
+					version={version}
+					onDismiss={() => setShareMessage(false)}
+					onSaved={() => setShareMessage(false)}
+				/>
+			) : null}
 			{donationSettings ? (
 				<DonationSettingsSheet
 					seed={loaderData.settings}

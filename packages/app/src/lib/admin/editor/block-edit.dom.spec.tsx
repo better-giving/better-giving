@@ -2,14 +2,14 @@ import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { WHICH_FORM } from '$lib/forms/definition';
+import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { BLOCK_FORMS, type EditorBlock } from '$lib/page/block-edit';
 import { BlockEditSheet, useLayoutPick } from './block-edit';
 import { SettingsSheet } from './settings-sheet';
 
 // a block's sheet and the layout pictures as the editor routes mount them, each press posted
-// through a fetcher to a stubbed action: where a refused pick is reported, what a tier's row posts,
-// and that a sheet opened over Settings stands over it.
+// through a fetcher to a stubbed action: where a refused pick is reported, what a tier's row and a
+// background pick post, and that a sheet opened over Settings stands over it.
 //
 // `stacked` has one output, the class packages/operator/src/components/shell/Sheet.jsx writes for
 // it, and that file's own spec holds what the class is; the one case reading it here asks only
@@ -144,6 +144,51 @@ describe('a block sheet', () => {
 		const { root } = editor(sheet(title), BLOCK_FORMS.title);
 		await press(done(root));
 		expect(reports(root)).toEqual(['', STALE]);
+	});
+});
+
+describe('a block’s background', () => {
+	const grounded: EditorBlock = {
+		...title,
+		background: 'soft',
+		backgrounds: [
+			{ value: 'none', label: 'None' },
+			{ value: 'soft', label: 'Soft' },
+			{ value: 'tint', label: 'Tinted' }
+		]
+	};
+	const legends = (root: Element) =>
+		[...root.querySelectorAll('dialog legend')].map((one) => one.textContent);
+	const chip = (root: Element, words: string) =>
+		[...root.querySelectorAll<HTMLLabelElement>('dialog label')]
+			.find((one) => one.textContent === words)
+			?.querySelector('input') ?? null;
+
+	it('is offered only where the block may stand on more than one, the one it stands on picked', () => {
+		expect(legends(editor(sheet(title), '').root)).not.toContain('Background');
+		const { root } = editor(sheet(grounded), '');
+		expect(legends(root)).toContain('Background');
+		expect(chip(root, 'Soft')?.checked).toBe(true);
+	});
+
+	it('posts the block and the ground picked with the version, and nothing else', async () => {
+		const { root, posted } = editor(sheet(grounded), '');
+		await press(chip(root, 'Tinted'));
+		expect(posted.map((body) => [...body.entries()])).toEqual([
+			[
+				[WHICH_FORM, BLOCK_FORMS.background],
+				[RECORD_VERSION, '3'],
+				['block_id', 'b1'],
+				['background', 'tint']
+			]
+		]);
+	});
+
+	it('reports a refused pick under the picks, and draws the block’s ground again', async () => {
+		const { root } = editor(sheet(grounded), BLOCK_FORMS.background);
+		await press(chip(root, 'Tinted'));
+		expect(reports(root)).toEqual([STALE, '']);
+		expect(chip(root, 'Soft')?.checked).toBe(true);
 	});
 });
 

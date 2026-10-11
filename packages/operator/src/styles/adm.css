@@ -2038,7 +2038,6 @@
 
 	   only where a label is above it. a field named some other way draws none, and its sentence is
 	   then the first part of the field with nothing above it to belong to. */
-	.adm-field > .adm-field__head + .adm-hint,
 	.adm-field > .adm-field__label + .adm-hint {
 		margin-block-start: var(--admin-space-1);
 	}
@@ -2051,34 +2050,6 @@
 	.adm-field > .adm-field__label {
 		grid-row: 1;
 		justify-self: start;
-	}
-
-	/* the label's row with what stands at its end (`labelAside` in
-	   packages/operator/src/components/forms/Field.jsx): the label at the leading edge, a small press
-	   that writes the whole box and the word for where its value came from at the trailing one, the
-	   slab's label row (`.adm-slabhead`) on a field. as tall as the small control, so the label row
-	   is the same height whether the press stands in it alone or with its word. it wraps rather than
-	   squeezing the label, and what wraps stays at the trailing edge. the label inside still hugs its
-	   own words: a flex item is as wide as its content.
-
-	   the label stands at the row's end, not its middle: the row is taller than a line of the
-	   label, and the slack centring leaves under the label is added to the sentence's step below,
-	   which would stand the sentence as far off its label as the box stands off the sentence. */
-	.adm-field > .adm-field__head {
-		grid-row: 1;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: end;
-		justify-content: space-between;
-		gap: var(--admin-space-5);
-		min-block-size: var(--admin-control-height-sm);
-	}
-
-	.adm-field__aside {
-		display: flex;
-		align-items: center;
-		gap: var(--admin-space-4);
-		margin-inline-start: auto;
 	}
 
 	.adm-field > .adm-hint {
@@ -5991,6 +5962,51 @@
 	.adm-openrow > .adm-mark {
 		flex: none;
 		color: var(--admin-ink-muted);
+	}
+
+	/* a block's row in the editor's block list (packages/app/src/lib/admin/editor/settings-sheet.tsx):
+	   the row that opens its sheet, then the presses that move it a step and take it off the page,
+	   each a mark alone. the row draws the rule the open row draws on its own, so the presses stand
+	   on the row rather than past its end.
+
+	   each press has a track of its own, and a press a block cannot use is left out rather than
+	   drawn closed, so its track stands empty: the first block's Move down stands under the second
+	   block's, not where the second's Move up is. each track is the touch floor square and so is the
+	   press, so the target is the drawn press and nothing reaches past it. */
+	.adm-blockrow {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) repeat(3, var(--admin-touch-min));
+		align-items: center;
+		border-block-end: var(--admin-rule);
+	}
+
+	.adm-blockrow > .adm-openrow {
+		border-block-end: 0;
+	}
+
+	.adm-blockrow > .adm-btn {
+		inline-size: var(--admin-touch-min);
+		min-block-size: var(--admin-touch-min);
+		padding-inline: 0;
+		justify-content: center;
+	}
+
+	.adm-blockrow > .adm-blockrow__up {
+		grid-column: 2;
+	}
+
+	.adm-blockrow > .adm-blockrow__down {
+		grid-column: 3;
+	}
+
+	.adm-blockrow > .adm-blockrow__remove {
+		grid-column: 4;
+	}
+
+	/* Add a block under the list hugs its press: a grid item stretches across the part, and a press
+	   the part's width reads as a bar rather than as a control. */
+	.adm-openrow-list + .adm-menuwrap {
+		justify-self: start;
 	}
 
 	/* a box with its unit or its address in front stated on the box itself, as `.adm-coinbox` is:

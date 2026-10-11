@@ -107,7 +107,7 @@ export type PageViewProps = {
 	readonly className?: string;
 };
 
-/** a block's DOM id. stored ids are the drafting model's to choose, so each is kept in a namespace of its own. */
+/** a block's DOM id, in a namespace of its own, so a stored block id never meets another id on the page. */
 export const blockDomId = (id: string) => `blk-${id}`;
 
 /** blocks that travel into the box's column when listed directly before it. */

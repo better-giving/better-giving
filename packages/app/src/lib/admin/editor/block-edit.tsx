@@ -24,10 +24,12 @@ import {
 // version, which reloads the preview.
 //
 // the words are the boxes' own, uncontrolled: a refused Done leaves them holding what was typed,
-// the refusal under the box the catalog's rule names, and the caret moved there. a picture applies
-// on pick and is drawn picked while its write is in flight; a refused one goes back to the draft's,
-// with its refusal under the pictures and never at Done. every post carries the version as the
-// editor holds it at the press, so a pick that landed first does not make the Done after it stale.
+// the refusal under the box the catalog's rule names, and the caret moved there. a variant picture
+// or a background applies on pick and is drawn picked while its write is in flight; a refused one
+// goes back to the draft's, with its refusal under the picks and never at Done. the two share one
+// fetcher, and a pick made while the other is in flight is turned away, since it would carry the
+// version the first is about to move. every post carries the version as the editor holds it at the
+// press, so a pick that landed first does not make the Done after it stale.
 //
 // the tiers and the questions are repeating rows: each row a pair of boxes whose legend, read to a
 // screen reader and not drawn, names it by its place — Tier 2 — and the rows a stack, so one row
@@ -39,7 +41,9 @@ import {
 // photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
 // stored, and Done writes its id and the description to the block, as a text block's words are;
 // a sheet dismissed before Done leaves the block as it was. a refused description lands under its
-// box, with the caret moved there; what else the photo's rule refuses lands at Done.
+// box, with the caret moved there; what else the photo's rule refuses lands at Done. a hero or an
+// image with no photo yet opens on Add photo alone, and Done there posts nothing: it says at the
+// press that a photo is wanted and puts the focus on it.
 
 type Answer = AdminActionData & { readonly saved?: string };
 
@@ -67,6 +71,7 @@ const TEXT_FORMS = {
 	photo: { id: BLOCK_FORMS.photo }
 } as const;
 const VARIANT_FORM = { id: BLOCK_FORMS.variant };
+const BACKGROUND_FORM = { id: BLOCK_FORMS.background };
 const LAYOUT_FORM = { id: BLOCK_FORMS.layout };
 
 type BlockEditSheetProps = {
@@ -99,6 +104,10 @@ export function BlockEditSheet({
 	const picking = picks.state !== 'idle';
 	const pickAnswer = picking ? undefined : picks.data;
 	const picked = picking ? picks.formData?.get('variant') : null;
+	const grounded = picking ? picks.formData?.get('background') : null;
+	/** a photo block's Done found no photo, until one is chosen. */
+	const [photoWanted, setPhotoWanted] = useState(false);
+	const pressId = boxId(block.id, 'photo');
 
 	useEffect(() => {
 		if (saved) onSaved();
@@ -106,7 +115,17 @@ export function BlockEditSheet({
 
 	const textForm = block.text === null ? null : TEXT_FORMS[block.text.kind];
 	const pickRefusal =
-		refusal(VARIANT_FORM, pickAnswer, 'variant') ?? refusal(VARIANT_FORM, pickAnswer, '');
+		refusal(VARIANT_FORM, pickAnswer, 'variant') ??
+		refusal(VARIANT_FORM, pickAnswer, '') ??
+		refusal(BACKGROUND_FORM, pickAnswer, 'background') ??
+		refusal(BACKGROUND_FORM, pickAnswer, '');
+	const pick = (form: { readonly id: string }, box: string, value: string) => {
+		if (picking) return;
+		const body = post(form, version);
+		body.set('block_id', block.id);
+		body.set(box, value);
+		picks.submit(body, { method: 'post' });
+	};
 
 	return (
 		<BlockSheet
@@ -119,15 +138,15 @@ export function BlockEditSheet({
 					: {
 							options: block.variants,
 							value: typeof picked === 'string' ? picked : block.variant,
-							refusal: pickRefusal,
-							onPick: (variant) => {
-								const body = post(VARIANT_FORM, version);
-								body.set('block_id', block.id);
-								body.set('variant', variant);
-								picks.submit(body, { method: 'post' });
-							}
+							onPick: (variant) => pick(VARIANT_FORM, 'variant', variant)
 						}
 			}
+			backgrounds={{
+				options: block.backgrounds,
+				value: typeof grounded === 'string' ? grounded : block.background,
+				onPick: (background) => pick(BACKGROUND_FORM, 'background', background)
+			}}
+			pickRefusal={pickRefusal}
 			text={
 				block.text === null || textForm === null
 					? undefined
@@ -137,10 +156,16 @@ export function BlockEditSheet({
 									id={block.id}
 									text={block.text}
 									error={(box) => refusal(textForm, wordsAnswer, box)}
+									photo={{ pressId, wanted: photoWanted }}
 								/>
 							),
 							onDone: (form) => {
 								const body = post(textForm, version, new FormData(form));
+								if (block.text?.kind === 'photo' && body.get('image_id') === '') {
+									setPhotoWanted(true);
+									document.getElementById(pressId)?.focus();
+									return;
+								}
 								body.set('block_id', block.id);
 								words.submit(body, { method: 'post' });
 							},
@@ -159,18 +184,23 @@ type BlockFieldsProps = {
 	readonly text: BlockText;
 	/** the last Done's refusal under `box`. */
 	readonly error: (box: string) => string | null;
+	/** a photo block's press, by its id, and whether a Done found no photo chosen. */
+	readonly photo: { readonly pressId: string; readonly wanted: boolean };
 };
 
 /** the boxes a block's words are typed in, named as its form posts them. */
-function BlockFields({ id, text, error }: BlockFieldsProps) {
-	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} />;
+function BlockFields({ id, text, error, photo }: BlockFieldsProps) {
+	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} photo={photo} />;
 	return <WordFields id={id} text={text} error={error} />;
 }
+
+/** what the press says to a Done that found no photo chosen. */
+const PHOTO_WANTED = 'Add a photo first. The page doesn’t change until you do.';
 
 type PhotoText = Extract<BlockText, { kind: 'photo' }>;
 
 /** the photo Done writes, and what describes it, each posted from a hidden box. */
-function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: PhotoText }) {
+function PhotoFields({ id, text, error, photo }: BlockFieldsProps & { readonly text: PhotoText }) {
 	const upload = useFetcher<UploadAnswer>();
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
@@ -197,8 +227,9 @@ function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: Ph
 		setRefused(null);
 		postPhoto(upload, result.blob);
 	};
+	const said = refused ?? (photo.wanted && imageId === null ? PHOTO_WANTED : null);
 	const state: ReplacePhotoControlProps['state'] =
-		upload.state !== 'idle' ? 'uploading' : refused === null ? undefined : { refused };
+		upload.state !== 'idle' ? 'uploading' : said === null ? undefined : { refused: said };
 	const altId = boxId(id, 'alt');
 	const altError = error('alt');
 	useFocusOnRefusal(altError, altId);
@@ -213,6 +244,7 @@ function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: Ph
 				state={state}
 				altId={altId}
 				altError={altError}
+				pressId={photo.pressId}
 			/>
 			<input type="hidden" name="image_id" value={imageId ?? ''} />
 			<input type="hidden" name="alt" value={alt} />
@@ -223,7 +255,11 @@ function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: Ph
 type WordsText = Exclude<BlockText, PhotoText>;
 
 /** the boxes of a block whose words are typed. */
-function WordFields({ id, text, error }: BlockFieldsProps & { readonly text: WordsText }) {
+function WordFields({
+	id,
+	text,
+	error
+}: Omit<BlockFieldsProps, 'photo'> & { readonly text: WordsText }) {
 	const boxes = boxNames(text);
 	const refused = boxes.find((box) => error(box) !== null) ?? null;
 	useFocusOnRefusal(

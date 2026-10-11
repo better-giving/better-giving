@@ -372,9 +372,9 @@ describe('a block with nothing typed in it', () => {
 					{ value: 'icons', label: 'Icons' }
 				],
 				value: 'buttons',
-				onPick: () => {},
-				refusal
+				onPick: () => {}
 			}}
+			pickRefusal={refusal}
 			onDismiss={() => {}}
 		/>
 	);

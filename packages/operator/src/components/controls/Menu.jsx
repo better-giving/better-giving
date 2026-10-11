@@ -23,8 +23,11 @@ import { Button } from './Button.jsx';
 
 /**
  * @typedef {object} MenuProps
- * @property {string} label the press's accessible name. it is the press's only name — the press
- *   draws its mark alone — so it says what the menu holds, `More` and not `Open menu`.
+ * @property {string} label the press's name. it says what the menu holds, `More` and not `Open
+ *   menu`. the press draws its mark alone and this is its accessible name, unless `labelled`.
+ * @property {boolean | undefined} [labelled] `label` drawn as the press's words after its mark, and
+ *   then the press's name by being its text. for a menu that is a screen's way to make something —
+ *   `Add a block` over the kinds it may be — where a mark alone does not say which thing is made.
  * @property {readonly MenuItem[]} items
  * @property {MarkName | undefined} [mark] the press's mark, `ellipsis` unless stated.
  * @property {ButtonVariant | undefined} [variant]
@@ -48,12 +51,28 @@ import { Button } from './Button.jsx';
    (../../styles/adm.css). an empty menu is a press that opens onto nothing, so a caller with no
    line to offer draws no menu. */
 /** @param {MenuProps} props */
-export function Menu({ label, items, mark = 'ellipsis', variant = 'default', size = 'md', open }) {
+export function Menu({
+	label,
+	labelled = false,
+	items,
+	mark = 'ellipsis',
+	variant = 'default',
+	size = 'md',
+	open
+}) {
 	return (
 		<div className="adm-menuwrap">
 			<ArkMenu.Root open={open}>
 				<ArkMenu.Trigger asChild>
-					<Button type="button" variant={variant} size={size} mark={mark} aria-label={label} />
+					<Button
+						type="button"
+						variant={variant}
+						size={size}
+						mark={mark}
+						aria-label={labelled ? undefined : label}
+					>
+						{labelled ? label : null}
+					</Button>
 				</ArkMenu.Trigger>
 				<ArkMenu.Positioner>
 					<ArkMenu.Content className="adm-menulist">

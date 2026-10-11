@@ -2,7 +2,8 @@ import { Menu } from '@better-giving/operator/components/controls/Menu';
 
 /*
  * the menu: a press named for what it holds, and its lines. the first specimen is the editor bar's
- * More at rest, holding a link line and two action lines; the second is held open, which is the one
+ * More at rest, holding a link line and two action lines, beside the block list's Add a block, whose
+ * press says its name in words; the second is held open, which is the one
  * state no press reaches on a page that has to stay readable — the list stands over what follows
  * it, so the open one is last. it is held, so it stays open when another specimen on the page
  * takes the focus.
@@ -17,12 +18,19 @@ const LINES = [
 	{ label: 'Discard changes', onSelect: () => {} }
 ];
 
+const KINDS = [
+	{ label: 'Story', onSelect: () => {} },
+	{ label: 'Questions', onSelect: () => {} },
+	{ label: 'Photo', onSelect: () => {} }
+];
+
 export default function ControlsMenuPreview() {
 	return (
 		<div className="adm-stack">
 			<div className="adm-actions">
 				<Menu label="More" items={LINES} />
 				<Menu label="More" size="sm" variant="quiet" items={LINES} />
+				<Menu label="Add a block" labelled mark="plus" items={KINDS} />
 			</div>
 			<div className="adm-actions">
 				<Menu label="More" items={LINES} open />

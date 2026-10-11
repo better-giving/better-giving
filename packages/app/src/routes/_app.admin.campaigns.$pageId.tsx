@@ -8,9 +8,14 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
-import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
+import {
+	EndDateSettingsSheet,
+	GoalSettingsSheet,
+	ShareMessageSettingsSheet
+} from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
+import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { type FirstPublish, usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -475,6 +480,13 @@ function DraftEditor({
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setOpened('donation-settings') : setBlockId(id);
 	const layoutPick = useLayoutPick(loaderData.layout, version);
+	const settingsPresses = useSettingsPresses({
+		version,
+		look: loaderData.look,
+		share: loaderData.share,
+		addable: loaderData.addable,
+		onAdded: openBlockSheet
+	});
 
 	const { renamed, renaming, renamedIn } = naming;
 	const nameAnswer = naming.answer;
@@ -524,6 +536,7 @@ function DraftEditor({
 					{...presses.bar}
 					onSettings={() => {
 						layoutPick.startClean();
+						settingsPresses.startClean();
 						setSettings(true);
 					}}
 					report={presses.bar.report ?? naming.barReport}
@@ -552,6 +565,10 @@ function DraftEditor({
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
 					{...layoutPick.sheet}
+					lookPictures={loaderData.lookPictures}
+					shareChannels={loaderData.shareChannels}
+					{...settingsPresses.sheet}
+					onShareMessage={() => setOpened('share-message')}
 					donationSettings={donationSettings.summary}
 					onOpen={setOpened}
 				/>
@@ -588,6 +605,14 @@ function DraftEditor({
 			{opened === 'end-date' ? (
 				<EndDateSettingsSheet
 					endDate={loaderData.endDate}
+					version={version}
+					onDismiss={() => setOpened(null)}
+					onSaved={() => setOpened(null)}
+				/>
+			) : null}
+			{opened === 'share-message' ? (
+				<ShareMessageSettingsSheet
+					message={loaderData.share.message}
 					version={version}
 					onDismiss={() => setOpened(null)}
 					onSaved={() => setOpened(null)}

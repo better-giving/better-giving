@@ -42,6 +42,18 @@ describe('a menu mounted into a document', () => {
 		expect(list(root)?.hidden).toBe(true);
 	});
 
+	it('draws its name as its words where it is labelled, and is named by them', () => {
+		const root = render(Menu, {
+			label: 'Add a block',
+			labelled: true,
+			mark: 'plus',
+			items: items()
+		});
+
+		expect(trigger(root).hasAttribute('aria-label')).toBe(false);
+		expect(trigger(root).textContent).toBe('Add a block');
+	});
+
 	it('opens from the keyboard and runs the line Enter lands on, the focus back on the press', async () => {
 		const discard = vi.fn();
 		const reset = vi.fn();

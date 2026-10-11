@@ -13,7 +13,8 @@ import {
 	shareChannelPictures
 } from '$lib/page/block-edit';
 import { BLOCK_MESSAGE } from '$lib/page/preview-message';
-import { defaultCampaign } from '$lib/page/defaults';
+import type { Page } from '$lib/page/catalog';
+import { defaultCampaign, startingBlock } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
 
 // a campaign's editor as the route mounts it: the preview and the bar's presses, and no AI
@@ -83,6 +84,8 @@ let drawn: Loaded;
 /** what the loader draws in `drawn`'s place over a draft the read rule refuses. */
 let unreadable: Extract<Drawn, { unreadable: true }> | null;
 let posted: Record<string, string>[];
+/** each body whole, for a box posted more than once. */
+let bodies: FormData[];
 /** what the action answers each post, in turn. */
 let answers: { body: unknown; status?: number }[];
 
@@ -90,6 +93,7 @@ beforeEach(() => {
 	drawn = unpublished();
 	unreadable = null;
 	posted = [];
+	bodies = [];
 	answers = [];
 });
 
@@ -118,9 +122,9 @@ async function screen() {
 			path: '/admin/campaigns/:pageId',
 			loader: () => unreadable ?? drawn,
 			action: async ({ request }) => {
-				posted.push(
-					Object.fromEntries([...(await request.formData())].map(([k, v]) => [k, String(v)]))
-				);
+				const body = await request.formData();
+				bodies.push(body);
+				posted.push(Object.fromEntries([...body].map(([k, v]) => [k, String(v)])));
 				const answer = answers.shift();
 				if (answer === undefined) throw new Error('the action was posted to with no answer ready');
 				return Response.json(answer.body, { status: answer.status ?? 200 });
@@ -407,5 +411,282 @@ describe('a draft the page rule refuses', () => {
 			'there is no live page to go back to'
 		);
 		expect(moreLines()).not.toContain('Discard changes');
+	});
+});
+
+describe('Settings’ presses that apply at once', () => {
+	/** Settings opened over the editor, as the bar's Settings opens it with Edit on. */
+	async function settings() {
+		await screen();
+		await editOn();
+		await press(button('Settings'));
+		return card('Settings');
+	}
+
+	/** the chips the group headed `legend` holds, by their words. */
+	function chips(within: Element, legend: string): Map<string, HTMLInputElement> {
+		const group = [...within.querySelectorAll('fieldset')].find(
+			(one) => one.querySelector('legend')?.textContent === legend
+		);
+		if (group === undefined) throw new Error(`no ${legend} group`);
+		return new Map(
+			[...group.querySelectorAll('label')].map((label) => [
+				label.textContent ?? '',
+				label.querySelector('input') as HTMLInputElement
+			])
+		);
+	}
+
+	const taken = (within: Element, legend: string) =>
+		[...chips(within, legend)].filter(([, input]) => input.checked).map(([words]) => words);
+
+	/** the report region at the foot of the part headed `title`. */
+	function report(within: Element, title: string): string | null | undefined {
+		const part = [...within.querySelectorAll('section')].find(
+			(one) => one.querySelector('h3')?.textContent === title
+		);
+		return [...(part?.querySelectorAll(':scope > .adm-actions [role="status"]') ?? [])].at(-1)
+			?.textContent;
+	}
+
+	const refused = (form: string, error: Record<string, string[]>, status = 400) => ({
+		body: { form: { id: form, result: { status: 'error', error } } },
+		status
+	});
+
+	it('draws the look the page wears and the share buttons it offers, picked', async () => {
+		drawn = {
+			...drawn,
+			look: { shade: 'warm', corners: 'round', palette: 'bold' },
+			share: { message: '', channels: ['email', 'x'] }
+		};
+		const sheet = await settings();
+
+		expect(taken(sheet, 'Shade')).toEqual(['Warm']);
+		expect(taken(sheet, 'Corners')).toEqual(['Round']);
+		expect(taken(sheet, 'Colours')).toEqual(['Bold']);
+		expect(taken(sheet, 'Share buttons')).toEqual(['Email', 'X']);
+		expect(settingsRow('Share message').textContent).toBe('Share messageThe page’s title');
+	});
+
+	it('posts each look pick with the version, and nothing else', async () => {
+		drawn = { ...drawn, version: 4 };
+		answers = [
+			{ body: { saved: 'page-shade' } },
+			{ body: { saved: 'page-corners' } },
+			{ body: { saved: 'page-palette' } }
+		];
+		const sheet = await settings();
+
+		await press(chips(sheet, 'Shade').get('Cool') as HTMLInputElement);
+		await press(chips(card('Settings'), 'Corners').get('Square') as HTMLInputElement);
+		await press(chips(card('Settings'), 'Colours').get('Two-tone') as HTMLInputElement);
+
+		expect(posted).toEqual([
+			{ [WHICH_FORM]: 'page-shade', [RECORD_VERSION]: '4', shade: 'cool' },
+			{ [WHICH_FORM]: 'page-corners', [RECORD_VERSION]: '4', corners: 'square' },
+			{ [WHICH_FORM]: 'page-palette', [RECORD_VERSION]: '4', palette: 'duo' }
+		]);
+	});
+
+	it('posts the share buttons ticked, in the order they stand', async () => {
+		drawn = { ...drawn, share: { message: '', channels: ['facebook', 'email', 'copy-link'] } };
+		answers = [{ body: { saved: 'page-share-channels' } }];
+		const sheet = await settings();
+
+		await press(chips(sheet, 'Share buttons').get('WhatsApp') as HTMLInputElement);
+
+		expect([...(bodies[0]?.entries() ?? [])]).toEqual([
+			[WHICH_FORM, 'page-share-channels'],
+			[RECORD_VERSION, '1'],
+			['share_channels', 'facebook'],
+			['share_channels', 'whatsapp'],
+			['share_channels', 'email'],
+			['share_channels', 'copy-link']
+		]);
+	});
+
+	it('says a refused look pick under the look, and draws the page’s look again', async () => {
+		answers = [refused('page-shade', { shade: ['one of light, warm or cool'] })];
+		const sheet = await settings();
+
+		await press(chips(sheet, 'Shade').get('Cool') as HTMLInputElement);
+
+		expect(report(card('Settings'), 'Look')).toBe('one of light, warm or cool');
+		expect(taken(card('Settings'), 'Shade')).toEqual(['Light']);
+	});
+
+	it('says an emptied set of share buttons is refused, under them', async () => {
+		drawn = { ...drawn, share: { message: '', channels: ['email'] } };
+		answers = [refused('page-share-channels', { share_channels: ['at least one share button'] })];
+		const sheet = await settings();
+
+		await press(chips(sheet, 'Share buttons').get('Email') as HTMLInputElement);
+
+		expect(posted[0]).toEqual({ [WHICH_FORM]: 'page-share-channels', [RECORD_VERSION]: '1' });
+		expect(report(card('Settings'), 'Sharing')).toBe('at least one share button');
+		expect(taken(card('Settings'), 'Share buttons')).toEqual(['Email']);
+	});
+
+	/** the presses on the block row whose sheet opens on `label`, by name. */
+	function rowPresses(within: Element, label: string): string[] {
+		const row = [...within.querySelectorAll('.adm-blockrow')].find(
+			(one) => one.querySelector('.adm-openrow__label')?.textContent === label
+		);
+		if (row === undefined) throw new Error(`no ${label} row`);
+		return [...row.querySelectorAll(':scope > button:not(.adm-openrow)')].map(
+			(one) => one.getAttribute('aria-label') ?? ''
+		);
+	}
+
+	it('offers each block row only the presses its block can take', async () => {
+		const sheet = await settings();
+
+		expect(rowPresses(sheet, 'Cover photo')).toEqual([
+			'Move Cover photo down',
+			'Remove Cover photo'
+		]);
+		expect(rowPresses(sheet, 'Story')).toEqual([
+			'Move Story up',
+			'Move Story down',
+			'Remove Story'
+		]);
+		expect(rowPresses(sheet, 'Donation box')).toEqual([
+			'Move Donation box up',
+			'Move Donation box down'
+		]);
+		expect(rowPresses(sheet, 'Organisation details')).toEqual([
+			'Move Organisation details up',
+			'Remove Organisation details'
+		]);
+	});
+
+	it('posts a move and a remove with the block and the version', async () => {
+		drawn = { ...drawn, version: 9 };
+		answers = [{ body: { saved: 'block-move' } }, { body: { saved: 'block-remove' } }];
+		await settings();
+
+		await press(button('Move Story up', card('Settings')));
+		await press(button('Remove Goal', card('Settings')));
+
+		expect(posted).toEqual([
+			{ [WHICH_FORM]: 'block-move', [RECORD_VERSION]: '9', block_id: 'story', direction: 'up' },
+			{ [WHICH_FORM]: 'block-remove', [RECORD_VERSION]: '9', block_id: 'goal' }
+		]);
+	});
+
+	it('says a refused block press under the list, the reload sentence of a stale one among them', async () => {
+		const stale = 'Nothing was changed: this page has been saved since the editor was opened.';
+		answers = [refused('block-move', { '': [stale] }, 409)];
+		await settings();
+
+		await press(button('Move Story up', card('Settings')));
+
+		expect(report(card('Settings'), 'Blocks')).toBe(stale);
+		expect(card('Settings').open).toBe(true);
+	});
+
+	it('adds a block from Add a block, and opens its sheet once it lands', async () => {
+		const added = {
+			...DRAFT,
+			blocks: [...DRAFT.blocks.slice(0, -1), startingBlock('faq', 'faq'), DRAFT.blocks.at(-1)]
+		};
+		answers = [{ body: { saved: 'block-add', blockId: 'faq' } }];
+		const sheet = await settings();
+		drawn = { ...drawn, version: 2, blocks: editorBlocks(added as Page, 'USD') };
+
+		const add = button('Add a block', sheet);
+		act(() => add.focus());
+		const key = (name: string) =>
+			act(async () => {
+				document.activeElement?.dispatchEvent(
+					new KeyboardEvent('keydown', { key: name, bubbles: true })
+				);
+			});
+		const highlighted = () =>
+			sheet.querySelector('[role="menuitem"][data-highlighted]')?.textContent;
+		for (let step = 0; step < 12 && highlighted() !== 'Questions'; step += 1)
+			await key('ArrowDown');
+		await key('Enter');
+		await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+		await settle();
+
+		expect(posted).toEqual([
+			{ [WHICH_FORM]: 'block-add', [RECORD_VERSION]: '1', block_type: 'faq' }
+		]);
+		expect(card('Questions').open).toBe(true);
+		expect(card('Questions').classList.contains('adm-sheet--stacked')).toBe(true);
+	});
+});
+
+describe('the share message', () => {
+	async function opened() {
+		await screen();
+		await editOn();
+		await press(button('Settings'));
+		await press(settingsRow('Share message'));
+		return card('Share message');
+	}
+
+	function typeInto(box: HTMLTextAreaElement, text: string): void {
+		act(() => {
+			Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(box, text);
+			box.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+	}
+
+	it('is seeded with the page’s message, and Done posts it trimmed with the version', async () => {
+		drawn = { ...drawn, version: 5, share: { message: 'Help us', channels: ['email'] } };
+		answers = [{ body: { saved: 'page-share-message' } }];
+		const sheet = await opened();
+		const box = sheet.querySelector('textarea');
+		if (box === null) throw new Error('no message box');
+		expect(box.value).toBe('Help us');
+
+		typeInto(box, '  Keep 300 kids warm  ');
+		await press(button('Done', sheet));
+
+		expect(posted).toEqual([
+			{
+				[WHICH_FORM]: 'page-share-message',
+				[RECORD_VERSION]: '5',
+				share_message: 'Keep 300 kids warm'
+			}
+		]);
+		expect(() => card('Share message')).toThrow();
+	});
+
+	it('says a refused message under its box, and a stale one at Done, open both times', async () => {
+		const stale = 'Nothing was changed: this page has been saved since the editor was opened.';
+		answers = [
+			{
+				body: {
+					form: {
+						id: 'page-share-message',
+						result: { status: 'error', error: { share_message: ['at most 280 characters'] } }
+					}
+				},
+				status: 400
+			},
+			{
+				body: {
+					form: { id: 'page-share-message', result: { status: 'error', error: { '': [stale] } } }
+				},
+				status: 409
+			}
+		];
+		const sheet = await opened();
+		const box = sheet.querySelector('textarea');
+		if (box === null) throw new Error('no message box');
+
+		typeInto(box, 'x'.repeat(281));
+		await press(button('Done', sheet));
+		expect(document.activeElement).toBe(box);
+		expect(sheet.textContent).toContain('at most 280 characters');
+
+		typeInto(box, 'Short');
+		await press(button('Done', sheet));
+		expect(card('Share message').open).toBe(true);
+		expect(card('Share message').textContent).toContain(stale);
 	});
 });

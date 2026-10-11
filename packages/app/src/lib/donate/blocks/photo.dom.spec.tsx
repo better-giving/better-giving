@@ -28,10 +28,8 @@ function mount(node: ReactNode) {
 const ID = '0192a4c1-7d1e-7c3a-9f2b-4e5d6c7b8a90';
 const ALT = 'Volunteers sorting winter coats by size at the Elm Street coat bank';
 
-/** the values a case varies, and the mark a page's loader may still send with a block. */
-type Own = Partial<Pick<PhotoBlockValues<string>, 'imageId' | 'alt'>> & {
-	readonly illustration?: boolean;
-};
+/** the values a case varies. */
+type Own = Partial<Pick<PhotoBlockValues<string>, 'imageId' | 'alt'>>;
 
 const values = <V extends string>(variant: V, own: Own = {}): PhotoBlockValues<V> => ({
 	id: `b-${variant}`,
@@ -101,16 +99,11 @@ describe.each(CASES)('$name', ({ draw }) => {
 		expect(mount(draw({ imageId: null })).childNodes).toHaveLength(0);
 	});
 
-	it.each([
-		['marked an illustration', { illustration: true }],
-		['marked a photo', { illustration: false }],
-		['read with no mark', {}]
-	])('draws a plain photo and captions nothing, %s', (_, own: Own) => {
-		const host = mount(draw(own));
+	it('draws a plain photo and captions nothing', () => {
+		const host = mount(draw());
 		expect(host.firstElementChild?.tagName).toBe('DIV');
 		expect(onlyPhoto(host).getAttribute('src')).toBe(`/image/${ID}`);
 		expect(host.querySelector('figure, figcaption')).toBeNull();
-		expect(host.textContent).not.toContain('Illustration');
 	});
 });
 
