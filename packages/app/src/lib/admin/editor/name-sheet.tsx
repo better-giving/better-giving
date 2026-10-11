@@ -19,7 +19,7 @@ type NameSheetProps = {
 	/** the last apply's refusal that no box carries. */
 	readonly refusal?: string | null | undefined;
 	readonly onDismiss: () => void;
-	/** the page's suggest route (`suggestUrl` in ./suggest.tsx), which Write with AI asks. */
+	/** the page's suggest route (`suggestUrl` in ./suggest-url.ts), which Write with AI asks. */
 	readonly suggestUrl: string;
 };
 
@@ -43,7 +43,8 @@ export function NameSheet({
 	const { edited, ...suggest } = useSuggestedValue(
 		{ url: suggestUrl, block: PAGE_BLOCK, field: 'name' },
 		text,
-		write
+		write,
+		applying
 	);
 	useFocusOnRefusal(error, id);
 

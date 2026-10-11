@@ -1,11 +1,16 @@
 import type { Editor } from '@tiptap/react';
-import { act } from 'react';
+import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { useFocusOnRefusal } from '$lib/admin/editor/done-sheet';
-import { LIST_DEPTH_MAX, parseRichText, type RichTextDocument } from '$lib/rich-text/document';
-import { RichTextEditor, type RichTextEditorProps } from './rich-text-editor';
+import {
+	LIST_DEPTH_MAX,
+	parseRichText,
+	type RichTextDocument,
+	TEXT_MAX
+} from '$lib/rich-text/document';
+import { RichTextEditor, type RichTextEditorProps, type RichTextHandle } from './rich-text-editor';
 
 // what the editor posts and how its presses behave, never how it looks: every press leaves a
 // document the rich-text rule accepts in the hidden input, a link address the rule refuses is
@@ -168,6 +173,38 @@ describe('what the box posts', () => {
 				)
 			);
 		expect(deepest(posted(host).content, 0)).toBe(LIST_DEPTH_MAX);
+	});
+});
+
+describe('the words it hands Write with AI', () => {
+	const paragraph = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+	const bullets = (...items: string[]) => ({
+		type: 'bulletList',
+		content: items.map((text) => ({ type: 'listItem', content: [paragraph(text)] }))
+	});
+	/** `content` as a document the rule accepts, which a box can be seeded with. */
+	const doc = (...content: unknown[]): RichTextDocument => {
+		const parsed = parseRichText({ type: 'doc', content });
+		if (!parsed.ok) throw new Error(`the rule refused the seed: ${parsed.message}`);
+		return parsed.doc;
+	};
+
+	async function words(seed: RichTextDocument) {
+		const handle = createRef<RichTextHandle>();
+		await mount({ ref: handle, defaultValue: seed });
+		return handle.current?.words();
+	}
+
+	it('are each paragraph’s, a list item’s among them, a blank line apart', async () => {
+		expect(await words(doc(paragraph('Coats ran out.'), bullets('hats', 'gloves')))).toBe(
+			'Coats ran out.\n\nhats\n\ngloves'
+		);
+	});
+
+	it('count as the document does, each blank line as one, so a story at its bound is asked for', async () => {
+		const atBound = doc(paragraph('a'.repeat(TEXT_MAX - 4)), bullets('b', 'c'));
+		const read = (await words(atBound)) ?? '';
+		expect(read.replaceAll('\n\n', '\n')).toHaveLength(TEXT_MAX);
 	});
 });
 

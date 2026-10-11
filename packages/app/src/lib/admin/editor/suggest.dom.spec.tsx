@@ -1,47 +1,43 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { createRoutesStub, data, redirect } from 'react-router';
+import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { BLOCK_FORMS, type EditorBlock } from '$lib/page/block-edit';
 import { richTextOf } from '$lib/page/suggest-fields';
 import { parseRichText, type RichTextDocument } from '$lib/rich-text/document';
 import { BlockEditSheet } from './block-edit';
 import { NameSheet } from './name-sheet';
+import { revalidatesAfter } from './suggest-url';
 
 // Write with AI on every box a page's editors let the AI write (./suggest.tsx): which boxes carry
 // it, what one press asks the suggest route, the fill and its Undo, what takes the "AI suggestion"
-// mark away, every answer that writes nothing said at the box, and the press while it is out.
-// `fetch` is the boundary: it stands in for the route, answering each ask with what the case
-// queued, and records what was asked. the editor's own action is a stand-in too, for Done.
+// mark away, every answer that writes nothing said at the box, what the box's region says, the
+// press while it is out, and a Done pressed over it. the route is a stand-in at the suggest
+// route's address, answering each ask with what the case queued and recording what was asked;
+// the editor's own route is a stand-in too, for Done, with the editors' `shouldRevalidate` and a
+// loader that counts its reads.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const SUGGEST = '/admin/pages/p1/suggest';
+const SIGN_IN = '/login';
 
-type Reply = { readonly status: number; readonly body: unknown } | 'unreachable';
+type Reply = { readonly status: number; readonly body: unknown } | 'signed-out';
 
 /** each ask as the route would read it, with the address it went to. */
 let asked: Record<string, string>[];
 /** what the route answers each ask, in turn; a promise holds the answer until the case settles it. */
 let replies: (Reply | Promise<Reply>)[];
-/** what the editor's action answers a Done. */
+/** what the editor's action answers a Done; a promise holds it until the case settles it. */
 let doneAnswer: unknown;
+/** how often the editor's loader has been read. */
+let reads: number;
 
 beforeEach(() => {
 	asked = [];
 	replies = [];
 	doneAnswer = { saved: 'block' };
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(async (url: string, init: RequestInit) => {
-			const body = init.body instanceof FormData ? [...init.body] : [];
-			asked.push({ url, ...Object.fromEntries(body.map(([k, v]) => [k, String(v)])) });
-			const reply = await replies.shift();
-			if (reply === undefined) throw new Error('asked with no reply queued');
-			if (reply === 'unreachable') throw new TypeError('Failed to fetch');
-			return Response.json(reply.body, { status: reply.status });
-		})
-	);
+	reads = 0;
 });
 
 function mount(tree: ReactNode): HTMLElement {
@@ -56,28 +52,61 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** `block`'s sheet under the editor's route, whose action answers Done with `doneAnswer`. */
-function sheet(block: EditorBlock): HTMLElement {
+/** `screen` under the editor's route, beside the suggest route and the sign-in. */
+function routed(screen: ReactNode): HTMLElement {
 	const Stub = createRoutesStub([
 		{
+			id: 'editor',
 			path: '/admin/donation-page',
-			Component: () => (
-				<BlockEditSheet
-					block={block}
-					version={3}
-					suggestUrl={SUGGEST}
-					onDismiss={() => {}}
-					onSaved={() => {}}
-				/>
-			),
-			action: async () => doneAnswer
-		}
+			Component: () => screen,
+			loader: () => {
+				reads += 1;
+				return null;
+			},
+			action: async () => doneAnswer,
+			shouldRevalidate: revalidatesAfter
+		},
+		{
+			path: '/admin/pages/:pageId/suggest',
+			action: async ({ request }) => {
+				const body = await request.formData();
+				asked.push({
+					url: new URL(request.url).pathname,
+					...Object.fromEntries([...body].map(([k, v]) => [k, String(v)]))
+				});
+				const reply = await replies.shift();
+				if (reply === undefined) throw new Error('asked with no reply queued');
+				if (reply === 'signed-out')
+					throw redirect(`${SIGN_IN}?next=${encodeURIComponent(SUGGEST)}`);
+				return data(reply.body, { status: reply.status });
+			}
+		},
+		{ path: SIGN_IN, Component: () => <h1>Sign in</h1> }
 	]);
-	return mount(<Stub initialEntries={['/admin/donation-page']} />);
+	// the first read is the server's, so the screen is drawn at once and `reads` counts only those
+	// after it.
+	return mount(
+		<Stub
+			initialEntries={['/admin/donation-page']}
+			hydrationData={{ loaderData: { editor: null } }}
+		/>
+	);
 }
 
+/** `block`'s sheet, whose Done the editor's action answers with `doneAnswer`. */
+const sheet = (block: EditorBlock) =>
+	routed(
+		<BlockEditSheet
+			block={block}
+			version={3}
+			suggestUrl={SUGGEST}
+			onDismiss={() => {}}
+			onSaved={() => {}}
+		/>
+	);
+
 const nameSheet = () =>
-	mount(
+	routed(
 		<NameSheet
 			name="Winter coat drive"
 			onDone={() => {}}
@@ -208,7 +237,7 @@ describe('Write with AI', () => {
 			['What it buys', 'What it buys']
 		],
 		['a question and its rich answer', () => sheet(faq), ['Question', 'Answer']],
-		['a photo, on its description', () => sheet(hero), ['Describe the photo']],
+		['a photo, and not on its description', () => sheet(hero), []],
 		['a campaign’s name', nameSheet, ['Name']]
 	])(
 		'stands at the end of the label row of every box the AI can write on %s, reading Write',
@@ -231,6 +260,13 @@ describe('Write with AI', () => {
 		}
 	);
 
+	it('leaves a photo’s description to the operator: the model never sees the photo', () => {
+		const box = field(sheet(hero), 'Describe the photo');
+
+		expect(plainBox(box).value).toBe('Volunteers');
+		expect(writePress(box)).toBeNull();
+	});
+
 	it.each([
 		[
 			'a plain box',
@@ -238,9 +274,19 @@ describe('Write with AI', () => {
 			{ block: 'b1', field: 'heading', current: 'Keep 300 kids warm this winter' }
 		],
 		[
-			'an empty tier',
+			'an empty tier, for its amount as the box draws it',
 			() => field(sheet(tiers), 'What it buys', 1),
-			{ block: 'b3', field: 'tier_buys[1]', current: '' }
+			{ block: 'b3', field: 'tier_buys[1]', current: '', beside: '120.00' }
+		],
+		[
+			'a rich answer, for its question',
+			() => field(sheet(faq), 'Answer'),
+			{
+				block: 'b4',
+				field: 'answer[0]',
+				current: 'Kids at Elm Street School.',
+				beside: 'Who gets the coats?'
+			}
 		],
 		[
 			'a rich box, as paragraphs',
@@ -263,6 +309,50 @@ describe('Write with AI', () => {
 		expect(asked).toEqual([{ url: SUGGEST, ...ask }]);
 	});
 
+	it.each([
+		['an amount typed over the stored one, grouped as drawn', '1000', '1,000'],
+		['a blank amount, sent blank rather than left out', '', '']
+	])('asks for a tier’s words for %s', async (_, typed, beside) => {
+		const root = sheet(tiers);
+		typeInto(plainBox(field(root, 'Amount')), typed);
+		replies.push({ status: 200, body: { ok: true, text: 'a coat, hat and gloves' } });
+
+		await press(writePress(field(root, 'What it buys')));
+
+		expect(asked).toEqual([
+			{ url: SUGGEST, block: 'b3', field: 'tier_buys[0]', current: 'one winter coat', beside }
+		]);
+	});
+
+	it('asks for an answer to the question as the sheet holds it, not as stored', async () => {
+		const root = sheet(faq);
+		typeInto(plainBox(field(root, 'Question')), 'Which school gets the coats?');
+		replies.push({ status: 200, body: { ok: true, text: 'Elm Street School.' } });
+
+		await press(writePress(field(root, 'Answer')));
+
+		expect(asked[0]?.beside).toBe('Which school gets the coats?');
+	});
+
+	it('leaves the editor unread after an ask, which writes nothing', async () => {
+		const box = field(sheet(title), 'Heading');
+		replies.push({ status: 200, body: { ok: true, text: 'Every child warm by December' } });
+
+		await press(writePress(box));
+
+		expect(plainBox(box).value).toBe('Every child warm by December');
+		expect(reads).toBe(0);
+	});
+
+	it('follows the sign-in redirect of a session that has ended', async () => {
+		const root = sheet(title);
+		replies.push('signed-out');
+
+		await press(writePress(field(root, 'Heading')));
+
+		expect(root.querySelector('h1')?.textContent).toBe('Sign in');
+	});
+
 	it('fills a plain box in place, marked, and Undo puts back the words before, the focus on the press', async () => {
 		const box = field(sheet(title), 'Heading');
 		replies.push({ status: 200, body: { ok: true, text: 'Every child warm by December' } });
@@ -280,6 +370,10 @@ describe('Write with AI', () => {
 		expect(marked(box)).toBe(false);
 		expect(undoPress(box)).toBeUndefined();
 		expect(document.activeElement).toBe(writePress(box));
+		expect(said(box)).toBe('Put back');
+
+		typeInto(plainBox(box), 'Keep 300 kids warm');
+		expect(said(box)).toBe('');
 	});
 
 	it('fills a rich box as the document of its paragraphs, and Undo puts the one before back', async () => {
@@ -371,16 +465,15 @@ describe('Write with AI', () => {
 			'Couldn’t write that box. Try again.'
 		],
 		[
-			'a box the draft no longer holds (400)',
+			'a box the draft no longer holds (400), in its own words and never the agent’s',
 			{ status: 400, body: { error: 'field "lede" is no text box of block "b1" (title)' } },
-			'field "lede" is no text box of block "b1" (title)'
+			'That didn’t go through. Try again.'
 		],
 		[
-			'a page that is gone (404)',
+			'a page that is gone (404), in its own words and never the agent’s',
 			{ status: 404, body: { error: 'no page has the id "p1"' } },
-			'no page has the id "p1"'
-		],
-		['a request that never came back', 'unreachable', 'That didn’t go through. Try again.']
+			'That didn’t go through. Try again.'
+		]
 	] as const)('says at the box what %s, and writes nothing', async (_, reply, words) => {
 		const box = field(sheet(title), 'Lead-in');
 		replies.push(reply);
@@ -394,7 +487,7 @@ describe('Write with AI', () => {
 
 	it('clears what it said at the next ask', async () => {
 		const box = field(sheet(title), 'Lead-in');
-		replies.push('unreachable');
+		replies.push({ status: 400, body: { error: 'current holds at most 10000 characters' } });
 		replies.push({ status: 200, body: { ok: true, text: 'Coats for 300 kids.' } });
 
 		await press(writePress(box));
@@ -414,6 +507,7 @@ describe('Write with AI', () => {
 		expect(out?.getAttribute('aria-busy')).toBe('true');
 		expect(out?.getAttribute('aria-disabled')).toBe('true');
 		expect(out?.textContent).toBe('Write');
+		expect(said(box)).toBe('Writing');
 		expect(document.activeElement).toBe(out);
 		await press(out);
 		expect(asked).toHaveLength(1);
@@ -428,5 +522,49 @@ describe('Write with AI', () => {
 
 		await press(undoPress(box));
 		expect(plainBox(box).value).toBe('Coats for every kid');
+	});
+
+	it('lets go of an ask still out when Done is pressed, so the box keeps what was saved', async () => {
+		const root = sheet(title);
+		const box = field(root, 'Heading');
+		const done = [...root.querySelectorAll('button')].find((one) => one.textContent === 'Done');
+		let answer: (reply: Reply) => void = () => {};
+		replies.push(new Promise<Reply>((resolve) => (answer = resolve)));
+		let saved: (reply: unknown) => void = () => {};
+		doneAnswer = new Promise((resolve) => (saved = resolve));
+		typeInto(plainBox(box), 'Coats for every kid');
+
+		await press(writePress(box));
+		await press(done);
+		expect(writePress(box)?.getAttribute('aria-disabled')).toBe('true');
+		expect(writePress(box)?.getAttribute('aria-busy')).toBe('false');
+
+		await act(async () => saved({ saved: 'block' }));
+		await settle();
+		await act(async () => answer({ status: 200, body: { ok: true, text: 'Warm by December' } }));
+		await settle();
+		await settle();
+
+		expect(plainBox(box).value).toBe('Coats for every kid');
+		expect(marked(box)).toBe(false);
+		expect(said(box)).toBe('');
+		expect(writePress(box)?.hasAttribute('aria-disabled')).toBe(false);
+	});
+
+	it('is held while the block’s Done is out, and asks nothing', async () => {
+		const root = sheet(title);
+		const box = field(root, 'Heading');
+		const done = [...root.querySelectorAll('button')].find((one) => one.textContent === 'Done');
+		let saved: (reply: unknown) => void = () => {};
+		doneAnswer = new Promise((resolve) => (saved = resolve));
+
+		await press(done);
+		await press(writePress(box));
+		expect(writePress(box)?.getAttribute('aria-disabled')).toBe('true');
+		expect(asked).toEqual([]);
+
+		await act(async () => saved({ saved: 'block' }));
+		await settle();
+		expect(writePress(box)?.hasAttribute('aria-disabled')).toBe(false);
 	});
 });

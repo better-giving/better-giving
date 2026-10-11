@@ -5,7 +5,6 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 import { useEffect, useId, useRef } from 'react';
 import type { Resized, ResizeRefusal } from '@better-giving/operator/images/resize';
 import { usePhotoPicker } from '../photo-picker';
-import type { SuggestParts } from './suggest';
 
 /** the box that describes the photo, or none for an image whose words stand beside it. */
 type Description =
@@ -18,8 +17,6 @@ type Description =
 			readonly altId?: string | undefined;
 			/** the last save's refusal of the description, under its box. */
 			readonly altError?: string | null | undefined;
-			/** Write with AI on the description's box (./suggest.tsx), as its field takes it. */
-			readonly altSuggest?: SuggestParts | undefined;
 	  }
 	| {
 			/** no box: a program photo's words are the program's name beside it. */
@@ -28,7 +25,6 @@ type Description =
 			readonly onAltChange?: undefined;
 			readonly altId?: undefined;
 			readonly altError?: undefined;
-			readonly altSuggest?: undefined;
 	  };
 
 export type ReplacePhotoControlProps = Description & {
@@ -67,7 +63,6 @@ export function ReplacePhotoControl({
 	state,
 	altId,
 	altError,
-	altSuggest,
 	describe = true,
 	frame,
 	onRemove,
@@ -165,7 +160,6 @@ export function ReplacePhotoControl({
 					value={alt}
 					error={altError}
 					onChange={(event) => onAltChange(event.currentTarget.value)}
-					{...altSuggest}
 				/>
 			)}
 		</>
