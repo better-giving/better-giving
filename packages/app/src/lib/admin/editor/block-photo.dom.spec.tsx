@@ -50,6 +50,11 @@ const hero: EditorBlock = {
 		{ value: 'wide', label: 'Wide' },
 		{ value: 'framed', label: 'Framed' }
 	],
+	background: 'none',
+	backgrounds: [{ value: 'none', label: 'None' }],
+	removable: true,
+	movesUp: false,
+	movesDown: true,
 	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' }
 };
 

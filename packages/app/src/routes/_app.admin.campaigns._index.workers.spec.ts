@@ -53,7 +53,7 @@ function post(fields: Record<string, string>) {
 	);
 }
 
-const CREATE = { type: 'event', name: 'Winter coat drive' };
+const CREATE = { name: 'Winter coat drive' };
 
 type Row = {
 	id: string;
@@ -238,12 +238,12 @@ describe('the Campaigns list', () => {
 });
 
 describe('New campaign', () => {
-	it('makes the campaign of the type picked on the default page, and opens its editor', async () => {
+	it('makes the campaign from its name alone, of no type, on the default page, and opens its editor', async () => {
 		const response = await post(CREATE);
 
 		expect(response.status).toBe(302);
 		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
-		expect(made).toMatchObject({ name: 'Winter coat drive', campaignType: 'event' });
+		expect(made).toMatchObject({ name: 'Winter coat drive', campaignType: null });
 		expect(JSON.parse(made?.draft ?? 'null')).toMatchObject({
 			...defaultCampaign(),
 			name: 'Winter coat drive'
@@ -251,21 +251,12 @@ describe('New campaign', () => {
 		expect(response.headers.get('Location')).toBe(`${LIST}/${made?.id}`);
 	});
 
-	it.each([
-		['no type', { name: 'Winter coat drive' }, 'pick a campaign type'],
-		[
-			'a type off the list',
-			{ ...CREATE, type: 'gala' },
-			'"gala" is no campaign type: year_end, emergency, building, event, tribute, monthly, program or other'
-		]
-	])('refuses %s at its box, and makes nothing', async (_, fields, said) => {
-		const response = await post(fields);
+	it('ignores a type posted beside the name, as the form layer drops any box it does not state', async () => {
+		const response = await post({ ...CREATE, type: 'gala' });
 
-		expect(response.status).toBe(400);
-		expect(await response.json()).toMatchObject({
-			form: { id: 'campaign-create', result: { error: { type: [said] } } }
-		});
-		expect(await db.select().from(page)).toEqual([]);
+		expect(response.status).toBe(302);
+		const [made] = await db.select().from(page).where(eq(page.type, 'campaign'));
+		expect(made).toMatchObject({ name: 'Winter coat drive', campaignType: null });
 	});
 
 	it('refuses a blank name at its box, and makes nothing', async () => {

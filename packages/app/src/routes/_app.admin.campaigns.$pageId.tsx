@@ -81,8 +81,7 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
-// so are the goal and the end date ($lib/server/pages/page-settings.ts). the shade, corners and
-// share message have no box in this editor.
+// so are the goal and the end date ($lib/server/pages/page-settings.ts).
 //
 // **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
@@ -90,7 +89,7 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
 // preview while Edit is on and by its row in Settings' block list alike, and the layout by
 // Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as the Donation page's
-// editor does.
+// editor does. the look, the sharing and a block added, removed or moved are presses there too.
 // the donation box opens Donation settings, which are what it draws.
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the

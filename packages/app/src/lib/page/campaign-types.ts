@@ -1,6 +1,6 @@
-// the kinds of campaign an operator picks from when starting one, stored on the campaign's page row
-// as `page.campaign_type` and checked there by `$lib/server/db/schema.ts`. a campaign made before
-// the type was asked holds none. each type's label and line are what New campaign shows.
+// the kinds of campaign a campaign may be, stored on its page row as `page.campaign_type` and
+// checked there by `$lib/server/db/schema.ts`. New campaign asks for none, so a campaign holds one
+// only where something else sets it. each type has a label and a line saying what it is for.
 //
 // pure, and imports nothing, for the reason ./keys.ts gives.
 

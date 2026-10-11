@@ -52,9 +52,8 @@ import type { Route } from './+types/_app.admin.donation-page';
 //
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish, as a campaign's are ($lib/server/pages/editor.ts). a goal and an end date are a
-// campaign's alone, and this action refuses them ($lib/server/pages/page-settings.ts); the shade,
-// corners and share message have no box in this editor. until a Publish carries donation settings,
-// the program follows the active programs
+// campaign's alone, and this action refuses them ($lib/server/pages/page-settings.ts). until a
+// Publish carries donation settings, the program follows the active programs
 // ($lib/server/pages/donation-page.ts).
 //
 // **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
@@ -68,7 +67,7 @@ import type { Route } from './+types/_app.admin.donation-page';
 // **a block's words and pictures** are edited in its sheet, opened by a click on the block in the
 // preview while Edit is on and by its row in Settings' block list alike, and the layout by
 // Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as a campaign's editor
-// does.
+// does. the look, the sharing and a block added, removed or moved are presses there too.
 // the donation box opens Donation settings, which are what it draws.
 
 export const handle: BareHandle = { frame: 'bare' };

@@ -3,7 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { editorBlocks, layoutPictures } from '$lib/page/block-edit';
+import {
+	addablePictures,
+	editorBlocks,
+	editorLook,
+	editorShare,
+	layoutPictures,
+	lookPictures,
+	shareChannelPictures
+} from '$lib/page/block-edit';
 import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import { defaultCampaign } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
@@ -44,6 +52,11 @@ function unpublished(): Loaded {
 		blocks: editorBlocks(DRAFT, 'USD'),
 		layout: DRAFT.layout,
 		layouts: layoutPictures(),
+		look: editorLook(DRAFT),
+		lookPictures: lookPictures(),
+		share: editorShare(DRAFT),
+		shareChannels: shareChannelPictures(),
+		addable: addablePictures('campaign'),
 		settings: {
 			boxes: {
 				program_mode: 'none',

@@ -237,7 +237,8 @@ const block = z.discriminatedUnion(
 
 export type Block = z.infer<typeof block>;
 
-const PAGE_NAMES: Record<PageType, string> = {
+/** each page type as a refusal names it. */
+export const PAGE_NAMES: Record<PageType, string> = {
 	donation_page: 'the Donation page',
 	campaign: 'a campaign'
 };

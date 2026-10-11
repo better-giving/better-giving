@@ -1,6 +1,5 @@
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { NEW_FORM } from '../../forms/new-form';
-import type { CampaignType } from '../../page/campaign-types';
 import type { Page as PageDocument } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import { endDayOf } from '../../page/end-date';
@@ -24,7 +23,7 @@ import { SLUG_ATTEMPTS } from './queries';
 //   `deleteNeverPublishedCampaign` (./queries.ts) can still take it away. the draft carries the
 //   same settings, since publish is what copies a draft's onto the row.
 // - the page is the clean default campaign (`defaultCampaign` in ../../page/defaults.ts) under
-//   the name, of the type picked, never published, at the address its name suggests or the first
+//   the name, of no campaign type, never published, at the address its name suggests or the first
 //   free `-2`, `-3`.
 
 /** a campaign that answers at its address: `page_name_check` holds every campaign to a name. */
@@ -117,9 +116,9 @@ function publishedEnd(id: string, published: string | null): CampaignListing['en
 	return parsed.ok ? endOf(parsed.page) : null;
 }
 
-export type NewCampaign = { name: string; campaignType: CampaignType };
+export type NewCampaign = { name: string };
 
-/** makes a campaign from New campaign's name and type, and names its page. */
+/** makes a campaign from New campaign's name, and names its page. */
 export async function createCampaign(db: Db, request: NewCampaign): Promise<{ pageId: string }> {
 	const donationPage = await ensureDonationPage(db);
 	const copied = await readForm(db, donationPage.formId);
@@ -154,7 +153,6 @@ export async function createCampaign(db: Db, request: NewCampaign): Promise<{ pa
 	};
 	const pageId = await insertCampaign(db, {
 		name: request.name,
-		campaignType: request.campaignType,
 		settings: settings.value,
 		draft: JSON.stringify(draft)
 	});
@@ -181,7 +179,6 @@ async function insertCampaign(
 					.values({
 						type: 'campaign',
 						name: campaign.name,
-						campaignType: campaign.campaignType,
 						slug: freeSlug(campaign.name, new Set(held.map((row) => row.slug))),
 						state: 'never_published',
 						formId: owned.id,

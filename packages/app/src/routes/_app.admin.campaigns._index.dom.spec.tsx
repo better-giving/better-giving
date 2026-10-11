@@ -224,16 +224,6 @@ function typeInto(box: HTMLInputElement | HTMLTextAreaElement, text: string): vo
 	});
 }
 
-/** takes the kind of campaign whose value is `value` the way a press on its card would. */
-function pick(dialog: Element, value: string): void {
-	const radio = dialog.querySelector<HTMLInputElement>(`input[name="type"][value="${value}"]`);
-	if (radio === null) throw new Error(`no kind of campaign ${value}`);
-	act(() => {
-		radio.focus();
-		radio.click();
-	});
-}
-
 /** the text of every element an `aria-describedby` names. */
 function describedBy(control: Element): string {
 	return (control.getAttribute('aria-describedby') ?? '')
@@ -311,106 +301,30 @@ describe('New campaign', () => {
 		return shown('New campaign');
 	}
 
-	it('posts the type picked and the name, and nothing else', async () => {
+	it('posts the name, and nothing else', async () => {
 		answers = [{ redirect: `${SCREEN}/pg_new` }];
 		const dialog = await opened();
 
-		pick(dialog, 'tribute');
 		typeInto(box(dialog, 'name'), 'In memory of Ruth');
 		await press(control('Create', dialog));
 
-		expect(posted).toEqual([
-			{ [WHICH_FORM]: 'campaign-create', type: 'tribute', name: 'In memory of Ruth' }
-		]);
+		expect(posted).toEqual([{ [WHICH_FORM]: 'campaign-create', name: 'In memory of Ruth' }]);
 		expect(document.body.textContent).toContain('the editor');
 	});
 
-	it('posts the last kind picked, one at a time', async () => {
-		answers = [{ redirect: `${SCREEN}/pg_new` }];
-		const dialog = await opened();
-
-		pick(dialog, 'event');
-		pick(dialog, 'emergency');
-		typeInto(box(dialog, 'name'), 'Flood relief');
-		await press(control('Create', dialog));
-
-		expect(posted).toEqual([
-			{ [WHICH_FORM]: 'campaign-create', type: 'emergency', name: 'Flood relief' }
-		]);
-	});
-
-	it('offers the eight kinds as radios under one question, each its label over its line, none picked', async () => {
-		const dialog = await opened();
-		const group = dialog.querySelector('fieldset');
-		const radios = [...dialog.querySelectorAll<HTMLInputElement>('input[name="type"]')];
-
-		expect(group?.querySelector('legend')?.textContent).toBe('What kind of campaign?');
-		expect(radios.map((radio) => radio.type)).toEqual(Array(8).fill('radio'));
-		expect(radios.filter((radio) => radio.checked)).toEqual([]);
-		expect(
-			radios.map((radio) => [
-				document.getElementById(radio.getAttribute('aria-labelledby') ?? '')?.textContent,
-				describedBy(radio)
-			])
-		).toEqual([
-			['Year-end appeal', 'The giving-season ask'],
-			['Emergency response', 'A crisis, right now'],
-			['Building fund', 'A place, a roof, a van'],
-			['Event or fundraiser', 'A run, a gala, a bake sale'],
-			['In memory or honour', 'Gifts in someone’s name'],
-			['Monthly giving drive', 'Grow regular donors'],
-			['A program or project', 'One piece of your work'],
-			['Something else', 'Any other kind of campaign']
-		]);
-	});
-
-	it('leaves the arrow keys to the platform: one radio group, nothing taken out of the tab order', async () => {
-		const dialog = await opened();
-		const radios = [...dialog.querySelectorAll<HTMLInputElement>('input[name="type"]')];
-
-		expect(new Set(radios.map((radio) => radio.closest('fieldset')))).toEqual(
-			new Set([dialog.querySelector('fieldset')])
-		);
-		expect(radios.filter((radio) => radio.hasAttribute('tabindex'))).toEqual([]);
-		expect(radios.filter((radio) => radio.disabled)).toEqual([]);
-	});
-
-	it('asks for the name under the kinds, with what donors see it as and an empty box', async () => {
+	it('asks for the name alone, with what donors see it as and an empty box', async () => {
 		const dialog = await opened();
 		const name = box(dialog, 'name');
 
 		expect(dialog.querySelector(`label[for="${name.id}"]`)?.textContent).toBe('Name');
 		expect(name.value).toBe('');
 		expect(describedBy(name)).toBe('Donors see this as the page’s title. You can change it later.');
-		expect(dialog.querySelector('fieldset')?.compareDocumentPosition(name) ?? 0).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING
-		);
-	});
-
-	it('refuses no kind picked at the question, with the focus on its first card, posting nothing', async () => {
-		const dialog = await opened();
-
-		typeInto(box(dialog, 'name'), 'Winter coat drive');
-		await press(control('Create', dialog));
-
-		expect(posted).toEqual([]);
-		const at = document.activeElement;
-		expect(at).toBe(dialog.querySelector('input[name="type"]'));
-		expect(at?.closest('fieldset')?.querySelector('legend')?.textContent).toBe(
-			'What kind of campaign?'
-		);
-		const said = dialog.querySelectorAll('fieldset .adm-field__error');
-		expect([...said].map((one) => one.textContent)).toEqual(['pick a campaign type']);
-		for (const radio of dialog.querySelectorAll('input[name="type"]')) {
-			expect(radio.getAttribute('aria-invalid')).toBe('true');
-			expect(describedBy(radio)).toContain('pick a campaign type');
-		}
+		expect(dialog.querySelectorAll('input:not([type="hidden"])')).toHaveLength(1);
 	});
 
 	it('refuses a blank name at its box, posting nothing', async () => {
 		const dialog = await opened();
 
-		pick(dialog, 'event');
 		await press(control('Create', dialog));
 
 		expect(posted).toEqual([]);
@@ -549,7 +463,6 @@ describe('a press in flight', () => {
 	])('holds Create %s', async (_, first) => {
 		answers = [first];
 		await screen(`${SCREEN}?new`);
-		pick(shown('New campaign'), 'event');
 		typeInto(box(shown('New campaign'), 'name'), 'Winter coat drive');
 
 		const held = await pressedTwice(() => control('Create', shown('New campaign')));

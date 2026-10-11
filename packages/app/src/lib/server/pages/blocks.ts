@@ -3,19 +3,45 @@ import { z } from 'zod';
 import { readAmount } from '../../forms/amounts';
 import { defineForm, type FormRejection } from '../../forms/definition';
 import {
+	addablePictures,
+	addableTypes,
+	BLOCK_ADD_INPUT,
+	BLOCK_BACKGROUND_INPUT,
 	BLOCK_FAQ_INPUT,
 	BLOCK_FORMS,
 	BLOCK_IMPACT_TIERS_INPUT,
+	BLOCK_MOVE_INPUT,
 	BLOCK_PHOTO_INPUT,
+	BLOCK_REMOVE_INPUT,
 	BLOCK_STORY_INPUT,
 	BLOCK_TITLE_INPUT,
 	BLOCK_VARIANT_INPUT,
 	type BlockFormId,
 	editorBlocks,
+	editorLook,
+	editorShare,
 	layoutPictures,
-	PAGE_LAYOUT_INPUT
+	lookPictures,
+	PAGE_CORNERS_INPUT,
+	PAGE_LAYOUT_INPUT,
+	PAGE_PALETTE_INPUT,
+	PAGE_SHADE_INPUT,
+	PAGE_SHARE_CHANNELS_INPUT,
+	PAGE_SHARE_MESSAGE_INPUT,
+	shareChannelPictures
 } from '../../page/block-edit';
-import { BLOCK_DATA, type Block, type BlockType, type Page, parsePage } from '../../page/catalog';
+import {
+	BLOCK_DATA,
+	type Block,
+	type BlockType,
+	PAGE_NAMES,
+	type Page,
+	parsePage
+} from '../../page/catalog';
+import { startingBlock } from '../../page/defaults';
+import { LOOK_KEYS, type PageType } from '../../page/keys';
+import { listed } from '../../page/refusal';
+import { SHARE_CHANNELS } from '../../page/share';
 import { isEmptyDocument, parseRichText } from '../../rich-text/document';
 import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
@@ -25,9 +51,10 @@ import { readableDraft } from './document';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
-// words from its sheet's one Done, and a variant or the layout from its picture. every one is
-// written to the draft alone, against the version the editor was drawn at, so nothing here reaches
-// donors before Publish and a press drawn before another save — another block's, a rename — is
+// words from its sheet's one Done; a variant, a background, the layout, the shade, the corners or
+// the palette from its picture; the share message and the share buttons; and a block added,
+// removed or moved. every one is written to the draft alone, against the version the editor was
+// drawn at, so nothing here reaches donors before Publish and a press drawn before another save — another block's, a rename — is
 // refused rather than putting back what that save moved.
 //
 // the words are the block catalog's to judge ($lib/page/catalog.ts): each block's `BLOCK_DATA` rule
@@ -54,6 +81,21 @@ const BLOCK_FAQ = defineForm({ id: BLOCK_FORMS.faq, schema: BLOCK_FAQ_INPUT });
 const BLOCK_PHOTO = defineForm({ id: BLOCK_FORMS.photo, schema: BLOCK_PHOTO_INPUT });
 const BLOCK_VARIANT = defineForm({ id: BLOCK_FORMS.variant, schema: BLOCK_VARIANT_INPUT });
 const PAGE_LAYOUT = defineForm({ id: BLOCK_FORMS.layout, schema: PAGE_LAYOUT_INPUT });
+const PAGE_SHADE = defineForm({ id: BLOCK_FORMS.shade, schema: PAGE_SHADE_INPUT });
+const PAGE_CORNERS = defineForm({ id: BLOCK_FORMS.corners, schema: PAGE_CORNERS_INPUT });
+const PAGE_PALETTE = defineForm({ id: BLOCK_FORMS.palette, schema: PAGE_PALETTE_INPUT });
+const BLOCK_ADD = defineForm({ id: BLOCK_FORMS.add, schema: BLOCK_ADD_INPUT });
+const BLOCK_REMOVE = defineForm({ id: BLOCK_FORMS.remove, schema: BLOCK_REMOVE_INPUT });
+const BLOCK_MOVE = defineForm({ id: BLOCK_FORMS.move, schema: BLOCK_MOVE_INPUT });
+const BLOCK_BACKGROUND = defineForm({ id: BLOCK_FORMS.background, schema: BLOCK_BACKGROUND_INPUT });
+const PAGE_SHARE_MESSAGE = defineForm({
+	id: BLOCK_FORMS.shareMessage,
+	schema: PAGE_SHARE_MESSAGE_INPUT
+});
+const PAGE_SHARE_CHANNELS = defineForm({
+	id: BLOCK_FORMS.shareChannels,
+	schema: PAGE_SHARE_CHANNELS_INPUT
+});
 
 /**
  * what an edit makes of the draft, or the refusal it is answered with. the draft is untyped until
@@ -82,7 +124,12 @@ export function editorDraft(row: PageRow, currency: string) {
 	return {
 		blocks: editorBlocks(draft, currency),
 		layout: draft.layout,
-		layouts: layoutPictures()
+		layouts: layoutPictures(),
+		look: editorLook(draft),
+		lookPictures: lookPictures(),
+		share: editorShare(draft),
+		shareChannels: shareChannelPictures(),
+		addable: addablePictures(row.type)
 	};
 }
 
@@ -142,35 +189,178 @@ export async function saveBlockForm(
 			const submission = parseForm(body, BLOCK_VARIANT);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { block_id, variant } = submission.value;
-			const seen = submittedVersion(body);
-			return answer(submission, gone, () =>
-				editDraft(db, target, seen, pickedUnder('variant'), async (draft) => {
-					const found = draft.blocks.find((block) => block.id === block_id);
-					if (found === undefined) return noSuchBlock(draft, block_id);
-					if (found.type === 'donation-box') {
-						return { ok: false, refusal: { fieldErrors: { variant: [ONE_WAY] } } };
-					}
-					const blocks = draft.blocks.map((block) =>
-						block === found ? { ...block, variant } : block
-					);
-					return { ok: true, draft: { ...draft, blocks } };
-				})
-			);
+			return edit(submission, under('variant'), BLOCK_SAVED, (draft) => {
+				const found = draft.blocks.find((block) => block.id === block_id);
+				if (found === undefined) return noSuchBlock(draft, block_id);
+				if (found.type === 'donation-box') {
+					return { ok: false, refusal: { fieldErrors: { variant: [ONE_WAY] } } };
+				}
+				const blocks = draft.blocks.map((block) =>
+					block === found ? { ...block, variant } : block
+				);
+				return { ok: true, draft: { ...draft, blocks } };
+			});
 		}
 		case BLOCK_FORMS.layout: {
 			const submission = parseForm(body, PAGE_LAYOUT);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { layout } = submission.value;
-			const seen = submittedVersion(body);
-			return answer(submission, gone, () =>
-				editDraft(db, target, seen, pickedUnder('layout'), async (draft) => ({
-					ok: true,
-					draft: { ...draft, layout }
-				}))
+			return edit(submission, under('layout'), BLOCK_SAVED, (draft) => ({
+				ok: true,
+				draft: { ...draft, layout }
+			}));
+		}
+		case BLOCK_FORMS.shade: {
+			const submission = parseForm(body, PAGE_SHADE);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { shade } = submission.value;
+			return edit(submission, under('shade'), { saved: form }, (draft) => ({
+				ok: true,
+				draft: { ...draft, look: { shade, corner: editorLook(draft).corners } }
+			}));
+		}
+		case BLOCK_FORMS.corners: {
+			const submission = parseForm(body, PAGE_CORNERS);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { corners } = submission.value;
+			return edit(submission, under('corners', LOOK_KEYS.corner), { saved: form }, (draft) => ({
+				ok: true,
+				draft: { ...draft, look: { shade: editorLook(draft).shade, corner: corners } }
+			}));
+		}
+		case BLOCK_FORMS.palette: {
+			const submission = parseForm(body, PAGE_PALETTE);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { palette } = submission.value;
+			return edit(submission, under('palette'), { saved: form }, (draft) => ({
+				ok: true,
+				draft: { ...draft, palette }
+			}));
+		}
+		case BLOCK_FORMS.shareMessage: {
+			const submission = parseForm(body, PAGE_SHARE_MESSAGE);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const said = submission.value.share_message?.trim() ?? '';
+			return edit(submission, under('share_message', 'shareMessage'), { saved: form }, (draft) => ({
+				ok: true,
+				draft: { ...draft, shareMessage: said === '' ? undefined : said }
+			}));
+		}
+		case BLOCK_FORMS.shareChannels: {
+			const submission = parseForm(body, PAGE_SHARE_CHANNELS);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const channels = submission.value.share_channels;
+			if (channels.length === 0) {
+				return invalid(400, submission.reject({ fieldErrors: { share_channels: [NO_CHANNEL] } }));
+			}
+			return edit(
+				submission,
+				under('share_channels', 'shareChannels'),
+				{ saved: form },
+				(draft) => ({ ok: true, draft: { ...draft, shareChannels: channels } })
 			);
 		}
+		case BLOCK_FORMS.add: {
+			const submission = parseForm(body, BLOCK_ADD);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { block_type } = submission.value;
+			let added = '';
+			return edit(
+				submission,
+				under('block_type', 'type'),
+				() => ({ saved: form, blockId: added }),
+				(draft, pageType) => {
+					const type = addableTypes(pageType).find((each) => each === block_type);
+					if (type === undefined) {
+						const sentence = `${JSON.stringify(block_type)} is no block ${PAGE_NAMES[pageType]} can add; it adds ${listed(addableTypes(pageType), 'or')}`;
+						return { ok: false, refusal: { fieldErrors: { block_type: [sentence] } } };
+					}
+					added = freeBlockId(draft, type);
+					const block = startingBlock(type, added);
+					const last = draft.blocks.at(-1);
+					const blocks =
+						last?.type === 'org-info'
+							? [...draft.blocks.slice(0, -1), block, last]
+							: [...draft.blocks, block];
+					return { ok: true, draft: { ...draft, blocks } };
+				}
+			);
+		}
+		case BLOCK_FORMS.remove: {
+			const submission = parseForm(body, BLOCK_REMOVE);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { block_id } = submission.value;
+			return edit(submission, noBox, { saved: form }, (draft) => {
+				const found = draft.blocks.find((block) => block.id === block_id);
+				if (found === undefined) return noSuchBlock(draft, block_id);
+				if (found.type === 'donation-box') return refusedWith(ON_EVERY_PAGE);
+				const blocks = draft.blocks.filter((block) => block !== found);
+				return { ok: true, draft: { ...draft, blocks } };
+			});
+		}
+		case BLOCK_FORMS.move: {
+			const submission = parseForm(body, BLOCK_MOVE);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { block_id, direction } = submission.value;
+			return edit(submission, noBox, { saved: form }, (draft) => {
+				const at = draft.blocks.findIndex((block) => block.id === block_id);
+				if (at === -1) return noSuchBlock(draft, block_id);
+				const to = direction === 'up' ? at - 1 : at + 1;
+				const swapped = draft.blocks[to];
+				const moving = draft.blocks[at];
+				if (swapped === undefined || moving === undefined) {
+					const end = direction === 'up' ? 'first' : 'last';
+					return refusedWith(`block "${block_id}" is ${end} and moves no further ${direction}`);
+				}
+				const blocks = draft.blocks.with(to, moving).with(at, swapped);
+				return { ok: true, draft: { ...draft, blocks } };
+			});
+		}
+		case BLOCK_FORMS.background: {
+			const submission = parseForm(body, BLOCK_BACKGROUND);
+			if (!submission.ok) return invalid(400, submission.reject());
+			const { block_id, background } = submission.value;
+			return edit(submission, under('background'), { saved: form }, (draft) => {
+				const found = draft.blocks.find((block) => block.id === block_id);
+				if (found === undefined) return noSuchBlock(draft, block_id);
+				const blocks = draft.blocks.map((block) =>
+					block === found ? { ...block, background } : block
+				);
+				return { ok: true, draft: { ...draft, blocks } };
+			});
+		}
+	}
+
+	/**
+	 * `change` made to the draft against the version the press was drawn at, and the press answered
+	 * `saved` once it lands.
+	 */
+	function edit<S extends { readonly saved: string }>(
+		submission: Submission,
+		boxOf: BoxOf,
+		saved: S | (() => S),
+		change: (draft: Page, type: PageType) => DraftEdit
+	) {
+		const seen = submittedVersion(body);
+		return answer(
+			submission,
+			gone,
+			() => editDraft(db, target, seen, boxOf, async (draft, row) => change(draft, row.type)),
+			saved
+		);
 	}
 }
+
+/** `type`'s own name where no block of the draft holds it, else the first `-2`, `-3` free. */
+function freeBlockId(draft: Page, type: BlockType): string {
+	const held = new Set(draft.blocks.map((block) => block.id));
+	if (!held.has(type)) return type;
+	for (let n = 2; ; n += 1) if (!held.has(`${type}-${n}`)) return `${type}-${n}`;
+}
+
+const NO_CHANNEL = `choose at least one share button: ${listed(SHARE_CHANNELS, 'or')}`;
+
+const ON_EVERY_PAGE = 'the donation box is on every page exactly once and cannot be removed';
 
 const ONE_WAY = 'the donation box has one way to draw it and takes no variant';
 
@@ -191,12 +381,15 @@ async function readPhoto(db: Db, imageId: string, alt: string): Promise<ReadWord
 	return { ok: true, read };
 }
 
+/** the box a refusal by `parsePage` at `path` goes under, or null for the press's own. */
+type BoxOf = (path: readonly (string | number)[]) => string | null;
+
 /**
- * a picture's name refused by `parsePage` goes under the pictures' own name, `box`: the page's
- * `layout`, or a block's `variant`.
+ * a refusal by `parsePage` of the page key or block key `key` goes under the box that posted it,
+ * `box` — a picture's own name, where the two are one.
  */
-function pickedUnder(box: 'layout' | 'variant') {
-	return (path: readonly (string | number)[]) => (path.at(-1) === box ? box : null);
+function under(box: string, key: string = box): BoxOf {
+	return (path) => (path.includes(key) ? box : null);
 }
 
 /**
@@ -303,29 +496,36 @@ function saveWords(
 	read: (row: PageRow) => Promise<ReadWords>
 ) {
 	const seen = submittedVersion(body);
-	return answer(submission, gone, () =>
-		editDraft(db, target, seen, noBox, async (draft, row) => {
-			const found = blockOf(draft, blockId, types);
-			if (!found.ok) return found;
-			const { type } = found.block;
-			const posted = await read(row);
-			if (!posted.ok) return posted;
-			const refused = dataRefusal(type, posted.read);
-			if (refused !== null) return { ok: false, refusal: refused };
-			const frame = Object.entries(found.block).filter(([key]) => !(key in BLOCK_DATA[type]));
-			const edited = { ...Object.fromEntries(frame), ...posted.read.words };
-			return {
-				ok: true,
-				draft: {
-					...draft,
-					blocks: draft.blocks.map((block) => (block === found.block ? edited : block))
-				}
-			};
-		})
+	return answer(
+		submission,
+		gone,
+		() =>
+			editDraft(db, target, seen, noBox, async (draft, row) => {
+				const found = blockOf(draft, blockId, types);
+				if (!found.ok) return found;
+				const { type } = found.block;
+				const posted = await read(row);
+				if (!posted.ok) return posted;
+				const refused = dataRefusal(type, posted.read);
+				if (refused !== null) return { ok: false, refusal: refused };
+				const frame = Object.entries(found.block).filter(([key]) => !(key in BLOCK_DATA[type]));
+				const edited = { ...Object.fromEntries(frame), ...posted.read.words };
+				return {
+					ok: true,
+					draft: {
+						...draft,
+						blocks: draft.blocks.map((block) => (block === found.block ? edited : block))
+					}
+				};
+			}),
+		BLOCK_SAVED
 	);
 }
 
-/** a block's words are checked box by box before the page is, so what the page's rule refuses is no box's. */
+/**
+ * a refusal by the page's rule that no box posted: a block's words are checked box by box before the
+ * page is, and a remove or a move posts no value of the page's.
+ */
 function noBox(): null {
 	return null;
 }
@@ -375,8 +575,16 @@ const STALE =
 	'Nothing was changed: this page has been saved since the editor was opened. Reload it, then make this change again.';
 const FAILED = 'Saving this change failed and nothing was changed. Try again.';
 
-/** a press's answer from what its write did. */
-async function answer(submission: Submission, gone: string, write: () => Promise<DraftWrite>) {
+/** what a block's sheet, a variant or the layout answers once its write lands. */
+const BLOCK_SAVED = { saved: 'block' } as const;
+
+/** a press's answer from what its write did; `saved` is what a landed one answers. */
+async function answer<S extends { readonly saved: string }>(
+	submission: Submission,
+	gone: string,
+	write: () => Promise<DraftWrite>,
+	saved: S | (() => S)
+) {
 	let written: DraftWrite;
 	try {
 		written = await write();
@@ -386,7 +594,7 @@ async function answer(submission: Submission, gone: string, write: () => Promise
 	}
 	switch (written.kind) {
 		case 'written':
-			return { saved: 'block' as const };
+			return typeof saved === 'function' ? saved() : saved;
 		case 'refused':
 			return invalid(400, submission.reject(written.refusal));
 		case 'stale':
@@ -405,7 +613,7 @@ async function editDraft(
 	db: Db,
 	target: SettingsTarget,
 	version: Date,
-	boxOf: (path: readonly (string | number)[]) => string | null,
+	boxOf: BoxOf,
 	edit: (draft: Page, row: PageRow) => Promise<DraftEdit>
 ): Promise<DraftWrite> {
 	const [row] = await db

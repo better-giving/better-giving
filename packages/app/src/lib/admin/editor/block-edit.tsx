@@ -206,7 +206,7 @@ function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: Ph
 	return (
 		<>
 			<ReplacePhotoControl
-				imageSrc={imageSrc(imageId)}
+				imageSrc={imageId === null ? undefined : imageSrc(imageId)}
 				alt={alt}
 				onResized={resized}
 				onAltChange={setAlt}
@@ -214,7 +214,7 @@ function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: Ph
 				altId={altId}
 				altError={altError}
 			/>
-			<input type="hidden" name="image_id" value={imageId} />
+			<input type="hidden" name="image_id" value={imageId ?? ''} />
 			<input type="hidden" name="alt" value={alt} />
 		</>
 	);

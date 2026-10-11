@@ -716,7 +716,7 @@ describe('a campaign after its editor’s Publish', () => {
 	}
 
 	/** New campaign's create. */
-	const create = (name: string) => createCampaign(db, { name, campaignType: 'year_end' });
+	const create = (name: string) => createCampaign(db, { name });
 
 	it('publishes a new campaign from “Winter coat drive” at /winter-coat-drive, gifts going to the program chosen', async () => {
 		const [coats] = await db

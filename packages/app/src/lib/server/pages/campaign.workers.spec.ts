@@ -1,7 +1,6 @@
 import { env } from 'cloudflare:test';
 import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CampaignType } from '../../page/campaign-types';
 import { defaultCampaign } from '../../page/defaults';
 import { SLUG_MAX_LENGTH } from '../../page/slug';
 import { createDb, type Db } from '../db/client';
@@ -28,8 +27,8 @@ beforeEach(async () => {
 	]);
 });
 
-function create(name: string, campaignType: CampaignType = 'year_end') {
-	return createCampaign(db, { name, campaignType });
+function create(name: string) {
+	return createCampaign(db, { name });
 }
 
 async function stored(pageId: string) {
@@ -142,11 +141,11 @@ describe('a new campaign’s address', () => {
 });
 
 describe('a new campaign’s type', () => {
-	it('is recorded on its row, and its draft the clean default', async () => {
-		const { pageId } = await create('Coats for Kids', 'tribute');
+	it('is none, and its draft the clean default', async () => {
+		const { pageId } = await create('Coats for Kids');
 
 		const made = await stored(pageId);
-		expect(made.campaignType).toBe('tribute');
+		expect(made.campaignType).toBeNull();
 		expect(JSON.parse(made.draft)).toMatchObject({ ...defaultCampaign(), name: 'Coats for Kids' });
 	});
 });

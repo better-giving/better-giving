@@ -79,6 +79,11 @@ const title: EditorBlock = {
 		{ value: 'left', label: 'Left' },
 		{ value: 'center', label: 'Centred' }
 	],
+	background: 'none',
+	backgrounds: [{ value: 'none', label: 'None' }],
+	removable: true,
+	movesUp: false,
+	movesDown: true,
 	text: { kind: 'title', heading: 'Keep 300 kids warm this winter', lede: '' }
 };
 
@@ -92,6 +97,11 @@ const tiers: EditorBlock = {
 		{ value: 'cards', label: 'Cards' },
 		{ value: 'list', label: 'List' }
 	],
+	background: 'none',
+	backgrounds: [{ value: 'none', label: 'None' }],
+	removable: true,
+	movesUp: false,
+	movesDown: true,
 	text: {
 		kind: 'impact-tiers',
 		currency: 'USD',

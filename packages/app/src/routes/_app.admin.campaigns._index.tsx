@@ -2,7 +2,6 @@ import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { CreateCard } from '@better-giving/operator/components/data/CreateCard';
 import { Disclosure } from '@better-giving/operator/components/data/Disclosure';
-import { ChoiceChips } from '@better-giving/operator/components/forms/ChoiceChips';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, List } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
@@ -27,7 +26,6 @@ import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, type RejectionStatus, WHICH_FORM } from '$lib/forms/definition';
 import { dayWords } from '$lib/page/end-date';
 import { stateAt } from '$lib/page/ended';
-import { CAMPAIGN_TYPE_DETAILS, CAMPAIGN_TYPES } from '$lib/page/campaign-types';
 import { NEW_CAMPAIGN_SCHEMA } from '$lib/page/new-campaign';
 import {
 	invalid,
@@ -46,7 +44,7 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 
 // the Campaigns list: every campaign with its name, address, state, goal and end date, each linking
 // to its editor, the ended ones in a collapsed group of their own; and New campaign, a dialog on
-// `?new` whose action makes the campaign from a type and a name on the default campaign page
+// `?new` whose action makes the campaign from a name on the default campaign page
 // ($lib/server/pages/campaign.ts) and opens its editor. the Donation page is no campaign and is
 // not on this list.
 //
@@ -223,11 +221,11 @@ export async function action({ context, request }: Route.ActionArgs) {
 
 	async function create(submission: ParsedForm<z.output<typeof NEW_CAMPAIGN_SCHEMA>>) {
 		if (!submission.ok) return invalid(400, submission.reject());
-		const { type, name } = submission.value;
+		const { name } = submission.value;
 
 		let made: Awaited<ReturnType<typeof createCampaign>>;
 		try {
-			made = await createCampaign(db, { name, campaignType: type });
+			made = await createCampaign(db, { name });
 		} catch (e) {
 			console.error('making a campaign failed:', e);
 			return invalid(500, submission.reject({ formErrors: [WRITE_FAILED] }));
@@ -632,7 +630,7 @@ function NewCampaignCard({
 	const navigate = useNavigate();
 	const navigation = useNavigation();
 	const [form, fields] = useAdminForm(CAMPAIGN_CREATE, actionData, {
-		defaultValue: { type: '', name: '' }
+		defaultValue: { name: '' }
 	});
 	// held from the press through the redirect's load, so a second press cannot make a second
 	// campaign while the first is still being written.
@@ -641,7 +639,6 @@ function NewCampaignCard({
 		navigation.formAction?.split('?')[0] === SCREEN &&
 		navigation.formData?.get(WHICH_FORM) === CAMPAIGN_CREATE.id;
 	const refusal = form.errors?.[0];
-	const typeError = fields.type.errors?.[0];
 
 	return (
 		<Form method="post" action={CREATE_ACTION} preventScrollReset {...getFormProps(form)}>
@@ -662,19 +659,6 @@ function NewCampaignCard({
 				onDismiss={() => navigate(SCREEN, { preventScrollReset: true })}
 			>
 				<div className="adm-stack">
-					<ChoiceChips
-						id={fields.type.id}
-						name={fields.type.name}
-						legend="What kind of campaign?"
-						cards
-						options={CAMPAIGN_TYPES.map((type) => ({
-							value: type,
-							label: CAMPAIGN_TYPE_DETAILS[type].label,
-							description: CAMPAIGN_TYPE_DETAILS[type].description,
-							defaultChecked: fields.type.defaultValue === type
-						}))}
-						error={typeError === undefined ? undefined : <MarkedText text={typeError} />}
-					/>
 					<Field
 						label="Name"
 						required
