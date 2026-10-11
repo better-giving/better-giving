@@ -8,7 +8,13 @@ import { Mark } from '@better-giving/operator/components/status/Mark';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from './ai-panel';
-import { type CardAnswer, QuestionCard, type QuestionRound, STARTER_NOTE } from './question-card';
+import {
+	type CardAnswer,
+	QuestionCard,
+	type QuestionRound,
+	ROUND_WAIT,
+	STARTER_NOTE
+} from './question-card';
 
 const FELL_BACK = 'Your chosen model didn’t answer, so the default model wrote this reply.';
 
@@ -140,8 +146,9 @@ export function liveAsk(messages: readonly ChatMessage[]): ChatMessage | null {
    page never drafted — or that a reply is being written, and falls silent when it lands; the
    visible line saying the same is kept out of the tree so it is not read twice. while a card's
    answers are on their way the card is still the chat's last turn, and its pressed button is busy:
-   that is the wait's one mark, so the line and the status say nothing then. a reply asked for from
-   the message box has no button showing it, and the line is its mark.
+   that is the wait's one mark, so the line is not drawn then, and the status says what the round's
+   press is doing — drafting the page, or updating it — since a busy button is not reliably spoken.
+   a reply asked for from the message box has no button showing it, and the line is its mark.
 
    the panel's body is the scroller, not the viewport, so the viewport's own scrolling is off and the
    newest turn is brought into view here, on the turn that arrived or the wait that began. */
@@ -176,15 +183,17 @@ export function ChatLog({
 	const asking = liveAsk(messages)?.id;
 	const newest = messages.at(-1)?.id;
 	const round: QuestionRound = undrafted ? 'opening' : 'follow-up';
+	const cardWait = running && asking !== undefined && newest === asking;
 	const writing = opening
 		? 'Getting your questions ready'
-		: running && (asking === undefined || newest !== asking)
+		: running && !cardWait
 			? 'Writing a reply'
 			: '';
+	const said = cardWait ? ROUND_WAIT[round] : writing;
 	// the status takes its words a commit after the log mounts: the log mounts in the same render
 	// that starts the opening, and a region that arrives already holding words is not announced.
 	const [spoken, setSpoken] = useState('');
-	useEffect(() => setSpoken(writing), [writing]);
+	useEffect(() => setSpoken(said), [said]);
 
 	const log = useRef<HTMLDivElement>(null);
 	useEffect(() => {

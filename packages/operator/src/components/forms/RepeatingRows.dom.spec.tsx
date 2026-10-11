@@ -863,3 +863,59 @@ describe('a mark at the start of a row’s box', () => {
 		);
 	});
 });
+
+describe('a line under Add', () => {
+	const css = sheet('adm.css');
+	const HELD: RowControl = { ...ADD, 'aria-describedby': 'origins-add-note' };
+
+	it('stands directly under Add, named for the caller to point Add at', () => {
+		const root = render(RepeatingRows, {
+			id: 'origins',
+			legend: 'Allowed origins',
+			add: HELD,
+			addNote: 'Up to 2 origins',
+			rows: SITES
+		});
+		const holder = root.querySelector('.adm-rows__add');
+		const press = holder?.querySelector('button');
+		const line = holder?.querySelector('.adm-hint');
+
+		expect(line?.textContent).toBe('Up to 2 origins');
+		expect(line?.id).toBe('origins-add-note');
+		expect(press?.nextElementSibling).toBe(line);
+		expect(press?.getAttribute('aria-describedby')).toBe('origins-add-note');
+		expect(root.ownerDocument.getElementById('origins-add-note')).toBe(line);
+	});
+
+	it('draws nothing under Add while the caller states no line', () => {
+		const root = render(Bound, { rows: SITES });
+		const holder = root.querySelector('.adm-rows__add');
+
+		expect(holder?.children).toHaveLength(1);
+		expect(holder?.querySelector('.adm-hint')).toBeNull();
+		expect(root.ownerDocument.getElementById('origins-add-note')).toBeNull();
+	});
+
+	it('is not one of the rows: no box is described by it', () => {
+		const root = render(RepeatingRows, {
+			id: 'origins',
+			legend: 'Allowed origins',
+			add: HELD,
+			addNote: 'Up to 2 origins',
+			rows: SITES
+		});
+
+		for (const box of inputs(root)) expect(described(root, box)).not.toContain('Up to 2 origins');
+	});
+
+	// happy-dom lays nothing out, so the step is read as the sheet states it: the line hangs under
+	// Add at a legend's sentence step, closer than the rows stand to one another.
+	it('stands the step a sentence stands under a legend, not the rows’ own', () => {
+		const line = ruleOf(css, '.adm-rows__add > .adm-hint').get('margin-block-start');
+
+		expect(line).toBe(
+			ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + .adm-hint').get('margin-block-start')
+		);
+		expect(ruleOf(css, '.adm-rows').get('gap')?.split(' ')[0]).not.toBe(line);
+	});
+});

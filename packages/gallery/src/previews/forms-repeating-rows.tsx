@@ -52,10 +52,11 @@ import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-li
  * taking two shares to the figure's one, and the Remove stands off the pair by the step the two
  * stand off each other. the first carries the group's hint, which describes every box, and a row
  * refused at its amount and one at its words; the second the group's own sentence, which marks
- * every box; the third is the group closed, which closes both boxes of every row. each amount
- * stands behind the `$` the AI's tiers question draws, here as the box's own lead — the question's
- * amount box is the app's (packages/app/src/lib/admin/editor/money-field.tsx), out of this page's
- * reach.
+ * every box; the third is the group at its cap, Add held and described by the line the group
+ * draws directly under it; the fourth is the group closed, which closes both boxes of every row.
+ * each amount stands behind the `$` the AI's tiers question draws, here as the box's own lead — the
+ * question's amount box is the app's (packages/app/src/lib/admin/editor/money-field.tsx), out of
+ * this page's reach.
  *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the
@@ -71,6 +72,13 @@ const drop = (at: number): RowControl => ({
 	value: `remove:${at}`,
 	formNoValidate: true
 });
+
+/** Add held at a list's cap, described by the line its group draws under it. */
+const held: RowControl & { 'aria-disabled': 'true' } = {
+	...add,
+	'aria-disabled': 'true',
+	'aria-describedby': 'forms-rows-pair-full-add-note'
+};
 
 /** the heads over a row of an amount and what it does, as the AI's tiers question states them. */
 const TIER_COLUMNS = ['Amount', 'What it does'];
@@ -379,6 +387,23 @@ export default function FormsRepeatingRowsPreview() {
 				rows={tierRows('forms-rows-pair-error', [
 					{ amount: '25', text: 'Feeds a family for a week' },
 					{ amount: '100', text: 'Stocks a pantry shelf' }
+				])}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair-full"
+				legend="What does each amount do?"
+				rowLabel="tier"
+				columns={TIER_COLUMNS}
+				addLabel="Add a tier"
+				add={held}
+				addNote="Up to 6 tiers"
+				rows={tierRows('forms-rows-pair-full', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '50', text: 'Stocks a pantry shelf' },
+					{ amount: '100', text: 'Fills a winter coat drive box' },
+					{ amount: '250', text: 'Covers a month of fresh produce' },
+					{ amount: '500', text: 'Keeps the kitchen open for a weekend' },
+					{ amount: '1,500', text: 'Keeps the pantry open on a Saturday morning, staff and all' }
 				])}
 			/>
 			<RepeatingRows

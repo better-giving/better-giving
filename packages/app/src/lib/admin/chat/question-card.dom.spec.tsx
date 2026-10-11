@@ -367,6 +367,25 @@ describe('the question card', () => {
 		expect(document.activeElement).toBe(add);
 	});
 
+	it('draws the cap under Add inside the group, the rows standing where they were', async () => {
+		const { host } = mount(props({ questions: [TIERS] }));
+		const add = button(host, 'Add another');
+		const first = named(host, 'Amount, tier 1');
+		const group = add.closest('fieldset');
+		expect(group?.parentElement?.classList.contains('adm-questions')).toBe(true);
+
+		await press(add);
+		await press(add);
+		await press(add);
+
+		const line = add.nextElementSibling;
+		expect(line?.textContent).toBe('Up to 6 tiers');
+		expect(add.getAttribute('aria-describedby')).toBe(line?.id);
+		expect(line?.closest('fieldset')).toBe(group);
+		expect(named(host, 'Amount, tier 1')).toBe(first);
+		expect(add.closest('fieldset')).toBe(group);
+	});
+
 	it('drops tier rows down to one, which carries no Remove', async () => {
 		const { host } = mount(props({ questions: [TIERS] }));
 		const removes = () =>

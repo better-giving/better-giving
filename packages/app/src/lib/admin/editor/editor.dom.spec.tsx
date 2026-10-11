@@ -9,7 +9,7 @@ import { PageView } from '$lib/donate/page-view';
 import { AiPanel } from '../chat/ai-panel';
 import { AddressSheet } from './address-sheet';
 import { BlockSheet } from './block-sheet';
-import { AiLayer, EditorShell } from './editor-shell';
+import { AiLayer, ChatOpening, EditorShell } from './editor-shell';
 import { GoalSheet } from './goal-sheet';
 import { InPlaceName } from './in-place-name';
 import { PicturePicker } from './pictures';
@@ -22,7 +22,8 @@ import { SettingsSheet } from './settings-sheet';
 // when handed, the names a picture and the name box carry and a drawing for every variant the
 // catalog offers, what More holds and when, which presses the bar draws without a handler and
 // which below the wide breakpoint alone, the address's save and its refusal at Save, the goal's
-// figure in and out, and which messages the preview frame listens to.
+// figure in and out, which messages the preview frame listens to, and what the bar's own region
+// says as its states turn.
 // a class is read only to find a part, such as whether a picture holds a drawing, and never to ask
 // how anything looks — how the editor looks is left to a person looking at it.
 //
@@ -781,6 +782,86 @@ describe('the publish bar', () => {
 		const both = names(routed(handled({ onUndo: () => {}, onDiscard: () => {} }, true)));
 		expect(both).toContain('Undo');
 		expect(both).toContain('Discard changes');
+	});
+});
+
+describe('what the bar says to a reader', () => {
+	type Shown = { readonly unread: boolean; readonly opening: boolean };
+	let show: (next: Shown) => void = () => {};
+	/** the bar in the shell, the AI panel's mark and its wait driven from the case. */
+	function Driven() {
+		const [shown, setShown] = useState<Shown>({ unread: false, opening: false });
+		show = setShown;
+		return (
+			<EditorShell bar={<Bar onSettings={() => {}} onAi={() => {}} />} preview={null}>
+				<AiLayer open={false} unread={shown.unread} onClose={() => {}} />
+				{shown.opening ? <ChatOpening /> : null}
+			</EditorShell>
+		);
+	}
+	const region = (root: HTMLElement) => {
+		const found = root.querySelector('.adm-publishbar > p.adm-vh[role="status"]');
+		if (found === null) throw new Error('the bar has no region of its own');
+		return found;
+	};
+
+	it('says New reply in a region there and empty from the first render, and clears it once read', () => {
+		const root = routed(<Driven />);
+		const said = region(root);
+		expect(said.textContent).toBe('');
+
+		act(() => show({ unread: true, opening: false }));
+		expect(region(root)).toBe(said);
+		expect(said.textContent).toBe('New reply');
+		expect(button(root, 'AI').querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(
+			'New reply'
+		);
+
+		act(() => show({ unread: false, opening: false }));
+		expect(said.textContent).toBe('');
+	});
+
+	it('says the AI press is opening while it waits for its panel, and nothing once it is up', () => {
+		const root = routed(<Driven />);
+		const said = region(root);
+
+		act(() => show({ unread: false, opening: true }));
+		expect(button(root, 'AI').getAttribute('aria-busy')).toBe('true');
+		expect(said.textContent).toBe('Opening AI');
+
+		act(() => show({ unread: false, opening: false }));
+		expect(said.textContent).toBe('');
+	});
+
+	it('states Edit as pressed while on, and says once what to do with it on', () => {
+		const root = routed(<Driven />);
+		const said = region(root);
+		const edit = button(root, 'Edit');
+		expect(edit.getAttribute('aria-pressed')).toBe('false');
+
+		act(() => edit.click());
+		expect(edit.getAttribute('aria-pressed')).toBe('true');
+		expect(edit.textContent).toBe('Done');
+		expect(said.textContent).toBe('Click a block to edit it');
+
+		act(() => show({ unread: false, opening: false }));
+		expect(said.textContent).toBe('Click a block to edit it');
+
+		act(() => edit.click());
+		expect(edit.getAttribute('aria-pressed')).toBe('false');
+		expect(said.textContent).toBe('');
+	});
+
+	it('says a reply that lands while Edit is on over what Edit said', () => {
+		const root = routed(<Driven />);
+		const said = region(root);
+		act(() => button(root, 'Edit').click());
+
+		act(() => show({ unread: true, opening: false }));
+		expect(said.textContent).toBe('New reply');
+
+		act(() => button(root, 'Done').click());
+		expect(said.textContent).toBe('New reply');
 	});
 });
 

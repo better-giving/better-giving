@@ -4172,6 +4172,21 @@
 		grid-column: 1;
 	}
 
+	/* Add, and the line under it about Add (`addNote` in
+	   packages/operator/src/components/forms/RepeatingRows.jsx). the line qualifies the press as a
+	   group's sentence qualifies its name, so it stands the step a sentence stands under a legend
+	   (`.adm-fieldset__legend + .adm-hint`) rather than the rows' own step, which would read it as
+	   one more item of the list. a grid, so the holder is the press's height and no line box's, and
+	   each item hugs its own width at the start. */
+	.adm-rows__add {
+		display: grid;
+		justify-items: start;
+	}
+
+	.adm-rows__add > .adm-hint {
+		margin-block-start: var(--admin-space-1);
+	}
+
 	/* the status a locked row states where the rows under it offer a Remove. it is read beside the
 	   thing it is about rather than under it, which is the rank `--admin-aside-size` in ./tokens.css
 	   is for, and it lands on the presses' own step — a status set a rank below them reads as small
