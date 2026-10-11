@@ -13,10 +13,10 @@
 // for `name` and `share_message` alone; any other field of it is a block's whose id is `page`.
 //
 // the box beside the one asked for is read from the open sheet where the caller sends it, since
-// the sheet may hold what the draft does not yet: a tier's amount for what that tier buys, an
-// ungrouped figure (`100`, `100.50`) refused by name where it does not read as one above zero, and
-// a question's words for its answer. sent for any other box, it is ignored; not sent, the draft's
-// is told.
+// the sheet may hold what the draft does not yet: a tier's amount for what that tier buys, a
+// figure as the sheet draws it (`100`, `1,000.50`) refused by name where it does not read as one
+// above zero, and a question's words for its answer. sent for any other box, it is ignored; not
+// sent, the draft's is told.
 //
 // a plain box's words are one line. a rich-text box's — a story's body, an answer — are paragraphs a
 // blank line apart, and `richTextOf` is the document they fill that box with.
@@ -194,7 +194,7 @@ function blockBox(
 			if (amount.problem !== null) {
 				return {
 					ok: false,
-					error: `beside "${beside}" ${amount.problem}: send tier ${n + 1}’s amount as the sheet holds it, ungrouped`
+					error: `beside "${beside}" ${amount.problem}: send tier ${n + 1}’s amount as the sheet holds it`
 				};
 			}
 			return plain(

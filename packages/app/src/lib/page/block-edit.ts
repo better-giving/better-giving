@@ -14,7 +14,7 @@
 // pure and not under `$lib/server/**`: a component draws what `editorBlocks` returns.
 import { z } from 'zod';
 import { formatMinorBrief } from '../donations/money';
-import { majorEntry } from '../forms/amounts';
+import { groupedEntry } from '../forms/amounts';
 import { plainText, type RichTextDocument } from '../rich-text/document';
 import { BLOCKS, type Block, type BlockType, LAYOUTS, type Page } from './catalog';
 import { isIllustrated } from './illustration';
@@ -92,7 +92,7 @@ export type BlockText =
 			readonly kind: 'impact-tiers';
 			/** the three-letter code the amounts are in. */
 			readonly currency: string;
-			/** each amount as its box is seeded, major units. */
+			/** each amount as its box is seeded: major units, grouped as the box draws it. */
 			readonly tiers: readonly { readonly amount: string; readonly buys: string }[];
 	  }
 	| {
@@ -241,7 +241,7 @@ function blockText(block: Block, currency: string): BlockText | null {
 				kind: 'impact-tiers',
 				currency,
 				tiers: block.tiers.map((tier) => ({
-					amount: majorEntry(tier.amountMinor, currency),
+					amount: groupedEntry(tier.amountMinor, currency),
 					buys: tier.buys
 				}))
 			};

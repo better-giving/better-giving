@@ -40,8 +40,20 @@ describe('the box beside the one asked for', () => {
 		);
 	});
 
+	it('reads a tier amount grouped as the sheet draws it', () => {
+		const resolved = suggestBox(campaignWith(TIERS), 'campaign', 'tiers', 'tier_buys[0]', '1,000');
+
+		expect(what(resolved)).toBe(
+			'what a gift of $1,000 buys, tier 1 of block 8 (id "tiers"), as a short phrase'
+		);
+	});
+
 	it.each([
-		['grouped', '1,000', 'must be an amount, write 25.00 for $25.00'],
+		[
+			'grouped wrongly',
+			'1,00',
+			'must have 3 digits after each comma, and `,00` has 2, write 25.00 for $25.00'
+		],
 		['blank', '', 'must be an amount, write 25.00 for $25.00'],
 		['zero', '0', 'must be above zero']
 	])('refuses a tier amount that is %s, naming it', (_, beside, problem) => {
@@ -49,7 +61,7 @@ describe('the box beside the one asked for', () => {
 
 		expect(resolved).toEqual({
 			ok: false,
-			error: `beside "${beside}" ${problem}: send tier 1’s amount as the sheet holds it, ungrouped`
+			error: `beside "${beside}" ${problem}: send tier 1’s amount as the sheet holds it`
 		});
 	});
 

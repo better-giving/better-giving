@@ -1314,10 +1314,10 @@ function StoredRecord({ data }: { readonly data: Route.ComponentProps['loaderDat
 	 * one of the record's amounts, as money rather than as the boxes hold it.
 	 *
 	 * every amount on this row arrives as the text an editor box takes — `formInputValuesFrom` writes
-	 * those boxes and this record reads that same object — so it is major units with no grouping and
-	 * no symbol, which is text for a parser rather than a figure for a person. `readAmount` is the
-	 * same rule a save is parsed by, and `$lib/donations/money.ts` is the one place the integer it
-	 * hands back becomes a shown figure.
+	 * those boxes and this record reads that same object — so it is major units, grouped as the box
+	 * draws them and with no symbol, which is text for a parser rather than a figure for a person.
+	 * `readAmount` is the same rule a save is parsed by, and `$lib/donations/money.ts` is the one
+	 * place the integer it hands back becomes a shown figure.
 	 *
 	 * a value that rule cannot read is printed as it is stored. it is unreachable — this text was
 	 * written by the inverse of that parser — and is answered rather than asserted away, because a

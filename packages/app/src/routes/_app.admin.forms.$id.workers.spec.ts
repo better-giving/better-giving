@@ -608,12 +608,12 @@ describe('/admin/forms/[id] load', () => {
 		expect(values).toMatchObject({
 			name: 'General Fund',
 			status: 'draft',
-			// the row holds 500, 1000000 and [2500]; the boxes hold what an operator types, which is
-			// major units with no cents where there are none — the two are the same amounts read in
-			// the two directions `$lib/forms/amounts.ts` converts between.
+			// the row holds 500, 1000000 and [2500]; the boxes hold what an operator types, grouped
+			// as the box draws it, which is major units with no cents where there are none — the two
+			// are the same amounts read in the two directions `$lib/forms/amounts.ts` converts between.
 			suggested_amounts: ['25'],
 			min_minor: '5',
-			max_minor: '10000',
+			max_minor: '10,000',
 			allowed_origins: ['https://acme.org']
 		});
 		// shown and never editable: an operator who cannot see the currency cannot tell what their
@@ -823,6 +823,30 @@ describe('/admin/forms/[id] — a group saves on its own', () => {
 		expect(after?.status).toBe(before?.status);
 		expect(after?.revenueAccountId).toBe(before?.revenueAccountId);
 		expect(after?.allowedOrigins).toEqual(before?.allowedOrigins);
+	});
+
+	it('writes amounts posted grouped the way the boxes draw them', async () => {
+		const sent = await post(
+			GIVING_FORM,
+			FORM_ID,
+			submission(GIVING_FORM, { max_minor: '10,000.00', suggested_amounts: ['1,000', '25'] })
+		);
+
+		expect(sent.redirect?.status).toBe(303);
+		expect(await readForm(db, FORM_ID)).toMatchObject({
+			maxMinor: 1_000_000,
+			suggestedAmounts: [100_000, 2500]
+		});
+	});
+
+	it('refuses a comma no box draws, saying where, and writes nothing', async () => {
+		const before = await readForm(db, FORM_ID);
+		const sent = await post(GIVING_FORM, FORM_ID, submission(GIVING_FORM, { max_minor: '25,50' }));
+
+		expect(sent.failure?.errors.max_minor).toEqual([
+			'must have 3 digits after each comma, and `,50` has 2, write 25.00 for $25.00'
+		]);
+		expect((await readForm(db, FORM_ID))?.maxMinor).toBe(before?.maxMinor);
 	});
 
 	it('writes the origins group and leaves every other column alone', async () => {

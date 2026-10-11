@@ -34,7 +34,7 @@ import {
 	SUBSCRIBED_EVENT_TYPES
 } from '@better-giving/operator/paypal/webhook-listener';
 import type { PaymentStatus } from '../db/schema';
-import { majorText, readAmount } from '../../forms/amounts';
+import { majorText, readPlainAmount } from '../../forms/amounts';
 import { redact, redactPublicId } from '../../redact';
 import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY, refusing } from './provider';
 import type {
@@ -3235,17 +3235,17 @@ function feeOf(captured: CapturedPayment | null, currency: string): number | nul
 /**
  * a decimal string as this app's integer minor units, or nothing.
  *
- * `readAmount` in ../../forms/amounts.ts is the app's one parser for this, and it is reused rather
- * than copied: the rule is identical — digits, at most the currency's own width, a safe integer — and
- * a second parser is the one that disagrees about whether `97.005` is 9700 or 9701. its refusal
- * sentences are written for an operator's amount box and are not surfaced; what a caller of this gets
- * is a figure or a null.
+ * `readPlainAmount` in ../../forms/amounts.ts is the app's one parser for this, and it is reused
+ * rather than copied: the rule is identical — digits, at most the currency's own width, a safe
+ * integer — and a second parser is the one that disagrees about whether `97.005` is 9700 or 9701.
+ * its refusal sentences are written for an operator's amount box and are not surfaced; what a caller
+ * of this gets is a figure or a null.
  *
  * no float ever holds the value: that function moves the digits rather than multiplying.
  */
 function minorOf(value: string | undefined, currency: string): number | null {
 	if (value === undefined || !CURRENCY.test(currency)) return null;
-	return readAmount(value, currency).minor;
+	return readPlainAmount(value, currency).minor;
 }
 
 /** an RFC 3339 timestamp as a date, or nothing — for a field whose absence is itself the answer. */

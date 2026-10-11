@@ -49,6 +49,32 @@ describe('an FAQ block', () => {
 	});
 });
 
+describe('an impact tiers block', () => {
+	it('seeds each tier’s amount grouped, as its money box draws it', () => {
+		const draft = defaultCampaign();
+		draft.blocks.push({
+			id: 'tiers',
+			type: 'impact-tiers',
+			variant: 'cards',
+			background: 'none',
+			tiers: [
+				{ amountMinor: 2_000_000, buys: 'a well' },
+				{ amountMinor: 2500, buys: 'a coat' },
+				{ amountMinor: 123_456_750, buys: 'a school' }
+			]
+		});
+		const tiers = editorBlocks(draft, 'USD', new Set()).find(({ id }) => id === 'tiers');
+		expect(tiers?.text).toMatchObject({
+			kind: 'impact-tiers',
+			tiers: [
+				{ amount: '20,000', buys: 'a well' },
+				{ amount: '25', buys: 'a coat' },
+				{ amount: '1,234,567.50', buys: 'a school' }
+			]
+		});
+	});
+});
+
 describe('a photo block', () => {
 	const photoId = '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f';
 

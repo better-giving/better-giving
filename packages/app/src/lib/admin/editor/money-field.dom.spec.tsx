@@ -4,10 +4,10 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { MoneyField } from './money-field';
 
 // what a money box draws and what it hands on: the digits grouped as they are typed and pasted,
-// the caret among the digits it was typed between, Backspace over a separator taking the digit in
-// front of it, and the text with the separators taken out
-// handed to the caller or posted with the form. the boxes that mount it say what they do with that
-// text in their own specs.
+// the caret among the digits it was typed between, Backspace and Delete over one of the box's own
+// separators taking the digit beyond it, the text with those separators taken out handed to the
+// caller, and the text as drawn posted with the form. the boxes that mount it say what they do
+// with that text in their own specs.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,17 +60,19 @@ function edit(box: HTMLInputElement, text: string, caret = text.length, inputTyp
 	});
 }
 
-/** Backspace pressed with the caret at `caret`; whether the platform is left to make the edit. */
-function backspace(box: HTMLInputElement, caret: number): boolean {
+/** `key` pressed with the caret at `caret`; whether the platform is left to make the edit. */
+function press(box: HTMLInputElement, key: string, caret: number): boolean {
 	let left = true;
 	act(() => {
 		box.setSelectionRange(caret, caret);
 		left = box.dispatchEvent(
-			new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true })
+			new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
 		);
 	});
 	return left;
 }
+
+const backspace = (box: HTMLInputElement, caret: number) => press(box, 'Backspace', caret);
 
 describe('a money box', () => {
 	it('groups the thousands as they are typed, and hands on the figure without them', () => {
@@ -124,6 +126,40 @@ describe('a money box', () => {
 		expect(onText).toHaveBeenLastCalledWith('1345');
 	});
 
+	it('deletes the digit after a separator on a Delete just before it', () => {
+		const onText = vi.fn();
+		const box = boxIn(mount(<Held onText={onText} />));
+		edit(box, '1234');
+		expect(box.value).toBe('1,234');
+
+		expect(press(box, 'Delete', 1)).toBe(false);
+
+		expect(box.value).toBe('134');
+		expect(box.selectionStart).toBe(1);
+		expect(onText).toHaveBeenLastCalledWith('134');
+	});
+
+	it('leaves a Delete anywhere else to the platform', () => {
+		const onText = vi.fn();
+		const box = boxIn(mount(<Held onText={onText} />));
+		edit(box, '12345');
+
+		expect(press(box, 'Delete', 1)).toBe(true);
+
+		expect(box.value).toBe('12,345');
+		expect(onText).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves either key over a comma the operator typed to the platform', () => {
+		const box = boxIn(mount(<Held onText={() => {}} />));
+		edit(box, '25,50');
+		expect(box.value).toBe('25,50');
+
+		expect(backspace(box, 3)).toBe(true);
+		expect(press(box, 'Delete', 2)).toBe(true);
+		expect(box.value).toBe('25,50');
+	});
+
 	it('leaves a Backspace anywhere else to the platform', () => {
 		const onText = vi.fn();
 		const box = boxIn(mount(<Held onText={onText} />));
@@ -158,6 +194,53 @@ describe('a money box', () => {
 		expect(onText).toHaveBeenLastCalledWith('1500.50');
 	});
 
+	it('regroups a digit typed into a grouped figure, and keeps a paste of the same text as typed', () => {
+		const onText = vi.fn();
+		const box = boxIn(mount(<Held onText={onText} />));
+		edit(box, '1000');
+
+		edit(box, '1,0000', 6);
+		expect(box.value).toBe('10,000');
+
+		edit(box, '', 0, 'deleteContentBackward');
+		edit(box, '1,0000', 6, 'insertFromPaste');
+		expect(box.value).toBe('1,0000');
+		expect(onText).toHaveBeenLastCalledWith('1,0000');
+	});
+
+	it('groups a figure typed after a currency mark, and hands the mark on with it', () => {
+		const onText = vi.fn();
+		const box = boxIn(mount(<Held onText={onText} />));
+
+		edit(box, '$1000');
+		expect(box.value).toBe('$1,000');
+		edit(box, '$1,0000');
+		expect(box.value).toBe('$10,000');
+
+		expect(onText.mock.calls.map(([text]) => text)).toEqual(['$1000', '$10000']);
+	});
+
+	it('rewrites nothing while an input method composes, and groups once it ends', () => {
+		const onText = vi.fn();
+		const box = boxIn(mount(<Held onText={onText} />));
+		edit(box, '1000');
+
+		act(() => {
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+				box,
+				'1,0000'
+			);
+			box.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }));
+		});
+		expect(box.value).toBe('1,0000');
+
+		act(() => {
+			box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '0' }));
+		});
+		expect(box.value).toBe('10,000');
+		expect(onText).toHaveBeenLastCalledWith('10000');
+	});
+
 	it('draws and hands on text that is not a figure as typed', () => {
 		const onText = vi.fn();
 		const box = boxIn(mount(<Held onText={onText} />));
@@ -168,7 +251,7 @@ describe('a money box', () => {
 		expect(onText).toHaveBeenLastCalledWith('about 5,000');
 	});
 
-	it('posts the figure without separators under its name, and the drawn box posts nothing', () => {
+	it('posts the text it draws under its name, and nothing else', () => {
 		const root = mount(
 			<form>
 				<MoneyField
@@ -186,11 +269,11 @@ describe('a money box', () => {
 		if (form === null) throw new Error('no form');
 		const box = boxIn(root);
 		expect(box.value).toBe('2,500');
-		expect([...new FormData(form)]).toEqual([['tier_amount[0]', '2500']]);
+		expect([...new FormData(form)]).toEqual([['tier_amount[0]', '2,500']]);
 
-		edit(box, '12,5000');
+		edit(box, '2,5000');
 
-		expect(box.value).toBe('125,000');
-		expect([...new FormData(form)]).toEqual([['tier_amount[0]', '125000']]);
+		expect(box.value).toBe('25,000');
+		expect([...new FormData(form)]).toEqual([['tier_amount[0]', '25,000']]);
 	});
 });
