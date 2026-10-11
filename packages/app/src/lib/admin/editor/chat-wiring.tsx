@@ -10,7 +10,7 @@ import {
 	type ChatSend,
 	type ChatUnsent
 } from '../chat/ai-panel';
-import { liveAsk } from '../chat/chat-log';
+import { liveAsk, SENDING } from '../chat/chat-log';
 import type { CardAnswer } from '../chat/question-card';
 import { AiLayer, ChatClosed, ChatOpening } from './editor-shell';
 import { postPhoto, type UploadAnswer } from './photo-upload';
@@ -161,9 +161,9 @@ function answersRefusal(answer: Refused): string {
 }
 
 /**
- * the chat with the message being answered after it, until the chat that stores it lands. answers
- * on their way add nothing: the card stays the last turn, held, rather than unmounting with the
- * focus in it.
+ * the chat with the message being answered after it, until the chat that stores it lands; a card
+ * it follows stays up above it, held (../chat/chat-log.tsx). answers on their way add nothing: the
+ * card stays the last turn, held, rather than unmounting with the focus in it.
  */
 function inFlight(
 	turns: readonly ChatMessage[],
@@ -173,7 +173,7 @@ function inFlight(
 	return [
 		...turns,
 		{
-			id: 'sending',
+			id: SENDING,
 			role: 'operator',
 			text: String(sent.get('message')),
 			imageIds: JSON.parse(String(sent.get('imageIds'))) as string[]

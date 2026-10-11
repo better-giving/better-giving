@@ -5,9 +5,10 @@ import { type CardQuestion, QuestionCard, type QuestionCardProps } from './quest
 
 // what the question card sends for what was picked and typed: one choice, several, Other with its
 // words and without them, words prefilled and cleared, an amount read into minor units or refused at
-// its box, a date; a tiers question's rows, seeded, added, dropped, refused at the box that is
-// wrong and sent as amounts and words; the tick that marks a question taking several answers; the
-// skip press; the presses held while answers are on their way; a refusal of the answers said at
+// its box, a date; a tiers question's rows, seeded, added up to the cap that is said, dropped, sent
+// as they arrived as no answer, refused at the box that is wrong once changed, and sent as amounts
+// and words; the tick that marks a question taking several answers; the skip press; the presses
+// held while answers are on their way and from the press itself; a refusal of the answers said at
 // the card; the starter note; and the presses' words for each round.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -341,20 +342,25 @@ describe('the question card', () => {
 		expect(said(named(host, 'Amount, tier 1'))).toBe(`$ ${hint}`);
 		expect(said(named(host, 'What it does, tier 2'))).toBe(hint);
 
+		type(named(host, 'Amount, tier 2'), '120');
 		await press(button(host, 'Draft my page'));
 		expect(said(named(host, 'What it does, tier 2'))).toBe(`required ${hint}`);
 	});
 
-	it('adds tier rows up to six, the caret in each new amount, and holds Add there', async () => {
+	it('adds tier rows up to six, the caret in each new amount, and holds Add there saying so', async () => {
 		const { host } = mount(props({ questions: [TIERS] }));
 		const add = button(host, 'Add another');
+		expect(add.hasAttribute('aria-describedby')).toBe(false);
+		expect(host.textContent).not.toContain('Up to 6 tiers');
 
 		await press(add);
 		expect(document.activeElement).toBe(named(host, 'Amount, tier 4'));
 		await press(add);
 		await press(add);
+		expect(document.activeElement).toBe(named(host, 'Amount, tier 6'));
 		expect(tierAmounts(host)).toHaveLength(6);
 		expect(add.getAttribute('aria-disabled')).toBe('true');
+		expect(said(add)).toBe('Up to 6 tiers');
 
 		await press(add);
 		expect(tierAmounts(host)).toHaveLength(6);
@@ -376,9 +382,33 @@ describe('the question card', () => {
 		expect(removes()).toEqual([]);
 	});
 
-	it('refuses a tier with an amount and no words at its words, and sends nothing until they clear', async () => {
+	it('sends a tiers card as it arrived as no answer, refusing nothing', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(
+			props({ questions: [{ ...TIERS, rows: TIERS.rows.slice(1) }], onSubmit })
+		);
+
+		await press(button(host, 'Draft my page'));
+
+		expect(onSubmit).toHaveBeenCalledWith([]);
+		expect(host.querySelectorAll('[aria-invalid="true"]')).toHaveLength(0);
+	});
+
+	it('sends the seeded tiers with words, leaving the ones still as they arrived out', async () => {
 		const onSubmit = vi.fn();
 		const { host } = mount(props({ questions: [TIERS], onSubmit }));
+
+		await press(button(host, 'Draft my page'));
+
+		expect(onSubmit).toHaveBeenCalledWith([
+			{ id: 'tiers', value: [{ amount: 2500, text: 'Feeds a family for a week' }] }
+		]);
+	});
+
+	it('refuses a tier whose amount was changed and has no words at its words, and sends nothing until they clear', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(props({ questions: [TIERS], onSubmit }));
+		type(named(host, 'Amount, tier 2'), '120');
 
 		await press(button(host, 'Draft my page'));
 
@@ -489,6 +519,33 @@ describe('the question card', () => {
 		expect(box(host, 'Your mission, in a sentence').value).toBe(
 			'No family in Riverside goes hungry'
 		);
+	});
+
+	it('posts once for two presses made before the answers are on their way', async () => {
+		const onSubmit = vi.fn();
+		const { host } = mount(props({ onSubmit }));
+		const send = button(host, 'Draft my page');
+		const skip = button(host, 'Skip, draft anyway');
+
+		await act(async () => {
+			send.click();
+			send.click();
+			skip.click();
+		});
+
+		expect(onSubmit).toHaveBeenCalledOnce();
+	});
+
+	it('takes a press again once answers it sent come back refused', async () => {
+		const onSubmit = vi.fn();
+		const { host, redraw } = mount(props({ onSubmit }));
+		await press(button(host, 'Draft my page'));
+		redraw(props({ onSubmit, busy: true }));
+		redraw(props({ onSubmit, refusal: 'That didn’t go through. Send your answers again.' }));
+
+		await press(button(host, 'Draft my page'));
+
+		expect(onSubmit).toHaveBeenCalledTimes(2);
 	});
 
 	it('says why its answers were refused under its presses, in a region there before it speaks', async () => {

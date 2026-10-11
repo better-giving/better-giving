@@ -8,7 +8,7 @@ import {
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import { type FormEvent, type ReactElement, useId, useRef, useState } from 'react';
+import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react';
 import { FORM_CURRENCY, majorEntry, readAmount } from '$lib/forms/amounts';
 import { REQUIRED } from '$lib/forms/input-schema';
 import { BUYS_MAX, TIERS_MAX } from '$lib/page/catalog';
@@ -27,10 +27,12 @@ import { MoneyField } from '../editor/money-field';
 // date box, which hands back `YYYY-MM-DD`.
 //
 // a tiers question is repeating rows, each an amount and what it does, seeded from the question's
-// rows and each row's example; the operator adds rows up to `TIERS_MAX` and drops them down to one.
-// a row left empty is no tier, and the answer is the rows that are filled, in order. a row holding
-// one half and not the other is refused at the empty half, and an amount a row above already holds
-// at the second.
+// rows and each row's example; the operator adds rows up to `TIERS_MAX`, Add then described by a
+// line saying so, and drops them down to one. a row left empty is no tier, and so is a row seeded
+// with an amount and no words that still holds that amount and no words: its example is the AI's,
+// and a card sent as it arrived is no answer rather than a refusal. the answer is the rows that
+// are filled, in order. any other row holding one half and not the other is refused at the empty
+// half, and an amount a row above already holds at the second.
 //
 // the boxes are the form's and the card reads them once, on the press, from the form's own data;
 // the amounts and the tiers' rows are held here, because a box refused on a press is re-read as it
@@ -38,7 +40,10 @@ import { MoneyField } from '../editor/money-field';
 // sends nothing: its predicate stands under it and the focus goes into the first.
 //
 // while the answers are on their way (`busy`) both presses are held with `aria-disabled` rather
-// than `disabled`, so the focus stays on the one pressed, and the boxes stay as typed.
+// than `disabled`, so the focus stays on the one pressed, and the boxes stay as typed. a press is
+// also held from the moment it is made until `busy` falls again: `busy` is the router's fetcher
+// state, which reaches the card in a transition render after the press, and a second press inside
+// that window would post the answers twice.
 //
 // answers the route stored nothing from come back as `refusal`, said under the presses — the card
 // is still up, every box as it was, and the focus still on the press that sent them, so that is
@@ -80,12 +85,16 @@ export const STARTER_NOTE =
 /** what the Other chip's words are submitted under, which no question's id can be. */
 const otherName = (id: string) => `${id}:other`;
 
-/** one row of a tiers question as it is typed, `key` the row's own identity. */
+/**
+ * one row of a tiers question as it is typed, `key` the row's own identity, and `bare` the amount,
+ * in minor units, of a row the question drew with no words — absent on any other.
+ */
 type TierRow = {
 	readonly key: string;
 	readonly amount: string;
 	readonly text: string;
 	readonly example?: string | undefined;
+	readonly bare?: number | undefined;
 };
 
 /** what the card holds that the form's own data does not: the amount boxes and the tiers' rows. */
@@ -112,7 +121,8 @@ function seedRows(question: TiersQuestion): TierRow[] {
 		key: `asked-${at}`,
 		amount: majorEntry(row.amount, FORM_CURRENCY),
 		text: row.text ?? '',
-		example: question.placeholders?.[at]
+		example: question.placeholders?.[at],
+		bare: (row.text ?? '').trim() === '' ? row.amount : undefined
 	}));
 }
 
@@ -142,6 +152,7 @@ function readTiers(
 		const amount = readAmountBox(row.amount);
 		const text = row.text.trim();
 		if (amount.minor === null && amount.problem === null && text === '') continue;
+		if (row.bare !== undefined && amount.minor === row.bare && text === '') continue;
 		const before = amount.minor === null ? undefined : holder.get(amount.minor);
 		const problem =
 			amount.problem ??
@@ -235,6 +246,12 @@ export function QuestionCard({
 	// boxes change until it clears.
 	const [refused, setRefused] = useState<Readonly<Record<string, Record<string, string>>>>({});
 	const [pressed, setPressed] = useState<'send' | 'skip' | null>(null);
+	/** a press made and not yet answered: set in the press's own handler, spent as `busy` falls. */
+	const awaiting = useRef(false);
+	useEffect(() => {
+		if (!busy) awaiting.current = false;
+	}, [busy]);
+	const pressHeld = () => busy || awaiting.current;
 	const words = PRESSES[round];
 
 	// a box already refused is read again with what it holds now; a box the press did not refuse
@@ -268,7 +285,7 @@ export function QuestionCard({
 
 	const send = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
-		if (busy) return;
+		if (pressHeld()) return;
 		const data = new FormData(event.currentTarget);
 		const held = { amounts, tiers };
 		const reads = questions.map((question) => ({
@@ -287,12 +304,14 @@ export function QuestionCard({
 			document.getElementById(first)?.focus();
 			return;
 		}
+		awaiting.current = true;
 		setPressed('send');
 		onSubmit(reads.flatMap(({ answer }) => (answer === null ? [] : [answer])));
 	};
 
 	const skip = () => {
-		if (busy) return;
+		if (pressHeld()) return;
+		awaiting.current = true;
 		setPressed('skip');
 		onSubmit([]);
 	};
@@ -310,6 +329,7 @@ export function QuestionCard({
 		const rows = tiers[question.id] ?? [];
 		const said = refused[question.id] ?? {};
 		const full = rows.length >= TIERS_MAX;
+		const capId = `${base}-cap`;
 		// held at the cap the way the card's own presses are held, so the focus stays on it.
 		const add: RowControl & { 'aria-disabled'?: 'true' } = {
 			...rowPress('add', () => {
@@ -318,66 +338,74 @@ export function QuestionCard({
 				const key = `added-${added.current}`;
 				changeRows(question, (was) => [...was, { key, amount: '', text: '' }]);
 			}),
-			...(full ? { 'aria-disabled': 'true' } : {})
+			...(full ? { 'aria-disabled': 'true', 'aria-describedby': capId } : {})
 		};
+		// the group stays the wrapper's first child whether or not the line is drawn, so reaching the
+		// cap does not remount the rows under the press that reached it.
 		return (
-			<RepeatingRows
-				key={question.id}
-				id={base}
-				legend={question.prompt}
-				hint={question.hint}
-				rowLabel="tier"
-				columns={['Amount', 'What it does']}
-				add={add}
-				rows={rows.map((row) => {
-					const amountId = tierBox(base, row, 'amount');
-					const textId = tierBox(base, row, 'text');
-					const edit = (patch: Partial<TierRow>) =>
-						changeRows(question, (was) =>
-							was.map((one) => (one.key === row.key ? { ...one, ...patch } : one))
-						);
-					return {
-						id: amountId,
-						key: row.key,
-						remove:
-							rows.length > 1
-								? rowPress(`remove:${row.key}`, () =>
-										changeRows(question, (was) => was.filter((one) => one.key !== row.key))
-									)
-								: undefined,
-						boxes: ({ describedBy, invalid, disabled, names: [amountName, textName] }) => (
-							<>
-								<MoneyField
-									id={amountId}
-									aria-label={amountName}
-									aria-describedby={describedBy}
-									aria-invalid={invalid || undefined}
-									disabled={disabled}
-									affix="$"
-									affixAt="start"
-									currency={FORM_CURRENCY}
-									value={row.amount}
-									onValueChange={(amount) => edit({ amount })}
-									error={said[amountId]}
-								/>
-								<Field
-									id={textId}
-									aria-label={textName}
-									aria-describedby={describedBy}
-									aria-invalid={invalid || undefined}
-									disabled={disabled}
-									placeholder={row.example}
-									maxLength={BUYS_MAX}
-									autoComplete="off"
-									value={row.text}
-									onChange={(event) => edit({ text: event.currentTarget.value })}
-									error={said[textId]}
-								/>
-							</>
-						)
-					};
-				})}
-			/>
+			<div className="adm-stack" key={question.id}>
+				<RepeatingRows
+					id={base}
+					legend={question.prompt}
+					hint={question.hint}
+					rowLabel="tier"
+					columns={['Amount', 'What it does']}
+					add={add}
+					rows={rows.map((row) => {
+						const amountId = tierBox(base, row, 'amount');
+						const textId = tierBox(base, row, 'text');
+						const edit = (patch: Partial<TierRow>) =>
+							changeRows(question, (was) =>
+								was.map((one) => (one.key === row.key ? { ...one, ...patch } : one))
+							);
+						return {
+							id: amountId,
+							key: row.key,
+							remove:
+								rows.length > 1
+									? rowPress(`remove:${row.key}`, () =>
+											changeRows(question, (was) => was.filter((one) => one.key !== row.key))
+										)
+									: undefined,
+							boxes: ({ describedBy, invalid, disabled, names: [amountName, textName] }) => (
+								<>
+									<MoneyField
+										id={amountId}
+										aria-label={amountName}
+										aria-describedby={describedBy}
+										aria-invalid={invalid || undefined}
+										disabled={disabled}
+										affix="$"
+										affixAt="start"
+										currency={FORM_CURRENCY}
+										value={row.amount}
+										onValueChange={(amount) => edit({ amount })}
+										error={said[amountId]}
+									/>
+									<Field
+										id={textId}
+										aria-label={textName}
+										aria-describedby={describedBy}
+										aria-invalid={invalid || undefined}
+										disabled={disabled}
+										placeholder={row.example}
+										maxLength={BUYS_MAX}
+										autoComplete="off"
+										value={row.text}
+										onChange={(event) => edit({ text: event.currentTarget.value })}
+										error={said[textId]}
+									/>
+								</>
+							)
+						};
+					})}
+				/>
+				{full ? (
+					<p className="adm-hint" id={capId}>
+						Up to {TIERS_MAX} tiers
+					</p>
+				) : null}
+			</div>
 		);
 	};
 
@@ -459,7 +487,7 @@ export function QuestionCard({
 					aria-busy={busy && pressed === 'send'}
 					aria-describedby={describedBy}
 					onClick={(event) => {
-						if (busy) event.preventDefault();
+						if (pressHeld()) event.preventDefault();
 					}}
 				>
 					{words.send}

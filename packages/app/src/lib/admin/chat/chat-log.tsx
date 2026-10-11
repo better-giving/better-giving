@@ -108,9 +108,15 @@ function AssistantTurn({ message, ask }: { message: ChatMessage; ask: Ask | null
 	);
 }
 
-/** the asked turn whose card is live: the chat's last turn, where it asks. */
+/** the id of the operator's words on their way, in the log until the turn storing them lands. */
+export const SENDING = 'sending';
+
+/**
+ * the asked turn whose card is live: the chat's last turn, where it asks, or the last but the words
+ * on their way after it — a send that is refused hands the card back with every answer in it.
+ */
 export function liveAsk(messages: readonly ChatMessage[]): ChatMessage | null {
-	const last = messages.at(-1);
+	const last = messages.at(messages.at(-1)?.id === SENDING ? -2 : -1);
 	return last?.role === 'assistant' && (last.questions?.length ?? 0) > 0 ? last : null;
 }
 
@@ -121,16 +127,18 @@ export function liveAsk(messages: readonly ChatMessage[]): ChatMessage | null {
 
    an asked turn draws its question card only while it is the chat's last turn: a turn after it —
    the answers, or the operator's own words instead — is what the card was waiting for, and from
-   then on the asked turn is its words alone. the card is the opening round's when the asked turn is
-   the chat's first, and a follow-up's otherwise.
+   then on the asked turn is its words alone. words sent from the box while a card is up are not
+   that turn until they are stored: they stand after the card, which stays mounted and held, so a
+   send that comes back refused leaves every answer as it was typed. on a page never drafted every round's
+   card drafts it and is worded as the opening's; once a draft exists a card updates the page.
 
    what is announced is two regions mounted with the log and never hidden, so the first thing either
    says is a change to a region rather than a region arriving. the log speaks each assistant reply
    that arrives after the panel mounted — the history it mounted on is read, not announced, which is
    why that history's ids are taken once, on mount — with the line under it, the starter questions'
-   included. the status says the opening questions are being got ready — or, on a page with a draft,
-   that the page is being read — or that a reply is being written, and falls silent when it lands;
-   the visible line saying the same is kept out of the tree so it is not read twice. while a card's
+   included. the status says the opening questions are being got ready — they are asked only of a
+   page never drafted — or that a reply is being written, and falls silent when it lands; the
+   visible line saying the same is kept out of the tree so it is not read twice. while a card's
    answers are on their way the card is still the chat's last turn, and its pressed button is busy:
    that is the wait's one mark, so the line and the status say nothing then. a reply asked for from
    the message box has no button showing it, and the line is its mark.
@@ -151,7 +159,7 @@ export function ChatLog({
 	running: boolean;
 	/** the opening questions are being read; `messages` is empty until they land. */
 	opening: boolean;
-	/** the page has never been drafted, so there is no page to read yet. */
+	/** the page has never been drafted, so a card's presses draft it. */
 	undrafted: boolean;
 	imageSrc: (imageId: string) => string;
 	onAnswer: (answers: readonly CardAnswer[]) => void;
@@ -166,12 +174,11 @@ export function ChatLog({
 	const replies = messages.filter((m) => m.role === 'assistant' && !history.has(m.id));
 	const byId = new Map(messages.map((m) => [m.id, m]));
 	const asking = liveAsk(messages)?.id;
-	const round: QuestionRound = messages[0]?.id === asking ? 'opening' : 'follow-up';
+	const newest = messages.at(-1)?.id;
+	const round: QuestionRound = undrafted ? 'opening' : 'follow-up';
 	const writing = opening
-		? undrafted
-			? 'Getting your questions ready'
-			: 'Reading your page'
-		: running && asking === undefined
+		? 'Getting your questions ready'
+		: running && (asking === undefined || newest !== asking)
 			? 'Writing a reply'
 			: '';
 	// the status takes its words a commit after the log mounts: the log mounts in the same render
@@ -180,7 +187,6 @@ export function ChatLog({
 	useEffect(() => setSpoken(writing), [writing]);
 
 	const log = useRef<HTMLDivElement>(null);
-	const newest = messages.at(-1)?.id;
 	useEffect(() => {
 		log.current?.lastElementChild?.scrollIntoView({ block: 'end' });
 	}, [newest, running]);

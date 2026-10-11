@@ -609,6 +609,34 @@ describe('a question card answered', () => {
 		expect(box()).toBe('');
 	});
 
+	it('keeps every answer through words sent beside it that come back refused', async () => {
+		await asked();
+		answer('mission', 'Warm coats for every child.');
+		const children = questionCard()?.querySelector<HTMLInputElement>('input[value="Children"]');
+		if (children === null || children === undefined) throw new Error('no Children chip');
+		await press(children);
+		refusals = [{ body: { error: 'the page was saved…', reason: 'stale' }, status: 409 }];
+
+		type('Just make it warm');
+		await press(button('Send'));
+		await settle();
+		expect(questionCard()?.querySelector('input[value="Children"]')).toBe(children);
+		await act(async () => held.shift()?.());
+		await settle();
+
+		expect(refusalShown()).toBe(
+			'The page was saved while this was being written, so nothing changed. Send it again.'
+		);
+		expect(box()).toBe('Just make it warm');
+		expect(questionCard()?.querySelector<HTMLInputElement>('input[name="mission"]')?.value).toBe(
+			'Warm coats for every child.'
+		);
+		expect(
+			questionCard()?.querySelector<HTMLInputElement>('input[value="Children"]')?.checked
+		).toBe(true);
+		expect(button('Draft my page').hasAttribute('aria-disabled')).toBe(false);
+	});
+
 	it('clears the card’s refusal as the answers are sent again', async () => {
 		await asked();
 		refusals = [{ body: { error: 'the turn failed', reason: 'failed' }, status: 500 }];
