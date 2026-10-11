@@ -46,6 +46,9 @@ import { PageRoot } from './page-root';
 // and every class they write is one ./page.css draws, or the form's layout sheet for its `.vh`: a
 // class nothing draws paints nothing and fails nowhere else.
 //
+// the edit edge: drawn only under `:root[data-editing]`, solid on the innermost hovered block
+// alone, and in the title's own ink on the cover's scrim, where that ink is measured below.
+//
 // contrast: the page's grounds and inks, worked out from the two sheets as written by
 // ./page-colour.testing.ts across a sweep of brand colours, for every palette, shade and ground.
 // the node pool, because this app has no browser pool; the evaluator is checked first against the
@@ -561,6 +564,35 @@ describe('the scrim under the cover title', () => {
 			expect(contrast(ink, overWhite(base, alpha))).toBeGreaterThanOrEqual(4.5);
 		}
 	);
+});
+
+describe('the edge the editor draws while its Edit is on', () => {
+	// the cover's title is a block inside the hero's (./page-view.tsx), and a click opens the
+	// innermost one; hover state is not something the dom pool computes, so the rules are read here.
+	const edged = page.filter(
+		({ at, decls }) =>
+			at.at(-1)?.includes('[data-block-id]') &&
+			Object.keys(decls).some((name) => name.startsWith('outline'))
+	);
+
+	it('draws every edge only while Edit is on', () => {
+		expect(edged.length).toBeGreaterThan(0);
+		expect(
+			edged.map(({ at }) => at.join(' » ')).filter((at) => !at.startsWith(':root[data-editing] '))
+		).toEqual([]);
+	});
+
+	it('turns solid only on the innermost hovered block', () => {
+		const solid = edged.filter(({ decls }) => decls['outline-style'] === 'solid');
+		expect(solid.map(({ at }) => at.join(' » '))).toEqual([
+			':root[data-editing] [data-block-id]:hover:not(:has([data-block-id]:hover))'
+		]);
+	});
+
+	it('draws the cover title’s edge in the title’s own ink over the scrim', () => {
+		const over = declared(page, '.page-hero-over');
+		expect(over['--page-ring']).toBe(over.color);
+	});
 });
 
 describe('the blocks ./page.css draws', () => {
