@@ -85,7 +85,7 @@ describe('readAmount', () => {
 
 	it('refuses a comma anywhere a screen would not draw one, saying where', () => {
 		// taking the comma out would read `25,50` — a decimal-comma habit — as 2550, a hundred times
-		// the gift meant. the sentence names the group it went wrong at, which the box does not show.
+		// the gift meant. the sentence names the group it went wrong at, which the box does not mark.
 		const rule = 'write 25.00 for $25.00';
 		expect(refusal('25,50')).toBe(
 			`must have 3 digits after each comma, and \`,50\` has 2, ${rule}`

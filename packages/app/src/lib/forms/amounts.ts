@@ -108,7 +108,7 @@ export function amountRule(currency: string): string {
  * the sentence names no value, because it is drawn under the box holding it — a message that
  * repeats what the operator is looking at is one they read twice, and these boxes take free text
  * with no cap in front of them. a grouping refusal names the one group it went wrong at, which the
- * box does not show, through ../redact.ts. the one place the whole value is named is where the
+ * box does not mark, through ../redact.ts. the one place the whole value is named is where the
  * sentence has left its box: `parseFormGiving` in `$lib/server/forms/form-input.ts` folds every
  * refused row into one string, and prefixes each with the typed text through ../redact.ts, which is
  * the app's one echo policy.

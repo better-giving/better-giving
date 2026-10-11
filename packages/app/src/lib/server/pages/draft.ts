@@ -126,7 +126,7 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 // - asked: the reply asks questions in place of a change. the draft is untouched, the turn's
 //   `questions` hold them and its words are the reply's `say`. answers are to a round of questions
 //   counted over every asking turn in the chat, the opening's being round 1, and answers that skip
-//   every question are to the last round, `ROUNDS_MAX`, whatever the count: a reply to round 1's
+//   every question count as round `ROUNDS_MAX` at the least: a reply to round 1's
 //   may ask one more round, and the model is told so, and a reply to any later round's or to a
 //   skip may not, and is told that, and one that asks anyway is refused. on a page never drafted
 //   the reply is held to `firstDraft` (../../page/accept-reply.ts): an ask kept lean, and a change
