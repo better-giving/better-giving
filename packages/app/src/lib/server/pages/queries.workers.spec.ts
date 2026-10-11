@@ -7,7 +7,8 @@ import { form, page } from '../db/schema';
 import type { PageState, PageType } from '../../page/keys';
 import { defaultCampaign } from '../../page/defaults';
 import { readForm } from '../forms/queries';
-import { CAMPAIGN_NAME, insertPage, SETTINGS } from './page-row.testing';
+import { createImage, stored as imageStored } from '../images/image.testing';
+import { CAMPAIGN_NAME, heroShowing, insertPage, SETTINGS } from './page-row.testing';
 import { publishPage } from './publish';
 import { deleteNeverPublishedCampaign, endCampaign, readPage, updateCampaignSlug } from './queries';
 
@@ -83,6 +84,24 @@ describe('deleteNeverPublishedCampaign()', () => {
 			true
 		);
 		expect(await remaining(made)).toEqual({ pages: 0, forms: 0 });
+	});
+
+	it('frees the photo only its draft placed, and keeps one a page left standing places', async () => {
+		const upload = () =>
+			createImage(
+				db,
+				{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+				new Uint8Array([1, 2, 3])
+			);
+		const [alone, shared] = [await upload(), await upload()];
+		const pageId = await insertPage(db, 'campaign', heroShowing(alone));
+		await insertPage(db, 'campaign', heroShowing(shared));
+		const both = await insertPage(db, 'campaign', heroShowing(shared));
+
+		expect(await deleteNeverPublishedCampaign(db, pageId, await versionOf(pageId))).toBe(true);
+		expect(await deleteNeverPublishedCampaign(db, both, await versionOf(both))).toBe(true);
+		expect(await imageStored(db, alone)).toEqual({ row: false, bytes: false });
+		expect(await imageStored(db, shared)).toEqual({ row: true, bytes: true });
 	});
 
 	it('refuses a campaign written since the version it was drawn at', async () => {

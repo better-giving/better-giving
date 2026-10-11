@@ -1,12 +1,11 @@
 import { env } from 'cloudflare:test';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { defaultCampaign } from '../../page/defaults';
-import type { Page } from '../../page/catalog';
 import { createDb, type Db } from '../db/client';
 import { program } from '../db/schema';
-import { d1BytesPort } from '../images/bytes';
-import { firstMissingImage, newImageStatements } from '../images/queries';
-import { insertPage, SETTINGS } from '../pages/page-row.testing';
+import { stored } from '../images/image.testing';
+import { newImageStatements } from '../images/queries';
+import { heroShowing, insertPage, SETTINGS } from '../pages/page-row.testing';
 import { parseOrgProfile, type OrgProfileFormValues, type ParsedOrgProfile } from './org-input';
 import {
 	putNewOrgProfileLogo,
@@ -392,31 +391,14 @@ describe('the profile logo', () => {
 		return { id: photo.id, written: await putNewOrgProfileLogo(db, photo) };
 	}
 
-	/** whether the image's row and its bytes are each still stored. */
-	async function stored(id: string) {
-		return {
-			row: (await firstMissingImage(db, [id])) === null,
-			bytes: (await d1BytesPort(db).get(id)) !== null
-		};
-	}
-
 	const logo = async () => (await readOrgProfile(db))?.logoImageId;
-
-	/** a campaign document with `imageId` as its hero's photo. */
-	function showing(imageId: string): Page {
-		const draft = { ...defaultCampaign(), settings: SETTINGS };
-		return {
-			...draft,
-			blocks: draft.blocks.map((block) => (block.type === 'hero' ? { ...block, imageId } : block))
-		};
-	}
 
 	it('stores the photo it puts on', async () => {
 		await save(FULL);
 		const { id, written } = await putLogo();
 		expect(written).toBe('written');
 		expect(await logo()).toBe(id);
-		expect(await stored(id)).toEqual({ row: true, bytes: true });
+		expect(await stored(db, id)).toEqual({ row: true, bytes: true });
 	});
 
 	it('frees the logo it replaces, row and bytes, and keeps the new one', async () => {
@@ -425,8 +407,8 @@ describe('the profile logo', () => {
 		const second = await putLogo();
 		expect(second.written).toBe('written');
 		expect(await logo()).toBe(second.id);
-		expect(await stored(first.id)).toEqual({ row: false, bytes: false });
-		expect(await stored(second.id)).toEqual({ row: true, bytes: true });
+		expect(await stored(db, first.id)).toEqual({ row: false, bytes: false });
+		expect(await stored(db, second.id)).toEqual({ row: true, bytes: true });
 	});
 
 	it('is taken off by a remove, which frees it', async () => {
@@ -434,7 +416,7 @@ describe('the profile logo', () => {
 		const { id } = await putLogo();
 		expect(await removeOrgProfileLogo(db)).toBe('written');
 		expect(await logo()).toBeNull();
-		expect(await stored(id)).toEqual({ row: false, bytes: false });
+		expect(await stored(db, id)).toEqual({ row: false, bytes: false });
 	});
 
 	it('is left alone by a profile save', async () => {
@@ -455,10 +437,11 @@ describe('the profile logo', () => {
 			'a cause’s photo',
 			(id) => db.insert(program).values({ name: `Clean water ${id}`, imageId: id })
 		],
-		['a page’s draft', (id) => insertPage(db, 'campaign', showing(id))],
+		['a page’s draft', (id) => insertPage(db, 'campaign', heroShowing(id))],
 		[
 			'a page’s published document',
-			(id) => insertPage(db, 'campaign', { ...defaultCampaign(), settings: SETTINGS }, showing(id))
+			(id) =>
+				insertPage(db, 'campaign', { ...defaultCampaign(), settings: SETTINGS }, heroShowing(id))
 		],
 		[
 			'a page’s last published document',
@@ -466,10 +449,10 @@ describe('the profile logo', () => {
 				const plain = { ...defaultCampaign(), settings: SETTINGS };
 				const pageId = await insertPage(db, 'campaign', plain, plain);
 				await env.DB.prepare('update page set last_published = ? where id = ?')
-					.bind(JSON.stringify(showing(id)), pageId)
+					.bind(JSON.stringify(heroShowing(id)), pageId)
 					.run();
 			}
-		],
+		]
 	];
 
 	it.each(REFERENCES)('keeps a replaced logo that is also %s', async (_, reference) => {
@@ -477,7 +460,7 @@ describe('the profile logo', () => {
 		const { id } = await putLogo();
 		await reference(id);
 		expect((await putLogo()).written).toBe('written');
-		expect(await stored(id)).toEqual({ row: true, bytes: true });
+		expect(await stored(db, id)).toEqual({ row: true, bytes: true });
 	});
 
 	it.each(REFERENCES)('keeps a removed logo that is also %s', async (_, reference) => {
@@ -486,13 +469,13 @@ describe('the profile logo', () => {
 		await reference(id);
 		expect(await removeOrgProfileLogo(db)).toBe('written');
 		expect(await logo()).toBeNull();
-		expect(await stored(id)).toEqual({ row: true, bytes: true });
+		expect(await stored(db, id)).toEqual({ row: true, bytes: true });
 	});
 
 	it('refuses a logo before the profile is saved, and leaves no photo behind', async () => {
 		const { id, written } = await putLogo();
 		expect(written).toBe('no-profile');
 		expect(await readOrgProfile(db)).toBeNull();
-		expect(await stored(id)).toEqual({ row: false, bytes: false });
+		expect(await stored(db, id)).toEqual({ row: false, bytes: false });
 	});
 });

@@ -39,6 +39,7 @@ import {
 	parsePage
 } from '../../page/catalog';
 import { startingBlock } from '../../page/defaults';
+import { placedImageIds } from '../../page/image-src';
 import { LOOK_KEYS, type PageType } from '../../page/keys';
 import { listed } from '../../page/refusal';
 import { SHARE_CHANNELS } from '../../page/share';
@@ -46,8 +47,9 @@ import { isEmptyDocument, parseRichText } from '../../rich-text/document';
 import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { type Page as PageRow, page } from '../db/schema';
+import { freeLetGoStatements } from '../images/free';
 import { firstMissingImage } from '../images/queries';
-import { readableDraft } from './document';
+import { placedPhotos, readableDraft } from './document';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
@@ -68,8 +70,9 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 //
 // a photo is replaced by the id its upload was answered with, and one no stored image has is
 // refused, so a block never points at a photo the image route would not serve. the replace keeps
-// the block, its id and its variant; the photo it stood in for stays stored, since a published
-// page may still draw it.
+// the block, its id and its variant. a photo the draft lets go of, replaced or removed with its
+// block, is freed in the draft's own write, and kept while the live page, the page Undo would put
+// back or anything else still places it (../images/free.ts).
 
 const BLOCK_TITLE = defineForm({ id: BLOCK_FORMS.title, schema: BLOCK_TITLE_INPUT });
 const BLOCK_STORY = defineForm({ id: BLOCK_FORMS.story, schema: BLOCK_STORY_INPUT });
@@ -639,10 +642,17 @@ async function editDraft(
 					: { fieldErrors: { [box]: [checked.message.replace(BLOCK_NAMED, '')] } }
 		};
 	}
-	const written = await db
-		.update(page)
-		.set({ draft: JSON.stringify(checked.page) })
-		.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
-		.returning({ id: page.id });
+	const [written] = await db.batch([
+		db
+			.update(page)
+			.set({ draft: JSON.stringify(checked.page) })
+			.where(and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft)))
+			.returning({ id: page.id }),
+		...freeLetGoStatements(
+			db,
+			placedPhotos(row, { draft: row.draft }),
+			placedImageIds(checked.page)
+		)
+	]);
 	return written.length === 1 ? { kind: 'written' } : { kind: 'stale' };
 }

@@ -6,6 +6,7 @@ import { defaultDonationPage } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
 import { donation, page } from '../db/schema';
 import { readForm } from '../forms/queries';
+import { createImage, stored as imageStored } from '../images/image.testing';
 import { expectRecordedAsAForm } from './owned-settings-gift.testing';
 import { insertPage, SETTINGS } from './page-row.testing';
 import { resetDonationPage } from './reset';
@@ -209,5 +210,43 @@ describe('a Donation page’s edits', () => {
 		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
 
 		expect(outcome).toEqual({ kind: 'nothing' });
+	});
+});
+
+describe('a photo Reset lets go of', () => {
+	const upload = () =>
+		createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+
+	/** the edited page with a hero placing `imageId` at its top. */
+	const showing = (imageId: string): PageDocument => ({
+		...EDITED,
+		blocks: [
+			{ id: 'hero', type: 'hero', variant: 'wide', background: 'none', imageId, alt: null },
+			...EDITED.blocks
+		]
+	});
+
+	it('is freed from the draft, the live page and the page kept for Undo alike', async () => {
+		const [drafted, live, earlier] = [await upload(), await upload(), await upload()];
+		const pageId = await insertPage(db, 'donation_page', showing(drafted), showing(live));
+		const was = (await stored(pageId)).updatedAt.getTime();
+		await db
+			.update(page)
+			.set({
+				lastPublished: JSON.stringify(showing(earlier)),
+				updatedAt: new Date(was + 1_000)
+			})
+			.where(eq(page.id, pageId));
+
+		expect(await resetDonationPage(db, (await stored(pageId)).updatedAt)).toEqual({
+			kind: 'reset'
+		});
+		for (const id of [drafted, live, earlier]) {
+			expect(await imageStored(db, id)).toEqual({ row: false, bytes: false });
+		}
 	});
 });

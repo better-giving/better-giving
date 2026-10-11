@@ -25,6 +25,15 @@ export const CAMPAIGN_NAME = 'Winter coat drive';
 
 let sequence = 0;
 
+/** a campaign document whose hero places `imageId`, and no other block a photo. */
+export function heroShowing(imageId: string): Page {
+	const draft: Page = { ...defaultCampaign(), settings: SETTINGS };
+	return {
+		...draft,
+		blocks: draft.blocks.map((block) => (block.type === 'hero' ? { ...block, imageId } : block))
+	};
+}
+
 /**
  * a page of `type` whose draft is `draft`, published as `live` where that is given. the Donation
  * page is always live, and there is one, so it replaces any other.

@@ -8,7 +8,8 @@ import { RESET_FORM_ID } from '../../page/publish-form';
 import { invalid, parseForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { type Page, page } from '../db/schema';
-import { readDocument, type StoredDocument } from './document';
+import { freeLetGoStatements } from '../images/free';
+import { documentsOf, placedPhotos, readDocument, type StoredDocument } from './document';
 import { STALE } from './publish';
 import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 
@@ -28,6 +29,8 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 //   Reset is how that page is repaired and what the operator chose there cannot be read.
 // - the page's id and its owned row stay, so a gift already made on the page still names both.
 // - a page with no edits (`hasEditsToReset`) is refused: a Reset there would only move its version.
+// - a photo any of the three documents placed and the default does not is freed in the same
+//   `batch()`, where nothing else places it (../images/free.ts).
 
 /** what a Reset to default did. */
 export type ResetOutcome =
@@ -59,11 +62,18 @@ export async function resetDonationPage(db: Db, version: Date): Promise<ResetOut
 		eq(page.draft, row.draft),
 		eq(page.published, row.published)
 	);
-	const reset = await db
-		.update(page)
-		.set({ draft: document, published: document, lastPublished: null })
-		.where(drawn)
-		.returning({ id: page.id });
+	const [reset] = await db.batch([
+		db
+			.update(page)
+			.set({ draft: document, published: document, lastPublished: null })
+			.where(drawn)
+			.returning({ id: page.id }),
+		...freeLetGoStatements(
+			db,
+			placedPhotos(row, documentsOf(row)),
+			placedPhotos(row, { draft: document })
+		)
+	]);
 	return reset.length === 1 ? { kind: 'reset' } : { kind: 'stale' };
 }
 

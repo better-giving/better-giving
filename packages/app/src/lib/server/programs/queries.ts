@@ -2,6 +2,7 @@ import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/client';
 import { program, type Program } from '../db/schema';
+import { freeLetGoStatements } from '../images/free';
 import { firstMissingImage } from '../images/queries';
 import { sqliteResultCode } from '../db/rejection';
 import type { ParsedProgram } from './program-input';
@@ -232,7 +233,9 @@ export type ProgramSave = 'saved' | 'gone' | 'stale' | 'duplicate_name' | 'no_im
  * update it emits.
  *
  * the photo must be a stored `image`, read ahead of the write so a missing one is answered at its
- * box rather than by the column's foreign key.
+ * box rather than by the column's foreign key. the photo the save replaces or takes off is freed in
+ * the write's own `batch()`, where nothing else places it (../images/free.ts); the read of which
+ * photo that is only names it, and a stale save keeps it because the row still does.
  */
 export async function updateProgram(
 	db: Db,
@@ -242,14 +245,21 @@ export async function updateProgram(
 	imageId: string | null
 ): Promise<ProgramSave> {
 	if (imageId !== null && (await firstMissingImage(db, [imageId])) !== null) return 'no_image';
+	const [held] = await db
+		.select({ imageId: program.imageId })
+		.from(program)
+		.where(eq(program.id, id));
 
 	let updated: { id: string }[];
 	try {
-		updated = await db
-			.update(program)
-			.set({ name: input.name, description: input.description, imageId })
-			.where(and(eq(program.id, id), isNull(program.archivedAt), eq(program.updatedAt, version)))
-			.returning({ id: program.id });
+		[updated] = await db.batch([
+			db
+				.update(program)
+				.set({ name: input.name, description: input.description, imageId })
+				.where(and(eq(program.id, id), isNull(program.archivedAt), eq(program.updatedAt, version)))
+				.returning({ id: program.id }),
+			...freeLetGoStatements(db, [held?.imageId ?? null], [imageId])
+		]);
 	} catch (error) {
 		if (sqliteResultCode(error) === NAME_TAKEN) return 'duplicate_name';
 		throw error;

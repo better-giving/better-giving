@@ -31,3 +31,20 @@ export function freeImageStatements(db: Db, id: string) {
 	const when = unreferenced(id);
 	return [deleteBytes(db, id, when), db.delete(image).where(and(eq(image.id, id), when))] as const;
 }
+
+/**
+ * `freeImageStatements` for each id `before` names and `after` does not: what a write moving a row
+ * from one to the other lets go of, for that write's `batch()` and after it. an id let go of that
+ * something else still names is kept by the guard, so `before` and `after` are the written row's
+ * own and nothing wider.
+ */
+export function freeLetGoStatements(
+	db: Db,
+	before: Iterable<string | null>,
+	after: Iterable<string | null>
+) {
+	const kept = new Set(after);
+	return [...new Set(before)].flatMap((id) =>
+		id === null || kept.has(id) ? [] : freeImageStatements(db, id)
+	);
+}

@@ -7,8 +7,9 @@ import { endOfDay } from '../../page/end-date';
 import { createDb, type Db } from '../db/client';
 import { form, page, program } from '../db/schema';
 import { readForm } from '../forms/queries';
+import { createImage, stored as imageStored } from '../images/image.testing';
 import { ensureDonationPage } from './donation-page';
-import { endAsItStands, insertPage, SETTINGS } from './page-row.testing';
+import { endAsItStands, heroShowing, insertPage, SETTINGS } from './page-row.testing';
 import { discardChanges, publishPage, undoPublish } from './publish';
 import { updateCampaignName } from './queries';
 
@@ -650,5 +651,58 @@ describe('Discard changes', () => {
 
 		expect(outcome).toEqual({ kind: 'nothing' });
 		expect(await stored(pageId)).toEqual(drawn);
+	});
+});
+
+describe('a photo the presses let go of', () => {
+	const upload = () =>
+		createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+	const target = (pageId: string) => ({ type: 'campaign', id: pageId }) as const;
+	const publish = async (pageId: string) =>
+		publishPage(db, target(pageId), (await stored(pageId)).updatedAt, { now: NOW });
+
+	it('is kept by Publish while the page kept for Undo places it, and freed by the Publish after', async () => {
+		const first = await upload();
+		const second = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(second), heroShowing(first));
+
+		expect(await publish(pageId)).toEqual({ kind: 'published', undoable: true });
+		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
+
+		await draftAs(pageId, heroShowing(await upload()));
+		expect(await publish(pageId)).toEqual({ kind: 'published', undoable: true });
+		expect(await imageStored(db, first)).toEqual({ row: false, bytes: false });
+		expect(await imageStored(db, second)).toEqual({ row: true, bytes: true });
+	});
+
+	it('is freed by Discard changes where only the draft placed it', async () => {
+		const live = await upload();
+		const drafted = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(drafted), heroShowing(live));
+
+		const outcome = await discardChanges(db, target(pageId), (await stored(pageId)).updatedAt);
+
+		expect(outcome).toEqual({ kind: 'discarded' });
+		expect(await imageStored(db, drafted)).toEqual({ row: false, bytes: false });
+		expect(await imageStored(db, live)).toEqual({ row: true, bytes: true });
+	});
+
+	it('is never one Undo lets go of, since it swaps the two pages the row keeps', async () => {
+		const first = await upload();
+		const second = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(second), heroShowing(first));
+		await publish(pageId);
+
+		const outcome = await undoPublish(db, target(pageId), (await stored(pageId)).updatedAt, {
+			now: NOW
+		});
+
+		expect(outcome).toEqual({ kind: 'undone' });
+		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
+		expect(await imageStored(db, second)).toEqual({ row: true, bytes: true });
 	});
 });

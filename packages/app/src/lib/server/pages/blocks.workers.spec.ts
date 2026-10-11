@@ -6,9 +6,9 @@ import { HEADING_MAX, type Page, parsePage } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import type { RichTextDocument } from '../../rich-text/document';
 import { createDb, type Db } from '../db/client';
-import { createImage } from '../images/image.testing';
+import { createImage, stored as imageStored } from '../images/image.testing';
 import { saveBlockForm } from './blocks';
-import { insertPage, SETTINGS } from './page-row.testing';
+import { heroShowing, insertPage, SETTINGS } from './page-row.testing';
 import { readPage } from './queries';
 
 // a workers spec because every press reads the page's draft and writes it back against the version
@@ -351,6 +351,81 @@ describe('a photo', () => {
 			status: 400,
 			error: { '': ['block "title" is a title, and this sheet edits a hero or an image'] }
 		});
+	});
+});
+
+describe('a photo the draft lets go of', () => {
+	const upload = () =>
+		createImage(
+			db,
+			{ kind: 'photo', contentType: 'image/webp', width: 4, height: 3, alt: null },
+			new Uint8Array([1, 2, 3])
+		);
+
+	it('is freed when a photo replaces it, row and bytes, and the new one kept', async () => {
+		const first = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(first));
+		const second = await upload();
+
+		const answer = await press(pageId, BLOCK_FORMS.photo, [
+			['block_id', 'hero'],
+			['image_id', second],
+			['alt', '']
+		]);
+
+		expect(answer).toEqual({ saved: 'block' });
+		expect(await imageStored(db, first)).toEqual({ row: false, bytes: false });
+		expect(await imageStored(db, second)).toEqual({ row: true, bytes: true });
+	});
+
+	it('is kept when replaced while the live page still places it', async () => {
+		const first = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(first), heroShowing(first));
+
+		await press(pageId, BLOCK_FORMS.photo, [
+			['block_id', 'hero'],
+			['image_id', await upload()],
+			['alt', '']
+		]);
+
+		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
+	});
+
+	it('is freed with the block a remove takes out', async () => {
+		const first = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(first));
+
+		expect(await press(pageId, BLOCK_FORMS.remove, [['block_id', 'hero']])).toEqual({
+			saved: BLOCK_FORMS.remove
+		});
+		expect(blockOf((await stored(pageId)).draft, 'hero')).toBeUndefined();
+		expect(await imageStored(db, first)).toEqual({ row: false, bytes: false });
+	});
+
+	it('is kept with the block a remove takes out while the live page still places it', async () => {
+		const first = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(first), heroShowing(first));
+
+		await press(pageId, BLOCK_FORMS.remove, [['block_id', 'hero']]);
+
+		expect(blockOf((await stored(pageId)).draft, 'hero')).toBeUndefined();
+		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
+	});
+
+	it('is kept when the save is stale, since the draft still places it', async () => {
+		const first = await upload();
+		const pageId = await insertPage(db, 'campaign', heroShowing(first));
+		const drawn = (await stored(pageId)).row.updatedAt.getTime();
+		await press(pageId, BLOCK_FORMS.title, [
+			['block_id', 'title'],
+			['heading', 'Saved first'],
+			['lede', '']
+		]);
+
+		await press(pageId, BLOCK_FORMS.remove, [['block_id', 'hero']], drawn);
+
+		expect(blockOf((await stored(pageId)).draft, 'hero')).toBeDefined();
+		expect(await imageStored(db, first)).toEqual({ row: true, bytes: true });
 	});
 });
 

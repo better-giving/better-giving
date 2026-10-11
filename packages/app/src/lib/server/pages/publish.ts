@@ -30,7 +30,8 @@ import {
 } from '../forms/form-input';
 import { encodeSuggestedAmounts } from '../forms/form-json';
 import type { StoredForm } from '../forms/queries';
-import { readDocument } from './document';
+import { freeLetGoStatements } from '../images/free';
+import { documentsOf, placedPhotos, readDocument } from './document';
 import { unchosenSettings } from './donation-page';
 import {
 	type DraftSettings,
@@ -75,6 +76,10 @@ import {
 // and the editor reads it as changes not published.
 //
 // **Discard changes** puts the draft back to the live page, a campaign's name with it.
+//
+// a photo Publish or Discard lets go of — the page Publish drops from Undo's keeping, the draft's
+// that Discard puts back — is freed in the press's own `batch()`, where nothing else places it
+// (../images/free.ts). Undo swaps the two pages the row keeps, so it lets go of none.
 
 /** what a Publish did. */
 export type PublishOutcome =
@@ -221,6 +226,11 @@ export async function publishPage(
 	const renamed = nameToCarry(row, draft.page);
 
 	const drawn = and(eq(page.id, row.id), eq(page.updatedAt, version), eq(page.draft, row.draft));
+	const frees = freeLetGoStatements(
+		db,
+		placedPhotos(row, documentsOf(row)),
+		placedPhotos(row, { draft: document, last_published: replaced })
+	);
 	for (let attempt = 1; ; attempt += 1) {
 		const slug = await addressFor(db, row);
 		try {
@@ -246,7 +256,8 @@ export async function publishPage(
 						...(renamed === null ? {} : { name: renamed })
 					})
 					.where(drawn)
-					.returning({ id: page.id })
+					.returning({ id: page.id }),
+				...frees
 			]);
 			return made.length === 1
 				? { kind: 'published', undoable: replaced !== null }
@@ -403,12 +414,17 @@ export async function discardChanges(
 		.set({ draft: row.published, ...(renamed === null ? {} : { name: renamed }) })
 		.where(drawn)
 		.returning({ id: page.id });
+	const frees = freeLetGoStatements(
+		db,
+		placedPhotos(row, { draft: row.draft }),
+		placedPhotos(row, { draft: row.published })
+	);
 	// the owned row's rename runs first and names the page by the same guard, since the page's
 	// update moves the version it is guarded on.
 	const discarded =
 		renamed === null
-			? await discard
-			: (await db.batch([renamingOwned(db, row.formId, renamed, drawn), discard]))[1];
+			? (await db.batch([discard, ...frees]))[0]
+			: (await db.batch([renamingOwned(db, row.formId, renamed, drawn), discard, ...frees]))[1];
 	return discarded.length === 1 ? { kind: 'discarded' } : { kind: 'stale' };
 }
 
