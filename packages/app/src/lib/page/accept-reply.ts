@@ -36,7 +36,7 @@
 // ./questions.ts's rule, and handed back as asked with no draft at all. an `ask` beside `page` or
 // `set` refuses the reply, since a reply that asks never also changes the page. where the caller
 // says the turn answers questions, it names their round, counted from the chat's first, and a turn
-// that skipped them all names `ROUNDS_MAX` whatever its count ($lib/server/pages/draft.ts): answers
+// that skipped them all names at least `ROUNDS_MAX` ($lib/server/pages/draft.ts): answers
 // to round 1 may be followed by one more round, and any `ask` in reply to answers to round
 // `ROUNDS_MAX` or later refuses the reply, so answers alone never lead to a third round, and a skip
 // to none. that refusal alone is marked `askedAgain`, for the caller to tell it from the rest. an
