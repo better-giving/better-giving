@@ -21,9 +21,9 @@ import type { Route } from './+types/_app.admin.pages.$pageId.suggest';
 //   line apart. at most `TEXT_MAX` characters, each blank line between paragraphs counting as one,
 //   as the box itself counts a paragraph break, so a box at its own bound always posts.
 // - `beside`, optional: the box beside it as the open sheet holds it, which the words are written
-//   for in place of the draft's — for `tier_buys[n]` the tier's amount as an ungrouped dollar
-//   figure (`100`, `100.50`), for `answer[n]` the question's words; at most `TEXT_MAX` characters,
-//   and ignored for any other field.
+//   for in place of the draft's — for `tier_buys[n]` the tier's amount as a dollar figure the
+//   sheet draws (`100`, `1,000.50`), for `answer[n]` the question's words; at most `TEXT_MAX`
+//   characters, and ignored for any other field.
 //
 // it answers 200 `{ ok: true, text }`: a plain box's words on one line, and a rich-text box's as
 // paragraphs a blank line apart, which `richTextOf` in $lib/page/suggest-fields.ts makes its

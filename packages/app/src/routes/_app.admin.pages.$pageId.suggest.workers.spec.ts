@@ -381,13 +381,13 @@ describe('what a tier buys', () => {
 		const pageId = await insertPage(db, 'campaign', tiered());
 		const AI = answering({ text: 'A winter coat' });
 
-		const response = await post(pageId, { ...BUYS, beside: '1,000' }, AI);
+		const response = await post(pageId, { ...BUYS, beside: '1,00' }, AI);
 
 		expect([response.status, await response.json()]).toEqual([
 			400,
 			{
 				error:
-					'beside "1,000" must be an amount, write 25.00 for $25.00: send tier 1’s amount as the sheet holds it, ungrouped'
+					'beside "1,00" must have 3 digits after each comma, and `,00` has 2, write 25.00 for $25.00: send tier 1’s amount as the sheet holds it'
 			}
 		]);
 		expect(AI.run).not.toHaveBeenCalled();
