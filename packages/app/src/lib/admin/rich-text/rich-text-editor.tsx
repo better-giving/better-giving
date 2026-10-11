@@ -77,8 +77,8 @@ export type RichTextEditorProps = {
 
 /** the box's words for a caller writing the whole of them, once the editor is built. */
 export type RichTextHandle = {
-	/** the words, each paragraph's — a list item's too — a blank line apart: one line between two,
-	 *  so a document within `TEXT_MAX` reads within it as the suggest route counts. */
+	/** the words of every paragraph, a list item's among them, one blank line between two, so a
+	 *  document within `TEXT_MAX` reads within it as the suggest route counts. */
 	readonly words: () => string;
 	/** the document as it stands, for `put` to bring back. */
 	readonly kept: () => JSONContent;
