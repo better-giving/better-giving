@@ -84,7 +84,7 @@ function unreachable(): void {
 }
 
 const NOT_SENT =
-	'That didn’t reach the server, so nothing was changed. Check your connection and press again.';
+	'That may not have saved: the server couldn’t be reached. Check your connection and press again.';
 
 function mount(tree: ReactNode) {
 	const root = document.createElement('div');

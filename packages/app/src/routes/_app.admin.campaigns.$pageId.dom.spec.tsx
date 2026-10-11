@@ -107,7 +107,7 @@ let thrown: unknown;
 
 /** what the editor says of a press that never reached the server. */
 const NOT_SENT =
-	'That didn’t reach the server, so nothing was changed. Check your connection and press again.';
+	'That may not have saved: the server couldn’t be reached. Check your connection and press again.';
 
 function unreachable(): void {
 	if (offline) throw new TypeError('Failed to fetch');

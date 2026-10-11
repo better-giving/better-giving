@@ -16,8 +16,9 @@ import { WHICH_FORM } from '$lib/forms/definition';
 // outside development (react router sanitizes it on the way out), an aborted request as an
 // `AbortError`, and a status the server answered with resolves or throws an `ErrorResponse`; each
 // of those is rethrown as it came. a request that left and lost its answer on the way back
-// rejects the same way as one that never left, so the sentence's "nothing was changed" can be
-// wrong there.
+// rejects the same way as one that never left, so the sentence says the press may not have saved
+// rather than that nothing changed; a press that carries its record's version and is pressed again
+// after it did land is refused as stale rather than applied twice.
 //
 // the refusal carries a status, though no server sent one: an action result of 400 or more is
 // what keeps the router from reading the screen's loaders again over the same dead connection,
@@ -25,7 +26,7 @@ import { WHICH_FORM } from '$lib/forms/definition';
 
 /** what a press that never reached the server says. */
 export const UNREACHED =
-	'That didn’t reach the server, so nothing was changed. Check your connection and press again.';
+	'That may not have saved: the server couldn’t be reached. Check your connection and press again.';
 
 const UNREACHED_STATUS = 503;
 
