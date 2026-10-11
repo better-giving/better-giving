@@ -356,8 +356,12 @@ describe('parseFormInput', () => {
 		expect(rejectedForm(complete({ max_minor: '1e6' })).max_minor).toBeTypeOf('string');
 		expect(rejectedForm(complete({ max_minor: 'lots' })).max_minor).toBeTypeOf('string');
 		expect(rejectedForm(complete({ min_minor: '-500' })).min_minor).toBeTypeOf('string');
-		// a thousands separator is not a group of three digits in any of these boxes.
-		expect(rejectedForm(complete({ max_minor: '1,000' })).max_minor).toBeTypeOf('string');
+		// a comma only where a screen groups the digits: `25,50` is a decimal-comma habit, and
+		// reading it as 2550 is a bound a hundred times the one meant.
+		expect(parsedForm(complete({ max_minor: '1,000' })).maxMinor).toBe(100_000);
+		expect(rejectedForm(complete({ max_minor: '25,50' })).max_minor).toBe(
+			'must have 3 digits after each comma, and `,50` has 2, write 25.00 for $25.00'
+		);
 	});
 
 	it('refuses an inverted pair, under the largest gift', () => {
@@ -385,13 +389,13 @@ describe('parseFormInput', () => {
 
 	it('takes each box as one amount, in the order they were written', () => {
 		// one `<input name="suggested_amounts">` per amount, read with `getAll`. the order is the
-		// operator's — it is the order the buttons appear in on the card — and a separator is not a
-		// thing: a box holding `1,000` is one amount that cannot be read rather than two.
+		// operator's — it is the order the buttons appear in on the card — and a comma is never a
+		// second amount: `1,000` is one grouped figure, and `25,50` one that cannot be read.
 		expect(
-			parsedForm(complete({ suggested_amounts: ['25', '50.00', '100'] })).suggestedAmounts
-		).toEqual([2500, 5000, 10000]);
-		expect(rejectedForm(complete({ suggested_amounts: ['1,000'] })).suggested_amounts).toContain(
-			'`1,000`'
+			parsedForm(complete({ suggested_amounts: ['25', '50.00', '1,000'] })).suggestedAmounts
+		).toEqual([2500, 5000, 100_000]);
+		expect(rejectedForm(complete({ suggested_amounts: ['25,50'] })).suggested_amounts).toContain(
+			'`25,50`'
 		);
 	});
 

@@ -825,6 +825,30 @@ describe('/admin/forms/[id] — a group saves on its own', () => {
 		expect(after?.allowedOrigins).toEqual(before?.allowedOrigins);
 	});
 
+	it('writes amounts posted grouped the way the boxes draw them', async () => {
+		const sent = await post(
+			GIVING_FORM,
+			FORM_ID,
+			submission(GIVING_FORM, { max_minor: '10,000.00', suggested_amounts: ['1,000', '25'] })
+		);
+
+		expect(sent.redirect?.status).toBe(303);
+		expect(await readForm(db, FORM_ID)).toMatchObject({
+			maxMinor: 1_000_000,
+			suggestedAmounts: [100_000, 2500]
+		});
+	});
+
+	it('refuses a comma no box draws, saying where, and writes nothing', async () => {
+		const before = await readForm(db, FORM_ID);
+		const sent = await post(GIVING_FORM, FORM_ID, submission(GIVING_FORM, { max_minor: '25,50' }));
+
+		expect(sent.failure?.errors.max_minor).toEqual([
+			'must have 3 digits after each comma, and `,50` has 2, write 25.00 for $25.00'
+		]);
+		expect((await readForm(db, FORM_ID))?.maxMinor).toBe(before?.maxMinor);
+	});
+
 	it('writes the origins group and leaves every other column alone', async () => {
 		const before = await readForm(db, FORM_ID);
 		await post(ORIGINS_FORM, FORM_ID, {

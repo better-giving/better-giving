@@ -444,7 +444,7 @@ describe('a submission a rule refuses', () => {
 		const response = await post({
 			...GIFT,
 			contact_id: '',
-			amount: '1,200',
+			amount: '12,00',
 			received_on: '',
 			method: ''
 		});

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { digitGrouping, formatMinor, formatMinorBrief, minorUnitDigits } from '../donations/money';
+import { redact } from '../redact';
 
 // what an operator writes in an amount box, and the integer it is stored as, in the one place a
 // server parser and a browser may both import from.
@@ -75,9 +76,8 @@ export type AmountRead =
 /**
  * digits, and at most one point with digits behind it.
  *
- * no sign, no exponent, no symbol and no thousands separator. the separator is the one worth
- * stating: the suggested amounts are one box per amount, so a comma inside a box is a thousands
- * separator or a second figure, and both are a box nobody can store.
+ * no sign, no exponent, no symbol and no separator: grouping is taken out in front of this by
+ * `readGrouping`, and only where it is well formed.
  */
 const AMOUNT = /^(\d+)(?:\.(\d+))?$/;
 
@@ -98,19 +98,39 @@ export function amountRule(currency: string): string {
 }
 
 /**
- * what one box holds, as the integer minor units it is stored in.
+ * what one box holds, as the integer minor units it is stored in: a plain figure, or one grouped
+ * the way a screen groups the currency — `1,000.50` — which is the text a money box draws.
+ *
+ * grouping is read only where it is well formed, and a comma anywhere else is refused rather than
+ * dropped: `25,50` is a decimal-comma habit and `1,00,0` a slip, and reading either by taking the
+ * comma out stores a figure the operator did not mean. `readGrouping` below is the rule.
  *
  * the sentence names no value, because it is drawn under the box holding it — a message that
  * repeats what the operator is looking at is one they read twice, and these boxes take free text
- * with no cap in front of them. the one place the value is named is where the sentence has left its
- * box: `parseFormGiving` in `$lib/server/forms/form-input.ts` folds every refused row into one
- * string, and prefixes each with the typed text through ../redact.ts, which is the app's one echo
- * policy.
+ * with no cap in front of them. a grouping refusal names the one group it went wrong at, which the
+ * box does not show, through ../redact.ts. the one place the whole value is named is where the
+ * sentence has left its box: `parseFormGiving` in `$lib/server/forms/form-input.ts` folds every
+ * refused row into one string, and prefixes each with the typed text through ../redact.ts, which is
+ * the app's one echo policy.
+ */
+export function readAmount(text: string, currency: string): AmountRead {
+	const grouped = readGrouping(text, currency);
+	if (grouped === null) return readPlainAmount(text, currency);
+	if (grouped.fault !== null) return { minor: null, problem: grouped.fault };
+	return readPlainAmount(grouped.bare, currency);
+}
+
+/**
+ * a figure written with no grouping at all, as the integer minor units it is stored in.
+ *
+ * what a processor's wire carries — `minorOf` in `$lib/server/payments/paypal.ts` reads its
+ * amounts through this — and the half of `readAmount` left once grouping is out. a separator is
+ * refused here, so a payment path never reads a comma an operator's box would.
  *
  * the safe-integer check closes the end the shape rule cannot: a thirty-digit paste is digits all
  * the way along and parses to a float that is an integer and is not the number that was typed.
  */
-export function readAmount(text: string, currency: string): AmountRead {
+export function readPlainAmount(text: string, currency: string): AmountRead {
 	const match = AMOUNT.exec(text);
 	if (match === null) {
 		return { minor: null, problem: `must be an amount, ${amountRule(currency)}` };
@@ -139,9 +159,10 @@ export function readAmount(text: string, currency: string): AmountRead {
  * there to demonstrate the shape a box takes, and `write 25.00 for $25.00` stops teaching it the moment
  * the zeros come off — which is the whole reason this and `majorEntry` below are two functions.
  *
- * the inverse of `readAmount` and it has to stay one: the example is text an operator may copy
- * straight into the box, so a value rendered with a thousands separator or a currency symbol would
- * be one this module's own parser refuses.
+ * the inverse of `readPlainAmount`, and so of `readAmount`, and it has to stay one: the example is
+ * text an operator may copy straight into the box, and the same text is what `paypal.ts` under
+ * `$lib/server/payments/` sends and reads back, so a value rendered with a group separator or a
+ * currency symbol would be one the plain reader refuses.
  *
  * `formatMinor` in `$lib/donations/money.ts` is the third rendering and answers a different
  * question: that one is a figure a person reads, this one and `majorEntry` are text a parser reads
@@ -168,7 +189,7 @@ export function majorText(amountMinor: number, currency: string): string {
  *
  * an inverse of `readAmount` exactly as `majorText` is, and it has to stay one — the boxes an edit
  * screen seeds are parsed again by the same rules the moment they are saved, so a value rendered
- * with a thousands separator or a currency symbol would be one this module's own parser refuses.
+ * with a currency symbol would be one this module's own parser refuses.
  * `AMOUNT` takes a whole number with no point at all, which is what makes leaving the zeros off
  * safe rather than lossy.
  *
@@ -209,13 +230,83 @@ export function groupAmountEntry(text: string, currency: string): string {
 }
 
 /**
- * the text a grouped box stands for: its group separators taken out where what is left is a figure
- * being typed, which is the text `readAmount` reads. anything else is handed on as typed, for
- * `readAmount` to refuse.
+ * a figure's group separators, read against the grouping `groupAmountEntry` draws: `bare` is the
+ * figure with them taken out when every one sits where a screen would put it, and `fault` the
+ * sentence naming the first that does not. `null` when there is no separator, or when what is left
+ * without them is no figure being typed — that text is refused for what it is, not for a comma.
+ *
+ * one to `rest` digits in front of the first separator, `rest` between two, `last` after the
+ * final one, and none behind the point — three each, and a comma, for every currency, because
+ * `DISPLAY_LOCALE` in `$lib/donations/money.ts` is `en-US`, which is also why the sentences say
+ * comma.
+ */
+function readGrouping(
+	text: string,
+	currency: string
+):
+	| { readonly bare: string; readonly fault: null }
+	| { readonly bare: null; readonly fault: string }
+	| null {
+	const { separator, last, rest } = digitGrouping(currency);
+	const bare = text.split(separator).join('');
+	if (bare === text || !FIGURE_TYPED.test(bare)) return null;
+	const refuse = (wrong: string) => ({ bare: null, fault: `${wrong}, ${amountRule(currency)}` });
+
+	const point = text.indexOf('.');
+	if (point !== -1 && text.includes(separator, point)) {
+		return refuse('must have no comma after the point');
+	}
+	const [lead = '', ...groups] = (point === -1 ? text : text.slice(0, point))
+		.trim()
+		.split(separator);
+	if (lead === '') return refuse('must have a digit before the first comma');
+	if (lead.length > rest) {
+		return refuse(
+			`must have at most ${rest} digits before the first comma, and \`${redact(`${lead}${separator}`)}\` has ${lead.length}`
+		);
+	}
+	for (const [at, group] of groups.entries()) {
+		const width = at === groups.length - 1 ? last : rest;
+		if (group.length !== width) {
+			return refuse(
+				`must have ${width} digits after each comma, and \`${redact(`${separator}${group}`)}\` has ${group.length || 'none'}`
+			);
+		}
+	}
+	return { bare, fault: null };
+}
+
+/**
+ * the text a grouped box stands for: its separators taken out where they are grouped the way the
+ * box draws them, which is the text `readPlainAmount` reads. anything else is handed on as typed,
+ * a misplaced comma included, for `readAmount` to refuse.
  */
 export function ungroupAmountEntry(text: string, currency: string): string {
-	const bare = text.split(digitGrouping(currency).separator).join('');
-	return FIGURE_TYPED.test(bare) ? bare : text;
+	return readGrouping(text, currency)?.bare ?? text;
+}
+
+/**
+ * what a box drawing `drawn` stands for once one edit has made it `typed`: `ungroupAmountEntry`,
+ * except where every separator left in `typed` is one the box drew. a digit typed into or deleted
+ * from `1,000` leaves `1,0000`, a box's separators the operator never placed, so they come out and
+ * the figure is grouped again; a comma inside the edit itself, or kept from a `drawn` that was not
+ * the box's grouping, is the operator's and is read by the rule `readAmount` reads.
+ *
+ * the edit is what lies between the longest run the two texts start with and the longest they end
+ * with, which is a keystroke, a deletion or a paste over a selection alike.
+ */
+export function ungroupAmountEdit(drawn: string, typed: string, currency: string): string {
+	const { separator } = digitGrouping(currency);
+	const drewOwn = !drawn.includes(separator) || ungroupAmountEntry(drawn, currency) !== drawn;
+	const shorter = Math.min(drawn.length, typed.length);
+	let start = 0;
+	while (start < shorter && drawn[start] === typed[start]) start += 1;
+	let end = 0;
+	while (end < shorter - start && drawn.at(-1 - end) === typed.at(-1 - end)) end += 1;
+	const edit = typed.slice(start, typed.length - end);
+	if (!drewOwn || edit.includes(separator)) return ungroupAmountEntry(typed, currency);
+	const bare = typed.split(separator).join('');
+	return FIGURE_TYPED.test(bare) ? bare : typed;
 }
 
 /**
