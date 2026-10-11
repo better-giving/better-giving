@@ -78,6 +78,12 @@ const PRESSES = {
 	'follow-up': { send: 'Update the page', skip: 'Just do your best' }
 } as const;
 
+/** what a reader is told while a round's answers are on their way, either press alike. */
+export const ROUND_WAIT = {
+	opening: 'Drafting your page',
+	'follow-up': 'Updating the page'
+} as const satisfies Record<QuestionRound, string>;
+
 /** what a card of the page's usual questions says above them. */
 export const STARTER_NOTE =
 	'The AI isn’t answering right now, so here are the usual questions. Your page is drafted once it’s back.';
@@ -329,8 +335,8 @@ export function QuestionCard({
 		const rows = tiers[question.id] ?? [];
 		const said = refused[question.id] ?? {};
 		const full = rows.length >= TIERS_MAX;
-		const capId = `${base}-cap`;
-		// held at the cap the way the card's own presses are held, so the focus stays on it.
+		// held at the cap the way the card's own presses are held, so the focus stays on it, and
+		// described by the line the group draws under it (`addNote`, whose id is the group's).
 		const add: RowControl & { 'aria-disabled'?: 'true' } = {
 			...rowPress('add', () => {
 				if (full) return;
@@ -338,74 +344,67 @@ export function QuestionCard({
 				const key = `added-${added.current}`;
 				changeRows(question, (was) => [...was, { key, amount: '', text: '' }]);
 			}),
-			...(full ? { 'aria-disabled': 'true', 'aria-describedby': capId } : {})
+			...(full ? { 'aria-disabled': 'true', 'aria-describedby': `${base}-add-note` } : {})
 		};
-		// the group stays the wrapper's first child whether or not the line is drawn, so reaching the
-		// cap does not remount the rows under the press that reached it.
 		return (
-			<div className="adm-stack" key={question.id}>
-				<RepeatingRows
-					id={base}
-					legend={question.prompt}
-					hint={question.hint}
-					rowLabel="tier"
-					columns={['Amount', 'What it does']}
-					add={add}
-					rows={rows.map((row) => {
-						const amountId = tierBox(base, row, 'amount');
-						const textId = tierBox(base, row, 'text');
-						const edit = (patch: Partial<TierRow>) =>
-							changeRows(question, (was) =>
-								was.map((one) => (one.key === row.key ? { ...one, ...patch } : one))
-							);
-						return {
-							id: amountId,
-							key: row.key,
-							remove:
-								rows.length > 1
-									? rowPress(`remove:${row.key}`, () =>
-											changeRows(question, (was) => was.filter((one) => one.key !== row.key))
-										)
-									: undefined,
-							boxes: ({ describedBy, invalid, disabled, names: [amountName, textName] }) => (
-								<>
-									<MoneyField
-										id={amountId}
-										aria-label={amountName}
-										aria-describedby={describedBy}
-										aria-invalid={invalid || undefined}
-										disabled={disabled}
-										affix="$"
-										affixAt="start"
-										currency={FORM_CURRENCY}
-										value={row.amount}
-										onValueChange={(amount) => edit({ amount })}
-										error={said[amountId]}
-									/>
-									<Field
-										id={textId}
-										aria-label={textName}
-										aria-describedby={describedBy}
-										aria-invalid={invalid || undefined}
-										disabled={disabled}
-										placeholder={row.example}
-										maxLength={BUYS_MAX}
-										autoComplete="off"
-										value={row.text}
-										onChange={(event) => edit({ text: event.currentTarget.value })}
-										error={said[textId]}
-									/>
-								</>
-							)
-						};
-					})}
-				/>
-				{full ? (
-					<p className="adm-hint" id={capId}>
-						Up to {TIERS_MAX} tiers
-					</p>
-				) : null}
-			</div>
+			<RepeatingRows
+				key={question.id}
+				id={base}
+				legend={question.prompt}
+				hint={question.hint}
+				rowLabel="tier"
+				columns={['Amount', 'What it does']}
+				add={add}
+				addNote={full ? `Up to ${TIERS_MAX} tiers` : undefined}
+				rows={rows.map((row) => {
+					const amountId = tierBox(base, row, 'amount');
+					const textId = tierBox(base, row, 'text');
+					const edit = (patch: Partial<TierRow>) =>
+						changeRows(question, (was) =>
+							was.map((one) => (one.key === row.key ? { ...one, ...patch } : one))
+						);
+					return {
+						id: amountId,
+						key: row.key,
+						remove:
+							rows.length > 1
+								? rowPress(`remove:${row.key}`, () =>
+										changeRows(question, (was) => was.filter((one) => one.key !== row.key))
+									)
+								: undefined,
+						boxes: ({ describedBy, invalid, disabled, names: [amountName, textName] }) => (
+							<>
+								<MoneyField
+									id={amountId}
+									aria-label={amountName}
+									aria-describedby={describedBy}
+									aria-invalid={invalid || undefined}
+									disabled={disabled}
+									affix="$"
+									affixAt="start"
+									currency={FORM_CURRENCY}
+									value={row.amount}
+									onValueChange={(amount) => edit({ amount })}
+									error={said[amountId]}
+								/>
+								<Field
+									id={textId}
+									aria-label={textName}
+									aria-describedby={describedBy}
+									aria-invalid={invalid || undefined}
+									disabled={disabled}
+									placeholder={row.example}
+									maxLength={BUYS_MAX}
+									autoComplete="off"
+									value={row.text}
+									onChange={(event) => edit({ text: event.currentTarget.value })}
+									error={said[textId]}
+								/>
+							</>
+						)
+					};
+				})}
+			/>
 		);
 	};
 

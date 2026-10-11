@@ -456,8 +456,9 @@ describe('the log', () => {
 		expect(document.activeElement).toBe(skip);
 	});
 
-	it('marks a card’s answers on their way at its pressed button alone, and no reply as being written', async () => {
+	it('marks a card’s answers on their way at its pressed button alone, and says the page is being updated', async () => {
 		const { host, redraw } = mount(props({ messages: [asked('a1')] }));
+		const status = one(host, '.adm-vh [role="status"]');
 		await press(cardPress(host, 'Update the page'));
 
 		redraw(props({ messages: [asked('a1')], isRunning: true }));
@@ -466,7 +467,26 @@ describe('the log', () => {
 		expect(marks).toHaveLength(1);
 		expect(marks[0]?.closest('button')).toBe(cardPress(host, 'Update the page'));
 		expect(host.querySelector('.adm-chat__waiting')).toBeNull();
-		expect(one(host, '.adm-vh [role="status"]').textContent).toBe('');
+		expect(one(host, '.adm-vh [role="status"]')).toBe(status);
+		expect(status.textContent).toBe('Updating the page');
+
+		redraw(props({ messages: [asked('a1'), { id: 'a2', role: 'assistant', text: 'Done.' }] }));
+		expect(status.textContent).toBe('');
+	});
+
+	it.each([
+		['Update the page', false, 'Updating the page'],
+		['Just do your best', false, 'Updating the page'],
+		['Draft my page', true, 'Drafting your page'],
+		['Skip, draft anyway', true, 'Drafting your page']
+	])('says what %s is doing while its answers are on their way', async (words, alone, said) => {
+		const { host, redraw } = mount(props({ messages: [asked('a1')], alone }));
+		await press(cardPress(host, words));
+
+		redraw(props({ messages: [asked('a1')], alone, isRunning: true }));
+
+		expect(one(host, '.adm-vh [role="status"]').textContent).toBe(said);
+		expect(host.querySelector('.adm-chat__waiting')).toBeNull();
 	});
 
 	it('keeps the card up and held under words sent from the box, and says a reply is being written', async () => {

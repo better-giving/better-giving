@@ -172,6 +172,9 @@ import { FieldMessage } from './FieldMessage.jsx';
  * @property {FixedRow | undefined} [fixed] one row the operator can neither edit nor remove, drawn
  *   in front of the rest and submitting nothing at all ({@link FixedRow}).
  * @property {ReactNode} [addLabel]
+ * @property {ReactNode} [addNote] a short line drawn directly under Add, about Add — why a press
+ *   of it is held, say. its id is the group's `id` and `-add-note`, for the caller to name on
+ *   Add's `aria-describedby` while the line says something a press of Add needs.
  * @property {RowControl} add the control that puts an empty row at the end, as the form holding
  *   these rows states it. stated rather than minted here, and it is what makes this group a
  *   component rather than a round trip: adding a row is that form's own business — a list intent
@@ -187,8 +190,8 @@ import { FieldMessage } from './FieldMessage.jsx';
  *   list the closed boxes are showing. a row states its own where one of them is closed alone.
  */
 
-/* zero or more rows, a standing hint, a sentence under any row that has one, and one about the list
-   itself.
+/* zero or more rows, a standing hint, a sentence under any row that has one, one about the list
+   itself, and a line under Add about Add.
 
    the two presses are the caller's and this group only places them: what adding and dropping a row
    do is the form layer's, and the row a Remove drops is named by the control the caller minted for
@@ -218,6 +221,7 @@ export function RepeatingRows({
 	rows = [],
 	fixed,
 	addLabel = 'Add another',
+	addNote,
 	add,
 	placeholder,
 	code,
@@ -384,7 +388,7 @@ export function RepeatingRows({
 						)}
 					</div>
 				))}
-				<div ref={addRow}>
+				<div className="adm-rows__add" ref={addRow}>
 					<Button
 						size="sm"
 						mark="plus"
@@ -398,6 +402,11 @@ export function RepeatingRows({
 					>
 						{addLabel}
 					</Button>
+					{addNote ? (
+						<p className="adm-hint" id={`${id}-add-note`}>
+							{addNote}
+						</p>
+					) : null}
 				</div>
 			</div>
 			{/* the one live region on the group, for ./FieldMessage.jsx's reason: a refusal is what a

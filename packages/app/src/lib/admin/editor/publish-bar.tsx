@@ -2,7 +2,7 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { Menu, type MenuItem } from '@better-giving/operator/components/controls/Menu';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { type Ref, useId } from 'react';
+import { type Ref, useId, useState } from 'react';
 import { RouterLink } from '../router-link';
 import { useAiEntry, useEditing, useUndrafted } from './editor-shell';
 import { InPlaceName } from './in-place-name';
@@ -18,10 +18,11 @@ import { useMiddle, useWide } from './wide';
 //
 // **Edit turns the editor's Edit on** (`useEditing` in ./editor-shell.tsx): the preview's blocks
 // are drawn as clickable, each opening its own sheet, and the press reads Done, which turns it off
-// again. it is one press whose words change, so the focus stays on it through both. while it is
-// on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose block
-// list is the keyboard's way to a block; it closes the AI panel as it does, since the two never
-// stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
+// again. it is one press whose words change, so the focus stays on it through both, and
+// `aria-pressed` carries which, since a focused button renamed is not reliably read again. while
+// it is on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose
+// block list is the keyboard's way to a block; it closes the AI panel as it does, since the two
+// never stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
 // ./editor-shell.tsx): `aria-expanded` says which, and below the wide breakpoint (./wide.ts), where
 // the panel is a sheet, `aria-haspopup` says it is a dialog. it is busy from its press until the
 // panel is up, held with `aria-disabled` so the focus stays on it. a turn that landed while the
@@ -32,6 +33,13 @@ import { useMiddle, useWide } from './wide';
 // republish is the latest thing that happened. the Donation page is live from the start, so every
 // Publish of it is a republish; a campaign's first Publish goes through ./confirms.tsx's
 // `FirstPublishConfirm` first and is the caller's to route there.
+//
+// **what the bar's presses set going is said to a reader in a region of its own**, drawn to a
+// reader only and on the page, empty, from the first render, so each change to it is announced: a
+// turn landing while the panel is closed, which draws the mark and nothing a reader is told, the
+// AI press's wait for its panel, and Edit turned on, said once as what to do next. each is said as
+// its own state turns on and cleared as that state turns off, so the words follow the change that
+// earned them and never a count of renders (`barSaying`).
 //
 // **a refused press is reported on the bar's own row under Publish**, in a region that is on the
 // page before it has anything to say (`.adm-publishbar__report` holds no room while empty), and the
@@ -80,6 +88,26 @@ const STATE_WORDS = {
 } as const;
 
 const DONATION_PAGE = 'Donation page';
+
+/** what the bar's own region says for each state it announces, as that state turns on. */
+const SAID = {
+	unread: 'New reply',
+	opening: 'Opening AI',
+	editing: 'Click a block to edit it'
+} as const;
+
+type Said = keyof typeof SAID;
+type Saying = Readonly<Record<Said, boolean>>;
+
+/**
+ * what the region says after the states move from `was` to `now`: the state that has just turned
+ * on, or nothing once the one it says has turned off, or what it said before.
+ */
+function barSaying(was: Saying, now: Saying, said: Said | null): Said | null {
+	const turnedOn = (Object.keys(SAID) as Said[]).find((key) => now[key] && !was[key]);
+	if (turnedOn !== undefined) return turnedOn;
+	return said !== null && !now[said] ? null : said;
+}
 
 /** which press a refusal answers. */
 export type BarPress = 'publish' | 'undo' | 'name';
@@ -169,6 +197,13 @@ export function PublishBar({
 	const ai = useAiEntry();
 	const undrafted = useUndrafted();
 	const editing = useEditing();
+	const now: Saying = { unread: ai.unread, opening: ai.opening, editing: editing.on };
+	const [seen, setSeen] = useState(now);
+	const [said, setSaid] = useState<Said | null>(null);
+	if (seen.unread !== now.unread || seen.opening !== now.opening || seen.editing !== now.editing) {
+		setSeen(now);
+		setSaid(barSaying(seen, now, said));
+	}
 	const more: MenuItem[] = [];
 	if (live && livePath) more.push({ label: `Open ${livePath}`, href: livePath, newTab: true });
 	if (reset?.hasEdits) more.push({ label: 'Reset to default', onSelect: reset.onReset });
@@ -181,6 +216,7 @@ export function PublishBar({
 				<Button
 					type="button"
 					mark={editing.on ? 'check' : 'pencil'}
+					aria-pressed={editing.on}
 					onClick={() => editing.turn(!editing.on)}
 				>
 					{editing.on ? 'Done' : 'Edit'}
@@ -302,6 +338,9 @@ export function PublishBar({
 						</StatusWord>
 					</span>
 				) : null}
+			</p>
+			<p className="adm-vh" role="status">
+				{said === null ? null : SAID[said]}
 			</p>
 		</header>
 	);
