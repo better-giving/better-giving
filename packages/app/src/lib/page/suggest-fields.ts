@@ -4,21 +4,28 @@
 // — each with the bound ./catalog.ts holds its words to and the place in the page as the model reads
 // it (`draftFromPage` in ./ai-catalog.ts) its words go. a box holding an amount, a photo's id or a
 // picked name is no text box, and a block that draws only what it reads at render, such as the
-// share buttons or the donation box, has none.
+// share buttons or the donation box, has none. a photo's description is no box here either: the
+// model is never shown the photo, so its words would describe a picture nobody described, and a
+// screen-reader donor hears them as fact.
 //
-// a box is resolved against the draft as it stands: a block by its id, a row of a list by its index
-// among the rows the draft holds, and a photo's description only where a photo is placed, since the
-// sheet draws none before.
+// a box is resolved against the draft as it stands: a block by its id, and a row of a list by its
+// index among the rows the draft holds. `block` sent as `PAGE_BLOCK` names the page's own boxes
+// for `name` and `share_message` alone; any other field of it is a block's whose id is `page`.
+//
+// the box beside the one asked for is read from the open sheet where the caller sends it, since
+// the sheet may hold what the draft does not yet: a tier's amount for what that tier buys, an
+// ungrouped figure (`100`, `100.50`) refused by name where it does not read as one above zero, and
+// a question's words for its answer. sent for any other box, it is ignored; not sent, the draft's
+// is told.
 //
 // a plain box's words are one line. a rich-text box's — a story's body, an answer — are paragraphs a
 // blank line apart, and `richTextOf` is the document they fill that box with.
 //
 // pure and not under `$lib/server/**`: the editor fills a rich-text box with `richTextOf`.
 import { formatMinorBrief } from '../donations/money';
-import { FORM_CURRENCY } from '../forms/amounts';
+import { type AmountRead, FORM_CURRENCY, readAmount } from '../forms/amounts';
 import { type RichTextDocument, TEXT_MAX } from '../rich-text/document';
 import {
-	ALT_MAX,
 	type Block,
 	BUYS_MAX,
 	HEADING_MAX,
@@ -53,11 +60,21 @@ export type SuggestBox = {
 
 export type ResolvedBox = { ok: true; box: SuggestBox } | { ok: false; error: string };
 
-/** the box `field` of `block` in `page`, a page of `type`, or why there is no such text box. */
-export function suggestBox(page: Page, type: PageType, block: string, field: string): ResolvedBox {
-	if (block === PAGE_BLOCK) return pageBox(type, field);
+/**
+ * the box `field` of `block` in `page`, a page of `type`, told the model with `beside` where it
+ * reads one, or why there is no such text box.
+ */
+export function suggestBox(
+	page: Page,
+	type: PageType,
+	block: string,
+	field: string,
+	beside?: string
+): ResolvedBox {
+	if (block === PAGE_BLOCK && Object.hasOwn(PAGE_BOXES, field)) return pageBox(type, field);
 	const index = page.blocks.findIndex(({ id }) => id === block);
 	const found = page.blocks[index];
+	if (found === undefined && block === PAGE_BLOCK) return pageBox(type, field);
 	if (found === undefined) {
 		return {
 			ok: false,
@@ -67,16 +84,10 @@ export function suggestBox(page: Page, type: PageType, block: string, field: str
 	const named = `block "${block}" (${found.type})`;
 	const boxes = boxNames(found);
 	if (boxes.length === 0) {
-		return {
-			ok: false,
-			error:
-				found.type === 'hero' || found.type === 'image'
-					? `${named} holds no photo yet, so it has no description box`
-					: `${named} has no text box`
-		};
+		return { ok: false, error: `field "${field}" is no text box: ${named} has none` };
 	}
-	const box = blockBox(found, index, field);
-	if (box !== null) return { ok: true, box };
+	const resolved = blockBox(found, index, field, beside);
+	if (resolved !== null) return resolved;
 	return {
 		ok: false,
 		error: `field "${field}" is no text box of ${named}; its text boxes are ${listed(boxes)}`
@@ -142,15 +153,17 @@ function boxNames(block: Block): string[] {
 			return block.tiers.map((_, at) => `tier_buys[${at}]`);
 		case 'faq':
 			return block.items.flatMap((_, at) => [`question[${at}]`, `answer[${at}]`]);
-		case 'hero':
-		case 'image':
-			return block.imageId === null ? [] : ['alt'];
 		default:
 			return [];
 	}
 }
 
-function blockBox(block: Block, index: number, field: string): SuggestBox | null {
+function blockBox(
+	block: Block,
+	index: number,
+	field: string,
+	beside: string | undefined
+): ResolvedBox | null {
 	const at = `/blocks/${index}/props`;
 	const of = `block ${index + 1} (id "${block.id}")`;
 	const row = /^([a-z_]+)\[(0|[1-9]\d{0,2})\]$/.exec(field);
@@ -176,10 +189,17 @@ function blockBox(block: Block, index: number, field: string): SuggestBox | null
 		case 'impact-tiers': {
 			const tier = block.tiers[n];
 			if (list !== 'tier_buys' || tier === undefined) return null;
-			const amount = formatMinorBrief(tier.amountMinor, FORM_CURRENCY);
+			const amount =
+				beside === undefined ? { minor: tier.amountMinor, problem: null } : tierAmount(beside);
+			if (amount.problem !== null) {
+				return {
+					ok: false,
+					error: `beside "${beside}" ${amount.problem}: send tier ${n + 1}’s amount as the sheet holds it, ungrouped`
+				};
+			}
 			return plain(
 				BUYS_MAX,
-				`what a gift of ${amount} buys, tier ${n + 1} of ${of}, as a short phrase`,
+				`what a gift of ${formatMinorBrief(amount.minor, FORM_CURRENCY)} buys, tier ${n + 1} of ${of}, as a short phrase`,
 				`${at}/tiers/${n}/buys`
 			);
 		}
@@ -194,31 +214,29 @@ function blockBox(block: Block, index: number, field: string): SuggestBox | null
 				);
 			}
 			if (list === 'answer') {
+				const question = (beside ?? item.question).trim();
 				return rich(
-					`the answer to question ${n + 1} of ${of}, "${item.question}"`,
+					`the answer to question ${n + 1} of ${of}, ${question === '' ? 'whose question is not written yet' : `"${question}"`}`,
 					`${at}/items/${n}/answer`
 				);
 			}
 			return null;
 		}
-		case 'hero':
-		case 'image':
-			return field === 'alt' && block.imageId !== null
-				? plain(
-						ALT_MAX,
-						`the description of the photo in ${of}, for a reader who cannot see it`,
-						`${at}/alt`
-					)
-				: null;
 		default:
 			return null;
 	}
 }
 
-function plain(max: number, what: string, pointer: string): SuggestBox {
-	return { kind: 'plain', max, what, target: { in: 'page', pointer } };
+/** a tier's amount as the open sheet holds it; a tier's amount is above zero (./catalog.ts). */
+function tierAmount(text: string): AmountRead {
+	const read = readAmount(text, FORM_CURRENCY);
+	return read.minor === 0 ? { minor: null, problem: 'must be above zero' } : read;
 }
 
-function rich(what: string, pointer: string): SuggestBox {
-	return { kind: 'rich', max: TEXT_MAX, what, target: { in: 'page', pointer } };
+function plain(max: number, what: string, pointer: string): ResolvedBox {
+	return { ok: true, box: { kind: 'plain', max, what, target: { in: 'page', pointer } } };
+}
+
+function rich(what: string, pointer: string): ResolvedBox {
+	return { ok: true, box: { kind: 'rich', max: TEXT_MAX, what, target: { in: 'page', pointer } } };
 }

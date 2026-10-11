@@ -11,13 +11,19 @@ import type { Route } from './+types/_app.admin.pages.$pageId.suggest';
 // $lib/server/pages/suggest.ts's. no bucket bounds how often one operator asks, as none bounds the
 // chat beside it (./_app.admin.pages.$pageId.chat.ts).
 //
-// a POST carries three boxes, each required:
-// - `block`: the block's id in the page's draft, or `page` for the page's own boxes.
+// a POST carries three boxes, each required, and a fourth that may be left out:
+// - `block`: the block's id in the page's draft, or `page` for the page's own boxes — `page` with
+//   any field but those two names a block whose id is `page`.
 // - `field`: the box's name as its form posts it — `heading`, `lede`, `body`, `tier_buys[0]`,
-//   `question[1]`, `answer[1]` or `alt` of a block, `name` or `share_message` of the page. which
-//   block takes which is $lib/page/suggest-fields.ts's.
+//   `question[1]` or `answer[1]` of a block, `name` or `share_message` of the page. which block
+//   takes which is $lib/page/suggest-fields.ts's, and a photo's description is none.
 // - `current`: the box's words now, `""` for an empty box; a rich-text box's as paragraphs a blank
-//   line apart.
+//   line apart. at most `TEXT_MAX` characters, each blank line between paragraphs counting as one,
+//   as the box itself counts a paragraph break, so a box at its own bound always posts.
+// - `beside`, optional: the box beside it as the open sheet holds it, which the words are written
+//   for in place of the draft's — for `tier_buys[n]` the tier's amount as an ungrouped dollar
+//   figure (`100`, `100.50`), for `answer[n]` the question's words; at most `TEXT_MAX` characters,
+//   and ignored for any other field.
 //
 // it answers 200 `{ ok: true, text }`: a plain box's words on one line, and a rich-text box's as
 // paragraphs a blank line apart, which `richTextOf` in $lib/page/suggest-fields.ts makes its
@@ -25,8 +31,9 @@ import type { Route } from './+types/_app.admin.pages.$pageId.suggest';
 // the operator is shown: `unanswered` on the 503 where no model answered, `refused` on the 422
 // where the words were refused twice, and `failed` on the 500 a suggestion that threw is caught into —
 // caught, because a fetcher's thrown error lands on the editor's error boundary and takes the
-// editor with it. a request naming no such page is a 404, and a box missing, or a block or field
-// that is no text box of the draft, a 400; each `{ error }` names the value.
+// editor with it. a request naming no such page is a 404; a box missing or over its bound, a block
+// or field that is no text box of the draft, or a `beside` amount that does not read, a 400; each
+// `{ error }` names the value.
 
 const input = z.object({
 	block: z
@@ -37,7 +44,13 @@ const input = z.object({
 		.min(1, { error: 'field is blank: send the box’s name as its form posts it' }),
 	current: z
 		.string({ error: 'current is required: the box’s words now, "" for an empty box' })
-		.max(TEXT_MAX, { error: `current holds at most ${TEXT_MAX} characters` })
+		.refine((words) => words.replaceAll('\n\n', '\n').length <= TEXT_MAX, {
+			error: `current holds at most ${TEXT_MAX} characters, each blank line between paragraphs counting as one`
+		}),
+	beside: z
+		.string()
+		.max(TEXT_MAX, { error: `beside holds at most ${TEXT_MAX} characters` })
+		.optional()
 });
 
 export async function action({ context, params, request }: Route.ActionArgs) {
@@ -45,7 +58,8 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 	const parsed = input.safeParse({
 		block: body.get('block') ?? undefined,
 		field: body.get('field') ?? undefined,
-		current: body.get('current') ?? undefined
+		current: body.get('current') ?? undefined,
+		beside: body.get('beside') ?? undefined
 	});
 	if (!parsed.success) {
 		return data({ error: parsed.error.issues[0]?.message ?? 'the request is malformed' }, 400);
