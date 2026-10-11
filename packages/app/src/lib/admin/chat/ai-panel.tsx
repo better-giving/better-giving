@@ -87,8 +87,8 @@ export interface AiPanelProps {
 	readonly onDismiss: () => void;
 	/**
 	 * the panel is the whole editor, before the page's first draft: a column at every width, the
-	 * page's main content, and never a sheet. `open` is ignored while it is, and the log, having no
-	 * page to read, says the opening questions are being got ready.
+	 * page's main content, and never a sheet. `open` is ignored while it is, and the log words a
+	 * card's presses as drafting the page.
 	 */
 	readonly alone?: boolean | undefined;
 	readonly suggestions: readonly string[];

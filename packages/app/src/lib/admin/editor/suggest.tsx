@@ -10,7 +10,7 @@ import {
 	type RichTextHandle
 } from '../rich-text/rich-text-editor';
 
-// a text box the AI can write, in a block's sheet and in a campaign's Name sheet: every box
+// a text box the AI can write, in a block's sheet and in a campaign's Name sheet, each a box
 // $lib/page/suggest-fields.ts names. the press is Write with AI, drawn as its mark and the word
 // Write at the end of the box's label row (`labelAside` on the field) — the name starts with the
 // word, so a reader saying what they see says its name — and it asks the page's suggest route
