@@ -4,7 +4,9 @@ import { createRoutesStub } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { BLOCK_FORMS, type EditorBlock } from '$lib/page/block-edit';
-import { BlockEditSheet, useLayoutPick } from './block-edit';
+import { FAQ_MAX, TIERS_MAX } from '$lib/page/catalog';
+import { BlockEditSheet } from './block-edit';
+import { useSettingsPresses } from './settings-presses';
 import { SettingsSheet } from './settings-sheet';
 
 // a block's sheet and the layout pictures as the editor routes mount them, each press posted
@@ -192,16 +194,16 @@ describe('a block’s background', () => {
 	});
 });
 
-describe('the tiers', () => {
-	/** the amount box drawn in tier `at`'s row. */
-	function amountBox(root: Element, at: number): HTMLInputElement {
-		const found = root
-			.querySelectorAll('dialog fieldset')
-			[at]?.querySelector<HTMLInputElement>('.adm-affixed__input');
-		if (found == null) throw new Error(`no amount box in tier ${at + 1}`);
-		return found;
-	}
+/** the amount box drawn in tier `at`'s row. */
+function amountBox(root: Element, at: number): HTMLInputElement {
+	const found = root
+		.querySelectorAll('dialog fieldset')
+		[at]?.querySelector<HTMLInputElement>('.adm-affixed__input');
+	if (found == null) throw new Error(`no amount box in tier ${at + 1}`);
+	return found;
+}
 
+describe('the tiers', () => {
 	it('are a row per tier, each named by its place', () => {
 		const { root } = editor(sheet(tiers), '');
 		expect(
@@ -244,10 +246,123 @@ describe('the tiers', () => {
 	});
 });
 
+describe('a list’s rows', () => {
+	const empty = (kind: 'tiers' | 'faq'): EditorBlock =>
+		kind === 'tiers'
+			? { ...tiers, text: { kind: 'impact-tiers', currency: 'USD', tiers: [] } }
+			: {
+					...tiers,
+					id: 'b3',
+					type: 'faq',
+					label: 'Questions',
+					variant: 'accordion',
+					variants: [{ value: 'accordion', label: 'Folded' }],
+					text: { kind: 'faq', items: [] }
+				};
+	const full = (kind: 'tiers' | 'faq', count: number): EditorBlock => {
+		const block = empty(kind);
+		if (block.text?.kind === 'impact-tiers')
+			return {
+				...block,
+				text: {
+					...block.text,
+					tiers: Array.from({ length: count }, (_, at) => ({
+						amount: String(at + 1),
+						buys: 'a coat'
+					}))
+				}
+			};
+		return {
+			...block,
+			text: {
+				kind: 'faq',
+				items: Array.from({ length: count }, (_, at) => ({
+					question: `Question ${at + 1}?`,
+					answer: { type: 'doc', content: [{ type: 'paragraph' }] }
+				}))
+			}
+		};
+	};
+	const rows = (root: Element) => root.querySelectorAll('dialog fieldset').length;
+	const typeInto = (box: HTMLInputElement | null, text: string) =>
+		act(() => {
+			if (box === null) throw new Error('no box');
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
+			box.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+	const named = (root: Element, name: string) =>
+		[...root.querySelectorAll<HTMLButtonElement>('dialog button')].find(
+			(one) => (one.getAttribute('aria-label') ?? one.textContent) === name
+		) ?? null;
+
+	it('offer an empty tiers block a first row, and post it', async () => {
+		const { root, posted } = editor(sheet(empty('tiers')), '');
+		expect(rows(root)).toBe(1);
+		expect(named(root, 'Remove tier 1')).toBeNull();
+
+		typeInto(amountBox(root, 0), '25');
+		typeInto(
+			root.querySelector<HTMLInputElement>('input[name="tier_buys[0]"]'),
+			'a pair of gloves'
+		);
+		await press(done(root));
+
+		expect(posted[0]?.getAll('tier_amount[0]')).toEqual(['25']);
+		expect(posted[0]?.getAll('tier_buys[0]')).toEqual(['a pair of gloves']);
+	});
+
+	it('offer an empty questions block a first row, and post it', async () => {
+		const { root, posted } = editor(sheet(empty('faq')), '');
+		expect(rows(root)).toBe(1);
+
+		typeInto(
+			root.querySelector<HTMLInputElement>('input[name="question[0]"]'),
+			'Where do coats go?'
+		);
+		await press(done(root));
+
+		expect(posted[0]?.get(WHICH_FORM)).toBe(BLOCK_FORMS.faq);
+		expect(posted[0]?.getAll('question[0]')).toEqual(['Where do coats go?']);
+		expect(posted[0]?.getAll('answer[0]')).toHaveLength(1);
+	});
+
+	it('add a row with the caret in it, and drop one with the caret on the row above', async () => {
+		const { root, posted } = editor(sheet(tiers), '');
+		await press(named(root, 'Add a tier'));
+		expect(rows(root)).toBe(3);
+		expect(document.activeElement).toBe(amountBox(root, 2));
+
+		await press(named(root, 'Remove tier 2'));
+		expect(rows(root)).toBe(2);
+		expect(document.activeElement).toBe(amountBox(root, 0));
+		await press(done(root));
+		expect(posted[0]?.getAll('tier_buys[0]')).toEqual(['one winter coat']);
+		expect(posted[0]?.getAll('tier_buys[1]')).toEqual(['']);
+	});
+
+	it.each([
+		['tiers', TIERS_MAX, 'Add a tier'],
+		['faq', FAQ_MAX, 'Add a question']
+	] as const)('offer a full %s block no more rows', (kind, max, add) => {
+		const { root } = editor(sheet(full(kind, max)), '');
+		expect(rows(root)).toBe(max);
+		expect(named(root, add)).toBeNull();
+		const short = editor(sheet(full(kind, max - 1)), '').root;
+		expect(named(short, add)).not.toBeNull();
+	});
+});
+
 describe('the layout pictures', () => {
 	/** the Settings sheet as an editor route mounts it: the pick held by the editor, the sheet opened and closed. */
 	function Layout() {
-		const pick = useLayoutPick('box-right', 3);
+		const pick = useSettingsPresses({
+			version: 3,
+			layout: 'box-right',
+			look: { shade: 'light', corners: 'soft', palette: 'plain' },
+			share: { message: '', channels: [] },
+			addable: [],
+			onAdded: () => {}
+		});
 		const [open, setOpen] = useState(true);
 		return open ? (
 			<SettingsSheet
@@ -256,7 +371,9 @@ describe('the layout pictures', () => {
 					{ value: 'box-right', label: 'Box beside' },
 					{ value: 'banner', label: 'Banner' }
 				]}
-				{...pick.sheet}
+				layout={pick.sheet.layout}
+				onLayout={pick.sheet.onLayout}
+				layoutRefusal={pick.sheet.layoutRefusal}
 			/>
 		) : (
 			<button

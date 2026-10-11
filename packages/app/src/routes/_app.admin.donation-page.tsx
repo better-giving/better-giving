@@ -1,6 +1,6 @@
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { useCallback, useState } from 'react';
-import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
+import { BlockEditSheet, isDonationBox } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { ShareMessageSettingsSheet } from '$lib/admin/editor/page-settings';
@@ -212,9 +212,9 @@ function DraftEditor({
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setDonationSettings(true) : setBlockId(id);
-	const layoutPick = useLayoutPick(loaderData.layout, version);
 	const settingsPresses = useSettingsPresses({
 		version,
+		layout: loaderData.layout,
 		look: loaderData.look,
 		share: loaderData.share,
 		addable: loaderData.addable,
@@ -231,7 +231,6 @@ function DraftEditor({
 					livePath="/donate"
 					{...presses.bar}
 					onSettings={() => {
-						layoutPick.startClean();
 						settingsPresses.startClean();
 						setSettings(true);
 					}}
@@ -252,7 +251,6 @@ function DraftEditor({
 					blocks={loaderData.blocks}
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
-					{...layoutPick.sheet}
 					lookPictures={loaderData.lookPictures}
 					shareChannels={loaderData.shareChannels}
 					{...settingsPresses.sheet}

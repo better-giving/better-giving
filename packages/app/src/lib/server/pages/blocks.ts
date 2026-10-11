@@ -16,6 +16,7 @@ import {
 	BLOCK_STORY_INPUT,
 	BLOCK_TITLE_INPUT,
 	BLOCK_VARIANT_INPUT,
+	BOXES,
 	type BlockFormId,
 	editorBlocks,
 	editorLook,
@@ -28,6 +29,7 @@ import {
 	PAGE_SHADE_INPUT,
 	PAGE_SHARE_CHANNELS_INPUT,
 	PAGE_SHARE_MESSAGE_INPUT,
+	rowBox,
 	shareChannelPictures
 } from '../../page/block-edit';
 import {
@@ -160,8 +162,9 @@ export async function saveBlockForm(
 			const { block_id } = submission.value;
 			return saveWords(db, target, body, gone, submission, block_id, ['story'], async () => {
 				const doc = postedDocument(submission.value.body);
-				if (!doc.ok) return { ok: false, refusal: { fieldErrors: { body: [doc.refusal] } } };
-				return { ok: true, read: { words: { body: doc.json }, boxOf: () => 'body' } };
+				if (!doc.ok)
+					return { ok: false, refusal: { fieldErrors: { [BOXES.body]: [doc.refusal] } } };
+				return { ok: true, read: { words: { body: doc.json }, boxOf: () => BOXES.body } };
 			});
 		}
 		case BLOCK_FORMS.impactTiers: {
@@ -192,7 +195,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, BLOCK_VARIANT);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { block_id, variant } = submission.value;
-			return edit(submission, under('variant'), BLOCK_SAVED, (draft) => {
+			return edit(submission, under(BOXES.variant), BLOCK_SAVED, (draft) => {
 				const found = draft.blocks.find((block) => block.id === block_id);
 				if (found === undefined) return noSuchBlock(draft, block_id);
 				if (found.type === 'donation-box') {
@@ -208,7 +211,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, PAGE_LAYOUT);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { layout } = submission.value;
-			return edit(submission, under('layout'), BLOCK_SAVED, (draft) => ({
+			return edit(submission, under(BOXES.layout), BLOCK_SAVED, (draft) => ({
 				ok: true,
 				draft: { ...draft, layout }
 			}));
@@ -217,7 +220,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, PAGE_SHADE);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { shade } = submission.value;
-			return edit(submission, under('shade'), { saved: form }, (draft) => ({
+			return edit(submission, under(BOXES.shade), { saved: form }, (draft) => ({
 				ok: true,
 				draft: { ...draft, look: { shade, corner: editorLook(draft).corners } }
 			}));
@@ -226,7 +229,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, PAGE_CORNERS);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { corners } = submission.value;
-			return edit(submission, under('corners', LOOK_KEYS.corner), { saved: form }, (draft) => ({
+			return edit(submission, under(BOXES.corners, LOOK_KEYS.corner), { saved: form }, (draft) => ({
 				ok: true,
 				draft: { ...draft, look: { shade: editorLook(draft).shade, corner: corners } }
 			}));
@@ -235,7 +238,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, PAGE_PALETTE);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { palette } = submission.value;
-			return edit(submission, under('palette'), { saved: form }, (draft) => ({
+			return edit(submission, under(BOXES.palette), { saved: form }, (draft) => ({
 				ok: true,
 				draft: { ...draft, palette }
 			}));
@@ -244,21 +247,29 @@ export async function saveBlockForm(
 			const submission = parseForm(body, PAGE_SHARE_MESSAGE);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const said = submission.value.share_message?.trim() ?? '';
-			return edit(submission, under('share_message', 'shareMessage'), { saved: form }, (draft) => ({
-				ok: true,
-				draft: { ...draft, shareMessage: said === '' ? undefined : said }
-			}));
+			return edit(
+				submission,
+				under(BOXES.shareMessage, 'shareMessage'),
+				{ saved: form },
+				(draft) => ({
+					ok: true,
+					draft: { ...draft, shareMessage: said === '' ? undefined : said }
+				})
+			);
 		}
 		case BLOCK_FORMS.shareChannels: {
 			const submission = parseForm(body, PAGE_SHARE_CHANNELS);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const channels = submission.value.share_channels;
 			if (channels.length === 0) {
-				return invalid(400, submission.reject({ fieldErrors: { share_channels: [NO_CHANNEL] } }));
+				return invalid(
+					400,
+					submission.reject({ fieldErrors: { [BOXES.shareChannels]: [NO_CHANNEL] } })
+				);
 			}
 			return edit(
 				submission,
-				under('share_channels', 'shareChannels'),
+				under(BOXES.shareChannels, 'shareChannels'),
 				{ saved: form },
 				(draft) => ({ ok: true, draft: { ...draft, shareChannels: channels } })
 			);
@@ -270,13 +281,13 @@ export async function saveBlockForm(
 			let added = '';
 			return edit(
 				submission,
-				under('block_type', 'type'),
+				under(BOXES.blockType, 'type'),
 				() => ({ saved: form, blockId: added }),
 				(draft, pageType) => {
 					const type = addableTypes(pageType).find((each) => each === block_type);
 					if (type === undefined) {
 						const sentence = `${JSON.stringify(block_type)} is no block ${PAGE_NAMES[pageType]} can add; it adds ${listed(addableTypes(pageType), 'or')}`;
-						return { ok: false, refusal: { fieldErrors: { block_type: [sentence] } } };
+						return { ok: false, refusal: { fieldErrors: { [BOXES.blockType]: [sentence] } } };
 					}
 					added = freeBlockId(draft, type);
 					const block = startingBlock(type, added);
@@ -323,7 +334,7 @@ export async function saveBlockForm(
 			const submission = parseForm(body, BLOCK_BACKGROUND);
 			if (!submission.ok) return invalid(400, submission.reject());
 			const { block_id, background } = submission.value;
-			return edit(submission, under('background'), { saved: form }, (draft) => {
+			return edit(submission, under(BOXES.background), { saved: form }, (draft) => {
 				const found = draft.blocks.find((block) => block.id === block_id);
 				if (found === undefined) return noSuchBlock(draft, block_id);
 				const blocks = draft.blocks.map((block) =>
@@ -375,7 +386,7 @@ async function readPhoto(db: Db, imageId: string, alt: string): Promise<ReadWord
 	const read = {
 		words: { imageId, alt: described === '' ? null : described },
 		// the id is the upload's, posted from no box the operator types in
-		boxOf: ([key]: readonly PropertyKey[]) => (key === 'alt' ? 'alt' : null)
+		boxOf: ([key]: readonly PropertyKey[]) => (key === 'alt' ? BOXES.alt : null)
 	};
 	if (!BLOCK_DATA.hero.imageId.safeParse(imageId).success) return { ok: true, read };
 	if ((await firstMissingImage(db, [imageId])) !== null) {
@@ -413,7 +424,7 @@ function readQuestions(questions: readonly string[], answers: readonly string[])
 		const question = (questions[at] ?? '').trim();
 		const answer = postedDocument(answers[at] ?? '');
 		if (!answer.ok) {
-			fieldErrors[`answer[${at}]`] = [answer.refusal];
+			fieldErrors[rowBox(BOXES.answer, at)] = [answer.refusal];
 			continue;
 		}
 		const written = parseRichText(answer.json);
@@ -425,7 +436,7 @@ function readQuestions(questions: readonly string[], answers: readonly string[])
 	const boxOf = ([, index, key]: readonly PropertyKey[]) => {
 		const at = typeof index === 'number' ? kept[index] : undefined;
 		if (at === undefined) return null;
-		return key === 'question' ? `question[${at}]` : `answer[${at}]`;
+		return rowBox(key === 'question' ? BOXES.question : BOXES.answer, at);
 	};
 	return { ok: true, read: { words: { items }, boxOf } };
 }
@@ -449,14 +460,14 @@ async function readTiers(
 		const bought = (buys[at] ?? '').trim();
 		if (amount === '' && bought === '') continue;
 		const figure = readAmount(amount, currency);
-		if (figure.problem !== null) fieldErrors[`tier_amount[${at}]`] = [figure.problem];
+		if (figure.problem !== null) fieldErrors[rowBox(BOXES.tierAmount, at)] = [figure.problem];
 		kept.push(at);
 		tiers.push({ amountMinor: figure.minor, buys: bought });
 	}
 	const boxOf = ([, index, key]: readonly PropertyKey[]) => {
 		const at = typeof index === 'number' ? kept[index] : undefined;
 		if (at === undefined) return null;
-		return key === 'buys' ? `tier_buys[${at}]` : `tier_amount[${at}]`;
+		return rowBox(key === 'buys' ? BOXES.tierBuys : BOXES.tierAmount, at);
 	};
 	const read = { words: { tiers }, boxOf };
 	if (Object.keys(fieldErrors).length === 0) return { ok: true, read };

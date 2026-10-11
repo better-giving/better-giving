@@ -181,20 +181,3 @@ export async function resizeImage(file: File): Promise<Resized> {
 		bitmap.close();
 	}
 }
-
-/** a resized photo's size and weight as the chat names it: `1600 × 1200, 480 KB`. */
-export function describeResized({
-	width,
-	height,
-	bytes
-}: {
-	width: number;
-	height: number;
-	bytes: number;
-}) {
-	const weight =
-		bytes < 1_000_000
-			? `${Math.max(1, Math.round(bytes / 1000))} KB`
-			: `${(bytes / 1_000_000).toFixed(1)} MB`;
-	return `${width} × ${height}, ${weight}`;
-}

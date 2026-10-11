@@ -68,38 +68,69 @@ export type BlockFormId = (typeof BLOCK_FORMS)[keyof typeof BLOCK_FORMS];
 /** every form above, for an editor's `submittedForm`. */
 export const BLOCK_FORM_IDS = Object.values(BLOCK_FORMS) as BlockFormId[];
 
+/**
+ * the name each form below posts a box under, and the key its schema reads it by: the sheets that
+ * post the boxes and the save that parses them both spell a box from here, so a box renamed here is
+ * renamed on both sides. a row's box adds its place — `tier_amount[1]` (`rowBox`).
+ */
+export const BOXES = {
+	blockId: 'block_id',
+	blockType: 'block_type',
+	direction: 'direction',
+	background: 'background',
+	heading: 'heading',
+	lede: 'lede',
+	body: 'body',
+	tierAmount: 'tier_amount',
+	tierBuys: 'tier_buys',
+	question: 'question',
+	answer: 'answer',
+	imageId: 'image_id',
+	alt: 'alt',
+	variant: 'variant',
+	layout: 'layout',
+	shade: 'shade',
+	corners: 'corners',
+	palette: 'palette',
+	shareMessage: 'share_message',
+	shareChannels: 'share_channels'
+} as const;
+
+/** a row's box by its place, as a list of rows posts it — `tier_amount[1]`. */
+export const rowBox = (box: string, at: number) => `${box}[${at}]`;
+
 /** a block added to the page, by its type; `addableTypes` says which the page takes. */
-export const BLOCK_ADD_INPUT = z.object({ block_type: z.string('required') });
+export const BLOCK_ADD_INPUT = z.object({ [BOXES.blockType]: z.string('required') });
 
 /** a block taken off the page; the donation box is on every page and is refused. */
-export const BLOCK_REMOVE_INPUT = z.object({ block_id: z.string('required') });
+export const BLOCK_REMOVE_INPUT = z.object({ [BOXES.blockId]: z.string('required') });
 
 /** the two ways a block moves, one step at a time. */
 export const MOVES = ['up', 'down'] as const;
 
 /** a block moved one step up or down the page. */
 export const BLOCK_MOVE_INPUT = z.object({
-	block_id: z.string('required'),
-	direction: oneOf(MOVES, 'a direction', 'a block moves')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.direction]: oneOf(MOVES, 'a direction', 'a block moves')
 });
 
 /** a block's background picture, which applies on pick. */
 export const BLOCK_BACKGROUND_INPUT = z.object({
-	block_id: z.string('required'),
-	background: z.string('required')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.background]: z.string('required')
 });
 
 /** a blank heading draws the page's own name, and a blank lede is none. */
 export const BLOCK_TITLE_INPUT = z.object({
-	block_id: z.string('required'),
-	heading: z.string().default(''),
-	lede: z.string().default('')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.heading]: z.string().default(''),
+	[BOXES.lede]: z.string().default('')
 });
 
 /** the story's body, the document's JSON as the rich-text box posts it. */
 export const BLOCK_STORY_INPUT = z.object({
-	block_id: z.string('required'),
-	body: z.string('required')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.body]: z.string('required')
 });
 
 /**
@@ -107,16 +138,16 @@ export const BLOCK_STORY_INPUT = z.object({
  * `tier_buys[i]`: two lists, since a form's fields are flat ($lib/server/conform.ts).
  */
 export const BLOCK_IMPACT_TIERS_INPUT = z.object({
-	block_id: z.string('required'),
-	tier_amount: z.array(z.string().default('')),
-	tier_buys: z.array(z.string().default(''))
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.tierAmount]: z.array(z.string().default('')),
+	[BOXES.tierBuys]: z.array(z.string().default(''))
 });
 
 /** the questions as rows, `question[i]` beside `answer[i]`, the answer's document as JSON. */
 export const BLOCK_FAQ_INPUT = z.object({
-	block_id: z.string('required'),
-	question: z.array(z.string().default('')),
-	answer: z.array(z.string().default(''))
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.question]: z.array(z.string().default('')),
+	[BOXES.answer]: z.array(z.string().default(''))
 });
 
 /**
@@ -124,34 +155,34 @@ export const BLOCK_FAQ_INPUT = z.object({
  * answered its upload with, and what describes it; a blank description is a decorative photo.
  */
 export const BLOCK_PHOTO_INPUT = z.object({
-	block_id: z.string('required'),
-	image_id: z.string('required'),
-	alt: z.string().default('')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.imageId]: z.string('required'),
+	[BOXES.alt]: z.string().default('')
 });
 
 /** a block's variant picture, which applies on pick. */
 export const BLOCK_VARIANT_INPUT = z.object({
-	block_id: z.string('required'),
-	variant: z.string('required')
+	[BOXES.blockId]: z.string('required'),
+	[BOXES.variant]: z.string('required')
 });
 
 /** the page's layout picture, which applies on pick. */
-export const PAGE_LAYOUT_INPUT = z.object({ layout: z.string('required') });
+export const PAGE_LAYOUT_INPUT = z.object({ [BOXES.layout]: z.string('required') });
 
 /** the page's shade picture, which applies on pick. */
-export const PAGE_SHADE_INPUT = z.object({ shade: z.string('required') });
+export const PAGE_SHADE_INPUT = z.object({ [BOXES.shade]: z.string('required') });
 
 /** the page's corners picture, which applies on pick. */
-export const PAGE_CORNERS_INPUT = z.object({ corners: z.string('required') });
+export const PAGE_CORNERS_INPUT = z.object({ [BOXES.corners]: z.string('required') });
 
 /** the page's palette picture, which applies on pick. */
-export const PAGE_PALETTE_INPUT = z.object({ palette: z.string('required') });
+export const PAGE_PALETTE_INPUT = z.object({ [BOXES.palette]: z.string('required') });
 
 /** what a share says beside the page's address; a blank box removes it, and the title is said. */
-export const PAGE_SHARE_MESSAGE_INPUT = z.object({ share_message: z.string().optional() });
+export const PAGE_SHARE_MESSAGE_INPUT = z.object({ [BOXES.shareMessage]: z.string().optional() });
 
 /** the share buttons the page offers, in the order they stand: one `share_channels` each. */
-export const PAGE_SHARE_CHANNELS_INPUT = z.object({ share_channels: z.array(z.string()) });
+export const PAGE_SHARE_CHANNELS_INPUT = z.object({ [BOXES.shareChannels]: z.array(z.string()) });
 
 /** a block's words as its sheet's boxes are seeded with them; null for a block with none. */
 export type BlockText =

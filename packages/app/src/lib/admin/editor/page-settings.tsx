@@ -1,50 +1,28 @@
-import { useCallback, useEffect } from 'react';
-import { useFetcher } from 'react-router';
-import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
-import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
-import { BLOCK_FORMS } from '$lib/page/block-edit';
+import { useEffect } from 'react';
+import { BLOCK_FORMS, BOXES } from '$lib/page/block-edit';
 import { PAGE_END_DATE_FORM_ID, PAGE_GOAL_FORM_ID } from '$lib/page/page-settings-form';
+import { useDraftPresses } from './draft-presses';
 import { EndDateSheet } from './end-date-sheet';
 import { GoalSheet } from './goal-sheet';
 import { ShareMessageSheet } from './share-message-sheet';
 
 // a campaign's goal and end date, and any page's share message, each a sheet over Settings: each
-// posts its form ($lib/page/page-settings-form.ts, $lib/page/block-edit.ts) through a fetcher of its
-// own to the editor route's action (`savePageSetting` in $lib/server/pages/page-settings.ts,
-// `saveBlockForm` in $lib/server/pages/blocks.ts), written against the page's version the editor
-// was drawn at. a landed write moves that version, which reloads the preview.
+// posts its form ($lib/page/page-settings-form.ts, $lib/page/block-edit.ts) to the editor route's
+// action through ./draft-presses.ts, the sheet's own owner, so an answer does not outlive the sheet
+// that asked: a reopened sheet starts with none.
 //
 // each sheet has one Done that closes it when the write lands and keeps what was typed when it is
 // refused.
-//
-// each fetcher is unkeyed, so an answer does not outlive the part that asked: a reopened sheet
-// starts with none.
-
-type Answer = AdminActionData & { readonly saved?: string };
 
 /** one form's press: what to post, how it stands, and what its last answer said. */
 function usePress(form: string, version: number) {
-	const fetcher = useFetcher<Answer>();
-	const busy = fetcher.state !== 'idle';
-	const answer = busy ? undefined : fetcher.data;
-	const result = resultFor({ id: form }, answer);
-	const { submit } = fetcher;
-	const post = useCallback(
-		(fields: Record<string, string>) => {
-			const body = new FormData();
-			body.set(WHICH_FORM, form);
-			body.set(RECORD_VERSION, String(version));
-			for (const [box, value] of Object.entries(fields)) body.set(box, value);
-			submit(body, { method: 'post' });
-		},
-		[submit, form, version]
-	);
+	const presses = useDraftPresses(version);
 	return {
-		busy,
-		saved: answer?.saved === form,
+		busy: presses.busy,
+		saved: presses.landed(form),
 		/** the first sentence the last answer refused `box` with — `''` is the form's own. */
-		refused: (box: string) => result?.error?.[box]?.[0] ?? null,
-		post
+		refused: (box: string) => presses.refused(form, box),
+		post: (fields: Record<string, string>) => presses.press(form, Object.entries(fields))
 	};
 }
 
@@ -135,10 +113,10 @@ export function ShareMessageSettingsSheet({
 			message={message}
 			onDone={(next) => {
 				if (next === message) onDismiss();
-				else press.post({ share_message: next });
+				else press.post({ [BOXES.shareMessage]: next });
 			}}
 			applying={press.busy}
-			error={press.refused('share_message')}
+			error={press.refused(BOXES.shareMessage)}
 			refusal={press.refused('')}
 			onDismiss={onDismiss}
 		/>

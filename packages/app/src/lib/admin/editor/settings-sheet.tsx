@@ -8,14 +8,22 @@ import { formatMinorBrief } from '$lib/donations/money';
 import { dayWords } from '$lib/page/end-date';
 import { PickRefusal, PicturePicker, type PictureOption } from './pictures';
 
-// the Settings sheet: everything about a page, one list. rows that hold a typed
-// value open a sheet of their own stacked over this one (./done-sheet.tsx argues their one Done);
-// the layout pictures apply the moment they are picked, here, with nothing to finish. a refused
-// layout pick is reported under the pictures, in a region there whenever they are.
+// the Settings sheet: everything about a page, one list. rows that hold a typed value open a sheet of
+// their own stacked over this one (./done-sheet.tsx argues their one Done); the layout pictures, the
+// look, the share buttons and the block list's presses apply the moment they are made, here, with
+// nothing to finish. a refused pick or press is reported at the foot of its part, in a region there
+// whenever the part is, and the part draws what the draft holds again.
 //
 // the block list is the keyboard's way to a block: a click on a block in the preview while Edit is
 // on opens the same block's sheet (./preview-frame.tsx), and a row here is that click for a reader
-// who cannot point.
+// who cannot point. handed `edits`, each row also moves its block a step and takes it off the page,
+// offering only what that block can do — the first has no Move up, the donation box no Remove —
+// and Add a block under the list offers the blocks the page may be given. a landed press keeps the
+// focus on the list: on the moved block's press, or on the row that took a removed block's place.
+//
+// the look is three questions answered by chips: a shade or a palette drawn as a picture here would
+// be the donor page's colours drawn on an operator screen, and the preview beside the sheet shows
+// the page wearing the pick as soon as it lands. the share buttons are chips too.
 //
 // a campaign carries its name, address, goal and end date; the Donation page has none of the four.
 //
@@ -288,13 +296,13 @@ type SharingGroup =
 			readonly share: {
 				/** `''` where the page has none, and a share says the page's title. */
 				readonly message: string;
-				/** the buttons the page offers, or the ones a pick in flight asked for. */
+				/** the buttons the page offers, in the order they stand, or the ones a pick in flight asked for. */
 				readonly channels: readonly string[];
 			};
-			/** every share button a page may offer, in the order they stand on it. */
+			/** every share button a page may offer. */
 			readonly shareChannels: readonly PictureOption[];
-			/** the buttons ticked now, in the order above. it applies to the draft at once. */
-			readonly onChannels: (channels: readonly string[]) => void;
+			/** a button was ticked or unticked. it applies to the draft at once. */
+			readonly onChannel: (channel: string, ticked: boolean) => void;
 			/** the Share message row was pressed. */
 			readonly onShareMessage: () => void;
 			/** the last share buttons pick's refusal. */
@@ -303,7 +311,7 @@ type SharingGroup =
 	| {
 			readonly share?: undefined;
 			readonly shareChannels?: undefined;
-			readonly onChannels?: undefined;
+			readonly onChannel?: undefined;
 			readonly onShareMessage?: undefined;
 			readonly sharingRefusal?: undefined;
 	  };
@@ -388,7 +396,7 @@ export function SettingsSheet({
 	lookRefusal,
 	share,
 	shareChannels,
-	onChannels,
+	onChannel,
 	onShareMessage,
 	sharingRefusal,
 	donationSettings,
@@ -500,16 +508,7 @@ export function SettingsSheet({
 							value: channel.value,
 							label: channel.label,
 							checked: share.channels.includes(channel.value),
-							onChange: (event) =>
-								onChannels(
-									shareChannels
-										.map((one) => one.value)
-										.filter((one) =>
-											one === channel.value
-												? event.currentTarget.checked
-												: share.channels.includes(one)
-										)
-								)
+							onChange: (event) => onChannel(channel.value, event.currentTarget.checked)
 						}))}
 					/>
 					<PickRefusal refusal={sharingRefusal} />

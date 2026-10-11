@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { AddressSheet } from '$lib/admin/editor/address-sheet';
-import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
+import { BlockEditSheet, isDonationBox } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
@@ -486,9 +486,9 @@ function DraftEditor({
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setOpened('donation-settings') : setBlockId(id);
-	const layoutPick = useLayoutPick(loaderData.layout, version);
 	const settingsPresses = useSettingsPresses({
 		version,
+		layout: loaderData.layout,
 		look: loaderData.look,
 		share: loaderData.share,
 		addable: loaderData.addable,
@@ -542,7 +542,6 @@ function DraftEditor({
 					livePath={address ?? undefined}
 					{...presses.bar}
 					onSettings={() => {
-						layoutPick.startClean();
 						settingsPresses.startClean();
 						setSettings(true);
 					}}
@@ -571,7 +570,6 @@ function DraftEditor({
 					blocks={loaderData.blocks}
 					onOpenBlock={openBlockSheet}
 					layouts={loaderData.layouts}
-					{...layoutPick.sheet}
 					lookPictures={loaderData.lookPictures}
 					shareChannels={loaderData.shareChannels}
 					{...settingsPresses.sheet}
@@ -642,6 +640,7 @@ function DraftEditor({
 					saving={saving}
 					saved={addressSaved}
 					error={refusal(addressAnswer, ADDRESS_EDIT, 'slug')}
+					refusal={refusal(addressAnswer, ADDRESS_EDIT, '')}
 					onDismiss={() => setOpened(null)}
 				/>
 			) : null}

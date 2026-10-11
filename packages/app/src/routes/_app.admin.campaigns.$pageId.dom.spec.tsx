@@ -2,6 +2,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { UNREACHED } from '$lib/admin/unreached';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import {
 	addablePictures,
@@ -369,6 +370,25 @@ describe('an address save that comes back with a question', () => {
 		expect(() => card(takeover)).toThrow();
 	});
 
+	it('says a refusal about no box at Save, the connection-lost sentence among them', async () => {
+		answers = [
+			{
+				body: {
+					form: { id: 'campaign-address', result: { status: 'error', error: { '': [UNREACHED] } } }
+				},
+				status: 503
+			}
+		];
+		await screen();
+
+		await saveAddress('winter-coats');
+
+		const sheet = card('Address');
+		const said = [...sheet.querySelectorAll('[role="status"]')].map((one) => one.textContent);
+		expect(said).toContain(UNREACHED);
+		expect(button('Save address', sheet).getAttribute('aria-describedby')).toBeTruthy();
+	});
+
 	it('posts nothing more when the takeover is declined', async () => {
 		answers = [ended];
 		await screen();
@@ -537,20 +557,47 @@ describe('Settings’ presses that apply at once', () => {
 		]);
 	});
 
-	it('posts the share buttons ticked, in the order they stand', async () => {
-		drawn = { ...drawn, share: { message: '', channels: ['facebook', 'email', 'copy-link'] } };
+	/** the share buttons each body posted, in the order it posted them. */
+	const channelsPosted = () => bodies.map((body) => body.getAll('share_channels'));
+
+	it('posts a share button ticked after the ones the page holds, in the order it holds them', async () => {
+		drawn = { ...drawn, share: { message: '', channels: ['email', 'facebook'] } };
 		answers = [{ body: { saved: 'page-share-channels' } }];
 		const sheet = await settings();
 
-		await press(chips(sheet, 'Share buttons').get('WhatsApp') as HTMLInputElement);
+		await press(chips(sheet, 'Share buttons').get('X') as HTMLInputElement);
 
-		expect([...(bodies[0]?.entries() ?? [])]).toEqual([
-			[WHICH_FORM, 'page-share-channels'],
-			[RECORD_VERSION, '1'],
-			['share_channels', 'facebook'],
-			['share_channels', 'whatsapp'],
-			['share_channels', 'email'],
-			['share_channels', 'copy-link']
+		expect(posted[0]?.[WHICH_FORM]).toBe('page-share-channels');
+		expect(channelsPosted()).toEqual([['email', 'facebook', 'x']]);
+	});
+
+	it('posts a share button unticked by taking it out where it stands', async () => {
+		drawn = { ...drawn, share: { message: '', channels: ['x', 'email', 'facebook'] } };
+		answers = [{ body: { saved: 'page-share-channels' } }];
+		const sheet = await settings();
+
+		await press(chips(sheet, 'Share buttons').get('Email') as HTMLInputElement);
+
+		expect(channelsPosted()).toEqual([['x', 'facebook']]);
+	});
+
+	it('turns a second press away while the first is in flight, and sends the next at the version it moved to', async () => {
+		answers = [{ body: { saved: 'block' } }, { body: { saved: 'page-shade' } }];
+		const sheet = await settings();
+		const banner = sheet.querySelector<HTMLInputElement>('input[value="banner"]');
+		if (banner === null) throw new Error('no Banner layout');
+
+		drawn = { ...drawn, version: 2, layout: 'banner' };
+		await act(async () => {
+			banner.click();
+			(chips(sheet, 'Shade').get('Cool') as HTMLInputElement).click();
+		});
+		await settle();
+		await press(chips(card('Settings'), 'Shade').get('Cool') as HTMLInputElement);
+
+		expect(posted).toEqual([
+			{ [WHICH_FORM]: 'page-layout', [RECORD_VERSION]: '1', layout: 'banner' },
+			{ [WHICH_FORM]: 'page-shade', [RECORD_VERSION]: '2', shade: 'cool' }
 		]);
 	});
 
