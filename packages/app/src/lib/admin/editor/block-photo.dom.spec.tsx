@@ -50,21 +50,15 @@ const hero: EditorBlock = {
 		{ value: 'wide', label: 'Wide' },
 		{ value: 'framed', label: 'Framed' }
 	],
-	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' },
-	illustration: false
+	text: { kind: 'photo', imageId: PLACED, alt: 'Volunteers' }
 };
 
-function editor({ illustration = false }: { readonly illustration?: boolean } = {}) {
+function editor() {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
 			Component: () => (
-				<BlockEditSheet
-					block={{ ...hero, illustration }}
-					version={3}
-					onDismiss={() => {}}
-					onSaved={() => {}}
-				/>
+				<BlockEditSheet block={hero} version={3} onDismiss={() => {}} onSaved={() => {}} />
 			),
 			action: async ({ request }) => {
 				saves.push(
@@ -219,14 +213,5 @@ describe('a placed photo’s sheet', () => {
 		);
 		await done(root);
 		expect(saves).toEqual([expect.objectContaining({ image_id: PLACED, alt: 'Volunteers' })]);
-	});
-});
-
-describe('a photo the loader marks as an illustration', () => {
-	it('is drawn in its sheet as any photo is, with no word over the art', () => {
-		const root = editor({ illustration: true });
-		expect(shown(root)).toBe(`/image/${PLACED}`);
-		expect(root.querySelector('.adm-placed .adm-state')).toBeNull();
-		expect(root.textContent).not.toContain('Illustration');
 	});
 });

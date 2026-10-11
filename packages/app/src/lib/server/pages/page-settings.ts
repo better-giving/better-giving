@@ -13,8 +13,8 @@ import { type DraftKeys, type SettingsTarget, updateDraftKeys } from './queries'
 
 // the Settings sheet's goal and end date, for both editors: each press parsed here and written to
 // the draft alone (`updateDraftKeys` in ./queries.ts) against the version the editor was drawn at,
-// so the live page moves only at Publish. a page's look and share message are its own and set only
-// through its editor's chat (../../page/accept-reply.ts).
+// so the live page moves only at Publish. a page's look and share message have no box in either
+// editor, and a press naming either is refused.
 //
 // **the goal** is minor units in the page's currency, and an emptied box removes it. **the end
 // date** is a day and the IANA zone of the browser that chose it: the draft stores the day's end in
@@ -22,7 +22,7 @@ import { type DraftKeys, type SettingsTarget, updateDraftKeys } from './queries'
 // already over is refused naming it. both are a campaign's alone, and the Donation page refuses
 // them.
 //
-// a press drawn before any other write to the page — a chat turn, a rename, another setting — is
+// a press drawn before any other write to the page — a block's edit, a rename, another setting — is
 // refused at 409 rather than putting back what that write moved.
 
 const GOAL_EDIT = defineForm({

@@ -21,7 +21,7 @@ import { freeSlug } from '../../page/slug';
 import { invalid, type ParsedForm, parseForm, submittedForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import { chatTurn, form, type Page, page, program } from '../db/schema';
+import { form, type Page, page, program } from '../db/schema';
 import {
 	formInputValuesFrom,
 	type ParseResult,
@@ -53,7 +53,7 @@ import {
 // and its donation settings to a form row's program and giving rules, then makes it live: `published`
 // is the draft, the draft is that same text, `last_published` keeps the page it replaced, and the
 // owned settings row takes the draft's settings and goes live, so what donors see and what a gift
-// is checked against move together (`page` in ../db/schema.ts). the chat is kept. a draft holding
+// is checked against move together (`page` in ../db/schema.ts). a draft holding
 // no settings of its own — the Donation page's until the operator saves Donation settings — goes
 // live holding none, and the row keeps what it has.
 // - where gifts go ("Gifts go to") is answered at a campaign's first Publish and nowhere else: a
@@ -74,8 +74,7 @@ import {
 // back a page whose end date has passed since, as Publish refuses it. the draft stays as it is,
 // and the editor reads it as changes not published.
 //
-// **Discard changes** puts the draft back to the live page, a campaign's name with it, and empties
-// the page's chat.
+// **Discard changes** puts the draft back to the live page, a campaign's name with it.
 
 /** what a Publish did. */
 export type PublishOutcome =
@@ -379,9 +378,9 @@ export type DiscardOutcome =
 	| { readonly kind: 'gone' };
 
 /**
- * the draft back to the live page and the page's chat emptied, in one `batch()`. a campaign renamed
- * since takes the live page's name back, everywhere a rename reaches (`renamingOwned` in
- * ./queries.ts), since the draft's name and the row's are one.
+ * the draft back to the live page. a campaign renamed since takes the live page's name back,
+ * everywhere a rename reaches (`renamingOwned` in ./queries.ts), since the draft's name and the
+ * row's are one, in the same `batch()`.
  */
 export async function discardChanges(
 	db: Db,
@@ -392,8 +391,6 @@ export async function discardChanges(
 	if (row === null) return { kind: 'gone' };
 	if (row.published === null) return { kind: 'nothing' };
 
-	// the chat's delete runs first and names the page by the same guard, since the page's update
-	// moves the version it is guarded on.
 	const drawn = and(
 		eq(page.id, row.id),
 		eq(page.updatedAt, version),
@@ -401,24 +398,17 @@ export async function discardChanges(
 	);
 	const live = readDocument(row, 'published', row.published);
 	const renamed = live.ok ? nameToCarry(row, live.page) : null;
-	const statements = [
-		db
-			.delete(chatTurn)
-			.where(
-				and(eq(chatTurn.pageId, row.id), exists(db.select({ id: page.id }).from(page).where(drawn)))
-			),
-		db
-			.update(page)
-			.set({ draft: row.published, ...(renamed === null ? {} : { name: renamed }) })
-			.where(drawn)
-			.returning({ id: page.id })
-	] as const;
-	const [, discarded] =
+	const discard = db
+		.update(page)
+		.set({ draft: row.published, ...(renamed === null ? {} : { name: renamed }) })
+		.where(drawn)
+		.returning({ id: page.id });
+	// the owned row's rename runs first and names the page by the same guard, since the page's
+	// update moves the version it is guarded on.
+	const discarded =
 		renamed === null
-			? await db.batch(statements)
-			: await db
-					.batch([renamingOwned(db, row.formId, renamed, drawn), ...statements])
-					.then(([, ...rest]) => rest);
+			? await discard
+			: (await db.batch([renamingOwned(db, row.formId, renamed, drawn), discard]))[1];
 	return discarded.length === 1 ? { kind: 'discarded' } : { kind: 'stale' };
 }
 

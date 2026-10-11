@@ -1,8 +1,7 @@
 import { z } from 'zod';
 
-// the words a refusal names a closed set's off-list value in, for the page rule (./catalog.ts), a
-// chat reply's `set` (./accept-reply.ts) and what the model is told of a set
-// ($lib/server/pages/draft.ts), so each says it the same way.
+// the words a refusal names a closed set's off-list value in, for the page rule (./catalog.ts), so
+// each set says it the same way.
 //
 // pure and not under `$lib/server/**`, beside the rules that read it.
 

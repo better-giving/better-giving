@@ -32,7 +32,6 @@ beforeEach(async () => {
 		'donation',
 		'recurring_plan',
 		'contact',
-		'chat_turn',
 		'page',
 		'form',
 		'org_profile'

@@ -133,9 +133,6 @@ const STALE_SAVE =
 const noImage = (id: string) =>
 	`No stored photo has the id "${redactPublicId(id)}". Choose the photo again.`;
 
-/** what an illustration's id says, at the photo's box. */
-const NOT_PHOTO = 'That image is an illustration, and a program takes a photo. Choose a photo.';
-
 /** what a save says when the write itself threw. */
 const WRITE_FAILED = 'Saving this program failed and nothing was changed. Try again.';
 
@@ -287,9 +284,6 @@ export async function action(args: Route.ActionArgs) {
 		if (saved === 'no_image') {
 			const said = noImage(imageId ?? '');
 			return invalid(400, submission.reject({ fieldErrors: { image_id: [said] } }));
-		}
-		if (saved === 'not_photo') {
-			return invalid(400, submission.reject({ fieldErrors: { image_id: [NOT_PHOTO] } }));
 		}
 		if (saved === 'gone') return invalid(400, submission.reject({ formErrors: [ROW_GONE] }));
 		if (saved === 'stale') {

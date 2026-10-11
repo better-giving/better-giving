@@ -16,26 +16,24 @@ import {
 	PAGE_LAYOUT_INPUT
 } from '../../page/block-edit';
 import { BLOCK_DATA, type Block, type BlockType, type Page, parsePage } from '../../page/catalog';
-import { placedImageIds } from '../../page/illustration';
 import { isEmptyDocument, parseRichText } from '../../rich-text/document';
 import { invalid, parseForm, type RejectionReasons, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
 import { type Page as PageRow, page } from '../db/schema';
-import { firstMissingImage, illustrationsAmong } from '../images/queries';
+import { firstMissingImage } from '../images/queries';
 import { readableDraft } from './document';
 import { draftSettingsOf, type SettingsTarget } from './queries';
 
 // the editor's hand edits to a page's draft, the Donation page's and a campaign's alike: a block's
 // words from its sheet's one Done, and a variant or the layout from its picture. every one is
 // written to the draft alone, against the version the editor was drawn at, so nothing here reaches
-// donors before Publish and a press drawn before another save — a chat turn's, a rename — is
+// donors before Publish and a press drawn before another save — another block's, a rename — is
 // refused rather than putting back what that save moved.
 //
 // the words are the block catalog's to judge ($lib/page/catalog.ts): each block's `BLOCK_DATA` rule
 // runs over what its boxes posted so a refusal lands under the box that posted the value, and the
-// page with the block's data replaced goes through `parsePage` before it is written, the rule a
-// chat turn's draft goes through too. a hand edit replaces only the block it names, so a later chat
-// turn is shown the draft with it and keeps what it was not asked to change (./draft.ts).
+// page with the block's data replaced goes through `parsePage` before it is written. a hand edit
+// replaces only the block it names.
 //
 // each form's id and rules are $lib/page/block-edit.ts's. which block a body names is
 // `block_id`, and one naming a block the page does not hold, or a block of another type, is
@@ -45,11 +43,6 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 // refused, so a block never points at a photo the image route would not serve. the replace keeps
 // the block, its id and its variant; the photo it stood in for stays stored, since a published
 // page may still draw it.
-
-/** which of the draft's pictures an AI drew, read from their kinds. */
-export function draftIllustrations(db: Db, row: PageRow): Promise<ReadonlySet<string>> {
-	return illustrationsAmong(db, placedImageIds(readableDraft(row)));
-}
 
 const BLOCK_TITLE = defineForm({ id: BLOCK_FORMS.title, schema: BLOCK_TITLE_INPUT });
 const BLOCK_STORY = defineForm({ id: BLOCK_FORMS.story, schema: BLOCK_STORY_INPUT });
@@ -83,14 +76,11 @@ type Words = {
 
 type ReadWords = { ok: true; read: Words } | { ok: false; refusal: RejectionReasons };
 
-/**
- * the draft's blocks and layout as the editor draws them; `currency` is the draft settings', and
- * `illustrations` `draftIllustrations`' answer.
- */
-export function editorDraft(row: PageRow, currency: string, illustrations: ReadonlySet<string>) {
+/** the draft's blocks and layout as the editor draws them; `currency` is the draft settings'. */
+export function editorDraft(row: PageRow, currency: string) {
 	const draft = readableDraft(row);
 	return {
-		blocks: editorBlocks(draft, currency, illustrations),
+		blocks: editorBlocks(draft, currency),
 		layout: draft.layout,
 		layouts: layoutPictures()
 	};

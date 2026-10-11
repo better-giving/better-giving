@@ -3,7 +3,6 @@ import { useCallback, useState } from 'react';
 import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { revalidatesAfter } from '$lib/admin/editor/suggest-url';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
@@ -26,10 +25,9 @@ import { PAGE_SETTINGS_FORM_ID, type SettingsSeed } from '$lib/page/settings-for
 import { submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import {
-	type EditorPage,
 	editorPage,
 	readEditorSettings,
 	saveDraftSettings,
@@ -96,36 +94,25 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	const { env } = context.get(platform);
 	let row: Page;
 	let settings: SettingsSeed;
-	let edited: boolean;
-	let illustrations: ReadonlySet<string>;
-	let framed: EditorPage;
 	const now = Date.now();
 	try {
 		row = await ensureDonationPage(db);
 		const unreadable = unreadableEditor(row, now);
 		// a draft the rule refuses is itself an edit Reset puts back (`hasEditsToReset`).
 		if (unreadable !== null) return { ...unreadable, hasEdits: true };
-		[framed, settings, edited, illustrations] = await Promise.all([
-			editorPage(db, row, now),
-			readEditorSettings(db, env, row, new URL(request.url).origin),
-			hasEditsToReset(db, row),
-			draftIllustrations(db, row)
-		]);
+		settings = await readEditorSettings(db, env, row, new URL(request.url).origin);
 	} catch (e) {
 		console.error('loading the Donation page editor failed:', e);
 		loadFailed('The Donation page');
 	}
 	return {
-		...framed,
-		...editorDraft(row, settings.currency, illustrations),
+		...editorPage(row, now),
+		...editorDraft(row, settings.currency),
 		settings,
-		hasEdits: edited,
+		hasEdits: hasEditsToReset(row),
 		pageId: row.id
 	};
 }
-
-// Write with AI's ask writes nothing, so the editor is not read again after one.
-export const shouldRevalidate = revalidatesAfter;
 
 export async function action({ context, request }: Route.ActionArgs) {
 	const body = await request.formData();

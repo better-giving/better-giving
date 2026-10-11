@@ -1,11 +1,8 @@
-import { isDeepStrictEqual } from 'node:util';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { formatMinorBrief } from '../../donations/money';
 import { groupedEntry } from '../../forms/amounts';
 import { FORM_TEXT_FIELDS, type FormInputFieldErrors } from '../../forms/fields';
 import { PROGRAM_MODE_LABELS } from '../../forms/program-modes';
-import { type Page as PageDocument, parsePage } from '../../page/catalog';
-import { defaultCampaign, defaultDonationPage } from '../../page/defaults';
 import { endDayOf } from '../../page/end-date';
 import { stateAt } from '../../page/ended';
 import { defineForm } from '../../forms/definition';
@@ -13,7 +10,7 @@ import { PAGE_SETTINGS_INPUT } from '../../forms/input-schema';
 import { PAGE_SETTINGS_FORM_ID, type SettingsSeed, SWITCH_LABELS } from '../../page/settings-form';
 import { invalid, parseForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
-import { chatTurn, type Page, program } from '../db/schema';
+import { type Page, program } from '../db/schema';
 import { cachedCadences } from '../forms/cadence-cache';
 import { formInputValues, parseFormGiving, parseFormProgram } from '../forms/form-input';
 import { createPaymentProviders } from '../payments/factory';
@@ -28,23 +25,8 @@ import {
 } from './queries';
 
 // what the editor is drawn with, the Donation page's and a campaign's alike: where the page stands
-// against what donors see, the version every press on it is written against, whether it has been
-// drafted, the preview route that frames its draft (src/routes/preview.$pageId.tsx), and the route
-// its chat is asked by (src/routes/_app.admin.pages.$pageId.chat.ts).
-//
-// **drafted** is whether the page's content has moved from what it was made as, and until it has
-// the editor shows the chat's questions alone. no column records it, and the version is no guide:
-// it moves on every chat turn, the opening questions' included. so it is read off two things the
-// page already holds — an assistant turn in its chat that asks nothing and carries no note but
-// `fell-back`, as `changedPage` in $lib/admin/editor/chat-wiring.tsx reads it, which is a reply that
-// changed the page or the turn that ended its questions on a starting page where answers were
-// refused twice (`STARTING_PAGE` in ./draft.ts); or a draft whose document, less its name and
-// donation settings, is not its type's default (../../page/defaults.ts). the name is left out
-// because the bar renames a page before its first draft, and the settings because a campaign is
-// made with the Donation page's copied into its draft.
-// Discard changes and Reset to default empty the chat, so a page put back to the default by either
-// reads as never drafted again, and a change to a default in ../../page/defaults.ts reads every page
-// made on the old one as drafted.
+// against what donors see, the version every press on it is written against, and the preview route
+// that frames its draft (src/routes/preview.$pageId.tsx).
 //
 // the Settings sheet's rows read the draft, which is what the editor changes; a goal and an end
 // date are a campaign's alone and read null on the Donation page.
@@ -56,8 +38,8 @@ import {
 // page's two switches into the draft's `switches`, never into the owned settings row: where the box
 // opens is a fact about the page, and a form has no such setting.
 //
-// the version is the row's `updated_at`, which every write to the row moves — a chat turn's draft,
-// a rename, an address — so a press drawn before any of them is refused rather than putting back
+// the version is the row's `updated_at`, which every write to the row moves — a block's edit, a
+// rename, an address — so a press drawn before any of them is refused rather than putting back
 // what that write moved (`submittedVersion` in ../conform.ts). the preview is keyed on it too, so the
 // frame reloads on the render any write's revalidation lands in.
 
@@ -69,10 +51,7 @@ type EditorFrame = {
 	readonly state: EditorState;
 	/** the row's `updated_at` in unix ms. */
 	readonly version: number;
-	/** the page's content has moved from what it was made as, by hand or by the chat. */
-	readonly drafted: boolean;
 	readonly preview: string;
-	readonly chat: string;
 };
 
 export type EditorPage = EditorFrame & {
@@ -89,64 +68,30 @@ export type UnreadableEditor = EditorFrame & {
 	readonly discardable: boolean;
 };
 
-function editorFrame(row: Page, now: number, drafted: boolean): EditorFrame {
+function editorFrame(row: Page, now: number): EditorFrame {
 	return {
 		state: editorState(row, now),
 		version: row.updatedAt.getTime(),
-		drafted,
-		preview: `/preview/${row.id}`,
-		chat: `/admin/pages/${row.id}/chat`
+		preview: `/preview/${row.id}`
 	};
 }
 
 /** the page as the editor draws it; its state as of `now`, a campaign past its end reading ended. */
-export async function editorPage(db: Db, row: Page, now: number): Promise<EditorPage> {
+export function editorPage(row: Page, now: number): EditorPage {
 	const draft = readableDraft(row);
 	return {
-		...editorFrame(row, now, await hasBeenDrafted(db, row, draft)),
+		...editorFrame(row, now),
 		unreadable: false,
 		goalMinor: draft.goalMinor ?? null,
 		endDate: endDayOf(draft)
 	};
 }
 
-/** a page document less the two keys a page is made with that are not its default's. */
-function content({ name: _name, settings: _settings, ...rest }: PageDocument) {
-	return rest;
-}
-
-function madeAs(type: Page['type']) {
-	const made = parsePage(type, type === 'campaign' ? defaultCampaign() : defaultDonationPage());
-	if (!made.ok) throw new Error(`the default ${type} fails the page rule: ${made.message}`);
-	return content(made.page);
-}
-
-const MADE_AS = { campaign: madeAs('campaign'), donation_page: madeAs('donation_page') };
-
-/** whether `row`, whose draft reads as `draft`, has been drafted — the header says how it is read. */
-export async function hasBeenDrafted(db: Db, row: Page, draft: PageDocument): Promise<boolean> {
-	if (!isDeepStrictEqual(content(draft), MADE_AS[row.type])) return true;
-	const [changed] = await db
-		.select({ id: chatTurn.id })
-		.from(chatTurn)
-		.where(
-			and(
-				eq(chatTurn.pageId, row.id),
-				eq(chatTurn.author, 'assistant'),
-				isNull(chatTurn.questions),
-				or(isNull(chatTurn.note), eq(chatTurn.note, 'fell-back'))
-			)
-		)
-		.limit(1);
-	return changed !== undefined;
-}
-
 /** the editor over `row` where the read rule refuses its draft; null where the draft reads. */
 export function unreadableEditor(row: Page, now: number): UnreadableEditor | null {
 	if (readDocument(row, 'draft', row.draft).ok) return null;
 	return {
-		// a draft the rule refuses is not the default any page is made as.
-		...editorFrame(row, now, true),
+		...editorFrame(row, now),
 		unreadable: true,
 		discardable: row.published !== null && readDocument(row, 'published', row.published).ok
 	};

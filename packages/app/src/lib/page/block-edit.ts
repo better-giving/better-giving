@@ -5,11 +5,11 @@
 //
 // the boxes carry text, and a photo block's the id of a photo already uploaded, and every value is
 // the block catalog's to judge (./catalog.ts): the save puts the words into the block and runs the
-// page through `parsePage`, so a box and the chat are held to the one rule. a block's variants and
+// page through `parsePage`, so every box is held to the page's one rule. a block's variants and
 // the page's layouts come from `BLOCKS` and `LAYOUTS`, so a name the catalog drops is a picture
 // nobody is offered.
 //
-// no form here adds, removes or moves a block: arranging the page is the chat's.
+// no form here adds, removes or moves a block.
 //
 // pure and not under `$lib/server/**`: a component draws what `editorBlocks` returns.
 import { z } from 'zod';
@@ -17,7 +17,6 @@ import { formatMinorBrief } from '../donations/money';
 import { groupedEntry } from '../forms/amounts';
 import { plainText, type RichTextDocument } from '../rich-text/document';
 import { BLOCKS, type Block, type BlockType, LAYOUTS, type Page } from './catalog';
-import { isIllustrated } from './illustration';
 import type { Layout } from './keys';
 
 export const BLOCK_FORMS = {
@@ -114,22 +113,13 @@ export type EditorBlock = {
 	/** the variants it may take, empty where `variant` is null. */
 	readonly variants: readonly Picture[];
 	readonly text: BlockText | null;
-	/** a hero or an image block whose picture an AI drew, until a photo replaces it. */
-	readonly illustration: boolean;
 };
 
 /** a picture a picker offers: the catalog's name, and what the picture is called. */
 export type Picture = { readonly value: string; readonly label: string };
 
-/**
- * the draft's blocks in its order; `currency` is the draft's donation settings', `illustrations`
- * the ids of its pictures an AI drew.
- */
-export function editorBlocks(
-	draft: Page,
-	currency: string,
-	illustrations: ReadonlySet<string>
-): EditorBlock[] {
+/** the draft's blocks in its order; `currency` is the draft's donation settings'. */
+export function editorBlocks(draft: Page, currency: string): EditorBlock[] {
 	return draft.blocks.map((block) => ({
 		id: block.id,
 		type: block.type,
@@ -144,8 +134,7 @@ export function editorBlocks(
 						label: VARIANT_LABELS[name]
 					}))
 				}),
-		text: blockText(block, currency),
-		illustration: isIllustrated(block, illustrations)
+		text: blockText(block, currency)
 	}));
 }
 
@@ -247,7 +236,7 @@ function blockText(block: Block, currency: string): BlockText | null {
 			};
 		case 'faq':
 			return { kind: 'faq', items: block.items };
-		// a photo is replaced where one is placed; placing the first is the chat's.
+		// a sheet replaces the photo a block holds; one holding none has no photo to replace.
 		case 'hero':
 		case 'image':
 			return block.imageId === null

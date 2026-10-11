@@ -5,10 +5,16 @@ import type { Page } from '../../page/catalog';
 import { createDb, type Db } from '../db/client';
 import { chatTurn, program } from '../db/schema';
 import { d1BytesPort } from '../images/bytes';
-import { createImage, firstMissingImage } from '../images/queries';
+import { createImage } from '../images/image.testing';
+import { firstMissingImage, newImageStatements } from '../images/queries';
 import { insertPage, SETTINGS } from '../pages/page-row.testing';
 import { parseOrgProfile, type OrgProfileFormValues, type ParsedOrgProfile } from './org-input';
-import { readOrgProfile, removeOrgProfileLogo, saveOrgProfile, setOrgProfileLogo } from './queries';
+import {
+	putNewOrgProfileLogo,
+	readOrgProfile,
+	removeOrgProfileLogo,
+	saveOrgProfile
+} from './queries';
 
 // real D1 inside workerd, over the committed migrations — so the singleton check, the
 // not-blank CHECKs and `STRICT` are all the deployed ones.
@@ -373,9 +379,21 @@ describe('the not-blank constraints', () => {
 
 describe('the profile logo', () => {
 	const BYTES = new Uint8Array([0x52, 0x49, 0x46, 0x46]);
+	const PHOTO = {
+		kind: 'photo',
+		contentType: 'image/webp',
+		width: 400,
+		height: 400,
+		alt: null
+	} as const;
 
-	const storeImage = (kind: 'photo' | 'illustration' = 'photo') =>
-		createImage(db, { kind, contentType: 'image/webp', width: 400, height: 400, alt: null }, BYTES);
+	const storeImage = () => createImage(db, PHOTO, BYTES);
+
+	/** a new photo put on as the logo, as the console's upload puts one: its id and the answer. */
+	async function putLogo() {
+		const photo = newImageStatements(db, PHOTO, BYTES);
+		return { id: photo.id, written: await putNewOrgProfileLogo(db, photo) };
+	}
 
 	/** whether the image's row and its bytes are each still stored. */
 	async function stored(id: string) {
@@ -396,37 +414,27 @@ describe('the profile logo', () => {
 		};
 	}
 
-	it('stores the id it is set to', async () => {
+	it('stores the photo it puts on', async () => {
 		await save(FULL);
-		const id = await storeImage();
-		expect(await setOrgProfileLogo(db, id)).toBe('written');
-		expect(await logo()).toBe(id);
-	});
-
-	it('frees the logo it replaces, row and bytes, and keeps the new one', async () => {
-		await save(FULL);
-		const first = await storeImage();
-		const second = await storeImage();
-		await setOrgProfileLogo(db, first);
-		expect(await setOrgProfileLogo(db, second)).toBe('written');
-		expect(await logo()).toBe(second);
-		expect(await stored(first)).toEqual({ row: false, bytes: false });
-		expect(await stored(second)).toEqual({ row: true, bytes: true });
-	});
-
-	it('keeps the logo set again to the same id', async () => {
-		await save(FULL);
-		const id = await storeImage();
-		await setOrgProfileLogo(db, id);
-		expect(await setOrgProfileLogo(db, id)).toBe('written');
+		const { id, written } = await putLogo();
+		expect(written).toBe('written');
 		expect(await logo()).toBe(id);
 		expect(await stored(id)).toEqual({ row: true, bytes: true });
 	});
 
+	it('frees the logo it replaces, row and bytes, and keeps the new one', async () => {
+		await save(FULL);
+		const first = await putLogo();
+		const second = await putLogo();
+		expect(second.written).toBe('written');
+		expect(await logo()).toBe(second.id);
+		expect(await stored(first.id)).toEqual({ row: false, bytes: false });
+		expect(await stored(second.id)).toEqual({ row: true, bytes: true });
+	});
+
 	it('is taken off by a remove, which frees it', async () => {
 		await save(FULL);
-		const id = await storeImage();
-		await setOrgProfileLogo(db, id);
+		const { id } = await putLogo();
 		expect(await removeOrgProfileLogo(db)).toBe('written');
 		expect(await logo()).toBeNull();
 		expect(await stored(id)).toEqual({ row: false, bytes: false });
@@ -434,8 +442,7 @@ describe('the profile logo', () => {
 
 	it('is left alone by a profile save', async () => {
 		await save(FULL);
-		const id = await storeImage();
-		await setOrgProfileLogo(db, id);
+		const { id } = await putLogo();
 		await save({ ...FULL, city: 'Huye' });
 		expect(await logo()).toBe(id);
 	});
@@ -483,45 +490,25 @@ describe('the profile logo', () => {
 
 	it.each(REFERENCES)('keeps a replaced logo that is also %s', async (_, reference) => {
 		await save(FULL);
-		const id = await storeImage();
-		await setOrgProfileLogo(db, id);
+		const { id } = await putLogo();
 		await reference(id);
-		expect(await setOrgProfileLogo(db, await storeImage())).toBe('written');
+		expect((await putLogo()).written).toBe('written');
 		expect(await stored(id)).toEqual({ row: true, bytes: true });
 	});
 
 	it.each(REFERENCES)('keeps a removed logo that is also %s', async (_, reference) => {
 		await save(FULL);
-		const id = await storeImage();
-		await setOrgProfileLogo(db, id);
+		const { id } = await putLogo();
 		await reference(id);
 		expect(await removeOrgProfileLogo(db)).toBe('written');
 		expect(await logo()).toBeNull();
 		expect(await stored(id)).toEqual({ row: true, bytes: true });
 	});
 
-	it('refuses an id no image has, and writes nothing', async () => {
-		await save(FULL);
-		const id = await storeImage();
-		await setOrgProfileLogo(db, id);
-		expect(await setOrgProfileLogo(db, crypto.randomUUID())).toBe('unknown');
-		expect(await logo()).toBe(id);
-		expect(await stored(id)).toEqual({ row: true, bytes: true });
-	});
-
-	it('refuses an illustration, and writes nothing', async () => {
-		await save(FULL);
-		const id = await storeImage();
-		await setOrgProfileLogo(db, id);
-		expect(await setOrgProfileLogo(db, await storeImage('illustration'))).toBe('illustration');
-		expect(await logo()).toBe(id);
-		expect(await stored(id)).toEqual({ row: true, bytes: true });
-	});
-
-	it('refuses a logo before the profile is saved, and writes nothing', async () => {
-		const id = await storeImage();
-		expect(await setOrgProfileLogo(db, id)).toBe('no-profile');
+	it('refuses a logo before the profile is saved, and leaves no photo behind', async () => {
+		const { id, written } = await putLogo();
+		expect(written).toBe('no-profile');
 		expect(await readOrgProfile(db)).toBeNull();
-		expect(await stored(id)).toEqual({ row: true, bytes: true });
+		expect(await stored(id)).toEqual({ row: false, bytes: false });
 	});
 });

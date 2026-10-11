@@ -9,7 +9,6 @@ import { form, page, program } from '../db/schema';
 import { readForms } from '../forms/queries';
 import { createCampaign } from './campaign';
 import { ensureDonationPage } from './donation-page';
-import { readChat } from './draft';
 import { insertPage, SETTINGS } from './page-row.testing';
 
 // a new campaign against the real D1: the Donation page it copies from, the owned settings row, the
@@ -23,7 +22,6 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from program')
@@ -144,12 +142,11 @@ describe('a new campaign’s address', () => {
 });
 
 describe('a new campaign’s type', () => {
-	it('is recorded on its row, its chat left empty for the editor to open, and its draft the clean default', async () => {
+	it('is recorded on its row, and its draft the clean default', async () => {
 		const { pageId } = await create('Coats for Kids', 'tribute');
 
 		const made = await stored(pageId);
 		expect(made.campaignType).toBe('tribute');
-		expect(await readChat(db, pageId)).toEqual([]);
 		expect(JSON.parse(made.draft)).toMatchObject({ ...defaultCampaign(), name: 'Coats for Kids' });
 	});
 });

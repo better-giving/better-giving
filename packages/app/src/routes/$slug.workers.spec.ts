@@ -20,14 +20,13 @@ import { page, program } from '$lib/server/db/schema';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { parseFormInput } from '$lib/server/forms/form-input';
 import { ownedFormInsert } from '$lib/server/forms/queries';
-import { createImage } from '$lib/server/images/queries';
 import { createCampaign } from '$lib/server/pages/campaign';
 import { expectRecordedAsAForm } from '$lib/server/pages/owned-settings-gift.testing';
 import { endAsItStands } from '$lib/server/pages/page-row.testing';
 import { gift } from '$lib/server/pages/settled-gifts.testing';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { saveProfile } from '$lib/server/org/profile.testing';
-import { setOrgProfileLogo } from '$lib/server/org/queries';
+import { putLogo } from '$lib/server/org/logo.testing';
 import { ORIGIN, PASSWORD, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
@@ -329,12 +328,7 @@ function masthead(html: string): string {
 describe('the organisation’s logo atop a published campaign', () => {
 	it('stands atop the page by its id, at its stored size, once one is set', async () => {
 		await campaign();
-		const id = await createImage(
-			db,
-			{ kind: 'photo', contentType: 'image/png', width: 200, height: 200, alt: null },
-			new Uint8Array([1])
-		);
-		expect(await setOrgProfileLogo(db, id)).toBe('written');
+		const id = await putLogo(db, { contentType: 'image/png', width: 200, height: 200 });
 
 		const answered = await visit();
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
@@ -446,12 +440,7 @@ describe('an ended campaign at its address', () => {
 		await endedCampaign();
 		expect(masthead(markup((await visit()).data))).not.toContain('<img');
 
-		const id = await createImage(
-			db,
-			{ kind: 'photo', contentType: 'image/png', width: 200, height: 200, alt: null },
-			new Uint8Array([1])
-		);
-		expect(await setOrgProfileLogo(db, id)).toBe('written');
+		const id = await putLogo(db, { contentType: 'image/png', width: 200, height: 200 });
 		const mast = masthead(markup((await visit()).data));
 		expect(mast).toContain(`src="/image/${id}"`);
 		expect(mast).toContain('width="200"');
@@ -701,7 +690,6 @@ describe('a campaign after its editor’s Publish', () => {
 
 	beforeEach(async () => {
 		await env.DB.batch([
-			env.DB.prepare('delete from chat_turn'),
 			env.DB.prepare('delete from page'),
 			env.DB.prepare('delete from form'),
 			env.DB.prepare('delete from program')

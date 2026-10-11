@@ -19,15 +19,13 @@ import { SLUG_ATTEMPTS } from './queries';
 // a campaign's reads and its making. New campaign makes one page and the settings row it owns in
 // one `batch()`:
 // - the settings are the Donation page's live row copied (made first where there is none yet,
-//   ./donation-page.ts), with the program left for the campaign to choose — by the chat, by hand,
-//   or at the first publish — and the row not live, so it takes no gift before that publish and
+//   ./donation-page.ts), with the program left for the campaign to choose — by hand or at the
+//   first publish — and the row not live, so it takes no gift before that publish and
 //   `deleteNeverPublishedCampaign` (./queries.ts) can still take it away. the draft carries the
 //   same settings, since publish is what copies a draft's onto the row.
 // - the page is the clean default campaign (`defaultCampaign` in ../../page/defaults.ts) under
 //   the name, of the type picked, never published, at the address its name suggests or the first
 //   free `-2`, `-3`.
-// - its chat is left empty and no model is asked: the editor opens an empty chat on the type's
-//   questions (`openTurn` in ./draft.ts), and the first draft comes from their answers.
 
 /** a campaign that answers at its address: `page_name_check` holds every campaign to a name. */
 export type ServedCampaign = Page & {

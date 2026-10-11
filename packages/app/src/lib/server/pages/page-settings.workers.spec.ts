@@ -39,11 +39,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
-		env.DB.prepare('delete from page'),
-		env.DB.prepare('delete from form')
-	]);
+	await env.DB.batch([env.DB.prepare('delete from page'), env.DB.prepare('delete from form')]);
 });
 
 async function stored(pageId: string) {
@@ -89,7 +85,7 @@ beforeEach(async () => {
 });
 
 describe('the look and the share message', () => {
-	// each is the page's own and set only through its editor's chat ($lib/page/accept-reply.ts).
+	// neither has a box in either editor.
 	it.each([
 		['page-look', 'campaign', CUSTOM],
 		['page-look', 'donation_page', CUSTOM],

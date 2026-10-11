@@ -12,15 +12,12 @@ import { ownedFormInsert, readForm } from '$lib/server/forms/queries';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { BLOCK_FORMS } from '$lib/page/block-edit';
-import { jpegHeader } from '$lib/server/images/headers.testing';
-import { createImage } from '$lib/server/images/queries';
+import { createImage } from '$lib/server/images/image.testing';
 import { saveBlockForm } from '$lib/server/pages/blocks';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
-import { draftTurn } from '$lib/server/pages/draft';
-import { answering } from '$lib/server/pages/page-row.testing';
 import { readPage } from '$lib/server/pages/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
-import { setOrgProfileLogo } from '$lib/server/org/queries';
+import { putLogo } from '$lib/server/org/logo.testing';
 import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
 import { mountRoutes } from '../route-request.testing';
@@ -64,7 +61,6 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from page'),
 		env.DB.prepare('delete from form'),
 		env.DB.prepare('delete from program'),
@@ -245,33 +241,9 @@ describe('the donation box in a preview', () => {
 	});
 });
 
-describe('a picture the chat had drawn', () => {
-	it('is marked an illustration where the draft places it, and no longer once a photo replaces it by hand', async () => {
+describe('a photo the draft places', () => {
+	it('is drawn by its id and its words, with nothing else on its block', async () => {
 		const campaign = await neverPublishedCampaign(defaultCampaign());
-		let binary = '';
-		for (const byte of jpegHeader(1024, 768)) binary += String.fromCharCode(byte);
-		const AI = answering({
-			say: 'Added a picture.',
-			page: {
-				kind: 'patch',
-				ops: [{ op: 'replace', path: '/blocks/0/props/imageId', value: { illustrate: 'a van' } }]
-			}
-		});
-		AI.run.mockImplementationOnce(async () => ({ image: btoa(binary) }));
-		await draftTurn(
-			db,
-			{ ...env, AI },
-			{
-				pageId: campaign.id,
-				message: 'no photo yet',
-				imageIds: [],
-				timeZone: 'UTC',
-				now: Date.now()
-			}
-		);
-		const hero = async () => (await open(campaign.id)).page.blocks[0];
-		expect(await hero()).toMatchObject({ type: 'hero', illustration: true });
-
 		const row = await readPage(db, campaign.id);
 		if (row === null) throw new Error('the fixture campaign is gone');
 		const photo = await createImage(
@@ -287,7 +259,15 @@ describe('a picture the chat had drawn', () => {
 		body.set('alt', 'Volunteers');
 		await saveBlockForm(db, { type: 'campaign', id: campaign.id }, BLOCK_FORMS.photo, body, 'gone');
 
-		expect(await hero()).toMatchObject({ type: 'hero', imageId: photo, illustration: false });
+		const [hero] = (await open(campaign.id)).page.blocks;
+		expect(hero).toEqual({
+			id: 'hero',
+			type: 'hero',
+			variant: 'framed',
+			background: 'none',
+			imageId: photo,
+			alt: 'Volunteers'
+		});
 	});
 });
 
@@ -299,8 +279,7 @@ describe('the organisation’s logo and the program photos in a preview', () => 
 				{ kind: 'photo', contentType: 'image/webp', width, height, alt: null },
 				new Uint8Array([1])
 			);
-		const logo = await stored(640, 160);
-		expect(await setOrgProfileLogo(db, logo)).toBe('written');
+		const logo = await putLogo(db, { contentType: 'image/webp', width: 640, height: 160 });
 		const photo = await stored(1600, 1067);
 		const [food] = await db
 			.insert(program)

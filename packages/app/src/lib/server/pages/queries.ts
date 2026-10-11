@@ -4,7 +4,7 @@ import { stateAt } from '../../page/ended';
 import { freeSlug, slugFromTitle } from '../../page/slug';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import { chatTurn, form, type Page, page } from '../db/schema';
+import { form, type Page, page } from '../db/schema';
 import { MAX_FORM_NAME } from '../../forms/input-schema';
 import type { ParsedFormGiving, ParsedFormProgram } from '../forms/form-input';
 import { readForm, type StoredForm } from '../forms/queries';
@@ -29,7 +29,7 @@ export async function readPage(db: Db, pageId: string): Promise<Page | null> {
 }
 
 /**
- * deletes a never-published campaign, its chat and the donation-settings row it owns, in one
+ * deletes a never-published campaign and the donation-settings row it owns, in one
  * `batch()`, while the page is still the version it was drawn at. false when the page is missing,
  * is the donation page, has ever been live, or has been written since `version`.
  *
@@ -51,10 +51,7 @@ export async function deleteNeverPublishedCampaign(
 		eq(page.state, 'never_published'),
 		eq(page.updatedAt, version)
 	);
-	const [, deleted] = await db.batch([
-		db
-			.delete(chatTurn)
-			.where(inArray(chatTurn.pageId, db.select({ id: page.id }).from(page).where(deletable))),
+	const [deleted] = await db.batch([
 		db.delete(page).where(deletable).returning({ id: page.id }),
 		db
 			.delete(form)

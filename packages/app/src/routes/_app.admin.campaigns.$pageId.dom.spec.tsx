@@ -8,8 +8,8 @@ import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import { defaultCampaign } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
 
-// a campaign's editor as the route mounts it: the preview and the bar's presses on every page, one
-// never drafted among them, and no AI anywhere, every hand edit reached from Settings or a click in
+// a campaign's editor as the route mounts it: the preview and the bar's presses, and no AI
+// anywhere, every hand edit reached from Settings or a click in
 // the preview once Edit is on, what its first Publish says of the address, the
 // questions an address save comes back with — asked, answered yes with the version, or declined —
 // whether the donation settings sheet stands over Settings or on its own ground, and the notice over
@@ -37,13 +37,11 @@ function unpublished(): Loaded {
 		unreadable: false,
 		state: 'unpublished',
 		version: 1,
-		drafted: true,
 		// a frame on a path would be fetched from a server nothing here runs.
 		preview: 'about:blank',
-		chat: '/admin/pages/p1/chat',
 		goalMinor: null,
 		endDate: null,
-		blocks: editorBlocks(DRAFT, 'USD', new Set()),
+		blocks: editorBlocks(DRAFT, 'USD'),
 		layout: DRAFT.layout,
 		layouts: layoutPictures(),
 		settings: {
@@ -198,11 +196,7 @@ describe('the editor as it opens', () => {
 			(one) => one.getAttribute('aria-label') ?? one.textContent?.trim()
 		);
 
-	it.each([
-		['drafted', true],
-		['never drafted', false]
-	])('shows the preview and Edit, Settings and Publish on a page %s', async (_, drafted) => {
-		drawn = { ...unpublished(), drafted };
+	it('shows the preview and Edit, Settings and Publish', async () => {
 		await screen();
 
 		expect(document.querySelector('.adm-editor__preview iframe')).not.toBeNull();
@@ -375,9 +369,7 @@ describe('a draft the page rule refuses', () => {
 		discardable,
 		state: 'changed',
 		version: 3,
-		drafted: true,
 		preview: 'about:blank',
-		chat: '/admin/pages/p1/chat',
 		name: 'Winter coat drive',
 		address: '/winter-coat-drive',
 		host: 'give.example.org/'

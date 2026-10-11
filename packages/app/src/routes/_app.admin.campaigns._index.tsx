@@ -46,9 +46,9 @@ import type { Route } from './+types/_app.admin.campaigns._index';
 
 // the Campaigns list: every campaign with its name, address, state, goal and end date, each linking
 // to its editor, the ended ones in a collapsed group of their own; and New campaign, a dialog on
-// `?new` whose action makes the campaign from a type and a name ($lib/server/pages/campaign.ts),
-// asking no model, and opens its editor, which asks the type's questions of the empty chat. the
-// Donation page is no campaign and is not on this list.
+// `?new` whose action makes the campaign from a type and a name on the default campaign page
+// ($lib/server/pages/campaign.ts) and opens its editor. the Donation page is no campaign and is
+// not on this list.
 //
 // each row has the one press its state allows. End on a live campaign and Delete on one never
 // published each ask first, in a dialog on `?end={id}` or `?delete={id}`; Publish on an ended one

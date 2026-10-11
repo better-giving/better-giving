@@ -6,10 +6,9 @@ import { HEADING_MAX, type Page, parsePage } from '../../page/catalog';
 import { defaultCampaign } from '../../page/defaults';
 import type { RichTextDocument } from '../../rich-text/document';
 import { createDb, type Db } from '../db/client';
-import { createImage } from '../images/queries';
-import { draftIllustrations, editorDraft, saveBlockForm } from './blocks';
-import { draftTurn } from './draft';
-import { answering, insertPage, SETTINGS } from './page-row.testing';
+import { createImage } from '../images/image.testing';
+import { saveBlockForm } from './blocks';
+import { insertPage, SETTINGS } from './page-row.testing';
 import { readPage } from './queries';
 
 // a workers spec because every press reads the page's draft and writes it back against the version
@@ -71,7 +70,7 @@ describe('a block’s words', () => {
 			lede: 'Every child warm by December.'
 		});
 		expect(
-			editorBlocks(draft, SETTINGS.currency, new Set()).find((block) => block.id === 'title')
+			editorBlocks(draft, SETTINGS.currency).find((block) => block.id === 'title')
 		).toMatchObject({
 			label: 'Title',
 			summary: 'Coats before the first frost',
@@ -178,9 +177,7 @@ describe('a block’s words', () => {
 			]
 		});
 		expect(
-			editorBlocks((await stored(pageId)).draft, SETTINGS.currency, new Set()).find(
-				({ id }) => id === 'tiers'
-			)
+			editorBlocks((await stored(pageId)).draft, SETTINGS.currency).find(({ id }) => id === 'tiers')
 		).toMatchObject({
 			text: {
 				kind: 'impact-tiers',
@@ -343,38 +340,6 @@ describe('a photo', () => {
 		expect(await stored(pageId)).toEqual(before);
 	});
 
-	it('replaced by hand over an illustration is flagged as one no longer, on the editor’s next load', async () => {
-		const illustration = await createImage(
-			db,
-			{ kind: 'illustration', contentType: 'image/webp', width: 4, height: 3, alt: 'a van' },
-			new Uint8Array([1, 2, 3])
-		);
-		const draft: Page = { ...defaultCampaign(), settings: SETTINGS };
-		draft.blocks[0] = {
-			id: 'hero',
-			type: 'hero',
-			variant: 'wide',
-			background: 'none',
-			imageId: illustration,
-			alt: 'a van'
-		};
-		const pageId = await insertPage(db, 'campaign', draft);
-		const hero = async () => {
-			const { row } = await stored(pageId);
-			const { blocks } = editorDraft(row, SETTINGS.currency, await draftIllustrations(db, row));
-			return blocks.find((block) => block.id === 'hero');
-		};
-		expect(await hero()).toMatchObject({ illustration: true });
-
-		await press(pageId, BLOCK_FORMS.photo, [
-			['block_id', 'hero'],
-			['image_id', await upload()],
-			['alt', 'Volunteers']
-		]);
-
-		expect(await hero()).toMatchObject({ illustration: false });
-	});
-
 	it('is refused on a block that holds no photo, naming what it is', async () => {
 		const pageId = await withPhoto();
 		const answer = await press(pageId, BLOCK_FORMS.photo, [
@@ -386,35 +351,6 @@ describe('a photo', () => {
 			status: 400,
 			error: { '': ['block "title" is a title, and this sheet edits a hero or an image'] }
 		});
-	});
-});
-
-describe('a follow-up message in the chat', () => {
-	it('keeps a hand edit it was not asked to change', async () => {
-		const pageId = await insertPage(db, 'campaign');
-		const story = richText('Last winter we handed out 400 coats.');
-		await press(pageId, BLOCK_FORMS.story, [
-			['block_id', 'story'],
-			['body', JSON.stringify(story)]
-		]);
-		const AI = answering({
-			say: 'A warmer title.',
-			page: {
-				kind: 'patch',
-				ops: [{ op: 'replace', path: '/blocks/1/props/heading', value: 'Keep a child warm' }]
-			}
-		});
-
-		const turn = await draftTurn(
-			db,
-			{ ...env, AI },
-			{ pageId, message: 'warmer title', imageIds: [], timeZone: 'UTC', now: Date.now() }
-		);
-
-		expect(turn).toMatchObject({ ok: true, outcome: 'accepted' });
-		const { draft } = await stored(pageId);
-		expect(blockOf(draft, 'title')).toMatchObject({ heading: 'Keep a child warm' });
-		expect(blockOf(draft, 'story')).toMatchObject({ body: story });
 	});
 });
 

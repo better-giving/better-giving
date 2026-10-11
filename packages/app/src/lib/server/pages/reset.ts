@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import { and, eq, exists } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { defineForm, type RejectionStatus } from '../../forms/definition';
 import type { Page as PageDocument } from '../../page/catalog';
@@ -7,7 +7,7 @@ import { defaultDonationPage } from '../../page/defaults';
 import { RESET_FORM_ID } from '../../page/publish-form';
 import { invalid, parseForm, submittedVersion } from '../conform';
 import type { Db } from '../db/client';
-import { chatTurn, type Page, page } from '../db/schema';
+import { type Page, page } from '../db/schema';
 import { readDocument, type StoredDocument } from './document';
 import { STALE } from './publish';
 import { readOwnedRow, readTarget, settingsOfRow } from './queries';
@@ -17,9 +17,9 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 //
 // a Reset puts the current default Donation page (`defaultDonationPage` in ../../page/defaults.ts)
 // in the draft and the live page alike, so both hold no look, share message or share buttons of
-// their own and draw the defaults (`donorLook` in ./view.ts); clears `last_published`, so Undo has
-// nothing to put back; and empties the page's chat — in one `batch()` guarded on the version the
-// editor was drawn at, as ./publish.ts's presses are.
+// their own and draw the defaults (`donorLook` in ./view.ts); and clears `last_published`, so Undo
+// has nothing to put back — in one write guarded on the version the editor was drawn at, as
+// ./publish.ts's presses are.
 // - the live donation settings stay: the owned settings row is not written, and the document
 //   carries the live page's two switches and, where the live page carries settings of its own, that
 //   row's, so a settings or switch change not yet published goes with the draft. a live page with
@@ -32,7 +32,7 @@ import { readOwnedRow, readTarget, settingsOfRow } from './queries';
 /** what a Reset to default did. */
 export type ResetOutcome =
 	| { readonly kind: 'reset' }
-	/** the page has no edits: it is the default already, with no chat. */
+	/** the page has no edits: it is the default already. */
 	| { readonly kind: 'nothing' }
 	| { readonly kind: 'stale' }
 	| { readonly kind: 'gone' };
@@ -43,7 +43,7 @@ export async function resetDonationPage(db: Db, version: Date): Promise<ResetOut
 	if (row === null) return { kind: 'gone' };
 	// unreachable: the Donation page is live from the start, and only a Publish writes `published`.
 	if (row.published === null) throw new Error(`page ${row.id} has no live page`);
-	if (!(await hasEditsToReset(db, row))) return { kind: 'nothing' };
+	if (!hasEditsToReset(row)) return { kind: 'nothing' };
 	const live = readDocument(row, 'published', row.published);
 	const fresh = defaultDonationPage();
 	const chosen = !live.ok || live.page.settings !== undefined;
@@ -59,18 +59,11 @@ export async function resetDonationPage(db: Db, version: Date): Promise<ResetOut
 		eq(page.draft, row.draft),
 		eq(page.published, row.published)
 	);
-	const [, reset] = await db.batch([
-		db
-			.delete(chatTurn)
-			.where(
-				and(eq(chatTurn.pageId, row.id), exists(db.select({ id: page.id }).from(page).where(drawn)))
-			),
-		db
-			.update(page)
-			.set({ draft: document, published: document, lastPublished: null })
-			.where(drawn)
-			.returning({ id: page.id })
-	]);
+	const reset = await db
+		.update(page)
+		.set({ draft: document, published: document, lastPublished: null })
+		.where(drawn)
+		.returning({ id: page.id });
 	return reset.length === 1 ? { kind: 'reset' } : { kind: 'stale' };
 }
 
@@ -95,26 +88,16 @@ function isDefault(stored: StoredDocument): boolean {
 
 /**
  * whether the Donation page has anything Reset would put back: a draft or a live page other than
- * the default, one the read rule refuses among them, or a chat.
+ * the default, one the read rule refuses among them.
  */
-export async function hasEditsToReset(db: Db, row: Page): Promise<boolean> {
-	const draft = readDocument(row, 'draft', row.draft);
-	if (!isDefault(draft)) return true;
-	if (row.published !== null && !isDefault(readDocument(row, 'published', row.published))) {
-		return true;
-	}
-	const [turn] = await db
-		.select({ id: chatTurn.id })
-		.from(chatTurn)
-		.where(eq(chatTurn.pageId, row.id))
-		.limit(1);
-	return turn !== undefined;
+export function hasEditsToReset(row: Page): boolean {
+	if (!isDefault(readDocument(row, 'draft', row.draft))) return true;
+	return row.published !== null && !isDefault(readDocument(row, 'published', row.published));
 }
 
 const RESET = defineForm({ id: RESET_FORM_ID, schema: z.object({}) });
 
-const NOTHING_TO_RESET =
-	'Nothing was reset: the Donation page is already the default, with no chat.';
+const NOTHING_TO_RESET = 'Nothing was reset: the Donation page is already the default.';
 const FAILED = 'Resetting failed and nothing was changed. Try again.';
 
 /**

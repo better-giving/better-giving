@@ -4,14 +4,14 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Page as PageDocument } from '../../page/catalog';
 import { defaultDonationPage } from '../../page/defaults';
 import { createDb, type Db } from '../db/client';
-import { chatTurn, donation, page } from '../db/schema';
+import { donation, page } from '../db/schema';
 import { readForm } from '../forms/queries';
 import { expectRecordedAsAForm } from './owned-settings-gift.testing';
 import { insertPage, SETTINGS } from './page-row.testing';
 import { resetDonationPage } from './reset';
 
-// Reset to default against the real D1 the pool binds: one `batch()` over the Donation page and its
-// chat, read back from both, and from the settings row it owns, which it leaves alone.
+// Reset to default against the real D1 the pool binds: one write to the Donation page, read back
+// from it and from the settings row it owns, which it leaves alone.
 
 let db: Db;
 
@@ -21,7 +21,6 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	await env.DB.batch([
-		env.DB.prepare('delete from chat_turn'),
 		env.DB.prepare('delete from payment'),
 		env.DB.prepare('delete from line_item'),
 		env.DB.prepare('delete from donation'),
@@ -37,16 +36,6 @@ async function stored(pageId: string) {
 }
 
 const documentOf = (text: string | null): PageDocument => JSON.parse(text ?? 'null');
-
-async function chatOn(pageId: string) {
-	await db.insert(chatTurn).values([
-		{ pageId, seq: 1, author: 'operator', text: 'Make it bolder.' },
-		{ pageId, seq: 2, author: 'assistant', text: 'Done.', model: '@cf/meta/llama' }
-	]);
-}
-
-const turnsOn = async (pageId: string) =>
-	(await db.select().from(chatTurn).where(eq(chatTurn.pageId, pageId))).length;
 
 /** a Donation page edited every way Reset puts back, published, with an earlier page kept for Undo. */
 const EDITED: PageDocument = {
@@ -74,9 +63,8 @@ async function publishedEdits(edited: PageDocument = EDITED) {
 }
 
 describe('Reset to default', () => {
-	it('puts the current default in the draft and the live page, with no look or share message of its own, nothing to undo and no chat', async () => {
+	it('puts the current default in the draft and the live page, with no look or share message of its own and nothing to undo', async () => {
 		const pageId = await publishedEdits();
-		await chatOn(pageId);
 
 		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
 
@@ -86,7 +74,6 @@ describe('Reset to default', () => {
 		expect(published).toEqual(defaultDonationPage());
 		expect(after.draft).toBe(after.published);
 		expect(after.lastPublished).toBeNull();
-		expect(await turnsOn(pageId)).toBe(0);
 	});
 });
 
@@ -165,7 +152,6 @@ describe('a Reset refused', () => {
 
 	it('when the page has been written since the editor was drawn, and nothing moves', async () => {
 		const pageId = await publishedEdits();
-		await chatOn(pageId);
 		const drawn = await stored(pageId);
 		await db
 			.update(page)
@@ -180,21 +166,10 @@ describe('a Reset refused', () => {
 
 		expect(outcome).toEqual({ kind: 'stale' });
 		expect(await stored(pageId)).toEqual(written);
-		expect(await turnsOn(pageId)).toBe(2);
 	});
 });
 
 describe('a Donation page’s edits', () => {
-	it('include a chat on a page that is otherwise the default', async () => {
-		const pageId = await insertPage(db, 'donation_page', defaultDonationPage());
-		await chatOn(pageId);
-
-		const outcome = await resetDonationPage(db, (await stored(pageId)).updatedAt);
-
-		expect(outcome).toEqual({ kind: 'reset' });
-		expect(await turnsOn(pageId)).toBe(0);
-	});
-
 	it('include a live page other than the default under a default draft', async () => {
 		const pageId = await insertPage(db, 'donation_page', defaultDonationPage(), EDITED);
 

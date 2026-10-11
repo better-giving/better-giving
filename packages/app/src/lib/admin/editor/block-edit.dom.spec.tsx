@@ -79,8 +79,7 @@ const title: EditorBlock = {
 		{ value: 'left', label: 'Left' },
 		{ value: 'center', label: 'Centred' }
 	],
-	text: { kind: 'title', heading: 'Keep 300 kids warm this winter', lede: '' },
-	illustration: false
+	text: { kind: 'title', heading: 'Keep 300 kids warm this winter', lede: '' }
 };
 
 const tiers: EditorBlock = {
@@ -100,8 +99,7 @@ const tiers: EditorBlock = {
 			{ amount: '40.00', buys: 'one winter coat' },
 			{ amount: '120.00', buys: 'coats for a family of three' }
 		]
-	},
-	illustration: false
+	}
 };
 
 const sheet = (block: EditorBlock, stacked?: boolean) => (

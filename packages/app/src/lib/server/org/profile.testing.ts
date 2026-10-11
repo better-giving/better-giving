@@ -3,7 +3,7 @@ import { type OrgProfileFormValues, parseOrgProfile } from './org-input';
 import { saveOrgProfile } from './queries';
 
 // the organisation's profile saved as the console saves it — through `parseOrgProfile` and
-// `saveOrgProfile` — for the specs that read what a donor page or a page's chat draws from it.
+// `saveOrgProfile` — for the specs that read what a donor page draws from it.
 //
 // not a spec itself, for the reason ./org-row.testing.ts gives. nothing in the app imports it.
 

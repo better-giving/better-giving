@@ -7,7 +7,6 @@ import { AddressSheet } from '$lib/admin/editor/address-sheet';
 import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { revalidatesAfter } from '$lib/admin/editor/suggest-url';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
 import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
@@ -37,9 +36,8 @@ import { checkSlug, type SlugCheck } from '$lib/page/slug';
 import { invalid, parseForm, submittedForm, submittedVersion } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import type { Page } from '$lib/server/db/schema';
-import { draftIllustrations, editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
+import { editorDraft, saveBlockForm } from '$lib/server/pages/blocks';
 import {
-	type EditorPage,
 	editorPage,
 	readEditorSettings,
 	saveDraftSettings,
@@ -161,8 +159,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	let row: Page | null;
 	let settings: SettingsSeed;
 	let asked: string | null;
-	let illustrations: ReadonlySet<string>;
-	let framed: EditorPage;
 	try {
 		row = await readPage(db, params.pageId);
 	} catch (e) {
@@ -179,19 +175,17 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	const unreadable = unreadableEditor(row, now);
 	if (unreadable !== null) return { ...unreadable, ...named };
 	try {
-		[framed, settings, asked, illustrations] = await Promise.all([
-			editorPage(db, row, now),
+		[settings, asked] = await Promise.all([
 			readEditorSettings(db, context.get(platform).env, row, new URL(request.url).origin),
-			addressAsked(db, row),
-			draftIllustrations(db, row)
+			addressAsked(db, row)
 		]);
 	} catch (e) {
 		console.error(`loading campaign ${params.pageId}'s editor failed:`, e);
 		loadFailed('This campaign');
 	}
 	return {
-		...framed,
-		...editorDraft(row, settings.currency, illustrations),
+		...editorPage(row, now),
+		...editorDraft(row, settings.currency),
 		...named,
 		settings,
 		asked: asked === null ? null : `/${asked}`
@@ -213,9 +207,6 @@ function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
 				: `clashes with ${refused.clashesWith}`;
 	}
 }
-
-// Write with AI's ask writes nothing, so the editor is not read again after one.
-export const shouldRevalidate = revalidatesAfter;
 
 export async function action({ context, params, request }: Route.ActionArgs) {
 	const body = await request.formData();

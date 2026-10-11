@@ -6,7 +6,7 @@ import { defaultCampaign, defaultDonationPage } from './defaults';
 
 describe('the block list', () => {
 	it('offers each block the catalog’s variants, and the donation box none', () => {
-		const blocks = editorBlocks(defaultDonationPage(), 'USD', new Set());
+		const blocks = editorBlocks(defaultDonationPage(), 'USD');
 
 		expect(
 			blocks.map(({ id, label, summary, variant }) => ({ id, label, summary, variant }))
@@ -44,7 +44,7 @@ describe('an FAQ block', () => {
 				{ question: 'Monthly?', answer }
 			]
 		});
-		const faq = editorBlocks(draft, 'USD', new Set()).find(({ id }) => id === 'faq');
+		const faq = editorBlocks(draft, 'USD').find(({ id }) => id === 'faq');
 		expect(faq?.summary).toBe('Deductible?, Monthly?');
 	});
 });
@@ -63,7 +63,7 @@ describe('an impact tiers block', () => {
 				{ amountMinor: 123_456_750, buys: 'a school' }
 			]
 		});
-		const tiers = editorBlocks(draft, 'USD', new Set()).find(({ id }) => id === 'tiers');
+		const tiers = editorBlocks(draft, 'USD').find(({ id }) => id === 'tiers');
 		expect(tiers?.text).toMatchObject({
 			kind: 'impact-tiers',
 			tiers: [
@@ -88,7 +88,7 @@ describe('a photo block', () => {
 			imageId: photoId,
 			alt: null
 		};
-		const [hero] = editorBlocks(draft, 'USD', new Set());
+		const [hero] = editorBlocks(draft, 'USD');
 		expect(hero).toEqual({
 			id: 'hero',
 			type: 'hero',
@@ -99,13 +99,12 @@ describe('a photo block', () => {
 				{ value: 'wide', label: 'Wide' },
 				{ value: 'framed', label: 'Framed' }
 			],
-			text: { kind: 'photo', imageId: photoId, alt: '' },
-			illustration: false
+			text: { kind: 'photo', imageId: photoId, alt: '' }
 		});
 	});
 
 	it('with no photo yet says so, and has no photo to replace', () => {
-		const [hero] = editorBlocks(defaultCampaign(), 'USD', new Set());
+		const [hero] = editorBlocks(defaultCampaign(), 'USD');
 		expect([hero?.summary, hero?.text]).toEqual(['No photo yet', null]);
 	});
 });

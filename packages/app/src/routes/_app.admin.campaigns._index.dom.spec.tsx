@@ -360,7 +360,7 @@ describe('New campaign', () => {
 			['In memory or honour', 'Gifts in someone’s name'],
 			['Monthly giving drive', 'Grow regular donors'],
 			['A program or project', 'One piece of your work'],
-			['Something else', 'Tell the AI what it is']
+			['Something else', 'Any other kind of campaign']
 		]);
 	});
 

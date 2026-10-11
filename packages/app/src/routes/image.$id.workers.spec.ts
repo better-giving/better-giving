@@ -1,7 +1,7 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
-import { createImage } from '$lib/server/images/queries';
+import { createImage } from '$lib/server/images/image.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as imageRoute from './image.$id';
 
