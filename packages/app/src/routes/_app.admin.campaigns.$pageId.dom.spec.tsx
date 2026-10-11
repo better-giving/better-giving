@@ -8,9 +8,9 @@ import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import { defaultCampaign } from '$lib/page/defaults';
 import CampaignEditor from './_app.admin.campaigns.$pageId';
 
-// a campaign's editor as the route mounts it: the opening questions an empty chat is asked alone on
-// a page never drafted, and none on one that has been, every hand edit reached from
-// Settings or a click in the preview once Edit is on, what its first Publish says of the address, the
+// a campaign's editor as the route mounts it: the preview and the bar's presses on every page, one
+// never drafted among them, and no AI anywhere, every hand edit reached from Settings or a click in
+// the preview once Edit is on, what its first Publish says of the address, the
 // questions an address save comes back with — asked, answered yes with the version, or declined —
 // whether the donation settings sheet stands over Settings or on its own ground, and the notice over
 // a draft the read rule refuses.
@@ -68,19 +68,7 @@ function unpublished(): Loaded {
 	};
 }
 
-/** the opening questions the stand-in chat route asks an empty chat. */
-const OPENING = {
-	id: 'q1',
-	role: 'assistant',
-	text: 'A few questions first.',
-	questions: [{ id: 'mission', kind: 'text', prompt: 'Your mission, in a sentence' }]
-};
-
 let drawn: Loaded;
-/** the page's chat as the stand-in chat route holds it. */
-let chat: unknown[];
-/** what was posted to the chat route. */
-let chatPosted: Record<string, string>[];
 /** what the loader draws in `drawn`'s place over a draft the read rule refuses. */
 let unreadable: Extract<Drawn, { unreadable: true }> | null;
 let posted: Record<string, string>[];
@@ -92,8 +80,6 @@ beforeEach(() => {
 	unreadable = null;
 	posted = [];
 	answers = [];
-	chat = [];
-	chatPosted = [];
 });
 
 function mount(tree: ReactNode) {
@@ -130,19 +116,6 @@ async function screen() {
 			},
 			HydrateFallback: () => null,
 			Component: Editor
-		},
-		{
-			// the editor reads the page's chat as it opens, and asks an empty one its opening
-			// questions; what the real route answers is src/routes/_app.admin.pages.$pageId.chat.ts's.
-			path: '/admin/pages/:pageId/chat',
-			loader: () => ({ turns: chat }),
-			action: async ({ request }) => {
-				chatPosted.push(
-					Object.fromEntries([...(await request.formData())].map(([k, v]) => [k, String(v)]))
-				);
-				chat = [OPENING];
-				return { outcome: 'asked', turns: chat };
-			}
 		}
 	]);
 	mount(createElement(Stub, { initialEntries: [PAGE] }));
@@ -193,34 +166,6 @@ async function press(target: HTMLElement) {
 	await settle();
 }
 
-describe('the AI panel', () => {
-	it('asks a drafted page’s empty chat nothing, the panel the AI press opens over the preview', async () => {
-		await screen();
-		await settle();
-		expect(document.querySelector('.adm-aipanel')).toBeNull();
-
-		await press(button('AI'));
-
-		expect(chatPosted).toEqual([]);
-		expect(document.querySelector('[role="complementary"].adm-aipanel textarea')).not.toBeNull();
-		expect(document.querySelector('.adm-questions')).toBeNull();
-	});
-
-	it('asks a page never drafted its opening questions alone, with no preview and no Edit', async () => {
-		drawn = { ...unpublished(), drafted: false };
-
-		await screen();
-		await settle();
-
-		expect(document.querySelector('iframe')).toBeNull();
-		expect(chatPosted).toEqual([
-			{ intent: 'open', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
-		]);
-		expect(document.querySelector('[role="main"].adm-aipanel .adm-questions')).not.toBeNull();
-		expect(() => button('Edit')).toThrow('no Edit button');
-	});
-});
-
 /** a click on the block `id` in the preview, as the framed page posts it. */
 async function clickInPreview(id: string) {
 	const frame = document.querySelector('iframe');
@@ -246,6 +191,37 @@ async function editOn() {
 	await press(button('Edit'));
 }
 
+describe('the editor as it opens', () => {
+	/** the bar's presses, each by the name a reader meets it by. */
+	const presses = () =>
+		[...document.querySelectorAll('.adm-publishbar button')].map(
+			(one) => one.getAttribute('aria-label') ?? one.textContent?.trim()
+		);
+
+	it.each([
+		['drafted', true],
+		['never drafted', false]
+	])('shows the preview and Edit, Settings and Publish on a page %s', async (_, drafted) => {
+		drawn = { ...unpublished(), drafted };
+		await screen();
+
+		expect(document.querySelector('.adm-editor__preview iframe')).not.toBeNull();
+		expect(presses()).toEqual(expect.arrayContaining(['Edit', 'Publish']));
+		await editOn();
+		expect(presses()).toEqual(expect.arrayContaining(['Done', 'Settings', 'Publish']));
+	});
+
+	it('draws no AI press, panel or unread mark', async () => {
+		await screen();
+		await editOn();
+
+		expect(presses()).not.toContain('AI');
+		expect(document.querySelector('.adm-publishbar [role="img"]')).toBeNull();
+		expect(document.querySelector('.adm-editor__body > :not(main)')).toBeNull();
+		expect(document.querySelector('[role="complementary"], dialog')).toBeNull();
+	});
+});
+
 describe('every hand edit', () => {
 	it('is reached from Settings, which stands beside Done once Edit is on', async () => {
 		await screen();
@@ -269,35 +245,6 @@ describe('every hand edit', () => {
 
 		expect(card(block.label).open).toBe(true);
 		expect(() => card('Settings')).toThrow();
-	});
-});
-
-describe('the AI panel and a sheet', () => {
-	it('never stand together: a block clicked in the preview closes the panel as its sheet opens', async () => {
-		await screen();
-		const block = drawn.blocks.find((one) => one.type !== 'donation-box');
-		if (block === undefined) throw new Error('the fixture draws only a donation box');
-		await editOn();
-		await press(button('AI'));
-		expect(document.querySelector('.adm-aipanel')).not.toBeNull();
-
-		await clickInPreview(block.id);
-
-		expect(card(block.label).open).toBe(true);
-		expect(document.querySelector('.adm-aipanel')).toBeNull();
-		expect(button('AI').getAttribute('aria-expanded')).toBe('false');
-	});
-
-	it('never stand together: Settings closes the panel as its sheet opens', async () => {
-		await screen();
-		await editOn();
-		await press(button('AI'));
-		expect(document.querySelector('.adm-aipanel')).not.toBeNull();
-
-		await press(button('Settings'));
-
-		expect(card('Settings').open).toBe(true);
-		expect(document.querySelector('.adm-aipanel')).toBeNull();
 	});
 });
 

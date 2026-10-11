@@ -54,9 +54,8 @@ import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-li
  * refused at its amount and one at its words; the second the group's own sentence, which marks
  * every box; the third is the group at its cap, Add held and described by the line the group
  * draws directly under it; the fourth is the group closed, which closes both boxes of every row.
- * each amount stands behind the `$` the AI's tiers question draws, here as the box's own lead — the
- * question's amount box is the app's (packages/app/src/lib/admin/editor/money-field.tsx), out of
- * this page's reach.
+ * each amount stands behind a `$`, here as the box's own lead — the app's money box
+ * (packages/app/src/lib/admin/editor/money-field.tsx) is out of this page's reach.
  *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the
@@ -80,7 +79,7 @@ const held: RowControl & { 'aria-disabled': 'true' } = {
 	'aria-describedby': 'forms-rows-pair-full-add-note'
 };
 
-/** the heads over a row of an amount and what it does, as the AI's tiers question states them. */
+/** the heads over a row of an amount and what it does. */
 const TIER_COLUMNS = ['Amount', 'What it does'];
 
 /** one tier as typed, and the sentence either of its boxes was refused with. */
@@ -91,10 +90,7 @@ type Tier = {
 	readonly textError?: string;
 };
 
-/**
- * tier rows wired as the AI's tiers question wires its own: each box takes what the group hands it,
- * and the amount stands behind a `$`.
- */
+/** tier rows: each box takes what the group hands it, and the amount stands behind a `$`. */
 const tierRows = (group: string, tiers: readonly Tier[]): RepeatingRow[] =>
 	tiers.map(({ amount, text, amountError, textError }, at) => ({
 		id: `${group}-${at}-amount`,

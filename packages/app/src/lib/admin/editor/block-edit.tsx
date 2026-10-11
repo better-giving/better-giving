@@ -1,3 +1,4 @@
+import { Field } from '@better-giving/operator/components/forms/Field';
 import { useEffect, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
@@ -5,6 +6,7 @@ import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { Resized } from '@better-giving/operator/images/resize';
 import { BLOCK_FORMS, type BlockText, type EditorBlock } from '$lib/page/block-edit';
 import { imageSrc } from '$lib/page/image-src';
+import { RichTextEditor } from '../rich-text/rich-text-editor';
 import { BlockSheet } from './block-sheet';
 import { useFocusOnRefusal } from './done-sheet';
 import { MoneyField } from './money-field';
@@ -14,7 +16,6 @@ import {
 	type ReplacePhotoControlProps,
 	replaceRefusal
 } from './replace-photo';
-import { type Saves, type SuggestAsk, SuggestedField, SuggestedRichText } from './suggest';
 
 // a block's sheet as both editors open it — from a click on the block in the preview and from its
 // row in Settings' block list alike, the donation box's being the Donation settings sheet — and the
@@ -34,19 +35,11 @@ import { type Saves, type SuggestAsk, SuggestedField, SuggestedRichText } from '
 // pictures stand off the rows. a tier's amount carries its currency on the box and groups its
 // digits as typed (./money-field.tsx), as the goal's does.
 //
-// a placed photo's sheet is the replace press and its description (./replace-photo.tsx), with
-// Illustration over the art while the photo is still the AI illustration it opened on. a new
+// a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
 // photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
 // stored, and Done writes its id and the description to the block, as a text block's words are;
 // a sheet dismissed before Done leaves the block as it was. a refused description lands under its
 // box, with the caret moved there; what else the photo's rule refuses lands at Done.
-//
-// every text box but a tier's amount and a photo's description carries Write with AI
-// (./suggest.tsx), asked of the page's suggest route at `suggestUrl`: the model never sees the
-// photo, so a description it wrote would be one a screen-reader donor hears as fact. a tier's
-// words are asked for its amount, and an answer for its question, each as the sheet holds it at
-// the press. the words it fills go with Done like typed ones, and a Done that lands takes the
-// boxes' "AI suggestion" away.
 
 type Answer = AdminActionData & { readonly saved?: string };
 
@@ -77,12 +70,10 @@ const VARIANT_FORM = { id: BLOCK_FORMS.variant };
 const LAYOUT_FORM = { id: BLOCK_FORMS.layout };
 
 type BlockEditSheetProps = {
-	/** the block as the editor reads it; `illustration` marks a photo that is an AI illustration. */
-	readonly block: EditorBlock & { readonly illustration?: boolean | undefined };
+	/** the block as the editor reads it. */
+	readonly block: EditorBlock;
 	/** the page's version as the editor holds it now. */
 	readonly version: number;
-	/** the page's suggest route (`suggestUrl` in ./suggest-url.ts), which Write with AI asks. */
-	readonly suggestUrl: string;
 	/** X or Escape. */
 	readonly onDismiss: () => void;
 	/** a Done landed: the draft holds the words. */
@@ -94,7 +85,6 @@ type BlockEditSheetProps = {
 export function BlockEditSheet({
 	block,
 	version,
-	suggestUrl,
 	onDismiss,
 	onSaved,
 	stacked = false
@@ -147,8 +137,6 @@ export function BlockEditSheet({
 									id={block.id}
 									text={block.text}
 									error={(box) => refusal(textForm, wordsAnswer, box)}
-									illustration={block.illustration === true}
-									suggest={{ url: suggestUrl, saved: saved ? wordsAnswer : null, saving: applying }}
 								/>
 							),
 							onDone: (form) => {
@@ -171,28 +159,18 @@ type BlockFieldsProps = {
 	readonly text: BlockText;
 	/** the last Done's refusal under `box`. */
 	readonly error: (box: string) => string | null;
-	/** the photo it holds is an AI illustration. */
-	readonly illustration?: boolean | undefined;
-	/** the suggest route, and where the block's save stands, which takes a box's mark away. */
-	readonly suggest: Saves & { readonly url: string };
 };
 
 /** the boxes a block's words are typed in, named as its form posts them. */
-function BlockFields({ id, text, error, illustration, suggest }: BlockFieldsProps) {
-	if (text.kind === 'photo')
-		return <PhotoFields id={id} text={text} error={error} illustration={illustration} />;
-	return <WordFields id={id} text={text} error={error} suggest={suggest} />;
+function BlockFields({ id, text, error }: BlockFieldsProps) {
+	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} />;
+	return <WordFields id={id} text={text} error={error} />;
 }
 
 type PhotoText = Extract<BlockText, { kind: 'photo' }>;
 
 /** the photo Done writes, and what describes it, each posted from a hidden box. */
-function PhotoFields({
-	id,
-	text,
-	error,
-	illustration = false
-}: Omit<BlockFieldsProps, 'suggest'> & { readonly text: PhotoText }) {
+function PhotoFields({ id, text, error }: BlockFieldsProps & { readonly text: PhotoText }) {
 	const upload = useFetcher<UploadAnswer>();
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
@@ -235,7 +213,6 @@ function PhotoFields({
 				state={state}
 				altId={altId}
 				altError={altError}
-				flag={illustration && imageId === text.imageId ? 'Illustration' : undefined}
 			/>
 			<input type="hidden" name="image_id" value={imageId} />
 			<input type="hidden" name="alt" value={alt} />
@@ -246,13 +223,7 @@ function PhotoFields({
 type WordsText = Exclude<BlockText, PhotoText>;
 
 /** the boxes of a block whose words are typed. */
-function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly text: WordsText }) {
-	const ask = (field: string, beside?: string): SuggestAsk => ({
-		url: suggest.url,
-		block: id,
-		field,
-		beside: beside === undefined ? undefined : () => boxValue(boxId(id, beside))
-	});
+function WordFields({ id, text, error }: BlockFieldsProps & { readonly text: WordsText }) {
 	const boxes = boxNames(text);
 	const refused = boxes.find((box) => error(box) !== null) ?? null;
 	useFocusOnRefusal(
@@ -264,9 +235,7 @@ function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly 
 		case 'title':
 			return (
 				<>
-					<SuggestedField
-						ask={ask('heading')}
-						saves={suggest}
+					<Field
 						id={boxId(id, 'heading')}
 						name="heading"
 						label="Heading"
@@ -275,9 +244,7 @@ function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly 
 						defaultValue={text.heading}
 						error={error('heading')}
 					/>
-					<SuggestedField
-						ask={ask('lede')}
-						saves={suggest}
+					<Field
 						id={boxId(id, 'lede')}
 						name="lede"
 						label="Lead-in"
@@ -290,9 +257,7 @@ function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly 
 			);
 		case 'story':
 			return (
-				<SuggestedRichText
-					ask={ask('body')}
-					saves={suggest}
+				<RichTextEditor
 					id={boxId(id, 'body')}
 					name="body"
 					label="Story"
@@ -316,9 +281,7 @@ function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly 
 								defaultValue={tier.amount}
 								error={error(`tier_amount[${at}]`)}
 							/>
-							<SuggestedField
-								ask={ask(`tier_buys[${at}]`, `tier_amount[${at}]`)}
-								saves={suggest}
+							<Field
 								id={boxId(id, `tier_buys[${at}]`)}
 								name={`tier_buys[${at}]`}
 								label="What it buys"
@@ -335,18 +298,14 @@ function WordFields({ id, text, error, suggest }: BlockFieldsProps & { readonly 
 					{text.items.map((item, at) => (
 						<fieldset key={`item-${String(at)}`} className="adm-pair">
 							<legend className="adm-vh">Question {at + 1}</legend>
-							<SuggestedField
-								ask={ask(`question[${at}]`)}
-								saves={suggest}
+							<Field
 								id={boxId(id, `question[${at}]`)}
 								name={`question[${at}]`}
 								label="Question"
 								defaultValue={item.question}
 								error={error(`question[${at}]`)}
 							/>
-							<SuggestedRichText
-								ask={ask(`answer[${at}]`, `question[${at}]`)}
-								saves={suggest}
+							<RichTextEditor
 								id={boxId(id, `answer[${at}]`)}
 								name={`answer[${at}]`}
 								label="Answer"
@@ -376,13 +335,6 @@ function boxNames(text: WordsText): string[] {
 
 function boxId(block: string, box: string): string {
 	return `block-${block}-${box.replace(/[[\]]/g, '-')}`;
-}
-
-/** what the box `id` holds now, `""` for a blank one. */
-function boxValue(id: string): string {
-	return (
-		(document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
-	);
 }
 
 /**

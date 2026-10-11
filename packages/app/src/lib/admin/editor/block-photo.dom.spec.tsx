@@ -62,7 +62,6 @@ function editor({ illustration = false }: { readonly illustration?: boolean } = 
 				<BlockEditSheet
 					block={{ ...hero, illustration }}
 					version={3}
-					suggestUrl="/admin/pages/p1/suggest"
 					onDismiss={() => {}}
 					onSaved={() => {}}
 				/>
@@ -223,25 +222,11 @@ describe('a placed photo’s sheet', () => {
 	});
 });
 
-describe('an AI illustration in its sheet', () => {
-	const flag = (root: HTMLElement) => root.querySelector('.adm-placed .adm-state')?.textContent;
-
-	it('stands the plain word Illustration over the art', () => {
+describe('a photo the loader marks as an illustration', () => {
+	it('is drawn in its sheet as any photo is, with no word over the art', () => {
 		const root = editor({ illustration: true });
-		expect(flag(root)).toBe('Illustration');
-		expect(root.querySelector('.adm-placed .adm-state')?.className).toBe('adm-state');
-	});
-
-	it('drops the word once a photo replaces it', async () => {
-		const root = editor({ illustration: true });
-		await pick(root);
-		await uploaded({ id: STORED, width: 1600, height: 1067 });
-
-		expect(shown(root)).toBe(`/image/${STORED}`);
-		expect(flag(root)).toBeUndefined();
-	});
-
-	it('flags nothing over a photo', () => {
-		expect(flag(editor())).toBeUndefined();
+		expect(shown(root)).toBe(`/image/${PLACED}`);
+		expect(root.querySelector('.adm-placed .adm-state')).toBeNull();
+		expect(root.textContent).not.toContain('Illustration');
 	});
 });

@@ -7,10 +7,11 @@ import { PageView, type PageViewProps } from './page-view';
 import { EndedCampaignPage } from './plain-page';
 
 // the images a page draws beside its blocks' own photos, through the renderer: the organisation's
-// logo in the masthead, a program's photo on its chooser option, and the caption on a hero or image
-// block marked as an AI illustration, the cover's included — and the logo on an ended campaign's
-// screen, which is drawn beside the renderer rather than by it. every one is drawn from the
-// deployment's image route by its stored id. how any of it looks is left to a person looking at it.
+// logo in the masthead and a program's photo on its chooser option — and the logo on an ended
+// campaign's screen, which is drawn beside the renderer rather than by it. every one is drawn from
+// the deployment's image route by its stored id, and a hero or image block the loader still marks
+// as an illustration draws as any photo does. how any of it looks is left to a person looking at
+// it.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -65,7 +66,7 @@ const page = (type: PageType, layout: string, blocks: unknown[]) =>
 		blocks
 	});
 
-/** the page with the named blocks marked as AI illustrations, as the page's loader marks them. */
+/** the page with the named blocks marked as illustrations, as the page's loader still marks them. */
 const marked = (shown: Page, ids: readonly string[]): Page => ({
 	...shown,
 	blocks: shown.blocks.map((block) =>
@@ -234,45 +235,36 @@ describe.each(['cards', 'list'] as const)('program photos on the chooser, %s', (
 	});
 });
 
-describe('the Illustration caption through the page', () => {
-	const captions = (shown: Page, ids: readonly string[] = []) =>
-		[
-			...mount(<PageView {...props('campaign', marked(shown, ids))} />).querySelectorAll(
-				'figcaption'
-			)
-		].map((caption) => ({
-			block: caption.closest<HTMLElement>('[data-block]')?.dataset.block,
-			said: caption.textContent
-		}));
-
+describe('a photo the loader marks as an illustration', () => {
 	it.each([
 		['wide', 'column'],
 		['framed', 'wide']
-	] as const)('on a %s hero and a %s image', (heroVariant, imageVariant) => {
+	] as const)('draws as a plain photo on a %s hero and a %s image', (heroVariant, imageVariant) => {
 		const shown = page('campaign', 'box-right', [
 			hero(heroVariant),
 			title,
 			box,
 			image(imageVariant)
 		]);
-		expect(captions(shown, ['hero', 'image'])).toEqual([
-			{ block: 'hero', said: 'Illustration' },
-			{ block: 'image', said: 'Illustration' }
-		]);
+		const root = mount(<PageView {...props('campaign', marked(shown, ['hero', 'image']))} />);
+		expect(root.querySelector('[data-block="hero"] .page-photo')?.getAttribute('src')).toBe(
+			`/image/${HERO}`
+		);
+		expect(root.querySelector('[data-block="image"] .page-photo')?.getAttribute('src')).toBe(
+			`/image/${IMAGE}`
+		);
+		expect(root.querySelector('figure, figcaption')).toBeNull();
+		expect(root.textContent).not.toContain('Illustration');
 	});
 
-	it('under the cover', () => {
+	it('draws as a plain photo under the cover, its title over it', () => {
 		const shown = page('campaign', 'cover', [hero('wide'), title, box]);
 		const root = mount(<PageView {...props('campaign', marked(shown, ['hero']))} />);
-		const cover = root.querySelector('figure.page-hero[data-variant="cover"]');
+		const cover = root.querySelector('.page-hero[data-variant="cover"]');
 
-		expect(cover?.querySelector(':scope > figcaption')?.textContent).toBe('Illustration');
+		expect(cover?.tagName).toBe('DIV');
 		expect(cover?.querySelector('.page-hero-over [data-block="title"]')).not.toBeNull();
-	});
-
-	it('only on the blocks whose photo is one', () => {
-		const shown = page('campaign', 'box-right', [hero('framed'), title, box, image('column')]);
-		expect(captions(shown, ['image'])).toEqual([{ block: 'image', said: 'Illustration' }]);
-		expect(captions(shown)).toEqual([]);
+		expect(root.querySelector('figure, figcaption')).toBeNull();
+		expect(root.textContent).not.toContain('Illustration');
 	});
 });

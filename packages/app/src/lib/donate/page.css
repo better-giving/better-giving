@@ -1032,29 +1032,6 @@ body {
 	position: relative;
 }
 
-/* the Illustration caption. an AI illustration is never drawn without it, on every hero and image
-   variant and on the cover: a solid chip at the image's top end corner, where it meets neither the
-   cover's title nor its scrim, in the card's own ground and quiet ink, so it reads the same over any
-   picture and is made with no alpha. an illustrated hero or image is a `figure` and the chip its
-   `figcaption`; on the cover the positioned hero itself is the figure. */
-figure:is(.page-hero, .page-image) {
-	position: relative;
-	margin: 0;
-}
-
-.page-illus {
-	position: absolute;
-	inset-block-start: var(--_sp3);
-	inset-inline-end: var(--_sp3);
-	padding: var(--_sp1) var(--_sp2);
-	background: var(--_n1);
-	color: var(--_n11);
-	font-size: var(--_t-xs);
-	font-weight: var(--_w-bold);
-	line-height: var(--_lh-tight);
-	border-radius: var(--_r-in);
-}
-
 .page-hero[data-variant='cover'] .page-photo {
 	aspect-ratio: 4 / 3;
 	min-block-size: 26rem; /* raw-length-ok: the cover's height, a shape */

@@ -1,10 +1,9 @@
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { useCallback, useState } from 'react';
 import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
-import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { revalidatesAfter, suggestUrl } from '$lib/admin/editor/suggest-url';
+import { revalidatesAfter } from '$lib/admin/editor/suggest-url';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
@@ -44,12 +43,10 @@ import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.donation-page';
 
 // the Donation page's editor, reached from the globe beside the organisation's name: its draft
-// framed by the preview route, the publish bar over it, the AI panel its AI press opens
-// ($lib/admin/editor/chat-wiring.tsx, which asks a page never drafted its opening questions — the
-// mission first while the profile has none, $lib/server/pages/draft.ts), and the Settings sheet
-// behind the bar's Settings, beside Done while Edit is on. the parts are $lib/admin/editor/'s. the
-// Donation page has no name to edit and no address of its own: the bar calls it "Donation page",
-// and it is always at /donate.
+// framed by the preview route, the publish bar over it, and the Settings sheet behind the bar's
+// Settings, beside Done while Edit is on. the parts are $lib/admin/editor/'s. the Donation page
+// has no name to edit and no address of its own: the bar calls it "Donation page", and it is
+// always at /donate.
 //
 // **the loader makes the page on first need** (`ensureDonationPage` in
 // $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens an editor rather
@@ -58,8 +55,8 @@ import type { Route } from './+types/_app.admin.donation-page';
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish, as a campaign's are ($lib/server/pages/editor.ts). a goal and an end date are a
 // campaign's alone, and this action refuses them ($lib/server/pages/page-settings.ts); the shade,
-// corners and share message are set only through the chat ($lib/page/accept-reply.ts). until a
-// Publish carries donation settings, the program follows the active programs
+// corners and share message have no box in this editor. until a Publish carries donation settings,
+// the program follows the active programs
 // ($lib/server/pages/donation-page.ts).
 //
 // **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
@@ -220,11 +217,9 @@ function DraftEditor({
 	const closeBlock = useCallback(() => setBlockId(null), []);
 	const openBlockSheet = (id: string) =>
 		isDonationBox(loaderData.blocks, id) ? setDonationSettings(true) : setBlockId(id);
-	const chat = useEditorChat(loaderData.chat, loaderData.drafted);
 
 	return (
 		<EditorShell
-			undrafted={chat.undrafted}
 			bar={
 				<PublishBar
 					closeHref="/admin"
@@ -236,7 +231,6 @@ function DraftEditor({
 						layoutPick.startClean();
 						setSettings(true);
 					}}
-					onAi={chat.open}
 				/>
 			}
 			preview={
@@ -247,9 +241,7 @@ function DraftEditor({
 					onBlockClick={openBlockSheet}
 				/>
 			}
-			panel={chat.panel}
 		>
-			{chat.sheet}
 			{settings ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}
@@ -268,7 +260,6 @@ function DraftEditor({
 					key={openBlock.id}
 					block={openBlock}
 					version={version}
-					suggestUrl={suggestUrl(loaderData.pageId)}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
 					stacked={settings}

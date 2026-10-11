@@ -5,10 +5,9 @@ import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { AddressSheet } from '$lib/admin/editor/address-sheet';
 import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/block-edit';
-import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { revalidatesAfter, suggestUrl } from '$lib/admin/editor/suggest-url';
+import { revalidatesAfter } from '$lib/admin/editor/suggest-url';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
 import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
@@ -61,17 +60,16 @@ import type { BareHandle } from './_app';
 import type { Route } from './+types/_app.admin.campaigns.$pageId';
 
 // a campaign's editor, reached from the Campaigns list: its draft framed by the preview route, the
-// publish bar over it, the AI panel its AI press opens ($lib/admin/editor/chat-wiring.tsx, which
-// asks a page never drafted its opening questions), and the Settings sheet behind the bar's
-// Settings, while Edit is on. the parts are $lib/admin/editor/'s; what they read and the writes
-// behind them are here and in $lib/server/pages/queries.ts.
+// publish bar over it, and the Settings sheet behind the bar's Settings, while Edit is on. the
+// parts are $lib/admin/editor/'s; what they read and the writes behind them are here and in
+// $lib/server/pages/queries.ts.
 //
 // **the name** is edited in place in the bar and as Settings' Name row, one write: the row's `name`,
 // which the dashboard shows, its settings row's, which a gift's notices carry, and the draft's,
-// which donors see from the next Publish — the same write a chat turn's rename makes
-// ($lib/server/pages/queries.ts, `renaming`). until the first Publish an address not set by hand
-// follows it, to the next free one where another page holds the one the name suggests, and the
-// first Publish's confirm names the one it did not get (`addressAsked`).
+// which donors see from the next Publish ($lib/server/pages/queries.ts, `renaming`). until the
+// first Publish an address not set by hand follows it, to the next free one where another page
+// holds the one the name suggests, and the first Publish's confirm names the one it did not get
+// (`addressAsked`).
 //
 // **a draft the read rule refuses** ($lib/server/pages/document.ts) opens the editor on a notice
 // in the preview's place, with Discard changes where the live page reads: the one screen that can
@@ -86,7 +84,7 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 // **the donation settings** are the draft's, saved by their sheet's one Done and reaching donors
 // only at Publish; the Donation page's editor saves them the same way ($lib/server/pages/editor.ts).
 // so are the goal and the end date ($lib/server/pages/page-settings.ts). the shade, corners and
-// share message are set only through the chat ($lib/page/accept-reply.ts).
+// share message have no box in this editor.
 //
 // **Publish, Undo and Discard changes** are $lib/server/pages/publish.ts's, the presses and their
 // confirms mounted through $lib/admin/editor/publish-wiring.tsx.
@@ -372,11 +370,11 @@ function giftsGoTo(settings: SettingsSeed): Pick<FirstPublish, 'programs' | 'pro
 
 type Loaded = Route.ComponentProps['loaderData'];
 
-export default function CampaignEditor({ loaderData, params }: Route.ComponentProps) {
+export default function CampaignEditor({ loaderData }: Route.ComponentProps) {
 	return loaderData.unreadable ? (
 		<UnreadableDraftEditor loaderData={loaderData} />
 	) : (
-		<DraftEditor loaderData={loaderData} suggest={suggestUrl(params.pageId)} />
+		<DraftEditor loaderData={loaderData} />
 	);
 }
 
@@ -453,11 +451,9 @@ function UnreadableDraftEditor({
 }
 
 function DraftEditor({
-	loaderData,
-	suggest
+	loaderData
 }: {
 	readonly loaderData: Extract<Loaded, { unreadable: false }>;
-	readonly suggest: string;
 }) {
 	const { name, address, state, version, preview, host, settings: donationSettings } = loaderData;
 
@@ -475,7 +471,6 @@ function DraftEditor({
 				: undefined
 	});
 	const naming = useRename(version);
-	const chat = useEditorChat(loaderData.chat, loaderData.drafted);
 	const addressFetcher = useFetcher<Answer>({ key: ADDRESS_EDIT.id });
 
 	const [settings, setSettings] = useState(false);
@@ -530,7 +525,6 @@ function DraftEditor({
 
 	return (
 		<EditorShell
-			undrafted={chat.undrafted}
 			bar={
 				<PublishBar
 					closeHref="/admin/campaigns"
@@ -542,7 +536,6 @@ function DraftEditor({
 						layoutPick.startClean();
 						setSettings(true);
 					}}
-					onAi={chat.open}
 					report={presses.bar.report ?? naming.barReport}
 				/>
 			}
@@ -554,9 +547,7 @@ function DraftEditor({
 					onBlockClick={openBlockSheet}
 				/>
 			}
-			panel={chat.panel}
 		>
-			{chat.sheet}
 			{settings && opened !== 'address' ? (
 				<SettingsSheet
 					onDismiss={() => setSettings(false)}
@@ -580,7 +571,6 @@ function DraftEditor({
 					key={openBlock.id}
 					block={openBlock}
 					version={version}
-					suggestUrl={suggest}
 					onDismiss={closeBlock}
 					onSaved={closeBlock}
 					stacked={settings}
@@ -594,7 +584,6 @@ function DraftEditor({
 					error={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, 'name') : null}
 					refusal={renamedIn === 'sheet' ? refusal(nameAnswer, NAME_EDIT, '') : null}
 					onDismiss={() => setOpened(null)}
-					suggestUrl={suggest}
 				/>
 			) : null}
 			{opened === 'goal' ? (

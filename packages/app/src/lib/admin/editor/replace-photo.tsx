@@ -1,7 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Mark } from '@better-giving/operator/components/status/Mark';
-import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { useEffect, useId, useRef } from 'react';
 import type { Resized, ResizeRefusal } from '@better-giving/operator/images/resize';
 import { usePhotoPicker } from '../photo-picker';
@@ -39,8 +38,6 @@ export type ReplacePhotoControlProps = Description & {
 	readonly frame?: 'square' | undefined;
 	/** Remove beside the press while an image is placed; absent, no Remove is drawn. */
 	readonly onRemove?: (() => void) | undefined;
-	/** a plain word over the art, naming what kind of image it is — Illustration. */
-	readonly flag?: string | undefined;
 };
 
 /* a placed image and the press that swaps it: a block's photo in its edit sheet, a program's
@@ -65,8 +62,7 @@ export function ReplacePhotoControl({
 	altError,
 	describe = true,
 	frame,
-	onRemove,
-	flag
+	onRemove
 }: ReplacePhotoControlProps) {
 	const picker = usePhotoPicker({ onResized });
 	const id = useId();
@@ -87,11 +83,6 @@ export function ReplacePhotoControl({
 	return (
 		<>
 			<div className="adm-placed">
-				{flag === undefined || !placed ? null : (
-					<div className="adm-actions">
-						<StatusWord>{flag}</StatusWord>
-					</div>
-				)}
 				{placed ? (
 					<img
 						className={

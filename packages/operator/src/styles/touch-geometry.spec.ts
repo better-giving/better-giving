@@ -259,7 +259,6 @@ const widthOf = (border: string | undefined) =>
 const BUTTON_BORDER = () => widthOf(ruleOf(css, '.adm-btn').get('border'));
 const ROW_REMOVE = '.adm-rows__row > .adm-rows__remove';
 const LOCKED_TRIGGER = '.adm-rows__row > :not(.adm-field) > .adm-markbtn';
-const FIELD_HEAD_PRESS = '.adm-field__head .adm-field__press';
 
 const MEMBERS: Record<string, Member> = {
 	// a press-to-open trigger hugs its mark. its neighbours are where the one row carrying it beside
@@ -297,34 +296,6 @@ const MEMBERS: Record<string, Member> = {
 					at.blockEnd - (row - mark) / 2 + target(ROW_REMOVE).blockStart,
 					px(rowStep ?? '')
 				]
-			];
-		}
-	},
-	// a press in a field's label row, a mark and a word on the small control, drawn here at its
-	// narrowest. two of them stand in the row together — the Undo and then the Write that writes
-	// the box (packages/app/src/lib/admin/editor/suggest.tsx) — so each is measured toward what
-	// stands before it, the word or the Undo, and toward the press after it, as well as the field's
-	// own box under the row and the field above it.
-	'.adm-field__press': {
-		holder: '.adm-btn',
-		drawn: () => ({
-			inline: evaluate(ruleOf(css, '.adm-field__press').get('min-inline-size')),
-			block: evaluate(ruleOf(css, '.adm-btn--sm').get('min-block-size')),
-			border: BUTTON_BORDER()
-		}),
-		contexts: [FIELD_HEAD_PRESS],
-		neighbours: () => {
-			const at = target('.adm-field__press', FIELD_HEAD_PRESS);
-			const step = evaluate(ruleOf(css, '.adm-field__aside').get('gap'));
-			return [
-				['what stands before it', at.inlineStart, step],
-				['the press after it', at.inlineEnd, step],
-				[
-					"the field's box",
-					at.blockEnd,
-					evaluate(ruleOf(css, '.adm-field > * + *').get('margin-block-start'))
-				],
-				['the field above', at.blockStart, evaluate(ruleOf(css, '.adm-pair').get('gap'))]
 			];
 		}
 	},

@@ -1,12 +1,11 @@
 import { Mark } from '@better-giving/operator/components/status/Mark';
-import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { Sheet } from '@better-giving/operator/components/shell/Sheet';
 import type { ReactNode } from 'react';
 import { formatMinorBrief } from '$lib/donations/money';
 import { dayWords } from '$lib/page/end-date';
 import { PickRefusal, PicturePicker, type PictureOption } from './pictures';
 
-// the Settings sheet: everything about a page that is not a chat, one list. rows that hold a typed
+// the Settings sheet: everything about a page, one list. rows that hold a typed
 // value open a sheet of their own stacked over this one (./done-sheet.tsx argues their one Done);
 // the layout pictures apply the moment they are picked, here, with nothing to finish. a refused
 // layout pick is reported under the pictures, in a region there whenever they are.
@@ -63,9 +62,6 @@ export type BlockRow = {
 	readonly label: string;
 	/** a line of what it holds, or `''` for a block that holds nothing typed. */
 	readonly summary: string;
-	/** its photo is an AI illustration: the row reads Illustration in place of the summary, until a
-	 *  photo replaces it. */
-	readonly illustration?: boolean | undefined;
 };
 
 type BlockListProps = {
@@ -81,7 +77,7 @@ export function BlockList({ blocks, onOpenBlock }: BlockListProps) {
 				<OpenRow
 					key={block.id}
 					label={block.label}
-					value={block.illustration ? <StatusWord>Illustration</StatusWord> : block.summary}
+					value={block.summary}
 					onOpen={() => onOpenBlock(block.id)}
 				/>
 			))}

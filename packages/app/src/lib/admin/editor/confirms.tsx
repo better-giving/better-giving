@@ -65,7 +65,6 @@ export function ResetConfirm({ resetting, onReset, onCancel, refusal }: ResetCon
 			<div>
 				<SettingRow label="Your draft" value="Replaced" />
 				<SettingRow label="The published page at /donate" value="Replaced" />
-				<SettingRow label="This page’s chat" value="Cleared" />
 			</div>
 			<p className="adm-prose">This can’t be undone.</p>
 			<Refusal id={refusalId} text={refusal} />
@@ -80,7 +79,7 @@ type DiscardConfirmProps = {
 	readonly refusal?: string | null | undefined;
 };
 
-/** Discard changes: the draft goes back to what is live, and the chat with it. */
+/** Discard changes: the draft goes back to what is live. */
 export function DiscardConfirm({ discarding, onDiscard, onCancel, refusal }: DiscardConfirmProps) {
 	const refusalId = useId();
 	return (
@@ -94,7 +93,6 @@ export function DiscardConfirm({ discarding, onDiscard, onCancel, refusal }: Dis
 		>
 			<div>
 				<SettingRow label="Your draft" value="Back to the live page" />
-				<SettingRow label="This page’s chat" value="Cleared" />
 			</div>
 			<Refusal id={refusalId} text={refusal} />
 		</Modal>

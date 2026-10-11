@@ -2,14 +2,14 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { Menu, type MenuItem } from '@better-giving/operator/components/controls/Menu';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { type Ref, useId, useState } from 'react';
+import { type Ref, useId } from 'react';
 import { RouterLink } from '../router-link';
-import { useAiEntry, useEditing, useUndrafted } from './editor-shell';
+import { useEditing } from './editor-shell';
 import { InPlaceName } from './in-place-name';
-import { useMiddle, useWide } from './wide';
+import { useMiddle } from './wide';
 
 // the bar across the top of the editor: the way out, the page's name and where it stands, and the
-// presses that act on the whole page — Edit, AI, a More menu, and Publish.
+// presses that act on the whole page — Edit, a More menu, and Publish.
 //
 // the editor's `h1` is here, naming the page being edited, and read by a screen reader only: the
 // name the bar shows is the heading's words already, and a campaign's is a box to rename it in,
@@ -22,12 +22,7 @@ import { useMiddle, useWide } from './wide';
 // pressed state, since its name is the state and Done read as pressed reads wrong, and the bar's
 // region says "Edit is on: choose a block, or open Settings for the list" as it turns on. while it
 // is on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose block
-// list is the keyboard's way to a block; it closes the AI panel as it does, since the two never
-// stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
-// ./editor-shell.tsx): `aria-expanded` says which, and below the wide breakpoint (./wide.ts), where
-// the panel is a sheet, `aria-haspopup` says it is a dialog. it is busy from its press until the
-// panel is up, held with `aria-disabled` so the focus stays on it. a turn that landed while the
-// panel was closed draws a mark at its corner, named for a reader, until the panel is next opened.
+// list is the keyboard's way to a block.
 //
 // **Publish reports at itself.** it is `SaveButton`, so a press in flight holds its focus and draws
 // its dots, and a republish reads "Published" with Undo beside it for as long as the caller says the
@@ -35,12 +30,10 @@ import { useMiddle, useWide } from './wide';
 // Publish of it is a republish; a campaign's first Publish goes through ./confirms.tsx's
 // `FirstPublishConfirm` first and is the caller's to route there.
 //
-// **what the bar's presses set going is said to a reader in a region of its own**, drawn to a
-// reader only and on the page, empty, from the first render, so each change to it is announced: a
-// turn landing while the panel is closed, which draws the mark and nothing a reader is told, the
-// AI press's wait for its panel, and Edit turned on, said once as what to do next. each is said as
-// its own state turns on and cleared as that state turns off, so the words follow the change that
-// earned them and never a count of renders (`barSaying`).
+// **Edit turned on is said to a reader in a region of its own**, drawn to a reader only and on the
+// page, empty, from the first render, so the change to it is announced: said once as what to do
+// next while Edit is on, and cleared as it turns off, so the words follow the state that earned them
+// and never a count of renders.
 //
 // **a refused press is reported on the bar's own row under Publish**, in a region that is on the
 // page before it has anything to say (`.adm-publishbar__report` holds no room while empty), and the
@@ -59,16 +52,11 @@ import { useMiddle, useWide } from './wide';
 // state word's line and they take the line under it, so below it Publish comes first
 // (`useMiddle` in ./wide.ts).
 //
-// **nothing pressable does nothing.** a caller with no handler for Settings, AI, Undo or Discard
+// **nothing pressable does nothing.** a caller with no handler for Settings, Undo or Discard
 // changes gets no such press drawn, and with no Settings no Edit either — the editor over a draft
-// it cannot read has no blocks to click, nor Settings or a chat to open. Publish is the bar's one
-// press that is always there, so without `onPublish` it is drawn held — `aria-disabled`, the press
-// turned away — and described by `publishHeld`, which stands in the report region beside any
-// refusal.
-//
-// **a page never drafted has nothing to edit or publish** (`undrafted` in ./editor-shell.tsx): the
-// bar draws its name, where it stands and More, and no Edit, AI, Publish or Undo, whatever
-// handlers it is handed — the AI panel is the whole editor then, and nothing opens it.
+// it cannot read has no blocks to click, nor Settings to open. Publish is the bar's one press that
+// is always there, so without `onPublish` it is drawn held — `aria-disabled`, the press turned
+// away — and described by `publishHeld`, which stands in the report region beside any refusal.
 
 /** where the page stands against what donors see. */
 export type PublishState =
@@ -90,25 +78,8 @@ const STATE_WORDS = {
 
 const DONATION_PAGE = 'Donation page';
 
-/** what the bar's own region says for each state it announces, as that state turns on. */
-const SAID = {
-	unread: 'New reply',
-	opening: 'Opening AI',
-	editing: 'Edit is on: choose a block, or open Settings for the list'
-} as const;
-
-type Said = keyof typeof SAID;
-type Saying = Readonly<Record<Said, boolean>>;
-
-/**
- * what the region says after the states move from `was` to `now`: the state that has just turned
- * on, or nothing once the one it says has turned off, or what it said before.
- */
-function barSaying(was: Saying, now: Saying, said: Said | null): Said | null {
-	const turnedOn = (Object.keys(SAID) as Said[]).find((key) => now[key] && !was[key]);
-	if (turnedOn !== undefined) return turnedOn;
-	return said !== null && !now[said] ? null : said;
-}
+/** what the bar's own region says while Edit is on. */
+const EDIT_ON_SAID = 'Edit is on: choose a block, or open Settings for the list';
 
 /** which press a refusal answers. */
 export type BarPress = 'publish' | 'undo' | 'name';
@@ -139,8 +110,6 @@ type PublishBarProps = {
 	readonly closeHref: string;
 	/** opens the Settings sheet, from Settings while Edit is on. absent: neither is drawn. */
 	readonly onSettings?: (() => void) | undefined;
-	/** opens the AI panel. absent: no AI is drawn. */
-	readonly onAi?: (() => void) | undefined;
 	/** the Donation page, which has no name to edit, or a campaign and its name. */
 	readonly page: PublishBarPage;
 	readonly state: PublishState;
@@ -171,7 +140,6 @@ type PublishBarProps = {
 export function PublishBar({
 	closeHref,
 	onSettings,
-	onAi,
 	page,
 	state,
 	livePath,
@@ -193,18 +161,8 @@ export function PublishBar({
 	const heldReason = held && publishHeld ? publishHeld : null;
 	const { word, tone } = STATE_WORDS[state];
 	const live = state === 'changed' || state === 'live';
-	const wide = useWide();
 	const middle = useMiddle();
-	const ai = useAiEntry();
-	const undrafted = useUndrafted();
 	const editing = useEditing();
-	const now: Saying = { unread: ai.unread, opening: ai.opening, editing: editing.on };
-	const [seen, setSeen] = useState(now);
-	const [said, setSaid] = useState<Said | null>(null);
-	if (seen.unread !== now.unread || seen.opening !== now.opening || seen.editing !== now.editing) {
-		setSeen(now);
-		setSaid(barSaying(seen, now, said));
-	}
 	const more: MenuItem[] = [];
 	if (live && livePath) more.push({ label: `Open ${livePath}`, href: livePath, newTab: true });
 	if (reset?.hasEdits) more.push({ label: 'Reset to default', onSelect: reset.onReset });
@@ -213,7 +171,7 @@ export function PublishBar({
 
 	const quiet = (
 		<div key="quiet" className="adm-publishbar__quiet">
-			{onSettings && !undrafted ? (
+			{onSettings ? (
 				<Button
 					type="button"
 					mark={editing.on ? 'check' : 'pencil'}
@@ -222,44 +180,15 @@ export function PublishBar({
 					{editing.on ? 'Done' : 'Edit'}
 				</Button>
 			) : null}
-			{onSettings && !undrafted && editing.on ? (
-				<Button
-					type="button"
-					mark="settings"
-					aria-haspopup="dialog"
-					onClick={() => {
-						ai.close();
-						onSettings();
-					}}
-				>
+			{onSettings && editing.on ? (
+				<Button type="button" mark="settings" aria-haspopup="dialog" onClick={onSettings}>
 					Settings
 				</Button>
 			) : null}
-			{!onAi || undrafted ? null : (
-				<Button
-					ref={ai.ref}
-					type="button"
-					mark="sparkles"
-					aria-haspopup={wide ? undefined : 'dialog'}
-					aria-expanded={ai.open}
-					aria-busy={ai.opening || undefined}
-					aria-disabled={ai.opening || undefined}
-					onClick={() => {
-						if (ai.opening) return;
-						if (ai.open) ai.close();
-						else onAi();
-					}}
-				>
-					AI
-					{ai.unread ? (
-						<span className="adm-publishbar__unread" role="img" aria-label="New reply" />
-					) : null}
-				</Button>
-			)}
 			{more.length === 0 ? null : <Menu label="More" items={more} />}
 		</div>
 	);
-	const done = undrafted ? null : (
+	const done = (
 		<div key="done" className="adm-publishbar__done">
 			<SaveButton
 				type="button"
@@ -340,7 +269,7 @@ export function PublishBar({
 				) : null}
 			</p>
 			<p className="adm-vh" role="status">
-				{said === null ? null : SAID[said]}
+				{editing.on ? EDIT_ON_SAID : null}
 			</p>
 		</header>
 	);
