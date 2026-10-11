@@ -145,6 +145,17 @@ export function readAsk(
 		: { ok: false, reason: issueText(read.error) };
 }
 
+/** the most questions an opening, or the one round after it, keeps. */
+export const LEAN_MAX = 3;
+
+/**
+ * `questions` as an ask before a page's first draft keeps them: none asking an amount or what
+ * amounts do — a page left without them still reads complete — and the first `max` of the rest.
+ */
+export function leanQuestions(questions: readonly Question[], max = LEAN_MAX): Question[] {
+	return questions.filter(({ kind }) => kind !== 'amount' && kind !== 'tiers').slice(0, max);
+}
+
 /** a `tiers` answer's row: an amount in minor units and what it does, in the operator's words. */
 export type TierAnswer = { amount: number; text: string };
 

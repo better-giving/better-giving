@@ -16,6 +16,7 @@ import { saveProfile } from '../org/profile.testing';
 import { draftIllustrations, editorDraft } from './blocks';
 import { readCampaigns } from './campaign';
 import { answerTurn, draftTurn, openTurn, readChat } from './draft';
+import { editorPage } from './editor';
 import { answering, defaultModelReply, insertPage, SETTINGS } from './page-row.testing';
 
 // a workers spec because every turn reads a page and its chat and writes them back. the model is
@@ -60,6 +61,8 @@ function turn(pageId: string, message: string, AI: { run: unknown }, extra: obje
 
 /** what the chat says of a message turn whose reply was refused, and its retry too. */
 const REFUSED = 'I couldn’t make that change. Try saying it another way.';
+/** what the chat says where answers before the first draft were refused, and their retry too. */
+const STARTING_PAGE = 'I couldn’t draft from your answers. Here’s a starting page to edit.';
 
 /** the lines a turn logs from now on: why a reply was refused, which the chat never says. */
 function warnings() {
@@ -73,6 +76,13 @@ async function stored(pageId: string) {
 	const draft = parsePage(row.type, JSON.parse(row.draft));
 	if (!draft.ok) throw new Error(draft.message);
 	return { ...row, draft: draft.page };
+}
+
+/** whether the editor opens `pageId` as drafted: its questions over, and the page shown. */
+async function drafted(pageId: string) {
+	const [row] = await db.select().from(page).where(eq(page.id, pageId));
+	if (!row) throw new Error('the page is gone');
+	return (await editorPage(db, row, NOW)).drafted;
 }
 
 async function chat(pageId: string) {
@@ -1319,6 +1329,11 @@ const ASKED = [
 	WAYS
 ];
 
+/** a reply that drafts: it changes the page, as a page's first draft must. */
+const TWO_TONE = { say: 'Drafted.', page: { kind: 'merge', doc: { palette: 'duo' } } };
+/** a campaign's draft that has moved from the default, so the page reads as drafted. */
+const DRAFTED: Page = { ...defaultCampaign(), settings: SETTINGS, palette: 'duo' };
+
 /** the questions a reply to `ASKED`'s answers asks: the chat's second round. */
 const SECOND = [{ id: 'story', kind: 'text', prompt: 'A story to tell?' }];
 
@@ -1394,7 +1409,7 @@ describe('answers to the questions asked', () => {
 	it('that skip every question are a turn saying so', async () => {
 		const pageId = await asking();
 
-		const result = await answer(pageId, [], answering({ say: 'Drafted.' }));
+		const result = await answer(pageId, [], answering(TWO_TONE));
 
 		expect(result).toMatchObject({
 			turns: [
@@ -1404,9 +1419,75 @@ describe('answers to the questions asked', () => {
 		});
 	});
 
+	it('that skip the first round are its last: told so, and a reply that asks is asked again to draft', async () => {
+		const pageId = await asking();
+		const AI = answering({ say: 'Two more.', ask: SECOND }, TWO_TONE);
+
+		const result = await answer(pageId, [], AI);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'accepted' });
+		expect((await stored(pageId)).draft.palette).toBe('duo');
+		const [, first] = AI.run.mock.calls[0] ?? [];
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		const system: string = first.messages[0].content;
+		expect([system.includes('never ask again'), system.includes('one more round')]).toEqual([
+			true,
+			false
+		]);
+		expect(second.messages.at(-1)).toEqual({
+			role: 'user',
+			content: expect.stringContaining('already answered')
+		});
+	});
+
+	it('on a page never drafted, answered with a reply that changes nothing, ask the model again to draft', async () => {
+		const pageId = await asking();
+		const AI = answering({ say: 'Drafted.', page: { kind: 'patch', ops: [] } }, TWO_TONE);
+
+		expect(await answer(pageId, [], AI)).toMatchObject({ ok: true, outcome: 'accepted' });
+
+		expect((await stored(pageId)).draft.palette).toBe('duo');
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		expect(second.messages.at(-1)).toEqual({
+			role: 'user',
+			content: expect.stringContaining('leaves the page as it stands')
+		});
+	});
+
+	it('on a page drafted already, answered with a reply that changes nothing, take it', async () => {
+		const pageId = await asking(ASKED, DRAFTED);
+		const AI = answering({ say: 'Nothing to change.' });
+
+		expect(await answer(pageId, [], AI)).toMatchObject({ ok: true, outcome: 'accepted' });
+		expect(AI.run).toHaveBeenCalledTimes(1);
+	});
+
+	it('on a page never drafted, answered with another ask, keep none of an amount or of what amounts do', async () => {
+		const pageId = await asking();
+		const AI = answering({ say: 'Two more.', ask: [ASKED[0], ...SECOND] });
+
+		const result = await answer(pageId, [{ id: 'ways', value: ['Monthly'] }], AI);
+
+		expect(result).toMatchObject({ outcome: 'asked', turns: [{}, { questions: SECOND }] });
+	});
+
+	it('on a page never drafted, answered with an ask of amounts alone, ask the model again to draft', async () => {
+		const pageId = await asking();
+		const AI = answering({ say: 'Two more.', ask: [ASKED[0]] }, TWO_TONE);
+
+		const result = await answer(pageId, [{ id: 'ways', value: ['Monthly'] }], AI);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'accepted' });
+		const [, second] = AI.run.mock.calls[1] ?? [];
+		expect(second.messages.at(-1)).toEqual({
+			role: 'user',
+			content: expect.stringContaining('never an amount')
+		});
+	});
+
 	it('read back after a reload keep the questions and the answers', async () => {
 		const pageId = await asking();
-		await answer(pageId, [{ id: 'goal', value: 5000 }], answering({ say: 'Drafted.' }));
+		await answer(pageId, [{ id: 'goal', value: 5000 }], answering(TWO_TONE));
 
 		expect(await readChat(db, pageId)).toMatchObject([
 			{ role: 'operator', text: 'a page for our coat drive' },
@@ -1609,7 +1690,7 @@ describe('answers to a tiers question', () => {
 
 	it('still grant their tiers on a later message', async () => {
 		const pageId = await asking([IMPACT]);
-		await answer(pageId, [{ id: 'impact', value: ROWS }], answering({ say: 'Noted.' }));
+		await answer(pageId, [{ id: 'impact', value: ROWS }], answering(TWO_TONE));
 		const AI = answering({
 			say: 'Added the tiers.',
 			page: {
@@ -1660,7 +1741,7 @@ describe('answers to a second round of questions', () => {
 		]);
 		const [, firstInput] = firstRound.run.mock.calls[0] ?? [];
 		expect(firstInput.messages[0].content).toContain(
-			'ask one more round only when a fact the page cannot be written without is still missing, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out'
+			'ask one more round only when a fact the page cannot be written without is still missing, never for a goal, an end date, amounts or what an amount buys, a typical gift, or how the page is laid out'
 		);
 	});
 
@@ -1693,7 +1774,7 @@ describe('answers to a second round of questions', () => {
 		]);
 	});
 
-	it('answered with an ask twice are refused again, writing no turn, so the questions stay asked', async () => {
+	it('answered with an ask twice before the first draft end on a starting page to edit, the draft as it was', async () => {
 		const pageId = await askingTwice();
 		const before = (await stored(pageId)).draft;
 		const ask = { say: 'One more.', ask: ASKED };
@@ -1701,34 +1782,49 @@ describe('answers to a second round of questions', () => {
 
 		const result = await answer(pageId, [], AI);
 
-		expect(result).toEqual({
-			ok: false,
-			reason: 'refused_again',
-			error:
-				'a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
+		expect(result).toMatchObject({
+			ok: true,
+			outcome: 'refused',
+			turns: [
+				{ role: 'operator', text: 'Skipped the questions.' },
+				{ role: 'assistant', text: STARTING_PAGE }
+			]
 		});
 		expect(AI.run).toHaveBeenCalledTimes(2);
 		expect((await stored(pageId)).draft).toEqual(before);
-		expect(await chat(pageId)).toHaveLength(4);
+		expect((await chat(pageId)).at(-1)).toMatchObject({ note: null, questions: null });
+		expect(await drafted(pageId)).toBe(true);
 	});
 
-	it('answered with an ask, then a reply refused for another reason, are refused again', async () => {
+	it('refused twice for another reason before the first draft end on a starting page too', async () => {
 		const pageId = await askingTwice();
+		expect(await drafted(pageId)).toBe(false);
 		const AI = answering(
 			{ say: 'One more.', ask: ASKED },
-			{ say: 'Drafted.', set: { goalMinor: 9_900 } },
-			{ say: 'Drafted.' }
+			{ say: 'Drafted.', set: { goalMinor: 9_900 } }
 		);
 
 		const result = await answer(pageId, [{ id: 'story', value: 'Ana got a coat.' }], AI);
+
+		expect(result).toMatchObject({ ok: true, turns: [{}, { text: STARTING_PAGE }] });
+		expect(await drafted(pageId)).toBe(true);
+	});
+
+	it('refused twice on a page already drafted are refused again, writing no turn, so the questions stay asked', async () => {
+		const pageId = await asking(ASKED, DRAFTED);
+		const AI = answering(
+			{ say: 'Drafted.', set: { goalMinor: 9_900 } },
+			{ say: 'Drafted.', set: { goalMinor: 9_900 } }
+		);
+
+		const result = await answer(pageId, [{ id: 'goal', value: 5000 }], AI);
 
 		expect(result).toEqual({
 			ok: false,
 			reason: 'refused_again',
 			error: expect.stringContaining('$99')
 		});
-		expect(AI.run).toHaveBeenCalledTimes(2);
-		expect(await chat(pageId)).toHaveLength(4);
+		expect(await chat(pageId)).toHaveLength(2);
 	});
 
 	it('refused for anything but asking ask the model once more, told why, and the second reply lands', async () => {
@@ -1760,14 +1856,17 @@ describe('a figure in a question the model asked', () => {
 	});
 
 	it('answered "No" is no figure the operator stated, so a reply writing it is refused', async () => {
-		const pageId = await asking([
-			{
-				id: 'size',
-				kind: 'choice',
-				prompt: 'Is your goal $10,000 or more?',
-				options: ['Yes', 'No']
-			}
-		]);
+		const pageId = await asking(
+			[
+				{
+					id: 'size',
+					kind: 'choice',
+					prompt: 'Is your goal $10,000 or more?',
+					options: ['Yes', 'No']
+				}
+			],
+			DRAFTED
+		);
 		const before = (await stored(pageId)).draft;
 
 		const reply = heading('Help us reach $10,000');
@@ -1828,14 +1927,17 @@ describe('a figure in a question the model asked', () => {
 	});
 
 	it('answered on an earlier turn is still no figure the operator stated', async () => {
-		const pageId = await asking([
-			{
-				id: 'size',
-				kind: 'choice',
-				prompt: 'Is your goal $10,000 or more?',
-				options: ['Yes', 'No']
-			}
-		]);
+		const pageId = await asking(
+			[
+				{
+					id: 'size',
+					kind: 'choice',
+					prompt: 'Is your goal $10,000 or more?',
+					options: ['Yes', 'No']
+				}
+			],
+			DRAFTED
+		);
 		await answer(pageId, [{ id: 'size', value: 'No' }], answering({ say: 'Drafted.' }));
 
 		const reply = heading('Help us reach $10,000');
@@ -1854,7 +1956,12 @@ const MISSION = {
 };
 const OWN = [
 	{ id: 'who', kind: 'choice', prompt: 'Who does it help?', options: ['Kids', 'Families'] },
-	{ id: 'goal', kind: 'amount', prompt: 'Your goal' }
+	{ id: 'story', kind: 'text', prompt: 'A story to tell?' }
+];
+/** what an opening never keeps: an amount, and what amounts do. */
+const AMOUNTS = [
+	{ id: 'goal', kind: 'amount', prompt: 'Your goal' },
+	{ id: 'impact', kind: 'tiers', prompt: 'What does each gift do?', rows: [{ amount: 2500 }] }
 ];
 
 function open(pageId: string, AI: { run: unknown }) {
@@ -1910,23 +2017,23 @@ describe('a page opened with an empty chat', () => {
 			{
 				role: 'user',
 				content:
-					'Before you draft this page, ask me 1 to 2 questions whose answers you need to draft it. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
+					'Before you draft this page, ask me 1 to 2 questions whose answers you need to draft it. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, a typical gift, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
 			}
 		]);
 	});
 
-	it('asks no mission once the profile has one, and keeps five at most', async () => {
+	it('asks no mission once the profile has one, and keeps three at most', async () => {
 		await writeMission('Warm coats for every child.');
 		const pageId = await insertPage(db, 'campaign');
-		const six = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, kind: 'text', prompt: 'More?' }));
-		const AI = answering({ say: 'Questions.', ask: six });
+		const five = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, kind: 'text', prompt: 'More?' }));
+		const AI = answering({ say: 'Questions.', ask: five });
 
 		const result = await open(pageId, AI);
 
-		expect(result).toMatchObject({ turns: [{ questions: six }] });
+		expect(result).toMatchObject({ turns: [{ questions: five.slice(0, 3) }] });
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages.at(-1).content).toBe(
-			'Before you draft this page, ask me 1 to 3 questions whose answers you need to draft it. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out.'
+			'Before you draft this page, ask me 1 to 3 questions whose answers you need to draft it. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, a typical gift, or how the page is laid out: decide those yourself or leave them out.'
 		);
 	});
 
@@ -1945,13 +2052,22 @@ describe('a page opened with an empty chat', () => {
 		expect(result).toMatchObject({ turns: [{ text: 'Questions.', questions: [lead] }] });
 	});
 
-	it('with the mission first keeps four of the model’s questions', async () => {
+	it('with the mission first keeps two of the model’s questions', async () => {
 		const pageId = await insertPage(db, 'campaign');
 		const five = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, kind: 'text', prompt: 'More?' }));
 
 		const result = await open(pageId, answering({ say: 'Questions.', ask: five }));
 
-		expect(result).toMatchObject({ turns: [{ questions: [MISSION, ...five.slice(0, 4)] }] });
+		expect(result).toMatchObject({ turns: [{ questions: [MISSION, ...five.slice(0, 2)] }] });
+	});
+
+	it('keeps no question of an amount or of what amounts do', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		const [who] = OWN;
+
+		const result = await open(pageId, answering({ say: 'Questions.', ask: [...AMOUNTS, who] }));
+
+		expect(result).toMatchObject({ turns: [{ questions: [MISSION, who] }] });
 	});
 
 	it.each([
@@ -1961,7 +2077,8 @@ describe('a page opened with an empty chat', () => {
 			'the reply changes the page',
 			answering({ say: 'Drafted.', page: { kind: 'merge', doc: { palette: 'duo' } } })
 		],
-		['the reply asks only the mission', answering({ say: 'One.', ask: [MISSION] })]
+		['the reply asks only the mission', answering({ say: 'One.', ask: [MISSION] })],
+		['the reply asks only amounts', answering({ say: 'Two.', ask: AMOUNTS })]
 	])(
 		'falls back to the starter questions when %s, noted, naming the model asked',
 		async (_, AI) => {
@@ -2015,7 +2132,7 @@ describe('a page opened with an empty chat', () => {
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages[0].content).toContain('- campaign type: Emergency response');
 		expect(input.messages.at(-1).content).toBe(
-			'Before you draft this campaign, of the type "Emergency response", ask me 1 to 3 questions whose answers you need to draft a campaign of its type. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out.'
+			'Before you draft this campaign, of the type "Emergency response", ask me 1 to 3 questions whose answers you need to draft a campaign of its type. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, a typical gift, or how the page is laid out: decide those yourself or leave them out.'
 		);
 	});
 
@@ -2028,7 +2145,7 @@ describe('a page opened with an empty chat', () => {
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages[0].content).toContain('- campaign type: Something else');
 		expect(input.messages.at(-1).content).toBe(
-			'Before you draft this campaign, of the type "Something else", ask me 1 to 2 questions whose answers you need to draft it, the first asking what the campaign is for. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
+			'Before you draft this campaign, of the type "Something else", ask me 1 to 2 questions whose answers you need to draft it, the first asking what the campaign is for. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, a typical gift, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
 		);
 	});
 
@@ -2041,7 +2158,7 @@ describe('a page opened with an empty chat', () => {
 
 		const [, input] = AI.run.mock.calls[0] ?? [];
 		expect(input.messages[1].content).toBe(
-			'Before you draft this campaign, of the type "Emergency response", ask me 1 to 2 questions whose answers you need to draft a campaign of its type. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
+			'Before you draft this campaign, of the type "Emergency response", ask me 1 to 2 questions whose answers you need to draft a campaign of its type. Ask only for facts the page cannot be written without, never for a goal, an end date, amounts or what an amount buys, a typical gift, or how the page is laid out: decide those yourself or leave them out. My mission is asked separately, so ask nothing about it.'
 		);
 	});
 
@@ -2163,7 +2280,7 @@ describe('the mission answered', () => {
 			answering(reply, reply)
 		);
 
-		expect(result).toMatchObject({ ok: false, reason: 'refused_again' });
+		expect(result).toMatchObject({ ok: true, turns: [{}, { text: STARTING_PAGE }] });
 		expect(await readOrgProfile(db)).toEqual(before);
 	});
 });
@@ -2304,8 +2421,8 @@ describe('a page opened with a 990 on record', () => {
 		const fetch = await onRecord();
 		const pageId = await insertPage(db, 'campaign');
 		await open(pageId, answering({ say: 'Questions.', ask: OWN }));
-		await answer(pageId, [{ id: 'who', value: 'Kids' }], answering({ say: 'Drafted.' }));
-		const asking = answering({ say: 'One more.', ask: [OWN[1]] });
+		await answer(pageId, [{ id: 'who', value: 'Kids' }], answering(TWO_TONE));
+		const asking = answering({ say: 'One more.', ask: [AMOUNTS[0]] });
 		await turn(pageId, 'add a goal', asking);
 		const AI = answering({ say: 'Goal set.' });
 

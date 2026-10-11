@@ -896,6 +896,40 @@ describe('an impact figure', () => {
 			? result.draft.blocks.find((block) => block.type === 'impact-tiers')
 			: undefined;
 
+	it('stands once per amount, the last at that amount kept', () => {
+		const reply = {
+			say: 'Added what each gift does.',
+			page: {
+				kind: 'patch',
+				ops: [
+					{
+						op: 'add',
+						path: '/blocks/3',
+						value: {
+							...tiers([]),
+							props: {
+								tiers: [
+									{ amountMinor: 2500, buys: 'books' },
+									{ amountMinor: 5000, buys: 'a coat' },
+									{ amountMinor: 2500, buys: 'meals' }
+								]
+							}
+						}
+					}
+				]
+			}
+		};
+		const result = accept(reply, {
+			messages: [operator('$25 buys books. $25 buys meals. $50 buys a coat.')]
+		});
+		expect(tiersOf(result)).toMatchObject({
+			tiers: [
+				{ amountMinor: 5000, buys: 'a coat' },
+				{ amountMinor: 2500, buys: 'meals' }
+			]
+		});
+	});
+
 	it('is kept when the operator stated it, and dropped and noted when nobody did', () => {
 		const result = accept(addTiers([2500, 7500]), {
 			messages: [operator('$25 buys a coat for a child.')]
@@ -1760,6 +1794,59 @@ describe('a reply that asks', () => {
 		expect(accept({ say: 'Asking.', ask: questions })).toMatchObject({
 			ok: false,
 			reason: expect.stringContaining(reason)
+		});
+	});
+});
+
+describe('a reply to answers on a page never drafted', () => {
+	const unchanged = [
+		['says alone', { say: 'Drafted.' }],
+		['patches nothing', { say: 'Drafted.', page: { kind: 'patch', ops: [] } }],
+		['sets what the page holds', { say: 'Drafted.', set: { suggestedAmounts: [2500, 5000] } }]
+	] as const;
+
+	it.each(unchanged)('is refused where it %s, since a first draft changes the page', (_, reply) => {
+		const current = campaign();
+		expect(accept(reply, { current, answering: 2, firstDraft: true })).toEqual({
+			ok: false,
+			reason: expect.stringContaining('leaves the page as it stands'),
+			current
+		});
+	});
+
+	it.each(unchanged)('is taken where it %s on a page drafted already', (_, reply) => {
+		expect(accept(reply, { answering: 2 })).toMatchObject({ ok: true, kind: 'drafted' });
+	});
+
+	const text = (id: string) => ({ id, kind: 'text', prompt: `About ${id}?` });
+	const amounts = [
+		{ id: 'goal', kind: 'amount', prompt: 'Your goal' },
+		{ id: 'impact', kind: 'tiers', prompt: 'What does each gift do?', rows: [{ amount: 2500 }] }
+	];
+
+	it('that asks keeps 3 questions at most, none of an amount or of what amounts do', () => {
+		const ask = [amounts[0], ...['a', 'b', 'c', 'd'].map(text)];
+		expect(accept({ say: 'One more.', ask }, { answering: 1, firstDraft: true })).toEqual({
+			ok: true,
+			kind: 'asked',
+			say: 'One more.',
+			questions: ['a', 'b', 'c'].map(text)
+		});
+	});
+
+	it('that asks only amounts is refused, since it must draft', () => {
+		const current = campaign();
+		expect(
+			accept({ say: 'One more.', ask: amounts }, { current, answering: 1, firstDraft: true })
+		).toEqual({ ok: false, reason: expect.stringContaining('never an amount'), current });
+	});
+
+	it('that changes the page lands', () => {
+		const reply = { say: 'Drafted.', page: { kind: 'merge', doc: { palette: 'duo' } } };
+		expect(accept(reply, { answering: 2, firstDraft: true })).toMatchObject({
+			ok: true,
+			kind: 'drafted',
+			draft: { palette: 'duo' }
 		});
 	});
 });

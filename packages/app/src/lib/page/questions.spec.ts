@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CAMPAIGN_TYPES } from './campaign-types';
 import {
 	answerWords,
+	leanQuestions,
 	MISSION_QUESTION,
 	type Question,
 	readAnswers,
@@ -268,6 +269,34 @@ describe('answers to the questions asked', () => {
 			ok: false,
 			reason: expect.stringContaining(reason)
 		});
+	});
+});
+
+describe('a lean ask', () => {
+	const text = (id: string): Question => ({ id, kind: 'text', prompt: `About ${id}?` });
+	const goal: Question = { id: 'goal', kind: 'amount', prompt: 'Your goal' };
+	const tiers: Question = {
+		id: 'impact',
+		kind: 'tiers',
+		prompt: 'What does each gift do?',
+		rows: [{ amount: 2500 }]
+	};
+	const day: Question = { id: 'day', kind: 'date', prompt: 'What day is the event?' };
+
+	it('keeps no amount or tiers question, in the order asked', () => {
+		expect(leanQuestions([goal, pick, tiers, day])).toEqual([pick, day]);
+	});
+
+	it('keeps 3 questions at most, the first asked', () => {
+		expect(leanQuestions(['a', 'b', 'c', 'd'].map(text))).toEqual(['a', 'b', 'c'].map(text));
+	});
+
+	it('keeps fewer where it is told to', () => {
+		expect(leanQuestions(['a', 'b', 'c'].map(text), 2)).toEqual(['a', 'b'].map(text));
+	});
+
+	it('of nothing it keeps is empty', () => {
+		expect(leanQuestions([goal, tiers])).toEqual([]);
 	});
 });
 

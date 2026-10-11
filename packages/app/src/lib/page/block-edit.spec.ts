@@ -27,6 +27,28 @@ describe('the block list', () => {
 	});
 });
 
+describe('an FAQ block', () => {
+	it('is summed up as its questions, joined by commas', () => {
+		const draft = defaultCampaign();
+		const answer = {
+			type: 'doc' as const,
+			content: [{ type: 'paragraph' as const, content: [{ type: 'text' as const, text: 'Yes.' }] }]
+		};
+		draft.blocks.push({
+			id: 'faq',
+			type: 'faq',
+			variant: 'open',
+			background: 'none',
+			items: [
+				{ question: 'Deductible?', answer },
+				{ question: 'Monthly?', answer }
+			]
+		});
+		const faq = editorBlocks(draft, 'USD', new Set()).find(({ id }) => id === 'faq');
+		expect(faq?.summary).toBe('Deductible?, Monthly?');
+	});
+});
+
 describe('a photo block', () => {
 	const photoId = '01926f3e-7c1a-7b2e-9d4f-3a5b6c7d8e9f';
 

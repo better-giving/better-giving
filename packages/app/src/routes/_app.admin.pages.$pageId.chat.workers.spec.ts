@@ -3,7 +3,14 @@ import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { page } from '$lib/server/db/schema';
-import { answering, defaultModelReply, insertPage } from '$lib/server/pages/page-row.testing';
+import type { Page } from '$lib/page/catalog';
+import { defaultCampaign } from '$lib/page/defaults';
+import {
+	answering,
+	defaultModelReply,
+	insertPage,
+	SETTINGS
+} from '$lib/server/pages/page-row.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { finishedDeployment } from '../page-routes.testing';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
@@ -37,6 +44,8 @@ beforeAll(async () => {
 });
 
 const TWO_TONE = { say: 'Two-tone now.', page: { kind: 'merge', doc: { palette: 'duo' } } };
+/** a campaign's draft that has moved from the default, so the page reads as drafted. */
+const DRAFTED: Page = { ...defaultCampaign(), settings: SETTINGS, palette: 'bold' };
 
 function post(
 	pageId: string,
@@ -222,8 +231,18 @@ const ZONE = 'America/New_York';
 describe('a page’s opening, posted as intent open', () => {
 	it('is answered with the one assistant turn holding its questions', async () => {
 		const pageId = await insertPage(db, 'campaign');
+		const who = {
+			id: 'who',
+			kind: 'choice',
+			prompt: 'Who does it help?',
+			options: ['Kids', 'Pets']
+		};
 
-		const response = await post(pageId, { intent: 'open', timeZone: ZONE }, answering(ASK));
+		const response = await post(
+			pageId,
+			{ intent: 'open', timeZone: ZONE },
+			answering({ say: 'A few questions.', ask: [who] })
+		);
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({
@@ -231,7 +250,7 @@ describe('a page’s opening, posted as intent open', () => {
 			turns: [
 				{
 					role: 'assistant',
-					questions: expect.arrayContaining([expect.objectContaining({ id: 'goal' })])
+					questions: expect.arrayContaining([expect.objectContaining({ id: 'who' })])
 				}
 			]
 		});
@@ -251,9 +270,10 @@ describe('a page’s opening, posted as intent open', () => {
 });
 
 describe('answers, posted as intent answers', () => {
-	async function asked() {
-		const pageId = await insertPage(db, 'campaign');
-		await post(pageId, { intent: 'open', timeZone: ZONE }, answering(ASK));
+	/** a campaign whose message was answered with `ASK`, its draft `draft`. */
+	async function asked(draft?: Page) {
+		const pageId = await insertPage(db, 'campaign', draft);
+		await post(pageId, TURN, answering(ASK));
 		return pageId;
 	}
 
@@ -282,6 +302,7 @@ describe('answers, posted as intent answers', () => {
 		);
 		expect(await read.json()).toMatchObject({
 			turns: [
+				{ role: 'operator' },
 				{
 					role: 'assistant',
 					questions: expect.arrayContaining([expect.objectContaining({ id: 'goal' })])
@@ -363,8 +384,32 @@ describe('answers, posted as intent answers', () => {
 		expect([resent.status, await resent.json()]).toMatchObject([200, { outcome: 'accepted' }]);
 	});
 
-	it('whose reply is refused, and its one retry too, are a 422 marked refused_again, naming why', async () => {
+	it('on a page never drafted, whose reply is refused, and its one retry too, are a 200 ending the questions on a starting page', async () => {
 		const pageId = await asked();
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		const response = await post(
+			pageId,
+			{ intent: 'answers', answers: '[]', timeZone: ZONE },
+			answering('not a reply', 'not a reply either')
+		);
+
+		expect([response.status, await response.json()]).toMatchObject([
+			200,
+			{
+				turns: [
+					{ role: 'operator' },
+					{
+						role: 'assistant',
+						text: 'I couldn’t draft from your answers. Here’s a starting page to edit.'
+					}
+				]
+			}
+		]);
+	});
+
+	it('on a page already drafted, whose reply is refused, and its one retry too, are a 422 marked refused_again, naming why', async () => {
+		const pageId = await asked(DRAFTED);
 		vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const response = await post(
@@ -379,9 +424,8 @@ describe('answers, posted as intent answers', () => {
 		]);
 	});
 
-	it('to a second round whose reply asks, and asks again when asked once more, are a 422 marked refused_again, naming why', async () => {
-		const pageId = await asked();
-		await post(pageId, { intent: 'answers', answers: '[]', timeZone: ZONE }, answering(ASK));
+	it('that skip, on a page already drafted, whose reply asks, and asks again when asked once more, are a 422 marked refused_again, naming why', async () => {
+		const pageId = await asked(DRAFTED);
 		vi.spyOn(console, 'warn').mockImplementation(() => {});
 
 		const response = await post(
@@ -402,7 +446,7 @@ describe('answers, posted as intent answers', () => {
 
 	it('to a tiers question are posted as its rows, and land as words', async () => {
 		const pageId = await insertPage(db, 'campaign');
-		await post(pageId, { intent: 'open', timeZone: ZONE }, answering(TIERS_ASK));
+		await post(pageId, TURN, answering(TIERS_ASK));
 		const rows = [
 			{ amount: 2500, text: 'Medicine' },
 			{ amount: 5000, text: 'A meal' }
@@ -437,7 +481,7 @@ describe('answers, posted as intent answers', () => {
 
 	it('to a tiers question are a 400 naming the row, for an amount listed twice, and ask no model', async () => {
 		const pageId = await insertPage(db, 'campaign');
-		await post(pageId, { intent: 'open', timeZone: ZONE }, answering(TIERS_ASK));
+		await post(pageId, TURN, answering(TIERS_ASK));
 		const AI = answering(TWO_TONE);
 		const value = [
 			{ amount: 2500, text: 'Medicine' },

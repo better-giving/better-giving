@@ -35,9 +35,11 @@ import type { Route } from './+types/_app.admin.pages.$pageId.chat';
 // editor's error boundary and takes the editor with it. answers whose reply could not land write no
 // turn, so the questions stay asked and the same answers can be sent again: `unanswered` on the 503
 // where no model answered, its `error` the line the turn would have said, and `refused_again` on the
-// 422 where the reply was refused and the one retry after it too, its `error` why the second was:
-// words for the model and the log, never the operator's to read. a message whose reply was refused
-// twice is a turn like any other, its words the operator's plain line.
+// 422 where, on a page already drafted, the reply was refused and the one retry after it too, its
+// `error` why the second was: words for the model and the log, never the operator's to read. on a
+// page never drafted those answers are a turn like any other, ending the questions on the draft as
+// it stands ($lib/server/pages/draft.ts), and so is a message whose reply was refused twice, its
+// words the operator's plain line.
 
 export async function loader({ context, params }: Route.LoaderArgs) {
 	const turns = await readChat(context.get(database), params.pageId);
