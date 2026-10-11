@@ -306,7 +306,7 @@ describe('a program the model names', () => {
 		expect(after.draft.settings).toMatchObject({ programMode: 'none', programId: null });
 		const [, answer] = await chat(pageId);
 		expect(answer?.text).toBe(
-			'Done.\nShade: warm. Kept gifts going where they went: the program I named isn’t one of your active programs.'
+			'Done.\nShade: warm. Didn’t change where gifts go: the program I named isn’t one of your active programs.'
 		);
 	});
 
