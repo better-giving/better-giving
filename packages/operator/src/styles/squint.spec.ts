@@ -45,6 +45,10 @@ const hints = {
 	),
 	'a group': length(
 		ruleOf(css, '.adm-fieldset > .adm-fieldset__legend + .adm-hint').get('margin-block-start')
+	),
+	'a field with a press in its label row': stated(
+		'.adm-field > .adm-field__head + .adm-hint',
+		'margin-block-start'
 	)
 };
 
@@ -89,6 +93,13 @@ describe('the squint test on every operator form', () => {
 		for (const [where, gap] of Object.entries(hints)) {
 			expect(gap, `the sentence under ${where}'s name`).toBeLessThan(Math.min(...heads));
 		}
+	});
+
+	// the label row is the small control's height and the label one line of type, so the slack
+	// between the two lands under the label unless the label stands at the row's end — and the
+	// sentence's step is then measured from the row rather than from the label.
+	it('stands a label sharing its row with a press at the end of that row', () => {
+		expect(ruleOf(css, '.adm-field > .adm-field__head').get('align-items')).toBe('end');
 	});
 
 	it('stands a head one step off what it names, with a sentence under it or without', () => {

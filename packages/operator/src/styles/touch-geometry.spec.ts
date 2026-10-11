@@ -300,9 +300,11 @@ const MEMBERS: Record<string, Member> = {
 			];
 		}
 	},
-	// the press at the end of a field's label row, a mark and a word on the small control, drawn
-	// here at its narrowest: the Undo standing before it in the row, the field's own box under the
-	// row, and the field above it.
+	// a press in a field's label row, a mark and a word on the small control, drawn here at its
+	// narrowest. two of them stand in the row together — the Undo and then the Write that writes
+	// the box (packages/app/src/lib/admin/editor/suggest.tsx) — so each is measured toward what
+	// stands before it, the word or the Undo, and toward the press after it, as well as the field's
+	// own box under the row and the field above it.
 	'.adm-field__press': {
 		holder: '.adm-btn',
 		drawn: () => ({
@@ -313,12 +315,10 @@ const MEMBERS: Record<string, Member> = {
 		contexts: [FIELD_HEAD_PRESS],
 		neighbours: () => {
 			const at = target('.adm-field__press', FIELD_HEAD_PRESS);
+			const step = evaluate(ruleOf(css, '.adm-field__aside').get('gap'));
 			return [
-				[
-					'the press before it',
-					at.inlineStart,
-					evaluate(ruleOf(css, '.adm-field__aside').get('gap'))
-				],
+				['what stands before it', at.inlineStart, step],
+				['the press after it', at.inlineEnd, step],
 				[
 					"the field's box",
 					at.blockEnd,

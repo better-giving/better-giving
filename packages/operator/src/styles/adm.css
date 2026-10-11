@@ -386,7 +386,7 @@
 	   brand colour's well each stand further off their box than their target reaches. where the
 	   neighbour is closer than the reach, the target is moved off it rather than shrunk under the
 	   floor: a press-to-open trigger leading a locked row's status (`.adm-rows__aside`), and the
-	   press at the end of a field's label row (`.adm-field__head`).
+	   presses in a field's label row (`.adm-field__head`).
 	   ./touch-geometry.spec.ts reads this list and holds each member to its holder and its
 	   neighbours, so a control joining the list is named in that spec too.
 
@@ -2061,12 +2061,16 @@
 	   slab's label row (`.adm-slabhead`) on a field. as tall as the small control, so the label row
 	   is the same height whether the press stands in it alone or with its word. it wraps rather than
 	   squeezing the label, and what wraps stays at the trailing edge. the label inside still hugs its
-	   own words: a flex item is as wide as its content. */
+	   own words: a flex item is as wide as its content.
+
+	   the label stands at the row's end, not its middle: the row is taller than a line of the
+	   label, and the slack centring leaves under the label is added to the sentence's step below,
+	   which would stand the sentence as far off its label as the box stands off the sentence. */
 	.adm-field > .adm-field__head {
 		grid-row: 1;
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: end;
 		justify-content: space-between;
 		gap: var(--admin-space-5);
 		min-block-size: var(--admin-control-height-sm);
@@ -2079,8 +2083,9 @@
 		margin-inline-start: auto;
 	}
 
-	/* the press that writes the box draws its mark and a word, a small quiet button never narrower
-	   than the floor, so its target need reach past it in the block axis alone. */
+	/* a press in the label row — the one that writes the box, and the Undo that puts back what it
+	   replaced — draws its mark and a word, a small quiet button never narrower than the floor, so
+	   its target need reach past it in the block axis alone. */
 	.adm-field__press {
 		min-inline-size: var(--admin-touch-min);
 	}
@@ -2187,7 +2192,8 @@
 	   read off the machine's own `data-disabled`, which it writes on its trigger. */
 	.adm-input:disabled,
 	.adm-select[data-disabled],
-	.adm-textarea:disabled {
+	.adm-textarea:disabled,
+	.adm-affixed:has(> input:disabled) {
 		background: var(--admin-field-bg-disabled);
 		border-color: var(--admin-control-border-disabled);
 		color: var(--admin-ink-disabled);
@@ -4143,12 +4149,27 @@
 		border-inline: var(--admin-border-width) solid transparent;
 	}
 
-	/* a row that is two boxes — an amount and what it does — stands them the step its Remove stands
-	   off them, side by side or stacked: the three are one row's, and a pair's own gap, the step
-	   between one field and the next, is wider than the step between one row and the next, so the
-	   second box would read as the next row's. */
-	.adm-rows__row > .adm-pair {
+	/* a row that is two boxes — an amount and what it does — stands them side by side the step its
+	   Remove stands off them: the three are one row's, and a pair's own gap, the step between one
+	   field and the next, is wider than the step between one row and the next, so the second box
+	   would read as the next row's.
+
+	   the two take shares of the rows' own width rather than turning at a viewport width: the
+	   group is drawn in the floating AI panel at every desk width, where the rows are about as
+	   narrow as on a phone, so a turn keyed on the viewport would split a phone's width in two
+	   equal halves. the figure is the short one and the sentence the long one, so the sentence
+	   takes two shares to the figure's one. the columns' heads (`columns` in
+	   packages/operator/src/components/forms/RepeatingRows.jsx) stand in the same tracks over the
+	   first row, in the boxes' column alone, so each head starts on its box's edge. */
+	.adm-rows__row > .adm-pair,
+	.adm-rows__head {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
 		gap: var(--admin-space-2);
+	}
+
+	.adm-rows > .adm-rows__head {
+		grid-column: 1;
 	}
 
 	/* the status a locked row states where the rows under it offer a Remove. it is read beside the
@@ -6147,7 +6168,12 @@
 
 	/* the AI press's mark for a turn that landed while the panel was closed: a dot in the accent at
 	   the press's end corner, inside its padding, so the press keeps its size and the bar does not
-	   move. it is the mark of a completed write, which is the accent's (./tokens.css). */
+	   move. it is the mark of a completed write, which is the accent's (./tokens.css).
+
+	   the dot is a border as thick as half of it as well as a ground. forced colours drop an
+	   author's ground and draw every border in the system's ink, a transparent one included, so the
+	   border is what keeps the dot on the press there; anywhere else it is transparent over the
+	   ground. */
 	.adm-publishbar__unread {
 		position: absolute;
 		inset-block-start: var(--admin-space-2);
@@ -6156,6 +6182,7 @@
 		block-size: var(--admin-space-4);
 		/* raw-length-ok: 50% — a circle, which is a shape and not a step on the size scale. */
 		border-radius: 50%;
+		border: calc(var(--admin-space-4) / 2) solid transparent;
 		background: var(--admin-tone-done-mark);
 	}
 

@@ -327,8 +327,9 @@ export function QuestionCard({
 				legend={question.prompt}
 				hint={question.hint}
 				rowLabel="tier"
+				columns={['Amount', 'What it does']}
 				add={add}
-				rows={rows.map((row, at) => {
+				rows={rows.map((row) => {
 					const amountId = tierBox(base, row, 'amount');
 					const textId = tierBox(base, row, 'text');
 					const edit = (patch: Partial<TierRow>) =>
@@ -344,11 +345,14 @@ export function QuestionCard({
 										changeRows(question, (was) => was.filter((one) => one.key !== row.key))
 									)
 								: undefined,
-						boxes: (
+						boxes: ({ describedBy, invalid, disabled, names: [amountName, textName] }) => (
 							<>
 								<MoneyField
 									id={amountId}
-									aria-label={`Tier ${at + 1} amount`}
+									aria-label={amountName}
+									aria-describedby={describedBy}
+									aria-invalid={invalid || undefined}
+									disabled={disabled}
 									affix="$"
 									affixAt="start"
 									currency={FORM_CURRENCY}
@@ -358,7 +362,10 @@ export function QuestionCard({
 								/>
 								<Field
 									id={textId}
-									aria-label={`What tier ${at + 1} does`}
+									aria-label={textName}
+									aria-describedby={describedBy}
+									aria-invalid={invalid || undefined}
+									disabled={disabled}
 									placeholder={row.example}
 									maxLength={BUYS_MAX}
 									autoComplete="off"
