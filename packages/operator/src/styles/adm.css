@@ -5941,7 +5941,8 @@
 	   shadow (`--admin-elevation-dialog` in ./tokens.css) and no line: the shadow is its edge, and a
 	   hairline under it would draw that edge twice. no scrim — the page beside it stays readable and
 	   reachable. it draws no head: its name is the landmark's, held by a heading drawn to a reader
-	   alone. below the breakpoint the panel is a sheet and this is not written.
+	   alone. below the breakpoint the panel is a sheet, and this is written there only for the panel
+	   drawn alone (`.adm-aipanel--alone`, below).
 	   packages/app/src/lib/admin/chat/ai-panel.tsx is the only thing that writes it. */
 	.adm-aipanel {
 		position: absolute;
