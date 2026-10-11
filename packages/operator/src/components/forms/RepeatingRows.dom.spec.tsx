@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SOCIAL_PLATFORMS } from '../../console/org';
 import { ruleOf, rulesIn, sheet } from '../../styles/sheet-rule.testing';
 import { mount, render } from '../render.testing';
+import { Field } from './Field.jsx';
 import { type RepeatingRow, type RowControl, RepeatingRows } from './RepeatingRows.jsx';
 
 // zero or more boxes holding one kind of value. what a case here is about is that a form can submit
@@ -537,9 +538,16 @@ describe('where focus lands after a row is added or dropped', () => {
 
 /**
  * a group whose rows are an amount and what it does, held by its caller, whose presses change the
- * rows on the click itself rather than through a submit.
+ * rows on the click itself rather than through a submit. each box takes the whole of the wiring the
+ * group hands it, as a caller's boxes do.
  */
-function Pairs(props: { start: readonly string[] }) {
+function Pairs(props: {
+	start: readonly string[];
+	hint?: string;
+	error?: string;
+	disabled?: boolean;
+	refused?: string;
+}) {
 	const [keys, setKeys] = useState(props.start);
 	const press = (onClick: () => void): RowControl & { type: 'button' } => ({
 		...ADD,
@@ -552,21 +560,49 @@ function Pairs(props: { start: readonly string[] }) {
 				id="tiers"
 				legend="What does each amount do?"
 				rowLabel="tier"
+				columns={['Amount', 'What it does']}
+				hint={props.hint}
+				error={props.error}
+				disabled={props.disabled}
 				add={press(() => setKeys((was) => [...was, `new-${was.length}`]))}
 				rows={keys.map((key, at) => ({
 					id: `tiers-${key}-amount`,
 					key,
 					remove: press(() => setKeys((was) => was.filter((one) => one !== key))),
-					boxes: (
+					boxes: ({ describedBy, invalid, disabled, names: [amount, text] }) => (
 						<>
-							<input id={`tiers-${key}-amount`} name={`amount[${at}]`} defaultValue={key} />
-							<input id={`tiers-${key}-text`} name={`text[${at}]`} defaultValue="Feeds a family" />
+							<Field
+								id={`tiers-${key}-amount`}
+								name={`amount[${at}]`}
+								defaultValue={key}
+								aria-label={amount}
+								aria-describedby={describedBy}
+								aria-invalid={invalid || undefined}
+								disabled={disabled}
+								error={key === props.refused ? 'must be more than $0' : undefined}
+							/>
+							<Field
+								id={`tiers-${key}-text`}
+								name={`text[${at}]`}
+								defaultValue="Feeds a family"
+								aria-label={text}
+								aria-describedby={describedBy}
+								aria-invalid={invalid || undefined}
+								disabled={disabled}
+							/>
 						</>
 					)
 				}))}
 			/>
 		</form>
 	);
+}
+
+/** a box by the name a reader hears it by. */
+function named(root: HTMLElement, name: string): HTMLInputElement {
+	const found = root.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`);
+	if (found === null) throw new Error(`the case drew no box named ${name}`);
+	return found;
 }
 
 describe('a row of two boxes', () => {
@@ -585,6 +621,89 @@ describe('a row of two boxes', () => {
 		expect(
 			[...root.querySelectorAll('.adm-rows__remove')].map((one) => one.getAttribute('aria-label'))
 		).toEqual(['Remove tier 1', 'Remove tier 2']);
+	});
+
+	it('draws the columns’ heads once over the rows, and names each box for its column and its row', () => {
+		const root = render(Pairs, { start: ['25', '100'] });
+
+		expect([...root.querySelectorAll('.adm-rows__head > *')].map((one) => one.textContent)).toEqual(
+			['Amount', 'What it does']
+		);
+		expect(root.querySelectorAll('.adm-rows__head')).toHaveLength(1);
+		expect(inputs(root).map((box) => box.getAttribute('aria-label'))).toEqual([
+			'Amount, tier 1',
+			'What it does, tier 1',
+			'Amount, tier 2',
+			'What it does, tier 2'
+		]);
+	});
+
+	it('draws no heads over a group with no rows in it', () => {
+		const root = render(Pairs, { start: [] });
+
+		expect(root.querySelector('.adm-rows__head')).toBeNull();
+	});
+
+	it('describes both boxes of every row by the group’s hint', () => {
+		const root = render(Pairs, {
+			start: ['25', '100'],
+			hint: 'What one gift at that amount does.'
+		});
+
+		for (const box of inputs(root)) {
+			expect(described(root, box)).toEqual(['What one gift at that amount does.']);
+			expect(box.hasAttribute('aria-invalid')).toBe(false);
+		}
+	});
+
+	it('marks both boxes of every row refused by the group’s sentence, and describes them by it', () => {
+		const root = render(Pairs, {
+			start: ['25', '100'],
+			hint: 'What one gift at that amount does.',
+			error: 'That is more tiers than a page may show.'
+		});
+
+		for (const box of inputs(root)) {
+			expect(box.getAttribute('aria-invalid')).toBe('true');
+			expect(described(root, box)).toEqual([
+				'What one gift at that amount does.',
+				'That is more tiers than a page may show.'
+			]);
+		}
+	});
+
+	it('describes a box by its own sentence first, and the group’s after it', () => {
+		const root = render(Pairs, {
+			start: ['0', '100'],
+			error: 'That is more tiers than a page may show.',
+			refused: '0'
+		});
+
+		expect(described(root, named(root, 'Amount, tier 1'))).toEqual([
+			'must be more than $0',
+			'That is more tiers than a page may show.'
+		]);
+		expect(described(root, named(root, 'What it does, tier 1'))).toEqual([
+			'That is more tiers than a page may show.'
+		]);
+	});
+
+	it('closes both boxes of every row with the group', () => {
+		const root = render(Pairs, { start: ['25', '100'], disabled: true });
+
+		expect(inputs(root).map((box) => box.disabled)).toEqual([true, true, true, true]);
+	});
+
+	it('takes none of a field’s own props on a row of boxes', () => {
+		const boxes = () => null;
+		// @ts-expect-error a row of boxes holds its values in its boxes, never on the row.
+		const held: RepeatingRow = { id: 'tiers-0-amount', boxes, defaultValue: '25' };
+		// @ts-expect-error a row of boxes says its sentences on its boxes, never on the row.
+		const refused: RepeatingRow = { id: 'tiers-0-amount', boxes, error: 'required' };
+		// @ts-expect-error a row of boxes is described through what it hands its boxes, never on the row.
+		const labelled: RepeatingRow = { id: 'tiers-0-amount', boxes, 'aria-describedby': 'note' };
+
+		expect([held, refused, labelled]).toHaveLength(3);
 	});
 
 	it('goes into the box its id names when a row is added, and to the row above when one is dropped', () => {

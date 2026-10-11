@@ -21,7 +21,9 @@ import type {
 // out of its name.
 //
 // a box in a repeating row draws no label: the group's legend names the rows on the screen and the
-// box is named by `aria-label` (packages/operator/src/components/forms/RepeatingRows.jsx).
+// box is named by `aria-label`. the group's hint and refusal are its caller's to name in
+// `aria-describedby`, after the box's own, and the group's refusal marks it through `aria-invalid`
+// (packages/operator/src/components/forms/RepeatingRows.jsx).
 //
 // the box is the caller's to hold, with `value` and `onValueChange`, and posts under `name` where it
 // has one — a money box that posts with a form (./money-field.tsx).
@@ -49,6 +51,11 @@ export type AffixedFieldProps = {
 	readonly placeholder?: string | undefined;
 	readonly onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
 	readonly onCompositionEnd?: CompositionEventHandler<HTMLInputElement>;
+	/** blocks the caller draws that describe the box, read after the box's own. */
+	readonly 'aria-describedby'?: string | undefined;
+	/** refused by something larger than the box, which holds the sentence itself. */
+	readonly 'aria-invalid'?: true | undefined;
+	readonly disabled?: boolean | undefined;
 };
 
 export function AffixedField({
@@ -67,11 +74,19 @@ export function AffixedField({
 	inputMode,
 	placeholder,
 	onKeyDown,
-	onCompositionEnd
+	onCompositionEnd,
+	'aria-describedby': describedByStated,
+	'aria-invalid': refusedFromOutside,
+	disabled
 }: AffixedFieldProps) {
 	const labelId = `${id}-label`;
 	const affixId = `${id}-affix`;
-	const describedBy = [affixId, hint ? `${id}-hint` : null, error ? `${id}-err` : null]
+	const describedBy = [
+		affixId,
+		hint ? `${id}-hint` : null,
+		error ? `${id}-err` : null,
+		describedByStated
+	]
 		.filter(Boolean)
 		.join(' ');
 	const unit = (
@@ -104,8 +119,9 @@ export function AffixedField({
 					autoComplete="off"
 					aria-labelledby={label === undefined ? undefined : labelId}
 					aria-label={named}
-					aria-invalid={error ? 'true' : undefined}
+					aria-invalid={error || refusedFromOutside ? 'true' : undefined}
 					aria-describedby={describedBy}
+					disabled={disabled}
 					placeholder={placeholder}
 					value={value}
 					onKeyDown={onKeyDown}

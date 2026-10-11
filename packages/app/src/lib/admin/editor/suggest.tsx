@@ -131,7 +131,14 @@ function useSuggest<S>(
 			<>
 				{shown ? <StatusWord>AI suggestion</StatusWord> : null}
 				{shown ? (
-					<Button type="button" variant="quiet" size="sm" mark="undo-2" onClick={undo}>
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="undo-2"
+						className="adm-field__press"
+						onClick={undo}
+					>
 						Undo
 					</Button>
 				) : null}

@@ -25,7 +25,7 @@ export type SettingsSeed = {
 	readonly programs: readonly ProgramOption[];
 	/** the archived program the draft is still pinned to, which the select carries until changed. */
 	readonly retired: ProgramOption | null;
-	/** what the settings come to — `One program · Winter coats · $25, $50 · Open on monthly`. */
+	/** what the settings come to — `One program, Winter coats, $25, $50, Open on monthly`. */
 	readonly summary: string;
 	/** the page's two switches as the draft holds them, under the boxes' names. */
 	readonly switches: { readonly open_on_monthly: boolean; readonly dedication_on: boolean };

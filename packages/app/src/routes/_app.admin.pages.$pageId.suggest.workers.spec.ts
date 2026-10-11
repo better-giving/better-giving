@@ -148,8 +148,39 @@ describe('the box asked for', () => {
 		]);
 	});
 
+	it('takes a story at its own bound, each blank line between its paragraphs counting as one', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		// 20 paragraphs, 19 breaks: 9,981 characters of words, and 10,000 by the story's own count.
+		const story = [...Array(19).fill('a'.repeat(499)), 'a'.repeat(500)];
+		const AI = answering({ text: 'Winter is hard.' });
+
+		const atBound = await post(
+			pageId,
+			{ block: 'story', field: 'body', current: story.join('\n\n') },
+			AI
+		);
+		const over = await post(
+			pageId,
+			{ block: 'story', field: 'body', current: [...story, 'a'].join('\n\n') },
+			AI
+		);
+
+		expect(atBound.status).toBe(200);
+		expect([over.status, await over.json()]).toEqual([
+			400,
+			{
+				error:
+					'current holds at most 10000 characters, each blank line between paragraphs counting as one'
+			}
+		]);
+	});
+
 	it.each([
-		['a block the draft has no such id for', { block: 'hero-2', field: 'alt' }, 'block "hero-2"'],
+		[
+			'a block the draft has no such id for',
+			{ block: 'hero-2', field: 'heading' },
+			'block "hero-2"'
+		],
 		[
 			'a field the block draws no box for',
 			{ block: 'title', field: 'subtitle' },
@@ -168,6 +199,40 @@ describe('the box asked for', () => {
 
 		expect(response.status).toBe(400);
 		expect(((await response.json()) as { error: string }).error).toContain(named);
+		expect(AI.run).not.toHaveBeenCalled();
+	});
+
+	it('is a 400 naming a photo’s description, which the model never sees the photo for', async () => {
+		const placed = defaultCampaign();
+		const pageId = await insertPage(db, 'campaign', {
+			...placed,
+			settings: SETTINGS,
+			blocks: placed.blocks.map((block) =>
+				block.type === 'hero'
+					? { ...block, imageId: '01a12858-5d63-7b47-b122-cb8befd53843', alt: '' }
+					: block
+			)
+		});
+		const AI = answering({ text: 'Volunteers sorting coats' });
+
+		const response = await post(pageId, { block: 'hero', field: 'alt', current: '' }, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			400,
+			{ error: 'field "alt" is no text box: block "hero" (hero) has none' }
+		]);
+		expect(AI.run).not.toHaveBeenCalled();
+	});
+
+	it('is a 404 naming a page there is none of, and asks no model', async () => {
+		const AI = answering({ text: 'Coats for every kid' });
+
+		const response = await post('no-such-page', HEADING, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			404,
+			{ error: 'no page has the id "no-such-page"' }
+		]);
 		expect(AI.run).not.toHaveBeenCalled();
 	});
 
@@ -211,6 +276,21 @@ describe('a suggestion that cannot be written', () => {
 		expect(retry.messages.at(-1).content).toContain(
 			'"https://coats.example.org" is not a link the page already holds'
 		);
+	});
+
+	it('is a 500 marked failed, in the refusal’s words, where the suggestion throws', async () => {
+		const pageId = await insertPage(db, 'campaign');
+		// a draft its rule refuses throws in the read (`readableDraft` in $lib/server/pages/document.ts).
+		await db.update(page).set({ draft: '{}' }).where(eq(page.id, pageId));
+		const AI = answering({ text: 'Coats for every kid' });
+
+		const response = await post(pageId, HEADING, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			500,
+			{ ok: false, reason: 'failed', text: 'Couldn’t write that box. Try again.' }
+		]);
+		expect(AI.run).not.toHaveBeenCalled();
 	});
 
 	it('is a 503 marked unanswered where no model answered, in the chat’s words', async () => {
@@ -285,6 +365,32 @@ describe('what a tier buys', () => {
 		]);
 		const [, retry] = AI.run.mock.calls[1] ?? [];
 		expect(retry.messages.at(-1).content).toContain('what a tier buys is at most 140 characters');
+	});
+
+	it('is told the model for the amount the sheet holds, sent beside it', async () => {
+		const pageId = await insertPage(db, 'campaign', tiered());
+		const AI = answering({ text: 'A winter coat and boots' });
+
+		await post(pageId, { ...BUYS, beside: '100' }, AI);
+
+		const [, asked] = AI.run.mock.calls[0] ?? [];
+		expect(asked.messages.at(-1).content).toContain('Write what a gift of $100 buys, tier 1');
+	});
+
+	it('is a 400 naming an amount beside it that does not read, and asks no model', async () => {
+		const pageId = await insertPage(db, 'campaign', tiered());
+		const AI = answering({ text: 'A winter coat' });
+
+		const response = await post(pageId, { ...BUYS, beside: '1,000' }, AI);
+
+		expect([response.status, await response.json()]).toEqual([
+			400,
+			{
+				error:
+					'beside "1,000" must be an amount, write 25.00 for $25.00: send tier 1’s amount as the sheet holds it, ungrouped'
+			}
+		]);
+		expect(AI.run).not.toHaveBeenCalled();
 	});
 
 	it('names a row the block does not hold', async () => {

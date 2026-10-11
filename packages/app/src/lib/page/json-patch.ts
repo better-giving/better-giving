@@ -170,7 +170,8 @@ function setMember(target: Record<string, unknown>, key: string, value: unknown)
 	});
 }
 
-function jsonEqual(a: unknown, b: unknown): boolean {
+/** whether two JSON values are the same, members in any order. */
+export function jsonEqual(a: unknown, b: unknown): boolean {
 	if (Array.isArray(a) || Array.isArray(b)) {
 		return (
 			Array.isArray(a) &&
