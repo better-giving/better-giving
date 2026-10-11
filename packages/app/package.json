@@ -47,13 +47,11 @@
 	},
 	"dependencies": {
 		"@ark-ui/react": "catalog:",
-		"@assistant-ui/react": "catalog:",
 		"@better-giving/emails": "workspace:*",
 		"@better-giving/form": "workspace:*",
 		"@better-giving/operator": "workspace:*",
 		"@conform-to/react": "catalog:",
 		"@conform-to/zod": "catalog:",
-		"@json-render/core": "catalog:",
 		"@paypal/paypal-server-sdk": "2.5.0",
 		"@tiptap/core": "catalog:",
 		"@tiptap/extension-bold": "catalog:",
