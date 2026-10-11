@@ -67,8 +67,7 @@ function edited(): Loaded {
 			switches: { open_on_monthly: false, dedication_on: false },
 			monthlyOffered: true
 		},
-		hasEdits: true,
-		pageId: 'donation-page'
+		hasEdits: true
 	};
 }
 

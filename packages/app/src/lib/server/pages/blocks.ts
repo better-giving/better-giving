@@ -56,8 +56,8 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 // words from its sheet's one Done; a variant, a background, the layout, the shade, the corners or
 // the palette from its picture; the share message and the share buttons; and a block added,
 // removed or moved. every one is written to the draft alone, against the version the editor was
-// drawn at, so nothing here reaches donors before Publish and a press drawn before another save — another block's, a rename — is
-// refused rather than putting back what that save moved.
+// drawn at, so nothing here reaches donors before Publish, and a press drawn before another save
+// — another block's, a rename — is refused rather than putting back what that save moved.
 //
 // the words are the block catalog's to judge ($lib/page/catalog.ts): each block's `BLOCK_DATA` rule
 // runs over what its boxes posted so a refusal lands under the box that posted the value, and the
@@ -68,11 +68,11 @@ import { draftSettingsOf, type SettingsTarget } from './queries';
 // `block_id`, and one naming a block the page does not hold, or a block of another type, is
 // refused naming it.
 //
-// a photo is replaced by the id its upload was answered with, and one no stored image has is
-// refused, so a block never points at a photo the image route would not serve. the replace keeps
-// the block, its id and its variant. a photo the draft lets go of, replaced or removed with its
-// block, is freed in the draft's own write, and kept while the live page, the page Undo would put
-// back or anything else still places it (../images/free.ts).
+// a photo is replaced by the id its upload was answered with, and one no stored image has when the
+// press is read is refused, so a block names only a photo that was stored a moment ago. the
+// replace keeps the block, its id and its variant. a photo the draft lets go of, replaced or
+// removed with its block, is freed in the draft's own write, and kept while the live page, the
+// page Undo would put back or anything else still places it (../images/free.ts).
 
 const BLOCK_TITLE = defineForm({ id: BLOCK_FORMS.title, schema: BLOCK_TITLE_INPUT });
 const BLOCK_STORY = defineForm({ id: BLOCK_FORMS.story, schema: BLOCK_STORY_INPUT });

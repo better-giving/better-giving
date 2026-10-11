@@ -114,8 +114,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		...editorPage(row, now),
 		...editorDraft(row, settings.currency),
 		settings,
-		hasEdits: hasEditsToReset(row),
-		pageId: row.id
+		hasEdits: hasEditsToReset(row)
 	};
 }
 

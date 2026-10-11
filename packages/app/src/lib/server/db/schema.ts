@@ -102,7 +102,8 @@ import type { PostableAccountId } from './postable';
 //             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
 //             (../../page/catalog.ts), and `PAGE_STATES` because ../../page/ended.ts reads
 //             whether a page has ended. `CAMPAIGN_TYPES` was born beside them
-//             (../../page/campaign-types.ts), for the screen a campaign's kind is picked on.
+//             (../../page/campaign-types.ts), for a campaign's kind, which nothing in this
+//             release writes.
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
@@ -3228,8 +3229,8 @@ const pageLookCheck = (doc: SQLiteColumn) => {
  * never-published campaign's included. an ended campaign keeps its slug until another campaign
  * takes it, which sets the ended one's to null in the same write; it is the one campaign that may
  * hold none. the slug's spelling, and the routes it may not shadow, are the parse's. its
- * `campaign_type` is one of `CAMPAIGN_TYPES`, or null on a campaign made before its kind was asked;
- * the donation page holds none.
+ * `campaign_type` is one of `CAMPAIGN_TYPES`, or null, which every campaign holds while nothing
+ * writes one; the donation page holds none.
  *
  * **a page that has been live is never deleted**: a gift may point at its owned row. ending is
  * `state`, and there is no `archived_at`. the one delete is a never-published campaign's, with its
