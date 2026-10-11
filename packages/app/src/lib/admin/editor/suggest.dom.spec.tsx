@@ -271,6 +271,9 @@ describe('Write with AI', () => {
 		expect(plainBox(box).value).toBe('Every child warm by December');
 		expect(marked(box)).toBe(true);
 		expect(said(box)).toBe('AI suggestion');
+		// a small press in the label row, aimed at at the floor as the Write beside it is
+		// (packages/operator/src/styles/touch-geometry.spec.ts).
+		expect(undoPress(box)?.classList).toContain('adm-field__press');
 
 		await press(undoPress(box));
 		expect(plainBox(box).value).toBe('Keep 300 kids warm this winter');

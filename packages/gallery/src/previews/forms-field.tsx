@@ -34,9 +34,11 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * the press if the box reserved it no room; and the wrapper standing on a row a caller also put a
  * control on.
  *
- * `labelAside` is drawn twice: the press alone at the label row's end, and the press with the word
+ * `labelAside` is drawn five times: the press alone at the label row's end; the press with the word
  * and the Undo a filled box carries before it, over a hint, where the row's height meets the
- * sentence's tighter step.
+ * sentence's tighter step; the press in flight, its dots over its word and the field's region up
+ * and silent; the press after an ask that wrote nothing, its sentence in that region; and a label
+ * too long to share its row, which drops the word and both presses under it at the trailing edge.
  *
  * the last field's label and hint are long on purpose: string length is a layout constraint, and
  * a label that wraps is what puts the box at a different distance from the one above it.
@@ -267,7 +269,82 @@ export default function FormsFieldPreview() {
 				labelAside={
 					<>
 						<StatusWord>AI suggestion</StatusWord>
-						<Button type="button" variant="quiet" size="sm" mark="undo-2">
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="undo-2"
+							className="adm-field__press"
+						>
+							Undo
+						</Button>
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="sparkles"
+							className="adm-field__press"
+							aria-label="Write with AI"
+						>
+							Write
+						</Button>
+					</>
+				}
+			/>
+			<Field
+				id="forms-field-aside-busy"
+				label="What it buys"
+				defaultValue="one winter coat"
+				status=""
+				labelAside={
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="sparkles"
+						className="adm-field__press"
+						aria-label="Write with AI"
+						aria-busy
+						aria-disabled
+					>
+						Write
+					</Button>
+				}
+			/>
+			<Field
+				id="forms-field-aside-refused"
+				label="What it buys"
+				defaultValue="one winter coat"
+				status="No model answered, so nothing changed. Try again in a moment."
+				labelAside={
+					<Button
+						type="button"
+						variant="quiet"
+						size="sm"
+						mark="sparkles"
+						className="adm-field__press"
+						aria-label="Write with AI"
+					>
+						Write
+					</Button>
+				}
+			/>
+			<Field
+				id="forms-field-aside-wrapped"
+				label="The sentence a donor reads beside the amount when they pick a monthly gift"
+				optional
+				hint="Leave it empty to show the amount alone."
+				defaultValue="Keeps a child in a warm coat all winter, every winter"
+				labelAside={
+					<>
+						<StatusWord>AI suggestion</StatusWord>
+						<Button
+							type="button"
+							variant="quiet"
+							size="sm"
+							mark="undo-2"
+							className="adm-field__press"
+						>
 							Undo
 						</Button>
 						<Button

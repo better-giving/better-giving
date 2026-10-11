@@ -1,7 +1,10 @@
 import { AnchoredNote } from '@better-giving/operator/behaviour/AnchoredCard';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { RepeatingRows } from '@better-giving/operator/components/forms/RepeatingRows';
-import type { RowControl } from '@better-giving/operator/components/forms/RepeatingRows';
+import type {
+	RepeatingRow,
+	RowControl
+} from '@better-giving/operator/components/forms/RepeatingRows';
 import { BrandMark } from '@better-giving/operator/components/status/BrandMark';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
@@ -44,9 +47,15 @@ import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-li
  * addresses start on one edge down the column — YouTube's wide mark and X's narrow one alike. a
  * network's mark carries its name for the box to be described by, and the globe carries none.
  *
- * the group whose rows are two boxes is an amount beside what it does, one row's words refused
- * under its own box: the pair stands in the one box's place, side by side and stacked at the floor,
- * and the Remove stands off the pair by the step the two stand off each other.
+ * the groups whose rows are two boxes are an amount beside what it does, under the two columns'
+ * heads: the pair stands in the one box's place, side by side at every width with the sentence
+ * taking two shares to the figure's one, and the Remove stands off the pair by the step the two
+ * stand off each other. the first carries the group's hint, which describes every box, and a row
+ * refused at its amount and one at its words; the second the group's own sentence, which marks
+ * every box; the third is the group closed, which closes both boxes of every row. each amount
+ * stands behind the `$` the AI's tiers question draws, here as the box's own lead — the question's
+ * amount box is the app's (packages/app/src/lib/admin/editor/money-field.tsx), out of this page's
+ * reach.
  *
  * both presses are the caller's and are stated here as a form layer's list intents would arrive.
  * nothing on this page is inside a form, so no press does anything — what a group draws is the
@@ -62,6 +71,54 @@ const drop = (at: number): RowControl => ({
 	value: `remove:${at}`,
 	formNoValidate: true
 });
+
+/** the heads over a row of an amount and what it does, as the AI's tiers question states them. */
+const TIER_COLUMNS = ['Amount', 'What it does'];
+
+/** one tier as typed, and the sentence either of its boxes was refused with. */
+type Tier = {
+	readonly amount: string;
+	readonly text: string;
+	readonly amountError?: string;
+	readonly textError?: string;
+};
+
+/**
+ * tier rows wired as the AI's tiers question wires its own: each box takes what the group hands it,
+ * and the amount stands behind a `$`.
+ */
+const tierRows = (group: string, tiers: readonly Tier[]): RepeatingRow[] =>
+	tiers.map(({ amount, text, amountError, textError }, at) => ({
+		id: `${group}-${at}-amount`,
+		key: `${group}-${at}`,
+		remove: tiers.length > 1 ? drop(at) : undefined,
+		boxes: ({ describedBy, invalid, disabled, names: [amountName, textName] }) => (
+			<>
+				<Field
+					id={`${group}-${at}-amount`}
+					className="adm-num"
+					inputMode="decimal"
+					lead={{ mark: '$', said: '$' }}
+					defaultValue={amount}
+					error={amountError}
+					aria-label={amountName}
+					aria-describedby={describedBy}
+					aria-invalid={invalid || undefined}
+					disabled={disabled}
+				/>
+				<Field
+					id={`${group}-${at}-text`}
+					defaultValue={text}
+					placeholder="Stocks the shelves for a month"
+					error={textError}
+					aria-label={textName}
+					aria-describedby={describedBy}
+					aria-invalid={invalid || undefined}
+					disabled={disabled}
+				/>
+			</>
+		)
+	}));
 
 export default function FormsRepeatingRowsPreview() {
 	return (
@@ -299,36 +356,44 @@ export default function FormsRepeatingRowsPreview() {
 			<RepeatingRows
 				id="forms-rows-pair"
 				legend="What does each amount do?"
+				hint="What one gift at that amount does, in a few words."
 				rowLabel="tier"
+				columns={TIER_COLUMNS}
 				addLabel="Add a tier"
 				add={add}
-				rows={[
-					['25', 'Feeds a family for a week', ''],
-					['100', '', 'required'],
-					['500', 'Keeps the pantry open on a Saturday morning, staff and all', '']
-				].map(([amount, text, error], at) => ({
-					id: `forms-rows-pair-${at}-amount`,
-					key: `pair-${at}`,
-					remove: drop(at),
-					boxes: (
-						<>
-							<Field
-								id={`forms-rows-pair-${at}-amount`}
-								className="adm-num"
-								inputMode="decimal"
-								defaultValue={amount}
-								aria-label={`Tier ${at + 1} amount`}
-							/>
-							<Field
-								id={`forms-rows-pair-${at}-text`}
-								defaultValue={text}
-								placeholder="Stocks the shelves for a month"
-								error={error || undefined}
-								aria-label={`What tier ${at + 1} does`}
-							/>
-						</>
-					)
-				}))}
+				rows={tierRows('forms-rows-pair', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '0', text: 'Stocks a pantry shelf', amountError: 'must be more than $0' },
+					{ amount: '100', text: '', textError: 'required' },
+					{ amount: '1,500', text: 'Keeps the pantry open on a Saturday morning, staff and all' }
+				])}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair-error"
+				legend="What does each amount do?"
+				rowLabel="tier"
+				columns={TIER_COLUMNS}
+				error="A page shows six tiers at most. Remove one to add another."
+				addLabel="Add a tier"
+				add={add}
+				rows={tierRows('forms-rows-pair-error', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '100', text: 'Stocks a pantry shelf' }
+				])}
+			/>
+			<RepeatingRows
+				id="forms-rows-pair-closed"
+				legend="What does each amount do?"
+				hint="The group while the answers are on their way."
+				rowLabel="tier"
+				columns={TIER_COLUMNS}
+				disabled
+				addLabel="Add a tier"
+				add={add}
+				rows={tierRows('forms-rows-pair-closed', [
+					{ amount: '25', text: 'Feeds a family for a week' },
+					{ amount: '100', text: 'Stocks a pantry shelf' }
+				])}
 			/>
 			<RepeatingRows
 				id="forms-rows-long"
