@@ -4,7 +4,7 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { suggestUrl } from '$lib/admin/editor/suggest';
+import { revalidatesAfter, suggestUrl } from '$lib/admin/editor/suggest-url';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
 import { PublishBar } from '$lib/admin/editor/publish-bar';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
@@ -126,6 +126,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		pageId: row.id
 	};
 }
+
+// Write with AI's ask writes nothing, so the editor is not read again after one.
+export const shouldRevalidate = revalidatesAfter;
 
 export async function action({ context, request }: Route.ActionArgs) {
 	const body = await request.formData();

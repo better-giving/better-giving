@@ -833,14 +833,14 @@ describe('what the bar says to a reader', () => {
 		expect(said.textContent).toBe('');
 	});
 
-	it('states Edit as pressed while on, and says once what to do with it on', () => {
+	it('reads Done while on with no pressed state beside its name, and says once what to do with it on', () => {
 		const root = routed(<Driven />);
 		const said = region(root);
 		const edit = button(root, 'Edit');
-		expect(edit.getAttribute('aria-pressed')).toBe('false');
+		expect(edit.hasAttribute('aria-pressed')).toBe(false);
 
 		act(() => edit.click());
-		expect(edit.getAttribute('aria-pressed')).toBe('true');
+		expect(edit.hasAttribute('aria-pressed')).toBe(false);
 		expect(edit.textContent).toBe('Done');
 		expect(said.textContent).toBe('Click a block to edit it');
 
@@ -848,7 +848,7 @@ describe('what the bar says to a reader', () => {
 		expect(said.textContent).toBe('Click a block to edit it');
 
 		act(() => edit.click());
-		expect(edit.getAttribute('aria-pressed')).toBe('false');
+		expect(edit.textContent).toBe('Edit');
 		expect(said.textContent).toBe('');
 	});
 

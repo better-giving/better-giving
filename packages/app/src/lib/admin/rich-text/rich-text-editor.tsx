@@ -77,7 +77,8 @@ export type RichTextEditorProps = {
 
 /** the box's words for a caller writing the whole of them, once the editor is built. */
 export type RichTextHandle = {
-	/** the words, a paragraph per block and a blank line between two. */
+	/** the words, each paragraph's — a list item's too — a blank line apart: one line between two,
+	 *  so a document within `TEXT_MAX` reads within it as the suggest route counts. */
 	readonly words: () => string;
 	/** the document as it stands, for `put` to bring back. */
 	readonly kept: () => JSONContent;
@@ -86,6 +87,17 @@ export type RichTextHandle = {
 };
 
 const BLANK: RichTextDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
+
+/** the words of each paragraph in order, those inside a list among them. */
+function paragraphsOf(editor: Editor): string[] {
+	const paragraphs: string[] = [];
+	editor.state.doc.descendants((node) => {
+		if (node.type.name !== 'paragraph') return true;
+		paragraphs.push(node.textContent);
+		return false;
+	});
+	return paragraphs;
+}
 
 type PressId = 'bold' | 'italic' | 'bulletList' | 'orderedList' | 'link';
 type Press = { id: PressId; label: string; mark: MarkName };
@@ -221,7 +233,7 @@ export function RichTextEditor({
 	useImperativeHandle(
 		ref,
 		() => ({
-			words: () => editor?.getText({ blockSeparator: '\n\n' }) ?? '',
+			words: () => (editor === null ? '' : paragraphsOf(editor).join('\n\n')),
 			kept: () => editor?.getJSON() ?? (initial as JSONContent),
 			fill: (doc) => editor?.commands.setContent(doc as JSONContent),
 			put: (kept) => editor?.commands.setContent(kept)

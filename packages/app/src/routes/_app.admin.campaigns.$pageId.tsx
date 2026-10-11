@@ -8,7 +8,7 @@ import { BlockEditSheet, isDonationBox, useLayoutPick } from '$lib/admin/editor/
 import { useEditorChat } from '$lib/admin/editor/chat-wiring';
 import { DonationSettingsSheet } from '$lib/admin/editor/donation-settings';
 import { EditorShell } from '$lib/admin/editor/editor-shell';
-import { suggestUrl } from '$lib/admin/editor/suggest';
+import { revalidatesAfter, suggestUrl } from '$lib/admin/editor/suggest-url';
 import { NameSheet } from '$lib/admin/editor/name-sheet';
 import { EndDateSettingsSheet, GoalSettingsSheet } from '$lib/admin/editor/page-settings';
 import { PreviewFrame } from '$lib/admin/editor/preview-frame';
@@ -215,6 +215,9 @@ function slugPredicate(refused: Exclude<SlugCheck, { ok: true }>): string {
 				: `clashes with ${refused.clashesWith}`;
 	}
 }
+
+// Write with AI's ask writes nothing, so the editor is not read again after one.
+export const shouldRevalidate = revalidatesAfter;
 
 export async function action({ context, params, request }: Route.ActionArgs) {
 	const body = await request.formData();

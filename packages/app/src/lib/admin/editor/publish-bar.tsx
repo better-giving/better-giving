@@ -18,11 +18,11 @@ import { useMiddle, useWide } from './wide';
 //
 // **Edit turns the editor's Edit on** (`useEditing` in ./editor-shell.tsx): the preview's blocks
 // are drawn as clickable, each opening its own sheet, and the press reads Done, which turns it off
-// again. it is one press whose words change, so the focus stays on it through both, and
-// `aria-pressed` carries which, since a focused button renamed is not reliably read again. while
-// it is on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose
-// block list is the keyboard's way to a block; it closes the AI panel as it does, since the two
-// never stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
+// again. it is one press whose words change, so the focus stays on it through both; it states no
+// pressed state, since its name is the state and Done read as pressed reads wrong, and the bar's
+// region says "Click a block to edit it" as it turns on. while it is on, Settings stands beside it
+// and opens the Settings sheet (./settings-sheet.tsx), whose block list is the keyboard's way to a
+// block; it closes the AI panel as it does, since the two never stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
 // ./editor-shell.tsx): `aria-expanded` says which, and below the wide breakpoint (./wide.ts), where
 // the panel is a sheet, `aria-haspopup` says it is a dialog. it is busy from its press until the
 // panel is up, held with `aria-disabled` so the focus stays on it. a turn that landed while the
@@ -216,7 +216,6 @@ export function PublishBar({
 				<Button
 					type="button"
 					mark={editing.on ? 'check' : 'pencil'}
-					aria-pressed={editing.on}
 					onClick={() => editing.turn(!editing.on)}
 				>
 					{editing.on ? 'Done' : 'Edit'}
