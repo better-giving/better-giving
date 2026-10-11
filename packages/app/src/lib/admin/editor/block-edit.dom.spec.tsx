@@ -22,8 +22,15 @@ import { SettingsSheet } from './settings-sheet';
 
 const STALE = 'The page changed while this was open. Reload to see it.';
 
-/** `tree` under the editor's route, whose action refuses `refusing` and records every body. */
-function editor(tree: ReactNode, refusing: string) {
+/**
+ * `tree` under the editor's route, whose action refuses `refusing` with `error` — the stale sentence
+ * unless stated — and records every body.
+ */
+function editor(
+	tree: ReactNode,
+	refusing: string,
+	error: Record<string, string[]> = { '': [STALE] }
+) {
 	const posted: FormData[] = [];
 	const Stub = createRoutesStub([
 		{
@@ -34,7 +41,7 @@ function editor(tree: ReactNode, refusing: string) {
 				posted.push(body);
 				const form = body.get(WHICH_FORM);
 				return form === refusing
-					? { form: { id: form, result: { status: 'error', error: { '': [STALE] } } } }
+					? { form: { id: form, result: { status: 'error', error } } }
 					: { saved: 'block' };
 			}
 		}
@@ -338,6 +345,44 @@ describe('a list’s rows', () => {
 		await press(done(root));
 		expect(posted[0]?.getAll('tier_buys[0]')).toEqual(['one winter coat']);
 		expect(posted[0]?.getAll('tier_buys[1]')).toEqual(['']);
+	});
+
+	it('keep a refusal on the row it was said of as rows come and go, with the caret where Remove put it', async () => {
+		const three: EditorBlock = {
+			...tiers,
+			text: {
+				kind: 'impact-tiers',
+				currency: 'USD',
+				tiers: [
+					{ amount: '40.00', buys: 'one winter coat' },
+					{ amount: '120.00', buys: 'coats for a family of three' },
+					{ amount: '0', buys: 'a scarf' }
+				]
+			}
+		};
+		const { root } = editor(sheet(three), BLOCK_FORMS.impactTiers, {
+			'tier_amount[2]': ['more than $0']
+		});
+		const refused = () =>
+			[...root.querySelectorAll('dialog fieldset')].map(
+				(one) => one.querySelector('.adm-affixed__input')?.getAttribute('aria-invalid') === 'true'
+			);
+
+		await press(done(root));
+		expect(refused()).toEqual([false, false, true]);
+		expect(document.activeElement).toBe(amountBox(root, 2));
+
+		await press(named(root, 'Remove tier 1'));
+		expect(refused()).toEqual([false, true]);
+		expect(document.activeElement).toBe(amountBox(root, 0));
+
+		await press(named(root, 'Add a tier'));
+		expect(refused()).toEqual([false, true, false]);
+		expect(document.activeElement).toBe(amountBox(root, 2));
+
+		await press(named(root, 'Remove tier 2'));
+		expect(refused()).toEqual([false, false]);
+		expect(document.activeElement).toBe(amountBox(root, 0));
 	});
 
 	it.each([

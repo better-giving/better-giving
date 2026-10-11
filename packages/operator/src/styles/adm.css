@@ -5552,6 +5552,16 @@
 		letter-spacing: var(--admin-section-track);
 	}
 
+	/* what the sheet is doing, between the heading and its X: the head stays on screen while the
+	   body scrolls, so a pick made far down a phone's sheet is still answered where the eye can
+	   find it. empty, it is a box with no width. */
+	.adm-sheet__status {
+		flex: none;
+		font-size: var(--admin-hint-size);
+		line-height: var(--admin-hint-lh);
+		color: var(--admin-ink-2);
+	}
+
 	.adm-sheet__body {
 		flex: 1;
 		overflow: auto;
@@ -5972,10 +5982,17 @@
 	   each press has a track of its own, and a press a block cannot use is left out rather than
 	   drawn closed, so its track stands empty: the first block's Move down stands under the second
 	   block's, not where the second's Move up is. each track is the touch floor square and so is the
-	   press, so the target is the drawn press and nothing reaches past it. */
+	   press, so the target is the drawn press and nothing reaches past it. Remove stands a step off
+	   Move down, in a track of its own, so a thumb aimed at a move does not land on the press that
+	   takes the block away.
+
+	   a refused press is said under its row, across every track, where the thumb that pressed it
+	   is. */
 	.adm-blockrow {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) repeat(3, var(--admin-touch-min));
+		grid-template-columns:
+			minmax(0, 1fr) repeat(2, var(--admin-touch-min)) var(--admin-space-4)
+			var(--admin-touch-min);
 		align-items: center;
 		border-block-end: var(--admin-rule);
 	}
@@ -6000,13 +6017,29 @@
 	}
 
 	.adm-blockrow > .adm-blockrow__remove {
-		grid-column: 4;
+		grid-column: 5;
+	}
+
+	.adm-blockrow > .adm-blockrow__refusal {
+		grid-column: 1 / -1;
+		padding-block-end: var(--admin-space-4);
 	}
 
 	/* Add a block under the list hugs its press: a grid item stretches across the part, and a press
 	   the part's width reads as a bar rather than as a control. */
 	.adm-openrow-list + .adm-menuwrap {
 		justify-self: start;
+	}
+
+	/* the presses a phone's sheet grows and shrinks a list by — Add a block under the block list,
+	   a tier's or a question's Add under the rows and each row's Remove — stand at the row's floor,
+	   whatever size their words are drawn at: they sit between rows a thumb aims at. */
+	.adm-openrow-list + .adm-menuwrap > .adm-btn {
+		min-block-size: var(--admin-touch-min);
+	}
+
+	.adm-btn.adm-rowpress {
+		min-block-size: var(--admin-touch-min);
 	}
 
 	/* a box with its unit or its address in front stated on the box itself, as `.adm-coinbox` is:

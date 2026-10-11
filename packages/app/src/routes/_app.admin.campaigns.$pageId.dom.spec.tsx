@@ -508,13 +508,21 @@ describe('Settings’ presses that apply at once', () => {
 	const taken = (within: Element, legend: string) =>
 		[...chips(within, legend)].filter(([, input]) => input.checked).map(([words]) => words);
 
-	/** the report region at the foot of the part headed `title`. */
-	function report(within: Element, title: string): string | null | undefined {
-		const part = [...within.querySelectorAll('section')].find(
-			(one) => one.querySelector('h3')?.textContent === title
+	/**
+	 * the refusal the group headed `legend` was answered with, and whether each of its chips is
+	 * marked refused and described by it.
+	 */
+	function groupRefusal(within: Element, legend: string) {
+		const group = [...within.querySelectorAll('fieldset')].find(
+			(one) => one.querySelector('legend')?.textContent === legend
 		);
-		return [...(part?.querySelectorAll(':scope > .adm-actions [role="status"]') ?? [])].at(-1)
-			?.textContent;
+		const refusal = group?.querySelector('.adm-field__error') ?? null;
+		const marked = [...chips(within, legend).values()].every(
+			(chip) =>
+				chip.getAttribute('aria-invalid') === 'true' &&
+				(chip.getAttribute('aria-describedby') ?? '').split(' ').includes(refusal?.id ?? '-')
+		);
+		return { said: refusal?.textContent ?? null, marked };
 	}
 
 	const refused = (form: string, error: Record<string, string[]>, status = 400) => ({
@@ -581,23 +589,30 @@ describe('Settings’ presses that apply at once', () => {
 		expect(channelsPosted()).toEqual([['x', 'facebook']]);
 	});
 
-	it('turns a second press away while the first is in flight, and sends the next at the version it moved to', async () => {
-		answers = [{ body: { saved: 'block' } }, { body: { saved: 'page-shade' } }];
+	it('keeps the last pick made while a press is in flight, drawn picked, and sends it at the version the first moved to, the head saying so meanwhile', async () => {
+		answers = [{ body: { saved: 'block' } }, { body: { saved: 'page-corners' } }];
 		const sheet = await settings();
 		const banner = sheet.querySelector<HTMLInputElement>('input[value="banner"]');
 		if (banner === null) throw new Error('no Banner layout');
 
 		drawn = { ...drawn, version: 2, layout: 'banner' };
-		await act(async () => {
+		act(() => {
 			banner.click();
 			(chips(sheet, 'Shade').get('Cool') as HTMLInputElement).click();
+			(chips(sheet, 'Corners').get('Square') as HTMLInputElement).click();
 		});
+		// the second pick is dropped for the third, which is drawn picked while it waits.
+		expect(taken(card('Settings'), 'Shade')).toEqual(['Light']);
+		expect(taken(card('Settings'), 'Corners')).toEqual(['Square']);
+		const status = () => card('Settings').querySelector('.adm-sheet__head [role="status"]');
+		expect(status()?.textContent).toBe('Saving your change…');
 		await settle();
-		await press(chips(card('Settings'), 'Shade').get('Cool') as HTMLInputElement);
+		await settle();
+		expect(status()?.textContent).toBe('');
 
 		expect(posted).toEqual([
 			{ [WHICH_FORM]: 'page-layout', [RECORD_VERSION]: '1', layout: 'banner' },
-			{ [WHICH_FORM]: 'page-shade', [RECORD_VERSION]: '2', shade: 'cool' }
+			{ [WHICH_FORM]: 'page-corners', [RECORD_VERSION]: '2', corners: 'square' }
 		]);
 	});
 
@@ -607,7 +622,11 @@ describe('Settings’ presses that apply at once', () => {
 
 		await press(chips(sheet, 'Shade').get('Cool') as HTMLInputElement);
 
-		expect(report(card('Settings'), 'Look')).toBe('one of light, warm or cool');
+		expect(groupRefusal(card('Settings'), 'Shade')).toEqual({
+			said: 'one of light, warm or cool',
+			marked: true
+		});
+		expect(groupRefusal(card('Settings'), 'Corners')).toEqual({ said: null, marked: false });
 		expect(taken(card('Settings'), 'Shade')).toEqual(['Light']);
 	});
 
@@ -619,7 +638,10 @@ describe('Settings’ presses that apply at once', () => {
 		await press(chips(sheet, 'Share buttons').get('Email') as HTMLInputElement);
 
 		expect(posted[0]).toEqual({ [WHICH_FORM]: 'page-share-channels', [RECORD_VERSION]: '1' });
-		expect(report(card('Settings'), 'Sharing')).toBe('at least one share button');
+		expect(groupRefusal(card('Settings'), 'Share buttons')).toEqual({
+			said: 'at least one share button',
+			marked: true
+		});
 		expect(taken(card('Settings'), 'Share buttons')).toEqual(['Email']);
 	});
 
@@ -638,31 +660,33 @@ describe('Settings’ presses that apply at once', () => {
 		const sheet = await settings();
 
 		expect(rowPresses(sheet, 'Cover photo')).toEqual([
-			'Move Cover photo down',
-			'Remove Cover photo'
+			'Move Cover photo down, 1 of 7',
+			'Remove Cover photo, 1 of 7'
 		]);
 		expect(rowPresses(sheet, 'Story')).toEqual([
-			'Move Story up',
-			'Move Story down',
-			'Remove Story'
+			'Move Story up, 4 of 7',
+			'Move Story down, 4 of 7',
+			'Remove Story, 4 of 7'
 		]);
 		expect(rowPresses(sheet, 'Donation box')).toEqual([
-			'Move Donation box up',
-			'Move Donation box down'
+			'Move Donation box up, 5 of 7',
+			'Move Donation box down, 5 of 7'
 		]);
 		expect(rowPresses(sheet, 'Organisation details')).toEqual([
-			'Move Organisation details up',
-			'Remove Organisation details'
+			'Move Organisation details up, 7 of 7',
+			'Remove Organisation details, 7 of 7'
 		]);
 	});
 
-	it('posts a move and a remove with the block and the version', async () => {
+	it('posts a move, and a remove once its card is answered, with the block and the version', async () => {
 		drawn = { ...drawn, version: 9 };
 		answers = [{ body: { saved: 'block-move' } }, { body: { saved: 'block-remove' } }];
 		await settings();
 
-		await press(button('Move Story up', card('Settings')));
-		await press(button('Remove Goal', card('Settings')));
+		await press(button('Move Story up, 4 of 7', card('Settings')));
+		await press(button('Remove Goal, 3 of 7', card('Settings')));
+		expect(posted).toHaveLength(1);
+		await press(button('Remove', card('Remove Goal?')));
 
 		expect(posted).toEqual([
 			{ [WHICH_FORM]: 'block-move', [RECORD_VERSION]: '9', block_id: 'story', direction: 'up' },
@@ -670,14 +694,17 @@ describe('Settings’ presses that apply at once', () => {
 		]);
 	});
 
-	it('says a refused block press under the list, the reload sentence of a stale one among them', async () => {
+	it('says a refused block press under the row pressed, the reload sentence of a stale one among them', async () => {
 		const stale = 'Nothing was changed: this page has been saved since the editor was opened.';
 		answers = [refused('block-move', { '': [stale] }, 409)];
 		await settings();
 
-		await press(button('Move Story up', card('Settings')));
+		await press(button('Move Story up, 4 of 7', card('Settings')));
 
-		expect(report(card('Settings'), 'Blocks')).toBe(stale);
+		const pressed = button('Move Story up, 4 of 7', card('Settings'));
+		const line = document.getElementById(pressed.getAttribute('aria-describedby') ?? '');
+		expect(line?.textContent).toBe(stale);
+		expect(line?.closest('.adm-blockrow')).toBe(pressed.closest('.adm-blockrow'));
 		expect(card('Settings').open).toBe(true);
 	});
 
@@ -787,9 +814,11 @@ describe('the share message', () => {
 });
 
 describe('a press whose request never reaches the server', () => {
-	/** what the sheet's message areas say. */
+	/** what the sheet's message areas say, a group's refusal among them. */
 	const said = (sheet: Element) =>
-		[...sheet.querySelectorAll('[role="status"]')].map((one) => one.textContent).join(' ');
+		[...sheet.querySelectorAll('[role="status"], [role="alert"]')]
+			.map((one) => one.textContent)
+			.join(' ');
 
 	function typeInto(box: HTMLInputElement, text: string): void {
 		act(() => {
@@ -815,7 +844,7 @@ describe('a press whose request never reaches the server', () => {
 		expect(said(card('Title'))).toContain(NOT_SENT);
 	});
 
-	it('leaves Settings open on a look pick, the page’s look drawn again, and says so under it', async () => {
+	it('leaves Settings open on a look pick, the page’s look drawn again, and says so under its group', async () => {
 		await screen();
 		await editOn();
 		await press(button('Settings'));

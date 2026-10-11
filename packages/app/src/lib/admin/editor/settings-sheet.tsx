@@ -3,23 +3,32 @@ import { Menu } from '@better-giving/operator/components/controls/Menu';
 import { ChoiceChips } from '@better-giving/operator/components/forms/ChoiceChips';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { Sheet } from '@better-giving/operator/components/shell/Sheet';
+import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
+import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { type ReactNode, useEffect, useId, useState } from 'react';
 import { formatMinorBrief } from '$lib/donations/money';
 import { dayWords } from '$lib/page/end-date';
+import { RemoveBlockConfirm } from './confirms';
 import { PickRefusal, PicturePicker, type PictureOption } from './pictures';
 
 // the Settings sheet: everything about a page, one list. rows that hold a typed value open a sheet of
 // their own stacked over this one (./done-sheet.tsx argues their one Done); the layout pictures, the
 // look, the share buttons and the block list's presses apply the moment they are made, here, with
-// nothing to finish. a refused pick or press is reported at the foot of its part, in a region there
-// whenever the part is, and the part draws what the draft holds again.
+// nothing to finish. a refused layout pick is reported at the foot of its part, in a region there
+// whenever the part is; a refused look or share pick is the refusal of the group it was made in,
+// which is marked invalid and described by it; and the part draws what the draft holds again. while
+// any of the sheet's presses is in flight its head says a change is being saved.
 //
 // the block list is the keyboard's way to a block: a click on a block in the preview while Edit is
 // on opens the same block's sheet (./preview-frame.tsx), and a row here is that click for a reader
 // who cannot point. handed `edits`, each row also moves its block a step and takes it off the page,
 // offering only what that block can do — the first has no Move up, the donation box no Remove —
-// and Add a block under the list offers the blocks the page may be given. a landed press keeps the
-// focus on the list: on the moved block's press, or on the row that took a removed block's place.
+// and Add a block under the list offers the blocks the page may be given. a row's presses are named
+// for the block and its place, `Move Story up, 2 of 5`, since a page may hold two of one kind. Remove
+// asks first, on a card naming the block, because what the block holds goes with it. a landed press
+// keeps the focus on the list — on the moved block's press, or on the row that took a removed
+// block's place — and says what it did in the list's one region, `Story moved up, 2 of 5`; a
+// refused one says its refusal under the row it was pressed on, and the press is described by it.
 //
 // the look is three questions answered by chips: a shade or a palette drawn as a picture here would
 // be the donor page's colours drawn on an operator screen, and the preview beside the sheet shows
@@ -111,21 +120,46 @@ type BlockListProps = {
 	readonly edits?: BlockEdits | undefined;
 };
 
-/** a press of a row's that is waiting on its answer, and whether it has gone out yet. */
+/** a press of the list's that is waiting on its answer, and whether it has gone out yet. */
 type Pressed = {
+	/** the block pressed on, or `''` for Add a block. */
 	readonly id: string;
-	readonly act: Direction | 'remove';
+	readonly label: string;
+	readonly act: Direction | 'remove' | 'add';
 	/** where the block stood when it was pressed. */
 	readonly at: number;
 	readonly sent: boolean;
 };
 
+/** the place a block stands in, as its row's presses and the list's region say it. */
+const place = (at: number, of: number) => `${at + 1} of ${of}`;
+
+/** what a landed press did, in the words the list's region says it in. */
+function outcome(blocks: readonly BlockRow[], { id, label, act }: Pressed): string {
+	if (act === 'add') return '';
+	const now = blocks.findIndex((one) => one.id === id);
+	if (act === 'remove') return now === -1 ? `${label} removed` : '';
+	return now === -1 ? '' : `${label} moved ${act}, ${place(now, blocks.length)}`;
+}
+
 export function BlockList({ blocks, onOpenBlock, edits }: BlockListProps) {
 	const list = useId();
 	const control = (block: string, part: 'open' | Direction | 'remove') =>
 		`${list}-${block}-${part}`;
+	const refusalId = `${list}-refusal`;
 	const [pressed, setPressed] = useState<Pressed | null>(null);
+	/** the last landed press, and what the list's region says of it. */
+	const [landed, setLanded] = useState<{ readonly press: Pressed; readonly said: string } | null>(
+		null
+	);
+	/** the block whose Remove was pressed, while its card asks. */
+	const [asking, setAsking] = useState<{ readonly row: BlockRow; readonly at: number } | null>(
+		null
+	);
 	const busy = edits?.busy ?? false;
+	const refusal = edits?.refusal ?? null;
+	/** the press a standing refusal answers, which is where it is said. */
+	const refused = refusal === null ? null : (landed?.press ?? null);
 
 	// the focus is put back on the render the press's answer lands in — `busy` going out after it
 	// came in — which is the render the redrawn list arrives in: a moved row's press may be gone
@@ -138,10 +172,13 @@ export function BlockList({ blocks, onOpenBlock, edits }: BlockListProps) {
 		}
 		if (!pressed.sent) return;
 		setPressed(null);
+		setLanded({ press: pressed, said: refusal ?? outcome(blocks, pressed) });
 		document.getElementById(landing(pressed))?.focus();
-	}, [busy, pressed]);
+	}, [busy, pressed, refusal, blocks]);
 
+	/** the id of the control the focus goes back to; none for Add a block, whose sheet takes it. */
 	function landing({ id, act, at }: Pressed): string {
+		if (act === 'add') return '';
 		const block = blocks.find((one) => one.id === id);
 		if (block === undefined) {
 			const next = blocks[at] ?? blocks[at - 1];
@@ -172,20 +209,46 @@ export function BlockList({ blocks, onOpenBlock, edits }: BlockListProps) {
 		);
 	}
 
+	const send = (press: Omit<Pressed, 'sent'>) => {
+		setPressed({ ...press, sent: false });
+		setLanded(null);
+	};
+
 	/** a row's press, held while any press of the sheet's is in flight. */
-	const rowPress = (block: BlockRow, at: number, act: Pressed['act']) => ({
-		id: control(block.id, act),
-		type: 'button' as const,
-		variant: 'quiet' as const,
-		'aria-busy': (busy && pressed?.id === block.id && pressed.act === act) || undefined,
-		'aria-disabled': busy || undefined,
-		onClick: () => {
-			if (busy) return;
-			setPressed({ id: block.id, act, at, sent: false });
-			if (act === 'remove') edits.onRemove(block.id);
-			else edits.onMove(block.id, act);
-		}
-	});
+	const rowPress = (block: BlockRow, at: number, act: Direction | 'remove') => {
+		const where = place(at, blocks.length);
+		const isRefused = refused?.id === block.id && refused.act === act;
+		return {
+			id: control(block.id, act),
+			type: 'button' as const,
+			variant: 'quiet' as const,
+			'aria-label':
+				act === 'remove'
+					? `Remove ${block.label}, ${where}`
+					: `Move ${block.label} ${act}, ${where}`,
+			'aria-busy': (busy && pressed?.id === block.id && pressed.act === act) || undefined,
+			'aria-disabled': busy || undefined,
+			'aria-describedby': isRefused ? refusalId : undefined,
+			onClick: () => {
+				if (busy) return;
+				if (act === 'remove') {
+					setAsking({ row: block, at });
+					return;
+				}
+				send({ id: block.id, label: block.label, act, at });
+				edits.onMove(block.id, act);
+			}
+		};
+	};
+
+	const refusalLine =
+		refusal === null ? null : (
+			<p className="adm-blockrow__refusal" id={refusalId}>
+				<StatusWord register="momentary" blocked mark="circle-alert">
+					<MarkedText text={refusal} />
+				</StatusWord>
+			</p>
+		);
 
 	return (
 		<>
@@ -202,7 +265,6 @@ export function BlockList({ blocks, onOpenBlock, edits }: BlockListProps) {
 							<Button
 								className="adm-blockrow__up"
 								mark="chevron-up"
-								aria-label={`Move ${block.label} up`}
 								{...rowPress(block, at, 'up')}
 							/>
 						) : null}
@@ -210,7 +272,6 @@ export function BlockList({ blocks, onOpenBlock, edits }: BlockListProps) {
 							<Button
 								className="adm-blockrow__down"
 								mark="chevron-down"
-								aria-label={`Move ${block.label} down`}
 								{...rowPress(block, at, 'down')}
 							/>
 						) : null}
@@ -218,10 +279,10 @@ export function BlockList({ blocks, onOpenBlock, edits }: BlockListProps) {
 							<Button
 								className="adm-blockrow__remove"
 								mark="trash-2"
-								aria-label={`Remove ${block.label}`}
 								{...rowPress(block, at, 'remove')}
 							/>
 						) : null}
+						{refused !== null && refused.id === block.id ? refusalLine : null}
 					</div>
 				))}
 			</div>
@@ -230,13 +291,33 @@ export function BlockList({ blocks, onOpenBlock, edits }: BlockListProps) {
 					label="Add a block"
 					labelled
 					mark="plus"
+					held={busy}
+					describedBy={refused?.act === 'add' ? refusalId : undefined}
 					items={edits.addable.map((option) => ({
 						label: option.label,
-						onSelect: () => edits.onAdd(option.value)
+						onSelect: () => {
+							send({ id: '', label: option.label, act: 'add', at: blocks.length });
+							edits.onAdd(option.value);
+						}
 					}))}
 				/>
 			)}
-			<PickRefusal refusal={edits.refusal} />
+			{refused?.act === 'add' ? refusalLine : null}
+			<p className="adm-vh" role="status">
+				{landed?.said ?? ''}
+			</p>
+			{asking === null ? null : (
+				<RemoveBlockConfirm
+					name={asking.row.label}
+					removing={busy}
+					onRemove={() => {
+						send({ id: asking.row.id, label: asking.row.label, act: 'remove', at: asking.at });
+						setAsking(null);
+						edits.onRemove(asking.row.id);
+					}}
+					onCancel={() => setAsking(null)}
+				/>
+			)}
 		</>
 	);
 }
@@ -281,14 +362,14 @@ type LookGroup =
 			};
 			/** an answer was picked. it applies to the draft at once. */
 			readonly onLook: (part: LookPart, value: string) => void;
-			/** the last look pick's refusal. */
-			readonly lookRefusal?: string | null | undefined;
+			/** the last look pick's refusal, under the question it was picked in. */
+			readonly lookRefusals?: Partial<Readonly<Record<LookPart, string | null>>> | undefined;
 	  }
 	| {
 			readonly look?: undefined;
 			readonly lookPictures?: undefined;
 			readonly onLook?: undefined;
-			readonly lookRefusal?: undefined;
+			readonly lookRefusals?: undefined;
 	  };
 
 type SharingGroup =
@@ -349,6 +430,8 @@ type OpenRows =
 
 type SettingsSheetProps = {
 	readonly onDismiss: () => void;
+	/** a pick that applies at once is in flight. absent, the sheet's head says nothing either way. */
+	readonly saving?: boolean | undefined;
 } & BlocksGroup &
 	LayoutGroup &
 	LookGroup &
@@ -361,15 +444,17 @@ type LookChipsProps = {
 	readonly options: readonly PictureOption[];
 	readonly value: string;
 	readonly onPick: (value: string) => void;
+	readonly refusal: string | null | undefined;
 };
 
 /** one question of the look, answered by one chip, applied as it is picked. */
-function LookChips({ id, legend, options, value, onPick }: LookChipsProps) {
+function LookChips({ id, legend, options, value, onPick, refusal }: LookChipsProps) {
 	return (
 		<ChoiceChips
 			id={id}
 			name={id}
 			legend={legend}
+			error={refusal ? <MarkedText text={refusal} /> : undefined}
 			options={options.map((option) => ({
 				value: option.value,
 				label: option.label,
@@ -382,6 +467,7 @@ function LookChips({ id, legend, options, value, onPick }: LookChipsProps) {
 
 export function SettingsSheet({
 	onDismiss,
+	saving,
 	campaign,
 	blocks,
 	onOpenBlock,
@@ -393,7 +479,7 @@ export function SettingsSheet({
 	look,
 	lookPictures,
 	onLook,
-	lookRefusal,
+	lookRefusals,
 	share,
 	shareChannels,
 	onChannel,
@@ -406,7 +492,12 @@ export function SettingsSheet({
 	const campaignTop = campaign?.name !== undefined || campaign?.address !== undefined;
 	const campaignDates = campaign?.goalMinor !== undefined || campaign?.endDate !== undefined;
 	return (
-		<Sheet title="Settings" tall onDismiss={onDismiss}>
+		<Sheet
+			title="Settings"
+			tall
+			status={saving === undefined ? undefined : saving ? 'Saving your change…' : ''}
+			onDismiss={onDismiss}
+		>
 			{campaign && campaignTop ? (
 				<Part>
 					<div className="adm-openrow-list">
@@ -445,6 +536,7 @@ export function SettingsSheet({
 						options={lookPictures.shades}
 						value={look.shade}
 						onPick={(value) => onLook('shade', value)}
+						refusal={lookRefusals?.shade}
 					/>
 					<LookChips
 						id={`${id}-corners`}
@@ -452,6 +544,7 @@ export function SettingsSheet({
 						options={lookPictures.corners}
 						value={look.corners}
 						onPick={(value) => onLook('corners', value)}
+						refusal={lookRefusals?.corners}
 					/>
 					<LookChips
 						id={`${id}-palette`}
@@ -459,8 +552,8 @@ export function SettingsSheet({
 						options={lookPictures.palettes}
 						value={look.palette}
 						onPick={(value) => onLook('palette', value)}
+						refusal={lookRefusals?.palette}
 					/>
-					<PickRefusal refusal={lookRefusal} />
 				</Part>
 			) : null}
 			{campaign && campaignDates ? (
@@ -504,6 +597,7 @@ export function SettingsSheet({
 						name={`${id}-channels`}
 						type="checkbox"
 						legend="Share buttons"
+						error={sharingRefusal ? <MarkedText text={sharingRefusal} /> : undefined}
 						options={shareChannels.map((channel) => ({
 							value: channel.value,
 							label: channel.label,
@@ -511,7 +605,6 @@ export function SettingsSheet({
 							onChange: (event) => onChannel(channel.value, event.currentTarget.checked)
 						}))}
 					/>
-					<PickRefusal refusal={sharingRefusal} />
 				</Part>
 			) : null}
 			{onOpen && donationSettings !== undefined ? (

@@ -44,6 +44,17 @@ describe("a row a finger aims at takes the row's floor", () => {
 	});
 });
 
+describe("a press a sheet's list grows or shrinks by takes the row's floor", () => {
+	it.each([
+		// Add a block, under the editor's block list.
+		['.adm-openrow-list + .adm-menuwrap > .adm-btn'],
+		// a tier's or a question's Add under the rows, and each row's Remove, drawn small.
+		['.adm-btn.adm-rowpress']
+	])('%s', (selector) => {
+		expect(ruleOf(css, selector).get('min-block-size')).toBe('var(--admin-touch-min)');
+	});
+});
+
 /** a length ./tokens.css states — in rem at the root's 16px, in px, or as another token — in css pixels. */
 const px = (token: string): number => {
 	const stated = tokens.match(new RegExp(`${token}:\\s*([^;]+);`))?.[1]?.trim() ?? '';

@@ -4,11 +4,13 @@ import { useDraftPresses } from './draft-presses';
 import type { BlockEdits, LookPart } from './settings-sheet';
 
 // the Settings sheet's presses that apply at once — the layout, the look, the share buttons, and a
-// block moved, removed or added — all on one owner (./draft-presses.ts), so a press made while
-// another of them is in flight is turned away rather than sent against the version the first is
-// about to move. each control draws what the press in flight asked for until it is answered, and
-// what the draft holds once it is, so a refused pick goes back to the draft's, its refusal at the
-// foot of the part it came from.
+// block moved, removed or added — all on one owner (./draft-presses.ts), so a pick made while
+// another of them is in flight waits for its answer rather than going against the version the first
+// is about to move, and the block list's presses are held meanwhile. each control draws what the
+// pick waiting or in flight asked for until it is answered, and what the draft holds once it is, so
+// a refused pick goes back to the draft's, its refusal said where ./settings-sheet.tsx says it:
+// under the question a look pick was made in, under the share buttons, at the foot of the layouts,
+// at the block row pressed.
 //
 // a share button ticked or unticked keeps the order the page holds them in: an unticked one is
 // taken out where it stands and a ticked one goes last, which is where the page then draws it.
@@ -68,16 +70,18 @@ export function useSettingsPresses({
 
 	return {
 		sheet: {
+			saving: presses.busy,
 			layout: asking(BLOCK_FORMS.layout, BOXES.layout) ?? layout,
 			onLayout: (next: string) => press(BLOCK_FORMS.layout, [[BOXES.layout, next]]),
 			layoutRefusal: said(BLOCK_FORMS.layout, BOXES.layout),
 			look: { shade: lookOf('shade'), corners: lookOf('corners'), palette: lookOf('palette') },
 			onLook: (part: LookPart, value: string) =>
 				press(LOOK_FORMS[part], [[LOOK_BOXES[part], value]]),
-			lookRefusal:
-				said(LOOK_FORMS.shade, BOXES.shade) ??
-				said(LOOK_FORMS.corners, BOXES.corners) ??
-				said(LOOK_FORMS.palette, BOXES.palette),
+			lookRefusals: {
+				shade: said(LOOK_FORMS.shade, BOXES.shade),
+				corners: said(LOOK_FORMS.corners, BOXES.corners),
+				palette: said(LOOK_FORMS.palette, BOXES.palette)
+			},
 			share: { message: share.message, channels },
 			onChannel: (channel: string, ticked: boolean) =>
 				press(

@@ -3,6 +3,7 @@ import { Mark } from '../status/Mark.jsx';
 import { Button } from './Button.jsx';
 
 /**
+ * @import { SyntheticEvent } from 'react'
  * @import { ButtonSize, ButtonVariant } from './Button.jsx'
  * @import { MarkName } from '../status/Mark.jsx'
  */
@@ -34,6 +35,12 @@ import { Button } from './Button.jsx';
  * @property {ButtonSize | undefined} [size]
  * @property {boolean | undefined} [open] the list held open whatever is pressed, Escape and a press
  *   outside included. a specimen's prop: a screen opens a menu by the press an operator makes on it.
+ * @property {boolean | undefined} [held] a write of the screen's is in flight and a line picked now
+ *   would be sent against what it is about to change: the press says it is unavailable with
+ *   `aria-disabled` and opens nothing until the caller lets go. it keeps the focus, which
+ *   `disabled` would drop.
+ * @property {string | undefined} [describedBy] the id of what the press is described by — the
+ *   refusal its last line came back with.
  */
 
 /* a press that opens a short list of actions. the machine is ark's menu and everything it answers
@@ -58,8 +65,18 @@ export function Menu({
 	mark = 'ellipsis',
 	variant = 'default',
 	size = 'md',
-	open
+	open,
+	held = false,
+	describedBy
 }) {
+	/* turned away on the way down, before the machine's own handlers on the press hear it: they
+	   skip an event already cancelled, and Tab is let through so the focus can still leave. */
+	/** @param {SyntheticEvent} event */
+	const refuse = (event) => {
+		if (!held) return;
+		if ('key' in event && event.key === 'Tab') return;
+		event.preventDefault();
+	};
 	return (
 		<div className="adm-menuwrap">
 			<ArkMenu.Root open={open}>
@@ -70,6 +87,10 @@ export function Menu({
 						size={size}
 						mark={mark}
 						aria-label={labelled ? undefined : label}
+						aria-disabled={held || undefined}
+						aria-describedby={describedBy}
+						onClickCapture={refuse}
+						onKeyDownCapture={refuse}
 					>
 						{labelled ? label : null}
 					</Button>

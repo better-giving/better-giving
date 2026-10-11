@@ -1,6 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useFetcher } from 'react-router';
 import type { Resized } from '@better-giving/operator/images/resize';
 import { BLOCK_FORMS, BOXES, type BlockText, type EditorBlock, rowBox } from '$lib/page/block-edit';
@@ -27,8 +27,9 @@ import {
 // the refusal under the box the catalog's rule names, and the caret moved there. a variant picture
 // or a background applies on pick and is drawn picked while its write is in flight; a refused one
 // goes back to the draft's, with its refusal under the picks and never at Done. the picks and Done
-// are one owner's presses, so one made while another is in flight is turned away — Done is held —
-// since it would carry the version the first is about to move.
+// are one owner's presses, so a pick made while another press is in flight waits for its answer,
+// drawn picked meanwhile, and Done is held, since either would carry the version the first is about
+// to move.
 //
 // the tiers and the questions are repeating rows: each row a pair of boxes whose legend, read to a
 // screen reader and not drawn, names it by its place — Tier 2 — and the rows a stack, so one row
@@ -38,7 +39,11 @@ import {
 // catalog's cap, and dropped by its own Remove while another row stands; a block holding none opens
 // on one empty row, and the save leaves out a row emptied of both its boxes. each row is keyed by an
 // identity of its own, so a half-typed row keeps its words as rows above it go, and the focus moves
-// into the row added, or onto the row above the one dropped.
+// into the row added, or onto the row above the one dropped. a refused Done names a row by the place
+// it stood in when Done posted, and the refusal is read back to the row that stood there: it stays
+// on that row as rows above it go, goes with it when it is dropped, and is never on a row added
+// since. the caret is moved to the first refused box when the refusal arrives, and not again as rows
+// come and go. Add and Remove stand at the touch floor.
 //
 // a placed photo's sheet is the replace press and its description (./replace-photo.tsx). a new
 // photo is posted to the images route as soon as it is resized (./photo-upload.ts) and drawn once
@@ -127,6 +132,7 @@ export function BlockEditSheet({
 									id={block.id}
 									text={block.text}
 									error={(box) => presses.refused(textForm, box)}
+									posting={presses.flying(textForm)}
 									photo={{ pressId, wanted: photoWanted }}
 								/>
 							),
@@ -155,14 +161,16 @@ type BlockFieldsProps = {
 	readonly text: BlockText;
 	/** the last Done's refusal under `box`. */
 	readonly error: (box: string) => string | null;
+	/** a Done is in flight. */
+	readonly posting: boolean;
 	/** a photo block's press, by its id, and whether a Done found no photo chosen. */
 	readonly photo: { readonly pressId: string; readonly wanted: boolean };
 };
 
 /** the boxes a block's words are typed in, named as its form posts them. */
-function BlockFields({ id, text, error, photo }: BlockFieldsProps) {
+function BlockFields({ id, text, error, posting, photo }: BlockFieldsProps) {
 	if (text.kind === 'photo') return <PhotoFields id={id} text={text} error={error} photo={photo} />;
-	return <WordFields id={id} text={text} error={error} />;
+	return <WordFields id={id} text={text} error={error} posting={posting} />;
 }
 
 /** what the press says to a Done that found no photo chosen. */
@@ -171,7 +179,12 @@ const PHOTO_WANTED = 'Add a photo first. The page doesn’t change until you do.
 type PhotoText = Extract<BlockText, { kind: 'photo' }>;
 
 /** the photo Done writes, and what describes it, each posted from a hidden box. */
-function PhotoFields({ id, text, error, photo }: BlockFieldsProps & { readonly text: PhotoText }) {
+function PhotoFields({
+	id,
+	text,
+	error,
+	photo
+}: Omit<BlockFieldsProps, 'posting'> & { readonly text: PhotoText }) {
 	const upload = useFetcher<UploadAnswer>();
 	const [imageId, setImageId] = useState(text.imageId);
 	const [alt, setAlt] = useState(text.alt);
@@ -224,15 +237,19 @@ function PhotoFields({ id, text, error, photo }: BlockFieldsProps & { readonly t
 }
 
 type WordsText = Exclude<BlockText, PhotoText>;
-type WordsProps<K extends WordsText['kind']> = Omit<BlockFieldsProps, 'photo' | 'text'> & {
+type WordsProps<K extends WordsText['kind']> = Pick<BlockFieldsProps, 'id' | 'error'> & {
 	readonly text: Extract<WordsText, { kind: K }>;
 };
+/** a list's rows take the Done in flight as well, which is when their keys are taken. */
+type RowsProps<K extends 'impact-tiers' | 'faq'> = WordsProps<K> &
+	Pick<BlockFieldsProps, 'posting'>;
 
 /** the boxes of a block whose words are typed. */
 function WordFields({
 	id,
 	text,
-	error
+	error,
+	posting
 }: Omit<BlockFieldsProps, 'photo'> & { readonly text: WordsText }) {
 	switch (text.kind) {
 		case 'title':
@@ -240,9 +257,9 @@ function WordFields({
 		case 'story':
 			return <StoryFields id={id} text={text} error={error} />;
 		case 'impact-tiers':
-			return <TierRows id={id} text={text} error={error} />;
+			return <TierRows id={id} text={text} error={error} posting={posting} />;
 		case 'faq':
-			return <QuestionRows id={id} text={text} error={error} />;
+			return <QuestionRows id={id} text={text} error={error} posting={posting} />;
 	}
 }
 
@@ -333,6 +350,44 @@ function useRows<T>(seed: readonly T[], blank: T, first: (at: number) => string)
 	};
 }
 
+/**
+ * the last Done's refusals, row by row. the answer names a row by its place when Done posted, so
+ * the rows' keys are taken as Done goes and each place is read back to the row that stood in it.
+ * the caret is moved to the first refused box on the render the answer arrives in.
+ */
+function useRowRefusals<T>(
+	id: string,
+	rows: readonly Keyed<T>[],
+	boxes: readonly string[],
+	{ error, posting }: Pick<BlockFieldsProps, 'error' | 'posting'>
+) {
+	const keys = rows.map((one) => one.key);
+	const [posted, setPosted] = useState(keys);
+	const [wasPosting, setWasPosting] = useState(posting);
+	if (posting !== wasPosting) {
+		setWasPosting(posting);
+		if (posting) setPosted(keys);
+	}
+	const refused = (key: string, box: string): string | null => {
+		const at = posted.indexOf(key);
+		return at === -1 ? null : error(rowBox(box, at));
+	};
+	const first = rows
+		.flatMap(({ key }, at) => boxes.map((box) => ({ at, box, said: refused(key, box) })))
+		.find((one) => one.said !== null);
+	// the keys Done posted, while a refusal of theirs stands: a new Done takes new keys, and its
+	// answer arriving is the refusal standing again, so this changes on that render and on no other.
+	const answered = first === undefined ? null : posted;
+	const focusFirst = useEffectEvent(() => {
+		if (first === undefined) return;
+		document.getElementById(boxId(id, rowBox(first.box, first.at)))?.focus();
+	});
+	useEffect(() => {
+		if (answered !== null) focusFirst();
+	}, [answered]);
+	return refused;
+}
+
 type RowPressesProps = {
 	/** how many rows stand, and how many the catalog lets the block hold. */
 	readonly count: number;
@@ -347,7 +402,7 @@ type RowPressesProps = {
 function AddRow({ count, max, add, full, onAdd }: RowPressesProps) {
 	return count < max ? (
 		<div className="adm-actions">
-			<Button type="button" size="sm" mark="plus" onClick={onAdd}>
+			<Button type="button" size="sm" mark="plus" className="adm-rowpress" onClick={onAdd}>
 				{add}
 			</Button>
 		</div>
@@ -365,6 +420,7 @@ function RemoveRow({ name, onRemove }: { readonly name: string; readonly onRemov
 				size="sm"
 				variant="quiet"
 				mark="x"
+				className="adm-rowpress"
 				aria-label={`Remove ${name}`}
 				onClick={onRemove}
 			>
@@ -374,15 +430,14 @@ function RemoveRow({ name, onRemove }: { readonly name: string; readonly onRemov
 	);
 }
 
-function TierRows({ id, text, error }: WordsProps<'impact-tiers'>) {
+function TierRows({ id, text, error, posting }: RowsProps<'impact-tiers'>) {
 	const list = useRows(text.tiers, { amount: '', buys: '' }, (at) =>
 		boxId(id, rowBox(BOXES.tierAmount, at))
 	);
-	useFocusOnFirstRefused(
-		id,
-		list.rows.flatMap((_, at) => [rowBox(BOXES.tierAmount, at), rowBox(BOXES.tierBuys, at)]),
-		error
-	);
+	const refused = useRowRefusals(id, list.rows, [BOXES.tierAmount, BOXES.tierBuys], {
+		error,
+		posting
+	});
 	return (
 		<div className="adm-stack">
 			{list.rows.map(({ key, row }, at) => {
@@ -399,14 +454,14 @@ function TierRows({ id, text, error }: WordsProps<'impact-tiers'>) {
 							affixAt="end"
 							currency={text.currency}
 							defaultValue={row.amount}
-							error={error(amount)}
+							error={refused(key, BOXES.tierAmount)}
 						/>
 						<Field
 							id={boxId(id, buys)}
 							name={buys}
 							label="What it buys"
 							defaultValue={row.buys}
-							error={error(buys)}
+							error={refused(key, BOXES.tierBuys)}
 						/>
 						{list.rows.length > 1 ? (
 							<RemoveRow name={`tier ${at + 1}`} onRemove={() => list.remove(key)} />
@@ -425,7 +480,7 @@ function TierRows({ id, text, error }: WordsProps<'impact-tiers'>) {
 	);
 }
 
-function QuestionRows({ id, text, error }: WordsProps<'faq'>) {
+function QuestionRows({ id, text, error, posting }: RowsProps<'faq'>) {
 	const blank: { question: string; answer: RichTextDocument | undefined } = {
 		question: '',
 		answer: undefined
@@ -433,11 +488,10 @@ function QuestionRows({ id, text, error }: WordsProps<'faq'>) {
 	const list = useRows<typeof blank>(text.items, blank, (at) =>
 		boxId(id, rowBox(BOXES.question, at))
 	);
-	useFocusOnFirstRefused(
-		id,
-		list.rows.flatMap((_, at) => [rowBox(BOXES.question, at), rowBox(BOXES.answer, at)]),
-		error
-	);
+	const refused = useRowRefusals(id, list.rows, [BOXES.question, BOXES.answer], {
+		error,
+		posting
+	});
 	return (
 		<div className="adm-stack">
 			{list.rows.map(({ key, row }, at) => {
@@ -451,14 +505,14 @@ function QuestionRows({ id, text, error }: WordsProps<'faq'>) {
 							name={question}
 							label="Question"
 							defaultValue={row.question}
-							error={error(question)}
+							error={refused(key, BOXES.question)}
 						/>
 						<RichTextEditor
 							id={boxId(id, answer)}
 							name={answer}
 							label="Answer"
 							{...(row.answer === undefined ? {} : { defaultValue: row.answer })}
-							error={error(answer)}
+							error={refused(key, BOXES.answer)}
 						/>
 						{list.rows.length > 1 ? (
 							<RemoveRow name={`question ${at + 1}`} onRemove={() => list.remove(key)} />

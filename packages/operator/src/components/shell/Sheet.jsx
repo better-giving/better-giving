@@ -18,6 +18,10 @@ import { useTopLayer } from './top-layer.js';
  *   panel's, for a sheet holding two groups of fields side by side.
  * @property {boolean | undefined} [tall] the whole height a phone leaves it, whatever the body holds —
  *   for a body that grows while it is open, so the sheet does not climb the screen as it does.
+ * @property {string | undefined} [status] what the sheet is doing, said beside the heading — `Saving
+ *   your change…` while a pick that applies at once is in flight, and `''` while nothing is. a
+ *   region from the moment it is handed, so a line arriving in it is announced, and none at all
+ *   while it is not.
  * @property {boolean | undefined} [stacked] opened from inside another sheet and standing over it. on
  *   a phone it stops a step lower, so the sheet it came from still shows above it, and it lays no
  *   second ground over the first.
@@ -45,6 +49,7 @@ export function Sheet({
 	onDismiss,
 	wide = false,
 	tall = false,
+	status,
 	stacked = false
 }) {
 	const heading = useId();
@@ -70,6 +75,11 @@ export function Sheet({
 		>
 			<div className="adm-sheet__head">
 				<h2 id={heading}>{title}</h2>
+				{status === undefined ? null : (
+					<p className="adm-sheet__status" role="status">
+						{status}
+					</p>
+				)}
 				<Button
 					type="button"
 					variant="quiet"

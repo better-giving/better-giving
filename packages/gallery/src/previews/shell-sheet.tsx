@@ -13,7 +13,8 @@ import { useState } from 'react';
  * the caller renders it, and closing it is the caller rendering it no longer. X and Escape are the
  * two ways out, and both land the focus back on the press that opened it.
  *
- * one specimen per arrangement: the bare sheet (a list, nothing to finish, so no foot), a sheet with
+ * one specimen per arrangement: the bare sheet (a list, nothing to finish, so no foot, and its head
+ * saying a pick is being saved, as the editor's Settings says it while one is in flight), a sheet with
  * a foot, `tall` (the whole height a phone leaves it), `wide` (the dialog's measure at the edge),
  * and `stacked` — a sheet opened from inside another, which stops a step lower on a phone and lays
  * no second ground. the stacked one is opened from inside the tall one, as it is on a screen.
@@ -47,7 +48,7 @@ export default function ShellSheetPreview() {
 			</div>
 
 			{open === 'plain' ? (
-				<Sheet title="Look" onDismiss={dismiss}>
+				<Sheet title="Look" status="Saving your change…" onDismiss={dismiss}>
 					<p>Every pick applies as it is made, so there is nothing to finish and no foot.</p>
 				</Sheet>
 			) : null}
