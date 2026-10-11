@@ -118,8 +118,9 @@ function AssistantTurn({ message, ask }: { message: ChatMessage; ask: Ask | null
 export const SENDING = 'sending';
 
 /**
- * the asked turn whose card is live: the chat's last turn, where it asks, or the last but the words
- * on their way after it — a send that is refused hands the card back with every answer in it.
+ * the asked turn whose card is live: the chat's last turn, where it asks, or the turn just before
+ * the operator's words on their way, since a send that is refused hands the card back with every
+ * answer in it.
  */
 export function liveAsk(messages: readonly ChatMessage[]): ChatMessage | null {
 	const last = messages.at(messages.at(-1)?.id === SENDING ? -2 : -1);

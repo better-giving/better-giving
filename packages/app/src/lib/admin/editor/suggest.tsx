@@ -36,8 +36,8 @@ import {
 
 const DIDNT_GO_THROUGH = 'That didn’t go through. Try again.';
 
-/** the box an ask is for: the route, the block's id or `page`, the box's name as it posts, and the
- *  box beside it as the sheet holds it now, read at the press, for a box whose words are for it. */
+/** the box an ask is for: the route, the block's id or `page`, the box's name as it posts, and
+ *  `beside`, the box its words are written for, as the sheet holds it at the press. */
 export type SuggestAsk = {
 	readonly url: string;
 	readonly block: string;

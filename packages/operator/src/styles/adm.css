@@ -4154,13 +4154,13 @@
 	   field and the next, is wider than the step between one row and the next, so the second box
 	   would read as the next row's.
 
-	   the two take shares of the rows' own width rather than turning at a viewport width: the
-	   group is drawn in the floating AI panel at every desk width, where the rows are about as
-	   narrow as on a phone, so a turn keyed on the viewport would split a phone's width in two
-	   equal halves. the figure is the short one and the sentence the long one, so the sentence
-	   takes two shares to the figure's one. the columns' heads (`columns` in
-	   packages/operator/src/components/forms/RepeatingRows.jsx) stand in the same tracks over the
-	   first row, in the boxes' column alone, so each head starts on its box's edge. */
+	   the two stand side by side at every width, in shares of the rows' own width: the group is
+	   drawn in the floating AI panel at every desk width, where the rows are about as narrow as on
+	   a phone, so the viewport's width says nothing about a row's. the figure is the short one and
+	   the sentence the long one, so the sentence takes two shares to the figure's one. the columns'
+	   heads (`columns` in packages/operator/src/components/forms/RepeatingRows.jsx) stand in the
+	   same tracks over the first row, in the boxes' column alone, so each head starts on its box's
+	   edge. */
 	.adm-rows__row > .adm-pair,
 	.adm-rows__head {
 		display: grid;

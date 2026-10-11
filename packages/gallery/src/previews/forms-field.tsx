@@ -34,11 +34,12 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
  * the press if the box reserved it no room; and the wrapper standing on a row a caller also put a
  * control on.
  *
- * `labelAside` is drawn five times: the press alone at the label row's end; the press with the word
- * and the Undo a filled box carries before it, over a hint, where the row's height meets the
- * sentence's tighter step; the press in flight, its dots over its word and the field's region up
- * and silent; the press after an ask that wrote nothing, its sentence in that region; and a label
- * too long to share its row, which drops the word and both presses under it at the trailing edge.
+ * `labelAside` is drawn in each state it takes: the press alone at the label row's end; the press
+ * with the word and the Undo a filled box carries before it, over a hint, where the row's height
+ * meets the sentence's tighter step; the press in flight, its dots over its word and the field's
+ * region up and silent; the press after an ask that wrote nothing, its sentence in that region; and
+ * a label too long to share its row, which drops the word and both presses under it at the trailing
+ * edge.
  *
  * the last field's label and hint are long on purpose: string length is a layout constraint, and
  * a label that wraps is what puts the box at a different distance from the one above it.
