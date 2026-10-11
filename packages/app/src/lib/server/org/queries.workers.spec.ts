@@ -3,9 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { defaultCampaign } from '../../page/defaults';
 import type { Page } from '../../page/catalog';
 import { createDb, type Db } from '../db/client';
-import { chatTurn, program } from '../db/schema';
+import { program } from '../db/schema';
 import { d1BytesPort } from '../images/bytes';
-import { createImage } from '../images/image.testing';
 import { firstMissingImage, newImageStatements } from '../images/queries';
 import { insertPage, SETTINGS } from '../pages/page-row.testing';
 import { parseOrgProfile, type OrgProfileFormValues, type ParsedOrgProfile } from './org-input';
@@ -387,8 +386,6 @@ describe('the profile logo', () => {
 		alt: null
 	} as const;
 
-	const storeImage = () => createImage(db, PHOTO, BYTES);
-
 	/** a new photo put on as the logo, as the console's upload puts one: its id and the answer. */
 	async function putLogo() {
 		const photo = newImageStatements(db, PHOTO, BYTES);
@@ -473,19 +470,6 @@ describe('the profile logo', () => {
 					.run();
 			}
 		],
-		[
-			'a chat turn’s photos',
-			async (id) => {
-				const pageId = await insertPage(db, 'campaign');
-				await db.insert(chatTurn).values({
-					pageId,
-					seq: 1,
-					author: 'operator',
-					text: 'use this one',
-					imageIds: JSON.stringify([await storeImage(), id])
-				});
-			}
-		]
 	];
 
 	it.each(REFERENCES)('keeps a replaced logo that is also %s', async (_, reference) => {

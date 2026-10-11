@@ -1,6 +1,5 @@
-// the keys of a stored page document that the database reads, the page types, the look's closed
-// sets and a chat turn's notes, in the one place both the schema's checks and the page catalog
-// import from.
+// the keys of a stored page document that the database reads, the page types and the look's closed
+// sets, in the one place both the schema's checks and the page catalog import from.
 //
 // `$lib/server/db/schema.ts` builds `page`'s checks out of these names with `json_extract`, and a
 // check reading a key the document no longer carries reads null, which it accepts. naming each key
@@ -25,7 +24,7 @@ export const PAGE_KEYS = {
 	/** the IANA name of that time zone, which the page words the day in. present exactly when `endsAt` is. */
 	endsZone: 'endsZone',
 	/**
-	 * the page's own shade and corners, set through its editor's chat; absent draws `DEFAULT_SHADE`
+	 * the page's own shade and corners, set in its editor; absent draws `DEFAULT_SHADE`
 	 * and `DEFAULT_CORNER`. the database checks a look's keys one by one, each where present, and
 	 * ./catalog.ts's parse refuses a look missing either.
 	 */
@@ -78,14 +77,3 @@ export type Layout = (typeof LAYOUTS)[number];
 /** the ground a block's section stands on; `strong` carries one ink and no quiet text. */
 export const BACKGROUNDS = ['none', 'soft', 'tint', 'strong'] as const;
 export type Background = (typeof BACKGROUNDS)[number];
-
-/**
- * what an assistant turn in a page's chat says about itself beside its words: `refused` when the
- * reply did not fit the page and nothing changed, `fell-back` when the chosen model did not answer
- * and the default model wrote the turn, `unanswered` when no model answered, `starter` when the
- * page's fixed opening questions stand in for an opening ask the model did not give. a column of
- * its own, `chat_turn.note`, since the model writes the turn's text and could write a marker into
- * it.
- */
-export const CHAT_NOTES = ['refused', 'fell-back', 'unanswered', 'starter'] as const;
-export type ChatNote = (typeof CHAT_NOTES)[number];

@@ -29,7 +29,8 @@
 		"0023_donor_pages_images_and_chat.sql",
 		"0024_org_profile_story_brand_and_logo.sql",
 		"0025_org_presentation_dropped.sql",
-		"0026_page_look_legacy_keys.sql"
+		"0026_page_look_legacy_keys.sql",
+		"0027_page_chat_and_illustrations_dropped.sql"
 	],
 	"crons": [
 		"*/30 * * * *",

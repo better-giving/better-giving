@@ -410,7 +410,6 @@ func bindings(options Options) []any {
 			"simple":       map[string]any{"limit": limiter.Simple.Limit, "period": limiter.Simple.Period},
 		})
 	}
-	held = append(held, map[string]any{"name": options.Shape.AIBinding, "type": "ai"})
 	if options.Release != "" {
 		held = append(held, map[string]any{
 			"name": deployment.RecordedReleaseName,
@@ -463,5 +462,5 @@ func boundNames(options Options) []string {
 	for _, limiter := range options.Shape.RateLimits {
 		names = append(names, limiter.Name)
 	}
-	return append(names, options.Shape.AIBinding)
+	return names
 }

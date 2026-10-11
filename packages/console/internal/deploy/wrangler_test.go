@@ -22,7 +22,6 @@ var unbinding = []string{
 var uploadTypeOf = map[string]string{
 	"d1_databases": "d1",
 	"ratelimits":   "ratelimit",
-	"ai":           "ai",
 }
 
 // the upload's bindings against every binding packages/app/wrangler.jsonc declares at its top
@@ -30,8 +29,8 @@ var uploadTypeOf = map[string]string{
 //
 // a `wrangler deploy` from a checkout binds what that file declares and `better-giving start`
 // binds what ./upload.go's bindings states, so a block added there and not here is a deployment
-// the console put up without it — `env.AI` undefined on every request that reaches a model. the
-// release record is the console's own and is on no wrangler config.
+// the console put up without it — the binding undefined on `env` for every request that reads it.
+// the release record is the console's own and is on no wrangler config.
 func TestTheUploadBindsEverythingThatConfigBinds(t *testing.T) {
 	root, err := release.RepoRoot(".")
 	if err != nil {

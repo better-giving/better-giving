@@ -23,8 +23,6 @@ import type { SocialLink } from '@better-giving/operator/console/org';
 import { PROGRAM_MODES, type ProgramMode } from '../../forms/program-modes';
 import { CAMPAIGN_TYPES, type CampaignType } from '../../page/campaign-types';
 import {
-	CHAT_NOTES,
-	type ChatNote,
 	CORNERS,
 	LOOK_KEYS,
 	PAGE_KEYS,
@@ -103,9 +101,8 @@ import type { PostableAccountId } from './postable';
 //             (../../page/keys.ts), since the page catalog reads the keys the checks here do,
 //             and `PAGE_TYPES` joined them there because the catalog reads a page by its type
 //             (../../page/catalog.ts), and `PAGE_STATES` because ../../page/ended.ts reads
-//             whether a page has ended. `CHAT_NOTES` was born there, for the chat's components,
-//             and `CAMPAIGN_TYPES` beside it (../../page/campaign-types.ts), for the screen a
-//             campaign's kind is picked on.
+//             whether a page has ended. `CAMPAIGN_TYPES` was born beside them
+//             (../../page/campaign-types.ts), for the screen a campaign's kind is picked on.
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
 //             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
@@ -894,8 +891,7 @@ export const program = sqliteTable(
 		archivedAt: at('archived_at'),
 		/**
 		 * the cause's photo on a donor page's chooser, null for none. it rides the program's own save,
-		 * so there is no `_previous` beside it. it must be an `image` of kind `photo`, which no check
-		 * here can read — the kind is on the image's row — so the write path holds it.
+		 * so there is no `_previous` beside it.
 		 */
 		imageId: text('image_id').references(() => image.id)
 		// append new columns below this line — see rule 1 at the top of this file.
@@ -2133,8 +2129,8 @@ export const recurringPlan = sqliteTable(
 
 /**
  * the organization's own identity — the fundraiser's side of a receipt — and the mission, vision,
- * brand colour, social links and logo the console states beside it, which every donor page and a
- * page's chat are drawn from.
+ * brand colour, social links and logo the console states beside it, which every donor page is
+ * drawn from.
  *
  * this is receipt content, never a credential and never something the app is constructed from:
  * nothing fails to boot because it is unset. the deploy-time secrets rule is untouched — no Stripe
@@ -2269,7 +2265,7 @@ export const orgProfile = sqliteTable(
 			.notNull()
 			.default([]),
 		/**
-		 * an `image` of kind `photo`, null for none. no `_previous`: a replaced or removed logo is
+		 * an `image`, null for none. no `_previous`: a replaced or removed logo is
 		 * freed where nothing else names it, by the logo writes in ../org/queries.ts.
 		 */
 		logoImageId: text('logo_image_id').references(() => image.id)
@@ -3156,8 +3152,7 @@ export const webhookDelivery = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
-// the pages this deployment serves on its own address and the chat that drafts them: `page` and
-// `chat_turn`.
+// the pages this deployment serves on its own address: `page`.
 //
 // each page is held as a JSON document whose shape is the parse boundary's, and the database reads
 // a handful of keys out of them with `json_extract`. a key a check reads is pinned by that check:
@@ -3238,7 +3233,7 @@ const pageLookCheck = (doc: SQLiteColumn) => {
  *
  * **a page that has been live is never deleted**: a gift may point at its owned row. ending is
  * `state`, and there is no `archived_at`. the one delete is a never-published campaign's, with its
- * chat and its owned row, in ../pages/queries.ts, gated by ../pages/sole-deleter.spec.ts.
+ * owned row, in ../pages/queries.ts, gated by ../pages/sole-deleter.spec.ts.
  */
 export const page = sqliteTable(
 	'page',
@@ -3312,77 +3307,7 @@ export const page = sqliteTable(
 	]
 );
 
-export const CHAT_AUTHORS = ['operator', 'assistant'] as const;
-export type ChatAuthor = (typeof CHAT_AUTHORS)[number];
-
-/**
- * one turn of a page's chat, in the order `seq` gives — unique per page, and the index that finds a
- * page's turns. a turn is written once and never changed, so there is no `updated_at`.
- *
- * the chat is kept across publish and cleared for one page by one statement,
- * `delete from chat_turn where page_id = ?`.
- *
- * `model` names what wrote an assistant turn, and an operator's turn has none. `image_ids` is the
- * JSON array of the photos attached to the turn, by id; a turn's text may be blank only when a
- * photo is what it carries. `note` is `CHAT_NOTES`' word for an assistant turn the reply went
- * wrong on, null otherwise, and an operator's turn has none. it is a column of its own because
- * `text` is what the model writes.
- *
- * `questions` is the JSON array of the questions an assistant turn asked, and `answers` the JSON
- * array of the answers an operator turn gave to them; each is null on a turn that neither asks nor
- * answers, and always null on the other author's. the database holds each to being an array, and
- * `questions` to holding at least one, since an ask asks something while every question may be
- * skipped; the shape of a question and of an answer is the parse's.
- *
- * `page_id` is `NO ACTION`, like every domain key here (rule 2 at the top of this file): a cascade
- * would fire during any rebuild of `page` and empty every chat. deleting a page deletes its turns
- * first, in the same `batch()` — ../pages/queries.ts.
- */
-export const chatTurn = sqliteTable(
-	'chat_turn',
-	{
-		id: id(),
-		pageId: text('page_id')
-			.notNull()
-			.references(() => page.id),
-		seq: integer('seq').notNull(),
-		author: text('author').$type<ChatAuthor>().notNull(),
-		text: text('text').notNull(),
-		model: text('model'),
-		imageIds: text('image_ids').notNull().default('[]'),
-		createdAt: createdAt(),
-		note: text('note').$type<ChatNote>(),
-		questions: text('questions'),
-		answers: text('answers')
-		// append new columns below this line — see rule 1 at the top of this file.
-	},
-	(t) => [
-		check('chat_turn_author_check', enumCheck(t.author, CHAT_AUTHORS)),
-		check(
-			'chat_turn_note_check',
-			sql`${t.note} is null or (${t.author} = 'assistant' and ${enumCheck(t.note, CHAT_NOTES)})`
-		),
-		check(
-			'chat_turn_model_check',
-			sql`(${t.model} is not null) = (${t.author} = 'assistant') and (${optionalNotBlank(t.model)})`
-		),
-		// before `chat_turn_text_check`, whose `json_array_length` would raise its own error on
-		// malformed JSON.
-		check('chat_turn_image_ids_array_check', jsonArray(t.imageIds)),
-		check('chat_turn_text_check', sql`${notBlank(t.text)} or json_array_length(${t.imageIds}) > 0`),
-		check(
-			'chat_turn_questions_check',
-			sql`${t.questions} is null or (${t.author} = 'assistant' and ${jsonArray(t.questions)} and json_array_length(${t.questions}) > 0)`
-		),
-		check(
-			'chat_turn_answers_check',
-			sql`${t.answers} is null or (${t.author} = 'operator' and ${jsonArray(t.answers)})`
-		),
-		uniqueIndex('chat_turn_page_seq_idx').on(t.pageId, t.seq)
-	]
-);
-
-export const IMAGE_KINDS = ['photo', 'illustration'] as const;
+export const IMAGE_KINDS = ['photo'] as const;
 export type ImageKind = (typeof IMAGE_KINDS)[number];
 
 export const IMAGE_CONTENT_TYPES = ['image/webp', 'image/jpeg', 'image/png'] as const;
@@ -3488,8 +3413,6 @@ export type WebhookDelivery = typeof webhookDelivery.$inferSelect;
 export type NewWebhookDelivery = typeof webhookDelivery.$inferInsert;
 export type Page = typeof page.$inferSelect;
 export type NewPage = typeof page.$inferInsert;
-export type ChatTurn = typeof chatTurn.$inferSelect;
-export type NewChatTurn = typeof chatTurn.$inferInsert;
 export type Image = typeof image.$inferSelect;
 export type NewImage = typeof image.$inferInsert;
 

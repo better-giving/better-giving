@@ -52,12 +52,9 @@ describe('image', () => {
 		await expect(insertImage({ ...PHOTO, alt })).resolves.toBeTypeOf('string');
 	});
 
-	it('takes an illustration', async () => {
-		await expect(insertImage({ ...PHOTO, kind: 'illustration' })).resolves.toBeTypeOf('string');
-	});
-
 	it.each([
 		['a kind outside the set', { kind: 'logo' }],
+		['an illustration', { kind: 'illustration' }],
 		['a content type outside the set', { content_type: 'image/gif' }],
 		['a zero width', { width: 0 }],
 		['a negative height', { height: -1 }],
