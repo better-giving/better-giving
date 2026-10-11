@@ -180,7 +180,7 @@ describe('the tiers', () => {
 		expect(body?.getAll('tier_buys[1]')).toEqual(['coats for a family of three']);
 	});
 
-	it('group an amount’s thousands as typed, and post the figure typed', async () => {
+	it('group an amount’s thousands as typed, and post the amount as drawn', async () => {
 		const { root, posted } = editor(sheet(tiers), '');
 		const amount = amountBox(root, 1);
 		act(() => {
@@ -193,7 +193,7 @@ describe('the tiers', () => {
 		expect(amount.value).toBe('1,200');
 
 		await press(done(root));
-		expect(posted[0]?.getAll('tier_amount[1]')).toEqual(['1200']);
+		expect(posted[0]?.getAll('tier_amount[1]')).toEqual(['1,200']);
 	});
 });
 

@@ -221,8 +221,8 @@ it('leaves a thumb where it is while its box holds text that is not an amount', 
 	expect(upper.getAttribute('aria-valuetext')).toBe('$500');
 });
 
-// the boxes group thousands as they are typed and post what they posted before: the figure with
-// no separator in it, which is all `readAmount` reads.
+// the boxes group thousands as they are typed and post the text they draw, grouped, which
+// `readAmount` reads where the grouping is well formed.
 
 it('groups a bound’s thousands as it is typed, and moves its thumb on the figure', async () => {
 	const { upper, max } = bounds(group({ rows: [row(0)] }));
@@ -233,7 +233,7 @@ it('groups a bound’s thousands as it is typed, and moves its thumb on the figu
 	expect(upper.getAttribute('aria-valuetext')).toBe('$2,000');
 });
 
-it('draws a seed grouped once hydrated, and as stored before', () => {
+it('draws a seed grouped, in the server markup and once hydrated alike', () => {
 	const seeded = {
 		boxes: {
 			min_minor: { id: MIN_BOX, name: 'min_minor', defaultValue: '5' },
@@ -255,7 +255,7 @@ it('draws a seed grouped once hydrated, and as stored before', () => {
 			(id) => root.querySelector<HTMLInputElement>(`[id="${id}"]`)?.value
 		);
 
-	expect(values(served)).toEqual(['20000', '1500']);
+	expect(values(served)).toEqual(['20,000', '1,500']);
 	expect(values(hydrated)).toEqual(['20,000', '1,500']);
 });
 
@@ -275,17 +275,7 @@ it('deletes the digit before a separator on a Backspace just after it', async ()
 	expect(box.selectionStart).toBe(1);
 });
 
-/**
- * what the form posts. a browser raises `formdata` on the form for every reading of its boxes;
- * happy-dom builds the data without raising it, so the case raises it as the browser would.
- */
-function postedBy(form: HTMLFormElement): [string, FormDataEntryValue][] {
-	const data = new FormData(form);
-	form.dispatchEvent(Object.assign(new Event('formdata'), { formData: data }));
-	return [...data];
-}
-
-it('posts every amount without its separators', async () => {
+it('posts every amount as it draws it', async () => {
 	const { root, form } = inForm({ min: '5', max: '500' });
 	const { min, max } = bounds(root);
 	await type(min, '1000');
@@ -293,10 +283,10 @@ it('posts every amount without its separators', async () => {
 	await type(input(root, 0), '12500');
 	expect([min.value, max.value, input(root, 0).value]).toEqual(['1,000', '250,000.5', '12,500']);
 
-	expect(postedBy(form)).toEqual([
-		['min_minor', '1000'],
-		['max_minor', '250000.5'],
-		['suggested_amounts[0]', '12500']
+	expect([...new FormData(form)]).toEqual([
+		['min_minor', '1,000'],
+		['max_minor', '250,000.5'],
+		['suggested_amounts[0]', '12,500']
 	]);
 });
 
@@ -399,6 +389,25 @@ it('moves the thumbs to a new seed when the form is reset onto it', async () => 
 	expect(lower.getAttribute('aria-valuetext')).toBe('$30');
 	expect(upper.getAttribute('aria-valuenow')).toBe(AT_END);
 	expect(upper.getAttribute('aria-valuetext')).toBe('$20,000');
+});
+
+it('regroups a digit typed into the seed a form was reset onto', async () => {
+	// the box last drew what was typed before the reset; the keystroke's own keydown is what reads
+	// the seed the reset put back in front of the edit.
+	const { root, form, draw } = inForm({ min: '5', max: '500' });
+	const { max } = bounds(root);
+	await type(max, '2000');
+	draw({ min: '5', max: '20000' });
+	await reset(form);
+	expect(max.value).toBe('20,000');
+
+	await act(async () => {
+		max.setSelectionRange(6, 6);
+		max.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true, cancelable: true }));
+	});
+	await type(max, '20,0000');
+
+	expect(max.value).toBe('200,000');
 });
 
 it('gives the bounds no named field but the two boxes', () => {

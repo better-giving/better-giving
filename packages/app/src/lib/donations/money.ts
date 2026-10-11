@@ -100,3 +100,20 @@ export function digitGrouping(currency: string): {
 	const last = runs.at(-1) ?? 3;
 	return { separator, last, rest: runs.at(-2) ?? last };
 }
+
+/**
+ * the mark a screen writes in front of a figure in `currency` — `$` for USD — which an operator may
+ * type in front of an amount as well.
+ *
+ * the narrow form, because that is the mark a person types: `en-US` writes Canadian dollars `CA$`
+ * in full and `$` in narrow, and nobody types the first. read off the formatter for the reason the
+ * grouping is; a code with no symbol of its own formats as itself.
+ */
+export function currencySymbol(currency: string): string {
+	const parts = new Intl.NumberFormat(DISPLAY_LOCALE, {
+		style: 'currency',
+		currency,
+		currencyDisplay: 'narrowSymbol'
+	}).formatToParts(1);
+	return parts.find((part) => part.type === 'currency')?.value ?? currency;
+}

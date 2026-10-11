@@ -1,5 +1,11 @@
 import { FieldMessage } from '@better-giving/operator/components/forms/FieldMessage';
-import type { InputHTMLAttributes, KeyboardEventHandler, Ref } from 'react';
+import type {
+	ChangeEvent,
+	CompositionEventHandler,
+	InputHTMLAttributes,
+	KeyboardEventHandler,
+	Ref
+} from 'react';
 
 // a box whose unit or address prefix is stated on the box itself — the goal's currency, a campaign
 // address's host. the rows are packages/operator/src/components/forms/Field.jsx's own (label, hint,
@@ -17,14 +23,16 @@ import type { InputHTMLAttributes, KeyboardEventHandler, Ref } from 'react';
 // a box in a repeating row draws no label: the group's legend names the rows on the screen and the
 // box is named by `aria-label` (packages/operator/src/components/forms/RepeatingRows.jsx).
 //
-// the box is the caller's to hold, with `value` and `onValueChange`; a money box that posts with a
-// form holds its own and posts it from a hidden box (./money-field.tsx).
+// the box is the caller's to hold, with `value` and `onValueChange`, and posts under `name` where it
+// has one — a money box that posts with a form (./money-field.tsx).
 
 export type AffixedFieldProps = {
 	readonly value: string;
-	/** what is typed, and the box it is typed in. */
-	readonly onValueChange: (text: string, box: HTMLInputElement) => void;
+	/** what is typed, and the change that typed it. */
+	readonly onValueChange: (text: string, event: ChangeEvent<HTMLInputElement>) => void;
 	readonly id: string;
+	/** what the box posts under, for a box a form posts. */
+	readonly name?: string | undefined;
 	/** the label drawn over the box, or `aria-label` where the box is named by a group instead. */
 	readonly label?: string | undefined;
 	readonly 'aria-label'?: string | undefined;
@@ -40,10 +48,12 @@ export type AffixedFieldProps = {
 	readonly inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
 	readonly placeholder?: string | undefined;
 	readonly onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+	readonly onCompositionEnd?: CompositionEventHandler<HTMLInputElement>;
 };
 
 export function AffixedField({
 	id,
+	name,
 	label,
 	'aria-label': named,
 	optional = false,
@@ -56,7 +66,8 @@ export function AffixedField({
 	onValueChange,
 	inputMode,
 	placeholder,
-	onKeyDown
+	onKeyDown,
+	onCompositionEnd
 }: AffixedFieldProps) {
 	const labelId = `${id}-label`;
 	const affixId = `${id}-affix`;
@@ -86,6 +97,7 @@ export function AffixedField({
 				<input
 					ref={inputRef}
 					id={id}
+					name={name}
 					className="adm-affixed__input"
 					type="text"
 					inputMode={inputMode}
@@ -97,7 +109,8 @@ export function AffixedField({
 					placeholder={placeholder}
 					value={value}
 					onKeyDown={onKeyDown}
-					onChange={(event) => onValueChange(event.target.value, event.target)}
+					onCompositionEnd={onCompositionEnd}
+					onChange={(event) => onValueChange(event.target.value, event)}
 				/>
 				{affixAt === 'end' ? unit : null}
 			</label>
