@@ -18,7 +18,9 @@ import { readableDraft } from './document';
 // the model is told the page as it stands (`draftFromPage` of the stored draft, hand edits and
 // all), whether it is the Donation page or a campaign and a campaign's type, the organisation's
 // name, mission and vision, the box and its bound, and the box's words now, to improve where it
-// holds any. it answers `{ "text": ... }`.
+// holds any. a tier's words and an answer are told for the box beside them — the tier's amount,
+// the question — as the open sheet holds it where the caller sends it, and as the draft holds it
+// where not. it answers `{ "text": ... }`.
 //
 // the words are held by putting them where they go and handing that reply to `acceptReply`
 // (../../page/accept-reply.ts): the box's length, a share message's web address only where the page
@@ -43,6 +45,8 @@ export type SuggestRequest = {
 	field: string;
 	/** the box's words now, `''` for none. */
 	current: string;
+	/** the box beside it as the open sheet holds it, where `suggestBox` reads one for the field. */
+	beside?: string | undefined;
 };
 
 export type SuggestResult =
@@ -65,7 +69,7 @@ export async function suggestText(
 	const [row] = await db.select().from(page).where(eq(page.id, request.pageId));
 	if (!row) return { ok: false, reason: 'not_found' };
 	const current = readableDraft(row);
-	const resolved = suggestBox(current, row.type, request.block, request.field);
+	const resolved = suggestBox(current, row.type, request.block, request.field, request.beside);
 	if (!resolved.ok) return { ok: false, reason: 'no_box', error: resolved.error };
 	const { box } = resolved;
 	const profile = await readOrgProfile(db);
