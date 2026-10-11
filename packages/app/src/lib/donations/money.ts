@@ -82,9 +82,9 @@ export function formatMinorBrief(amountMinor: number, currency: string): string 
  * how the whole part of a figure in `currency` is grouped on a screen: the separator, the size of
  * the group nearest the point, and the size of every group before it — `,` 3 3 for `$1,234,567`.
  *
- * read off the formatter for the reason the exponent is, so a box an operator types in groups its
- * digits the way every figure beside it does. two sizes because a locale may group the rest more
- * tightly than the last group, as `en-IN`'s `12,34,567` does.
+ * read off the same formatter as the exponent, so a box an operator types in groups its digits the
+ * way every figure beside it does. two sizes because a locale may group the rest more tightly than
+ * the last group, as `en-IN`'s `12,34,567` does.
  */
 export function digitGrouping(currency: string): {
 	readonly separator: string;

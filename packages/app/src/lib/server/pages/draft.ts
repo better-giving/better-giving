@@ -244,7 +244,7 @@ export type TurnResult =
 	| { ok: false; reason: 'answered' }
 	/** answers no model answered; `text` is what the turn would have said. */
 	| { ok: false; reason: 'unanswered'; text: string }
-	/** answers whose reply was refused, and the one retry after it too; `error` is why, the model's to read. */
+	/** answers on a drafted page whose reply was refused, and the one retry after it too; `error` is why, the model's to read. */
 	| { ok: false; reason: 'refused_again'; error: string }
 	| { ok: false; reason: 'invalid_answers'; error: string };
 
@@ -279,9 +279,10 @@ export async function draftTurn(db: Db, env: unknown, request: TurnRequest): Pro
 /**
  * the operator's answers to the questions the chat's last turn asked: one operator turn whose text
  * is `answerWords` and whose `answers` are the answers read, then the model's reply as any turn's,
- * except that it may ask only where the questions were the chat's first round, and told the filing
- * where they were the opening's. a reply refused or unanswered writes no turn, and is answered with
- * why it was refused, or the words its turn would have said.
+ * except that it may ask only where the questions were the chat's first round and not all skipped,
+ * and told the filing where they were the opening's. a reply unanswered, or refused on a drafted
+ * page, writes no turn, and is answered with the words its turn would have said, or why it was
+ * refused.
  */
 export async function answerTurn(
 	db: Db,
@@ -1044,7 +1045,7 @@ function summarise(
 	const lost = dropped.map((item) => {
 		if (item.what === 'link') return `Took the link off “${item.text}”.`;
 		if (item.what === 'program') {
-			return 'Kept gifts going where they went: the program I named isn’t one of your active programs.';
+			return 'Didn’t change where gifts go: the program I named isn’t one of your active programs.';
 		}
 		const amount = money(item.amountMinor);
 		return item.reworded

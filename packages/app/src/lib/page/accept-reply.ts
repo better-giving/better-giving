@@ -228,7 +228,7 @@ const REPLY_JSON_SCHEMAS = {
 
 /**
  * the reply's shape as JSON Schema, for a model's JSON mode, offering `set.programId` only where a
- * program is active; this door checks it again whatever.
+ * program is active; this door checks the reply again regardless.
  */
 export function replyJsonSchema(programsActive: boolean) {
 	return programsActive ? REPLY_JSON_SCHEMAS.withPrograms : REPLY_JSON_SCHEMAS.withoutPrograms;
