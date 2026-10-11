@@ -20,9 +20,10 @@ import { useMiddle, useWide } from './wide';
 // are drawn as clickable, each opening its own sheet, and the press reads Done, which turns it off
 // again. it is one press whose words change, so the focus stays on it through both; it states no
 // pressed state, since its name is the state and Done read as pressed reads wrong, and the bar's
-// region says "Click a block to edit it" as it turns on. while it is on, Settings stands beside it
-// and opens the Settings sheet (./settings-sheet.tsx), whose block list is the keyboard's way to a
-// block; it closes the AI panel as it does, since the two never stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
+// region says "Edit is on: choose a block, or open Settings for the list" as it turns on. while it
+// is on, Settings stands beside it and opens the Settings sheet (./settings-sheet.tsx), whose block
+// list is the keyboard's way to a block; it closes the AI panel as it does, since the two never
+// stand together. AI opens the AI panel and closes it again, at every width (`useAiEntry` in
 // ./editor-shell.tsx): `aria-expanded` says which, and below the wide breakpoint (./wide.ts), where
 // the panel is a sheet, `aria-haspopup` says it is a dialog. it is busy from its press until the
 // panel is up, held with `aria-disabled` so the focus stays on it. a turn that landed while the
@@ -93,7 +94,7 @@ const DONATION_PAGE = 'Donation page';
 const SAID = {
 	unread: 'New reply',
 	opening: 'Opening AI',
-	editing: 'Click a block to edit it'
+	editing: 'Edit is on: choose a block, or open Settings for the list'
 } as const;
 
 type Said = keyof typeof SAID;

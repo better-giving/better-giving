@@ -842,10 +842,10 @@ describe('what the bar says to a reader', () => {
 		act(() => edit.click());
 		expect(edit.hasAttribute('aria-pressed')).toBe(false);
 		expect(edit.textContent).toBe('Done');
-		expect(said.textContent).toBe('Click a block to edit it');
+		expect(said.textContent).toBe('Edit is on: choose a block, or open Settings for the list');
 
 		act(() => show({ unread: false, opening: false }));
-		expect(said.textContent).toBe('Click a block to edit it');
+		expect(said.textContent).toBe('Edit is on: choose a block, or open Settings for the list');
 
 		act(() => edit.click());
 		expect(edit.textContent).toBe('Edit');
