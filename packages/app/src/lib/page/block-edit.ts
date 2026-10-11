@@ -216,7 +216,7 @@ function summaryOf(block: Block, currency: string): string {
 		case 'impact-tiers':
 			return block.tiers.map((tier) => formatMinorBrief(tier.amountMinor, currency)).join(', ');
 		case 'faq':
-			return clipped(block.items.map((item) => item.question).join(' · '));
+			return clipped(block.items.map((item) => item.question).join(', '));
 		case 'hero':
 		case 'image':
 			return block.imageId === null ? 'No photo yet' : clipped(block.alt ?? '');

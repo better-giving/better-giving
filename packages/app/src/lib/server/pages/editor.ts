@@ -35,9 +35,10 @@ import {
 // **drafted** is whether the page's content has moved from what it was made as, and until it has
 // the editor shows the chat's questions alone. no column records it, and the version is no guide:
 // it moves on every chat turn, the opening questions' included. so it is read off two things the
-// page already holds — a reply in its chat that changed the page (an assistant turn that asks
-// nothing and carries no note but `fell-back`, as `changedPage` in
-// $lib/admin/editor/chat-wiring.tsx reads it), or a draft whose document, less its name and
+// page already holds — an assistant turn in its chat that asks nothing and carries no note but
+// `fell-back`, as `changedPage` in $lib/admin/editor/chat-wiring.tsx reads it, which is a reply that
+// changed the page or the turn that ended its questions on a starting page where answers were
+// refused twice (`STARTING_PAGE` in ./draft.ts); or a draft whose document, less its name and
 // donation settings, is not its type's default (../../page/defaults.ts). the name is left out
 // because the bar renames a page before its first draft, and the settings because a campaign is
 // made with the Donation page's copied into its draft.
@@ -123,7 +124,7 @@ function madeAs(type: Page['type']) {
 const MADE_AS = { campaign: madeAs('campaign'), donation_page: madeAs('donation_page') };
 
 /** whether `row`, whose draft reads as `draft`, has been drafted — the header says how it is read. */
-async function hasBeenDrafted(db: Db, row: Page, draft: PageDocument): Promise<boolean> {
+export async function hasBeenDrafted(db: Db, row: Page, draft: PageDocument): Promise<boolean> {
 	if (!isDeepStrictEqual(content(draft), MADE_AS[row.type])) return true;
 	const [changed] = await db
 		.select({ id: chatTurn.id })
@@ -234,7 +235,7 @@ function settingsSummary(
 		.map((name) => SWITCH_LABELS[name]);
 	return [mode, settings.programMode === 'pinned' ? programName : null, amounts, ...on]
 		.filter((part) => part !== null && part !== '')
-		.join(' · ');
+		.join(', ');
 }
 
 const PAGE_SETTINGS = defineForm({ id: PAGE_SETTINGS_FORM_ID, schema: PAGE_SETTINGS_INPUT });

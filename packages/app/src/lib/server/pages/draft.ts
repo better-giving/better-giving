@@ -13,6 +13,7 @@ import {
 	type Refused,
 	readReply,
 	replyJsonSchema,
+	ROUNDS_MAX,
 	SAY_MAX
 } from '../../page/accept-reply';
 import { draftFromPage, ILLUSTRATIONS_MAX, pageCatalog, switchRules } from '../../page/ai-catalog';
@@ -40,6 +41,8 @@ import {
 	answeredLines,
 	answerValueWords,
 	answerWords,
+	LEAN_MAX,
+	leanQuestions,
 	MISSION_QUESTION,
 	type Question,
 	QUESTIONS_MAX,
@@ -64,6 +67,7 @@ import { type Filing, lookUpFiling } from '../nonprofits/filing';
 import { readOrgProfile } from '../org/queries';
 import { type ProgramOption, readActivePrograms } from '../programs/queries';
 import { readableDraft } from './document';
+import { hasBeenDrafted } from './editor';
 import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 
 // one turn of a page's chat: the operator's message, or their answers to the questions the chat's
@@ -121,16 +125,23 @@ import { nameToCarry, renaming, SLUG_ATTEMPTS } from './queries';
 //   model wrote it in place of the chosen.
 // - asked: the reply asks questions in place of a change. the draft is untouched, the turn's
 //   `questions` hold them and its words are the reply's `say`. answers are to a round of questions
-//   counted over every asking turn in the chat, the opening's being round 1: a reply to round 1's
-//   may ask one more round, and the model is told so, and a reply to any later round's may not, and
-//   is told that, and one that asks anyway is refused.
+//   counted over every asking turn in the chat, the opening's being round 1, and answers that skip
+//   every question are to the last round, `ROUNDS_MAX`, whatever the count: a reply to round 1's
+//   may ask one more round, and the model is told so, and a reply to any later round's or to a
+//   skip may not, and is told that, and one that asks anyway is refused. on a page never drafted
+//   the reply is held to `firstDraft` (../../page/accept-reply.ts): an ask kept lean, and a change
+//   that leaves the page as it stands refused.
 // - refused: the reply and its retry were both refused. the draft is untouched and the turn says
-//   so in `REFUSED_TWICE`'s plain words.
+//   so in `REFUSED_TWICE`'s plain words. on answers to a page never drafted (`hasBeenDrafted` in
+//   ./editor.ts) the turn says `STARTING_PAGE` and carries no note, so the page reads as drafted
+//   from then on and the editor opens on the draft as it stands, where resending the same answers
+//   could end the same way for good.
 // - unanswered: no model answered; the draft is untouched and the turn says so plainly, with the
 //   operator's fix where there is one. its `model` is the one `generate` asked.
-// answers whose reply is refused or unanswered write neither turn, so the questions stay the chat's
-// last turn and the same answers can be sent again: the caller hears `unanswered` with the words
-// the turn would have said, or `refused_again` with why the retry was refused.
+// answers whose reply is unanswered, or refused on a drafted page, write neither turn, so the
+// questions stay the chat's last turn and the same answers can be sent again: the caller hears
+// `unanswered` with the words the turn would have said, or `refused_again` with why the retry was
+// refused.
 //
 // `acceptReply` reads the figures the operator stated out of their messages whole and out of each
 // answers turn's answers alone (`answerValueWords` in ../../page/questions.ts), never the prompts
@@ -155,6 +166,11 @@ const HISTORY_TURNS = 20;
 
 /** a message turn's words where its reply was refused, and the one retry after it too. */
 const REFUSED_TWICE = 'I couldn’t make that change. Try saying it another way.';
+/**
+ * the words where answers on a page never drafted were refused, and the one retry after them too:
+ * the turn that ends its questions, the draft as it stands.
+ */
+const STARTING_PAGE = 'I couldn’t draft from your answers. Here’s a starting page to edit.';
 
 /** what the model is told after a reply refused for `reason`, before it is asked again. */
 function refusedOnce(reason: string) {
@@ -282,6 +298,8 @@ export async function answerTurn(
 	if (!read.ok) return { ok: false, reason: 'invalid_answers', error: read.reason };
 
 	const words = answerWords(questions, read.answers);
+	const asked = turns.filter((turn) => turn.questions !== null).length;
+	const drafted = await hasBeenDrafted(db, row, readableDraft(row));
 	const operator = operatorTurn(words, [], JSON.stringify(read.answers));
 	const result = await respond(db, env, {
 		row,
@@ -291,7 +309,8 @@ export async function answerTurn(
 		stated: answersStated(questions, read.answers),
 		answering: {
 			guard: sql`not exists (select 1 from ${chatTurn} where ${chatTurn.pageId} = ${row.id} and ${chatTurn.seq} > ${last.seq})`,
-			round: turns.filter((turn) => turn.questions !== null).length
+			round: read.answers.length === 0 ? Math.max(asked, ROUNDS_MAX) : asked,
+			drafted
 		},
 		filingOrigin: turns[0]?.id === last.id ? request.origin : null,
 		timeZone: request.timeZone,
@@ -307,12 +326,13 @@ export async function answerTurn(
  * turn before it. a chat holding any turn is answered as it stands, and nothing is written; the
  * insert itself holds that, so two opens at once write one turn.
  *
- * while the profile's mission is empty, `MISSION_QUESTION` comes first and a question of the
- * model's under its id is dropped, `QUESTIONS_MAX` in all; once it holds one, the model's questions
- * stand as asked, one under that id included. no model answering, a reply refused or
- * read as anything but an ask, or an ask holding nothing past the mission, opens on
- * `starterQuestions` instead: a turn noted `starter`, its `model` the one asked. either way the
- * mission question carries the filing's mission as its `prefill` where one was found.
+ * the model's questions are kept as `leanQuestions` keeps them (../../page/questions.ts). while the
+ * profile's mission is empty, `MISSION_QUESTION` comes first and a question of the model's under
+ * its id is dropped, `LEAN_MAX` in all; once it holds one, the model's lean questions stand as
+ * asked, one under that id included. no model answering, a reply refused or read as anything but
+ * an ask, or an ask keeping nothing past the mission, opens on `starterQuestions` instead: a turn
+ * noted `starter`, its `model` the one asked. either way the mission question carries the filing's
+ * mission as its `prefill` where one was found.
  */
 export async function openTurn(db: Db, env: unknown, request: OpenRequest): Promise<TurnResult> {
 	const [row] = await db.select().from(page).where(eq(page.id, request.pageId));
@@ -344,15 +364,17 @@ export async function openTurn(db: Db, env: unknown, request: OpenRequest): Prom
 			})
 		: null;
 	const asked = reply?.ok === true && reply.kind === 'asked' ? reply : null;
-	const own =
-		asked?.questions.filter(({ id }) => !missionEmpty || id !== MISSION_QUESTION.id) ?? [];
+	const own = leanQuestions(
+		asked?.questions.filter(({ id }) => !missionEmpty || id !== MISSION_QUESTION.id) ?? [],
+		missionEmpty ? LEAN_MAX - 1 : LEAN_MAX
+	);
 	const assistant =
 		asked !== null && own.length > 0
 			? assistantTurn(
 					oneLine(asked.say),
 					answer.model,
 					answer.ok && answer.fellBack ? 'fell-back' : null,
-					prefilled([...(missionEmpty ? [MISSION_QUESTION] : []), ...own].slice(0, QUESTIONS_MAX))
+					prefilled([...(missionEmpty ? [MISSION_QUESTION] : []), ...own])
 				)
 			: assistantTurn(
 					STARTER_SAY,
@@ -377,7 +399,7 @@ const STARTER_SAY = 'A few questions before I draft your page.';
 
 /** what an opening and its one more round never ask: a page left without it still reads complete. */
 const NEVER_ASKED =
-	'a goal, an end date, amounts or what an amount buys, or how the page is laid out';
+	'a goal, an end date, amounts or what an amount buys, a typical gift, or how the page is laid out';
 
 /**
  * the user message an opening is asked with, shown before every opening ask in the history. a typed
@@ -420,11 +442,12 @@ type Turning = {
 	stated: AcceptMessage;
 	/**
 	 * where the turn answers the chat's questions, what must hold, over `page`, for it to land —
-	 * nothing having followed them — and their round, counted over the chat's asking turns, which
-	 * says whether the reply may ask (`answering` in ../../page/accept-reply.ts). one refused or
-	 * unanswered writes no turn. null on a message.
+	 * nothing having followed them — their round, counted over the chat's asking turns, which
+	 * says whether the reply may ask (`answering` in ../../page/accept-reply.ts), and whether the
+	 * page had been drafted (`hasBeenDrafted` in ./editor.ts). one unanswered writes no turn, nor
+	 * one refused on a drafted page. null on a message.
 	 */
-	answering: { guard: SQL; round: number } | null;
+	answering: { guard: SQL; round: number; drafted: boolean } | null;
 	/**
 	 * where the turn answers the opening ask, the origin the filing is looked up under, as for the
 	 * opening; null on any other turn.
@@ -492,7 +515,8 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 				activePrograms: programs,
 				timeZone: turning.timeZone,
 				now: turning.now,
-				...(turning.answering === null ? {} : { answering: turning.answering.round })
+				...(turning.answering === null ? {} : { answering: turning.answering.round }),
+				...(turning.answering?.drafted === false ? { firstDraft: true } : {})
 			});
 		let drawn: Drawn[] = [];
 		if (asked.requests.length > 0) {
@@ -527,10 +551,14 @@ async function respond(db: Db, env: unknown, turning: Turning): Promise<TurnResu
 		console.warn(
 			`a chat reply on page ${row.id} was refused twice: ${[...reasons, settled.reason].join('; then ')}`
 		);
-		if (turning.answering !== null) {
+		if (turning.answering === null) {
+			return written('refused', assistantTurn(REFUSED_TWICE, answer.model, 'refused'));
+		}
+		if (turning.answering.drafted) {
 			return { ok: false, reason: 'refused_again', error: settled.reason };
 		}
-		return written('refused', assistantTurn(REFUSED_TWICE, answer.model, 'refused'));
+		// no note, so the page reads as drafted and the editor opens on it (`hasBeenDrafted`).
+		return written('refused', assistantTurn(STARTING_PAGE, answer.model, null));
 	}
 	const { result, drawn } = settled;
 	const note = answer.fellBack ? 'fell-back' : null;
@@ -890,11 +918,11 @@ function replyFormat(type: PageType, programsActive: boolean): string[] {
 
 /**
  * whether a reply to answers may ask, as `acceptReply` holds it: one more round after the chat's
- * first, none after any later one. no line on a turn that answers nothing.
+ * first, none after `ROUNDS_MAX` or a skip. no line on a turn that answers nothing.
  */
 function answersLines(round: number | null): string[] {
 	if (round === null) return [];
-	return round === 1
+	return round < ROUNDS_MAX
 		? [
 				`- this message answers your first questions: change the page from them, or ask one more round only when a fact the page cannot be written without is still missing, never for ${NEVER_ASKED}, nor for what the page already holds, such as a campaign’s name and type. That round is the last.`
 			]

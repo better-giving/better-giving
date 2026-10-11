@@ -126,7 +126,7 @@ describe('the donation settings', () => {
 			program_mode: row?.programMode,
 			suggested_amounts: expect.any(Array)
 		});
-		expect(drawn.settings.summary).toMatch(/^No program · \$/);
+		expect(drawn.settings.summary).toMatch(/^No program, \$/);
 	});
 
 	it('writes the draft only: the live page and the settings row a gift is charged against stay', async () => {
@@ -164,7 +164,7 @@ describe('the donation settings', () => {
 		expect(redrawn.version).not.toBe(drawn.version);
 		expect(redrawn).toMatchObject({
 			state: 'changed',
-			settings: { summary: 'No program · $20, $40' }
+			settings: { summary: 'No program, $20, $40' }
 		});
 	});
 });
@@ -222,14 +222,14 @@ describe('the two switches in the donation settings', () => {
 	it('names each switch that is on in the Settings row’s line, by its own name', async () => {
 		const drawn = await open();
 		await done({ 'suggested_amounts[0]': '20', open_on_monthly: 'on' }, drawn.version);
-		expect((await open()).settings.summary).toBe('No program · $20 · Open on monthly');
+		expect((await open()).settings.summary).toBe('No program, $20, Open on monthly');
 
 		await done(
 			{ 'suggested_amounts[0]': '20', open_on_monthly: 'on', dedication_on: 'on' },
 			(await open()).version
 		);
 		expect((await open()).settings.summary).toBe(
-			'No program · $20 · Open on monthly · Dedication on by default'
+			'No program, $20, Open on monthly, Dedication on by default'
 		);
 	});
 

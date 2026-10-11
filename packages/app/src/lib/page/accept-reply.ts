@@ -35,11 +35,17 @@
 // a reply may instead be `{ say, ask }`: up to `QUESTIONS_MAX` questions for the operator, read by
 // ./questions.ts's rule, and handed back as asked with no draft at all. an `ask` beside `page` or
 // `set` refuses the reply, since a reply that asks never also changes the page. where the caller
-// says the turn answers questions, it names their round, counted from the chat's first: answers to
-// round 1 may be followed by one more round, and any `ask` in reply to a later round's answers
-// refuses the reply, so answers alone never lead to a third round. that refusal alone is marked
-// `askedAgain`, for the caller to tell it from the rest. an `ask` that is `[]` or `null` is read as
-// none.
+// says the turn answers questions, it names their round, counted from the chat's first, and a turn
+// that skipped them all names `ROUNDS_MAX` whatever its count ($lib/server/pages/draft.ts): answers
+// to round 1 may be followed by one more round, and any `ask` in reply to answers to round
+// `ROUNDS_MAX` or later refuses the reply, so answers alone never lead to a third round, and a skip
+// to none. that refusal alone is marked `askedAgain`, for the caller to tell it from the rest. an
+// `ask` that is `[]` or `null` is read as none.
+//
+// where the caller says the turn answers questions on a page never drafted (`firstDraft`), the
+// reply is that page's first draft or the one round before it: an ask keeps only ./questions.ts's
+// `leanQuestions` and is refused where none are left, and a change leaving the page as it stands
+// is refused, so no reply ends the questions on the page as it stood.
 //
 // the model's answer is text nobody checked, so its size is bounded before anything reads it
 // (`readReply`, which $lib/server/pages/draft.ts reads a reply through too): the text at
@@ -57,7 +63,8 @@
 //   paraphrase that sentence or row; an amount stated on its own (`set the suggested amounts to
 //   $25, $50 and $100`) grants no tier. a sentence ends at `.`, `!` or `?` before a space, or at a
 //   line break. any other tier is dropped and noted, and the rest of the reply lands; one whose
-//   amount the page held as a tier is the reply rewording it, noted so.
+//   amount the page held as a tier is the reply rewording it, noted so. of two kept at one amount,
+//   the last stands and the other goes, unnoted, since a donor reads two cards at $25 as a mistake.
 // - a figure in the words: a new campaign name, a new share message and every string a block
 //   draws — a heading, a lede, what a tier buys, a question, each paragraph of a story or an
 //   answer — and each illustration's description may hold only figures the operator wrote in the
@@ -120,8 +127,8 @@ import {
 	SHADES,
 	type Shade
 } from './keys';
-import { applyPatch, deeperThan, mergePatch, outOfBounds, pointer } from './json-patch';
-import { askSchema, type Question, type TierAnswer } from './questions';
+import { applyPatch, deeperThan, jsonEqual, mergePatch, outOfBounds, pointer } from './json-patch';
+import { askSchema, leanQuestions, type Question, type TierAnswer } from './questions';
 import { listed, oneOf } from './refusal';
 import { SHARE_CHANNELS, SHARE_CHANNELS_DEFAULT, type ShareChannel } from './share';
 
@@ -133,6 +140,8 @@ export const DRAFT_BYTES_MAX = 256 * 1024;
 export const DEPTH_MAX = 32;
 /** what the chat shows of a reply. */
 export const SAY_MAX = 2000;
+/** the last round of questions answers may follow; a reply to its answers never asks. */
+export const ROUNDS_MAX = 2;
 /** the page's depth and the levels a reply wraps an edit in: reply › page › ops › op › value. */
 const REPLY_DEPTH_MAX = DEPTH_MAX + 5;
 const DRAFT_BOUNDS = { bytes: DRAFT_BYTES_MAX, depth: DEPTH_MAX, what: 'the page' };
@@ -267,9 +276,15 @@ export type AcceptInput = {
 	now: number;
 	/**
 	 * the round of questions the turn answers, counted from the chat's first, 1 for it; absent
-	 * where the turn answers none. a reply to answers to any round past the first may not ask.
+	 * where the turn answers none. a reply to answers to round `ROUNDS_MAX` or later may not ask.
 	 */
 	answering?: number;
+	/**
+	 * set where the turn answers questions on a page never drafted, so a change the reply makes is
+	 * the page's first draft: one leaving the page as it stands refuses the reply, and an ask keeps
+	 * only `leanQuestions` (./questions.ts), refusing the reply where none are left.
+	 */
+	firstDraft?: true;
 };
 
 export type Change =
@@ -342,7 +357,7 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 		if (reply.page !== undefined || reply.set !== undefined) {
 			return refuse('a reply that asks never also changes the page');
 		}
-		if (input.answering !== undefined && input.answering > 1) {
+		if (input.answering !== undefined && input.answering >= ROUNDS_MAX) {
 			return {
 				...refuse(
 					'a reply to answers past the chat’s first round of questions changes the page from them and never asks again'
@@ -350,7 +365,13 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 				askedAgain: true
 			};
 		}
-		return { ok: true, kind: 'asked', say: reply.say, questions: reply.ask };
+		const questions = input.firstDraft ? leanQuestions(reply.ask) : reply.ask;
+		if (questions.length === 0) {
+			return refuse(
+				'before the page’s first draft an ask holds only what the page cannot be written without, never an amount or what amounts do, so change the page from the answers instead'
+			);
+		}
+		return { ok: true, kind: 'asked', say: reply.say, questions };
 	}
 
 	let draft: unknown = draftFromPage(current);
@@ -414,7 +435,7 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 			});
 			return false;
 		});
-		return { ...block, tiers };
+		return { ...block, tiers: lastPerAmount(tiers) };
 	});
 
 	const shown = new Set([...stated, ...figuresShown(current)]);
@@ -466,6 +487,11 @@ function accept(input: AcceptInput): Accepted | Asked | Refused {
 	});
 	const checked = parsePage(type, unlinked);
 	if (!checked.ok) return refuse(located(checked.path, checked.message));
+	if (input.firstDraft && isUnchanged(type, current, checked.page)) {
+		return refuse(
+			'the reply leaves the page as it stands, and a reply to these answers is the page’s first draft: write the page from them, using your best judgement where they are thin'
+		);
+	}
 
 	return {
 		ok: true,
@@ -867,6 +893,19 @@ function settle(
 	}
 	onto.settings = settings;
 	return { ok: true, onto, renamed, changes };
+}
+
+/** `tiers` with each amount standing once, at the last tier holding it. */
+function lastPerAmount<T extends Tier>(tiers: readonly T[]): T[] {
+	return tiers.filter(
+		(tier, index) => !tiers.slice(index + 1).some((later) => later.amountMinor === tier.amountMinor)
+	);
+}
+
+/** whether `next` is `current` as the page rule reads it. */
+function isUnchanged(type: PageType, current: Page, next: Page) {
+	const read = parsePage(type, current);
+	return read.ok && jsonEqual(read.page, next);
 }
 
 function sameList<T>(a: readonly T[], b: readonly T[]) {
