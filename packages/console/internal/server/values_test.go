@@ -366,44 +366,61 @@ func TestASpellingTheDeploymentDoesNotReadAsYesIsRefused(t *testing.T) {
 	}
 }
 
-// the deployment answers only with a model packages/operator/src/ai-models.ts lists, so an id off
-// it stored here is a choice every request reaching a model is refused over.
-func TestAModelChoiceOffTheListIsRefusedNamingIt(t *testing.T) {
-	api, asked := writes(t, nil)
-	status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars",
-		`{"values":{"AI_MODEL":"anthropic/claude-opus-9"}}`)
-	said, _ := answer["error"].(string)
-	if status != http.StatusBadRequest || !strings.Contains(said, "anthropic/claude-opus-9") ||
-		!strings.Contains(said, "ai-models.ts") {
-		t.Fatalf("%d %q", status, said)
-	}
-	if len(*asked) != 0 {
-		t.Fatalf("cloudflare was asked %v", *asked)
-	}
-}
-
-func TestAModelChoiceOnTheListIsWrittenAndTakingItOffIsTheDefaultModel(t *testing.T) {
+// past the set-up presses' names, the answer switches and a blank, no name carries a rule of its
+// own: every other name on the enumeration is written as posted.
+func TestEveryOtherNameOnTheEnumerationIsWrittenAsPosted(t *testing.T) {
 	worker := release.Baked.Name
-	stored := map[string]any{"name": "AI_MODEL", "type": "plain_text", "text": "openai/gpt-5-mini"}
-	for what, one := range map[string]struct {
-		bindings []any
-		body     string
-	}{
-		"chosen":    {bindings: []any{}, body: `{"values":{"AI_MODEL":"anthropic/claude-sonnet-4.6"}}`},
-		"taken off": {bindings: []any{stored}, body: `{"values":{"AI_MODEL":null}}`},
-	} {
+	for _, name := range release.DeployVars {
+		if enumerated(paypalSetUpOnly, name) || enumerated(chariotSetUpOnly, name) ||
+			enumerated(nowpaymentsSetUpOnly, name) || enumerated(answerSwitches, name) {
+			continue
+		}
 		api, asked := writes(t, map[string]any{
 			"GET " + settingsOf(worker): map[string]any{
 				"success": true, "errors": []any{},
-				"result": map[string]any{"bindings": one.bindings},
+				"result": map[string]any{"bindings": []any{}},
 			},
 		})
-		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars", one.body)
+		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars",
+			`{"values":{"`+name+`":"a value"}}`)
 		if status != http.StatusOK || answer["kind"] != "set" {
-			t.Errorf("%s answered %d %v", what, status, answer)
+			t.Errorf("%s answered %d %v", name, status, answer)
 		}
 		if len(*asked) != 2 || (*asked)[1] != "PATCH "+settingsOf(worker) {
-			t.Errorf("%s asked cloudflare %v", what, *asked)
+			t.Errorf("%s asked cloudflare %v", name, *asked)
 		}
+	}
+}
+
+// a deployment may still be holding `AI_MODEL`, and nothing on it reads that name, so this door
+// refuses it as it does any name off the enumeration — a removal included.
+func TestAModelChoiceIsANameOffTheEnumeration(t *testing.T) {
+	for _, body := range []string{
+		`{"values":{"AI_MODEL":"anthropic/claude-sonnet-4.6"}}`,
+		`{"values":{"AI_MODEL":null}}`,
+	} {
+		api, asked := writes(t, nil)
+		status, answer := press(t, pressing(t, "an-account", api), "/api/values/vars", body)
+		said, _ := answer["error"].(string)
+		if status != http.StatusBadRequest || !strings.Contains(said, "AI_MODEL") ||
+			!strings.Contains(said, "deploy-split.ts") {
+			t.Errorf("%s answered %d %q", body, status, said)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("%s asked cloudflare %v", body, *asked)
+		}
+	}
+}
+
+// no page reads a model choice, so `/api/ai-model` falls to the `/api/` catch-all without a read of
+// the deployment.
+func TestNoModelChoiceIsRead(t *testing.T) {
+	api, asked := writes(t, nil)
+	status, body := ask(t, pressing(t, "an-account", api), "/api/ai-model")
+	if status != http.StatusNotFound || body["error"] != "no such endpoint" {
+		t.Fatalf("%d %v", status, body)
+	}
+	if len(*asked) != 0 {
+		t.Fatalf("cloudflare was asked %v", *asked)
 	}
 }

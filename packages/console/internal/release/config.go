@@ -188,44 +188,9 @@ var DeployVars = []string{
 	"QUICKBOOKS_CLIENT_ID",
 	"QUICKBOOKS_CLIENT_SECRET",
 	"QUICKBOOKS_API_URL",
-	"AI_MODEL",
 	"BETTER_AUTH_SECRET",
 	"BETTER_AUTH_URL",
 	"ADMIN_PASSWORD",
-}
-
-// AIModels is every model `AI_MODEL` may name, in the order packages/operator/src/ai-models.ts
-// lists them — the deployment's own list, and the deployment refuses any other id.
-//
-// **stated here and gated rather than trusted, the way DeployVars above is.** ./config_test.go holds
-// the ids and which of them bill the account's credits to that module, so a model added there and
-// not here is a choice this console refuses to write, and one taken off there is a choice this
-// console would store for a deployment to refuse. the first entry is the default model an unset
-// `AI_MODEL` means.
-var AIModels = []AIModel{
-	{ID: "@cf/openai/gpt-oss-120b", CreditBilled: false},
-	{ID: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", CreditBilled: false},
-	{ID: "anthropic/claude-sonnet-4.6", CreditBilled: true},
-	{ID: "openai/gpt-5-mini", CreditBilled: true},
-}
-
-// AIModel is one model a deployment may answer with.
-type AIModel struct {
-	// ID is what `AI_MODEL` holds.
-	ID string
-	// CreditBilled is whether the model is paid for out of the account's Cloudflare credits, which
-	// a Workers AI model, the default among them, is not.
-	CreditBilled bool
-}
-
-// ModelByID is the entry `id` names, and false for an id off the list.
-func ModelByID(id string) (AIModel, bool) {
-	for _, model := range AIModels {
-		if model.ID == id {
-			return model, true
-		}
-	}
-	return AIModel{}, false
 }
 
 // the closed sets a deployment answers its own console surface in.

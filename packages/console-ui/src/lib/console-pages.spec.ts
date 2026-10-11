@@ -102,7 +102,6 @@ describe('the rail', () => {
 			'Sites → /sites',
 			'SMTP → /smtp',
 			'Notifications → /notifications',
-			'AI model → /ai-model',
 			'QuickBooks → /quickbooks'
 		]);
 		expect(groups.map((group) => group.heading)).toEqual([
@@ -125,7 +124,6 @@ describe('the rail', () => {
 			'Sites',
 			'SMTP',
 			'Notifications',
-			'AI',
 			'QuickBooks'
 		]);
 	});
@@ -143,21 +141,6 @@ describe('the rail', () => {
 				}
 			]
 		});
-	});
-
-	it('draws the model cell after notifications, marked and with no status', () => {
-		// no set-up job waits on the model: an unset one is the default model, which answers.
-		const model = (...todo: readonly SectionId[]) =>
-			railGroups(rows(...todo), processorLinks(new Set()), LOGOS, INTEGRATIONS)[2]?.destinations.at(
-				-1
-			);
-		expect(model()).toEqual({
-			label: 'AI model',
-			short: 'AI',
-			href: '/ai-model',
-			mark: 'sparkles'
-		});
-		expect(model(...IDS)?.status).toBeUndefined();
 	});
 
 	it('marks the integration cells with no status, however the set-up jobs stand', () => {

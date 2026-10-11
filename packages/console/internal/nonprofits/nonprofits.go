@@ -4,10 +4,7 @@
 // **one fixed address, and nothing reads another.** every console is built with API, and no env
 // var, flag or record may point a console elsewhere: what comes back fills the legal identity a
 // receipt is printed under, so the source is the build's to name, and a redirect to anywhere is
-// `unavailable` rather than followed. a test builds a client on its own upstream with At. the
-// deployment reads the same API for its page AI, and
-// `packages/app/src/lib/server/nonprofits/filing.ts` holds its copy of the address and the shape:
-// the two change together, and ../release/config_test.go holds them equal.
+// `unavailable` rather than followed. a test builds a client on its own upstream with At.
 //
 // **keyless.** no key is sent and none is configured, so the console spends the allowance the API
 // keeps per calling address — one request a minute and five a day (https://nonprofits.better.giving).
@@ -272,7 +269,7 @@ func (c *Client) lookUp(ctx context.Context, ein string, wanted func() bool) Loo
 	if answered, _ := EIN(read.EIN); answered != ein {
 		return Lookup{State: Unavailable}
 	}
-	// a record that names nobody is no organisation to fill from, as filing.ts reads it.
+	// a record that names nobody is no organisation to fill from.
 	if strings.TrimSpace(read.Name) == "" {
 		return Lookup{State: NotFound}
 	}

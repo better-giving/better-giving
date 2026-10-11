@@ -23,15 +23,13 @@ import (
 // and removing are one door because they are one patch of the worker's bindings — internal/deployment
 // is where that is argued.
 //
-// **a body is refused in five cases.** the first is a name off the enumeration: internal/release
+// **a body is refused in four cases.** the first is a name off the enumeration: internal/release
 // holds that list, and a name off it is refused here rather than written under whatever the page
 // said — the console's own session credential is on no enumeration and is not reachable through
 // this door. the second is PayPal's four values, Chariot's four and NOWPayments' three, argued at
 // ./paypalSetUpOnly, ./chariotSetUpOnly and ./nowpaymentsSetUpOnly. the third is a name carrying a
 // blank, which is neither a value the deployment reads nor the removal `null` is. the fourth is an
-// answer switch carrying anything but its one word, argued at ./answerSwitches. the fifth is a
-// model choice naming an id off internal/release's AIModels, which the deployment would refuse on
-// every request reaching a model.
+// answer switch carrying anything but its one word, argued at ./answerSwitches.
 //
 // **every one of them answers 200 carrying how the write went.** each way a write did not happen is
 // a state the fold draws at the control that was pressed, with a sentence and a way out of its own,
@@ -150,18 +148,6 @@ func valuesRoutes(
 						", or takes the name off to answer no; it does not store " + *value,
 				})
 				return
-			}
-			if name == deployment.AIModelName {
-				// the deployment refuses an id off that list on every request that reaches a model, so
-				// storing one would be a choice an operator reads back and nothing answers with. `null`
-				// is the default model, and is the removal above.
-				if _, listed := release.ModelByID(*value); !listed {
-					answer(w, http.StatusBadRequest, map[string]string{
-						"error": "this console stores " + name + " as one of the ids AI_MODELS lists in " +
-							"packages/operator/src/ai-models.ts, and " + *value + " is not one of them",
-					})
-					return
-				}
 			}
 		}
 

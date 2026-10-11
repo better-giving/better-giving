@@ -76,9 +76,8 @@ const (
 // deploy makes — the account and the user for the connect screen, the script upload, the migration
 // over d1's query api, and the turnstile widget.
 //
-// no AI Gateway scope is on it. ClientID is wrangler's client and wrangler asks for none, so a scope
-// named here may be one that client is never granted, and internal/deployment's aimodel.go makes no
-// credit balance read on this sign-in.
+// ClientID is wrangler's client, so a scope named here that wrangler does not ask for may be one that
+// client is never granted.
 var Scopes = []string{
 	"account:read",
 	"user:read",
