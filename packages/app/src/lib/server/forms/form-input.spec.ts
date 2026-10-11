@@ -524,7 +524,7 @@ describe('formInputValuesFrom', () => {
 			status: 'live',
 			suggested_amounts: ['25', '50', '100'],
 			min_minor: '5',
-			max_minor: '10000',
+			max_minor: '10,000',
 			allowed_origins: ['https://acme.org', 'https://give.acme.org'],
 			program_mode: 'none',
 			program_id: ''
@@ -534,8 +534,8 @@ describe('formInputValuesFrom', () => {
 	it('re-parses to the values it was rendered from', () => {
 		// the round trip is the whole claim: an edit page that renders a stored form and saves it
 		// untouched must store the same form. it holds because both directions read how an amount is
-		// written out of this module — a route that rendered one with a thousands separator would
-		// draw a box its own parser refuses, and nothing else in the repo would notice.
+		// written out of ../../forms/amounts.ts — a route that rendered one any other way would draw
+		// a box its own parser might refuse, and nothing else in the repo would notice.
 		const reparsed = parsedForm(formInputValuesFrom(record));
 		expect({ ...reparsed }).toEqual({
 			name: record.name,
@@ -577,6 +577,20 @@ describe('formInputValuesFrom', () => {
 		expect(values.min_minor).toBe('10');
 		expect(values.max_minor).toBe('12.50');
 		expect(values.suggested_amounts).toEqual(['50', '5']);
+	});
+
+	it('seeds a box grouped the way the box draws it', () => {
+		// conform reads a group as changed when a box's text differs from its seed, and the box
+		// draws `20,000` — a seed of `20000` would leave Save live after an edit undone.
+		const values = formInputValuesFrom({
+			...record,
+			minMinor: 2500,
+			maxMinor: 2_000_000,
+			suggestedAmounts: [123_456_750, 100_000]
+		});
+		expect(values.min_minor).toBe('25');
+		expect(values.max_minor).toBe('20,000');
+		expect(values.suggested_amounts).toEqual(['1,234,567.50', '1,000']);
 	});
 
 	it('renders a bound the column allows to be missing as an empty box', () => {

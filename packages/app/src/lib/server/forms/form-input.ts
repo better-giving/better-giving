@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { formatMinorBrief } from '../../donations/money';
-import { FORM_CURRENCY, majorEntry, readAmount, readSuggestedAmounts } from '../../forms/amounts';
+import { FORM_CURRENCY, groupedEntry, readAmount, readSuggestedAmounts } from '../../forms/amounts';
 import {
 	FORM_INPUT_FIELDS,
 	FORM_TEXT_FIELDS,
@@ -546,13 +546,14 @@ function onlyMessage(error: z.ZodError): string {
  * so each list crosses as a list and there is no separator grammar for this function and the
  * parser to agree about.
  *
- * every amount is written in major units, because that is what the boxes take: `majorEntry` in
- * ../../forms/amounts.ts is an exact inverse of the `readAmount` these values are saved back
- * through, so a form rendered here and saved untouched stores the amounts it was rendered from.
- * `majorEntry` and not the padded `majorText` beside it, because these are the boxes themselves
- * rather than an example of one: a $50 tile was typed as `50` and reads back as `50`, where cents
- * are written wherever there are cents. `FORM_CURRENCY` and not the row's own column, for the
- * reason the schema states: the box is parsed against that constant, so it has to be written in it.
+ * every amount is written in major units and grouped, as the box draws it: `groupedEntry` in
+ * ../../forms/amounts.ts, which the `readAmount` these values are saved back through reads
+ * exactly, so a form rendered here and saved untouched stores the amounts it was rendered from —
+ * and a box edited and put back reads as unchanged against its seed. `majorEntry` under it and not
+ * the padded `majorText`, because these are the boxes themselves rather than an example of one: a
+ * $50 tile was typed as `50` and reads back as `50`, where cents are written wherever there are
+ * cents. `FORM_CURRENCY` and not the row's own column, for the reason the schema states: the box
+ * is parsed against that constant, so it has to be written in it.
  *
  * a missing amount bound renders as an empty box rather than as a number: the columns are
  * nullable for rows nothing in v0 can create, and `0` is a bound somebody set — which arrives here
@@ -562,9 +563,9 @@ export function formInputValuesFrom(record: FormRecord): FormInputValues {
 	return {
 		name: record.name,
 		status: record.status,
-		suggested_amounts: record.suggestedAmounts.map((amount) => majorEntry(amount, FORM_CURRENCY)),
-		min_minor: record.minMinor === null ? '' : majorEntry(record.minMinor, FORM_CURRENCY),
-		max_minor: record.maxMinor === null ? '' : majorEntry(record.maxMinor, FORM_CURRENCY),
+		suggested_amounts: record.suggestedAmounts.map((amount) => groupedEntry(amount, FORM_CURRENCY)),
+		min_minor: record.minMinor === null ? '' : groupedEntry(record.minMinor, FORM_CURRENCY),
+		max_minor: record.maxMinor === null ? '' : groupedEntry(record.maxMinor, FORM_CURRENCY),
 		allowed_origins: record.allowedOrigins,
 		program_mode: record.programMode,
 		// the blank is the select's first line, which carries a word rather than nothing: a form

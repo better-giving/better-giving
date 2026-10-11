@@ -4,7 +4,7 @@ import { renderToString } from 'react-dom/server';
 import { Form, createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { getFormProps } from '@conform-to/react';
-import { MAX_SUGGESTED_AMOUNTS } from '$lib/forms/amounts';
+import { groupedEntry, MAX_SUGGESTED_AMOUNTS } from '$lib/forms/amounts';
 import { defineForm } from '$lib/forms/definition';
 import { FORM_GIVING_INPUT } from '$lib/forms/input-schema';
 import { boxErrorId, insertWhenValid, useAdminForm } from '../use-admin-form';
@@ -472,10 +472,23 @@ const GIVING = defineForm({ id: 'form-edit-giving', schema: FORM_GIVING_INPUT })
 /** distinct figures inside the $5–$500 bounds, one per row. */
 const figures = (count: number) => Array.from({ length: count }, (_, i) => String(10 + i));
 
-function Giving({ rows, min = '5' }: { readonly rows: string[]; readonly min?: string }) {
+/** whether the group last rendered holds anything to save, as its save button would be drawn. */
+let armed = false;
+
+function Giving({
+	rows,
+	min = '5',
+	max = '500'
+}: {
+	readonly rows: string[];
+	readonly min?: string;
+	readonly max?: string;
+}) {
 	const [form, fields] = useAdminForm(GIVING, undefined, {
-		defaultValue: { min_minor: min, max_minor: '500', suggested_amounts: rows }
+		defaultValue: { min_minor: min, max_minor: max, suggested_amounts: rows }
 	});
+	// read during the render, which is what subscribes this component to it.
+	armed = form.dirty;
 	return (
 		<form {...getFormProps(form)}>
 			<FormGivingFields
@@ -495,8 +508,14 @@ function Giving({ rows, min = '5' }: { readonly rows: string[]; readonly min?: s
 	);
 }
 
-function giving(rows: string[], min?: string) {
-	const root = mount(createElement(Giving, min === undefined ? { rows } : { rows, min }));
+function giving(rows: string[], min?: string, max?: string) {
+	const root = mount(
+		createElement(Giving, {
+			rows,
+			...(min === undefined ? {} : { min }),
+			...(max === undefined ? {} : { max })
+		})
+	);
 	const button = (label: string) => {
 		const found = [...root.querySelectorAll('button')].find((b) => b.textContent === label);
 		if (!found) throw new Error(`no ${label} button`);
@@ -525,6 +544,28 @@ function giving(rows: string[], min?: string) {
 				.map((id) => document.getElementById(id)?.textContent)
 	};
 }
+
+it('holds nothing to save once an edit to a grouped seed is undone', async () => {
+	// the seed is the text the server writes (`formInputValuesFrom` in
+	// `$lib/server/forms/form-input.ts`), and the box draws it grouped.
+	const group = giving([groupedEntry(150_000, 'USD')], '5', groupedEntry(2_000_000, 'USD'));
+	const max = group.root.querySelector('input[name="max_minor"]');
+	const tile = group.root.querySelector('input[name="suggested_amounts[0]"]');
+	if (!(max instanceof HTMLInputElement) || !(tile instanceof HTMLInputElement)) {
+		throw new Error('no amount boxes');
+	}
+	expect(armed).toBe(false);
+
+	await type(max, '20,0000');
+	await type(tile, '1,5000');
+	expect([max.value, tile.value]).toEqual(['200,000', '15,000']);
+	expect(armed).toBe(true);
+
+	await type(max, '200,00');
+	await type(tile, '15,00');
+	expect([max.value, tile.value]).toEqual(['20,000', '1,500']);
+	expect(armed).toBe(false);
+});
 
 it('adds a row while the group is under the cap', async () => {
 	const group = giving(figures(MAX_SUGGESTED_AMOUNTS - 1));

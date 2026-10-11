@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { and, eq, isNull, or } from 'drizzle-orm';
 import { formatMinorBrief } from '../../donations/money';
-import { majorEntry } from '../../forms/amounts';
+import { groupedEntry } from '../../forms/amounts';
 import { FORM_TEXT_FIELDS, type FormInputFieldErrors } from '../../forms/fields';
 import { PROGRAM_MODE_LABELS } from '../../forms/program-modes';
 import { type Page as PageDocument, parsePage } from '../../page/catalog';
@@ -209,7 +209,7 @@ function draftSwitches(row: Page): SettingsSeed['switches'] {
 
 function settingsBoxes(settings: DraftSettings): SettingsSeed['boxes'] {
 	const entry = (minor: number | null) =>
-		minor === null ? '' : majorEntry(minor, settings.currency);
+		minor === null ? '' : groupedEntry(minor, settings.currency);
 	const amounts = settings.suggestedAmounts.map(entry);
 	return {
 		program_mode: settings.programMode,

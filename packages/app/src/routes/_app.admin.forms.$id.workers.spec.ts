@@ -608,12 +608,12 @@ describe('/admin/forms/[id] load', () => {
 		expect(values).toMatchObject({
 			name: 'General Fund',
 			status: 'draft',
-			// the row holds 500, 1000000 and [2500]; the boxes hold what an operator types, which is
-			// major units with no cents where there are none — the two are the same amounts read in
-			// the two directions `$lib/forms/amounts.ts` converts between.
+			// the row holds 500, 1000000 and [2500]; the boxes hold what an operator types, grouped
+			// as the box draws it, which is major units with no cents where there are none — the two
+			// are the same amounts read in the two directions `$lib/forms/amounts.ts` converts between.
 			suggested_amounts: ['25'],
 			min_minor: '5',
-			max_minor: '10000',
+			max_minor: '10,000',
 			allowed_origins: ['https://acme.org']
 		});
 		// shown and never editable: an operator who cannot see the currency cannot tell what their

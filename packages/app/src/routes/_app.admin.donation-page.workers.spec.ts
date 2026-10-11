@@ -167,6 +167,24 @@ describe('the donation settings', () => {
 			settings: { summary: 'No program, $20, $40' }
 		});
 	});
+
+	it('seeds each amount box grouped, as the box draws it', async () => {
+		// the sheet's Done is armed by a box differing from its seed, and the box draws `20,000`.
+		const drawn = await open();
+		const amounts = {
+			min_minor: '25',
+			max_minor: '20000',
+			'suggested_amounts[0]': '1000',
+			'suggested_amounts[1]': '12345.50'
+		};
+		expect((await save(amounts, drawn.version)).status).toBe(200);
+
+		expect((await open()).settings.boxes).toMatchObject({
+			min_minor: '25',
+			max_minor: '20,000',
+			suggested_amounts: ['1,000', '12,345.50']
+		});
+	});
 });
 
 describe('the two switches in the donation settings', () => {

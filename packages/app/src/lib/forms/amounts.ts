@@ -181,11 +181,11 @@ export function majorText(amountMinor: number, currency: string): string {
  * a stored amount as the operator who typed it would have written it: major units, digits only, no
  * grouping, and a point only where there are cents to write.
  *
- * what every amount box on an edit screen is seeded from, and the placeholder beside them. an
- * operator offering a fifty-dollar tile typed `50`, and a box handing it back as `50.00` shows
- * them a figure they did not write and invites an edit that changes nothing. cents survive where
- * there are cents: `12.50` is written whole, and `0.05` is five cents rather than five of
- * anything.
+ * the figure every amount box on an edit screen is seeded from, grouped by `groupedEntry` below,
+ * and the placeholder beside them. an operator offering a fifty-dollar tile typed `50`, and a box
+ * handing it back as `50.00` shows them a figure they did not write and invites an edit that
+ * changes nothing. cents survive where there are cents: `12.50` is written whole, and `0.05` is
+ * five cents rather than five of anything.
  *
  * an inverse of `readAmount` exactly as `majorText` is, and it has to stay one — the boxes an edit
  * screen seeds are parsed again by the same rules the moment they are saved, so a value rendered
@@ -227,6 +227,17 @@ export function groupAmountEntry(text: string, currency: string): string {
 		groups.unshift(whole.slice(Math.max(0, end - rest), end));
 	}
 	return `${before}${groups.join(separator)}${fraction}${after}`;
+}
+
+/**
+ * a stored amount as a money box draws it: `majorEntry`, grouped by `groupAmountEntry` —
+ * `2000000` cents seeded `20,000`. what every server seed of a grouping box is written as, because
+ * conform reads a group as changed wherever a box's text differs from its seed, and an ungrouped
+ * seed under a grouped box reads as changed after any edit, an undone one included. `readAmount`
+ * reads it back unchanged.
+ */
+export function groupedEntry(amountMinor: number, currency: string): string {
+	return groupAmountEntry(majorEntry(amountMinor, currency), currency);
 }
 
 /**
