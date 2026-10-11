@@ -322,6 +322,18 @@ describe('the cover', () => {
 		expect(root.querySelector('.page-hero-over')).toBeNull();
 	});
 
+	it('nests one block inside another only at the cover’s title, on the scrim', () => {
+		// the Edit edge turns solid on the innermost hovered block and reads the scrim's ring, by
+		// these two facts (./page.css).
+		const root = mount(<PageView {...props('campaign', covered())} />);
+		const nested = [...root.querySelectorAll<HTMLElement>('[data-block-id] [data-block-id]')];
+		expect(nested.map((el) => el.dataset.blockId)).toEqual(['title-left']);
+		expect(
+			nested[0]?.parentElement?.closest('[data-block-id]')?.getAttribute('data-block-id')
+		).toBe('hero-wide');
+		expect(nested[0]?.closest('.page-hero-over')).not.toBeNull();
+	});
+
 	it('reports a click on the title as the title, and on the photo as the hero', () => {
 		const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
 		onTestFinished(() => post.mockRestore());

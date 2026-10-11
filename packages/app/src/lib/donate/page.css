@@ -100,7 +100,8 @@
  *   cover's lower edge to where the title starts, and fades out only across `--page-cover-run`, the
  *   run above the title that `.page-hero-over` pads by the same token, so the title's whole box
  *   stands on the darkest stop however many lines it and its lede run to. `--_n1` there on a white
- *   photo reads 9.33:1, held to 4.5:1 at the top of the title's first line.
+ *   photo reads 9.33:1, held to 4.5:1 at the top of the title's first line, and the same ink is the
+ *   ring there (`--page-ring` below).
  */
 
 body {
@@ -312,8 +313,9 @@ body {
  * ink. `--page-accent` is what a link and a listed tier's amount are drawn in: the primary, but the
  * ground's own ink on a tint ground, where the primary is never a word (the measured pairs above),
  * and on a strong one, which carries one ink. `--page-ring` is the focus ring, the one ink on a
- * strong ground. a card drawn on `--_n1` inside a block — a tier, the org-info card, a program
- * option, a share press — sets its own ink, so a strong ground's ink never reaches it.
+ * strong ground and on the cover's scrim. a card drawn on `--_n1` inside a block — a tier, the
+ * org-info card, a program option, a share press — sets its own ink, so a strong ground's ink never
+ * reaches it.
  */
 
 .page-block :where(h1, h2, h3, p, ul, ol) {
@@ -352,14 +354,16 @@ body {
    drawn as a thing to click, by the pointer and by its edge in the focus ring's ink — dashed at
    rest, so a finger with no hover sees it too, and solid under the pointer. drawn inside the
    block's own edge, so a block on the page's gutter keeps all of it. the donation box's wrapper is
-   no `.page-block` and declares no ring of its own, so it reads the form's. */
+   no `.page-block` and declares no ring of its own, so it reads the form's. the cover's title is
+   a block inside the hero's, and a click opens the innermost block under it (`closest` in
+   ./page-view.tsx), so only that one turns solid. */
 :root[data-editing] [data-block-id] {
 	cursor: pointer;
 	outline: var(--_border) dashed var(--page-ring, var(--_focus-ring));
 	outline-offset: calc(-1 * var(--_border));
 }
 
-:root[data-editing] [data-block-id]:hover {
+:root[data-editing] [data-block-id]:hover:not(:has([data-block-id]:hover)) {
 	outline-style: solid;
 }
 
@@ -1057,6 +1061,8 @@ figure:is(.page-hero, .page-image) {
 }
 
 .page-hero-over {
+	--page-ring: var(--_n1);
+
 	position: absolute;
 	inset: auto 0 0;
 	padding-block: var(--page-cover-run) var(--page-cover-end);
