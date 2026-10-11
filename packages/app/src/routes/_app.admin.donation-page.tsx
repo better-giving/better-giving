@@ -10,6 +10,7 @@ import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
+import { formPress } from '$lib/admin/unreached';
 import { BLOCK_FORM_IDS } from '$lib/page/block-edit';
 import {
 	PAGE_END_DATE_FORM_ID,
@@ -71,6 +72,9 @@ import type { Route } from './+types/_app.admin.donation-page';
 // Settings' pictures; each writes the draft ($lib/server/pages/blocks.ts), as a campaign's editor
 // does. the look, the sharing and a block added, removed or moved are presses there too.
 // the donation box opens Donation settings, which are what it draws.
+//
+// the action below is the one writer; `clientAction` only answers, as its form's refusal, a press
+// whose request never reached it ($lib/admin/unreached.ts).
 
 export const handle: BareHandle = { frame: 'bare' };
 
@@ -135,6 +139,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 		default:
 			return saveBlockForm(db, { type: 'donation_page' }, pressed, body, NO_DONATION_PAGE);
 	}
+}
+
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
 }
 
 type Loaded = Route.ComponentProps['loaderData'];

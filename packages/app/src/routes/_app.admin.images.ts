@@ -1,4 +1,5 @@
 import { data } from 'react-router';
+import { photoUpload } from '$lib/admin/unreached';
 import { takePostedPhoto } from '$lib/server/images/intake';
 import { database } from '../context';
 import type { Route } from './+types/_app.admin.images';
@@ -13,7 +14,8 @@ import type { Route } from './+types/_app.admin.images';
 //
 // a refusal is a 400, or a 413 for size, whose `error` names the limit; a store that throws is a
 // 500 marked `failed`, because a fetcher's thrown error lands on the editor's error boundary and
-// takes the editor with it.
+// takes the editor with it. an upload that never reached the server is answered in the browser
+// the same way, by `clientAction` ($lib/admin/unreached.ts); the action is still the one writer.
 
 export async function action({ context, request }: Route.ActionArgs) {
 	const taken = await takePostedPhoto(context.get(database), request);
@@ -26,4 +28,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 		case 'failed':
 			return data({ error: taken.error, reason: 'failed' }, 500);
 	}
+}
+
+export function clientAction({ serverAction }: Route.ClientActionArgs) {
+	return photoUpload(serverAction);
 }

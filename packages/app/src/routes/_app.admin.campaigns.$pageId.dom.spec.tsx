@@ -15,17 +15,29 @@ import {
 import { BLOCK_MESSAGE } from '$lib/page/preview-message';
 import type { Page } from '$lib/page/catalog';
 import { defaultCampaign, startingBlock } from '$lib/page/defaults';
-import CampaignEditor from './_app.admin.campaigns.$pageId';
+import type { Resized } from '@better-giving/operator/images/resize';
+import CampaignEditor, { clientAction } from './_app.admin.campaigns.$pageId';
+import { clientAction as imagesClientAction } from './_app.admin.images';
+
+// happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
+// `resizes` until the case hands it a result.
+const resizes: ((result: Resized) => void)[] = [];
+vi.mock('@better-giving/operator/images/resize', async (actual) => ({
+	...(await actual<typeof import('@better-giving/operator/images/resize')>()),
+	resizeImage: () => new Promise<Resized>((resolve) => resizes.push(resolve))
+}));
 
 // a campaign's editor as the route mounts it: the preview and the bar's presses, and no AI
 // anywhere, every hand edit reached from Settings or a click in
 // the preview once Edit is on, what its first Publish says of the address, the
 // questions an address save comes back with — asked, answered yes with the version, or declined —
 // whether the donation settings sheet stands over Settings or on its own ground, and the notice over
-// a draft the read rule refuses.
-// the loader and the action are stand-ins, one drawing the fixture below and the other recording
-// each body and answering what the case scripts; what the real ones do is
-// ./_app.admin.campaigns.$pageId.workers.spec.ts's.
+// a draft the read rule refuses, and a press whose request never reaches the server.
+// the loader and the server's action are stand-ins, one drawing the fixture below and the other
+// recording each body and answering what the case scripts, or rejecting the way a browser's
+// `fetch` does when the request never left; what the real ones do is
+// ./_app.admin.campaigns.$pageId.workers.spec.ts's. every press goes through the route's own
+// `clientAction`, as it does in a browser.
 //
 // it is not the browser spec CLAUDE.md bans over a dashboard screen: nothing here reads a computed
 // style.
@@ -88,6 +100,18 @@ let posted: Record<string, string>[];
 let bodies: FormData[];
 /** what the action answers each post, in turn. */
 let answers: { body: unknown; status?: number }[];
+/** the phone has lost its signal: every request rejects before it leaves, as `fetch` does. */
+let offline: boolean;
+/** what the server's action throws in place of answering, as it reaches the browser. */
+let thrown: unknown;
+
+/** what the editor says of a press that never reached the server. */
+const NOT_SENT =
+	'That didn’t reach the server, so nothing was changed. Check your connection and press again.';
+
+function unreachable(): void {
+	if (offline) throw new TypeError('Failed to fetch');
+}
 
 beforeEach(() => {
 	drawn = unpublished();
@@ -95,6 +119,9 @@ beforeEach(() => {
 	posted = [];
 	bodies = [];
 	answers = [];
+	offline = false;
+	thrown = undefined;
+	resizes.length = 0;
 });
 
 function mount(tree: ReactNode) {
@@ -120,17 +147,38 @@ async function screen() {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/campaigns/:pageId',
-			loader: () => unreadable ?? drawn,
-			action: async ({ request }) => {
-				const body = await request.formData();
-				bodies.push(body);
-				posted.push(Object.fromEntries([...body].map(([k, v]) => [k, String(v)])));
-				const answer = answers.shift();
-				if (answer === undefined) throw new Error('the action was posted to with no answer ready');
-				return Response.json(answer.body, { status: answer.status ?? 200 });
+			loader: () => {
+				unreachable();
+				return unreadable ?? drawn;
 			},
+			action: (args) =>
+				clientAction({
+					...args,
+					serverAction: async () => {
+						unreachable();
+						const body = await args.request.formData();
+						bodies.push(body);
+						posted.push(Object.fromEntries([...body].map(([k, v]) => [k, String(v)])));
+						if (thrown !== undefined) throw thrown;
+						const answer = answers.shift();
+						if (answer === undefined)
+							throw new Error('the action was posted to with no answer ready');
+						return Response.json(answer.body, { status: answer.status ?? 200 });
+					}
+				} as never),
 			HydrateFallback: () => null,
 			Component: Editor
+		},
+		{
+			path: '/admin/images',
+			action: (args) =>
+				imagesClientAction({
+					...args,
+					serverAction: async () => {
+						unreachable();
+						throw new Error('no upload in these cases reaches the server');
+					}
+				} as never)
 		}
 	]);
 	mount(createElement(Stub, { initialEntries: [PAGE] }));
@@ -688,5 +736,156 @@ describe('the share message', () => {
 		await press(button('Done', sheet));
 		expect(card('Share message').open).toBe(true);
 		expect(card('Share message').textContent).toContain(stale);
+	});
+});
+
+describe('a press whose request never reaches the server', () => {
+	/** what the sheet's message areas say. */
+	const said = (sheet: Element) =>
+		[...sheet.querySelectorAll('[role="status"]')].map((one) => one.textContent).join(' ');
+
+	function typeInto(box: HTMLInputElement, text: string): void {
+		act(() => {
+			Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, text);
+			box.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+	}
+
+	it('leaves a block’s sheet open, holding what was typed, and says so at Done', async () => {
+		await screen();
+		await editOn();
+		await clickInPreview('title');
+		const sheet = card('Title');
+		const heading = sheet.querySelector<HTMLInputElement>('input[name="heading"]');
+		if (heading === null) throw new Error('the Title sheet drew no heading box');
+
+		typeInto(heading, 'Coats for every kid');
+		offline = true;
+		await press(button('Done', sheet));
+
+		expect(card('Title').open).toBe(true);
+		expect(heading.value).toBe('Coats for every kid');
+		expect(said(card('Title'))).toContain(NOT_SENT);
+	});
+
+	it('leaves Settings open on a look pick, the page’s look drawn again, and says so under it', async () => {
+		await screen();
+		await editOn();
+		await press(button('Settings'));
+		const cool = [...card('Settings').querySelectorAll('label')].find(
+			(one) => one.textContent === 'Cool'
+		);
+		if (cool === undefined) throw new Error('Settings drew no Cool shade');
+
+		offline = true;
+		await press(cool.querySelector('input') as HTMLInputElement);
+
+		expect(card('Settings').open).toBe(true);
+		expect(said(card('Settings'))).toContain(NOT_SENT);
+		const shade = [...card('Settings').querySelectorAll('fieldset')].find(
+			(one) => one.querySelector('legend')?.textContent === 'Shade'
+		);
+		const picked = [...(shade?.querySelectorAll('label') ?? [])].filter(
+			(one) => one.querySelector('input')?.checked
+		);
+		expect(picked.map((one) => one.textContent)).toEqual(['Light']);
+	});
+
+	it('leaves the first Publish’s confirm up, and the campaign unpublished', async () => {
+		await screen();
+		await press(button('Publish', document.querySelector('.adm-publishbar') ?? document));
+
+		offline = true;
+		await press(button('Publish', card('Publish Winter coat drive?')));
+
+		expect(card('Publish Winter coat drive?').open).toBe(true);
+		expect(said(card('Publish Winter coat drive?'))).toContain(NOT_SENT);
+		expect(document.querySelector('.adm-publishbar')?.textContent).toContain('Not published');
+	});
+
+	it('leaves the Name sheet open on a rename, holding the name typed', async () => {
+		await screen();
+		await editOn();
+		await press(button('Settings'));
+		await press(settingsRow('Name'));
+		const box = card('Name').querySelector('input');
+		if (box === null) throw new Error('the Name sheet drew no box');
+
+		typeInto(box, 'Coats for every kid');
+		offline = true;
+		await press(button('Done', card('Name')));
+
+		expect(card('Name').open).toBe(true);
+		expect(box.value).toBe('Coats for every kid');
+		expect(said(card('Name'))).toContain(NOT_SENT);
+		expect(settingsRow('Name').textContent).toContain('Winter coat drive');
+	});
+
+	it('leaves a photo block’s sheet open on an upload, with no photo placed, and says so at the press', async () => {
+		await screen();
+		await editOn();
+		await clickInPreview('hero');
+		const sheet = card('Cover photo');
+		const picker = sheet.querySelector<HTMLInputElement>('input[type="file"]');
+		if (picker === null) throw new Error('the Cover photo sheet drew no picker');
+		Object.defineProperty(picker, 'files', {
+			configurable: true,
+			value: [new File(['camera bytes'], 'coats.heic', { type: 'image/heic' })]
+		});
+
+		offline = true;
+		await act(async () => {
+			picker.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+		const blob = new Blob([new Uint8Array(1_000)], { type: 'image/webp' });
+		await act(async () => resizes.shift()?.({ ok: true, blob, width: 800, height: 800 }));
+		await settle();
+
+		expect(card('Cover photo').open).toBe(true);
+		expect(said(card('Cover photo'))).toContain(NOT_SENT);
+		expect(card('Cover photo').querySelector('input[name="image_id"]')?.getAttribute('value')).toBe(
+			''
+		);
+	});
+
+	describe('beside a server that answered', () => {
+		async function renameInSheet(next: string) {
+			await screen();
+			await editOn();
+			await press(button('Settings'));
+			await press(settingsRow('Name'));
+			const box = card('Name').querySelector('input');
+			if (box === null) throw new Error('the Name sheet drew no box');
+			typeInto(box, next);
+			await press(button('Done', card('Name')));
+			return box;
+		}
+
+		it('draws a 500’s refusal in the sheet as it came', async () => {
+			const failed = 'Nothing was saved: the name could not be written. Press Done again.';
+			answers = [
+				{
+					body: {
+						form: { id: 'campaign-name', result: { status: 'error', error: { '': [failed] } } }
+					},
+					status: 500
+				}
+			];
+			const box = await renameInSheet('Coats for every kid');
+
+			expect(card('Name').open).toBe(true);
+			expect(box.value).toBe('Coats for every kid');
+			expect(said(card('Name'))).toContain(failed);
+			expect(said(card('Name'))).not.toContain(NOT_SENT);
+		});
+
+		it('says nothing of the connection over an error the server’s action threw', async () => {
+			vi.spyOn(console, 'error').mockImplementation(() => {});
+			thrown = new Error('Unexpected Server Error');
+			await renameInSheet('Coats for every kid');
+
+			expect(document.body.textContent).not.toContain(NOT_SENT);
+			expect(() => card('Name')).toThrow();
+		});
 	});
 });

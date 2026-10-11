@@ -1,10 +1,11 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, redirect } from 'react-router';
+import { createRoutesStub, redirect, useActionData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
 import type { Resized } from '@better-giving/operator/images/resize';
-import Program from './_app.admin.programs.$id';
+import Program, { clientAction } from './_app.admin.programs.$id';
+import { clientAction as imagesClientAction } from './_app.admin.images';
 
 // happy-dom decodes no image, so the resize is the boundary stood in for: each pick waits in
 // `resizes` until the case hands it a result.
@@ -14,9 +15,21 @@ vi.mock('@better-giving/operator/images/resize', async (actual) => ({
 	resizeImage: () => new Promise<Resized>((resolve) => resizes.push(resolve))
 }));
 
+/** the phone has lost its signal: every request rejects before it leaves, as `fetch` does. */
+let offline: boolean;
+
 beforeEach(() => {
 	resizes.length = 0;
+	offline = false;
 });
+
+function unreachable(): void {
+	if (offline) throw new TypeError('Failed to fetch');
+}
+
+/** what the screen says of a press that never reached the server. */
+const NOT_SENT =
+	'That didn’t reach the server, so nothing was changed. Check your connection and press again.';
 
 // a program's record, pressed through the redirect every write on it answers with.
 //
@@ -27,6 +40,10 @@ beforeEach(() => {
 // re-armed there sends a second body carrying the version the first one moved past, refused as
 // stale; an archive that re-armed archives a program already archived. neither is visible to the
 // workers spec beside this file, which drives the action and renders nothing.
+//
+// and a press whose request never reaches the server — a save, an upload — leaves the screen up
+// with what was typed and says so where that press reports; every press goes through the route's
+// own `clientAction`, as it does in a browser.
 //
 // mounted rather than rendered to a string, because the phase is the router's and exists only
 // between a press and a landing. it is not the browser spec CLAUDE.md bans over a dashboard
@@ -108,21 +125,34 @@ function screen({
 			Component: () =>
 				createElement(Program as never, {
 					loaderData: record(confirmArchive, imageId),
-					actionData: undefined,
+					actionData: useActionData(),
 					params: { id: PROGRAM_ID },
 					matches: []
 				}),
-			action: async ({ request }) => {
-				const body = await request.formData();
-				posted.push(String(body.get(WHICH_FORM)));
-				photos.push(body.get('image_id') as string | null);
-				return redirect(RECORD);
-			}
+			action: (args) =>
+				clientAction({
+					...args,
+					serverAction: async () => {
+						unreachable();
+						const body = await args.request.formData();
+						posted.push(String(body.get(WHICH_FORM)));
+						photos.push(body.get('image_id') as string | null);
+						return redirect(RECORD);
+					}
+				} as never)
 		},
 		{
 			path: '/admin/images',
-			action: () =>
-				uploadHeld ? new Promise<never>(() => {}) : { id: STORED, width: 800, height: 800 }
+			action: (args) =>
+				imagesClientAction({
+					...args,
+					serverAction: async () => {
+						unreachable();
+						return uploadHeld
+							? new Promise<never>(() => {})
+							: { id: STORED, width: 800, height: 800 };
+					}
+				} as never)
 		}
 	]);
 	const root = mount(
@@ -252,5 +282,35 @@ describe('the photo', () => {
 		// the box still holds the photo the upload is replacing.
 		await press(save);
 		expect(posted).toEqual([]);
+	});
+});
+
+describe('a press whose request never reaches the server', () => {
+	it('leaves the save’s boxes holding what was typed, says so, and offers the save again', async () => {
+		const { root, posted } = screen();
+		type(root, 'name', 'Winter Shelter 2026');
+		const save = buttonReading(root, 'Save program');
+
+		offline = true;
+		await press(save);
+
+		expect(posted).toEqual([]);
+		expect(root.querySelector<HTMLInputElement>('input[name="name"]')?.value).toBe(
+			'Winter Shelter 2026'
+		);
+		expect(root.querySelector('[role="alert"]')?.textContent).toContain(NOT_SENT);
+		expect(save.textContent).toBe('Save program');
+		expect(save.getAttribute('aria-disabled')).toBeNull();
+	});
+
+	it('says so at the photo’s press, and keeps the photo the box held', async () => {
+		const { root } = screen({ imageId: PLACED });
+
+		offline = true;
+		await pick(root);
+
+		expect(photoBox(root)).toBe(PLACED);
+		const said = [...root.querySelectorAll('[role="status"]')].map((one) => one.textContent);
+		expect(said).toContain(NOT_SENT);
 	});
 });

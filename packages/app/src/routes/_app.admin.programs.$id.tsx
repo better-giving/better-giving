@@ -27,6 +27,7 @@ import type { CrumbHandle } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
+import { formPress } from '$lib/admin/unreached';
 import {
 	type AdminActionData,
 	recordVersion,
@@ -59,6 +60,8 @@ import type { Route } from './+types/_app.admin.programs.$id';
 
 // one cause: read as a loader, written by the action below. no client-side mutation path, per
 // CLAUDE.md — everything that reaches the database goes through that action and nothing else.
+// `clientAction` only answers, as its form's refusal, a press whose request never reached it
+// ($lib/admin/unreached.ts).
 //
 // two submissions and one `action`, told apart by the box `whichForm` writes into each `<form>`.
 // the mechanism is the seam's rather than this screen's, and `$lib/server/conform.ts`'s header is
@@ -321,6 +324,10 @@ export async function action(args: Route.ActionArgs) {
 
 		return redirectWithFlash(request, SAVED_FLASH, screen(id), ARCHIVED);
 	}
+}
+
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
 }
 
 /** where every write on this screen sends the browser back to. */

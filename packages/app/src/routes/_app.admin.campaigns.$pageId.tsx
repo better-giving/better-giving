@@ -19,6 +19,7 @@ import { useSettingsPresses } from '$lib/admin/editor/settings-presses';
 import { type FirstPublish, usePublishPresses } from '$lib/admin/editor/publish-wiring';
 import { SettingsSheet, type SettingsRow } from '$lib/admin/editor/settings-sheet';
 import { screenTitle } from '$lib/admin/screen-title';
+import { formPress } from '$lib/admin/unreached';
 import { resultFor } from '$lib/admin/use-admin-form';
 import { defineForm, RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import { PROGRAM_MODE_LABELS } from '$lib/forms/program-modes';
@@ -99,6 +100,8 @@ import type { Route } from './+types/_app.admin.campaigns.$pageId';
 //
 // every press is written against the version the editor was drawn at (`submittedVersion`), and the
 // preview is keyed on it, so the frame reloads on the render a landed write's revalidation brings.
+// the action below is the one writer; `clientAction` only answers, as its form's refusal, a press
+// whose request never reached it ($lib/admin/unreached.ts).
 
 export const handle: BareHandle = { frame: 'bare' };
 
@@ -331,6 +334,10 @@ export async function action({ context, params, request }: Route.ActionArgs) {
 				return invalid(404, submission.reject({ fieldErrors: { slug: [gone(params.pageId)] } }));
 		}
 	}
+}
+
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
 }
 
 type Answer = Route.ComponentProps['actionData'];
