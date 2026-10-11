@@ -125,7 +125,7 @@ type OpenRows =
 	| {
 			/** a campaign's own four; absent on the Donation page. */
 			readonly campaign?: CampaignSettings | undefined;
-			/** what the page's donation settings come to — `One program · Winter coats`. */
+			/** what the page's donation settings come to — `One program, Winter coats`. */
 			readonly donationSettings?: string | undefined;
 			/** a row that opens a sheet of its own was pressed. */
 			readonly onOpen: (row: SettingsRow) => void;

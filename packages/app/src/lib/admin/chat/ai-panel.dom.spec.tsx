@@ -2,6 +2,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { AiPanel, type AiPanelProps, type ChatMessage } from './ai-panel';
+import { SENDING } from './chat-log';
 import type { CardQuestion } from './question-card';
 
 // what the AI panel does rather than how it looks: which region speaks a reply, which reply
@@ -392,15 +393,36 @@ describe('the log', () => {
 		expect(one(host, '.adm-chat__mine').textContent).toBe('Skipped the questions.');
 	});
 
-	it('puts the card under the asked turn that is the chat’s last, as the opening round', () => {
-		const { host } = mount(props({ messages: [asked('a1')] }));
+	it('puts the card under the asked turn that is the chat’s last, drafting a page never drafted', () => {
+		const { host } = mount(props({ messages: [asked('a1')], alone: true }));
 
 		expect(cards(host)).toHaveLength(1);
 		expect(presses(host)).toEqual(['Draft my page', 'Skip, draft anyway']);
 		expect(placeholder(host)).toBe('Or tell me in your own words');
 	});
 
-	it('asks a later round as a follow-up', () => {
+	it('words a second round on a page never drafted as drafting it too', () => {
+		const { host } = mount(
+			props({
+				messages: [
+					asked('a1'),
+					{
+						id: 'o1',
+						role: 'operator',
+						text: 'Who do your gifts mostly help? — Children',
+						answers: [{ id: 'who', prompt: 'Who do your gifts mostly help?', words: 'Children' }]
+					},
+					asked('a2')
+				],
+				alone: true
+			})
+		);
+
+		expect(cards(host)).toHaveLength(1);
+		expect(presses(host)).toEqual(['Draft my page', 'Skip, draft anyway']);
+	});
+
+	it('asks any round on a drafted page as a follow-up', () => {
 		const { host } = mount(props({ messages: [...HISTORY, asked('a2')] }));
 
 		expect(presses(host)).toEqual(['Update the page', 'Just do your best']);
@@ -422,7 +444,7 @@ describe('the log', () => {
 		const onAnswer = vi.fn();
 		const { host, redraw } = mount(props({ messages: [asked('a1')], onAnswer }));
 		const skip = [...host.querySelectorAll<HTMLButtonElement>('.adm-questions button')].find(
-			(b) => b.textContent === 'Skip, draft anyway'
+			(b) => b.textContent === 'Just do your best'
 		);
 		if (skip === undefined) throw new Error('no skip press');
 
@@ -436,29 +458,37 @@ describe('the log', () => {
 
 	it('marks a card’s answers on their way at its pressed button alone, and no reply as being written', async () => {
 		const { host, redraw } = mount(props({ messages: [asked('a1')] }));
-		await press(cardPress(host, 'Draft my page'));
+		await press(cardPress(host, 'Update the page'));
 
 		redraw(props({ messages: [asked('a1')], isRunning: true }));
 
 		const marks = host.querySelectorAll('.adm-btn__dots, .adm-dots');
 		expect(marks).toHaveLength(1);
-		expect(marks[0]?.closest('button')).toBe(cardPress(host, 'Draft my page'));
+		expect(marks[0]?.closest('button')).toBe(cardPress(host, 'Update the page'));
 		expect(host.querySelector('.adm-chat__waiting')).toBeNull();
 		expect(one(host, '.adm-vh [role="status"]').textContent).toBe('');
 	});
 
-	it('says a reply is being written for words sent from the box while a card is up', () => {
+	it('keeps the card up and held under words sent from the box, and says a reply is being written', async () => {
 		const { host, redraw } = mount(props({ messages: [asked('a1')] }));
+		const children = one<HTMLInputElement>(host, '.adm-questions input[value="Children"]');
+		await press(children);
 
 		redraw(
 			props({
-				messages: [asked('a1'), { id: 'sending', role: 'operator', text: 'Just make it warm' }],
+				messages: [asked('a1'), { id: SENDING, role: 'operator', text: 'Just make it warm' }],
 				isRunning: true
 			})
 		);
 
 		expect(one(host, '.adm-chat__waiting').textContent).toBe('Writing a reply');
 		expect(host.querySelectorAll('.adm-btn__dots, .adm-dots')).toHaveLength(1);
+		expect(cardPress(host, 'Update the page').getAttribute('aria-disabled')).toBe('true');
+		expect(one(host, '.adm-questions input[value="Children"]')).toBe(children);
+
+		redraw(props({ messages: [asked('a1')] }));
+		expect(one(host, '.adm-questions input[value="Children"]')).toBe(children);
+		expect(children.checked).toBe(true);
 	});
 
 	describe('answers refused', () => {
@@ -467,7 +497,7 @@ describe('the log', () => {
 		it('says why at the card, the values and the focus where they were, the box left alone', async () => {
 			const onAnswer = vi.fn();
 			const { host, redraw } = mount(props({ messages: [asked('a1')], onAnswer }));
-			const draft = cardPress(host, 'Draft my page');
+			const draft = cardPress(host, 'Update the page');
 			await press(one<HTMLInputElement>(host, '.adm-questions input[value="Children"]'));
 			await press(draft);
 			redraw(props({ messages: [asked('a1')], onAnswer, isRunning: true }));
@@ -508,7 +538,7 @@ describe('the log', () => {
 
 		it('hand the focus from the card that went to the message box', async () => {
 			const { host, redraw } = mount(props({ messages: [asked('a1')] }));
-			await press(cardPress(host, 'Draft my page'));
+			await press(cardPress(host, 'Update the page'));
 			redraw(props({ messages: [asked('a1')], isRunning: true }));
 
 			redraw(props({ messages: answered('a1') }));
@@ -524,7 +554,7 @@ describe('the log', () => {
 				elsewhere.remove();
 			});
 			const { host, redraw } = mount(props({ messages: [asked('a1')] }));
-			await press(cardPress(host, 'Draft my page'));
+			await press(cardPress(host, 'Update the page'));
 			redraw(props({ messages: [asked('a1')], isRunning: true }));
 			act(() => elsewhere.focus());
 
@@ -540,7 +570,7 @@ describe('the log', () => {
 		expect(one(host, '.adm-questions').textContent).toContain('The AI isn’t answering right now');
 	});
 
-	it('mounts the region saying so empty, and says the opening questions are being read on the commit after', () => {
+	it('mounts the region saying so empty, and says the opening questions are being got ready on the commit after', () => {
 		const host = document.createElement('div');
 		document.body.appendChild(host);
 		const watch = new MutationObserver(() => {});
@@ -558,25 +588,22 @@ describe('the log', () => {
 			.takeRecords()
 			.filter((record) => record.target === status || record.target.parentNode === status);
 
-		expect(status.textContent).toBe('Reading your page');
+		expect(status.textContent).toBe('Getting your questions ready');
 		expect(changed.length).toBeGreaterThan(0);
 	});
 
-	it.each([
-		['a page never drafted', true, 'Getting your questions ready'],
-		['a drafted page', false, 'Reading your page']
-	])('words the opening’s wait for %s', (_, alone, words) => {
-		const { host } = mount(props({ messages: [], opening: true, alone }));
+	it('words the opening’s wait on the screen and to a reader alike', () => {
+		const { host } = mount(props({ messages: [], opening: true, alone: true }));
 
-		expect(one(host, '.adm-chat__waiting').textContent).toBe(words);
-		expect(one(host, '.adm-vh [role="status"]').textContent).toBe(words);
+		expect(one(host, '.adm-chat__waiting').textContent).toBe('Getting your questions ready');
+		expect(one(host, '.adm-vh [role="status"]').textContent).toBe('Getting your questions ready');
 	});
 
-	it('says the opening questions are being read while they are', () => {
-		const { host, redraw } = mount(props({ messages: [], opening: true }));
+	it('says the opening questions are being got ready while they are', () => {
+		const { host, redraw } = mount(props({ messages: [], opening: true, alone: true }));
 		const status = one(host, '[role="status"]');
 
-		expect(status.textContent).toBe('Reading your page');
+		expect(status.textContent).toBe('Getting your questions ready');
 		expect(send(host).getAttribute('aria-disabled')).toBe('true');
 
 		redraw(props({ messages: [asked('a1')], opening: false }));
