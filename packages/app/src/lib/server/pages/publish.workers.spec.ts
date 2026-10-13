@@ -360,7 +360,8 @@ describe('a campaign’s first Publish', () => {
 
 		expect(outcome).toEqual({
 			kind: 'refused',
-			text: 'Nothing was published: a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”.'
+			text: 'Nothing was published: a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”.',
+			at: 'gifts_go_to'
 		});
 		expect(await stored(pageId)).toEqual(drawn);
 	});
@@ -419,7 +420,8 @@ describe('where gifts go', () => {
 
 			expect(outcome).toEqual({
 				kind: 'refused',
-				text: 'Nothing was published: where gifts go is asked only at a campaign’s first Publish. Change it in Settings, Donation settings, then publish.'
+				text: 'Nothing was published: where gifts go is asked only at a campaign’s first Publish. Change it in Settings, Donation settings, then publish.',
+				at: 'gifts_go_to'
 			});
 			expect(await stored(pageId)).toEqual(drawn);
 		}

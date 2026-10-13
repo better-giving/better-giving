@@ -1,4 +1,5 @@
 import { readAmount } from '../../forms/amounts';
+import { GIFTS_GO_TO } from '../../page/publish-form';
 import { HEADING_MAX, type Page as PageDocument } from '../../page/catalog';
 import { endDayOf, endOfDay, isTimeZone } from '../../page/end-date';
 import { stateAt } from '../../page/ended';
@@ -282,20 +283,28 @@ async function answer(
 
 /**
  * makes a campaign's draft live, through the dashboard's own Publish and its rules, guarded on the
- * row as read just before. a first Publish keeps where the draft's donation settings send gifts,
- * the answer the editor's first-Publish confirm opens on.
+ * row as read just before. `gifts_go_to` is the first Publish's answer to where gifts go, which the
+ * chat asks the operator rather than answering itself: a program id to pin, or null to keep the
+ * campaign's own donation settings. a later Publish takes none.
  */
 export async function publishCampaign(
 	db: Db,
 	origin: string,
 	now: Date,
-	id: string
+	id: string,
+	body: unknown
 ): Promise<Done | Refused> {
+	if (body !== undefined && (typeof body !== 'object' || body === null))
+		return invalid('', 'the body is a JSON object, or left out');
+	const giftsGoTo =
+		body === undefined ? undefined : (body as { gifts_go_to?: unknown }).gifts_go_to;
+	if (giftsGoTo !== undefined && giftsGoTo !== null && typeof giftsGoTo !== 'string')
+		return invalid(GIFTS_GO_TO, GIFTS_GO_TO_IS);
 	const row = await readPage(db, id);
 	if (row === null || row.type !== 'campaign') return missing(id);
 	const outcome = await publishPage(db, { type: 'campaign', id }, row.updatedAt, {
 		now: now.getTime(),
-		giftsGoTo: row.state === 'never_published' ? null : undefined
+		giftsGoTo
 	});
 	switch (outcome.kind) {
 		case 'gone':
@@ -303,10 +312,29 @@ export async function publishCampaign(
 		case 'stale':
 			return changed('as it was being published', 'publish it again if it should still go live');
 		case 'refused':
+			if (outcome.at === GIFTS_GO_TO) return giftsGoToRefused(row.state === 'never_published');
 			return { ok: false, status: 422, code: 'invalid', detail: outcome.text };
 		case 'published':
 			return { ok: true, campaign: await reread(db, origin, now, id) };
 	}
+}
+
+const GIFTS_GO_TO_IS =
+	'gifts_go_to is a program id to pin this campaign’s gifts to, or null to keep its own donation settings';
+
+function giftsGoToRefused(first: boolean): Refused {
+	const message = first
+		? `a campaign’s first Publish says where its gifts go; ${GIFTS_GO_TO_IS}`
+		: 'where gifts go is answered at a campaign’s first Publish only, and this one has been published; leave gifts_go_to out';
+	return {
+		ok: false,
+		status: 422,
+		code: 'invalid',
+		detail: first
+			? 'Nothing was published: ask the operator where this campaign’s gifts go, then publish again with gifts_go_to set to null to keep the campaign’s own donation settings, or to the id of the program to pin its gifts to.'
+			: 'Nothing was published: gifts_go_to is taken at a campaign’s first Publish only. Publish again without it; where gifts go is changed in the dashboard, under Settings, Donation settings.',
+		errors: [{ path: GIFTS_GO_TO, message }]
+	};
 }
 
 /** takes a live campaign off the air through the dashboard's End, guarded on the row as just read. */

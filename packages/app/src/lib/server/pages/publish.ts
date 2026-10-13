@@ -84,15 +84,18 @@ import {
 /** what a Publish did. */
 export type PublishOutcome =
 	| { readonly kind: 'published'; readonly undoable: boolean }
-	/** the page as drafted may not go live; `text` names why and what to change. */
-	| { readonly kind: 'refused'; readonly text: string }
+	/**
+	 * the page as drafted may not go live; `text` names why and what to change, and `at` is
+	 * `GIFTS_GO_TO` where the answer to where gifts go is what was refused.
+	 */
+	| { readonly kind: 'refused'; readonly text: string; readonly at?: typeof GIFTS_GO_TO }
 	/** the page has been written since the editor was drawn. */
 	| { readonly kind: 'stale' }
 	| { readonly kind: 'gone' };
 
 /** a refusal's sentence: nothing moved, and why. */
-const refused = (why: string): PublishOutcome => ({
-	kind: 'refused',
+const refused = (why: string) => ({
+	kind: 'refused' as const,
 	text: `Nothing was published: ${why}.`
 });
 
@@ -191,14 +194,20 @@ export async function publishPage(
 	}
 	const first = row.state === 'never_published';
 	if (first && at.giftsGoTo === undefined) {
-		return refused(
-			'a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”'
-		);
+		return {
+			...refused(
+				'a campaign’s first Publish says where its gifts go. Publish it from its editor, choosing under “Gifts go to”'
+			),
+			at: GIFTS_GO_TO
+		};
 	}
 	if (!first && at.giftsGoTo !== undefined) {
-		return refused(
-			'where gifts go is asked only at a campaign’s first Publish. Change it in Settings, Donation settings, then publish'
-		);
+		return {
+			...refused(
+				'where gifts go is asked only at a campaign’s first Publish. Change it in Settings, Donation settings, then publish'
+			),
+			at: GIFTS_GO_TO
+		};
 	}
 	const owned = await readOwnedRow(db, row);
 	const live = settingsOfRow(owned);

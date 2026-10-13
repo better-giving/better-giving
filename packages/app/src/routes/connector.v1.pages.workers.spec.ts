@@ -40,11 +40,15 @@ async function made(key: string, title = 'Winter coats'): Promise<string> {
 }
 
 describe('campaigns.publish', () => {
-	it('makes a draft campaign live at its address', async () => {
+	it('makes a draft campaign live at its address, keeping its own donation settings on gifts_go_to null', async () => {
 		const key = await connect();
 		const id = await made(key);
 
-		const response = await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
+		const response = await call('publish', `/campaigns/${id}/publish`, {
+			method: 'POST',
+			key,
+			body: { gifts_go_to: null }
+		});
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({
@@ -68,7 +72,11 @@ describe('campaigns.publish', () => {
 			.set({ draft: JSON.stringify(draft) })
 			.where(eq(page.id, id));
 
-		const response = await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
+		const response = await call('publish', `/campaigns/${id}/publish`, {
+			method: 'POST',
+			key,
+			body: { gifts_go_to: null }
+		});
 
 		expect(response.status).toBe(422);
 		const problem = (await response.json()) as { code: string; detail: string };
@@ -76,6 +84,48 @@ describe('campaigns.publish', () => {
 		expect(problem.detail).toContain('exactly one donation box');
 		const [after] = await h.db.select().from(page).where(eq(page.id, id));
 		expect(after?.published).toBeNull();
+	});
+
+	it('refuses a first Publish that does not say where gifts go, asking the operator', async () => {
+		const key = await connect();
+		const id = await made(key);
+
+		const response = await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
+
+		expect(response.status).toBe(422);
+		const problem = (await response.json()) as {
+			code: string;
+			detail: string;
+			errors: { path: string }[];
+		};
+		expect(problem).toMatchObject({ code: 'invalid', errors: [{ path: 'gifts_go_to' }] });
+		expect(problem.detail).toContain('ask the operator');
+		const [row] = await h.db.select().from(page).where(eq(page.id, id));
+		expect(row?.published).toBeNull();
+	});
+
+	it('refuses gifts_go_to on a campaign already published', async () => {
+		const key = await connect();
+		const id = await made(key);
+		await call('publish', `/campaigns/${id}/publish`, {
+			method: 'POST',
+			key,
+			body: { gifts_go_to: null }
+		});
+
+		const again = await call('publish', `/campaigns/${id}/publish`, {
+			method: 'POST',
+			key,
+			body: { gifts_go_to: null }
+		});
+		const plain = await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
+
+		expect(again.status).toBe(422);
+		expect(await again.json()).toMatchObject({
+			code: 'invalid',
+			errors: [{ path: 'gifts_go_to' }]
+		});
+		expect(plain.status).toBe(200);
 	});
 
 	it('answers a campaign that is not there as not_found', async () => {
@@ -94,7 +144,11 @@ describe('campaigns.end', () => {
 	it('ends a published campaign', async () => {
 		const key = await connect();
 		const id = await made(key);
-		await call('publish', `/campaigns/${id}/publish`, { method: 'POST', key });
+		await call('publish', `/campaigns/${id}/publish`, {
+			method: 'POST',
+			key,
+			body: { gifts_go_to: null }
+		});
 
 		const response = await call('end', `/campaigns/${id}/end`, { method: 'POST', key });
 
