@@ -21,6 +21,10 @@ import { mountRoutes } from '../route-request.testing';
 import { signInAsMember } from '../staff-session.testing';
 import * as layout from './_app';
 import * as connections from './_app.admin.integrations.connector';
+import * as integrationsSurface from './integrations.v1';
+import * as integrationsGifts from './integrations.v1.gifts';
+import * as zapierSurface from './zapier';
+import * as zapierMe from './zapier.me';
 import * as unserved from './connector.v1.$';
 import * as campaign from './connector.v1.campaigns.$id._index';
 import * as blocks from './connector.v1.campaigns.$id.blocks';
@@ -49,7 +53,15 @@ const h = connectorHarness(() => ({
 		{ path: undefined, module: layout },
 		{ path: 'admin/integrations/connector', module: connections }
 	]),
-	photo: mountRoutes([{ path: 'photo/:token', module: photo }])
+	photo: mountRoutes([{ path: 'photo/:token', module: photo }]),
+	integrationsGifts: mountRoutes([
+		{ path: 'integrations/v1', module: integrationsSurface },
+		{ path: 'gifts', module: integrationsGifts }
+	]),
+	zapierMe: mountRoutes([
+		{ path: 'zapier', module: zapierSurface },
+		{ path: 'me', module: zapierMe }
+	])
 }));
 const { call, connect, pressAllow, route } = h;
 
@@ -100,6 +112,16 @@ describe('the Allow screen', () => {
 		expect(back.searchParams.get('error')).toBe('access_denied');
 		expect(back.searchParams.has('code')).toBe(false);
 		expect(await h.db.select().from(connectorCode)).toEqual([]);
+	});
+
+	it('sends a Deny pressed after Allow back with no code', async () => {
+		await pressAllow(h.deployer, 'allow');
+
+		const back = new URL((await pressAllow(h.deployer, 'deny')).headers.get('location') ?? '');
+
+		expect(back.searchParams.get('state')).toBe('st-123');
+		expect(back.searchParams.get('error')).toBe('access_denied');
+		expect(back.searchParams.has('code')).toBe(false);
 	});
 
 	it('names this deployment as the issuer of the return Allow sends', async () => {
@@ -173,6 +195,24 @@ describe('the code exchange', () => {
 		expect(name).toBe('Riverbank Trust');
 		expect(second.status).toBe(400);
 		expect(await second.json()).toMatchObject({ code: 'code_invalid' });
+	});
+
+	it('refuses a code already exchanged after Disconnect, and the old key stays refused', async () => {
+		const allowed = await pressAllow(h.deployer, 'allow');
+		const code = new URL(allowed.headers.get('location') ?? '').searchParams.get('code');
+		const first = await call('exchange', '/exchange', { method: 'POST', body: { code } });
+		const { key } = (await first.json()) as { key: string };
+		expect((await call('campaigns', '/campaigns', { key })).status).toBe(200);
+		await call('disconnect', '/disconnect', { method: 'POST', key });
+
+		const again = await call('exchange', '/exchange', { method: 'POST', body: { code } });
+
+		expect(again.status).toBe(400);
+		expect(await again.json()).toMatchObject({ code: 'code_invalid' });
+		expect(await h.db.select().from(connectorKey)).toHaveLength(1);
+		const refused = await call('campaigns', '/campaigns', { key });
+		expect(refused.status).toBe(401);
+		expect(await refused.json()).toMatchObject({ code: 'key_refused' });
 	});
 
 	it('mints one key between two redemptions of one code racing each other', async () => {
@@ -304,6 +344,42 @@ describe('an action with the connected key', () => {
 
 		expect(response.status).toBe(404);
 		expect(await response.json()).toMatchObject({ code: 'unknown_action' });
+	});
+});
+
+describe('a connector key on another surface', () => {
+	const elsewhere = { 'cf-connecting-ip': '203.0.113.77' };
+
+	it('is refused on /integrations/v1 as a key that is not one of its own', async () => {
+		const key = await connect();
+		const send = (presented: string) =>
+			route('integrationsGifts')(
+				new Request(`${ORIGIN}/integrations/v1/gifts`, {
+					headers: { ...elsewhere, authorization: `Bearer ${presented}` }
+				})
+			);
+
+		const response = await send(key);
+
+		expect(response.status).toBe(401);
+		const body = (await response.json()) as { error: string };
+		expect(body.error).toBe('malformed_key');
+		expect(body).toStrictEqual(await (await send('bgc_not-a-key')).json());
+	});
+
+	it('is refused on /zapier with the same 401 as no key', async () => {
+		const key = await connect();
+		const send = (authorization?: string) =>
+			route('zapierMe')(
+				new Request(`${ORIGIN}/zapier/me`, {
+					headers: { ...elsewhere, ...(authorization === undefined ? {} : { authorization }) }
+				})
+			);
+
+		const response = await send(`Bearer ${key}`);
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual(await (await send()).json());
 	});
 });
 
@@ -657,6 +733,20 @@ describe('the photo link', () => {
 			blocks: { type: string; imageId?: string | null }[];
 		};
 		expect(after.find((b) => b.type === 'hero')?.imageId).toEqual(expect.any(String));
+	});
+
+	it('is refused past its thirty minutes, and no photo lands in the draft', async () => {
+		const key = await connect();
+		const { id, url } = await linked(key);
+		await h.db.update(photoLink).set({ expiresAt: new Date(Date.now() - 1) });
+
+		const response = await upload(url);
+
+		expect(response.status).toBe(410);
+		const { blocks: after } = (await (
+			await call('campaign', `/campaigns/${id}`, { key })
+		).json()) as { blocks: { type: string; imageId?: string | null }[] };
+		expect(after.find((b) => b.type === 'hero')?.imageId ?? null).toBeNull();
 	});
 
 	it('stops working once the connection is disconnected', async () => {
